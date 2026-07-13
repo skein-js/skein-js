@@ -1,0 +1,24 @@
+{
+  "name": "@skein/monorepo",
+  "version": "0.0.0",
+  "private": true,
+  "description": "Skein — a TypeScript Agent Protocol server for LangGraph.js, and a drop-in for the LangGraph CLI.",
+  "license": "Apache-2.0",
+  "packageManager": "pnpm@9.15.0",
+  "engines": {
+    "node": ">=20"
+  },
+  "scripts": {
+    "build": "nx run-many -t build",
+    "test": "nx run-many -t test",
+    "lint": "nx run-many -t lint",
+    "typecheck": "nx run-many -t typecheck"
+  },
+  "devDependencies": {
+    "@types/node": "^22.10.0",
+    "nx": "^20.3.0",
+    "tsup": "^8.3.5",
+    "typescript": "^5.7.2",
+    "vitest": "^2.1.8"
+  }
+}

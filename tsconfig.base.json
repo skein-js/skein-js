@@ -1,0 +1,27 @@
+{
+  "compilerOptions": {
+    "target": "ES2022",
+    "module": "ESNext",
+    "moduleResolution": "Bundler",
+    "lib": ["ES2023"],
+    "declaration": true,
+    "strict": true,
+    "noUncheckedIndexedAccess": true,
+    "esModuleInterop": true,
+    "skipLibCheck": true,
+    "forceConsistentCasingInFileNames": true,
+    "resolveJsonModule": true,
+    "baseUrl": ".",
+    "paths": {
+      "@skein/core": ["packages/core/src/index.ts"],
+      "@skein/config": ["packages/config/src/index.ts"],
+      "@skein/express": ["packages/server-express/src/index.ts"],
+      "@skein/fastify": ["packages/server-fastify/src/index.ts"],
+      "@skein/nestjs": ["packages/server-nestjs/src/index.ts"],
+      "@skein/storage-memory": ["packages/storage-memory/src/index.ts"],
+      "@skein/storage-postgres": ["packages/storage-postgres/src/index.ts"],
+      "@skein/redis": ["packages/runtime-redis/src/index.ts"]
+    }
+  },
+  "exclude": ["node_modules", "dist"]
+}

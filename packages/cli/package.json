@@ -1,0 +1,27 @@
+{
+  "name": "skein",
+  "version": "0.0.0",
+  "description": "The Skein CLI — a drop-in replacement for the LangGraph CLI (dev/up/build/dockerfile).",
+  "license": "Apache-2.0",
+  "type": "module",
+  "main": "./dist/index.js",
+  "module": "./dist/index.js",
+  "types": "./dist/index.d.ts",
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "import": "./dist/index.js"
+    }
+  },
+  "files": [
+    "dist"
+  ],
+  "scripts": {
+    "build": "tsup src/index.ts --format esm --dts --clean",
+    "typecheck": "tsc --noEmit",
+    "test": "vitest run"
+  },
+  "bin": {
+    "skein": "./dist/index.js"
+  }
+}
