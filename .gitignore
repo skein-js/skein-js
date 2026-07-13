@@ -33,3 +33,8 @@ pnpm-debug.log*
 
 # test / coverage
 coverage/
+
+.nx/migrate-runs
+.claude/worktrees
+.nx/polygraph
+.nx/self-healing

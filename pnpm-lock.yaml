@@ -17,6 +17,9 @@ importers:
       '@nx/vite':
         specifier: 23.0.2
         version: 23.0.2(@babel/traverse@7.29.7)(@nx/eslint@23.0.2(@babel/traverse@7.29.7)(@zkochan/js-yaml@0.0.7)(eslint@9.39.4(jiti@2.7.0))(nx@23.0.2))(nx@23.0.2)(typescript@5.9.3)(vite@8.1.4(@types/node@22.20.0)(esbuild@0.27.7)(jiti@2.7.0)(tsx@4.22.4)(yaml@2.9.0))(vitest@4.1.9)
+      '@nx/vitest':
+        specifier: 23.0.2
+        version: 23.0.2(@babel/traverse@7.29.7)(@nx/eslint@23.0.2(@babel/traverse@7.29.7)(@zkochan/js-yaml@0.0.7)(eslint@9.39.4(jiti@2.7.0))(nx@23.0.2))(nx@23.0.2)(typescript@5.9.3)(vite@8.1.4(@types/node@22.20.0)(esbuild@0.27.7)(jiti@2.7.0)(tsx@4.22.4)(yaml@2.9.0))(vitest@4.1.9)
       '@types/node':
         specifier: ^22.10.0
         version: 22.20.0
