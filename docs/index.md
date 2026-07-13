@@ -23,6 +23,15 @@ Skein is "aegra for TypeScript." It exposes the Agent Protocol wire format from 
 HTTP framework (Express first; Fastify and NestJS to follow), so the whole LangChain client
 surface keeps working with only a URL change.
 
+Unlike aegra — which had to reimplement the server in Python because the Python
+`langgraph-api` is proprietary — the **JavaScript Agent Protocol server is open source and
+MIT** ([`@langchain/langgraph-api`](https://www.npmjs.com/package/@langchain/langgraph-api)).
+So Skein is deliberately thin: it **reuses as much LangGraph OSS as possible** (runtime,
+checkpointers, parser, schemas, SDK/types) and rebuilds only the durable-production,
+multi-framework, drop-in-CLI layer that OSS lacks. See [reuse.md](./reuse.md).
+
+> **Guiding principles:** [Reuse first](./reuse.md) · [Simple, readable, functional code](./code-practices.md).
+
 ## The drop-in promise
 
 The headline developer experience is **zero-effort migration off the LangGraph CLI**:
@@ -65,6 +74,9 @@ Skein by changing only a URL.
 
 | Doc | Covers |
 | --- | --- |
+| [reuse.md](./reuse.md) | **What we reuse from LangGraph OSS vs. what we rebuild** |
+| [code-practices.md](./code-practices.md) | Readability, functional style, simplicity conventions |
+| [testing.md](./testing.md) | Unit + Testcontainers integration + conformance suite |
 | [agent-protocol.md](./agent-protocol.md) | The REST + streaming endpoints Skein implements |
 | [langgraph-cli-compat.md](./langgraph-cli-compat.md) | `langgraph.json` fields + CLI commands |
 | [streaming.md](./streaming.md) | LangGraph stream modes → Agent Protocol SSE |

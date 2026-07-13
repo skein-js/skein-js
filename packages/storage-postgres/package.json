@@ -1,8 +1,25 @@
 {
   "name": "@skein/storage-postgres",
   "version": "0.0.0",
-  "description": "Postgres SkeinStore driver with pgvector + PostgresSaver checkpointer.",
+  "description": "Postgres SkeinStore driver with pgvector semantic search, reusing PostgresSaver for checkpoints.",
   "license": "Apache-2.0",
+  "author": "Maina Wycliffe <wycliff@purpleelephant.ventures>",
+  "homepage": "https://github.com/mainawycliffe/skein/tree/main/packages/storage-postgres#readme",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/mainawycliffe/skein.git",
+    "directory": "packages/storage-postgres"
+  },
+  "bugs": {
+    "url": "https://github.com/mainawycliffe/skein/issues"
+  },
+  "keywords": [
+    "langgraph",
+    "agent-protocol",
+    "postgres",
+    "pgvector",
+    "storage"
+  ],
   "type": "module",
   "main": "./dist/index.js",
   "module": "./dist/index.js",
@@ -14,11 +31,21 @@
     }
   },
   "files": [
-    "dist"
+    "dist",
+    "README.md"
   ],
-  "scripts": {
-    "build": "tsup src/index.ts --format esm --dts --clean",
-    "typecheck": "tsc --noEmit",
-    "test": "vitest run"
+  "sideEffects": false,
+  "engines": {
+    "node": ">=20"
+  },
+  "dependencies": {
+    "@skein/core": "workspace:*",
+    "pg": ">=8.11.0"
+  },
+  "peerDependencies": {
+    "@langchain/langgraph-checkpoint-postgres": "^1.0.4"
+  },
+  "publishConfig": {
+    "access": "public"
   }
 }

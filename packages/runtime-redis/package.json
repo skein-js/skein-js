@@ -3,6 +3,23 @@
   "version": "0.0.0",
   "description": "Redis job queue and cross-instance pub/sub streaming for Skein.",
   "license": "Apache-2.0",
+  "author": "Maina Wycliffe <wycliff@purpleelephant.ventures>",
+  "homepage": "https://github.com/mainawycliffe/skein/tree/main/packages/runtime-redis#readme",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/mainawycliffe/skein.git",
+    "directory": "packages/runtime-redis"
+  },
+  "bugs": {
+    "url": "https://github.com/mainawycliffe/skein/issues"
+  },
+  "keywords": [
+    "langgraph",
+    "agent-protocol",
+    "redis",
+    "queue",
+    "streaming"
+  ],
   "type": "module",
   "main": "./dist/index.js",
   "module": "./dist/index.js",
@@ -14,11 +31,18 @@
     }
   },
   "files": [
-    "dist"
+    "dist",
+    "README.md"
   ],
-  "scripts": {
-    "build": "tsup src/index.ts --format esm --dts --clean",
-    "typecheck": "tsc --noEmit",
-    "test": "vitest run"
+  "sideEffects": false,
+  "engines": {
+    "node": ">=20"
+  },
+  "dependencies": {
+    "@skein/core": "workspace:*",
+    "ioredis": ">=5.4.0"
+  },
+  "publishConfig": {
+    "access": "public"
   }
 }

@@ -5,20 +5,16 @@
   "projectType": "library",
   "targets": {
     "build": {
-      "command": "tsup src/index.ts --format esm --dts --clean",
+      "executor": "nx:run-commands",
       "options": {
+        "command": "tsup src/index.ts --format esm --dts --clean",
         "cwd": "packages/config"
       }
     },
     "typecheck": {
-      "command": "tsc --noEmit",
+      "executor": "nx:run-commands",
       "options": {
-        "cwd": "packages/config"
-      }
-    },
-    "test": {
-      "command": "vitest run",
-      "options": {
+        "command": "tsc --noEmit",
         "cwd": "packages/config"
       }
     }

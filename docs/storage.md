@@ -2,10 +2,13 @@
 
 Skein separates two kinds of persistence, and it is important not to conflate them:
 
-1. **Graph checkpoints** — LangGraph's own state/history for a thread. Delegated to a
-   LangGraph **checkpointer** (`MemorySaver` in dev, `PostgresSaver` in prod).
+1. **Graph checkpoints** — LangGraph's own state/history for a thread. **Reused, never
+   reimplemented:** delegated to an existing LangGraph checkpointer (`MemorySaver` in dev,
+   `PostgresSaver` in prod; `@langchain/langgraph-checkpoint-redis` and
+   `-sqlite` are also available). See [reuse.md](./reuse.md).
 2. **Protocol resources** — assistants, thread metadata/status, run rows, and long-term
-   store items. Owned by Skein behind a single `SkeinStore` interface.
+   store items. These are the gap OSS keeps *in memory*, so Skein owns them behind a single
+   `SkeinStore` interface with durable drivers.
 
 ## `SkeinStore` interface
 

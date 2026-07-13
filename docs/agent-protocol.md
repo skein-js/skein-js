@@ -2,8 +2,11 @@
 
 Skein implements LangChain's [**Agent Protocol**](https://github.com/langchain-ai/agent-protocol),
 an OpenAPI-specified, framework-agnostic HTTP + streaming contract for serving LLM agents.
-The spec is the source of truth for routes and payload schemas — **we generate types from
-its OpenAPI document rather than hand-writing them.**
+
+**We reuse rather than redefine the wire types.** The `@langchain/langgraph-sdk` package
+already publishes TypeScript types for Thread / Run / Assistant / Store items, and
+`@langchain/langgraph-api` publishes the server-side Zod schemas — Skein builds on those
+instead of hand-writing (or regenerating) a parallel set. See [reuse.md](./reuse.md).
 
 ## Core resources
 

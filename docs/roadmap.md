@@ -2,18 +2,24 @@
 
 ## Phase 0 — Documentation & scaffolding ✅ (current)
 
-- Repo, license, README, this `docs/` set.
-- Nx workspace + `@skein/*` package stubs.
-- `examples/react-usestream` Next.js harness for the [`useStream`](./react-sdk.md) path.
+- Repo, license, README, `AGENTS.md`/`CLAUDE.md`, and this `docs/` set (incl.
+  [reuse](./reuse.md), [code-practices](./code-practices.md), [testing](./testing.md)).
+- Nx workspace + publishable `@skein/*` package stubs (each with a README).
+- Tooling: ESLint + Prettier, Vitest workspace, `@skein/test-support` (Testcontainers +
+  `SkeinStore` conformance seed).
+- Examples: `express-basic` (zero-setup `echo` graph + Claude `agent` graph in one
+  `langgraph.json`, with a passing echo unit test) and `react-usestream` (the
+  [`useStream`](./react-sdk.md) harness).
 
 ## Phase 1+ — Implementation
 
 Priority order (**bold = MVP**):
 
 1. **Scaffold core** — `@skein/core` skeleton with tsup build + vitest.
-2. **Types + `@skein/config`** — generate protocol types from the Agent Protocol OpenAPI
-   spec; define `SkeinStore` + queue/pub-sub interfaces; build the `langgraph.json` parser
-   and graph loader (`path:export`, factory) early — everything downstream consumes it.
+2. **Types + `@skein/config`** — reuse `@langchain/langgraph-sdk` types + `@langchain/langgraph-api`
+   schemas for the wire contract (don't hand-roll); define `SkeinStore` + queue/pub-sub
+   interfaces; build `@skein/config` on `@langchain/langgraph-api`'s `./schema` parser for
+   `langgraph.json` loading (`path:export`, factory) early — everything downstream consumes it.
 3. **Storage-memory + in-memory queue** — implement `SkeinStore` in-memory; conformance tests.
 4. **Core handlers + run engine** — assistants introspection, threads CRUD, the three run
    modes, store CRUD; wire LangGraph `invoke`/`stream` + interrupt/resume; SSE mapping incl.

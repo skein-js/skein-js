@@ -3,6 +3,23 @@
   "version": "0.0.0",
   "description": "The Skein CLI — a drop-in replacement for the LangGraph CLI (dev/up/build/dockerfile).",
   "license": "Apache-2.0",
+  "author": "Maina Wycliffe <wycliff@purpleelephant.ventures>",
+  "homepage": "https://github.com/mainawycliffe/skein/tree/main/packages/cli#readme",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/mainawycliffe/skein.git",
+    "directory": "packages/cli"
+  },
+  "bugs": {
+    "url": "https://github.com/mainawycliffe/skein/issues"
+  },
+  "keywords": [
+    "langgraph",
+    "cli",
+    "agent-protocol",
+    "langgraph-cli",
+    "self-hosted"
+  ],
   "type": "module",
   "main": "./dist/index.js",
   "module": "./dist/index.js",
@@ -13,15 +30,23 @@
       "import": "./dist/index.js"
     }
   },
-  "files": [
-    "dist"
-  ],
-  "scripts": {
-    "build": "tsup src/index.ts --format esm --dts --clean",
-    "typecheck": "tsc --noEmit",
-    "test": "vitest run"
-  },
   "bin": {
     "skein": "./dist/index.js"
+  },
+  "files": [
+    "dist",
+    "README.md"
+  ],
+  "sideEffects": false,
+  "engines": {
+    "node": ">=20"
+  },
+  "dependencies": {
+    "@skein/core": "workspace:*",
+    "@skein/config": "workspace:*",
+    "@skein/express": "workspace:*"
+  },
+  "publishConfig": {
+    "access": "public"
   }
 }

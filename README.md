@@ -8,6 +8,12 @@ from any Node HTTP framework (Express first; Fastify and NestJS to follow). Thin
 lock-in, full control over your agent infrastructure, and the same client tooling you
 already use.
 
+**Reuse-first.** On JavaScript, the Agent Protocol server internals are already open
+([`@langchain/langgraph-api`](https://www.npmjs.com/package/@langchain/langgraph-api), MIT),
+so Skein doesn't rebuild them. It reuses the LangGraph runtime, checkpointers, `langgraph.json`
+parser, schemas, and SDK/types, and adds only the durable-production, multi-framework, and
+drop-in-CLI layer that OSS lacks. See [docs/reuse.md](./docs/reuse.md).
+
 > **Skein** *(noun)* — a coiled length of thread. The Agent Protocol's first-class
 > **threads**, and the strands of a graph.
 
@@ -64,6 +70,8 @@ An Nx monorepo of small packages:
 Read the full design in [`docs/`](./docs):
 
 - [Overview & vision](./docs/index.md)
+- [Reuse-first architecture](./docs/reuse.md) — what we reuse vs. rebuild
+- [Code practices](./docs/code-practices.md) — readable, functional, simple
 - [Agent Protocol surface](./docs/agent-protocol.md)
 - [LangGraph CLI compatibility](./docs/langgraph-cli-compat.md)
 - [Streaming (SSE)](./docs/streaming.md)

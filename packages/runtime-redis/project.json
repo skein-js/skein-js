@@ -5,20 +5,23 @@
   "projectType": "library",
   "targets": {
     "build": {
-      "command": "tsup src/index.ts --format esm --dts --clean",
+      "executor": "nx:run-commands",
       "options": {
+        "command": "tsup src/index.ts --format esm --dts --clean",
         "cwd": "packages/runtime-redis"
       }
     },
     "typecheck": {
-      "command": "tsc --noEmit",
+      "executor": "nx:run-commands",
       "options": {
+        "command": "tsc --noEmit",
         "cwd": "packages/runtime-redis"
       }
     },
-    "test": {
-      "command": "vitest run",
+    "test-integration": {
+      "executor": "nx:run-commands",
       "options": {
+        "command": "vitest run --config vitest.integration.config.ts",
         "cwd": "packages/runtime-redis"
       }
     }

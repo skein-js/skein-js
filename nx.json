@@ -6,25 +6,46 @@
       "default",
       "!{projectRoot}/**/*.spec.ts",
       "!{projectRoot}/**/*.test.ts",
-      "!{projectRoot}/vitest.config.ts"
+      "!{projectRoot}/**/*.integration.test.ts",
+      "!{projectRoot}/vitest.config.ts",
+      "!{projectRoot}/vitest.integration.config.ts"
     ],
-    "sharedGlobals": ["{workspaceRoot}/tsconfig.base.json"]
+    "sharedGlobals": [
+      "{workspaceRoot}/tsconfig.base.json",
+      "{workspaceRoot}/eslint.config.mjs"
+    ]
   },
+  "plugins": [
+    {
+      "plugin": "@nx/eslint/plugin",
+      "options": { "targetName": "lint" }
+    },
+    {
+      "plugin": "@nx/vite/plugin",
+      "options": { "testTargetName": "test" }
+    }
+  ],
   "targetDefaults": {
     "build": {
       "dependsOn": ["^build"],
       "inputs": ["production", "^production"],
       "cache": true
     },
+    "typecheck": {
+      "dependsOn": ["^build"],
+      "inputs": ["default", "^production"],
+      "cache": true
+    },
     "test": {
       "inputs": ["default", "^production"],
       "cache": true
     },
-    "lint": {
-      "cache": true
+    "test-integration": {
+      "inputs": ["default", "^production"],
+      "cache": false
     },
-    "typecheck": {
-      "dependsOn": ["^build"],
+    "lint": {
+      "inputs": ["default", "{workspaceRoot}/eslint.config.mjs"],
       "cache": true
     }
   }

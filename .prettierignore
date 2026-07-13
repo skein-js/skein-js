@@ -1,0 +1,7 @@
+dist/
+.next/
+out/
+node_modules/
+.nx/
+pnpm-lock.yaml
+LICENSE

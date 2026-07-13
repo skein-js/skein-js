@@ -3,6 +3,22 @@
   "version": "0.0.0",
   "description": "NestJS adapter for Skein (planned).",
   "license": "Apache-2.0",
+  "author": "Maina Wycliffe <wycliff@purpleelephant.ventures>",
+  "homepage": "https://github.com/mainawycliffe/skein/tree/main/packages/server-nestjs#readme",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/mainawycliffe/skein.git",
+    "directory": "packages/server-nestjs"
+  },
+  "bugs": {
+    "url": "https://github.com/mainawycliffe/skein/issues"
+  },
+  "keywords": [
+    "nestjs",
+    "langgraph",
+    "agent-protocol",
+    "sse"
+  ],
   "type": "module",
   "main": "./dist/index.js",
   "module": "./dist/index.js",
@@ -14,11 +30,21 @@
     }
   },
   "files": [
-    "dist"
+    "dist",
+    "README.md"
   ],
-  "scripts": {
-    "build": "tsup src/index.ts --format esm --dts --clean",
-    "typecheck": "tsc --noEmit",
-    "test": "vitest run"
+  "sideEffects": false,
+  "engines": {
+    "node": ">=20"
+  },
+  "dependencies": {
+    "@skein/core": "workspace:*"
+  },
+  "peerDependencies": {
+    "@nestjs/common": ">=10.0.0",
+    "@nestjs/core": ">=10.0.0"
+  },
+  "publishConfig": {
+    "access": "public"
   }
 }

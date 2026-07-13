@@ -1,8 +1,24 @@
 {
   "name": "@skein/config",
   "version": "0.0.0",
-  "description": "langgraph.json parser and graph loader (path:export notation) for Skein.",
+  "description": "langgraph.json parser and graph loader (path:export) for Skein.",
   "license": "Apache-2.0",
+  "author": "Maina Wycliffe <wycliff@purpleelephant.ventures>",
+  "homepage": "https://github.com/mainawycliffe/skein/tree/main/packages/config#readme",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/mainawycliffe/skein.git",
+    "directory": "packages/config"
+  },
+  "bugs": {
+    "url": "https://github.com/mainawycliffe/skein/issues"
+  },
+  "keywords": [
+    "langgraph",
+    "langgraph.json",
+    "config",
+    "agent-protocol"
+  ],
   "type": "module",
   "main": "./dist/index.js",
   "module": "./dist/index.js",
@@ -14,11 +30,20 @@
     }
   },
   "files": [
-    "dist"
+    "dist",
+    "README.md"
   ],
-  "scripts": {
-    "build": "tsup src/index.ts --format esm --dts --clean",
-    "typecheck": "tsc --noEmit",
-    "test": "vitest run"
+  "sideEffects": false,
+  "engines": {
+    "node": ">=20"
+  },
+  "dependencies": {
+    "@langchain/langgraph-api": "^1.4.0"
+  },
+  "peerDependencies": {
+    "@langchain/langgraph": "^1.4.0"
+  },
+  "publishConfig": {
+    "access": "public"
   }
 }
