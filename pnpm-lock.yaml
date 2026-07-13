@@ -112,6 +112,9 @@ importers:
 
   packages/cli:
     dependencies:
+      '@commander-js/extra-typings':
+        specifier: ~13.1.0
+        version: 13.1.0(commander@13.1.0)
       '@skein/config':
         specifier: workspace:*
         version: link:../config
@@ -121,6 +124,9 @@ importers:
       '@skein/express':
         specifier: workspace:*
         version: link:../server-express
+      commander:
+        specifier: ~13.1.0
+        version: 13.1.0
 
   packages/config:
     dependencies:

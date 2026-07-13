@@ -42,9 +42,11 @@
     "node": ">=20"
   },
   "dependencies": {
+    "@commander-js/extra-typings": "~13.1.0",
     "@skein/core": "workspace:*",
     "@skein/config": "workspace:*",
-    "@skein/express": "workspace:*"
+    "@skein/express": "workspace:*",
+    "commander": "~13.1.0"
   },
   "publishConfig": {
     "access": "public"
