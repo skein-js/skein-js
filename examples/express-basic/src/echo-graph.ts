@@ -3,7 +3,7 @@ import { MessagesAnnotation, StateGraph } from "@langchain/langgraph";
 
 /**
  * A deterministic, zero-setup graph: it echoes the last human message back.
- * No API key, no network — the perfect thing to point a client at while wiring up Skein.
+ * No API key, no network — the perfect thing to point a client at while wiring up skein-js.
  */
 function echo(state: typeof MessagesAnnotation.State): { messages: BaseMessage[] } {
   const last = state.messages.at(-1);

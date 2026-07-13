@@ -1,19 +1,19 @@
 # React SDK / `useStream` compatibility
 
-A core promise of Skein: **your existing frontend code keeps working by changing only the
+A core promise of skein-js: **your existing frontend code keeps working by changing only the
 API URL.** That includes the React streaming hook, which is the most common way LangGraph
 apps render agent output.
 
-## The clients Skein must satisfy
+## The clients skein-js must satisfy
 
-| Client           | Package                          | How it talks to Skein                                            |
+| Client           | Package                          | How it talks to skein-js                                         |
 | ---------------- | -------------------------------- | ---------------------------------------------------------------- |
 | Vanilla JS SDK   | `@langchain/langgraph-sdk`       | `client.threads.*`, `client.runs.stream()`, `client.runs.wait()` |
 | **React hook**   | `@langchain/langgraph-sdk/react` | **`useStream({ apiUrl, assistantId })`** over SSE                |
 | Agent Chat UI    | (built on `useStream`)           | Same SSE path                                                    |
 | LangGraph Studio | —                                | Agent Protocol HTTP                                              |
 
-## `useStream` against Skein
+## `useStream` against skein-js
 
 ```tsx
 "use client";
@@ -38,14 +38,14 @@ export function Chat() {
 }
 ```
 
-The only difference from a LangGraph Platform setup is that `apiUrl` points at a Skein
+The only difference from a LangGraph Platform setup is that `apiUrl` points at a skein-js
 server. `useStream` opens an SSE connection to `/runs/stream` (or the thread stream) and
-renders `messages` / `values` / `custom` events as they arrive — exactly the frames Skein
+renders `messages` / `values` / `custom` events as they arrive — exactly the frames skein-js
 produces (see [streaming.md](./streaming.md)).
 
 ## Why it works over SSE
 
-`useStream` is an SSE client. Because Skein serves the Agent Protocol streaming endpoints as
+`useStream` is an SSE client. Because skein-js serves the Agent Protocol streaming endpoints as
 `text/event-stream` with the same event names and payloads LangGraph emits, the hook cannot
 tell the difference. **No WebSocket is required**, so deferring WebSocket transport in v1
 does not affect the React SDK.
@@ -53,7 +53,7 @@ does not affect the React SDK.
 ## Verification harness
 
 [`examples/react-usestream`](../examples/react-usestream) is a minimal Next.js app wired to
-`useStream` and pointed at a placeholder Skein URL. Once the server lands, it is the
+`useStream` and pointed at a placeholder skein-js URL. Once the server lands, it is the
 front-end signal that the SSE wiring satisfies the React SDK — token-by-token streaming in
 a real browser. See [roadmap.md](./roadmap.md#verification).
 

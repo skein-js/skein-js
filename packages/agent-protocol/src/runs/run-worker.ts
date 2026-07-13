@@ -1,8 +1,8 @@
 // The background worker: pulls queued runs and executes them through the same engine as inline
 // runs. It only ever talks to the injected `RunQueue`/`RunEventBus`, so swapping the in-memory
-// queue for `@skein/redis` (blocking `dequeue`, lease-based reclaim) needs no change here.
+// queue for `@skein-js/redis` (blocking `dequeue`, lease-based reclaim) needs no change here.
 
-import { isTerminalRunStatus } from "@skein/core";
+import { isTerminalRunStatus } from "@skein-js/core";
 
 import type { ProtocolContext } from "../context.js";
 

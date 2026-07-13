@@ -1,4 +1,4 @@
-import { runSkeinStoreConformance } from "@skein/test-support";
+import { runSkeinStoreConformance } from "@skein-js/test-support";
 
 import { MemorySkeinStore } from "./memory-skein-store.js";
 

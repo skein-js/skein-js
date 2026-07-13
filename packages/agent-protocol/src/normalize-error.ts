@@ -2,7 +2,7 @@
 // frame, and normalize any thrown value into a `SkeinHttpError` so a handler never leaks an
 // untyped 500 to the adapter.
 
-import { isSkeinHttpError, SkeinHttpError } from "@skein/core";
+import { isSkeinHttpError, SkeinHttpError } from "@skein-js/core";
 
 /** A JSON-safe description of an error, published as the `data` of an `error` run frame. */
 export interface SerializedError {

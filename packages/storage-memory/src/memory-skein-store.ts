@@ -27,7 +27,7 @@ import {
   type ThreadCreate,
   type ThreadRepo,
   type ThreadUpdate,
-} from "@skein/core";
+} from "@skein-js/core";
 
 const nowIso = (): string => new Date().toISOString();
 

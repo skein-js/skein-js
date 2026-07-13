@@ -1,8 +1,8 @@
 {
-  "name": "@skein/example-express-basic",
+  "name": "@skein-js/example-express-basic",
   "version": "0.0.0",
   "private": true,
-  "description": "Playable Skein example: an echo graph (zero-setup) and a Claude ReAct agent, served from one langgraph.json.",
+  "description": "Playable skein-js example: an echo graph (zero-setup) and a Claude ReAct agent, served from one langgraph.json.",
   "type": "module",
   "scripts": {
     "dev": "skein dev --port 2024"
@@ -14,7 +14,7 @@
     "zod": "^3.25.32"
   },
   "devDependencies": {
-    "skein": "workspace:*",
+    "skein-js": "workspace:*",
     "vitest": "^2.1.8"
   }
 }

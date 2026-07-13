@@ -1,8 +1,8 @@
 // Single-process implementations of the run queue + event bus, so `skein dev` needs nothing
-// beyond Node. `@skein/redis` provides the cross-instance versions; the run engine talks only
-// to the `@skein/core` interfaces, so it is unaware which one it has.
+// beyond Node. `@skein-js/redis` provides the cross-instance versions; the run engine talks only
+// to the `@skein-js/core` interfaces, so it is unaware which one it has.
 
-import type { QueuedRun, RunEventBus, RunFrame, RunQueue } from "@skein/core";
+import type { QueuedRun, RunEventBus, RunFrame, RunQueue } from "@skein-js/core";
 
 /** In-memory FIFO of background runs awaiting a worker. */
 export class MemoryRunQueue implements RunQueue {
@@ -38,7 +38,7 @@ const DEFAULT_MAX_RETAINED_RUNS = 1000;
  * `maxRetainedRuns` closed runs (LRU). Beyond that the buffer is dropped and the channel is kept as
  * a lightweight *closed tombstone* — so a long-lived process can't grow its frame memory without
  * bound, yet a late join to an evicted run still completes at once (empty) instead of hanging.
- * Active (unclosed) runs and runs with live subscribers keep their frames. `@skein/redis` bounds
+ * Active (unclosed) runs and runs with live subscribers keep their frames. `@skein-js/redis` bounds
  * this with a real TTL in production.
  */
 export class MemoryRunEventBus implements RunEventBus {

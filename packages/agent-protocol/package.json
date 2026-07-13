@@ -1,9 +1,9 @@
 {
-  "name": "@skein/agent-protocol",
+  "name": "@skein-js/agent-protocol",
   "version": "0.0.0",
   "description": "Framework-agnostic Agent Protocol engine for LangGraph.js — run engine, handlers, and SSE, driven entirely by injected dependencies.",
   "license": "Apache-2.0",
-  "author": "Maina Wycliffe <wycliff@purpleelephant.ventures>",
+  "author": "Maina Wycliffe <wmmaina7@gmail.com>",
   "homepage": "https://github.com/mainawycliffe/skein/tree/main/packages/agent-protocol#readme",
   "repository": {
     "type": "git",
@@ -41,7 +41,7 @@
     "node": ">=20"
   },
   "dependencies": {
-    "@skein/core": "workspace:*",
+    "@skein-js/core": "workspace:*",
     "zod": "^3.25.76"
   },
   "peerDependencies": {
@@ -49,7 +49,7 @@
     "@langchain/langgraph-sdk": "^1.9.0"
   },
   "devDependencies": {
-    "@skein/storage-memory": "workspace:*"
+    "@skein-js/storage-memory": "workspace:*"
   },
   "publishConfig": {
     "access": "public"

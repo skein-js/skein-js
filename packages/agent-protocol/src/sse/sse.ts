@@ -4,7 +4,7 @@
 // can't be `"end"`), read from the run's final status once the frame iterator completes.
 // See docs/streaming.md.
 
-import type { RunFrame, RunStatus } from "@skein/core";
+import type { RunFrame, RunStatus } from "@skein-js/core";
 
 /** SSE response headers an adapter should set before writing the event stream. */
 export const SSE_HEADERS: Readonly<Record<string, string>> = {

@@ -2,7 +2,7 @@
 // becomes a `SkeinHttpError.badRequest` carrying the flattened issues, so the adapter serializes a
 // clean 400. Interior code then works with fully-typed, trusted values.
 
-import { SkeinHttpError } from "@skein/core";
+import { SkeinHttpError } from "@skein-js/core";
 import type { ZodType } from "zod";
 
 /** Validate `raw` against `schema`, or throw a 400 describing what was wrong. */

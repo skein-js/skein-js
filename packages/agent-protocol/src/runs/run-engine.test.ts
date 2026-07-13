@@ -1,4 +1,4 @@
-import { isTerminalRunStatus, type Run } from "@skein/core";
+import { isTerminalRunStatus, type Run } from "@skein-js/core";
 import { describe, expect, it } from "vitest";
 
 import { collect, createFixtureDeps } from "../__fixtures__/deps.js";

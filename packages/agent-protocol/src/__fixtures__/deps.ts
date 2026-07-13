@@ -3,7 +3,7 @@
 // working engine.
 
 import { MemorySaver } from "@langchain/langgraph";
-import { MemoryRunEventBus, MemoryRunQueue, MemorySkeinStore } from "@skein/storage-memory";
+import { MemoryRunEventBus, MemoryRunQueue, MemorySkeinStore } from "@skein-js/storage-memory";
 
 import type { GraphResolver, GraphSchemas, ProtocolDeps, ResolvedGraph } from "../deps.js";
 

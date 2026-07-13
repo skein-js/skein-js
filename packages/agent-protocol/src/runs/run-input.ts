@@ -3,7 +3,7 @@
 // signal). Kept separate from the engine so the mapping is easy to test on its own.
 
 import { Command, type CommandParams } from "@langchain/langgraph";
-import type { RunKwargs, StreamMode } from "@skein/core";
+import type { RunKwargs, StreamMode } from "@skein-js/core";
 
 /** SDK stream modes mapped to the graph's stream vocabulary. Unknown modes fall back to values. */
 function toGraphMode(mode: StreamMode): StreamMode {

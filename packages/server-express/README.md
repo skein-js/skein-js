@@ -1,8 +1,8 @@
-# @skein/express
+# @skein-js/express
 
-> Express adapter for Skein — mount the Agent Protocol on an Express Router.
+> Express adapter for skein-js — mount the Agent Protocol on an Express Router.
 
-Part of **[Skein](https://github.com/mainawycliffe/skein)** — a TypeScript [Agent Protocol](https://github.com/langchain-ai/agent-protocol) server for [LangGraph.js](https://github.com/langchain-ai/langgraphjs), and a drop-in replacement for the LangGraph CLI.
+Part of **[skein-js](https://github.com/mainawycliffe/skein)** — a TypeScript [Agent Protocol](https://github.com/langchain-ai/agent-protocol) server for [LangGraph.js](https://github.com/langchain-ai/langgraphjs), and a drop-in replacement for the LangGraph CLI.
 
 **Status:** 🚧 Pre-alpha — not yet implemented (Phase 1).
 
@@ -12,19 +12,19 @@ Converts Express `req`/`res` into the core's normalized request, dispatches to t
 
 ## Reuse
 
-Thin transport shim over [`@skein/core`](../core); adds no protocol logic of its own.
+Thin transport shim over [`@skein-js/core`](../core); adds no protocol logic of its own.
 
 ## Install
 
 ```bash
-pnpm add @skein/express
+pnpm add @skein-js/express
 ```
 
 ## Usage
 
 ```ts
 import express from "express";
-import { skeinRouter } from "@skein/express";
+import { skeinRouter } from "@skein-js/express";
 
 const app = express();
 app.use(await skeinRouter({ config: "./langgraph.json" }));
@@ -33,7 +33,7 @@ app.listen(2024);
 
 ## Learn more
 
-- [Skein overview](../../docs/index.md)
+- [skein-js overview](../../docs/index.md)
 - [Reuse-first architecture](../../docs/reuse.md)
 - [Roadmap](../../docs/roadmap.md)
 

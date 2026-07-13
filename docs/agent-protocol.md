@@ -1,11 +1,11 @@
 # Agent Protocol surface
 
-Skein implements LangChain's [**Agent Protocol**](https://github.com/langchain-ai/agent-protocol),
+skein-js implements LangChain's [**Agent Protocol**](https://github.com/langchain-ai/agent-protocol),
 an OpenAPI-specified, framework-agnostic HTTP + streaming contract for serving LLM agents.
 
 **We reuse rather than redefine the wire types.** The `@langchain/langgraph-sdk` package
 already publishes TypeScript types for Thread / Run / Assistant / Store items, and
-`@langchain/langgraph-api` publishes the server-side Zod schemas — Skein builds on those
+`@langchain/langgraph-api` publishes the server-side Zod schemas — skein-js builds on those
 instead of hand-writing (or regenerating) a parallel set. See [reuse.md](./reuse.md).
 
 ## Core resources
@@ -93,7 +93,7 @@ Priority for v1 is marked **✅ MVP**. Deferred items are noted.
 
 The official [`@langchain/langgraph-sdk`](./react-sdk.md) client is our **conformance
 oracle**: if `client.threads.create()`, `client.runs.stream()`, and `client.runs.wait()`
-are happy against a Skein server, the wire format is correct. See
+are happy against a skein-js server, the wire format is correct. See
 [roadmap.md](./roadmap.md#verification) for the full verification plan.
 
 ## References

@@ -1,7 +1,7 @@
 // A per-key async mutex. The concurrency guard ("does this thread already have an active run?")
 // reads then writes with an `await` in between, so two concurrent run-creates could both slip
 // through. Serializing the guarded section per thread closes that window in a single process;
-// `@skein/redis` will replace it with an atomic conditional insert for the multi-instance case.
+// `@skein-js/redis` will replace it with an atomic conditional insert for the multi-instance case.
 
 export class ThreadLocks {
   readonly #tails = new Map<string, Promise<unknown>>();

@@ -1,4 +1,4 @@
-import type { RunFrame } from "@skein/core";
+import type { RunFrame } from "@skein-js/core";
 import { describe, expect, it } from "vitest";
 
 import { encodeFrame, encodeTerminal, parseAfterSeq, toSseEvents } from "./sse.js";

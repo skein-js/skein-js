@@ -9,7 +9,7 @@ import {
   type Config,
   type Metadata,
   type StreamMode,
-} from "@skein/core";
+} from "@skein-js/core";
 
 import type { ProtocolContext } from "../context.js";
 import type { CreateRunInput, RunService, StartedStream } from "../runs/run-service.js";

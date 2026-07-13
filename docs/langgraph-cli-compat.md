@@ -1,11 +1,11 @@
 # LangGraph CLI compatibility
 
-Skein's headline goal is to be a **drop-in replacement for the LangGraph CLI**. That means
+skein-js's headline goal is to be a **drop-in replacement for the LangGraph CLI**. That means
 two things: read the same `langgraph.json`, and mirror the same command surface.
 
 ## Command mapping
 
-| LangGraph CLI          | Skein              | Behavior                                                       |
+| LangGraph CLI          | skein-js           | Behavior                                                       |
 | ---------------------- | ------------------ | -------------------------------------------------------------- |
 | `langgraph dev`        | `skein dev`        | In-process dev server, hot reload, **no Docker**. Local state. |
 | `langgraph up`         | `skein up`         | Docker Compose stack (app + **Postgres + Redis**).             |
@@ -22,7 +22,7 @@ References:
 
 ## `langgraph.json` — fields we honor
 
-Skein parses an existing `langgraph.json` **unchanged**. A `skein.json` may extend/override
+skein-js parses an existing `langgraph.json` **unchanged**. A `skein.json` may extend/override
 it but is never required.
 
 ```jsonc
@@ -60,21 +60,21 @@ it but is never required.
 }
 ```
 
-### How each field maps into Skein
+### How each field maps into skein-js
 
-| `langgraph.json` field | Skein wiring                                                                                                                                                  |
-| ---------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `graphs`               | [`@skein/config`](./storage.md) resolves each `path:export`, loading a compiled graph or `makeGraph` factory. Drives `/agents` introspection + run execution. |
-| `node_version`         | Used by `skein build` / `skein dockerfile` base image selection.                                                                                              |
-| `env`                  | Loaded into `process.env` at boot (dev) / baked into the image (build).                                                                                       |
-| `store`                | `store.index.{embed,dims,fields}` configures pgvector semantic search on the Postgres driver — see [storage.md](./storage.md).                                |
-| `checkpointer`         | `"default"` → `PostgresSaver`; dev falls back to an in-memory `MemorySaver`.                                                                                  |
-| `http`                 | CORS + `disable_*` route flags applied by the framework adapter.                                                                                              |
-| `dockerfile_lines`     | Appended by `skein dockerfile` / `skein build`.                                                                                                               |
+| `langgraph.json` field | skein-js wiring                                                                                                                                                  |
+| ---------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `graphs`               | [`@skein-js/config`](./storage.md) resolves each `path:export`, loading a compiled graph or `makeGraph` factory. Drives `/agents` introspection + run execution. |
+| `node_version`         | Used by `skein build` / `skein dockerfile` base image selection.                                                                                                 |
+| `env`                  | Loaded into `process.env` at boot (dev) / baked into the image (build).                                                                                          |
+| `store`                | `store.index.{embed,dims,fields}` configures pgvector semantic search on the Postgres driver — see [storage.md](./storage.md).                                   |
+| `checkpointer`         | `"default"` → `PostgresSaver`; dev falls back to an in-memory `MemorySaver`.                                                                                     |
+| `http`                 | CORS + `disable_*` route flags applied by the framework adapter.                                                                                                 |
+| `dockerfile_lines`     | Appended by `skein dockerfile` / `skein build`.                                                                                                                  |
 
 ## Graph loading (`path:export` notation)
 
-`@skein/config` resolves entries exactly like the LangGraph CLI:
+`@skein-js/config` resolves entries exactly like the LangGraph CLI:
 
 - `"./src/agent.ts:graph"` — imports the module and reads the `graph` export, which must be
   a `CompiledStateGraph`.
@@ -82,7 +82,7 @@ it but is never required.
   config) to obtain a `CompiledStateGraph`.
 
 This is the same contract LangGraph.js users already write against, so **no code changes
-are required** to move a project onto Skein.
+are required** to move a project onto skein-js.
 
 ## `dev` vs `up`
 

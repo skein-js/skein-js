@@ -1,4 +1,4 @@
-// The one error type Skein throws at its edges. Handlers and drivers throw a `SkeinHttpError`
+// The one error type skein-js throws at its edges. Handlers and drivers throw a `SkeinHttpError`
 // with the HTTP status the protocol expects; the framework adapters (Express, …) catch it and
 // serialize `{ status, message, code?, details? }`. Nothing else in core knows about HTTP.
 

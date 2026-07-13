@@ -1,8 +1,8 @@
-# @skein/nestjs
+# @skein-js/nestjs
 
-> NestJS adapter for Skein (planned).
+> NestJS adapter for skein-js (planned).
 
-Part of **[Skein](https://github.com/mainawycliffe/skein)** — a TypeScript [Agent Protocol](https://github.com/langchain-ai/agent-protocol) server for [LangGraph.js](https://github.com/langchain-ai/langgraphjs), and a drop-in replacement for the LangGraph CLI.
+Part of **[skein-js](https://github.com/mainawycliffe/skein)** — a TypeScript [Agent Protocol](https://github.com/langchain-ai/agent-protocol) server for [LangGraph.js](https://github.com/langchain-ai/langgraphjs), and a drop-in replacement for the LangGraph CLI.
 
 **Status:** 🗺️ Planned — after the Express adapter.
 
@@ -12,17 +12,17 @@ A `SkeinModule.forRoot(config)` dynamic module exposing the Agent Protocol throu
 
 ## Reuse
 
-Thin transport shim over [`@skein/core`](../core).
+Thin transport shim over [`@skein-js/core`](../core).
 
 ## Install
 
 ```bash
-pnpm add @skein/nestjs
+pnpm add @skein-js/nestjs
 ```
 
 ## Learn more
 
-- [Skein overview](../../docs/index.md)
+- [skein-js overview](../../docs/index.md)
 - [Reuse-first architecture](../../docs/reuse.md)
 - [Roadmap](../../docs/roadmap.md)
 

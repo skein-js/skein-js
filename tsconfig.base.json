@@ -13,15 +13,15 @@
     "resolveJsonModule": true,
     "baseUrl": ".",
     "paths": {
-      "@skein/core": ["packages/core/src/index.ts"],
-      "@skein/config": ["packages/config/src/index.ts"],
-      "@skein/express": ["packages/server-express/src/index.ts"],
-      "@skein/fastify": ["packages/server-fastify/src/index.ts"],
-      "@skein/nestjs": ["packages/server-nestjs/src/index.ts"],
-      "@skein/storage-memory": ["packages/storage-memory/src/index.ts"],
-      "@skein/storage-postgres": ["packages/storage-postgres/src/index.ts"],
-      "@skein/redis": ["packages/runtime-redis/src/index.ts"],
-      "@skein/agent-protocol": ["packages/agent-protocol/src/index.ts"]
+      "@skein-js/core": ["packages/core/src/index.ts"],
+      "@skein-js/config": ["packages/config/src/index.ts"],
+      "@skein-js/express": ["packages/server-express/src/index.ts"],
+      "@skein-js/fastify": ["packages/server-fastify/src/index.ts"],
+      "@skein-js/nestjs": ["packages/server-nestjs/src/index.ts"],
+      "@skein-js/storage-memory": ["packages/storage-memory/src/index.ts"],
+      "@skein-js/storage-postgres": ["packages/storage-postgres/src/index.ts"],
+      "@skein-js/redis": ["packages/runtime-redis/src/index.ts"],
+      "@skein-js/agent-protocol": ["packages/agent-protocol/src/index.ts"]
     }
   },
   "exclude": ["node_modules", "dist"]

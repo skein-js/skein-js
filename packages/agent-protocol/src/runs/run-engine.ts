@@ -21,7 +21,7 @@ import {
   type RunStatus,
   type ThreadStatus,
   type ThreadUpdate,
-} from "@skein/core";
+} from "@skein-js/core";
 
 import type { ResolvedDeps } from "../deps.js";
 import { serializeError } from "../normalize-error.js";

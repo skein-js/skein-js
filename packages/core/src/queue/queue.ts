@@ -1,7 +1,7 @@
 // The run queue + pub/sub seam. Background runs are enqueued; a worker pulls and executes
 // them. While a run executes it publishes normalized frames, and any number of clients (even
 // on another instance, via Redis) subscribe to replay + live-tail them. The in-memory driver
-// implements both for `skein dev`; `@skein/redis` implements the cross-instance version.
+// implements both for `skein dev`; `@skein-js/redis` implements the cross-instance version.
 // Interfaces only here — core defines the contract, drivers provide the behavior.
 
 import type { StreamMode } from "../wire/wire.js";

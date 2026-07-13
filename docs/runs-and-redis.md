@@ -1,9 +1,9 @@
 # Runs & Redis
 
-This doc covers how Skein executes runs and how it scales horizontally — modeled on
+This doc covers how skein-js executes runs and how it scales horizontally — modeled on
 [aegra](https://github.com/aegra/aegra)'s worker + Redis architecture, adapted to Node.
 
-> **Reuse note:** `@skein/redis` is the run **queue + pub/sub** — the piece LangGraph OSS
+> **Reuse note:** `@skein-js/redis` is the run **queue + pub/sub** — the piece LangGraph OSS
 > does not provide (the open [`@langchain/langgraph-api`](https://www.npmjs.com/package/@langchain/langgraph-api)
 > server runs runs in-process, in-memory). It is _not_ a checkpointer; for Redis-backed
 > checkpoints use `@langchain/langgraph-checkpoint-redis`. See [reuse.md](./reuse.md).
@@ -23,9 +23,9 @@ concurrency-control requirement).
 
 ## Run engine
 
-`@skein/agent-protocol` owns a run engine that:
+`@skein-js/agent-protocol` owns a run engine that:
 
-1. Resolves the target graph via [`@skein/config`](./langgraph-cli-compat.md).
+1. Resolves the target graph via [`@skein-js/config`](./langgraph-cli-compat.md).
 2. Persists a run row through [`SkeinStore`](./storage.md) (`pending → running → success/error`).
 3. Invokes the graph (`invoke` for wait, `stream` for streaming), threading the LangGraph
    **checkpointer** so state/history persist and **interrupt/resume** (human-in-the-loop)
@@ -41,7 +41,7 @@ The engine talks to a small queue/pub-sub interface with two implementations:
 - Single-process queue + event bus. No external services.
 - Used by `skein dev` so nothing beyond Node is required locally.
 
-### `@skein/redis` (prod)
+### `@skein-js/redis` (prod)
 
 - **Job queue** — background runs are enqueued in Redis; worker processes pull and execute
   them, enabling multiple instances behind one queue.

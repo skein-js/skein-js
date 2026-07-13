@@ -1,13 +1,13 @@
 # Storage
 
-Skein separates two kinds of persistence, and it is important not to conflate them:
+skein-js separates two kinds of persistence, and it is important not to conflate them:
 
 1. **Graph checkpoints** — LangGraph's own state/history for a thread. **Reused, never
    reimplemented:** delegated to an existing LangGraph checkpointer (`MemorySaver` in dev,
    `PostgresSaver` in prod; `@langchain/langgraph-checkpoint-redis` and
    `-sqlite` are also available). See [reuse.md](./reuse.md).
 2. **Protocol resources** — assistants, thread metadata/status, run rows, and long-term
-   store items. These are the gap OSS keeps _in memory_, so Skein owns them behind a single
+   store items. These are the gap OSS keeps _in memory_, so skein-js owns them behind a single
    `SkeinStore` interface with durable drivers.
 
 ## `SkeinStore` interface
@@ -36,13 +36,13 @@ memory and Postgres behave identically.
 
 ## Drivers
 
-### `@skein/storage-memory` (dev/tests)
+### `@skein-js/storage-memory` (dev/tests)
 
 - In-process maps; zero external dependencies.
 - Paired with an in-memory queue and a `MemorySaver` checkpointer for `skein dev`.
 - `store` semantic search falls back to a naive scan/embedding compare.
 
-### `@skein/storage-postgres` (prod)
+### `@skein-js/storage-postgres` (prod)
 
 - Backed by `pg`; owns tables for assistants/threads/runs/store items + migrations.
 - Uses **`@langchain/langgraph-checkpoint-postgres`** (`PostgresSaver.fromConnString`) for
@@ -60,7 +60,7 @@ await checkpointer.setup(); // idempotent migrations for checkpoint tables
 
 ## Checkpointer selection
 
-| `langgraph.json` `checkpointer` | Skein uses                         |
+| `langgraph.json` `checkpointer` | skein-js uses                      |
 | ------------------------------- | ---------------------------------- |
 | absent (dev / `skein dev`)      | `MemorySaver`                      |
 | `"default"`                     | `PostgresSaver` (Postgres)         |

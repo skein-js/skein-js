@@ -1,4 +1,4 @@
-// Flat ESLint config for the Skein workspace.
+// Flat ESLint config for the skein-js workspace.
 // ESLint owns correctness + imports; Prettier owns formatting (eslint-config-prettier
 // disables any stylistic rules that would fight the formatter). See docs/code-practices.md.
 import js from "@eslint/js";
@@ -9,13 +9,7 @@ import prettier from "eslint-config-prettier";
 
 export default tseslint.config(
   {
-    ignores: [
-      "**/dist/**",
-      "**/.next/**",
-      "**/node_modules/**",
-      "**/.nx/**",
-      "**/*.config.*",
-    ],
+    ignores: ["**/dist/**", "**/.next/**", "**/node_modules/**", "**/.nx/**", "**/*.config.*"],
   },
 
   js.configs.recommended,

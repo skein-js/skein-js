@@ -14,7 +14,7 @@ import type {
   ThreadState,
   ThreadTask,
   ThreadUpdate,
-} from "@skein/core";
+} from "@skein-js/core";
 
 import { threadStatusForRun } from "../runs/run-status.js";
 

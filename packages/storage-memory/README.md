@@ -1,8 +1,8 @@
-# @skein/storage-memory
+# @skein-js/storage-memory
 
 > In-memory SkeinStore + queue driver for development and tests.
 
-Part of **[Skein](https://github.com/mainawycliffe/skein)** — a TypeScript [Agent Protocol](https://github.com/langchain-ai/agent-protocol) server for [LangGraph.js](https://github.com/langchain-ai/langgraphjs), and a drop-in replacement for the LangGraph CLI.
+Part of **[skein-js](https://github.com/mainawycliffe/skein)** — a TypeScript [Agent Protocol](https://github.com/langchain-ai/agent-protocol) server for [LangGraph.js](https://github.com/langchain-ai/langgraphjs), and a drop-in replacement for the LangGraph CLI.
 
 **Status:** 🚧 Pre-alpha — Phase 1. Implemented and passing the shared conformance suite.
 
@@ -19,7 +19,7 @@ Validated against the shared `SkeinStore` conformance suite, so it behaves ident
 ## Usage
 
 ```ts
-import { MemorySkeinStore, MemoryRunQueue, MemoryRunEventBus } from "@skein/storage-memory";
+import { MemorySkeinStore, MemoryRunQueue, MemoryRunEventBus } from "@skein-js/storage-memory";
 
 const store = new MemorySkeinStore();
 const thread = await store.threads.create({ metadata: { user: "a" } });
@@ -32,12 +32,12 @@ Pairs with `MemorySaver` from `@langchain/langgraph-checkpoint` for graph checkp
 ## Install
 
 ```bash
-pnpm add @skein/storage-memory
+pnpm add @skein-js/storage-memory
 ```
 
 ## Learn more
 
-- [Skein overview](../../docs/index.md)
+- [skein-js overview](../../docs/index.md)
 - [Reuse-first architecture](../../docs/reuse.md)
 - [Roadmap](../../docs/roadmap.md)
 

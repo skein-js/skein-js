@@ -13,7 +13,7 @@ Runner: **[Vitest](https://vitest.dev)** across the whole workspace. Integration
 | --------------------------- | ------------------------------------------ | ------------------------------------------------------ | ------- |
 | **Unit**                    | Pure functions, injected fakes             | co-located `*.test.ts` in every package                | ms      |
 | **Integration (container)** | A **real** Postgres / Redis in a container | `*.integration.test.ts` in `storage-postgres`, `redis` | seconds |
-| **Conformance**             | Every storage driver, one shared suite     | `@skein/test-support` → run in each driver package     | mixed   |
+| **Conformance**             | Every storage driver, one shared suite     | `@skein-js/test-support` → run in each driver package  | mixed   |
 
 ### 1. Unit tests — the default
 
@@ -32,7 +32,7 @@ describe("toSSEFrame", () => {
 });
 ```
 
-Target coverage for `@skein/agent-protocol` logic (run engine, SSE mapping) and `@skein/config`
+Target coverage for `@skein-js/agent-protocol` logic (run engine, SSE mapping) and `@skein-js/config`
 resolution is high
 — it's pure and cheap to cover. We do **not** chase a coverage number on glue/adapters.
 
@@ -43,7 +43,7 @@ not a mock. A shared helper boots a throwaway container per suite:
 
 ```ts
 import { describe, it, expect, beforeAll, afterAll } from "vitest";
-import { startPostgres } from "@skein/test-support";
+import { startPostgres } from "@skein-js/test-support";
 import { PostgresSkeinStore } from "./index.js";
 
 describe("PostgresSkeinStore", () => {
@@ -81,19 +81,19 @@ Guidelines:
 
 ### 3. Conformance suite — one contract, every driver
 
-The `SkeinStore` interface has a single behavioral contract. `@skein/test-support` exports a
+The `SkeinStore` interface has a single behavioral contract. `@skein-js/test-support` exports a
 factory that generates the full suite; each driver package runs it against its own instance:
 
 ```ts
 // storage-memory/src/store.conformance.test.ts
-import { runSkeinStoreConformance } from "@skein/test-support";
+import { runSkeinStoreConformance } from "@skein-js/test-support";
 import { MemorySkeinStore } from "./index.js";
 
 runSkeinStoreConformance("memory", () => new MemorySkeinStore());
 
 // storage-postgres/src/store.conformance.integration.test.ts
-import { runSkeinStoreConformance } from "@skein/test-support";
-import { startPostgres } from "@skein/test-support";
+import { runSkeinStoreConformance } from "@skein-js/test-support";
+import { startPostgres } from "@skein-js/test-support";
 import { PostgresSkeinStore } from "./index.js";
 
 runSkeinStoreConformance("postgres", async () => {
@@ -119,7 +119,7 @@ front-end signal for the SSE/`useStream` path. See the [roadmap verification tab
 - Suffix container/db tests `*.integration.test.ts`; suffix cross-driver contract tests
   `*.conformance*.test.ts`.
 - Name tests as sentences describing behavior.
-- `@skein/test-support` is a **private, unpublished** package (`"private": true`) holding
+- `@skein-js/test-support` is a **private, unpublished** package (`"private": true`) holding
   Testcontainers helpers and the conformance suite factory.
 
 ## Nx wiring

@@ -1,4 +1,4 @@
-// @skein/fastify — Fastify adapter for Skein (planned).
+// @skein-js/fastify — Fastify adapter for skein-js (planned).
 // TODO(Phase 1): implement. See docs/ for the design.
 
-export const packageName = "@skein/fastify";
+export const packageName = "@skein-js/fastify";

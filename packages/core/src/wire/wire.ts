@@ -1,7 +1,7 @@
 // The Agent Protocol wire contract. We do NOT define these shapes — they are the types the
 // official `@langchain/langgraph-sdk` client sends and expects, so re-exporting them here is
-// what keeps Skein wire-compatible (the SDK is the conformance oracle — see docs/reuse.md).
-// Everything in Skein that touches the wire imports the protocol types from `@skein/core`,
+// what keeps skein-js wire-compatible (the SDK is the conformance oracle — see docs/reuse.md).
+// Everything in skein-js that touches the wire imports the protocol types from `@skein-js/core`,
 // never from the SDK directly, so there is a single seam to pin the protocol version.
 
 import type { Run } from "@langchain/langgraph-sdk";

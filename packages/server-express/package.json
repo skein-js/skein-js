@@ -1,9 +1,9 @@
 {
-  "name": "@skein/express",
+  "name": "@skein-js/express",
   "version": "0.0.0",
-  "description": "Express adapter for Skein — mount the Agent Protocol on an Express Router.",
+  "description": "Express adapter for skein-js — mount the Agent Protocol on an Express Router.",
   "license": "Apache-2.0",
-  "author": "Maina Wycliffe <wycliff@purpleelephant.ventures>",
+  "author": "Maina Wycliffe <wmmaina7@gmail.com>",
   "homepage": "https://github.com/mainawycliffe/skein/tree/main/packages/server-express#readme",
   "repository": {
     "type": "git",
@@ -38,7 +38,7 @@
     "node": ">=20"
   },
   "dependencies": {
-    "@skein/core": "workspace:*"
+    "@skein-js/core": "workspace:*"
   },
   "peerDependencies": {
     "express": ">=4.18.0"

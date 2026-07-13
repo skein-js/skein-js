@@ -1,9 +1,9 @@
 {
-  "name": "skein",
+  "name": "skein-js",
   "version": "0.0.0",
-  "description": "The Skein CLI — a drop-in replacement for the LangGraph CLI (dev/up/build/dockerfile).",
+  "description": "The skein-js CLI — a drop-in replacement for the LangGraph CLI (dev/up/build/dockerfile).",
   "license": "Apache-2.0",
-  "author": "Maina Wycliffe <wycliff@purpleelephant.ventures>",
+  "author": "Maina Wycliffe <wmmaina7@gmail.com>",
   "homepage": "https://github.com/mainawycliffe/skein/tree/main/packages/cli#readme",
   "repository": {
     "type": "git",
@@ -43,9 +43,9 @@
   },
   "dependencies": {
     "@commander-js/extra-typings": "~13.1.0",
-    "@skein/core": "workspace:*",
-    "@skein/config": "workspace:*",
-    "@skein/express": "workspace:*",
+    "@skein-js/core": "workspace:*",
+    "@skein-js/config": "workspace:*",
+    "@skein-js/express": "workspace:*",
     "commander": "~13.1.0"
   },
   "publishConfig": {

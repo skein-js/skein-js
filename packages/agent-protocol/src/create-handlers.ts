@@ -4,7 +4,7 @@
 // /store. SSE responses carry a pre-serialized event iterable (data frames + a synthesized
 // terminal event read from the run's final status).
 
-import type { RunFrame } from "@skein/core";
+import type { RunFrame } from "@skein-js/core";
 
 import type { CreateRunInput } from "./runs/run-service.js";
 import type { ProtocolService } from "./service.js";

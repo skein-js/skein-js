@@ -6,9 +6,9 @@ import { useState } from "react";
 /**
  * Minimal `useStream` harness.
  *
- * Point NEXT_PUBLIC_SKEIN_URL at a running Skein server (default matches `skein dev`,
+ * Point NEXT_PUBLIC_SKEIN_URL at a running skein-js server (default matches `skein dev`,
  * e.g. http://localhost:2024) and NEXT_PUBLIC_SKEIN_ASSISTANT_ID at a graph id from your
- * langgraph.json. This is the front-end signal that Skein's SSE wiring satisfies the
+ * langgraph.json. This is the front-end signal that skein-js's SSE wiring satisfies the
  * LangChain React SDK. See ../../docs/react-sdk.md.
  */
 export default function Page() {
@@ -20,7 +20,7 @@ export default function Page() {
 
   return (
     <main style={{ maxWidth: 720, margin: "0 auto", padding: "2rem 1rem" }}>
-      <h1 style={{ fontSize: 20, marginBottom: 4 }}>Skein · useStream harness</h1>
+      <h1 style={{ fontSize: 20, marginBottom: 4 }}>skein-js · useStream harness</h1>
       <p style={{ color: "#9a9aa2", fontSize: 13, marginTop: 0 }}>
         {apiUrl} · assistant <code>{assistantId}</code>
       </p>

@@ -1,7 +1,7 @@
 // Per-run cancellation, kept in one small stateful place. Each executing run registers an
 // `AbortController`; a cancel or timeout aborts its signal (which LangGraph's `stream`/`invoke`
 // honor) and records *why*, so the engine's catch can distinguish a cancel from a timeout from a
-// genuine graph error. This registry is per-process — cross-instance cancel is a `@skein/redis`
+// genuine graph error. This registry is per-process — cross-instance cancel is a `@skein-js/redis`
 // concern layered on top later.
 
 /** Why a run was aborted. Absent (`null`) means the run failed on its own. */

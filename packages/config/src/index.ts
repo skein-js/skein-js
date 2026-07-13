@@ -1,4 +1,4 @@
-// @skein/config — loads an unchanged `langgraph.json`, validates it, and resolves each graph
+// @skein-js/config — loads an unchanged `langgraph.json`, validates it, and resolves each graph
 // from its `path:export` spec to a compiled LangGraph. Everything downstream (the run engine,
 // assistant introspection, the CLI) starts from `loadConfig`. See docs/langgraph-cli-compat.md.
 

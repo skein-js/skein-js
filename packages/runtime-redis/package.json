@@ -1,9 +1,9 @@
 {
-  "name": "@skein/redis",
+  "name": "@skein-js/redis",
   "version": "0.0.0",
-  "description": "Redis job queue and cross-instance pub/sub streaming for Skein.",
+  "description": "Redis job queue and cross-instance pub/sub streaming for skein-js.",
   "license": "Apache-2.0",
-  "author": "Maina Wycliffe <wycliff@purpleelephant.ventures>",
+  "author": "Maina Wycliffe <wmmaina7@gmail.com>",
   "homepage": "https://github.com/mainawycliffe/skein/tree/main/packages/runtime-redis#readme",
   "repository": {
     "type": "git",
@@ -39,7 +39,7 @@
     "node": ">=20"
   },
   "dependencies": {
-    "@skein/core": "workspace:*",
+    "@skein-js/core": "workspace:*",
     "ioredis": ">=5.4.0"
   },
   "publishConfig": {

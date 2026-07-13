@@ -1,8 +1,8 @@
-# @skein/storage-postgres
+# @skein-js/storage-postgres
 
 > Postgres SkeinStore driver with pgvector semantic search, reusing PostgresSaver for checkpoints.
 
-Part of **[Skein](https://github.com/mainawycliffe/skein)** — a TypeScript [Agent Protocol](https://github.com/langchain-ai/agent-protocol) server for [LangGraph.js](https://github.com/langchain-ai/langgraphjs), and a drop-in replacement for the LangGraph CLI.
+Part of **[skein-js](https://github.com/mainawycliffe/skein)** — a TypeScript [Agent Protocol](https://github.com/langchain-ai/agent-protocol) server for [LangGraph.js](https://github.com/langchain-ai/langgraphjs), and a drop-in replacement for the LangGraph CLI.
 
 **Status:** 🚧 Pre-alpha — not yet implemented (Phase 1).
 
@@ -12,17 +12,17 @@ Production `SkeinStore` over `pg`: owns assistants / threads / runs / store-item
 
 ## Reuse
 
-Reuses `@langchain/langgraph-checkpoint-postgres` (`PostgresSaver`) for graph checkpoints — Skein only adds tables for protocol resources and a pgvector index for semantic store search.
+Reuses `@langchain/langgraph-checkpoint-postgres` (`PostgresSaver`) for graph checkpoints — skein-js only adds tables for protocol resources and a pgvector index for semantic store search.
 
 ## Install
 
 ```bash
-pnpm add @skein/storage-postgres
+pnpm add @skein-js/storage-postgres
 ```
 
 ## Learn more
 
-- [Skein overview](../../docs/index.md)
+- [skein-js overview](../../docs/index.md)
 - [Reuse-first architecture](../../docs/reuse.md)
 - [Roadmap](../../docs/roadmap.md)
 

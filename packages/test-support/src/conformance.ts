@@ -1,4 +1,4 @@
-import type { SkeinStore } from "@skein/core";
+import type { SkeinStore } from "@skein-js/core";
 import { describe, expect, it } from "vitest";
 
 /**

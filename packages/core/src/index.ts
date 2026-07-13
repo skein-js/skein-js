@@ -1,4 +1,4 @@
-// @skein/core — the framework- and driver-agnostic heart of Skein. This slice ships the
+// @skein-js/core — the framework- and driver-agnostic heart of skein-js. This slice ships the
 // shared contract that everything downstream (config, storage drivers, adapters) consumes:
 // the Agent Protocol wire types, the SkeinStore + queue interfaces, and the edge error type.
 // The protocol handlers and run engine build on this next (see docs/roadmap.md).

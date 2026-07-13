@@ -3,7 +3,7 @@
 // defensive about a bare chunk (single-mode form) so a misconfigured call degrades to an
 // "updates" frame rather than throwing mid-stream.
 
-import type { RunFrame, StreamMode } from "@skein/core";
+import type { RunFrame, StreamMode } from "@skein-js/core";
 
 /** The known LangGraph stream modes we tag frames with. */
 const STREAM_MODES: readonly StreamMode[] = [

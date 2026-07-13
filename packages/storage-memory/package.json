@@ -1,9 +1,9 @@
 {
-  "name": "@skein/storage-memory",
+  "name": "@skein-js/storage-memory",
   "version": "0.0.0",
   "description": "In-memory SkeinStore + queue driver for development and tests.",
   "license": "Apache-2.0",
-  "author": "Maina Wycliffe <wycliff@purpleelephant.ventures>",
+  "author": "Maina Wycliffe <wmmaina7@gmail.com>",
   "homepage": "https://github.com/mainawycliffe/skein/tree/main/packages/storage-memory#readme",
   "repository": {
     "type": "git",
@@ -38,10 +38,10 @@
     "node": ">=20"
   },
   "dependencies": {
-    "@skein/core": "workspace:*"
+    "@skein-js/core": "workspace:*"
   },
   "devDependencies": {
-    "@skein/test-support": "workspace:*"
+    "@skein-js/test-support": "workspace:*"
   },
   "publishConfig": {
     "access": "public"

@@ -1,9 +1,9 @@
 {
-  "name": "@skein/storage-postgres",
+  "name": "@skein-js/storage-postgres",
   "version": "0.0.0",
   "description": "Postgres SkeinStore driver with pgvector semantic search, reusing PostgresSaver for checkpoints.",
   "license": "Apache-2.0",
-  "author": "Maina Wycliffe <wycliff@purpleelephant.ventures>",
+  "author": "Maina Wycliffe <wmmaina7@gmail.com>",
   "homepage": "https://github.com/mainawycliffe/skein/tree/main/packages/storage-postgres#readme",
   "repository": {
     "type": "git",
@@ -39,7 +39,7 @@
     "node": ">=20"
   },
   "dependencies": {
-    "@skein/core": "workspace:*",
+    "@skein-js/core": "workspace:*",
     "pg": ">=8.11.0"
   },
   "peerDependencies": {

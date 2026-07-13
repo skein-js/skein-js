@@ -1,8 +1,8 @@
-# @skein/core
+# @skein-js/core
 
-> Framework-agnostic Agent Protocol engine for LangGraph.js — the heart of Skein.
+> Framework-agnostic Agent Protocol engine for LangGraph.js — the heart of skein-js.
 
-Part of **[Skein](https://github.com/mainawycliffe/skein)** — a TypeScript [Agent Protocol](https://github.com/langchain-ai/agent-protocol) server for [LangGraph.js](https://github.com/langchain-ai/langgraphjs), and a drop-in replacement for the LangGraph CLI.
+Part of **[skein-js](https://github.com/mainawycliffe/skein)** — a TypeScript [Agent Protocol](https://github.com/langchain-ai/agent-protocol) server for [LangGraph.js](https://github.com/langchain-ai/langgraphjs), and a drop-in replacement for the LangGraph CLI.
 
 **Status:** 🚧 Pre-alpha — Phase 1. The shared **contract** is implemented; the run engine, handler table, and SSE mapping build on it next.
 
@@ -22,7 +22,7 @@ Holds the Agent Protocol logic once, against _normalized_ types, so behavior is 
 ## Usage
 
 ```ts
-import { type SkeinStore, SkeinHttpError, isTerminalRunStatus } from "@skein/core";
+import { type SkeinStore, SkeinHttpError, isTerminalRunStatus } from "@skein-js/core";
 
 // Storage drivers implement SkeinStore; adapters catch SkeinHttpError at the HTTP edge.
 throw SkeinHttpError.notFound(`Thread "${id}" not found.`);
@@ -35,12 +35,12 @@ Will run graphs through `@langchain/langgraph` (`CompiledStateGraph.invoke`/`.st
 ## Install
 
 ```bash
-pnpm add @skein/core
+pnpm add @skein-js/core
 ```
 
 ## Learn more
 
-- [Skein overview](../../docs/index.md)
+- [skein-js overview](../../docs/index.md)
 - [Reuse-first architecture](../../docs/reuse.md)
 - [Roadmap](../../docs/roadmap.md)
 

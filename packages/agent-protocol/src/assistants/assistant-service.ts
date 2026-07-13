@@ -3,7 +3,7 @@
 // and lets a client address a graph by its id without a create call. The run engine resolves a run's
 // `assistant_id` to an assistant row and then to its `graph_id`.
 
-import { SkeinHttpError, type Assistant } from "@skein/core";
+import { SkeinHttpError, type Assistant } from "@skein-js/core";
 
 import type { GraphSchemas, ResolvedDeps } from "../deps.js";
 

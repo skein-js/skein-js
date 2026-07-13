@@ -1,9 +1,9 @@
 {
-  "name": "@skein/nestjs",
+  "name": "@skein-js/nestjs",
   "version": "0.0.0",
-  "description": "NestJS adapter for Skein (planned).",
+  "description": "NestJS adapter for skein-js (planned).",
   "license": "Apache-2.0",
-  "author": "Maina Wycliffe <wycliff@purpleelephant.ventures>",
+  "author": "Maina Wycliffe <wmmaina7@gmail.com>",
   "homepage": "https://github.com/mainawycliffe/skein/tree/main/packages/server-nestjs#readme",
   "repository": {
     "type": "git",
@@ -38,7 +38,7 @@
     "node": ">=20"
   },
   "dependencies": {
-    "@skein/core": "workspace:*"
+    "@skein-js/core": "workspace:*"
   },
   "peerDependencies": {
     "@nestjs/common": ">=10.0.0",

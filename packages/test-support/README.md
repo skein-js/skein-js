@@ -1,6 +1,6 @@
-# @skein/test-support
+# @skein-js/test-support
 
-> Private test helpers for Skein — **not published**.
+> Private test helpers for skein-js — **not published**.
 
 Provides:
 
@@ -14,7 +14,7 @@ Provides:
 See [docs/testing.md](../../docs/testing.md) for the strategy and examples.
 
 ```ts
-import { startPostgres, runSkeinStoreConformance } from "@skein/test-support";
+import { startPostgres, runSkeinStoreConformance } from "@skein-js/test-support";
 ```
 
 Requires Docker for the container helpers; suites skip with a clear message when it's absent.

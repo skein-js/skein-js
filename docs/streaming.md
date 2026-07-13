@@ -1,6 +1,6 @@
 # Streaming (SSE)
 
-Skein maps LangGraph.js **stream modes** onto Agent Protocol **Server-Sent Events (SSE)**.
+skein-js maps LangGraph.js **stream modes** onto Agent Protocol **Server-Sent Events (SSE)**.
 This one transport powers the `/runs/stream` endpoint, joining an in-flight run
 (`/runs/{id}/stream`), and thread-scoped streaming (`/threads/{id}/stream`).
 
@@ -20,7 +20,7 @@ A `CompiledStateGraph.stream(input, { streamMode })` can emit any combination of
 | `events`         | Fine-grained execution events                     |
 | `debug`          | Detailed debug info                               |
 
-Multiple modes can be requested at once; Skein preserves that.
+Multiple modes can be requested at once; skein-js preserves that.
 
 ## Mapping to Agent Protocol SSE
 
@@ -36,7 +36,7 @@ data: <json payload>
   client can resume via `Last-Event-ID` (replay support; full replay buffering is iterative).
 - **Terminal frames** — a final `event: end` (or `error`) closes the stream with the run's
   status.
-- **Transport ownership** — `@skein/core` produces an async iterator of normalized frames;
+- **Transport ownership** — `@skein-js/core` produces an async iterator of normalized frames;
   each framework adapter writes them as `text/event-stream` (Express `res.write`, Fastify
   reply stream, etc.). The core stays framework-agnostic.
 
@@ -44,7 +44,7 @@ data: <json payload>
 
 - `GET /runs/{run_id}/stream` lets a late client join a run already in progress.
 - When a run executes on a **different** worker than the one holding the client connection,
-  [`@skein/redis`](./runs-and-redis.md) pub/sub fans the frames across instances so the join
+  [`@skein-js/redis`](./runs-and-redis.md) pub/sub fans the frames across instances so the join
   still works. In single-process `skein dev`, an in-memory event bus is used instead.
 
 ## Why SSE is enough (no WebSocket in v1)

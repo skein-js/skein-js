@@ -1,4 +1,4 @@
-// The `langgraph.json` contract, exactly as the LangGraph CLI defines it — Skein reads an
+// The `langgraph.json` contract, exactly as the LangGraph CLI defines it — skein-js reads an
 // existing file unchanged (docs/langgraph-cli-compat.md). We validate only the fields we act
 // on and pass everything else through, so a config with newer/unknown keys still loads and a
 // round-trip preserves it. Zod gives us a typed value plus a precise error at the boundary.

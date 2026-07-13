@@ -9,18 +9,18 @@ unlike the Python side that [aegra](https://github.com/aegra/aegra) had to reimp
 scratch — the **JS Agent Protocol dev server itself is open source**
 ([`@langchain/langgraph-api`](https://www.npmjs.com/package/@langchain/langgraph-api), MIT).
 
-So Skein is deliberately _thin_. We stand on the OSS runtime, checkpointers, parser,
+So skein-js is deliberately _thin_. We stand on the OSS runtime, checkpointers, parser,
 schemas, and SDK, and add only the **durable-production, multi-framework, drop-in-CLI**
 layer that OSS does not provide.
 
-## What Skein reuses (dependencies, all MIT)
+## What skein-js reuses (dependencies, all MIT)
 
-| Concern                       | LangGraph OSS package                        | How Skein uses it                                                                                                                                                                                                                                                                                                         |
+| Concern                       | LangGraph OSS package                        | How skein-js uses it                                                                                                                                                                                                                                                                                                      |
 | ----------------------------- | -------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | Graph runtime                 | `@langchain/langgraph`                       | Run graphs via `CompiledStateGraph.invoke` / `.stream`; interrupts + resume for human-in-the-loop. Never reimplemented.                                                                                                                                                                                                   |
 | Checkpoint base + dev saver   | `@langchain/langgraph-checkpoint`            | `BaseCheckpointSaver`, `MemorySaver` for dev.                                                                                                                                                                                                                                                                             |
 | Postgres checkpoints          | `@langchain/langgraph-checkpoint-postgres`   | `PostgresSaver` for graph state in prod.                                                                                                                                                                                                                                                                                  |
-| Redis checkpoints             | `@langchain/langgraph-checkpoint-redis`      | Optional Redis-backed checkpointer. (Note: distinct from `@skein/redis`, which is the run **queue**.)                                                                                                                                                                                                                     |
+| Redis checkpoints             | `@langchain/langgraph-checkpoint-redis`      | Optional Redis-backed checkpointer. (Note: distinct from `@skein-js/redis`, which is the run **queue**.)                                                                                                                                                                                                                  |
 | SQLite checkpoints            | `@langchain/langgraph-checkpoint-sqlite`     | Optional file-backed dev checkpointer.                                                                                                                                                                                                                                                                                    |
 | Checkpointer conformance      | `@langchain/langgraph-checkpoint-validation` | Reused as-is in our test suite to validate any checkpointer wiring.                                                                                                                                                                                                                                                       |
 | **Agent Protocol dev server** | **`@langchain/langgraph-api`** (MIT)         | Reuse its public exports: `./schema` (the `langgraph.json` graph parser), `./auth` (auth-handler contract), `./experimental/embed` (embeddings for semantic store search). Its Zod request/response schemas and in-memory handler logic (MIT) are the reference we adapt for the durable drivers rather than reinventing. |
@@ -32,31 +32,31 @@ layer that OSS does not provide.
 **Rule of thumb:** if a `@langchain/*` package already does it, we depend on it (as a
 `peerDependency` where the consumer should own the version). We do not fork or vendor it.
 
-## What Skein rebuilds (the gap)
+## What skein-js rebuilds (the gap)
 
 `@langchain/langgraph-api` is explicitly an **in-memory dev server** ("in-memory mode,
 suitable for development and testing"), built on Hono and oriented around the CLI. It does
 not aim to provide durable production infrastructure. That gap — the same one aegra fills
-for Python — is Skein's actual product:
+for Python — is skein-js's actual product:
 
-| Gap in OSS                                                                               | Skein package                                           | Why it's needed                                                                                                                |
-| ---------------------------------------------------------------------------------------- | ------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------ |
-| Durable persistence of **protocol resources** (assistants / threads / runs / store rows) | `@skein/storage-postgres` + `SkeinStore`                | The OSS server keeps these in memory; production needs Postgres (+ pgvector). Graph _checkpoints_ still reuse `PostgresSaver`. |
-| Durable **background-run queue** + **cross-instance pub/sub** streaming                  | `@skein/redis`                                          | The OSS server runs runs in-process; horizontal scaling needs a real queue and fan-out.                                        |
-| **Framework-native adapters**                                                            | `@skein/express` (· `@skein/fastify` · `@skein/nestjs`) | The OSS server is Hono-only; teams want to mount the protocol into their existing Express/Fastify/Nest app.                    |
-| **Normalized protocol core** tying runtime + checkpointer + store + queue together       | `@skein/core`                                           | Adapter- and driver-agnostic handlers so behavior is identical everywhere.                                                     |
-| **Drop-in production CLI**                                                               | `skein`                                                 | `skein dev/up/build/dockerfile` reading an unchanged `langgraph.json`, wiring the durable drivers.                             |
-| **`langgraph.json` loading orchestration**                                               | `@skein/config`                                         | Thin wrapper over `@langchain/langgraph-api`'s `./schema` parser, adding `skein.json` overrides and driver selection.          |
+| Gap in OSS                                                                               | skein-js package                                                 | Why it's needed                                                                                                                |
+| ---------------------------------------------------------------------------------------- | ---------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------ |
+| Durable persistence of **protocol resources** (assistants / threads / runs / store rows) | `@skein-js/storage-postgres` + `SkeinStore`                      | The OSS server keeps these in memory; production needs Postgres (+ pgvector). Graph _checkpoints_ still reuse `PostgresSaver`. |
+| Durable **background-run queue** + **cross-instance pub/sub** streaming                  | `@skein-js/redis`                                                | The OSS server runs runs in-process; horizontal scaling needs a real queue and fan-out.                                        |
+| **Framework-native adapters**                                                            | `@skein-js/express` (· `@skein-js/fastify` · `@skein-js/nestjs`) | The OSS server is Hono-only; teams want to mount the protocol into their existing Express/Fastify/Nest app.                    |
+| **Normalized protocol core** tying runtime + checkpointer + store + queue together       | `@skein-js/core`                                                 | Adapter- and driver-agnostic handlers so behavior is identical everywhere.                                                     |
+| **Drop-in production CLI**                                                               | `skein-js`                                                       | `skein dev/up/build/dockerfile` reading an unchanged `langgraph.json`, wiring the durable drivers.                             |
+| **`langgraph.json` loading orchestration**                                               | `@skein-js/config`                                               | Thin wrapper over `@langchain/langgraph-api`'s `./schema` parser, adding `skein.json` overrides and driver selection.          |
 
 ## Consequences
 
 - **Small surface, few bugs.** Most agent behavior lives in battle-tested LangChain code;
-  Skein's own code is persistence, transport, and wiring.
+  skein-js's own code is persistence, transport, and wiring.
 - **Version alignment.** Reused packages are `peerDependencies` so apps control the exact
   LangGraph version and avoid duplicate installs.
-- **Upgrades are cheap.** When LangGraph ships new stream modes or schema fields, Skein
+- **Upgrades are cheap.** When LangGraph ships new stream modes or schema fields, skein-js
   inherits them through the shared runtime/types instead of chasing them by hand.
-- **Honest positioning.** Skein is "aegra for TypeScript" — but lighter, because on JS the
+- **Honest positioning.** skein-js is "aegra for TypeScript" — but lighter, because on JS the
   server internals are already open. We add production durability, not a second server.
 
 See [code-practices.md](./code-practices.md) for how we keep the code we _do_ write small

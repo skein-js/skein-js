@@ -1,6 +1,6 @@
-# Skein — Overview
+# skein-js — Overview
 
-Skein is a framework-agnostic TypeScript library that implements LangChain's
+skein-js is a framework-agnostic TypeScript library that implements LangChain's
 [**Agent Protocol**](https://github.com/langchain-ai/agent-protocol) on top of
 [**LangGraph.js**](https://github.com/langchain-ai/langgraphjs), and ships a CLI that is a
 **drop-in replacement for the LangGraph CLI**.
@@ -19,14 +19,14 @@ an HTTP layer around a compiled graph.
 
 ## The solution
 
-Skein is "aegra for TypeScript." It exposes the Agent Protocol wire format from any Node
+skein-js is "aegra for TypeScript." It exposes the Agent Protocol wire format from any Node
 HTTP framework (Express first; Fastify and NestJS to follow), so the whole LangChain client
 surface keeps working with only a URL change.
 
 Unlike aegra — which had to reimplement the server in Python because the Python
 `langgraph-api` is proprietary — the **JavaScript Agent Protocol server is open source and
 MIT** ([`@langchain/langgraph-api`](https://www.npmjs.com/package/@langchain/langgraph-api)).
-So Skein is deliberately thin: it **reuses as much LangGraph OSS as possible** (runtime,
+So skein-js is deliberately thin: it **reuses as much LangGraph OSS as possible** (runtime,
 checkpointers, parser, schemas, SDK/types) and rebuilds only the durable-production,
 multi-framework, drop-in-CLI layer that OSS lacks. See [reuse.md](./reuse.md).
 
@@ -43,7 +43,7 @@ The headline developer experience is **zero-effort migration off the LangGraph C
 
 …while keeping the existing [`langgraph.json`](./langgraph-cli-compat.md) unchanged. Both
 the backend (config + graphs) and the frontend ([`useStream`](./react-sdk.md)) point at
-Skein by changing only a URL.
+skein-js by changing only a URL.
 
 ## Architecture at a glance
 
@@ -54,15 +54,15 @@ Skein by changing only a URL.
              └──────────────────────┬──────────────────────┘
                                     │ Agent Protocol (HTTP + SSE)
              ┌──────────────────────▼──────────────────────┐
-  adapters   │   @skein/express  (· fastify · nestjs)       │
+  adapters   │   @skein-js/express  (· fastify · nestjs)       │
              ├─────────────────────────────────────────────┤
-  protocol   │   @skein/agent-protocol — handler table ·    │
+  protocol   │   @skein-js/agent-protocol — handler table ·    │
              │   run engine · streaming (SSE)               │
              ├─────────────────────────────────────────────┤
-   contract  │   @skein/core — wire types · SkeinStore +    │
+   contract  │   @skein-js/core — wire types · SkeinStore +    │
              │   queue/bus interfaces · edge error          │
              ├───────────────┬───────────────┬─────────────┤
-             │  @skein/config│ storage driver│  @skein/redis│
+             │  @skein-js/config│ storage driver│  @skein-js/redis│
              │ (langgraph.   │ memory /      │ queue + pub/ │
              │  json loader) │ postgres+pgv  │ sub          │
              └───────────────┴───────────────┴─────────────┘
@@ -70,9 +70,9 @@ Skein by changing only a URL.
                           LangGraph.js compiled graphs
 ```
 
-- **`@skein/core`** is the shared contract — wire types plus the `SkeinStore`, queue, and bus
+- **`@skein-js/core`** is the shared contract — wire types plus the `SkeinStore`, queue, and bus
   interfaces every other package depends on.
-- **`@skein/agent-protocol`** holds the protocol logic once, against _normalized_ request/response
+- **`@skein-js/agent-protocol`** holds the protocol logic once, against _normalized_ request/response
   types, driven entirely by injected dependencies. Framework adapters are thin shims, and the
   package is publishable on its own. See each doc below for detail.
 
@@ -83,7 +83,7 @@ Skein by changing only a URL.
 | [reuse.md](./reuse.md)                               | **What we reuse from LangGraph OSS vs. what we rebuild**   |
 | [code-practices.md](./code-practices.md)             | Readability, functional style, simplicity conventions      |
 | [testing.md](./testing.md)                           | Unit + Testcontainers integration + conformance suite      |
-| [agent-protocol.md](./agent-protocol.md)             | The REST + streaming endpoints Skein implements            |
+| [agent-protocol.md](./agent-protocol.md)             | The REST + streaming endpoints skein-js implements         |
 | [langgraph-cli-compat.md](./langgraph-cli-compat.md) | `langgraph.json` fields + CLI commands                     |
 | [streaming.md](./streaming.md)                       | LangGraph stream modes → Agent Protocol SSE                |
 | [react-sdk.md](./react-sdk.md)                       | `@langchain/langgraph-sdk` + `useStream` compatibility     |

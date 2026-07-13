@@ -1,8 +1,8 @@
 {
-  "name": "@skein/example-react-usestream",
+  "name": "@skein-js/example-react-usestream",
   "version": "0.0.0",
   "private": true,
-  "description": "Next.js harness that streams from a Skein server via @langchain/langgraph-sdk/react useStream.",
+  "description": "Next.js harness that streams from a skein-js server via @langchain/langgraph-sdk/react useStream.",
   "scripts": {
     "dev": "next dev -p 3005",
     "build": "next build",

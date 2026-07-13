@@ -3,7 +3,7 @@
 Canonical guide for humans **and** AI coding agents working in this repo. If you only read
 one file before contributing, read this one. (Claude Code: `CLAUDE.md` points here.)
 
-## What Skein is
+## What skein-js is
 
 A TypeScript [Agent Protocol](https://github.com/langchain-ai/agent-protocol) server for
 [LangGraph.js](https://github.com/langchain-ai/langgraphjs), and a **drop-in replacement for
@@ -77,7 +77,7 @@ nx affected -t test               # affected projects only
 
 Match the existing shape exactly (keep it boring and consistent):
 `packages/<dir>/{package.json, project.json, tsconfig.json, vitest.config.ts, README.md, src/index.ts}`,
-`"@skein/<name>"`, publishable metadata (`publishConfig.access: public`, `repository.directory`),
+`"@skein-js/<name>"`, publishable metadata (`publishConfig.access: public`, `repository.directory`),
 and a path alias in [`tsconfig.base.json`](./tsconfig.base.json). `project.json` defines only
 `build` + `typecheck` (+ `test-integration` if it touches Postgres/Redis); `lint` and `test`
 are **inferred** by the Nx plugins from `eslint.config.mjs` and `vitest.config.ts`. Copy an
@@ -86,17 +86,17 @@ sibling.
 
 ## Package map
 
-| Package                                               | Role                                                                                                          |
-| ----------------------------------------------------- | ------------------------------------------------------------------------------------------------------------- |
-| `@skein/core`                                         | The shared contract: Agent Protocol wire types + `SkeinStore`/queue/bus interfaces + edge error               |
-| `@skein/agent-protocol`                               | Framework-agnostic Agent Protocol engine — run engine, handler table, SSE (the heart); publishable on its own |
-| `@skein/config`                                       | `langgraph.json` parser + graph loader (wraps `@langchain/langgraph-api`)                                     |
-| `@skein/express` · `@skein/fastify` · `@skein/nestjs` | Framework adapters (Express first)                                                                            |
-| `@skein/storage-memory`                               | In-memory `SkeinStore` + queue (dev/tests)                                                                    |
-| `@skein/storage-postgres`                             | Postgres `SkeinStore` + pgvector; reuses `PostgresSaver`                                                      |
-| `@skein/redis`                                        | Run **queue** + cross-instance pub/sub (not a checkpointer)                                                   |
-| `skein` (CLI)                                         | Drop-in `dev` / `up` / `build` / `dockerfile`                                                                 |
-| `@skein/test-support`                                 | _(private)_ Testcontainers helpers + `SkeinStore` conformance suite                                           |
+| Package                                                        | Role                                                                                                          |
+| -------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------- |
+| `@skein-js/core`                                               | The shared contract: Agent Protocol wire types + `SkeinStore`/queue/bus interfaces + edge error               |
+| `@skein-js/agent-protocol`                                     | Framework-agnostic Agent Protocol engine — run engine, handler table, SSE (the heart); publishable on its own |
+| `@skein-js/config`                                             | `langgraph.json` parser + graph loader (wraps `@langchain/langgraph-api`)                                     |
+| `@skein-js/express` · `@skein-js/fastify` · `@skein-js/nestjs` | Framework adapters (Express first)                                                                            |
+| `@skein-js/storage-memory`                                     | In-memory `SkeinStore` + queue (dev/tests)                                                                    |
+| `@skein-js/storage-postgres`                                   | Postgres `SkeinStore` + pgvector; reuses `PostgresSaver`                                                      |
+| `@skein-js/redis`                                              | Run **queue** + cross-instance pub/sub (not a checkpointer)                                                   |
+| `skein-js` (CLI)                                               | Drop-in `dev` / `up` / `build` / `dockerfile`                                                                 |
+| `@skein-js/test-support`                                       | _(private)_ Testcontainers helpers + `SkeinStore` conformance suite                                           |
 
 Examples live in `examples/` (`express-basic`, `react-usestream`).
 

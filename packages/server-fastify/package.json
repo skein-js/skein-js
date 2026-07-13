@@ -1,9 +1,9 @@
 {
-  "name": "@skein/fastify",
+  "name": "@skein-js/fastify",
   "version": "0.0.0",
-  "description": "Fastify adapter for Skein (planned).",
+  "description": "Fastify adapter for skein-js (planned).",
   "license": "Apache-2.0",
-  "author": "Maina Wycliffe <wycliff@purpleelephant.ventures>",
+  "author": "Maina Wycliffe <wmmaina7@gmail.com>",
   "homepage": "https://github.com/mainawycliffe/skein/tree/main/packages/server-fastify#readme",
   "repository": {
     "type": "git",
@@ -38,7 +38,7 @@
     "node": ">=20"
   },
   "dependencies": {
-    "@skein/core": "workspace:*"
+    "@skein-js/core": "workspace:*"
   },
   "peerDependencies": {
     "fastify": ">=4.0.0"

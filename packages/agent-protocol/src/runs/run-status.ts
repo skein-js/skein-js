@@ -4,7 +4,7 @@
 //   RunStatus    = pending | running | success | error | timeout | interrupted
 //   ThreadStatus = idle | busy | interrupted | error
 
-import { isTerminalRunStatus, type RunStatus, type ThreadStatus } from "@skein/core";
+import { isTerminalRunStatus, type RunStatus, type ThreadStatus } from "@skein-js/core";
 
 /** The thread status that mirrors a given run status (what the thread row should show). */
 export function threadStatusForRun(status: RunStatus): ThreadStatus {

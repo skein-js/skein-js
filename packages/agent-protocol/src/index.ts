@@ -1,4 +1,4 @@
-// @skein/agent-protocol — a framework-agnostic implementation of LangChain's Agent Protocol for
+// @skein-js/agent-protocol — a framework-agnostic implementation of LangChain's Agent Protocol for
 // LangGraph.js. The run engine, protocol handler table, and SSE mapping, driven entirely by
 // injected dependencies (see `ProtocolDeps`). This is the single public surface.
 

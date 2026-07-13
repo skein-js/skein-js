@@ -1,14 +1,14 @@
 # `express-basic` example
 
-A playable Skein server with **two graphs** declared in one
+A playable skein-js server with **two graphs** declared in one
 [`langgraph.json`](./langgraph.json):
 
-| Graph id | File | Needs a key? | Good for |
-| --- | --- | --- | --- |
-| `echo` | [`src/echo-graph.ts`](./src/echo-graph.ts) | ❌ no | Zero-setup protocol/streaming playground — echoes your message. |
-| `agent` | [`src/agent-graph.ts`](./src/agent-graph.ts) | ✅ `ANTHROPIC_API_KEY` | A real Claude ReAct agent with a tool; token streaming over SSE. |
+| Graph id | File                                         | Needs a key?           | Good for                                                         |
+| -------- | -------------------------------------------- | ---------------------- | ---------------------------------------------------------------- |
+| `echo`   | [`src/echo-graph.ts`](./src/echo-graph.ts)   | ❌ no                  | Zero-setup protocol/streaming playground — echoes your message.  |
+| `agent`  | [`src/agent-graph.ts`](./src/agent-graph.ts) | ✅ `ANTHROPIC_API_KEY` | A real Claude ReAct agent with a tool; token streaming over SSE. |
 
-Both are plain LangGraph.js graphs — Skein serves them unchanged.
+Both are plain LangGraph.js graphs — skein-js serves them unchanged.
 
 ## Status
 

@@ -1,5 +1,5 @@
 // `path:export` graph resolution — the exact notation LangGraph users already write, so
-// moving a project onto Skein needs no code change (docs/langgraph-cli-compat.md). LangGraph's
+// moving a project onto skein-js needs no code change (docs/langgraph-cli-compat.md). LangGraph's
 // own `resolveGraph` lives in `@langchain/langgraph-api`'s graph loader, which is NOT a public
 // export, so we mirror its algorithm here exactly: split on the FIRST colon, fall back to the
 // `default` export, compile an uncompiled graph, and unwrap the `createAgent` wrapper. The

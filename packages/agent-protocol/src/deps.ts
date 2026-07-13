@@ -1,11 +1,11 @@
 // The injected contract for the whole package. Nothing here is a singleton: the engine, services,
-// and handlers are all built from a `ProtocolDeps` the caller supplies, so `@skein/agent-protocol`
-// stays free of any particular server, storage driver, queue, or CLI. `@skein/config`'s
+// and handlers are all built from a `ProtocolDeps` the caller supplies, so `@skein-js/agent-protocol`
+// stays free of any particular server, storage driver, queue, or CLI. `@skein-js/config`'s
 // `GraphRegistry` structurally satisfies `GraphResolver`, but we depend on the minimal interface so
-// this package never has to know `@skein/config` exists.
+// this package never has to know `@skein-js/config` exists.
 
 import type { BaseCheckpointSaver, CompiledGraph } from "@langchain/langgraph";
-import type { GraphSchema, RunEventBus, RunQueue, SkeinStore } from "@skein/core";
+import type { GraphSchema, RunEventBus, RunQueue, SkeinStore } from "@skein-js/core";
 
 /** A factory export: called (optionally with per-run config) to produce a compiled graph. */
 export type CompiledGraphFactory = (config: {
@@ -20,7 +20,7 @@ export type GraphSchemas = Record<string, GraphSchema>;
 
 /**
  * How the engine turns a `graph_id` into something runnable and introspectable. Deliberately
- * minimal — `@skein/config`'s `GraphRegistry` already satisfies it.
+ * minimal — `@skein-js/config`'s `GraphRegistry` already satisfies it.
  */
 export interface GraphResolver {
   /** Declared graph ids, used to auto-register one assistant per graph at startup. */

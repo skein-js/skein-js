@@ -10,7 +10,7 @@ import {
   type Thread,
   type ThreadCreate,
   type ThreadState,
-} from "@skein/core";
+} from "@skein-js/core";
 
 import type { ProtocolContext } from "../context.js";
 

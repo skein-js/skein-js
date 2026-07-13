@@ -1,7 +1,7 @@
 {
-  "name": "@skein/test-support",
+  "name": "@skein-js/test-support",
   "version": "0.0.0",
-  "description": "Private test helpers for Skein: Testcontainers boots + the shared SkeinStore conformance suite.",
+  "description": "Private test helpers for skein-js: Testcontainers boots + the shared SkeinStore conformance suite.",
   "license": "Apache-2.0",
   "private": true,
   "type": "module",
@@ -13,7 +13,7 @@
     "typecheck": "tsc --noEmit"
   },
   "dependencies": {
-    "@skein/core": "workspace:*",
+    "@skein-js/core": "workspace:*",
     "testcontainers": "^10.16.0"
   },
   "peerDependencies": {

@@ -1,4 +1,4 @@
-# @skein/agent-protocol
+# @skein-js/agent-protocol
 
 A framework-agnostic implementation of LangChain's [**Agent
 Protocol**](https://github.com/langchain-ai/agent-protocol) for [LangGraph.js](https://langchain-ai.github.io/langgraphjs/).
@@ -10,23 +10,23 @@ and it will serve assistants, threads, the three run modes (wait / stream / back
 and human-in-the-loop interrupt/resume — wire-compatible with the official `@langchain/langgraph-sdk`
 client.
 
-It powers [Skein](https://github.com/mainawycliffe/skein), but it depends only on the `@skein/core`
+It powers [skein-js](https://github.com/mainawycliffe/skein), but it depends only on the `@skein-js/core`
 contracts and is designed to be consumed on its own.
 
 ## Install
 
 ```sh
-npm install @skein/agent-protocol @skein/core @langchain/langgraph @langchain/langgraph-sdk
+npm install @skein-js/agent-protocol @skein-js/core @langchain/langgraph @langchain/langgraph-sdk
 ```
 
 ## Usage
 
 ```ts
-import { createProtocolRuntime } from "@skein/agent-protocol";
+import { createProtocolRuntime } from "@skein-js/agent-protocol";
 
 const runtime = createProtocolRuntime({
-  store, // a SkeinStore (e.g. @skein/storage-memory, @skein/storage-postgres)
-  graphs, // a GraphResolver — load(graphId) + schemas(graphId) (e.g. @skein/config's registry)
+  store, // a SkeinStore (e.g. @skein-js/storage-memory, @skein-js/storage-postgres)
+  graphs, // a GraphResolver — load(graphId) + schemas(graphId) (e.g. @skein-js/config's registry)
   queue, // a RunQueue for background runs
   bus, // a RunEventBus for streaming fan-out
   checkpointer, // a LangGraph BaseCheckpointSaver (MemorySaver in dev)
@@ -36,7 +36,7 @@ const runtime = createProtocolRuntime({
 await runtime.service.assistants.registerGraphAssistants();
 runtime.worker.start();
 
-// `runtime.handlers` is a transport-neutral table an adapter (e.g. @skein/express) mounts.
+// `runtime.handlers` is a transport-neutral table an adapter (e.g. @skein-js/express) mounts.
 // `runtime.service` is the typed engine you can also drive directly.
 ```
 
@@ -56,7 +56,7 @@ worker in the same process.
 
 ### The injected contract (`ProtocolDeps`)
 
-| Dependency     | Contract (from `@skein/core`)                  | Responsibility                                         |
+| Dependency     | Contract (from `@skein-js/core`)               | Responsibility                                         |
 | -------------- | ---------------------------------------------- | ------------------------------------------------------ |
 | `store`        | `SkeinStore`                                   | Protocol resource rows (assistants/threads/runs/store) |
 | `graphs`       | `GraphResolver`                                | Resolve a `graph_id` to a compiled graph + schemas     |

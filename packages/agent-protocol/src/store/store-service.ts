@@ -1,7 +1,7 @@
 // The long-term memory store. A thin, validated pass-through to `SkeinStore.store` — the driver
 // owns behavior (the memory driver does a naive scan; the Postgres driver does pgvector search).
 
-import { SkeinHttpError, type Item, type SearchItem, type StoreSearchQuery } from "@skein/core";
+import { SkeinHttpError, type Item, type SearchItem, type StoreSearchQuery } from "@skein-js/core";
 
 import type { ResolvedDeps } from "../deps.js";
 

@@ -1,8 +1,8 @@
-# @skein/redis
+# @skein-js/redis
 
-> Redis job queue and cross-instance pub/sub streaming for Skein.
+> Redis job queue and cross-instance pub/sub streaming for skein-js.
 
-Part of **[Skein](https://github.com/mainawycliffe/skein)** — a TypeScript [Agent Protocol](https://github.com/langchain-ai/agent-protocol) server for [LangGraph.js](https://github.com/langchain-ai/langgraphjs), and a drop-in replacement for the LangGraph CLI.
+Part of **[skein-js](https://github.com/mainawycliffe/skein)** — a TypeScript [Agent Protocol](https://github.com/langchain-ai/agent-protocol) server for [LangGraph.js](https://github.com/langchain-ai/langgraphjs), and a drop-in replacement for the LangGraph CLI.
 
 **Status:** 🚧 Pre-alpha — not yet implemented (Phase 1).
 
@@ -12,17 +12,17 @@ Durable background-run job queue with worker processes and lease-based crash rec
 
 ## Reuse
 
-This package is the run **queue + pub/sub**. For Redis-backed *checkpointing*, use `@langchain/langgraph-checkpoint-redis` instead — the two are complementary.
+This package is the run **queue + pub/sub**. For Redis-backed _checkpointing_, use `@langchain/langgraph-checkpoint-redis` instead — the two are complementary.
 
 ## Install
 
 ```bash
-pnpm add @skein/redis
+pnpm add @skein-js/redis
 ```
 
 ## Learn more
 
-- [Skein overview](../../docs/index.md)
+- [skein-js overview](../../docs/index.md)
 - [Reuse-first architecture](../../docs/reuse.md)
 - [Roadmap](../../docs/roadmap.md)
 

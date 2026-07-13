@@ -14,7 +14,7 @@ import {
   type RunKwargs,
   type RunStatus,
   type StreamMode,
-} from "@skein/core";
+} from "@skein-js/core";
 
 import type { ProtocolContext } from "../context.js";
 
