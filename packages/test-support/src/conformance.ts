@@ -1,51 +1,291 @@
-import { describe, it, expect } from "vitest";
+import type { SkeinStore } from "@skein/core";
+import { describe, expect, it } from "vitest";
 
 /**
- * Minimal structural view of a SkeinStore, enough to seed the conformance suite.
- *
- * TODO(Phase 1): replace this with the real `SkeinStore` type imported from `@skein/core`
- * once it exists, and grow the suite to cover assistants, runs (status transitions,
- * concurrency guard), and store items (incl. semantic search). See docs/testing.md.
+ * Produces a fresh, empty {@link SkeinStore}. Called once per test so cases never share state.
  */
-export interface SkeinStoreLike {
-  threads: {
-    create(input?: { metadata?: Record<string, unknown> }): Promise<{ thread_id: string }>;
-    get(id: string): Promise<{ thread_id: string } | null>;
-    delete(id: string): Promise<void>;
-  };
-}
-
-type StoreFactory = () => SkeinStoreLike | Promise<SkeinStoreLike>;
+export type SkeinStoreFactory = () => SkeinStore | Promise<SkeinStore>;
 
 /**
- * Run the shared SkeinStore contract against a driver. Every storage driver
- * (memory, postgres, …) calls this so they are held to the identical behavior.
+ * The single behavioral contract every SkeinStore driver must satisfy. Memory and Postgres run
+ * the *same* suite, so they are provably interchangeable — swapping drivers can't change how
+ * assistants, threads, runs, or the store behave. See docs/storage.md and docs/testing.md.
  *
  * @example
  * runSkeinStoreConformance("memory", () => new MemorySkeinStore());
  */
-export function runSkeinStoreConformance(label: string, makeStore: StoreFactory): void {
+export function runSkeinStoreConformance(label: string, makeStore: SkeinStoreFactory): void {
   describe(`SkeinStore conformance — ${label}`, () => {
-    it("creates a thread and reads it back by id", async () => {
-      const store = await makeStore();
-      const created = await store.threads.create({ metadata: { user: "a" } });
+    describe("assistants", () => {
+      it("creates an assistant, defaulting name to the graph id and version to 1", async () => {
+        const store = await makeStore();
+        const created = await store.assistants.create({ graph_id: "agent" });
 
-      expect(created.thread_id).toBeTruthy();
-      const found = await store.threads.get(created.thread_id);
-      expect(found?.thread_id).toBe(created.thread_id);
+        expect(created.assistant_id).toBeTruthy();
+        expect(created.graph_id).toBe("agent");
+        expect(created.name).toBe("agent");
+        expect(created.version).toBe(1);
+      });
+
+      it("honors an explicit assistant_id, name, and description", async () => {
+        const store = await makeStore();
+        const created = await store.assistants.create({
+          assistant_id: "fixed",
+          graph_id: "agent",
+          name: "My Agent",
+          description: "does things",
+        });
+
+        expect(created.assistant_id).toBe("fixed");
+        expect(created.name).toBe("My Agent");
+        expect(created.description).toBe("does things");
+      });
+
+      it("reads an assistant back by id and lists it", async () => {
+        const store = await makeStore();
+        const { assistant_id } = await store.assistants.create({ graph_id: "agent" });
+
+        expect((await store.assistants.get(assistant_id))?.assistant_id).toBe(assistant_id);
+        expect((await store.assistants.list()).map((a) => a.assistant_id)).toContain(assistant_id);
+      });
+
+      it("returns null for an unknown assistant and removes on delete", async () => {
+        const store = await makeStore();
+        expect(await store.assistants.get("nope")).toBeNull();
+
+        const { assistant_id } = await store.assistants.create({ graph_id: "agent" });
+        await store.assistants.delete(assistant_id);
+        expect(await store.assistants.get(assistant_id)).toBeNull();
+      });
     });
 
-    it("returns null for an unknown thread", async () => {
-      const store = await makeStore();
-      expect(await store.threads.get("does-not-exist")).toBeNull();
+    describe("threads", () => {
+      it("creates a thread (idle by default) and reads it back by id", async () => {
+        const store = await makeStore();
+        const created = await store.threads.create({ metadata: { user: "a" } });
+
+        expect(created.thread_id).toBeTruthy();
+        expect(created.status).toBe("idle");
+        const found = await store.threads.get(created.thread_id);
+        expect(found?.thread_id).toBe(created.thread_id);
+      });
+
+      it("returns null for an unknown thread", async () => {
+        const store = await makeStore();
+        expect(await store.threads.get("does-not-exist")).toBeNull();
+      });
+
+      it("updates status, metadata, and values", async () => {
+        const store = await makeStore();
+        const { thread_id } = await store.threads.create();
+
+        const updated = await store.threads.update(thread_id, {
+          status: "interrupted",
+          metadata: { k: "v" },
+          values: { messages: [] },
+        });
+        expect(updated.status).toBe("interrupted");
+        expect(updated.metadata).toMatchObject({ k: "v" });
+        expect(updated.values).toEqual({ messages: [] });
+      });
+
+      it("rejects updating an unknown thread", async () => {
+        const store = await makeStore();
+        await expect(store.threads.update("nope", { status: "idle" })).rejects.toThrow();
+      });
+
+      it("deletes a thread so it can no longer be read", async () => {
+        const store = await makeStore();
+        const { thread_id } = await store.threads.create();
+
+        await store.threads.delete(thread_id);
+        expect(await store.threads.get(thread_id)).toBeNull();
+      });
     });
 
-    it("deletes a thread so it can no longer be read", async () => {
-      const store = await makeStore();
-      const { thread_id } = await store.threads.create();
+    describe("runs", () => {
+      const seedThread = async (store: SkeinStore): Promise<string> =>
+        (await store.threads.create()).thread_id;
 
-      await store.threads.delete(thread_id);
-      expect(await store.threads.get(thread_id)).toBeNull();
+      it("creates a run in pending status by default", async () => {
+        const store = await makeStore();
+        const thread_id = await seedThread(store);
+        const run = await store.runs.create({ thread_id, assistant_id: "a" });
+
+        expect(run.run_id).toBeTruthy();
+        expect(run.status).toBe("pending");
+        expect(run.thread_id).toBe(thread_id);
+      });
+
+      it("reads a run back and lists runs by thread", async () => {
+        const store = await makeStore();
+        const thread_id = await seedThread(store);
+        const run = await store.runs.create({ thread_id, assistant_id: "a" });
+
+        expect((await store.runs.get(run.run_id))?.run_id).toBe(run.run_id);
+        expect((await store.runs.listByThread(thread_id)).map((r) => r.run_id)).toEqual([
+          run.run_id,
+        ]);
+      });
+
+      it("transitions run status", async () => {
+        const store = await makeStore();
+        const thread_id = await seedThread(store);
+        const run = await store.runs.create({ thread_id, assistant_id: "a" });
+
+        expect((await store.runs.setStatus(run.run_id, "running")).status).toBe("running");
+        expect((await store.runs.setStatus(run.run_id, "success")).status).toBe("success");
+      });
+
+      it("rejects setting status on an unknown run", async () => {
+        const store = await makeStore();
+        await expect(store.runs.setStatus("nope", "running")).rejects.toThrow();
+      });
+
+      it("reports an active run via the concurrency guard until it reaches a terminal status", async () => {
+        const store = await makeStore();
+        const thread_id = await seedThread(store);
+        expect(await store.runs.hasActiveRun(thread_id)).toBe(false);
+
+        const run = await store.runs.create({ thread_id, assistant_id: "a" });
+        expect(await store.runs.hasActiveRun(thread_id)).toBe(true);
+
+        await store.runs.setStatus(run.run_id, "running");
+        expect(await store.runs.hasActiveRun(thread_id)).toBe(true);
+
+        await store.runs.setStatus(run.run_id, "success");
+        expect(await store.runs.hasActiveRun(thread_id)).toBe(false);
+      });
+
+      it("counts an interrupted run as still active (it owns the thread until resumed)", async () => {
+        const store = await makeStore();
+        const thread_id = await seedThread(store);
+        const run = await store.runs.create({ thread_id, assistant_id: "a" });
+
+        await store.runs.setStatus(run.run_id, "interrupted");
+        expect(await store.runs.hasActiveRun(thread_id)).toBe(true);
+      });
+
+      it("deletes a run", async () => {
+        const store = await makeStore();
+        const thread_id = await seedThread(store);
+        const run = await store.runs.create({ thread_id, assistant_id: "a" });
+
+        await store.runs.delete(run.run_id);
+        expect(await store.runs.get(run.run_id)).toBeNull();
+      });
+
+      it("cascades: deleting a thread removes its runs", async () => {
+        const store = await makeStore();
+        const thread_id = await seedThread(store);
+        await store.runs.create({ thread_id, assistant_id: "a" });
+
+        await store.threads.delete(thread_id);
+        expect(await store.runs.listByThread(thread_id)).toEqual([]);
+        expect(await store.runs.hasActiveRun(thread_id)).toBe(false);
+      });
+    });
+
+    describe("store (long-term memory)", () => {
+      it("puts and gets an item by namespace + key", async () => {
+        const store = await makeStore();
+        const item = await store.store.put(["users", "1"], "profile", { name: "Ada" });
+
+        expect(item.namespace).toEqual(["users", "1"]);
+        expect(item.key).toBe("profile");
+        const found = await store.store.get(["users", "1"], "profile");
+        expect(found?.value).toEqual({ name: "Ada" });
+      });
+
+      it("upsert preserves createdAt and returns null after delete", async () => {
+        const store = await makeStore();
+        const first = await store.store.put(["ns"], "k", { v: 1 });
+        const second = await store.store.put(["ns"], "k", { v: 2 });
+
+        expect(second.createdAt).toBe(first.createdAt);
+        expect(second.value).toEqual({ v: 2 });
+
+        await store.store.delete(["ns"], "k");
+        expect(await store.store.get(["ns"], "k")).toBeNull();
+      });
+
+      it("searches by namespace prefix", async () => {
+        const store = await makeStore();
+        await store.store.put(["users", "1"], "a", { x: 1 });
+        await store.store.put(["users", "2"], "b", { x: 2 });
+        await store.store.put(["orgs", "1"], "c", { x: 3 });
+
+        const users = await store.store.search({ prefix: ["users"] });
+        expect(users).toHaveLength(2);
+        expect(users.every((i) => i.namespace[0] === "users")).toBe(true);
+      });
+
+      it("filters search by a naive text query", async () => {
+        const store = await makeStore();
+        await store.store.put(["ns"], "a", { text: "hello world" });
+        await store.store.put(["ns"], "b", { text: "goodbye" });
+
+        const hits = await store.store.search({ query: "hello" });
+        expect(hits).toHaveLength(1);
+        expect(hits[0]?.key).toBe("a");
+      });
+
+      it("lists distinct namespaces, filtered by prefix", async () => {
+        const store = await makeStore();
+        await store.store.put(["users", "1"], "a", {});
+        await store.store.put(["users", "1"], "b", {});
+        await store.store.put(["orgs", "1"], "c", {});
+
+        const all = await store.store.listNamespaces();
+        expect(all).toHaveLength(2);
+        const users = await store.store.listNamespaces(["users"]);
+        expect(users).toEqual([["users", "1"]]);
+      });
+
+      it("does not collide namespaces whose segments contain a separator", async () => {
+        const store = await makeStore();
+        await store.store.put(["a", "b"], "k1", {});
+        await store.store.put(["a/b"], "k2", {});
+        // Distinct namespaces `["a","b"]` and `["a/b"]` must both be listed, not merged.
+        expect(await store.store.listNamespaces()).toHaveLength(2);
+      });
+    });
+
+    // A driver must isolate stored rows from caller objects (a real DB serializes them); the
+    // memory driver deep-clones to match, so swapping drivers can't change mutation semantics.
+    describe("driver parity — isolation", () => {
+      it("does not leak mutations of a returned object back into the store", async () => {
+        const store = await makeStore();
+        const { thread_id } = await store.threads.create({ metadata: { pinned: true } });
+
+        const got = await store.threads.get(thread_id);
+        if (got) (got.metadata as { pinned?: boolean }).pinned = false;
+
+        const again = await store.threads.get(thread_id);
+        expect((again?.metadata as { pinned?: boolean }).pinned).toBe(true);
+      });
+
+      it("does not let later mutation of the create input reach the store", async () => {
+        const store = await makeStore();
+        const metadata = { pinned: true };
+        const { thread_id } = await store.threads.create({ metadata });
+
+        metadata.pinned = false;
+
+        const again = await store.threads.get(thread_id);
+        expect((again?.metadata as { pinned?: boolean }).pinned).toBe(true);
+      });
+
+      it("isolates stored store-item values from a returned object", async () => {
+        const store = await makeStore();
+        await store.store.put(["ns"], "k", { n: 1 });
+
+        const got = await store.store.get(["ns"], "k");
+        if (got) (got.value as { n: number }).n = 2;
+
+        const again = await store.store.get(["ns"], "k");
+        expect((again?.value as { n: number } | undefined)?.n).toBe(1);
+      });
     });
   });
 }

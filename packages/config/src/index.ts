@@ -1,4 +1,15 @@
-// @skein/config — langgraph.json parser and graph loader (path:export notation) for Skein.
-// TODO(Phase 1): implement. See docs/ for the design.
+// @skein/config — loads an unchanged `langgraph.json`, validates it, and resolves each graph
+// from its `path:export` spec to a compiled LangGraph. Everything downstream (the run engine,
+// assistant introspection, the CLI) starts from `loadConfig`. See docs/langgraph-cli-compat.md.
 
-export const packageName = "@skein/config";
+export { loadConfig } from "./load-config.js";
+export type { GraphRegistry, GraphSchemas, LoadConfigOptions, SkeinConfig } from "./load-config.js";
+
+export { langgraphJsonSchema, parseLanggraphJson } from "./langgraph-json.js";
+export type { LanggraphJson } from "./langgraph-json.js";
+
+export { loadGraph, parseGraphSpec } from "./graph-spec.js";
+export type { CompiledGraphFactory, GraphSpec, ResolvedGraph } from "./graph-spec.js";
+
+export { SkeinConfigError } from "./errors.js";
+export type { SkeinConfigErrorOptions } from "./errors.js";

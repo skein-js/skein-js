@@ -13,6 +13,7 @@
     "typecheck": "tsc --noEmit"
   },
   "dependencies": {
+    "@skein/core": "workspace:*",
     "testcontainers": "^10.16.0"
   },
   "peerDependencies": {

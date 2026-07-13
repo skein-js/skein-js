@@ -40,6 +40,9 @@
   "dependencies": {
     "@skein/core": "workspace:*"
   },
+  "devDependencies": {
+    "@skein/test-support": "workspace:*"
+  },
   "publishConfig": {
     "access": "public"
   }
