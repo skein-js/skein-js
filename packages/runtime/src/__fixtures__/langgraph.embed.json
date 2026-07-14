@@ -1,0 +1,12 @@
+{
+  "graphs": {
+    "echo": "./echo.ts:graph"
+  },
+  "store": {
+    "index": {
+      "embed": "./semantic-embed.ts:embed",
+      "dims": 3,
+      "fields": ["text"]
+    }
+  }
+}

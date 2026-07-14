@@ -21,7 +21,8 @@
       "@skein-js/storage-memory": ["packages/storage-memory/src/index.ts"],
       "@skein-js/storage-postgres": ["packages/storage-postgres/src/index.ts"],
       "@skein-js/redis": ["packages/runtime-redis/src/index.ts"],
-      "@skein-js/agent-protocol": ["packages/agent-protocol/src/index.ts"]
+      "@skein-js/agent-protocol": ["packages/agent-protocol/src/index.ts"],
+      "@skein-js/runtime": ["packages/runtime/src/index.ts"]
     }
   },
   "exclude": ["node_modules", "dist"]

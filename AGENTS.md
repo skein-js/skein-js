@@ -95,6 +95,7 @@ sibling.
 | `@skein-js/storage-memory`                                     | In-memory `SkeinStore` + queue (dev/tests)                                                                    |
 | `@skein-js/storage-postgres`                                   | Postgres `SkeinStore` + pgvector; reuses `PostgresSaver`                                                      |
 | `@skein-js/redis`                                              | Run **queue** + cross-instance pub/sub (not a checkpointer)                                                   |
+| `@skein-js/runtime`                                            | Assembles production `ProtocolDeps` (memory/Postgres/Redis) from `langgraph.json` for the CLI                 |
 | `skein-js` (CLI)                                               | Drop-in `dev` / `up` / `build` / `dockerfile`                                                                 |
 | `@skein-js/test-support`                                       | _(private)_ Testcontainers helpers + `SkeinStore` conformance suite                                           |
 

@@ -1,0 +1,5 @@
+{
+  "graphs": {
+    "echo": "./echo.ts:graph"
+  }
+}

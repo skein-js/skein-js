@@ -1,7 +1,8 @@
 // `skein dev` — the in-process development server, a drop-in for `langgraph dev`. Everything runs
 // in this single Node process: vite transforms + watches the project's TypeScript graphs (see
-// vite-graph-loader.ts), and `@skein-js/express` serves the Agent Protocol over an in-memory
-// runtime. Two things go beyond a naive dev server:
+// vite-graph-loader.ts), and `@skein-js/express` serves the Agent Protocol over the runtime built
+// by `@skein-js/runtime` — in-memory by default, or `--store postgres` / `--queue redis` to develop
+// against production-shaped storage without Docker. Two things go beyond a naive dev server:
 //   • Hot reload keeps state — on a source change we clear vite's cache and swap in the fresh graph
 //     code, but reuse the same store/checkpointer, so threads, runs, and memories survive the reload.
 //   • Persistence across restarts — dev state is snapshotted to `<project>/.skein/` and restored on
@@ -14,10 +15,10 @@ import path from "node:path";
 import { loadConfig, parseEnvFile, resolveEnv } from "@skein-js/config";
 import {
   createExpressServer,
-  loadReloadableInMemoryRuntime,
   type DevStateSnapshot,
   type SkeinExpressServer,
 } from "@skein-js/express";
+import { buildRuntime, type QueueDriver, type StoreDriver } from "@skein-js/runtime";
 
 import { createViteGraphLoader } from "./vite-graph-loader.js";
 
@@ -30,6 +31,10 @@ export interface DevCommandOptions {
   reload: boolean;
   /** `false` when `--no-persist` was passed. */
   persist: boolean;
+  /** Protocol-resource + checkpoint store: `"memory"` (default) or `"postgres"` (`DATABASE_URL`). */
+  store: StoreDriver;
+  /** Run queue + stream bus: `"memory"` (default) or `"redis"` (`REDIS_URL`). */
+  queue: QueueDriver;
 }
 
 /** Wait this long after the last change event before reloading, so a burst of saves is one reload. */
@@ -94,11 +99,23 @@ export async function runDev(options: DevCommandOptions): Promise<void> {
   // Ignore our own persisted-state dir: its periodic autosave writes would otherwise be seen as
   // source changes and trigger an endless reload loop.
   const loader = await createViteGraphLoader(configDir, [`${STATE_DIR}/**`, `**/${STATE_DIR}/**`]);
-  const runtime = await loadReloadableInMemoryRuntime(configPath, loader.importModule);
+  const runtime = await buildRuntime({
+    configPath,
+    importModule: loader.importModule,
+    store: options.store,
+    queue: options.queue,
+  });
   const { port, host } = options;
-  if (options.persist && existsSync(stateFile)) {
+  // On-disk snapshotting only applies to the all-memory runtime; durable drivers persist inherently.
+  const canPersist = options.persist && runtime.snapshotState !== undefined;
+  if (options.persist && runtime.snapshotState === undefined) {
+    console.log(
+      `skein: state persists in ${options.store}/${options.queue}; skipping .skein snapshot.`,
+    );
+  }
+  if (canPersist && existsSync(stateFile)) {
     try {
-      runtime.hydrateState(JSON.parse(readFileSync(stateFile, "utf8")) as DevStateSnapshot);
+      runtime.hydrateState?.(JSON.parse(readFileSync(stateFile, "utf8")) as DevStateSnapshot);
       console.log("skein: restored dev state.");
     } catch (error) {
       console.warn(
@@ -119,7 +136,7 @@ export async function runDev(options: DevCommandOptions): Promise<void> {
   } catch (error) {
     // `skeinRouter` starts the run worker before `listen`; without these closes a bind failure
     // leaves the worker holding the event loop open and the process hangs instead of exiting.
-    await loader.close();
+    await Promise.allSettled([loader.close(), runtime.dispose()]);
     const code = (error as NodeJS.ErrnoException).code;
     console.error(
       code === "EADDRINUSE"
@@ -133,7 +150,7 @@ export async function runDev(options: DevCommandOptions): Promise<void> {
 
   let lastSaved: string | undefined;
   const saveState = () => {
-    if (!options.persist) return;
+    if (!canPersist || runtime.snapshotState === undefined) return;
     try {
       const serialized = JSON.stringify(runtime.snapshotState());
       if (serialized === lastSaved) return; // unchanged since the last write — skip the disk churn
@@ -150,7 +167,7 @@ export async function runDev(options: DevCommandOptions): Promise<void> {
   };
 
   let autosave: NodeJS.Timeout | undefined;
-  if (options.persist) {
+  if (canPersist) {
     autosave = setInterval(saveState, AUTOSAVE_MS);
     autosave.unref();
   }
@@ -210,7 +227,9 @@ export async function runDev(options: DevCommandOptions): Promise<void> {
     const forceExit = setTimeout(() => process.exit(0), FORCE_EXIT_MS);
     forceExit.unref();
     saveState();
-    void Promise.allSettled([server.close(), loader.close()]).then(() => process.exit(0));
+    void Promise.allSettled([server.close(), loader.close(), runtime.dispose()]).then(() =>
+      process.exit(0),
+    );
   };
   process.on("SIGINT", shutdown);
   process.on("SIGTERM", shutdown);

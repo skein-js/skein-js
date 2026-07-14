@@ -10,17 +10,10 @@ import { createRequire } from "node:module";
 import { Command, InvalidArgumentError } from "@commander-js/extra-typings";
 
 import { runDev } from "./dev-command.js";
+import { runBuild, runDockerfile, runUp } from "./docker/commands.js";
 
 const require = createRequire(import.meta.url);
 const { version } = require("../package.json") as { version: string };
-
-/** Thrown by a command whose behavior has not been implemented yet. */
-class NotImplementedError extends Error {
-  constructor(command: string) {
-    super(`\`skein ${command}\` is not implemented yet (Phase 1). See docs/roadmap.md.`);
-    this.name = "NotImplementedError";
-  }
-}
 
 /** Parse a `--port` value into a valid port number, rejecting anything else. */
 function parsePort(value: string): number {
@@ -30,6 +23,19 @@ function parsePort(value: string): number {
   }
   return port;
 }
+
+/** Build a commander parser that accepts only one of `choices`, rejecting anything else. */
+function parseChoice<const T extends string>(choices: readonly T[]) {
+  return (value: string): T => {
+    if (!(choices as readonly string[]).includes(value)) {
+      throw new InvalidArgumentError(`Must be one of: ${choices.join(", ")}.`);
+    }
+    return value as T;
+  };
+}
+
+const parseStore = parseChoice(["memory", "postgres"] as const);
+const parseQueue = parseChoice(["memory", "redis"] as const);
 
 const program = new Command()
   .name("skein")
@@ -47,6 +53,9 @@ program
   .option("--host <host>", "Host to bind", "127.0.0.1")
   .option("--no-reload", "Disable hot reload")
   .option("--no-persist", "Don't persist dev state to .skein/ between restarts")
+  // Develop against production-shaped storage without Docker (needs DATABASE_URL / REDIS_URL).
+  .option("--store <driver>", "Store driver: memory | postgres", parseStore, "memory")
+  .option("--queue <driver>", "Queue driver: memory | redis", parseQueue, "memory")
   .action((options) => runDev(options));
 
 program
@@ -55,25 +64,21 @@ program
   .option("-c, --config <path>", "Path to langgraph.json", "langgraph.json")
   .option("-p, --port <port>", "Port to expose", parsePort, 8123)
   .option("--host <host>", "Host to bind", "0.0.0.0")
-  .action(() => {
-    throw new NotImplementedError("up");
-  });
+  .action((options) => runUp(options));
 
 program
   .command("build")
   .description("Build a deployable Docker image from the config.")
   .option("-c, --config <path>", "Path to langgraph.json", "langgraph.json")
-  .action(() => {
-    throw new NotImplementedError("build");
-  });
+  .option("-t, --tag <tag>", "Image tag (defaults to the project directory name)")
+  .action((options) => runBuild(options));
 
 program
   .command("dockerfile")
   .description("Emit a standalone Dockerfile from the config.")
   .option("-c, --config <path>", "Path to langgraph.json", "langgraph.json")
-  .action(() => {
-    throw new NotImplementedError("dockerfile");
-  });
+  .option("-o, --output <path>", "Write the Dockerfile here instead of stdout")
+  .action((options) => runDockerfile(options));
 
 try {
   await program.parseAsync(process.argv);

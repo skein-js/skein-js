@@ -1,21 +1,28 @@
 {
   "$schema": "../../node_modules/nx/schemas/project-schema.json",
-  "name": "cli",
-  "sourceRoot": "packages/cli/src",
+  "name": "runtime",
+  "sourceRoot": "packages/runtime/src",
   "projectType": "library",
   "targets": {
     "build": {
       "executor": "nx:run-commands",
       "options": {
         "command": "tsup src/index.ts --format esm --dts --clean",
-        "cwd": "packages/cli"
+        "cwd": "packages/runtime"
       }
     },
     "typecheck": {
       "executor": "nx:run-commands",
       "options": {
         "command": "tsc --noEmit",
-        "cwd": "packages/cli"
+        "cwd": "packages/runtime"
+      }
+    },
+    "test-integration": {
+      "executor": "nx:run-commands",
+      "options": {
+        "command": "vitest run --config vitest.integration.config.ts",
+        "cwd": "packages/runtime"
       }
     }
   }

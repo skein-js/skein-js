@@ -33,13 +33,18 @@ Priority order (**bold = MVP**):
 8. **`@skein-js/redis`** — Redis queue + worker + cross-instance pub/sub streaming.
 9. **Storage-postgres + pgvector** — `SkeinStore` over `pg` + `PostgresSaver`; semantic
    store search; migrations.
-10. **CLI — `up` / `build` / `dockerfile`** — Docker Compose (Postgres + Redis); image build.
-    - **Once the Postgres + Redis drivers exist (steps 8–9), extend `skein dev` to optionally use
-      them** (e.g. `--store postgres` / `--queue redis`, or a `dev` block in `langgraph.json`),
-      instead of always the in-memory drivers. This is a capability `langgraph dev` does **not**
-      offer — it lets you develop and test against production-shaped storage (durable checkpoints,
-      cross-instance streaming, pgvector search) without `skein up`/full Docker. `skein dev` already
-      builds its runtime through the injectable `{ deps }` seam, so this is wiring, not rearchitecting.
+10. **CLI — `up` / `build` / `dockerfile`** ✅ — Docker Compose (Postgres + Redis); image build.
+    A new [`@skein-js/runtime`](../packages/runtime) package assembles the production `ProtocolDeps`
+    (Postgres store + `PostgresSaver` + Redis queue/bus) behind the existing `{ deps }` seam, so both
+    `skein dev` and the Docker image boot the same engine. `skein dockerfile`/`build` generate a
+    Dockerfile from `langgraph.json`; `skein up` brings up app + `pgvector/pgvector` Postgres + Redis
+    via Docker Compose.
+    - **`skein dev` now optionally uses the production drivers** via `--store postgres` / `--queue redis`
+      (connection URLs from `DATABASE_URL` / `REDIS_URL`), instead of always the in-memory drivers.
+      This is a capability `langgraph dev` does **not** offer — it lets you develop and test against
+      production-shaped storage (durable checkpoints, cross-instance streaming, pgvector search)
+      without `skein up`/full Docker. Graph hot-reload still works; the `.skein/` snapshot is skipped
+      because durable stores persist inherently.
 11. **Fastify + NestJS adapters** — reuse the same core handler table.
 
 ## Post-MVP / non-goals for v1

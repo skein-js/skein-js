@@ -1,24 +1,24 @@
 {
-  "name": "skein-js",
+  "name": "@skein-js/runtime",
   "version": "0.0.0",
-  "description": "The skein-js CLI — a drop-in replacement for the LangGraph CLI (dev/up/build/dockerfile).",
+  "description": "Assembles skein-js ProtocolDeps from langgraph.json + selected drivers (memory/Postgres/Redis).",
   "license": "Apache-2.0",
   "author": "Maina Wycliffe <wmmaina7@gmail.com>",
-  "homepage": "https://github.com/mainawycliffe/skein/tree/main/packages/cli#readme",
+  "homepage": "https://github.com/mainawycliffe/skein/tree/main/packages/runtime#readme",
   "repository": {
     "type": "git",
     "url": "git+https://github.com/mainawycliffe/skein.git",
-    "directory": "packages/cli"
+    "directory": "packages/runtime"
   },
   "bugs": {
     "url": "https://github.com/mainawycliffe/skein/issues"
   },
   "keywords": [
     "langgraph",
-    "cli",
     "agent-protocol",
-    "langgraph-cli",
-    "self-hosted"
+    "runtime",
+    "postgres",
+    "redis"
   ],
   "type": "module",
   "main": "./dist/index.js",
@@ -30,9 +30,6 @@
       "import": "./dist/index.js"
     }
   },
-  "bin": {
-    "skein": "./dist/index.js"
-  },
   "files": [
     "dist",
     "README.md"
@@ -42,17 +39,24 @@
     "node": ">=20"
   },
   "dependencies": {
-    "@commander-js/extra-typings": "~13.1.0",
-    "@langchain/langgraph-checkpoint-postgres": "^1.0.4",
-    "@skein-js/core": "workspace:*",
+    "@skein-js/agent-protocol": "workspace:*",
     "@skein-js/config": "workspace:*",
     "@skein-js/express": "workspace:*",
-    "@skein-js/runtime": "workspace:*",
-    "commander": "~13.1.0",
-    "vite": "^8.1.0"
+    "@skein-js/redis": "workspace:*",
+    "@skein-js/storage-memory": "workspace:*",
+    "@skein-js/storage-postgres": "workspace:*",
+    "cors": "^2.8.5"
   },
   "peerDependencies": {
-    "@langchain/langgraph": "^1.4.0"
+    "@langchain/langgraph": "^1.4.0",
+    "@langchain/langgraph-checkpoint-postgres": "^1.0.4"
+  },
+  "devDependencies": {
+    "@langchain/core": "^1.2.0",
+    "@langchain/langgraph": "^1.4.0",
+    "@langchain/langgraph-checkpoint-postgres": "^1.0.4",
+    "@skein-js/test-support": "workspace:*",
+    "@types/cors": "^2.8.17"
   },
   "publishConfig": {
     "access": "public"

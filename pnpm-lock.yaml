@@ -184,6 +184,12 @@ importers:
       '@commander-js/extra-typings':
         specifier: ~13.1.0
         version: 13.1.0(commander@13.1.0)
+      '@langchain/langgraph':
+        specifier: ^1.4.0
+        version: 1.4.7(@langchain/core@1.2.2(ws@8.21.0))(react-dom@19.2.6(react@19.2.6))(react@19.2.6)(zod@3.25.76)
+      '@langchain/langgraph-checkpoint-postgres':
+        specifier: ^1.0.4
+        version: 1.0.4(@langchain/core@1.2.2(ws@8.21.0))(@langchain/langgraph-checkpoint@1.1.3(@langchain/core@1.2.2(ws@8.21.0)))
       '@skein-js/config':
         specifier: workspace:*
         version: link:../config
@@ -193,6 +199,9 @@ importers:
       '@skein-js/express':
         specifier: workspace:*
         version: link:../server-express
+      '@skein-js/runtime':
+        specifier: workspace:*
+        version: link:../runtime
       commander:
         specifier: ~13.1.0
         version: 13.1.0
@@ -220,6 +229,46 @@ importers:
       '@langchain/langgraph-sdk':
         specifier: ^1.9.0
         version: 1.9.25(@langchain/core@1.2.2(ws@8.21.0))(react-dom@19.2.6(react@19.2.6))(react@19.2.6)
+
+  packages/runtime:
+    dependencies:
+      '@skein-js/agent-protocol':
+        specifier: workspace:*
+        version: link:../agent-protocol
+      '@skein-js/config':
+        specifier: workspace:*
+        version: link:../config
+      '@skein-js/express':
+        specifier: workspace:*
+        version: link:../server-express
+      '@skein-js/redis':
+        specifier: workspace:*
+        version: link:../runtime-redis
+      '@skein-js/storage-memory':
+        specifier: workspace:*
+        version: link:../storage-memory
+      '@skein-js/storage-postgres':
+        specifier: workspace:*
+        version: link:../storage-postgres
+      cors:
+        specifier: ^2.8.5
+        version: 2.8.6
+    devDependencies:
+      '@langchain/core':
+        specifier: ^1.2.0
+        version: 1.2.2(ws@8.21.0)
+      '@langchain/langgraph':
+        specifier: ^1.4.0
+        version: 1.4.7(@langchain/core@1.2.2(ws@8.21.0))(react-dom@19.2.6(react@19.2.6))(react@19.2.6)(zod@3.25.76)
+      '@langchain/langgraph-checkpoint-postgres':
+        specifier: ^1.0.4
+        version: 1.0.4(@langchain/core@1.2.2(ws@8.21.0))(@langchain/langgraph-checkpoint@1.1.3(@langchain/core@1.2.2(ws@8.21.0)))
+      '@skein-js/test-support':
+        specifier: workspace:*
+        version: link:../test-support
+      '@types/cors':
+        specifier: ^2.8.17
+        version: 2.8.19
 
   packages/runtime-redis:
     dependencies:
