@@ -80,9 +80,29 @@ Match the existing shape exactly (keep it boring and consistent):
 `"@skein-js/<name>"`, publishable metadata (`publishConfig.access: public`, `repository.directory`),
 and a path alias in [`tsconfig.base.json`](./tsconfig.base.json). `project.json` defines only
 `build` + `typecheck` (+ `test-integration` if it touches Postgres/Redis); `lint` and `test`
-are **inferred** by the Nx plugins from `eslint.config.mjs` and `vitest.config.ts`. Copy an
-existing package as the template. Prefer `nx g` generators where they fit; otherwise mirror a
-sibling.
+are **inferred** by the Nx plugins from `eslint.config.mjs` and `vitest.config.ts`.
+**Scaffold with the Nx CLI, never by hand:** `npx nx g @nx/js:lib <name> --directory=packages/<dir>
+--importPath=@skein-js/<name>`, then align the generated files to the `@skein-js/core` template. Do
+not create a package tree file-by-file.
+
+## Releasing
+
+Releases are cut with **`nx release`** (configured in [`nx.json`](./nx.json) as a _fixed_ group — every
+`packages/*` shares one version and one `v{version}` tag) and **published by CI, not locally**:
+
+```bash
+pnpm release:dry-run 0.3.0    # preview everything; changes nothing
+pnpm release 0.3.0            # or: patch | minor | major
+```
+
+`pnpm release <specifier>` runs a build + typecheck gate, bumps every package to the new version, writes
+`CHANGELOG.md`, commits, tags `v<version>`, pushes, and **creates a GitHub Release**. It does not publish
+(the script bakes in `--skip-publish`). Publishing to npm is triggered by that release:
+[`.github/workflows/release.yml`](.github/workflows/release.yml) runs on `release: published` and
+publishes each changed, non-private package with provenance via npm OIDC trusted publishing.
+
+Prerequisites: the git remote must point at `mainawycliffe/skein-js` (Nx derives the release repo from
+`origin`), and `gh` must be authenticated (or `GITHUB_TOKEN` set) for the GitHub Release step.
 
 ## Package map
 
@@ -107,6 +127,10 @@ Examples live in `examples/`: `chat-app` (flagship — research assistant + Next
 
 - **TypeScript strict**, ESM only, **named exports only** in `packages/*` (Next.js example excepted).
 - **Filenames** `kebab-case.ts`; types `PascalCase`, values `camelCase`.
+- **Names reveal purpose** — a reader knows what a symbol does from its name alone. No vague names
+  (`data`, `info`, `util`, `handle`, `manager`, `process`, `doIt`) and no unexplained abbreviations.
+  Functions read verb-first (`startRun`, `resolveGraph`, `mirrorThreadState`); values are nouns
+  (`activeRun`, `graphResolver`). Prefer a longer honest name over a short opaque one.
 - **Layout by feature** (`runs/`, `threads/`, `store/`), not by kind.
 - **Zod** at boundaries; typed error classes at edges.
 - **[Conventional Commits](https://www.conventionalcommits.org)** (`feat(core): …`), small focused PRs.
