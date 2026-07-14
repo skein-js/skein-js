@@ -154,25 +154,51 @@ Each is a runnable project; see its README to run it.
 | [`express-basic`](./examples/express-basic)           | Zero-setup `echo` + a Claude `agent` graph in one config                                                                                                     |
 | [`react-usestream`](./examples/react-usestream)       | Minimal `useStream` SSE-compatibility harness                                                                                                                |
 
-## Architecture
+## Packages
 
-An Nx monorepo of small packages:
+An Nx monorepo of small, single-purpose packages. Each has its own README with install
+instructions, a usage guide, and an API reference — **click the package name** to open it.
 
-Package names are the npm names; where the on-disk directory differs it's noted in parentheses.
+### Contract & engine
 
-| Package                                         | Purpose                                                                                                          |
-| ----------------------------------------------- | ---------------------------------------------------------------------------------------------------------------- |
-| `@skein-js/core`                                | The shared contract — Agent Protocol wire types, `SkeinStore` + queue/bus interfaces, edge error                 |
-| `@skein-js/agent-protocol`                      | Framework-agnostic Agent Protocol engine — run engine, handler table, SSE (the heart); independently publishable |
-| `@skein-js/config`                              | `langgraph.json` parser + graph loader (`path:export`)                                                           |
-| `@skein-js/runtime`                             | Assembles production `ProtocolDeps` (memory / Postgres / Redis) from `langgraph.json` for the CLI                |
-| `@skein-js/express` (`packages/server-express`) | Express adapter (v1)                                                                                             |
-| `@skein-js/fastify` / `@skein-js/nestjs`        | Additional adapters (planned)                                                                                    |
-| `@skein-js/storage-memory`                      | In-memory storage driver (dev/tests)                                                                             |
-| `@skein-js/storage-postgres`                    | Postgres driver + pgvector (prod)                                                                                |
-| `@skein-js/redis` (`packages/runtime-redis`)    | Redis job queue + cross-instance pub/sub streaming                                                               |
-| `skein-js` (`packages/cli`)                     | The CLI — `skein dev` / `up` / `build` / `dockerfile`                                                            |
-| `@skein-js/test-support`                        | _(private)_ Testcontainers helpers + shared `SkeinStore` conformance suite                                       |
+| Package                                                 | Purpose                                                                                                                    |
+| ------------------------------------------------------- | -------------------------------------------------------------------------------------------------------------------------- |
+| [`@skein-js/core`](./packages/core)                     | The shared contract — Agent Protocol wire types, the `SkeinStore` / queue / bus / auth interfaces, and the edge error type |
+| [`@skein-js/agent-protocol`](./packages/agent-protocol) | The framework-agnostic engine — run engine, handler table, SSE mapping. Depends only on `core`; independently publishable  |
+
+### Config & runtime wiring
+
+| Package                                   | Purpose                                                                                                   |
+| ----------------------------------------- | --------------------------------------------------------------------------------------------------------- |
+| [`@skein-js/config`](./packages/config)   | Loads an unchanged `langgraph.json`, validates it, and resolves each `path:export` graph + its schemas    |
+| [`@skein-js/runtime`](./packages/runtime) | Assembles a production `ProtocolDeps` (memory / Postgres / Redis) from `langgraph.json` — used by the CLI |
+
+### Storage & queue drivers
+
+| Package                                                     | Purpose                                                                                     |
+| ----------------------------------------------------------- | ------------------------------------------------------------------------------------------- |
+| [`@skein-js/storage-memory`](./packages/storage-memory)     | Zero-dependency in-memory `SkeinStore` + queue + bus (dev / tests)                          |
+| [`@skein-js/storage-postgres`](./packages/storage-postgres) | Postgres `SkeinStore` with **pgvector** semantic search; reuses `PostgresSaver` checkpoints |
+| [`@skein-js/redis`](./packages/runtime-redis)               | Redis job queue (BullMQ) + cross-instance pub/sub streaming bus                             |
+
+### HTTP adapters
+
+| Package                                          | Purpose                                                  |
+| ------------------------------------------------ | -------------------------------------------------------- |
+| [`@skein-js/express`](./packages/server-express) | Express adapter — the v1 framework adapter (ships today) |
+| [`@skein-js/fastify`](./packages/server-fastify) | Fastify adapter — 🗺️ planned                             |
+| [`@skein-js/nestjs`](./packages/server-nestjs)   | NestJS adapter — 🗺️ planned                              |
+
+### CLI & tooling
+
+| Package                                             | Purpose                                                                        |
+| --------------------------------------------------- | ------------------------------------------------------------------------------ |
+| [`skein-js`](./packages/cli)                        | The `skein` CLI — `dev` / `up` / `build` / `dockerfile`                        |
+| [`@skein-js/test-support`](./packages/test-support) | _(private)_ Testcontainers helpers + the shared `SkeinStore` conformance suite |
+
+> Package names are the npm names; a few on-disk directories differ (`@skein-js/express` →
+> `packages/server-express`, `@skein-js/redis` → `packages/runtime-redis`, `skein-js` →
+> `packages/cli`). The links above point at the directories.
 
 Read the full design in [`docs/`](./docs):
 

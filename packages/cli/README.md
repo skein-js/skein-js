@@ -57,12 +57,12 @@ npx skein dev --port 2024
 
 ### Commands
 
-| Command            | What it does                                                   | Key flags                                                                                                                          |
-| ------------------ | -------------------------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------- |
-| `skein dev`        | In-process dev server, hot reload, no Docker.                  | `-p, --port` (2024) · `--host` (127.0.0.1) · `--no-reload` · `--no-persist` · `--store memory\|postgres` · `--queue memory\|redis` |
-| `skein up`         | Self-hosted stack via Docker Compose (app + Postgres + Redis). | `-p, --port` (8123) · `--host` (0.0.0.0)                                                                                           |
-| `skein build`      | Build a deployable Docker image from the config.               | `-t, --tag` (defaults to the project dir name)                                                                                     |
-| `skein dockerfile` | Emit a standalone Dockerfile (stdout by default).              | `-o, --output <path>`                                                                                                              |
+| Command            | What it does                                                   | Key flags                                                                                                                                            |
+| ------------------ | -------------------------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `skein dev`        | In-process dev server, hot reload, no Docker.                  | `-p, --port` (2024) · `--host` (127.0.0.1) · `--no-reload` · `--no-persist` · `--store memory\|postgres` · `--queue memory\|redis` · `-v, --verbose` |
+| `skein up`         | Self-hosted stack via Docker Compose (app + Postgres + Redis). | `-p, --port` (8123) · `--host` (0.0.0.0)                                                                                                             |
+| `skein build`      | Build a deployable Docker image from the config.               | `-t, --tag` (defaults to the project dir name)                                                                                                       |
+| `skein dockerfile` | Emit a standalone Dockerfile (stdout by default).              | `-o, --output <path>`                                                                                                                                |
 
 All commands take `-c, --config <path>` (default `langgraph.json`).
 

@@ -1,12 +1,22 @@
 # @skein-js/runtime
 
-Assembles a skein-js [`ProtocolDeps`](../agent-protocol/src/deps.ts) from a `langgraph.json`
-plus a chosen set of drivers, and hands it to any framework adapter through the injectable
-`{ deps }` seam. This is the piece that lets `skein dev` and `skein up` run the **same** engine
-against either the zero-setup in-memory drivers or production-shaped Postgres + Redis.
+> Assembles a production `ProtocolDeps` (memory / Postgres / Redis) from a `langgraph.json`.
+
+Part of **[skein-js](https://github.com/mainawycliffe/skein)** — a TypeScript [Agent Protocol](https://github.com/langchain-ai/agent-protocol) server for [LangGraph.js](https://github.com/langchain-ai/langgraphjs), and a drop-in replacement for the LangGraph CLI.
+
+**Status:** 🚧 Pre-alpha — implemented; the assembler behind `skein dev` and `skein up`.
+
+## What it does
+
+`buildRuntime()` assembles a [`ProtocolDeps`](../agent-protocol) from a `langgraph.json` plus a chosen
+store/queue driver, and hands it to any framework adapter through the injectable `{ deps }` seam.
+This is the one place a production driver combination is selected — so `skein dev` and `skein up` run
+the **same** engine against either the zero-setup in-memory drivers or production-shaped
+Postgres + Redis. The engine itself stays driver-agnostic.
 
 ```ts
 import { buildRuntime } from "@skein-js/runtime";
+import { createExpressServer } from "@skein-js/express";
 
 const runtime = await buildRuntime({
   configPath: "/abs/path/to/langgraph.json",
@@ -15,18 +25,51 @@ const runtime = await buildRuntime({
 });
 
 const server = await createExpressServer({ deps: runtime.deps, cors: runtime.cors });
-// ... on shutdown:
+await server.listen(2024);
+// …on shutdown:
 await runtime.dispose();
 ```
 
-- **`store: "postgres"`** connects `PostgresSkeinStore` (from `DATABASE_URL`), runs its
-  migrations, and uses `PostgresSaver` as the LangGraph checkpointer.
-- **`queue: "redis"`** uses the BullMQ run queue + Redis Streams/pub-sub event bus (`REDIS_URL`).
-- **`store: "memory"` + `queue: "memory"`** delegates to `@skein-js/express`'s reloadable
-  in-memory runtime, so `skein dev`'s hot-reload and cross-restart state persistence still work.
+`store` and `queue` are **required** (no defaults — the CLI supplies its own flag defaults). The
+driver branches:
 
-Graph hot-reload (`reloadGraphs()`) works in every mode; `snapshotState`/`hydrateState` are
-present only in all-memory mode (durable stores keep their own state).
+- **`store: "postgres"`** connects `PostgresSkeinStore` (from `DATABASE_URL`), runs its migrations,
+  and uses `PostgresSaver` as the LangGraph checkpointer.
+- **`queue: "redis"`** uses the BullMQ run queue + Redis Streams/pub-sub event bus (from `REDIS_URL`).
+- **`store: "memory"` + `queue: "memory"`** delegates to [`@skein-js/express`](../server-express)'s
+  reloadable in-memory runtime, so `skein dev`'s hot-reload and cross-restart state persistence work.
+
+A missing `DATABASE_URL` / `REDIS_URL` throws `RuntimeConfigError`; if assembly fails part-way, any
+resources already created are disposed before rethrowing, so a failed build leaks nothing.
+
+Graph hot-reload (`reloadGraphs()`) works in every mode; `snapshotState`/`hydrateState` are present
+**only** in all-memory mode (durable stores keep their own state).
+
+> `createExpressServer` is imported from [`@skein-js/express`](../server-express), not from here.
+> The shipped `examples/` call `createExpressServer({ config })` directly (the config-path form,
+> which uses the in-memory runtime under the hood); `buildRuntime` is the path the CLI uses to add
+> Postgres/Redis.
+
+## Install
+
+```bash
+pnpm add @skein-js/runtime
+```
+
+Peer dependencies: `@langchain/langgraph` and `@langchain/langgraph-checkpoint-postgres`. Loading
+TypeScript graphs/embedders requires passing an `importModule` (the CLI injects a vite loader).
+
+## API
+
+- **`buildRuntime(options): Promise<SkeinRuntime>`** — `options`:
+  `{ configPath, store, queue, importModule? }`.
+- **`interface SkeinRuntime`** — `{ deps, cors?, reloadGraphs(), dispose(), snapshotState?(), hydrateState?() }`
+  (the last two only in all-memory mode).
+- **`type StoreDriver`** = `"memory" | "postgres"` · **`type QueueDriver`** = `"memory" | "redis"`.
+- **`class RuntimeConfigError`** — thrown when a driver's env var or `store.index.embed` can't be
+  resolved.
+- **`resolveEmbed(embed, { configDir, importModule? })`** — resolves a `langgraph.json`
+  `store.index.embed` to an `EmbedFunction` (see below); exported for reuse/testing.
 
 ## Semantic search (`store.index.embed`)
 
@@ -42,5 +85,14 @@ LangGraph CLI documents:
   `(texts: string[]) => number[][]` (the shape LangGraph documents) or a LangChain `Embeddings`
   instance. Resolved through the same `path:export` loader used for graphs — no extra dependency.
 
-`store.index.dims` is required whenever `embed` is set. Without a `store.index`, Postgres search
-falls back to naive text matching (identical to the memory driver).
+`store.index.dims` is required whenever `embed` is set. Without a `store.index`, Postgres search falls
+back to naive text matching (identical to the memory driver).
+
+## Learn more
+
+- [Storage](../../docs/storage.md) · [Runs & Redis](../../docs/runs-and-redis.md) · [LangGraph CLI compatibility](../../docs/langgraph-cli-compat.md)
+- [skein-js overview](../../docs/index.md) · [Reuse-first architecture](../../docs/reuse.md)
+
+## License
+
+[Apache-2.0](../../LICENSE)

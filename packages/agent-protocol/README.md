@@ -1,23 +1,28 @@
 # @skein-js/agent-protocol
 
-A framework-agnostic implementation of LangChain's [**Agent
-Protocol**](https://github.com/langchain-ai/agent-protocol) for [LangGraph.js](https://langchain-ai.github.io/langgraphjs/).
+> The framework-agnostic Agent Protocol **engine** — run engine, handler table, and SSE mapping. The heart of skein-js.
 
-This package is the **run engine + protocol handler table + SSE mapping**, and nothing else. It has
-no opinion about your HTTP framework, your database, your queue, or your CLI — every collaborator is
-**injected**. Give it a store, a queue, an event bus, a checkpointer, and a way to resolve graphs,
-and it will serve assistants, threads, the three run modes (wait / stream / background), the store,
-and human-in-the-loop interrupt/resume — wire-compatible with the official `@langchain/langgraph-sdk`
+Part of **[skein-js](https://github.com/mainawycliffe/skein)** — a TypeScript [Agent Protocol](https://github.com/langchain-ai/agent-protocol) server for [LangGraph.js](https://github.com/langchain-ai/langgraphjs), and a drop-in replacement for the LangGraph CLI.
+
+**Status:** 🚧 Pre-alpha — implemented. Depends only on the [`@skein-js/core`](../core) contracts and is designed to be consumed on its own.
+
+## What it does
+
+The **run engine + protocol handler table + SSE mapping**, and nothing else. It has no opinion about
+your HTTP framework, your database, your queue, or your CLI — every collaborator is **injected**.
+Give it a store, a queue, an event bus, a checkpointer, and a way to resolve graphs, and it serves
+assistants, threads, the three run modes (wait / stream / background), the store, and
+human-in-the-loop interrupt/resume — wire-compatible with the official `@langchain/langgraph-sdk`
 client.
-
-It powers [skein-js](https://github.com/mainawycliffe/skein), but it depends only on the `@skein-js/core`
-contracts and is designed to be consumed on its own.
 
 ## Install
 
 ```sh
 npm install @skein-js/agent-protocol @skein-js/core @langchain/langgraph @langchain/langgraph-sdk
 ```
+
+`@langchain/langgraph` and `@langchain/langgraph-sdk` are peer dependencies; `@skein-js/core` is a
+regular dependency you should pin alongside.
 
 ## Usage
 
@@ -26,10 +31,11 @@ import { createProtocolRuntime } from "@skein-js/agent-protocol";
 
 const runtime = createProtocolRuntime({
   store, // a SkeinStore (e.g. @skein-js/storage-memory, @skein-js/storage-postgres)
-  graphs, // a GraphResolver — load(graphId) + schemas(graphId) (e.g. @skein-js/config's registry)
+  graphs, // a GraphResolver — ids + load(id) + schemas(id) (e.g. @skein-js/config's registry)
   queue, // a RunQueue for background runs
   bus, // a RunEventBus for streaming fan-out
   checkpointer, // a LangGraph BaseCheckpointSaver (MemorySaver in dev)
+  // optional: auth, logger, clock, logRunActivity, runTimeoutMs
 });
 
 // One-time startup: register an assistant per graph, then start processing background runs.
@@ -51,22 +57,59 @@ runtime.worker.start();
 
 `createProtocolRuntime` builds the service, handlers, and background worker over **one shared
 context**, so cancelling a run through the service actually aborts it in the worker. Use the
-individual `createProtocolService` / `createProtocolHandlers` factories only when you don't run a
-worker in the same process.
+individual `createProtocolService` / `createProtocolHandlers` / `createRunWorker` factories only when
+you don't run a worker in the same process.
 
 ### The injected contract (`ProtocolDeps`)
 
-| Dependency     | Contract (from `@skein-js/core`)               | Responsibility                                         |
-| -------------- | ---------------------------------------------- | ------------------------------------------------------ |
-| `store`        | `SkeinStore`                                   | Protocol resource rows (assistants/threads/runs/store) |
-| `graphs`       | `GraphResolver`                                | Resolve a `graph_id` to a compiled graph + schemas     |
-| `queue`        | `RunQueue`                                     | Hand background runs to a worker                       |
-| `bus`          | `RunEventBus`                                  | Fan run frames out to streaming clients                |
-| `checkpointer` | `BaseCheckpointSaver` (`@langchain/langgraph`) | Graph state, history, and interrupt/resume             |
+| Dependency        | Type                                           | Responsibility                                                           |
+| ----------------- | ---------------------------------------------- | ------------------------------------------------------------------------ |
+| `store`           | `SkeinStore` (core)                            | Protocol resource rows (assistants/threads/runs/store)                   |
+| `graphs`          | `GraphResolver` (this package)                 | Resolve a `graph_id` to a compiled graph + schemas                       |
+| `queue`           | `RunQueue` (core)                              | Hand background runs to a worker                                         |
+| `bus`             | `RunEventBus` (core)                           | Fan run frames out to streaming clients                                  |
+| `checkpointer`    | `BaseCheckpointSaver` (`@langchain/langgraph`) | Graph state, history, and interrupt/resume                               |
+| `auth?`           | `AuthEngine` (core)                            | Per-request 401/403 + ownership filtering; absent = all allowed          |
+| `logger?`         | `Logger` (this package)                        | Structured logging; default no-op                                        |
+| `clock?`          | `Clock`                                        | Time source; default `() => new Date()`                                  |
+| `logRunActivity?` | `boolean`                                      | Log per-run start/finish, tool calls, interrupts (`skein dev --verbose`) |
+| `runTimeoutMs?`   | `number`                                       | Optional per-run wall-clock timeout → `"timeout"`                        |
 
 Graph **state, history, and interrupt/resume are 100% LangGraph-native** via the checkpointer. The
 `SkeinStore` owns only the protocol resource rows — it is deliberately not the checkpointer.
 
+## API
+
+- **Entry points:** `createProtocolRuntime(deps, options?)` → `{ service, handlers, worker }`;
+  `createProtocolService` / `buildProtocolService`; `createProtocolHandlers`; `createContext`;
+  `createRunWorker(ctx, options?)` (`RunWorkerOptions`: `maxConcurrency`, `shutdownGraceMs`).
+- **Service surface** (`runtime.service`): `assistants` (`registerGraphAssistants`, `get`, `list`,
+  `search`, `schemas`), `threads` (`create`/`get`/`list`/`patch`/`delete`/`history`/`getState`),
+  `threadStream` (`stream` / `joinStream` / `command` — HIL resume, requires status `interrupted`),
+  `runs` (`createWait`/`createStream`/`createBackground`/`get`/`listByThread`/`cancel`/`delete`/`join`/`finalStatus`),
+  `store` (`put`/`get`/`delete`/`search`/`listNamespaces`).
+- **Transport types:** `ProtocolRequest`, `ProtocolResponse` (`json` | `empty` | `sse`),
+  `ProtocolHandler`, `ProtocolHandlers`.
+- **`SkeinBaseStore`** — bridges a `StoreRepo` into a LangGraph `BaseStore`, so graph nodes reach
+  long-term memory via `getStore()`. The engine attaches one to every run.
+- **SSE helpers** (for adapters writing the stream themselves): `SSE_HEADERS`, `encodeFrame`,
+  `encodeTerminal`, `toSseEvents`, `parseAfterSeq`.
+
+> **Note on duplicate type names.** `GraphResolver`, `CompiledGraphFactory`, `ResolvedGraph`, and
+> `GraphSchemas` are exported here _and_ (structurally compatible copies) by [`@skein-js/config`](../config).
+> `config`'s `GraphRegistry` satisfies this package's `GraphResolver` at wire-up time.
+
+## Reuse
+
+Runs graphs through `@langchain/langgraph` (`invoke`/`stream`, interrupts/resume) and uses the
+injected `BaseCheckpointSaver` for state/history — never a reimplemented runtime. Wire types come
+from `@langchain/langgraph-sdk` via [`@skein-js/core`](../core).
+
+## Learn more
+
+- [Agent Protocol surface](../../docs/agent-protocol.md) · [Streaming (SSE)](../../docs/streaming.md) · [Runs & Redis](../../docs/runs-and-redis.md)
+- [skein-js overview](../../docs/index.md) · [Reuse-first architecture](../../docs/reuse.md)
+
 ## License
 
-Apache-2.0
+[Apache-2.0](../../LICENSE)
