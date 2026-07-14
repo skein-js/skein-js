@@ -1,0 +1,76 @@
+name: Release
+
+# Publishing a GitHub Release publishes every changed package to npm. Steady state is tokenless via
+# npm Trusted Publishing (OIDC) + provenance. The FIRST publish of a brand-new package name can't use
+# OIDC (npm requires the package to exist before you can attach a trusted publisher), so this workflow
+# also accepts an `NPM_TOKEN` secret for that one-time bootstrap — remove it once every package exists
+# and its trusted publisher is configured.
+
+on:
+  release:
+    types: [published]
+  workflow_dispatch: # manual re-run
+
+permissions:
+  contents: read
+  id-token: write # required for OIDC trusted publishing + provenance
+
+jobs:
+  publish:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: pnpm/action-setup@v4
+      - uses: actions/setup-node@v4
+        with:
+          # Trusted publishing needs Node >= 22.14 and npm >= 11.5.1 (installed below). No
+          # `registry-url` here on purpose: it would write an empty _authToken line that defeats OIDC.
+          node-version: 22.14.0
+
+      # OIDC trusted publishing requires npm >= 11.5.1; the Node 22 bundle ships an older npm.
+      - run: npm install -g npm@latest
+      - run: pnpm install --frozen-lockfile
+
+      # Build + typecheck as a release gate (tests run on PRs via ci.yml).
+      - run: pnpm exec nx run-many -t build typecheck --output-style=stream
+
+      # Bootstrap only: if an NPM_TOKEN secret is set, use it. Otherwise leave npm to authenticate via
+      # OIDC (no token line at all — an empty one would break trusted publishing).
+      - name: Configure token auth (bootstrap only)
+        env:
+          NPM_TOKEN: ${{ secrets.NPM_TOKEN }}
+        run: |
+          if [ -n "$NPM_TOKEN" ]; then
+            echo "//registry.npmjs.org/:_authToken=${NPM_TOKEN}" >> "$HOME/.npmrc"
+            echo "Authenticating with NPM_TOKEN (bootstrap)."
+          else
+            echo "No NPM_TOKEN — publishing via OIDC trusted publishing."
+          fi
+
+      # Pack with pnpm (rewrites workspace:* → the real version) so npm can publish a correct tarball;
+      # publish with npm (OIDC + provenance). Private packages and already-published versions are
+      # skipped, so a re-run after a partial failure is safe.
+      - name: Pack and publish changed packages
+        run: |
+          set -euo pipefail
+          mkdir -p "$RUNNER_TEMP/tarballs"
+          for dir in packages/*/; do
+            pkg="${dir}package.json"
+            name=$(node -p "require('./$pkg').name")
+            version=$(node -p "require('./$pkg').version")
+            private=$(node -p "require('./$pkg').private === true")
+            if [ "$private" = "true" ]; then
+              echo "skip $name (private)"; continue
+            fi
+            if npm view "$name@$version" version >/dev/null 2>&1; then
+              echo "skip $name@$version (already on npm)"; continue
+            fi
+            echo "pack $name@$version"
+            (cd "$dir" && pnpm pack --pack-destination "$RUNNER_TEMP/tarballs")
+          done
+          shopt -s nullglob
+          for tgz in "$RUNNER_TEMP"/tarballs/*.tgz; do
+            echo "publish $tgz"
+            npm publish "$tgz" --access public --provenance
+          done
