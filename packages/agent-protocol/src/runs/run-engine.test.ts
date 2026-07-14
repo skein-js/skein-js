@@ -85,4 +85,20 @@ describe("executeRun", () => {
     // If close() never ran, this await would hang; the test timeout would catch it.
     await expect(framesPromise).resolves.toBeInstanceOf(Array);
   });
+
+  it("injects a BaseStore so a node can use getStore() for long-term memory", async () => {
+    const { deps, run, kwargs } = await seed(createFixtureDeps(), "store", {
+      value: "remember me",
+    });
+    const control = new RunControlRegistry().register(run.run_id);
+
+    const outcome = await executeRun(deps, { run, kwargs, control });
+
+    // The node read back what it wrote through the injected store.
+    expect(outcome.status).toBe("success");
+    expect(outcome.values).toEqual({ value: "stored: remember me" });
+    // And the write is visible on the underlying SkeinStore — same store, two access paths.
+    const item = await deps.store.store.get(["memories"], "note");
+    expect(item?.value).toEqual({ text: "remember me" });
+  });
 });

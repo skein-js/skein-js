@@ -15,13 +15,14 @@ describe("assistant service", () => {
       "echo",
       "interrupting",
       "slow",
+      "store",
       "throwing",
     ]);
     expect((await service.get("echo")).graph_id).toBe("echo");
 
     // Second registration doesn't duplicate.
     await service.registerGraphAssistants();
-    expect((await service.list()).length).toBe(4);
+    expect((await service.list()).length).toBe(5);
   });
 
   it("returns schemas for a known assistant and 404s an unknown one", async () => {

@@ -39,6 +39,10 @@ export type {
 // Service input/output types (useful when building an adapter or driving the service directly).
 export type { AssistantSearch, AssistantService } from "./assistants/assistant-service.js";
 export type { StoreService } from "./store/store-service.js";
+
+// The LangGraph `BaseStore` bridge over a skein `StoreRepo`, injected into every graph run so nodes
+// reach long-term memory via `getStore()`. Exported for direct use in tests and embeddings.
+export { SkeinBaseStore } from "./store/skein-base-store.js";
 export type {
   CreateThreadInput,
   HistoryOptions,

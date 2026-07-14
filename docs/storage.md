@@ -34,6 +34,29 @@ Each repo exposes CRUD + list/search shaped to the [Agent Protocol](./agent-prot
 endpoints. All drivers are validated against **one shared conformance test suite**, so
 memory and Postgres behave identically.
 
+### Long-term memory in the graph (`getStore()`)
+
+The `store` repo isn't only reachable over the `/store/items` HTTP endpoints — it is also injected
+into **every graph run** as a LangGraph [`BaseStore`](https://langchain-ai.github.io/langgraphjs/reference/classes/checkpoint.BaseStore.html),
+alongside the checkpointer. A node reads and writes cross-thread memory the LangGraph-native way:
+
+```ts
+import { getStore } from "@langchain/langgraph";
+
+async function remember(state) {
+  const store = getStore(); // the run's SkeinStore.store, as a BaseStore
+  await store.put(["memories", userId], "prefs", { units: "metric" });
+  const hits = await store.search(["memories", userId], { query: "units" }); // pgvector in Postgres
+  return { ... };
+}
+```
+
+This is what makes skein a faithful drop-in: LangGraph Platform auto-provides a store to graphs, so
+a graph that calls `getStore()` runs unchanged on skein. The bridge is `SkeinBaseStore` in
+[`@skein-js/agent-protocol`](../packages/agent-protocol), attached in the run engine the same way the
+checkpointer is. Semantic `search` uses pgvector on the Postgres driver and a naive scan on memory —
+both come from the same `StoreRepo`, so behavior matches.
+
 ## Drivers
 
 ### `@skein-js/storage-memory` (dev/tests)

@@ -5,6 +5,7 @@
 import {
   Annotation,
   type CompiledGraph,
+  getStore,
   type LangGraphRunnableConfig,
   interrupt,
   StateGraph,
@@ -56,10 +57,28 @@ export const slowGraph: CompiledGraph<string> = new StateGraph(ValueState)
   .addEdge("wait", "__end__")
   .compile() as unknown as CompiledGraph<string>;
 
+/**
+ * Writes its input to the injected long-term store via `getStore()`, then reads it back — proves the
+ * engine attaches a `BaseStore` to each run (see `SkeinBaseStore`), the way LangGraph Platform does.
+ */
+export const storeGraph: CompiledGraph<string> = new StateGraph(ValueState)
+  .addNode("remember", async (state) => {
+    const store = getStore();
+    if (!store) throw new Error("expected an injected store");
+    await store.put(["memories"], "note", { text: state.value });
+    const item = await store.get(["memories"], "note");
+    const text = (item?.value as { text?: string } | undefined)?.text ?? "?";
+    return { value: `stored: ${text}` };
+  })
+  .addEdge("__start__", "remember")
+  .addEdge("remember", "__end__")
+  .compile() as unknown as CompiledGraph<string>;
+
 /** The fixture graphs keyed by graph id, for a test `GraphResolver`. */
 export const fixtureGraphs: Record<string, CompiledGraph<string>> = {
   echo: echoGraph,
   interrupting: interruptingGraph,
   throwing: throwingGraph,
   slow: slowGraph,
+  store: storeGraph,
 };

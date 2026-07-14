@@ -26,6 +26,7 @@ import {
 import type { ResolvedDeps } from "../deps.js";
 import { serializeError } from "../normalize-error.js";
 import { chunkToFrameBody, toRunFrame } from "../sse/run-frame-stream.js";
+import { SkeinBaseStore } from "../store/skein-base-store.js";
 import { runStatusForSnapshot, snapshotToThreadUpdate } from "../threads/thread-mirror.js";
 
 import type { RunControl } from "./cancellation.js";
@@ -48,8 +49,9 @@ type StreamOptions = Parameters<CompiledGraph<string>["stream"]>[1];
 
 /**
  * Resolve an assistant's graph, invoking a factory export with the run's configurable, then attach
- * the injected checkpointer so state, history, and interrupt/resume persist for this thread. This
- * mirrors how `@langchain/langgraph-api` injects its saver onto the compiled graph.
+ * the injected checkpointer (thread state, history, interrupt/resume) and the long-term store
+ * (cross-thread memory via `getStore()`). Both mirror how `@langchain/langgraph-api` injects its
+ * saver and store onto the compiled graph, so a graph written for LangGraph Platform runs unchanged.
  */
 async function resolveGraph(
   deps: ResolvedDeps,
@@ -62,6 +64,7 @@ async function resolveGraph(
       ? await resolved({ configurable: kwargs.config?.configurable })
       : resolved;
   (graph as { checkpointer?: unknown }).checkpointer = deps.checkpointer;
+  (graph as { store?: unknown }).store = new SkeinBaseStore(deps.store.store);
   return graph;
 }
 

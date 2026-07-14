@@ -10,13 +10,13 @@ instead of hand-writing (or regenerating) a parallel set. See [reuse.md](./reuse
 
 ## Core resources
 
-| Resource                | Description                                                                                                                  |
-| ----------------------- | ---------------------------------------------------------------------------------------------------------------------------- |
-| **Assistants / agents** | A served graph plus its introspectable input/output/state/config schemas.                                                    |
-| **Threads**             | Multi-turn conversation containers with persistent state and history; track status (`idle`, `busy`, `interrupted`, `error`). |
-| **Runs**                | Atomic executions of a graph — stateless (ephemeral), streaming, or background.                                              |
-| **Store**               | Long-term memory organized by namespace + key, with CRUD and (semantic) search.                                              |
-| **Messages**            | First-class primitives aligned with OpenAI/Anthropic formats.                                                                |
+| Resource                | Description                                                                                                                                                                                                       |
+| ----------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| **Assistants / agents** | A served graph plus its introspectable input/output/state/config schemas.                                                                                                                                         |
+| **Threads**             | Multi-turn conversation containers with persistent state and history; track status (`idle`, `busy`, `interrupted`, `error`).                                                                                      |
+| **Runs**                | Atomic executions of a graph — stateless (ephemeral), streaming, or background.                                                                                                                                   |
+| **Store**               | Long-term memory organized by namespace + key, with CRUD and (semantic) search. Also injected into graph runs as a LangGraph `BaseStore` — see [storage.md](./storage.md#long-term-memory-in-the-graph-getstore). |
+| **Messages**            | First-class primitives aligned with OpenAI/Anthropic formats.                                                                                                                                                     |
 
 ## Endpoint inventory
 

@@ -44,7 +44,11 @@ export interface Logger {
 
 /** Everything the engine, services, and handlers need — all injected, no globals. */
 export interface ProtocolDeps {
-  /** Protocol resource rows (assistants, threads, runs, store items). */
+  /**
+   * Protocol resource rows (assistants, threads, runs, store items). Its `store` repo is also
+   * bridged into each graph run as a LangGraph `BaseStore` (see `SkeinBaseStore`), so graph nodes
+   * reach long-term cross-thread memory via `getStore()`.
+   */
   store: SkeinStore;
   /** Resolves graph ids to runnable graphs and their schemas. */
   graphs: GraphResolver;
