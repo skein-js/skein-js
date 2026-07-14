@@ -40,7 +40,11 @@
   },
   "dependencies": {
     "@skein-js/core": "workspace:*",
-    "ioredis": ">=5.4.0"
+    "ioredis": ">=5.4.0",
+    "bullmq": ">=5.0.0"
+  },
+  "devDependencies": {
+    "@skein-js/test-support": "workspace:*"
   },
   "publishConfig": {
     "access": "public"

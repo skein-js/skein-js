@@ -11,6 +11,15 @@ async function serviceWithAssistants(deps = createFixtureDeps()) {
   return { ctx, service };
 }
 
+async function waitFor(predicate: () => boolean, timeoutMs = 2000): Promise<void> {
+  const start = Date.now();
+  while (Date.now() - start < timeoutMs) {
+    if (predicate()) return;
+    await new Promise((resolve) => setTimeout(resolve, 10));
+  }
+  throw new Error("timed out waiting for condition");
+}
+
 describe("run service", () => {
   it("createWait runs to completion and returns the final values", async () => {
     const { service } = await serviceWithAssistants();
@@ -42,8 +51,17 @@ describe("run service", () => {
       input: {},
     });
 
+    // createBackground does not run inline — the run is left pending for a worker.
     expect(run.status).toBe("pending");
-    expect(await deps.queue.dequeue()).toEqual({ run_id: run.run_id, thread_id: thread.thread_id });
+
+    // The exact QueuedRun is on the queue: a consumer receives it.
+    const received: unknown[] = [];
+    const consumer = deps.queue.consume(async (queued) => {
+      received.push(queued);
+    });
+    await waitFor(() => received.length === 1);
+    await consumer.close();
+    expect(received[0]).toEqual({ run_id: run.run_id, thread_id: thread.thread_id });
   });
 
   it("rejects a second concurrent run on the same thread with a 409", async () => {

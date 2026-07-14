@@ -1,7 +1,12 @@
 import type { RunFrame } from "@skein-js/core";
+import { runRunEventBusConformance, runRunQueueConformance } from "@skein-js/test-support";
 import { describe, expect, it } from "vitest";
 
 import { MemoryRunEventBus, MemoryRunQueue } from "./memory-queue.js";
+
+// Prove the memory queue/bus satisfy the shared contract; `@skein-js/redis` runs this same suite.
+runRunQueueConformance("memory", () => new MemoryRunQueue());
+runRunEventBusConformance("memory", () => new MemoryRunEventBus());
 
 const frame = (seq: number): RunFrame => ({ seq, event: "values", data: { seq } });
 
@@ -12,14 +17,32 @@ async function collect(iterable: AsyncIterable<RunFrame>): Promise<RunFrame[]> {
 }
 
 describe("MemoryRunQueue", () => {
-  it("dequeues in FIFO order and returns null when empty", async () => {
+  it("runs jobs up to the configured concurrency, no more", async () => {
     const queue = new MemoryRunQueue();
-    await queue.enqueue({ run_id: "1", thread_id: "t" });
-    await queue.enqueue({ run_id: "2", thread_id: "t" });
+    let active = 0;
+    let peak = 0;
+    const release: Array<() => void> = [];
+    const consumer = queue.consume(
+      async () => {
+        active += 1;
+        peak = Math.max(peak, active);
+        await new Promise<void>((resolve) => release.push(resolve));
+        active -= 1;
+      },
+      { concurrency: 2 },
+    );
+    for (const run_id of ["a", "b", "c"]) await queue.enqueue({ run_id, thread_id: "t" });
 
-    expect((await queue.dequeue())?.run_id).toBe("1");
-    expect((await queue.dequeue())?.run_id).toBe("2");
-    expect(await queue.dequeue()).toBeNull();
+    // Only 2 run at once; the third waits behind them.
+    await new Promise((resolve) => setTimeout(resolve, 50));
+    expect(peak).toBe(2);
+    expect(release).toHaveLength(2);
+
+    while (release.length) release.shift()?.(); // let the first two finish so the third starts
+    await new Promise((resolve) => setTimeout(resolve, 50));
+    while (release.length) release.shift()?.();
+    await consumer.close();
+    expect(peak).toBe(2);
   });
 });
 

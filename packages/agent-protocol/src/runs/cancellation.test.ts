@@ -8,6 +8,7 @@ import { buildProtocolService } from "../service.js";
 
 import { RunControlRegistry } from "./cancellation.js";
 import { executeRun } from "./run-engine.js";
+import { createRunWorker } from "./run-worker.js";
 
 const tick = (ms = 20) => new Promise((resolve) => setTimeout(resolve, ms));
 
@@ -43,7 +44,9 @@ describe("cancellation", () => {
 
   it("cancels a pending background run so the worker skips it", async () => {
     const deps = createFixtureDeps();
-    const service = await serviceWithAssistants(deps);
+    const ctx = createContext(deps);
+    const service = buildProtocolService(ctx);
+    await service.assistants.registerGraphAssistants();
     const thread = await service.threads.create();
     const run = await service.runs.createBackground(thread.thread_id, {
       assistant_id: "echo",
@@ -52,8 +55,16 @@ describe("cancellation", () => {
 
     const cancelled = await service.runs.cancel(run.run_id);
     expect(cancelled.status).toBe("error");
-    // The queued job is still there, but it's terminal, so the worker would skip it.
-    expect(await deps.queue.dequeue()).toEqual({ run_id: run.run_id, thread_id: thread.thread_id });
+
+    // The job is still queued, but terminal — a running worker consumes and skips it (stays error).
+    const worker = createRunWorker(ctx);
+    worker.start();
+    try {
+      await tick(80);
+      expect((await service.runs.get(run.run_id)).status).toBe("error");
+    } finally {
+      await worker.stop();
+    }
   });
 
   it("times out a run that overruns runTimeoutMs", async () => {

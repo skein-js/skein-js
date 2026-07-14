@@ -1,4 +1,10 @@
-// @skein-js/storage-postgres — Postgres SkeinStore driver with pgvector + PostgresSaver checkpointer.
-// TODO(Phase 1): implement. See docs/ for the design.
+// @skein-js/storage-postgres — Postgres SkeinStore driver with pgvector semantic search.
+// Graph checkpoints stay LangGraph-native via PostgresSaver (not part of this store).
+// See docs/storage.md and docs/testing.md.
 
-export const packageName = "@skein-js/storage-postgres";
+export {
+  PostgresSkeinStore,
+  type EmbedFunction,
+  type PostgresSkeinStoreOptions,
+  type StoreIndexConfig,
+} from "./postgres-skein-store.js";

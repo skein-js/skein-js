@@ -43,7 +43,15 @@ export type {
 export { isTerminalRunStatus, TERMINAL_RUN_STATUSES } from "./store/skein-store.js";
 
 // Run queue + streaming pub/sub contract.
-export type { QueuedRun, RunEventBus, RunFrame, RunQueue } from "./queue/queue.js";
+export type {
+  QueuedRun,
+  RunConsumer,
+  RunConsumerOptions,
+  RunEventBus,
+  RunFrame,
+  RunProcessor,
+  RunQueue,
+} from "./queue/queue.js";
 
 // Outbound JSON serializer that flattens LangChain messages to the Agent Protocol wire shape.
 export { serializeWireJson } from "./wire/serialize-wire-json.js";

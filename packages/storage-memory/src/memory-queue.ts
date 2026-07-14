@@ -2,18 +2,79 @@
 // beyond Node. `@skein-js/redis` provides the cross-instance versions; the run engine talks only
 // to the `@skein-js/core` interfaces, so it is unaware which one it has.
 
-import type { QueuedRun, RunEventBus, RunFrame, RunQueue } from "@skein-js/core";
+import type {
+  QueuedRun,
+  RunConsumer,
+  RunConsumerOptions,
+  RunEventBus,
+  RunFrame,
+  RunProcessor,
+  RunQueue,
+} from "@skein-js/core";
 
-/** In-memory FIFO of background runs awaiting a worker. */
+/**
+ * In-memory FIFO of background runs, drained by a single-process consumer — all `skein dev` needs.
+ * `@skein-js/redis` (BullMQ) provides the durable, cross-instance version; the run worker talks
+ * only to the `RunQueue` interface, so it is unaware which one it has.
+ */
 export class MemoryRunQueue implements RunQueue {
   readonly #items: QueuedRun[] = [];
+  /** Resolvers of consumers parked waiting for the next run. */
+  readonly #waiters: Array<() => void> = [];
 
   async enqueue(run: QueuedRun): Promise<void> {
     this.#items.push({ ...run });
+    this.#waiters.shift()?.(); // wake one parked consumer, if any
   }
 
-  async dequeue(): Promise<QueuedRun | null> {
-    return this.#items.shift() ?? null;
+  consume(process: RunProcessor, options: RunConsumerOptions = {}): RunConsumer {
+    return new MemoryRunConsumer(this.#items, this.#waiters, process, options.concurrency ?? 1);
+  }
+}
+
+/** Drains a {@link MemoryRunQueue}: pulls runs (parking when empty) and runs up to `concurrency`. */
+class MemoryRunConsumer implements RunConsumer {
+  #running = true;
+  readonly #inFlight = new Set<Promise<void>>();
+  readonly #loop: Promise<void>;
+
+  constructor(
+    private readonly items: QueuedRun[],
+    private readonly waiters: Array<() => void>,
+    private readonly process: RunProcessor,
+    private readonly concurrency: number,
+  ) {
+    this.#loop = this.#run();
+  }
+
+  async #run(): Promise<void> {
+    while (this.#running) {
+      if (this.#inFlight.size >= this.concurrency) {
+        await Promise.race(this.#inFlight);
+        continue;
+      }
+      const next = this.items.shift();
+      if (!next) {
+        if (!this.#running) break;
+        await new Promise<void>((resolve) => this.waiters.push(resolve)); // park until enqueue/close
+        continue;
+      }
+      const task = this.process(next)
+        .catch(() => undefined) // a failed run is the engine's concern; keep draining
+        .finally(() => this.#inFlight.delete(task));
+      this.#inFlight.add(task);
+    }
+  }
+
+  async close(force = false): Promise<void> {
+    this.#running = false;
+    for (const wake of this.waiters.splice(0)) wake(); // unpark the loop so it can exit
+    // force: return at once, abandoning in-flight runs (the loop exits on its own once they settle).
+    // Awaiting the loop would block on its `Promise.race(this.#inFlight)`, which is exactly what
+    // force is meant to skip.
+    if (force) return;
+    await this.#loop;
+    await Promise.all(this.#inFlight);
   }
 }
 

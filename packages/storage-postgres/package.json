@@ -32,6 +32,7 @@
   },
   "files": [
     "dist",
+    "migrations",
     "README.md"
   ],
   "sideEffects": false,
@@ -40,10 +41,15 @@
   },
   "dependencies": {
     "@skein-js/core": "workspace:*",
+    "node-pg-migrate": ">=7.9.0",
     "pg": ">=8.11.0"
   },
   "peerDependencies": {
     "@langchain/langgraph-checkpoint-postgres": "^1.0.4"
+  },
+  "devDependencies": {
+    "@skein-js/test-support": "workspace:*",
+    "@types/pg": ">=8.11.0"
   },
   "publishConfig": {
     "access": "public"

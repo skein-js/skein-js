@@ -34,7 +34,11 @@ concurrency-control requirement).
 
 ## Queue drivers
 
-The engine talks to a small queue/pub-sub interface with two implementations:
+The engine talks to a small `RunQueue` / `RunEventBus` interface (`@skein-js/core`) with two
+implementations. `RunQueue` is **processor-driven**: `enqueue(run)` adds a job and
+`consume(process)` registers a worker that drains the queue — so the same run worker code drives
+both drivers. Delivery is **at-least-once** (a crashed processor's run is redelivered); the worker
+makes this safe by skipping any run already terminal in the store.
 
 ### In-memory (dev)
 
@@ -43,15 +47,16 @@ The engine talks to a small queue/pub-sub interface with two implementations:
 
 ### `@skein-js/redis` (prod)
 
-- **Job queue** — background runs are enqueued in Redis; worker processes pull and execute
-  them, enabling multiple instances behind one queue.
-- **Lease-based recovery** — a crashed worker's in-flight run lease expires and is retried,
-  so runs survive restarts.
-- **Cross-instance pub/sub** — run stream frames are published to Redis channels so a client
-  connected to instance B can join a run executing on instance A (see [streaming.md](./streaming.md)).
+- **Job queue ([BullMQ](https://docs.bullmq.io))** — background runs are enqueued in Redis; worker
+  processes across instances consume and execute them. BullMQ provides retries, backoff, and
+  concurrency out of the box.
+- **Crash recovery** — a stalled job (its worker died mid-run) is moved back to the queue by
+  BullMQ's stalled-job check and retried, so runs survive restarts.
+- **Cross-instance pub/sub** — run stream frames are published to a Redis Stream + channel so a
+  client connected to instance B can join a run executing on instance A (see [streaming.md](./streaming.md)).
 
-This is the same shape aegra uses (Redis job queue + pub/sub, lease-based recovery,
-Postgres checkpoints) — <https://github.com/aegra/aegra>.
+This is the same shape aegra uses (Redis job queue + pub/sub, crash recovery, Postgres
+checkpoints) — <https://github.com/aegra/aegra>.
 
 ## Deployment topology (`skein up`)
 
