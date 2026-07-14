@@ -4,16 +4,17 @@
   "description": "Assembles skein-js ProtocolDeps from langgraph.json + selected drivers (memory/Postgres/Redis).",
   "license": "Apache-2.0",
   "author": "Maina Wycliffe <wmmaina7@gmail.com>",
-  "homepage": "https://github.com/mainawycliffe/skein/tree/main/packages/runtime#readme",
+  "homepage": "https://github.com/mainawycliffe/skein-js/tree/main/packages/runtime#readme",
   "repository": {
     "type": "git",
-    "url": "git+https://github.com/mainawycliffe/skein.git",
+    "url": "git+https://github.com/mainawycliffe/skein-js.git",
     "directory": "packages/runtime"
   },
   "bugs": {
-    "url": "https://github.com/mainawycliffe/skein/issues"
+    "url": "https://github.com/mainawycliffe/skein-js/issues"
   },
   "keywords": [
+    "typescript",
     "langgraph",
     "agent-protocol",
     "runtime",

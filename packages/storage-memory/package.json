@@ -4,16 +4,17 @@
   "description": "In-memory SkeinStore + queue driver for development and tests.",
   "license": "Apache-2.0",
   "author": "Maina Wycliffe <wmmaina7@gmail.com>",
-  "homepage": "https://github.com/mainawycliffe/skein/tree/main/packages/storage-memory#readme",
+  "homepage": "https://github.com/mainawycliffe/skein-js/tree/main/packages/storage-memory#readme",
   "repository": {
     "type": "git",
-    "url": "git+https://github.com/mainawycliffe/skein.git",
+    "url": "git+https://github.com/mainawycliffe/skein-js.git",
     "directory": "packages/storage-memory"
   },
   "bugs": {
-    "url": "https://github.com/mainawycliffe/skein/issues"
+    "url": "https://github.com/mainawycliffe/skein-js/issues"
   },
   "keywords": [
+    "typescript",
     "langgraph",
     "agent-protocol",
     "storage",

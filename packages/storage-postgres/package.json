@@ -4,16 +4,17 @@
   "description": "Postgres SkeinStore driver with pgvector semantic search, reusing PostgresSaver for checkpoints.",
   "license": "Apache-2.0",
   "author": "Maina Wycliffe <wmmaina7@gmail.com>",
-  "homepage": "https://github.com/mainawycliffe/skein/tree/main/packages/storage-postgres#readme",
+  "homepage": "https://github.com/mainawycliffe/skein-js/tree/main/packages/storage-postgres#readme",
   "repository": {
     "type": "git",
-    "url": "git+https://github.com/mainawycliffe/skein.git",
+    "url": "git+https://github.com/mainawycliffe/skein-js.git",
     "directory": "packages/storage-postgres"
   },
   "bugs": {
-    "url": "https://github.com/mainawycliffe/skein/issues"
+    "url": "https://github.com/mainawycliffe/skein-js/issues"
   },
   "keywords": [
+    "typescript",
     "langgraph",
     "agent-protocol",
     "postgres",

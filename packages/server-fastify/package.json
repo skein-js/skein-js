@@ -4,16 +4,17 @@
   "description": "Fastify adapter for skein-js (planned).",
   "license": "Apache-2.0",
   "author": "Maina Wycliffe <wmmaina7@gmail.com>",
-  "homepage": "https://github.com/mainawycliffe/skein/tree/main/packages/server-fastify#readme",
+  "homepage": "https://github.com/mainawycliffe/skein-js/tree/main/packages/server-fastify#readme",
   "repository": {
     "type": "git",
-    "url": "git+https://github.com/mainawycliffe/skein.git",
+    "url": "git+https://github.com/mainawycliffe/skein-js.git",
     "directory": "packages/server-fastify"
   },
   "bugs": {
-    "url": "https://github.com/mainawycliffe/skein/issues"
+    "url": "https://github.com/mainawycliffe/skein-js/issues"
   },
   "keywords": [
+    "typescript",
     "fastify",
     "langgraph",
     "agent-protocol",
