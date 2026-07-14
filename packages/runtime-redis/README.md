@@ -4,7 +4,7 @@
 
 Part of **[skein-js](https://github.com/mainawycliffe/skein)** — a TypeScript [Agent Protocol](https://github.com/langchain-ai/agent-protocol) server for [LangGraph.js](https://github.com/langchain-ai/langgraphjs), and a drop-in replacement for the LangGraph CLI.
 
-**Status:** 🚧 Pre-alpha.
+**Status:** 🚧 Pre-alpha — implemented (BullMQ queue + Redis Streams/pub-sub bus); integration tests need Docker.
 
 ## What it does
 

@@ -49,13 +49,23 @@ Your existing clients keep working against `localhost` with only a URL change:
 
 ## Status
 
-🚧 **Pre-alpha — the drop-in dev loop works today.** In place: the shared contract
-(`@skein-js/core`), the `langgraph.json` loader (`@skein-js/config`), the in-memory driver
-(`@skein-js/storage-memory`), the framework-agnostic **run engine + Agent Protocol handlers**
-(`@skein-js/agent-protocol`), the **Express adapter** (`@skein-js/express`), and **`skein dev`** —
-an in-process dev server that runs an unchanged `langgraph.json` with no Docker, TypeScript graphs
-loaded via vite, state-preserving hot reload, and on-disk persistence across restarts. Next up:
-Postgres + Redis drivers and `skein up`. See the [roadmap](./docs/roadmap.md).
+🚧 **Pre-alpha, but end-to-end — dev _and_ self-hosted production both work today.** In place:
+
+- **`skein dev`** — an in-process dev server that runs an unchanged `langgraph.json` with no Docker:
+  TypeScript graphs loaded via vite, state-preserving hot reload, and on-disk persistence across
+  restarts.
+- **Self-hosted production** — **`skein up`** brings up your own Docker Compose stack (app +
+  Postgres + Redis); **`skein build`** / **`skein dockerfile`** generate the image. A shared
+  [`@skein-js/runtime`](./packages/runtime) assembles the same engine for dev and prod.
+- **Durable drivers** — a Postgres [`SkeinStore`](./packages/storage-postgres) (+ **pgvector**
+  semantic search and `PostgresSaver` checkpoints) and a Redis [queue + cross-instance streaming
+  bus](./packages/runtime-redis). Develop against them without Docker via
+  `skein dev --store postgres --queue redis`.
+- **Long-term memory** — the store is injected into graph runs as a LangGraph `BaseStore`, so nodes
+  use `getStore()` for cross-thread memory (see [docs/storage.md](./docs/storage.md)).
+
+The remaining MVP work is the **Fastify + NestJS adapters** (Express ships today). See the
+[roadmap](./docs/roadmap.md).
 
 ## Try it from source
 
@@ -83,21 +93,86 @@ Edit `examples/migrated-langgraph/src/graph.ts` and save — the server hot-relo
 threads. `Ctrl-C` and restart — state is restored from `.skein/`. Full walkthrough and the
 end-to-end test: [examples/migrated-langgraph](./examples/migrated-langgraph/README.md).
 
+## Using skein-js
+
+### The CLI — a drop-in for the LangGraph CLI
+
+Point it at an existing `langgraph.json`; the graph code and config are unchanged.
+
+```bash
+skein dev                              # in-process dev server, hot reload, no Docker (port 2024)
+skein dev --store postgres --queue redis   # dev against production-shaped storage (DATABASE_URL / REDIS_URL)
+skein up                               # self-hosted stack via Docker Compose: app + Postgres + Redis
+skein build -t my-agent                # build a deployable Docker image
+skein dockerfile -o Dockerfile         # emit a standalone Dockerfile
+```
+
+### Embed it in your own Node server
+
+Serve a `langgraph.json` from an Express app — the zero-setup path wires in-memory drivers:
+
+```ts
+import { createExpressServer } from "@skein-js/express";
+
+const server = await createExpressServer({ config: "./langgraph.json" });
+await server.listen(2024);
+```
+
+Or mount the Agent Protocol on an existing app, and bring your own production drivers through the
+`deps` seam ([`@skein-js/runtime`](./packages/runtime) assembles them):
+
+```ts
+import { skeinRouter } from "@skein-js/express";
+import { buildRuntime } from "@skein-js/runtime";
+
+const runtime = await buildRuntime({ configPath, store: "postgres", queue: "redis" });
+const { router } = await skeinRouter({ deps: runtime.deps, cors: runtime.cors });
+app.use(router);
+```
+
+### What you get
+
+- **Assistants** auto-registered from your `langgraph.json` graphs, with schema introspection.
+- **Threads** with persistent state/history and **human-in-the-loop** interrupt/resume (LangGraph
+  checkpointers — `MemorySaver` in dev, `PostgresSaver` in prod).
+- **Three run modes** — `wait`, `stream`, and background — over one engine.
+- **SSE streaming** (`useStream`, Agent Chat UI, the vanilla SDK) with reconnect/replay via
+  `Last-Event-ID`, fanned across instances by Redis in production.
+- **Long-term memory** — a namespaced store with pgvector semantic search, injected into runs as a
+  LangGraph `BaseStore` (`getStore()`).
+- **CORS** driven by `langgraph.json`'s `http.cors`, matching the LangGraph CLI.
+
+## Examples
+
+Each is a runnable project; see its README to run it.
+
+| Example                                               | What it proves                                                                                                                                               |
+| ----------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| [`chat-app`](./examples/chat-app)                     | **Flagship** — a Gemini research assistant (thinking + web search + long-term memory) with a Next.js + shadcn/ui chat UI; full unit / SDK / Playwright tests |
+| [`migrated-langgraph`](./examples/migrated-langgraph) | The drop-in proof — a stock LangGraph project under `skein dev`, with hot reload + `.skein/` persistence                                                     |
+| [`gemini-chat`](./examples/gemini-chat)               | Model-backed end-to-end — a Gemini ReAct agent streamed into a browser                                                                                       |
+| [`express-basic`](./examples/express-basic)           | Zero-setup `echo` + a Claude `agent` graph in one config                                                                                                     |
+| [`react-usestream`](./examples/react-usestream)       | Minimal `useStream` SSE-compatibility harness                                                                                                                |
+
 ## Architecture
 
 An Nx monorepo of small packages:
 
-| Package                                  | Purpose                                                                                                          |
-| ---------------------------------------- | ---------------------------------------------------------------------------------------------------------------- |
-| `@skein-js/core`                         | The shared contract — Agent Protocol wire types, `SkeinStore` + queue/bus interfaces, edge error                 |
-| `@skein-js/agent-protocol`               | Framework-agnostic Agent Protocol engine — run engine, handler table, SSE (the heart); independently publishable |
-| `@skein-js/config`                       | `langgraph.json` parser + graph loader (`path:export`)                                                           |
-| `@skein-js/express`                      | Express adapter (v1)                                                                                             |
-| `@skein-js/fastify` / `@skein-js/nestjs` | Additional adapters (later)                                                                                      |
-| `@skein-js/storage-memory`               | In-memory storage driver (dev/tests)                                                                             |
-| `@skein-js/storage-postgres`             | Postgres driver + pgvector (prod)                                                                                |
-| `@skein-js/redis`                        | Redis job queue + cross-instance pub/sub streaming                                                               |
-| `skein-js` (CLI)                         | `skein dev` / `up` / `build` / `dockerfile`                                                                      |
+Package names are the npm names; where the on-disk directory differs it's noted in parentheses.
+
+| Package                                         | Purpose                                                                                                          |
+| ----------------------------------------------- | ---------------------------------------------------------------------------------------------------------------- |
+| `@skein-js/core`                                | The shared contract — Agent Protocol wire types, `SkeinStore` + queue/bus interfaces, edge error                 |
+| `@skein-js/agent-protocol`                      | Framework-agnostic Agent Protocol engine — run engine, handler table, SSE (the heart); independently publishable |
+| `@skein-js/config`                              | `langgraph.json` parser + graph loader (`path:export`)                                                           |
+| `@skein-js/runtime`                             | Assembles production `ProtocolDeps` (memory / Postgres / Redis) from `langgraph.json` for the CLI                |
+| `@skein-js/express` (`packages/server-express`) | Express adapter (v1)                                                                                             |
+| `@skein-js/fastify` / `@skein-js/nestjs`        | Additional adapters (planned)                                                                                    |
+| `@skein-js/storage-memory`                      | In-memory storage driver (dev/tests)                                                                             |
+| `@skein-js/storage-postgres`                    | Postgres driver + pgvector (prod)                                                                                |
+| `@skein-js/redis` (`packages/runtime-redis`)    | Redis job queue + cross-instance pub/sub streaming                                                               |
+| `skein-js` (`packages/cli`)                     | The CLI — `skein dev` / `up` / `build` / `dockerfile`                                                            |
+| `@skein-js/test-support`                        | _(private)_ Testcontainers helpers + shared `SkeinStore` conformance suite                                       |
 
 Read the full design in [`docs/`](./docs):
 

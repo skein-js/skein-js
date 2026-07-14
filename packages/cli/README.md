@@ -4,7 +4,7 @@
 
 Part of **[skein-js](https://github.com/mainawycliffe/skein)** — a TypeScript [Agent Protocol](https://github.com/langchain-ai/agent-protocol) server for [LangGraph.js](https://github.com/langchain-ai/langgraphjs), and a drop-in replacement for the LangGraph CLI.
 
-**Status:** 🚧 Pre-alpha — not yet implemented (Phase 1).
+**Status:** 🚧 Pre-alpha — `dev`, `up`, `build`, and `dockerfile` all work today.
 
 ## Why skein-js
 
@@ -48,12 +48,28 @@ pnpm add skein-js
 
 ## Usage
 
-```ts
-# swap in package.json scripts:
-#   "dev": "skein dev"
-#   "up":  "skein up"
+Swap it into your `package.json` scripts (`"dev": "skein dev"`, `"up": "skein up"`) — your
+`langgraph.json` is unchanged.
+
+```bash
 npx skein dev --port 2024
 ```
+
+### Commands
+
+| Command            | What it does                                                   | Key flags                                                                                                                          |
+| ------------------ | -------------------------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------- |
+| `skein dev`        | In-process dev server, hot reload, no Docker.                  | `-p, --port` (2024) · `--host` (127.0.0.1) · `--no-reload` · `--no-persist` · `--store memory\|postgres` · `--queue memory\|redis` |
+| `skein up`         | Self-hosted stack via Docker Compose (app + Postgres + Redis). | `-p, --port` (8123) · `--host` (0.0.0.0)                                                                                           |
+| `skein build`      | Build a deployable Docker image from the config.               | `-t, --tag` (defaults to the project dir name)                                                                                     |
+| `skein dockerfile` | Emit a standalone Dockerfile (stdout by default).              | `-o, --output <path>`                                                                                                              |
+
+All commands take `-c, --config <path>` (default `langgraph.json`).
+
+`skein dev --store postgres --queue redis` is a capability the LangGraph CLI does **not** offer: it
+lets you develop against **production-shaped** storage (durable Postgres checkpoints, pgvector
+search, cross-instance Redis streaming) with hot reload and no Docker. Connection URLs come from
+`DATABASE_URL` / `REDIS_URL`.
 
 ## Learn more
 

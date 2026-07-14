@@ -4,7 +4,7 @@
 
 Part of **[skein-js](https://github.com/mainawycliffe/skein)** — a TypeScript [Agent Protocol](https://github.com/langchain-ai/agent-protocol) server for [LangGraph.js](https://github.com/langchain-ai/langgraphjs), and a drop-in replacement for the LangGraph CLI.
 
-**Status:** 🚧 Pre-alpha — Phase 1. Implemented: `langgraph.json` loading + `path:export` graph resolution + graph-schema introspection.
+**Status:** 🚧 Pre-alpha — implemented: `langgraph.json` loading + `path:export` graph resolution + graph-schema introspection.
 
 ## What it does
 

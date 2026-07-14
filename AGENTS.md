@@ -99,7 +99,9 @@ sibling.
 | `skein-js` (CLI)                                               | Drop-in `dev` / `up` / `build` / `dockerfile`                                                                 |
 | `@skein-js/test-support`                                       | _(private)_ Testcontainers helpers + `SkeinStore` conformance suite                                           |
 
-Examples live in `examples/` (`express-basic`, `react-usestream`).
+Examples live in `examples/`: `chat-app` (flagship — research assistant + Next.js/shadcn UI),
+`migrated-langgraph` (drop-in proof), `gemini-chat` (model-backed e2e), `express-basic`
+(zero-setup), `react-usestream` (`useStream` harness).
 
 ## Conventions (enforced)
 

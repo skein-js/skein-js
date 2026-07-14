@@ -76,6 +76,18 @@ skein-js by changing only a URL.
   types, driven entirely by injected dependencies. Framework adapters are thin shims, and the
   package is publishable on its own. See each doc below for detail.
 
+## Examples
+
+Runnable projects under [`examples/`](../examples) — each proves a slice of the promise:
+
+| Example                                                | What it shows                                                                                                                    |
+| ------------------------------------------------------ | -------------------------------------------------------------------------------------------------------------------------------- |
+| [`chat-app`](../examples/chat-app)                     | **Flagship** — Gemini research assistant (thinking + web search + long-term memory) with a Next.js + shadcn/ui UI and full tests |
+| [`migrated-langgraph`](../examples/migrated-langgraph) | The drop-in proof — a stock LangGraph project under `skein dev`, hot reload + persistence                                        |
+| [`gemini-chat`](../examples/gemini-chat)               | Model-backed end-to-end — a Gemini ReAct agent streamed into a browser                                                           |
+| [`express-basic`](../examples/express-basic)           | Zero-setup `echo` + a Claude `agent` graph in one config                                                                         |
+| [`react-usestream`](../examples/react-usestream)       | Minimal `useStream` SSE-compatibility harness                                                                                    |
+
 ## Documentation map
 
 | Doc                                                  | Covers                                                     |

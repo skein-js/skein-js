@@ -10,27 +10,33 @@ A playable skein-js server with **two graphs** declared in one
 
 Both are plain LangGraph.js graphs — skein-js serves them unchanged.
 
-## Status
-
-🚧 The `skein dev` command lands in Phase 1 (see [roadmap](../../docs/roadmap.md)). Until then:
-
-- The **graphs are real** — `pnpm test` exercises the echo graph today.
-- Because they are standard LangGraph.js graphs, you can even serve them right now with the
-  upstream CLI (`npx @langchain/langgraph-cli dev`) — which is exactly the point: `skein dev`
-  will be a [drop-in replacement](../../docs/langgraph-cli-compat.md).
-
-## Run (once `skein dev` exists)
+## Run
 
 ```bash
 cp .env.example .env          # only needed for the `agent` graph
 pnpm install
-pnpm dev                      # skein dev --port 2024
+pnpm dev                      # → skein dev --port 2024
 ```
 
-Then point a client at it:
+Then point a client at `http://localhost:2024`:
 
 - Vanilla SDK — `new Client({ apiUrl: "http://localhost:2024" })`, assistant `echo` or `agent`.
 - React — the [`react-usestream`](../react-usestream) app; set `NEXT_PUBLIC_SKEIN_ASSISTANT_ID=agent`.
+
+**Smoke test the `echo` graph** (no key needed):
+
+```bash
+TID=$(curl -s -X POST http://localhost:2024/threads -H 'content-type: application/json' -d '{}' \
+  | python3 -c 'import sys,json;print(json.load(sys.stdin)["thread_id"])')
+
+curl -s -X POST "http://localhost:2024/threads/$TID/runs/wait" \
+  -H 'content-type: application/json' \
+  -d "{\"assistant_id\":\"echo\",\"input\":{\"messages\":[{\"role\":\"user\",\"content\":\"hello\"}]}}"
+```
+
+Because these are standard LangGraph.js graphs, the same project also runs under the upstream
+`langgraph dev` — which is the point: `skein dev` is a
+[drop-in replacement](../../docs/langgraph-cli-compat.md).
 
 ## Test
 

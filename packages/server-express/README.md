@@ -4,7 +4,7 @@
 
 Part of **[skein-js](https://github.com/mainawycliffe/skein)** — a TypeScript [Agent Protocol](https://github.com/langchain-ai/agent-protocol) server for [LangGraph.js](https://github.com/langchain-ai/langgraphjs), and a drop-in replacement for the LangGraph CLI.
 
-**Status:** 🚧 Pre-alpha.
+**Status:** 🚧 Pre-alpha — implemented; the v1 framework adapter.
 
 ## What it does
 
@@ -56,7 +56,10 @@ const { router } = await skeinRouter({ deps: myProtocolDeps });
 Browser clients (Agent Chat UI, React `useStream`) run on a different origin. CORS is **off by default** (non-permissive) and driven by the `http.cors` block of `langgraph.json`, matching the LangGraph CLI:
 
 ```jsonc
-{ "graphs": { "agent": "./agent.ts:graph" }, "http": { "cors": { "allow_origins": ["http://localhost:3000"] } } }
+{
+  "graphs": { "agent": "./agent.ts:graph" },
+  "http": { "cors": { "allow_origins": ["http://localhost:3000"] } },
+}
 ```
 
 Override in code with the `cors` option: pass [`CorsOptions`](https://github.com/expressjs/cors#configuration-options) to restrict origins, `true` for permissive dev, or `false` to force it off.
