@@ -1,0 +1,28 @@
+#!/usr/bin/env sh
+# skein pre-commit gate — enforces AGENTS.md golden rule 4 ("green before commit") mechanically,
+# so it doesn't depend on anyone (human or agent) remembering to run checks.
+#
+# It runs format + lint + typecheck + test for the projects your STAGED changes affect (`nx
+# affected` + Nx's cache, so it's fast; a broad change — e.g. touching `core` — legitimately runs
+# more). Build and the Docker-backed integration tests stay in CI (see .github/workflows/ci.yml).
+#
+# Bypass in a genuine pinch with `git commit --no-verify`, then make it green before you push.
+set -eu
+
+# Staged paths, workspace-root-relative. `fmt` excludes deletions (Prettier can't read a gone file);
+# `all` includes them so Nx still attributes a deleted file to its project.
+fmt_files=$(git diff --cached --name-only --diff-filter=ACMR | paste -sd, -)
+all_files=$(git diff --cached --name-only --diff-filter=ACMRD | paste -sd, -)
+[ -z "$all_files" ] && exit 0
+
+if ! command -v pnpm >/dev/null 2>&1; then
+  echo "pre-commit: pnpm is not on PATH — cannot run the gate." >&2
+  echo "            Fix your PATH (or 'corepack enable'), or bypass once with 'git commit --no-verify'." >&2
+  exit 1
+fi
+
+echo "pre-commit: format + lint/typecheck/test for affected projects (build + integration run in CI)…"
+[ -n "$fmt_files" ] && pnpm exec nx format:check --files="$fmt_files"
+# CI=true so Vitest runs once instead of hanging in watch mode. Examples need live services / local
+# .env (CI covers them in a clean env where key-gated tests self-skip), so exclude them here.
+CI=true pnpm exec nx affected -t lint typecheck test --files="$all_files" --exclude='examples/*'

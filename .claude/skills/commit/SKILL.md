@@ -9,6 +9,12 @@ Never commit red. Run the gate below, fix anything that fails, re-run until gree
 This is the enforcement of [AGENTS.md](../../../AGENTS.md) golden rule 4 and mirrors CI
 (`.github/workflows`), so a passing `/commit` should mean a passing CI.
 
+A pre-commit hook ([`.githooks/pre-commit`](../../../.githooks/pre-commit), wired by `pnpm install`)
+already runs the _affected_ subset (format + lint + typecheck + test) on every `git commit` as a
+mechanical backstop. This skill runs the fuller **superset** — all projects, plus build and the
+Docker-backed integration tests — and handles the docs check and commit message. Run it for anything
+non-trivial rather than leaning on the hook alone; never `--no-verify` past a real failure.
+
 ## 1. Establish scope
 
 - `git status --porcelain` and `git diff HEAD` — see everything changed (staged + unstaged).
@@ -46,7 +52,7 @@ CI. If you background the gate, poll its log for `NX   Successfully ran` / `Fail
 
 CI runs `run-many` over every project, so use `run-many` here too (not `affected`) — it's the
 authoritative gate. **Exclude `examples/*` locally**: examples depend on live services / local `.env`
-files (e.g. `examples/chat-app/.env` sets `GOOGLE_API_KEY`, so its live-Gemini test *runs* locally and
+files (e.g. `examples/chat-app/.env` sets `GOOGLE_API_KEY`, so its live-Gemini test _runs_ locally and
 fails on the network, whereas CI has no `.env` and skips it). CI is the backstop for examples — it runs
 them in a clean env where the key-gated tests self-skip. If your change touches an example, run that
 example's target directly too (`nx test example-<name>`, `nx build example-<name>`). For a quick

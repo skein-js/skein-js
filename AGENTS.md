@@ -28,13 +28,16 @@ the LangGraph CLI** (`skein dev` ⇄ `langgraph dev`, unchanged `langgraph.json`
 3. **Simple & consistent.** Small functions, named exports, kebab-case files, one public
    surface per package (`src/index.ts`). Match the surrounding style. Let the linter/formatter
    settle style — don't hand-argue it.
-4. **Green before commit — never commit red.** Before every commit make the gate pass:
-   `pnpm format:check`, `pnpm exec nx run-many -t lint typecheck test build --exclude='examples/*'`,
-   and (Docker up) `nx run-many -t test-integration`. Examples are excluded locally — they need live
-   services / local `.env` — and are covered by [`ci.yml`](.github/workflows/ci.yml) in a clean env;
-   if you touched an example, run its target directly. Docs must reflect any behavior/architecture
-   change. Use [`/commit`](.claude/skills/commit/SKILL.md), which enforces all of this. Same bar as
-   [Definition of done](#definition-of-done); a commit that skips it is a bug.
+4. **Green before commit — never commit red.** A pre-commit hook enforces this mechanically:
+   [`.githooks/pre-commit`](.githooks/pre-commit), wired by `pnpm install` (`prepare` sets
+   `core.hooksPath`), runs `nx format:check` + `nx affected -t lint typecheck test` (with `CI=true`
+   so Vitest runs once; `examples/*` excluded — they need live services / local `.env`) for whatever
+   your staged changes touch. Build and the Docker-backed integration tests run in
+   [CI](.github/workflows/ci.yml) — run them locally too for anything substantial
+   (`nx run-many -t build test-integration`). Keep docs current with any behavior/architecture change.
+   [`/commit`](.claude/skills/commit/SKILL.md) does the full local run + docs check for you. Only
+   bypass the hook (`git commit --no-verify`) in a genuine pinch, and go green before you push. Same
+   bar as [Definition of done](#definition-of-done).
 
 ## This is an Nx monorepo (pnpm) — use Nx
 
