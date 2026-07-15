@@ -37,6 +37,10 @@ export interface DevCommandOptions {
   reload: boolean;
   /** `false` when `--no-persist` was passed. */
   persist: boolean;
+  /** `true` when `--port` was passed on the CLI; suppresses the `PORT` env fallback. */
+  portExplicit?: boolean;
+  /** `true` when `--host` was passed on the CLI; suppresses the `HOST` env fallback. */
+  hostExplicit?: boolean;
   /** Protocol-resource + checkpoint store: `"memory"` (default) or `"postgres"` (`DATABASE_URL`). */
   store: StoreDriver;
   /** Run queue + stream bus: `"memory"` (default) or `"redis"` (`REDIS_URL`). */
@@ -55,6 +59,24 @@ const FORCE_EXIT_MS = 5000;
 /** Console logger for the dev server — colored, `info:`-prefixed output that drives per-request
  * logging, the background-run summaries, the startup banner, and surfaces engine warnings. */
 const devLogger = createDevLogger();
+
+/**
+ * Port to bind, honoring a `PORT` env var (Railway/Fly/Render/Heroku inject one). Resolved here,
+ * after the project's `.env` is merged, so a project-declared PORT is honored too — not just an
+ * ambient one. Returns `fallback` when PORT is unset or not a valid port.
+ */
+function envPort(fallback: number): number {
+  const raw = process.env.PORT;
+  if (raw === undefined || raw.trim() === "") return fallback;
+  const port = Number(raw);
+  return Number.isInteger(port) && port >= 0 && port <= 65535 ? port : fallback;
+}
+
+/** Host to bind, honoring a `HOST` env var when set; otherwise `fallback`. */
+function envHost(fallback: string): string {
+  const host = process.env.HOST;
+  return host !== undefined && host.trim() !== "" ? host : fallback;
+}
 
 export async function runDev(options: DevCommandOptions): Promise<void> {
   const configPath = path.resolve(process.cwd(), options.config);
@@ -76,7 +98,10 @@ export async function runDev(options: DevCommandOptions): Promise<void> {
     store: options.store,
     queue: options.queue,
   });
-  const { port, host } = options;
+  // Fall back to PORT/HOST env only when the flag wasn't passed explicitly (so an explicit --port
+  // always wins). Resolved after applyProjectEnv above, so a PORT in the project's .env counts.
+  const port = options.portExplicit ? options.port : envPort(options.port);
+  const host = options.hostExplicit ? options.host : envHost(options.host);
   // On-disk snapshotting only applies to the all-memory runtime; durable drivers persist inherently.
   const canPersist = options.persist && runtime.snapshotState !== undefined;
   if (options.persist && runtime.snapshotState === undefined) {

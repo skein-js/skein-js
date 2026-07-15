@@ -89,6 +89,10 @@ both come from the same `StoreRepo`, so behavior matches.
   <https://www.npmjs.com/package/@langchain/langgraph-checkpoint-postgres>
 - **pgvector** for semantic store search, configured from `langgraph.json`'s
   `store.index.{embed, dims, fields}` (see [langgraph-cli-compat.md](./langgraph-cli-compat.md)).
+  pgvector is **opt-in**: the base schema needs no extension, so skein runs on a stock managed
+  Postgres out of the box. Only when `store.index` is set does `migrate()` run
+  `CREATE EXTENSION IF NOT EXISTS vector` and add the `embedding` column — which requires a Postgres
+  that ships pgvector (see [deploy-railway.md](./deploy-railway.md)).
 
 ```ts
 import { PostgresSaver } from "@langchain/langgraph-checkpoint-postgres";

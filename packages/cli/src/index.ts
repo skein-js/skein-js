@@ -49,6 +49,8 @@ program
   .command("dev")
   .description("Run the in-process dev server with hot reload (no Docker).")
   .option("-c, --config <path>", "Path to langgraph.json", "langgraph.json")
+  // The default binds 2024, but when `--port` is not passed, runDev falls back to a `PORT` env var
+  // (Railway/Fly/Render/Heroku inject one) — resolved there, after the project's `.env` is merged.
   .option("-p, --port <port>", "Port to bind", parsePort, 2024)
   // Bind IPv4 explicitly: "localhost" can resolve to `::1`, which trips IPv4-only SDK clients.
   .option("--host <host>", "Host to bind", "127.0.0.1")
@@ -58,7 +60,15 @@ program
   .option("--store <driver>", "Store driver: memory | postgres", parseStore, "memory")
   .option("--queue <driver>", "Queue driver: memory | redis", parseQueue, "memory")
   .option("-v, --verbose", "Log per-run activity: start/finish, tool calls, and interrupts")
-  .action((options) => runDev(options));
+  // Pass whether --port/--host came from the CLI so runDev only applies the PORT/HOST env fallback
+  // when the user left them at their defaults (an explicit flag always wins over the env).
+  .action((options, command) =>
+    runDev({
+      ...options,
+      portExplicit: command.getOptionValueSource("port") === "cli",
+      hostExplicit: command.getOptionValueSource("host") === "cli",
+    }),
+  );
 
 program
   .command("up")

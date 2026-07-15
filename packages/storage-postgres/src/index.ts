@@ -3,8 +3,10 @@
 // See docs/storage.md and docs/testing.md.
 
 export {
+  createPostgresPool,
   PostgresSkeinStore,
   type EmbedFunction,
+  type PostgresPoolOptions,
   type PostgresSkeinStoreOptions,
   type StoreIndexConfig,
 } from "./postgres-skein-store.js";

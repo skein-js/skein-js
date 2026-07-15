@@ -37,10 +37,20 @@ describe("@skein-js/express adapter", () => {
       headers: jsonHeaders,
       body: "{}",
     });
-    const assistants = (await searchRes.json()) as Array<{ assistant_id: string; graph_id: string }>;
+    const assistants = (await searchRes.json()) as Array<{
+      assistant_id: string;
+      graph_id: string;
+    }>;
     expect(assistants).toContainEqual(
       expect.objectContaining({ assistant_id: "echo", graph_id: "echo" }),
     );
+  });
+
+  it("serves a dependency-free liveness probe at /ok", async () => {
+    running = await startEchoServer();
+    const res = await fetch(`${running.baseUrl}/ok`);
+    expect(res.status).toBe(200);
+    expect(await res.json()).toEqual({ ok: true });
   });
 
   it("returns 204 with an empty body on delete", async () => {
@@ -106,7 +116,10 @@ describe("@skein-js/express adapter", () => {
     const res = await fetch(`${baseUrl}/runs/stream`, {
       method: "POST",
       headers: jsonHeaders,
-      body: JSON.stringify({ assistant_id: "echo", input: { messages: [{ role: "user", content: "hi" }] } }),
+      body: JSON.stringify({
+        assistant_id: "echo",
+        input: { messages: [{ role: "user", content: "hi" }] },
+      }),
       signal: controller.signal,
     });
     expect(res.headers.get("content-type")).toContain("text/event-stream");
@@ -118,7 +131,11 @@ describe("@skein-js/express adapter", () => {
     controller.abort();
 
     // The adapter released the response without wedging the server: it still serves new requests.
-    const ping = await fetch(`${baseUrl}/threads`, { method: "POST", headers: jsonHeaders, body: "{}" });
+    const ping = await fetch(`${baseUrl}/threads`, {
+      method: "POST",
+      headers: jsonHeaders,
+      body: "{}",
+    });
     expect(ping.status).toBe(200);
   });
 

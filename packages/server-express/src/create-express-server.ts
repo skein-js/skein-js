@@ -53,6 +53,12 @@ export async function createExpressServer(
   const app = express();
   // Log requests before the router handles them, when a logger is provided (e.g. `skein dev`).
   if (options.logger) app.use(requestLogger(options.logger));
+  // Liveness probe for platform health checks (Railway's healthcheckPath, k8s, load balancers).
+  // Kept dependency-free on purpose: a readiness check that touches Postgres/Redis would let a
+  // transient DB blip flap a healthy instance. Path mirrors the LangGraph platform's `/ok`.
+  app.get("/ok", (_req, res) => {
+    res.json({ ok: true });
+  });
   app.use(router);
 
   let server: Server | undefined;

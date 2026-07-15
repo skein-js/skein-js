@@ -30,9 +30,15 @@ export function generateCompose(options: ComposeOptions): string {
 services:
   app:
     build: .
+    # Reap zombies + forward signals with an init process (PID 1), so graph-spawned children don't
+    # accumulate; the app itself still handles SIGTERM for graceful shutdown.
+    init: true
     ports:
       - ${ports}
     environment:
+      # The container CMD passes no --port; it binds $PORT (as a hosting platform would inject).
+      # Set it here so the app listens on the port the mapping above publishes.
+      PORT: "${options.containerPort}"
       DATABASE_URL: postgresql://postgres:postgres@postgres:5432/skein
       REDIS_URL: redis://redis:6379
     depends_on:

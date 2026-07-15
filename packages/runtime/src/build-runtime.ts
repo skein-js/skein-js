@@ -23,7 +23,11 @@ import {
 } from "@skein-js/express";
 import { RedisRunEventBus, RedisRunQueue } from "@skein-js/redis";
 import { MemoryRunEventBus, MemoryRunQueue, MemorySkeinStore } from "@skein-js/storage-memory";
-import { PostgresSkeinStore, type StoreIndexConfig } from "@skein-js/storage-postgres";
+import {
+  createPostgresPool,
+  PostgresSkeinStore,
+  type StoreIndexConfig,
+} from "@skein-js/storage-postgres";
 import type { CorsOptions } from "cors";
 
 import { RuntimeConfigError } from "./errors.js";
@@ -66,6 +70,27 @@ function requireEnv(name: string, driver: string): string {
     throw new RuntimeConfigError(`The "${driver}" driver requires ${name} to be set.`);
   }
   return value;
+}
+
+/**
+ * Optional Postgres connection tuning from the environment — for fitting a managed database's
+ * connection cap and its TLS setup. `PG_POOL_MAX` caps the pool size (skein opens a second pool
+ * for `PostgresSaver`, so budget for both per instance); `DATABASE_SSL_NO_VERIFY=1|true` disables
+ * TLS cert verification for a self-signed managed cert over a public URL.
+ */
+function postgresConnectionOptions(): { poolMax?: number; sslNoVerify?: boolean } {
+  const options: { poolMax?: number; sslNoVerify?: boolean } = {};
+  const rawMax = process.env["PG_POOL_MAX"];
+  if (rawMax !== undefined && rawMax.trim() !== "") {
+    const max = Number(rawMax);
+    if (!Number.isInteger(max) || max <= 0) {
+      throw new RuntimeConfigError(`PG_POOL_MAX must be a positive integer (got "${rawMax}").`);
+    }
+    options.poolMax = max;
+  }
+  const noVerify = process.env["DATABASE_SSL_NO_VERIFY"];
+  if (noVerify === "1" || noVerify?.toLowerCase() === "true") options.sslNoVerify = true;
+  return options;
 }
 
 /**
@@ -146,10 +171,18 @@ export async function buildRuntime(options: BuildRuntimeOptions): Promise<SkeinR
           configDir: first.configDir,
           importModule,
         });
-        const pgStore = await PostgresSkeinStore.connect(databaseUrl, index ? { index } : {});
+        // Both pools hit the same DATABASE_URL, so they must share the same connection tuning —
+        // otherwise the saver would ignore PG_POOL_MAX / DATABASE_SSL_NO_VERIFY and fail TLS (or
+        // blow the connection cap) even when the store connects fine.
+        const connectionOptions = postgresConnectionOptions();
+        const pgStore = await PostgresSkeinStore.connect(databaseUrl, {
+          ...(index ? { index } : {}),
+          ...connectionOptions,
+        });
         disposers.push(() => pgStore.close());
         await pgStore.migrate();
-        const saver = PostgresSaver.fromConnString(databaseUrl);
+        // Build the saver on a pool with the same tuning (fromConnString would ignore it).
+        const saver = new PostgresSaver(createPostgresPool(databaseUrl, connectionOptions));
         disposers.push(() => saver.end());
         await saver.setup();
         return { skeinStore: pgStore, checkpointer: saver };

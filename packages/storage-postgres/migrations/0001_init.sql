@@ -1,7 +1,9 @@
 -- Up Migration
-
--- pgvector powers semantic search on the long-term store (docs/storage.md).
-CREATE EXTENSION IF NOT EXISTS vector;
+--
+-- The base schema deliberately does NOT require pgvector, so skein runs on a stock managed
+-- Postgres (e.g. Railway's default) out of the box. Semantic search is opt-in: when a store index
+-- is configured, `PostgresSkeinStore.migrate()` adds the `vector` extension and the `embedding`
+-- column on top of this schema (see postgres-skein-store.ts). Everything below is pgvector-free.
 
 -- Assistants derived from langgraph.json graphs, plus user-created ones.
 CREATE TABLE assistants (
@@ -44,14 +46,14 @@ CREATE TABLE runs (
 
 CREATE INDEX runs_thread_id_idx ON runs (thread_id);
 
--- Long-term store items. `embedding` is an unindexed pgvector column (dimensionless), populated
--- only when a store index is configured; semantic search then ranks by cosine distance. Without
--- an index it stays null and search falls back to naive text matching (matching the memory driver).
+-- Long-term store items. Without a configured store index, search falls back to naive text
+-- matching (matching the memory driver) and no pgvector is needed. When an index IS configured,
+-- migrate() adds an unindexed dimensionless `embedding vector` column here and populates it so
+-- semantic search can rank by cosine distance.
 CREATE TABLE store_items (
   namespace  text[]      NOT NULL,
   key        text        NOT NULL,
   value      jsonb       NOT NULL,
-  embedding  vector,
   created_at timestamptz NOT NULL DEFAULT now(),
   updated_at timestamptz NOT NULL DEFAULT now(),
   PRIMARY KEY (namespace, key)

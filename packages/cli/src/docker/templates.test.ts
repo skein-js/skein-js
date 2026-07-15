@@ -36,6 +36,32 @@ describe("generateDockerfile", () => {
     );
     expect(generateDockerfile({ port: 8123, packageManager: "npm" })).toContain("npm ci");
   });
+
+  it("runs as the non-root node user, owning node_modules so vite's cache is writable", () => {
+    const out = generateDockerfile({ port: 8123, packageManager: "pnpm" });
+    expect(out).toContain("USER node");
+    // Deps install as root (corepack needs it), then the whole tree is handed to `node` so the
+    // runtime user can write node_modules/.vite. The chown must precede USER node and the CMD.
+    expect(out).toContain("RUN chown -R node:node /app");
+    expect(out.indexOf("RUN chown -R node:node /app")).toBeLessThan(out.indexOf("USER node"));
+    expect(out.indexOf("USER node")).toBeLessThan(out.indexOf("CMD"));
+  });
+
+  it("enables the BuildKit cache mount for faster dependency rebuilds", () => {
+    expect(generateDockerfile({ port: 8123, packageManager: "pnpm" })).toMatch(
+      /^# syntax=docker\/dockerfile:1/,
+    );
+    expect(generateDockerfile({ port: 8123, packageManager: "pnpm" })).toContain(
+      "--mount=type=cache",
+    );
+  });
+
+  it("omits --port so the container binds the platform-injected PORT", () => {
+    const out = generateDockerfile({ port: 8123, packageManager: "npm" });
+    // Exec-form CMD keeps node as PID 1 for graceful SIGTERM; --host stays, --port is dropped.
+    expect(out).toContain('"--host", "0.0.0.0"');
+    expect(out).not.toContain('"--port"');
+  });
 });
 
 describe("generateCompose", () => {
@@ -46,6 +72,9 @@ describe("generateCompose", () => {
     expect(out).toContain("condition: service_healthy");
     expect(out).toContain("DATABASE_URL: postgresql://postgres:postgres@postgres:5432/skein");
     expect(out).toContain("REDIS_URL: redis://redis:6379");
+    // PORT is injected so the app binds the container port the mapping publishes; init reaps zombies.
+    expect(out).toContain('PORT: "8123"');
+    expect(out).toContain("init: true");
   });
 
   it("publishes on all interfaces by default and binds a specific host when given one", () => {

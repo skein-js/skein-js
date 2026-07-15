@@ -85,3 +85,8 @@ checkpoints) — <https://github.com/aegra/aegra>.
 `skein up` brings this stack up via Docker Compose. Horizontal scaling is verified by
 starting a run on instance A and joining its SSE stream from instance B through Redis (see
 [roadmap.md](./roadmap.md#verification)).
+
+To run the same topology on a hosted platform, the generated image is PaaS-friendly (binds the
+injected `$PORT`, non-root, `/ok` health probe, graceful `SIGTERM`) — see
+[deploy-railway.md](./deploy-railway.md) for a Railway walkthrough that applies to Fly/Render/Heroku
+too.

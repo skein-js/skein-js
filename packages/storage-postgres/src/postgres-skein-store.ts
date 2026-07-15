@@ -44,10 +44,50 @@ export interface StoreIndexConfig {
   embed: EmbedFunction;
 }
 
-export interface PostgresSkeinStoreOptions {
+/** Connection tuning shared by every `pg` pool skein opens against the same database. */
+export interface PostgresPoolOptions {
+  /**
+   * Max connections in the pool (`pg` default is 10). Lower it to fit a managed database's
+   * connection cap — remember skein opens a second pool for `PostgresSaver` per instance.
+   */
+  poolMax?: number;
+  /**
+   * Disable TLS certificate verification (`ssl: { rejectUnauthorized: false }`). Needed only for a
+   * managed database that presents a self-signed cert over a public URL; leave off for private
+   * networking (plaintext) or a proper CA chain. `sslmode` in the URL is honored by `pg` regardless.
+   */
+  sslNoVerify?: boolean;
+}
+
+export interface PostgresSkeinStoreOptions extends PostgresPoolOptions {
   /** Enables pgvector semantic store search. Omitted → search falls back to naive text matching. */
   index?: StoreIndexConfig;
 }
+
+/**
+ * Build a `pg` Pool with skein's connection tuning applied. Shared by the store and the checkpoint
+ * saver so both honor `poolMax`/`sslNoVerify` identically against the same `DATABASE_URL`.
+ */
+export function createPostgresPool(url: string, options: PostgresPoolOptions = {}): Pool {
+  const pool = new Pool({
+    connectionString: url,
+    ...(options.poolMax !== undefined ? { max: options.poolMax } : {}),
+    // Only override TLS to skip verification; otherwise let `pg` derive `ssl` from the URL's
+    // `sslmode`, so a proper CA chain (or plaintext private networking) is unaffected.
+    ...(options.sslNoVerify ? { ssl: { rejectUnauthorized: false } } : {}),
+  });
+  // An idle client can emit 'error' (server restart, dropped connection); without a listener
+  // node-postgres re-emits it as an unhandled 'error' that crashes the process. The pool evicts
+  // the bad client on its own, so swallowing here is safe — the next query gets a fresh client.
+  pool.on("error", () => {});
+  return pool;
+}
+
+/**
+ * Session-independent advisory-lock key that serializes the opt-in pgvector setup (extension +
+ * column) across concurrently-booting instances, so a rolling deploy doesn't race `CREATE EXTENSION`.
+ */
+const PGVECTOR_SETUP_LOCK = 0x736b6569; // "skei"
 
 const toIsoString = (date: Date): string => date.toISOString();
 
@@ -184,12 +224,7 @@ export class PostgresSkeinStore implements SkeinStore {
     url: string,
     options: PostgresSkeinStoreOptions = {},
   ): Promise<PostgresSkeinStore> {
-    const pool = new Pool({ connectionString: url });
-    // An idle client can emit 'error' (server restart, dropped connection); without a listener
-    // node-postgres re-emits it as an unhandled 'error' that crashes the process. The pool evicts
-    // the bad client on its own, so swallowing here is safe — the next query gets a fresh client.
-    pool.on("error", () => {});
-    return new PostgresSkeinStore(pool, url, options.index);
+    return new PostgresSkeinStore(createPostgresPool(url, options), url, options.index);
   }
 
   /** Apply pending schema migrations (idempotent) via node-pg-migrate. */
@@ -203,6 +238,42 @@ export class PostgresSkeinStore implements SkeinStore {
       // node-pg-migrate logs each step to console by default; quiet it (errors still throw).
       logger: { info: () => {}, warn: () => {}, error: () => {}, debug: () => {} },
     });
+    // Semantic search is opt-in: only when a store index is configured do we require pgvector.
+    // This keeps the base schema runnable on a stock Postgres (e.g. Railway's default) that lacks
+    // the extension. Both statements are idempotent, so it's safe on every boot / re-migrate.
+    if (this.#index !== undefined) await this.#setupPgvector();
+  }
+
+  // Enable pgvector + add the embedding column, serialized by a transaction-scoped advisory lock so
+  // concurrently-booting instances (a rolling deploy) don't race `CREATE EXTENSION` — which can
+  // raise "tuple concurrently updated" when two sessions run it at once. The xact lock frees on
+  // COMMIT/ROLLBACK. node-pg-migrate lock-serializes its own migrations, but this DDL runs after it.
+  async #setupPgvector(): Promise<void> {
+    const client = await this.#pool.connect();
+    try {
+      await client.query("BEGIN");
+      await client.query("SELECT pg_advisory_xact_lock($1)", [PGVECTOR_SETUP_LOCK]);
+      try {
+        await client.query("CREATE EXTENSION IF NOT EXISTS vector");
+      } catch (error) {
+        // `CREATE EXTENSION` only enables an extension already installed on the server — it can't
+        // install pgvector onto a server that lacks it (Railway's default Postgres, most stock
+        // images). Turn the raw Postgres error into an actionable one.
+        throw new Error(
+          `Could not enable pgvector, required by the configured store.index. Use a Postgres with ` +
+            `pgvector installed (e.g. the pgvector/pgvector image, or Railway's pgvector template) — ` +
+            `or remove store.index to run without semantic search. Original error: ` +
+            `${error instanceof Error ? error.message : String(error)}`,
+        );
+      }
+      await client.query("ALTER TABLE store_items ADD COLUMN IF NOT EXISTS embedding vector");
+      await client.query("COMMIT");
+    } catch (error) {
+      await client.query("ROLLBACK");
+      throw error;
+    } finally {
+      client.release();
+    }
   }
 
   /** Close the connection pool. */
@@ -322,19 +393,36 @@ export class PostgresSkeinStore implements SkeinStore {
         );
       }
       for (const [id, item] of snapshot.items) {
-        await client.query(
-          `INSERT INTO store_items (namespace, key, value, embedding, created_at, updated_at)
-           VALUES ($1::text[], $2, $3::jsonb, $4::vector, $5, $6)
-           ON CONFLICT (namespace, key) DO NOTHING`,
-          [
-            item.namespace,
-            item.key,
-            JSON.stringify(item.value),
-            embeddingByItem.get(id) ?? null,
-            item.createdAt,
-            item.updatedAt,
-          ],
-        );
+        // The `embedding` column only exists when a store index is configured (see migrate());
+        // without one, insert the pgvector-free row so a stock Postgres never sees the column.
+        const query =
+          this.#index !== undefined
+            ? {
+                text: `INSERT INTO store_items (namespace, key, value, embedding, created_at, updated_at)
+                       VALUES ($1::text[], $2, $3::jsonb, $4::vector, $5, $6)
+                       ON CONFLICT (namespace, key) DO NOTHING`,
+                values: [
+                  item.namespace,
+                  item.key,
+                  JSON.stringify(item.value),
+                  embeddingByItem.get(id) ?? null,
+                  item.createdAt,
+                  item.updatedAt,
+                ],
+              }
+            : {
+                text: `INSERT INTO store_items (namespace, key, value, created_at, updated_at)
+                       VALUES ($1::text[], $2, $3::jsonb, $4, $5)
+                       ON CONFLICT (namespace, key) DO NOTHING`,
+                values: [
+                  item.namespace,
+                  item.key,
+                  JSON.stringify(item.value),
+                  item.createdAt,
+                  item.updatedAt,
+                ],
+              };
+        await client.query(query.text, query.values);
       }
       await client.query("COMMIT");
       if (skippedOrphanRuns > 0) {
@@ -504,17 +592,27 @@ export class PostgresSkeinStore implements SkeinStore {
       return rows[0] ? rowToItem(rows[0]) : null;
     },
     put: async (namespace, key, value) => {
-      const embedding =
-        this.#index !== undefined
-          ? await this.#embed(textForValue(value, this.#index.fields))
-          : null;
+      // The `embedding` column only exists when a store index is configured (see migrate()); a
+      // pgvector-free deployment writes the row without it, so a stock Postgres never sees `vector`.
+      if (this.#index !== undefined) {
+        const embedding = await this.#embed(textForValue(value, this.#index.fields));
+        const { rows } = await this.#pool.query<ItemRow>(
+          `INSERT INTO store_items (namespace, key, value, embedding)
+           VALUES ($1::text[], $2, $3::jsonb, $4::vector)
+           ON CONFLICT (namespace, key)
+           DO UPDATE SET value = EXCLUDED.value, embedding = EXCLUDED.embedding, updated_at = now()
+           RETURNING namespace, key, value, created_at, updated_at`,
+          [namespace, key, JSON.stringify(value), embedding],
+        );
+        return rowToItem(rows[0] as ItemRow);
+      }
       const { rows } = await this.#pool.query<ItemRow>(
-        `INSERT INTO store_items (namespace, key, value, embedding)
-         VALUES ($1::text[], $2, $3::jsonb, $4::vector)
+        `INSERT INTO store_items (namespace, key, value)
+         VALUES ($1::text[], $2, $3::jsonb)
          ON CONFLICT (namespace, key)
-         DO UPDATE SET value = EXCLUDED.value, embedding = EXCLUDED.embedding, updated_at = now()
+         DO UPDATE SET value = EXCLUDED.value, updated_at = now()
          RETURNING namespace, key, value, created_at, updated_at`,
-        [namespace, key, JSON.stringify(value), embedding],
+        [namespace, key, JSON.stringify(value)],
       );
       return rowToItem(rows[0] as ItemRow);
     },
