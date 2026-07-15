@@ -32,7 +32,7 @@ const freePort = (): Promise<number> =>
     });
   });
 
-/** Spawn `skein dev`, resolving once it logs that it is listening. */
+/** Spawn `skein dev`, resolving once its startup banner reports the server is running. */
 async function startDev(bin: string, port: number): Promise<ChildProcess> {
   const child = spawn(
     process.execPath,
@@ -42,7 +42,8 @@ async function startDev(bin: string, port: number): Promise<ChildProcess> {
   await new Promise<void>((resolve, reject) => {
     const timer = setTimeout(() => reject(new Error("timed out waiting for skein dev")), 25_000);
     const onData = (buffer: Buffer) => {
-      if (buffer.toString().includes("listening on")) {
+      // The banner prints this on stdout only after `server.listen` succeeds (see banner.ts).
+      if (buffer.toString().includes("Server running at")) {
         clearTimeout(timer);
         child.stdout?.off("data", onData);
         resolve();
