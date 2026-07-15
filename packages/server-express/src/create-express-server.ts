@@ -10,18 +10,23 @@ import express, { type Express, type RequestHandler } from "express";
 import { skeinRouter, type SkeinRouterOptions } from "./skein-router.js";
 
 /**
- * One log line per request: `GET /threads/x 200 5ms`. Logs on `finish` (response fully sent) or on
- * `close` (client aborted first — common when an SSE stream is cancelled), whichever comes first, so
- * cancelled streams are not silently omitted. A `once` guard keeps it to a single line per request.
+ * Two log lines per request, mirroring `langgraph dev`: `<-- GET /threads/x` when the request comes
+ * in, then `--> GET /threads/x 200 5ms` when it completes. The completion line fires on `finish`
+ * (response fully sent) or `close` (client aborted first — common when an SSE stream is cancelled),
+ * whichever comes first, so cancelled streams are not silently omitted. A `once` guard keeps the
+ * completion to a single line per request.
  */
 function requestLogger(logger: Logger): RequestHandler {
   return (req, res, next) => {
     const startedAt = Date.now();
+    logger.info(`<-- ${req.method} ${req.originalUrl}`);
     let logged = false;
     const log = () => {
       if (logged) return;
       logged = true;
-      logger.info(`${req.method} ${req.originalUrl} ${res.statusCode} ${Date.now() - startedAt}ms`);
+      logger.info(
+        `--> ${req.method} ${req.originalUrl} ${res.statusCode} ${Date.now() - startedAt}ms`,
+      );
     };
     res.once("finish", log);
     res.once("close", log);

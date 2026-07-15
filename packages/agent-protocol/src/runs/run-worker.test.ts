@@ -2,9 +2,22 @@ import { describe, expect, it } from "vitest";
 
 import { createFixtureDeps } from "../__fixtures__/deps.js";
 import { createContext } from "../context.js";
+import type { Logger } from "../deps.js";
 import { buildProtocolService } from "../service.js";
 
 import { createRunWorker } from "./run-worker.js";
+
+/** A logger that records every `info` call's message + meta for assertions. */
+function capturingLogger(): Logger & { infos: { message: string; meta?: unknown }[] } {
+  const infos: { message: string; meta?: unknown }[] = [];
+  return {
+    infos,
+    debug: () => {},
+    info: (message, meta) => infos.push({ message, meta }),
+    warn: () => {},
+    error: () => {},
+  };
+}
 
 async function waitFor(predicate: () => Promise<boolean>, timeoutMs = 2000): Promise<void> {
   const start = Date.now();
@@ -31,6 +44,32 @@ describe("run worker", () => {
       });
       await waitFor(async () => (await service.runs.get(run.run_id)).status === "success");
       expect((await service.threads.get(thread.thread_id)).values).toEqual({ value: "echo: hi" });
+    } finally {
+      await worker.stop();
+    }
+  });
+
+  it("logs a background-run lifecycle summary through the injected logger", async () => {
+    const logger = capturingLogger();
+    const deps = createFixtureDeps({ logger });
+    const ctx = createContext(deps);
+    const service = buildProtocolService(ctx);
+    await service.assistants.registerGraphAssistants();
+    const worker = createRunWorker(ctx);
+    worker.start();
+    try {
+      const thread = await service.threads.create();
+      const run = await service.runs.createBackground(thread.thread_id, {
+        assistant_id: "echo",
+        input: { value: "hi" },
+      });
+      await waitFor(async () => logger.infos.some((i) => i.message === "Background run succeeded"));
+
+      const summary = logger.infos.find((i) => i.message === "Background run succeeded");
+      expect(summary?.meta).toMatchObject({ run_id: run.run_id, run_attempt: 1 });
+      expect(summary?.meta).toHaveProperty("run_created_at");
+      expect(summary?.meta).toHaveProperty("run_exec_ms");
+      expect(summary?.meta).toHaveProperty("run_queue_ms");
     } finally {
       await worker.stop();
     }

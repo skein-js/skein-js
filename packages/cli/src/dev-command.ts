@@ -20,6 +20,8 @@ import {
 } from "@skein-js/express";
 import { buildRuntime, type QueueDriver, type StoreDriver } from "@skein-js/runtime";
 
+import { printBanner } from "./banner.js";
+import { createDevLogger } from "./dev-logger.js";
 import { createViteGraphLoader } from "./vite-graph-loader.js";
 
 /** The flags `skein dev` accepts, after commander parsing. */
@@ -49,15 +51,9 @@ const FORCE_EXIT_MS = 5000;
 const STATE_DIR = ".skein";
 const STATE_FILE = "dev-state.json";
 
-/** Console logger for the dev server — drives per-request logging and surfaces engine warnings. */
-const devLogger = {
-  debug: (message: string) => console.debug(message),
-  info: (message: string) => console.log(message),
-  warn: (message: string, meta?: unknown) =>
-    meta === undefined ? console.warn(message) : console.warn(message, meta),
-  error: (message: string, meta?: unknown) =>
-    meta === undefined ? console.error(message) : console.error(message, meta),
-};
+/** Console logger for the dev server — colored, `info:`-prefixed output that drives per-request
+ * logging, the background-run summaries, the startup banner, and surfaces engine warnings. */
+const devLogger = createDevLogger();
 
 /** Apply resolved env to `process.env` without clobbering values already set in the environment. */
 function applyEnv(resolved: Record<string, string>): void {
@@ -151,7 +147,16 @@ export async function runDev(options: DevCommandOptions): Promise<void> {
     process.exitCode = 1;
     return;
   }
-  console.log(`skein-js listening on http://${host}:${port}`);
+  printBanner(
+    {
+      host,
+      port,
+      graphIds: runtime.deps.graphs.ids,
+      authPath: config.auth?.path,
+      workerCount: 1,
+    },
+    devLogger,
+  );
 
   let lastSaved: string | undefined;
   const saveState = () => {

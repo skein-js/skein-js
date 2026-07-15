@@ -2,9 +2,16 @@
 // queued run through the same engine as inline runs. It only ever talks to the `RunQueue`
 // interface, so swapping the in-memory queue for `@skein-js/redis` (BullMQ) needs no change here.
 
-import { isTerminalRunStatus, type QueuedRun, type RunConsumer } from "@skein-js/core";
+import {
+  isTerminalRunStatus,
+  type QueuedRun,
+  type Run,
+  type RunConsumer,
+  type RunStatus,
+} from "@skein-js/core";
 
 import type { ProtocolContext } from "../context.js";
+import type { Logger } from "../deps.js";
 
 import { executeRun } from "./run-engine.js";
 
@@ -24,6 +31,30 @@ export interface RunWorker {
 
 const sleep = (ms: number): Promise<void> => new Promise((resolve) => setTimeout(resolve, ms));
 
+/**
+ * A per-run lifecycle summary for background runs, mirroring `langgraph dev`. Emitted through the
+ * injected logger as a message plus structured meta (the CLI dev logger renders it); production
+ * injects a no-op logger, so this costs nothing there. The timing fields are computed here — the
+ * wire `Run` carries only `created_at`, not `started_at`/`ended_at`/durations.
+ */
+function logRunLifecycle(
+  logger: Logger,
+  run: Run,
+  status: RunStatus,
+  startedAt: number,
+  endedAt: number,
+): void {
+  logger.info(status === "success" ? "Background run succeeded" : `Background run ${status}`, {
+    run_id: run.run_id,
+    run_attempt: 1,
+    run_created_at: run.created_at,
+    run_started_at: new Date(startedAt).toISOString(),
+    run_ended_at: new Date(endedAt).toISOString(),
+    run_exec_ms: endedAt - startedAt,
+    run_queue_ms: startedAt - Date.parse(run.created_at),
+  });
+}
+
 export function createRunWorker(ctx: ProtocolContext, options: RunWorkerOptions = {}): RunWorker {
   const { deps, control } = ctx;
   const maxConcurrency = options.maxConcurrency ?? 1;
@@ -39,9 +70,15 @@ export function createRunWorker(ctx: ProtocolContext, options: RunWorkerOptions 
     const kwargs = (await deps.store.runs.getKwargs(queued.run_id)) ?? {};
     const runControl = control.register(queued.run_id);
     inFlight.add(queued.run_id);
+    // Wall-clock timing for the human-facing summary, so queue/exec durations line up with the
+    // store-stamped `run.created_at`. Defaults to `error` so a run whose execution *throws* (not just
+    // one that returns a terminal error status) is still summarised before the throw propagates.
+    const startedAt = Date.now();
+    let status: RunStatus = "error";
     try {
-      await executeRun(deps, { run, kwargs, control: runControl });
+      status = (await executeRun(deps, { run, kwargs, control: runControl })).status;
     } finally {
+      logRunLifecycle(deps.logger, run, status, startedAt, Date.now());
       control.clear(queued.run_id);
       inFlight.delete(queued.run_id);
     }
