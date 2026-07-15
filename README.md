@@ -9,7 +9,7 @@ already using the LangGraph CLI, switching is a one-word change: `langgraph dev`
 
 Think of it as [**aegra**](https://github.com/aegra/aegra) for the TypeScript ecosystem.
 
-> **skein-js** _(noun)_ — a coiled length of thread. The Agent Protocol's first-class
+> **skein** _(noun)_ — a coiled length of thread. The Agent Protocol's first-class
 > **threads**, and the strands of a graph.
 
 ## Contents
