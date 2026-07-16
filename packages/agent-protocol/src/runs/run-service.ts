@@ -5,6 +5,7 @@
 import {
   isTerminalRunStatus,
   SkeinHttpError,
+  type Assistant,
   type Config,
   type DefaultValues,
   type Metadata,
@@ -14,6 +15,7 @@ import {
   type RunKwargs,
   type RunStatus,
   type StreamMode,
+  type Thread,
 } from "@skein-js/core";
 
 import type { ProtocolContext } from "../context.js";
@@ -70,23 +72,49 @@ function toKwargs(input: CreateRunInput): RunKwargs {
 export function createRunService(ctx: ProtocolContext): RunService {
   const { deps, control, locks } = ctx;
 
-  const requireThread = async (threadId: string): Promise<void> => {
-    if (!(await deps.store.threads.get(threadId))) {
-      throw SkeinHttpError.notFound(`Thread "${threadId}" not found.`);
+  const requireThread = async (threadId: string): Promise<Thread> => {
+    const thread = await deps.store.threads.get(threadId);
+    if (!thread) throw SkeinHttpError.notFound(`Thread "${threadId}" not found.`);
+    return thread;
+  };
+
+  const requireAssistant = async (assistantId: string): Promise<Assistant> => {
+    const assistant = await deps.store.assistants.get(assistantId);
+    if (!assistant) throw SkeinHttpError.notFound(`Assistant "${assistantId}" not found.`);
+    return assistant;
+  };
+
+  // Stamp the run's graph + assistant onto the thread's metadata so `POST /threads/search` can
+  // filter threads by graph via `{ metadata: { graph_id } }` — the LangGraph-compatible path, using
+  // the metadata subset match the store search already does (no dedicated query field needed). The
+  // thread reflects its *most recent* run's graph; merge because `ThreadUpdate.metadata` replaces.
+  // Takes the thread the caller already loaded (no re-fetch) and is best-effort: this metadata is
+  // only for search filtering, so a stamp failure must never fail run creation or strand the run.
+  const stampGraphOnThread = async (thread: Thread, assistant: Assistant): Promise<void> => {
+    if (
+      thread.metadata?.["graph_id"] === assistant.graph_id &&
+      thread.metadata?.["assistant_id"] === assistant.assistant_id
+    ) {
+      return; // already tagged with this graph/assistant — skip the redundant write
+    }
+    try {
+      await deps.store.threads.update(thread.thread_id, {
+        metadata: {
+          ...thread.metadata,
+          graph_id: assistant.graph_id,
+          assistant_id: assistant.assistant_id,
+        },
+      });
+    } catch (error) {
+      deps.logger.warn("failed to stamp graph_id/assistant_id onto thread", error);
     }
   };
 
-  const requireAssistant = async (assistantId: string): Promise<string> => {
-    const assistant = await deps.store.assistants.get(assistantId);
-    if (!assistant) throw SkeinHttpError.notFound(`Assistant "${assistantId}" not found.`);
-    return assistant.assistant_id;
-  };
-
   // A stateless run creates (or reuses) its thread; a thread-scoped run's thread must already exist.
-  const ensureThread = async (threadId?: string): Promise<string> => {
-    if (threadId === undefined) return (await deps.store.threads.create()).thread_id;
+  const ensureThread = async (threadId?: string): Promise<Thread> => {
+    if (threadId === undefined) return deps.store.threads.create();
     const existing = await deps.store.threads.get(threadId);
-    return (existing ?? (await deps.store.threads.create({ thread_id: threadId }))).thread_id;
+    return existing ?? (await deps.store.threads.create({ thread_id: threadId }));
   };
 
   // Create the pending run row under the per-thread lock, enforcing the concurrency guard atomically.
@@ -130,19 +158,21 @@ export function createRunService(ctx: ProtocolContext): RunService {
 
   return {
     async createWait(input) {
-      const assistantId = await requireAssistant(input.assistant_id);
-      const threadId = await ensureThread(input.thread_id);
+      const assistant = await requireAssistant(input.assistant_id);
+      const thread = await ensureThread(input.thread_id);
       const kwargs = toKwargs(input);
-      const run = await createPendingRun(input, threadId, assistantId, kwargs);
+      const run = await createPendingRun(input, thread.thread_id, assistant.assistant_id, kwargs);
+      await stampGraphOnThread(thread, assistant);
       const outcome = await runInline(run, kwargs);
       return outcome.values;
     },
 
     async createStream(input) {
-      const assistantId = await requireAssistant(input.assistant_id);
-      const threadId = await ensureThread(input.thread_id);
+      const assistant = await requireAssistant(input.assistant_id);
+      const thread = await ensureThread(input.thread_id);
       const kwargs = toKwargs(input);
-      const run = await createPendingRun(input, threadId, assistantId, kwargs);
+      const run = await createPendingRun(input, thread.thread_id, assistant.assistant_id, kwargs);
+      await stampGraphOnThread(thread, assistant);
       // Kick off execution; the subscription below replays from seq 0 (frames are buffered), so
       // nothing is lost between starting the run and subscribing.
       void runInline(run, kwargs).catch((error: unknown) =>
@@ -152,15 +182,16 @@ export function createRunService(ctx: ProtocolContext): RunService {
     },
 
     async createBackground(threadId, input) {
-      const assistantId = await requireAssistant(input.assistant_id);
-      await requireThread(threadId);
+      const assistant = await requireAssistant(input.assistant_id);
+      const thread = await requireThread(threadId);
       const kwargs = toKwargs(input);
       const run = await createPendingRun(
         { ...input, thread_id: threadId },
         threadId,
-        assistantId,
+        assistant.assistant_id,
         kwargs,
       );
+      await stampGraphOnThread(thread, assistant);
       await deps.queue.enqueue({ run_id: run.run_id, thread_id: threadId });
       return run;
     },

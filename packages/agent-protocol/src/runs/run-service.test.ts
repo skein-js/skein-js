@@ -117,6 +117,37 @@ describe("run service", () => {
     expect((healed.metadata as { error?: unknown }).error).toBeUndefined();
   });
 
+  it("stamps the run's graph_id/assistant_id onto the thread so it is searchable by graph", async () => {
+    const deps = createFixtureDeps();
+    const { service } = await serviceWithAssistants(deps);
+
+    await service.runs.createWait({ assistant_id: "echo", input: { value: "hi" } });
+
+    // The thread carries the graph/assistant that ran on it (LangGraph-compatible metadata stamp).
+    const [thread] = await deps.store.threads.list();
+    expect(thread?.metadata).toMatchObject({ graph_id: "echo", assistant_id: "echo" });
+
+    // And it is now returned by a metadata search filtering on graph_id.
+    const byGraph = await deps.store.threads.search({ metadata: { graph_id: "echo" } });
+    expect(byGraph.map((t) => t.thread_id)).toEqual([thread?.thread_id]);
+  });
+
+  it("stamps the graph onto a background run's thread without executing it", async () => {
+    const deps = createFixtureDeps();
+    const { service } = await serviceWithAssistants(deps);
+    const created = await service.threads.create({ metadata: { user: "alice" } });
+
+    await service.runs.createBackground(created.thread_id, { assistant_id: "echo", input: {} });
+
+    // The stamp merges — pre-existing user metadata survives alongside graph_id/assistant_id.
+    const stamped = await service.threads.get(created.thread_id);
+    expect(stamped.metadata).toMatchObject({
+      user: "alice",
+      graph_id: "echo",
+      assistant_id: "echo",
+    });
+  });
+
   it("join replays a finished run's frames from the buffer", async () => {
     const { service } = await serviceWithAssistants();
     const { runId, frames } = await service.runs.createStream({ assistant_id: "echo", input: {} });

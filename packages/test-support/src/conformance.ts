@@ -128,6 +128,22 @@ export function runSkeinStoreConformance(label: string, makeStore: SkeinStoreFac
         expect(await store.threads.search({})).toHaveLength(3);
       });
 
+      it("filters threads by graph via the graph_id metadata stamp", async () => {
+        // The run engine stamps `graph_id`/`assistant_id` into thread metadata on run creation, so
+        // "list the threads for graph X" is a plain metadata subset search (LangGraph-compatible).
+        const store = await makeStore();
+        await store.threads.create({ metadata: { graph_id: "chat", assistant_id: "a1" } });
+        await store.threads.create({ metadata: { graph_id: "chat", assistant_id: "a2" } });
+        await store.threads.create({ metadata: { graph_id: "research", assistant_id: "a3" } });
+
+        const chatThreads = await store.threads.search({ metadata: { graph_id: "chat" } });
+        expect(chatThreads).toHaveLength(2);
+        expect(chatThreads.every((t) => t.metadata?.["graph_id"] === "chat")).toBe(true);
+
+        const research = await store.threads.search({ metadata: { graph_id: "research" } });
+        expect(research).toHaveLength(1);
+      });
+
       it("matches nested metadata by deep containment (Postgres @> semantics)", async () => {
         const store = await makeStore();
         await store.threads.create({ metadata: { profile: { plan: "pro", region: "eu" } } });

@@ -59,6 +59,17 @@ Priority for v1 is marked **✅ MVP**. Deferred items are noted.
 | `POST`   | `/threads/{thread_id}/copy`    | ✅  |
 | `DELETE` | `/threads/{thread_id}`         | ✅  |
 
+**Filtering threads by graph.** `POST /threads/search` matches on a metadata subset. When a run is
+created, skein stamps the run's `graph_id` and `assistant_id` into the thread's metadata (matching
+LangGraph), so listing the threads for a graph is just:
+
+```jsonc
+// POST /threads/search
+{ "metadata": { "graph_id": "my_graph" } }
+```
+
+The stamp reflects the thread's most recent run; a thread that has never run carries no `graph_id`.
+
 ### Runs — stateless / ephemeral
 
 | Method | Path           | MVP |
