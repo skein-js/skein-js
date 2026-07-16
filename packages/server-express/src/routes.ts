@@ -30,10 +30,27 @@ interface RouteBinding {
 
 /** The route table, ordered most-specific-first within each method so literals win over params. */
 export const skeinRoutes: readonly RouteBinding[] = [
-  // assistants
-  { method: "get", path: "/assistants/:assistant_id/schemas", handler: "getAssistantSchemas" },
-  { method: "get", path: "/assistants/:assistant_id", handler: "getAssistant" },
+  // assistants — literals (search/count) before `:assistant_id`, and nested paths before the bare id.
   { method: "post", path: "/assistants/search", handler: "searchAssistants" },
+  { method: "post", path: "/assistants/count", handler: "countAssistants" },
+  { method: "post", path: "/assistants", handler: "createAssistant" },
+  { method: "get", path: "/assistants/:assistant_id/schemas", handler: "getAssistantSchemas" },
+  { method: "get", path: "/assistants/:assistant_id/graph", handler: "getAssistantGraph" },
+  {
+    method: "get",
+    path: "/assistants/:assistant_id/subgraphs/:namespace",
+    handler: "getAssistantSubgraphs",
+  },
+  { method: "get", path: "/assistants/:assistant_id/subgraphs", handler: "getAssistantSubgraphs" },
+  { method: "post", path: "/assistants/:assistant_id/versions", handler: "listAssistantVersions" },
+  {
+    method: "post",
+    path: "/assistants/:assistant_id/latest",
+    handler: "setAssistantLatestVersion",
+  },
+  { method: "get", path: "/assistants/:assistant_id", handler: "getAssistant" },
+  { method: "patch", path: "/assistants/:assistant_id", handler: "updateAssistant" },
+  { method: "delete", path: "/assistants/:assistant_id", handler: "deleteAssistant" },
 
   // threads
   { method: "post", path: "/threads/search", handler: "listThreads" },

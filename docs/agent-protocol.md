@@ -39,13 +39,27 @@ instead of hand-writing (or regenerating) a parallel set. See [reuse.md](./reuse
 
 Priority for v1 is marked **✅ MVP**. Deferred items are noted.
 
-### Assistants / agents
+### Assistants
 
-| Method | Path                         | MVP |
-| ------ | ---------------------------- | --- |
-| `POST` | `/agents/search`             |     |
-| `GET`  | `/agents/{agent_id}`         |     |
-| `GET`  | `/agents/{agent_id}/schemas` | ✅  |
+Full CRUD + version history (LangGraph parity). Assistants are auto-registered one-per-graph at
+startup (`assistant_id` defaults to `graph_id`), and can also be created/updated/deleted over the
+API. Every `PATCH` mints a new **immutable version**; the live row tracks the currently-active
+version and mirrors its fields, and `POST .../latest` rolls back to any past version. (Routes use the
+`/assistants/...` spelling the `@langchain/langgraph-sdk` client sends — not `/agents/...`.)
+
+| Method   | Path                                          | Notes                                         |
+| -------- | --------------------------------------------- | --------------------------------------------- |
+| `POST`   | `/assistants`                                 | Create; `if_exists: "raise" \| "do_nothing"`  |
+| `GET`    | `/assistants/{assistant_id}`                  |                                               |
+| `PATCH`  | `/assistants/{assistant_id}`                  | Update — mints a new version                  |
+| `DELETE` | `/assistants/{assistant_id}`                  | `?delete_threads=true` cascades owned threads |
+| `POST`   | `/assistants/search`                          | Filter by graph_id/name/metadata; sort + page |
+| `POST`   | `/assistants/count`                           | Count matching the search filters             |
+| `GET`    | `/assistants/{assistant_id}/schemas`          | Input/output/state/config schemas             |
+| `GET`    | `/assistants/{assistant_id}/graph`            | Drawable graph JSON (`?xray`)                 |
+| `GET`    | `/assistants/{assistant_id}/subgraphs[/{ns}]` | Subgraph schemas by namespace (`?recurse`)    |
+| `POST`   | `/assistants/{assistant_id}/versions`         | Version history, newest-first (filter + page) |
+| `POST`   | `/assistants/{assistant_id}/latest`           | Roll back to an existing version              |
 
 ### Threads
 

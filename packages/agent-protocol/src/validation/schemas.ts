@@ -92,12 +92,68 @@ export const threadSearchSchema = z
   })
   .passthrough();
 
-/** `POST /assistants/search`. */
+/** `POST /assistants`. */
+export const assistantCreateSchema = z
+  .object({
+    graph_id: z.string().min(1),
+    assistant_id: z.string().min(1).optional(),
+    name: z.string().optional(),
+    description: z.string().optional(),
+    config: configSchema.optional(),
+    context: z.unknown().optional(),
+    metadata: z.record(z.unknown()).optional(),
+    /** Conflict policy when `assistant_id` already exists; defaults to `raise`. */
+    if_exists: z.enum(["raise", "do_nothing"]).optional(),
+  })
+  .passthrough();
+
+/** `PATCH /assistants/{id}` — every field optional; each patch mints a new version. */
+export const assistantUpdateSchema = z
+  .object({
+    graph_id: z.string().min(1).optional(),
+    name: z.string().optional(),
+    description: z.string().optional(),
+    config: configSchema.optional(),
+    context: z.unknown().optional(),
+    metadata: z.record(z.unknown()).optional(),
+  })
+  .passthrough();
+
+/** `POST /assistants/search`. `limit` is capped so a client can't request an unbounded page. */
 export const assistantSearchSchema = z
   .object({
     graph_id: z.string().optional(),
-    limit: z.number().int().positive().optional(),
+    name: z.string().optional(),
+    metadata: z.record(z.unknown()).optional(),
+    limit: z.number().int().positive().max(1000).optional(),
     offset: z.number().int().nonnegative().optional(),
+    sort_by: z.enum(["assistant_id", "graph_id", "name", "created_at", "updated_at"]).optional(),
+    sort_order: z.enum(["asc", "desc"]).optional(),
+  })
+  .passthrough();
+
+/** `POST /assistants/count` — the search filters without pagination/sort. */
+export const assistantCountSchema = z
+  .object({
+    graph_id: z.string().optional(),
+    name: z.string().optional(),
+    metadata: z.record(z.unknown()).optional(),
+  })
+  .passthrough();
+
+/** `POST /assistants/{id}/versions`. `limit` is capped to bound the response size. */
+export const assistantVersionsSchema = z
+  .object({
+    metadata: z.record(z.unknown()).optional(),
+    limit: z.number().int().positive().max(1000).optional(),
+    offset: z.number().int().nonnegative().optional(),
+  })
+  .passthrough();
+
+/** `POST /assistants/{id}/latest`. */
+export const assistantSetLatestSchema = z
+  .object({
+    version: z.number().int().positive(),
   })
   .passthrough();
 

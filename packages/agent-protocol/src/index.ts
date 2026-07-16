@@ -37,7 +37,13 @@ export type {
 } from "./deps.js";
 
 // Service input/output types (useful when building an adapter or driving the service directly).
-export type { AssistantSearch, AssistantService } from "./assistants/assistant-service.js";
+export type {
+  AssistantService,
+  CreateAssistantInput,
+  DeleteAssistantOptions,
+  DrawGraphOptions,
+  SubgraphsOptions,
+} from "./assistants/assistant-service.js";
 export type { StoreService } from "./store/store-service.js";
 
 // The LangGraph `BaseStore` bridge over a skein `StoreRepo`, injected into every graph run so nodes

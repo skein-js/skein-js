@@ -77,7 +77,19 @@ async function writeFixture(): Promise<{ checkpointId: string }> {
         updated_at: createdAt,
       },
     },
-    assistant_versions: [],
+    assistant_versions: [
+      {
+        assistant_id: "a1",
+        version: 4,
+        graph_id: "agent",
+        name: "Research Agent",
+        description: "does research",
+        config: { configurable: { model: "gemini" } },
+        context: {},
+        metadata: { team: "core" },
+        created_at: createdAt,
+      },
+    ],
     retry_counter: {},
   };
 
@@ -193,6 +205,12 @@ describe("readLanggraphDevState", () => {
       created_at: iso,
       updated_at: iso,
     });
+
+    // Version history is imported (keyed by [assistant_id, version]) so getVersions/rollback work.
+    expect(snapshot.store.assistantVersions).toHaveLength(1);
+    const [versionKey, version] = snapshot.store.assistantVersions[0]!;
+    expect(versionKey).toBe(JSON.stringify(["a1", 4]));
+    expect(version).toMatchObject({ assistant_id: "a1", version: 4, name: "Research Agent" });
 
     const [, thread] = snapshot.store.threads[0]!;
     expect(thread).toMatchObject({

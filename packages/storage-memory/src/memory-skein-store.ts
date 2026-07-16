@@ -14,6 +14,10 @@ import {
   type Assistant,
   type AssistantCreate,
   type AssistantRepo,
+  type AssistantSearchQuery,
+  type AssistantUpdate,
+  type AssistantVersion,
+  type AssistantVersionsQuery,
   type Item,
   type Run,
   type RunCreate,
@@ -38,6 +42,25 @@ const nowIso = (): string => new Date().toISOString();
 
 /** Deep copy at the persistence boundary — mirrors what a serializing driver (Postgres) does. */
 const clone = <T>(value: T): T => structuredClone(value);
+
+/**
+ * Project an assistant row onto an immutable {@link AssistantVersion} snapshot (the wire shape, sans
+ * `updated_at`). `createdAt` overrides when this version came into being — defaulting to the
+ * assistant's own `created_at`, which is correct for the version-1 snapshot minted at create time.
+ */
+function toVersion(assistant: Assistant, createdAt?: string): AssistantVersion {
+  return {
+    assistant_id: assistant.assistant_id,
+    graph_id: assistant.graph_id,
+    config: assistant.config,
+    context: assistant.context,
+    created_at: createdAt ?? assistant.created_at,
+    metadata: assistant.metadata,
+    version: assistant.version,
+    name: assistant.name,
+    description: assistant.description,
+  };
+}
 
 /** Read one row by id, deep-cloned so the caller can't mutate what's stored. */
 function readOne<T>(map: Map<string, T>, id: string): T | null {
@@ -69,9 +92,17 @@ function itemKey(namespace: string[], key: string): string {
   return JSON.stringify([namespace, key]);
 }
 
+/** Serialize an (assistant_id, version) pair to a collision-free Map key for the versions store. */
+function versionKey(assistantId: string, version: number): string {
+  return JSON.stringify([assistantId, version]);
+}
+
 /** In-process SkeinStore for development and tests. */
 export class MemorySkeinStore implements SkeinStore {
   readonly #assistants = new Map<string, Assistant>();
+  // Immutable version snapshots, keyed by `versionKey(assistant_id, version)`. The live #assistants
+  // row always mirrors the currently-active version; this map is the append-only history.
+  readonly #assistantVersions = new Map<string, AssistantVersion>();
   readonly #threads = new Map<string, Thread>();
   readonly #runs = new Map<string, Run>();
   // The opaque execution payload lives beside the run row (it is not part of the wire `Run`).
@@ -113,13 +144,58 @@ export class MemorySkeinStore implements SkeinStore {
     }
   }
 
+  /** Drop every version snapshot belonging to an assistant (memory has no cascading FK). */
+  #deleteVersionsOf(assistantId: string): void {
+    for (const [key, version] of this.#assistantVersions) {
+      if (version.assistant_id === assistantId) this.#assistantVersions.delete(key);
+    }
+  }
+
+  /** Highest version number recorded for an assistant, or 0 when it has no history yet. */
+  #maxVersionOf(assistantId: string): number {
+    let max = 0;
+    for (const version of this.#assistantVersions.values()) {
+      if (version.assistant_id === assistantId && version.version > max) max = version.version;
+    }
+    return max;
+  }
+
   readonly assistants: AssistantRepo = {
     list: async () => readAll(this.#assistants),
+    search: async (query: AssistantSearchQuery) => {
+      const matched = readAll(this.#assistants).filter(
+        (assistant) =>
+          (query.graph_id === undefined || assistant.graph_id === query.graph_id) &&
+          (query.name === undefined || assistant.name === query.name) &&
+          isMetadataSubset(assistant.metadata, query.metadata),
+      );
+      const sortBy = query.sortBy ?? "created_at";
+      const direction = query.sortOrder === "asc" ? 1 : -1;
+      const compare = (a: string, b: string): number => (a < b ? -1 : a > b ? 1 : 0);
+      matched.sort((a, b) => {
+        const primary = compare(String(a[sortBy] ?? ""), String(b[sortBy] ?? ""));
+        // Break ties on assistant_id in the same direction, so paging is deterministic and matches
+        // the Postgres driver's `ORDER BY <sortBy> <dir>, assistant_id <dir>`.
+        const ordered = primary !== 0 ? primary : compare(a.assistant_id, b.assistant_id);
+        return direction * ordered;
+      });
+      const offset = query.offset ?? 0;
+      const limit = query.limit ?? matched.length;
+      return matched.slice(offset, offset + limit);
+    },
+    count: async (query: AssistantSearchQuery) =>
+      (await this.assistants.search({ ...query, limit: undefined, offset: undefined })).length,
     get: async (assistantId) => readOne(this.#assistants, assistantId),
     create: async (input: AssistantCreate) => {
+      const assistantId = input.assistant_id ?? randomUUID();
+      // Reject a duplicate id (matches the Postgres driver): the service turns this 409 into
+      // if_exists handling, and registerGraphAssistants tolerates it on a concurrent boot.
+      if (this.#assistants.has(assistantId)) {
+        throw SkeinHttpError.conflict(`Assistant "${assistantId}" already exists.`);
+      }
       const at = nowIso();
       const assistant: Assistant = {
-        assistant_id: input.assistant_id ?? randomUUID(),
+        assistant_id: assistantId,
         graph_id: input.graph_id,
         config: input.config ?? {},
         context: input.context ?? {},
@@ -130,10 +206,71 @@ export class MemorySkeinStore implements SkeinStore {
         name: input.name ?? input.graph_id,
         description: input.description,
       };
-      return write(this.#assistants, assistant.assistant_id, assistant);
+      this.#assistantVersions.set(versionKey(assistantId, 1), clone(toVersion(assistant)));
+      return write(this.#assistants, assistantId, assistant);
+    },
+    update: async (assistantId, patch: AssistantUpdate) => {
+      const existing = this.#assistants.get(assistantId);
+      if (!existing) throw SkeinHttpError.notFound(`Assistant "${assistantId}" not found.`);
+      const at = nowIso();
+      // New version is max(existing) + 1, NOT the live row's version — after a setLatest rollback
+      // the live version is lower than the max, and active+1 would collide with an existing snapshot.
+      const next = this.#maxVersionOf(assistantId) + 1;
+      const updated: Assistant = {
+        ...existing,
+        graph_id: patch.graph_id ?? existing.graph_id,
+        name: patch.name ?? existing.name,
+        description: patch.description !== undefined ? patch.description : existing.description,
+        config: patch.config ?? existing.config,
+        context: patch.context !== undefined ? patch.context : existing.context,
+        // metadata MERGES (shallow), matching LangGraph — patching one key keeps the siblings.
+        metadata:
+          patch.metadata !== undefined
+            ? { ...existing.metadata, ...patch.metadata }
+            : existing.metadata,
+        version: next,
+        updated_at: at,
+      };
+      this.#assistantVersions.set(versionKey(assistantId, next), clone(toVersion(updated, at)));
+      return write(this.#assistants, assistantId, updated);
+    },
+    listVersions: async (assistantId, query?: AssistantVersionsQuery) => {
+      const versions = [...this.#assistantVersions.values()]
+        .filter(
+          (version) =>
+            version.assistant_id === assistantId &&
+            isMetadataSubset(version.metadata, query?.metadata),
+        )
+        .sort((a, b) => b.version - a.version);
+      const offset = query?.offset ?? 0;
+      const limit = query?.limit ?? versions.length;
+      return versions.slice(offset, offset + limit).map(clone);
+    },
+    setLatest: async (assistantId, version) => {
+      const existing = this.#assistants.get(assistantId);
+      if (!existing) throw SkeinHttpError.notFound(`Assistant "${assistantId}" not found.`);
+      const target = this.#assistantVersions.get(versionKey(assistantId, version));
+      if (!target) {
+        throw SkeinHttpError.notFound(
+          `Version ${version} of assistant "${assistantId}" not found.`,
+        );
+      }
+      const updated: Assistant = {
+        ...existing,
+        graph_id: target.graph_id,
+        name: target.name,
+        description: target.description,
+        config: target.config,
+        context: target.context,
+        metadata: target.metadata,
+        version: target.version,
+        updated_at: nowIso(),
+      };
+      return write(this.#assistants, assistantId, updated);
     },
     delete: async (assistantId) => {
       this.#assistants.delete(assistantId);
+      this.#deleteVersionsOf(assistantId);
     },
   };
 
@@ -347,6 +484,7 @@ export class MemorySkeinStore implements SkeinStore {
       [...map.entries()].map(([id, row]) => [id, clone(row)]);
     return {
       assistants: entries(this.#assistants),
+      assistantVersions: entries(this.#assistantVersions),
       threads: entries(this.#threads),
       runs: entries(this.#runs),
       runKwargs: entries(this.#runKwargs),
@@ -361,10 +499,22 @@ export class MemorySkeinStore implements SkeinStore {
       for (const [id, row] of rows) map.set(id, clone(row));
     };
     fill(this.#assistants, snapshot.assistants);
+    fill(this.#assistantVersions, snapshot.assistantVersions ?? []);
     fill(this.#threads, snapshot.threads);
     fill(this.#runs, snapshot.runs);
     fill(this.#runKwargs, snapshot.runKwargs);
     fill(this.#items, snapshot.items);
+    // Backfill a version snapshot for any assistant restored from a pre-versioning dev-state file
+    // (which has no assistantVersions), so getVersions/setLatest work and the next update mints
+    // max+1 with no gap. Uses the row's current version, since older history wasn't persisted.
+    for (const assistant of this.#assistants.values()) {
+      if (this.#maxVersionOf(assistant.assistant_id) === 0) {
+        this.#assistantVersions.set(
+          versionKey(assistant.assistant_id, assistant.version),
+          clone(toVersion(assistant)),
+        );
+      }
+    }
     // Item expiry is not persisted; a restored item won't expire until it is written again.
     this.#itemExpiry.clear();
   }
@@ -381,6 +531,7 @@ export class MemorySkeinStore implements SkeinStore {
       for (const [id, row] of rows) if (!map.has(id)) map.set(id, clone(row));
     };
     add(this.#assistants, snapshot.assistants);
+    add(this.#assistantVersions, snapshot.assistantVersions ?? []);
     add(this.#threads, snapshot.threads);
     add(this.#runs, snapshot.runs);
     add(this.#runKwargs, snapshot.runKwargs);

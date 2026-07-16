@@ -47,6 +47,36 @@ function fixture(): SkeinStoreSnapshot {
         },
       ],
     ] as SkeinStoreSnapshot["assistants"],
+    assistantVersions: [
+      [
+        JSON.stringify(["a1", 1]),
+        {
+          assistant_id: "a1",
+          version: 1,
+          graph_id: "agent",
+          name: "Agent",
+          description: undefined,
+          config: {},
+          context: {},
+          metadata: { team: "core" },
+          created_at: at,
+        },
+      ],
+      [
+        JSON.stringify(["a1", 3]),
+        {
+          assistant_id: "a1",
+          version: 3,
+          graph_id: "agent",
+          name: "Agent",
+          description: undefined,
+          config: {},
+          context: {},
+          metadata: { team: "core" },
+          created_at: at,
+        },
+      ],
+    ] as SkeinStoreSnapshot["assistantVersions"],
     threads: [
       [
         "t1",
@@ -104,6 +134,11 @@ describe("PostgresSkeinStore.restore", () => {
       created_at: at,
       updated_at: at,
     });
+
+    // Version history is restored verbatim, newest-first.
+    const versions = await store.assistants.listVersions("a1");
+    expect(versions.map((v) => v.version)).toEqual([3, 1]);
+    expect(versions[0]).toMatchObject({ assistant_id: "a1", version: 3, created_at: at });
 
     const thread = await store.threads.get("t1");
     expect(thread).toMatchObject({

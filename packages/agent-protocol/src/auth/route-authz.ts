@@ -18,7 +18,15 @@ export const ROUTE_AUTHZ: Record<keyof ProtocolHandlers, RouteAuthz> = {
   // assistants
   getAssistant: { resource: "assistants", action: "read" },
   getAssistantSchemas: { resource: "assistants", action: "read" },
+  getAssistantGraph: { resource: "assistants", action: "read" },
+  getAssistantSubgraphs: { resource: "assistants", action: "read" },
+  listAssistantVersions: { resource: "assistants", action: "read" },
   searchAssistants: { resource: "assistants", action: "search" },
+  countAssistants: { resource: "assistants", action: "search" },
+  createAssistant: { resource: "assistants", action: "create" },
+  updateAssistant: { resource: "assistants", action: "update" },
+  setAssistantLatestVersion: { resource: "assistants", action: "update" },
+  deleteAssistant: { resource: "assistants", action: "delete" },
 
   // threads
   createThread: { resource: "threads", action: "create" },

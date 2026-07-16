@@ -12,7 +12,12 @@ import { parseAfterSeq, toSseEvents } from "./sse/sse.js";
 import type { CommandInput, ThreadStreamInput } from "./threads/thread-stream-service.js";
 import { parse, requireParam } from "./validation/parse.js";
 import {
+  assistantCountSchema,
+  assistantCreateSchema,
   assistantSearchSchema,
+  assistantSetLatestSchema,
+  assistantUpdateSchema,
+  assistantVersionsSchema,
   commandBodySchema,
   listNamespacesSchema,
   runCreateSchema,
@@ -48,7 +53,15 @@ export interface ProtocolHandlers {
   // assistants
   getAssistant: ProtocolHandler;
   searchAssistants: ProtocolHandler;
+  countAssistants: ProtocolHandler;
   getAssistantSchemas: ProtocolHandler;
+  createAssistant: ProtocolHandler;
+  updateAssistant: ProtocolHandler;
+  deleteAssistant: ProtocolHandler;
+  listAssistantVersions: ProtocolHandler;
+  setAssistantLatestVersion: ProtocolHandler;
+  getAssistantGraph: ProtocolHandler;
+  getAssistantSubgraphs: ProtocolHandler;
   // threads
   createThread: ProtocolHandler;
   getThread: ProtocolHandler;
@@ -101,6 +114,19 @@ function positiveIntQuery(value: string | string[] | undefined): number | undefi
   return Number.isInteger(parsed) && parsed > 0 ? parsed : undefined;
 }
 
+/** Coerce a `?flag=true|false` query param to a boolean (anything else → undefined). */
+function booleanQuery(value: string | string[] | undefined): boolean | undefined {
+  const raw = queryValue(value);
+  if (raw === "true") return true;
+  if (raw === "false") return false;
+  return undefined;
+}
+
+/** `?xray` is `boolean | number` (a depth bound) — try boolean first, then a positive integer. */
+function xrayQuery(value: string | string[] | undefined): number | boolean | undefined {
+  return booleanQuery(value) ?? positiveIntQuery(value);
+}
+
 export function createProtocolHandlers(service: ProtocolService): ProtocolHandlers {
   // Build an SSE response whose terminal event reflects the run's final status once frames end.
   const sse = (runId: string, frames: AsyncIterable<RunFrame>): ProtocolResponse => ({
@@ -117,11 +143,98 @@ export function createProtocolHandlers(service: ProtocolService): ProtocolHandle
     getAssistant: async (req) =>
       json(await service.assistants.get(requireParam(req.params, "assistant_id"))),
 
-    searchAssistants: async (req) =>
-      json(await service.assistants.search(parse(assistantSearchSchema, req.body ?? {}))),
+    searchAssistants: async (req) => {
+      const body = parse(assistantSearchSchema, req.body ?? {});
+      return json(
+        await service.assistants.search({
+          graph_id: body.graph_id,
+          name: body.name,
+          metadata: body.metadata,
+          limit: body.limit,
+          offset: body.offset,
+          sortBy: body.sort_by,
+          sortOrder: body.sort_order,
+        }),
+      );
+    },
+
+    countAssistants: async (req) => {
+      const body = parse(assistantCountSchema, req.body ?? {});
+      return json(
+        await service.assistants.count({
+          graph_id: body.graph_id,
+          name: body.name,
+          metadata: body.metadata,
+        }),
+      );
+    },
 
     getAssistantSchemas: async (req) =>
       json(await service.assistants.schemas(requireParam(req.params, "assistant_id"))),
+
+    createAssistant: async (req) => {
+      const body = parse(assistantCreateSchema, req.body);
+      return json(
+        await service.assistants.create({
+          graph_id: body.graph_id,
+          assistant_id: body.assistant_id,
+          name: body.name,
+          description: body.description,
+          config: body.config,
+          context: body.context,
+          metadata: body.metadata,
+          ifExists: body.if_exists,
+        }),
+      );
+    },
+
+    updateAssistant: async (req) =>
+      json(
+        await service.assistants.update(
+          requireParam(req.params, "assistant_id"),
+          parse(assistantUpdateSchema, req.body ?? {}),
+        ),
+      ),
+
+    deleteAssistant: async (req) => {
+      await service.assistants.delete(requireParam(req.params, "assistant_id"), {
+        deleteThreads: booleanQuery(req.query["delete_threads"]) ?? false,
+      });
+      return empty();
+    },
+
+    listAssistantVersions: async (req) => {
+      const body = parse(assistantVersionsSchema, req.body ?? {});
+      return json(
+        await service.assistants.listVersions(requireParam(req.params, "assistant_id"), {
+          metadata: body.metadata,
+          limit: body.limit,
+          offset: body.offset,
+        }),
+      );
+    },
+
+    setAssistantLatestVersion: async (req) => {
+      const body = parse(assistantSetLatestSchema, req.body);
+      return json(
+        await service.assistants.setLatest(requireParam(req.params, "assistant_id"), body.version),
+      );
+    },
+
+    getAssistantGraph: async (req) =>
+      json(
+        await service.assistants.drawGraph(requireParam(req.params, "assistant_id"), {
+          xray: xrayQuery(req.query["xray"]),
+        }),
+      ),
+
+    getAssistantSubgraphs: async (req) =>
+      json(
+        await service.assistants.subgraphs(requireParam(req.params, "assistant_id"), {
+          namespace: queryValue(req.query["namespace"]) ?? req.params["namespace"],
+          recurse: booleanQuery(req.query["recurse"]) ?? false,
+        }),
+      ),
 
     // --- threads ------------------------------------------------------------------------------
     createThread: async (req) =>

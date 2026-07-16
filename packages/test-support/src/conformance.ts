@@ -57,6 +57,201 @@ export function runSkeinStoreConformance(label: string, makeStore: SkeinStoreFac
         await store.assistants.delete(assistant_id);
         expect(await store.assistants.get(assistant_id)).toBeNull();
       });
+
+      it("seeds version 1 on create and lists it", async () => {
+        const store = await makeStore();
+        const { assistant_id } = await store.assistants.create({
+          graph_id: "agent",
+          metadata: { env: "dev" },
+        });
+
+        const versions = await store.assistants.listVersions(assistant_id);
+        expect(versions).toHaveLength(1);
+        expect(versions[0]).toMatchObject({
+          version: 1,
+          graph_id: "agent",
+          metadata: { env: "dev" },
+        });
+      });
+
+      it("mints a new version on update, mirroring the patched fields onto the live row", async () => {
+        const store = await makeStore();
+        const { assistant_id } = await store.assistants.create({
+          graph_id: "agent",
+          name: "v1",
+          metadata: { env: "dev" },
+        });
+
+        const updated = await store.assistants.update(assistant_id, {
+          name: "v2",
+          metadata: { env: "prod" },
+        });
+        expect(updated.version).toBe(2);
+        expect(updated.name).toBe("v2");
+        expect(updated.metadata).toEqual({ env: "prod" });
+        // graph_id was not patched, so it carries over from v1.
+        expect(updated.graph_id).toBe("agent");
+
+        const live = await store.assistants.get(assistant_id);
+        expect(live).toMatchObject({ version: 2, name: "v2" });
+      });
+
+      it("rejects updating an unknown assistant", async () => {
+        const store = await makeStore();
+        await expect(store.assistants.update("nope", { name: "x" })).rejects.toThrow();
+      });
+
+      it("lists version history newest-first, with pagination", async () => {
+        const store = await makeStore();
+        const { assistant_id } = await store.assistants.create({ graph_id: "agent", name: "v1" });
+        await store.assistants.update(assistant_id, { name: "v2" });
+        await store.assistants.update(assistant_id, { name: "v3" });
+
+        const all = await store.assistants.listVersions(assistant_id);
+        expect(all.map((v) => v.version)).toEqual([3, 2, 1]);
+        expect(all.map((v) => v.name)).toEqual(["v3", "v2", "v1"]);
+
+        const page = await store.assistants.listVersions(assistant_id, { limit: 1, offset: 1 });
+        expect(page.map((v) => v.version)).toEqual([2]);
+      });
+
+      it("filters version history by metadata subset", async () => {
+        const store = await makeStore();
+        const { assistant_id } = await store.assistants.create({
+          graph_id: "agent",
+          metadata: { env: "dev" },
+        });
+        await store.assistants.update(assistant_id, { metadata: { env: "prod" } });
+
+        const prod = await store.assistants.listVersions(assistant_id, {
+          metadata: { env: "prod" },
+        });
+        expect(prod.map((v) => v.version)).toEqual([2]);
+      });
+
+      it("rolls back to an existing version via setLatest without minting a new one", async () => {
+        const store = await makeStore();
+        const { assistant_id } = await store.assistants.create({
+          graph_id: "agent",
+          metadata: { env: "dev" },
+        });
+        await store.assistants.update(assistant_id, { metadata: { env: "prod" } });
+
+        const rolledBack = await store.assistants.setLatest(assistant_id, 1);
+        expect(rolledBack.version).toBe(1);
+        expect(rolledBack.metadata).toEqual({ env: "dev" });
+        // No new version was created; history still holds exactly v1 and v2.
+        expect((await store.assistants.listVersions(assistant_id)).map((v) => v.version)).toEqual([
+          2, 1,
+        ]);
+      });
+
+      it("rejects setLatest to an unknown version", async () => {
+        const store = await makeStore();
+        const { assistant_id } = await store.assistants.create({ graph_id: "agent" });
+        await expect(store.assistants.setLatest(assistant_id, 99)).rejects.toThrow();
+      });
+
+      it("mints max+1 (not a colliding version) when updating after a setLatest rollback", async () => {
+        const store = await makeStore();
+        const { assistant_id } = await store.assistants.create({ graph_id: "agent", name: "v1" });
+        await store.assistants.update(assistant_id, { name: "v2" }); // version 2
+        await store.assistants.setLatest(assistant_id, 1); // live back to version 1
+
+        // The next update must be version 3 (max+1), not 2 (active+1) — active+1 would collide with
+        // the existing v2 snapshot (Postgres PK violation / memory silent overwrite).
+        const next = await store.assistants.update(assistant_id, { name: "v3" });
+        expect(next.version).toBe(3);
+        expect(next.name).toBe("v3");
+        const versions = await store.assistants.listVersions(assistant_id);
+        expect(versions.map((v) => v.version)).toEqual([3, 2, 1]);
+        // The original v2 snapshot is intact (not overwritten).
+        expect(versions.find((v) => v.version === 2)?.name).toBe("v2");
+      });
+
+      it("merges metadata on update, preserving sibling keys (LangGraph parity)", async () => {
+        const store = await makeStore();
+        const { assistant_id } = await store.assistants.create({
+          graph_id: "agent",
+          metadata: { team: "core", owner: "ada" },
+        });
+
+        const updated = await store.assistants.update(assistant_id, { metadata: { env: "prod" } });
+        expect(updated.metadata).toEqual({ team: "core", owner: "ada", env: "prod" });
+        // The version snapshot records the merged metadata too.
+        const [latest] = await store.assistants.listVersions(assistant_id);
+        expect(latest?.metadata).toEqual({ team: "core", owner: "ada", env: "prod" });
+      });
+
+      it("rejects creating a duplicate assistant_id", async () => {
+        const store = await makeStore();
+        await store.assistants.create({ assistant_id: "dup", graph_id: "agent" });
+        await expect(
+          store.assistants.create({ assistant_id: "dup", graph_id: "agent" }),
+        ).rejects.toThrow();
+      });
+
+      it("cascades version history on delete", async () => {
+        const store = await makeStore();
+        const { assistant_id } = await store.assistants.create({ graph_id: "agent" });
+        await store.assistants.update(assistant_id, { name: "v2" });
+
+        await store.assistants.delete(assistant_id);
+        expect(await store.assistants.listVersions(assistant_id)).toHaveLength(0);
+      });
+
+      it("searches by graph_id, name, and metadata subset, and counts matches", async () => {
+        const store = await makeStore();
+        await store.assistants.create({
+          graph_id: "agent",
+          name: "one",
+          metadata: { team: "core" },
+        });
+        await store.assistants.create({
+          graph_id: "agent",
+          name: "two",
+          metadata: { team: "ops" },
+        });
+        await store.assistants.create({
+          graph_id: "other",
+          name: "three",
+          metadata: { team: "core" },
+        });
+
+        expect(await store.assistants.search({ graph_id: "agent" })).toHaveLength(2);
+        expect(await store.assistants.search({ name: "two" })).toHaveLength(1);
+        expect(await store.assistants.search({ metadata: { team: "core" } })).toHaveLength(2);
+        // An empty filter matches everything.
+        expect(await store.assistants.search({})).toHaveLength(3);
+
+        expect(await store.assistants.count({ metadata: { team: "core" } })).toBe(2);
+        expect(await store.assistants.count({ graph_id: "agent" })).toBe(2);
+        expect(await store.assistants.count({})).toBe(3);
+      });
+
+      it("sorts and paginates search results deterministically", async () => {
+        const store = await makeStore();
+        await store.assistants.create({ assistant_id: "a", graph_id: "g", name: "alpha" });
+        await store.assistants.create({ assistant_id: "b", graph_id: "g", name: "bravo" });
+        await store.assistants.create({ assistant_id: "c", graph_id: "g", name: "charlie" });
+
+        const ascending = await store.assistants.search({ sortBy: "name", sortOrder: "asc" });
+        expect(ascending.map((a) => a.name)).toEqual(["alpha", "bravo", "charlie"]);
+
+        const firstPage = await store.assistants.search({
+          sortBy: "name",
+          sortOrder: "asc",
+          limit: 2,
+        });
+        expect(firstPage.map((a) => a.name)).toEqual(["alpha", "bravo"]);
+        const secondPage = await store.assistants.search({
+          sortBy: "name",
+          sortOrder: "asc",
+          limit: 2,
+          offset: 2,
+        });
+        expect(secondPage.map((a) => a.name)).toEqual(["charlie"]);
+      });
     });
 
     describe("threads", () => {

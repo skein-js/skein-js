@@ -50,6 +50,26 @@ Each repo exposes CRUD + list/search shaped to the [Agent Protocol](./agent-prot
 endpoints. All drivers are validated against **one shared conformance test suite**, so
 memory and Postgres behave identically.
 
+### Assistant versioning
+
+`AssistantRepo` carries full CRUD plus a **version history** (LangGraph parity — see the
+[assistants endpoints](./agent-protocol.md#assistants)). The model is deliberately simple so nothing
+else has to change:
+
+- Each assistant keeps an append-only list of immutable **version snapshots**
+  (`graph_id`/`name`/`description`/`config`/`context`/`metadata` at that version).
+- The **live assistant row mirrors the currently-active version** and carries its `version` number.
+  So every existing reader — `get`, `list`, the run engine's graph resolution, thread history —
+  keeps working unchanged; a run always resolves the assistant's _active_ version.
+- `create` seeds version 1. `update` mints a new version (`max + 1`) and makes it active.
+  `setLatest(version)` rolls the live row back to an existing snapshot **without** minting a new one.
+  `listVersions` returns history newest-first (filterable by metadata, paginated). Deleting an
+  assistant cascades its versions.
+
+The memory driver holds versions in a second map; Postgres uses an `assistant_versions` table
+(`PRIMARY KEY (assistant_id, version)`, `ON DELETE CASCADE` from `assistants`) added in migration
+`0003`. Both are exercised by the shared conformance suite.
+
 ### Long-term memory in the graph (`getStore()`)
 
 The `store` repo isn't only reachable over the `/store/items` HTTP endpoints — it is also injected
@@ -104,7 +124,8 @@ and `skein dev --store postgres`); pure in-memory `skein dev` still enforces exp
 
 ### `@skein-js/storage-postgres` (prod)
 
-- Backed by `pg`; owns tables for assistants/threads/runs/store items + migrations.
+- Backed by `pg`; owns tables for assistants (+ assistant_versions)/threads/runs/store items +
+  migrations.
 - Uses **`@langchain/langgraph-checkpoint-postgres`** (`PostgresSaver.fromConnString`) for
   graph checkpoints — we wrap it rather than reimplement checkpointing.
   <https://www.npmjs.com/package/@langchain/langgraph-checkpoint-postgres>

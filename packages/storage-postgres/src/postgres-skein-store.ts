@@ -12,6 +12,10 @@ import {
   type Assistant,
   type AssistantCreate,
   type AssistantRepo,
+  type AssistantSearchQuery,
+  type AssistantUpdate,
+  type AssistantVersion,
+  type AssistantVersionsQuery,
   type Item,
   type Run,
   type RunCreate,
@@ -31,7 +35,7 @@ import {
   type ThreadUpdate,
 } from "@skein-js/core";
 import { runner as runMigrations } from "node-pg-migrate";
-import { Pool } from "pg";
+import { Pool, type PoolClient } from "pg";
 
 /** Computes embeddings for a batch of texts — injected so tests use a deterministic fake. */
 export type EmbedFunction = (texts: string[]) => Promise<number[][]>;
@@ -124,6 +128,18 @@ interface AssistantRow {
   updated_at: Date;
 }
 
+interface AssistantVersionRow {
+  assistant_id: string;
+  version: number;
+  graph_id: string;
+  name: string;
+  description: string | null;
+  config: Record<string, unknown>;
+  context: unknown;
+  metadata: Record<string, unknown>;
+  created_at: Date;
+}
+
 interface ThreadRow {
   thread_id: string;
   status: Thread["status"];
@@ -167,6 +183,44 @@ function rowToAssistant(row: AssistantRow): Assistant {
     name: row.name,
     description: row.description ?? undefined,
   } as Assistant;
+}
+
+/** True for a Postgres `unique_violation` (SQLSTATE 23505) — a duplicate primary/unique key. */
+function isUniqueViolation(error: unknown): boolean {
+  return typeof error === "object" && error !== null && "code" in error && error.code === "23505";
+}
+
+/** Build the shared WHERE clause + params for assistant search/count (graph_id, name, metadata). */
+function assistantSearchWhere(query: AssistantSearchQuery): { where: string; params: unknown[] } {
+  const params: unknown[] = [];
+  const clauses: string[] = [];
+  if (query.graph_id !== undefined) {
+    params.push(query.graph_id);
+    clauses.push(`graph_id = $${params.length}`);
+  }
+  if (query.name !== undefined) {
+    params.push(query.name);
+    clauses.push(`name = $${params.length}`);
+  }
+  if (query.metadata && Object.keys(query.metadata).length > 0) {
+    params.push(JSON.stringify(query.metadata));
+    clauses.push(`metadata @> $${params.length}::jsonb`);
+  }
+  return { where: clauses.length > 0 ? `WHERE ${clauses.join(" AND ")}` : "", params };
+}
+
+function rowToAssistantVersion(row: AssistantVersionRow): AssistantVersion {
+  return {
+    assistant_id: row.assistant_id,
+    version: row.version,
+    graph_id: row.graph_id,
+    config: row.config,
+    context: row.context,
+    created_at: toIsoString(row.created_at),
+    metadata: row.metadata,
+    name: row.name,
+    description: row.description ?? undefined,
+  } as AssistantVersion;
 }
 
 function rowToThread(row: ThreadRow): Thread {
@@ -231,6 +285,22 @@ export class PostgresSkeinStore implements SkeinStore {
     this.#url = url;
     this.#index = index;
     this.#ttl = ttl;
+  }
+
+  /** Run `work` inside a transaction, committing on success and rolling back on any error. */
+  async #withTransaction<T>(work: (client: PoolClient) => Promise<T>): Promise<T> {
+    const client = await this.#pool.connect();
+    try {
+      await client.query("BEGIN");
+      const result = await work(client);
+      await client.query("COMMIT");
+      return result;
+    } catch (error) {
+      await client.query("ROLLBACK");
+      throw error;
+    } finally {
+      client.release();
+    }
   }
 
   /** Connect to Postgres. Call {@link migrate} once before use to create/upgrade the schema. */
@@ -302,7 +372,9 @@ export class PostgresSkeinStore implements SkeinStore {
 
   /** Empty every resource table. For tests that need a clean schema without re-migrating. */
   async truncateAll(): Promise<void> {
-    await this.#pool.query("TRUNCATE assistants, threads, runs, store_items CASCADE");
+    await this.#pool.query(
+      "TRUNCATE assistants, assistant_versions, threads, runs, store_items CASCADE",
+    );
   }
 
   /**
@@ -366,6 +438,31 @@ export class PostgresSkeinStore implements SkeinStore {
             assistant.version ?? 1,
             assistant.created_at,
             assistant.updated_at,
+          ],
+        );
+      }
+      // Version snapshots FK-reference assistants, so they go in after them. A version whose
+      // assistant isn't part of the import is skipped (FK would abort the whole transaction).
+      const importedAssistantIds = new Set(
+        snapshot.assistants.map(([, assistant]) => assistant.assistant_id),
+      );
+      for (const [, version] of snapshot.assistantVersions ?? []) {
+        if (!importedAssistantIds.has(version.assistant_id)) continue;
+        await client.query(
+          `INSERT INTO assistant_versions
+             (assistant_id, version, graph_id, name, description, config, context, metadata, created_at)
+           VALUES ($1, $2, $3, $4, $5, $6::jsonb, $7::jsonb, $8::jsonb, $9)
+           ON CONFLICT (assistant_id, version) DO NOTHING`,
+          [
+            version.assistant_id,
+            version.version,
+            version.graph_id,
+            version.name ?? version.graph_id,
+            version.description ?? null,
+            JSON.stringify(version.config ?? {}),
+            JSON.stringify(version.context ?? {}),
+            JSON.stringify(version.metadata ?? {}),
+            version.created_at,
           ],
         );
       }
@@ -464,6 +561,35 @@ export class PostgresSkeinStore implements SkeinStore {
       );
       return rows.map(rowToAssistant);
     },
+    search: async (query: AssistantSearchQuery) => {
+      const { where, params } = assistantSearchWhere(query);
+      // Whitelist the sort column — it is interpolated, never parameterized.
+      const sortColumns = new Set(["assistant_id", "graph_id", "name", "created_at", "updated_at"]);
+      const sortBy = sortColumns.has(query.sortBy ?? "") ? query.sortBy : "created_at";
+      const direction = query.sortOrder === "asc" ? "ASC" : "DESC";
+      params.push(query.offset ?? 0);
+      const offsetParam = `$${params.length}`;
+      let limitClause = "";
+      if (query.limit !== undefined) {
+        params.push(query.limit);
+        limitClause = `LIMIT $${params.length}`;
+      }
+      // `assistant_id` is a unique tiebreaker so OFFSET/LIMIT paging is stable when the primary sort
+      // key ties — mirrors the memory driver's `ORDER BY <sortBy> <dir>, assistant_id <dir>`.
+      const { rows } = await this.#pool.query<AssistantRow>(
+        `SELECT * FROM assistants ${where} ORDER BY ${sortBy} ${direction}, assistant_id ${direction} OFFSET ${offsetParam} ${limitClause}`,
+        params,
+      );
+      return rows.map(rowToAssistant);
+    },
+    count: async (query: AssistantSearchQuery) => {
+      const { where, params } = assistantSearchWhere(query);
+      const { rows } = await this.#pool.query<{ count: string }>(
+        `SELECT count(*)::text AS count FROM assistants ${where}`,
+        params,
+      );
+      return Number.parseInt(rows[0]?.count ?? "0", 10);
+    },
     get: async (assistantId) => {
       const { rows } = await this.#pool.query<AssistantRow>(
         "SELECT * FROM assistants WHERE assistant_id = $1",
@@ -471,23 +597,163 @@ export class PostgresSkeinStore implements SkeinStore {
       );
       return rows[0] ? rowToAssistant(rows[0]) : null;
     },
-    create: async (input: AssistantCreate) => {
-      const { rows } = await this.#pool.query<AssistantRow>(
-        `INSERT INTO assistants (assistant_id, graph_id, name, description, config, context, metadata)
-         VALUES ($1, $2, $3, $4, $5::jsonb, $6::jsonb, $7::jsonb) RETURNING *`,
-        [
-          input.assistant_id ?? randomUUID(),
-          input.graph_id,
-          input.name ?? input.graph_id,
-          input.description ?? null,
-          JSON.stringify(input.config ?? {}),
-          JSON.stringify(input.context ?? {}),
-          JSON.stringify(input.metadata ?? {}),
-        ],
+    create: async (input: AssistantCreate) =>
+      this.#withTransaction(async (client) => {
+        const assistantId = input.assistant_id ?? randomUUID();
+        let rows: AssistantRow[];
+        try {
+          ({ rows } = await client.query<AssistantRow>(
+            `INSERT INTO assistants (assistant_id, graph_id, name, description, config, context, metadata)
+             VALUES ($1, $2, $3, $4, $5::jsonb, $6::jsonb, $7::jsonb) RETURNING *`,
+            [
+              assistantId,
+              input.graph_id,
+              input.name ?? input.graph_id,
+              input.description ?? null,
+              JSON.stringify(input.config ?? {}),
+              JSON.stringify(input.context ?? {}),
+              JSON.stringify(input.metadata ?? {}),
+            ],
+          ));
+        } catch (error) {
+          // Surface a duplicate id as a typed 409 (matches the memory driver) so the service can
+          // apply if_exists and registerGraphAssistants can tolerate a concurrent-boot race.
+          if (isUniqueViolation(error)) {
+            throw SkeinHttpError.conflict(`Assistant "${assistantId}" already exists.`);
+          }
+          throw error;
+        }
+        const created = rows[0] as AssistantRow;
+        // Seed version 1 from the row we just inserted, sharing its created_at.
+        await client.query(
+          `INSERT INTO assistant_versions
+             (assistant_id, version, graph_id, name, description, config, context, metadata, created_at)
+           VALUES ($1, 1, $2, $3, $4, $5::jsonb, $6::jsonb, $7::jsonb, $8)`,
+          [
+            assistantId,
+            created.graph_id,
+            created.name,
+            created.description,
+            JSON.stringify(created.config),
+            JSON.stringify(created.context ?? {}),
+            JSON.stringify(created.metadata),
+            created.created_at,
+          ],
+        );
+        return rowToAssistant(created);
+      }),
+    update: async (assistantId, patch: AssistantUpdate) =>
+      this.#withTransaction(async (client) => {
+        // Compute the merged row + next version atomically. COALESCE keeps omitted fields (NULL param
+        // = "unchanged"); metadata MERGES via jsonb `||` (matching LangGraph — `x || NULL` is NULL, so
+        // COALESCE falls back to the existing metadata when the param is absent); and the new version
+        // is max(history)+1, NOT the live `version` (after a setLatest rollback the live version is
+        // below the max, and `version + 1` would collide with an existing snapshot's primary key).
+        const { rows } = await client.query<AssistantRow>(
+          `UPDATE assistants SET
+             graph_id = COALESCE($2, graph_id),
+             name = COALESCE($3, name),
+             description = CASE WHEN $4::boolean THEN $5 ELSE description END,
+             config = COALESCE($6::jsonb, config),
+             context = COALESCE($7::jsonb, context),
+             metadata = COALESCE(metadata || $8::jsonb, metadata),
+             version = (SELECT COALESCE(MAX(version), 0) + 1 FROM assistant_versions WHERE assistant_id = $1),
+             updated_at = now()
+           WHERE assistant_id = $1 RETURNING *`,
+          [
+            assistantId,
+            patch.graph_id ?? null,
+            patch.name ?? null,
+            patch.description !== undefined,
+            patch.description ?? null,
+            patch.config === undefined ? null : JSON.stringify(patch.config),
+            patch.context === undefined ? null : JSON.stringify(patch.context),
+            patch.metadata === undefined ? null : JSON.stringify(patch.metadata),
+          ],
+        );
+        if (!rows[0]) throw SkeinHttpError.notFound(`Assistant "${assistantId}" not found.`);
+        const updated = rows[0];
+        // Append the new version snapshot, timestamped to this update (its own created_at).
+        await client.query(
+          `INSERT INTO assistant_versions
+             (assistant_id, version, graph_id, name, description, config, context, metadata, created_at)
+           VALUES ($1, $2, $3, $4, $5, $6::jsonb, $7::jsonb, $8::jsonb, $9)`,
+          [
+            assistantId,
+            updated.version,
+            updated.graph_id,
+            updated.name,
+            updated.description,
+            JSON.stringify(updated.config),
+            JSON.stringify(updated.context ?? {}),
+            JSON.stringify(updated.metadata),
+            updated.updated_at,
+          ],
+        );
+        return rowToAssistant(updated);
+      }),
+    listVersions: async (assistantId, query?: AssistantVersionsQuery) => {
+      const params: unknown[] = [assistantId];
+      let where = "WHERE assistant_id = $1";
+      if (query?.metadata && Object.keys(query.metadata).length > 0) {
+        params.push(JSON.stringify(query.metadata));
+        where += ` AND metadata @> $${params.length}::jsonb`;
+      }
+      params.push(query?.offset ?? 0);
+      const offsetParam = `$${params.length}`;
+      let limitClause = "";
+      if (query?.limit !== undefined) {
+        params.push(query.limit);
+        limitClause = `LIMIT $${params.length}`;
+      }
+      const { rows } = await this.#pool.query<AssistantVersionRow>(
+        `SELECT * FROM assistant_versions ${where} ORDER BY version DESC OFFSET ${offsetParam} ${limitClause}`,
+        params,
       );
-      return rowToAssistant(rows[0] as AssistantRow);
+      return rows.map(rowToAssistantVersion);
     },
+    setLatest: async (assistantId, version) =>
+      this.#withTransaction(async (client) => {
+        const target = await client.query<AssistantVersionRow>(
+          "SELECT * FROM assistant_versions WHERE assistant_id = $1 AND version = $2",
+          [assistantId, version],
+        );
+        if (!target.rows[0]) {
+          // Distinguish an unknown assistant from an unknown version, matching the memory driver.
+          const exists = await client.query("SELECT 1 FROM assistants WHERE assistant_id = $1", [
+            assistantId,
+          ]);
+          throw SkeinHttpError.notFound(
+            exists.rows[0]
+              ? `Version ${version} of assistant "${assistantId}" not found.`
+              : `Assistant "${assistantId}" not found.`,
+          );
+        }
+        const snapshot = target.rows[0];
+        const { rows } = await client.query<AssistantRow>(
+          `UPDATE assistants SET
+             graph_id = $2, name = $3, description = $4,
+             config = $5::jsonb, context = $6::jsonb, metadata = $7::jsonb,
+             version = $8, updated_at = now()
+           WHERE assistant_id = $1 RETURNING *`,
+          [
+            assistantId,
+            snapshot.graph_id,
+            snapshot.name,
+            snapshot.description,
+            JSON.stringify(snapshot.config),
+            JSON.stringify(snapshot.context ?? {}),
+            JSON.stringify(snapshot.metadata),
+            snapshot.version,
+          ],
+        );
+        // The version SELECT above ran in this transaction, but a concurrent delete could still have
+        // removed the assistant under READ COMMITTED — return a clean 404 rather than crash on rows[0].
+        if (!rows[0]) throw SkeinHttpError.notFound(`Assistant "${assistantId}" not found.`);
+        return rowToAssistant(rows[0]);
+      }),
     delete: async (assistantId) => {
+      // Versions cascade via the foreign key's ON DELETE CASCADE.
       await this.#pool.query("DELETE FROM assistants WHERE assistant_id = $1", [assistantId]);
     },
   };

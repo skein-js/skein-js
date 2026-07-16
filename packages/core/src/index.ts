@@ -8,6 +8,7 @@ export type {
   Assistant,
   AssistantBase,
   AssistantGraph,
+  AssistantVersion,
   Checkpoint,
   Config,
   DefaultValues,
@@ -30,6 +31,9 @@ export type {
 export type {
   AssistantCreate,
   AssistantRepo,
+  AssistantSearchQuery,
+  AssistantUpdate,
+  AssistantVersionsQuery,
   RunCreate,
   RunKwargs,
   RunRepo,

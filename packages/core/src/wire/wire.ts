@@ -10,6 +10,7 @@ export type {
   Assistant,
   AssistantBase,
   AssistantGraph,
+  AssistantVersion,
   Checkpoint,
   Config,
   DefaultValues,

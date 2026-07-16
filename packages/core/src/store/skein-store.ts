@@ -10,6 +10,7 @@
 import type { AuthUser } from "../auth/auth.js";
 import type {
   Assistant,
+  AssistantVersion,
   Config,
   DefaultValues,
   Interrupt,
@@ -38,11 +39,70 @@ export interface AssistantCreate {
   metadata?: Metadata;
 }
 
+/**
+ * Partial update; omitted fields keep the current version's value. Every update mints a NEW
+ * immutable version (see {@link AssistantRepo.update}) — there is no in-place field mutation.
+ */
+export interface AssistantUpdate {
+  graph_id?: string;
+  name?: string;
+  description?: string;
+  config?: Config;
+  context?: unknown;
+  metadata?: Metadata;
+}
+
+/** Filter + pagination for `POST /assistants/search`. Omitted fields don't constrain the result. */
+export interface AssistantSearchQuery {
+  /** Restrict to assistants of this graph. */
+  graph_id?: string;
+  /** Restrict to assistants with this exact name. */
+  name?: string;
+  /** Match assistants whose metadata contains every one of these key/value pairs (subset match). */
+  metadata?: Metadata;
+  limit?: number;
+  offset?: number;
+  /** Sort key; defaults to `created_at`. */
+  sortBy?: "assistant_id" | "graph_id" | "name" | "created_at" | "updated_at";
+  /** Sort direction; defaults to `desc`. */
+  sortOrder?: "asc" | "desc";
+}
+
+/** Filter + pagination for `POST /assistants/{id}/versions`. */
+export interface AssistantVersionsQuery {
+  /** Match versions whose metadata contains every one of these key/value pairs (subset match). */
+  metadata?: Metadata;
+  limit?: number;
+  offset?: number;
+}
+
 export interface AssistantRepo {
   list(): Promise<Assistant[]>;
+  /** Filtered + paginated listing backing `POST /assistants/search`. */
+  search(query: AssistantSearchQuery): Promise<Assistant[]>;
+  /** Number of assistants matching `query` (ignores limit/offset), backing `POST /assistants/count`. */
+  count(query: AssistantSearchQuery): Promise<number>;
   get(assistantId: string): Promise<Assistant | null>;
-  /** Create (or, for a graph-derived assistant, register) an assistant. */
+  /**
+   * Create an assistant, seeding version 1 (the live row and its first {@link AssistantVersion}
+   * snapshot are written together). Throws `SkeinHttpError.conflict` (409) when `assistant_id` is
+   * already taken — the service layer turns that into `if_exists` handling, and callers that want
+   * idempotent registration (e.g. graph auto-registration) get-before-create and tolerate the 409.
+   */
   create(input: AssistantCreate): Promise<Assistant>;
+  /**
+   * Apply a partial patch by minting a NEW version: snapshot the current fields with `patch` applied,
+   * bump the live row to those fields + the new version number. Throws `SkeinHttpError.notFound` when
+   * the assistant is unknown. Returns the (now-active) assistant.
+   */
+  update(assistantId: string, patch: AssistantUpdate): Promise<Assistant>;
+  /** Version history, newest-first, filtered + paginated. Empty when the assistant is unknown. */
+  listVersions(assistantId: string, query?: AssistantVersionsQuery): Promise<AssistantVersion[]>;
+  /**
+   * Roll the live row back to an existing version's snapshot (no new version is minted). Throws
+   * `SkeinHttpError.notFound` when the assistant or the target version is unknown.
+   */
+  setLatest(assistantId: string, version: number): Promise<Assistant>;
   delete(assistantId: string): Promise<void>;
 }
 
@@ -263,8 +323,9 @@ export interface SkeinStore {
  * A driver-agnostic, JSON-serializable snapshot of every resource row — the unit of bulk
  * transfer for persistence and migration tooling (e.g. `skein dev`'s cross-restart snapshot, and
  * importing an existing LangGraph in-memory dev state). Each entry is an `[id, row]` tuple: the id
- * is the entity's own id, except `items` (keyed by `JSON.stringify([namespace, key])`) and
- * `runKwargs` (keyed by `run_id`, since {@link RunKwargs} has no id of its own).
+ * is the entity's own id, except `items` (keyed by `JSON.stringify([namespace, key])`),
+ * `runKwargs` (keyed by `run_id`, since {@link RunKwargs} has no id of its own), and
+ * `assistantVersions` (keyed by `JSON.stringify([assistant_id, version])`).
  *
  * A driver MAY expose `restore(snapshot)` to bulk-load one of these verbatim — ids and timestamps
  * preserved — which is what makes an import lossless. It is intentionally not part of
@@ -272,6 +333,7 @@ export interface SkeinStore {
  */
 export interface SkeinStoreSnapshot {
   assistants: [string, Assistant][];
+  assistantVersions: [string, AssistantVersion][];
   threads: [string, Thread][];
   runs: [string, Run][];
   runKwargs: [string, RunKwargs][];

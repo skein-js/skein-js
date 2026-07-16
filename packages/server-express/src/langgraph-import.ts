@@ -29,6 +29,7 @@ import {
 import {
   isTerminalRunStatus,
   type Assistant,
+  type AssistantVersion,
   type Item,
   type Run,
   type RunKwargs,
@@ -90,6 +91,21 @@ const langgraphAssistantSchema = z
   })
   .passthrough();
 
+// A single entry from the top-level `assistant_versions` array — one immutable version snapshot.
+const langgraphAssistantVersionSchema = z
+  .object({
+    assistant_id: z.string(),
+    version: z.number(),
+    graph_id: z.string(),
+    name: z.string().optional(),
+    description: z.string().nullish(),
+    config: jsonObject.optional(),
+    context: z.unknown().optional(),
+    metadata: jsonObject.optional(),
+    created_at: timestamp,
+  })
+  .passthrough();
+
 const langgraphThreadSchema = z
   .object({
     thread_id: z.string(),
@@ -119,6 +135,7 @@ const langgraphRunSchema = z
 const langgraphOpsSchema = z
   .object({
     assistants: z.record(langgraphAssistantSchema).optional(),
+    assistant_versions: z.array(langgraphAssistantVersionSchema).optional(),
     threads: z.record(langgraphThreadSchema).optional(),
     runs: z.record(langgraphRunSchema).optional(),
   })
@@ -146,6 +163,7 @@ const langgraphCheckpointerSchema = z
   .passthrough();
 
 type LanggraphAssistant = z.infer<typeof langgraphAssistantSchema>;
+type LanggraphAssistantVersion = z.infer<typeof langgraphAssistantVersionSchema>;
 type LanggraphThread = z.infer<typeof langgraphThreadSchema>;
 type LanggraphRun = z.infer<typeof langgraphRunSchema>;
 
@@ -202,6 +220,20 @@ function toAssistant(row: LanggraphAssistant, now: string): Assistant {
     created_at: toIso(row.created_at, now),
     updated_at: toIso(row.updated_at, now),
   } as Assistant;
+}
+
+function toAssistantVersion(row: LanggraphAssistantVersion, now: string): AssistantVersion {
+  return {
+    assistant_id: row.assistant_id,
+    version: row.version,
+    graph_id: row.graph_id,
+    name: row.name ?? row.graph_id,
+    description: row.description ?? undefined,
+    config: row.config ?? {},
+    context: row.context ?? {},
+    metadata: row.metadata ?? {},
+    created_at: toIso(row.created_at, now),
+  } as AssistantVersion;
 }
 
 function toThread(row: LanggraphThread, now: string): Thread {
@@ -293,6 +325,10 @@ export async function readLanggraphDevState(
     assistants: Object.entries(ops?.assistants ?? {}).map(([id, row]) => [
       id,
       toAssistant(row, now),
+    ]),
+    assistantVersions: (ops?.assistant_versions ?? []).map((row) => [
+      JSON.stringify([row.assistant_id, row.version]),
+      toAssistantVersion(row, now),
     ]),
     threads: Object.entries(ops?.threads ?? {}).map(([id, row]) => [id, toThread(row, now)]),
     runs: runEntries.map(([id, row]) => [id, toRun(row, now)]),

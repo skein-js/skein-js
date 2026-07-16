@@ -46,6 +46,80 @@ describe("@skein-js/express adapter", () => {
     );
   });
 
+  it("runs the assistant CRUD + versioning lifecycle over HTTP", async () => {
+    running = await startEchoServer();
+    const { baseUrl } = running;
+    const post = (path: string, body: unknown) =>
+      fetch(`${baseUrl}${path}`, {
+        method: "POST",
+        headers: jsonHeaders,
+        body: JSON.stringify(body),
+      });
+
+    // Create.
+    const createRes = await post("/assistants", {
+      graph_id: "echo",
+      assistant_id: "custom",
+      metadata: { env: "dev" },
+    });
+    expect(createRes.status).toBe(200);
+    expect((await createRes.json()) as { version: number }).toMatchObject({
+      assistant_id: "custom",
+      graph_id: "echo",
+      version: 1,
+    });
+
+    // if_exists defaults to raise → 409 on a duplicate id.
+    expect((await post("/assistants", { graph_id: "echo", assistant_id: "custom" })).status).toBe(
+      409,
+    );
+
+    // Update mints version 2.
+    const patchRes = await fetch(`${baseUrl}/assistants/custom`, {
+      method: "PATCH",
+      headers: jsonHeaders,
+      body: JSON.stringify({ metadata: { env: "prod" } }),
+    });
+    expect(((await patchRes.json()) as { version: number }).version).toBe(2);
+
+    // Version history, newest-first.
+    const versions = (await (await post("/assistants/custom/versions", {})).json()) as Array<{
+      version: number;
+    }>;
+    expect(versions.map((v) => v.version)).toEqual([2, 1]);
+
+    // Roll back to v1.
+    const rolledBack = (await (await post("/assistants/custom/latest", { version: 1 })).json()) as {
+      version: number;
+      metadata: Record<string, unknown>;
+    };
+    expect(rolledBack).toMatchObject({ version: 1, metadata: { env: "dev" } });
+
+    // Count (echo seeded + custom on graph "echo").
+    const count = (await (await post("/assistants/count", { graph_id: "echo" })).json()) as number;
+    expect(count).toBe(2);
+
+    // Delete → 204, then gone.
+    const deleteRes = await fetch(`${baseUrl}/assistants/custom`, { method: "DELETE" });
+    expect(deleteRes.status).toBe(204);
+    expect((await fetch(`${baseUrl}/assistants/custom`)).status).toBe(404);
+  });
+
+  it("serves the drawable graph and (empty) subgraphs for an assistant", async () => {
+    running = await startEchoServer();
+    const { baseUrl } = running;
+
+    const graph = (await (await fetch(`${baseUrl}/assistants/echo/graph`)).json()) as {
+      nodes: Array<{ id: string }>;
+      edges: unknown[];
+    };
+    expect(graph.nodes.some((node) => node.id === "echo")).toBe(true);
+    expect(Array.isArray(graph.edges)).toBe(true);
+
+    const subgraphs = await (await fetch(`${baseUrl}/assistants/echo/subgraphs`)).json();
+    expect(subgraphs).toEqual({});
+  });
+
   it("serves a dependency-free liveness probe at /ok", async () => {
     running = await startEchoServer();
     const res = await fetch(`${running.baseUrl}/ok`);

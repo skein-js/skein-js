@@ -25,9 +25,13 @@ export interface ProtocolService {
 /** Assemble the service over an existing context (used by the runtime to share the context). */
 export function buildProtocolService(ctx: ProtocolContext): ProtocolService {
   const runs = createRunService(ctx);
+  const threads = createThreadService(ctx);
   return {
-    assistants: createAssistantService(ctx.deps),
-    threads: createThreadService(ctx),
+    // The assistant service reuses the thread service for its `delete_threads` cascade (abort +
+    // delete), and needs the full context (auth engine + caller) to scope that cascade to the
+    // threads the caller may delete.
+    assistants: createAssistantService(ctx, threads),
+    threads,
     threadStream: createThreadStreamService(ctx, runs),
     runs,
     store: createStoreService(ctx.deps),
