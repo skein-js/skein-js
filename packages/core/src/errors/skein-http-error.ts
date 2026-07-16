@@ -50,6 +50,14 @@ export class SkeinHttpError extends Error {
   static conflict(message: string, options?: SkeinHttpErrorOptions): SkeinHttpError {
     return new SkeinHttpError(409, message, options);
   }
+
+  /**
+   * 422 — the request was well-formed but can't be processed in the current state. Used for a
+   * `reject` multitask strategy hitting a busy thread, matching `@langchain/langgraph-api`.
+   */
+  static unprocessable(message: string, options?: SkeinHttpErrorOptions): SkeinHttpError {
+    return new SkeinHttpError(422, message, options);
+  }
 }
 
 /** Narrow an unknown thrown value to a {@link SkeinHttpError}. */

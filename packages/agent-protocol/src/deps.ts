@@ -34,6 +34,19 @@ export interface GraphResolver {
 /** A source of the current time; injected so tests are deterministic. */
 export type Clock = () => Date;
 
+/**
+ * Delivers a run-completion webhook: POST `payload` (as JSON) to `url`. Injected so the transport is
+ * swappable and tests can capture deliveries without a network. Should resolve once sent and reject
+ * on failure — the engine calls it best-effort (a rejection is logged, never fails the run).
+ *
+ * Security: `url` is client-supplied, so the dispatcher makes a *server-side* request to a target the
+ * caller chose (an SSRF surface) and sends it the run's final `values`. The default dispatcher
+ * restricts the scheme to `http(s)` but, since skein is self-hosted and internal webhook targets are a
+ * legitimate use, does **not** block private/loopback hosts. Deployments that accept untrusted
+ * `webhook` URLs should inject a dispatcher that validates the resolved host against an allowlist.
+ */
+export type WebhookDispatcher = (url: string, payload: unknown) => Promise<void>;
+
 /** A minimal structured logger. Defaults to a no-op so nothing is required. */
 export interface Logger {
   debug(message: string, meta?: unknown): void;
@@ -71,6 +84,11 @@ export interface ProtocolDeps {
   /** Optional per-run wall-clock timeout in ms. When set, a run exceeding it becomes `"timeout"`. */
   runTimeoutMs?: number;
   /**
+   * Delivers run-completion webhooks (the run's `webhook` field). Defaults to a `globalThis.fetch`
+   * POST with a JSON body; inject to customize transport/retries or to capture deliveries in tests.
+   */
+  webhookDispatcher?: WebhookDispatcher;
+  /**
    * Optional auth engine. When set, every request is authenticated (401 on failure) and authorized
    * per resource + action (403 on deny), with ownership filters scoping reads and stamping writes.
    * Absent means no authentication/authorization — every request is allowed (the current behavior).
@@ -85,10 +103,45 @@ const noopLogger: Logger = {
   error: () => {},
 };
 
-/** Fill in the optional deps (`clock`, `logger`) so the rest of the code can rely on them. */
+// Minimal shape of the global `fetch` we rely on — declared locally so this file needs neither the
+// DOM lib nor @types/node's web-globals (the workspace compiles with `lib: ["ES2023"]`). Node 18+
+// provides `fetch` at runtime; if a host lacks it, inject a `webhookDispatcher` instead.
+type GlobalFetch = (
+  input: string,
+  init?: { method?: string; headers?: Record<string, string>; body?: string },
+) => Promise<{ ok: boolean; status: number }>;
+
+/** POST the payload as JSON via the global `fetch`. The default {@link WebhookDispatcher}. */
+const fetchWebhookDispatcher: WebhookDispatcher = async (url, payload) => {
+  // Only http(s): reject other schemes (`file:`, `data:`, …) up front rather than hand them to fetch.
+  let scheme: string;
+  try {
+    scheme = new URL(url).protocol;
+  } catch {
+    throw new Error(`Webhook URL "${url}" is not a valid absolute URL`);
+  }
+  if (scheme !== "http:" && scheme !== "https:") {
+    throw new Error(`Webhook URL scheme "${scheme}" is not allowed (only http/https)`);
+  }
+  const send = (globalThis as { fetch?: GlobalFetch }).fetch;
+  if (!send) {
+    throw new Error("global fetch is unavailable; inject a webhookDispatcher to deliver webhooks");
+  }
+  const response = await send(url, {
+    method: "POST",
+    headers: { "content-type": "application/json" },
+    body: JSON.stringify(payload),
+  });
+  if (!response.ok) {
+    throw new Error(`Webhook POST to ${url} failed with status ${response.status}`);
+  }
+};
+
+/** Fill in the optional deps (`clock`, `logger`, `webhookDispatcher`) so the rest can rely on them. */
 export interface ResolvedDeps extends ProtocolDeps {
   clock: Clock;
   logger: Logger;
+  webhookDispatcher: WebhookDispatcher;
 }
 
 export function resolveDeps(deps: ProtocolDeps): ResolvedDeps {
@@ -96,5 +149,6 @@ export function resolveDeps(deps: ProtocolDeps): ResolvedDeps {
     ...deps,
     clock: deps.clock ?? (() => new Date()),
     logger: deps.logger ?? noopLogger,
+    webhookDispatcher: deps.webhookDispatcher ?? fetchWebhookDispatcher,
   };
 }

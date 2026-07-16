@@ -19,9 +19,9 @@ import {
   type Thread,
 } from "@skein-js/core";
 
-import type { ProtocolContext } from "../context.js";
+import type { ProtocolContext, RollbackPlan } from "../context.js";
 
-import { executeRun } from "./run-engine.js";
+import { startRunExecution } from "./run-execution.js";
 
 /** A run request as it arrives from any of the run endpoints (already validated). */
 export interface CreateRunInput {
@@ -36,6 +36,8 @@ export interface CreateRunInput {
   multitask_strategy?: MultitaskStrategy;
   interrupt_before?: string[] | "*";
   interrupt_after?: string[] | "*";
+  /** Absolute `http(s)` URL POSTed with the settled run once it reaches a terminal status. */
+  webhook?: string;
 }
 
 /** A started streaming run: its id, plus the live frame iterable to serialize as SSE. */
@@ -71,6 +73,7 @@ function toKwargs(input: CreateRunInput, authUser?: AuthUser, authScopes?: strin
   if (input.stream_mode !== undefined) kwargs.stream_mode = input.stream_mode;
   if (input.interrupt_before !== undefined) kwargs.interrupt_before = input.interrupt_before;
   if (input.interrupt_after !== undefined) kwargs.interrupt_after = input.interrupt_after;
+  if (input.webhook !== undefined) kwargs.webhook = input.webhook;
   // Scopes only ride along with a principal; storing them alone would be meaningless.
   if (authUser !== undefined) {
     kwargs.auth_user = authUser;
@@ -80,7 +83,7 @@ function toKwargs(input: CreateRunInput, authUser?: AuthUser, authScopes?: strin
 }
 
 export function createRunService(ctx: ProtocolContext): RunService {
-  const { deps, control, locks, authUser, authScopes } = ctx;
+  const { deps, control, locks, runBaseCheckpoints, authUser, authScopes } = ctx;
 
   const requireThread = async (threadId: string): Promise<Thread> => {
     const thread = await deps.store.threads.get(threadId);
@@ -127,9 +130,26 @@ export function createRunService(ctx: ProtocolContext): RunService {
     return existing ?? (await deps.store.threads.create({ thread_id: threadId }));
   };
 
-  // Create the pending run row under the per-thread lock, enforcing the concurrency guard atomically.
-  // The assistant is resolved by the caller *before* any thread is created, so an invalid
-  // assistant_id never leaves an orphaned thread behind.
+  // Stop an active run being displaced by an `interrupt`/`rollback` run. A pending (never-started)
+  // run is finalized directly and its bus closed; a running run is signaled and finalized by its
+  // engine (interrupt -> `interrupted`, keeping its writes; rollback -> `cancelled`, its writes
+  // dropped afterward by the displacing run). Marking the row terminal here frees the concurrency
+  // guard immediately, while the execution lock still holds the displacing run until this one stops.
+  const cancelActiveRun = async (run: Run, reason: "interrupt" | "rollback"): Promise<void> => {
+    const terminal: RunStatus = reason === "interrupt" ? "interrupted" : "cancelled";
+    if (run.status === "pending") {
+      await deps.store.runs.setStatus(run.run_id, terminal);
+      await deps.bus.close(run.run_id);
+      control.abort(run.run_id, reason); // no-op if not executing
+    } else {
+      await deps.store.runs.setStatus(run.run_id, terminal);
+      control.abort(run.run_id, reason);
+    }
+  };
+
+  // Create the pending run row under the per-thread lock, applying the requested multitask strategy
+  // atomically against the thread's inflight runs. The assistant is resolved by the caller *before*
+  // any thread is created, so an invalid assistant_id never leaves an orphaned thread behind.
   const createPendingRun = async (
     input: CreateRunInput,
     threadId: string,
@@ -138,15 +158,36 @@ export function createRunService(ctx: ProtocolContext): RunService {
   ): Promise<Run> => {
     return locks.run(threadId, async () => {
       const strategy = input.multitask_strategy ?? "reject";
-      if (await deps.store.runs.hasActiveRun(threadId)) {
-        if (strategy !== "reject") {
-          deps.logger.warn(`multitask_strategy "${strategy}" treated as reject (MVP).`);
+      const active = await deps.store.runs.listActiveRuns(threadId);
+
+      let rollbackPlan: RollbackPlan | undefined;
+      if (active.length > 0) {
+        if (strategy === "reject") {
+          // Matches @langchain/langgraph-api: 422, with the same message.
+          throw SkeinHttpError.unprocessable(
+            "Thread is already running a task. Wait for it to finish or choose a different multitask strategy.",
+            { code: "thread_busy" },
+          );
         }
-        throw SkeinHttpError.conflict(`Thread "${threadId}" already has an active run.`, {
-          code: "thread_busy",
-        });
+        if (strategy === "interrupt") {
+          for (const run of active) await cancelActiveRun(run, "interrupt");
+        } else if (strategy === "rollback") {
+          // Capture the running run's base checkpoint *before* aborting — the engine clears it once
+          // the run settles. A displaced run with no recorded base never wrote checkpoints.
+          let revertToCheckpoint: RollbackPlan["revertToCheckpoint"] = false;
+          for (const run of active) {
+            if (runBaseCheckpoints.has(run.run_id)) {
+              revertToCheckpoint = { baseCheckpointId: runBaseCheckpoints.get(run.run_id) };
+            }
+          }
+          rollbackPlan = { revertToCheckpoint, displacedRunIds: active.map((run) => run.run_id) };
+          for (const run of active) await cancelActiveRun(run, "rollback");
+        }
+        // enqueue: fall through and create the pending run; the per-thread execution lock
+        // (startRunExecution) makes it wait behind the active run.
       }
-      return deps.store.runs.create({
+
+      const created = await deps.store.runs.create({
         thread_id: threadId,
         assistant_id: assistantId,
         status: "pending",
@@ -154,17 +195,15 @@ export function createRunService(ctx: ProtocolContext): RunService {
         multitask_strategy: strategy,
         kwargs,
       });
+      // Register the rollback work the new run must do before it executes (see startRunExecution).
+      if (rollbackPlan) ctx.rollbackPlans.set(created.run_id, rollbackPlan);
+      return created;
     });
   };
 
-  // Execute a run inline (wait/stream), publishing frames to the bus. Returns the outcome promise.
-  const runInline = (run: Run, kwargs: RunKwargs) => {
-    const runControl = control.register(run.run_id);
-    const done = executeRun(deps, { run, kwargs, control: runControl }).finally(() =>
-      control.clear(run.run_id),
-    );
-    return done;
-  };
+  // Execute a run inline (wait/stream) via the shared per-thread execution path, publishing frames
+  // to the bus. Returns the outcome promise.
+  const runInline = (run: Run, kwargs: RunKwargs) => startRunExecution(ctx, run, kwargs);
 
   return {
     async createWait(input) {
@@ -220,6 +259,9 @@ export function createRunService(ctx: ProtocolContext): RunService {
     async cancel(runId) {
       const run = await deps.store.runs.get(runId);
       if (!run) throw SkeinHttpError.notFound(`Run "${runId}" not found.`);
+      // Drop any rollback work this run was going to do on execution: cancelling it means it won't
+      // run, so the plan would otherwise be orphaned in the map (it's applied in startRunExecution).
+      ctx.rollbackPlans.delete(runId);
       // Idempotent: cancelling a finished run is a no-op.
       if (isTerminalRunStatus(run.status)) return run;
 
@@ -245,6 +287,7 @@ export function createRunService(ctx: ProtocolContext): RunService {
       }
       // Stop it first if it's still executing, so nothing writes to a deleted run.
       control.abort(runId, "cancel");
+      ctx.rollbackPlans.delete(runId); // a deleted run won't execute, so its plan must not linger
       await deps.store.runs.delete(runId);
     },
 

@@ -220,7 +220,8 @@ describe("readLanggraphDevState", () => {
       state_updated_at: iso,
     });
 
-    // runKwargs keeps only skein's replay fields — LangGraph's `webhook` is dropped.
+    // runKwargs keeps skein's replay fields, and now carries LangGraph's `webhook` through so an
+    // imported run still fires its completion webhook.
     const [, kwargs] = snapshot.store.runKwargs[0]!;
     expect(kwargs).toEqual({
       input: { messages: ["hi"] },
@@ -230,6 +231,7 @@ describe("readLanggraphDevState", () => {
       stream_mode: undefined,
       interrupt_before: undefined,
       interrupt_after: undefined,
+      webhook: "https://drop.me",
     });
 
     const [id, item] = snapshot.store.items[0]!;

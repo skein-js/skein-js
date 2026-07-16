@@ -202,6 +202,12 @@ export interface RunKwargs {
   interrupt_before?: string[] | "*";
   interrupt_after?: string[] | "*";
   /**
+   * Optional run-completion webhook URL (absolute `http(s)`). When set, the run engine POSTs the
+   * settled run (status + final values) to it once the run reaches a terminal status — matching
+   * `@langchain/langgraph-api`. Persisted opaquely so a background/crash-recovered run still fires.
+   */
+  webhook?: string;
+  /**
    * The authenticated caller, stamped by the server (never accepted from the client). Persisted
    * opaquely with the run so a background/crash-recovered run on another instance reconstructs the
    * principal via `getKwargs` and injects it into the graph's `configurable.langgraph_auth_user`.
@@ -243,6 +249,13 @@ export interface RunRepo {
    * as a fresh run. The run engine uses this to reject/queue concurrent runs.
    */
   hasActiveRun(threadId: string): Promise<boolean>;
+  /**
+   * The thread's *inflight* runs — those still `pending` or `running` (non-terminal per
+   * {@link isTerminalRunStatus}), the same set {@link hasActiveRun} counts. The multitask engine
+   * reads these to `interrupt`/`rollback` them when a second run arrives mid-run. Order is
+   * unspecified.
+   */
+  listActiveRuns(threadId: string): Promise<Run[]>;
 }
 
 /**

@@ -6,6 +6,8 @@ import {
   toFactoryConfigurable,
   toGraphCallOptions,
   toGraphInput,
+  toGraphStreamModes,
+  wantsEventsMode,
 } from "./run-input.js";
 
 describe("normalizeModes", () => {
@@ -16,8 +18,16 @@ describe("normalizeModes", () => {
 
   it("maps SDK aliases onto graph modes and de-duplicates", () => {
     expect(normalizeModes("messages-tuple")).toEqual(["messages"]);
-    expect(normalizeModes(["events"])).toEqual(["updates"]);
     expect(normalizeModes(["values", "values", "updates"])).toEqual(["values", "updates"]);
+  });
+
+  it("preserves `events` (the engine drives it via streamEvents, not streamMode)", () => {
+    expect(normalizeModes(["events"])).toEqual(["events"]);
+    expect(wantsEventsMode(["events", "values"])).toBe(true);
+    expect(wantsEventsMode(["values"])).toBe(false);
+    // `events` is stripped from the graph-level streamMode.
+    expect(toGraphStreamModes(["events", "values"])).toEqual(["values"]);
+    expect(toGraphStreamModes(["events"])).toEqual([]);
   });
 });
 

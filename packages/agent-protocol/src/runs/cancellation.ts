@@ -4,8 +4,16 @@
 // genuine graph error. This registry is per-process — cross-instance cancel is a `@skein-js/redis`
 // concern layered on top later.
 
-/** Why a run was aborted. Absent (`null`) means the run failed on its own. */
-export type AbortReason = "cancel" | "timeout";
+/**
+ * Why a run was aborted. Absent (`null`) means the run failed on its own.
+ * - `cancel` — explicit `POST /runs/{id}/cancel`; the run settles `cancelled`.
+ * - `timeout` — the run exceeded `runTimeoutMs`; it settles `timeout`.
+ * - `interrupt` — displaced by a `multitask_strategy: "interrupt"` run; it settles `interrupted`,
+ *   keeping its checkpoint writes.
+ * - `rollback` — displaced by a `multitask_strategy: "rollback"` run; it settles terminally and the
+ *   displacing run then discards its checkpoint writes (see the run service).
+ */
+export type AbortReason = "cancel" | "timeout" | "interrupt" | "rollback";
 
 /** Handle handed to the engine for a run: the signal to thread into the graph, and the reason box. */
 export interface RunControl {

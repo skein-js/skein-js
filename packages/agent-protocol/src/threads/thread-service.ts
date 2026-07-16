@@ -4,12 +4,6 @@
 // can't write to a thread that's about to disappear.
 
 import {
-  copyCheckpoint,
-  type BaseCheckpointSaver,
-  type CheckpointMetadata,
-  type CheckpointTuple,
-} from "@langchain/langgraph";
-import {
   isTerminalRunStatus,
   SkeinHttpError,
   type Metadata,
@@ -21,6 +15,7 @@ import {
 
 import type { ProtocolContext } from "../context.js";
 
+import { copyCheckpointHistory } from "./checkpoint-history.js";
 import { snapshotToThreadState } from "./thread-mirror.js";
 
 export interface CreateThreadInput {
@@ -49,55 +44,6 @@ export interface ThreadService {
   history(threadId: string, options?: HistoryOptions): Promise<ThreadState[]>;
   /** The thread's current state snapshot — `GET /threads/{id}/state`, what `useStream` hydrates from. */
   getState(threadId: string): Promise<ThreadState>;
-}
-
-/**
- * Replay every checkpoint of `sourceId` under `targetId` so a copied thread carries the same graph
- * history. Checkpoints are keyed only by `thread_id` in skein (namespace `""`), so the source id is
- * simply swapped. We replay oldest-first so each checkpoint's parent already exists when it lands.
- */
-async function copyCheckpointHistory(
-  checkpointer: BaseCheckpointSaver,
-  sourceId: string,
-  targetId: string,
-): Promise<void> {
-  const tuples: CheckpointTuple[] = [];
-  for await (const tuple of checkpointer.list({ configurable: { thread_id: sourceId } })) {
-    tuples.push(tuple);
-  }
-  // `list` yields newest-first; reverse so parents are written before their children.
-  for (const tuple of tuples.reverse()) {
-    const ns = (tuple.config.configurable?.checkpoint_ns as string | undefined) ?? "";
-    const parentId = tuple.parentConfig?.configurable?.checkpoint_id as string | undefined;
-    const putConfig = {
-      configurable: { thread_id: targetId, checkpoint_ns: ns, checkpoint_id: parentId },
-    };
-    await checkpointer.put(
-      putConfig,
-      copyCheckpoint(tuple.checkpoint),
-      tuple.metadata ?? ({} as CheckpointMetadata),
-      tuple.checkpoint.channel_versions,
-    );
-    if (tuple.pendingWrites && tuple.pendingWrites.length > 0) {
-      const writeConfig = {
-        configurable: {
-          thread_id: targetId,
-          checkpoint_ns: ns,
-          checkpoint_id: tuple.checkpoint.id,
-        },
-      };
-      // pendingWrites are [taskId, channel, value]; putWrites takes [channel, value] per taskId.
-      const byTask = new Map<string, [string, unknown][]>();
-      for (const [taskId, channel, value] of tuple.pendingWrites) {
-        const writes = byTask.get(taskId) ?? [];
-        writes.push([channel, value]);
-        byTask.set(taskId, writes);
-      }
-      for (const [taskId, writes] of byTask) {
-        await checkpointer.putWrites(writeConfig, writes, taskId);
-      }
-    }
-  }
 }
 
 /**

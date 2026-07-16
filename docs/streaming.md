@@ -35,7 +35,10 @@ A `CompiledStateGraph.stream(input, { streamMode })` can emit any combination of
 | `events`         | Fine-grained execution events                     |
 | `debug`          | Detailed debug info                               |
 
-Multiple modes can be requested at once; skein-js preserves that.
+Multiple modes can be requested at once; skein-js preserves that. When `events` is among the
+requested modes the run engine drives the graph via LangGraph's `streamEvents` (v2) and emits each
+event as an `events` frame (co-requested modes like `values` still stream alongside); otherwise it
+uses `graph.stream`.
 
 ## Mapping to Agent Protocol SSE
 

@@ -481,6 +481,29 @@ export function runSkeinStoreConformance(label: string, makeStore: SkeinStoreFac
         expect(await store.runs.hasActiveRun(thread_id)).toBe(false);
       });
 
+      it("lists only the thread's inflight runs (pending | running)", async () => {
+        // The multitask engine reads these to interrupt/rollback them when a second run arrives.
+        const store = await makeStore();
+        const thread_id = await seedThread(store);
+        expect(await store.runs.listActiveRuns(thread_id)).toEqual([]);
+
+        const pending = await store.runs.create({ thread_id, assistant_id: "a" });
+        const running = await store.runs.create({ thread_id, assistant_id: "a" });
+        await store.runs.setStatus(running.run_id, "running");
+        const done = await store.runs.create({ thread_id, assistant_id: "a" });
+        await store.runs.setStatus(done.run_id, "success");
+
+        const active = await store.runs.listActiveRuns(thread_id);
+        expect(active.map((run) => run.run_id).sort()).toEqual(
+          [pending.run_id, running.run_id].sort(),
+        );
+
+        // Terminal runs drop out; a distinct thread's runs never leak in.
+        await store.runs.setStatus(pending.run_id, "cancelled");
+        await store.runs.setStatus(running.run_id, "interrupted");
+        expect(await store.runs.listActiveRuns(thread_id)).toEqual([]);
+      });
+
       it("round-trips a run's opaque kwargs and returns null for an unknown run", async () => {
         const store = await makeStore();
         const thread_id = await seedThread(store);

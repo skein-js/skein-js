@@ -270,12 +270,29 @@ function toRun(row: LanggraphRun, now: string): Run {
   } as Run;
 }
 
-/** Keep only the replay fields skein's `RunKwargs` models (LangGraph carries extras like `webhook`). */
+/** Keep only the replay fields skein's `RunKwargs` models (LangGraph carries other extras too). */
 function toRunKwargs(kwargs: Record<string, unknown> | undefined): RunKwargs {
   if (!kwargs) return {};
-  const { input, command, config, context, stream_mode, interrupt_before, interrupt_after } =
-    kwargs as RunKwargs & Record<string, unknown>;
-  return { input, command, config, context, stream_mode, interrupt_before, interrupt_after };
+  const {
+    input,
+    command,
+    config,
+    context,
+    stream_mode,
+    interrupt_before,
+    interrupt_after,
+    webhook,
+  } = kwargs as RunKwargs & Record<string, unknown>;
+  return {
+    input,
+    command,
+    config,
+    context,
+    stream_mode,
+    interrupt_before,
+    interrupt_after,
+    ...(typeof webhook === "string" ? { webhook } : {}),
+  };
 }
 
 /**

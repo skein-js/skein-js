@@ -35,6 +35,8 @@ export const runCreateSchema = z
     multitask_strategy: multitaskStrategySchema.optional(),
     interrupt_before: interruptWhenSchema.optional(),
     interrupt_after: interruptWhenSchema.optional(),
+    /** Run-completion webhook: an absolute `http(s)` URL POSTed the settled run when it finishes. */
+    webhook: z.string().url().optional(),
   })
   .passthrough();
 

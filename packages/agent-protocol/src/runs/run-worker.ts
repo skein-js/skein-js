@@ -13,7 +13,7 @@ import {
 import type { ProtocolContext } from "../context.js";
 import type { Logger } from "../deps.js";
 
-import { executeRun } from "./run-engine.js";
+import { startRunExecution } from "./run-execution.js";
 
 export interface RunWorkerOptions {
   /** Max runs executing at once. Default 1 — strict per-thread serialization in dev. */
@@ -66,20 +66,25 @@ export function createRunWorker(ctx: ProtocolContext, options: RunWorkerOptions 
   const process = async (queued: QueuedRun): Promise<void> => {
     const run = await deps.store.runs.get(queued.run_id);
     // Skip a run that vanished (thread deleted) or was already finalized (cancelled while queued).
-    if (!run || isTerminalRunStatus(run.status)) return;
+    // Such a run never reaches startRunExecution, so drop any rollback plan it carried rather than
+    // leak it in the map.
+    if (!run || isTerminalRunStatus(run.status)) {
+      ctx.rollbackPlans.delete(queued.run_id);
+      return;
+    }
     const kwargs = (await deps.store.runs.getKwargs(queued.run_id)) ?? {};
-    const runControl = control.register(queued.run_id);
     inFlight.add(queued.run_id);
     // Wall-clock timing for the human-facing summary, so queue/exec durations line up with the
     // store-stamped `run.created_at`. Defaults to `error` so a run whose execution *throws* (not just
     // one that returns a terminal error status) is still summarised before the throw propagates.
+    // `startRunExecution` owns the per-thread execution lock, cancellation control, base-checkpoint
+    // capture, and any pending rollback — the same path inline runs take, so behavior can't drift.
     const startedAt = Date.now();
     let status: RunStatus = "error";
     try {
-      status = (await executeRun(deps, { run, kwargs, control: runControl })).status;
+      status = (await startRunExecution(ctx, run, kwargs)).status;
     } finally {
       logRunLifecycle(deps.logger, run, status, startedAt, Date.now());
-      control.clear(queued.run_id);
       inFlight.delete(queued.run_id);
     }
   };

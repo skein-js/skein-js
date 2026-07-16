@@ -392,6 +392,10 @@ export class MemorySkeinStore implements SkeinStore {
       }
       return false;
     },
+    listActiveRuns: async (threadId) =>
+      readAll(this.#runs).filter(
+        (run) => run.thread_id === threadId && !isTerminalRunStatus(run.status),
+      ),
   };
 
   readonly store: StoreRepo = {

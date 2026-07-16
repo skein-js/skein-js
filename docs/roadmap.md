@@ -103,6 +103,27 @@ Steps 1–10 below are complete: the dev loop **and** self-hosted production bot
   `AssistantRepo` (both drivers, one conformance suite; Postgres migration `0003`). See
   [storage.md](./storage.md#assistant-versioning) and
   [agent-protocol.md](./agent-protocol.md#assistants).
+- ✅ **Multitask / double-texting strategies (LangGraph parity)** — a second message arriving mid-run
+  is handled by all four `multitask_strategy` values: `reject` (busy thread → `422`, matching
+  langgraph-api), `enqueue` (the new run waits behind the active one), `interrupt` (stop the active
+  run keeping its work, then start), and `rollback` (stop the active run, discard its checkpoint
+  writes, then start). Lives in [`@skein-js/agent-protocol`](../packages/agent-protocol)'s run engine:
+  a per-thread execution lock serializes runs (enqueue), and rollback reverts the thread to the
+  displaced run's base checkpoint via the `BaseCheckpointSaver`. Fully correct in a single process
+  (the `langgraph dev` bar); cross-instance coordination is the same open Redis item as the existing
+  concurrency guard.
+- ✅ **Run-completion webhooks (LangGraph parity)** — a `webhook` URL on run creation is carried
+  through (and preserved by `import-langgraph`) and POSTed the settled run once it reaches a terminal
+  status, with LangGraph's payload shape (the run plus `status`, `run_started_at`/`run_ended_at`/
+  `webhook_sent_at`, final `values`, and an `error` on failure). Fired from the run engine's terminal
+  step (so every run mode delivers), best-effort via an injectable dispatcher (a delivery failure
+  never fails the run). The default dispatcher restricts the scheme to `http(s)`; because `webhook` is
+  a client-supplied URL the server POSTs to (an SSRF surface carrying the run's `values`), deployments
+  that accept untrusted clients should inject a `webhookDispatcher` that allowlists the target host —
+  the default stays permissive since internal webhook targets are legitimate in a self-hosted setup.
+- ✅ **True `events` stream mode (LangGraph parity)** — `stream_mode: "events"` now drives the graph
+  via LangGraph's `streamEvents` (v2) and streams token/tool/step events at full granularity, instead
+  of the old `updates` approximation. Requesting `events` alongside other modes yields both.
 
 ## Planned / coming soon (post-MVP)
 
@@ -111,13 +132,6 @@ These are on the map but not yet built. Want one sooner? Upvote or open an issue
 
 The next block is the LangGraph feature-parity backlog, listed **in priority order** (highest first):
 
-- 🗺️ **Multitask / double-texting strategies (LangGraph parity).** LangGraph handles a second message
-  arriving mid-run with four strategies — `reject`, `enqueue`, `interrupt`, `rollback`. skein-js accepts
-  the `multitask_strategy` field but today only `reject` is honored (a second active run per thread is
-  rejected); the others are logged and treated as `reject`. Planned: real `enqueue` (queue the run
-  behind the active one), `interrupt` (cancel the active run, then start), and `rollback` (cancel + drop
-  the active run's writes, then start) in [`@skein-js/agent-protocol`](../packages/agent-protocol)'s run
-  engine.
 - 🗺️ **Cron / scheduled runs (LangGraph parity).** LangGraph Platform exposes a **Crons** resource
   (create/list/delete schedules that kick off a run on a thread on a cadence). skein-js does not yet
   implement it — see [Known gaps](#known-gaps-vs-the-langgraph-cli--platform). Planned: a `crons`
@@ -132,13 +146,6 @@ The next block is the LangGraph feature-parity backlog, listed **in priority ord
 - 🗺️ **MCP endpoint (LangGraph parity).** LangGraph Server exposes graphs as MCP tools at `/mcp`.
   skein-js has no MCP surface yet. Planned: an `/mcp` handler in the transport-neutral handler table
   that advertises each graph as an MCP tool and bridges tool calls onto runs.
-- 🗺️ **Run-completion webhooks (LangGraph parity).** LangGraph accepts a `webhook` URL on run creation
-  and POSTs to it when the run finishes; skein-js currently parses the field out and drops it (it is not
-  carried through `import-langgraph` either). Planned: fire the webhook from the run engine's terminal
-  step, with the same payload shape LangGraph sends.
-- 🗺️ **True `events` stream mode (LangGraph parity).** skein-js approximates the `events` stream mode
-  with `updates` today (see [`run-input.ts`](../packages/agent-protocol/src/runs/run-input.ts)). Planned:
-  wire LangGraph's real `streamEvents` so token/tool/step events stream at full granularity.
 
 The remaining backlog is skein-js's own adapter/tooling roadmap:
 
@@ -173,13 +180,13 @@ valuable feedback we can get.
 | Distinct cancelled run status          | ✅ shipped         | Cancel resolves to `cancelled`, not `error`.                      |
 | Human-in-the-loop (interrupt/resume)   | ✅ shipped         | Via LangGraph checkpointers.                                      |
 | Auth + authorization                   | ✅ shipped         | LangGraph `Auth` parity — see below.                              |
-| **Multitask / double-texting**         | 🗺️ planned         | Only `reject` today; enqueue/interrupt/rollback planned.          |
+| Multitask / double-texting             | ✅ shipped         | `reject` (422) / `enqueue` / `interrupt` / `rollback`.            |
 | **Cron / scheduled runs**              | 🗺️ planned         | LangGraph Platform's Crons resource; not yet implemented.         |
 | **Time travel (fork from checkpoint)** | 🗺️ planned         | History is read-only today; fork/update-state planned.            |
 | Assistants CRUD + versioning           | ✅ shipped         | Create/update/delete + version history/rollback; graph/subgraphs. |
 | **MCP endpoint (`/mcp`)**              | 🗺️ planned         | LangGraph exposes graphs as MCP tools; not yet implemented.       |
-| **Run-completion webhooks**            | 🗺️ planned         | `webhook` field is parsed but dropped today.                      |
-| **True `events` stream mode**          | 🗺️ planned         | Approximated as `updates` today.                                  |
+| Run-completion webhooks                | ✅ shipped         | `webhook` URL POSTed the settled run on completion.               |
+| True `events` stream mode              | ✅ shipped         | Real `streamEvents` (v2); full token/tool/step granularity.       |
 | **Fastify / NestJS adapters**          | 🗺️ planned (MVP)   | Express ships today.                                              |
 | **Next.js API-route adapter**          | 🗺️ planned         | For serving smaller graphs from a Next.js app.                    |
 | WebSocket streaming transport          | ❌ non-goal (v1)   | SSE covers the client UX; does not affect the React SDK.          |

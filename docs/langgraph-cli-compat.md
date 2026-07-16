@@ -242,9 +242,9 @@ skein import-langgraph --store postgres     # → your POSTGRES_URI (checkpoints
 their latest state), runs, store items, and the **full checkpoint history** are all migrated. Because
 skein uses LangGraph's own `MemorySaver`/`PostgresSaver`, the checkpoint format is identical — history
 is preserved exactly. Minor, deliberate drops: the store's derived **embedding index** (`vectors`) is
-not copied (skein re-indexes on write / a configured `store.index` re-embeds on Postgres import),
-LangGraph **retry counters** aren't part of skein's model, and run **webhooks** aren't carried in the
-replay payload. (Webhooks are on the [roadmap](./roadmap.md#planned--coming-soon-post-mvp).)
+not copied (skein re-indexes on write / a configured `store.index` re-embeds on Postgres import), and
+LangGraph **retry counters** aren't part of skein's model. Run **webhooks** _are_ carried through, so
+an imported run still fires its completion webhook.
 
 > The `.langgraph_api/` layout is a `@langchain/langgraph-api` internal (stable across 1.2.x–1.4.x),
 > not a public API. The importer is best-effort and guarded — a format it can't read never blocks

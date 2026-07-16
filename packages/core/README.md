@@ -79,8 +79,8 @@ throw SkeinHttpError.notFound(`Thread "${id}" not found.`);
   `RunConsumerOptions`.
 - **`interface AuthEngine`** — `authenticate(request)` (→ `AuthContext`, throws 401) + `authorize({ resource, action, value, context })` (→ `{ filters?, value }`, throws 403) + `matchesFilters(...)`. Plus `AuthContext`, `AuthUser`, `AuthResource`, `AuthAction`, `AuthFilters`, `AuthFilterValue`.
 - **`class SkeinHttpError`** — `new SkeinHttpError(status, message, options?)` and the static helpers
-  `badRequest` (400) / `unauthorized` (401) / `forbidden` (403) / `notFound` (404) / `conflict` (409);
-  `isSkeinHttpError(value)` narrows it.
+  `badRequest` (400) / `unauthorized` (401) / `forbidden` (403) / `notFound` (404) / `conflict` (409) /
+  `unprocessable` (422); `isSkeinHttpError(value)` narrows it.
 - **`serializeWireJson(value): string`** — `JSON.stringify` replacement that flattens LangChain
   `BaseMessage`s to the wire shape the SDK / `useStream` / Agent Chat UI expect.
 

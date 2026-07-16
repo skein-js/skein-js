@@ -5,21 +5,37 @@
 import { Command, type CommandParams } from "@langchain/langgraph";
 import type { AuthUser, RunKwargs, StreamMode } from "@skein-js/core";
 
-/** SDK stream modes mapped to the graph's stream vocabulary. Unknown modes fall back to values. */
+/** SDK stream modes mapped to the graph's stream vocabulary. */
 function toGraphMode(mode: StreamMode): StreamMode {
   // `messages-tuple` is the SDK's token-streaming alias for the graph's `messages` mode.
   if (mode === "messages-tuple") return "messages";
-  // `events` requires streamEvents, not streamMode; approximate with `updates` for MVP.
-  if (mode === "events") return "updates";
   return mode;
 }
 
-/** Normalize requested modes to a non-empty, de-duplicated array of graph modes. */
+/**
+ * Normalize requested modes to a non-empty, de-duplicated array. `events` is preserved (not
+ * downgraded): the engine drives it via `graph.streamEvents` and strips it from the graph
+ * `streamMode` via {@link toGraphStreamModes}.
+ */
 export function normalizeModes(mode?: StreamMode | StreamMode[]): StreamMode[] {
   const requested = mode === undefined ? [] : Array.isArray(mode) ? mode : [mode];
   const mapped = requested.map(toGraphMode);
   const deduped = [...new Set(mapped)];
   return deduped.length > 0 ? deduped : ["values"];
+}
+
+/** True when the caller asked for the token-level `events` stream mode. */
+export function wantsEventsMode(mode?: StreamMode | StreamMode[]): boolean {
+  return normalizeModes(mode).includes("events");
+}
+
+/**
+ * The graph-valid stream modes for `graph.stream`/`graph.streamEvents`' `streamMode` option —
+ * `events` removed (it is not a Pregel stream mode; it comes from the event stream itself). May be
+ * empty when only `events` was requested, which is valid for the `streamEvents` path.
+ */
+export function toGraphStreamModes(mode?: StreamMode | StreamMode[]): StreamMode[] {
+  return normalizeModes(mode).filter((m) => m !== "events");
 }
 
 /** The graph input for this run: a `Command` when resuming/commanding, else the raw input (or null). */
@@ -128,7 +144,7 @@ export function toGraphCallOptions(
       kwargs.auth_user,
       kwargs.auth_scopes,
     ),
-    streamMode: normalizeModes(kwargs.stream_mode),
+    streamMode: toGraphStreamModes(kwargs.stream_mode),
     signal,
   };
   if (kwargs.context !== undefined) options.context = kwargs.context;

@@ -25,12 +25,23 @@ import {
 
 import type { ResolvedDeps } from "../deps.js";
 import { serializeError } from "../normalize-error.js";
-import { chunkToFrameBody, toRunFrame } from "../sse/run-frame-stream.js";
+import {
+  chunkToFrameBody,
+  streamEventToFrameBody,
+  toRunFrame,
+  type GraphStreamEvent,
+} from "../sse/run-frame-stream.js";
 import { SkeinBaseStore } from "../store/skein-base-store.js";
 import { runStatusForSnapshot, snapshotToThreadUpdate } from "../threads/thread-mirror.js";
 
-import type { RunControl } from "./cancellation.js";
-import { toFactoryConfigurable, toGraphCallOptions, toGraphInput } from "./run-input.js";
+import type { AbortReason, RunControl } from "./cancellation.js";
+import {
+  toFactoryConfigurable,
+  toGraphCallOptions,
+  toGraphInput,
+  toGraphStreamModes,
+  wantsEventsMode,
+} from "./run-input.js";
 import { describeInterrupts, extractToolActivity } from "./run-log.js";
 
 /** What the engine needs to execute one run. */
@@ -38,6 +49,19 @@ export interface RunExecution {
   run: Run;
   kwargs: RunKwargs;
   control: RunControl;
+  /**
+   * Called once at `pending -> running` with the thread's checkpoint tip at that moment (`undefined`
+   * if none). The run service uses this to compute a `rollback` plan for a run that later displaces
+   * this one. Optional so tests can omit it.
+   */
+  recordBaseCheckpoint?: (baseCheckpointId: string | undefined) => void;
+}
+
+/** Map an abort reason to the run's terminal status. `interrupt` keeps work; the rest are stops. */
+function abortedStatus(reason: AbortReason | null): RunStatus {
+  if (reason === "timeout") return "timeout";
+  if (reason === "interrupt") return "interrupted";
+  return "cancelled"; // "cancel", "rollback", or an aborted signal with no recorded reason
 }
 
 /** The settled result of a run — its terminal status and the graph's final state values. */
@@ -47,6 +71,7 @@ export interface RunOutcome {
 }
 
 type StreamOptions = Parameters<CompiledGraph<string>["stream"]>[1];
+type StreamEventsOptions = Parameters<CompiledGraph<string>["streamEvents"]>[1];
 
 /**
  * Resolve an assistant's graph, invoking a factory export with the run's configurable, then attach
@@ -141,6 +166,11 @@ export async function executeRun(deps: ResolvedDeps, exec: RunExecution): Promis
   const runId = run.run_id;
   const threadId = run.thread_id;
   let seq = 0;
+  // Captured for the run-completion webhook fired in `finally`. `started` gates the webhook to runs
+  // that actually executed (a run cancelled while still pending never fires one, matching the worker).
+  let started = false;
+  let outcome: RunOutcome = { status: "error", values: {} as DefaultValues };
+  let webhookErrorMessage: string | undefined;
 
   // Verbose run activity (start/finish, tool calls, interrupts) — `skein dev --verbose`. Guarded so
   // it costs nothing when off. Tool calls/results are logged once each; streaming repeats the same
@@ -179,12 +209,30 @@ export async function executeRun(deps: ResolvedDeps, exec: RunExecution): Promis
     // Cancelled before we even started (e.g. the worker was slow to pick it up): honor it.
     const current = await deps.store.runs.get(runId);
     if (current && isTerminalRunStatus(current.status)) {
-      return { status: current.status, values: {} as DefaultValues };
+      outcome = { status: current.status, values: {} as DefaultValues };
+      return outcome;
     }
 
     // pending -> running: run row first (the concurrency source of truth), then the thread mirror.
     await deps.store.runs.setStatus(runId, "running");
+    started = true;
     await mirrorThreadStatus(deps, threadId, "busy");
+    // Record the thread's checkpoint tip *before* this run writes anything, so a later `rollback` run
+    // knows the state to revert to. Only record on a *successful* read: a genuine `undefined` (fresh
+    // thread, no checkpoints) means "revert to empty", but a failed read is *unknown* — recording
+    // `undefined` there would make a later rollback wipe the thread's real prior history. On failure
+    // we record nothing, so rollback safely skips the checkpoint revert. Best-effort either way.
+    if (exec.recordBaseCheckpoint) {
+      try {
+        const tip = await deps.checkpointer.getTuple({ configurable: { thread_id: threadId } });
+        exec.recordBaseCheckpoint(tip?.checkpoint.id);
+      } catch (error) {
+        deps.logger.warn(
+          `run ${runId}: failed to read base checkpoint; a rollback of this run won't revert checkpoints`,
+          error,
+        );
+      }
+    }
     if (deps.logRunActivity) {
       deps.logger.info(`run ${runId} started · assistant=${run.assistant_id} thread=${threadId}`);
     }
@@ -198,24 +246,43 @@ export async function executeRun(deps: ResolvedDeps, exec: RunExecution): Promis
     const input = toGraphInput(kwargs);
     const options = toGraphCallOptions(kwargs, threadId, control.signal);
 
-    const stream = await graph.stream(input, options as unknown as StreamOptions);
-    for await (const chunk of stream) {
-      seq += 1;
-      const body = chunkToFrameBody(chunk);
-      await deps.bus.publish(runId, toRunFrame(seq, body));
-      if (deps.logRunActivity) logToolActivity(body.data);
+    if (wantsEventsMode(kwargs.stream_mode)) {
+      // True `events` mode: drive the graph via `streamEvents` and demux each event — internal
+      // `on_chain_stream` chunks become mode frames, everything else becomes an `events` frame.
+      // `runId` tags the root run so the demux can tell this run's stream chunks from a subgraph's.
+      const graphModes = toGraphStreamModes(kwargs.stream_mode);
+      const eventStream = graph.streamEvents(input, {
+        ...options,
+        version: "v2",
+        runId,
+      } as unknown as StreamEventsOptions) as unknown as AsyncIterable<GraphStreamEvent>;
+      for await (const event of eventStream) {
+        const body = streamEventToFrameBody(event, runId, graphModes);
+        if (!body) continue;
+        seq += 1;
+        await deps.bus.publish(runId, toRunFrame(seq, body));
+        if (deps.logRunActivity) logToolActivity(body.data);
+      }
+    } else {
+      const stream = await graph.stream(input, options as unknown as StreamOptions);
+      for await (const chunk of stream) {
+        seq += 1;
+        const body = chunkToFrameBody(chunk);
+        await deps.bus.publish(runId, toRunFrame(seq, body));
+        if (deps.logRunActivity) logToolActivity(body.data);
+      }
     }
 
-    // A cancel/timeout may have raced in while the graph was finishing (an uninterruptible node can
-    // complete despite the abort). Honor the abort over a success result so the stored status, the
-    // returned outcome, and the client's cancel/timeout all agree.
+    // A cancel/timeout/interrupt/rollback may have raced in while the graph was finishing (an
+    // uninterruptible node can complete despite the abort). Honor the abort over a success result so
+    // the stored status, the returned outcome, and the client's request all agree.
     if (control.signal.aborted) {
-      const timedOut = control.reason.current === "timeout";
-      const finalStatus = await finalizeRun(deps, runId, timedOut ? "timeout" : "cancelled");
+      const finalStatus = await finalizeRun(deps, runId, abortedStatus(control.reason.current));
       if (finalStatus === "timeout") await mirrorThreadError(deps, threadId, "Run timed out.");
-      else if (finalStatus === "cancelled") await mirrorThreadStatus(deps, threadId, "idle");
+      else await mirrorThreadStatus(deps, threadId, "idle");
       logFinished(finalStatus);
-      return { status: finalStatus, values: {} as DefaultValues };
+      outcome = { status: finalStatus, values: {} as DefaultValues };
+      return outcome;
     }
 
     // Classify from the authoritative snapshot, not the stream: paused -> interrupted, else success.
@@ -234,22 +301,30 @@ export async function executeRun(deps: ResolvedDeps, exec: RunExecution): Promis
       );
     }
     logFinished(finalStatus);
-    return { status: finalStatus, values: snapshot.values as DefaultValues };
+    outcome = { status: finalStatus, values: snapshot.values as DefaultValues };
+    return outcome;
   } catch (error) {
     const reason = control.reason.current;
     if (reason === "timeout") {
       const finalStatus = await finalizeRun(deps, runId, "timeout");
       if (finalStatus === "timeout") await mirrorThreadError(deps, threadId, "Run timed out.");
       logFinished(finalStatus);
-      return { status: finalStatus, values: {} as DefaultValues };
+      outcome = { status: finalStatus, values: {} as DefaultValues };
+      return outcome;
     }
-    if (reason === "cancel" || control.signal.aborted) {
-      // A cancelled run is terminal in its own right (distinct from a failure), and the thread is
-      // free again (idle).
-      const finalStatus = await finalizeRun(deps, runId, "cancelled");
-      if (finalStatus === "cancelled") await mirrorThreadStatus(deps, threadId, "idle");
+    if (
+      reason === "cancel" ||
+      reason === "interrupt" ||
+      reason === "rollback" ||
+      control.signal.aborted
+    ) {
+      // Displaced (interrupt/rollback) or explicitly cancelled: terminal in its own right, and the
+      // thread is free again (idle). `interrupt` keeps its checkpoints; a `rollback` run drops them.
+      const finalStatus = await finalizeRun(deps, runId, abortedStatus(reason));
+      await mirrorThreadStatus(deps, threadId, "idle");
       logFinished(finalStatus);
-      return { status: finalStatus, values: {} as DefaultValues };
+      outcome = { status: finalStatus, values: {} as DefaultValues };
+      return outcome;
     }
     // Genuine graph error: surface it as the terminal frame, then persist error state.
     const serialized = serializeError(error);
@@ -259,10 +334,31 @@ export async function executeRun(deps: ResolvedDeps, exec: RunExecution): Promis
     if (finalStatus === "error") await mirrorThreadError(deps, threadId, serialized.message);
     if (deps.logRunActivity) deps.logger.error(`run ${runId} error: ${serialized.message}`);
     logFinished(finalStatus);
-    return { status: finalStatus, values: {} as DefaultValues };
+    webhookErrorMessage = serialized.message;
+    outcome = { status: finalStatus, values: {} as DefaultValues };
+    return outcome;
   } finally {
     if (timer !== undefined) clearTimeout(timer);
     // Always close the bus so every subscriber's iterator completes and emits the terminal event.
     await deps.bus.close(runId);
+    // Run-completion webhook: fire once, best-effort, only for a run that actually executed. A
+    // delivery failure is logged, never propagated — it must not fail or delay the run.
+    if (started && kwargs.webhook !== undefined) {
+      const sentAt = deps.clock().toISOString();
+      const payload = {
+        ...run,
+        status: outcome.status,
+        values: outcome.values,
+        run_started_at: new Date(startedAt).toISOString(),
+        run_ended_at: sentAt,
+        webhook_sent_at: sentAt,
+        ...(webhookErrorMessage !== undefined ? { error: webhookErrorMessage } : {}),
+      };
+      try {
+        await deps.webhookDispatcher(kwargs.webhook, payload);
+      } catch (error) {
+        deps.logger.warn(`run ${runId}: webhook delivery to ${kwargs.webhook} failed`, error);
+      }
+    }
   }
 }

@@ -97,14 +97,15 @@ describe("run service", () => {
     expect((await deps.store.runs.getKwargs(run.run_id))?.auth_user).toBeUndefined();
   });
 
-  it("rejects a second concurrent run on the same thread with a 409", async () => {
+  it("rejects a second concurrent run on the same thread with a 422 (default reject strategy)", async () => {
     const { service } = await serviceWithAssistants();
     const thread = await service.threads.create();
     await service.runs.createBackground(thread.thread_id, { assistant_id: "echo", input: {} });
 
+    // Matches @langchain/langgraph-api: a busy thread rejects with 422 + code "thread_busy".
     await expect(
       service.runs.createBackground(thread.thread_id, { assistant_id: "echo", input: {} }),
-    ).rejects.toMatchObject({ status: 409 });
+    ).rejects.toMatchObject({ status: 422, code: "thread_busy" });
   });
 
   it("404s an unknown assistant or thread", async () => {

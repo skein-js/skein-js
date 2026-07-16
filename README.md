@@ -441,13 +441,14 @@ cross-instance fan-out). These map directly to the CLI's `--store` and `--queue`
 | [`@skein-js/nestjs`](./packages/server-nestjs)   | 🗺️ planned | NestJS apps                                             |
 | `@skein-js/nextjs`                               | 🗺️ planned | Serving smaller graphs straight from Next.js API routes |
 
-Also planned (LangGraph Platform parity): **multitask / double-texting**, **cron / scheduled runs**,
-**time travel** (fork from a checkpoint), **assistants CRUD + versioning**, an **MCP endpoint**,
-**run-completion webhooks**, and a **true `events` stream mode** — see the
+Also planned (LangGraph Platform parity): **cron / scheduled runs**, **time travel** (fork from a
+checkpoint), and an **MCP endpoint** — see the
 [roadmap](./docs/roadmap.md#planned--coming-soon-post-mvp) and
-[known gaps](./docs/roadmap.md#known-gaps-vs-the-langgraph-cli--platform). Recently shipped: thread
-**search** (metadata/status filter + pagination), thread **copy** (with history), store item **TTL**,
-and a distinct **`cancelled`** run status.
+[known gaps](./docs/roadmap.md#known-gaps-vs-the-langgraph-cli--platform). Recently shipped:
+**multitask / double-texting** (`reject`/`enqueue`/`interrupt`/`rollback`), **run-completion
+webhooks**, a **true `events` stream mode**, **assistants CRUD + versioning**, thread **search**
+(metadata/status filter + pagination), thread **copy** (with history), store item **TTL**, and a
+distinct **`cancelled`** run status.
 
 > Package names are the npm names; a few on-disk directories differ (`@skein-js/express` →
 > `packages/server-express`, `@skein-js/redis` → `packages/runtime-redis`, `skein-js` →

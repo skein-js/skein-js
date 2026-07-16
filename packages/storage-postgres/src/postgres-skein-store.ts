@@ -918,6 +918,13 @@ export class PostgresSkeinStore implements SkeinStore {
       );
       return rows[0]?.active ?? false;
     },
+    listActiveRuns: async (threadId) => {
+      const { rows } = await this.#pool.query<RunRow>(
+        "SELECT * FROM runs WHERE thread_id = $1 AND NOT (status = ANY($2::text[])) ORDER BY created_at",
+        [threadId, TERMINAL_RUN_STATUSES],
+      );
+      return rows.map(rowToRun);
+    },
   };
 
   readonly store: StoreRepo = {
