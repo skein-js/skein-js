@@ -1,3 +1,28 @@
+## 0.4.0 (2026-07-16)
+
+### 🚀 Features
+
+- thread search/copy, store TTL, and distinct cancelled run status ([c3560a3](https://github.com/mainawycliffe/skein/commit/c3560a3))
+- ⚠️  use POSTGRES_URI/REDIS_URI env vars for LangGraph CLI parity ([d02477a](https://github.com/mainawycliffe/skein/commit/d02477a))
+- **agent-protocol:** filter threads by graph via stamped metadata ([73f2fc9](https://github.com/mainawycliffe/skein/commit/73f2fc9))
+
+### 🩹 Fixes
+
+- **cli:** resolve tsconfig `paths` aliases in the dev graph loader ([#1](https://github.com/mainawycliffe/skein/issues/1))
+
+### ⚠️  Breaking Changes
+
+- use POSTGRES_URI/REDIS_URI env vars for LangGraph CLI parity  ([d02477a](https://github.com/mainawycliffe/skein/commit/d02477a))
+  the postgres store now reads POSTGRES_URI (was
+  DATABASE_URL) and the redis queue reads REDIS_URI (was REDIS_URL).
+  Update your environment / compose / Railway variables accordingly. The
+  skein-specific PG_POOL_MAX and DATABASE_SSL_NO_VERIFY tuning vars are
+  unchanged.
+
+### ❤️ Thank You
+
+- Maina Wycliffe
+
 ## 0.3.0 (2026-07-15)
 
 ### 🚀 Features
