@@ -1,3 +1,15 @@
+## 0.6.0 (2026-07-16)
+
+### 🚀 Features
+
+- **agent-protocol:** add assistants CRUD + versioning (LangGraph parity) ([f90006e](https://github.com/mainawycliffe/skein/commit/f90006e))
+- **agent-protocol:** multitask strategies, run webhooks, true events mode ([caf4815](https://github.com/mainawycliffe/skein/commit/caf4815))
+- **cli:** install prod deps from a private npm registry via a BuildKit secret ([#4](https://github.com/mainawycliffe/skein/issues/4))
+
+### ❤️ Thank You
+
+- Maina Wycliffe
+
 ## 0.5.0 (2026-07-16)
 
 ### 🚀 Features

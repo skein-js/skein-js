@@ -1,6 +1,6 @@
 {
   "name": "skein-js",
-  "version": "0.5.0",
+  "version": "0.6.0",
   "description": "The skein-js CLI — a drop-in replacement for the LangGraph CLI (dev/up/build/dockerfile).",
   "license": "Apache-2.0",
   "author": "Maina Wycliffe <wmmaina7@gmail.com>",
