@@ -67,8 +67,8 @@ All commands take `-c, --config <path>` (default `langgraph.json`).
 | ------------------ | -------------------- | ----------- | -------------------------------------------------------------- |
 | `-p, --port`       | number               | `2024`      | Port to listen on.                                             |
 | `--host`           | host                 | `127.0.0.1` | Interface to bind.                                             |
-| `--store <driver>` | `memory`, `postgres` | `memory`    | `postgres` reads `DATABASE_URL`; also selects `PostgresSaver`. |
-| `--queue <driver>` | `memory`, `redis`    | `memory`    | `redis` reads `REDIS_URL` (BullMQ queue + Redis Streams bus).  |
+| `--store <driver>` | `memory`, `postgres` | `memory`    | `postgres` reads `POSTGRES_URI`; also selects `PostgresSaver`. |
+| `--queue <driver>` | `memory`, `redis`    | `memory`    | `redis` reads `REDIS_URI` (BullMQ queue + Redis Streams bus).  |
 | `--no-persist`     | —                    | persists    | Don't snapshot dev state to `.skein/` across restarts.         |
 | `--no-reload`      | —                    | reloads     | Disable hot reload on source change.                           |
 | `-v, --verbose`    | —                    | off         | Log per-run activity (tool calls, interrupts, timing).         |

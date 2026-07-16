@@ -251,7 +251,7 @@ Point `skein` at an existing `langgraph.json`; your graph code and config are un
 
 ```bash
 skein dev                                  # in-process dev server, hot reload, no Docker (port 2024)
-skein dev --store postgres --queue redis   # dev against production-shaped storage (DATABASE_URL / REDIS_URL)
+skein dev --store postgres --queue redis   # dev against production-shaped storage (POSTGRES_URI / REDIS_URI)
 skein up                                    # self-hosted stack via Docker Compose: app + Postgres + Redis
 skein build -t my-agent                     # build a deployable Docker image
 skein dockerfile -o Dockerfile              # emit a standalone Dockerfile

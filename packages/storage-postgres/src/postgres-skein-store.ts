@@ -70,7 +70,7 @@ export interface PostgresSkeinStoreOptions extends PostgresPoolOptions {
 
 /**
  * Build a `pg` Pool with skein's connection tuning applied. Shared by the store and the checkpoint
- * saver so both honor `poolMax`/`sslNoVerify` identically against the same `DATABASE_URL`.
+ * saver so both honor `poolMax`/`sslNoVerify` identically against the same `POSTGRES_URI`.
  */
 export function createPostgresPool(url: string, options: PostgresPoolOptions = {}): Pool {
   const pool = new Pool({

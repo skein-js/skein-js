@@ -20,8 +20,8 @@ import { createExpressServer } from "@skein-js/express";
 
 const runtime = await buildRuntime({
   configPath: "/abs/path/to/langgraph.json",
-  store: "postgres", // "memory" | "postgres"  (postgres reads DATABASE_URL)
-  queue: "redis", //    "memory" | "redis"     (redis reads REDIS_URL)
+  store: "postgres", // "memory" | "postgres"  (postgres reads POSTGRES_URI)
+  queue: "redis", //    "memory" | "redis"     (redis reads REDIS_URI)
 });
 
 const server = await createExpressServer({ deps: runtime.deps, cors: runtime.cors });
@@ -33,13 +33,13 @@ await runtime.dispose();
 `store` and `queue` are **required** (no defaults — the CLI supplies its own flag defaults). The
 driver branches:
 
-- **`store: "postgres"`** connects `PostgresSkeinStore` (from `DATABASE_URL`), runs its migrations,
+- **`store: "postgres"`** connects `PostgresSkeinStore` (from `POSTGRES_URI`), runs its migrations,
   and uses `PostgresSaver` as the LangGraph checkpointer.
-- **`queue: "redis"`** uses the BullMQ run queue + Redis Streams/pub-sub event bus (from `REDIS_URL`).
+- **`queue: "redis"`** uses the BullMQ run queue + Redis Streams/pub-sub event bus (from `REDIS_URI`).
 - **`store: "memory"` + `queue: "memory"`** delegates to [`@skein-js/express`](../server-express)'s
   reloadable in-memory runtime, so `skein dev`'s hot-reload and cross-restart state persistence work.
 
-A missing `DATABASE_URL` / `REDIS_URL` throws `RuntimeConfigError`; if assembly fails part-way, any
+A missing `POSTGRES_URI` / `REDIS_URI` throws `RuntimeConfigError`; if assembly fails part-way, any
 resources already created are disposed before rethrowing, so a failed build leaks nothing.
 
 Graph hot-reload (`reloadGraphs()`) works in every mode; `snapshotState`/`hydrateState` are present

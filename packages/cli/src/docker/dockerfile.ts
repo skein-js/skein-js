@@ -120,7 +120,7 @@ export function generateDockerfile(options: DockerfileOptions): string {
     `USER node`,
     ...dockerfileLines,
     ``,
-    `# Serve the Agent Protocol against Postgres + Redis (DATABASE_URL / REDIS_URL from the environment).`,
+    `# Serve the Agent Protocol against Postgres + Redis (POSTGRES_URI / REDIS_URI from the environment).`,
     `# No --port: the server binds $PORT when the platform injects one (Railway/Fly/Render), else its`,
     `# default. Exec form keeps node as PID 1 so SIGTERM reaches skein's graceful-shutdown handler.`,
     `CMD ["npx", "skein", "dev", "--no-reload", "--no-persist", "--store", "postgres", "--queue", "redis", "--host", "0.0.0.0"]`,

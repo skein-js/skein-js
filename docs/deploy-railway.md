@@ -17,7 +17,7 @@ Railway-specific beyond the dashboard steps.
   sets `PORT` in `compose.yaml` to match the published port.)
 - **Runs as non-root** (`USER node`) and keeps node as PID 1 (exec-form CMD), so Railway's stop signal
   (`SIGTERM`) reaches skein's graceful-shutdown handler — in-flight runs drain, pools close cleanly.
-- **Reads config from the environment** — `DATABASE_URL` and `REDIS_URL` only, each required only for
+- **Reads config from the environment** — `POSTGRES_URI` and `REDIS_URI` only, each required only for
   the durable driver that uses it.
 
 ## Steps
@@ -51,9 +51,12 @@ In the app service's **Variables**, add Railway [reference variables](https://do
 so the URLs track the databases automatically:
 
 ```text
-DATABASE_URL = ${{ Postgres.DATABASE_URL }}
-REDIS_URL    = ${{ Redis.REDIS_URL }}
+POSTGRES_URI = ${{ Postgres.DATABASE_URL }}
+REDIS_URI    = ${{ Redis.REDIS_URL }}
 ```
+
+The left-hand names are skein's env vars; the `${{ … }}` references on the right are Railway's own
+provided variables — keep those as Railway names them.
 
 Prefer the **private** URLs (`*.railway.internal`) — private networking is plaintext, so no TLS
 config is needed, and it doesn't count against egress. `PORT` is injected by Railway automatically; do
@@ -87,8 +90,8 @@ won't flap a healthy instance.
 
 | Variable                 | Required             | Purpose                                                       |
 | ------------------------ | -------------------- | ------------------------------------------------------------- |
-| `DATABASE_URL`           | yes (postgres store) | Postgres connection string (resources + checkpoints).         |
-| `REDIS_URL`              | yes (redis queue)    | Redis connection string (run queue + stream pub/sub).         |
+| `POSTGRES_URI`           | yes (postgres store) | Postgres connection string (resources + checkpoints).         |
+| `REDIS_URI`              | yes (redis queue)    | Redis connection string (run queue + stream pub/sub).         |
 | `PORT`                   | injected by Railway  | Port the server binds. Do not set manually on Railway.        |
 | `PG_POOL_MAX`            | no                   | Max connections in the store pool (`pg` default 10).          |
 | `DATABASE_SSL_NO_VERIFY` | no                   | `true` to skip TLS cert verification (self-signed public DB). |

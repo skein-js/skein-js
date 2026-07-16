@@ -43,9 +43,9 @@ export interface BuildRuntimeOptions {
   configPath: string;
   /** TS-capable importer (e.g. the CLI's vite loader). Omitted for plain JS/Node resolution. */
   importModule?: ModuleImporter;
-  /** `"memory"` (default dev) or `"postgres"` (reads `DATABASE_URL`). */
+  /** `"memory"` (default dev) or `"postgres"` (reads `POSTGRES_URI`). */
   store: StoreDriver;
-  /** `"memory"` (default dev) or `"redis"` (reads `REDIS_URL`). */
+  /** `"memory"` (default dev) or `"redis"` (reads `REDIS_URI`). */
   queue: QueueDriver;
 }
 
@@ -156,7 +156,7 @@ export async function buildRuntime(options: BuildRuntimeOptions): Promise<SkeinR
   const first = await loadConfig({ configPath, importModule });
   const { resolver, reroute } = reroutableGraphResolver(first.graphs);
   // Track every concrete resource as it is created, so a failure part-way through assembly (a bad
-  // migration, a missing REDIS_URL after Postgres already connected) tears down what exists rather
+  // migration, a missing REDIS_URI after Postgres already connected) tears down what exists rather
   // than leaking pools/connections. `dispose()` reuses the same list for normal shutdown.
   const disposers: Array<() => Promise<unknown>> = [];
   const disposeAll = async (): Promise<void> => {
@@ -168,12 +168,12 @@ export async function buildRuntime(options: BuildRuntimeOptions): Promise<SkeinR
     const storeTtl = resolveStoreTtl(first.config.store?.ttl);
     const { skeinStore, checkpointer } = await (async () => {
       if (store === "postgres") {
-        const databaseUrl = requireEnv("DATABASE_URL", "postgres");
+        const databaseUrl = requireEnv("POSTGRES_URI", "postgres");
         const index = await resolveStoreIndex(first.config.store?.index, {
           configDir: first.configDir,
           importModule,
         });
-        // Both pools hit the same DATABASE_URL, so they must share the same connection tuning —
+        // Both pools hit the same POSTGRES_URI, so they must share the same connection tuning —
         // otherwise the saver would ignore PG_POOL_MAX / DATABASE_SSL_NO_VERIFY and fail TLS (or
         // blow the connection cap) even when the store connects fine.
         const connectionOptions = postgresConnectionOptions();
@@ -213,7 +213,7 @@ export async function buildRuntime(options: BuildRuntimeOptions): Promise<SkeinR
 
     const { runQueue, bus } = (() => {
       if (queue === "redis") {
-        const redisUrl = requireEnv("REDIS_URL", "redis");
+        const redisUrl = requireEnv("REDIS_URI", "redis");
         const redisQueue = new RedisRunQueue(redisUrl);
         disposers.push(() => redisQueue.dispose());
         const redisBus = new RedisRunEventBus(redisUrl);

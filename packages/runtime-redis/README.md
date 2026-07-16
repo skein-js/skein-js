@@ -39,8 +39,8 @@ Construct with a Redis URL — there is no migration step:
 ```ts
 import { RedisRunQueue, RedisRunEventBus } from "@skein-js/redis";
 
-const queue = new RedisRunQueue(process.env.REDIS_URL!);
-const bus = new RedisRunEventBus(process.env.REDIS_URL!);
+const queue = new RedisRunQueue(process.env.REDIS_URI!);
+const bus = new RedisRunEventBus(process.env.REDIS_URI!);
 // Injected into the engine as deps.queue / deps.bus.
 // …on shutdown, release the connections:
 await queue.dispose();
@@ -48,7 +48,7 @@ await bus.dispose();
 ```
 
 You normally get these via `skein dev --queue redis` / `skein up` and
-[`@skein-js/runtime`](../runtime), which reads `REDIS_URL` and constructs them for you.
+[`@skein-js/runtime`](../runtime), which reads `REDIS_URI` and constructs them for you.
 
 ## API
 

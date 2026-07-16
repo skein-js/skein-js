@@ -118,7 +118,7 @@ and `skein dev --store postgres`); pure in-memory `skein dev` still enforces exp
 ```ts
 import { PostgresSaver } from "@langchain/langgraph-checkpoint-postgres";
 
-const checkpointer = PostgresSaver.fromConnString(process.env.DATABASE_URL!);
+const checkpointer = PostgresSaver.fromConnString(process.env.POSTGRES_URI!);
 await checkpointer.setup(); // idempotent migrations for checkpoint tables
 ```
 

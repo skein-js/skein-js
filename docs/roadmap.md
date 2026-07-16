@@ -59,7 +59,7 @@ Steps 1–10 below are complete: the dev loop **and** self-hosted production bot
     Dockerfile from `langgraph.json`; `skein up` brings up app + `pgvector/pgvector` Postgres + Redis
     via Docker Compose.
     - **`skein dev` now optionally uses the production drivers** via `--store postgres` / `--queue redis`
-      (connection URLs from `DATABASE_URL` / `REDIS_URL`), instead of always the in-memory drivers.
+      (connection URLs from `POSTGRES_URI` / `REDIS_URI`), instead of always the in-memory drivers.
       This is a capability `langgraph dev` does **not** offer — it lets you develop and test against
       production-shaped storage (durable checkpoints, cross-instance streaming, pgvector search)
       without `skein up`/full Docker. Graph hot-reload still works; the `.skein/` snapshot is skipped

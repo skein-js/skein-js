@@ -21,13 +21,13 @@ let redis: StartedResource;
 beforeAll(async () => {
   [pg, redis] = await Promise.all([startPostgres(), startRedis()]);
   // buildRuntime reads these from the environment (the CLI applies them from .env before booting).
-  process.env["DATABASE_URL"] = pg.url;
-  process.env["REDIS_URL"] = redis.url;
+  process.env["POSTGRES_URI"] = pg.url;
+  process.env["REDIS_URI"] = redis.url;
 }, 120_000);
 
 afterAll(async () => {
-  delete process.env["DATABASE_URL"];
-  delete process.env["REDIS_URL"];
+  delete process.env["POSTGRES_URI"];
+  delete process.env["REDIS_URI"];
   await Promise.allSettled([pg?.stop(), redis?.stop()]);
 });
 
@@ -103,28 +103,28 @@ describe("buildRuntime — postgres + redis assembly", () => {
   });
 
   it("rejects with RuntimeConfigError when a selected driver's env var is missing", async () => {
-    const saved = process.env["DATABASE_URL"];
-    delete process.env["DATABASE_URL"];
+    const saved = process.env["POSTGRES_URI"];
+    delete process.env["POSTGRES_URI"];
     try {
       await expect(
         buildRuntime({ configPath, store: "postgres", queue: "memory" }),
       ).rejects.toThrow(RuntimeConfigError);
     } finally {
-      process.env["DATABASE_URL"] = saved;
+      process.env["POSTGRES_URI"] = saved;
     }
   });
 
   it("tears down the connected store when a later driver fails to initialize", async () => {
     // Postgres connects + migrates fully, then the Redis queue's env is missing: buildRuntime must
     // dispose the Postgres pool/saver on the way out instead of leaking them (and still reject).
-    const savedRedis = process.env["REDIS_URL"];
-    delete process.env["REDIS_URL"];
+    const savedRedis = process.env["REDIS_URI"];
+    delete process.env["REDIS_URI"];
     try {
       await expect(buildRuntime({ configPath, store: "postgres", queue: "redis" })).rejects.toThrow(
-        /REDIS_URL/,
+        /REDIS_URI/,
       );
     } finally {
-      process.env["REDIS_URL"] = savedRedis;
+      process.env["REDIS_URI"] = savedRedis;
     }
   });
 });

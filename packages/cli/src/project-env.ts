@@ -1,7 +1,7 @@
 // Shared env resolution for the CLI commands. A conventional `.env` in the project is the base,
 // `langgraph.json`'s declared `env` overrides it, and the ambient environment wins over both
 // (dotenv convention). Both `skein dev` and `skein import-langgraph` apply env this way, so keeping
-// it in one place stops the two commands from resolving the same project's env (e.g. DATABASE_URL)
+// it in one place stops the two commands from resolving the same project's env (e.g. POSTGRES_URI)
 // differently. `resolveEnv` itself is intentionally pure (it just computes the map); this is the
 // thin "apply to process.env" layer on top.
 

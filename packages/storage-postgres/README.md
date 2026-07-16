@@ -32,17 +32,17 @@ pnpm add @skein-js/storage-postgres @langchain/langgraph-checkpoint-postgres
 - **`@langchain/langgraph-checkpoint-postgres`** is a peer dependency: the `PostgresSaver` this store
   pairs with for graph checkpoints (used by [`@skein-js/runtime`](../runtime), not by this package's
   own code).
-- Set **`DATABASE_URL`** to a Postgres instance with the **pgvector** extension available for
+- Set **`POSTGRES_URI`** to a Postgres instance with the **pgvector** extension available for
   semantic search (`skein dev --store postgres` / `skein up` read this env var for you).
 
 ## Usage
 
-The connection URL is passed **explicitly** (this package never reads `DATABASE_URL` itself):
+The connection URL is passed **explicitly** (this package never reads `POSTGRES_URI` itself):
 
 ```ts
 import { PostgresSkeinStore } from "@skein-js/storage-postgres";
 
-const store = await PostgresSkeinStore.connect(process.env.DATABASE_URL!);
+const store = await PostgresSkeinStore.connect(process.env.POSTGRES_URI!);
 await store.migrate(); // idempotent; applies pending migrations
 // …later, on shutdown:
 await store.close();
@@ -52,14 +52,14 @@ With pgvector semantic search — pass a `store.index` with an embedder (`dims` 
 embedder's output length, or the store throws):
 
 ```ts
-const store = await PostgresSkeinStore.connect(process.env.DATABASE_URL!, {
+const store = await PostgresSkeinStore.connect(process.env.POSTGRES_URI!, {
   index: { dims: 1536, fields: ["content"], embed: async (texts) => embedBatch(texts) },
 });
 await store.migrate();
 ```
 
 In practice you rarely call this yourself — `skein dev --store postgres` / `skein up` and
-[`@skein-js/runtime`](../runtime) resolve `DATABASE_URL` and the `store.index.embed` from your
+[`@skein-js/runtime`](../runtime) resolve `POSTGRES_URI` and the `store.index.embed` from your
 `langgraph.json` and construct the store for you.
 
 ## API

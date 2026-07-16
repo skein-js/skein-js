@@ -70,8 +70,8 @@ describe("generateCompose", () => {
     expect(out).toContain("image: pgvector/pgvector:pg16");
     expect(out).toContain("image: redis:7");
     expect(out).toContain("condition: service_healthy");
-    expect(out).toContain("DATABASE_URL: postgresql://postgres:postgres@postgres:5432/skein");
-    expect(out).toContain("REDIS_URL: redis://redis:6379");
+    expect(out).toContain("POSTGRES_URI: postgresql://postgres:postgres@postgres:5432/skein");
+    expect(out).toContain("REDIS_URI: redis://redis:6379");
     // PORT is injected so the app binds the container port the mapping publishes; init reaps zombies.
     expect(out).toContain('PORT: "8123"');
     expect(out).toContain("init: true");

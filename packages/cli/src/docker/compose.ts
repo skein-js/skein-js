@@ -39,8 +39,8 @@ services:
       # The container CMD passes no --port; it binds $PORT (as a hosting platform would inject).
       # Set it here so the app listens on the port the mapping above publishes.
       PORT: "${options.containerPort}"
-      DATABASE_URL: postgresql://postgres:postgres@postgres:5432/skein
-      REDIS_URL: redis://redis:6379
+      POSTGRES_URI: postgresql://postgres:postgres@postgres:5432/skein
+      REDIS_URI: redis://redis:6379
     depends_on:
       postgres:
         condition: service_healthy

@@ -27,7 +27,7 @@ import { createViteGraphLoader } from "./vite-graph-loader.js";
 /** The flags `skein import-langgraph` accepts, after commander parsing. */
 export interface ImportLanggraphOptions {
   config: string;
-  /** Import target: `"memory"` (write `.skein/dev-state.json`) or `"postgres"` (`DATABASE_URL`). */
+  /** Import target: `"memory"` (write `.skein/dev-state.json`) or `"postgres"` (`POSTGRES_URI`). */
   store: StoreDriver;
   /** Source directory; defaults to `<configDir>/.langgraph_api`. */
   from?: string;
@@ -75,7 +75,7 @@ export async function runImportLanggraph(options: ImportLanggraphOptions): Promi
     return;
   }
 
-  // Postgres sink. Resolve env first (so DATABASE_URL is set before buildRuntime), then build the
+  // Postgres sink. Resolve env first (so POSTGRES_URI is set before buildRuntime), then build the
   // Postgres runtime. buildRuntime eagerly loads the project's auth module (and any custom embed),
   // so it needs the same vite-backed importer `skein dev` uses — otherwise a TypeScript auth/embed
   // module fails to import under plain Node. The loader is closed once the import completes.

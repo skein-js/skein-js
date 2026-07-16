@@ -56,7 +56,7 @@ program
   .option("--host <host>", "Host to bind", "127.0.0.1")
   .option("--no-reload", "Disable hot reload")
   .option("--no-persist", "Don't persist dev state to .skein/ between restarts")
-  // Develop against production-shaped storage without Docker (needs DATABASE_URL / REDIS_URL).
+  // Develop against production-shaped storage without Docker (needs POSTGRES_URI / REDIS_URI).
   .option("--store <driver>", "Store driver: memory | postgres", parseStore, "memory")
   .option("--queue <driver>", "Queue driver: memory | redis", parseQueue, "memory")
   .option("-v, --verbose", "Log per-run activity: start/finish, tool calls, and interrupts")
@@ -98,7 +98,7 @@ program
   .option("-c, --config <path>", "Path to langgraph.json", "langgraph.json")
   .option(
     "--store <driver>",
-    "Import target: memory (.skein/dev-state.json) | postgres (DATABASE_URL)",
+    "Import target: memory (.skein/dev-state.json) | postgres (POSTGRES_URI)",
     parseStore,
     "memory",
   )

@@ -91,7 +91,7 @@ recall. For durable, **pgvector semantic** recall — exactly what production wo
 `skein dev` at Postgres (no full Docker needed):
 
 ```bash
-export DATABASE_URL=postgres://…      # a Postgres with the `vector` extension available
+export POSTGRES_URI=postgres://…      # a Postgres with the `vector` extension available
 pnpm exec skein dev --port 2024 --store postgres
 ```
 

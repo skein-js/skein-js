@@ -41,9 +41,9 @@ export interface DevCommandOptions {
   portExplicit?: boolean;
   /** `true` when `--host` was passed on the CLI; suppresses the `HOST` env fallback. */
   hostExplicit?: boolean;
-  /** Protocol-resource + checkpoint store: `"memory"` (default) or `"postgres"` (`DATABASE_URL`). */
+  /** Protocol-resource + checkpoint store: `"memory"` (default) or `"postgres"` (`POSTGRES_URI`). */
   store: StoreDriver;
-  /** Run queue + stream bus: `"memory"` (default) or `"redis"` (`REDIS_URL`). */
+  /** Run queue + stream bus: `"memory"` (default) or `"redis"` (`REDIS_URI`). */
   queue: QueueDriver;
   /** `true` when `--verbose` was passed: log per-run activity (start/finish, tool calls, interrupts). */
   verbose?: boolean;
