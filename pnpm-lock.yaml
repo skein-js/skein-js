@@ -173,6 +173,65 @@ importers:
         specifier: workspace:*
         version: link:../../packages/cli
 
+  examples/fastify-app:
+    dependencies:
+      '@langchain/anthropic':
+        specifier: ^1.5.0
+        version: 1.5.1(@langchain/core@1.2.2(ws@8.21.0))
+      '@langchain/core':
+        specifier: ^1.2.0
+        version: 1.2.2(ws@8.21.0)
+      '@langchain/langgraph':
+        specifier: ^1.4.0
+        version: 1.4.7(@langchain/core@1.2.2(ws@8.21.0))(react-dom@19.2.6(react@19.2.6))(react@19.2.6)(zod@3.25.76)
+      '@skein-js/fastify':
+        specifier: workspace:*
+        version: link:../../packages/server-fastify
+      fastify:
+        specifier: ^5.2.0
+        version: 5.10.0
+      zod:
+        specifier: ^3.25.32
+        version: 3.25.76
+    devDependencies:
+      '@langchain/langgraph-sdk':
+        specifier: ^1.9.0
+        version: 1.9.25(@langchain/core@1.2.2(ws@8.21.0))(react-dom@19.2.6(react@19.2.6))(react@19.2.6)
+      tsx:
+        specifier: ^4.19.2
+        version: 4.22.4
+
+  examples/fastify-basic:
+    dependencies:
+      '@fastify/cors':
+        specifier: ^10.0.1
+        version: 10.1.0
+      '@langchain/anthropic':
+        specifier: ^1.5.0
+        version: 1.5.1(@langchain/core@1.2.2(ws@8.21.0))
+      '@langchain/core':
+        specifier: ^1.2.0
+        version: 1.2.2(ws@8.21.0)
+      '@langchain/langgraph':
+        specifier: ^1.4.0
+        version: 1.4.7(@langchain/core@1.2.2(ws@8.21.0))(react-dom@19.2.6(react@19.2.6))(react@19.2.6)(zod@3.25.76)
+      '@skein-js/fastify':
+        specifier: workspace:*
+        version: link:../../packages/server-fastify
+      fastify:
+        specifier: ^5.2.0
+        version: 5.10.0
+      zod:
+        specifier: ^3.25.32
+        version: 3.25.76
+    devDependencies:
+      '@langchain/langgraph-sdk':
+        specifier: ^1.9.0
+        version: 1.9.25(@langchain/core@1.2.2(ws@8.21.0))(react-dom@19.2.6(react@19.2.6))(react@19.2.6)
+      tsx:
+        specifier: ^4.19.2
+        version: 4.22.4
+
   examples/gemini-chat:
     dependencies:
       '@langchain/core':
@@ -216,6 +275,181 @@ importers:
       skein-js:
         specifier: workspace:*
         version: link:../../packages/cli
+
+  examples/nestjs-app:
+    dependencies:
+      '@langchain/anthropic':
+        specifier: ^1.5.0
+        version: 1.5.1(@langchain/core@1.2.2(ws@8.21.0))
+      '@langchain/core':
+        specifier: ^1.2.0
+        version: 1.2.2(ws@8.21.0)
+      '@langchain/langgraph':
+        specifier: ^1.4.0
+        version: 1.4.7(@langchain/core@1.2.2(ws@8.21.0))(react-dom@19.2.6(react@19.2.6))(react@19.2.6)(zod@3.25.76)
+      '@nestjs/common':
+        specifier: ^11.0.0
+        version: 11.1.24(reflect-metadata@0.2.2)(rxjs@7.8.2)
+      '@nestjs/core':
+        specifier: ^11.0.0
+        version: 11.1.24(@nestjs/common@11.1.24(reflect-metadata@0.2.2)(rxjs@7.8.2))(@nestjs/platform-express@11.1.28)(reflect-metadata@0.2.2)(rxjs@7.8.2)
+      '@nestjs/platform-express':
+        specifier: ^11.0.0
+        version: 11.1.28(@nestjs/common@11.1.24(reflect-metadata@0.2.2)(rxjs@7.8.2))(@nestjs/core@11.1.24)
+      '@skein-js/nestjs':
+        specifier: workspace:*
+        version: link:../../packages/server-nestjs
+      reflect-metadata:
+        specifier: ^0.2.2
+        version: 0.2.2
+      rxjs:
+        specifier: ^7.8.1
+        version: 7.8.2
+      zod:
+        specifier: ^3.25.32
+        version: 3.25.76
+    devDependencies:
+      '@langchain/langgraph-sdk':
+        specifier: ^1.9.0
+        version: 1.9.25(@langchain/core@1.2.2(ws@8.21.0))(react-dom@19.2.6(react@19.2.6))(react@19.2.6)
+      tsx:
+        specifier: ^4.19.2
+        version: 4.22.4
+
+  examples/nestjs-basic:
+    dependencies:
+      '@langchain/anthropic':
+        specifier: ^1.5.0
+        version: 1.5.1(@langchain/core@1.2.2(ws@8.21.0))
+      '@langchain/core':
+        specifier: ^1.2.0
+        version: 1.2.2(ws@8.21.0)
+      '@langchain/langgraph':
+        specifier: ^1.4.0
+        version: 1.4.7(@langchain/core@1.2.2(ws@8.21.0))(react-dom@19.2.6(react@19.2.6))(react@19.2.6)(zod@3.25.76)
+      '@nestjs/common':
+        specifier: ^11.0.0
+        version: 11.1.24(reflect-metadata@0.2.2)(rxjs@7.8.2)
+      '@nestjs/core':
+        specifier: ^11.0.0
+        version: 11.1.24(@nestjs/common@11.1.24(reflect-metadata@0.2.2)(rxjs@7.8.2))(@nestjs/platform-express@11.1.28)(reflect-metadata@0.2.2)(rxjs@7.8.2)
+      '@nestjs/platform-express':
+        specifier: ^11.0.0
+        version: 11.1.28(@nestjs/common@11.1.24(reflect-metadata@0.2.2)(rxjs@7.8.2))(@nestjs/core@11.1.24)
+      '@skein-js/nestjs':
+        specifier: workspace:*
+        version: link:../../packages/server-nestjs
+      reflect-metadata:
+        specifier: ^0.2.2
+        version: 0.2.2
+      rxjs:
+        specifier: ^7.8.1
+        version: 7.8.2
+      zod:
+        specifier: ^3.25.32
+        version: 3.25.76
+    devDependencies:
+      '@langchain/langgraph-sdk':
+        specifier: ^1.9.0
+        version: 1.9.25(@langchain/core@1.2.2(ws@8.21.0))(react-dom@19.2.6(react@19.2.6))(react@19.2.6)
+      tsx:
+        specifier: ^4.19.2
+        version: 4.22.4
+
+  examples/nextjs-app:
+    dependencies:
+      '@langchain/anthropic':
+        specifier: ^1.5.0
+        version: 1.5.1(@langchain/core@1.2.2(ws@8.21.0))
+      '@langchain/core':
+        specifier: ^1.2.0
+        version: 1.2.2(ws@8.21.0)
+      '@langchain/langgraph':
+        specifier: ^1.4.0
+        version: 1.4.7(@langchain/core@1.2.2(ws@8.21.0))(react-dom@19.2.6(react@19.2.6))(react@19.2.6)(zod@3.25.76)
+      '@langchain/langgraph-sdk':
+        specifier: ^1.9.0
+        version: 1.9.25(@langchain/core@1.2.2(ws@8.21.0))(react-dom@19.2.6(react@19.2.6))(react@19.2.6)
+      '@skein-js/agent-protocol':
+        specifier: workspace:*
+        version: link:../../packages/agent-protocol
+      '@skein-js/nextjs':
+        specifier: workspace:*
+        version: link:../../packages/server-nextjs
+      '@skein-js/storage-memory':
+        specifier: workspace:*
+        version: link:../../packages/storage-memory
+      next:
+        specifier: ^15.1.3
+        version: 15.5.18(@babel/core@7.29.7)(@playwright/test@1.61.1)(react-dom@19.2.6(react@19.2.6))(react@19.2.6)
+      react:
+        specifier: ^19.0.0
+        version: 19.2.6
+      react-dom:
+        specifier: ^19.0.0
+        version: 19.2.6(react@19.2.6)
+      zod:
+        specifier: ^3.25.32
+        version: 3.25.76
+    devDependencies:
+      '@types/node':
+        specifier: ^22.10.0
+        version: 22.20.0
+      '@types/react':
+        specifier: ^19.0.2
+        version: 19.2.15
+      '@types/react-dom':
+        specifier: ^19.0.2
+        version: 19.2.3(@types/react@19.2.15)
+      typescript:
+        specifier: ^5.7.2
+        version: 5.9.3
+
+  examples/nextjs-basic:
+    dependencies:
+      '@langchain/anthropic':
+        specifier: ^1.5.0
+        version: 1.5.1(@langchain/core@1.2.2(ws@8.21.0))
+      '@langchain/core':
+        specifier: ^1.2.0
+        version: 1.2.2(ws@8.21.0)
+      '@langchain/langgraph':
+        specifier: ^1.4.0
+        version: 1.4.7(@langchain/core@1.2.2(ws@8.21.0))(react-dom@19.2.6(react@19.2.6))(react@19.2.6)(zod@3.25.76)
+      '@skein-js/agent-protocol':
+        specifier: workspace:*
+        version: link:../../packages/agent-protocol
+      '@skein-js/nextjs':
+        specifier: workspace:*
+        version: link:../../packages/server-nextjs
+      '@skein-js/storage-memory':
+        specifier: workspace:*
+        version: link:../../packages/storage-memory
+      next:
+        specifier: ^15.1.3
+        version: 15.5.18(@babel/core@7.29.7)(@playwright/test@1.61.1)(react-dom@19.2.6(react@19.2.6))(react@19.2.6)
+      react:
+        specifier: ^19.0.0
+        version: 19.2.6
+      react-dom:
+        specifier: ^19.0.0
+        version: 19.2.6(react@19.2.6)
+      zod:
+        specifier: ^3.25.32
+        version: 3.25.76
+    devDependencies:
+      '@types/node':
+        specifier: ^22.10.0
+        version: 22.20.0
+      '@types/react':
+        specifier: ^19.0.2
+        version: 19.2.15
+      '@types/react-dom':
+        specifier: ^19.0.2
+        version: 19.2.3(@types/react@19.2.15)
+      typescript:
+        specifier: ^5.7.2
+        version: 5.9.3
 
   examples/react-usestream:
     dependencies:
@@ -327,12 +561,12 @@ importers:
       '@skein-js/config':
         specifier: workspace:*
         version: link:../config
-      '@skein-js/express':
-        specifier: workspace:*
-        version: link:../server-express
       '@skein-js/redis':
         specifier: workspace:*
         version: link:../runtime-redis
+      '@skein-js/server-kit':
+        specifier: workspace:*
+        version: link:../server-kit
       '@skein-js/storage-memory':
         specifier: workspace:*
         version: link:../storage-memory
@@ -386,6 +620,71 @@ importers:
       '@skein-js/core':
         specifier: workspace:*
         version: link:../core
+      '@skein-js/server-kit':
+        specifier: workspace:*
+        version: link:../server-kit
+      cors:
+        specifier: ^2.8.5
+        version: 2.8.6
+    devDependencies:
+      '@langchain/core':
+        specifier: ^1.2.0
+        version: 1.2.2(ws@8.21.0)
+      '@langchain/langgraph':
+        specifier: ^1.4.0
+        version: 1.4.7(@langchain/core@1.2.2(ws@8.21.0))(react-dom@19.2.6(react@19.2.6))(react@19.2.6)(zod@3.25.76)
+      '@skein-js/storage-memory':
+        specifier: workspace:*
+        version: link:../storage-memory
+      '@types/cors':
+        specifier: ^2.8.17
+        version: 2.8.19
+      '@types/express':
+        specifier: ^5.0.0
+        version: 5.0.6
+      express:
+        specifier: ^5.2.1
+        version: 5.2.1
+
+  packages/server-fastify:
+    dependencies:
+      '@skein-js/agent-protocol':
+        specifier: workspace:*
+        version: link:../agent-protocol
+      '@skein-js/core':
+        specifier: workspace:*
+        version: link:../core
+      '@skein-js/server-kit':
+        specifier: workspace:*
+        version: link:../server-kit
+    devDependencies:
+      '@fastify/cors':
+        specifier: ^10.0.1
+        version: 10.1.0
+      '@langchain/core':
+        specifier: ^1.2.0
+        version: 1.2.2(ws@8.21.0)
+      '@langchain/langgraph':
+        specifier: ^1.4.0
+        version: 1.4.7(@langchain/core@1.2.2(ws@8.21.0))(react-dom@19.2.6(react@19.2.6))(react@19.2.6)(zod@3.25.76)
+      '@skein-js/storage-memory':
+        specifier: workspace:*
+        version: link:../storage-memory
+      fastify:
+        specifier: ^5.2.0
+        version: 5.10.0
+
+  packages/server-kit:
+    dependencies:
+      '@skein-js/agent-protocol':
+        specifier: workspace:*
+        version: link:../agent-protocol
+      '@skein-js/config':
+        specifier: workspace:*
+        version: link:../config
+      '@skein-js/core':
+        specifier: workspace:*
+        version: link:../core
       '@skein-js/storage-memory':
         specifier: workspace:*
         version: link:../storage-memory
@@ -408,33 +707,68 @@ importers:
       '@types/cors':
         specifier: ^2.8.17
         version: 2.8.19
-      '@types/express':
-        specifier: ^5.0.0
-        version: 5.0.6
-      express:
-        specifier: ^5.2.1
-        version: 5.2.1
-
-  packages/server-fastify:
-    dependencies:
-      '@skein-js/core':
-        specifier: workspace:*
-        version: link:../core
-      fastify:
-        specifier: '>=4.0.0'
-        version: 5.10.0
 
   packages/server-nestjs:
     dependencies:
-      '@nestjs/common':
-        specifier: '>=10.0.0'
-        version: 11.1.24(reflect-metadata@0.2.2)(rxjs@7.8.2)
-      '@nestjs/core':
-        specifier: '>=10.0.0'
-        version: 11.1.24(@nestjs/common@11.1.24(reflect-metadata@0.2.2)(rxjs@7.8.2))(reflect-metadata@0.2.2)(rxjs@7.8.2)
+      '@skein-js/agent-protocol':
+        specifier: workspace:*
+        version: link:../agent-protocol
       '@skein-js/core':
         specifier: workspace:*
         version: link:../core
+      '@skein-js/server-kit':
+        specifier: workspace:*
+        version: link:../server-kit
+    devDependencies:
+      '@langchain/core':
+        specifier: ^1.2.0
+        version: 1.2.2(ws@8.21.0)
+      '@langchain/langgraph':
+        specifier: ^1.4.0
+        version: 1.4.7(@langchain/core@1.2.2(ws@8.21.0))(react-dom@19.2.6(react@19.2.6))(react@19.2.6)(zod@3.25.76)
+      '@nestjs/common':
+        specifier: ^11.0.0
+        version: 11.1.24(reflect-metadata@0.2.2)(rxjs@7.8.2)
+      '@nestjs/core':
+        specifier: ^11.0.0
+        version: 11.1.24(@nestjs/common@11.1.24(reflect-metadata@0.2.2)(rxjs@7.8.2))(@nestjs/platform-express@11.1.28)(reflect-metadata@0.2.2)(rxjs@7.8.2)
+      '@nestjs/platform-express':
+        specifier: ^11.0.0
+        version: 11.1.28(@nestjs/common@11.1.24(reflect-metadata@0.2.2)(rxjs@7.8.2))(@nestjs/core@11.1.24)
+      '@skein-js/storage-memory':
+        specifier: workspace:*
+        version: link:../storage-memory
+      reflect-metadata:
+        specifier: ^0.2.2
+        version: 0.2.2
+      rxjs:
+        specifier: ^7.8.1
+        version: 7.8.2
+
+  packages/server-nextjs:
+    dependencies:
+      '@skein-js/agent-protocol':
+        specifier: workspace:*
+        version: link:../agent-protocol
+      '@skein-js/core':
+        specifier: workspace:*
+        version: link:../core
+      '@skein-js/server-kit':
+        specifier: workspace:*
+        version: link:../server-kit
+      next:
+        specifier: '>=14.0.0'
+        version: 15.5.18(@babel/core@7.29.7)(@playwright/test@1.61.1)(react-dom@19.2.6(react@19.2.6))(react@19.2.6)
+    devDependencies:
+      '@langchain/core':
+        specifier: ^1.2.0
+        version: 1.2.2(ws@8.21.0)
+      '@langchain/langgraph':
+        specifier: ^1.4.0
+        version: 1.4.7(@langchain/core@1.2.2(ws@8.21.0))(react-dom@19.2.6(react@19.2.6))(react@19.2.6)(zod@3.25.76)
+      '@skein-js/storage-memory':
+        specifier: workspace:*
+        version: link:../storage-memory
 
   packages/storage-memory:
     dependencies:
@@ -1582,6 +1916,9 @@ packages:
     resolution: {integrity: sha512-vBZP4NlzfOlerQTnba4aqZoMhE/a9HY7HRqoOPaETQcSQuWEIyZMHGfVu6w9wGtGK5fED5qRs2DteVCjOH60sA==}
     engines: {node: '>=14'}
 
+  '@fastify/cors@10.1.0':
+    resolution: {integrity: sha512-MZyBCBJtII60CU9Xme/iE4aEy8G7QpzGR8zkdXZkDFt7ElEMachbE61tfhAG/bvSaULlqlf0huMT12T7iqEmdQ==}
+
   '@fastify/error@4.2.0':
     resolution: {integrity: sha512-RSo3sVDXfHskiBZKBPRgnQTtIqpi/7zhJOEmAxCiBcM7d0uwdGdxLlsCaLzGs8v8NnxIRlfG0N51p5yFaOentQ==}
 
@@ -1979,6 +2316,12 @@ packages:
         optional: true
       '@nestjs/websockets':
         optional: true
+
+  '@nestjs/platform-express@11.1.28':
+    resolution: {integrity: sha512-hU+9Sz4m+onHrR5AmelI59QKmY/Re546bPnygnpqqeQdHDiJpBgjWbL4t6Jr73CBpS60cpyng7WzjgphNB9iwA==}
+    peerDependencies:
+      '@nestjs/common': ^11.0.0
+      '@nestjs/core': ^11.0.0
 
   '@next/env@15.5.18':
     resolution: {integrity: sha512-hAV85Ckd9QR6RvH04MEKwsfLTksvFpO47j9xwtoIuvuPnlwecpSi+uZTtm8HirVbtlI2Fnz//xpcSTjFdyJk+g==}
@@ -2951,6 +3294,9 @@ packages:
     resolution: {integrity: sha512-KMReFUr0B4t+D+OBkjR3KYqvocp2XaSzO55UcB6mgQMd3KbcE+mWTyvVV7D/zsdEbNnV6acZUutkiHQXvTr1Rw==}
     engines: {node: '>= 8'}
 
+  append-field@1.0.0:
+    resolution: {integrity: sha512-klpgFSWLW1ZEs8svjfb7g4qWY0YS5imI82dTg+QahUvJ8YqAY0P10Uk8tTyh9ZGuYEZEMaeJYCF5BFuX552hsw==}
+
   archiver-utils@5.0.2:
     resolution: {integrity: sha512-wuLJMmIBQYCsGZgYLTy5FIB2pF6Lfb6cXMSF8Qywwk3t20zWnAi7zLcQFdKQmIB8wyZpY5ER38x08GbwtR2cLA==}
     engines: {node: '>= 14'}
@@ -3215,6 +3561,10 @@ packages:
     peerDependencies:
       esbuild: '>=0.18'
 
+  busboy@1.6.0:
+    resolution: {integrity: sha512-8SFQbg/0hQ9xy3UNTB0YEnsNBbWfhf7RtnzpL7TkBiTBRfrQ9Fxcnz7VJsleJpyp6rVLvXiuORqjlHi5q+PYuA==}
+    engines: {node: '>=10.16.0'}
+
   byline@5.0.0:
     resolution: {integrity: sha512-s6webAy+R4SR8XVuJWt2V2rGvhnrhxN+9S15GNuTK3wKPOXFF6RNc+8ug2XhH+2s4f+uudG4kUVYmYOQWL2g0Q==}
     engines: {node: '>=0.10.0'}
@@ -3374,6 +3724,10 @@ packages:
 
   concat-map@0.0.1:
     resolution: {integrity: sha512-/Srv4dswyQNBfohGpz9o6Yb3Gz3SrUDqBH5rTuhGR7ahtlbYKnVxw2bCFMRljaA7EXHaXZ8wsHdodFvbkhKmqg==}
+
+  concat-stream@2.0.0:
+    resolution: {integrity: sha512-MWufYdFw53ccGjCA+Ol7XJYpAlW6/prSMzuPOTRnJGcGzuhLn4Scrz7qf6o8bROZ514ltazcIFJZevcfbo0x7A==}
+    engines: {'0': node >= 6.0}
 
   confbox@0.1.8:
     resolution: {integrity: sha512-RMtmw0iFkeR4YV+fUOSucriAQNb9g8zFR52MWCtl+cCZOFRNL6zeB395vPzFhEjjn4fMxXudmELnl/KF/WrK6w==}
@@ -3881,6 +4235,9 @@ packages:
 
   fast-uri@4.1.0:
     resolution: {integrity: sha512-ZodJ2cRiLVWGi9IgPb3mbgSqM4CD3LexCHkuv0FfBXHJI1ADfucTD06m6clO2Cy5RZYsw/SiCVl/dyrFI/SYWA==}
+
+  fastify-plugin@5.1.0:
+    resolution: {integrity: sha512-FAIDA8eovSt5qcDgcBvDuX/v0Cjz0ohGhENZ/wpc3y+oZCY2afZ9Baqql3g/lC+OHRnciQol4ww7tuthOb9idw==}
 
   fastify@5.10.0:
     resolution: {integrity: sha512-A9L0ziuWGQHgEEVgF3davQ9vbD93IuX+lo2IsxapQmu5b/Y/ynn9m9K5JHt9dvyJXOFc5iN0Zk5GHEOqnzhWjg==}
@@ -4669,6 +5026,10 @@ packages:
   mdast-util-to-string@4.0.0:
     resolution: {integrity: sha512-0H44vDimn51F0YwvxSJSm0eCDOJTRlmN0R1yBh4HLj9wiV1Dn0QoXGbvFAWj2hSItVTlCmBF1hqKlIyUBVFLPg==}
 
+  media-typer@0.3.0:
+    resolution: {integrity: sha512-dq+qelQ9akHpcOl/gUVRTxVIOkAJ1wR3QAvb4RsVjS8oVoFjDGTc679wJYmUmknUF5HwMLOgb5O+a3KxfWapPQ==}
+    engines: {node: '>= 0.6'}
+
   media-typer@1.1.0:
     resolution: {integrity: sha512-aisnrDP4GNe06UcKFnV5bfMNPBUw4jsLGaWwWfnH3v02GnBuXX2MCVn5RbrWo0j3pczUilYblq7fQ7Nw2t5XKw==}
     engines: {node: '>= 0.8'}
@@ -4801,6 +5162,9 @@ packages:
   mlly@1.8.2:
     resolution: {integrity: sha512-d+ObxMQFmbt10sretNDytwt85VrbkhhUA/JBGm1MPaWJ65Cl4wOgLaB1NYvJSZ0Ef03MMEU/0xpPMXUIQ29UfA==}
 
+  mnemonist@0.40.0:
+    resolution: {integrity: sha512-kdd8AFNig2AD5Rkih7EPCXhu/iMvwevQFX/uEiGhZyPZi7fHqOoF4V4kHLpCfysxXMgQ4B52kdPMCwARshKvEg==}
+
   ms@2.1.3:
     resolution: {integrity: sha512-6FlzubTLZG3J2a/NVCAleEhjzq5oxgHyaCU9yYXvcLsvoVaHJq/s5xXI6/XXP6tz7R9xAOtHnSO/tXtF3WRTlA==}
 
@@ -4810,6 +5174,10 @@ packages:
 
   msgpackr@2.0.4:
     resolution: {integrity: sha512-o1C5KRmuRt+apqMr1HuGSqWStZoRBUpEsCsl15uM9VdAF1qHLtvMOU2En747EnTyEl6c4pzPewRMFF31s1CNbA==}
+
+  multer@2.2.0:
+    resolution: {integrity: sha512-6rdyFg2kLrMh9Jee7/BMPuV9lEAd7lLW2YUpF9/YxR7njyoUwwQ0ZPh3TaIY50Sw6vlyD2HW3wGOkTS4P79xrQ==}
+    engines: {node: '>= 10.16.0'}
 
   mustache@4.2.0:
     resolution: {integrity: sha512-71ippSywq5Yb7/tVYyGbkBggbU8H3u5Rz56fH60jGFgr8uHwxs+aSKeqmluIVzM0m0kB7xQjKS6qPfd0b2ZoqQ==}
@@ -4927,6 +5295,9 @@ packages:
   object.values@1.2.1:
     resolution: {integrity: sha512-gXah6aZrcUxjWg2zR2MwouP2eHlCBzdV4pygudehaKXSGW4v2AsRQUK+lwwXhii6KFZcunEnmSUoYp5CXibxtA==}
     engines: {node: '>= 0.4'}
+
+  obliterator@2.0.5:
+    resolution: {integrity: sha512-42CPE9AhahZRsMNslczq0ctAEtqk8Eka26QofnqC346BZdHDySk3LWka23LI7ULIw11NmltpiLagIq8gBozxTw==}
 
   obug@2.1.3:
     resolution: {integrity: sha512-9miFgM2OFba7hB+pRgvtV84pYTBaoTHohvmIgiRt6dRIzbwEOIaNaP+dIlGs2fNFoB0SeISs0Jz5WFVRid6Xyg==}
@@ -5646,6 +6017,10 @@ packages:
     resolution: {integrity: sha512-eLoXW/DHyl62zxY4SCaIgnRhuMr6ri4juEYARS8E6sCEqzKpOiE521Ucofdx+KnDZl5xmvGYaaKCk5FEOxJCoQ==}
     engines: {node: '>= 0.4'}
 
+  streamsearch@1.1.0:
+    resolution: {integrity: sha512-Mcc5wHehp9aXz1ax6bZUyY5afg9u2rv5cqQI3mRrYkGC8rW2hM02jWuwjtL++LS5qinSyhj2QfLyNsuc+VsExg==}
+    engines: {node: '>=10.0.0'}
+
   streamx@2.28.0:
     resolution: {integrity: sha512-1Yowhzjf0ivGMrTIkY9hav5TxobO9qIVqUE41fiCGMGgc3CLlf4MY+9AHmZqBWgDTue0fY9zWjYFVyf6Diuobw==}
 
@@ -5908,6 +6283,10 @@ packages:
     resolution: {integrity: sha512-Ne2YiiGN8bmrmJJEuTWTLJR32nh/JdL1+PSicowtNb0WFpn59GK8/lfD61bVtzguz7b3PBt74nxpv/Pw5po5Rg==}
     engines: {node: '>=8'}
 
+  type-is@1.6.18:
+    resolution: {integrity: sha512-TkRKr9sUTxEH8MdfuCSP7VizJyzRNMjj2J2do2Jr3Kym598JVdEksuzPQCnlFPW4ky9Q+iA+ma9BGm06XQBy8g==}
+    engines: {node: '>= 0.6'}
+
   type-is@2.1.0:
     resolution: {integrity: sha512-faYHw0anBbc/kWF3zFTEnxSFOAGUX9GFbOBthvDdLsIlEoWOFOtS0zgCiQYwIskL9iGXZL3kAXD8OoZ4GmMATA==}
     engines: {node: '>= 18'}
@@ -5927,6 +6306,9 @@ packages:
   typed-array-length@1.0.7:
     resolution: {integrity: sha512-3KS2b+kL7fsuk/eJZ7EQdnEmQoaho/r6KUef7hxvltNA5DR8NAUM+8wJMbJyZ4G9/7i3v5zPBIMN5aybAh2/Jg==}
     engines: {node: '>= 0.4'}
+
+  typedarray@0.0.6:
+    resolution: {integrity: sha512-/aCDEGatGvZ2BIk+HmLf4ifCJFwvKFNb9/JeZPMulfgFracn9QFcAf5GO8B/mweUjSoblS5In0cWhqpfs/5PQA==}
 
   typescript-eslint@8.62.1:
     resolution: {integrity: sha512-vymnnM5g0AKQDSAyfP12nMIBvgwgA42syg74kkuZ4x1VuTzwQKwc5h9rGxeShCjny5o+zWAb6OEoz7XLgrIkIw==}
@@ -7365,6 +7747,11 @@ snapshots:
 
   '@fastify/busboy@2.1.1': {}
 
+  '@fastify/cors@10.1.0':
+    dependencies:
+      fastify-plugin: 5.1.0
+      mnemonist: 0.40.0
+
   '@fastify/error@4.2.0': {}
 
   '@fastify/fast-json-stringify-compiler@5.1.0':
@@ -7731,7 +8118,7 @@ snapshots:
     transitivePeerDependencies:
       - supports-color
 
-  '@nestjs/core@11.1.24(@nestjs/common@11.1.24(reflect-metadata@0.2.2)(rxjs@7.8.2))(reflect-metadata@0.2.2)(rxjs@7.8.2)':
+  '@nestjs/core@11.1.24(@nestjs/common@11.1.24(reflect-metadata@0.2.2)(rxjs@7.8.2))(@nestjs/platform-express@11.1.28)(reflect-metadata@0.2.2)(rxjs@7.8.2)':
     dependencies:
       '@nestjs/common': 11.1.24(reflect-metadata@0.2.2)(rxjs@7.8.2)
       '@nuxt/opencollective': 0.4.1
@@ -7742,6 +8129,20 @@ snapshots:
       rxjs: 7.8.2
       tslib: 2.8.1
       uid: 2.0.2
+    optionalDependencies:
+      '@nestjs/platform-express': 11.1.28(@nestjs/common@11.1.24(reflect-metadata@0.2.2)(rxjs@7.8.2))(@nestjs/core@11.1.24)
+
+  '@nestjs/platform-express@11.1.28(@nestjs/common@11.1.24(reflect-metadata@0.2.2)(rxjs@7.8.2))(@nestjs/core@11.1.24)':
+    dependencies:
+      '@nestjs/common': 11.1.24(reflect-metadata@0.2.2)(rxjs@7.8.2)
+      '@nestjs/core': 11.1.24(@nestjs/common@11.1.24(reflect-metadata@0.2.2)(rxjs@7.8.2))(@nestjs/platform-express@11.1.28)(reflect-metadata@0.2.2)(rxjs@7.8.2)
+      cors: 2.8.6
+      express: 5.2.1
+      multer: 2.2.0
+      path-to-regexp: 8.4.2
+      tslib: 2.8.1
+    transitivePeerDependencies:
+      - supports-color
 
   '@next/env@15.5.18': {}
 
@@ -8683,6 +9084,8 @@ snapshots:
       normalize-path: 3.0.0
       picomatch: 2.3.2
 
+  append-field@1.0.0: {}
+
   archiver-utils@5.0.2:
     dependencies:
       glob: 10.5.0
@@ -9003,6 +9406,10 @@ snapshots:
       esbuild: 0.27.7
       load-tsconfig: 0.2.5
 
+  busboy@1.6.0:
+    dependencies:
+      streamsearch: 1.1.0
+
   byline@5.0.0: {}
 
   bytes@3.1.2: {}
@@ -9148,6 +9555,13 @@ snapshots:
       readable-stream: 4.7.0
 
   concat-map@0.0.1: {}
+
+  concat-stream@2.0.0:
+    dependencies:
+      buffer-from: 1.1.2
+      inherits: 2.0.4
+      readable-stream: 3.6.2
+      typedarray: 0.0.6
 
   confbox@0.1.8: {}
 
@@ -9797,6 +10211,8 @@ snapshots:
   fast-uri@3.1.3: {}
 
   fast-uri@4.1.0: {}
+
+  fastify-plugin@5.1.0: {}
 
   fastify@5.10.0:
     dependencies:
@@ -10617,6 +11033,8 @@ snapshots:
     dependencies:
       '@types/mdast': 4.0.4
 
+  media-typer@0.3.0: {}
+
   media-typer@1.1.0: {}
 
   merge-descriptors@2.0.0: {}
@@ -10806,6 +11224,10 @@ snapshots:
       pkg-types: 1.3.1
       ufo: 1.6.4
 
+  mnemonist@0.40.0:
+    dependencies:
+      obliterator: 2.0.5
+
   ms@2.1.3: {}
 
   msgpackr-extract@3.0.4:
@@ -10823,6 +11245,13 @@ snapshots:
   msgpackr@2.0.4:
     optionalDependencies:
       msgpackr-extract: 3.0.4
+
+  multer@2.2.0:
+    dependencies:
+      append-field: 1.0.0
+      busboy: 1.6.0
+      concat-stream: 2.0.0
+      type-is: 1.6.18
 
   mustache@4.2.0: {}
 
@@ -11053,6 +11482,8 @@ snapshots:
       call-bound: 1.0.4
       define-properties: 1.2.1
       es-object-atoms: 1.1.2
+
+  obliterator@2.0.5: {}
 
   obug@2.1.3: {}
 
@@ -11909,6 +12340,8 @@ snapshots:
       es-errors: 1.3.0
       internal-slot: 1.1.0
 
+  streamsearch@1.1.0: {}
+
   streamx@2.28.0:
     dependencies:
       events-universal: 1.0.1
@@ -12249,6 +12682,11 @@ snapshots:
 
   type-fest@0.7.1: {}
 
+  type-is@1.6.18:
+    dependencies:
+      media-typer: 0.3.0
+      mime-types: 2.1.35
+
   type-is@2.1.0:
     dependencies:
       content-type: 2.0.0
@@ -12287,6 +12725,8 @@ snapshots:
       is-typed-array: 1.1.15
       possible-typed-array-names: 1.1.0
       reflect.getprototypeof: 1.0.10
+
+  typedarray@0.0.6: {}
 
   typescript-eslint@8.62.1(eslint@9.39.4(jiti@2.7.0))(typescript@5.9.3):
     dependencies:

@@ -18,6 +18,8 @@
       "@skein-js/express": ["packages/server-express/src/index.ts"],
       "@skein-js/fastify": ["packages/server-fastify/src/index.ts"],
       "@skein-js/nestjs": ["packages/server-nestjs/src/index.ts"],
+      "@skein-js/nextjs": ["packages/server-nextjs/src/index.ts"],
+      "@skein-js/server-kit": ["packages/server-kit/src/index.ts"],
       "@skein-js/storage-memory": ["packages/storage-memory/src/index.ts"],
       "@skein-js/storage-postgres": ["packages/storage-postgres/src/index.ts"],
       "@skein-js/redis": ["packages/runtime-redis/src/index.ts"],

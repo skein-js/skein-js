@@ -43,8 +43,8 @@
   "dependencies": {
     "@skein-js/agent-protocol": "workspace:*",
     "@skein-js/config": "workspace:*",
-    "@skein-js/express": "workspace:*",
     "@skein-js/redis": "workspace:*",
+    "@skein-js/server-kit": "workspace:*",
     "@skein-js/storage-memory": "workspace:*",
     "@skein-js/storage-postgres": "workspace:*",
     "cors": "^2.8.5"

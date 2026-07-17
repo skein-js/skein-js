@@ -39,7 +39,7 @@ describe("toCorsOptions (LangGraph http.cors → cors options)", () => {
     );
   });
 
-  it("treats a configured [\"*\"] as allow-all", () => {
+  it('treats a configured ["*"] as allow-all', () => {
     expect(toCorsOptions({ allow_origins: ["*"] }).origin).toBe("*");
   });
 

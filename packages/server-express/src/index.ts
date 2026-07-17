@@ -8,7 +8,8 @@ export type { SkeinRouter, SkeinRouterOptions } from "./skein-router.js";
 export { createExpressServer } from "./create-express-server.js";
 export type { SkeinExpressServer } from "./create-express-server.js";
 
-// The pure transport shim + route table, for callers wiring their own `ProtocolDeps`.
+// The pure transport shim + route table, for callers wiring their own `ProtocolDeps`. `skeinRoutes`
+// is re-exported from its canonical home (@skein-js/agent-protocol) so existing imports keep working.
 export { createHandlerRouter, skeinRoutes } from "./routes.js";
 export type { HandlerRouterOptions } from "./routes.js";
 
@@ -16,21 +17,22 @@ export type { HandlerRouterOptions } from "./routes.js";
 export { toProtocolRequest } from "./to-protocol-request.js";
 export { sendProtocolResponse } from "./send-protocol-response.js";
 export { sendErrorResponse } from "./error-response.js";
-export { loadInMemoryRuntime, loadReloadableInMemoryRuntime } from "./in-memory-runtime.js";
+
+// Framework-agnostic building blocks now live in @skein-js/server-kit. Re-exported here for
+// back-compat, since downstream code (and the adapter guide) has imported them from @skein-js/express.
+export {
+  loadInMemoryRuntime,
+  loadReloadableInMemoryRuntime,
+  readLanggraphDevState,
+  loadSnapshotIntoStore,
+  describeSnapshot,
+  corsFromHttpConfig,
+  toCorsOptions,
+} from "@skein-js/server-kit";
 export type {
   InMemoryRuntimeConfig,
   ReloadableInMemoryRuntime,
   DevStateSnapshot,
-} from "./in-memory-runtime.js";
-
-// Import an existing LangGraph in-memory dev state (`.langgraph_api/`) into skein, losslessly.
-export {
-  readLanggraphDevState,
-  loadSnapshotIntoStore,
-  describeSnapshot,
-} from "./langgraph-import.js";
-export type { DevStateCounts } from "./langgraph-import.js";
-
-// LangGraph-compatible CORS: map a langgraph.json `http.cors` block to `cors` options.
-export { corsFromHttpConfig, toCorsOptions } from "./cors-config.js";
-export type { LanggraphCorsConfig } from "./cors-config.js";
+  DevStateCounts,
+  LanggraphCorsConfig,
+} from "@skein-js/server-kit";

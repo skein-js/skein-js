@@ -17,12 +17,12 @@ import {
   type ModuleImporter,
 } from "@skein-js/config";
 import type { GraphSchemas as ConfigGraphSchemas } from "@skein-js/config";
+import { RedisRunEventBus, RedisRunQueue } from "@skein-js/redis";
 import {
   corsFromHttpConfig,
   loadReloadableInMemoryRuntime,
   type DevStateSnapshot,
-} from "@skein-js/express";
-import { RedisRunEventBus, RedisRunQueue } from "@skein-js/redis";
+} from "@skein-js/server-kit";
 import { MemoryRunEventBus, MemoryRunQueue, MemorySkeinStore } from "@skein-js/storage-memory";
 import {
   createPostgresPool,

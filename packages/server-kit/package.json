@@ -1,24 +1,24 @@
 {
-  "name": "@skein-js/express",
+  "name": "@skein-js/server-kit",
   "version": "0.6.0",
-  "description": "Express adapter for skein-js — mount the Agent Protocol on an Express Router.",
+  "description": "Shared, framework-agnostic building blocks for skein-js HTTP adapters — in-memory dev runtime, LangGraph dev-state import, and langgraph.json CORS mapping.",
   "license": "Apache-2.0",
   "author": "Maina Wycliffe <wmmaina7@gmail.com>",
-  "homepage": "https://github.com/mainawycliffe/skein-js/tree/main/packages/server-express#readme",
+  "homepage": "https://github.com/mainawycliffe/skein-js/tree/main/packages/server-kit#readme",
   "repository": {
     "type": "git",
     "url": "git+https://github.com/mainawycliffe/skein-js.git",
-    "directory": "packages/server-express"
+    "directory": "packages/server-kit"
   },
   "bugs": {
     "url": "https://github.com/mainawycliffe/skein-js/issues"
   },
   "keywords": [
     "typescript",
-    "express",
     "langgraph",
     "agent-protocol",
-    "sse"
+    "adapter",
+    "cors"
   ],
   "type": "module",
   "main": "./dist/index.js",
@@ -43,20 +43,18 @@
     "@skein-js/agent-protocol": "workspace:*",
     "@skein-js/config": "workspace:*",
     "@skein-js/core": "workspace:*",
-    "@skein-js/server-kit": "workspace:*",
-    "cors": "^2.8.5"
+    "@skein-js/storage-memory": "workspace:*",
+    "cors": "^2.8.5",
+    "superjson": "^2.2.6",
+    "zod": "^3.25.76"
   },
   "peerDependencies": {
-    "@langchain/langgraph": "^1.4.0",
-    "express": ">=4.18.0"
+    "@langchain/langgraph": "^1.4.0"
   },
   "devDependencies": {
     "@langchain/core": "^1.2.0",
     "@langchain/langgraph": "^1.4.0",
-    "@skein-js/storage-memory": "workspace:*",
-    "@types/cors": "^2.8.17",
-    "@types/express": "^5.0.0",
-    "express": "^5.2.1"
+    "@types/cors": "^2.8.17"
   },
   "publishConfig": {
     "access": "public"

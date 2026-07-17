@@ -21,6 +21,11 @@ export type {
   ProtocolResponse,
 } from "./create-handlers.js";
 
+// The transport-neutral route table + body-fold helper every framework adapter maps onto its router,
+// plus a `matchSkeinRoute` matcher for adapters that dispatch from a catch-all (NestJS, Next.js).
+export { skeinRoutes, foldThreadId, matchSkeinRoute } from "./http/routes.js";
+export type { HttpMethod, RouteBinding, RouteMatch } from "./http/routes.js";
+
 // The background run worker.
 export { createRunWorker } from "./runs/run-worker.js";
 export type { RunWorker, RunWorkerOptions } from "./runs/run-worker.js";
