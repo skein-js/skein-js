@@ -77,8 +77,13 @@ Steps 1–10 below are complete: the dev loop **and** self-hosted production bot
 
 ### Remaining (MVP)
 
-11. **Fastify + NestJS adapters** — reuse the same core handler table (Express ships today). This is
-    the one open MVP item.
+11. ✅ **Fastify + NestJS + Next.js adapters** — **shipped.** Each is a thin transport shim over the
+    same core handler table + shared `skeinRoutes` (now in `@skein-js/agent-protocol`); the
+    framework-agnostic in-memory runtime / dev-state import / CORS mapping live in the new
+    `@skein-js/server-kit` so no adapter depends on another. Standalone servers
+    (`createFastifyServer` / `createNestServer` / `createSkeinRouteHandlers`) and embedded modes
+    (`skeinPlugin`, `SkeinModule.forRoot`, App/Pages Router route handlers) each ship a runnable
+    example. **The MVP adapter set is complete.**
 
 ## Shipped beyond the original plan
 
@@ -149,16 +154,14 @@ The next block is the LangGraph feature-parity backlog, listed **in priority ord
 
 The remaining backlog is skein-js's own adapter/tooling roadmap:
 
-- 🗺️ **`@skein-js/nextjs` adapter — serve smaller graphs from Next.js API routes.** Mount the Agent
-  Protocol inside an existing Next.js app via a single App Router catch-all route — no separate server
-  process, ideal for small/medium graphs you want to ship alongside your frontend. The
-  transport-neutral handler table already fits: `ProtocolRequest` is a plain
-  `{ params, query, body, headers }` and the SSE `ProtocolResponse` is an `AsyncIterable<string>` that
-  maps directly onto a Web `ReadableStream`, so it's a thin adapter like Express. **Caveat:** the
-  background run worker (and the in-memory driver's shared state) need a long-lived Node process — fine
-  on `next start` with `runtime = 'nodejs'`, but serverless/edge deploys require the Redis queue and
-  Postgres store (steps 8–9). Complementary to `skein dev` (the standalone dev server), not a
-  replacement.
+- ✅ **`@skein-js/nextjs` adapter — serve smaller graphs from Next.js API routes.** **Shipped.** Mount
+  the Agent Protocol inside an existing Next.js app — a single App Router catch-all
+  (`createSkeinRouteHandlers` → Web `Request`/`Response`, SSE as a `ReadableStream`) **or** a Pages
+  Router handler (`createSkeinPagesHandler`), same-origin with no separate server process. **Caveat:**
+  the background run worker (and the in-memory driver's shared state) need a long-lived Node process —
+  fine on `next start` with `runtime = 'nodejs'`, but serverless/edge deploys require the Redis queue
+  and Postgres store (steps 8–9). See [`examples/nextjs-app`](../examples/nextjs-app) (App Router +
+  `useStream` UI) and [`examples/nextjs-basic`](../examples/nextjs-basic) (Pages Router, headless).
 - 🗺️ **Custom-adapter example.** The [Building your own adapter](./building-an-adapter.md) guide
   exists; we still want a runnable `examples/custom-adapter` (a dependency-free Node `http` — or Hono
   — adapter over the transport-neutral handler table) as an executable, tested reference to accompany
@@ -187,8 +190,8 @@ valuable feedback we can get.
 | **MCP endpoint (`/mcp`)**              | 🗺️ planned         | LangGraph exposes graphs as MCP tools; not yet implemented.       |
 | Run-completion webhooks                | ✅ shipped         | `webhook` URL POSTed the settled run on completion.               |
 | True `events` stream mode              | ✅ shipped         | Real `streamEvents` (v2); full token/tool/step granularity.       |
-| **Fastify / NestJS adapters**          | 🗺️ planned (MVP)   | Express ships today.                                              |
-| **Next.js API-route adapter**          | 🗺️ planned         | For serving smaller graphs from a Next.js app.                    |
+| Fastify / NestJS adapters              | ✅ shipped         | Plugin / `SkeinModule`; standalone + embedded examples.           |
+| Next.js API-route adapter              | ✅ shipped         | App Router + Pages Router; same-origin, `useStream` UI example.   |
 | WebSocket streaming transport          | ❌ non-goal (v1)   | SSE covers the client UX; does not affect the React SDK.          |
 | `deploy` to a hosted platform          | ❌ non-goal        | skein-js is self-hosted by design.                                |
 | Full OpenTelemetry observability       | ❌ non-goal (v1)   | May revisit post-v1.                                              |

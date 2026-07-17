@@ -1,9 +1,11 @@
 # Building your own adapter
 
-skein-js ships an [Express](../packages/server-express) adapter today (Fastify, NestJS, and a
-Next.js API-route adapter are [on the roadmap](./roadmap.md#planned--coming-soon-post-mvp)). If your
-stack isn't one of those — a raw Node `http` server, [Hono](https://hono.dev), Koa, an existing app
-on some other framework — you can write your own adapter in a few dozen lines. This guide shows how.
+skein-js ships adapters for [Express](../packages/server-express),
+[Fastify](../packages/server-fastify), [NestJS](../packages/server-nestjs), and
+[Next.js](../packages/server-nextjs) (App + Pages Router). If your stack isn't one of those — a raw
+Node `http` server, [Hono](https://hono.dev), Koa, an existing app on some other framework — you can
+write your own adapter in a few dozen lines. This guide shows how; the four shipped adapters are all
+built exactly this way.
 
 ## Contents
 
@@ -87,13 +89,18 @@ runtime.worker.start(); // start the background run worker
 
 The paths mirror the `@langchain/langgraph-sdk` client exactly (that's the conformance oracle — don't
 invent your own spelling). Bind each `method + path` to a handler name. The canonical table is
-exported from `@skein-js/express` as `skeinRoutes` if you'd rather reuse the data than retype it:
+exported from `@skein-js/agent-protocol` as `skeinRoutes` (re-exported from `@skein-js/express` too,
+for back-compat):
 
 ```ts
-import { skeinRoutes } from "@skein-js/express";
+import { skeinRoutes, foldThreadId, matchSkeinRoute } from "@skein-js/agent-protocol";
 // skeinRoutes: { method, path, handler, foldThreadIdIntoBody? }[]
 // e.g. { method: "post", path: "/threads/:thread_id/runs/stream",
 //        handler: "createStreamRun", foldThreadIdIntoBody: true }
+//
+// foldThreadId(request)              — the body-fold rule for foldThreadIdIntoBody routes
+// matchSkeinRoute(method, pathname)  — match a catch-all path → { binding, params }
+//   (handy for adapters that dispatch from one route, like the NestJS + Next.js adapters)
 ```
 
 Two things to get right:
@@ -205,9 +212,15 @@ function sendError(error, res, logger) {
   `runtime.worker.stop()` on shutdown so in-flight runs drain cleanly.
 - **CORS** — browser clients (Agent Chat UI, React `useStream`) run on a different origin than your
   server, so you must send `Access-Control-Allow-*` headers (and answer preflight `OPTIONS`) on every
-  route, including the SSE streams. `@skein-js/express` exports `corsFromHttpConfig` /
-  `toCorsOptions` to derive options from the `langgraph.json` `http.cors` block; on another framework,
-  apply the equivalent middleware.
+  route, including the SSE streams. [`@skein-js/server-kit`](../packages/server-kit) exports
+  `corsFromHttpConfig` / `toCorsOptions` (the shared, framework-agnostic home; also re-exported from
+  `@skein-js/express`) to derive `cors`-style options from the `langgraph.json` `http.cors` block; on
+  another framework, apply the equivalent middleware.
+
+> **Shortcut:** [`@skein-js/server-kit`](../packages/server-kit)'s `resolveProtocolRuntime(options)`
+> does Steps 1 + the worker lifecycle in one call — resolve `{ config } | { deps }` into a running
+> runtime (assistants seeded, worker started) plus any CORS from the config. It's what the Express,
+> Fastify, NestJS, and Next.js adapters all use.
 
 ## A complete minimal adapter
 
@@ -216,9 +229,8 @@ A dependency-free adapter over Node's built-in `http` server — no Express, no 
 ```ts
 import { createServer } from "node:http";
 
-import { createProtocolRuntime, SSE_HEADERS } from "@skein-js/agent-protocol";
+import { createProtocolRuntime, skeinRoutes, SSE_HEADERS } from "@skein-js/agent-protocol";
 import { isSkeinHttpError, serializeWireJson } from "@skein-js/core";
-import { skeinRoutes } from "@skein-js/express"; // reuse the route data (just a list)
 import { buildRuntime } from "@skein-js/runtime";
 
 const { deps } = await buildRuntime({

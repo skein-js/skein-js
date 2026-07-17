@@ -116,22 +116,26 @@ Prerequisites: the git remote must point at `mainawycliffe/skein-js` (Nx derives
 
 ## Package map
 
-| Package                                                        | Role                                                                                                          |
-| -------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------- |
-| `@skein-js/core`                                               | The shared contract: Agent Protocol wire types + `SkeinStore`/queue/bus interfaces + edge error               |
-| `@skein-js/agent-protocol`                                     | Framework-agnostic Agent Protocol engine — run engine, handler table, SSE (the heart); publishable on its own |
-| `@skein-js/config`                                             | `langgraph.json` parser + graph loader (wraps `@langchain/langgraph-api`)                                     |
-| `@skein-js/express` · `@skein-js/fastify` · `@skein-js/nestjs` | Framework adapters (Express first)                                                                            |
-| `@skein-js/storage-memory`                                     | In-memory `SkeinStore` + queue (dev/tests)                                                                    |
-| `@skein-js/storage-postgres`                                   | Postgres `SkeinStore` + pgvector; reuses `PostgresSaver`                                                      |
-| `@skein-js/redis`                                              | Run **queue** + cross-instance pub/sub (not a checkpointer)                                                   |
-| `@skein-js/runtime`                                            | Assembles production `ProtocolDeps` (memory/Postgres/Redis) from `langgraph.json` for the CLI                 |
-| `skein-js` (CLI)                                               | Drop-in `dev` / `up` / `build` / `dockerfile`                                                                 |
-| `@skein-js/test-support`                                       | _(private)_ Testcontainers helpers + `SkeinStore` conformance suite                                           |
+| Package                                                                             | Role                                                                                                          |
+| ----------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------- |
+| `@skein-js/core`                                                                    | The shared contract: Agent Protocol wire types + `SkeinStore`/queue/bus interfaces + edge error               |
+| `@skein-js/agent-protocol`                                                          | Framework-agnostic Agent Protocol engine — run engine, handler table, SSE (the heart); publishable on its own |
+| `@skein-js/config`                                                                  | `langgraph.json` parser + graph loader (wraps `@langchain/langgraph-api`)                                     |
+| `@skein-js/server-kit`                                                              | Shared, framework-agnostic adapter building blocks (in-memory runtime, dev-state import, CORS mapping)        |
+| `@skein-js/express` · `@skein-js/fastify` · `@skein-js/nestjs` · `@skein-js/nextjs` | Framework adapters — thin transport shims over the engine's handler table + `skeinRoutes`                     |
+| `@skein-js/storage-memory`                                                          | In-memory `SkeinStore` + queue (dev/tests)                                                                    |
+| `@skein-js/storage-postgres`                                                        | Postgres `SkeinStore` + pgvector; reuses `PostgresSaver`                                                      |
+| `@skein-js/redis`                                                                   | Run **queue** + cross-instance pub/sub (not a checkpointer)                                                   |
+| `@skein-js/runtime`                                                                 | Assembles production `ProtocolDeps` (memory/Postgres/Redis) from `langgraph.json` for the CLI                 |
+| `skein-js` (CLI)                                                                    | Drop-in `dev` / `up` / `build` / `dockerfile`                                                                 |
+| `@skein-js/test-support`                                                            | _(private)_ Testcontainers helpers + `SkeinStore` conformance suite                                           |
 
 Examples live in `examples/`: `chat-app` (flagship — research assistant + Next.js/shadcn UI),
 `migrated-langgraph` (drop-in proof), `gemini-chat` (model-backed e2e), `express-basic`
-(zero-setup), `react-usestream` (`useStream` harness).
+(zero-setup), `react-usestream` (`useStream` harness). Each non-Express adapter ships a **standalone**
+example (a dedicated graph server) and an **embedded** one (graphs mounted alongside the app's own
+routes): `fastify-basic`/`fastify-app`, `nestjs-basic`/`nestjs-app`, and `nextjs-basic` (Pages Router,
+headless) / `nextjs-app` (App Router, same-origin `useStream` UI).
 
 ## Conventions (enforced)
 

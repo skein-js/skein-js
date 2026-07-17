@@ -68,8 +68,8 @@ change. See [agent-protocol.md](./agent-protocol.md) for the exact endpoints.
 ## The solution
 
 skein-js is "aegra for TypeScript." It exposes the Agent Protocol wire format from any Node
-HTTP framework (Express first; Fastify and NestJS to follow), so the whole LangChain client
-surface keeps working with only a URL change.
+HTTP framework (Express, Fastify, NestJS, and Next.js adapters ship today), so the whole LangChain
+client surface keeps working with only a URL change.
 
 Unlike aegra — which had to reimplement the server in Python because the Python
 `langgraph-api` is proprietary — the **JavaScript Agent Protocol server is open source and
@@ -102,7 +102,7 @@ skein-js by changing only a URL.
              └──────────────────────┬──────────────────────┘
                                     │ Agent Protocol (HTTP + SSE)
              ┌──────────────────────▼──────────────────────┐
-  adapters   │   @skein-js/express  (· fastify · nestjs)       │
+  adapters   │  @skein-js/express · fastify · nestjs · nextjs  │
              ├─────────────────────────────────────────────┤
   protocol   │   @skein-js/agent-protocol — handler table ·    │
              │   run engine · streaming (SSE)               │
@@ -134,6 +134,9 @@ Runnable projects under [`examples/`](../examples) — each proves a slice of th
 | [`migrated-langgraph`](../examples/migrated-langgraph) | The drop-in proof — a stock LangGraph project under `skein dev`, hot reload + persistence                                        |
 | [`gemini-chat`](../examples/gemini-chat)               | Model-backed end-to-end — a Gemini ReAct agent streamed into a browser                                                           |
 | [`express-basic`](../examples/express-basic)           | Zero-setup `echo` + a Claude `agent` graph in one config                                                                         |
+| `fastify-basic` / `fastify-app`                        | Fastify — standalone graph server, and the protocol embedded under `/agent` alongside a REST API                                 |
+| `nestjs-basic` / `nestjs-app`                          | NestJS — standalone graph server, and `SkeinModule` alongside the app's own controller                                           |
+| `nextjs-basic` / `nextjs-app`                          | Next.js — headless Pages Router API, and a full-stack App Router app serving the protocol same-origin behind a `useStream` UI    |
 | [`react-usestream`](../examples/react-usestream)       | Minimal `useStream` SSE-compatibility harness                                                                                    |
 
 ## Documentation map

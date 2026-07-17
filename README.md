@@ -84,15 +84,15 @@ unchanged.
   string. See [Building rich agent UIs](#building-rich-agent-uis).
 - **🔓 Self-hosted, no lock-in.** Your agents, your infrastructure, your data — Apache-2.0.
 
-|                           | LangGraph Platform                      | aegra            | **skein-js**                           |
-| ------------------------- | --------------------------------------- | ---------------- | -------------------------------------- |
-| Self-hosted in production | 💲 Enterprise license only              | ✅ free          | ✅ free                                |
-| License                   | Elastic License 2.0 (source-available)  | MIT              | **Apache-2.0**                         |
-| Cost                      | $39/seat/mo + usage; self-host = custom | free             | **free**                               |
-| Language                  | —                                       | Python / FastAPI | **TypeScript / Node**                  |
-| HTTP framework            | —                                       | FastAPI          | **Express** (Fastify / NestJS to come) |
-| Agent Protocol            | ✅                                      | ✅               | ✅                                     |
-| Drop-in for LangGraph CLI | —                                       | partial          | **✅ (`skein dev` / `up` / `build`)**  |
+|                           | LangGraph Platform                      | aegra            | **skein-js**                             |
+| ------------------------- | --------------------------------------- | ---------------- | ---------------------------------------- |
+| Self-hosted in production | 💲 Enterprise license only              | ✅ free          | ✅ free                                  |
+| License                   | Elastic License 2.0 (source-available)  | MIT              | **Apache-2.0**                           |
+| Cost                      | $39/seat/mo + usage; self-host = custom | free             | **free**                                 |
+| Language                  | —                                       | Python / FastAPI | **TypeScript / Node**                    |
+| HTTP framework            | —                                       | FastAPI          | **Express · Fastify · NestJS · Next.js** |
+| Agent Protocol            | ✅                                      | ✅               | ✅                                       |
+| Drop-in for LangGraph CLI | —                                       | partial          | **✅ (`skein dev` / `up` / `build`)**    |
 
 ### A note on LangGraph Platform pricing
 
@@ -114,9 +114,8 @@ adopt the platform if and when it's worth it.
 
 _LangGraph Platform pricing/licensing as of July 2026 — see [langchain.com/pricing](https://www.langchain.com/pricing) and the [self-hosting docs](https://docs.langchain.com/langgraph-platform/self-hosted). Always verify current terms._
 
-> 🚧 **Status: pre-alpha, but end-to-end.** Dev _and_ self-hosted production both work today. The
-> remaining MVP work is the Fastify + NestJS adapters (Express ships today). See the
-> [roadmap](./docs/roadmap.md).
+> 🚧 **Status: pre-alpha, but end-to-end.** Dev _and_ self-hosted production both work today, with
+> Express, Fastify, NestJS, and Next.js adapters. See the [roadmap](./docs/roadmap.md).
 
 ## Quick start
 
@@ -358,22 +357,40 @@ const runtime = createProtocolRuntime(deps); // service + HTTP handlers + backgr
 
 → [`packages/agent-protocol`](./packages/agent-protocol)
 
-### `@skein-js/express` — Express adapter
+### Framework adapters — Express, Fastify, NestJS, Next.js
 
-A thin transport shim that mounts the Agent Protocol engine on Express. The framework adapter that
-ships today.
+Each adapter is a thin transport shim that mounts the Agent Protocol engine on its framework — no
+protocol logic of its own, just request/response translation over the shared handler table. Pick the
+one matching your stack (or [write your own](./docs/building-an-adapter.md)); the wire format is
+identical because they all drive the same engine.
 
 ```bash
-pnpm add @skein-js/express @langchain/langgraph
+pnpm add @skein-js/express @langchain/langgraph   # or @skein-js/fastify · @skein-js/nestjs · @skein-js/nextjs
 ```
 
 ```ts
-import { createExpressServer } from "@skein-js/express";
-const server = await createExpressServer({ config: "./langgraph.json" });
+// Express (createExpressServer) / Fastify (createFastifyServer) / NestJS (createNestServer) —
+// standalone servers with the same shape:
+import { createFastifyServer } from "@skein-js/fastify";
+const server = await createFastifyServer({ config: "./langgraph.json" });
 await server.listen(2024);
+
+// …or embed alongside your app's own routes:
+//   Fastify:  await app.register(skeinPlugin, { prefix: "/agent", config });
+//   NestJS:   imports: [SkeinModule.forRoot({ config })]
+//   Next.js:  export const { GET, POST, PUT, PATCH, DELETE } = createSkeinRouteHandlers({ config });
 ```
 
-→ [`packages/server-express`](./packages/server-express)
+| Adapter                                          | Serve it as                                          |
+| ------------------------------------------------ | ---------------------------------------------------- |
+| [`@skein-js/express`](./packages/server-express) | Express `Router` / standalone server                 |
+| [`@skein-js/fastify`](./packages/server-fastify) | Fastify plugin / standalone server                   |
+| [`@skein-js/nestjs`](./packages/server-nestjs)   | `SkeinModule` / standalone server (Express platform) |
+| [`@skein-js/nextjs`](./packages/server-nextjs)   | App Router + Pages Router API routes (same-origin)   |
+
+Shared, framework-agnostic building blocks (the route table lives in the engine; the in-memory
+runtime, dev-state import, and CORS mapping in [`@skein-js/server-kit`](./packages/server-kit)) mean
+no adapter depends on another.
 
 ### `@skein-js/runtime` — production wiring
 
@@ -435,36 +452,34 @@ cross-instance fan-out). These map directly to the CLI's `--store` and `--queue`
 
 ### Coming soon
 
-| Package                                          | Status     | For                                                     |
-| ------------------------------------------------ | ---------- | ------------------------------------------------------- |
-| [`@skein-js/fastify`](./packages/server-fastify) | 🗺️ planned | Fastify apps                                            |
-| [`@skein-js/nestjs`](./packages/server-nestjs)   | 🗺️ planned | NestJS apps                                             |
-| `@skein-js/nextjs`                               | 🗺️ planned | Serving smaller graphs straight from Next.js API routes |
-
-Also planned (LangGraph Platform parity): **cron / scheduled runs**, **time travel** (fork from a
+Planned (LangGraph Platform parity): **cron / scheduled runs**, **time travel** (fork from a
 checkpoint), and an **MCP endpoint** — see the
 [roadmap](./docs/roadmap.md#planned--coming-soon-post-mvp) and
-[known gaps](./docs/roadmap.md#known-gaps-vs-the-langgraph-cli--platform). Recently shipped:
-**multitask / double-texting** (`reject`/`enqueue`/`interrupt`/`rollback`), **run-completion
-webhooks**, a **true `events` stream mode**, **assistants CRUD + versioning**, thread **search**
-(metadata/status filter + pagination), thread **copy** (with history), store item **TTL**, and a
-distinct **`cancelled`** run status.
+[known gaps](./docs/roadmap.md#known-gaps-vs-the-langgraph-cli--platform). Recently shipped: the
+**Fastify, NestJS, and Next.js adapters** (Express was first), **multitask / double-texting**
+(`reject`/`enqueue`/`interrupt`/`rollback`), **run-completion webhooks**, a **true `events` stream
+mode**, **assistants CRUD + versioning**, thread **search** (metadata/status filter + pagination),
+thread **copy** (with history), store item **TTL**, and a distinct **`cancelled`** run status.
 
 > Package names are the npm names; a few on-disk directories differ (`@skein-js/express` →
-> `packages/server-express`, `@skein-js/redis` → `packages/runtime-redis`, `skein-js` →
-> `packages/cli`). The links above point at the directories.
+> `packages/server-express`, likewise `@skein-js/fastify` · `@skein-js/nestjs` · `@skein-js/nextjs` →
+> `packages/server-{fastify,nestjs,nextjs}`, `@skein-js/redis` → `packages/runtime-redis`, `skein-js`
+> → `packages/cli`). The links above point at the directories.
 
 ## Examples
 
 Each is a runnable project — `cd` into it and follow its README.
 
-| Example                                               | What you'll learn                                                                                                                                                                                  | How to run                 |
-| ----------------------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | -------------------------- |
-| [`chat-app`](./examples/chat-app)                     | **Flagship** — build a full rich-UX chat app: streamed thinking, web search, structured tool-result cards, human-in-the-loop booking, long-term memory, custom auth (Gemini + Next.js + shadcn/ui) | `pnpm dev` + `pnpm dev:ui` |
-| [`migrated-langgraph`](./examples/migrated-langgraph) | The **drop-in proof** — a stock LangGraph project under `skein dev`, with hot reload + `.skein/` persistence                                                                                       | `pnpm dev`                 |
-| [`gemini-chat`](./examples/gemini-chat)               | **Model-backed end-to-end** — a Gemini ReAct agent streamed into a browser; also an embedded `@skein-js/express` server                                                                            | `pnpm dev`                 |
-| [`express-basic`](./examples/express-basic)           | **Hello world** — zero-setup `echo` (no API key) + a Claude `agent` graph in one config                                                                                                            | `pnpm dev`                 |
-| [`react-usestream`](./examples/react-usestream)       | A minimal **`useStream` SSE frontend** you can point at any skein-js server                                                                                                                        | `pnpm dev`                 |
+| Example                                                                               | What you'll learn                                                                                                                                                                                  | How to run                 |
+| ------------------------------------------------------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | -------------------------- |
+| [`chat-app`](./examples/chat-app)                                                     | **Flagship** — build a full rich-UX chat app: streamed thinking, web search, structured tool-result cards, human-in-the-loop booking, long-term memory, custom auth (Gemini + Next.js + shadcn/ui) | `pnpm dev` + `pnpm dev:ui` |
+| [`migrated-langgraph`](./examples/migrated-langgraph)                                 | The **drop-in proof** — a stock LangGraph project under `skein dev`, with hot reload + `.skein/` persistence                                                                                       | `pnpm dev`                 |
+| [`gemini-chat`](./examples/gemini-chat)                                               | **Model-backed end-to-end** — a Gemini ReAct agent streamed into a browser; also an embedded `@skein-js/express` server                                                                            | `pnpm dev`                 |
+| [`express-basic`](./examples/express-basic)                                           | **Hello world** — zero-setup `echo` (no API key) + a Claude `agent` graph in one config                                                                                                            | `pnpm dev`                 |
+| [`fastify-basic`](./examples/fastify-basic) · [`fastify-app`](./examples/fastify-app) | **Fastify** — a standalone graph server, and the protocol embedded under `/agent` alongside a REST API                                                                                             | `pnpm dev`                 |
+| [`nestjs-basic`](./examples/nestjs-basic) · [`nestjs-app`](./examples/nestjs-app)     | **NestJS** — a standalone graph server, and `SkeinModule` alongside the app's own controller                                                                                                       | `pnpm dev`                 |
+| [`nextjs-basic`](./examples/nextjs-basic) · [`nextjs-app`](./examples/nextjs-app)     | **Next.js** — headless Pages Router API, and a full-stack App Router app serving the protocol same-origin behind a `useStream` chat UI                                                             | `pnpm dev`                 |
+| [`react-usestream`](./examples/react-usestream)                                       | A minimal **`useStream` SSE frontend** you can point at any skein-js server                                                                                                                        | `pnpm dev`                 |
 
 ## Tested end-to-end
 
@@ -473,9 +488,11 @@ examples above _are_ the integration/e2e suite:
 
 - **Storage conformance** — every storage driver (memory + Postgres) runs against one shared
   `SkeinStore` conformance suite, so drivers behave identically.
-- **SDK conformance (e2e)** — `examples/express-basic` is exercised by the **real
-  `@langchain/langgraph-sdk`** client (`threads.create`, `runs.stream`, `runs.wait`). If the official
-  SDK is happy, the wire format is correct.
+- **SDK conformance (e2e)** — `examples/express-basic` (and the Fastify/NestJS `*-basic` + `*-app`
+  examples) are exercised by the **real `@langchain/langgraph-sdk`** client (`threads.create`,
+  `runs.stream`, `runs.wait`). Every adapter also has its own HTTP conformance suite (`fetch` against
+  a live server, one assertion per response shape). If the official SDK is happy, the wire format is
+  correct — across all four adapters.
 - **Drop-in migration** — `examples/migrated-langgraph` runs a real `langgraph.json` under `skein dev`
   in place of `langgraph dev`, with **no other change** — the headline compatibility test.
 - **React `useStream` (frontend)** — `examples/react-usestream` streams a reply token-by-token from
