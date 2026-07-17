@@ -4,6 +4,8 @@ on:
   push:
     branches: [main]
   pull_request:
+  # Callable by release.yml so a publish runs these exact checks on the released commit.
+  workflow_call:
 
 # A newer push to the same ref cancels an in-flight run — no point finishing stale checks.
 concurrency:
