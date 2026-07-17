@@ -1,6 +1,6 @@
 {
   "name": "@skein-js/runtime",
-  "version": "0.6.1",
+  "version": "0.6.2",
   "description": "Assembles skein-js ProtocolDeps from langgraph.json + selected drivers (memory/Postgres/Redis).",
   "license": "Apache-2.0",
   "author": "Maina Wycliffe <wmmaina7@gmail.com>",

@@ -1,3 +1,7 @@
+## 0.6.2 (2026-07-17)
+
+This was a version bump only, there were no code changes.
+
 ## 0.6.1 (2026-07-17)
 
 ### 🚀 Features

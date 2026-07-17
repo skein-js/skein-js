@@ -1,6 +1,6 @@
 {
   "name": "@skein-js/express",
-  "version": "0.6.1",
+  "version": "0.6.2",
   "description": "Express adapter for skein-js — mount the Agent Protocol on an Express Router.",
   "license": "Apache-2.0",
   "author": "Maina Wycliffe <wmmaina7@gmail.com>",

@@ -1,6 +1,6 @@
 {
   "name": "@skein-js/storage-postgres",
-  "version": "0.6.1",
+  "version": "0.6.2",
   "description": "Postgres SkeinStore driver with pgvector semantic search, reusing PostgresSaver for checkpoints.",
   "license": "Apache-2.0",
   "author": "Maina Wycliffe <wmmaina7@gmail.com>",

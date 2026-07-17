@@ -1,6 +1,6 @@
 {
   "name": "@skein-js/nestjs",
-  "version": "0.6.1",
+  "version": "0.6.2",
   "description": "NestJS adapter for skein-js — serve the Agent Protocol from a Nest module.",
   "license": "Apache-2.0",
   "author": "Maina Wycliffe <wmmaina7@gmail.com>",
