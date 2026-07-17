@@ -1,6 +1,6 @@
 {
   "name": "@skein-js/agent-protocol",
-  "version": "0.6.0",
+  "version": "0.6.1",
   "description": "Framework-agnostic Agent Protocol engine for LangGraph.js — run engine, handlers, and SSE, driven entirely by injected dependencies.",
   "license": "Apache-2.0",
   "author": "Maina Wycliffe <wmmaina7@gmail.com>",

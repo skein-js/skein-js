@@ -1,3 +1,16 @@
+## 0.6.1 (2026-07-17)
+
+### 🚀 Features
+
+- **agent-protocol,server-kit:** extract shared adapter foundation ([84c9749](https://github.com/mainawycliffe/skein/commit/84c9749))
+- **fastify:** add Fastify adapter + examples ([423e33d](https://github.com/mainawycliffe/skein/commit/423e33d))
+- **nestjs:** add NestJS adapter + examples ([de2ec0a](https://github.com/mainawycliffe/skein/commit/de2ec0a))
+- **nextjs:** add Next.js adapter (App + Pages Router) + examples ([339316d](https://github.com/mainawycliffe/skein/commit/339316d))
+
+### ❤️ Thank You
+
+- Maina Wycliffe
+
 ## 0.6.0 (2026-07-16)
 
 ### 🚀 Features

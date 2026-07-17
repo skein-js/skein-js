@@ -1,6 +1,6 @@
 {
   "name": "@skein-js/test-support",
-  "version": "0.6.0",
+  "version": "0.6.1",
   "description": "Private test helpers for skein-js: Testcontainers boots + the shared SkeinStore conformance suite.",
   "license": "Apache-2.0",
   "author": "Maina Wycliffe <wmmaina7@gmail.com>",

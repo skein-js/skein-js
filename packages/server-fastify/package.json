@@ -1,6 +1,6 @@
 {
   "name": "@skein-js/fastify",
-  "version": "0.6.0",
+  "version": "0.6.1",
   "description": "Fastify adapter for skein-js — mount the Agent Protocol as a Fastify plugin.",
   "license": "Apache-2.0",
   "author": "Maina Wycliffe <wmmaina7@gmail.com>",
