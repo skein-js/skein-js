@@ -1,0 +1,59 @@
+{
+  "name": "@skein-js/nextjs",
+  "version": "0.6.0",
+  "description": "Next.js adapter for skein-js — serve the Agent Protocol from App Router or Pages Router API routes.",
+  "license": "Apache-2.0",
+  "author": "Maina Wycliffe <wmmaina7@gmail.com>",
+  "homepage": "https://github.com/mainawycliffe/skein-js/tree/main/packages/server-nextjs#readme",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/mainawycliffe/skein-js.git",
+    "directory": "packages/server-nextjs"
+  },
+  "bugs": {
+    "url": "https://github.com/mainawycliffe/skein-js/issues"
+  },
+  "keywords": [
+    "typescript",
+    "nextjs",
+    "langgraph",
+    "agent-protocol",
+    "sse"
+  ],
+  "type": "module",
+  "main": "./dist/index.js",
+  "module": "./dist/index.js",
+  "types": "./dist/index.d.ts",
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "import": "./dist/index.js"
+    }
+  },
+  "files": [
+    "dist",
+    "LICENSE",
+    "README.md"
+  ],
+  "sideEffects": false,
+  "engines": {
+    "node": ">=20"
+  },
+  "dependencies": {
+    "@skein-js/agent-protocol": "workspace:*",
+    "@skein-js/core": "workspace:*",
+    "@skein-js/server-kit": "workspace:*"
+  },
+  "peerDependencies": {
+    "@langchain/langgraph": "^1.4.0",
+    "next": ">=14.0.0"
+  },
+  "devDependencies": {
+    "@langchain/core": "^1.2.0",
+    "@langchain/langgraph": "^1.4.0",
+    "@skein-js/storage-memory": "workspace:*"
+  },
+  "publishConfig": {
+    "access": "public"
+  }
+}

@@ -1,0 +1,11 @@
+{
+  "extends": "../../tsconfig.base.json",
+  "compilerOptions": {
+    "noEmit": true,
+    // The App Router adapter uses Web-standard globals (Request/Response/ReadableStream/TextEncoder),
+    // which @types/node provides in Node 20+. Include node types explicitly so they resolve without
+    // pulling in the DOM lib.
+    "types": ["node"]
+  },
+  "include": ["src/**/*.ts"]
+}

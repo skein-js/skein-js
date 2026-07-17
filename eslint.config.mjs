@@ -63,11 +63,13 @@ export default tseslint.config(
     },
   },
 
-  // Frameworks that REQUIRE default exports (Next.js pages/layouts, config files).
+  // Frameworks that REQUIRE default exports (Next.js pages/layouts/route configs, config files).
   {
     files: [
       "examples/react-usestream/**/*.{ts,tsx}",
       "examples/chat-app/**/*.{ts,tsx}",
+      "examples/nextjs-basic/**/*.{ts,tsx}",
+      "examples/nextjs-app/**/*.{ts,tsx}",
       "**/*.config.{ts,mts,mjs}",
     ],
     rules: { "import/no-default-export": "off" },
