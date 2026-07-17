@@ -1,0 +1,27 @@
+{
+  "name": "@skein-js/example-nestjs-basic",
+  "version": "0.0.0",
+  "private": true,
+  "description": "Playable skein-js example: an echo graph (zero-setup) and a Claude ReAct agent, served from one langgraph.json by a standalone NestJS server.",
+  "type": "module",
+  "scripts": {
+    "dev": "tsx watch src/main.ts",
+    "start": "tsx src/main.ts"
+  },
+  "dependencies": {
+    "@langchain/anthropic": "^1.5.0",
+    "@langchain/core": "^1.2.0",
+    "@langchain/langgraph": "^1.4.0",
+    "@nestjs/common": "^11.0.0",
+    "@nestjs/core": "^11.0.0",
+    "@nestjs/platform-express": "^11.0.0",
+    "@skein-js/nestjs": "workspace:*",
+    "reflect-metadata": "^0.2.2",
+    "rxjs": "^7.8.1",
+    "zod": "^3.25.32"
+  },
+  "devDependencies": {
+    "@langchain/langgraph-sdk": "^1.9.0",
+    "tsx": "^4.19.2"
+  }
+}

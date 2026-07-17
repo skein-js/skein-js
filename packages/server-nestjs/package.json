@@ -1,7 +1,7 @@
 {
   "name": "@skein-js/nestjs",
   "version": "0.6.0",
-  "description": "NestJS adapter for skein-js (planned).",
+  "description": "NestJS adapter for skein-js — serve the Agent Protocol from a Nest module.",
   "license": "Apache-2.0",
   "author": "Maina Wycliffe <wmmaina7@gmail.com>",
   "homepage": "https://github.com/mainawycliffe/skein-js/tree/main/packages/server-nestjs#readme",
@@ -32,6 +32,7 @@
   },
   "files": [
     "dist",
+    "LICENSE",
     "README.md"
   ],
   "sideEffects": false,
@@ -39,14 +40,27 @@
     "node": ">=20"
   },
   "dependencies": {
-    "@skein-js/core": "workspace:*"
+    "@skein-js/agent-protocol": "workspace:*",
+    "@skein-js/core": "workspace:*",
+    "@skein-js/server-kit": "workspace:*"
   },
   "peerDependencies": {
+    "@langchain/langgraph": "^1.4.0",
     "@nestjs/common": ">=10.0.0",
-    "@nestjs/core": ">=10.0.0"
+    "@nestjs/core": ">=10.0.0",
+    "@nestjs/platform-express": ">=10.0.0"
+  },
+  "devDependencies": {
+    "@langchain/core": "^1.2.0",
+    "@langchain/langgraph": "^1.4.0",
+    "@nestjs/common": "^11.0.0",
+    "@nestjs/core": "^11.0.0",
+    "@nestjs/platform-express": "^11.0.0",
+    "@skein-js/storage-memory": "workspace:*",
+    "reflect-metadata": "^0.2.2",
+    "rxjs": "^7.8.1"
   },
   "publishConfig": {
     "access": "public"
-  },
-  "private": true
+  }
 }
