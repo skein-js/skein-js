@@ -1,0 +1,23 @@
+{
+  "name": "@skein-js/example-fastify-app",
+  "version": "0.0.0",
+  "private": true,
+  "description": "skein-js embedded in an existing Fastify app: the Agent Protocol under /agent, alongside the app's own REST routes.",
+  "type": "module",
+  "scripts": {
+    "dev": "tsx watch src/app.ts",
+    "start": "tsx src/app.ts"
+  },
+  "dependencies": {
+    "@langchain/anthropic": "^1.5.0",
+    "@langchain/core": "^1.2.0",
+    "@langchain/langgraph": "^1.4.0",
+    "@skein-js/fastify": "workspace:*",
+    "fastify": "^5.2.0",
+    "zod": "^3.25.32"
+  },
+  "devDependencies": {
+    "@langchain/langgraph-sdk": "^1.9.0",
+    "tsx": "^4.19.2"
+  }
+}

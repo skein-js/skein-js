@@ -1,7 +1,7 @@
 {
   "name": "@skein-js/fastify",
   "version": "0.6.0",
-  "description": "Fastify adapter for skein-js (planned).",
+  "description": "Fastify adapter for skein-js — mount the Agent Protocol as a Fastify plugin.",
   "license": "Apache-2.0",
   "author": "Maina Wycliffe <wmmaina7@gmail.com>",
   "homepage": "https://github.com/mainawycliffe/skein-js/tree/main/packages/server-fastify#readme",
@@ -32,6 +32,7 @@
   },
   "files": [
     "dist",
+    "LICENSE",
     "README.md"
   ],
   "sideEffects": false,
@@ -39,13 +40,28 @@
     "node": ">=20"
   },
   "dependencies": {
-    "@skein-js/core": "workspace:*"
+    "@skein-js/agent-protocol": "workspace:*",
+    "@skein-js/core": "workspace:*",
+    "@skein-js/server-kit": "workspace:*"
   },
   "peerDependencies": {
+    "@fastify/cors": ">=8.0.0",
+    "@langchain/langgraph": "^1.4.0",
     "fastify": ">=4.0.0"
+  },
+  "peerDependenciesMeta": {
+    "@fastify/cors": {
+      "optional": true
+    }
+  },
+  "devDependencies": {
+    "@fastify/cors": "^10.0.1",
+    "@langchain/core": "^1.2.0",
+    "@langchain/langgraph": "^1.4.0",
+    "@skein-js/storage-memory": "workspace:*",
+    "fastify": "^5.2.0"
   },
   "publishConfig": {
     "access": "public"
-  },
-  "private": true
+  }
 }

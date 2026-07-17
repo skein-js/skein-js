@@ -1,0 +1,8 @@
+{
+  "node_version": "20",
+  "graphs": {
+    "echo": "./src/echo-graph.ts:graph",
+    "agent": "./src/agent-graph.ts:graph"
+  },
+  "env": ".env"
+}
