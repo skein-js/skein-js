@@ -1,11 +1,11 @@
 // The pure Express transport shim that mounts the Agent Protocol handler table. The route table
-// (`skeinRoutes`) and the `foldThreadId` rule are transport-neutral and live with the engine in
+// (`skeinRoutes`) and the `copyThreadIdIntoBody` rule are transport-neutral and live with the engine in
 // @skein-js/agent-protocol; this file only maps each Express request onto the injected handler table
 // and serializes the result. It adds no protocol logic, so a caller with custom `ProtocolDeps` (e.g.
 // Postgres + Redis for `skein up`) can mount it directly.
 
 import {
-  foldThreadId,
+  copyThreadIdIntoBody,
   skeinRoutes,
   type Logger,
   type ProtocolHandlers,
@@ -55,7 +55,7 @@ export function createHandlerRouter(
       try {
         const request = toProtocolRequest(req);
         const response = await invoke(
-          binding.foldThreadIdIntoBody ? foldThreadId(request) : request,
+          binding.foldThreadIdIntoBody ? copyThreadIdIntoBody(request) : request,
         );
         await sendProtocolResponse(response, res);
       } catch (error) {

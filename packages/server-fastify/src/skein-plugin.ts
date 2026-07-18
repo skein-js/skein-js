@@ -5,7 +5,7 @@
 // lifecycle. Register it under a prefix to serve the protocol alongside your own app's routes.
 
 import {
-  foldThreadId,
+  copyThreadIdIntoBody,
   skeinRoutes,
   type HttpMethod,
   type Logger,
@@ -101,7 +101,7 @@ export async function registerSkeinHandlers(
         try {
           const request = toProtocolRequest(req);
           const response = await invoke(
-            binding.foldThreadIdIntoBody ? foldThreadId(request) : request,
+            binding.foldThreadIdIntoBody ? copyThreadIdIntoBody(request) : request,
           );
           await sendProtocolResponse(response, reply);
         } catch (error) {

@@ -95,9 +95,9 @@ export const skeinRoutes: readonly RouteBinding[] = [
 /**
  * Copy the path `thread_id` into an object body so a stateless run handler runs on the right thread.
  * A no-op when there is no `thread_id` param. Used by every adapter for the `foldThreadIdIntoBody`
- * routes, so the folding rule lives in one place.
+ * routes, so this rule lives in one place.
  */
-export function foldThreadId(request: ProtocolRequest): ProtocolRequest {
+export function copyThreadIdIntoBody(request: ProtocolRequest): ProtocolRequest {
   const threadId = request.params["thread_id"];
   if (threadId === undefined) return request;
   const base =
@@ -106,6 +106,12 @@ export function foldThreadId(request: ProtocolRequest): ProtocolRequest {
       : {};
   return { ...request, body: { ...base, thread_id: threadId } };
 }
+
+/**
+ * @deprecated Renamed to {@link copyThreadIdIntoBody} — it copies the path `thread_id` into the
+ * request body. Kept for back-compat; slated for removal in a future major.
+ */
+export const foldThreadId = copyThreadIdIntoBody;
 
 /** A resolved route: the matched binding plus the path params extracted from the URL. */
 export interface RouteMatch {

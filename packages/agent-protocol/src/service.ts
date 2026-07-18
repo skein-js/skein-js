@@ -23,7 +23,7 @@ export interface ProtocolService {
 }
 
 /** Assemble the service over an existing context (used by the runtime to share the context). */
-export function buildProtocolService(ctx: ProtocolContext): ProtocolService {
+export function createProtocolServiceFromContext(ctx: ProtocolContext): ProtocolService {
   const runs = createRunService(ctx);
   const threads = createThreadService(ctx);
   return {
@@ -41,5 +41,12 @@ export function buildProtocolService(ctx: ProtocolContext): ProtocolService {
 /** Build the service with its own context. Use {@link createProtocolRuntime} when you also run a
  * background worker in the same process, so cancellation is shared. */
 export function createProtocolService(deps: ProtocolDeps): ProtocolService {
-  return buildProtocolService(createContext(deps));
+  return createProtocolServiceFromContext(createContext(deps));
 }
+
+/**
+ * @deprecated Renamed to {@link createProtocolServiceFromContext} — it builds the service over an
+ * existing `ProtocolContext` (vs {@link createProtocolService}, which takes `deps` and makes its own).
+ * Kept for back-compat; slated for removal in a future major.
+ */
+export const buildProtocolService = createProtocolServiceFromContext;

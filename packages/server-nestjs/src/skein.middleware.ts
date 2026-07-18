@@ -7,7 +7,7 @@
 import type { IncomingMessage, ServerResponse } from "node:http";
 
 import { Inject, Injectable, type NestMiddleware } from "@nestjs/common";
-import { foldThreadId, matchSkeinRoute, type Logger } from "@skein-js/agent-protocol";
+import { copyThreadIdIntoBody, matchSkeinRoute, type Logger } from "@skein-js/agent-protocol";
 import { SkeinHttpError } from "@skein-js/core";
 import {
   applyNodeCors,
@@ -100,7 +100,7 @@ export class SkeinMiddleware implements NestMiddleware {
       const request = toProtocolRequest(req, url, match.params, body);
       const invoke = this.resolved.runtime.handlers[match.binding.handler];
       const response = await invoke(
-        match.binding.foldThreadIdIntoBody ? foldThreadId(request) : request,
+        match.binding.foldThreadIdIntoBody ? copyThreadIdIntoBody(request) : request,
       );
       await sendNodeResponse(response, res);
     } catch (error) {

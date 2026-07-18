@@ -7,7 +7,7 @@ import { createContext } from "./context.js";
 import { createProtocolHandlers, type ProtocolHandlers } from "./create-handlers.js";
 import type { ProtocolDeps } from "./deps.js";
 import { createRunWorker, type RunWorker, type RunWorkerOptions } from "./runs/run-worker.js";
-import { buildProtocolService, type ProtocolService } from "./service.js";
+import { createProtocolServiceFromContext, type ProtocolService } from "./service.js";
 
 export interface ProtocolRuntimeOptions {
   worker?: RunWorkerOptions;
@@ -29,7 +29,7 @@ export function createProtocolRuntime(
   options: ProtocolRuntimeOptions = {},
 ): ProtocolRuntime {
   const context = createContext(deps);
-  const service = buildProtocolService(context);
+  const service = createProtocolServiceFromContext(context);
   // When an auth engine is injected, every request is authenticated + authorized through one
   // transport-neutral seam; without it, the handler table is unchanged (unauthenticated, as before).
   const handlers = deps.auth

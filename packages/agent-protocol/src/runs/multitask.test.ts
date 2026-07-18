@@ -6,11 +6,11 @@ import { describe, expect, it } from "vitest";
 
 import { createFixtureDeps } from "../__fixtures__/deps.js";
 import { createContext } from "../context.js";
-import { buildProtocolService, type ProtocolService } from "../service.js";
+import { createProtocolServiceFromContext, type ProtocolService } from "../service.js";
 
 async function serviceWithAssistants() {
   const ctx = createContext(createFixtureDeps());
-  const service = buildProtocolService(ctx);
+  const service = createProtocolServiceFromContext(ctx);
   await service.assistants.registerGraphAssistants();
   return { ctx, service };
 }

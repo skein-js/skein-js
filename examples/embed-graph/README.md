@@ -12,14 +12,14 @@ graph but loads it from a `langgraph.json` via `skein dev`. Same server, two on-
 
 ```ts
 import { createExpressServer } from "@skein-js/express";
-import { createInMemoryDeps } from "@skein-js/server-kit";
+import { embedInMemoryGraphs } from "@skein-js/server-kit";
 import { graph as echo } from "./echo-graph.js"; // ← your existing compiled graph
 
-const server = await createExpressServer({ deps: createInMemoryDeps({ echo }) });
+const server = await createExpressServer({ deps: embedInMemoryGraphs({ echo }) });
 await server.listen(2024);
 ```
 
-- **`createInMemoryDeps({ echo })`** ([@skein-js/server-kit](../../packages/server-kit)) turns a map of
+- **`embedInMemoryGraphs({ echo })`** ([@skein-js/server-kit](../../packages/server-kit)) turns a map of
   compiled graphs (keys become assistant/graph ids) into a `ProtocolDeps` backed by in-process drivers —
   the store, run queue, event bus, and checkpointer. No config file, nothing to import from a storage
   package.
@@ -36,15 +36,15 @@ router form instead of `createExpressServer` — one line on your existing Expre
 
 ```ts
 import { skeinRouter } from "@skein-js/express";
-import { createInMemoryDeps } from "@skein-js/server-kit";
+import { embedInMemoryGraphs } from "@skein-js/server-kit";
 
-app.use(skeinRouter({ deps: createInMemoryDeps({ echo }) }).router);
+app.use(skeinRouter({ deps: embedInMemoryGraphs({ echo }) }).router);
 ```
 
-> **⚠️ Auth is off by default.** `createInMemoryDeps` sets no `auth`, so this mounts an
+> **⚠️ Auth is off by default.** `embedInMemoryGraphs` sets no `auth`, so this mounts an
 > **unauthenticated** `/threads` · `/runs` · `/store` surface — fine behind your own middleware or on a
 > private network, but a public mount is open to anyone. Pass an `auth` engine
-> (`createInMemoryDeps({ echo }, { auth })`) before you expose it. See
+> (`embedInMemoryGraphs({ echo }, { auth })`) before you expose it. See
 > [docs/embedding.md](../../docs/embedding.md#bring-your-own-drivers-auth-logger).
 
 ## Going to production
@@ -55,13 +55,13 @@ horizontally-scalable state, construct a Postgres store + Redis queue and pass t
 ```ts
 // store / checkpointer / queue / bus from @skein-js/storage-postgres, @langchain/langgraph-checkpoint-postgres,
 // and @skein-js/redis — see docs/embedding.md#going-to-production for the full snippet.
-createInMemoryDeps({ echo }, { store, checkpointer, queue, bus });
+embedInMemoryGraphs({ echo }, { store, checkpointer, queue, bus });
 ```
 
 ## Trade-off vs the `langgraph.json` path
 
 Because a **compiled** graph no longer carries its TypeScript source, the in-code path can't extract
-real input/output/state JSON schemas — `createInMemoryDeps` returns a minimal `{ graph_id }` stub. That
+real input/output/state JSON schemas — `embedInMemoryGraphs` returns a minimal `{ graph_id }` stub. That
 is enough for everything `useStream` and Agent Chat UI render; only LangGraph Studio's schema-driven
 forms degrade. If you need full static schemas, use the [`langgraph.json` path](../../docs/embedding.md)
 (`{ config }`) instead. See [docs/embedding.md](../../docs/embedding.md) for the full picture.

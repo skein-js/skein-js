@@ -2,10 +2,10 @@ import { describe, expect, it } from "vitest";
 
 import { createFixtureDeps } from "../__fixtures__/deps.js";
 import { createContext } from "../context.js";
-import { buildProtocolService } from "../service.js";
+import { createProtocolServiceFromContext } from "../service.js";
 
 async function serviceWithAssistants(deps = createFixtureDeps()) {
-  const service = buildProtocolService(createContext(deps));
+  const service = createProtocolServiceFromContext(createContext(deps));
   await service.assistants.registerGraphAssistants();
   return service;
 }

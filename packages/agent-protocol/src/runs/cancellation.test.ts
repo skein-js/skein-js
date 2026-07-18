@@ -4,7 +4,7 @@ import { describe, expect, it } from "vitest";
 import { collect, createFixtureDeps } from "../__fixtures__/deps.js";
 import { createContext } from "../context.js";
 import { resolveDeps } from "../deps.js";
-import { buildProtocolService } from "../service.js";
+import { createProtocolServiceFromContext } from "../service.js";
 
 import { RunControlRegistry } from "./cancellation.js";
 import { executeRun } from "./run-engine.js";
@@ -13,7 +13,7 @@ import { createRunWorker } from "./run-worker.js";
 const tick = (ms = 20) => new Promise((resolve) => setTimeout(resolve, ms));
 
 async function serviceWithAssistants(deps = createFixtureDeps()) {
-  const service = buildProtocolService(createContext(deps));
+  const service = createProtocolServiceFromContext(createContext(deps));
   await service.assistants.registerGraphAssistants();
   return service;
 }
@@ -45,7 +45,7 @@ describe("cancellation", () => {
   it("cancels a pending background run so the worker skips it", async () => {
     const deps = createFixtureDeps();
     const ctx = createContext(deps);
-    const service = buildProtocolService(ctx);
+    const service = createProtocolServiceFromContext(ctx);
     await service.assistants.registerGraphAssistants();
     const thread = await service.threads.create();
     const run = await service.runs.createBackground(thread.thread_id, {

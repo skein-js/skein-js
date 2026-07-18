@@ -3,7 +3,7 @@ import type { GraphResolver, ProtocolDeps } from "@skein-js/agent-protocol";
 import { MemoryRunEventBus, MemoryRunQueue, MemorySkeinStore } from "@skein-js/storage-memory";
 import { describe, expect, it } from "vitest";
 
-import { createInMemoryDeps, graphMapToResolver } from "./in-memory-deps.js";
+import { createInMemoryDeps, embedInMemoryGraphs, graphMapToResolver } from "./in-memory-deps.js";
 
 /** A minimal, real compiled graph — enough to be a valid `ResolvedGraph` map value. */
 function buildGraph() {
@@ -40,9 +40,9 @@ describe("graphMapToResolver", () => {
   });
 });
 
-describe("createInMemoryDeps", () => {
+describe("embedInMemoryGraphs", () => {
   it("assembles the four in-memory drivers around a graph map", () => {
-    const deps = createInMemoryDeps({ echo: buildGraph() });
+    const deps = embedInMemoryGraphs({ echo: buildGraph() });
 
     expect(deps.store).toBeInstanceOf(MemorySkeinStore);
     expect(deps.queue).toBeInstanceOf(MemoryRunQueue);
@@ -54,7 +54,7 @@ describe("createInMemoryDeps", () => {
   it("passes a ready GraphResolver through untouched", async () => {
     const graph = buildGraph();
     const resolver: GraphResolver = graphMapToResolver({ custom: graph });
-    const deps = createInMemoryDeps(resolver);
+    const deps = embedInMemoryGraphs(resolver);
 
     expect(deps.graphs).toBe(resolver);
     expect(await deps.graphs.load("custom")).toBe(graph);
@@ -63,7 +63,7 @@ describe("createInMemoryDeps", () => {
   it("applies overrides — replacing a driver and adding auth, keeping other defaults", () => {
     const queue = new MemoryRunQueue();
     const auth = { authenticate: async () => ({}) } as unknown as ProtocolDeps["auth"];
-    const deps = createInMemoryDeps({ echo: buildGraph() }, { queue, auth });
+    const deps = embedInMemoryGraphs({ echo: buildGraph() }, { queue, auth });
 
     // the overridden fields win…
     expect(deps.queue).toBe(queue);
@@ -79,5 +79,11 @@ describe("createInMemoryDeps", () => {
     // value, not claim the id is unknown when it is right there in the map.
     const resolver = graphMapToResolver({ agent: undefined as never });
     await expect(resolver.load("agent")).rejects.toThrow(/Graph "agent" resolved to undefined/);
+  });
+
+  it("keeps the deprecated createInMemoryDeps alias pointing at the same function", () => {
+    expect(createInMemoryDeps).toBe(embedInMemoryGraphs);
+    // and it still assembles deps when called through the old name
+    expect(createInMemoryDeps({ echo: buildGraph() }).store).toBeInstanceOf(MemorySkeinStore);
   });
 });

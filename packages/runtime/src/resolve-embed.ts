@@ -82,12 +82,18 @@ export function isCustomFunctionPath(embed: string): boolean {
  * it must pin this package into the production image explicitly. Custom-function paths return undefined
  * (they are bundled), as do unknown providers.
  */
-export function embedRuntimePackage(embed: string): string | undefined {
+export function providerEmbedPackage(embed: string): string | undefined {
   if (isCustomFunctionPath(embed)) return undefined;
   const separator = embed.indexOf(":");
   if (separator === -1) return undefined;
   return PROVIDERS[embed.slice(0, separator)]?.package;
 }
+
+/**
+ * @deprecated Renamed to {@link providerEmbedPackage} — it returns the npm package a `provider:model`
+ * embed needs installed, not a verb. Kept for back-compat; slated for removal in a future major.
+ */
+export const embedRuntimePackage = providerEmbedPackage;
 
 /** Resolve form (1): load `sourceFile`'s `exportSymbol` and adapt it to an `EmbedFunction`. */
 async function resolvePathEmbed(

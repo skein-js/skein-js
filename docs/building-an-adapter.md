@@ -93,12 +93,12 @@ exported from `@skein-js/agent-protocol` as `skeinRoutes` (re-exported from `@sk
 for back-compat):
 
 ```ts
-import { skeinRoutes, foldThreadId, matchSkeinRoute } from "@skein-js/agent-protocol";
+import { skeinRoutes, copyThreadIdIntoBody, matchSkeinRoute } from "@skein-js/agent-protocol";
 // skeinRoutes: { method, path, handler, foldThreadIdIntoBody? }[]
 // e.g. { method: "post", path: "/threads/:thread_id/runs/stream",
 //        handler: "createStreamRun", foldThreadIdIntoBody: true }
 //
-// foldThreadId(request)              — the body-fold rule for foldThreadIdIntoBody routes
+// copyThreadIdIntoBody(request)              — the body-fold rule for foldThreadIdIntoBody routes
 // matchSkeinRoute(method, pathname)  — match a catch-all path → { binding, params }
 //   (handy for adapters that dispatch from one route, like the NestJS + Next.js adapters)
 ```

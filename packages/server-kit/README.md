@@ -19,7 +19,7 @@ handler table.
 - **In-memory dev runtime** — `loadInMemoryRuntime` / `loadReloadableInMemoryRuntime`: assemble a
   `ProtocolDeps` backed by in-process drivers from a `langgraph.json`. This is what powers `skein dev`
   and every adapter's `{ config }` convenience path (hot-reload + snapshot/restore included).
-- **In-code embedding** — `createInMemoryDeps` / `graphMapToResolver`: build a `ProtocolDeps` around a
+- **In-code embedding** — `embedInMemoryGraphs` / `graphMapToResolver`: build a `ProtocolDeps` around a
   compiled graph (or map of them) you already hold — **no `langgraph.json`, no CLI** — then pass
   `{ deps }` to any adapter. `overrides` swaps in production drivers/auth. See
   [docs/embedding.md](../../docs/embedding.md).

@@ -7,7 +7,11 @@ export { createProtocolRuntime } from "./runtime.js";
 export type { ProtocolRuntime, ProtocolRuntimeOptions } from "./runtime.js";
 
 // The framework-agnostic service (embed directly), and the advanced shared-context building blocks.
-export { buildProtocolService, createProtocolService } from "./service.js";
+export {
+  createProtocolServiceFromContext,
+  buildProtocolService,
+  createProtocolService,
+} from "./service.js";
 export type { ProtocolService } from "./service.js";
 export { createContext } from "./context.js";
 export type { ProtocolContext } from "./context.js";
@@ -23,7 +27,7 @@ export type {
 
 // The transport-neutral route table + body-fold helper every framework adapter maps onto its router,
 // plus a `matchSkeinRoute` matcher for adapters that dispatch from a catch-all (NestJS, Next.js).
-export { skeinRoutes, foldThreadId, matchSkeinRoute } from "./http/routes.js";
+export { skeinRoutes, copyThreadIdIntoBody, foldThreadId, matchSkeinRoute } from "./http/routes.js";
 export type { HttpMethod, RouteBinding, RouteMatch } from "./http/routes.js";
 
 // The background run worker.

@@ -101,7 +101,7 @@ Graph **state, history, and interrupt/resume are 100% LangGraph-native** via the
 ## API
 
 - **Entry points:** `createProtocolRuntime(deps, options?)` → `{ service, handlers, worker }`;
-  `createProtocolService` / `buildProtocolService`; `createProtocolHandlers`; `createContext`;
+  `createProtocolService` / `createProtocolServiceFromContext`; `createProtocolHandlers`; `createContext`;
   `createRunWorker(ctx, options?)` (`RunWorkerOptions`: `maxConcurrency`, `shutdownGraceMs`).
 - **Service surface** (`runtime.service`): `assistants` (`registerGraphAssistants`, `get`, `list`,
   `search`, `schemas`), `threads` (`create`/`get`/`list`/`patch`/`delete`/`history`/`getState`),

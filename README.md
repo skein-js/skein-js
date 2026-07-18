@@ -277,18 +277,18 @@ Prefer to run inside your own Node process? There are **two ways in**, both moun
 Protocol server.
 
 **Already have a compiled graph in code (no `langgraph.json`, never used the LangGraph Platform)?**
-Bring it directly — pass a graph map to `createInMemoryDeps` and hand the result to any adapter:
+Bring it directly — pass a graph map to `embedInMemoryGraphs` and hand the result to any adapter:
 
 ```ts
 import { createExpressServer } from "@skein-js/express";
-import { createInMemoryDeps } from "@skein-js/server-kit";
+import { embedInMemoryGraphs } from "@skein-js/server-kit";
 import { graph } from "./my-graph.js"; // your existing `new StateGraph(...).compile()`
 
-const server = await createExpressServer({ deps: createInMemoryDeps({ agent: graph }) });
+const server = await createExpressServer({ deps: embedInMemoryGraphs({ agent: graph }) });
 await server.listen(2024);
 ```
 
-`createInMemoryDeps` turns a graph map into a `ProtocolDeps` (store, queue, bus, checkpointer) — the
+`embedInMemoryGraphs` turns a graph map into a `ProtocolDeps` (store, queue, bus, checkpointer) — the
 `{ deps }` seam **every** adapter accepts, so the same `deps` mounts on Express, Fastify, NestJS, or
 Next.js unchanged. See [docs/embedding.md](./docs/embedding.md) and
 [`examples/embed-graph`](./examples/embed-graph).
@@ -495,7 +495,7 @@ Each is a runnable project — `cd` into it and follow its README.
 | [`migrated-langgraph`](./examples/migrated-langgraph)                                 | The **drop-in proof** — a stock LangGraph project under `skein dev`, with hot reload + `.skein/` persistence                                                                                       | `pnpm dev`                 |
 | [`gemini-chat`](./examples/gemini-chat)                                               | **Model-backed end-to-end** — a Gemini ReAct agent streamed into a browser; also an embedded `@skein-js/express` server                                                                            | `pnpm dev`                 |
 | [`express-basic`](./examples/express-basic)                                           | **Hello world** — zero-setup `echo` (no API key) + a Claude `agent` graph in one config                                                                                                            | `pnpm dev`                 |
-| [`embed-graph`](./examples/embed-graph)                                               | **In-code embedding** — serve a graph you already have with **no `langgraph.json`** (`createInMemoryDeps` + `{ deps }`); the config-free counterpart to `express-basic`                            | `pnpm dev`                 |
+| [`embed-graph`](./examples/embed-graph)                                               | **In-code embedding** — serve a graph you already have with **no `langgraph.json`** (`embedInMemoryGraphs` + `{ deps }`); the config-free counterpart to `express-basic`                           | `pnpm dev`                 |
 | [`fastify-basic`](./examples/fastify-basic) · [`fastify-app`](./examples/fastify-app) | **Fastify** — a standalone graph server, and the protocol embedded under `/agent` alongside a REST API                                                                                             | `pnpm dev`                 |
 | [`nestjs-basic`](./examples/nestjs-basic) · [`nestjs-app`](./examples/nestjs-app)     | **NestJS** — a standalone graph server, and `SkeinModule` alongside the app's own controller                                                                                                       | `pnpm dev`                 |
 | [`nextjs-basic`](./examples/nextjs-basic) · [`nextjs-app`](./examples/nextjs-app)     | **Next.js** — headless Pages Router API, and a full-stack App Router app serving the protocol same-origin behind a `useStream` chat UI                                                             | `pnpm dev`                 |

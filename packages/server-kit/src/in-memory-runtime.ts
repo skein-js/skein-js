@@ -1,6 +1,6 @@
 // Load a `langgraph.json` into a `ProtocolDeps` backed by in-process drivers — the zero-setup runtime
 // that powers `skein dev`. The config-free counterpart (bring a compiled graph in code, no config file)
-// is `createInMemoryDeps` in ./in-memory-deps.ts; both assemble the same in-memory drivers, so `skein
+// is `embedInMemoryGraphs` in ./in-memory-deps.ts; both assemble the same in-memory drivers, so `skein
 // up` can swap Postgres + Redis deps through the adapters' `{ deps }` seam (see skein-router.ts).
 
 import { MemorySaver } from "@langchain/langgraph";
@@ -21,7 +21,7 @@ import {
   snapshotCheckpointer,
   type DevStateSnapshot,
 } from "./dev-persistence.js";
-import { createInMemoryDeps } from "./in-memory-deps.js";
+import { embedInMemoryGraphs } from "./in-memory-deps.js";
 
 /**
  * Bridge a config `GraphRegistry` to the engine's `GraphResolver`. They are structurally identical
@@ -57,7 +57,7 @@ export async function loadInMemoryRuntime(
     importModule,
     staticSchemas,
   });
-  const deps = createInMemoryDeps(toGraphResolver(graphs));
+  const deps = embedInMemoryGraphs(toGraphResolver(graphs));
   deps.auth = await loadAuthEngine(config.auth, { configDir, importModule });
   return {
     deps,

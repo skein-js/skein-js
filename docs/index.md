@@ -101,14 +101,14 @@ same server. If you already have a compiled graph in your own app, bring it **in
 
 ```ts
 import { createExpressServer } from "@skein-js/express";
-import { createInMemoryDeps } from "@skein-js/server-kit";
+import { embedInMemoryGraphs } from "@skein-js/server-kit";
 import { graph } from "./my-graph.js";
 
-const server = await createExpressServer({ deps: createInMemoryDeps({ agent: graph }) });
+const server = await createExpressServer({ deps: embedInMemoryGraphs({ agent: graph }) });
 await server.listen(2024);
 ```
 
-`createInMemoryDeps` assembles a `ProtocolDeps` (store, queue, bus, checkpointer) around your graphs;
+`embedInMemoryGraphs` assembles a `ProtocolDeps` (store, queue, bus, checkpointer) around your graphs;
 `{ deps }` is the seam every adapter accepts. The two on-ramps produce the identical Agent Protocol
 server — see [embedding.md](./embedding.md).
 
@@ -153,7 +153,7 @@ Runnable projects under [`examples/`](../examples) — each proves a slice of th
 | [`migrated-langgraph`](../examples/migrated-langgraph) | The drop-in proof — a stock LangGraph project under `skein dev`, hot reload + persistence                                        |
 | [`gemini-chat`](../examples/gemini-chat)               | Model-backed end-to-end — a Gemini ReAct agent streamed into a browser                                                           |
 | [`express-basic`](../examples/express-basic)           | Zero-setup `echo` + a Claude `agent` graph in one config                                                                         |
-| [`embed-graph`](../examples/embed-graph)               | In-code embedding — serve a graph you already have with **no `langgraph.json`** (`createInMemoryDeps` + `{ deps }`)              |
+| [`embed-graph`](../examples/embed-graph)               | In-code embedding — serve a graph you already have with **no `langgraph.json`** (`embedInMemoryGraphs` + `{ deps }`)             |
 | `fastify-basic` / `fastify-app`                        | Fastify — standalone graph server, and the protocol embedded under `/agent` alongside a REST API                                 |
 | `nestjs-basic` / `nestjs-app`                          | NestJS — standalone graph server, and `SkeinModule` alongside the app's own controller                                           |
 | `nextjs-basic` / `nextjs-app`                          | Next.js — headless Pages Router API, and a full-stack App Router app serving the protocol same-origin behind a `useStream` UI    |

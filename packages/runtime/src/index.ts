@@ -13,6 +13,7 @@ export { RuntimeConfigError } from "./errors.js";
 export {
   resolveEmbed,
   isCustomFunctionPath,
+  providerEmbedPackage,
   embedRuntimePackage,
   type ResolveEmbedOptions,
 } from "./resolve-embed.js";

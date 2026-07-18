@@ -1,6 +1,6 @@
 // Conformance check for the in-code path: drive the running server with the real
 // `@langchain/langgraph-sdk` client. If the official client's `threads.create` / `runs.wait` /
-// `runs.stream` are happy against a server built from `createInMemoryDeps({ echo })` — with no
+// `runs.stream` are happy against a server built from `embedInMemoryGraphs({ echo })` — with no
 // `langgraph.json` anywhere — the in-code embedding path is wire-correct.
 
 import { Client } from "@langchain/langgraph-sdk";

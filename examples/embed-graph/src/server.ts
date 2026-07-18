@@ -1,13 +1,13 @@
 // Serve a LangGraph.js graph you already have — in code, with NO `langgraph.json` and NO CLI. This is
 // the in-code counterpart to `examples/express-basic` (which loads the same kind of graph from a
 // `langgraph.json` via `skein dev`). The whole backend is three lines: a graph map →
-// `createInMemoryDeps` → an adapter's `{ deps }` seam. Point `useStream` / Agent Chat UI / the
+// `embedInMemoryGraphs` → an adapter's `{ deps }` seam. Point `useStream` / Agent Chat UI / the
 // LangGraph SDK at the URL it prints — they can't tell it apart from the LangGraph Platform.
 
 import { pathToFileURL } from "node:url";
 
 import { createExpressServer, type SkeinExpressServer } from "@skein-js/express";
-import { createInMemoryDeps } from "@skein-js/server-kit";
+import { embedInMemoryGraphs } from "@skein-js/server-kit";
 
 import { graph as echo } from "./echo-graph.js";
 
@@ -22,9 +22,9 @@ export interface StartedExample {
 export async function startServer(port = 2024, host = "127.0.0.1"): Promise<StartedExample> {
   // A graph map → in-memory ProtocolDeps → an Express server. No config file, no `skein dev`.
   // To embed into an existing Express app instead: `app.use(skeinRouter({ deps }).router)`.
-  // For production, swap the in-memory drivers for Postgres + Redis via `createInMemoryDeps({ echo },
+  // For production, swap the in-memory drivers for Postgres + Redis via `embedInMemoryGraphs({ echo },
   // { store, queue, checkpointer })` (see @skein-js/runtime's `buildRuntime`).
-  const server = await createExpressServer({ deps: createInMemoryDeps({ echo }) });
+  const server = await createExpressServer({ deps: embedInMemoryGraphs({ echo }) });
   const httpServer = await server.listen(port, host);
   const address = httpServer.address();
   if (address === null || typeof address === "string") {

@@ -8,7 +8,11 @@
 //   export const { GET, POST, PUT, PATCH, DELETE, OPTIONS } =
 //     createSkeinRouteHandlers({ config: "./langgraph.json" });
 
-import { foldThreadId, matchSkeinRoute, type ProtocolRequest } from "@skein-js/agent-protocol";
+import {
+  copyThreadIdIntoBody,
+  matchSkeinRoute,
+  type ProtocolRequest,
+} from "@skein-js/agent-protocol";
 import { SkeinHttpError } from "@skein-js/core";
 import type { CorsSetting, SkeinRuntimeOptions } from "@skein-js/server-kit";
 
@@ -124,7 +128,7 @@ export function createSkeinRouteHandlers(options: SkeinRouteHandlerOptions): Ske
       const request_ = await toProtocolRequest(request, url, skeinPathname, match.params);
       const invoke = resolved.runtime.handlers[match.binding.handler];
       const response = await invoke(
-        match.binding.foldThreadIdIntoBody ? foldThreadId(request_) : request_,
+        match.binding.foldThreadIdIntoBody ? copyThreadIdIntoBody(request_) : request_,
       );
       return toWebResponse(response, extraHeaders);
     } catch (error) {

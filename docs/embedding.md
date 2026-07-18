@@ -20,13 +20,13 @@
 
 ## Two on-ramps
 
-|                      | Drop-in CLI (`{ config }`)                            | In-code embedding (`{ deps }`)                                 |
-| -------------------- | ----------------------------------------------------- | -------------------------------------------------------------- |
-| You start from       | a `langgraph.json` + the `skein` CLI                  | a **compiled graph object** in your own code                   |
-| Wiring               | `createExpressServer({ config: "./langgraph.json" })` | `createExpressServer({ deps: createInMemoryDeps({ graph }) })` |
-| Graph loading        | `path:export` resolved from disk (vite/TS loader)     | you already hold the graph — nothing is loaded from disk       |
-| Best for             | migrating off / comparing against the LangGraph CLI   | greenfield apps, or anyone who never used the Platform         |
-| Static graph schemas | ✅ extracted from source                              | 🟡 stubbed (see [trade-off](#the-one-trade-off-schemas))       |
+|                      | Drop-in CLI (`{ config }`)                            | In-code embedding (`{ deps }`)                                  |
+| -------------------- | ----------------------------------------------------- | --------------------------------------------------------------- |
+| You start from       | a `langgraph.json` + the `skein` CLI                  | a **compiled graph object** in your own code                    |
+| Wiring               | `createExpressServer({ config: "./langgraph.json" })` | `createExpressServer({ deps: embedInMemoryGraphs({ graph }) })` |
+| Graph loading        | `path:export` resolved from disk (vite/TS loader)     | you already hold the graph — nothing is loaded from disk        |
+| Best for             | migrating off / comparing against the LangGraph CLI   | greenfield apps, or anyone who never used the Platform          |
+| Static graph schemas | ✅ extracted from source                              | 🟡 stubbed (see [trade-off](#the-one-trade-off-schemas))        |
 
 Both produce the **exact same** Agent Protocol server — same threads/runs/streaming/HITL/persistence,
 same `useStream` / Agent Chat UI / LangGraph SDK compatibility. The only difference is how graphs get
@@ -36,10 +36,10 @@ in and how `ProtocolDeps` is assembled. Everything downstream is identical.
 
 ```ts
 import { createExpressServer } from "@skein-js/express";
-import { createInMemoryDeps } from "@skein-js/server-kit";
+import { embedInMemoryGraphs } from "@skein-js/server-kit";
 import { graph } from "./my-graph.js"; // ← your existing `new StateGraph(...).compile()`
 
-const server = await createExpressServer({ deps: createInMemoryDeps({ agent: graph }) });
+const server = await createExpressServer({ deps: embedInMemoryGraphs({ agent: graph }) });
 await server.listen(2024);
 ```
 
@@ -55,14 +55,14 @@ await client.runs.wait(thread.thread_id, "agent", {
 });
 ```
 
-`createInMemoryDeps` ([`@skein-js/server-kit`](../packages/server-kit)) turns a **graph map** into a
+`embedInMemoryGraphs` ([`@skein-js/server-kit`](../packages/server-kit)) turns a **graph map** into a
 `ProtocolDeps` backed by in-process drivers — the store, run queue, event bus, and checkpointer. No
 config file, and nothing to import from a storage package. `{ deps }` is the seam **every** adapter
 accepts, so the same `deps` mounts on Express, Fastify, NestJS, or Next.js unchanged.
 
 Runnable version: [`examples/embed-graph`](../examples/embed-graph).
 
-> **⚠️ Auth is off by default.** `createInMemoryDeps` sets no `auth`, so the server it produces
+> **⚠️ Auth is off by default.** `embedInMemoryGraphs` sets no `auth`, so the server it produces
 > **authenticates nothing** — every request is allowed (the same default as a `langgraph.json` with no
 > `auth` block). That's fine behind your own middleware or on a private network, but mounting `{ deps }`
 > on a **public** app exposes `/threads`, `/runs`, and `/store` to anyone — including running your graph
@@ -76,7 +76,7 @@ Keys become graph ids (one auto-registered assistant each). Values are either a 
 defer expensive or key-requiring construction until a graph is actually run:
 
 ```ts
-createInMemoryDeps({
+embedInMemoryGraphs({
   echo, // a compiled graph, imported eagerly
   // built lazily on first use — keeps a keyless boot when the model needs an API key:
   agent: async () => (await import("./agent-graph.js")).graph,
@@ -92,7 +92,7 @@ the [`EmbeddableGraph`](#api-reference) type leaves the graph's generics open on
 `{ deps }` works with every adapter, in both its standalone and embedded form:
 
 ```ts
-const deps = createInMemoryDeps({ agent: graph });
+const deps = embedInMemoryGraphs({ agent: graph });
 
 // Express — standalone server, or mounted on your existing app:
 await createExpressServer({ deps }).listen(2024);
@@ -113,7 +113,7 @@ protocol same-origin behind a `useStream` UI. See [`examples/nextjs-app`](../exa
 
 ## Bring your own drivers, auth, logger
 
-`createInMemoryDeps(graphs, overrides)` takes a second argument that replaces any field of
+`embedInMemoryGraphs(graphs, overrides)` takes a second argument that replaces any field of
 `ProtocolDeps` except `graphs` (the first argument is the single source of graphs) — a driver, an
 `auth` engine, a `logger`. Supplying `auth` is how you close the open-by-default surface from the
 warning above:
@@ -121,7 +121,7 @@ warning above:
 ```ts
 import { loadAuthEngine } from "@skein-js/config";
 
-createInMemoryDeps({ agent: graph }, { auth: await loadAuthEngine(/* … */), logger: myLogger });
+embedInMemoryGraphs({ agent: graph }, { auth: await loadAuthEngine(/* … */), logger: myLogger });
 ```
 
 ## Going to production
@@ -137,7 +137,7 @@ import { createPostgresPool, PostgresSkeinStore } from "@skein-js/storage-postgr
 const checkpointer = new PostgresSaver(createPostgresPool(process.env.POSTGRES_URI!));
 await checkpointer.setup();
 
-const deps = createInMemoryDeps(
+const deps = embedInMemoryGraphs(
   { agent: graph },
   {
     store: await PostgresSkeinStore.connect(process.env.POSTGRES_URI!),
@@ -158,7 +158,7 @@ process, so they don't survive a function that scales to zero. See
 ## The one trade-off: schemas
 
 A **compiled** graph no longer carries its TypeScript source, so the in-code path can't extract real
-input/output/state JSON schemas — `createInMemoryDeps` returns a minimal `{ graph_id }` stub for the
+input/output/state JSON schemas — `embedInMemoryGraphs` returns a minimal `{ graph_id }` stub for the
 assistants introspection endpoints. This is enough for **everything `useStream` and Agent Chat UI
 render**; the only thing that degrades is **LangGraph Studio's** schema-driven forms and its graph/step
 views. If you need full static schemas, use the [`{ config }` path](./langgraph-cli-compat.md) — the
@@ -170,9 +170,9 @@ From [`@skein-js/server-kit`](../packages/server-kit):
 
 ```ts
 // Build a ProtocolDeps around in-process drivers. Pass a graph map OR a ready GraphResolver.
-function createInMemoryDeps(
+function embedInMemoryGraphs(
   graphs: GraphResolver | Record<string, EmbeddableGraph>,
-  overrides?: Partial<ProtocolDeps>,
+  overrides?: Omit<Partial<ProtocolDeps>, "graphs">, // every driver/auth/logger except `graphs`
 ): ProtocolDeps;
 
 // Turn just the graph map into a GraphResolver (the ids/load/schemas seam the engine consumes).
@@ -181,6 +181,9 @@ function graphMapToResolver(graphs: Record<string, EmbeddableGraph>): GraphResol
 // A graph you can embed: any compiled LangGraph.js graph, or a factory that builds one per run.
 type EmbeddableGraph = CompiledGraph<any> | ((config: { configurable?: Record<string, unknown> }) => …);
 ```
+
+> `embedInMemoryGraphs` was previously named `createInMemoryDeps`. The old name is still exported as a
+> deprecated alias, so existing imports keep working — prefer `embedInMemoryGraphs` in new code.
 
 `graphMapToResolver` is useful on its own when you want the resolver but your **own** `ProtocolDeps`
 (e.g. Postgres/Redis drivers): `buildRuntime`-style deps with `graphs: graphMapToResolver({ agent })`.

@@ -81,10 +81,10 @@ export function graphMapToResolver(graphs: Record<string, EmbeddableGraph>): Gra
  * factories), or a ready {@link GraphResolver}. Hand the result to any adapter's `{ deps }` seam:
  *
  * ```ts
- * import { createInMemoryDeps } from "@skein-js/server-kit";
+ * import { embedInMemoryGraphs } from "@skein-js/server-kit";
  * import { createExpressServer } from "@skein-js/express";
  *
- * createExpressServer({ deps: createInMemoryDeps({ myAgent: graph }) }).listen(2024);
+ * createExpressServer({ deps: embedInMemoryGraphs({ myAgent: graph }) }).listen(2024);
  * ```
  *
  * `overrides` replaces any driver or adds `auth`/`logger` — e.g. swap in a Postgres store + Redis
@@ -92,7 +92,7 @@ export function graphMapToResolver(graphs: Record<string, EmbeddableGraph>): Gra
  * `overrides` (the first argument is the single source of graphs), so a stray `graphs` key can't
  * silently void it.
  */
-export function createInMemoryDeps(
+export function embedInMemoryGraphs(
   graphs: GraphResolver | Record<string, EmbeddableGraph>,
   overrides: Omit<Partial<ProtocolDeps>, "graphs"> = {},
 ): ProtocolDeps {
@@ -105,3 +105,9 @@ export function createInMemoryDeps(
     ...overrides,
   };
 }
+
+/**
+ * @deprecated Renamed to {@link embedInMemoryGraphs} — the function takes graphs and returns a
+ * `ProtocolDeps`, not a graph. Kept for back-compat; slated for removal in a future major.
+ */
+export const createInMemoryDeps = embedInMemoryGraphs;

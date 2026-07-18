@@ -12,7 +12,11 @@
 
 import type { IncomingMessage, ServerResponse } from "node:http";
 
-import { foldThreadId, matchSkeinRoute, type ProtocolRequest } from "@skein-js/agent-protocol";
+import {
+  copyThreadIdIntoBody,
+  matchSkeinRoute,
+  type ProtocolRequest,
+} from "@skein-js/agent-protocol";
 import {
   applyNodeCors,
   sendNodeError,
@@ -122,7 +126,7 @@ export function createSkeinPagesHandler(options: SkeinPagesHandlerOptions): Skei
       };
       const invoke = resolved.runtime.handlers[match.binding.handler];
       const response = await invoke(
-        match.binding.foldThreadIdIntoBody ? foldThreadId(request) : request,
+        match.binding.foldThreadIdIntoBody ? copyThreadIdIntoBody(request) : request,
       );
       await sendNodeResponse(response, res);
     } catch (error) {

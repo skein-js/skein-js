@@ -89,7 +89,7 @@ Steps 1–10 below are complete: the dev loop **and** self-hosted production bot
 
 - ✅ **In-code embedding on-ramp** — a second way in for LangGraph.js users who never adopted the
   Platform's project shape: bring a compiled graph (or a map of them) in code and get the full Agent
-  Protocol server with **no `langgraph.json` and no CLI**. `createInMemoryDeps(graphs, overrides?)` and
+  Protocol server with **no `langgraph.json` and no CLI**. `embedInMemoryGraphs(graphs, overrides?)` and
   `graphMapToResolver(graphs)` in [`@skein-js/server-kit`](../packages/server-kit) turn a graph map into
   a `ProtocolDeps` backed by in-memory drivers, handed to any adapter's existing `{ deps }` seam;
   `overrides` swaps in Postgres/Redis for production. The engine was already runtime-config-decoupled

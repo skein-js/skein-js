@@ -12,7 +12,7 @@ import { createRequire, isBuiltin } from "node:module";
 import path from "node:path";
 
 import { loadConfig, parseGraphSpec } from "@skein-js/config";
-import { embedRuntimePackage, isCustomFunctionPath } from "@skein-js/runtime";
+import { providerEmbedPackage, isCustomFunctionPath } from "@skein-js/runtime";
 import type { Plugin } from "vite";
 
 import { precomputeSchemas } from "./precompute-schemas.js";
@@ -226,7 +226,7 @@ export async function bundleProject(options: BundleProjectOptions): Promise<Buil
   //  • a `provider:model` embed dynamically imports `@langchain/<provider>` (never a code import);
   //  • `langgraph.json` `dependencies` — the user's escape hatch for packages loaded by name.
   // The old full-install image happened to carry these; the slim image must add them or break.
-  const embedPkg = config.store?.index?.embed && embedRuntimePackage(config.store.index.embed);
+  const embedPkg = config.store?.index?.embed && providerEmbedPackage(config.store.index.embed);
   if (embedPkg) dependencies[embedPkg] = resolveInstalledVersion(embedPkg, workspaceRoot);
   for (const dep of config.dependencies ?? []) {
     // Skip local-path deps (".", "./pkg") — those are the project's own source, already bundled.

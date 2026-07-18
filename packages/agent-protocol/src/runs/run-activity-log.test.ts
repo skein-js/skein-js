@@ -7,7 +7,7 @@ import { describe, expect, it } from "vitest";
 
 import { createFixtureDeps } from "../__fixtures__/deps.js";
 import { createContext } from "../context.js";
-import { buildProtocolService } from "../service.js";
+import { createProtocolServiceFromContext } from "../service.js";
 
 /** A logger that records every info/error line for assertions. */
 function capturingLogger(): Logger & { lines: string[] } {
@@ -22,7 +22,7 @@ function capturingLogger(): Logger & { lines: string[] } {
 }
 
 async function runEcho(deps = createFixtureDeps()) {
-  const service = buildProtocolService(createContext(deps));
+  const service = createProtocolServiceFromContext(createContext(deps));
   await service.assistants.registerGraphAssistants();
   await service.runs.createWait({ assistant_id: "echo", input: { value: "hi" } });
 }

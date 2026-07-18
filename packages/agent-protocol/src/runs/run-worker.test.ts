@@ -3,7 +3,7 @@ import { describe, expect, it } from "vitest";
 import { createFixtureDeps } from "../__fixtures__/deps.js";
 import { createContext } from "../context.js";
 import type { Logger } from "../deps.js";
-import { buildProtocolService } from "../service.js";
+import { createProtocolServiceFromContext } from "../service.js";
 
 import { createRunWorker } from "./run-worker.js";
 
@@ -32,7 +32,7 @@ describe("run worker", () => {
   it("dequeues a background run and executes it to success", async () => {
     const deps = createFixtureDeps();
     const ctx = createContext(deps);
-    const service = buildProtocolService(ctx);
+    const service = createProtocolServiceFromContext(ctx);
     await service.assistants.registerGraphAssistants();
     const worker = createRunWorker(ctx);
     worker.start();
@@ -53,7 +53,7 @@ describe("run worker", () => {
     const logger = capturingLogger();
     const deps = createFixtureDeps({ logger });
     const ctx = createContext(deps);
-    const service = buildProtocolService(ctx);
+    const service = createProtocolServiceFromContext(ctx);
     await service.assistants.registerGraphAssistants();
     const worker = createRunWorker(ctx);
     worker.start();
@@ -78,7 +78,7 @@ describe("run worker", () => {
   it("skips a run that was cancelled while still queued", async () => {
     const deps = createFixtureDeps();
     const ctx = createContext(deps);
-    const service = buildProtocolService(ctx);
+    const service = createProtocolServiceFromContext(ctx);
     await service.assistants.registerGraphAssistants();
     const thread = await service.threads.create();
     const run = await service.runs.createBackground(thread.thread_id, {
@@ -100,7 +100,7 @@ describe("run worker", () => {
   it("stop() aborts an in-flight run past the grace deadline", async () => {
     const deps = createFixtureDeps();
     const ctx = createContext(deps);
-    const service = buildProtocolService(ctx);
+    const service = createProtocolServiceFromContext(ctx);
     await service.assistants.registerGraphAssistants();
     const worker = createRunWorker(ctx, { shutdownGraceMs: 30 });
     worker.start();

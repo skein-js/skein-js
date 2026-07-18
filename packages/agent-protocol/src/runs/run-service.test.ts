@@ -2,11 +2,11 @@ import { describe, expect, it } from "vitest";
 
 import { collect, createFixtureDeps } from "../__fixtures__/deps.js";
 import { createContext } from "../context.js";
-import { buildProtocolService } from "../service.js";
+import { createProtocolServiceFromContext } from "../service.js";
 
 async function serviceWithAssistants(deps = createFixtureDeps()) {
   const ctx = createContext(deps);
-  const service = buildProtocolService(ctx);
+  const service = createProtocolServiceFromContext(ctx);
   await service.assistants.registerGraphAssistants();
   return { ctx, service };
 }
@@ -73,7 +73,7 @@ describe("run service", () => {
       permissions: ["read"],
     };
     const ctx = { ...createContext(deps), authUser, authScopes: ["run:write"] };
-    const service = buildProtocolService(ctx);
+    const service = createProtocolServiceFromContext(ctx);
     await service.assistants.registerGraphAssistants();
     const thread = await service.threads.create();
     const run = await service.runs.createBackground(thread.thread_id, {
