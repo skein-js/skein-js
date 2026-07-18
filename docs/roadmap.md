@@ -5,17 +5,15 @@
 
 ## Contents
 
-- [Phase 0 — Documentation & scaffolding](#phase-0--documentation--scaffolding--current)
+- [Phase 0 — Documentation & scaffolding](#phase-0--documentation--scaffolding-)
 - [Phase 1+ — Implementation](#phase-1--implementation)
   - [Done](#done-)
-  - [Remaining (MVP)](#remaining-mvp)
-- [Shipped beyond the original plan](#shipped-beyond-the-original-plan)
 - [Planned / coming soon (post-MVP)](#planned--coming-soon-post-mvp)
 - [Known gaps vs. the LangGraph CLI / Platform](#known-gaps-vs-the-langgraph-cli--platform)
 - [Non-goals for v1](#non-goals-for-v1)
 - [Verification](#verification)
 
-## Phase 0 — Documentation & scaffolding ✅ (current)
+## Phase 0 — Documentation & scaffolding ✅
 
 - Repo, license, README, `AGENTS.md`/`CLAUDE.md`, and this `docs/` set (incl.
   [reuse](./reuse.md), [code-practices](./code-practices.md), [testing](./testing.md)).
@@ -30,120 +28,73 @@
 
 ### Done ✅
 
-Steps 1–10 below are complete: the dev loop **and** self-hosted production both work end to end.
+Steps 1–11 below are complete: the dev loop, self-hosted production, **and** the full
+multi-framework adapter set all work end to end.
 
 1. ✅ **Scaffold core** — `@skein-js/core` skeleton with tsup build + vitest.
 2. ✅ **Types + `@skein-js/config`** — reuse `@langchain/langgraph-sdk` types + `@langchain/langgraph-api`
-   schemas for the wire contract (don't hand-roll); define `SkeinStore` + queue/pub-sub
-   interfaces; build `@skein-js/config` on `@langchain/langgraph-api`'s `./schema` parser for
-   `langgraph.json` loading (`path:export`, factory) early — everything downstream consumes it.
+   schemas for the wire contract; define the `SkeinStore` + queue/bus interfaces; `@skein-js/config`
+   loads and validates `langgraph.json` (`path:export`, factory).
 3. ✅ **Storage-memory + in-memory queue** — implement `SkeinStore` in-memory; conformance tests.
-4. ✅ **Core handlers + run engine** — assistants introspection, threads CRUD, the three run
-   modes, store CRUD; wire LangGraph `invoke`/`stream` + interrupt/resume; SSE mapping incl.
-   thread-scoped streaming + commands. The long-term store is injected into graph runs as a
-   LangGraph `BaseStore` (`getStore()`), matching LangGraph Platform — see [storage.md](./storage.md#long-term-memory-in-the-graph-getstore).
+4. ✅ **Core handlers + run engine** — assistants introspection, threads CRUD, the three run modes,
+   store CRUD; LangGraph `invoke`/`stream` + interrupt/resume; SSE streaming + commands. The store is
+   injected into runs as a LangGraph [`getStore()`](./storage.md#long-term-memory-in-the-graph-getstore) `BaseStore`.
 5. ✅ **`@skein-js/express`** — mount the handler table on an Express `Router`; SSE piping.
 6. ✅ **`skein` CLI — `dev`** — boots the Express server from `langgraph.json` in-process with
    hot reload, no Docker. The drop-in moment.
-7. ✅ **End-to-end / conformance** — drive with `@langchain/langgraph-sdk`; Agent Chat UI connects.
-   The model-backed FE/BE signal is `examples/gemini-chat` (a Gemini ReAct agent served by
-   `skein dev`) streamed into `examples/react-usestream` via `useStream`; `examples/chat-app` extends
-   this to a full research assistant (thinking + web search + memory) with a shadcn UI.
+7. ✅ **End-to-end / conformance** — driven by the real `@langchain/langgraph-sdk`; Agent Chat UI
+   connects. Model-backed signal: `examples/gemini-chat` → `examples/react-usestream` via `useStream`;
+   `examples/chat-app` is the full research-assistant flagship.
 8. ✅ **`@skein-js/redis`** — Redis queue + worker + cross-instance pub/sub streaming.
 9. ✅ **Storage-postgres + pgvector** — `SkeinStore` over `pg` + `PostgresSaver`; semantic
    store search; migrations.
-10. ✅ **CLI — `up` / `build` / `dockerfile`** — Docker Compose (Postgres + Redis); image build.
-    A [`@skein-js/runtime`](../packages/runtime) package assembles the production `ProtocolDeps`
-    (Postgres store + `PostgresSaver` + Redis queue/bus) behind the existing `{ deps }` seam, so both
-    `skein dev` and the Docker image boot the same engine. `skein dockerfile`/`build` generate a
-    Dockerfile from `langgraph.json`; `skein up` brings up app + `pgvector/pgvector` Postgres + Redis
-    via Docker Compose.
-    - **Pre-built production image (issue #2).** `skein build`/`up` no longer ship a `skein dev`-shaped
-      image. They bundle graphs (+ auth/embed) to plain JS on the host with `vite.build()` — the same
-      tsconfig-`paths`/workspace-alias resolution as `skein dev`, anchored at the workspace root — into
-      a self-contained `.skein/build` artifact (bundled JS + a production `langgraph.json` + a
-      precomputed `schemas.json` + a pinned `package.json`). The slim image installs prod deps only and
-      runs the artifact via a new **`skein start`** command (native `import()`, no vite, no reload). This
-      fixes monorepo builds (aliased `libs/**` are inlined at build time, sidestepping the docker
-      build-context gap), cuts cold-start (no runtime TS transform, graphs warmed at boot), and shrinks
-      the image (no dev toolchain). `vite` is now an `optionalDependency`, lazy-imported for `dev`/`build`
-      only — it never loads in the image.
-    - **`skein dev` now optionally uses the production drivers** via `--store postgres` / `--queue redis`
-      (connection URLs from `POSTGRES_URI` / `REDIS_URI`), instead of always the in-memory drivers.
-      This is a capability `langgraph dev` does **not** offer — it lets you develop and test against
-      production-shaped storage (durable checkpoints, cross-instance streaming, pgvector search)
-      without `skein up`/full Docker. Graph hot-reload still works; the `.skein/` snapshot is skipped
-      because durable stores persist inherently.
+10. ✅ **CLI — `up` / `build` / `dockerfile` / `start`** — [`@skein-js/runtime`](../packages/runtime)
+    assembles the production `ProtocolDeps` (Postgres store, `PostgresSaver`, and a Redis queue/bus)
+    behind the same `{ deps }` seam, so `skein dev` and the image boot the same engine. `skein build`/`up`
+    bundle graphs into a slim, pre-built image run by `skein start` (no runtime TS transform), and
+    `skein up` runs app, Postgres, and Redis via Compose. `skein dev` can also point at the production
+    drivers (`--store postgres` / `--queue redis`) — something `langgraph dev` can't. See
+    [langgraph-cli-compat.md](./langgraph-cli-compat.md).
 
-### Remaining (MVP)
+11. ✅ **Fastify + NestJS + Next.js adapters** — thin transport shims over the shared `skeinRoutes`
+    handler table, with the framework-agnostic pieces in [`@skein-js/server-kit`](../packages/server-kit).
+    Standalone (`create*Server`) and embedded (`skeinPlugin` / `SkeinModule.forRoot` / route handlers)
+    modes, each with a runnable example. The MVP adapter set is complete.
 
-11. ✅ **Fastify + NestJS + Next.js adapters** — **shipped.** Each is a thin transport shim over the
-    same core handler table + shared `skeinRoutes` (now in `@skein-js/agent-protocol`); the
-    framework-agnostic in-memory runtime / dev-state import / CORS mapping live in the new
-    `@skein-js/server-kit` so no adapter depends on another. Standalone servers
-    (`createFastifyServer` / `createNestServer` / `createSkeinRouteHandlers`) and embedded modes
-    (`skeinPlugin`, `SkeinModule.forRoot`, App/Pages Router route handlers) each ship a runnable
-    example. **The MVP adapter set is complete.**
+Also shipped, beyond the original MVP plan:
 
-## Shipped beyond the original plan
-
-- ✅ **In-code embedding on-ramp** — a second way in for LangGraph.js users who never adopted the
-  Platform's project shape: bring a compiled graph (or a map of them) in code and get the full Agent
-  Protocol server with **no `langgraph.json` and no CLI**. `embedInMemoryGraphs(graphs, overrides?)` and
-  `graphMapToResolver(graphs)` in [`@skein-js/server-kit`](../packages/server-kit) turn a graph map into
-  a `ProtocolDeps` backed by in-memory drivers, handed to any adapter's existing `{ deps }` seam;
-  `overrides` swaps in Postgres/Redis for production. The engine was already runtime-config-decoupled
-  (it consumes an injectable `GraphResolver`, not a config file) — this exposes that path publicly and
-  documents it. See [embedding.md](./embedding.md) and [`examples/embed-graph`](../examples/embed-graph).
-  The one trade-off vs the config path: schemas are stubbed (a compiled graph carries no source to
-  extract them from), which only affects LangGraph Studio, not `useStream` / Agent Chat UI.
-- ✅ **Authentication + authorization (LangGraph parity)** — custom auth via a `langgraph.json`
-  `auth` block that loads a `@langchain/langgraph-sdk/auth` `Auth` instance. Transport-neutral (in
-  [`@skein-js/agent-protocol`](../packages/agent-protocol), so every adapter inherits it): each
-  request is authenticated (`401`) and authorized per resource + action (`403`), with `@auth.on.*`
-  ownership filters scoping reads (non-owned → `404`) and stamping writes. Honors
-  `disable_studio_auth`. Reuses the SDK's `Auth` contract + langgraph-api's `isAuthMatching`; only
-  the instance-scoped dispatch is reimplemented (langgraph-api's `registerAuth` is module-global).
-  See [agent-protocol.md](./agent-protocol.md#authentication--authorization). **Follow-up (scale):**
-  push ownership filters into SQL on the Postgres driver (today filtering is in-process after a
-  fetch — correct at any size, but lists all rows first); per-owner scoping of `assistants` and
-  `store` (both gate-only today — assistants are auto-registered without an owner and store rows
-  carry no metadata).
-- ✅ **Assistants CRUD + versioning (LangGraph parity)** — beyond the auto-registered one-per-graph
-  assistant, the full `@langchain/langgraph-sdk` surface: `POST/PATCH/DELETE /assistants` (with
-  `if_exists` and `?delete_threads`), enhanced `search` (name/metadata/sort) + `count`, a **version
-  history** (`POST .../versions`) you can roll back to (`POST .../latest`), and graph/subgraph
-  introspection (`GET .../graph`, `.../subgraphs`). Each `PATCH` mints an immutable version; the live
-  row tracks the active one, so runs and history are unchanged. Versioning lives in `SkeinStore`'s
-  `AssistantRepo` (both drivers, one conformance suite; Postgres migration `0003`). See
-  [storage.md](./storage.md#assistant-versioning) and
-  [agent-protocol.md](./agent-protocol.md#assistants).
-- ✅ **Multitask / double-texting strategies (LangGraph parity)** — a second message arriving mid-run
-  is handled by all four `multitask_strategy` values: `reject` (busy thread → `422`, matching
-  langgraph-api), `enqueue` (the new run waits behind the active one), `interrupt` (stop the active
-  run keeping its work, then start), and `rollback` (stop the active run, discard its checkpoint
-  writes, then start). Lives in [`@skein-js/agent-protocol`](../packages/agent-protocol)'s run engine:
-  a per-thread execution lock serializes runs (enqueue), and rollback reverts the thread to the
-  displaced run's base checkpoint via the `BaseCheckpointSaver`. Fully correct in a single process
-  (the `langgraph dev` bar); cross-instance coordination is the same open Redis item as the existing
-  concurrency guard.
-- ✅ **Run-completion webhooks (LangGraph parity)** — a `webhook` URL on run creation is carried
-  through (and preserved by `import-langgraph`) and POSTed the settled run once it reaches a terminal
-  status, with LangGraph's payload shape (the run plus `status`, `run_started_at`/`run_ended_at`/
-  `webhook_sent_at`, final `values`, and an `error` on failure). Fired from the run engine's terminal
-  step (so every run mode delivers), best-effort via an injectable dispatcher (a delivery failure
-  never fails the run). The default dispatcher restricts the scheme to `http(s)`; because `webhook` is
-  a client-supplied URL the server POSTs to (an SSRF surface carrying the run's `values`), deployments
-  that accept untrusted clients should inject a `webhookDispatcher` that allowlists the target host —
-  the default stays permissive since internal webhook targets are legitimate in a self-hosted setup.
-- ✅ **True `events` stream mode (LangGraph parity)** — `stream_mode: "events"` now drives the graph
-  via LangGraph's `streamEvents` (v2) and streams token/tool/step events at full granularity, instead
-  of the old `updates` approximation. Requesting `events` alongside other modes yields both.
+- ✅ **In-code embedding on-ramp** — bring a compiled graph (or map) in code and get the full server
+  with **no `langgraph.json` and no CLI**: `embedInMemoryGraphs(graphs, overrides?)` builds an
+  in-memory `ProtocolDeps` for any adapter's `{ deps }` seam, and `embedPostgresGraphs(...)` does the
+  same backed by durable Postgres + Redis. See [embedding.md](./embedding.md) and
+  [`examples/embed-graph`](../examples/embed-graph).
+- ✅ **Authentication + authorization (LangGraph parity)** — custom auth via a `langgraph.json` `auth`
+  block loading a `@langchain/langgraph-sdk/auth` `Auth` instance; transport-neutral, so every adapter
+  inherits it. Per-request authenticate (`401`) + authorize per resource/action (`403`) with ownership
+  filters. See [agent-protocol.md](./agent-protocol.md#authentication--authorization). _Follow-up:_
+  push ownership filters into SQL, and per-owner scoping for `assistants` / `store`.
+- ✅ **Assistants CRUD + versioning (LangGraph parity)** — the full SDK surface beyond the
+  auto-registered one-per-graph assistant: `POST/PATCH/DELETE`, `search`/`count`, immutable version
+  history with rollback, and graph/subgraph introspection. See
+  [storage.md](./storage.md#assistant-versioning) and [agent-protocol.md](./agent-protocol.md#assistants).
+- ✅ **Multitask / double-texting (LangGraph parity)** — all four `multitask_strategy` values
+  (`reject` → `422`, `enqueue`, `interrupt`, `rollback`) via a per-thread execution lock in the run
+  engine. Single-process correct (the `langgraph dev` bar); cross-instance coordination is tracked with
+  the concurrency guard.
+- ✅ **Run-completion webhooks (LangGraph parity)** — a `webhook` URL on run creation is POSTed the
+  settled run at terminal status (LangGraph's payload shape), best-effort so a delivery failure never
+  fails the run. Inject a `webhookDispatcher` to allowlist hosts when accepting untrusted clients. See
+  [recipes.md](./recipes.md#run-completion-webhooks).
+- ✅ **True `events` stream mode (LangGraph parity)** — `stream_mode: "events"` drives the graph via
+  LangGraph's `streamEvents` (v2) for full token/tool/step granularity; combinable with other modes.
+- ✅ **`skein import-langgraph`** — import an existing LangGraph `.langgraph_api/` dev-state directory
+  (threads, runs, assistants, store) into skein, so adopting it off `langgraph dev` carries local state
+  over losslessly. See [langgraph-cli-compat.md](./langgraph-cli-compat.md).
 
 ## Planned / coming soon (post-MVP)
 
 These are on the map but not yet built. Want one sooner? Upvote or open an issue —
-<https://github.com/mainawycliffe/skein-js/issues>.
+<https://github.com/skein-js/skein-js/issues>.
 
 The next block is the LangGraph feature-parity backlog, listed **in priority order** (highest first):
 
@@ -164,14 +115,6 @@ The next block is the LangGraph feature-parity backlog, listed **in priority ord
 
 The remaining backlog is skein-js's own adapter/tooling roadmap:
 
-- ✅ **`@skein-js/nextjs` adapter — serve smaller graphs from Next.js API routes.** **Shipped.** Mount
-  the Agent Protocol inside an existing Next.js app — a single App Router catch-all
-  (`createSkeinRouteHandlers` → Web `Request`/`Response`, SSE as a `ReadableStream`) **or** a Pages
-  Router handler (`createSkeinPagesHandler`), same-origin with no separate server process. **Caveat:**
-  the background run worker (and the in-memory driver's shared state) need a long-lived Node process —
-  fine on `next start` with `runtime = 'nodejs'`, but serverless/edge deploys require the Redis queue
-  and Postgres store (steps 8–9). See [`examples/nextjs-app`](../examples/nextjs-app) (App Router +
-  `useStream` UI) and [`examples/nextjs-basic`](../examples/nextjs-basic) (Pages Router, headless).
 - 🗺️ **Custom-adapter example.** The [Building your own adapter](./building-an-adapter.md) guide
   exists; we still want a runnable `examples/custom-adapter` (a dependency-free Node `http` — or Hono
   — adapter over the transport-neutral handler table) as an executable, tested reference to accompany
@@ -181,30 +124,30 @@ The remaining backlog is skein-js's own adapter/tooling roadmap:
 
 skein-js aims to be a **drop-in for the LangGraph CLI**, so it's worth being explicit about what
 isn't covered yet. If you hit one of these — or a gap not listed here — please
-[file an issue](https://github.com/mainawycliffe/skein-js/issues); compatibility reports are the most
+[file an issue](https://github.com/skein-js/skein-js/issues); compatibility reports are the most
 valuable feedback we can get.
 
-| Capability                             | Status in skein-js | Notes                                                             |
-| -------------------------------------- | ------------------ | ----------------------------------------------------------------- |
-| `dev` / `up` / `build` / `dockerfile`  | ✅ shipped         | Drop-in for the LangGraph CLI commands.                           |
-| Assistants / threads / runs / store    | ✅ shipped         | Full Agent Protocol surface; three run modes; SSE streaming.      |
-| Thread search / copy                   | ✅ shipped         | Metadata/status filter + pagination; copy duplicates history.     |
-| Store item TTL                         | ✅ shipped         | `store.ttl` (default/refresh-on-read/sweep) + per-put `ttl`.      |
-| Distinct cancelled run status          | ✅ shipped         | Cancel resolves to `cancelled`, not `error`.                      |
-| Human-in-the-loop (interrupt/resume)   | ✅ shipped         | Via LangGraph checkpointers.                                      |
-| Auth + authorization                   | ✅ shipped         | LangGraph `Auth` parity — see below.                              |
-| Multitask / double-texting             | ✅ shipped         | `reject` (422) / `enqueue` / `interrupt` / `rollback`.            |
-| **Cron / scheduled runs**              | 🗺️ planned         | LangGraph Platform's Crons resource; not yet implemented.         |
-| **Time travel (fork from checkpoint)** | 🗺️ planned         | History is read-only today; fork/update-state planned.            |
-| Assistants CRUD + versioning           | ✅ shipped         | Create/update/delete + version history/rollback; graph/subgraphs. |
-| **MCP endpoint (`/mcp`)**              | 🗺️ planned         | LangGraph exposes graphs as MCP tools; not yet implemented.       |
-| Run-completion webhooks                | ✅ shipped         | `webhook` URL POSTed the settled run on completion.               |
-| True `events` stream mode              | ✅ shipped         | Real `streamEvents` (v2); full token/tool/step granularity.       |
-| Fastify / NestJS adapters              | ✅ shipped         | Plugin / `SkeinModule`; standalone + embedded examples.           |
-| Next.js API-route adapter              | ✅ shipped         | App Router + Pages Router; same-origin, `useStream` UI example.   |
-| WebSocket streaming transport          | ❌ non-goal (v1)   | SSE covers the client UX; does not affect the React SDK.          |
-| `deploy` to a hosted platform          | ❌ non-goal        | skein-js is self-hosted by design.                                |
-| Full OpenTelemetry observability       | ❌ non-goal (v1)   | May revisit post-v1.                                              |
+| Capability                             | Status in skein-js | Notes                                                                        |
+| -------------------------------------- | ------------------ | ---------------------------------------------------------------------------- |
+| `dev` / `up` / `build` / `dockerfile`  | ✅ shipped         | Drop-in for the LangGraph CLI, plus skein-only `start` + `import-langgraph`. |
+| Assistants / threads / runs / store    | ✅ shipped         | Full Agent Protocol surface; three run modes; SSE streaming.                 |
+| Thread search / copy                   | ✅ shipped         | Metadata/status filter + pagination; copy duplicates history.                |
+| Store item TTL                         | ✅ shipped         | `store.ttl` (default/refresh-on-read/sweep) + per-put `ttl`.                 |
+| Distinct cancelled run status          | ✅ shipped         | Cancel resolves to `cancelled`, not `error`.                                 |
+| Human-in-the-loop (interrupt/resume)   | ✅ shipped         | Via LangGraph checkpointers.                                                 |
+| Auth + authorization                   | ✅ shipped         | LangGraph `Auth` parity — see below.                                         |
+| Multitask / double-texting             | ✅ shipped         | `reject` (422) / `enqueue` / `interrupt` / `rollback`.                       |
+| **Cron / scheduled runs**              | 🗺️ planned         | LangGraph Platform's Crons resource; not yet implemented.                    |
+| **Time travel (fork from checkpoint)** | 🗺️ planned         | History is read-only today; fork/update-state planned.                       |
+| Assistants CRUD + versioning           | ✅ shipped         | Create/update/delete + version history/rollback; graph/subgraphs.            |
+| **MCP endpoint (`/mcp`)**              | 🗺️ planned         | LangGraph exposes graphs as MCP tools; not yet implemented.                  |
+| Run-completion webhooks                | ✅ shipped         | `webhook` URL POSTed the settled run on completion.                          |
+| True `events` stream mode              | ✅ shipped         | Real `streamEvents` (v2); full token/tool/step granularity.                  |
+| Fastify / NestJS adapters              | ✅ shipped         | Plugin / `SkeinModule`; standalone + embedded examples.                      |
+| Next.js API-route adapter              | ✅ shipped         | App Router + Pages Router; same-origin, `useStream` UI example.              |
+| WebSocket streaming transport          | ❌ non-goal (v1)   | SSE covers the client UX; does not affect the React SDK.                     |
+| `deploy` to a hosted platform          | ❌ non-goal        | skein-js is self-hosted by design.                                           |
+| Full OpenTelemetry observability       | ❌ non-goal (v1)   | May revisit post-v1.                                                         |
 
 ## Non-goals for v1
 

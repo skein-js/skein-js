@@ -37,7 +37,10 @@ instead of hand-writing (or regenerating) a parallel set. See [reuse.md](./reuse
 
 ## Endpoint inventory
 
-Priority for v1 is marked **✅ MVP**. Deferred items are noted.
+Every endpoint below is implemented (✅). The route table in
+[`packages/agent-protocol/src/http/routes.ts`](../packages/agent-protocol/src/http/routes.ts) is the
+source of truth — paths mirror the `@langchain/langgraph-sdk` client, so runs are addressed
+thread-scoped (`/threads/{thread_id}/runs/{run_id}`).
 
 ### Assistants
 
@@ -63,15 +66,16 @@ version and mirrors its fields, and `POST .../latest` rolls back to any past ver
 
 ### Threads
 
-| Method   | Path                           | MVP |
-| -------- | ------------------------------ | --- |
-| `POST`   | `/threads`                     | ✅  |
-| `GET`    | `/threads/{thread_id}`         | ✅  |
-| `POST`   | `/threads/search`              | ✅  |
-| `GET`    | `/threads/{thread_id}/history` |     |
-| `PATCH`  | `/threads/{thread_id}`         |     |
-| `POST`   | `/threads/{thread_id}/copy`    | ✅  |
-| `DELETE` | `/threads/{thread_id}`         | ✅  |
+| Method   | Path                           | Notes                                         |
+| -------- | ------------------------------ | --------------------------------------------- |
+| `POST`   | `/threads`                     |                                               |
+| `GET`    | `/threads/{thread_id}`         |                                               |
+| `POST`   | `/threads/search`              |                                               |
+| `GET`    | `/threads/{thread_id}/state`   | Current state snapshot (`useStream` hydrates) |
+| `POST`   | `/threads/{thread_id}/history` | Checkpoint history, newest-first              |
+| `PATCH`  | `/threads/{thread_id}`         |                                               |
+| `POST`   | `/threads/{thread_id}/copy`    | Duplicates the thread + its history           |
+| `DELETE` | `/threads/{thread_id}`         |                                               |
 
 **Filtering threads by graph.** `POST /threads/search` matches on a metadata subset. When a run is
 created, skein stamps the run's `graph_id` and `assistant_id` into the thread's metadata (matching
@@ -93,25 +97,25 @@ The stamp reflects the thread's most recent run; a thread that has never run car
 
 ### Runs — background (thread-scoped)
 
-| Method   | Path                           | MVP |
-| -------- | ------------------------------ | --- |
-| `POST`   | `/threads/{thread_id}/runs`    | ✅  |
-| `GET`    | `/threads/{thread_id}/runs`    |     |
-| `GET`    | `/runs/{run_id}`               | ✅  |
-| `GET`    | `/runs/{run_id}/wait`          |     |
-| `GET`    | `/runs/{run_id}/stream` (join) | ✅  |
-| `POST`   | `/runs/{run_id}/cancel`        | ✅  |
-| `DELETE` | `/runs/{run_id}`               |     |
+| Method   | Path                                               | Notes                            |
+| -------- | -------------------------------------------------- | -------------------------------- |
+| `POST`   | `/threads/{thread_id}/runs`                        | Start a background run           |
+| `GET`    | `/threads/{thread_id}/runs`                        | List a thread's runs             |
+| `GET`    | `/threads/{thread_id}/runs/{run_id}`               | Fetch one run                    |
+| `GET`    | `/threads/{thread_id}/runs/{run_id}/stream` (join) | Join a run's stream              |
+| `POST`   | `/threads/{thread_id}/runs/{run_id}/cancel`        | Cancel a run                     |
+| `DELETE` | `/threads/{thread_id}/runs/{run_id}`               | Delete a run                     |
+| `GET`    | `/runs/{run_id}/stream` (join)                     | Join by run id (thread-agnostic) |
 
 ### Store (long-term memory)
 
-| Method   | Path                                      | MVP |
-| -------- | ----------------------------------------- | --- |
-| `PUT`    | `/store/items`                            |     |
-| `GET`    | `/store/items`                            |     |
-| `DELETE` | `/store/items`                            |     |
-| `POST`   | `/store/items/search` (pgvector semantic) | ✅  |
-| `POST`   | `/store/namespaces`                       |     |
+| Method   | Path                  | Notes                           |
+| -------- | --------------------- | ------------------------------- |
+| `PUT`    | `/store/items`        | Upsert an item (optional `ttl`) |
+| `GET`    | `/store/items`        | Fetch by namespace + key        |
+| `DELETE` | `/store/items`        |                                 |
+| `POST`   | `/store/items/search` | pgvector semantic search        |
+| `POST`   | `/store/namespaces`   | List namespaces                 |
 
 ### Thread streaming (SSE)
 
@@ -134,10 +138,10 @@ The stamp reflects the thread's most recent run; a thread that has never run car
 ## Authentication + authorization
 
 Auth is **transport-neutral**: it lives in `@skein-js/agent-protocol`, wrapping the handler table
-every adapter mounts, so Express / Fastify / Nest inherit it identically. It is active only when a
-`langgraph.json` `auth` block loads an `Auth` instance (see
-[langgraph-cli-compat.md](./langgraph-cli-compat.md#authentication--authorization-auth)); otherwise the
-server is unauthenticated.
+every adapter mounts, so Express, Fastify, NestJS, and Next.js inherit it identically. It's active only
+when an `Auth` engine is configured — a `langgraph.json` `auth` block (see
+[langgraph-cli-compat.md](./langgraph-cli-compat.md#authentication--authorization-auth)) or an injected
+`auth` dep; otherwise the server is unauthenticated.
 
 Per request the wrapper:
 
@@ -148,46 +152,38 @@ Per request the wrapper:
 2. **Authorizes** — looks up the route's resource + action, runs the matching `@auth.on.*` handler
    (priority: `resource:action` → `resource` → `*:action` → `*`) → `403` on `false`, else ownership
    **filters**.
-3. **Dispatches** — through a per-request service that carries the authenticated `user`; when
-   filters were returned its `SkeinStore` is also an auth-scoped decorator closed over those filters
-   (the shared cancellation registry + thread locks are reused; only the store is swapped). The
-   decorator filters reads (a non-owned row reads as absent → `404`, never `403`), and stamps the
-   filter's values onto created rows so later reads match. It scopes only the `threads` family —
-   threads + their runs (runs inherit their thread's owner). `assistants` and `store` are gate-only:
-   their `@auth.on.*` handlers can deny (`403`), but no ownership filter is applied — graph assistants
-   are auto-registered with no owner and must stay visible to run, and store items carry no metadata
-   to filter on (per-owner scoping of both is a Depth-2 follow-up).
+3. **Dispatches** — through a per-request service carrying the authenticated `user`. When a filter is
+   returned, ownership scoping applies to the `threads` family (threads + their runs): a non-owned row
+   reads as absent (`404`, never `403`), and the filter's values are stamped onto rows it creates.
+   `assistants` and `store` are **gate-only** — their handlers can deny (`403`), but no ownership filter
+   is applied yet (graph assistants have no owner and must stay runnable; store items carry no metadata
+   to filter on).
 
-**Principal in the run config.** A run stores the authenticated caller on its (opaque) kwargs, so the
-run engine injects it into the graph's `configurable` — matching `@langchain/langgraph-api`'s
-`applyAuthToRunConfig`. Graph nodes and tools read it exactly as on LangGraph Platform:
-`config.configurable.langgraph_auth_user` (the full user object, custom fields included), plus
-`langgraph_auth_user_id` (the caller's `identity`) and `langgraph_auth_permissions` (their scopes).
-These three keys are server-owned and reserved: a client cannot spoof them via its own `configurable`.
-Persisting on the run (not just request memory) means a background run picked up by a worker on
-another instance still injects the same principal. When no `auth` is configured, no keys are added —
-identical to `langgraph dev`.
+**Principal in the run config.** The authenticated caller is injected into the graph's `configurable`,
+matching LangGraph Platform, so nodes and tools read `config.configurable.langgraph_auth_user` (the
+full user), `langgraph_auth_user_id` (its `identity`), and `langgraph_auth_permissions` (its scopes).
+These three keys are server-owned and reserved — a client can't spoof them via its own `configurable` —
+and are persisted on the run, so a background run resumed on another instance injects the same
+principal. With no `auth` configured, no keys are added (identical to `langgraph dev`).
 
 Route → resource/action (runs authorize through their owning thread — there is no `runs` resource):
 
-| Endpoint(s)                                                                       | resource\:action                                |
-| --------------------------------------------------------------------------------- | ----------------------------------------------- |
-| `GET /assistants/{id}`, `/assistants/{id}/schemas`                                | `assistants:read`                               |
-| `POST /assistants/search`                                                         | `assistants:search`                             |
-| `POST /threads`                                                                   | `threads:create`                                |
-| `GET /threads/{id}`, `/state`, `/history`; `GET .../runs`, `/runs/{id}`, run join | `threads:read`                                  |
-| `POST /threads/search`                                                            | `threads:search`                                |
-| `PATCH /threads/{id}`; run cancel                                                 | `threads:update`                                |
-| `DELETE /threads/{id}`; run delete                                                | `threads:delete`                                |
-| run create (wait/stream/background), thread stream / commands                     | `threads:create_run`                            |
-| `PUT/GET/DELETE /store/items`, `/store/items/search`, `/store/namespaces`         | `store:{put,get,delete,search,list_namespaces}` |
+| Endpoint(s)                                                                                   | resource\:action                                |
+| --------------------------------------------------------------------------------------------- | ----------------------------------------------- |
+| `GET /assistants/{id}`, `/assistants/{id}/schemas`                                            | `assistants:read`                               |
+| `POST /assistants/search`                                                                     | `assistants:search`                             |
+| `POST /threads`                                                                               | `threads:create`                                |
+| `GET /threads/{id}`, `/state`; `POST /history`; `GET .../runs`, `.../runs/{run_id}`, run join | `threads:read`                                  |
+| `POST /threads/search`                                                                        | `threads:search`                                |
+| `PATCH /threads/{id}`; run cancel                                                             | `threads:update`                                |
+| `DELETE /threads/{id}`; run delete                                                            | `threads:delete`                                |
+| run create (wait/stream/background), thread stream / commands                                 | `threads:create_run`                            |
+| `PUT/GET/DELETE /store/items`, `/store/items/search`, `/store/namespaces`                     | `store:{put,get,delete,search,list_namespaces}` |
 
-**Reuse & limits.** The `Auth` contract and the pure `isAuthMatching` filter semantics
-(`$eq`/`$contains`) come from `@langchain/*`; skein reimplements only the small, instance-scoped
-dispatch (langgraph-api's `registerAuth` is module-global, which skein's DI design avoids). Store
-items carry no metadata, so `store:*` handlers can deny/allow but ownership _filtering_ of store
-items is deferred; ownership filtering is applied in-process after a fetch (correct at any scale,
-with a SQL-pushdown follow-up on the roadmap for large tenants).
+**Reuse & limits.** The `Auth` contract and the `$eq`/`$contains` filter semantics come from
+`@langchain/*`; skein adds only the instance-scoped dispatch (see [reuse.md](./reuse.md)). Ownership
+filtering runs in-process after a fetch (correct at any scale; a SQL-pushdown for large tenants — plus
+per-owner scoping of `assistants`/`store` — is on the [roadmap](./roadmap.md)).
 
 ## Conformance strategy
 
