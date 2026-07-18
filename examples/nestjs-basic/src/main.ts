@@ -1,4 +1,4 @@
-// Serve this example's `langgraph.json` (the zero-setup `echo` graph + a Claude `agent` graph) with
+// Serve this example's `langgraph.json` (the zero-setup `echo` graph + a Gemini `agent` graph) with
 // @skein-js/nestjs — a standalone NestJS server whose only job is to serve the graphs. Run it
 // directly with `tsx src/main.ts` (PORT overridable), or import `startServer` in a test.
 

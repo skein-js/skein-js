@@ -4,9 +4,10 @@ import { useStream } from "@langchain/langgraph-sdk/react";
 import { useState } from "react";
 
 // Full-stack, single origin: the UI talks to the Agent Protocol served by this same app's
-// `app/api/[...path]/route.ts`, so `apiUrl` is just the relative `/api` — no CORS, no second server.
-// Defaults to the zero-setup `echo` graph; set NEXT_PUBLIC_SKEIN_ASSISTANT_ID=agent (with an
-// ANTHROPIC_API_KEY) to talk to the Claude ReAct agent instead.
+// `app/api/[...path]/route.ts` — same-origin, no CORS, no second server. `useStream` builds
+// `new URL(apiUrl)`, which needs an ABSOLUTE URL, so we derive it from the current origin rather than
+// passing a bare `/api`. The chat always talks to the real Gemini `agent` graph (needs GOOGLE_API_KEY);
+// the zero-setup `echo` graph is still served for the SDK/tests, just not wired to this UI.
 
 /** Flatten a message's `content` to display text (models may return string | parts | null). */
 function messageText(content: unknown): string {
@@ -27,11 +28,15 @@ function speakerFor(type: string): { label: string; color: string } {
 }
 
 export default function Page() {
-  const assistantId = process.env.NEXT_PUBLIC_SKEIN_ASSISTANT_ID ?? "echo";
+  // Hard-coded to the real Gemini agent so the UI always chats with a live graph (not the echo toy).
+  const assistantId = "agent";
   const [input, setInput] = useState("");
 
-  // Same-origin: this app serves the protocol under /api.
-  const thread = useStream({ apiUrl: "/api", assistantId });
+  // Same-origin `/api`, but as an absolute URL (the SDK constructs `new URL(apiUrl)`). `window` is
+  // available on the client; the SSR fallback is never fetched (the client re-renders before submit).
+  const apiUrl =
+    typeof window === "undefined" ? "http://localhost:2024/api" : `${window.location.origin}/api`;
+  const thread = useStream({ apiUrl, assistantId });
 
   return (
     <main style={{ maxWidth: 720, margin: "0 auto", padding: "2rem 1rem" }}>

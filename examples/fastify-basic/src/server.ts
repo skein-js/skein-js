@@ -1,4 +1,4 @@
-// Serve this example's `langgraph.json` (the zero-setup `echo` graph + a Claude `agent` graph) over
+// Serve this example's `langgraph.json` (the zero-setup `echo` graph + a Gemini `agent` graph) over
 // HTTP with @skein-js/fastify — a standalone Fastify server whose only job is to serve the graphs.
 // Run it directly with `tsx src/server.ts` (PORT overridable), or import `startServer` in a test to
 // drive it with the LangGraph SDK.

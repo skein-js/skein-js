@@ -2,12 +2,12 @@
 
 The **hello world**: a zero-setup skein-js server with **two graphs** declared in one
 [`langgraph.json`](./langgraph.json) — a deterministic `echo` graph that needs no API key, and a real
-Claude `agent` that streams over SSE.
+Gemini `agent` that streams over SSE.
 
-| Graph id | File                                         | Needs a key?           | Good for                                                         |
-| -------- | -------------------------------------------- | ---------------------- | ---------------------------------------------------------------- |
-| `echo`   | [`src/echo-graph.ts`](./src/echo-graph.ts)   | ❌ no                  | Zero-setup protocol/streaming playground — echoes your message.  |
-| `agent`  | [`src/agent-graph.ts`](./src/agent-graph.ts) | ✅ `ANTHROPIC_API_KEY` | A real Claude ReAct agent with a tool; token streaming over SSE. |
+| Graph id | File                                         | Needs a key?        | Good for                                                         |
+| -------- | -------------------------------------------- | ------------------- | ---------------------------------------------------------------- |
+| `echo`   | [`src/echo-graph.ts`](./src/echo-graph.ts)   | ❌ no               | Zero-setup protocol/streaming playground — echoes your message.  |
+| `agent`  | [`src/agent-graph.ts`](./src/agent-graph.ts) | ✅ `GOOGLE_API_KEY` | A real Gemini ReAct agent with a tool; token streaming over SSE. |
 
 Both are plain LangGraph.js graphs — skein-js serves them unchanged.
 
@@ -65,5 +65,5 @@ pnpm test     # unit test for the echo graph (no key, no network)
 ## What to look at
 
 - [`src/echo-graph.ts`](./src/echo-graph.ts) — the deterministic, zero-dependency graph.
-- [`src/agent-graph.ts`](./src/agent-graph.ts) — the Claude ReAct agent with a `get_weather` tool.
+- [`src/agent-graph.ts`](./src/agent-graph.ts) — the Gemini ReAct agent with a `get_weather` tool.
 - [`langgraph.json`](./langgraph.json) — the multi-graph declaration.

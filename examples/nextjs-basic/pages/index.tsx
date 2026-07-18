@@ -35,7 +35,7 @@ const reply = await client.runs.wait(thread.thread_id, "echo", {
       </pre>
       <p>
         Graphs: <code>echo</code> (zero-setup) and <code>agent</code> (needs{" "}
-        <code>ANTHROPIC_API_KEY</code>).
+        <code>GOOGLE_API_KEY</code>).
       </p>
     </main>
   );

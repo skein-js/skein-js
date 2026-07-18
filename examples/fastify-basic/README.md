@@ -3,12 +3,12 @@
 A **standalone Fastify server** whose only job is to serve your graphs — the Fastify counterpart of
 [`express-basic`](../express-basic). Two graphs are declared in one
 [`langgraph.json`](./langgraph.json): a deterministic `echo` graph that needs no API key, and a real
-Claude `agent` that streams over SSE.
+Gemini `agent` that streams over SSE.
 
-| Graph id | File                                         | Needs a key?           | Good for                                                         |
-| -------- | -------------------------------------------- | ---------------------- | ---------------------------------------------------------------- |
-| `echo`   | [`src/echo-graph.ts`](./src/echo-graph.ts)   | ❌ no                  | Zero-setup protocol/streaming playground — echoes your message.  |
-| `agent`  | [`src/agent-graph.ts`](./src/agent-graph.ts) | ✅ `ANTHROPIC_API_KEY` | A real Claude ReAct agent with a tool; token streaming over SSE. |
+| Graph id | File                                         | Needs a key?        | Good for                                                         |
+| -------- | -------------------------------------------- | ------------------- | ---------------------------------------------------------------- |
+| `echo`   | [`src/echo-graph.ts`](./src/echo-graph.ts)   | ❌ no               | Zero-setup protocol/streaming playground — echoes your message.  |
+| `agent`  | [`src/agent-graph.ts`](./src/agent-graph.ts) | ✅ `GOOGLE_API_KEY` | A real Gemini ReAct agent with a tool; token streaming over SSE. |
 
 ## The whole server
 

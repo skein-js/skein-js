@@ -10,8 +10,8 @@ import { MemorySaver } from "@langchain/langgraph";
 import type { GraphResolver, GraphSchemas, ProtocolDeps } from "@skein-js/agent-protocol";
 import { MemoryRunEventBus, MemoryRunQueue, MemorySkeinStore } from "@skein-js/storage-memory";
 
-// `echo` is a pure, zero-setup graph — safe to import statically. `agent` constructs a `ChatAnthropic`
-// at module load (which throws without ANTHROPIC_API_KEY), so it is imported lazily, only when the
+// `echo` is a pure, zero-setup graph — safe to import statically. `agent` constructs a `ChatGoogleGenerativeAI`
+// at module load (which throws without GOOGLE_API_KEY), so it is imported lazily, only when the
 // `agent` graph is actually requested — that keeps a keyless build and the echo path model-free.
 import { graph as echo } from "../graphs/echo-graph";
 

@@ -3,7 +3,7 @@
 A **standalone NestJS server** whose only job is to serve your graphs — the NestJS counterpart of
 [`express-basic`](../express-basic). Two graphs are declared in one
 [`langgraph.json`](./langgraph.json): a deterministic `echo` graph that needs no API key, and a real
-Claude `agent` that streams over SSE.
+Gemini `agent` that streams over SSE.
 
 ## The whole server
 

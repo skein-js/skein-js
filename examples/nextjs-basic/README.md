@@ -20,10 +20,10 @@ Graphs are **statically imported** and passed via the `{ deps }` seam (see
 [`lib/skein-deps.ts`](./lib/skein-deps.ts)) — Next bundles them, so this works under `next build` /
 `next start` (a `.ts` graph can't be dynamically `import()`ed at runtime in a Next server).
 
-| Graph id | Needs a key?           |
-| -------- | ---------------------- |
-| `echo`   | ❌ no                  |
-| `agent`  | ✅ `ANTHROPIC_API_KEY` |
+| Graph id | Needs a key?        |
+| -------- | ------------------- |
+| `echo`   | ❌ no               |
+| `agent`  | ✅ `GOOGLE_API_KEY` |
 
 ## How to run
 

@@ -2,7 +2,7 @@
   "name": "@skein-js/example-fastify-basic",
   "version": "0.0.0",
   "private": true,
-  "description": "Playable skein-js example: an echo graph (zero-setup) and a Claude ReAct agent, served from one langgraph.json by a standalone Fastify server.",
+  "description": "Playable skein-js example: an echo graph (zero-setup) and a Gemini ReAct agent, served from one langgraph.json by a standalone Fastify server.",
   "type": "module",
   "scripts": {
     "dev": "tsx watch src/server.ts",
@@ -10,7 +10,7 @@
   },
   "dependencies": {
     "@fastify/cors": "^10.0.1",
-    "@langchain/anthropic": "^1.5.0",
+    "@langchain/google-genai": "^2.2.0",
     "@langchain/core": "^1.2.0",
     "@langchain/langgraph": "^1.4.0",
     "@skein-js/fastify": "workspace:*",
