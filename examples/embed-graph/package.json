@@ -1,0 +1,22 @@
+{
+  "name": "@skein-js/example-embed-graph",
+  "version": "0.0.0",
+  "private": true,
+  "description": "In-code embedding: serve a LangGraph.js graph over the Agent Protocol with NO langgraph.json and NO CLI — createInMemoryDeps + the Express adapter.",
+  "type": "module",
+  "scripts": {
+    "dev": "tsx watch src/server.ts",
+    "start": "tsx src/server.ts"
+  },
+  "dependencies": {
+    "@langchain/core": "^1.2.0",
+    "@langchain/langgraph": "^1.4.0",
+    "@skein-js/express": "workspace:*",
+    "@skein-js/server-kit": "workspace:*",
+    "express": "^5.2.1"
+  },
+  "devDependencies": {
+    "@langchain/langgraph-sdk": "^1.9.0",
+    "tsx": "^4.19.2"
+  }
+}

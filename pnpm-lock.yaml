@@ -145,6 +145,31 @@ importers:
         specifier: ^5.7.2
         version: 5.9.3
 
+  examples/embed-graph:
+    dependencies:
+      '@langchain/core':
+        specifier: ^1.2.0
+        version: 1.2.2(ws@8.21.0)
+      '@langchain/langgraph':
+        specifier: ^1.4.0
+        version: 1.4.7(@langchain/core@1.2.2(ws@8.21.0))(react-dom@19.2.6(react@19.2.6))(react@19.2.6)(zod@3.25.76)
+      '@skein-js/express':
+        specifier: workspace:*
+        version: link:../../packages/server-express
+      '@skein-js/server-kit':
+        specifier: workspace:*
+        version: link:../../packages/server-kit
+      express:
+        specifier: ^5.2.1
+        version: 5.2.1
+    devDependencies:
+      '@langchain/langgraph-sdk':
+        specifier: ^1.9.0
+        version: 1.9.25(@langchain/core@1.2.2(ws@8.21.0))(react-dom@19.2.6(react@19.2.6))(react@19.2.6)
+      tsx:
+        specifier: ^4.19.2
+        version: 4.22.4
+
   examples/express-basic:
     dependencies:
       '@langchain/core':
@@ -370,15 +395,12 @@ importers:
       '@langchain/langgraph-sdk':
         specifier: ^1.9.0
         version: 1.9.25(@langchain/core@1.2.2(ws@8.21.0))(react-dom@19.2.6(react@19.2.6))(react@19.2.6)
-      '@skein-js/agent-protocol':
-        specifier: workspace:*
-        version: link:../../packages/agent-protocol
       '@skein-js/nextjs':
         specifier: workspace:*
         version: link:../../packages/server-nextjs
-      '@skein-js/storage-memory':
+      '@skein-js/server-kit':
         specifier: workspace:*
-        version: link:../../packages/storage-memory
+        version: link:../../packages/server-kit
       next:
         specifier: ^15.1.3
         version: 15.5.18(@babel/core@7.29.7)(@playwright/test@1.61.1)(react-dom@19.2.6(react@19.2.6))(react@19.2.6)

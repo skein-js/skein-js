@@ -24,6 +24,18 @@ export type {
   DevStateSnapshot,
 } from "./in-memory-runtime.js";
 
+// In-code embedding: build a `ProtocolDeps` around a compiled graph (or map of them) you already hold —
+// no `langgraph.json`, no CLI — then pass `{ deps }` to any adapter. See docs/embedding.md. The graph
+// types are re-exported so callers can type their map from this one package.
+export { createInMemoryDeps, graphMapToResolver } from "./in-memory-deps.js";
+export type { EmbeddableGraph } from "./in-memory-deps.js";
+export type {
+  GraphResolver,
+  ResolvedGraph,
+  CompiledGraphFactory,
+  ProtocolDeps,
+} from "@skein-js/agent-protocol";
+
 // Import an existing LangGraph in-memory dev state (`.langgraph_api/`) into skein, losslessly.
 export {
   readLanggraphDevState,

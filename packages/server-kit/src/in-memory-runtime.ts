@@ -1,7 +1,7 @@
-// Assemble a `ProtocolDeps` backed entirely by in-process drivers — the zero-setup runtime that
-// powers `skein dev`. This is the ONLY place the adapter reaches for a concrete storage driver;
-// everything else is driver-agnostic, so `skein up` can supply Postgres + Redis deps through the
-// same seam (see skein-router.ts's `{ deps }` form).
+// Load a `langgraph.json` into a `ProtocolDeps` backed by in-process drivers — the zero-setup runtime
+// that powers `skein dev`. The config-free counterpart (bring a compiled graph in code, no config file)
+// is `createInMemoryDeps` in ./in-memory-deps.ts; both assemble the same in-memory drivers, so `skein
+// up` can swap Postgres + Redis deps through the adapters' `{ deps }` seam (see skein-router.ts).
 
 import { MemorySaver } from "@langchain/langgraph";
 import type { GraphResolver, GraphSchemas, ProtocolDeps } from "@skein-js/agent-protocol";
@@ -21,6 +21,7 @@ import {
   snapshotCheckpointer,
   type DevStateSnapshot,
 } from "./dev-persistence.js";
+import { createInMemoryDeps } from "./in-memory-deps.js";
 
 /**
  * Bridge a config `GraphRegistry` to the engine's `GraphResolver`. They are structurally identical
@@ -33,17 +34,6 @@ function toGraphResolver(graphs: GraphRegistry): GraphResolver {
     ids: graphs.ids,
     load: (graphId) => graphs.load(graphId),
     schemas: async (graphId) => (await graphs.schemas(graphId)) as unknown as GraphSchemas,
-  };
-}
-
-/** Fresh in-memory drivers (store, queue, bus, checkpointer) around a graph resolver. */
-function buildInMemoryDeps(graphs: GraphResolver): ProtocolDeps {
-  return {
-    store: new MemorySkeinStore(),
-    graphs,
-    queue: new MemoryRunQueue(),
-    bus: new MemoryRunEventBus(),
-    checkpointer: new MemorySaver(),
   };
 }
 
@@ -67,7 +57,7 @@ export async function loadInMemoryRuntime(
     importModule,
     staticSchemas,
   });
-  const deps = buildInMemoryDeps(toGraphResolver(graphs));
+  const deps = createInMemoryDeps(toGraphResolver(graphs));
   deps.auth = await loadAuthEngine(config.auth, { configDir, importModule });
   return {
     deps,

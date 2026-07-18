@@ -87,6 +87,16 @@ Steps 1–10 below are complete: the dev loop **and** self-hosted production bot
 
 ## Shipped beyond the original plan
 
+- ✅ **In-code embedding on-ramp** — a second way in for LangGraph.js users who never adopted the
+  Platform's project shape: bring a compiled graph (or a map of them) in code and get the full Agent
+  Protocol server with **no `langgraph.json` and no CLI**. `createInMemoryDeps(graphs, overrides?)` and
+  `graphMapToResolver(graphs)` in [`@skein-js/server-kit`](../packages/server-kit) turn a graph map into
+  a `ProtocolDeps` backed by in-memory drivers, handed to any adapter's existing `{ deps }` seam;
+  `overrides` swaps in Postgres/Redis for production. The engine was already runtime-config-decoupled
+  (it consumes an injectable `GraphResolver`, not a config file) — this exposes that path publicly and
+  documents it. See [embedding.md](./embedding.md) and [`examples/embed-graph`](../examples/embed-graph).
+  The one trade-off vs the config path: schemas are stubbed (a compiled graph carries no source to
+  extract them from), which only affects LangGraph Studio, not `useStream` / Agent Chat UI.
 - ✅ **Authentication + authorization (LangGraph parity)** — custom auth via a `langgraph.json`
   `auth` block that loads a `@langchain/langgraph-sdk/auth` `Auth` instance. Transport-neutral (in
   [`@skein-js/agent-protocol`](../packages/agent-protocol), so every adapter inherits it): each

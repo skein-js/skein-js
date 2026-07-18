@@ -273,8 +273,27 @@ a token into any layer.
 
 ## Embedding skein-js in your own server
 
-Prefer to run inside your own Node process? Serve a `langgraph.json` from an Express app — the
-zero-setup path wires in-memory drivers:
+Prefer to run inside your own Node process? There are **two ways in**, both mounting the same Agent
+Protocol server.
+
+**Already have a compiled graph in code (no `langgraph.json`, never used the LangGraph Platform)?**
+Bring it directly — pass a graph map to `createInMemoryDeps` and hand the result to any adapter:
+
+```ts
+import { createExpressServer } from "@skein-js/express";
+import { createInMemoryDeps } from "@skein-js/server-kit";
+import { graph } from "./my-graph.js"; // your existing `new StateGraph(...).compile()`
+
+const server = await createExpressServer({ deps: createInMemoryDeps({ agent: graph }) });
+await server.listen(2024);
+```
+
+`createInMemoryDeps` turns a graph map into a `ProtocolDeps` (store, queue, bus, checkpointer) — the
+`{ deps }` seam **every** adapter accepts, so the same `deps` mounts on Express, Fastify, NestJS, or
+Next.js unchanged. See [docs/embedding.md](./docs/embedding.md) and
+[`examples/embed-graph`](./examples/embed-graph).
+
+**Have a `langgraph.json`?** Serve it from an Express app — the zero-setup path wires in-memory drivers:
 
 ```ts
 import { createExpressServer } from "@skein-js/express";
@@ -476,6 +495,7 @@ Each is a runnable project — `cd` into it and follow its README.
 | [`migrated-langgraph`](./examples/migrated-langgraph)                                 | The **drop-in proof** — a stock LangGraph project under `skein dev`, with hot reload + `.skein/` persistence                                                                                       | `pnpm dev`                 |
 | [`gemini-chat`](./examples/gemini-chat)                                               | **Model-backed end-to-end** — a Gemini ReAct agent streamed into a browser; also an embedded `@skein-js/express` server                                                                            | `pnpm dev`                 |
 | [`express-basic`](./examples/express-basic)                                           | **Hello world** — zero-setup `echo` (no API key) + a Claude `agent` graph in one config                                                                                                            | `pnpm dev`                 |
+| [`embed-graph`](./examples/embed-graph)                                               | **In-code embedding** — serve a graph you already have with **no `langgraph.json`** (`createInMemoryDeps` + `{ deps }`); the config-free counterpart to `express-basic`                            | `pnpm dev`                 |
 | [`fastify-basic`](./examples/fastify-basic) · [`fastify-app`](./examples/fastify-app) | **Fastify** — a standalone graph server, and the protocol embedded under `/agent` alongside a REST API                                                                                             | `pnpm dev`                 |
 | [`nestjs-basic`](./examples/nestjs-basic) · [`nestjs-app`](./examples/nestjs-app)     | **NestJS** — a standalone graph server, and `SkeinModule` alongside the app's own controller                                                                                                       | `pnpm dev`                 |
 | [`nextjs-basic`](./examples/nextjs-basic) · [`nextjs-app`](./examples/nextjs-app)     | **Next.js** — headless Pages Router API, and a full-stack App Router app serving the protocol same-origin behind a `useStream` chat UI                                                             | `pnpm dev`                 |
@@ -515,6 +535,7 @@ Full design and how-to guides live in [`docs/`](./docs):
 
 - [Overview & vision](./docs/index.md)
 - [LangGraph CLI compatibility](./docs/langgraph-cli-compat.md) — commands + the `langgraph.json` fields
+- [Embedding a graph you already have](./docs/embedding.md) — the in-code on-ramp (no `langgraph.json`)
 - [Agent Protocol surface](./docs/agent-protocol.md) — the endpoints skein-js serves
 - [Building your own adapter](./docs/building-an-adapter.md) — put skein-js on any HTTP framework
 - [Streaming (SSE)](./docs/streaming.md) — stream modes, thinking, reconnect/replay

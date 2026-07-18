@@ -93,6 +93,25 @@ The headline developer experience is **zero-effort migration off the LangGraph C
 the backend (config + graphs) and the frontend ([`useStream`](./react-sdk.md)) point at
 skein-js by changing only a URL.
 
+### The other on-ramp: embed a graph you already have
+
+Never used the LangGraph CLI or Platform? There's nothing to migrate _from_ — but you can still get the
+same server. If you already have a compiled graph in your own app, bring it **in code** — no
+`langgraph.json`, no CLI:
+
+```ts
+import { createExpressServer } from "@skein-js/express";
+import { createInMemoryDeps } from "@skein-js/server-kit";
+import { graph } from "./my-graph.js";
+
+const server = await createExpressServer({ deps: createInMemoryDeps({ agent: graph }) });
+await server.listen(2024);
+```
+
+`createInMemoryDeps` assembles a `ProtocolDeps` (store, queue, bus, checkpointer) around your graphs;
+`{ deps }` is the seam every adapter accepts. The two on-ramps produce the identical Agent Protocol
+server — see [embedding.md](./embedding.md).
+
 ## Architecture at a glance
 
 ```text
@@ -134,6 +153,7 @@ Runnable projects under [`examples/`](../examples) — each proves a slice of th
 | [`migrated-langgraph`](../examples/migrated-langgraph) | The drop-in proof — a stock LangGraph project under `skein dev`, hot reload + persistence                                        |
 | [`gemini-chat`](../examples/gemini-chat)               | Model-backed end-to-end — a Gemini ReAct agent streamed into a browser                                                           |
 | [`express-basic`](../examples/express-basic)           | Zero-setup `echo` + a Claude `agent` graph in one config                                                                         |
+| [`embed-graph`](../examples/embed-graph)               | In-code embedding — serve a graph you already have with **no `langgraph.json`** (`createInMemoryDeps` + `{ deps }`)              |
 | `fastify-basic` / `fastify-app`                        | Fastify — standalone graph server, and the protocol embedded under `/agent` alongside a REST API                                 |
 | `nestjs-basic` / `nestjs-app`                          | NestJS — standalone graph server, and `SkeinModule` alongside the app's own controller                                           |
 | `nextjs-basic` / `nextjs-app`                          | Next.js — headless Pages Router API, and a full-stack App Router app serving the protocol same-origin behind a `useStream` UI    |
@@ -146,6 +166,7 @@ Start with the user-facing guides; the design docs at the bottom explain how ske
 | Doc                                                  | Covers                                                     |
 | ---------------------------------------------------- | ---------------------------------------------------------- |
 | [langgraph-cli-compat.md](./langgraph-cli-compat.md) | `langgraph.json` fields + CLI commands                     |
+| [embedding.md](./embedding.md)                       | The in-code on-ramp — embed a graph, no `langgraph.json`   |
 | [agent-protocol.md](./agent-protocol.md)             | The REST + streaming endpoints skein-js implements         |
 | [building-an-adapter.md](./building-an-adapter.md)   | How to put skein-js on any HTTP framework (custom adapter) |
 | [streaming.md](./streaming.md)                       | LangGraph stream modes → Agent Protocol SSE                |
