@@ -1,6 +1,6 @@
 {
   "name": "@skein-js/nextjs",
-  "version": "0.6.3",
+  "version": "0.7.0",
   "description": "Next.js adapter for skein-js — serve the Agent Protocol from App Router or Pages Router API routes.",
   "license": "Apache-2.0",
   "author": "Maina Wycliffe <wmmaina7@gmail.com>",

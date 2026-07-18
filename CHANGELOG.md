@@ -1,3 +1,14 @@
+## 0.7.0 (2026-07-18)
+
+### 🚀 Features
+
+- **runtime:** add embedPostgresGraphs in-code durable embedding ([#5](https://github.com/skein-js/skein-js/issues/5))
+- **server-kit:** add in-code embedding on-ramp (createInMemoryDeps) ([5e2b26d](https://github.com/skein-js/skein-js/commit/5e2b26d))
+
+### ❤️ Thank You
+
+- Maina Wycliffe
+
 ## 0.6.3 (2026-07-17)
 
 ### 🩹 Fixes
