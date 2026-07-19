@@ -1,6 +1,6 @@
 {
   "name": "@skein-js/server-kit",
-  "version": "0.8.0",
+  "version": "0.9.0",
   "description": "Shared, framework-agnostic building blocks for skein-js HTTP adapters — in-memory dev runtime, LangGraph dev-state import, and langgraph.json CORS mapping.",
   "license": "Apache-2.0",
   "author": "Maina Wycliffe <wmmaina7@gmail.com>",

@@ -1,6 +1,6 @@
 {
   "name": "@skein-js/redis",
-  "version": "0.8.0",
+  "version": "0.9.0",
   "description": "Redis job queue and cross-instance pub/sub streaming for skein-js.",
   "license": "Apache-2.0",
   "author": "Maina Wycliffe <wmmaina7@gmail.com>",

@@ -1,6 +1,6 @@
 {
   "name": "@skein-js/config",
-  "version": "0.8.0",
+  "version": "0.9.0",
   "description": "langgraph.json parser and graph loader (path:export) for skein-js.",
   "license": "Apache-2.0",
   "author": "Maina Wycliffe <wmmaina7@gmail.com>",

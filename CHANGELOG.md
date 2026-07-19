@@ -1,3 +1,17 @@
+## 0.9.0 (2026-07-19)
+
+### 🚀 Features
+
+- **agent-protocol:** serve a graph as a plain endpoint ([c0f7e0f](https://github.com/skein-js/skein-js/commit/c0f7e0f))
+
+### 🩹 Fixes
+
+- **nestjs:** serve the protocol under app.setGlobalPrefix() ([b33fe4e](https://github.com/skein-js/skein-js/commit/b33fe4e))
+
+### ❤️ Thank You
+
+- Maina Wycliffe
+
 ## 0.8.0 (2026-07-19)
 
 ### 🚀 Features
