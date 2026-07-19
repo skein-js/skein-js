@@ -4,11 +4,10 @@
 // with `next()` — so the protocol coexists with the host app's own controllers. CORS (when enabled) is
 // applied only to skein routes. Adds no protocol logic. Assumes NestJS's default Express platform.
 
-import type { IncomingMessage, ServerResponse } from "node:http";
+import type { ServerResponse } from "node:http";
 
 import { Inject, Injectable, type NestMiddleware } from "@nestjs/common";
 import { copyThreadIdIntoBody, matchSkeinRoute, type Logger } from "@skein-js/agent-protocol";
-import { SkeinHttpError } from "@skein-js/core";
 import {
   applyNodeCors,
   sendNodeError,
@@ -18,35 +17,13 @@ import {
   type ResolvedProtocolRuntime,
 } from "@skein-js/server-kit";
 
+import { readJsonBody, type NestRequest } from "./read-json-body.js";
 import { toProtocolRequest } from "./to-protocol-request.js";
 import { SKEIN_CORS, SKEIN_LOGGER, SKEIN_RUNTIME } from "./tokens.js";
-
-/** The Node request the middleware reads (Express request is structurally compatible). */
-type NestRequest = IncomingMessage & { originalUrl?: string; body?: unknown };
 
 /** First value of a possibly array-valued Node header. */
 function firstHeader(value: string | string[] | undefined): string | undefined {
   return Array.isArray(value) ? value[0] : value;
-}
-
-/**
- * Return the parsed request body. Uses the body the host's global parser already attached; if that is
- * absent (e.g. the host bootstrapped with `bodyParser: false`) and the request carries a JSON body,
- * read and parse it here so the adapter is self-sufficient. A malformed body is a 400, not a 500.
- */
-async function readJsonBody(req: NestRequest): Promise<unknown> {
-  if (req.body !== undefined) return req.body;
-  const contentType = firstHeader(req.headers["content-type"]);
-  if (!contentType || !contentType.includes("application/json")) return undefined;
-  const chunks: Buffer[] = [];
-  for await (const chunk of req) chunks.push(chunk as Buffer);
-  const text = Buffer.concat(chunks).toString("utf8");
-  if (!text) return {};
-  try {
-    return JSON.parse(text);
-  } catch {
-    throw SkeinHttpError.badRequest("Request body is not valid JSON.");
-  }
 }
 
 @Injectable()

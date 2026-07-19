@@ -21,6 +21,7 @@ const DOCS = [
   "docs/using-skein.md",
   "docs/langgraph-cli-compat.md",
   "docs/embedding.md",
+  "docs/serving-a-single-graph.md",
   "docs/agent-protocol.md",
   "docs/streaming.md",
   "docs/react-sdk.md",

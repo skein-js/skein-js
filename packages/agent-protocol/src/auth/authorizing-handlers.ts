@@ -6,22 +6,15 @@
 // store is the auth-scoped decorator. The shared cancellation registry and thread locks are reused
 // from the base context (only `deps.store` is swapped), so background-run cancellation still works.
 
-import type { AuthContext, AuthEngine, AuthUser } from "@skein-js/core";
+import type { AuthContext, AuthEngine } from "@skein-js/core";
 
 import type { ProtocolContext } from "../context.js";
 import { createProtocolHandlers, type ProtocolHandlers } from "../create-handlers.js";
 import { createProtocolServiceFromContext } from "../service.js";
 
 import { createAuthScopedStore } from "./auth-scoped-store.js";
-import { authValue, ROUTE_AUTHZ, synthesizeRequest } from "./route-authz.js";
-
-/** The synthetic caller LangGraph Studio presents; used only when studio auth is not disabled. */
-const STUDIO_USER: AuthUser = {
-  identity: "langgraph-studio-user",
-  display_name: "langgraph-studio-user",
-  is_authenticated: true,
-  permissions: [],
-};
+import { resolveAuthContext } from "./authenticate-request.js";
+import { authValue, ROUTE_AUTHZ } from "./route-authz.js";
 
 /**
  * Build a handler table that authenticates and authorizes every request before dispatch. Studio
@@ -37,20 +30,11 @@ export function createAuthorizingHandlers(
   const baseHandlers = createProtocolHandlers(createProtocolServiceFromContext(context));
   const names = Object.keys(ROUTE_AUTHZ) as (keyof ProtocolHandlers)[];
 
-  const resolveAuthContext = async (
-    req: Parameters<ProtocolHandlers[keyof ProtocolHandlers]>[0],
-  ): Promise<AuthContext | undefined> => {
-    if (!engine.studioAuthDisabled && req.headers["x-auth-scheme"] === "langsmith") {
-      return { user: STUDIO_USER, scopes: [] };
-    }
-    return engine.authenticate(synthesizeRequest(req));
-  };
-
   const wrapped = {} as ProtocolHandlers;
   for (const name of names) {
     const route = ROUTE_AUTHZ[name];
     wrapped[name] = async (req) => {
-      const authContext = await resolveAuthContext(req);
+      const authContext: AuthContext | undefined = await resolveAuthContext(engine, req);
       const { filters } = await engine.authorize({
         resource: route.resource,
         action: route.action,

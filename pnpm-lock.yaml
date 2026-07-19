@@ -285,6 +285,28 @@ importers:
         specifier: workspace:*
         version: link:../../packages/cli
 
+  examples/invoke-endpoint:
+    dependencies:
+      '@langchain/langgraph':
+        specifier: ^1.4.0
+        version: 1.4.7(@langchain/core@1.2.2(ws@8.21.0))(react-dom@19.2.6(react@19.2.6))(react@19.2.6)(zod@3.25.76)
+      '@skein-js/express':
+        specifier: workspace:*
+        version: link:../../packages/server-express
+      '@skein-js/server-kit':
+        specifier: workspace:*
+        version: link:../../packages/server-kit
+      express:
+        specifier: ^5.2.1
+        version: 5.2.1
+    devDependencies:
+      '@types/express':
+        specifier: ^5.0.0
+        version: 5.0.6
+      tsx:
+        specifier: ^4.19.2
+        version: 4.22.4
+
   examples/migrated-langgraph:
     dependencies:
       '@langchain/core':

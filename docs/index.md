@@ -112,6 +112,21 @@ await server.listen(2024);
 `{ deps }` is the seam every adapter accepts. The two on-ramps produce the identical Agent Protocol
 server — see [embedding.md](./embedding.md).
 
+### Not building a chat app?
+
+The full protocol (threads, assistants, runs) is what a **chat** UI needs. For a classifier, an
+extractor, or a workflow another service calls, there's a smaller surface: every graph mounted as
+`POST /invoke/:graph_id`, where the request body **is** the graph input and the response **is** its
+final state — no threads, no runs.
+
+```ts
+const { router } = await skeinInvokeRouter({ deps: embedInMemoryGraphs({ triage }) });
+app.use(router);
+// curl -X POST localhost:2024/invoke/triage -d '{"text":"…"}'
+```
+
+Available on every adapter — see [serving-a-single-graph.md](./serving-a-single-graph.md).
+
 ## Architecture at a glance
 
 ```text
@@ -154,6 +169,7 @@ Runnable projects under [`examples/`](../examples) — each proves a slice of th
 | [`gemini-chat`](../examples/gemini-chat)               | Model-backed end-to-end — a Gemini ReAct agent streamed into a browser                                                           |
 | [`express-basic`](../examples/express-basic)           | Zero-setup `echo` + a Claude `agent` graph in one config                                                                         |
 | [`embed-graph`](../examples/embed-graph)               | In-code embedding — serve a graph you already have with **no `langgraph.json`** (`embedInMemoryGraphs` + `{ deps }`)             |
+| [`invoke-endpoint`](../examples/invoke-endpoint)       | The **non-chat** surface — graphs as plain `POST /invoke/:graph_id` endpoints, body-in / final-state-out                         |
 | `fastify-basic` / `fastify-app`                        | Fastify — standalone graph server, and the protocol embedded under `/agent` alongside a REST API                                 |
 | `nestjs-basic` / `nestjs-app`                          | NestJS — standalone graph server, and `SkeinModule` alongside the app's own controller                                           |
 | `nextjs-basic` / `nextjs-app`                          | Next.js — headless Pages Router API, and a full-stack App Router app serving the protocol same-origin behind a `useStream` UI    |
@@ -166,24 +182,25 @@ New here? [getting-started.md](./getting-started.md) is the guided path. Buildin
 (especially as an AI agent)? [using-skein.md](./using-skein.md) is the terse cheat-sheet, and the
 machine-readable [`llms.txt`](../llms.txt) / [`llms-full.txt`](../llms-full.txt) index the whole set.
 
-| Doc                                                  | Covers                                                      |
-| ---------------------------------------------------- | ----------------------------------------------------------- |
-| [getting-started.md](./getting-started.md)           | Guided walkthrough — zero to a running server, then prod    |
-| [using-skein.md](./using-skein.md)                   | Consumer/agent cheat-sheet — install, the seam, mount, call |
-| [recipes.md](./recipes.md)                           | Auth, HITL, memory, CORS, background runs, webhooks, deploy |
-| [langgraph-cli-compat.md](./langgraph-cli-compat.md) | `langgraph.json` fields + CLI commands                      |
-| [embedding.md](./embedding.md)                       | The in-code on-ramp — embed a graph, no `langgraph.json`    |
-| [agent-protocol.md](./agent-protocol.md)             | The REST + streaming endpoints skein-js implements          |
-| [building-an-adapter.md](./building-an-adapter.md)   | How to put skein-js on any HTTP framework (custom adapter)  |
-| [streaming.md](./streaming.md)                       | LangGraph stream modes → Agent Protocol SSE                 |
-| [react-sdk.md](./react-sdk.md)                       | `@langchain/langgraph-sdk` + `useStream` compatibility      |
-| [storage.md](./storage.md)                           | `SkeinStore`, in-memory + Postgres, pgvector, checkpointer  |
-| [runs-and-redis.md](./runs-and-redis.md)             | Run engine, queue, cross-instance streaming                 |
-| [deploy-railway.md](./deploy-railway.md)             | Deploying the image on Railway (or any PaaS)                |
-| [reuse.md](./reuse.md)                               | _(design)_ What we reuse from LangGraph OSS vs. rebuild     |
-| [code-practices.md](./code-practices.md)             | _(contributor)_ Readability, functional style, conventions  |
-| [testing.md](./testing.md)                           | _(contributor)_ Unit + Testcontainers + conformance suite   |
-| [roadmap.md](./roadmap.md)                           | Milestones and post-MVP non-goals                           |
+| Doc                                                      | Covers                                                      |
+| -------------------------------------------------------- | ----------------------------------------------------------- |
+| [getting-started.md](./getting-started.md)               | Guided walkthrough — zero to a running server, then prod    |
+| [using-skein.md](./using-skein.md)                       | Consumer/agent cheat-sheet — install, the seam, mount, call |
+| [recipes.md](./recipes.md)                               | Auth, HITL, memory, CORS, background runs, webhooks, deploy |
+| [langgraph-cli-compat.md](./langgraph-cli-compat.md)     | `langgraph.json` fields + CLI commands                      |
+| [embedding.md](./embedding.md)                           | The in-code on-ramp — embed a graph, no `langgraph.json`    |
+| [serving-a-single-graph.md](./serving-a-single-graph.md) | The non-chat surface — a graph as a plain HTTP endpoint     |
+| [agent-protocol.md](./agent-protocol.md)                 | The REST + streaming endpoints skein-js implements          |
+| [building-an-adapter.md](./building-an-adapter.md)       | How to put skein-js on any HTTP framework (custom adapter)  |
+| [streaming.md](./streaming.md)                           | LangGraph stream modes → Agent Protocol SSE                 |
+| [react-sdk.md](./react-sdk.md)                           | `@langchain/langgraph-sdk` + `useStream` compatibility      |
+| [storage.md](./storage.md)                               | `SkeinStore`, in-memory + Postgres, pgvector, checkpointer  |
+| [runs-and-redis.md](./runs-and-redis.md)                 | Run engine, queue, cross-instance streaming                 |
+| [deploy-railway.md](./deploy-railway.md)                 | Deploying the image on Railway (or any PaaS)                |
+| [reuse.md](./reuse.md)                                   | _(design)_ What we reuse from LangGraph OSS vs. rebuild     |
+| [code-practices.md](./code-practices.md)                 | _(contributor)_ Readability, functional style, conventions  |
+| [testing.md](./testing.md)                               | _(contributor)_ Unit + Testcontainers + conformance suite   |
+| [roadmap.md](./roadmap.md)                               | Milestones and post-MVP non-goals                           |
 
 Want to contribute? See [CONTRIBUTING.md](../CONTRIBUTING.md) and [AGENTS.md](../AGENTS.md).
 

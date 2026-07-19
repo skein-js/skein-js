@@ -8,11 +8,16 @@ import type { ProtocolHandlers, ProtocolRequest } from "../create-handlers.js";
 
 export type HttpMethod = "get" | "post" | "put" | "patch" | "delete";
 
-export interface RouteBinding {
+/**
+ * One route. `HandlerName` defaults to a member of the protocol handler table; a surface mounted
+ * outside that table (the single-graph invoke endpoint) parameterizes it with its own handler names,
+ * so `handler` never has to lie about being a `keyof ProtocolHandlers` an adapter could look up.
+ */
+export interface RouteBinding<HandlerName = keyof ProtocolHandlers> {
   method: HttpMethod;
   /** Path with `:param` placeholders, e.g. `/threads/:thread_id/runs/stream`. */
   path: string;
-  handler: keyof ProtocolHandlers;
+  handler: HandlerName;
   /**
    * Fold the path `thread_id` into the request body before dispatch. The SDK addresses a
    * thread-scoped run by its path (`POST /threads/{id}/runs/stream`) while carrying only
@@ -120,34 +125,47 @@ export function copyThreadIdIntoBody(request: ProtocolRequest): ProtocolRequest 
 export const foldThreadId = copyThreadIdIntoBody;
 
 /** A resolved route: the matched binding plus the path params extracted from the URL. */
-export interface RouteMatch {
-  binding: RouteBinding;
+export interface RouteMatch<HandlerName = keyof ProtocolHandlers> {
+  binding: RouteBinding<HandlerName>;
   params: Record<string, string>;
 }
 
-// Compile each `:param` path to a named-group regex once. Anchored (`^…$`) so a literal segment can't
-// be matched as a param value, and the `:param` placeholders become `[^/]+` groups.
-const compiledRoutes = skeinRoutes.map((binding) => ({
-  binding,
-  regex: new RegExp(`^${binding.path.replace(/:(\w+)/g, "(?<$1>[^/]+)")}$`),
-}));
+/** Matches a `method` + `pathname` against a fixed route table. Built by {@link createRouteMatcher}. */
+export type RouteMatcher<HandlerName = keyof ProtocolHandlers> = (
+  method: string,
+  pathname: string,
+) => RouteMatch<HandlerName> | undefined;
 
 /**
- * Match a `method` + `pathname` (no query string) against the route table, returning the binding and
- * extracted path params, or `undefined` when nothing matches. Iterates in table order, which is
- * most-specific-first, so a literal segment wins over a `:param`. This is what adapters that dispatch
- * from a catch-all route (NestJS middleware, Next.js route handlers) use in place of a framework
- * router; Express/Fastify bind `skeinRoutes` to their native router instead.
+ * Build a matcher over any route table — the protocol's own, or the simplified invoke surface's.
+ * Each `:param` path is compiled to a named-group regex once, anchored (`^…$`) so a literal segment
+ * can't be matched as a param value. The returned matcher iterates in table order, which is
+ * most-specific-first, so a literal segment wins over a `:param`.
  */
-export function matchSkeinRoute(method: string, pathname: string): RouteMatch | undefined {
-  const wanted = method.toLowerCase();
-  for (const { binding, regex } of compiledRoutes) {
-    if (binding.method !== wanted) continue;
-    const match = regex.exec(pathname);
-    if (match) return { binding, params: decodeParams(match.groups) };
-  }
-  return undefined;
+export function createRouteMatcher<HandlerName>(
+  bindings: readonly RouteBinding<HandlerName>[],
+): RouteMatcher<HandlerName> {
+  const compiled = bindings.map((binding) => ({
+    binding,
+    regex: new RegExp(`^${binding.path.replace(/:(\w+)/g, "(?<$1>[^/]+)")}$`),
+  }));
+  return (method, pathname) => {
+    const wanted = method.toLowerCase();
+    for (const { binding, regex } of compiled) {
+      if (binding.method !== wanted) continue;
+      const match = regex.exec(pathname);
+      if (match) return { binding, params: decodeParams(match.groups) };
+    }
+    return undefined;
+  };
 }
+
+/**
+ * Match a `method` + `pathname` (no query string) against the Agent Protocol route table. This is
+ * what adapters that dispatch from a catch-all route (NestJS middleware, Next.js route handlers) use
+ * in place of a framework router; Express/Fastify bind `skeinRoutes` to their native router instead.
+ */
+export const matchSkeinRoute: RouteMatcher = createRouteMatcher(skeinRoutes);
 
 /**
  * Percent-decode captured path params so catch-all adapters (NestJS, Next.js) deliver the same decoded

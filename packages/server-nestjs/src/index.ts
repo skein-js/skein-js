@@ -8,7 +8,14 @@ export { SkeinModule } from "./skein.module.js";
 // The middleware, for callers wiring their own module.
 export { SkeinMiddleware } from "./skein.middleware.js";
 // DI tokens (the resolved runtime is exported from the module for advanced use).
-export { SKEIN_RUNTIME, SKEIN_LOGGER, SKEIN_CORS } from "./tokens.js";
+export { SKEIN_RUNTIME, SKEIN_LOGGER, SKEIN_CORS, SKEIN_INVOKE } from "./tokens.js";
+
+// The simplified serving surface: every graph as a plain `POST /invoke/:graph_id` endpoint, for
+// non-chat workloads. See docs/serving-a-single-graph.md.
+export { SkeinInvokeModule } from "./skein-invoke.module.js";
+export type { SkeinInvokeModuleOptions } from "./skein-invoke.module.js";
+export { SkeinInvokeMiddleware } from "./skein-invoke.middleware.js";
+export type { ResolvedInvokeSurface } from "./skein-invoke.middleware.js";
 
 // Standalone convenience server.
 export { createNestServer } from "./create-nest-server.js";

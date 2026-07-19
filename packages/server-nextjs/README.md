@@ -50,6 +50,23 @@ export default createSkeinPagesHandler({ config: "./langgraph.json" });
 Both entry points accept the shared `{ config } | { deps }` seam, an optional `cors` (off by default),
 and a `basePath` (defaults to `/api`, matching the mount above).
 
+## Graphs as plain endpoints (non-chat)
+
+For workloads that aren't chat — a classifier, an extractor, a workflow another service calls — there
+is a smaller surface: every graph mounted as `POST <basePath>/:graph_id`, where the request body **is**
+the graph input and the response **is** the final state. No threads, assistants, or runs.
+
+```ts
+// app/api/invoke/[graph_id]/route.ts
+import { createSkeinInvokeRouteHandlers } from "@skein-js/nextjs";
+
+export const runtime = "nodejs";
+export const { POST } = createSkeinInvokeRouteHandlers({ deps, basePath: "/api/invoke" });
+```
+
+Send `Accept: text/event-stream` to stream the steps instead. See
+[docs/serving-a-single-graph.md](../../docs/serving-a-single-graph.md).
+
 ## Deployment caveat
 
 The background run worker and the in-memory driver need a **long-lived Node process** — fine on
@@ -63,6 +80,9 @@ The background run worker and the in-memory driver need a **long-lived Node proc
   `{ GET, POST, PUT, PATCH, DELETE, OPTIONS }` to re-export from `app/<base>/[...path]/route.ts`.
 - **`createSkeinPagesHandler(options): SkeinPagesHandler`** — Pages Router; the default export for
   `pages/api/[...path].ts`.
+- **`createSkeinInvokeRouteHandlers(options): SkeinInvokeRouteHandlers`** — the simplified serving
+  surface (`POST <basePath>/:graph_id`, body-in / final-state-out); returns `{ POST, OPTIONS }` for
+  `app/api/invoke/[graph_id]/route.ts`. `basePath` defaults to `/api/invoke`; adds `streamMode`.
 - Both accept `SkeinRouteHandlerOptions` / `SkeinPagesHandlerOptions`: the shared
   `{ config, importModule? } | { deps }` seam **plus** an optional `cors` (off by default) and a
   `basePath` (defaults to `/api`, matching the mount). `deps` comes from

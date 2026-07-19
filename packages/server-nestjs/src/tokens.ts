@@ -7,3 +7,5 @@ export const SKEIN_RUNTIME = Symbol("skein:runtime");
 export const SKEIN_LOGGER = Symbol("skein:logger");
 /** Provides the explicit `cors` option (or `null`) so the middleware can apply CORS to skein routes. */
 export const SKEIN_CORS = Symbol("skein:cors");
+/** Provides the resolved single-graph invoke surface (handler + matcher) to `SkeinInvokeMiddleware`. */
+export const SKEIN_INVOKE = Symbol("skein:invoke");

@@ -27,8 +27,23 @@ export type {
 
 // The transport-neutral route table + body-fold helper every framework adapter maps onto its router,
 // plus a `matchSkeinRoute` matcher for adapters that dispatch from a catch-all (NestJS, Next.js).
-export { skeinRoutes, copyThreadIdIntoBody, foldThreadId, matchSkeinRoute } from "./http/routes.js";
-export type { HttpMethod, RouteBinding, RouteMatch } from "./http/routes.js";
+export {
+  skeinRoutes,
+  copyThreadIdIntoBody,
+  foldThreadId,
+  matchSkeinRoute,
+  createRouteMatcher,
+} from "./http/routes.js";
+export type { HttpMethod, RouteBinding, RouteMatch, RouteMatcher } from "./http/routes.js";
+
+// The simplified serving surface: one graph mounted as a plain endpoint (`POST /invoke/:graph_id`),
+// for non-chat workloads that don't need threads/assistants/runs. See docs/serving-a-single-graph.md.
+export {
+  createGraphInvokeHandler,
+  graphInvokeRoutes,
+  DEFAULT_INVOKE_PREFIX,
+} from "./invoke/graph-invoke.js";
+export type { GraphInvokeOptions, GraphInvokeHandlerName } from "./invoke/graph-invoke.js";
 
 // The background run worker.
 export { createRunWorker } from "./runs/run-worker.js";

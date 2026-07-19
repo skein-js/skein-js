@@ -19,8 +19,16 @@ export type {
   SkeinPagesRequest,
 } from "./create-pages-handler.js";
 
-// The memoized runtime accessor (shared across both routers and module reloads).
-export { getSkeinRuntime } from "./runtime-singleton.js";
+// The simplified serving surface: every graph as a plain `POST <basePath>/:graph_id` endpoint, for
+// non-chat workloads. See docs/serving-a-single-graph.md.
+export { createSkeinInvokeRouteHandlers } from "./create-invoke-route-handlers.js";
+export type {
+  SkeinInvokeRouteHandlers,
+  SkeinInvokeRouteHandlerOptions,
+} from "./create-invoke-route-handlers.js";
+
+// The memoized runtime/deps accessors (shared across both routers and module reloads).
+export { getSkeinRuntime, getSkeinInvokeDeps } from "./runtime-singleton.js";
 
 // Low-level serializers, for callers composing their own Next.js routing. The Web serializers are
 // Next-specific; the Node ones are shared and re-exported from @skein-js/server-kit for convenience.

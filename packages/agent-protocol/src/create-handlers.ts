@@ -40,6 +40,12 @@ export interface ProtocolRequest {
   query: Record<string, string | string[] | undefined>;
   body: unknown;
   headers: Record<string, string | undefined>;
+  /**
+   * Aborts when the client goes away, so a handler can stop work the caller will never read.
+   * Optional: an adapter that can't observe disconnects simply omits it. Currently honored by the
+   * single-graph invoke surface; protocol runs carry their own cancellation through the run row.
+   */
+  signal?: AbortSignal;
 }
 
 /** A normalized response an adapter serializes back onto its framework response. */

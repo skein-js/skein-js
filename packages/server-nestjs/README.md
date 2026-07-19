@@ -31,10 +31,48 @@ export class AppModule {}
 ```
 
 The Agent Protocol is now served (`/threads`, `/assistants`, `/runs`, `/store`, …) alongside your
-routes. Pass `{ deps }` instead of `{ config }` to bring your own persistent drivers (Postgres +
-Redis) via [`@skein-js/runtime`](../runtime)'s `buildRuntime`. Call `app.enableCors(...)` as usual if
-browser clients run on another origin. Enable shutdown hooks (`app.enableShutdownHooks()`) so the
-background run worker drains on exit.
+routes. Call `app.enableCors(...)` as usual if browser clients run on another origin. Enable shutdown
+hooks (`app.enableShutdownHooks()`) so the background run worker drains on exit.
+
+### No `langgraph.json`? Pass a graph you already have
+
+`{ deps }` is the alternative to `{ config }`: bring a compiled graph straight from your code — no
+config file, no CLI. [`embedInMemoryGraphs`](../server-kit) turns a graph map into the
+`ProtocolDeps` the module needs:
+
+```ts
+import { Module } from "@nestjs/common";
+import { SkeinModule } from "@skein-js/nestjs";
+import { embedInMemoryGraphs } from "@skein-js/server-kit";
+
+import { agent } from "./graphs/agent-graph";
+
+@Module({
+  imports: [SkeinModule.forRoot({ deps: embedInMemoryGraphs({ agent }) })],
+  controllers: [/* your own controllers */],
+})
+export class AppModule {}
+```
+
+Map keys become graph ids. For durable state, swap in `embedPostgresGraphs` (Postgres + Redis) from
+[`@skein-js/runtime`](../runtime) — or, if you _do_ have a `langgraph.json` and just want production
+drivers, its `buildRuntime`. Full walkthrough: [docs/embedding.md](../../docs/embedding.md).
+
+## Graphs as plain endpoints (non-chat)
+
+For workloads that aren't chat — a classifier, an extractor, a workflow another service calls — there
+is a smaller surface: every graph mounted as `POST /invoke/:graph_id`, where the request body **is**
+the graph input and the response **is** the final state. No threads, assistants, or runs.
+
+```ts
+import { SkeinInvokeModule } from "@skein-js/nestjs";
+
+@Module({ imports: [SkeinInvokeModule.forRoot({ deps })] })
+export class AppModule {}
+```
+
+Send `Accept: text/event-stream` to stream the steps instead. See
+[docs/serving-a-single-graph.md](../../docs/serving-a-single-graph.md).
 
 ## Standalone server
 
@@ -47,6 +85,9 @@ const server = await createNestServer({ config: "./langgraph.json" });
 await server.listen(2024);
 // on shutdown: await server.close();  // stops the run worker
 ```
+
+The same `{ deps }` seam applies here — `createNestServer({ deps: embedInMemoryGraphs({ agent }) })`
+serves a graph you hold in code, with no `langgraph.json` on disk.
 
 ## Streaming
 
@@ -64,16 +105,23 @@ produced, tearing the run's subscription down on client disconnect.
 - **`SKEIN_RUNTIME` / `SKEIN_LOGGER` / `SKEIN_CORS`** — DI tokens; inject `SKEIN_RUNTIME` to reach the
   `ResolvedProtocolRuntime` from your own providers — its `.runtime` is the `ProtocolRuntime`
   (assistants, handlers, worker), plus `.cors`.
+- **`SkeinInvokeModule.forRoot(options): DynamicModule`** — the simplified serving surface:
+  `POST /invoke/:graph_id` per graph, body-in / final-state-out, for non-chat workloads. Options add
+  `prefix` (default `/invoke`) and `streamMode`. Also exports `SkeinInvokeMiddleware` and the
+  `SKEIN_INVOKE` token.
 - **`SkeinRuntimeOptions`** — the shared seam every adapter accepts: common `{ logger?, cors?, warm? }`
   **plus** either `{ config, importModule? }` (in-memory runtime from a `langgraph.json`) **or**
-  `{ deps }` (bring-your-own `ProtocolDeps`, e.g. from [`@skein-js/runtime`](../runtime)'s
-  `buildRuntime`).
+  `{ deps }` (bring-your-own `ProtocolDeps`). Build `deps` in code with `embedInMemoryGraphs`
+  ([`@skein-js/server-kit`](../server-kit)) or `embedPostgresGraphs` ([`@skein-js/runtime`](../runtime)),
+  or from a `langgraph.json` with that package's `buildRuntime`.
 - Low-level mappers: `toProtocolRequest`, plus `sendNodeResponse` / `sendNodeError` (re-exported from
   [`@skein-js/server-kit`](../server-kit)).
 
 ## Learn more
 
 - [`@skein-js/express`](../server-express) — the reference adapter
+- [Embedding a graph you already have](../../docs/embedding.md) — the `{ deps }` path, no `langgraph.json`
+- [Serving a graph as a plain endpoint](../../docs/serving-a-single-graph.md) — the non-chat surface
 - [Building your own adapter](../../docs/building-an-adapter.md) · [skein-js overview](../../docs/index.md)
 
 ## License

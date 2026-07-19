@@ -10,44 +10,48 @@
 
 import {
   resolveProtocolRuntime,
+  resolveRuntimeDeps,
   type ResolvedProtocolRuntime,
+  type ResolvedRuntimeDeps,
   type SkeinRuntimeOptions,
 } from "@skein-js/server-kit";
 
 const CONFIG_CACHE_KEY = Symbol.for("skein.nextjs.configRuntimeCache");
 const DEPS_CACHE_KEY = Symbol.for("skein.nextjs.depsRuntimeCache");
+// The invoke surface caches separately: it resolves only deps (no assistants, no worker), so sharing
+// a slot with the full runtime would make whichever handler ran first decide what the other got.
+const CONFIG_INVOKE_CACHE_KEY = Symbol.for("skein.nextjs.configInvokeCache");
+const DEPS_INVOKE_CACHE_KEY = Symbol.for("skein.nextjs.depsInvokeCache");
 
-type RuntimePromise = Promise<ResolvedProtocolRuntime>;
+type Cached<T> = Promise<T>;
 
-function configCache(): Map<string, RuntimePromise> {
-  const store = globalThis as typeof globalThis & {
-    [CONFIG_CACHE_KEY]?: Map<string, RuntimePromise>;
-  };
-  store[CONFIG_CACHE_KEY] ??= new Map();
-  return store[CONFIG_CACHE_KEY];
+function globalMap<T>(key: symbol): Map<string, Cached<T>> {
+  const store = globalThis as typeof globalThis &
+    Record<symbol, Map<string, Cached<T>> | undefined>;
+  store[key] ??= new Map<string, Cached<T>>();
+  return store[key] as Map<string, Cached<T>>;
 }
 
-function depsCache(): WeakMap<object, RuntimePromise> {
-  const store = globalThis as typeof globalThis & {
-    [DEPS_CACHE_KEY]?: WeakMap<object, RuntimePromise>;
-  };
-  store[DEPS_CACHE_KEY] ??= new WeakMap();
-  return store[DEPS_CACHE_KEY];
+function globalWeakMap<T>(key: symbol): WeakMap<object, Cached<T>> {
+  const store = globalThis as typeof globalThis &
+    Record<symbol, WeakMap<object, Cached<T>> | undefined>;
+  store[key] ??= new WeakMap<object, Cached<T>>();
+  return store[key] as WeakMap<object, Cached<T>>;
 }
 
 /** Resolve once and cache; evict the cached promise if resolution rejects so the next request retries. */
-function resolveOnce<K extends object | string>(
+function resolveOnce<K extends object | string, T>(
   cache: {
-    get(key: K): RuntimePromise | undefined;
-    set(key: K, value: RuntimePromise): void;
+    get(key: K): Cached<T> | undefined;
+    set(key: K, value: Cached<T>): void;
     delete(key: K): void;
   },
   key: K,
-  options: SkeinRuntimeOptions,
-): RuntimePromise {
+  resolve: () => Promise<T>,
+): Cached<T> {
   let resolved = cache.get(key);
   if (!resolved) {
-    resolved = resolveProtocolRuntime(options).catch((error: unknown) => {
+    resolved = resolve().catch((error: unknown) => {
       cache.delete(key); // don't cache a rejection — a transient failure must be retryable
       throw error;
     });
@@ -56,10 +60,36 @@ function resolveOnce<K extends object | string>(
   return resolved;
 }
 
-/** Resolve (once) the runtime for these options, reusing the cached promise across module reloads. */
-export function getSkeinRuntime(options: SkeinRuntimeOptions): RuntimePromise {
+/**
+ * Memoize a resolution against these options: keyed by config path for the `{ config }` form, and by
+ * the deps object's identity for `{ deps }`, so two handlers with different injected deps get
+ * distinct entries rather than colliding on one shared slot.
+ */
+function memoizeByOptions<T>(
+  options: SkeinRuntimeOptions,
+  configKey: symbol,
+  depsKey: symbol,
+  resolve: () => Promise<T>,
+): Cached<T> {
   if (typeof options.config === "string") {
-    return resolveOnce(configCache(), options.config, options);
+    return resolveOnce(globalMap<T>(configKey), options.config, resolve);
   }
-  return resolveOnce(depsCache(), options.deps, options);
+  return resolveOnce(globalWeakMap<T>(depsKey), options.deps, resolve);
+}
+
+/** Resolve (once) the runtime for these options, reusing the cached promise across module reloads. */
+export function getSkeinRuntime(options: SkeinRuntimeOptions): Promise<ResolvedProtocolRuntime> {
+  return memoizeByOptions(options, CONFIG_CACHE_KEY, DEPS_CACHE_KEY, () =>
+    resolveProtocolRuntime(options),
+  );
+}
+
+/**
+ * Resolve (once) just the deps for these options — what the simplified invoke surface needs, since it
+ * seeds no assistants and starts no background run worker.
+ */
+export function getSkeinInvokeDeps(options: SkeinRuntimeOptions): Promise<ResolvedRuntimeDeps> {
+  return memoizeByOptions(options, CONFIG_INVOKE_CACHE_KEY, DEPS_INVOKE_CACHE_KEY, () =>
+    resolveRuntimeDeps(options),
+  );
 }

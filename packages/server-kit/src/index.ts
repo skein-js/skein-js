@@ -8,11 +8,14 @@
 
 // Runtime resolution: turn a `{ config } | { deps }` option bag into a live runtime (assistants
 // seeded, worker started) — the shared step every adapter runs before mounting the route table.
-export { resolveProtocolRuntime } from "./resolve-runtime.js";
+// `resolveRuntimeDeps` stops at the deps (no assistants, no worker) — what the simplified invoke
+// surface needs, since it never touches threads/assistants/runs.
+export { resolveProtocolRuntime, resolveRuntimeDeps } from "./resolve-runtime.js";
 export type {
   SkeinRuntimeCommonOptions,
   SkeinRuntimeOptions,
   ResolvedProtocolRuntime,
+  ResolvedRuntimeDeps,
 } from "./resolve-runtime.js";
 
 // In-memory runtime: assemble a `ProtocolDeps` backed by in-process drivers (the `skein dev` runtime,

@@ -8,6 +8,11 @@ export type { SkeinFastifyServer } from "./create-fastify-server.js";
 export { skeinPlugin, registerSkeinHandlers } from "./skein-plugin.js";
 export type { SkeinPluginOptions, HandlerRoutesOptions } from "./skein-plugin.js";
 
+// The simplified serving surface: every graph as a plain `POST /invoke/:graph_id` endpoint, for
+// non-chat workloads. See docs/serving-a-single-graph.md.
+export { skeinInvokePlugin } from "./skein-invoke-plugin.js";
+export type { SkeinInvokePluginOptions } from "./skein-invoke-plugin.js";
+
 // Low-level request/response mappers, for adapters composing their own routing.
 export { toProtocolRequest } from "./to-protocol-request.js";
 export { sendProtocolResponse } from "./send-protocol-response.js";

@@ -24,6 +24,7 @@ import {
 } from "@skein-js/core";
 
 import type { ResolvedDeps } from "../deps.js";
+import { resolveCompiledGraph } from "../graphs/resolve-compiled-graph.js";
 import { serializeError } from "../normalize-error.js";
 import {
   chunkToFrameBody,
@@ -31,7 +32,6 @@ import {
   toRunFrame,
   type GraphStreamEvent,
 } from "../sse/run-frame-stream.js";
-import { SkeinBaseStore } from "../store/skein-base-store.js";
 import { runStatusForSnapshot, snapshotToThreadUpdate } from "../threads/thread-mirror.js";
 
 import type { AbortReason, RunControl } from "./cancellation.js";
@@ -74,27 +74,21 @@ type StreamOptions = Parameters<CompiledGraph<string>["stream"]>[1];
 type StreamEventsOptions = Parameters<CompiledGraph<string>["streamEvents"]>[1];
 
 /**
- * Resolve an assistant's graph, invoking a factory export with the run's configurable, then attach
- * the injected checkpointer (thread state, history, interrupt/resume) and the long-term store
- * (cross-thread memory via `getStore()`). Both mirror how `@langchain/langgraph-api` injects its
- * saver and store onto the compiled graph, so a graph written for LangGraph Platform runs unchanged.
+ * Resolve an assistant's graph for this run. Delegates to the shared resolver (which attaches the
+ * checkpointer and long-term store); the run-specific part is exposing the authenticated caller to a
+ * graph *factory*, so a factory that branches on the principal sees the same `langgraph_auth_user` a
+ * node reads — sanitized identically, so a client can't spoof it via its own configurable.
  */
 async function resolveGraph(
   deps: ResolvedDeps,
   graphId: string,
   kwargs: RunKwargs,
 ): Promise<CompiledGraph<string>> {
-  const resolved = await deps.graphs.load(graphId);
-  const graph =
-    typeof resolved === "function"
-      ? // Expose the authenticated caller to a graph *factory* too, so a factory that branches on the
-        // principal sees the same `langgraph_auth_user` a node reads — sanitized identically, so a
-        // client can't spoof it via its own configurable.
-        await resolved({ configurable: toFactoryConfigurable(kwargs) })
-      : resolved;
-  (graph as { checkpointer?: unknown }).checkpointer = deps.checkpointer;
-  (graph as { store?: unknown }).store = new SkeinBaseStore(deps.store.store);
-  return graph;
+  return resolveCompiledGraph(deps.graphs, graphId, {
+    configurable: toFactoryConfigurable(kwargs),
+    checkpointer: deps.checkpointer,
+    store: deps.store.store,
+  });
 }
 
 /** Set a run's status only if it hasn't already reached a terminal state; returns the effective status. */

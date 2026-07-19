@@ -8,6 +8,11 @@ export type { SkeinRouter, SkeinRouterOptions } from "./skein-router.js";
 export { createExpressServer } from "./create-express-server.js";
 export type { SkeinExpressServer } from "./create-express-server.js";
 
+// The simplified serving surface: every graph as a plain `POST /invoke/:graph_id` endpoint, for
+// non-chat workloads. See docs/serving-a-single-graph.md.
+export { skeinInvokeRouter } from "./skein-invoke-router.js";
+export type { SkeinInvokeRouter, SkeinInvokeRouterOptions } from "./skein-invoke-router.js";
+
 // The pure transport shim + route table, for callers wiring their own `ProtocolDeps`. `skeinRoutes`
 // is re-exported from its canonical home (@skein-js/agent-protocol) so existing imports keep working.
 export { createHandlerRouter, skeinRoutes } from "./routes.js";

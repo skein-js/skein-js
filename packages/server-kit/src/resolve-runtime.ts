@@ -54,6 +54,28 @@ export interface ResolvedProtocolRuntime {
   cors?: CorsOptions;
 }
 
+/** Just the dependencies behind a `{ config } | { deps }` bag — no runtime, no worker. */
+export interface ResolvedRuntimeDeps {
+  deps: ProtocolDeps;
+  /** CORS mapped from the config's `http.cors`, or `undefined` for the injected-`deps` path. */
+  cors?: CorsOptions;
+}
+
+/**
+ * Resolve the `{ config } | { deps }` seam down to a `ProtocolDeps` — injected as-is, or fresh
+ * in-memory drivers loaded from a `langgraph.json`. This is the half of
+ * {@link resolveProtocolRuntime} that stops short of building the engine, so the simplified invoke
+ * surface (which needs only graphs + store) doesn't seed assistants or start a run worker it will
+ * never use.
+ */
+export async function resolveRuntimeDeps(
+  options: SkeinRuntimeOptions,
+): Promise<ResolvedRuntimeDeps> {
+  if (options.deps) return { deps: options.deps };
+  const loaded = await loadInMemoryRuntime(options.config, options.importModule);
+  return { deps: loaded.deps, cors: loaded.cors };
+}
+
 /**
  * Build a `ProtocolRuntime` from adapter options: resolve `deps` (injected, or fresh in-memory
  * drivers from a `langgraph.json`), seed one assistant per declared graph, optionally warm the
@@ -63,15 +85,7 @@ export interface ResolvedProtocolRuntime {
 export async function resolveProtocolRuntime(
   options: SkeinRuntimeOptions,
 ): Promise<ResolvedProtocolRuntime> {
-  let deps: ProtocolDeps;
-  let corsFromConfig: CorsOptions | undefined;
-  if (options.deps) {
-    deps = options.deps;
-  } else {
-    const loaded = await loadInMemoryRuntime(options.config, options.importModule);
-    deps = loaded.deps;
-    corsFromConfig = loaded.cors;
-  }
+  const { deps, cors: corsFromConfig } = await resolveRuntimeDeps(options);
 
   const runtime = createProtocolRuntime(deps);
   await runtime.service.assistants.registerGraphAssistants();

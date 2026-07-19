@@ -1,0 +1,21 @@
+{
+  "name": "@skein-js/example-invoke-endpoint",
+  "version": "0.0.0",
+  "private": true,
+  "description": "Serve LangGraph.js graphs as plain HTTP endpoints (POST /invoke/:graph_id) — the simplified, non-chat alternative to the full Agent Protocol.",
+  "type": "module",
+  "scripts": {
+    "dev": "tsx watch src/server.ts",
+    "start": "tsx src/server.ts"
+  },
+  "dependencies": {
+    "@langchain/langgraph": "^1.4.0",
+    "@skein-js/express": "workspace:*",
+    "@skein-js/server-kit": "workspace:*",
+    "express": "^5.2.1"
+  },
+  "devDependencies": {
+    "@types/express": "^5.0.0",
+    "tsx": "^4.19.2"
+  }
+}

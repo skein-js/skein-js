@@ -46,6 +46,22 @@ await app.listen({ port: 3000 });
 // the Agent Protocol is now served under /agent/*
 ```
 
+## Graphs as plain endpoints (non-chat)
+
+For workloads that aren't chat — a classifier, an extractor, a workflow another service calls — there
+is a smaller surface: every graph mounted as `POST /invoke/:graph_id`, where the request body **is**
+the graph input and the response **is** the final state. No threads, assistants, or runs.
+
+```ts
+import { skeinInvokePlugin } from "@skein-js/fastify";
+
+await app.register(skeinInvokePlugin, { prefix: "/agent", deps });
+// → POST /agent/invoke/:graph_id
+```
+
+Send `Accept: text/event-stream` to stream the steps instead. See
+[docs/serving-a-single-graph.md](../../docs/serving-a-single-graph.md).
+
 ## Streaming
 
 SSE responses take over the raw Node response (`reply.hijack()` + `reply.raw`) and stream the
@@ -56,6 +72,8 @@ pre-serialized frames the engine produced, tearing the run's subscription down o
 - **`createFastifyServer(options): Promise<SkeinFastifyServer>`** — a standalone server;
   `SkeinFastifyServer` = `{ app, runtime, listen(port?, host?), close() }`. `listen` defaults to port
   `2024`, host `"localhost"`; `close()` stops the run worker then the HTTP server.
+- **`skeinInvokePlugin`** — the simplified serving surface (`POST /invoke/:graph_id`, body-in /
+  final-state-out). Options add `invokePrefix` (default `/invoke`) and `streamMode`.
 - **`skeinPlugin`** — a Fastify plugin: `await app.register(skeinPlugin, { prefix, ...options })`
   mounts the protocol under `prefix`. Encapsulated, so skein's routes + CORS stay isolated from the
   host app. Options: `SkeinPluginOptions` (an alias of `SkeinRuntimeOptions`); `prefix` is Fastify's

@@ -16,6 +16,7 @@ skein-js implements LangChain's Agent Protocol, so the whole LangChain client ec
 
 - [LangGraph CLI compatibility](https://github.com/skein-js/skein-js/blob/main/docs/langgraph-cli-compat.md): Every `langgraph.json` field + the `skein` command mapping (`dev`/`up`/`build`/`dockerfile`).
 - [Embedding a graph in code](https://github.com/skein-js/skein-js/blob/main/docs/embedding.md): The in-code on-ramp — serve a compiled graph with no `langgraph.json` and no CLI.
+- [Serving a graph as a plain endpoint](https://github.com/skein-js/skein-js/blob/main/docs/serving-a-single-graph.md): The non-chat surface — `POST /invoke/:graph_id`, body-in / final-state-out, no threads or runs.
 - [Agent Protocol surface](https://github.com/skein-js/skein-js/blob/main/docs/agent-protocol.md): The REST + SSE endpoint inventory skein implements, plus the auth route→permission map.
 - [Streaming](https://github.com/skein-js/skein-js/blob/main/docs/streaming.md): LangGraph stream modes mapped onto Agent Protocol SSE, with cross-instance fan-out.
 - [React SDK / useStream](https://github.com/skein-js/skein-js/blob/main/docs/react-sdk.md): Frontend compatibility — `@langchain/langgraph-sdk` and `useStream` over SSE.

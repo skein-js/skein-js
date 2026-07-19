@@ -36,7 +36,7 @@ export interface HandlerRoutesOptions {
   cors?: boolean | CorsOptions;
 }
 
-const HTTP_METHOD_TO_FASTIFY: Record<HttpMethod, HTTPMethods> = {
+export const HTTP_METHOD_TO_FASTIFY: Record<HttpMethod, HTTPMethods> = {
   get: "GET",
   post: "POST",
   put: "PUT",
@@ -45,14 +45,13 @@ const HTTP_METHOD_TO_FASTIFY: Record<HttpMethod, HTTPMethods> = {
 };
 
 /**
- * Bind the Agent Protocol route table to a handler table on a Fastify instance — the pure shim. It
- * assembles no runtime and knows no storage driver, so a caller with custom `ProtocolDeps` can mount
- * it over any `ProtocolHandlers`. Registers CORS first (when enabled) so preflight `OPTIONS` and the
- * `Access-Control-Allow-*` headers cover every route, including the SSE streams.
+ * The per-encapsulation setup both skein surfaces need before binding routes: CORS (when enabled) so
+ * preflight `OPTIONS` and the `Access-Control-Allow-*` headers cover every route including SSE, and a
+ * JSON parser that tolerates an empty body. Shared by {@link registerSkeinHandlers} and
+ * `skeinInvokePlugin` so the two can't drift.
  */
-export async function registerSkeinHandlers(
+export async function prepareSkeinContext(
   fastify: FastifyInstance,
-  handlers: ProtocolHandlers,
   options: HandlerRoutesOptions = {},
 ): Promise<void> {
   if (options.cors) {
@@ -78,7 +77,13 @@ export async function registerSkeinHandlers(
   // Tolerate an empty body sent with `Content-Type: application/json`: Fastify's default parser 400s
   // on it, whereas Express (`express.json()`) treats it as `{}`. Replace the JSON parser (in this
   // encapsulation context) with one that maps an empty body to `{}` and still 400s malformed JSON.
-  fastify.removeContentTypeParser("application/json");
+  // Guarded because both skein surfaces call this: registering the protocol and invoke plugins into
+  // one encapsulation context would otherwise remove a parser that is no longer there.
+  try {
+    fastify.removeContentTypeParser("application/json");
+  } catch {
+    // Already replaced in this context by the other skein plugin — the parser below is identical.
+  }
   fastify.addContentTypeParser("application/json", { parseAs: "string" }, (_req, body, done) => {
     const text = (typeof body === "string" ? body : body.toString()).trim();
     if (text === "") {
@@ -91,6 +96,19 @@ export async function registerSkeinHandlers(
       done(error as Error);
     }
   });
+}
+
+/**
+ * Bind the Agent Protocol route table to a handler table on a Fastify instance — the pure shim. It
+ * assembles no runtime and knows no storage driver, so a caller with custom `ProtocolDeps` can mount
+ * it over any `ProtocolHandlers`.
+ */
+export async function registerSkeinHandlers(
+  fastify: FastifyInstance,
+  handlers: ProtocolHandlers,
+  options: HandlerRoutesOptions = {},
+): Promise<void> {
+  await prepareSkeinContext(fastify, options);
 
   for (const binding of skeinRoutes) {
     const invoke = handlers[binding.handler];

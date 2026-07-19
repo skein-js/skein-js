@@ -1,6 +1,6 @@
 import { MessagesAnnotation, StateGraph } from "@langchain/langgraph";
-import { startPostgres, startRedis, type StartedResource } from "@skein-js/test-support";
 import { MemoryRunEventBus, MemoryRunQueue } from "@skein-js/storage-memory";
+import { startPostgres, startRedis, type StartedResource } from "@skein-js/test-support";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 
 import { embedPostgresGraphs } from "./embed-postgres-graphs.js";

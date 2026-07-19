@@ -67,6 +67,25 @@ const { router } = await skeinRouter({ deps: runtime.deps, cors: runtime.cors })
 app.use(router);
 ```
 
+## Graphs as plain endpoints (non-chat)
+
+For workloads that aren't chat — a classifier, an extractor, a workflow another service calls — there
+is a smaller surface: every graph mounted as `POST /invoke/:graph_id`, where the request body **is**
+the graph input and the response **is** the final state. No threads, assistants, or runs.
+
+```ts
+import { skeinInvokeRouter } from "@skein-js/express";
+import { embedInMemoryGraphs } from "@skein-js/server-kit";
+
+const { router } = await skeinInvokeRouter({ deps: embedInMemoryGraphs({ triage }) });
+app.use(router);
+// curl -X POST localhost:2024/invoke/triage -d '{"text":"…"}'
+```
+
+Send `Accept: text/event-stream` to stream the steps instead. See
+[docs/serving-a-single-graph.md](../../docs/serving-a-single-graph.md) and
+[`examples/invoke-endpoint`](../../examples/invoke-endpoint).
+
 ## API
 
 - **`createExpressServer(options): Promise<SkeinExpressServer>`** — `SkeinExpressServer` =
@@ -74,6 +93,9 @@ app.use(router);
   `"localhost"`, resolves the Node `Server` once bound; `close()` stops the run worker then the HTTP
   server (idempotent).
 - **`skeinRouter(options): Promise<SkeinRouter>`** — `SkeinRouter` = `{ router, runtime }`.
+- **`skeinInvokeRouter(options): Promise<SkeinInvokeRouter>`** — the simplified serving surface
+  (`POST /invoke/:graph_id`, body-in / final-state-out). `SkeinInvokeRouter` = `{ router, deps }`;
+  options add `prefix` (default `/invoke`) and `streamMode`.
 - **`SkeinRouterOptions`** — common `{ logger?, cors?, warm? }` **plus** either `{ config, importModule? }`
   (in-memory runtime from a `langgraph.json`) **or** `{ deps }` (bring-your-own `ProtocolDeps`).
   `warm: true` eagerly loads graphs at startup; `logger` mounts per-request logging.
