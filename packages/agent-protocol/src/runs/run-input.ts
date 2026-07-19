@@ -137,10 +137,15 @@ export function toGraphCallOptions(
   signal: AbortSignal,
 ): GraphCallOptions {
   const options: GraphCallOptions = {
-    // Drop server-owned keys from the client's configurable, force this thread's id, then stamp the
-    // authenticated caller so the graph can authorize off `configurable.langgraph_auth_user`.
+    // Drop server-owned keys from the client's configurable, force this thread's id, add the
+    // server-owned time-travel fork target (if any) *after* sanitizing so the client can never spoof
+    // it, then stamp the authenticated caller so the graph can authorize off `langgraph_auth_user`.
     configurable: withAuthUser(
-      { ...sanitizeConfigurable(kwargs.config?.configurable), thread_id: threadId },
+      {
+        ...sanitizeConfigurable(kwargs.config?.configurable),
+        thread_id: threadId,
+        ...(kwargs.checkpoint_id !== undefined ? { checkpoint_id: kwargs.checkpoint_id } : {}),
+      },
       kwargs.auth_user,
       kwargs.auth_scopes,
     ),

@@ -159,6 +159,71 @@ describe("@skein-js/express adapter", () => {
     expect(badRes.status).toBe(400);
   });
 
+  it("time travels: updates state at a checkpoint, reads it back, and forks a run", async () => {
+    running = await startEchoServer();
+    const { baseUrl } = running;
+    const post = (path: string, body: unknown) =>
+      fetch(`${baseUrl}${path}`, {
+        method: "POST",
+        headers: jsonHeaders,
+        body: JSON.stringify(body),
+      });
+    type Values = { messages: Array<{ content: string }> };
+    const lastContent = (v: Values) => v.messages.at(-1)?.content;
+
+    const thread = (await (await post("/threads", {})).json()) as { thread_id: string };
+    const tid = thread.thread_id;
+
+    // Establish a checkpoint by running the graph once.
+    const first = (await (
+      await post(`/threads/${tid}/runs/wait`, {
+        assistant_id: "echo",
+        input: { messages: [{ role: "user", content: "hi" }] },
+      })
+    ).json()) as Values;
+    expect(lastContent(first)).toBe("echo: hi");
+    const firstLen = first.messages.length;
+
+    const history = (await (await post(`/threads/${tid}/history`, {})).json()) as Array<{
+      checkpoint: { checkpoint_id: string };
+    }>;
+    const tip = history[0]?.checkpoint.checkpoint_id;
+    expect(typeof tip).toBe("string");
+
+    // Update (fork) state — response is the new checkpoint pointer, matching LangGraph's wire shape.
+    const updateRes = await post(`/threads/${tid}/state`, {
+      values: { messages: [{ role: "user", content: "forked" }] },
+    });
+    expect(updateRes.status).toBe(200);
+    const updated = (await updateRes.json()) as { checkpoint: { checkpoint_id: string } };
+    expect(typeof updated.checkpoint.checkpoint_id).toBe("string");
+    expect(updated.checkpoint.checkpoint_id).not.toBe(tip);
+
+    // Read state at the pre-fork checkpoint — it still carries the original run's messages.
+    const past = (await (await fetch(`${baseUrl}/threads/${tid}/state/${tip}`)).json()) as {
+      values: Values;
+    };
+    expect(past.values.messages).toHaveLength(firstLen);
+    expect(lastContent(past.values)).toBe("echo: hi");
+
+    // The current tip reflects the fork (one extra message appended by the update).
+    const now = (await (await fetch(`${baseUrl}/threads/${tid}/state`)).json()) as {
+      values: Values;
+    };
+    expect(now.values.messages).toHaveLength(firstLen + 1);
+    expect(lastContent(now.values)).toBe("forked");
+
+    // A run can branch from a chosen checkpoint via a top-level checkpoint_id (not the client config).
+    const forkedRun = (await (
+      await post(`/threads/${tid}/runs/wait`, {
+        assistant_id: "echo",
+        input: { messages: [{ role: "user", content: "again" }] },
+        checkpoint_id: tip,
+      })
+    ).json()) as Values;
+    expect(lastContent(forkedRun)).toBe("echo: again");
+  });
+
   it("streams SSE frames and a synthesized terminal `end` event", async () => {
     running = await startEchoServer();
     const { baseUrl } = running;

@@ -66,16 +66,18 @@ version and mirrors its fields, and `POST .../latest` rolls back to any past ver
 
 ### Threads
 
-| Method   | Path                           | Notes                                         |
-| -------- | ------------------------------ | --------------------------------------------- |
-| `POST`   | `/threads`                     |                                               |
-| `GET`    | `/threads/{thread_id}`         |                                               |
-| `POST`   | `/threads/search`              |                                               |
-| `GET`    | `/threads/{thread_id}/state`   | Current state snapshot (`useStream` hydrates) |
-| `POST`   | `/threads/{thread_id}/history` | Checkpoint history, newest-first              |
-| `PATCH`  | `/threads/{thread_id}`         |                                               |
-| `POST`   | `/threads/{thread_id}/copy`    | Duplicates the thread + its history           |
-| `DELETE` | `/threads/{thread_id}`         |                                               |
+| Method   | Path                                         | Notes                                         |
+| -------- | -------------------------------------------- | --------------------------------------------- |
+| `POST`   | `/threads`                                   |                                               |
+| `GET`    | `/threads/{thread_id}`                       |                                               |
+| `POST`   | `/threads/search`                            |                                               |
+| `GET`    | `/threads/{thread_id}/state`                 | Current state snapshot (`useStream` hydrates) |
+| `POST`   | `/threads/{thread_id}/state`                 | Time travel: fork state at a checkpoint       |
+| `GET`    | `/threads/{thread_id}/state/{checkpoint_id}` | Time travel: state at a checkpoint            |
+| `POST`   | `/threads/{thread_id}/history`               | Checkpoint history, newest-first              |
+| `PATCH`  | `/threads/{thread_id}`                       |                                               |
+| `POST`   | `/threads/{thread_id}/copy`                  | Duplicates the thread + its history           |
+| `DELETE` | `/threads/{thread_id}`                       |                                               |
 
 **Filtering threads by graph.** `POST /threads/search` matches on a metadata subset. When a run is
 created, skein stamps the run's `graph_id` and `assistant_id` into the thread's metadata (matching
@@ -87,6 +89,20 @@ LangGraph), so listing the threads for a graph is just:
 ```
 
 The stamp reflects the thread's most recent run; a thread that has never run carries no `graph_id`.
+
+**Time travel (fork from a checkpoint).** `GET /threads/{id}/history` is read-only, but you can also
+_branch_ from any past checkpoint:
+
+- `POST /threads/{id}/state` with `{ values, as_node?, checkpoint_id? }` calls `graph.updateState` to
+  write a **new checkpoint** that forks history at `checkpoint_id` (or the tip). It returns the new
+  checkpoint pointer, `{ "checkpoint": { "thread_id", "checkpoint_ns", "checkpoint_id" } }`, and mirrors
+  the forked values onto the thread row. Rejected with `409` while a run is in flight on the thread.
+- `GET /threads/{id}/state/{checkpoint_id}` reads the state snapshot at a specific checkpoint.
+- Run creation accepts a top-level **`checkpoint_id`** to start a run from a chosen checkpoint instead
+  of the thread tip. This is **server-validated and server-injected** — it is _not_ read from the
+  client's `config.configurable` (which strips it), so a client can never redirect a run to an arbitrary
+  checkpoint. It rides the LangGraph checkpointer, so no extra storage is involved; thread copy is the
+  coarser, whole-history cousin.
 
 ### Runs — stateless / ephemeral
 
@@ -168,17 +184,17 @@ principal. With no `auth` configured, no keys are added (identical to `langgraph
 
 Route → resource/action (runs authorize through their owning thread — there is no `runs` resource):
 
-| Endpoint(s)                                                                                   | resource\:action                                |
-| --------------------------------------------------------------------------------------------- | ----------------------------------------------- |
-| `GET /assistants/{id}`, `/assistants/{id}/schemas`                                            | `assistants:read`                               |
-| `POST /assistants/search`                                                                     | `assistants:search`                             |
-| `POST /threads`                                                                               | `threads:create`                                |
-| `GET /threads/{id}`, `/state`; `POST /history`; `GET .../runs`, `.../runs/{run_id}`, run join | `threads:read`                                  |
-| `POST /threads/search`                                                                        | `threads:search`                                |
-| `PATCH /threads/{id}`; run cancel                                                             | `threads:update`                                |
-| `DELETE /threads/{id}`; run delete                                                            | `threads:delete`                                |
-| run create (wait/stream/background), thread stream / commands                                 | `threads:create_run`                            |
-| `PUT/GET/DELETE /store/items`, `/store/items/search`, `/store/namespaces`                     | `store:{put,get,delete,search,list_namespaces}` |
+| Endpoint(s)                                                                                                             | resource\:action                                |
+| ----------------------------------------------------------------------------------------------------------------------- | ----------------------------------------------- |
+| `GET /assistants/{id}`, `/assistants/{id}/schemas`                                                                      | `assistants:read`                               |
+| `POST /assistants/search`                                                                                               | `assistants:search`                             |
+| `POST /threads`                                                                                                         | `threads:create`                                |
+| `GET /threads/{id}`, `/state`, `/state/{checkpoint_id}`; `POST /history`; `GET .../runs`, `.../runs/{run_id}`, run join | `threads:read`                                  |
+| `POST /threads/search`                                                                                                  | `threads:search`                                |
+| `PATCH /threads/{id}`; `POST /threads/{id}/state` (state fork); run cancel                                              | `threads:update`                                |
+| `DELETE /threads/{id}`; run delete                                                                                      | `threads:delete`                                |
+| run create (wait/stream/background), thread stream / commands                                                           | `threads:create_run`                            |
+| `PUT/GET/DELETE /store/items`, `/store/items/search`, `/store/namespaces`                                               | `store:{put,get,delete,search,list_namespaces}` |
 
 **Reuse & limits.** The `Auth` contract and the `$eq`/`$contains` filter semantics come from
 `@langchain/*`; skein adds only the instance-scoped dispatch (see [reuse.md](./reuse.md)). Ownership

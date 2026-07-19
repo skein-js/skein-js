@@ -26,6 +26,7 @@ import {
   threadCreateSchema,
   threadPatchSchema,
   threadSearchSchema,
+  threadStateUpdateSchema,
   threadStreamSchema,
 } from "./validation/schemas.js";
 
@@ -71,6 +72,8 @@ export interface ProtocolHandlers {
   deleteThread: ProtocolHandler;
   getThreadHistory: ProtocolHandler;
   getThreadState: ProtocolHandler;
+  getThreadStateAtCheckpoint: ProtocolHandler;
+  updateThreadState: ProtocolHandler;
   // runs
   createWaitRun: ProtocolHandler;
   createStreamRun: ProtocolHandler;
@@ -283,6 +286,26 @@ export function createProtocolHandlers(service: ProtocolService): ProtocolHandle
 
     getThreadState: async (req) =>
       json(await service.threads.getState(requireParam(req.params, "thread_id"))),
+
+    getThreadStateAtCheckpoint: async (req) =>
+      json(
+        await service.threads.getStateAt(
+          requireParam(req.params, "thread_id"),
+          requireParam(req.params, "checkpoint_id"),
+        ),
+      ),
+
+    updateThreadState: async (req) => {
+      const body = parse(threadStateUpdateSchema, req.body ?? {});
+      return json(
+        await service.threads.updateState(requireParam(req.params, "thread_id"), {
+          values: body.values,
+          as_node: body.as_node,
+          checkpoint_id: body.checkpoint_id,
+          checkpoint: body.checkpoint ?? undefined,
+        }),
+      );
+    },
 
     // --- runs ---------------------------------------------------------------------------------
     createWaitRun: async (req) =>

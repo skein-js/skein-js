@@ -33,9 +33,12 @@ export const ROUTE_AUTHZ: Record<keyof ProtocolHandlers, RouteAuthz> = {
   copyThread: { resource: "threads", action: "create" },
   getThread: { resource: "threads", action: "read" },
   getThreadState: { resource: "threads", action: "read" },
+  getThreadStateAtCheckpoint: { resource: "threads", action: "read" },
   getThreadHistory: { resource: "threads", action: "read" },
   listThreads: { resource: "threads", action: "search" },
   patchThread: { resource: "threads", action: "update" },
+  // Time-travel state update forks a checkpoint — a write, so read-only principals can't fork.
+  updateThreadState: { resource: "threads", action: "update" },
   deleteThread: { resource: "threads", action: "delete" },
 
   // runs (authorized through the owning thread)

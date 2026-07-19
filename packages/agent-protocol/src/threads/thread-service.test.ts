@@ -144,3 +144,124 @@ describe("thread service", () => {
     expect(stateA.next).not.toBe(stateB.next);
   });
 });
+
+describe("thread service — time travel", () => {
+  it("updateState forks a new checkpoint and mirrors the new values onto the thread", async () => {
+    const service = await serviceWithAssistants();
+    const thread = await service.threads.create();
+    await service.runs.createWait({
+      thread_id: thread.thread_id,
+      assistant_id: "echo",
+      input: { value: "hi" },
+    });
+    const tip = (await service.threads.history(thread.thread_id))[0]?.checkpoint.checkpoint_id;
+
+    const { checkpoint } = await service.threads.updateState(thread.thread_id, {
+      values: { value: "forked" },
+    });
+
+    // A brand-new checkpoint id, distinct from the tip it forked off.
+    expect(typeof checkpoint.checkpoint_id).toBe("string");
+    expect(checkpoint.checkpoint_id).not.toBe(tip);
+    expect(checkpoint.thread_id).toBe(thread.thread_id);
+    // The forked values are now the thread tip (mirrored onto the row + readable via getState).
+    expect((await service.threads.getState(thread.thread_id)).values).toEqual({ value: "forked" });
+  });
+
+  it("getStateAt reads the earlier checkpoint, distinct from the forked tip", async () => {
+    const service = await serviceWithAssistants();
+    const thread = await service.threads.create();
+    await service.runs.createWait({
+      thread_id: thread.thread_id,
+      assistant_id: "echo",
+      input: { value: "hi" },
+    });
+    const tip =
+      (await service.threads.history(thread.thread_id))[0]?.checkpoint.checkpoint_id ?? undefined;
+    await service.threads.updateState(thread.thread_id, { values: { value: "forked" } });
+
+    // Time-travel back to the pre-fork checkpoint: it still carries the original run's values.
+    const past = await service.threads.getStateAt(thread.thread_id, tip!);
+    expect(past.values).toEqual({ value: "echo: hi" });
+    expect(past.checkpoint.checkpoint_id).toBe(tip);
+  });
+
+  it("getStateAt on an unknown checkpoint returns empty state, not an error", async () => {
+    const service = await serviceWithAssistants();
+    const thread = await service.threads.create();
+    await service.runs.createWait({
+      thread_id: thread.thread_id,
+      assistant_id: "echo",
+      input: { value: "hi" },
+    });
+
+    const state = await service.threads.getStateAt(thread.thread_id, "no-such-checkpoint");
+    expect(state.values).toEqual({});
+  });
+
+  it("getStateAt on a never-run thread returns an empty state", async () => {
+    const service = await serviceWithAssistants();
+    const thread = await service.threads.create();
+    const state = await service.threads.getStateAt(thread.thread_id, "anything");
+    expect(state.values).toEqual({});
+  });
+
+  it("404s updateState / getStateAt on an unknown thread", async () => {
+    const service = await serviceWithAssistants();
+    await expect(service.threads.updateState("ghost", { values: {} })).rejects.toMatchObject({
+      status: 404,
+    });
+    await expect(service.threads.getStateAt("ghost", "c1")).rejects.toMatchObject({ status: 404 });
+  });
+
+  it("409s updateState while a run is in flight (can't fork a busy thread)", async () => {
+    const deps = createFixtureDeps();
+    const service = await serviceWithAssistants(deps);
+    const thread = await service.threads.create();
+    // A background run no worker consumes stays pending — the thread is busy.
+    await service.runs.createBackground(thread.thread_id, { assistant_id: "echo", input: {} });
+    expect(await deps.store.runs.hasActiveRun(thread.thread_id)).toBe(true);
+
+    await expect(
+      service.threads.updateState(thread.thread_id, { values: { value: "x" } }),
+    ).rejects.toMatchObject({ status: 409 });
+  });
+
+  it("422s updateState on a thread that has never produced a graph", async () => {
+    const service = await serviceWithAssistants();
+    const thread = await service.threads.create();
+    await expect(
+      service.threads.updateState(thread.thread_id, { values: { value: "x" } }),
+    ).rejects.toMatchObject({ status: 422 });
+  });
+
+  it("ignores a client-supplied checkpoint.thread_id — a fork can't write into another thread", async () => {
+    const service = await serviceWithAssistants();
+    const victim = await service.threads.create();
+    await service.runs.createWait({
+      thread_id: victim.thread_id,
+      assistant_id: "echo",
+      input: { value: "victim" },
+    });
+    const attacker = await service.threads.create();
+    await service.runs.createWait({
+      thread_id: attacker.thread_id,
+      assistant_id: "echo",
+      input: { value: "attacker" },
+    });
+
+    // Try to redirect the write onto the victim's checkpoint history via the checkpoint pointer.
+    await service.threads.updateState(attacker.thread_id, {
+      values: { value: "poisoned" },
+      checkpoint: { thread_id: victim.thread_id },
+    });
+
+    // The victim is untouched; the write landed on the attacker's own thread (server-owned thread_id wins).
+    expect((await service.threads.getState(victim.thread_id)).values).toEqual({
+      value: "echo: victim",
+    });
+    expect((await service.threads.getState(attacker.thread_id)).values).toEqual({
+      value: "poisoned",
+    });
+  });
+});

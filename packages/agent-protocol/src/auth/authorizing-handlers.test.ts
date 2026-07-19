@@ -150,6 +150,49 @@ describe("authorizing handlers", () => {
     );
   });
 
+  it("denies a read-only principal from forking state (updateThreadState is a write)", async () => {
+    const denying = createProtocolRuntime(
+      createFixtureDeps({ auth: fakeEngine({ deny: (_r, action) => action === "update" }) }),
+    );
+    const created = await denying.handlers.createThread(
+      asUser("alice", { method: "POST", body: {} }),
+    );
+    const threadId = (created as { body: { thread_id: string } }).body.thread_id;
+
+    // A state fork maps to the `update` action, so the update-denying principal is refused.
+    await expectStatus(
+      denying.handlers.updateThreadState(
+        asUser("alice", { method: "POST", params: { thread_id: threadId }, body: { values: {} } }),
+      ),
+      403,
+    );
+    // Reading state at a checkpoint is a `read` action — not denied by the update-only ban.
+    const read = await denying.handlers.getThreadStateAtCheckpoint(
+      asUser("alice", { params: { thread_id: threadId, checkpoint_id: "c1" } }),
+    );
+    expect((read as { body: unknown }).body).toBeDefined();
+  });
+
+  it("hides another user's thread state and blocks forking it as 404", async () => {
+    const created = await runtime.handlers.createThread(
+      asUser("alice", { method: "POST", body: {} }),
+    );
+    const threadId = (created as { body: { thread_id: string } }).body.thread_id;
+
+    await expectStatus(
+      runtime.handlers.getThreadStateAtCheckpoint(
+        asUser("bob", { params: { thread_id: threadId, checkpoint_id: "c1" } }),
+      ),
+      404,
+    );
+    await expectStatus(
+      runtime.handlers.updateThreadState(
+        asUser("bob", { method: "POST", params: { thread_id: threadId }, body: { values: {} } }),
+      ),
+      404,
+    );
+  });
+
   describe("studio auth", () => {
     it("admits studio traffic without credentials when studio auth is enabled", async () => {
       const created = await runtime.handlers.createThread(

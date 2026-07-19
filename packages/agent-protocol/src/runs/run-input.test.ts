@@ -75,6 +75,37 @@ describe("toGraphCallOptions", () => {
     expect(options.configurable).toEqual({ user_key: "ok", thread_id: "t1" });
   });
 
+  it("injects the server-owned checkpoint_id (time-travel fork) into configurable", () => {
+    const options = toGraphCallOptions(
+      { checkpoint_id: "ckpt-fork" },
+      "t1",
+      new AbortController().signal,
+    );
+    expect(options.configurable).toEqual({ thread_id: "t1", checkpoint_id: "ckpt-fork" });
+  });
+
+  it("the server checkpoint_id wins; a client-supplied one is still stripped", () => {
+    const options = toGraphCallOptions(
+      {
+        config: { configurable: { checkpoint_id: "attacker-picked", ok: "keep" } },
+        checkpoint_id: "server-fork",
+      },
+      "t1",
+      new AbortController().signal,
+    );
+    expect(options.configurable).toEqual({
+      ok: "keep",
+      thread_id: "t1",
+      checkpoint_id: "server-fork",
+    });
+  });
+
+  it("adds no checkpoint_id when the run does not fork", () => {
+    const options = toGraphCallOptions({}, "t1", new AbortController().signal);
+    expect(options.configurable).toEqual({ thread_id: "t1" });
+    expect("checkpoint_id" in options.configurable).toBe(false);
+  });
+
   it("carries context, recursion limit, and interrupt lists when present", () => {
     const options = toGraphCallOptions(
       {
@@ -206,5 +237,14 @@ describe("toFactoryConfigurable", () => {
   it("returns undefined when a run carries no config and no principal", () => {
     expect(toFactoryConfigurable({})).toBeUndefined();
     expect(toFactoryConfigurable({ config: { configurable: {} } })).toBeUndefined();
+  });
+
+  it("never exposes the server-owned fork checkpoint_id to a factory graph", () => {
+    // The fork pointer lives in `kwargs.checkpoint_id`, not in `config.configurable`, so a factory
+    // (which sees only sanitized config) can never branch on it.
+    expect(toFactoryConfigurable({ checkpoint_id: "server-fork" })).toBeUndefined();
+    expect(
+      toFactoryConfigurable({ checkpoint_id: "server-fork", config: { configurable: { a: 1 } } }),
+    ).toEqual({ a: 1 });
   });
 });

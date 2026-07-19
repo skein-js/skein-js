@@ -87,6 +87,13 @@ Also shipped, beyond the original MVP plan:
   [recipes.md](./recipes.md#run-completion-webhooks).
 - ✅ **True `events` stream mode (LangGraph parity)** — `stream_mode: "events"` drives the graph via
   LangGraph's `streamEvents` (v2) for full token/tool/step granularity; combinable with other modes.
+- ✅ **Time travel — fork from a past checkpoint (LangGraph parity)** — update state at an arbitrary
+  prior checkpoint (`POST /threads/{id}/state`, writing a new forked checkpoint via `graph.updateState`),
+  read state at a specific checkpoint (`GET /threads/{id}/state/{checkpoint_id}`), and start a run that
+  forks from a chosen checkpoint (a top-level `checkpoint_id` on run creation) instead of the thread tip.
+  Rides the LangGraph checkpointer — no new storage. The fork target is server-validated and injected
+  server-side, so a client can't redirect a run to an arbitrary checkpoint through config. See
+  [agent-protocol.md](./agent-protocol.md).
 - ✅ **`skein import-langgraph`** — import an existing LangGraph `.langgraph_api/` dev-state directory
   (threads, runs, assistants, store) into skein, so adopting it off `langgraph dev` carries local state
   over losslessly. See [langgraph-cli-compat.md](./langgraph-cli-compat.md).
@@ -103,12 +110,6 @@ The next block is the LangGraph feature-parity backlog, listed **in priority ord
   implement it — see [Known gaps](#known-gaps-vs-the-langgraph-cli--platform). Planned: a `crons`
   resource in [`@skein-js/agent-protocol`](../packages/agent-protocol) backed by a scheduler over the
   existing run queue (a natural fit for the BullMQ repeatable-jobs feature on the Redis driver).
-- 🗺️ **Time travel — fork from a past checkpoint (LangGraph parity).** skein-js reads thread history
-  (`/threads/{id}/history`) today, but there is no way to update state at an arbitrary prior checkpoint
-  and re-run from there. LangGraph's time-travel lets you branch from any checkpoint to explore
-  alternatives. Planned: an update-state-at-checkpoint operation over the LangGraph checkpointer plus a
-  fork that starts a new run from the chosen checkpoint. (Thread copy — full-history duplication — ships
-  today and is the coarser cousin of this.)
 - 🗺️ **MCP endpoint (LangGraph parity).** LangGraph Server exposes graphs as MCP tools at `/mcp`.
   skein-js has no MCP surface yet. Planned: an `/mcp` handler in the transport-neutral handler table
   that advertises each graph as an MCP tool and bridges tool calls onto runs.
@@ -127,27 +128,27 @@ isn't covered yet. If you hit one of these — or a gap not listed here — plea
 [file an issue](https://github.com/skein-js/skein-js/issues); compatibility reports are the most
 valuable feedback we can get.
 
-| Capability                             | Status in skein-js | Notes                                                                        |
-| -------------------------------------- | ------------------ | ---------------------------------------------------------------------------- |
-| `dev` / `up` / `build` / `dockerfile`  | ✅ shipped         | Drop-in for the LangGraph CLI, plus skein-only `start` + `import-langgraph`. |
-| Assistants / threads / runs / store    | ✅ shipped         | Full Agent Protocol surface; three run modes; SSE streaming.                 |
-| Thread search / copy                   | ✅ shipped         | Metadata/status filter + pagination; copy duplicates history.                |
-| Store item TTL                         | ✅ shipped         | `store.ttl` (default/refresh-on-read/sweep) + per-put `ttl`.                 |
-| Distinct cancelled run status          | ✅ shipped         | Cancel resolves to `cancelled`, not `error`.                                 |
-| Human-in-the-loop (interrupt/resume)   | ✅ shipped         | Via LangGraph checkpointers.                                                 |
-| Auth + authorization                   | ✅ shipped         | LangGraph `Auth` parity — see below.                                         |
-| Multitask / double-texting             | ✅ shipped         | `reject` (422) / `enqueue` / `interrupt` / `rollback`.                       |
-| **Cron / scheduled runs**              | 🗺️ planned         | LangGraph Platform's Crons resource; not yet implemented.                    |
-| **Time travel (fork from checkpoint)** | 🗺️ planned         | History is read-only today; fork/update-state planned.                       |
-| Assistants CRUD + versioning           | ✅ shipped         | Create/update/delete + version history/rollback; graph/subgraphs.            |
-| **MCP endpoint (`/mcp`)**              | 🗺️ planned         | LangGraph exposes graphs as MCP tools; not yet implemented.                  |
-| Run-completion webhooks                | ✅ shipped         | `webhook` URL POSTed the settled run on completion.                          |
-| True `events` stream mode              | ✅ shipped         | Real `streamEvents` (v2); full token/tool/step granularity.                  |
-| Fastify / NestJS adapters              | ✅ shipped         | Plugin / `SkeinModule`; standalone + embedded examples.                      |
-| Next.js API-route adapter              | ✅ shipped         | App Router + Pages Router; same-origin, `useStream` UI example.              |
-| WebSocket streaming transport          | ❌ non-goal (v1)   | SSE covers the client UX; does not affect the React SDK.                     |
-| `deploy` to a hosted platform          | ❌ non-goal        | skein-js is self-hosted by design.                                           |
-| Full OpenTelemetry observability       | ❌ non-goal (v1)   | May revisit post-v1.                                                         |
+| Capability                            | Status in skein-js | Notes                                                                        |
+| ------------------------------------- | ------------------ | ---------------------------------------------------------------------------- |
+| `dev` / `up` / `build` / `dockerfile` | ✅ shipped         | Drop-in for the LangGraph CLI, plus skein-only `start` + `import-langgraph`. |
+| Assistants / threads / runs / store   | ✅ shipped         | Full Agent Protocol surface; three run modes; SSE streaming.                 |
+| Thread search / copy                  | ✅ shipped         | Metadata/status filter + pagination; copy duplicates history.                |
+| Store item TTL                        | ✅ shipped         | `store.ttl` (default/refresh-on-read/sweep) + per-put `ttl`.                 |
+| Distinct cancelled run status         | ✅ shipped         | Cancel resolves to `cancelled`, not `error`.                                 |
+| Human-in-the-loop (interrupt/resume)  | ✅ shipped         | Via LangGraph checkpointers.                                                 |
+| Auth + authorization                  | ✅ shipped         | LangGraph `Auth` parity — see below.                                         |
+| Multitask / double-texting            | ✅ shipped         | `reject` (422) / `enqueue` / `interrupt` / `rollback`.                       |
+| **Cron / scheduled runs**             | 🗺️ planned         | LangGraph Platform's Crons resource; not yet implemented.                    |
+| Time travel (fork from checkpoint)    | ✅ shipped         | Update state at a checkpoint + fork a run from one; rides the checkpointer.  |
+| Assistants CRUD + versioning          | ✅ shipped         | Create/update/delete + version history/rollback; graph/subgraphs.            |
+| **MCP endpoint (`/mcp`)**             | 🗺️ planned         | LangGraph exposes graphs as MCP tools; not yet implemented.                  |
+| Run-completion webhooks               | ✅ shipped         | `webhook` URL POSTed the settled run on completion.                          |
+| True `events` stream mode             | ✅ shipped         | Real `streamEvents` (v2); full token/tool/step granularity.                  |
+| Fastify / NestJS adapters             | ✅ shipped         | Plugin / `SkeinModule`; standalone + embedded examples.                      |
+| Next.js API-route adapter             | ✅ shipped         | App Router + Pages Router; same-origin, `useStream` UI example.              |
+| WebSocket streaming transport         | ❌ non-goal (v1)   | SSE covers the client UX; does not affect the React SDK.                     |
+| `deploy` to a hosted platform         | ❌ non-goal        | skein-js is self-hosted by design.                                           |
+| Full OpenTelemetry observability      | ❌ non-goal (v1)   | May revisit post-v1.                                                         |
 
 ## Non-goals for v1
 

@@ -219,6 +219,14 @@ export interface RunKwargs {
    * (which sources permissions from the auth scopes, not from the user object's `permissions`).
    */
   auth_scopes?: string[];
+  /**
+   * Time-travel fork target: the checkpoint this run branches from instead of the thread tip.
+   * Server-owned — stamped from the validated top-level `checkpoint_id` on the run-create body,
+   * never merged from the client's `config.configurable` (which strips it). Injected into
+   * `configurable.checkpoint_id` by `toGraphCallOptions`. Persisted opaquely so a background or
+   * crash-recovered run forks from the same checkpoint when reconstructed via `getKwargs`.
+   */
+  checkpoint_id?: string;
 }
 
 export interface RunCreate {

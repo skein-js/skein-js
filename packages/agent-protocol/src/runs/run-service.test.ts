@@ -42,6 +42,36 @@ describe("run service", () => {
     expect((await service.runs.get(runId)).status).toBe("success");
   });
 
+  it("forks a run from a prior checkpoint: persists the server-owned checkpoint_id in kwargs", async () => {
+    const deps = createFixtureDeps();
+    const { service } = await serviceWithAssistants(deps);
+    const thread = await service.threads.create();
+    // A first run establishes a checkpoint to fork from.
+    await service.runs.createWait({
+      thread_id: thread.thread_id,
+      assistant_id: "echo",
+      input: { value: "one" },
+    });
+    const forkPoint =
+      (await service.threads.history(thread.thread_id))[0]?.checkpoint.checkpoint_id ?? undefined;
+    expect(forkPoint).toBeDefined();
+
+    // A second run forks from that checkpoint (server-validated top-level field, not client config).
+    const values = await service.runs.createWait({
+      thread_id: thread.thread_id,
+      assistant_id: "echo",
+      input: { value: "two" },
+      checkpoint_id: forkPoint,
+    });
+    expect(values).toEqual({ value: "echo: two" });
+
+    // The forked run stored the fork target opaquely so a background/crash-recovered run forks the same.
+    const runs = await service.runs.listByThread(thread.thread_id);
+    const forked = [...runs].sort((a, b) => b.created_at.localeCompare(a.created_at))[0];
+    const kwargs = await deps.store.runs.getKwargs(forked!.run_id);
+    expect(kwargs?.checkpoint_id).toBe(forkPoint);
+  });
+
   it("createBackground enqueues a pending run without executing it", async () => {
     const deps = createFixtureDeps();
     const { service } = await serviceWithAssistants(deps);

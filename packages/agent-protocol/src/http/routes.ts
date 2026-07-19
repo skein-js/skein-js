@@ -54,6 +54,12 @@ export const skeinRoutes: readonly RouteBinding[] = [
   { method: "patch", path: "/threads/:thread_id", handler: "patchThread" },
   { method: "delete", path: "/threads/:thread_id", handler: "deleteThread" },
   { method: "get", path: "/threads/:thread_id/state", handler: "getThreadState" },
+  { method: "post", path: "/threads/:thread_id/state", handler: "updateThreadState" },
+  {
+    method: "get",
+    path: "/threads/:thread_id/state/:checkpoint_id",
+    handler: "getThreadStateAtCheckpoint",
+  },
   { method: "post", path: "/threads/:thread_id/history", handler: "getThreadHistory" },
 
   // runs — the stateless handlers are reused on the thread-scoped path with the id folded in

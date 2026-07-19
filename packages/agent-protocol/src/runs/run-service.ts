@@ -38,6 +38,8 @@ export interface CreateRunInput {
   interrupt_after?: string[] | "*";
   /** Absolute `http(s)` URL POSTed with the settled run once it reaches a terminal status. */
   webhook?: string;
+  /** Time travel: fork this run from a prior checkpoint instead of the thread tip (server-validated). */
+  checkpoint_id?: string;
 }
 
 /** A started streaming run: its id, plus the live frame iterable to serialize as SSE. */
@@ -74,6 +76,8 @@ function toKwargs(input: CreateRunInput, authUser?: AuthUser, authScopes?: strin
   if (input.interrupt_before !== undefined) kwargs.interrupt_before = input.interrupt_before;
   if (input.interrupt_after !== undefined) kwargs.interrupt_after = input.interrupt_after;
   if (input.webhook !== undefined) kwargs.webhook = input.webhook;
+  // Server-owned fork target: taken from the validated top-level field, never from client config.
+  if (input.checkpoint_id !== undefined) kwargs.checkpoint_id = input.checkpoint_id;
   // Scopes only ride along with a principal; storing them alone would be meaningless.
   if (authUser !== undefined) {
     kwargs.auth_user = authUser;
