@@ -116,6 +116,30 @@ entry, each with a runnable example:
 works with any adapter above. [`react-usestream`](../examples/react-usestream) is a browser frontend
 for any of them. See [Expand your setup](#expand-your-setup) to grow from here.
 
+### Where to point your client when embedding
+
+The protocol is served wherever you mount it, so set the client's `apiUrl` to the **mount root**, not
+the server root. How you set the mount differs per adapter:
+
+```ts
+// Express — mount the router under a path
+const { router } = await skeinRouter({ deps });
+app.use("/agent", router); // → apiUrl: http://localhost:2024/agent
+
+// Fastify — the plugin is encapsulated, so `prefix` isolates skein's routes + CORS
+await app.register(skeinPlugin, { prefix: "/agent", deps }); // → .../agent
+
+// NestJS — no skein-side option: it follows your app's global prefix
+app.setGlobalPrefix("api"); // → apiUrl: http://localhost:2024/api
+
+// Next.js — the catch-all's location, via `basePath` (defaults to "/api")
+// app/api/[...path]/route.ts                                → apiUrl: http://localhost:3000/api
+```
+
+Mount at the root (no prefix) and `apiUrl` is just the server root. NestJS is the odd one out: it
+reads the mount from the framework rather than from an argument you pass, so there is no skein-side
+option to keep in sync with `setGlobalPrefix`.
+
 ## Go to production (Postgres + Redis)
 
 Swap the in-memory `deps` for durable ones — everything else stays the same. Two ways:
@@ -219,6 +243,12 @@ Grow from the minimal server without rewrites — each step changes one thing:
   on a normal server / `next start`; for serverless, use Postgres + Redis.
 - **`useStream` needs an absolute URL** — pass `` `${window.location.origin}/api` ``, not a bare
   `/api`.
+- **404s on every protocol path?** You're almost certainly pointing at the wrong root — the protocol
+  lives at your **mount path**, not the server root (see
+  [Where to point your client](#where-to-point-your-client-when-embedding)). On NestJS that means
+  `app.setGlobalPrefix("api")` moves it to `/api/threads`. Two red herrings worth ruling out: an
+  `Unsupported route path: "/api/*"` warning in a NestJS boot log is Nest auto-converting the
+  adapter's catch-all and is harmless, and `/info` isn't part of the surface — a 404 there is correct.
 
 ## Go deeper
 

@@ -22,6 +22,7 @@ import {
   sendNodeError,
   sendNodePreflight,
   sendNodeResponse,
+  stripBasePath,
   type CorsSetting,
   type SkeinRuntimeOptions,
 } from "@skein-js/server-kit";
@@ -42,13 +43,6 @@ export type SkeinPagesRequest = IncomingMessage & {
 
 /** A Next.js API route handler. Assignable to Next's `NextApiHandler`. */
 export type SkeinPagesHandler = (req: SkeinPagesRequest, res: ServerResponse) => Promise<void>;
-
-function stripBasePath(pathname: string, basePath: string): string | null {
-  if (basePath === "" || basePath === "/") return pathname;
-  if (pathname === basePath) return "/";
-  if (pathname.startsWith(`${basePath}/`)) return pathname.slice(basePath.length);
-  return null;
-}
 
 function toQuery(url: URL): ProtocolRequest["query"] {
   const query: Record<string, string | string[]> = {};

@@ -14,7 +14,7 @@ import {
   type ProtocolRequest,
 } from "@skein-js/agent-protocol";
 import { SkeinHttpError } from "@skein-js/core";
-import type { CorsSetting, SkeinRuntimeOptions } from "@skein-js/server-kit";
+import { stripBasePath, type CorsSetting, type SkeinRuntimeOptions } from "@skein-js/server-kit";
 
 import { getSkeinRuntime } from "./runtime-singleton.js";
 import { toWebResponse, webErrorResponse } from "./send-web-response.js";
@@ -40,14 +40,6 @@ export interface SkeinRouteHandlers {
   PATCH: SkeinRouteHandler;
   DELETE: SkeinRouteHandler;
   OPTIONS: SkeinRouteHandler;
-}
-
-/** Strip the mount `basePath` from a pathname, or `null` when the path is not under the mount. */
-function stripBasePath(pathname: string, basePath: string): string | null {
-  if (basePath === "" || basePath === "/") return pathname;
-  if (pathname === basePath) return "/";
-  if (pathname.startsWith(`${basePath}/`)) return pathname.slice(basePath.length);
-  return null;
 }
 
 /** Query params from a URL, keeping repeated keys as `string[]`. */
@@ -79,8 +71,10 @@ async function toProtocolRequest(
   }
   return {
     method: request.method,
-    // Report the skein-relative absolute URL (mount prefix stripped) so auth handlers see the same
-    // path shape the other adapters produce.
+    // Report the skein-relative absolute URL (mount prefix stripped). NOTE: this does NOT match the
+    // Express/NestJS adapters, which report the full mount-inclusive URL (`req.originalUrl`). An auth
+    // handler that matches on `req.url`'s pathname therefore sees `/threads` here but `/api/threads`
+    // there. Worth unifying — but changing either side silently re-points existing auth rules.
     url: `${url.origin}${skeinPathname}${url.search}`,
     params,
     query: toQuery(url),

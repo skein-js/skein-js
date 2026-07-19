@@ -6,13 +6,15 @@
 
 import type { ServerResponse } from "node:http";
 
-import { Inject, Injectable, type NestMiddleware } from "@nestjs/common";
+import { Inject, Injectable, Optional, type NestMiddleware } from "@nestjs/common";
+import { ApplicationConfig } from "@nestjs/core";
 import { copyThreadIdIntoBody, matchSkeinRoute, type Logger } from "@skein-js/agent-protocol";
 import {
   applyNodeCors,
   sendNodeError,
   sendNodePreflight,
   sendNodeResponse,
+  stripBasePath,
   type CorsSetting,
   type ResolvedProtocolRuntime,
 } from "@skein-js/server-kit";
@@ -32,6 +34,12 @@ export class SkeinMiddleware implements NestMiddleware {
     @Inject(SKEIN_RUNTIME) private readonly resolved: ResolvedProtocolRuntime,
     @Inject(SKEIN_LOGGER) private readonly logger: Logger | null,
     @Inject(SKEIN_CORS) private readonly optionCors: boolean | CorsSetting | null,
+    // Explicit token: this package builds without `emitDecoratorMetadata` (see tsconfig.json), so a
+    // bare typed parameter would not inject. Nest registers `ApplicationConfig` into every module.
+    // `@Optional()` keeps this constructor back-compatible for callers who wire the middleware by
+    // hand (it is a public export) — without it, a 3-argument `new SkeinMiddleware(...)` would 500 on
+    // every request. Absent config simply means "no global prefix".
+    @Optional() @Inject(ApplicationConfig) private readonly appConfig?: ApplicationConfig,
   ) {}
 
   async use(req: NestRequest, res: ServerResponse, next: (error?: unknown) => void): Promise<void> {
@@ -48,6 +56,18 @@ export class SkeinMiddleware implements NestMiddleware {
       return;
     }
 
+    // `app.setGlobalPrefix()` is baked into this middleware's mount path but left on the request, so
+    // strip it ourselves — `skeinRoutes` is anchored at the protocol root. Express's own mount
+    // stripping is no help here: the greedy `{*path}` layer leaves `req.url` as `/`, which is why the
+    // full `originalUrl` is read above. Read per request, never cached: `setGlobalPrefix` runs on the
+    // app after this provider is constructed. (Nest never routes the bare prefix root — `/api` with no
+    // trailing slash — to middleware at all; no skein route lives at `/`, so that gap is harmless.)
+    const skeinPathname = stripBasePath(url.pathname, this.appConfig?.getGlobalPrefix() ?? "");
+    if (skeinPathname === null) {
+      next();
+      return;
+    }
+
     // Explicit option wins; otherwise fall back to the config's `http.cors`, else off.
     const cors: CorsSetting | false | undefined = this.optionCors ?? this.resolved.cors;
     const method = (req.method ?? "GET").toUpperCase();
@@ -56,7 +76,7 @@ export class SkeinMiddleware implements NestMiddleware {
     // own OPTIONS handling is untouched.
     if (method === "OPTIONS") {
       const requestedMethod = firstHeader(req.headers["access-control-request-method"]);
-      if (cors && requestedMethod && matchSkeinRoute(requestedMethod, url.pathname)) {
+      if (cors && requestedMethod && matchSkeinRoute(requestedMethod, skeinPathname)) {
         sendNodePreflight(req.headers, res, cors);
         return;
       }
@@ -64,7 +84,7 @@ export class SkeinMiddleware implements NestMiddleware {
       return;
     }
 
-    const match = matchSkeinRoute(method, url.pathname);
+    const match = matchSkeinRoute(method, skeinPathname);
     if (!match) {
       next();
       return;

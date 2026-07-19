@@ -103,13 +103,31 @@ import { skeinRoutes, copyThreadIdIntoBody, matchSkeinRoute } from "@skein-js/ag
 //   (handy for adapters that dispatch from one route, like the NestJS + Next.js adapters)
 ```
 
-Two things to get right:
+Three things to get right:
 
 - **Order most-specific first** within each method so literals win over params (e.g.
   `/threads/search` before `/threads/:thread_id`).
 - **`foldThreadIdIntoBody`** — the SDK addresses a thread-scoped run by its path
   (`POST /threads/{id}/runs/stream`) but the stateless run handlers read `thread_id` from the body.
   For those routes, copy the path `thread_id` into the body before dispatch (see the worked example).
+- **Strip your mount prefix before matching.** `skeinRoutes` paths are anchored at the protocol root,
+  so if your adapter mounts a **catch-all** and matches by hand, the framework hands it the full
+  external path (`/api/threads`) which will never match `^/threads$`. Use `stripBasePath` from
+  `@skein-js/server-kit`, and treat its `null` as "not ours" — pass the request through untouched so
+  the host app's own routes still resolve:
+
+  ```ts
+  import { stripBasePath } from "@skein-js/server-kit";
+
+  const pathname = stripBasePath(url.pathname, mountPrefix);
+  if (pathname === null) return next(); // not under our mount — the host app's problem
+  const match = matchSkeinRoute(method, pathname);
+  ```
+
+  Adapters that mount each route **explicitly** (Express's `Router`, Fastify's plugin `prefix`) get
+  this from their router for free and can skip it. Where `mountPrefix` comes from is
+  framework-specific: the NestJS adapter reads Nest's own `app.setGlobalPrefix(...)` via
+  `ApplicationConfig`, while the Next.js adapters take an explicit `basePath` option.
 
 ## Step 3 — map your request onto `ProtocolRequest`
 

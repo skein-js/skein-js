@@ -74,3 +74,7 @@ export type { CorsSetting } from "./cors-runtime.js";
 
 // Node-`http` transport shared by the NestJS + Next.js Pages Router adapters.
 export { sendNodeResponse, sendNodeError } from "./node-transport.js";
+
+// Mount-prefix stripping for adapters that mount a catch-all and match the route table by hand
+// (NestJS middleware, Next.js handlers) — `null` means "not under the mount, pass it through".
+export { stripBasePath } from "./base-path.js";

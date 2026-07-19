@@ -25,16 +25,16 @@ served (`echo`, `agent`).
   `SkeinModule.forRoot(...)` in your root module.
 - Why the module mounts as **middleware** that claims only skein's paths and passes everything else
   through — so your `TodosController` is untouched and there's no route collision.
-- How to relocate the protocol under a path (the `RouterModule` tip below) and where to enable
-  shutdown hooks so the background run worker drains on exit.
+- How the protocol follows your app's `setGlobalPrefix(...)`, and where to enable shutdown hooks so
+  the background run worker drains on exit.
 
 ## What to look at
 
-| File                                     | Why                                                             |
-| ---------------------------------------- | --------------------------------------------------------------- |
-| [`src/main.ts`](./src/main.ts)           | Bootstraps Nest, imports `SkeinModule`, enables shutdown hooks. |
-| [`langgraph.json`](./langgraph.json)     | The two graphs (`echo`, `agent`) the module serves.             |
-| [`src/main.test.ts`](./src/main.test.ts) | Proves the controller and the protocol coexist in one app.      |
+| File                                     | Why                                                                                     |
+| ---------------------------------------- | --------------------------------------------------------------------------------------- |
+| [`src/main.ts`](./src/main.ts)           | Bootstraps Nest, imports `SkeinModule`, sets the global prefix, enables shutdown hooks. |
+| [`langgraph.json`](./langgraph.json)     | The two graphs (`echo`, `agent`) the module serves.                                     |
+| [`src/main.test.ts`](./src/main.test.ts) | Proves the controller and the protocol coexist in one app.                              |
 
 ## How to run
 
@@ -44,11 +44,15 @@ pnpm install
 pnpm dev                      # → tsx watch src/main.ts
 ```
 
-- The app's REST: `http://127.0.0.1:2024/api/todos`
-- The Agent Protocol: point a client at `http://127.0.0.1:2024` (root)
+The app calls `app.setGlobalPrefix("api")`, and the protocol follows it automatically:
 
-> **Tip:** to mount the protocol under a path instead of the root, wrap `SkeinModule` with Nest's
-> `RouterModule.register([{ path: "agent", module: SkeinModule }])`.
+- The app's REST: `http://127.0.0.1:2024/api/todos`
+- The Agent Protocol: point a client at `http://127.0.0.1:2024/api`
+
+> **Tip:** `app.setGlobalPrefix(...)` is how you relocate the protocol — `SkeinModule` reads it from
+> Nest and needs no configuration of its own. Nest's `RouterModule.register(...)` will **not** work
+> here: it prefixes _controller_ routes, and `SkeinModule` serves from middleware. Drop the global
+> prefix and the protocol serves from the root.
 
 ## License
 

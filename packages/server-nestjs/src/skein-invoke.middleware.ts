@@ -4,7 +4,8 @@
 
 import type { ServerResponse } from "node:http";
 
-import { Inject, Injectable, type NestMiddleware } from "@nestjs/common";
+import { Inject, Injectable, Optional, type NestMiddleware } from "@nestjs/common";
+import { ApplicationConfig } from "@nestjs/core";
 import type {
   GraphInvokeHandlerName,
   Logger,
@@ -16,6 +17,7 @@ import {
   sendNodeError,
   sendNodePreflight,
   sendNodeResponse,
+  stripBasePath,
   type CorsSetting,
 } from "@skein-js/server-kit";
 
@@ -37,6 +39,9 @@ export class SkeinInvokeMiddleware implements NestMiddleware {
     @Inject(SKEIN_INVOKE) private readonly invoke: ResolvedInvokeSurface,
     @Inject(SKEIN_LOGGER) private readonly logger: Logger | null,
     @Inject(SKEIN_CORS) private readonly optionCors: boolean | CorsSetting | null,
+    // Explicit token: this package builds without `emitDecoratorMetadata` (see tsconfig.json).
+    // `@Optional()` keeps hand-wired construction working — see `SkeinMiddleware`.
+    @Optional() @Inject(ApplicationConfig) private readonly appConfig?: ApplicationConfig,
   ) {}
 
   async use(req: NestRequest, res: ServerResponse, next: (error?: unknown) => void): Promise<void> {
@@ -52,6 +57,14 @@ export class SkeinInvokeMiddleware implements NestMiddleware {
       return;
     }
 
+    // Strip `app.setGlobalPrefix()` — Nest bakes it into the mount path but leaves it on the request,
+    // and the invoke route is anchored at the mount root. See `SkeinMiddleware` for the full rationale.
+    const skeinPathname = stripBasePath(url.pathname, this.appConfig?.getGlobalPrefix() ?? "");
+    if (skeinPathname === null) {
+      next();
+      return;
+    }
+
     // Explicit option wins; otherwise fall back to the config's `http.cors`, else off.
     const cors: CorsSetting | false | undefined = this.optionCors ?? this.invoke.cors;
     const method = (req.method ?? "GET").toUpperCase();
@@ -60,7 +73,7 @@ export class SkeinInvokeMiddleware implements NestMiddleware {
       const requested = Array.isArray(req.headers["access-control-request-method"])
         ? req.headers["access-control-request-method"][0]
         : req.headers["access-control-request-method"];
-      if (cors && requested && this.invoke.match(requested, url.pathname)) {
+      if (cors && requested && this.invoke.match(requested, skeinPathname)) {
         sendNodePreflight(req.headers, res, cors);
         return;
       }
@@ -68,7 +81,7 @@ export class SkeinInvokeMiddleware implements NestMiddleware {
       return;
     }
 
-    const match = this.invoke.match(method, url.pathname);
+    const match = this.invoke.match(method, skeinPathname);
     if (!match) {
       next();
       return;

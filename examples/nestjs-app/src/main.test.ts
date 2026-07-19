@@ -1,5 +1,6 @@
-// Proves the two halves coexist: the app's own REST controller AND the Agent Protocol (served at the
-// root by SkeinModule's middleware), the latter driven by the real `@langchain/langgraph-sdk` client.
+// Proves the two halves coexist: the app's own REST controller AND the Agent Protocol, both under the
+// app's `setGlobalPrefix("api")` — the protocol follows the host's prefix. The latter is driven by the
+// real `@langchain/langgraph-sdk` client, which is also the regression guard for that prefix handling.
 
 import "reflect-metadata";
 
@@ -14,7 +15,7 @@ describe("nestjs-app (embedded) — own controller + Agent Protocol", () => {
 
   beforeAll(async () => {
     started = await startServer(0);
-    client = new Client({ apiUrl: started.url });
+    client = new Client({ apiUrl: `${started.url}/api` });
   });
 
   afterAll(async () => {
@@ -28,7 +29,7 @@ describe("nestjs-app (embedded) — own controller + Agent Protocol", () => {
     expect(todos.some((todo) => todo.title === "Try skein-js")).toBe(true);
   });
 
-  it("serves the Agent Protocol at the root (echo graph via the SDK)", async () => {
+  it("serves the Agent Protocol under the app's global prefix (echo graph via the SDK)", async () => {
     const thread = await client.threads.create();
     const values = await client.runs.wait(thread.thread_id, "echo", {
       input: { messages: [{ role: "user", content: "hello" }] },

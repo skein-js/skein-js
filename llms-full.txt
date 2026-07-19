@@ -504,7 +504,7 @@ Each is a runnable project — `cd` into it and follow its README.
 | [`gemini-chat`](./examples/gemini-chat)                                               | **Model-backed end-to-end** — a Gemini ReAct agent streamed into a browser; also an embedded `@skein-js/express` server                                                                            | `pnpm dev`                 |
 | [`express-basic`](./examples/express-basic)                                           | **Hello world** — zero-setup `echo` (no API key) + a Claude `agent` graph in one config                                                                                                            | `pnpm dev`                 |
 | [`embed-graph`](./examples/embed-graph)                                               | **In-code embedding** — serve a graph you already have with **no `langgraph.json`** (`embedInMemoryGraphs` + `{ deps }`); the config-free counterpart to `express-basic`                           | `pnpm dev`                 |
-| [`invoke-endpoint`](./examples/invoke-endpoint)                                        | **Non-chat serving** — graphs as plain `POST /invoke/:graph_id` endpoints (body in, final state out), with no threads or runs                                                                      | `pnpm start`               |
+| [`invoke-endpoint`](./examples/invoke-endpoint)                                       | **Non-chat serving** — graphs as plain `POST /invoke/:graph_id` endpoints (body in, final state out), with no threads or runs                                                                      | `pnpm start`               |
 | [`fastify-basic`](./examples/fastify-basic) · [`fastify-app`](./examples/fastify-app) | **Fastify** — a standalone graph server, and the protocol embedded under `/agent` alongside a REST API                                                                                             | `pnpm dev`                 |
 | [`nestjs-basic`](./examples/nestjs-basic) · [`nestjs-app`](./examples/nestjs-app)     | **NestJS** — a standalone graph server, and `SkeinModule` alongside the app's own controller                                                                                                       | `pnpm dev`                 |
 | [`nextjs-basic`](./examples/nextjs-basic) · [`nextjs-app`](./examples/nextjs-app)     | **Next.js** — headless Pages Router API, and a full-stack App Router app serving the protocol same-origin behind a `useStream` chat UI                                                             | `pnpm dev`                 |
@@ -1087,6 +1087,30 @@ entry, each with a runnable example:
 works with any adapter above. [`react-usestream`](../examples/react-usestream) is a browser frontend
 for any of them. See [Expand your setup](#expand-your-setup) to grow from here.
 
+### Where to point your client when embedding
+
+The protocol is served wherever you mount it, so set the client's `apiUrl` to the **mount root**, not
+the server root. How you set the mount differs per adapter:
+
+```ts
+// Express — mount the router under a path
+const { router } = await skeinRouter({ deps });
+app.use("/agent", router); // → apiUrl: http://localhost:2024/agent
+
+// Fastify — the plugin is encapsulated, so `prefix` isolates skein's routes + CORS
+await app.register(skeinPlugin, { prefix: "/agent", deps }); // → .../agent
+
+// NestJS — no skein-side option: it follows your app's global prefix
+app.setGlobalPrefix("api"); // → apiUrl: http://localhost:2024/api
+
+// Next.js — the catch-all's location, via `basePath` (defaults to "/api")
+// app/api/[...path]/route.ts                                → apiUrl: http://localhost:3000/api
+```
+
+Mount at the root (no prefix) and `apiUrl` is just the server root. NestJS is the odd one out: it
+reads the mount from the framework rather than from an argument you pass, so there is no skein-side
+option to keep in sync with `setGlobalPrefix`.
+
 ## Go to production (Postgres + Redis)
 
 Swap the in-memory `deps` for durable ones — everything else stays the same. Two ways:
@@ -1190,6 +1214,12 @@ Grow from the minimal server without rewrites — each step changes one thing:
   on a normal server / `next start`; for serverless, use Postgres + Redis.
 - **`useStream` needs an absolute URL** — pass `` `${window.location.origin}/api` ``, not a bare
   `/api`.
+- **404s on every protocol path?** You're almost certainly pointing at the wrong root — the protocol
+  lives at your **mount path**, not the server root (see
+  [Where to point your client](#where-to-point-your-client-when-embedding)). On NestJS that means
+  `app.setGlobalPrefix("api")` moves it to `/api/threads`. Two red herrings worth ruling out: an
+  `Unsupported route path: "/api/*"` warning in a NestJS boot log is Nest auto-converting the
+  adapter's catch-all and is harmless, and `/info` isn't part of the surface — a 404 there is correct.
 
 ## Go deeper
 
@@ -2976,13 +3006,31 @@ import { skeinRoutes, copyThreadIdIntoBody, matchSkeinRoute } from "@skein-js/ag
 //   (handy for adapters that dispatch from one route, like the NestJS + Next.js adapters)
 ```
 
-Two things to get right:
+Three things to get right:
 
 - **Order most-specific first** within each method so literals win over params (e.g.
   `/threads/search` before `/threads/:thread_id`).
 - **`foldThreadIdIntoBody`** — the SDK addresses a thread-scoped run by its path
   (`POST /threads/{id}/runs/stream`) but the stateless run handlers read `thread_id` from the body.
   For those routes, copy the path `thread_id` into the body before dispatch (see the worked example).
+- **Strip your mount prefix before matching.** `skeinRoutes` paths are anchored at the protocol root,
+  so if your adapter mounts a **catch-all** and matches by hand, the framework hands it the full
+  external path (`/api/threads`) which will never match `^/threads$`. Use `stripBasePath` from
+  `@skein-js/server-kit`, and treat its `null` as "not ours" — pass the request through untouched so
+  the host app's own routes still resolve:
+
+  ```ts
+  import { stripBasePath } from "@skein-js/server-kit";
+
+  const pathname = stripBasePath(url.pathname, mountPrefix);
+  if (pathname === null) return next(); // not under our mount — the host app's problem
+  const match = matchSkeinRoute(method, pathname);
+  ```
+
+  Adapters that mount each route **explicitly** (Express's `Router`, Fastify's plugin `prefix`) get
+  this from their router for free and can skip it. Where `mountPrefix` comes from is
+  framework-specific: the NestJS adapter reads Nest's own `app.setGlobalPrefix(...)` via
+  `ApplicationConfig`, while the Next.js adapters take an explicit `basePath` option.
 
 ## Step 3 — map your request onto `ProtocolRequest`
 

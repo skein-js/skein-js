@@ -34,6 +34,48 @@ The Agent Protocol is now served (`/threads`, `/assistants`, `/runs`, `/store`, 
 routes. Call `app.enableCors(...)` as usual if browser clients run on another origin. Enable shutdown
 hooks (`app.enableShutdownHooks()`) so the background run worker drains on exit.
 
+### Serving under a global prefix
+
+If your app calls `app.setGlobalPrefix(...)`, the protocol follows it — there is nothing to configure
+on the skein side. Two things to do:
+
+**1. Set the prefix as you normally would**, and write your own controllers prefix-relative:
+
+```ts
+@Controller("todos") // Nest serves this at /api/todos
+class TodosController {}
+
+const app = await NestFactory.create(AppModule);
+app.setGlobalPrefix("api"); // the protocol moves to /api too
+await app.listen(2024);
+```
+
+**2. Point your client at the prefixed root** — not the server root:
+
+```ts
+const client = new Client({ apiUrl: "http://localhost:2024/api" });
+```
+
+That's it. `/api/threads`, `/api/assistants`, `/api/runs`, `/api/store/items` all serve, and requests
+that aren't skein's still fall through to your controllers.
+
+#### Still getting 404s?
+
+- **`Unsupported route path: "/api/*"` in your boot log** — expected and harmless. Nest logs it while
+  auto-converting the adapter's catch-all to NestJS 11 wildcard syntax; the conversion succeeds. It is
+  not the cause of a 404.
+- **Requests to the server root 404** — correct once a prefix is set. `POST /threads` is not served
+  when the prefix is `api`; use `/api/threads`.
+- **`GET /api` itself 404s** — expected, and not a sign the mount is wrong. Nest does not route the
+  bare prefix root to middleware ([nestjs/nest#14520](https://github.com/nestjs/nest/issues/14520)).
+  No protocol route lives there; probe `/api/assistants/search` instead.
+- **`/info` 404s** — also correct. It isn't part of the Agent Protocol surface skein serves; the
+  endpoints are `/threads`, `/assistants`, `/runs` and `/store/items`. Note `GET /ok` is only mounted
+  by the standalone `createNestServer` — `SkeinModule` adds no health route to your app.
+- **Everything 404s and you're on an older release** — the protocol ignored `setGlobalPrefix` before
+  this was fixed, so every path 404'd under a prefixed app. Upgrade, or drop the prefix and mount your
+  own controllers at `@Controller("api/…")` instead.
+
 ### No `langgraph.json`? Pass a graph you already have
 
 `{ deps }` is the alternative to `{ config }`: bring a compiled graph straight from your code — no

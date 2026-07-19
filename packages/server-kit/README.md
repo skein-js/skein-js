@@ -32,6 +32,8 @@ handler table.
   (an unset origin resolves to `*`, never a reflected origin, so it can't pair with credentials).
 - **Node transport** — `sendNodeResponse` / `sendNodeError`: serialize a `ProtocolResponse` (JSON / 204
   / SSE) onto a Node `ServerResponse`, shared by the NestJS + Next.js Pages Router adapters.
+- **Mount prefix** — `stripBasePath`: strip the path an adapter is mounted under before matching the
+  route table, for adapters that mount a catch-all and match by hand (NestJS, Next.js).
 
 > The route table itself (`skeinRoutes`) is **not** here — it lives with the engine in
 > [`@skein-js/agent-protocol`](../agent-protocol), since it references the handler names. Adapters
@@ -85,6 +87,10 @@ Pass `overrides` to swap in production drivers or an auth engine while keeping t
   derive CORS headers for adapters without a CORS middleware of their own.
 - **Node transport** — `sendNodeResponse` / `sendNodeError` serialize a `ProtocolResponse`
   (JSON / 204 / SSE) onto a Node `ServerResponse`, shared by the NestJS + Next.js Pages Router adapters.
+- **`stripBasePath(pathname, basePath): string | null`** — the pathname relative to a mount prefix, or
+  `null` when the path is not under it (the caller passes those through untouched). The prefix may be
+  written any way the host wrote it (`api`, `/api`, `/api/`); an empty one passes everything through.
+  Needed only by adapters that mount a catch-all — Express/Fastify get this from their router.
 
 ## Learn more
 
