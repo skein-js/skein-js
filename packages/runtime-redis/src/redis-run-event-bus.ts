@@ -7,6 +7,8 @@
 import type { RunEventBus, RunFrame } from "@skein-js/core";
 import { Redis } from "ioredis";
 
+import { closeConnection } from "./redis-connection.js";
+
 /** Options for {@link RedisRunEventBus} — key namespacing and stream/close-marker retention windows. */
 export interface RedisRunEventBusOptions {
   /** Namespaces every key so multiple apps can share one Redis. Default `"skein"`. */
@@ -33,53 +35,6 @@ const FRAME_FIELD = "f";
 const CLOSE_FIELD = "close";
 /** Resolved by the periodic wake-up that races the live-tail so a closed-but-quiet run completes. */
 const CHECK_TICK = Symbol("check-tick");
-/** How long a subscriber's graceful `QUIT` gets before it is closed hard instead. */
-const QUIT_TIMEOUT_MS = 1000;
-
-/** A timer that never keeps the process alive on its own. */
-const sleepUnref = (ms: number): Promise<void> =>
-  new Promise((resolve) => setTimeout(resolve, ms).unref());
-
-/** Resolves once a connection has finished handshaking, one way or the other. */
-const connectionSettled = (client: Redis): Promise<void> =>
-  new Promise((resolve) => {
-    const finish = (): void => {
-      client.off("ready", finish);
-      client.off("end", finish);
-      client.off("error", finish);
-      resolve();
-    };
-    client.once("ready", finish);
-    client.once("end", finish);
-    client.once("error", finish);
-  });
-
-/**
- * Close a connection we own without orphaning ioredis's own in-flight commands.
- *
- * On connect, ioredis issues `CLIENT SETINFO` (twice) and — for the ready check — `INFO`, none of
- * which application code ever awaits. Closing the socket mid-handshake makes ioredis flush them as
- * rejections with nothing left to catch them, so they escape as unhandled rejections and take the
- * process down (Node's default since v15). That is a real shutdown hazard, not just a test artifact:
- * `embedPostgresGraphs` tears down a just-created bus whenever assembly fails partway.
- *
- * So: never opened a socket → close it without one; still handshaking → let it settle first (bounded,
- * because a connection that never becomes ready must not block shutdown).
- */
-async function closeConnection(client: Redis): Promise<void> {
-  if (client.status === "end") return;
-  if (client.status === "wait") {
-    // lazyConnect and never used — there is no socket and nothing in flight.
-    client.disconnect();
-    return;
-  }
-  if (client.status !== "ready") {
-    await Promise.race([connectionSettled(client), sleepUnref(QUIT_TIMEOUT_MS)]);
-  }
-  // `quit()` drains in-flight commands where `disconnect()` flushes them as rejections, so prefer it.
-  await Promise.race([client.quit().catch(() => undefined), sleepUnref(QUIT_TIMEOUT_MS)]);
-  client.disconnect();
-}
 
 /** A pub/sub message: either the next frame or the run's terminal marker. */
 type ChannelMessage = { type: "frame"; frame: RunFrame } | { type: "close" };

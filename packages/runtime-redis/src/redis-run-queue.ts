@@ -13,6 +13,8 @@ import type {
 } from "@skein-js/core";
 import { Queue, Worker } from "bullmq";
 
+import { settleBullConnection } from "./redis-connection.js";
+
 const JOB_NAME = "run";
 
 /** Options for {@link RedisRunQueue} — the BullMQ queue name and per-run retry attempts. */
@@ -65,6 +67,8 @@ export class RedisRunQueue implements RunQueue {
     return {
       close: async (force = false) => {
         this.#workers.delete(worker);
+        // A forced close is the caller saying "don't wait" — honour that and skip the settle.
+        if (!force) await settleBullConnection(worker);
         await worker.close(force);
       },
     };
@@ -72,8 +76,17 @@ export class RedisRunQueue implements RunQueue {
 
   /** Release the queue's connections and close any still-open consumers. */
   async dispose(): Promise<void> {
-    await Promise.all([...this.#workers].map((worker) => worker.close()));
+    // Let each connection finish handshaking before closing it: BullMQ opens them eagerly in the
+    // constructor, so tearing down a queue that was built but never used lands mid-handshake and
+    // orphans ioredis's own CLIENT SETINFO / INFO as unhandled rejections. See settleBullConnection.
+    await Promise.all(
+      [...this.#workers].map(async (worker) => {
+        await settleBullConnection(worker);
+        await worker.close();
+      }),
+    );
     this.#workers.clear();
+    await settleBullConnection(this.#queue);
     await this.#queue.close();
   }
 }
