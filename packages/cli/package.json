@@ -16,10 +16,16 @@
   "keywords": [
     "typescript",
     "langgraph",
+    "langgraph-js",
     "cli",
     "agent-protocol",
     "langgraph-cli",
-    "self-hosted"
+    "self-hosted",
+    "ai-agents",
+    "deploy",
+    "docker",
+    "cloud-run",
+    "kubernetes"
   ],
   "type": "module",
   "main": "./dist/index.js",

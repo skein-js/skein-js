@@ -42,6 +42,10 @@ driver branches:
 A missing `POSTGRES_URI` / `REDIS_URI` throws `RuntimeConfigError`; if assembly fails part-way, any
 resources already created are disposed before rethrowing, so a failed build leaks nothing.
 
+This is the same environment contract the `skein build` image uses, so anything you learn here
+applies when you deploy it — see [deploy anywhere](../../docs/deploy.md) for the full variable table,
+pool sizing, and per-platform guides.
+
 Graph hot-reload (`reloadGraphs()`) works in every mode; `snapshotState`/`hydrateState` are present
 **only** in all-memory mode (durable stores keep their own state).
 

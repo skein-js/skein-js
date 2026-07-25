@@ -17,6 +17,7 @@ one-word change (`langgraph dev` → `skein dev`).
 - [Commands](#commands)
 - [`skein dev` flags](#skein-dev-flags)
 - [Self-hosted, no lock-in](#self-hosted-no-lock-in)
+- [Deploy anywhere](#deploy-anywhere)
 - [When the managed platform may fit you better](#when-the-managed-platform-may-fit-you-better)
 - [Learn more](#learn-more)
 - [License](#license)
@@ -52,12 +53,13 @@ LangGraph Studio — any Agent Protocol client works with only a URL change. See
 
 ## Commands
 
-| Command            | What it does                                                   | LangGraph CLI equivalent | Key flags                                                             |
-| ------------------ | -------------------------------------------------------------- | ------------------------ | --------------------------------------------------------------------- |
-| `skein dev`        | In-process dev server, hot reload, `.skein/` state, no Docker. | `langgraph dev`          | see [`skein dev` flags](#skein-dev-flags)                             |
-| `skein up`         | Self-hosted stack via Docker Compose (app + Postgres + Redis). | `langgraph up`           | `-p, --port` (8123) · `--host` (0.0.0.0) · `-n, --npmrc <path>`       |
-| `skein build`      | Build a deployable Docker image from the config.               | `langgraph build`        | `-t, --tag` (defaults to the project dir name) · `-n, --npmrc <path>` |
-| `skein dockerfile` | Emit a standalone Dockerfile (stdout by default).              | `langgraph dockerfile`   | `-o, --output <path>`                                                 |
+| Command            | What it does                                                        | LangGraph CLI equivalent | Key flags                                                                |
+| ------------------ | ------------------------------------------------------------------- | ------------------------ | ------------------------------------------------------------------------ |
+| `skein dev`        | In-process dev server, hot reload, `.skein/` state, no Docker.      | `langgraph dev`          | see [`skein dev` flags](#skein-dev-flags)                                |
+| `skein up`         | Self-hosted stack via Docker Compose (app + Postgres + Redis).      | `langgraph up`           | `-p, --port` (8123) · `--host` (0.0.0.0) · `-n, --npmrc <path>`          |
+| `skein build`      | Build a deployable Docker image from the config.                    | `langgraph build`        | `-t, --tag` (defaults to the project dir name) · `-n, --npmrc <path>`    |
+| `skein dockerfile` | Emit a standalone Dockerfile (stdout by default).                   | `langgraph dockerfile`   | `-o, --output <path>`                                                    |
+| `skein start`      | Serve a pre-built `.skein/build` artifact (the image's entrypoint). | —                        | `-p, --port` (8123) · `--host` · `--store` · `--queue` · `--concurrency` |
 
 All commands take `-c, --config <path>` (default `langgraph.json`).
 
@@ -96,6 +98,23 @@ run your LangGraph.js graphs behind the standard Agent Protocol on **your own in
 license key, no per-deployment fee, and no vendor lock-in. `skein up` brings up a Docker Compose
 stack (app + your Postgres + your Redis) that you own end to end.
 
+## Deploy anywhere
+
+`skein build` produces an ordinary Docker image, so your LangGraph.js graphs run **anywhere you can
+run a container** — Google Cloud Run, Railway, Fly.io, Render, AWS App Runner or ECS Fargate,
+Kubernetes, or your own VPS.
+
+```bash
+skein build -t my-agent            # → a deployable Docker image
+docker run -p 8123:8123 \
+  -e POSTGRES_URI="postgresql://…" \
+  -e REDIS_URI="redis://…" my-agent
+```
+
+The image binds `$PORT` when a platform injects one (8123 when nothing does), runs as a non-root
+user, serves a `/ok` health probe, and drains in-flight runs on `SIGTERM`. Step-by-step guides per
+platform, and the knobs that are the same everywhere: [deploy anywhere](../../docs/deploy.md).
+
 ## When the managed platform may fit you better
 
 skein-js gives you the code and full ownership, not a support contract. If you're an established
@@ -107,6 +126,7 @@ on top of the open LangGraph runtime.
 
 ## Learn more
 
+- [Deploy anywhere](../../docs/deploy.md) — Cloud Run, Railway, Fly.io, Render, AWS, Kubernetes, VPS
 - [LangGraph CLI compatibility](../../docs/langgraph-cli-compat.md) — commands + `langgraph.json` fields
 - [skein-js overview](../../docs/index.md) · [Reuse-first architecture](../../docs/reuse.md) · [Roadmap](../../docs/roadmap.md)
 - [skein-js root README](../../README.md)

@@ -29,7 +29,8 @@ const DOCS = [
   "docs/runs-and-redis.md",
   "docs/recipes.md",
   "docs/building-an-adapter.md",
-  "docs/deploy-railway.md",
+  "docs/deploy.md",
+  "docs/deploy-cloud-run.md",
   "docs/reuse.md",
 ];
 

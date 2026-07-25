@@ -1,6 +1,6 @@
 # skein-js
 
-> A TypeScript Agent Protocol server for LangGraph.js, and a drop-in replacement for the LangGraph CLI (`skein dev` ⇄ `langgraph dev`). Serve any LangGraph.js graph as a standard HTTP + SSE agent server — threads, runs, streaming, interrupts, long-term memory — from Express, Fastify, NestJS, or Next.js. Self-hosted, open source (Apache-2.0).
+> A TypeScript Agent Protocol server for LangGraph.js, and a drop-in replacement for the LangGraph CLI (`skein dev` ⇄ `langgraph dev`). Serve any LangGraph.js graph as a standard HTTP + SSE agent server — threads, runs, streaming, interrupts, long-term memory — from Express, Fastify, NestJS, or Next.js. Self-hosted and deployable anywhere you can run a container (Cloud Run, Railway, Fly.io, Render, AWS, Kubernetes, or your own VPS). Open source (Apache-2.0).
 
 skein-js implements LangChain's Agent Protocol, so the whole LangChain client ecosystem (`@langchain/langgraph-sdk`, the `useStream` React hook, Agent Chat UI, LangGraph Studio) works against your server by changing only a URL — no custom SDK, no bespoke wire format. It deliberately reuses LangGraph OSS (runtime, checkpointers, config parser, schemas, SDK types) and rebuilds only the durable-production, multi-framework, drop-in-CLI layer OSS lacks. The one thing to know when consuming it: every framework adapter takes the same `{ config } | { deps }` options bag — point it at a `langgraph.json`, or hand it a `ProtocolDeps` you assembled (in-memory for dev, Postgres + Redis for production).
 
@@ -22,6 +22,9 @@ skein-js implements LangChain's Agent Protocol, so the whole LangChain client ec
 - [React SDK / useStream](https://github.com/skein-js/skein-js/blob/main/docs/react-sdk.md): Frontend compatibility — `@langchain/langgraph-sdk` and `useStream` over SSE.
 - [Storage](https://github.com/skein-js/skein-js/blob/main/docs/storage.md): `SkeinStore`, in-memory vs Postgres, pgvector semantic search, checkpointer, and `getStore()` in a graph.
 - [Runs & Redis](https://github.com/skein-js/skein-js/blob/main/docs/runs-and-redis.md): The run engine, the queue, and cross-instance streaming with Redis.
+- [Deploy anywhere](https://github.com/skein-js/skein-js/blob/main/docs/deploy.md): Deploying the `skein build` Docker image on any platform — Postgres/Redis setup, ports, the `/ok` health probe, connection-pool sizing, SIGTERM draining, SSE through proxies, and the multi-instance caveats.
+- [Deploy on Google Cloud Run](https://github.com/skein-js/skein-js/blob/main/docs/deploy-cloud-run.md): Artifact Registry, Cloud SQL or a hosted Postgres, Secret Manager, and why background runs need `--no-cpu-throttling --min-instances=1`.
+- Per-platform guides also cover [Railway](https://github.com/skein-js/skein-js/blob/main/docs/deploy-railway.md), [Fly.io](https://github.com/skein-js/skein-js/blob/main/docs/deploy-fly.md), [Render](https://github.com/skein-js/skein-js/blob/main/docs/deploy-render.md), [AWS App Runner and ECS Fargate](https://github.com/skein-js/skein-js/blob/main/docs/deploy-aws.md), [Kubernetes](https://github.com/skein-js/skein-js/blob/main/docs/deploy-kubernetes.md), [a plain VPS](https://github.com/skein-js/skein-js/blob/main/docs/deploy-vps.md), and [what does and doesn't work on Vercel/serverless](https://github.com/skein-js/skein-js/blob/main/docs/deploy-serverless.md).
 - [Building a custom adapter](https://github.com/skein-js/skein-js/blob/main/docs/building-an-adapter.md): Put skein on any HTTP framework via the transport-neutral handler table.
 
 ## API by package
@@ -53,6 +56,5 @@ skein-js implements LangChain's Agent Protocol, so the whole LangChain client ec
 
 - [Reuse-first architecture](https://github.com/skein-js/skein-js/blob/main/docs/reuse.md): What skein reuses from LangGraph OSS vs rebuilds.
 - [Roadmap](https://github.com/skein-js/skein-js/blob/main/docs/roadmap.md): Milestones, shipped features, known gaps vs LangGraph, and non-goals.
-- [Deploy on Railway](https://github.com/skein-js/skein-js/blob/main/docs/deploy-railway.md): Running the Docker image on a PaaS.
 - [AGENTS.md](https://github.com/skein-js/skein-js/blob/main/AGENTS.md): For agents/humans working ON skein itself (contributor guide), not consuming it.
 - [llms-full.txt](https://github.com/skein-js/skein-js/blob/main/llms-full.txt): The user-facing docs concatenated into one file for wholesale ingestion.

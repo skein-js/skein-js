@@ -4,8 +4,9 @@
 
 You built an agent with [LangGraph.js](https://github.com/langchain-ai/langgraphjs). skein-js turns
 it into a real server — threads, runs, token streaming, long-term memory, and human-in-the-loop —
-that you run on **your own infrastructure**, in TypeScript, with **zero vendor lock-in**. If you're
-already using the LangGraph CLI, switching is a one-word change: `langgraph dev` → `skein dev`.
+that you run on **your own infrastructure** — Google Cloud Run, Railway, Fly.io, Render, AWS,
+Kubernetes, or a plain VPS — in TypeScript, with **zero vendor lock-in**. If you're already using the
+LangGraph CLI, switching is a one-word change: `langgraph dev` → `skein dev`.
 
 Think of it as [**aegra**](https://github.com/aegra/aegra) for the TypeScript ecosystem.
 
@@ -19,6 +20,7 @@ Think of it as [**aegra**](https://github.com/aegra/aegra) for the TypeScript ec
 - [Quick start](#quick-start)
 - [Building rich agent UIs](#building-rich-agent-uis)
 - [Using the CLI](#using-the-cli)
+- [Deploy anywhere](#deploy-anywhere)
 - [Embedding skein-js in your own server](#embedding-skein-js-in-your-own-server)
 - [Under the hood](#under-the-hood)
 - [Packages](#packages)
@@ -272,6 +274,38 @@ Full mapping and the annotated `langgraph.json`:
 Private production deps? `skein build`/`up` take `-n, --npmrc <path>`, mounting an `.npmrc` as a
 BuildKit secret so the image can install from a **private/authenticated npm registry** without baking
 a token into any layer.
+
+## Deploy anywhere
+
+**Deploy your LangGraph.js graphs anywhere you can run a container.** `skein build` produces an
+ordinary Docker image — no control plane, no license key, no per-deployment fee — so the same
+artifact runs on **Google Cloud Run, Railway, Fly.io, Render, AWS App Runner or ECS Fargate,
+Kubernetes, or your own VPS**.
+
+```bash
+skein build -t my-agent            # → a deployable Docker image
+docker run -p 8123:8123 \
+  -e POSTGRES_URI="postgresql://…" \
+  -e REDIS_URI="redis://…" my-agent
+```
+
+The image binds `$PORT` when a platform injects one (and 8123 when nothing does), runs as a non-root
+user, serves a `/ok` health probe, and drains in-flight runs on `SIGTERM`. All it needs from you is a
+Postgres, a Redis, and those two environment variables.
+
+| Platform                       | Guide                                                                               |
+| ------------------------------ | ----------------------------------------------------------------------------------- |
+| Google Cloud Run               | [docs/deploy-cloud-run.md](./docs/deploy-cloud-run.md)                              |
+| Railway                        | [docs/deploy-railway.md](./docs/deploy-railway.md)                                  |
+| Fly.io                         | [docs/deploy-fly.md](./docs/deploy-fly.md)                                          |
+| Render                         | [docs/deploy-render.md](./docs/deploy-render.md)                                    |
+| AWS (App Runner · ECS Fargate) | [docs/deploy-aws.md](./docs/deploy-aws.md)                                          |
+| Kubernetes                     | [docs/deploy-kubernetes.md](./docs/deploy-kubernetes.md)                            |
+| VPS / plain Docker             | [docs/deploy-vps.md](./docs/deploy-vps.md)                                          |
+| Vercel & serverless            | [docs/deploy-serverless.md](./docs/deploy-serverless.md) — what works, what doesn't |
+
+Ports, pool sizing, health probes, `SIGTERM` windows and the multi-instance caveats are the same
+everywhere and live in one place: **[docs/deploy.md](./docs/deploy.md)**.
 
 ## Embedding skein-js in your own server
 
@@ -549,6 +583,7 @@ Full design and how-to guides live in [`docs/`](./docs):
 - [React SDK / `useStream`](./docs/react-sdk.md) — building the frontend
 - [Storage](./docs/storage.md) — persistence, long-term memory, pgvector
 - [Runs & Redis](./docs/runs-and-redis.md) — the run engine and scaling to multiple instances
+- [Deploy anywhere](./docs/deploy.md) — Cloud Run, Railway, Fly.io, Render, AWS, Kubernetes, VPS
 - [Reuse-first architecture](./docs/reuse.md) — what we reuse vs. rebuild _(design)_
 - [Roadmap](./docs/roadmap.md)
 
