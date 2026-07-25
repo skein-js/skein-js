@@ -1,114 +1,92 @@
-# Deploying on Railway
+# Deploy on Railway
 
-skein has no `skein deploy` — it's self-hosted by design ([roadmap.md](./roadmap.md)). What it
-_does_ ship is a PaaS-friendly Docker image (`skein build` / `skein dockerfile`), so deploying on
-[Railway](https://railway.com) — or Fly, Render, Heroku — is just "build the image, give it a
-Postgres and a Redis, set two env vars." This guide walks the Railway path; nothing here is
-Railway-specific beyond the dashboard steps.
+Railway builds from a `Dockerfile` in your repo and offers Postgres and Redis plugins in the same
+project, so a skein deployment is three services and two environment variables. It also gives you a
+~30s stop signal, so in-flight runs drain cleanly on deploys.
 
-> The image is **pre-built**: `skein build` bundles your TypeScript graphs (+ auth/embed) to plain JS
-> on the host — resolving tsconfig `paths`/workspace aliases once, anchored at the workspace root — and
-> the image runs that compiled output via `skein start` against the durable drivers
-> (`--store postgres --queue redis`). No vite/tsx toolchain, no runtime TypeScript transform, no
-> devDependencies: only the pinned production deps are installed. See
-> [runs-and-redis.md](./runs-and-redis.md) for the production topology it mirrors.
+Everything platform-agnostic — environment variables, pool sizing, probes, scaling caveats — is in
+[deploy.md](./deploy.md).
 
-## What the image already does for you
+## Contents
 
-- **Binds the injected port.** The container CMD passes no `--port`; the server reads `PORT` from the
-  environment. Railway injects `PORT`, so the app binds it with no configuration. (Locally, `skein up`
-  sets `PORT` in `compose.yaml` to match the published port.)
-- **Runs as non-root** (`USER node`) and keeps node as PID 1 (exec-form CMD), so Railway's stop signal
-  (`SIGTERM`) reaches skein's graceful-shutdown handler — in-flight runs drain, pools close cleanly.
-- **Reads config from the environment** — `POSTGRES_URI` and `REDIS_URI` only, each required only for
-  the durable driver that uses it.
+- [1. Provision Postgres](#1-provision-postgres)
+- [2. Provision Redis](#2-provision-redis)
+- [3. Deploy the app service](#3-deploy-the-app-service)
+- [4. Wire the env vars](#4-wire-the-env-vars)
+- [5. Set the health check](#5-set-the-health-check)
+- [6. Verify](#6-verify)
+- [Tuning & caveats](#tuning--caveats)
 
-## Steps
+## 1. Provision Postgres
 
-### 1. Provision Postgres
+Railway's default Postgres works as-is — skein's base schema needs no extensions.
 
-- **No semantic search?** Railway's default Postgres works as-is. skein's base schema needs no
-  extensions.
-- **Using semantic search** (you set `store.index` in `langgraph.json`)? You need pgvector.
-  `CREATE EXTENSION` can only _enable_ an extension the server already has installed — it can't add
-  pgvector to a server that lacks it, and Railway's default Postgres doesn't ship it. Provision
-  Railway's **pgvector Postgres template** instead. skein then enables it for you on first boot with
-  `CREATE EXTENSION IF NOT EXISTS vector` (see [storage.md](./storage.md)); if pgvector is missing
-  you'll get a clear error telling you to switch images.
+**If you use semantic search** (you set `store.index` in `langgraph.json`), provision Railway's
+**pgvector Postgres template** instead. `CREATE EXTENSION` can only enable an extension the server
+already has, and the default image doesn't ship pgvector; skein enables it for you on first boot when
+it's available, and fails with a clear error when it isn't. See
+[storage.md](./storage.md).
 
-### 2. Provision Redis
+## 2. Provision Redis
 
-Add a Redis database from the Railway dashboard. Any recent Redis works; skein uses it for the run
-queue (BullMQ) and cross-instance stream pub/sub.
+Add a Redis database from the dashboard. Any recent Redis works — skein uses it for the run queue
+(BullMQ) and cross-instance stream pub/sub. Set `maxmemory-policy` to `noeviction`.
 
-### 3. Deploy the app service
+## 3. Deploy the app service
 
 Point a Railway service at your repo. Because the repo has a skein-generated `Dockerfile` (run
-`skein build` once and commit it, or `skein dockerfile > Dockerfile`), Railway builds from it
+`skein build` once and commit it, or `skein dockerfile -o Dockerfile`), Railway builds from it
 directly. BuildKit — Railway's default — honors the image's dependency **cache mount**, so redeploys
-that don't change the lockfile skip reinstalling dependencies.
+that don't change dependencies skip reinstalling them.
 
 If your production dependencies include **private scoped packages**, the generated Dockerfile mounts
-an optional `id=npmrc` BuildKit secret on the install step. Provide it as a build secret so the
-install can authenticate without baking a token into any layer — locally via
-`docker build --secret id=npmrc,src=$HOME/.npmrc …`, or through your platform's build-secret support.
+an optional `id=npmrc` BuildKit secret on the install step; supply it as a build secret so the install
+authenticates without baking a token into any layer.
 
-### 4. Wire the env vars
+## 4. Wire the env vars
 
-In the app service's **Variables**, add Railway [reference variables](https://docs.railway.com/guides/variables#reference-variables)
-so the URLs track the databases automatically:
+In the app service's **Variables**, use Railway
+[reference variables](https://docs.railway.com/guides/variables#reference-variables) so the URLs track
+the databases automatically:
 
 ```text
 POSTGRES_URI = ${{ Postgres.DATABASE_URL }}
 REDIS_URI    = ${{ Redis.REDIS_URL }}
 ```
 
-The left-hand names are skein's env vars; the `${{ … }}` references on the right are Railway's own
-provided variables — keep those as Railway names them.
+The left-hand names are skein's; the `${{ … }}` references on the right are Railway's own provided
+variables — keep those as Railway names them.
 
-Prefer the **private** URLs (`*.railway.internal`) — private networking is plaintext, so no TLS
-config is needed, and it doesn't count against egress. `PORT` is injected by Railway automatically; do
-not set it yourself.
+Prefer the **private** URLs (`*.railway.internal`): private networking is plaintext, so no TLS
+configuration is needed, and it doesn't count against egress. `PORT` is injected by Railway
+automatically — don't set it yourself.
 
-### 5. Set the health check
+## 5. Set the health check
 
-In **Settings → Deploy**, set **Healthcheck Path** to `/ok`. skein serves it as a dependency-free
-liveness probe (`200 {"ok": true}`), so Railway can gate a new deploy as healthy before cutting over —
-zero-downtime rollouts. It deliberately does _not_ probe Postgres/Redis, so a transient database blip
-won't flap a healthy instance.
+In **Settings → Deploy**, set **Healthcheck Path** to `/ok`, so Railway gates a new deploy as healthy
+before cutting over. skein serves it dependency-free
+([why](./deploy.md#4-a-health-probe)).
+
+## 6. Verify
+
+Run the [verification sequence](./deploy.md#verify-a-deployment) against your service's public URL.
 
 ## Tuning & caveats
 
-- **Connection limits.** skein opens **two** Postgres pools per instance — the resource store and
-  LangGraph's `PostgresSaver` (checkpoints). Multiply by your replica count against Railway's Postgres
-  connection cap. Cap the store pool with **`PG_POOL_MAX`** (e.g. `PG_POOL_MAX=5`); the saver pool is
-  managed by LangGraph and sized separately, so budget for both.
-- **Public database URLs.** If you must use a public Postgres URL that presents a self-signed
-  certificate, set **`DATABASE_SSL_NO_VERIFY=true`** to skip cert verification. A URL with
-  `?sslmode=require` and a proper CA chain needs nothing extra — `pg` honors `sslmode`. Not needed at
-  all over private networking.
-- **Run concurrency vs. pool size.** Each instance executes up to **10** background runs at once by
-  default (`SKEIN_RUN_CONCURRENCY` / `--concurrency` — see
-  [runs-and-redis.md](./runs-and-redis.md#run-concurrency)), and every in-flight run holds
-  connections from both pools above. So budget roughly `concurrency × replicas` against the cap, and
-  lower one or raise `PG_POOL_MAX` if you see pool timeouts. (LangGraph instead divides one pool by
-  `N_JOBS_PER_WORKER`; skein sizes each pool explicitly.)
-- **Scaling.** With Postgres + Redis, replicas share state and streams (a client can join a run on
-  another instance), so horizontal scaling works. Schema migrations run on every boot and are
-  idempotent + advisory-locked, so concurrent rollouts are safe. Prefer replicas over raw concurrency
-  when runs are CPU-bound.
-- **Zombie reaping.** The image handles signals itself; if you run graphs that spawn child processes,
-  enable Railway's init/PID-1 reaping (the generated `compose.yaml` sets `init: true` for the local
+Pool budgets, run concurrency, shutdown windows and the multi-instance caveats are the same
+everywhere — see [Sizing & tuning](./deploy.md#sizing--tuning) and
+[Scaling past one instance](./deploy.md#scaling-past-one-instance). Railway-specific notes:
+
+- **Private networking needs no TLS config.** Over `*.railway.internal` you need neither `sslmode`
+  nor `DATABASE_SSL_NO_VERIFY`. Only set `DATABASE_SSL_NO_VERIFY=true` if you must use a public
+  database URL presenting a self-signed certificate.
+- **Replicas vs. your Postgres plan.** Each instance opens two pools, so `2 × PG_POOL_MAX × replicas`
+  is what your plan's connection cap has to absorb — see
+  [Connection budget](./deploy.md#connection-budget).
+- **Railway's stop signal is generous** (~30s), so you can raise `SKEIN_SHUTDOWN_GRACE_MS` well above
+  the 5s default and let long runs finish rather than be aborted on every deploy.
+- **Background runs work by default.** Railway doesn't suspend instances between requests, so no
+  special configuration is needed.
+- **Zombie reaping.** The image handles signals itself; if your graphs spawn child processes, enable
+  Railway's init/PID-1 reaping (the generated `compose.yaml` sets `init: true` for the local
   equivalent).
-
-## Environment variables
-
-| Variable                 | Required             | Purpose                                                       |
-| ------------------------ | -------------------- | ------------------------------------------------------------- |
-| `POSTGRES_URI`           | yes (postgres store) | Postgres connection string (resources + checkpoints).         |
-| `REDIS_URI`              | yes (redis queue)    | Redis connection string (run queue + stream pub/sub).         |
-| `PORT`                   | injected by Railway  | Port the server binds. Do not set manually on Railway.        |
-| `PG_POOL_MAX`            | no                   | Max connections in the store pool (`pg` default 10).          |
-| `DATABASE_SSL_NO_VERIFY` | no                   | `true` to skip TLS cert verification (self-signed public DB). |
-| `SKEIN_RUN_CONCURRENCY`  | no                   | Queued runs each instance executes at once (default 10).      |
-| `N_JOBS_PER_WORKER`      | no                   | LangGraph-compatible alias for `SKEIN_RUN_CONCURRENCY`.       |

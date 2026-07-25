@@ -134,7 +134,7 @@ and `skein dev --store postgres`); pure in-memory `skein dev` still enforces exp
   pgvector is **opt-in**: the base schema needs no extension, so skein runs on a stock managed
   Postgres out of the box. Only when `store.index` is set does `migrate()` run
   `CREATE EXTENSION IF NOT EXISTS vector` and add the `embedding` column — which requires a Postgres
-  that ships pgvector (see [deploy-railway.md](./deploy-railway.md)).
+  that ships pgvector (see the provider table in [deploy.md](./deploy.md#1-a-postgres)).
 
 ```ts
 import { PostgresSaver } from "@langchain/langgraph-checkpoint-postgres";

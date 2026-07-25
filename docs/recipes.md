@@ -239,5 +239,11 @@ const rt = await buildRuntime({
 Or containerize with the CLI: `skein build` produces a deployable image (app + your graphs), `skein up`
 brings up app + Postgres + Redis via Compose, and `skein dev --store postgres --queue redis` runs the
 durable stack locally. Redis is optional for a single instance but **required to run more than one**.
-See [embedding.md](./embedding.md#going-to-production), [deploy-railway.md](./deploy-railway.md), and
+
+That image runs anywhere you can run a container — **[deploy.md](./deploy.md)** covers what every
+platform needs, with step-by-step guides for
+[Cloud Run](./deploy-cloud-run.md), [Railway](./deploy-railway.md), [Fly.io](./deploy-fly.md),
+[Render](./deploy-render.md), [AWS](./deploy-aws.md), [Kubernetes](./deploy-kubernetes.md),
+[a plain VPS](./deploy-vps.md), and [what doesn't work on serverless](./deploy-serverless.md).
+See also [embedding.md](./embedding.md#going-to-production) and
 [runs-and-redis.md](./runs-and-redis.md).

@@ -1,0 +1,296 @@
+# Deploy anywhere
+
+**Deploy your LangGraph.js graphs anywhere you can run a container.** skein has no `skein deploy` and
+no control plane — that's the point ([roadmap.md](./roadmap.md) lists it as an explicit non-goal).
+What it ships instead is an ordinary OCI image: `skein build` bundles your TypeScript graphs to plain
+JS and produces a Docker image that needs a Postgres, a Redis, and two environment variables. Nothing
+about it is specific to any host.
+
+This page is everything that is true on **every** platform. The per-platform guides are just the
+dashboard and CLI steps on top of it.
+
+## Contents
+
+- [Pick a platform](#pick-a-platform)
+- [What the image already does for you](#what-the-image-already-does-for-you)
+- [What every deployment needs](#what-every-deployment-needs)
+- [Sizing & tuning](#sizing--tuning)
+- [Scaling past one instance](#scaling-past-one-instance)
+- [Streaming through proxies (SSE)](#streaming-through-proxies-sse)
+- [Verify a deployment](#verify-a-deployment)
+- [Environment variables](#environment-variables)
+
+## Pick a platform
+
+| Platform                                       | Deploy from                     | Postgres + Redis                       | Background runs                                      | Scales to zero                          | Stop-signal window                  |
+| ---------------------------------------------- | ------------------------------- | -------------------------------------- | ---------------------------------------------------- | --------------------------------------- | ----------------------------------- |
+| [Google Cloud Run](./deploy-cloud-run.md)      | push image to Artifact Registry | Cloud SQL + Memorystore, or any hosted | ⚠️ needs `--no-cpu-throttling` + `--min-instances=1` | yes — queued runs stall until a request | 10s default, configurable           |
+| [Railway](./deploy-railway.md)                 | Dockerfile in repo              | Railway plugins                        | ✅ default                                           | no                                      | ~30s                                |
+| [Fly.io](./deploy-fly.md)                      | Dockerfile in repo              | Fly Postgres / Upstash Redis           | ⚠️ needs `min_machines_running = 1`                  | yes, if auto-stop is on                 | `kill_timeout` (5s default)         |
+| [Render](./deploy-render.md)                   | Dockerfile or image             | Render Postgres + Key Value            | ⚠️ paid instance (free ones spin down)               | free tier only                          | ~30s                                |
+| [AWS App Runner](./deploy-aws.md#app-runner)   | push image to ECR               | RDS + ElastiCache                      | ⚠️ CPU throttled between requests                    | no (min 1 instance)                     | ~30s                                |
+| [AWS ECS Fargate](./deploy-aws.md#ecs-fargate) | push image to ECR               | RDS + ElastiCache                      | ✅ default                                           | no                                      | `stopTimeout` (30s default)         |
+| [Kubernetes](./deploy-kubernetes.md)           | push image to any registry      | whatever you run                       | ✅ default                                           | no (unless KEDA/Knative)                | `terminationGracePeriodSeconds` 30s |
+| [VPS / plain Docker](./deploy-vps.md)          | build on the box or pull        | containers or managed                  | ✅ default                                           | no                                      | `docker stop -t` (10s default)      |
+| [Vercel & serverless](./deploy-serverless.md)  | n/a — not a container           | any hosted                             | ❌ not supported                                     | yes                                     | none                                |
+
+> **How these were verified.** The image contract itself — port binding, the `/ok` probe, `SIGTERM`
+> draining in-flight runs to a terminal status, Postgres migrations on boot — was exercised
+> end-to-end against real Postgres and Redis containers, and the behaviors described below are what
+> was actually observed. The individual platform guides apply that same contract using each
+> platform's own documentation; they have not each been deployed for real. If a step is wrong on your
+> platform, please [open an issue](https://github.com/skein-js/skein-js/issues) — corrections to
+> these are very welcome.
+
+## What the image already does for you
+
+`skein build` produces the image; `skein dockerfile` prints the same Dockerfile if you'd rather commit
+it and let your platform build it. Either way:
+
+- **Binds the port the platform gives it.** The CMD passes no `--port`, so the server binds `$PORT`
+  when one is injected (Railway, Render, Fly, Cloud Run all do). When nothing is injected it falls
+  back to **8123** — the same port the image `EXPOSE`s and health-checks — so a bare
+  `docker run -p 8123:8123` works, as do platforms that make you _declare_ a port instead of injecting
+  one (App Runner, ECS, Kubernetes).
+- **Handles `SIGTERM` properly.** node is PID 1 (the CMD invokes the entry directly, not through
+  `npx` — under `npx`, PID 1 is npm, which exits on `SIGTERM` without waiting for the server). On
+  signal, skein stops accepting queued runs, gives in-flight runs
+  [a grace window](#graceful-shutdown) to finish, aborts whatever is left so it lands in a **terminal**
+  status rather than stranded as `running`, then closes the pools.
+- **Serves a health probe** at `GET /ok` → `200 {"ok":true}`, and declares a Docker `HEALTHCHECK`
+  against it with a 20s start period.
+- **Runs unprivileged** as `USER node`.
+- **Reads config from the environment only** — `POSTGRES_URI` and `REDIS_URI`. The generated
+  `.dockerignore` excludes `.env*` and `.npmrc*`, so secrets are never baked into a layer.
+- **Installs pinned production dependencies only.** No vite/tsx, no devDependencies, no runtime
+  TypeScript transform: `skein build` resolved your tsconfig `paths` and workspace aliases once, on the
+  host. Source maps stay on, so stack traces still point at your TypeScript.
+- **Caches dependency installs** via a BuildKit cache mount, and accepts an optional `id=npmrc` build
+  secret for private scoped packages — `skein build --npmrc <path>`, or
+  `docker build --secret id=npmrc,src=$HOME/.npmrc` for the standalone Dockerfile. See
+  [langgraph-cli-compat.md](./langgraph-cli-compat.md).
+
+**Migrations run automatically on boot.** There is no `skein migrate` step. On startup skein applies
+its schema (tracked in a `skein_migrations` table), sets up LangGraph's checkpoint tables, registers
+one assistant per declared graph, and — because `skein start` warms graphs — imports every graph
+module. All of that finishes _before_ the server starts listening. Migrations take their own lock, so
+several instances booting at once during a rolling deploy is safe.
+
+> **Building on Apple Silicon?** `skein build` doesn't pass `--platform`, so you'll get an arm64 image
+> that most hosts reject. Export `DOCKER_DEFAULT_PLATFORM=linux/amd64` before building.
+
+## What every deployment needs
+
+### 1. A Postgres
+
+Set `POSTGRES_URI`. It holds protocol resources (assistants, threads, runs, store items) and
+LangGraph checkpoints. The base schema needs **no extensions**.
+
+pgvector is needed **only if you set `store.index` in `langgraph.json`** for semantic search. skein
+runs `CREATE EXTENSION IF NOT EXISTS vector` on boot, which can only enable an extension the server
+already has — it cannot install one. If it's missing, boot fails with an error telling you so.
+
+| Provider            | pgvector available                                         |
+| ------------------- | ---------------------------------------------------------- |
+| Cloud SQL (PG 13+)  | ✅ (`vector` is a supported extension)                     |
+| AWS RDS (PG 15+)    | ✅                                                         |
+| Neon                | ✅                                                         |
+| Supabase            | ✅ (enabled by default)                                    |
+| Render Postgres     | ✅                                                         |
+| Railway             | ⚠️ use the **pgvector template**, not the default Postgres |
+| `postgres:16` image | ❌ — use `pgvector/pgvector:pg16`                          |
+
+### 2. A Redis
+
+Set `REDIS_URI`. skein uses it for the run queue (BullMQ) and for cross-instance stream pub/sub with
+replay. Configure the instance with `maxmemory-policy noeviction` — BullMQ's job data must not be
+evicted.
+
+**The image requires it.** Its CMD runs `skein start --store postgres --queue redis`, and the redis
+queue driver fails the boot if `REDIS_URI` is unset. (Redis is only _optional_ on the in-code
+embedding path — `embedPostgresGraphs` falls back to an in-memory queue and bus when no Redis URL is
+given, which keeps state durable but limits you to a single instance. See
+[embedding.md](./embedding.md#going-to-production).)
+
+### 3. The port
+
+Nothing to do if your platform injects `PORT`. If it asks you which port the container listens on,
+answer **8123**.
+
+### 4. A health probe
+
+Point it at **`/ok`**. It's a dependency-free liveness check that deliberately does _not_ touch
+Postgres or Redis, so a transient database blip can't flap an otherwise healthy instance.
+
+It also works as a **startup/readiness probe**: migrations, assistant registration and graph warming
+all complete before the server binds, so a responding `/ok` genuinely means "fully booted". Budget
+your startup probe accordingly — the image's own estimate is 20 seconds.
+
+### 5. Auth — read this before you expose it
+
+> ⚠️ **skein's auth is off by default, and this is the production path.** With no `auth.path`
+> configured in `langgraph.json`, every protocol endpoint is open: anyone who can reach the URL can
+> create threads, run your graphs, and spend your model-provider tokens. Either configure auth (see
+> [agent-protocol.md](./agent-protocol.md) for the route→permission map) or keep the service private —
+> behind your platform's authenticated ingress, a VPC, or an authenticating proxy.
+>
+> `/ok` is registered ahead of the auth engine, so health probes keep working either way.
+
+## Sizing & tuning
+
+### Connection budget
+
+skein opens **two** Postgres pools per instance: one for protocol resources, one for LangGraph's
+`PostgresSaver`. Both are capped by `PG_POOL_MAX`, so plan for:
+
+```text
+max connections ≈ 2 × PG_POOL_MAX × instances
+```
+
+Check that against your database's limit — this is the most common way to exhaust a small managed
+Postgres once autoscaling kicks in. `PG_POOL_MAX=5` is a sane starting point.
+
+### Run concurrency
+
+Each instance executes up to **10** queued runs at once. Set `SKEIN_RUN_CONCURRENCY` (or the
+LangGraph-compatible `N_JOBS_PER_WORKER`) to change it. Every in-flight run draws from both pools
+above, so `concurrency × instances` is the number to budget against the connection cap. Prefer more
+instances over higher concurrency when runs are CPU-bound. See
+[runs-and-redis.md](./runs-and-redis.md#run-concurrency) for head-of-line-blocking behavior.
+
+The environment variable is validated even when the flag is also passed, so a typo fails the boot
+loudly instead of silently reverting to the default.
+
+### TLS to the database
+
+A URL with `?sslmode=require` and a real CA chain needs nothing extra — `pg` honors `sslmode`. For a
+database presenting a self-signed certificate, set `DATABASE_SSL_NO_VERIFY=true`. Over a private
+network (Railway's `*.railway.internal`, a VPC, a Unix socket) you need neither.
+
+If your provider offers a **pooled** connection endpoint (PgBouncer and friends), use the **direct**
+endpoint instead. Boot migrations take a session-level advisory lock, which transaction-mode pooling
+does not preserve.
+
+### Graceful shutdown
+
+On `SIGTERM` skein stops pulling from the queue, waits `SKEIN_SHUTDOWN_GRACE_MS` (default **5000**)
+for in-flight runs to finish, then aborts the stragglers so they settle to a terminal status, closes
+the pools, and exits. If that whole sequence hasn't finished 3 seconds after the grace window, the
+process force-exits anyway — so the default worst case is ~8s, which fits inside the tightest common
+kill window.
+
+Raise the grace window where the platform allows a longer one, and keep it below what the platform
+actually grants — past that, you're just being SIGKILLed mid-drain:
+
+| Platform      | Window between SIGTERM and SIGKILL        |
+| ------------- | ----------------------------------------- |
+| Cloud Run     | 10s default, configurable                 |
+| Railway       | ~30s                                      |
+| Fly.io        | `kill_timeout` in `fly.toml` (5s default) |
+| Render        | ~30s                                      |
+| ECS           | `stopTimeout` (30s default, 120s max)     |
+| Kubernetes    | `terminationGracePeriodSeconds` (30s)     |
+| `docker stop` | `-t` (10s default)                        |
+
+Runs that get aborted are marked terminal, not lost: with Redis, BullMQ's stalled-job recovery
+re-delivers a job whose worker died, and the worker skips any run already in a terminal state.
+
+**Embedding skein in your own server instead of using `skein start`?** You get no signal handling —
+wire it yourself: `process.on("SIGTERM", …)` → `runtime.worker.stop()` → dispose. Drain first, dispose
+second; disposing while runs are still draining pulls the store out from under them.
+
+### Cold starts
+
+Boot does real work: schema migrations, `PostgresSaver` setup, one get-or-create per declared graph,
+and eager-loading every graph module. Twenty seconds is a reasonable startup-probe budget. On
+platforms that scale to zero, this is paid on the first request after an idle period.
+
+## Scaling past one instance
+
+With Postgres and Redis, replicas share state and streams — a client can join a run executing on
+another instance, and rolling deploys are safe. But some semantics are still **per-process**, and
+Redis does not currently fix them:
+
+- **Cancellation.** `POST …/runs/{id}/cancel` routed to instance B will not abort a run executing on
+  instance A. The cancellation registry is in-process.
+- **One-active-run-per-thread.** The guard that serializes runs on a thread is an in-process lock, so
+  two instances can race it.
+- **`multitask_strategy: "rollback"` and `"interrupt"`.** Both rely on in-process state and are
+  single-instance-scoped.
+
+If you depend on any of these, run a single instance, or route by thread with session affinity. See
+[runs-and-redis.md](./runs-and-redis.md).
+
+## Streaming through proxies (SSE)
+
+skein sends `text/event-stream` with `cache-control: no-cache, no-transform` and flushes headers
+immediately. Two things it does _not_ do, which matter in front of a proxy:
+
+- It sends **no `X-Accel-Buffering: no` header**. A buffering reverse proxy will hold the stream
+  until the run finishes, which looks exactly like a hang. Turn buffering off: nginx
+  `proxy_buffering off;`, ingress-nginx `nginx.ingress.kubernetes.io/proxy-buffering: "off"`, Caddy
+  `flush_interval -1`. Don't put a caching CDN in front of the stream routes.
+- It sends **no heartbeat frame**. A stream that produces no tokens for a while can be culled by an
+  idle timeout, so raise the proxy's read timeout to cover your longest quiet stretch.
+
+There is also **no server-side run timeout** under `skein start` — the engine supports one
+(`runTimeoutMs`), but no CLI flag or environment variable exposes it, so it is only reachable when you
+[embed skein in your own server](./embedding.md). With the image, the platform's request timeout is
+the only ceiling on a streaming run; set it generously (Cloud Run allows up to 60 minutes).
+
+Clients reconnect with `Last-Event-ID` and skein replays missed frames from a Redis stream (kept for
+an hour), so a dropped connection is recoverable. See [streaming.md](./streaming.md).
+
+## Verify a deployment
+
+Every platform guide points here. Substitute your service's base URL.
+
+```bash
+BASE=https://your-service.example.com
+
+# 1. Liveness — the same probe your platform uses.
+curl -s $BASE/ok                                    # {"ok":true}
+
+# 2. Your graphs registered as assistants at boot.
+curl -s -X POST $BASE/assistants/search \
+  -H 'content-type: application/json' -d '{"limit":10}'
+
+# 3. An inline streaming run — exercises SSE and Postgres checkpointing end to end.
+THREAD=$(curl -s -X POST $BASE/threads -H 'content-type: application/json' -d '{}' \
+  | node -pe 'JSON.parse(require("fs").readFileSync(0)).thread_id')
+curl -N -X POST $BASE/threads/$THREAD/runs/stream \
+  -H 'content-type: application/json' \
+  -d '{"assistant_id":"agent","input":{"messages":[{"role":"user","content":"hi"}]}}'
+
+# 4. A BACKGROUND run — the one that catches CPU-throttling platforms. It returns immediately;
+#    the work happens after the request ends, which is exactly when a throttled instance freezes.
+RUN=$(curl -s -X POST $BASE/threads/$THREAD/runs \
+  -H 'content-type: application/json' \
+  -d '{"assistant_id":"agent","input":{"messages":[{"role":"user","content":"hi"}]}}' \
+  | node -pe 'JSON.parse(require("fs").readFileSync(0)).run_id')
+
+# 5. Join it mid-flight (replayed from Redis), then confirm it finished.
+curl -N $BASE/threads/$THREAD/runs/$RUN/stream
+curl -s $BASE/threads/$THREAD/runs/$RUN | node -pe 'JSON.parse(require("fs").readFileSync(0)).status'
+```
+
+Step 4 is the one worth actually running. A background run that never leaves `pending`/`running` while
+the service is idle means the platform is suspending your instance between requests — see that
+platform's guide.
+
+## Environment variables
+
+skein reads these and nothing else. Note there is **no `DATABASE_URL` or `REDIS_URL`** — those are
+platform names; map them onto skein's.
+
+| Variable                  | Required             | Purpose                                                           |
+| ------------------------- | -------------------- | ----------------------------------------------------------------- |
+| `POSTGRES_URI`            | yes (postgres store) | Postgres connection string (resources + checkpoints).             |
+| `REDIS_URI`               | yes (redis queue)    | Redis connection string (run queue + stream pub/sub).             |
+| `PORT`                    | usually injected     | Port to bind. Defaults to 8123 — the port the image exposes.      |
+| `HOST`                    | no                   | Host to bind. The image already passes `--host 0.0.0.0`.          |
+| `PG_POOL_MAX`             | no                   | Max connections **per pool**; there are two (`pg` default 10).    |
+| `DATABASE_SSL_NO_VERIFY`  | no                   | `true` to skip TLS cert verification (self-signed database cert). |
+| `SKEIN_RUN_CONCURRENCY`   | no                   | Queued runs each instance executes at once (default 10).          |
+| `N_JOBS_PER_WORKER`       | no                   | LangGraph-compatible alias for `SKEIN_RUN_CONCURRENCY`.           |
+| `SKEIN_SHUTDOWN_GRACE_MS` | no                   | Drain window for in-flight runs on `SIGTERM` (default 5000).      |

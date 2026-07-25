@@ -196,7 +196,7 @@ machine-readable [`llms.txt`](../llms.txt) / [`llms-full.txt`](../llms-full.txt)
 | [react-sdk.md](./react-sdk.md)                           | `@langchain/langgraph-sdk` + `useStream` compatibility      |
 | [storage.md](./storage.md)                               | `SkeinStore`, in-memory + Postgres, pgvector, checkpointer  |
 | [runs-and-redis.md](./runs-and-redis.md)                 | Run engine, queue, cross-instance streaming                 |
-| [deploy-railway.md](./deploy-railway.md)                 | Deploying the image on Railway (or any PaaS)                |
+| [deploy.md](./deploy.md)                                 | Deploy anywhere — Cloud Run, Railway, Fly, Render, AWS, K8s |
 | [reuse.md](./reuse.md)                                   | _(design)_ What we reuse from LangGraph OSS vs. rebuild     |
 | [code-practices.md](./code-practices.md)                 | _(contributor)_ Readability, functional style, conventions  |
 | [testing.md](./testing.md)                               | _(contributor)_ Unit + Testcontainers + conformance suite   |

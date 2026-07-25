@@ -82,7 +82,7 @@ The observable behavior is the same.
 > **Upgrading from ≤ 0.9.0?** This default changed: background runs used to execute strictly one at a
 > time. Nothing about your code or config needs to change, but each instance now does up to 10 runs
 > concurrently — so check that your Postgres pool has headroom (see
-> [pool sizing](./deploy-railway.md#tuning--caveats)), and note that background runs on one thread
+> [pool sizing](./deploy.md#connection-budget)), and note that background runs on one thread
 > using `multitask_strategy: "enqueue"` no longer execute in strict enqueue order. Set
 > `SKEIN_RUN_CONCURRENCY=1` (or `--concurrency 1`) to restore the previous behavior exactly.
 
@@ -120,7 +120,7 @@ need strict FIFO across background runs on one thread, set concurrency to 1.
 **Concurrency vs. replicas.** Raise concurrency when you have many independent threads and runs are
 I/O-bound (model calls). Add instances when runs are CPU-bound, or when threads are long-lived and
 serialized. Note each concurrent run holds a Postgres connection — see the pool-sizing note in
-[deploy-railway.md](./deploy-railway.md#tuning--caveats).
+[deploy.md](./deploy.md#connection-budget).
 
 ## Deployment topology (`skein up`)
 
@@ -145,5 +145,5 @@ starting a run on instance A and joining its SSE stream from instance B through 
 
 To run the same topology on a hosted platform, the generated image is PaaS-friendly (binds the
 injected `$PORT`, non-root, `/ok` health probe, graceful `SIGTERM`) — see
-[deploy-railway.md](./deploy-railway.md) for a Railway walkthrough that applies to Fly/Render/Heroku
-too.
+[deploy.md](./deploy.md) for what every platform needs, plus per-platform guides for Cloud Run,
+Railway, Fly.io, Render, AWS, Kubernetes and a plain VPS.

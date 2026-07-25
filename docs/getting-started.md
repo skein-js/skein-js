@@ -154,7 +154,7 @@ From a `langgraph.json`, either assemble `deps` with `buildRuntime({ store: "pos
 or skip code entirely: `skein dev --store postgres --queue redis`, and `skein build` / `skein up`
 to containerize. Redis is optional for a single instance but required to run more than one. Details:
 [embedding.md](./embedding.md#going-to-production), [storage.md](./storage.md),
-[runs-and-redis.md](./runs-and-redis.md), [deploy-railway.md](./deploy-railway.md).
+[runs-and-redis.md](./runs-and-redis.md), [deploy.md](./deploy.md).
 
 ## Where to next
 
