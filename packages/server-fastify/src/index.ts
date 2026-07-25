@@ -21,4 +21,4 @@ export { sendErrorResponse } from "./error-response.js";
 // The route table + runtime resolution live in the shared packages; re-export the route table so
 // Fastify callers can reach it without importing @skein-js/agent-protocol directly.
 export { skeinRoutes } from "@skein-js/agent-protocol";
-export type { SkeinRuntimeOptions } from "@skein-js/server-kit";
+export type { SkeinRuntimeOptions, RunWorkerOptions } from "@skein-js/server-kit";

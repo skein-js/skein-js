@@ -5,7 +5,7 @@ import { createContext } from "../context.js";
 import type { Logger } from "../deps.js";
 import { createProtocolServiceFromContext } from "../service.js";
 
-import { createRunWorker } from "./run-worker.js";
+import { createRunWorker, DEFAULT_RUN_CONCURRENCY } from "./run-worker.js";
 
 /** A logger that records every `info` call's message + meta for assertions. */
 function capturingLogger(): Logger & { infos: { message: string; meta?: unknown }[] } {
@@ -29,6 +29,34 @@ async function waitFor(predicate: () => Promise<boolean>, timeoutMs = 2000): Pro
 }
 
 describe("run worker", () => {
+  // Nothing pinned the default before, which is how the whole engine shipped stuck at the driver's
+  // concurrency of 1. Assert the number the worker actually hands the queue.
+  it.each([
+    ["the default when unset", undefined, DEFAULT_RUN_CONCURRENCY],
+    ["an explicit maxConcurrency", 3, 3],
+  ])("consumes the queue at %s", async (_label, maxConcurrency, expected) => {
+    const deps = createFixtureDeps();
+    let consumedWith: { concurrency?: number } | undefined;
+    const inner = deps.queue;
+    deps.queue = {
+      enqueue: (run) => inner.enqueue(run),
+      consume: (process, options = {}) => {
+        consumedWith = options;
+        return inner.consume(process, options);
+      },
+    };
+    const worker = createRunWorker(
+      createContext(deps),
+      maxConcurrency === undefined ? {} : { maxConcurrency },
+    );
+    worker.start();
+    try {
+      expect(consumedWith).toEqual({ concurrency: expected });
+    } finally {
+      await worker.stop();
+    }
+  });
+
   it("dequeues a background run and executes it to success", async () => {
     const deps = createFixtureDeps();
     const ctx = createContext(deps);

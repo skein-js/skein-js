@@ -27,4 +27,4 @@ export { toProtocolRequest } from "./to-protocol-request.js";
 export { sendNodeResponse, sendNodeError } from "@skein-js/server-kit";
 
 // Runtime-resolution option shape (shared across skein adapters).
-export type { SkeinRuntimeOptions } from "@skein-js/server-kit";
+export type { SkeinRuntimeOptions, RunWorkerOptions } from "@skein-js/server-kit";

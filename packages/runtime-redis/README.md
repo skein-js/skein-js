@@ -55,7 +55,9 @@ You normally get these via `skein dev --queue redis` / `skein up` and
 - **`class RedisRunQueue implements RunQueue`** — `new RedisRunQueue(url, options?)`.
   `enqueue(run)` · `consume(process, options?)` → `RunConsumer` · `dispose()`.
   **`RedisRunQueueOptions`** = `{ queueName?, attempts? }` (`queueName` default `"skein-runs"`, must
-  not contain `:`; `attempts` default `1`).
+  not contain `:`; `attempts` default `1`). `consume`'s `options.concurrency` (driver default `1`)
+  becomes the BullMQ `Worker`'s concurrency — the run worker always passes an explicit value, so in
+  practice this is [run concurrency](../../docs/runs-and-redis.md#run-concurrency) (default 10).
 - **`class RedisRunEventBus implements RunEventBus`** — `new RedisRunEventBus(url, options?)`.
   `publish(runId, frame)` · `close(runId)` · `subscribe(runId, afterSeq = 0)` · `dispose()`.
   **`RedisRunEventBusOptions`** = `{ keyPrefix?, streamTtlSeconds?, closedMarkerTtlSeconds?, closedCheckIntervalMs? }`

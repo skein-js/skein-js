@@ -13,6 +13,7 @@ This doc covers how skein-js executes runs and how it scales horizontally — mo
 - [Run modes](#run-modes)
 - [Run engine](#run-engine)
 - [Queue drivers](#queue-drivers)
+- [Run concurrency](#run-concurrency)
 - [Deployment topology (`skein up`)](#deployment-topology-skein-up)
 
 ## Run modes
@@ -25,8 +26,10 @@ The [Agent Protocol](./agent-protocol.md) defines three ways to execute a graph:
 | **stream**     | `POST /runs/stream`, `GET /runs/{id}/stream` | [SSE](./streaming.md) as output is produced.               |
 | **background** | `POST /threads/{id}/runs`                    | Enqueue; poll (`GET /runs/{id}`) or join its stream later. |
 
-A **concurrency guard** prevents two active runs on the same thread (the protocol's
-concurrency-control requirement).
+A **per-thread concurrency guard** prevents two active runs on the same thread (the protocol's
+concurrency-control requirement). That is a different thing from
+[run concurrency](#run-concurrency) below, which is how many runs on _different_ threads one
+instance executes at once.
 
 ## Run engine
 
@@ -64,6 +67,60 @@ makes this safe by skipping any run already terminal in the store.
 
 This is the same shape aegra uses (Redis job queue + pub/sub, crash recovery, Postgres
 checkpoints) — <https://github.com/aegra/aegra>.
+
+## Run concurrency
+
+How many **queued** (background) runs one instance executes at once. It defaults to **10**, matching
+the LangGraph CLI's `--n-jobs-per-worker`, so a project moving off `langgraph dev` keeps its
+throughput. Inline `wait`/`stream` runs never touch the queue and are unaffected.
+
+**One worker, N concurrent runs.** skein runs a _single_ background worker whose consumer executes up
+to N runs at a time — which is why the startup banner says `Starting 1 worker, up to 10 concurrent
+runs` rather than `langgraph dev`'s `Starting 10 workers` (it really does spawn 10 loops; we don't).
+The observable behavior is the same.
+
+> **Upgrading from ≤ 0.9.0?** This default changed: background runs used to execute strictly one at a
+> time. Nothing about your code or config needs to change, but each instance now does up to 10 runs
+> concurrently — so check that your Postgres pool has headroom (see
+> [pool sizing](./deploy-railway.md#tuning--caveats)), and note that background runs on one thread
+> using `multitask_strategy: "enqueue"` no longer execute in strict enqueue order. Set
+> `SKEIN_RUN_CONCURRENCY=1` (or `--concurrency 1`) to restore the previous behavior exactly.
+
+Three ways to set it, highest precedence first:
+
+| Surface        | How                                                                          |
+| -------------- | ---------------------------------------------------------------------------- |
+| CLI flag       | `skein dev --concurrency 4` / `skein start -n 4` (`--n-jobs-per-worker` too) |
+| Environment    | `SKEIN_RUN_CONCURRENCY=4`, or the LangGraph-compatible `N_JOBS_PER_WORKER=4` |
+| Adapter option | `createExpressServer({ deps, worker: { maxConcurrency: 4 } })`               |
+
+An explicit value wins, but the environment is still validated — so a typo'd
+`SKEIN_RUN_CONCURRENCY` fails loudly at boot instead of being silently ignored. The environment is
+the path that reaches a container: add it to the `skein up` compose `environment:` block or your
+PaaS config.
+
+**Per-thread ordering is unaffected.** Two runs on the same thread are serialized by the engine's
+execution lock at _every_ concurrency, so the per-thread guard above holds regardless.
+
+### Head-of-line blocking
+
+A run waiting on a busy thread's lock still occupies a slot. So N queued runs on the _same_ thread
+occupy N slots with N−1 merely waiting, and other threads wait behind them. Two things bound this:
+
+- It needs an explicit opt-in. The default `multitask_strategy` is `"reject"`, and a pending run
+  counts as active — so a second background run on a busy thread is rejected before it can queue.
+  Only `multitask_strategy: "enqueue"` piles runs up on one thread.
+- The worst case degrades to serial execution. No deadlock, no dropped run.
+
+Relatedly, **ordering across background `"enqueue"` runs is not guaranteed above concurrency 1**:
+several are dequeued at once and race for the thread's lock. This matches LangGraph at
+`N_JOBS_PER_WORKER=10`, whose N worker loops have no cross-loop ordering guarantee either. If you
+need strict FIFO across background runs on one thread, set concurrency to 1.
+
+**Concurrency vs. replicas.** Raise concurrency when you have many independent threads and runs are
+I/O-bound (model calls). Add instances when runs are CPU-bound, or when threads are long-lived and
+serialized. Note each concurrent run holds a Postgres connection — see the pool-sizing note in
+[deploy-railway.md](./deploy-railway.md#tuning--caveats).
 
 ## Deployment topology (`skein up`)
 

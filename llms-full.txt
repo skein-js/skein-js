@@ -272,8 +272,10 @@ skein dockerfile -o Dockerfile              # emit a standalone Dockerfile
 | `skein dockerfile` | Emit a standalone Dockerfile                                              | `langgraph dockerfile`   |
 
 Useful `skein dev` flags: `-p, --port` (default 2024), `--host`, `--store memory|postgres`,
-`--queue memory|redis`, `--no-persist`, `--no-reload`, `-v, --verbose`. Full mapping and the
-annotated `langgraph.json`: [`docs/langgraph-cli-compat.md`](./docs/langgraph-cli-compat.md).
+`--queue memory|redis`, `--concurrency` (background runs at once, default 10 — also
+`-n, --n-jobs-per-worker`, as in the LangGraph CLI), `--no-persist`, `--no-reload`, `-v, --verbose`.
+Full mapping and the annotated `langgraph.json`:
+[`docs/langgraph-cli-compat.md`](./docs/langgraph-cli-compat.md).
 
 Private production deps? `skein build`/`up` take `-n, --npmrc <path>`, mounting an `.npmrc` as a
 BuildKit secret so the image can install from a **private/authenticated npm registry** without baking
@@ -1197,6 +1199,10 @@ Grow from the minimal server without rewrites — each step changes one thing:
 - **Go durable / scale out.** Swap the in-memory `deps` for `embedPostgresGraphs(...)` or
   `buildRuntime({ store: "postgres", queue: "redis" })`. Add Redis to run more than one instance. See
   [Go to production](#go-to-production-postgres--redis).
+- **Drain more background runs at once.** Each instance executes 10 queued runs concurrently by
+  default — tune it with `skein dev --concurrency 4`, `SKEIN_RUN_CONCURRENCY=4`, or
+  `worker: { maxConcurrency: 4 }` on any adapter. See
+  [run concurrency](./runs-and-redis.md#run-concurrency).
 - **Add auth, memory, HITL, webhooks.** These are drop-in — see the [recipes](./recipes.md) (custom
   auth, `getStore()` long-term memory, interrupt/resume, run-completion webhooks).
 - **A framework we don't ship.** The adapters are thin shims over one transport-neutral handler table
@@ -1258,7 +1264,8 @@ two things: read the same `langgraph.json`, and mirror the same command surface.
 | `langgraph dockerfile` | `skein dockerfile` | Emit a standalone Dockerfile from the config.                  |
 | `langgraph deploy`     | —                  | Out of scope (hosted-platform push).                           |
 
-Shared flags where sensible: `--port`, `--host`, `--no-reload`, `--config`.
+Shared flags where sensible: `--port`, `--host`, `--no-reload`, `--config`,
+`-n, --n-jobs-per-worker`.
 
 **skein-only:** `skein start` serves a pre-built `.skein/build` artifact (the production image's
 entrypoint) — plain compiled JS, no vite, no reload. You rarely run it by hand; `skein build`/`up`
@@ -1274,7 +1281,18 @@ storage without Docker:
 | `--queue <driver>` | `memory`, `redis`    | `memory` | `redis` reads `REDIS_URI` (BullMQ queue + Streams/pub-sub bus). |
 
 Graph hot-reload works with any driver; the `.skein/` snapshot is skipped for durable drivers
-(they persist inherently). `skein up`/`build`/`dockerfile` accept `--tag` (build) and `--output`
+(they persist inherently).
+
+**Background-run concurrency.** `-n, --n-jobs-per-worker <count>` is honored on `skein dev` **and**
+`skein start`, with the same default of **10** the LangGraph CLI uses — so an existing
+`langgraph dev -n 4` command line ports over unchanged. `--concurrency <count>` is the same knob
+under a self-evident name, and wins if both are passed. Without a flag, skein reads
+`SKEIN_RUN_CONCURRENCY`, then the LangGraph-compatible `N_JOBS_PER_WORKER` — which is how the setting
+reaches a container. See [runs-and-redis.md](./runs-and-redis.md#run-concurrency).
+
+One deliberate cosmetic difference: skein's banner prints `Starting 1 worker, up to 10 concurrent
+runs` where `langgraph dev` prints `Starting 10 workers`. LangGraph really does spawn 10 loops;
+skein runs one worker whose consumer executes 10 runs at a time. Same throughput, honest wording. `skein up`/`build`/`dockerfile` accept `--tag` (build) and `--output`
 (dockerfile) in addition to `--config`.
 
 **Private/authenticated npm registries.** When your production dependencies include private scoped
@@ -2571,6 +2589,7 @@ This doc covers how skein-js executes runs and how it scales horizontally — mo
 - [Run modes](#run-modes)
 - [Run engine](#run-engine)
 - [Queue drivers](#queue-drivers)
+- [Run concurrency](#run-concurrency)
 - [Deployment topology (`skein up`)](#deployment-topology-skein-up)
 
 ## Run modes
@@ -2583,8 +2602,10 @@ The [Agent Protocol](./agent-protocol.md) defines three ways to execute a graph:
 | **stream**     | `POST /runs/stream`, `GET /runs/{id}/stream` | [SSE](./streaming.md) as output is produced.               |
 | **background** | `POST /threads/{id}/runs`                    | Enqueue; poll (`GET /runs/{id}`) or join its stream later. |
 
-A **concurrency guard** prevents two active runs on the same thread (the protocol's
-concurrency-control requirement).
+A **per-thread concurrency guard** prevents two active runs on the same thread (the protocol's
+concurrency-control requirement). That is a different thing from
+[run concurrency](#run-concurrency) below, which is how many runs on _different_ threads one
+instance executes at once.
 
 ## Run engine
 
@@ -2622,6 +2643,60 @@ makes this safe by skipping any run already terminal in the store.
 
 This is the same shape aegra uses (Redis job queue + pub/sub, crash recovery, Postgres
 checkpoints) — <https://github.com/aegra/aegra>.
+
+## Run concurrency
+
+How many **queued** (background) runs one instance executes at once. It defaults to **10**, matching
+the LangGraph CLI's `--n-jobs-per-worker`, so a project moving off `langgraph dev` keeps its
+throughput. Inline `wait`/`stream` runs never touch the queue and are unaffected.
+
+**One worker, N concurrent runs.** skein runs a _single_ background worker whose consumer executes up
+to N runs at a time — which is why the startup banner says `Starting 1 worker, up to 10 concurrent
+runs` rather than `langgraph dev`'s `Starting 10 workers` (it really does spawn 10 loops; we don't).
+The observable behavior is the same.
+
+> **Upgrading from ≤ 0.9.0?** This default changed: background runs used to execute strictly one at a
+> time. Nothing about your code or config needs to change, but each instance now does up to 10 runs
+> concurrently — so check that your Postgres pool has headroom (see
+> [pool sizing](./deploy-railway.md#tuning--caveats)), and note that background runs on one thread
+> using `multitask_strategy: "enqueue"` no longer execute in strict enqueue order. Set
+> `SKEIN_RUN_CONCURRENCY=1` (or `--concurrency 1`) to restore the previous behavior exactly.
+
+Three ways to set it, highest precedence first:
+
+| Surface        | How                                                                          |
+| -------------- | ---------------------------------------------------------------------------- |
+| CLI flag       | `skein dev --concurrency 4` / `skein start -n 4` (`--n-jobs-per-worker` too) |
+| Environment    | `SKEIN_RUN_CONCURRENCY=4`, or the LangGraph-compatible `N_JOBS_PER_WORKER=4` |
+| Adapter option | `createExpressServer({ deps, worker: { maxConcurrency: 4 } })`               |
+
+An explicit value wins, but the environment is still validated — so a typo'd
+`SKEIN_RUN_CONCURRENCY` fails loudly at boot instead of being silently ignored. The environment is
+the path that reaches a container: add it to the `skein up` compose `environment:` block or your
+PaaS config.
+
+**Per-thread ordering is unaffected.** Two runs on the same thread are serialized by the engine's
+execution lock at _every_ concurrency, so the per-thread guard above holds regardless.
+
+### Head-of-line blocking
+
+A run waiting on a busy thread's lock still occupies a slot. So N queued runs on the _same_ thread
+occupy N slots with N−1 merely waiting, and other threads wait behind them. Two things bound this:
+
+- It needs an explicit opt-in. The default `multitask_strategy` is `"reject"`, and a pending run
+  counts as active — so a second background run on a busy thread is rejected before it can queue.
+  Only `multitask_strategy: "enqueue"` piles runs up on one thread.
+- The worst case degrades to serial execution. No deadlock, no dropped run.
+
+Relatedly, **ordering across background `"enqueue"` runs is not guaranteed above concurrency 1**:
+several are dequeued at once and race for the thread's lock. This matches LangGraph at
+`N_JOBS_PER_WORKER=10`, whose N worker loops have no cross-loop ordering guarantee either. If you
+need strict FIFO across background runs on one thread, set concurrency to 1.
+
+**Concurrency vs. replicas.** Raise concurrency when you have many independent threads and runs are
+I/O-bound (model calls). Add instances when runs are CPU-bound, or when threads are long-lived and
+serialized. Note each concurrent run holds a Postgres connection — see the pool-sizing note in
+[deploy-railway.md](./deploy-railway.md#tuning--caveats).
 
 ## Deployment topology (`skein up`)
 
@@ -2857,7 +2932,9 @@ await client.runs.cancel(threadId, run.run_id); // POST /runs/{id}/cancel
 
 Cross-instance join and fan-out need the Redis queue + event bus — see
 [runs-and-redis.md](./runs-and-redis.md) and [streaming.md](./streaming.md). Concurrent runs on one
-thread follow a `multitask_strategy` (Agent Protocol parity).
+thread follow a `multitask_strategy` (Agent Protocol parity); how many background runs execute at
+once across _different_ threads is [run concurrency](./runs-and-redis.md#run-concurrency)
+(`--concurrency`, default 10).
 
 ## Run-completion webhooks
 
@@ -3130,7 +3207,12 @@ function sendError(error, res, logger) {
 ## Step 6 — worker lifecycle & CORS
 
 - **Worker** — `runtime.worker.start()` drains the run queue (background runs). Call
-  `runtime.worker.stop()` on shutdown so in-flight runs drain cleanly.
+  `runtime.worker.stop()` on shutdown so in-flight runs drain cleanly. If you wire
+  `createProtocolRuntime` by hand rather than using the shortcut below, pass
+  `{ worker: { maxConcurrency: resolveRunConcurrency(options.worker?.maxConcurrency) } }` — otherwise
+  your adapter silently ignores `--concurrency` and `SKEIN_RUN_CONCURRENCY`, which is exactly the bug
+  `resolveProtocolRuntime` centralizes away. See
+  [run concurrency](./runs-and-redis.md#run-concurrency).
 - **CORS** — browser clients (Agent Chat UI, React `useStream`) run on a different origin than your
   server, so you must send `Access-Control-Allow-*` headers (and answer preflight `OPTIONS`) on every
   route, including the SSE streams. [`@skein-js/server-kit`](../packages/server-kit) exports
@@ -3346,9 +3428,16 @@ won't flap a healthy instance.
   certificate, set **`DATABASE_SSL_NO_VERIFY=true`** to skip cert verification. A URL with
   `?sslmode=require` and a proper CA chain needs nothing extra — `pg` honors `sslmode`. Not needed at
   all over private networking.
+- **Run concurrency vs. pool size.** Each instance executes up to **10** background runs at once by
+  default (`SKEIN_RUN_CONCURRENCY` / `--concurrency` — see
+  [runs-and-redis.md](./runs-and-redis.md#run-concurrency)), and every in-flight run holds
+  connections from both pools above. So budget roughly `concurrency × replicas` against the cap, and
+  lower one or raise `PG_POOL_MAX` if you see pool timeouts. (LangGraph instead divides one pool by
+  `N_JOBS_PER_WORKER`; skein sizes each pool explicitly.)
 - **Scaling.** With Postgres + Redis, replicas share state and streams (a client can join a run on
   another instance), so horizontal scaling works. Schema migrations run on every boot and are
-  idempotent + advisory-locked, so concurrent rollouts are safe.
+  idempotent + advisory-locked, so concurrent rollouts are safe. Prefer replicas over raw concurrency
+  when runs are CPU-bound.
 - **Zombie reaping.** The image handles signals itself; if you run graphs that spawn child processes,
   enable Railway's init/PID-1 reaping (the generated `compose.yaml` sets `init: true` for the local
   equivalent).
@@ -3362,6 +3451,8 @@ won't flap a healthy instance.
 | `PORT`                   | injected by Railway  | Port the server binds. Do not set manually on Railway.        |
 | `PG_POOL_MAX`            | no                   | Max connections in the store pool (`pg` default 10).          |
 | `DATABASE_SSL_NO_VERIFY` | no                   | `true` to skip TLS cert verification (self-signed public DB). |
+| `SKEIN_RUN_CONCURRENCY`  | no                   | Queued runs each instance executes at once (default 10).      |
+| `N_JOBS_PER_WORKER`      | no                   | LangGraph-compatible alias for `SKEIN_RUN_CONCURRENCY`.       |
 
 
 ---

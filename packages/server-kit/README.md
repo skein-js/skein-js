@@ -75,7 +75,14 @@ Pass `overrides` to swap in production drivers or an auth engine while keeping t
   graph→`GraphResolver` helpers.
 - **`resolveProtocolRuntime(options): Promise<ResolvedProtocolRuntime>`** — turn a
   `{ config } | { deps }` bag (`SkeinRuntimeOptions`) into a live runtime (assistants seeded, worker
-  started) — the step every adapter runs before mounting routes.
+  started) — the step every adapter runs before mounting routes. `options.worker`
+  (`RunWorkerOptions`) tunes the background worker; `worker.maxConcurrency` is how many queued runs
+  run at once.
+- **`resolveRunConcurrency(explicit?, env?): number`** — the one precedence chain behind
+  `worker.maxConcurrency`: explicit value → `SKEIN_RUN_CONCURRENCY` → `N_JOBS_PER_WORKER` →
+  `DEFAULT_RUN_CONCURRENCY` (10, matching the LangGraph CLI). The environment is validated even when
+  an explicit value is given, so the two sources can't silently disagree. `skein dev`/`start` use it
+  to resolve the number they print in the startup banner.
 - **`loadInMemoryRuntime` / `loadReloadableInMemoryRuntime`** — assemble a `ProtocolDeps` from a
   `langgraph.json` using in-process drivers. The reloadable variant adds `reloadGraphs` /
   `snapshotState` / `hydrateState` (what powers `skein dev`'s hot reload + cross-restart persistence).

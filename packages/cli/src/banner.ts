@@ -1,6 +1,6 @@
 // The `skein dev` startup banner, printed once the server is listening. Skein-branded and compact:
 // a welcome header and the served URLs (drawn directly with the shared color helper), then the
-// graphs it registered, optional auth, worker count, and the bound address — routed through the
+// graphs it registered, optional auth, run concurrency, and the bound address — routed through the
 // dev `Logger` so those status lines share the exact `info:` styling of the runtime logs.
 
 import type { Logger } from "@skein-js/agent-protocol";
@@ -15,14 +15,19 @@ export interface BannerInfo {
   graphIds: string[];
   /** The `auth.path` from `langgraph.json`, when an auth block is configured. */
   authPath?: string;
-  /** Background run worker count (the dev server runs one). */
-  workerCount: number;
+  /**
+   * How many queued runs the single background worker executes at once (`--concurrency`). There is
+   * always exactly one worker per process; this is its concurrency, not a process count — which is
+   * why the line below says so, rather than copying `langgraph dev`'s "Starting N workers" (it really
+   * does spawn N loops; we don't).
+   */
+  runConcurrency: number;
 }
 
 /** Print the startup banner. Decorative header + URLs go straight to stdout; the status lines use
  * `logger` so they match the `info:` styling of the request/run logs that follow. */
 export function printBanner(info: BannerInfo, logger: Logger): void {
-  const { host, port, graphIds, authPath, workerCount } = info;
+  const { host, port, graphIds, authPath, runConcurrency } = info;
   const base = `http://${host}:${port}`;
 
   console.log();
@@ -34,6 +39,10 @@ export function printBanner(info: BannerInfo, logger: Logger): void {
 
   for (const id of graphIds) logger.info(`Registering graph with id '${id}'`);
   if (authPath) logger.info(`Loading auth from ${authPath}`);
-  logger.info(`Starting ${workerCount} worker${workerCount === 1 ? "" : "s"}`);
+  logger.info(
+    runConcurrency === 1
+      ? "Starting 1 worker"
+      : `Starting 1 worker, up to ${runConcurrency} concurrent runs`,
+  );
   logger.info(`Server running at ${base}`);
 }

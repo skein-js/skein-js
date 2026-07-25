@@ -34,7 +34,11 @@ export interface QueuedRun {
 export type RunProcessor = (run: QueuedRun) => Promise<void>;
 
 export interface RunConsumerOptions {
-  /** Max runs a single consumer executes at once. Default 1 (per-thread serialization). */
+  /**
+   * Max runs a single consumer executes at once. Driver default 1 — the run worker always passes an
+   * explicit value (see `DEFAULT_RUN_CONCURRENCY` in `@skein-js/agent-protocol`). Per-thread
+   * serialization is the engine's guarantee, not the driver's.
+   */
   concurrency?: number;
 }
 

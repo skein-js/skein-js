@@ -36,7 +36,9 @@ async function waitFor(predicate: () => boolean, timeoutMs = 2000): Promise<void
 /**
  * The behavioral contract every {@link RunQueue} driver must satisfy — the in-memory queue and
  * `@skein-js/redis` run the *same* suite, so the run worker behaves identically whichever it has.
- * With the default concurrency of 1, a single consumer delivers runs in enqueue order.
+ * At the *driver's* default concurrency of 1 (what `consume()` uses when passed no options), a
+ * single consumer delivers runs in enqueue order. The run worker passes a higher value by default,
+ * above which no ordering across runs is guaranteed — see `DEFAULT_RUN_CONCURRENCY`.
  *
  * @example
  * runRunQueueConformance("memory", () => new MemoryRunQueue());

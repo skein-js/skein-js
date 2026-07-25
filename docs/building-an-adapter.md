@@ -227,7 +227,12 @@ function sendError(error, res, logger) {
 ## Step 6 — worker lifecycle & CORS
 
 - **Worker** — `runtime.worker.start()` drains the run queue (background runs). Call
-  `runtime.worker.stop()` on shutdown so in-flight runs drain cleanly.
+  `runtime.worker.stop()` on shutdown so in-flight runs drain cleanly. If you wire
+  `createProtocolRuntime` by hand rather than using the shortcut below, pass
+  `{ worker: { maxConcurrency: resolveRunConcurrency(options.worker?.maxConcurrency) } }` — otherwise
+  your adapter silently ignores `--concurrency` and `SKEIN_RUN_CONCURRENCY`, which is exactly the bug
+  `resolveProtocolRuntime` centralizes away. See
+  [run concurrency](./runs-and-redis.md#run-concurrency).
 - **CORS** — browser clients (Agent Chat UI, React `useStream`) run on a different origin than your
   server, so you must send `Access-Control-Allow-*` headers (and answer preflight `OPTIONS`) on every
   route, including the SSE streams. [`@skein-js/server-kit`](../packages/server-kit) exports

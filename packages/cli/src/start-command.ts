@@ -15,6 +15,7 @@ import {
   type SkeinRuntime,
   type StoreDriver,
 } from "@skein-js/runtime";
+import { resolveRunConcurrency } from "@skein-js/server-kit";
 
 import { printBanner } from "./banner.js";
 import { createDevLogger } from "./dev-logger.js";
@@ -35,6 +36,10 @@ export interface StartCommandOptions {
   store: StoreDriver;
   /** Run queue + stream bus: `"memory"` or `"redis"` (`REDIS_URI`). */
   queue: QueueDriver;
+  /** `--concurrency`: queued runs the background worker executes at once. Unset → env → default. */
+  concurrency?: number;
+  /** `--n-jobs-per-worker` / `-n`: the LangGraph spelling; used only when `--concurrency` is absent. */
+  nJobsPerWorker?: number;
   /** `true` when `--verbose` was passed: log per-run activity. */
   verbose?: boolean;
 }
@@ -62,12 +67,16 @@ export async function runStart(options: StartCommandOptions): Promise<void> {
   let schemas: Record<string, GraphSchemas>;
   let configDir: string;
   let authPath: string | undefined;
+  let runConcurrency: number;
   try {
     const loaded = await loadConfig({ configPath });
     configDir = loaded.configDir;
     authPath = loaded.config.auth?.path;
     // Apply an inline `env` map baked into the production config (a file `env` was dropped at build).
     await applyProjectEnv(loaded.config, configDir);
+    // Flag → LangGraph-compat alias → SKEIN_RUN_CONCURRENCY → N_JOBS_PER_WORKER → default. Inside this
+    // block so a bad value prints `skein: …` and exits 1, like every other boot-config failure.
+    runConcurrency = resolveRunConcurrency(options.concurrency ?? options.nJobsPerWorker);
     schemas = readBakedSchemas(configDir);
   } catch (error) {
     console.error(`skein: ${error instanceof Error ? error.message : String(error)}`);
@@ -104,6 +113,7 @@ export async function runStart(options: StartCommandOptions): Promise<void> {
       cors: runtime.cors,
       warm: true,
       logger,
+      worker: { maxConcurrency: runConcurrency },
     });
     await server.listen(port, host);
   } catch (error) {
@@ -114,7 +124,7 @@ export async function runStart(options: StartCommandOptions): Promise<void> {
     return;
   }
 
-  printBanner({ host, port, graphIds: runtime.deps.graphs.ids, authPath, workerCount: 1 }, logger);
+  printBanner({ host, port, graphIds: runtime.deps.graphs.ids, authPath, runConcurrency }, logger);
 
   let shuttingDown = false;
   const shutdown = () => {

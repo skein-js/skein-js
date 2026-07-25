@@ -264,8 +264,10 @@ skein dockerfile -o Dockerfile              # emit a standalone Dockerfile
 | `skein dockerfile` | Emit a standalone Dockerfile                                              | `langgraph dockerfile`   |
 
 Useful `skein dev` flags: `-p, --port` (default 2024), `--host`, `--store memory|postgres`,
-`--queue memory|redis`, `--no-persist`, `--no-reload`, `-v, --verbose`. Full mapping and the
-annotated `langgraph.json`: [`docs/langgraph-cli-compat.md`](./docs/langgraph-cli-compat.md).
+`--queue memory|redis`, `--concurrency` (background runs at once, default 10 — also
+`-n, --n-jobs-per-worker`, as in the LangGraph CLI), `--no-persist`, `--no-reload`, `-v, --verbose`.
+Full mapping and the annotated `langgraph.json`:
+[`docs/langgraph-cli-compat.md`](./docs/langgraph-cli-compat.md).
 
 Private production deps? `skein build`/`up` take `-n, --npmrc <path>`, mounting an `.npmrc` as a
 BuildKit secret so the image can install from a **private/authenticated npm registry** without baking

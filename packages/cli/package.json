@@ -50,6 +50,7 @@
     "@skein-js/config": "workspace:*",
     "@skein-js/express": "workspace:*",
     "@skein-js/runtime": "workspace:*",
+    "@skein-js/server-kit": "workspace:*",
     "commander": "~13.1.0"
   },
   "optionalDependencies": {

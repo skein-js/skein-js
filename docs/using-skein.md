@@ -226,6 +226,10 @@ Grow from the minimal server without rewrites — each step changes one thing:
 - **Go durable / scale out.** Swap the in-memory `deps` for `embedPostgresGraphs(...)` or
   `buildRuntime({ store: "postgres", queue: "redis" })`. Add Redis to run more than one instance. See
   [Go to production](#go-to-production-postgres--redis).
+- **Drain more background runs at once.** Each instance executes 10 queued runs concurrently by
+  default — tune it with `skein dev --concurrency 4`, `SKEIN_RUN_CONCURRENCY=4`, or
+  `worker: { maxConcurrency: 4 }` on any adapter. See
+  [run concurrency](./runs-and-redis.md#run-concurrency).
 - **Add auth, memory, HITL, webhooks.** These are drop-in — see the [recipes](./recipes.md) (custom
   auth, `getStore()` long-term memory, interrupt/resume, run-completion webhooks).
 - **A framework we don't ship.** The adapters are thin shims over one transport-neutral handler table

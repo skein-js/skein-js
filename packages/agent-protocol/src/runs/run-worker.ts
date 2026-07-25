@@ -15,8 +15,20 @@ import type { Logger } from "../deps.js";
 
 import { startRunExecution } from "./run-execution.js";
 
+/**
+ * Queued runs one worker executes at once when nothing is configured. Matches the LangGraph CLI's
+ * `--n-jobs-per-worker` default, so a project moving off `langgraph dev` keeps its throughput.
+ */
+export const DEFAULT_RUN_CONCURRENCY = 10;
+
 export interface RunWorkerOptions {
-  /** Max runs executing at once. Default 1 — strict per-thread serialization in dev. */
+  /**
+   * Max queued runs this worker executes at once. Default {@link DEFAULT_RUN_CONCURRENCY}.
+   * Per-thread ordering does not depend on this: `startRunExecution` serializes by `thread_id` at
+   * every value. The trade-off is head-of-line blocking — a run waiting on a busy thread's lock
+   * still holds a slot, so a burst of `multitask_strategy: "enqueue"` runs on one thread can occupy
+   * the worker. See docs/runs-and-redis.md.
+   */
   maxConcurrency?: number;
   /** How long `stop()` waits for in-flight runs before aborting them (ms). Default 5000. */
   shutdownGraceMs?: number;
@@ -57,7 +69,7 @@ function logRunLifecycle(
 
 export function createRunWorker(ctx: ProtocolContext, options: RunWorkerOptions = {}): RunWorker {
   const { deps, control } = ctx;
-  const maxConcurrency = options.maxConcurrency ?? 1;
+  const maxConcurrency = options.maxConcurrency ?? DEFAULT_RUN_CONCURRENCY;
   const shutdownGraceMs = options.shutdownGraceMs ?? 5000;
 
   // runIds currently executing on this worker, so shutdown can abort the stragglers.

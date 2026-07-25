@@ -21,6 +21,7 @@ import {
   type SkeinExpressServer,
 } from "@skein-js/express";
 import { buildRuntime, type QueueDriver, type StoreDriver } from "@skein-js/runtime";
+import { resolveRunConcurrency } from "@skein-js/server-kit";
 
 import { printBanner } from "./banner.js";
 import { createDevLogger } from "./dev-logger.js";
@@ -46,6 +47,10 @@ export interface DevCommandOptions {
   store: StoreDriver;
   /** Run queue + stream bus: `"memory"` (default) or `"redis"` (`REDIS_URI`). */
   queue: QueueDriver;
+  /** `--concurrency`: queued runs the background worker executes at once. Unset → env → default. */
+  concurrency?: number;
+  /** `--n-jobs-per-worker` / `-n`: the LangGraph spelling; used only when `--concurrency` is absent. */
+  nJobsPerWorker?: number;
   /** `true` when `--verbose` was passed: log per-run activity (start/finish, tool calls, interrupts). */
   verbose?: boolean;
 }
@@ -85,6 +90,9 @@ export async function runDev(options: DevCommandOptions): Promise<void> {
   // always wins). Resolved after applyProjectEnv above, so a PORT in the project's .env counts.
   const port = options.portExplicit ? options.port : envPort(options.port);
   const host = options.hostExplicit ? options.host : envHost(options.host);
+  // Flag → LangGraph-compat alias → SKEIN_RUN_CONCURRENCY → N_JOBS_PER_WORKER → default. Resolved
+  // after applyProjectEnv above, so a value in the project's .env counts — the PORT/HOST rule.
+  const runConcurrency = resolveRunConcurrency(options.concurrency ?? options.nJobsPerWorker);
   // On-disk snapshotting only applies to the all-memory runtime; durable drivers persist inherently.
   const canPersist = options.persist && runtime.snapshotState !== undefined;
   if (options.persist && runtime.snapshotState === undefined) {
@@ -132,6 +140,7 @@ export async function runDev(options: DevCommandOptions): Promise<void> {
       cors: runtime.cors,
       warm: true,
       logger: devLogger,
+      worker: { maxConcurrency: runConcurrency },
     });
     await server.listen(port, host);
   } catch (error) {
@@ -148,7 +157,7 @@ export async function runDev(options: DevCommandOptions): Promise<void> {
       port,
       graphIds: runtime.deps.graphs.ids,
       authPath: config.auth?.path,
-      workerCount: 1,
+      runConcurrency,
     },
     devLogger,
   );

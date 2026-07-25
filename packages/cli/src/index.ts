@@ -26,6 +26,15 @@ function parsePort(value: string): number {
   return port;
 }
 
+/** Parse a `--concurrency` value into a positive integer, rejecting anything else. */
+function parseConcurrency(value: string): number {
+  const concurrency = Number(value);
+  if (!Number.isInteger(concurrency) || concurrency <= 0) {
+    throw new InvalidArgumentError("Concurrency must be a positive integer.");
+  }
+  return concurrency;
+}
+
 /** Build a commander parser that accepts only one of `choices`, rejecting anything else. */
 function parseChoice<const T extends string>(choices: readonly T[]) {
   return (value: string): T => {
@@ -60,6 +69,21 @@ program
   // Develop against production-shaped storage without Docker (needs POSTGRES_URI / REDIS_URI).
   .option("--store <driver>", "Store driver: memory | postgres", parseStore, "memory")
   .option("--queue <driver>", "Queue driver: memory | redis", parseQueue, "memory")
+  // Deliberately no commander default: an unset flag stays `undefined`, which is what lets runDev
+  // fall through to SKEIN_RUN_CONCURRENCY / N_JOBS_PER_WORKER. That is also why this needs none of
+  // the `getOptionValueSource(...) === "cli"` machinery --port/--host require for their defaults.
+  .option(
+    "--concurrency <count>",
+    "Queued runs the background worker executes at once (default 10; env SKEIN_RUN_CONCURRENCY)",
+    parseConcurrency,
+  )
+  // The LangGraph CLI's spelling and short flag for the same knob, so an existing `langgraph dev -n 4`
+  // command line moves over unchanged. `--concurrency` wins if both are passed.
+  .option(
+    "-n, --n-jobs-per-worker <count>",
+    "Alias for --concurrency (LangGraph CLI compatibility)",
+    parseConcurrency,
+  )
   .option("-v, --verbose", "Log per-run activity: start/finish, tool calls, and interrupts")
   // Pass whether --port/--host came from the CLI so runDev only applies the PORT/HOST env fallback
   // when the user left them at their defaults (an explicit flag always wins over the env).
@@ -81,6 +105,17 @@ program
   .option("--host <host>", "Host to bind", "127.0.0.1")
   .option("--store <driver>", "Store driver: memory | postgres", parseStore, "memory")
   .option("--queue <driver>", "Queue driver: memory | redis", parseQueue, "memory")
+  // Same pair as `dev` — see the note there on why neither carries a commander default.
+  .option(
+    "--concurrency <count>",
+    "Queued runs the background worker executes at once (default 10; env SKEIN_RUN_CONCURRENCY)",
+    parseConcurrency,
+  )
+  .option(
+    "-n, --n-jobs-per-worker <count>",
+    "Alias for --concurrency (LangGraph CLI compatibility)",
+    parseConcurrency,
+  )
   .option("-v, --verbose", "Log per-run activity: start/finish, tool calls, and interrupts")
   .action((options, command) =>
     runStart({

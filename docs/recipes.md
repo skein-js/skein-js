@@ -201,7 +201,9 @@ await client.runs.cancel(threadId, run.run_id); // POST /runs/{id}/cancel
 
 Cross-instance join and fan-out need the Redis queue + event bus — see
 [runs-and-redis.md](./runs-and-redis.md) and [streaming.md](./streaming.md). Concurrent runs on one
-thread follow a `multitask_strategy` (Agent Protocol parity).
+thread follow a `multitask_strategy` (Agent Protocol parity); how many background runs execute at
+once across _different_ threads is [run concurrency](./runs-and-redis.md#run-concurrency)
+(`--concurrency`, default 10).
 
 ## Run-completion webhooks
 

@@ -18,6 +18,14 @@ export type {
   ResolvedRuntimeDeps,
 } from "./resolve-runtime.js";
 
+// Run concurrency: the one precedence chain (explicit option → SKEIN_RUN_CONCURRENCY →
+// N_JOBS_PER_WORKER → DEFAULT_RUN_CONCURRENCY) behind `worker.maxConcurrency`. Exported so
+// `skein dev`/`start` resolve the exact number they print in the startup banner, rather than
+// re-implementing the chain.
+export { resolveRunConcurrency } from "./run-concurrency.js";
+export { DEFAULT_RUN_CONCURRENCY } from "@skein-js/agent-protocol";
+export type { RunWorkerOptions } from "@skein-js/agent-protocol";
+
 // In-memory runtime: assemble a `ProtocolDeps` backed by in-process drivers (the `skein dev` runtime,
 // and every adapter's `{ config }` convenience path).
 export { loadInMemoryRuntime, loadReloadableInMemoryRuntime } from "./in-memory-runtime.js";

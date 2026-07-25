@@ -87,9 +87,16 @@ won't flap a healthy instance.
   certificate, set **`DATABASE_SSL_NO_VERIFY=true`** to skip cert verification. A URL with
   `?sslmode=require` and a proper CA chain needs nothing extra — `pg` honors `sslmode`. Not needed at
   all over private networking.
+- **Run concurrency vs. pool size.** Each instance executes up to **10** background runs at once by
+  default (`SKEIN_RUN_CONCURRENCY` / `--concurrency` — see
+  [runs-and-redis.md](./runs-and-redis.md#run-concurrency)), and every in-flight run holds
+  connections from both pools above. So budget roughly `concurrency × replicas` against the cap, and
+  lower one or raise `PG_POOL_MAX` if you see pool timeouts. (LangGraph instead divides one pool by
+  `N_JOBS_PER_WORKER`; skein sizes each pool explicitly.)
 - **Scaling.** With Postgres + Redis, replicas share state and streams (a client can join a run on
   another instance), so horizontal scaling works. Schema migrations run on every boot and are
-  idempotent + advisory-locked, so concurrent rollouts are safe.
+  idempotent + advisory-locked, so concurrent rollouts are safe. Prefer replicas over raw concurrency
+  when runs are CPU-bound.
 - **Zombie reaping.** The image handles signals itself; if you run graphs that spawn child processes,
   enable Railway's init/PID-1 reaping (the generated `compose.yaml` sets `init: true` for the local
   equivalent).
@@ -103,3 +110,5 @@ won't flap a healthy instance.
 | `PORT`                   | injected by Railway  | Port the server binds. Do not set manually on Railway.        |
 | `PG_POOL_MAX`            | no                   | Max connections in the store pool (`pg` default 10).          |
 | `DATABASE_SSL_NO_VERIFY` | no                   | `true` to skip TLS cert verification (self-signed public DB). |
+| `SKEIN_RUN_CONCURRENCY`  | no                   | Queued runs each instance executes at once (default 10).      |
+| `N_JOBS_PER_WORKER`      | no                   | LangGraph-compatible alias for `SKEIN_RUN_CONCURRENCY`.       |

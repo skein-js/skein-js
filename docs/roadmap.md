@@ -116,6 +116,13 @@ The next block is the LangGraph feature-parity backlog, listed **in priority ord
 
 The remaining backlog is skein-js's own adapter/tooling roadmap:
 
+- 🗺️ **Per-thread partitioned dispatch.** Background runs are executed up to
+  [run concurrency](./runs-and-redis.md#run-concurrency) at a time, and a run waiting on a busy
+  thread's execution lock still holds a slot — so a burst of `multitask_strategy: "enqueue"` runs on
+  one thread can occupy the worker, and their relative order isn't guaranteed. (LangGraph behaves the
+  same way at `N_JOBS_PER_WORKER > 1`.) The real fix is a `partitionKey` on `QueuedRun` plus
+  driver-level per-key gating, so the queue never hands out two runs for the same thread at once.
+
 - 🗺️ **Custom-adapter example.** The [Building your own adapter](./building-an-adapter.md) guide
   exists; we still want a runnable `examples/custom-adapter` (a dependency-free Node `http` — or Hono
   — adapter over the transport-neutral handler table) as an executable, tested reference to accompany

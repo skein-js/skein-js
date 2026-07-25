@@ -102,7 +102,10 @@ Graph **state, history, and interrupt/resume are 100% LangGraph-native** via the
 
 - **Entry points:** `createProtocolRuntime(deps, options?)` → `{ service, handlers, worker }`;
   `createProtocolService` / `createProtocolServiceFromContext`; `createProtocolHandlers`; `createContext`;
-  `createRunWorker(ctx, options?)` (`RunWorkerOptions`: `maxConcurrency`, `shutdownGraceMs`).
+  `createRunWorker(ctx, options?)` (`RunWorkerOptions`: `maxConcurrency` — queued runs at once,
+  default `DEFAULT_RUN_CONCURRENCY` (10, matching the LangGraph CLI) — and `shutdownGraceMs`). The
+  adapters surface this as `worker.maxConcurrency` and also read `SKEIN_RUN_CONCURRENCY` /
+  `N_JOBS_PER_WORKER`; see [runs-and-redis.md](../../docs/runs-and-redis.md#run-concurrency).
 - **Service surface** (`runtime.service`): `assistants` (`registerGraphAssistants`, `get`, `list`,
   `search`, `schemas`), `threads` (`create`/`get`/`list`/`patch`/`delete`/`history`/`getState`),
   `threadStream` (`stream` / `joinStream` / `command` — HIL resume, requires status `interrupted`),

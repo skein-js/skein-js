@@ -11,7 +11,7 @@ import { createProtocolServiceFromContext, type ProtocolService } from "./servic
 
 /** Options for {@link createProtocolRuntime}. */
 export interface ProtocolRuntimeOptions {
-  /** Tuning for the background run worker (concurrency, poll interval). */
+  /** Tuning for the background run worker (max concurrency, shutdown grace period). */
   worker?: RunWorkerOptions;
 }
 

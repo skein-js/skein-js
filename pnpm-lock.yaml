@@ -562,6 +562,9 @@ importers:
       '@skein-js/runtime':
         specifier: workspace:*
         version: link:../runtime
+      '@skein-js/server-kit':
+        specifier: workspace:*
+        version: link:../server-kit
       commander:
         specifier: ~13.1.0
         version: 13.1.0

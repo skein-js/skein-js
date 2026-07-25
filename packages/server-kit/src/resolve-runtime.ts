@@ -9,11 +9,13 @@ import {
   type Logger,
   type ProtocolDeps,
   type ProtocolRuntime,
+  type RunWorkerOptions,
 } from "@skein-js/agent-protocol";
 import type { ModuleImporter } from "@skein-js/config";
 import type { CorsOptions } from "cors";
 
 import { loadInMemoryRuntime } from "./in-memory-runtime.js";
+import { resolveRunConcurrency } from "./run-concurrency.js";
 
 export interface SkeinRuntimeCommonOptions {
   logger?: Logger;
@@ -30,6 +32,18 @@ export interface SkeinRuntimeCommonOptions {
    * server down.
    */
   warm?: boolean;
+  /**
+   * Background run-worker tuning. `maxConcurrency` is how many **queued** runs this instance executes
+   * at once (default `DEFAULT_RUN_CONCURRENCY`, matching the LangGraph CLI); omit it and skein reads
+   * `SKEIN_RUN_CONCURRENCY`, else the LangGraph-compatible `N_JOBS_PER_WORKER`. An explicit value
+   * wins, but the environment is still validated so the two sources can't silently disagree.
+   *
+   * Raising it never weakens per-thread ordering — two runs on one thread are still serialized by the
+   * engine's execution lock — but see the head-of-line note in docs/runs-and-redis.md if your workload
+   * leans on `multitask_strategy: "enqueue"`. Ignored by the invoke-only surface, which starts no
+   * worker.
+   */
+  worker?: RunWorkerOptions;
 }
 
 /** Either point at a `langgraph.json` (in-memory runtime) or inject a ready `ProtocolDeps`. */
@@ -87,7 +101,14 @@ export async function resolveProtocolRuntime(
 ): Promise<ResolvedProtocolRuntime> {
   const { deps, cors: corsFromConfig } = await resolveRuntimeDeps(options);
 
-  const runtime = createProtocolRuntime(deps);
+  // Resolve concurrency here rather than in each adapter: this is the ONE place options + environment
+  // become the worker's settings, so Express/Fastify/NestJS/Next.js and `skein dev`/`start` can't drift.
+  const runtime = createProtocolRuntime(deps, {
+    worker: {
+      ...options.worker,
+      maxConcurrency: resolveRunConcurrency(options.worker?.maxConcurrency),
+    },
+  });
   await runtime.service.assistants.registerGraphAssistants();
   if (options.warm) {
     await Promise.all(

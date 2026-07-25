@@ -23,7 +23,8 @@ two things: read the same `langgraph.json`, and mirror the same command surface.
 | `langgraph dockerfile` | `skein dockerfile` | Emit a standalone Dockerfile from the config.                  |
 | `langgraph deploy`     | —                  | Out of scope (hosted-platform push).                           |
 
-Shared flags where sensible: `--port`, `--host`, `--no-reload`, `--config`.
+Shared flags where sensible: `--port`, `--host`, `--no-reload`, `--config`,
+`-n, --n-jobs-per-worker`.
 
 **skein-only:** `skein start` serves a pre-built `.skein/build` artifact (the production image's
 entrypoint) — plain compiled JS, no vite, no reload. You rarely run it by hand; `skein build`/`up`
@@ -39,7 +40,18 @@ storage without Docker:
 | `--queue <driver>` | `memory`, `redis`    | `memory` | `redis` reads `REDIS_URI` (BullMQ queue + Streams/pub-sub bus). |
 
 Graph hot-reload works with any driver; the `.skein/` snapshot is skipped for durable drivers
-(they persist inherently). `skein up`/`build`/`dockerfile` accept `--tag` (build) and `--output`
+(they persist inherently).
+
+**Background-run concurrency.** `-n, --n-jobs-per-worker <count>` is honored on `skein dev` **and**
+`skein start`, with the same default of **10** the LangGraph CLI uses — so an existing
+`langgraph dev -n 4` command line ports over unchanged. `--concurrency <count>` is the same knob
+under a self-evident name, and wins if both are passed. Without a flag, skein reads
+`SKEIN_RUN_CONCURRENCY`, then the LangGraph-compatible `N_JOBS_PER_WORKER` — which is how the setting
+reaches a container. See [runs-and-redis.md](./runs-and-redis.md#run-concurrency).
+
+One deliberate cosmetic difference: skein's banner prints `Starting 1 worker, up to 10 concurrent
+runs` where `langgraph dev` prints `Starting 10 workers`. LangGraph really does spawn 10 loops;
+skein runs one worker whose consumer executes 10 runs at a time. Same throughput, honest wording. `skein up`/`build`/`dockerfile` accept `--tag` (build) and `--output`
 (dockerfile) in addition to `--config`.
 
 **Private/authenticated npm registries.** When your production dependencies include private scoped

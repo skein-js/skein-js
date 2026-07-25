@@ -41,3 +41,7 @@ export type {
   DevStateCounts,
   LanggraphCorsConfig,
 } from "@skein-js/server-kit";
+
+// Background run-worker tuning, so callers can name the type of `SkeinRouterOptions["worker"]`
+// without reaching past this package.
+export type { RunWorkerOptions } from "@skein-js/server-kit";
