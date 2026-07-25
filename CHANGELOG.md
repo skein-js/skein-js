@@ -1,3 +1,35 @@
+## 0.9.1 (2026-07-25)
+
+### 🚀 Features
+
+- ⚠️  **server-kit:** make background-run concurrency configurable ([0d7f06d](https://github.com/skein-js/skein-js/commit/0d7f06d))
+
+### 🩹 Fixes
+
+- **redis:** don't orphan a flushed command when a subscriber goes away ([21290c9](https://github.com/skein-js/skein-js/commit/21290c9))
+
+### ⚠️  Breaking Changes
+
+- **server-kit:** make background-run concurrency configurable  ([0d7f06d](https://github.com/skein-js/skein-js/commit/0d7f06d))
+  background runs now execute up to 10 at a time instead of one at
+  a time. The default matches the LangGraph CLI's `--n-jobs-per-worker`
+  (and LangGraph Platform's `N_JOBS_PER_WORKER`), so a project moving off
+  `langgraph dev` keeps its throughput rather than silently running 10x slower.
+  Two things to check when upgrading:
+    * Postgres pool headroom — each in-flight run holds connections from both pools
+      an instance opens, so budget roughly concurrency x replicas against the cap,
+      or raise PG_POOL_MAX.
+    * Background runs on one thread using `multitask_strategy: "enqueue"` no longer
+      execute in strict enqueue order; several are dequeued at once and race for
+      the thread's execution lock. Per-thread serialization itself is unaffected.
+      LangGraph behaves the same way at N_JOBS_PER_WORKER > 1.
+  Set `SKEIN_RUN_CONCURRENCY=1` (or `--concurrency 1`) to restore the previous
+  behavior exactly.
+
+### ❤️ Thank You
+
+- Maina Wycliffe
+
 ## 0.9.0 (2026-07-19)
 
 ### 🚀 Features
