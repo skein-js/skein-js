@@ -33,6 +33,12 @@ const FRAME_FIELD = "f";
 const CLOSE_FIELD = "close";
 /** Resolved by the periodic wake-up that races the live-tail so a closed-but-quiet run completes. */
 const CHECK_TICK = Symbol("check-tick");
+/** How long a subscriber's graceful `QUIT` gets before it is closed hard instead. */
+const QUIT_TIMEOUT_MS = 1000;
+
+/** A timer that never keeps the process alive on its own. */
+const sleepUnref = (ms: number): Promise<void> =>
+  new Promise((resolve) => setTimeout(resolve, ms).unref());
 
 /** A pub/sub message: either the next frame or the run's terminal marker. */
 type ChannelMessage = { type: "frame"; frame: RunFrame } | { type: "close" };
@@ -120,7 +126,15 @@ export class RedisRunEventBus implements RunEventBus {
     try {
       // Subscribe *before* the stream snapshot so any frame published concurrently is captured live
       // (and deduped against the snapshot by seq) rather than lost in the gap.
-      await subscriber.subscribe(channelKey);
+      //
+      // Hold a handler on the promise from the moment it is created: if this generator is finalized
+      // before SUBSCRIBE resolves (an SSE client that went away, a consumer that stopped iterating),
+      // the `finally` below closes the connection and ioredis flushes every in-flight command with
+      // "Connection is closed." — and with the body suspended at this `await`, nothing would be left
+      // to catch it. It would escape as an unhandled rejection that fails the whole test run.
+      const subscribed = subscriber.subscribe(channelKey);
+      subscribed.catch(() => undefined);
+      await subscribed;
 
       // Replay the stream for anything already published (past frames for a late joiner / reconnect).
       const entries = await this.#commands.xrange(this.#streamKey(runId), "-", "+");
@@ -171,6 +185,13 @@ export class RedisRunEventBus implements RunEventBus {
         }
       }
     } finally {
+      // `quit()` drains in-flight commands where `disconnect()` flushes them as rejections, so prefer
+      // it — but bound it: a connection that is mid-reconnect (a Redis blip during a long stream)
+      // queues QUIT instead of settling, and this `finally` runs during generator finalization, which
+      // an SSE handler awaits. Race it against a short deadline, then close hard either way; after a
+      // successful quit the socket is already gone and `disconnect()` is a no-op. Teardown errors are
+      // swallowed — a subscriber going away must never surface as an error to the caller.
+      await Promise.race([subscriber.quit().catch(() => undefined), sleepUnref(QUIT_TIMEOUT_MS)]);
       subscriber.disconnect();
     }
   }
