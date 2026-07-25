@@ -25,6 +25,9 @@ export function forceExitDelayMs(graceMs: number = DEFAULT_SHUTDOWN_GRACE_MS): n
   return graceMs + FORCE_EXIT_BUFFER_MS;
 }
 
+const describe = (error: unknown): string =>
+  error instanceof Error ? error.message : String(error);
+
 export interface ShutdownHandlerOptions {
   /** How long to wait for `close()` before exiting anyway — use {@link forceExitDelayMs}. */
   forceExitMs: number;
@@ -46,10 +49,24 @@ export function createShutdownHandler(options: ShutdownHandlerOptions): () => vo
   return () => {
     if (shuttingDown) return;
     shuttingDown = true;
-    onShutdownStart?.();
+    // Caught, not rethrown: a throw here would escape the signal listener as an uncaught exception,
+    // killing the process before the drain below — the one thing that settles in-flight runs — had a
+    // chance to run. The guard above is already set, so a second signal won't retry either.
+    try {
+      onShutdownStart?.();
+    } catch (error) {
+      console.error(`skein: pre-shutdown step failed: ${describe(error)}`);
+    }
     // `unref` so a fast, clean shutdown isn't held open by this timer.
     const forceExit = setTimeout(() => exit(0), forceExitMs);
     forceExit.unref();
-    void close().then(() => exit(0));
+    void close()
+      .catch((error: unknown) => {
+        // Teardown is best-effort. Letting this reject would surface as an unhandled rejection and
+        // exit non-zero, which a platform reads as a crash on every such stop (restart backoff,
+        // alerts) — a worse outcome than an untidy close, and it would skip `exit(0)` entirely.
+        console.error(`skein: shutdown did not complete cleanly: ${describe(error)}`);
+      })
+      .finally(() => exit(0));
   };
 }

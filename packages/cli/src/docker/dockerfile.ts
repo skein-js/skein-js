@@ -81,9 +81,12 @@ export function generateDockerfile(options: DockerfileOptions): string {
     // The bundle ships sourcemaps; enable them so stack traces map back to the original TypeScript.
     `ENV NODE_OPTIONS=--enable-source-maps`,
     `EXPOSE ${port}`,
-    // Liveness probe against skein's `/ok` endpoint, targeting the same port the server binds.
+    // Liveness probe against skein's `/ok` endpoint, targeting the same port the server binds. PORT
+    // is resolved exactly as `envPort` resolves it — integer, in range, blank counts as unset —
+    // rather than by truthiness, so a malformed value (`PORT=8080a`, `PORT=0`) has the probe and the
+    // server agree on the fallback instead of probing a URL the server never bound.
     `HEALTHCHECK --interval=30s --timeout=3s --start-period=20s --retries=3 \\`,
-    `    CMD node -e "fetch('http://127.0.0.1:'+(process.env.PORT||${port})+'/ok').then(r=>process.exit(r.ok?0:1)).catch(()=>process.exit(1))"`,
+    `    CMD node -e "const r=Number(process.env.PORT);const p=Number.isInteger(r)&&r>=0&&r<=65535?r:${port};fetch('http://127.0.0.1:'+p+'/ok').then(r=>process.exit(r.ok?0:1)).catch(()=>process.exit(1))"`,
     // Run unprivileged. The bundle writes nothing to disk, and /app is world-readable, so no chown.
     `USER node`,
     ...dockerfileLines,
@@ -97,7 +100,9 @@ export function generateDockerfile(options: DockerfileOptions): string {
     `# PID 1 is npm, which forwards SIGTERM to a \`sh -c\` child and exits immediately — the server is`,
     `# killed mid-shutdown and in-flight runs are left stranded in a non-terminal status. Exec form`,
     `# (no shell) keeps the signal path direct, so SIGTERM reaches skein's graceful-shutdown handler.`,
-    `CMD ["node", "node_modules/skein-js/dist/index.js", "start", "--store", "postgres", "--queue", "redis", "--host", "0.0.0.0"]`,
+    // Absolute, so a `dockerfile_lines` entry that changes WORKDIR (spliced in just above) can't
+    // leave the CMD resolving against the wrong directory.
+    `CMD ["node", "/app/node_modules/skein-js/dist/index.js", "start", "--store", "postgres", "--queue", "redis", "--host", "0.0.0.0"]`,
   ];
   return `${lines.join("\n")}\n`;
 }

@@ -69,6 +69,11 @@ services:
       redis:
         condition: service_healthy
     restart: unless-stopped
+    # Longer than Docker's 10s default so the app can finish its shutdown: it drains in-flight runs
+    # for SKEIN_SHUTDOWN_GRACE_MS, then aborts the stragglers so they settle to a terminal status.
+    # 10s leaves no headroom the moment that window is raised, and a SIGKILL mid-abort is exactly
+    # what leaves a run stuck in a non-terminal state.
+    stop_grace_period: 30s
 
   postgres:
     image: pgvector/pgvector:pg16

@@ -118,7 +118,7 @@ Step 4 — the background run — is the one that proves the CPU settings are ri
 
 ### Background runs need CPU outside requests
 
-This is the big one. `POST /threads/{id}/runs` enqueues a run and returns `202` immediately; the
+This is the big one. `POST /threads/{id}/runs` enqueues a run and responds immediately; the
 worker executes it afterwards. Under Cloud Run's default _CPU-allocated-during-requests_ model, the
 instance's CPU is throttled to near-zero the moment the response is sent, so that run stops making
 progress — and with `--min-instances=0` the instance may be shut down entirely.

@@ -48,10 +48,11 @@ dashboard and CLI steps on top of it.
 it and let your platform build it. Either way:
 
 - **Binds the port the platform gives it.** The CMD passes no `--port`, so the server binds `$PORT`
-  when one is injected (Railway, Render, Fly, Cloud Run all do). When nothing is injected it falls
+  when one is injected (Railway, Render, Cloud Run and AWS App Runner all do). When nothing is
+  injected it falls
   back to **8123** — the same port the image `EXPOSE`s and health-checks — so a bare
-  `docker run -p 8123:8123` works, as do platforms that make you _declare_ a port instead of injecting
-  one (App Runner, ECS, Kubernetes).
+  `docker run -p 8123:8123` works, as do platforms that route to a port you declare without setting
+  `PORT` for you (Fly.io, ECS, Kubernetes).
 - **Handles `SIGTERM` properly.** node is PID 1 (the CMD invokes the entry directly, not through
   `npx` — under `npx`, PID 1 is npm, which exits on `SIGTERM` without waiting for the server). On
   signal, skein stops accepting queued runs, gives in-flight runs

@@ -22,7 +22,7 @@ describe("generateDockerfile", () => {
     const out = generateDockerfile({ port: 8123 });
     expect(out).toContain("FROM node:20-slim");
     // Pre-built path: runs `skein start` (compiled JS), not `skein dev` (runtime TS transform).
-    expect(out).toContain('"start"');
+    expect(out).toContain('"/app/node_modules/skein-js/dist/index.js", "start"');
     expect(out).not.toContain('"dev"');
     expect(out).toContain('"--store", "postgres"');
     expect(out).toContain('"--queue", "redis"');
@@ -34,7 +34,7 @@ describe("generateDockerfile", () => {
     // killing the server mid-shutdown and stranding in-flight runs in a non-terminal status. Invoking
     // the entry directly keeps the signal path between the platform and skein's handler unbroken.
     const out = generateDockerfile({ port: 8123 });
-    expect(out).toContain('CMD ["node", "node_modules/skein-js/dist/index.js", "start"');
+    expect(out).toContain('CMD ["node", "/app/node_modules/skein-js/dist/index.js", "start"');
     expect(out).not.toContain('"npx"');
   });
 
@@ -91,7 +91,7 @@ describe("generateDockerfile", () => {
     // Runner, ECS, Kubernetes) binds one port while the image advertises and probes another.
     const out = generateDockerfile({ port: DEFAULT_CONTAINER_PORT });
     expect(out).toContain(`EXPOSE ${DEFAULT_CONTAINER_PORT}`);
-    expect(out).toContain(`process.env.PORT||${DEFAULT_CONTAINER_PORT}`);
+    expect(out).toContain(`:${DEFAULT_CONTAINER_PORT};fetch(`);
   });
 });
 

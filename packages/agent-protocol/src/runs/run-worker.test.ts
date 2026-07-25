@@ -144,6 +144,43 @@ describe("run worker", () => {
     expect((await service.runs.get(run.run_id)).status).toBe("cancelled");
   });
 
+  // The drain talks to the queue, and on shutdown the queue's connection is often already gone (the
+  // Redis container torn down first). If that rejection escapes, `stop()` never reaches the abort —
+  // and the abort is the only thing left that settles in-flight runs terminally.
+  it("still aborts in-flight runs when the queue fails to close", async () => {
+    const deps = createFixtureDeps();
+    const inner = deps.queue;
+    deps.queue = {
+      enqueue: (run) => inner.enqueue(run),
+      consume: (processor, options = {}) => {
+        const consumer = inner.consume(processor, options);
+        return {
+          close: () => {
+            // Fail the way a severed queue connection does: the drain never completes, so the run
+            // is still in flight and only the abort can settle it.
+            void consumer;
+            return Promise.reject(new Error("Connection is closed."));
+          },
+        };
+      },
+    };
+    const ctx = createContext(deps);
+    const service = createProtocolServiceFromContext(ctx);
+    await service.assistants.registerGraphAssistants();
+    const worker = createRunWorker(ctx, { shutdownGraceMs: 30 });
+    worker.start();
+
+    const thread = await service.threads.create();
+    const run = await service.runs.createBackground(thread.thread_id, {
+      assistant_id: "slow",
+      input: {},
+    });
+    await waitFor(async () => (await service.runs.get(run.run_id)).status === "running");
+
+    await expect(worker.stop()).resolves.toBeUndefined();
+    expect((await service.runs.get(run.run_id)).status).toBe("cancelled");
+  });
+
   // Zero is a real setting, not "unset" — a fleet that leans on queue redelivery can skip the drain
   // entirely. It still has to settle the run terminally rather than leave it `running`.
   it("stop() with a zero grace aborts in-flight runs immediately", async () => {

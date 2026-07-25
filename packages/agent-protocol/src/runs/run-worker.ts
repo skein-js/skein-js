@@ -54,7 +54,19 @@ export interface RunWorker {
   stop(): Promise<void>;
 }
 
-const sleep = (ms: number): Promise<void> => new Promise((resolve) => setTimeout(resolve, ms));
+/**
+ * A delay that can be cancelled. `stop()` races this against the drain, so the timer has to be
+ * cleared once the race settles — an uncancelled one keeps the event loop alive for the whole grace
+ * window after an otherwise instant shutdown, which an embedded host (no force-exit timer of its
+ * own) would experience as a hang.
+ */
+function cancellableDelay(ms: number): { readonly elapsed: Promise<void>; cancel: () => void } {
+  let timer: ReturnType<typeof setTimeout> | undefined;
+  const elapsed = new Promise<void>((resolve) => {
+    timer = setTimeout(resolve, ms);
+  });
+  return { elapsed, cancel: () => clearTimeout(timer) };
+}
 
 /**
  * A per-run lifecycle summary for background runs, mirroring `langgraph dev`. Emitted through the
@@ -88,7 +100,18 @@ export function createRunWorker(ctx: ProtocolContext, options: RunWorkerOptions 
   // runIds currently executing on this worker, so shutdown can abort the stragglers.
   const inFlight = new Set<string>();
 
-  const process = async (queued: QueuedRun): Promise<void> => {
+  // The executions themselves, so shutdown can wait for an aborted run to actually reach a terminal
+  // status. `inFlight` only names them — awaiting is the difference between `stop()` meaning
+  // "signalled" and meaning "settled".
+  const running = new Set<Promise<unknown>>();
+
+  const executeQueuedRun = (queued: QueuedRun): Promise<void> => {
+    const task = executeOne(queued);
+    running.add(task);
+    return task.finally(() => running.delete(task));
+  };
+
+  const executeOne = async (queued: QueuedRun): Promise<void> => {
     const run = await deps.store.runs.get(queued.run_id);
     // Skip a run that vanished (thread deleted) or was already finalized (cancelled while queued).
     // Such a run never reaches startRunExecution, so drop any rollback plan it carried rather than
@@ -119,7 +142,7 @@ export function createRunWorker(ctx: ProtocolContext, options: RunWorkerOptions 
   return {
     start() {
       if (consumer) return;
-      consumer = deps.queue.consume(process, { concurrency: maxConcurrency });
+      consumer = deps.queue.consume(executeQueuedRun, { concurrency: maxConcurrency });
     },
 
     async stop() {
@@ -129,14 +152,42 @@ export function createRunWorker(ctx: ProtocolContext, options: RunWorkerOptions 
 
       // Race a graceful drain against the grace deadline. Aborting a straggler makes its
       // `executeRun` settle terminally, so the same graceful close then resolves — no force needed.
+      //
+      // The drain's own failure must never short-circuit that abort. If the queue connection is
+      // already gone — routine on shutdown, when the Redis container is torn down before this one —
+      // `close()` rejects, and the abort below is then the only thing that still settles in-flight
+      // runs terminally. So the rejection is captured rather than thrown: `graceful` always
+      // fulfills, the race can't propagate, and `drained` stays false so the abort runs.
       let drained = false;
-      const graceful = active.close().then(() => {
-        drained = true;
-      });
-      await Promise.race([graceful, sleep(shutdownGraceMs)]);
+      let drainFailure: unknown;
+      const graceful = active.close().then(
+        () => {
+          drained = true;
+        },
+        (error: unknown) => {
+          drainFailure = error;
+        },
+      );
+      const deadline = cancellableDelay(shutdownGraceMs);
+      try {
+        await Promise.race([graceful, deadline.elapsed]);
+      } finally {
+        deadline.cancel();
+      }
       if (!drained) {
         for (const runId of inFlight) control.abort(runId, "cancel");
         await graceful;
+        // `graceful` may have *failed* rather than completed, in which case nothing above waited for
+        // the aborted runs to unwind and write their terminal status. Wait for them here, so a
+        // resolved `stop()` always means the store is consistent.
+        await Promise.allSettled([...running]);
+      }
+      if (drainFailure !== undefined) {
+        // Surfaced, not rethrown: `stop()` is best-effort teardown, and its caller is a signal
+        // handler whose job is to exit cleanly regardless.
+        deps.logger.warn("Run queue did not close cleanly during shutdown", {
+          error: drainFailure instanceof Error ? drainFailure.message : String(drainFailure),
+        });
       }
     },
   };

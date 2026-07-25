@@ -51,8 +51,8 @@ should be publicly reachable.
 
 ## App Runner
 
-App Runner **does not inject `PORT`** — you declare the port, and skein's default matches the port the
-image exposes, so answer **8123**.
+You declare the port App Runner routes to; it also sets `PORT` in the container to match, and skein
+binds it. Either way the answer is **8123**, the port the image exposes.
 
 ```bash
 aws apprunner create-service \

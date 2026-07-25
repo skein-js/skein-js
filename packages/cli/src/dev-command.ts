@@ -73,6 +73,12 @@ export async function runDev(options: DevCommandOptions): Promise<void> {
   const { config, configDir } = await loadConfig({ configPath });
   await applyProjectEnv(config, configDir);
 
+  // Resolved here, before the vite loader and the runtime exist: a bad SKEIN_SHUTDOWN_GRACE_MS
+  // should fail the boot with nothing yet to tear down, rather than after the Postgres pools and
+  // Redis connections are already open. (`skein start` resolves it inside its boot try/catch for the
+  // same reason.)
+  const shutdownGraceMs = resolveShutdownGraceMs();
+
   const stateDir = path.join(configDir, STATE_DIR);
   const stateFile = devStateFile(configDir);
 
@@ -92,9 +98,6 @@ export async function runDev(options: DevCommandOptions): Promise<void> {
   // Flag → LangGraph-compat alias → SKEIN_RUN_CONCURRENCY → N_JOBS_PER_WORKER → default. Resolved
   // after applyProjectEnv above, so a value in the project's .env counts — the PORT/HOST rule.
   const runConcurrency = resolveRunConcurrency(options.concurrency ?? options.nJobsPerWorker);
-  // Same source and the same timing for SKEIN_SHUTDOWN_GRACE_MS: Ctrl-C drains in-flight runs for this
-  // long, and the force-exit timer below is sized against it.
-  const shutdownGraceMs = resolveShutdownGraceMs();
   // On-disk snapshotting only applies to the all-memory runtime; durable drivers persist inherently.
   const canPersist = options.persist && runtime.snapshotState !== undefined;
   if (options.persist && runtime.snapshotState === undefined) {
@@ -239,14 +242,15 @@ export async function runDev(options: DevCommandOptions): Promise<void> {
       if (autosave) clearInterval(autosave);
       saveState();
     },
-    // Drain first, dispose second — never both at once. `server.close()` stops the worker, which
-    // needs the store and queue still alive to settle in-flight runs terminally; disposing alongside
-    // it pulls those out from under the drain. `loader.close()` is independent of both.
+    // Strictly ordered, never concurrent. `server.close()` stops the worker, which needs the store
+    // and queue still alive to settle in-flight runs terminally — and needs the vite loader alive
+    // too, since a draining graph may still `await import(...)` a module it hasn't loaded yet.
+    // Tearing either down alongside the drain fails the runs it was meant to save.
     close: async () => {
       try {
-        await Promise.allSettled([server.close(), loader.close()]);
+        await server.close();
       } finally {
-        await runtime.dispose();
+        await Promise.allSettled([loader.close(), runtime.dispose()]);
       }
     },
   });

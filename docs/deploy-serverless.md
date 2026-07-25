@@ -16,7 +16,7 @@ mode is quiet — everything looks fine until a background run never finishes.
 
 ## Why background runs can't work
 
-`POST /threads/{id}/runs` enqueues a run and returns `202` immediately. A background worker picks it
+`POST /threads/{id}/runs` enqueues a run and responds immediately. A background worker picks it
 up and executes it — _after_ the HTTP response has been sent.
 
 On a serverless platform, that's exactly when the execution context is frozen or destroyed. The

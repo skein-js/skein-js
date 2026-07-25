@@ -62,7 +62,7 @@ primary_region = "iad"
 [build]
 
 [http_service]
-  internal_port = 8123          # the port the image exposes; Fly also injects PORT
+  internal_port = 8123          # must match the port the app binds; see the note below
   force_https = true
   auto_stop_machines = "off"    # see the background-runs caveat below
   auto_start_machines = true
@@ -94,6 +94,27 @@ Run the [verification sequence](./deploy.md#verify-a-deployment) against
 `https://my-skein-app.fly.dev`.
 
 ## Fly caveats
+
+### Fly does not set `PORT` — keep `internal_port` in sync yourself
+
+Unlike Railway, Render, Cloud Run and App Runner, Fly injects no `PORT` variable;
+[`internal_port` is only an instruction to Fly's proxy](https://fly.io/docs/machines/runtime-environment/),
+and the app is expected to know its own port. The config above works because `internal_port` matches
+the port skein binds when nothing tells it otherwise (8123).
+
+So if you change one, change the other. Either set `internal_port` to 8123 and leave it alone, or
+declare the port explicitly on both sides:
+
+```toml
+[http_service]
+  internal_port = 3000
+
+[env]
+  PORT = "3000"
+```
+
+A mismatch here produces Fly's `app is not listening on the expected address` warning and a machine
+that never passes its health check.
 
 ### Background runs need a machine that stays awake
 

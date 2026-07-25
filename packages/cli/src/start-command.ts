@@ -62,6 +62,16 @@ function readBakedSchemas(configDir: string): Record<string, GraphSchemas> {
 export async function runStart(options: StartCommandOptions): Promise<void> {
   const configPath = path.resolve(process.cwd(), options.config);
 
+  // Take a signal disposition *before* the boot, not after it. In the production image node is PID
+  // 1, and the kernel silently discards signals with default disposition for PID 1 — so with no
+  // listener installed, a stop arriving during boot (migrations, checkpointer setup, graph warming:
+  // ~20s) would be dropped entirely and the platform would have to SIGKILL. Nothing is draining yet
+  // at this point, so the boot-time handler just exits; `handleSignal` is swapped for the real
+  // graceful one once the server is listening.
+  let handleSignal = (): void => process.exit(0);
+  process.on("SIGINT", () => handleSignal());
+  process.on("SIGTERM", () => handleSignal());
+
   let schemas: Record<string, GraphSchemas>;
   let configDir: string;
   let authPath: string | undefined;
@@ -133,7 +143,7 @@ export async function runStart(options: StartCommandOptions): Promise<void> {
   // Dispose *after* it resolves, never alongside it: disposing tears down the Postgres pools and the
   // Redis queue the draining runs are still writing their terminal status through, so racing the two
   // strands in-flight runs at whatever status they last held.
-  const shutdown = createShutdownHandler({
+  handleSignal = createShutdownHandler({
     forceExitMs: forceExitDelayMs(shutdownGraceMs),
     close: async () => {
       try {
@@ -143,6 +153,4 @@ export async function runStart(options: StartCommandOptions): Promise<void> {
       }
     },
   });
-  process.on("SIGINT", shutdown);
-  process.on("SIGTERM", shutdown);
 }

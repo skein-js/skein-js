@@ -51,6 +51,40 @@ describe("createShutdownHandler", () => {
     expect(exit).toHaveBeenCalledWith(0);
   });
 
+  it("still exits 0 when close() rejects, instead of crashing on an unhandled rejection", async () => {
+    // Teardown is best-effort. An unhandled rejection here would exit non-zero, which a platform
+    // records as a container crash on every such stop — and `exit(0)` would never be reached.
+    const exit = vi.fn();
+    const consoleError = vi.spyOn(console, "error").mockImplementation(() => {});
+    createShutdownHandler({
+      forceExitMs: 8000,
+      close: () => Promise.reject(new Error("redis already gone")),
+      exit,
+    })();
+    await vi.advanceTimersByTimeAsync(0);
+    expect(exit).toHaveBeenCalledWith(0);
+    expect(consoleError).toHaveBeenCalledWith(expect.stringContaining("redis already gone"));
+    consoleError.mockRestore();
+  });
+
+  it("runs close() even when the pre-shutdown hook throws", async () => {
+    // The hook is caller-supplied; a throw there must not skip the drain, which is the only thing
+    // that settles in-flight runs.
+    const exit = vi.fn();
+    const close = vi.fn(() => Promise.resolve());
+    createShutdownHandler({
+      forceExitMs: 8000,
+      onShutdownStart: () => {
+        throw new Error("state flush failed");
+      },
+      close,
+      exit,
+    })();
+    await vi.advanceTimersByTimeAsync(0);
+    expect(close).toHaveBeenCalledTimes(1);
+    expect(exit).toHaveBeenCalledWith(0);
+  });
+
   it("ignores a second signal instead of starting a second teardown", async () => {
     const close = vi.fn(() => Promise.resolve());
     const onShutdownStart = vi.fn();
