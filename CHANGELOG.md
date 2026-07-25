@@ -1,3 +1,28 @@
+## 0.10.0 (2026-07-25)
+
+### 🚀 Features
+
+- ⚠️  **cli:** bind the container port by default so a bare `docker run` works ([841baff](https://github.com/skein-js/skein-js/commit/841baff))
+
+### 🩹 Fixes
+
+- **cli:** actually drain in-flight runs on SIGTERM instead of stranding them ([2149e8f](https://github.com/skein-js/skein-js/commit/2149e8f))
+- **cli:** harden the shutdown path against the failure cases, not just the happy one ([628ed4d](https://github.com/skein-js/skein-js/commit/628ed4d))
+- **redis:** don't orphan ioredis's handshake when a connection is closed early ([4430e0e](https://github.com/skein-js/skein-js/commit/4430e0e))
+- **redis:** close BullMQ's connection only once it has finished connecting ([2acbff1](https://github.com/skein-js/skein-js/commit/2acbff1))
+- **storage-postgres:** bundle migrations and resolve packages under require() ([fce9ed3](https://github.com/skein-js/skein-js/commit/fce9ed3))
+
+### ⚠️  Breaking Changes
+
+- **cli:** bind the container port by default so a bare `docker run` works  ([841baff](https://github.com/skein-js/skein-js/commit/841baff))
+  `skein start` with no `--port` and no `PORT` in the environment
+  now binds 8123 instead of 2024. The production image is unaffected — it already
+  published 8123 — and `skein dev` is unchanged.
+
+### ❤️ Thank You
+
+- Maina Wycliffe
+
 ## 0.9.1 (2026-07-25)
 
 ### 🚀 Features
