@@ -18,6 +18,18 @@
         "cwd": "packages/storage-postgres"
       }
     },
+    "generate-migrations": {
+      "executor": "nx:run-commands",
+      "inputs": [
+        "{projectRoot}/migrations/**/*.sql",
+        "{projectRoot}/scripts/generate-migrations.mjs"
+      ],
+      "outputs": ["{projectRoot}/src/migrations.generated.ts"],
+      "options": {
+        "command": "node scripts/generate-migrations.mjs",
+        "cwd": "packages/storage-postgres"
+      }
+    },
     "test-integration": {
       "executor": "nx:run-commands",
       "options": {

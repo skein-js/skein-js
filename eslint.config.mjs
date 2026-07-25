@@ -75,6 +75,64 @@ export default tseslint.config(
     rules: { "import/no-default-export": "off" },
   },
 
+  // Build-time codegen scripts run in Node, not in the library sandbox — they may use the console
+  // and the filesystem freely. (Root-level scripts/ isn't linted at all; it belongs to no project.)
+  {
+    files: ["packages/*/scripts/**/*.mjs"],
+    languageOptions: { globals: { console: "readonly", process: "readonly" } },
+  },
+
+  // @skein-js/storage-postgres must stay bundleable: it is the driver that framework adapters and
+  // embedPostgresGraphs pull into a downstream bundle, and it used to read its own migrations/ dir
+  // via import.meta.url — which bundlers rewrite to the output location, breaking at runtime. The
+  // SQL now ships compiled in (src/migrations.generated.ts), and these rules are what keep it that
+  // way. Tests are exempt: the drift test legitimately reads the .sql files. See docs/bundling.md.
+  {
+    files: ["packages/storage-postgres/src/**/*.ts"],
+    ignores: ["packages/storage-postgres/src/**/*.test.ts"],
+    rules: {
+      "no-restricted-imports": [
+        "error",
+        {
+          // Patterns, not exact `paths`: `fs/promises` and `node:fs/promises` are the same hazard,
+          // and `node:module` (createRequire) is a back door to the same filesystem access.
+          patterns: [
+            {
+              group: [
+                "fs",
+                "fs/*",
+                "path",
+                "path/*",
+                "url",
+                "module",
+                "node:fs",
+                "node:fs/*",
+                "node:path",
+                "node:path/*",
+                "node:url",
+                "node:module",
+              ],
+              message:
+                "storage-postgres must not touch the filesystem — it has to bundle with zero " +
+                "externals (docs/bundling.md). Compile the asset in instead, as migrations/*.sql are.",
+            },
+          ],
+        },
+      ],
+      "no-restricted-syntax": [
+        "error",
+        {
+          // Any property of import.meta, not just `url`: import.meta.dirname and .filename are
+          // rewritten to the bundle location exactly the same way.
+          selector: "MetaProperty",
+          message:
+            "import.meta is rewritten to the bundle location by bundlers, so storage-postgres must " +
+            "not resolve paths from it (docs/bundling.md).",
+        },
+      ],
+    },
+  },
+
   // Tests may be a little looser.
   {
     files: ["**/*.test.ts", "**/*.integration.test.ts", "**/test-support/**"],

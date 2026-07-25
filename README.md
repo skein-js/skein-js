@@ -366,7 +366,7 @@ toolset:
 - **[BullMQ](https://docs.bullmq.io)** (on Redis) runs the production job queue with retries and
   crash recovery; **[ioredis](https://github.com/redis/ioredis) + Redis Streams** fan run streams
   across instances so a client on one instance can follow a run on another.
-- **[pgvector](https://github.com/pgvector/pgvector)** (via `pg` + `node-pg-migrate`) backs
+- **[pgvector](https://github.com/pgvector/pgvector)** (via `pg`) backs
   long-term memory with semantic search, while checkpoints stay LangGraph-native via
   **[`PostgresSaver`](https://www.npmjs.com/package/@langchain/langgraph-checkpoint-postgres)** —
   reused, not reinvented.

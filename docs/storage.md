@@ -125,7 +125,10 @@ and `skein dev --store postgres`); pure in-memory `skein dev` still enforces exp
 ### `@skein-js/storage-postgres` (prod)
 
 - Backed by `pg`; owns tables for assistants (+ assistant_versions)/threads/runs/store items +
-  migrations.
+  migrations. `store.migrate()` applies them on boot — idempotent, tracked in a `skein_migrations`
+  table, and serialized by an advisory lock so concurrent boots queue rather than collide. The SQL is
+  compiled into the package (no filesystem access at runtime), so the driver bundles with zero
+  externals — see [bundling.md](./bundling.md).
 - Uses **`@langchain/langgraph-checkpoint-postgres`** (`PostgresSaver.fromConnString`) for
   graph checkpoints — we wrap it rather than reimplement checkpointing.
   <https://www.npmjs.com/package/@langchain/langgraph-checkpoint-postgres>

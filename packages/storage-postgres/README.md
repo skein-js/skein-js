@@ -12,9 +12,12 @@ A production `SkeinStore` over [`pg`](https://node-postgres.com): it owns the as
 runs / store-item tables and their migrations, and is held to the **same shared conformance suite**
 as the memory driver, so the two are provably interchangeable.
 
-- **Migrations** are applied by `store.migrate()` via
-  [`node-pg-migrate`](https://github.com/salsita/node-pg-migrate) (SQL files under `migrations/`,
-  tracked in a `skein_migrations` table). Idempotent — safe to call on every boot.
+- **Migrations** are applied by `store.migrate()` and tracked in a `skein_migrations` table.
+  Idempotent, and serialized by a Postgres advisory lock, so several instances booting at once during
+  a rolling deploy queue up rather than collide. The SQL is **compiled into the bundle**, not read
+  off disk, so this package bundles with zero externals ([docs/bundling.md](../../docs/bundling.md)).
+  `migrations/*.sql` in this repo is the authoring source — run `pnpm migrations:generate` after
+  editing one.
 - **Semantic store search** uses **pgvector** when a `store.index` (with an embedder) is configured
   on `connect`; each item's value is embedded and `search({ query })` ranks by cosine distance.
   Without an index, `search` falls back to naive text matching — identical to the memory driver.
@@ -28,7 +31,7 @@ separately by [`@skein-js/runtime`](../runtime)). This store owns only the proto
 pnpm add @skein-js/storage-postgres @langchain/langgraph-checkpoint-postgres
 ```
 
-- `pg` and `node-pg-migrate` are **bundled** — you do not install them separately.
+- `pg` is **bundled** — you do not install it separately.
 - **`@langchain/langgraph-checkpoint-postgres`** is a peer dependency: the `PostgresSaver` this store
   pairs with for graph checkpoints (used by [`@skein-js/runtime`](../runtime), not by this package's
   own code).
@@ -66,7 +69,7 @@ In practice you rarely call this yourself — `skein dev --store postgres` / `sk
 
 - **`PostgresSkeinStore.connect(url, options?): Promise<PostgresSkeinStore>`** — the static factory
   (the constructor is private). Creates a `pg.Pool`; does **not** migrate.
-- **`store.migrate(): Promise<void>`** — apply pending migrations (idempotent).
+- **`store.migrate(): Promise<void>`** — apply pending migrations (idempotent, advisory-locked).
 - **`store.close(): Promise<void>`** — end the pool. **`store.truncateAll()`** — test helper.
 - Repos `assistants` / `threads` / `runs` / `store` — the [`SkeinStore`](../core) interface, with
   Postgres FK `ON DELETE CASCADE` for thread→runs and pgvector cosine ranking on `store.search`.

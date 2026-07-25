@@ -28,6 +28,7 @@
     "format": "nx format:write --all",
     "format:check": "nx format:check --all",
     "docs:llms": "node scripts/generate-llms-full.mjs",
+    "migrations:generate": "nx run storage-postgres:generate-migrations",
     "affected": "nx affected -t lint test typecheck build",
     "release": "nx release --skip-publish",
     "release:dry-run": "nx release --skip-publish --dry-run"

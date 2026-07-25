@@ -74,8 +74,9 @@ it and let your platform build it. Either way:
 **Migrations run automatically on boot.** There is no `skein migrate` step. On startup skein applies
 its schema (tracked in a `skein_migrations` table), sets up LangGraph's checkpoint tables, registers
 one assistant per declared graph, and — because `skein start` warms graphs — imports every graph
-module. All of that finishes _before_ the server starts listening. Migrations take their own lock, so
-several instances booting at once during a rolling deploy is safe.
+module. All of that finishes _before_ the server starts listening. Migrations take their own advisory
+lock, so several instances booting at once during a rolling deploy is safe — the ones that don't win
+the lock **wait**, then find nothing to apply.
 
 > **Building on Apple Silicon?** `skein build` doesn't pass `--platform`, so you'll get an arm64 image
 > that most hosts reject. Export `DOCKER_DEFAULT_PLATFORM=linux/amd64` before building.

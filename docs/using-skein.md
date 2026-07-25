@@ -247,6 +247,9 @@ Grow from the minimal server without rewrites — each step changes one thing:
   on a normal server / `next start`; for serverless, use Postgres + Redis.
 - **`useStream` needs an absolute URL** — pass `` `${window.location.origin}/api` ``, not a bare
   `/api`.
+- **Bundling skein yourself** (rspack/webpack/esbuild, or an unusual Next.js config)? skein is
+  ESM-only but `require()`-resolvable, and `@langchain/langgraph-api` + `@typescript/vfs` must stay
+  external. See [bundling.md](./bundling.md).
 - **404s on every protocol path?** You're almost certainly pointing at the wrong root — the protocol
   lives at your **mount path**, not the server root (see
   [Where to point your client](#where-to-point-your-client-when-embedding)). On NestJS that means

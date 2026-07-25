@@ -74,6 +74,18 @@ The background run worker and the in-memory driver need a **long-lived Node proc
 [Redis queue](../runtime-redis) + [Postgres store](../storage-postgres) (pass `{ deps }` from
 [`@skein-js/runtime`](../runtime)'s `buildRuntime`) so state and runs don't depend on one process.
 
+If you use the `langgraph.json` on-ramp (`{ config }`, or `buildRuntime`), keep the graph loader out
+of the bundle:
+
+```js
+// next.config.mjs
+export default { serverExternalPackages: ["@langchain/langgraph-api", "@typescript/vfs"] };
+```
+
+The `{ deps }` / `embedPostgresGraphs` path never reaches that loader and needs no externals. Full
+details, including the "Critical dependency" warning, in
+[docs/bundling.md](../../docs/bundling.md).
+
 ## API
 
 - **`createSkeinRouteHandlers(options): SkeinRouteHandlers`** — App Router (recommended); returns

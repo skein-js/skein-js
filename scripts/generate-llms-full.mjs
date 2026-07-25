@@ -31,6 +31,7 @@ const DOCS = [
   "docs/building-an-adapter.md",
   "docs/deploy.md",
   "docs/deploy-cloud-run.md",
+  "docs/bundling.md",
   "docs/reuse.md",
 ];
 

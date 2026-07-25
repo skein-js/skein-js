@@ -150,6 +150,13 @@ headless) / `nextjs-app` (App Router, same-origin `useStream` UI).
   (`activeRun`, `graphResolver`). Prefer a longer honest name over a short opaque one.
 - **Layout by feature** (`runs/`, `threads/`, `store/`), not by kind.
 - **Zod** at boundaries; typed error classes at edges.
+- **Publishable packages stay consumable and bundleable.** Every publishable _library_ sets
+  `exports["."]` to `{ types, import, default }` — `default` last, so `require()` resolves instead of
+  throwing `ERR_PACKAGE_PATH_NOT_EXPORTED`. The `skein-js` CLI is the deliberate exception (no
+  exports, runs on import). Guarded by `packages/test-support/src/package-exports.test.ts`.
+  Library code must not read package-relative files at runtime: bundlers rewrite `import.meta.url` to
+  the output location. Compile the asset in instead — see `packages/storage-postgres/scripts/` and
+  [docs/bundling.md](./docs/bundling.md).
 - **[Conventional Commits](https://www.conventionalcommits.org)** (`feat(core): …`), small focused PRs.
 
 ## Definition of done

@@ -10,6 +10,9 @@
         "command": "tsc --noEmit",
         "cwd": "packages/test-support"
       }
+    },
+    "test": {
+      "inputs": ["default", "^production", "{workspaceRoot}/packages/*/package.json"]
     }
   }
 }

@@ -101,8 +101,12 @@ spec:
       targetPort: 8123
 ```
 
-Boot migrations take their own lock, so a rolling update where old and new pods overlap is safe —
-you do not need an init container or a migration Job.
+Boot migrations take their own advisory lock, so a rolling update where old and new pods overlap is
+safe — pods that don't win the lock wait for it and then find nothing to apply. You do not need an
+init container or a migration Job.
+
+> Requires skein **0.10.0+**. Earlier versions took the lock with `pg_try_advisory_lock` and the
+> losing pod crashed with "Another migration is already running" instead of waiting.
 
 ## 3. Ingress and streaming
 

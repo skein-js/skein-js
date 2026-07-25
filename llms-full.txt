@@ -374,7 +374,7 @@ toolset:
 - **[BullMQ](https://docs.bullmq.io)** (on Redis) runs the production job queue with retries and
   crash recovery; **[ioredis](https://github.com/redis/ioredis) + Redis Streams** fan run streams
   across instances so a client on one instance can follow a run on another.
-- **[pgvector](https://github.com/pgvector/pgvector)** (via `pg` + `node-pg-migrate`) backs
+- **[pgvector](https://github.com/pgvector/pgvector)** (via `pg`) backs
   long-term memory with semantic search, while checkpoints stay LangGraph-native via
   **[`PostgresSaver`](https://www.npmjs.com/package/@langchain/langgraph-checkpoint-postgres)** —
   reused, not reinvented.
@@ -802,25 +802,26 @@ New here? [getting-started.md](./getting-started.md) is the guided path. Buildin
 (especially as an AI agent)? [using-skein.md](./using-skein.md) is the terse cheat-sheet, and the
 machine-readable [`llms.txt`](../llms.txt) / [`llms-full.txt`](../llms-full.txt) index the whole set.
 
-| Doc                                                      | Covers                                                      |
-| -------------------------------------------------------- | ----------------------------------------------------------- |
-| [getting-started.md](./getting-started.md)               | Guided walkthrough — zero to a running server, then prod    |
-| [using-skein.md](./using-skein.md)                       | Consumer/agent cheat-sheet — install, the seam, mount, call |
-| [recipes.md](./recipes.md)                               | Auth, HITL, memory, CORS, background runs, webhooks, deploy |
-| [langgraph-cli-compat.md](./langgraph-cli-compat.md)     | `langgraph.json` fields + CLI commands                      |
-| [embedding.md](./embedding.md)                           | The in-code on-ramp — embed a graph, no `langgraph.json`    |
-| [serving-a-single-graph.md](./serving-a-single-graph.md) | The non-chat surface — a graph as a plain HTTP endpoint     |
-| [agent-protocol.md](./agent-protocol.md)                 | The REST + streaming endpoints skein-js implements          |
-| [building-an-adapter.md](./building-an-adapter.md)       | How to put skein-js on any HTTP framework (custom adapter)  |
-| [streaming.md](./streaming.md)                           | LangGraph stream modes → Agent Protocol SSE                 |
-| [react-sdk.md](./react-sdk.md)                           | `@langchain/langgraph-sdk` + `useStream` compatibility      |
-| [storage.md](./storage.md)                               | `SkeinStore`, in-memory + Postgres, pgvector, checkpointer  |
-| [runs-and-redis.md](./runs-and-redis.md)                 | Run engine, queue, cross-instance streaming                 |
-| [deploy.md](./deploy.md)                                 | Deploy anywhere — Cloud Run, Railway, Fly, Render, AWS, K8s |
-| [reuse.md](./reuse.md)                                   | _(design)_ What we reuse from LangGraph OSS vs. rebuild     |
-| [code-practices.md](./code-practices.md)                 | _(contributor)_ Readability, functional style, conventions  |
-| [testing.md](./testing.md)                               | _(contributor)_ Unit + Testcontainers + conformance suite   |
-| [roadmap.md](./roadmap.md)                               | Milestones and post-MVP non-goals                           |
+| Doc                                                      | Covers                                                          |
+| -------------------------------------------------------- | --------------------------------------------------------------- |
+| [getting-started.md](./getting-started.md)               | Guided walkthrough — zero to a running server, then prod        |
+| [using-skein.md](./using-skein.md)                       | Consumer/agent cheat-sheet — install, the seam, mount, call     |
+| [recipes.md](./recipes.md)                               | Auth, HITL, memory, CORS, background runs, webhooks, deploy     |
+| [langgraph-cli-compat.md](./langgraph-cli-compat.md)     | `langgraph.json` fields + CLI commands                          |
+| [embedding.md](./embedding.md)                           | The in-code on-ramp — embed a graph, no `langgraph.json`        |
+| [serving-a-single-graph.md](./serving-a-single-graph.md) | The non-chat surface — a graph as a plain HTTP endpoint         |
+| [agent-protocol.md](./agent-protocol.md)                 | The REST + streaming endpoints skein-js implements              |
+| [building-an-adapter.md](./building-an-adapter.md)       | How to put skein-js on any HTTP framework (custom adapter)      |
+| [streaming.md](./streaming.md)                           | LangGraph stream modes → Agent Protocol SSE                     |
+| [react-sdk.md](./react-sdk.md)                           | `@langchain/langgraph-sdk` + `useStream` compatibility          |
+| [storage.md](./storage.md)                               | `SkeinStore`, in-memory + Postgres, pgvector, checkpointer      |
+| [runs-and-redis.md](./runs-and-redis.md)                 | Run engine, queue, cross-instance streaming                     |
+| [deploy.md](./deploy.md)                                 | Deploy anywhere — Cloud Run, Railway, Fly, Render, AWS, K8s     |
+| [bundling.md](./bundling.md)                             | Bundling skein yourself — ESM, `require()`, what to externalize |
+| [reuse.md](./reuse.md)                                   | _(design)_ What we reuse from LangGraph OSS vs. rebuild         |
+| [code-practices.md](./code-practices.md)                 | _(contributor)_ Readability, functional style, conventions      |
+| [testing.md](./testing.md)                               | _(contributor)_ Unit + Testcontainers + conformance suite       |
+| [roadmap.md](./roadmap.md)                               | Milestones and post-MVP non-goals                               |
 
 Want to contribute? See [CONTRIBUTING.md](../CONTRIBUTING.md) and [AGENTS.md](../AGENTS.md).
 
@@ -1255,6 +1256,9 @@ Grow from the minimal server without rewrites — each step changes one thing:
   on a normal server / `next start`; for serverless, use Postgres + Redis.
 - **`useStream` needs an absolute URL** — pass `` `${window.location.origin}/api` ``, not a bare
   `/api`.
+- **Bundling skein yourself** (rspack/webpack/esbuild, or an unusual Next.js config)? skein is
+  ESM-only but `require()`-resolvable, and `@langchain/langgraph-api` + `@typescript/vfs` must stay
+  external. See [bundling.md](./bundling.md).
 - **404s on every protocol path?** You're almost certainly pointing at the wrong root — the protocol
   lives at your **mount path**, not the server root (see
   [Where to point your client](#where-to-point-your-client-when-embedding)). On NestJS that means
@@ -1377,7 +1381,7 @@ multi-framework, drop-in-CLI layer that isn't open — so your project moves ove
 | Dev persistence          | Dev state is snapshotted to `.skein/` so it survives restarts (opt out with `--no-persist`).                                                                                                                                                                                                                                                    |
 | Run queue (prod)         | [BullMQ](https://docs.bullmq.io) on Redis — background runs, retries, backoff, and crash recovery.                                                                                                                                                                                                                                              |
 | Cross-instance streaming | [ioredis](https://github.com/redis/ioredis) + **Redis Streams**/pub-sub — join a run's SSE stream from any instance.                                                                                                                                                                                                                            |
-| Postgres store (prod)    | [pg](https://node-postgres.com) + [node-pg-migrate](https://github.com/salsita/node-pg-migrate) migrations + **pgvector** semantic search.                                                                                                                                                                                                      |
+| Postgres store (prod)    | [pg](https://node-postgres.com) + compiled-in schema migrations + **pgvector** semantic search.                                                                                                                                                                                                                                                 |
 | Checkpoints (prod)       | LangGraph-native [`PostgresSaver`](https://www.npmjs.com/package/@langchain/langgraph-checkpoint-postgres) — reused, not reinvented.                                                                                                                                                                                                            |
 
 **Transparent improvements over `langgraph dev`.** Because the storage/queue are pluggable drivers,
@@ -1749,6 +1753,10 @@ If you _do_ have a `langgraph.json`, [`@skein-js/runtime`](../packages/runtime)'
 Serverless/edge deploys need durable drivers: the in-memory drivers (and the background run worker) assume
 one warm process, so they don't survive a function that scales to zero. See
 [storage.md](./storage.md) and [runs-and-redis.md](./runs-and-redis.md).
+
+Bundling the result yourself? The in-code path is the friendly one — it never reaches the
+`langgraph.json` graph loader, so everything on it bundles cleanly, `@skein-js/storage-postgres`
+included. See [bundling.md](./bundling.md).
 
 ## The one trade-off: schemas
 
@@ -2563,7 +2571,10 @@ and `skein dev --store postgres`); pure in-memory `skein dev` still enforces exp
 ### `@skein-js/storage-postgres` (prod)
 
 - Backed by `pg`; owns tables for assistants (+ assistant_versions)/threads/runs/store items +
-  migrations.
+  migrations. `store.migrate()` applies them on boot — idempotent, tracked in a `skein_migrations`
+  table, and serialized by an advisory lock so concurrent boots queue rather than collide. The SQL is
+  compiled into the package (no filesystem access at runtime), so the driver bundles with zero
+  externals — see [bundling.md](./bundling.md).
 - Uses **`@langchain/langgraph-checkpoint-postgres`** (`PostgresSaver.fromConnString`) for
   graph checkpoints — we wrap it rather than reimplement checkpointing.
   <https://www.npmjs.com/package/@langchain/langgraph-checkpoint-postgres>
@@ -3456,8 +3467,9 @@ it and let your platform build it. Either way:
 **Migrations run automatically on boot.** There is no `skein migrate` step. On startup skein applies
 its schema (tracked in a `skein_migrations` table), sets up LangGraph's checkpoint tables, registers
 one assistant per declared graph, and — because `skein start` warms graphs — imports every graph
-module. All of that finishes _before_ the server starts listening. Migrations take their own lock, so
-several instances booting at once during a rolling deploy is safe.
+module. All of that finishes _before_ the server starts listening. Migrations take their own advisory
+lock, so several instances booting at once during a rolling deploy is safe — the ones that don't win
+the lock **wait**, then find nothing to apply.
 
 > **Building on Apple Silicon?** `skein build` doesn't pass `--platform`, so you'll get an arm64 image
 > that most hosts reject. Export `DOCKER_DEFAULT_PLATFORM=linux/amd64` before building.
@@ -3842,6 +3854,173 @@ processes you'll want `tini` — add it via `dockerfile_lines` in `langgraph.jso
 With `--max-instances` above 1, read
 [Scaling past one instance](./deploy.md#scaling-past-one-instance) — cross-instance cancellation and
 the one-run-per-thread guard are still per-process.
+
+
+---
+
+<!-- source: docs/bundling.md -->
+
+# Bundling skein
+
+Most people never read this page: if you deploy the `skein build` image, or run `next start` with
+skein mounted as a route handler, bundling is already handled. You need this page when **you** own
+the bundler — an rspack/webpack server build, an esbuild bundle for Lambda, a Next.js app with an
+unusual config — and skein is inside its module graph.
+
+The short version: **skein is ESM-only, and everything except the CLI bundles cleanly.** Two packages
+must stay external, and only if you use the `langgraph.json` on-ramp.
+
+## Contents
+
+- [skein is ESM-only](#skein-is-esm-only)
+- [What must stay external](#what-must-stay-external)
+- [Copy-paste configs](#copy-paste-configs)
+- [The "Critical dependency" warning](#the-critical-dependency-warning)
+- [Postgres migrations are compiled in](#postgres-migrations-are-compiled-in)
+
+## skein is ESM-only
+
+Every `@skein-js/*` package is `"type": "module"` and ships a single ESM entry. There is no CommonJS
+build and there won't be one.
+
+That does **not** mean you can't `require()` it. Each library package exposes a `default` export
+condition, so Node's `require(esm)` resolves it:
+
+```js
+const { embedPostgresGraphs } = require("@skein-js/runtime"); // works on Node 20.19+ / 22.12+
+```
+
+`require(esm)` landed unflagged in **Node 20.19** and **22.12**. On an older Node you get
+`ERR_REQUIRE_ESM` telling you to use `import()` instead — which is the honest answer, and what a
+CJS-emitting bundler should be configured to do. Plain `import` works on any Node ≥ 20.
+
+> Before 0.10.0 the packages declared only `types` + `import` conditions, so `require()` failed with
+> `ERR_PACKAGE_PATH_NOT_EXPORTED` — which reads like the package is broken rather than like a module
+> format mismatch. If you're pinned below 0.10.0, that's the fix.
+>
+> The `skein-js` CLI keeps the old shape deliberately: it has no exports, and its entry point runs a
+> command as a side effect. `require()`-ing it should fail.
+
+**`require()` does not tree-shake.** `require("@skein-js/runtime")` eagerly loads
+`@skein-js/config` and therefore `@langchain/langgraph-api`, even if you only use
+`embedPostgresGraphs` and never touch a `langgraph.json`. It works, it just costs ~0.5s of cold
+start. Prefer `import` where your toolchain allows it.
+
+## What must stay external
+
+| Package                    | Bundle it?                | Why                                                                                     |
+| -------------------------- | ------------------------- | --------------------------------------------------------------------------------------- |
+| `@langchain/langgraph-api` | **No** — mark external    | skein's graph loader `import()`s a path computed at runtime; no bundler can follow that |
+| `@typescript/vfs`          | **No** — mark external    | pulled in by the same loader                                                            |
+| `skein-js` (the CLI)       | **Never**                 | a `bin` with no exports and top-level await; importing it runs a command                |
+| every other `@skein-js/*`  | **Yes** — bundles cleanly | including `@skein-js/storage-postgres` as of 0.10.0                                     |
+
+The first two only matter if you point skein at a `langgraph.json` (`buildRuntime`, the CLI, the
+`{ config }` form of any adapter). If you embed graphs in code — `embedPostgresGraphs`,
+`embedInMemoryGraphs`, the `{ deps }` form — the graph loader is never reached and a bundler that
+tree-shakes will drop it for you.
+
+## Copy-paste configs
+
+**Next.js** (`next.config.mjs`):
+
+```js
+export default {
+  serverExternalPackages: ["@langchain/langgraph-api", "@typescript/vfs"],
+};
+```
+
+**webpack / rspack** (server build):
+
+```js
+export default {
+  target: "node",
+  externals: [
+    { "@langchain/langgraph-api": "commonjs @langchain/langgraph-api" },
+    { "@typescript/vfs": "commonjs @typescript/vfs" },
+  ],
+};
+```
+
+**esbuild**:
+
+```bash
+esbuild server.ts --bundle --platform=node --format=esm \
+  --external:@langchain/langgraph-api --external:@typescript/vfs
+```
+
+Prefer `--format=esm` if you can. With `--format=cjs`, anything the bundle `require()`s at runtime
+still needs Node 20.19+, per above.
+
+## The "Critical dependency" warning
+
+webpack and rspack emit this when they meet skein's graph loader:
+
+```text
+Critical dependency: the request of a dependency is an expression
+```
+
+It's expected and harmless — that expression is the `import()` of your graph module, resolved from
+`langgraph.json` at runtime. Externalizing `@langchain/langgraph-api` removes most of it; to silence
+the rest:
+
+```js
+// next.config.mjs
+export default {
+  serverExternalPackages: ["@langchain/langgraph-api", "@typescript/vfs"],
+  webpack: (config) => {
+    config.ignoreWarnings = [
+      ...(config.ignoreWarnings ?? []),
+      { message: /Critical dependency: the request of a dependency is an expression/ },
+    ];
+    return config;
+  },
+};
+```
+
+## Postgres migrations are compiled in
+
+`@skein-js/storage-postgres` needs **no skein-side externals**. Its schema migrations ship as string
+constants inside `dist/index.js`, so the package makes no filesystem access at runtime — it imports
+only `node:crypto`, `pg`, and `@skein-js/core`. (`pg` itself has one wrinkle — see below.)
+
+Before 0.10.0 it located its `migrations/` directory with `new URL("../migrations", import.meta.url)`
+and handed it to `node-pg-migrate`. Bundlers rewrite `import.meta.url` to the **output** location, so
+a bundled build looked fine until boot, then failed to find its own SQL against a real database. If
+you hit that on an older version, externalize `@skein-js/storage-postgres` (which then has to be
+present in `node_modules` at runtime) or upgrade.
+
+Migrations still run automatically on boot, tracked in a `skein_migrations` table and serialized by a
+Postgres advisory lock — see [deploy.md](./deploy.md) and [storage.md](./storage.md).
+
+### One caveat, from `pg` rather than skein
+
+`pg` has an optional native binding it reaches for at runtime: `pg/lib/native/client.js` does
+`require('pg-native')`, and `pg-native` is an optional peer that is normally not installed. pg wraps
+that call in a `try`/`catch` specifically so bundlers tolerate it, and **esbuild does** — it leaves a
+runtime `require` and emits nothing. **webpack and rspack are stricter** and report:
+
+```text
+Module not found: Can't resolve 'pg-native'
+```
+
+You do not want the native binding; tell the bundler to ignore it:
+
+```js
+// webpack / rspack
+import webpack from "webpack";
+export default {
+  plugins: [new webpack.IgnorePlugin({ resourceRegExp: /^pg-native$/ })],
+};
+```
+
+Next.js keeps `pg` on its built-in server-externals list, so this never surfaces there.
+
+## See also
+
+- [deploy.md](./deploy.md) — deploying the built image, env vars, probes, scaling
+- [embedding.md](./embedding.md) — the in-code on-ramp, which avoids the graph loader entirely
+- [storage.md](./storage.md) — the Postgres driver and its schema
 
 
 ---

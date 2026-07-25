@@ -200,6 +200,10 @@ Serverless/edge deploys need durable drivers: the in-memory drivers (and the bac
 one warm process, so they don't survive a function that scales to zero. See
 [storage.md](./storage.md) and [runs-and-redis.md](./runs-and-redis.md).
 
+Bundling the result yourself? The in-code path is the friendly one — it never reaches the
+`langgraph.json` graph loader, so everything on it bundles cleanly, `@skein-js/storage-postgres`
+included. See [bundling.md](./bundling.md).
+
 ## The one trade-off: schemas
 
 A **compiled** graph no longer carries its TypeScript source, so the in-code path can't extract real

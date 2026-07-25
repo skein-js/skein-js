@@ -28,13 +28,13 @@
   "exports": {
     ".": {
       "types": "./dist/index.d.ts",
-      "import": "./dist/index.js"
+      "import": "./dist/index.js",
+      "default": "./dist/index.js"
     }
   },
   "files": [
     "dist",
     "LICENSE",
-    "migrations",
     "README.md"
   ],
   "sideEffects": false,
@@ -43,7 +43,6 @@
   },
   "dependencies": {
     "@skein-js/core": "workspace:*",
-    "node-pg-migrate": ">=7.9.0",
     "pg": ">=8.11.0"
   },
   "peerDependencies": {

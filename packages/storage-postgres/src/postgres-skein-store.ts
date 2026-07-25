@@ -4,7 +4,6 @@
 // via PostgresSaver. Serializing through Postgres gives the driver-parity isolation for free.
 
 import { randomUUID } from "node:crypto";
-import { fileURLToPath } from "node:url";
 
 import {
   SkeinHttpError,
@@ -34,8 +33,9 @@ import {
   type ThreadRepo,
   type ThreadUpdate,
 } from "@skein-js/core";
-import { runner as runMigrations } from "node-pg-migrate";
 import { Pool, type PoolClient } from "pg";
+
+import { applySkeinMigrations } from "./run-migrations.js";
 
 /** Computes embeddings for a batch of texts — injected so tests use a deterministic fake. */
 export type EmbedFunction = (texts: string[]) => Promise<number[][]>;
@@ -268,21 +268,14 @@ const expiresAtSql = (ttlParam: string): string =>
   `CASE WHEN ${ttlParam}::double precision IS NULL THEN NULL ` +
   `ELSE now() + ${ttlParam}::double precision * interval '1 minute' END`;
 
-/** Absolute path to this package's node-pg-migrate migration files (resolves from src or dist). */
-function migrationsDir(): string {
-  return fileURLToPath(new URL("../migrations", import.meta.url));
-}
-
 /** Postgres `SkeinStore`. Construct with {@link PostgresSkeinStore.connect}, run {@link migrate}. */
 export class PostgresSkeinStore implements SkeinStore {
   readonly #pool: Pool;
-  readonly #url: string;
   readonly #index?: StoreIndexConfig;
   readonly #ttl?: StoreTtlConfig;
 
-  private constructor(pool: Pool, url: string, index?: StoreIndexConfig, ttl?: StoreTtlConfig) {
+  private constructor(pool: Pool, index?: StoreIndexConfig, ttl?: StoreTtlConfig) {
     this.#pool = pool;
-    this.#url = url;
     this.#index = index;
     this.#ttl = ttl;
   }
@@ -308,25 +301,15 @@ export class PostgresSkeinStore implements SkeinStore {
     url: string,
     options: PostgresSkeinStoreOptions = {},
   ): Promise<PostgresSkeinStore> {
-    return new PostgresSkeinStore(
-      createPostgresPool(url, options),
-      url,
-      options.index,
-      options.ttl,
-    );
+    return new PostgresSkeinStore(createPostgresPool(url, options), options.index, options.ttl);
   }
 
-  /** Apply pending schema migrations (idempotent) via node-pg-migrate. */
+  /**
+   * Apply pending schema migrations. Idempotent, and advisory-locked so concurrently-booting
+   * instances during a rolling deploy queue up rather than collide.
+   */
   async migrate(): Promise<void> {
-    await runMigrations({
-      databaseUrl: this.#url,
-      dir: migrationsDir(),
-      migrationsTable: "skein_migrations",
-      direction: "up",
-      count: Infinity,
-      // node-pg-migrate logs each step to console by default; quiet it (errors still throw).
-      logger: { info: () => {}, warn: () => {}, error: () => {}, debug: () => {} },
-    });
+    await applySkeinMigrations(this.#pool);
     // Semantic search is opt-in: only when a store index is configured do we require pgvector.
     // This keeps the base schema runnable on a stock Postgres (e.g. Railway's default) that lacks
     // the extension. Both statements are idempotent, so it's safe on every boot / re-migrate.
@@ -336,7 +319,7 @@ export class PostgresSkeinStore implements SkeinStore {
   // Enable pgvector + add the embedding column, serialized by a transaction-scoped advisory lock so
   // concurrently-booting instances (a rolling deploy) don't race `CREATE EXTENSION` — which can
   // raise "tuple concurrently updated" when two sessions run it at once. The xact lock frees on
-  // COMMIT/ROLLBACK. node-pg-migrate lock-serializes its own migrations, but this DDL runs after it.
+  // COMMIT/ROLLBACK. applySkeinMigrations lock-serializes the schema, but this DDL runs after it.
   async #setupPgvector(): Promise<void> {
     const client = await this.#pool.connect();
     try {
