@@ -12,6 +12,7 @@ import { Command, InvalidArgumentError } from "@commander-js/extra-typings";
 import { runDev } from "./dev-command.js";
 import { runBuild, runDockerfile, runUp } from "./docker/commands.js";
 import { runImportLanggraph } from "./import-command.js";
+import { DEFAULT_CONTAINER_PORT, DEFAULT_DEV_PORT } from "./serve-env.js";
 import { runStart } from "./start-command.js";
 
 const require = createRequire(import.meta.url);
@@ -61,7 +62,7 @@ program
   .option("-c, --config <path>", "Path to langgraph.json", "langgraph.json")
   // The default binds 2024, but when `--port` is not passed, runDev falls back to a `PORT` env var
   // (Railway/Fly/Render/Heroku inject one) — resolved there, after the project's `.env` is merged.
-  .option("-p, --port <port>", "Port to bind", parsePort, 2024)
+  .option("-p, --port <port>", "Port to bind", parsePort, DEFAULT_DEV_PORT)
   // Bind IPv4 explicitly: "localhost" can resolve to `::1`, which trips IPv4-only SDK clients.
   .option("--host <host>", "Host to bind", "127.0.0.1")
   .option("--no-reload", "Disable hot reload")
@@ -99,9 +100,12 @@ program
   .command("start")
   .description("Serve a pre-built .skein/build artifact (the production image entrypoint).")
   .option("-c, --config <path>", "Path to the artifact's langgraph.json", "langgraph.json")
-  // No --port default of 2024 here: like `skein dev`, an unset flag falls back to a PORT env var
-  // (Railway/Fly/Render inject one), resolved after the config's inline env is merged.
-  .option("-p, --port <port>", "Port to bind", parsePort, 2024)
+  // Defaults to the container port, not `dev`'s 2024: this is the production image's entrypoint, and
+  // the fallback has to match what the Dockerfile EXPOSEs and health-checks so a bare `docker run`
+  // (or a platform that makes you declare the port — App Runner, ECS, k8s) lands on the right one.
+  // An unset flag still falls back to a PORT env var first (Railway/Fly/Render/Cloud Run inject one),
+  // resolved after the config's inline env is merged.
+  .option("-p, --port <port>", "Port to bind", parsePort, DEFAULT_CONTAINER_PORT)
   .option("--host <host>", "Host to bind", "127.0.0.1")
   .option("--store <driver>", "Store driver: memory | postgres", parseStore, "memory")
   .option("--queue <driver>", "Queue driver: memory | redis", parseQueue, "memory")
@@ -129,7 +133,7 @@ program
   .command("up")
   .description("Bring up the production stack (Docker Compose: app + Postgres + Redis).")
   .option("-c, --config <path>", "Path to langgraph.json", "langgraph.json")
-  .option("-p, --port <port>", "Port to expose", parsePort, 8123)
+  .option("-p, --port <port>", "Port to expose", parsePort, DEFAULT_CONTAINER_PORT)
   .option("--host <host>", "Host to bind", "0.0.0.0")
   .option(
     "-n, --npmrc <path>",

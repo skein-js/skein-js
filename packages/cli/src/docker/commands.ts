@@ -10,6 +10,7 @@ import path from "node:path";
 import { loadConfig, type LanggraphJson } from "@skein-js/config";
 
 import { bundleProject } from "../bundle/bundle-project.js";
+import { DEFAULT_CONTAINER_PORT } from "../serve-env.js";
 
 import { generateCompose } from "./compose.js";
 import { generateDockerfile, generateDockerignore } from "./dockerfile.js";
@@ -26,8 +27,12 @@ function skeinCliVersion(): string {
 /** The build artifact dir, relative to the config dir — the self-contained docker build context. */
 const ARTIFACT_SUBDIR = path.join(".skein", "build");
 
-/** Port the server binds inside the container (compose maps the host port onto this). */
-const CONTAINER_PORT = 8123;
+/**
+ * Port the server binds inside the container (compose maps the host port onto this). Shared with
+ * `skein start`'s `--port` default so the EXPOSE, the HEALTHCHECK, compose's mapping and the port the
+ * server actually falls back to cannot drift apart.
+ */
+const CONTAINER_PORT = DEFAULT_CONTAINER_PORT;
 const DOCKERFILE_NAME = "Dockerfile";
 const COMPOSE_NAME = "compose.yaml";
 const DOCKERIGNORE_NAME = ".dockerignore";

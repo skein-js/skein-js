@@ -57,8 +57,9 @@ services:
     ports:
       - ${ports}
     environment:
-      # The container CMD passes no --port; it binds $PORT (as a hosting platform would inject).
-      # Set it here so the app listens on the port the mapping above publishes.
+      # The container CMD passes no --port; it binds $PORT (as a hosting platform would inject), and
+      # falls back to this same port anyway. Set explicitly so the mapping above stays correct even
+      # if a host port is published that differs from the port the container listens on.
       PORT: "${options.containerPort}"
       POSTGRES_URI: postgresql://postgres:postgres@postgres:5432/skein
       REDIS_URI: redis://redis:6379

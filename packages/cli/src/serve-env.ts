@@ -3,6 +3,21 @@
 // passed explicitly, and both surface the same clear message when the port is already taken.
 
 /**
+ * Port `skein dev` binds when neither `--port` nor `PORT` says otherwise. Matches `langgraph dev`, so
+ * an existing local setup (SDK clients, bookmarked Studio URLs) keeps working after the switch.
+ */
+export const DEFAULT_DEV_PORT = 2024;
+
+/**
+ * Port the container binds when the platform injects no `PORT` — `skein start`'s default, the port
+ * `skein up` publishes, and the port the generated Dockerfile `EXPOSE`s and health-checks. It is one
+ * constant because those four must agree: a bare `docker run -p 8123:8123` (and any platform that
+ * makes you *declare* the port rather than injecting one — AWS App Runner, ECS, Kubernetes) works
+ * only if the server's own fallback is the port the image advertises. Matches `langgraph up`.
+ */
+export const DEFAULT_CONTAINER_PORT = 8123;
+
+/**
  * Port to bind, honoring a `PORT` env var. Resolve this *after* the project's `.env` is merged, so a
  * project-declared PORT is honored too — not just an ambient one. Returns `fallback` when PORT is
  * unset or not a valid port.
