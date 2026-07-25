@@ -15,12 +15,13 @@ import {
   type SkeinRuntime,
   type StoreDriver,
 } from "@skein-js/runtime";
-import { resolveRunConcurrency } from "@skein-js/server-kit";
+import { resolveRunConcurrency, resolveShutdownGraceMs } from "@skein-js/server-kit";
 
 import { printBanner } from "./banner.js";
 import { createDevLogger } from "./dev-logger.js";
 import { applyProjectEnv } from "./project-env.js";
 import { describeBindError, envHost, envPort } from "./serve-env.js";
+import { createShutdownHandler, forceExitDelayMs } from "./shutdown.js";
 
 /** The flags `skein start` accepts, after commander parsing. */
 export interface StartCommandOptions {
@@ -44,9 +45,6 @@ export interface StartCommandOptions {
   verbose?: boolean;
 }
 
-/** How long to wait for a graceful shutdown before forcing exit — an in-flight run can stall it. */
-const FORCE_EXIT_MS = 5000;
-
 const logger = createDevLogger();
 
 /** Load the artifact's precomputed schemas (baked by `skein build`), keyed by graph id. */
@@ -68,6 +66,7 @@ export async function runStart(options: StartCommandOptions): Promise<void> {
   let configDir: string;
   let authPath: string | undefined;
   let runConcurrency: number;
+  let shutdownGraceMs: number;
   try {
     const loaded = await loadConfig({ configPath });
     configDir = loaded.configDir;
@@ -77,6 +76,9 @@ export async function runStart(options: StartCommandOptions): Promise<void> {
     // Flag → LangGraph-compat alias → SKEIN_RUN_CONCURRENCY → N_JOBS_PER_WORKER → default. Inside this
     // block so a bad value prints `skein: …` and exits 1, like every other boot-config failure.
     runConcurrency = resolveRunConcurrency(options.concurrency ?? options.nJobsPerWorker);
+    // Same treatment for SKEIN_SHUTDOWN_GRACE_MS: resolved up front so a bad value fails the boot
+    // rather than surfacing only once the platform sends SIGTERM.
+    shutdownGraceMs = resolveShutdownGraceMs();
     schemas = readBakedSchemas(configDir);
   } catch (error) {
     console.error(`skein: ${error instanceof Error ? error.message : String(error)}`);
@@ -113,7 +115,7 @@ export async function runStart(options: StartCommandOptions): Promise<void> {
       cors: runtime.cors,
       warm: true,
       logger,
-      worker: { maxConcurrency: runConcurrency },
+      worker: { maxConcurrency: runConcurrency, shutdownGraceMs },
     });
     await server.listen(port, host);
   } catch (error) {
@@ -126,14 +128,21 @@ export async function runStart(options: StartCommandOptions): Promise<void> {
 
   printBanner({ host, port, graphIds: runtime.deps.graphs.ids, authPath, runConcurrency }, logger);
 
-  let shuttingDown = false;
-  const shutdown = () => {
-    if (shuttingDown) return;
-    shuttingDown = true;
-    const forceExit = setTimeout(() => process.exit(0), FORCE_EXIT_MS);
-    forceExit.unref();
-    void Promise.allSettled([server.close(), runtime.dispose()]).then(() => process.exit(0));
-  };
+  // `server.close()` stops the worker (draining in-flight runs for `shutdownGraceMs`, then aborting
+  // stragglers) before closing the HTTP server, so the force-exit timer has to outlast that window.
+  // Dispose *after* it resolves, never alongside it: disposing tears down the Postgres pools and the
+  // Redis queue the draining runs are still writing their terminal status through, so racing the two
+  // strands in-flight runs at whatever status they last held.
+  const shutdown = createShutdownHandler({
+    forceExitMs: forceExitDelayMs(shutdownGraceMs),
+    close: async () => {
+      try {
+        await server.close();
+      } finally {
+        await runtime.dispose();
+      }
+    },
+  });
   process.on("SIGINT", shutdown);
   process.on("SIGTERM", shutdown);
 }

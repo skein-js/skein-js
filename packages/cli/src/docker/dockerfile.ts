@@ -89,9 +89,15 @@ export function generateDockerfile(options: DockerfileOptions): string {
     ...dockerfileLines,
     ``,
     `# Serve the compiled artifact against Postgres + Redis (POSTGRES_URI / REDIS_URI from the env).`,
-    `# No --port: the server binds $PORT when the platform injects one (Railway/Fly/Render), else its`,
-    `# default. Exec form keeps node as PID 1 so SIGTERM reaches skein's graceful-shutdown handler.`,
-    `CMD ["npx", "skein", "start", "--store", "postgres", "--queue", "redis", "--host", "0.0.0.0"]`,
+    `# No --port: the server binds $PORT when the platform injects one (Railway/Fly/Render/Cloud Run),`,
+    `# else \`skein start\`'s default — the port EXPOSEd above, so a bare \`docker run -p ${port}:${port}\``,
+    `# works too.`,
+    `#`,
+    `# Invoked as \`node <entry>\` rather than \`npx skein\` so that **node itself is PID 1**. Under npx,`,
+    `# PID 1 is npm, which forwards SIGTERM to a \`sh -c\` child and exits immediately — the server is`,
+    `# killed mid-shutdown and in-flight runs are left stranded in a non-terminal status. Exec form`,
+    `# (no shell) keeps the signal path direct, so SIGTERM reaches skein's graceful-shutdown handler.`,
+    `CMD ["node", "node_modules/skein-js/dist/index.js", "start", "--store", "postgres", "--queue", "redis", "--host", "0.0.0.0"]`,
   ];
   return `${lines.join("\n")}\n`;
 }

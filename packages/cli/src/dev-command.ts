@@ -21,13 +21,14 @@ import {
   type SkeinExpressServer,
 } from "@skein-js/express";
 import { buildRuntime, type QueueDriver, type StoreDriver } from "@skein-js/runtime";
-import { resolveRunConcurrency } from "@skein-js/server-kit";
+import { resolveRunConcurrency, resolveShutdownGraceMs } from "@skein-js/server-kit";
 
 import { printBanner } from "./banner.js";
 import { createDevLogger } from "./dev-logger.js";
 import { devStateFile, writeDevStateFile, LANGGRAPH_DIR, STATE_DIR } from "./dev-state.js";
 import { applyProjectEnv } from "./project-env.js";
 import { describeBindError, envHost, envPort } from "./serve-env.js";
+import { createShutdownHandler, forceExitDelayMs } from "./shutdown.js";
 import { createViteGraphLoader } from "./vite-graph-loader.js";
 
 /** The flags `skein dev` accepts, after commander parsing. */
@@ -59,8 +60,6 @@ export interface DevCommandOptions {
 const RELOAD_DEBOUNCE_MS = 120;
 /** How often to autosave dev state to disk while running. */
 const AUTOSAVE_MS = 2000;
-/** How long to wait for a graceful shutdown before forcing exit — an in-flight run can stall it. */
-const FORCE_EXIT_MS = 5000;
 
 /** Console logger for the dev server — colored, `info:`-prefixed output that drives per-request
  * logging, the background-run summaries, the startup banner, and surfaces engine warnings. */
@@ -93,6 +92,9 @@ export async function runDev(options: DevCommandOptions): Promise<void> {
   // Flag → LangGraph-compat alias → SKEIN_RUN_CONCURRENCY → N_JOBS_PER_WORKER → default. Resolved
   // after applyProjectEnv above, so a value in the project's .env counts — the PORT/HOST rule.
   const runConcurrency = resolveRunConcurrency(options.concurrency ?? options.nJobsPerWorker);
+  // Same source and the same timing for SKEIN_SHUTDOWN_GRACE_MS: Ctrl-C drains in-flight runs for this
+  // long, and the force-exit timer below is sized against it.
+  const shutdownGraceMs = resolveShutdownGraceMs();
   // On-disk snapshotting only applies to the all-memory runtime; durable drivers persist inherently.
   const canPersist = options.persist && runtime.snapshotState !== undefined;
   if (options.persist && runtime.snapshotState === undefined) {
@@ -140,7 +142,7 @@ export async function runDev(options: DevCommandOptions): Promise<void> {
       cors: runtime.cors,
       warm: true,
       logger: devLogger,
-      worker: { maxConcurrency: runConcurrency },
+      worker: { maxConcurrency: runConcurrency, shutdownGraceMs },
     });
     await server.listen(port, host);
   } catch (error) {
@@ -230,18 +232,24 @@ export async function runDev(options: DevCommandOptions): Promise<void> {
     });
   }
 
-  let shuttingDown = false;
-  const shutdown = () => {
-    if (shuttingDown) return;
-    shuttingDown = true;
-    if (autosave) clearInterval(autosave);
-    const forceExit = setTimeout(() => process.exit(0), FORCE_EXIT_MS);
-    forceExit.unref();
-    saveState();
-    void Promise.allSettled([server.close(), loader.close(), runtime.dispose()]).then(() =>
-      process.exit(0),
-    );
-  };
+  const shutdown = createShutdownHandler({
+    forceExitMs: forceExitDelayMs(shutdownGraceMs),
+    // Stop autosaving and flush one last snapshot synchronously, before anything can race it.
+    onShutdownStart: () => {
+      if (autosave) clearInterval(autosave);
+      saveState();
+    },
+    // Drain first, dispose second — never both at once. `server.close()` stops the worker, which
+    // needs the store and queue still alive to settle in-flight runs terminally; disposing alongside
+    // it pulls those out from under the drain. `loader.close()` is independent of both.
+    close: async () => {
+      try {
+        await Promise.allSettled([server.close(), loader.close()]);
+      } finally {
+        await runtime.dispose();
+      }
+    },
+  });
   process.on("SIGINT", shutdown);
   process.on("SIGTERM", shutdown);
 }

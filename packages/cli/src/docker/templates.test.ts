@@ -1,5 +1,7 @@
 import { describe, expect, it } from "vitest";
 
+import { DEFAULT_CONTAINER_PORT } from "../serve-env.js";
+
 import { generateCompose } from "./compose.js";
 import { generateDockerfile } from "./dockerfile.js";
 
@@ -20,11 +22,20 @@ describe("generateDockerfile", () => {
     const out = generateDockerfile({ port: 8123 });
     expect(out).toContain("FROM node:20-slim");
     // Pre-built path: runs `skein start` (compiled JS), not `skein dev` (runtime TS transform).
-    expect(out).toContain('"npx", "skein", "start"');
+    expect(out).toContain('"start"');
     expect(out).not.toContain('"dev"');
     expect(out).toContain('"--store", "postgres"');
     expect(out).toContain('"--queue", "redis"');
     expect(out).toContain("EXPOSE 8123");
+  });
+
+  it("runs node directly so node — not npm — is PID 1 and receives SIGTERM", () => {
+    // Under `npx skein`, PID 1 is npm: it forwards SIGTERM to a `sh -c` child and exits immediately,
+    // killing the server mid-shutdown and stranding in-flight runs in a non-terminal status. Invoking
+    // the entry directly keeps the signal path between the platform and skein's handler unbroken.
+    const out = generateDockerfile({ port: 8123 });
+    expect(out).toContain('CMD ["node", "node_modules/skein-js/dist/index.js", "start"');
+    expect(out).not.toContain('"npx"');
   });
 
   it("ships a slim image: prod-only install, no vite/tsx toolchain, no chown", () => {
@@ -71,6 +82,16 @@ describe("generateDockerfile", () => {
     // Exec-form CMD keeps node as PID 1 for graceful SIGTERM; --host stays, --port is dropped.
     expect(out).toContain('"--host", "0.0.0.0"');
     expect(out).not.toContain('"--port"');
+  });
+
+  it("exposes and probes the port `skein start` falls back to when no PORT is injected", () => {
+    // The CMD passes no --port, so with PORT unset the server binds `skein start`'s own default. That
+    // default, the EXPOSE and the healthcheck's fallback must be the same number, or a bare
+    // `docker run` (and any platform that makes you declare a port rather than injecting one — App
+    // Runner, ECS, Kubernetes) binds one port while the image advertises and probes another.
+    const out = generateDockerfile({ port: DEFAULT_CONTAINER_PORT });
+    expect(out).toContain(`EXPOSE ${DEFAULT_CONTAINER_PORT}`);
+    expect(out).toContain(`process.env.PORT||${DEFAULT_CONTAINER_PORT}`);
   });
 });
 

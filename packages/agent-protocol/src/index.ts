@@ -46,7 +46,11 @@ export {
 export type { GraphInvokeOptions, GraphInvokeHandlerName } from "./invoke/graph-invoke.js";
 
 // The background run worker.
-export { createRunWorker, DEFAULT_RUN_CONCURRENCY } from "./runs/run-worker.js";
+export {
+  createRunWorker,
+  DEFAULT_RUN_CONCURRENCY,
+  DEFAULT_SHUTDOWN_GRACE_MS,
+} from "./runs/run-worker.js";
 export type { RunWorker, RunWorkerOptions } from "./runs/run-worker.js";
 
 // The injected dependency contract.

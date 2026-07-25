@@ -16,6 +16,7 @@ import type { CorsOptions } from "cors";
 
 import { loadInMemoryRuntime } from "./in-memory-runtime.js";
 import { resolveRunConcurrency } from "./run-concurrency.js";
+import { resolveShutdownGraceMs } from "./shutdown-grace.js";
 
 export interface SkeinRuntimeCommonOptions {
   logger?: Logger;
@@ -42,6 +43,11 @@ export interface SkeinRuntimeCommonOptions {
    * engine's execution lock — but see the head-of-line note in docs/runs-and-redis.md if your workload
    * leans on `multitask_strategy: "enqueue"`. Ignored by the invoke-only surface, which starts no
    * worker.
+   *
+   * `shutdownGraceMs` is how long `worker.stop()` lets in-flight runs finish before aborting them
+   * (default `DEFAULT_SHUTDOWN_GRACE_MS`); omit it and skein reads `SKEIN_SHUTDOWN_GRACE_MS`, with
+   * the same explicit-wins-but-still-validated rule. Whatever forces the process to exit must wait
+   * longer than this, or the abort step never runs — see docs/deploy.md.
    */
   worker?: RunWorkerOptions;
 }
@@ -101,12 +107,14 @@ export async function resolveProtocolRuntime(
 ): Promise<ResolvedProtocolRuntime> {
   const { deps, cors: corsFromConfig } = await resolveRuntimeDeps(options);
 
-  // Resolve concurrency here rather than in each adapter: this is the ONE place options + environment
-  // become the worker's settings, so Express/Fastify/NestJS/Next.js and `skein dev`/`start` can't drift.
+  // Resolve worker settings here rather than in each adapter: this is the ONE place options +
+  // environment become the worker's settings, so Express/Fastify/NestJS/Next.js and `skein dev`/`start`
+  // can't drift.
   const runtime = createProtocolRuntime(deps, {
     worker: {
       ...options.worker,
       maxConcurrency: resolveRunConcurrency(options.worker?.maxConcurrency),
+      shutdownGraceMs: resolveShutdownGraceMs(options.worker?.shutdownGraceMs),
     },
   });
   await runtime.service.assistants.registerGraphAssistants();

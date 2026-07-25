@@ -21,6 +21,16 @@ import { startRunExecution } from "./run-execution.js";
  */
 export const DEFAULT_RUN_CONCURRENCY = 10;
 
+/**
+ * How long `stop()` lets in-flight runs finish before aborting them. Chosen to leave room inside the
+ * tightest common stop window — a container platform typically sends SIGTERM and SIGKILLs ~10s later
+ * (Cloud Run's default; `docker stop`'s too) — for this drain *plus* the abort-and-settle step that
+ * follows it. Raise it via `SKEIN_SHUTDOWN_GRACE_MS` where the platform allows a longer window
+ * (Railway, Kubernetes' `terminationGracePeriodSeconds`, ECS `stopTimeout`); the host must also wait
+ * longer than this before forcing exit, or the abort path never runs. See docs/deploy.md.
+ */
+export const DEFAULT_SHUTDOWN_GRACE_MS = 5000;
+
 export interface RunWorkerOptions {
   /**
    * Max queued runs this worker executes at once. Default {@link DEFAULT_RUN_CONCURRENCY}.
@@ -30,7 +40,10 @@ export interface RunWorkerOptions {
    * the worker. See docs/runs-and-redis.md.
    */
   maxConcurrency?: number;
-  /** How long `stop()` waits for in-flight runs before aborting them (ms). Default 5000. */
+  /**
+   * How long `stop()` waits for in-flight runs before aborting them (ms). Default
+   * {@link DEFAULT_SHUTDOWN_GRACE_MS}.
+   */
   shutdownGraceMs?: number;
 }
 
@@ -70,7 +83,7 @@ function logRunLifecycle(
 export function createRunWorker(ctx: ProtocolContext, options: RunWorkerOptions = {}): RunWorker {
   const { deps, control } = ctx;
   const maxConcurrency = options.maxConcurrency ?? DEFAULT_RUN_CONCURRENCY;
-  const shutdownGraceMs = options.shutdownGraceMs ?? 5000;
+  const shutdownGraceMs = options.shutdownGraceMs ?? DEFAULT_SHUTDOWN_GRACE_MS;
 
   // runIds currently executing on this worker, so shutdown can abort the stragglers.
   const inFlight = new Set<string>();

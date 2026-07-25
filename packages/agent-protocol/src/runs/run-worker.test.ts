@@ -143,4 +143,25 @@ describe("run worker", () => {
     await worker.stop(); // slow run never finishes on its own; must be aborted
     expect((await service.runs.get(run.run_id)).status).toBe("cancelled");
   });
+
+  // Zero is a real setting, not "unset" — a fleet that leans on queue redelivery can skip the drain
+  // entirely. It still has to settle the run terminally rather than leave it `running`.
+  it("stop() with a zero grace aborts in-flight runs immediately", async () => {
+    const deps = createFixtureDeps();
+    const ctx = createContext(deps);
+    const service = createProtocolServiceFromContext(ctx);
+    await service.assistants.registerGraphAssistants();
+    const worker = createRunWorker(ctx, { shutdownGraceMs: 0 });
+    worker.start();
+
+    const thread = await service.threads.create();
+    const run = await service.runs.createBackground(thread.thread_id, {
+      assistant_id: "slow",
+      input: {},
+    });
+    await waitFor(async () => (await service.runs.get(run.run_id)).status === "running");
+
+    await worker.stop();
+    expect((await service.runs.get(run.run_id)).status).toBe("cancelled");
+  });
 });

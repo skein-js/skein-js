@@ -26,6 +26,12 @@ export { resolveRunConcurrency } from "./run-concurrency.js";
 export { DEFAULT_RUN_CONCURRENCY } from "@skein-js/agent-protocol";
 export type { RunWorkerOptions } from "@skein-js/agent-protocol";
 
+// Shutdown drain window: the same shape for `worker.shutdownGraceMs` (explicit option →
+// SKEIN_SHUTDOWN_GRACE_MS → DEFAULT_SHUTDOWN_GRACE_MS). Exported so a host that forces exit on a
+// timer (the CLI does) can size that timer against the number the worker will actually use.
+export { resolveShutdownGraceMs } from "./shutdown-grace.js";
+export { DEFAULT_SHUTDOWN_GRACE_MS } from "@skein-js/agent-protocol";
+
 // In-memory runtime: assemble a `ProtocolDeps` backed by in-process drivers (the `skein dev` runtime,
 // and every adapter's `{ config }` convenience path).
 export { loadInMemoryRuntime, loadReloadableInMemoryRuntime } from "./in-memory-runtime.js";
