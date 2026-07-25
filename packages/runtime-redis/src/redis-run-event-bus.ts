@@ -40,6 +40,47 @@ const QUIT_TIMEOUT_MS = 1000;
 const sleepUnref = (ms: number): Promise<void> =>
   new Promise((resolve) => setTimeout(resolve, ms).unref());
 
+/** Resolves once a connection has finished handshaking, one way or the other. */
+const connectionSettled = (client: Redis): Promise<void> =>
+  new Promise((resolve) => {
+    const finish = (): void => {
+      client.off("ready", finish);
+      client.off("end", finish);
+      client.off("error", finish);
+      resolve();
+    };
+    client.once("ready", finish);
+    client.once("end", finish);
+    client.once("error", finish);
+  });
+
+/**
+ * Close a connection we own without orphaning ioredis's own in-flight commands.
+ *
+ * On connect, ioredis issues `CLIENT SETINFO` (twice) and — for the ready check — `INFO`, none of
+ * which application code ever awaits. Closing the socket mid-handshake makes ioredis flush them as
+ * rejections with nothing left to catch them, so they escape as unhandled rejections and take the
+ * process down (Node's default since v15). That is a real shutdown hazard, not just a test artifact:
+ * `embedPostgresGraphs` tears down a just-created bus whenever assembly fails partway.
+ *
+ * So: never opened a socket → close it without one; still handshaking → let it settle first (bounded,
+ * because a connection that never becomes ready must not block shutdown).
+ */
+async function closeConnection(client: Redis): Promise<void> {
+  if (client.status === "end") return;
+  if (client.status === "wait") {
+    // lazyConnect and never used — there is no socket and nothing in flight.
+    client.disconnect();
+    return;
+  }
+  if (client.status !== "ready") {
+    await Promise.race([connectionSettled(client), sleepUnref(QUIT_TIMEOUT_MS)]);
+  }
+  // `quit()` drains in-flight commands where `disconnect()` flushes them as rejections, so prefer it.
+  await Promise.race([client.quit().catch(() => undefined), sleepUnref(QUIT_TIMEOUT_MS)]);
+  client.disconnect();
+}
+
 /** A pub/sub message: either the next frame or the run's terminal marker. */
 type ChannelMessage = { type: "frame"; frame: RunFrame } | { type: "close" };
 
@@ -76,7 +117,10 @@ export class RedisRunEventBus implements RunEventBus {
 
   constructor(url: string, options: RedisRunEventBusOptions = {}) {
     this.#url = url;
-    this.#commands = new Redis(url);
+    // Lazy: constructing a bus must not open a socket. A bus that is built and then disposed without
+    // ever being used — a failed `embedPostgresGraphs` assembly, a process that exits early — then
+    // has no handshake to orphan. See `closeConnection`.
+    this.#commands = new Redis(url, { lazyConnect: true });
     this.#prefix = options.keyPrefix ?? "skein";
     this.#streamTtlSeconds = options.streamTtlSeconds ?? DEFAULT_STREAM_TTL_SECONDS;
     this.#closedMarkerTtlSeconds =
@@ -185,19 +229,16 @@ export class RedisRunEventBus implements RunEventBus {
         }
       }
     } finally {
-      // `quit()` drains in-flight commands where `disconnect()` flushes them as rejections, so prefer
-      // it — but bound it: a connection that is mid-reconnect (a Redis blip during a long stream)
-      // queues QUIT instead of settling, and this `finally` runs during generator finalization, which
-      // an SSE handler awaits. Race it against a short deadline, then close hard either way; after a
-      // successful quit the socket is already gone and `disconnect()` is a no-op. Teardown errors are
-      // swallowed — a subscriber going away must never surface as an error to the caller.
-      await Promise.race([subscriber.quit().catch(() => undefined), sleepUnref(QUIT_TIMEOUT_MS)]);
-      subscriber.disconnect();
+      // Bounded, because this `finally` runs during generator finalization, which an SSE handler
+      // awaits: a connection mid-reconnect (a Redis blip during a long stream) would queue QUIT
+      // instead of settling. Teardown errors are swallowed — a subscriber going away must never
+      // surface as an error to the caller.
+      await closeConnection(subscriber);
     }
   }
 
   /** Release the command connection. (`close(runId)` ends one run; this ends the whole bus.) */
   async dispose(): Promise<void> {
-    await this.#commands.quit();
+    await closeConnection(this.#commands);
   }
 }
