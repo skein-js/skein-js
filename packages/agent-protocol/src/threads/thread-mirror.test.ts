@@ -75,4 +75,35 @@ describe("snapshotToThreadState", () => {
     expect(state.created_at).toBe("2026-01-01T00:00:00.000Z");
     expect(state.parent_checkpoint).toBeNull();
   });
+
+  it("renders a failed task's error as JSON, not [object Object]", () => {
+    // LangGraph records a task failure as an object, so `String()` produced "[object Object]" —
+    // and the SDK's `useStream` JSON.parses this field to rebuild a `StreamError` from it.
+    const failed = {
+      id: "taskA",
+      name: "call_model",
+      interrupts: [],
+      error: { name: "Error", message: "boom" },
+    } as unknown as StateSnapshot["tasks"][number];
+
+    const [rendered] = snapshotToThreadState(snapshot({ tasks: [failed] })).tasks;
+    expect(rendered?.error).toBe('{"name":"Error","message":"boom"}');
+    expect(JSON.parse(rendered?.error ?? "null")).toMatchObject({ message: "boom" });
+  });
+
+  it("passes a string task error through untouched and leaves a healthy task null", () => {
+    const asString = {
+      id: "taskA",
+      name: "call_model",
+      interrupts: [],
+      error: "already a string",
+    } as unknown as StateSnapshot["tasks"][number];
+
+    expect(snapshotToThreadState(snapshot({ tasks: [asString] })).tasks[0]?.error).toBe(
+      "already a string",
+    );
+    expect(
+      snapshotToThreadState(snapshot({ tasks: [task("taskB", [])] })).tasks[0]?.error,
+    ).toBeNull();
+  });
 });

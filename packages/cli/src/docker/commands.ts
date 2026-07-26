@@ -10,6 +10,7 @@ import path from "node:path";
 import { loadConfig, type LanggraphJson } from "@skein-js/config";
 
 import { bundleProject } from "../bundle/bundle-project.js";
+import { describeError } from "../describe-error.js";
 import { DEFAULT_CONTAINER_PORT } from "../serve-env.js";
 
 import { generateCompose } from "./compose.js";
@@ -203,7 +204,7 @@ export async function runBuild(options: BuildCommandOptions): Promise<void> {
   try {
     artifactDir = await prepareArtifact(context);
   } catch (error) {
-    console.error(`skein: ${error instanceof Error ? error.message : String(error)}`);
+    console.error(`skein: ${describeError(error)}`);
     process.exitCode = 1;
     return;
   }
@@ -253,7 +254,7 @@ export async function runUp(options: UpCommandOptions): Promise<void> {
       },
     ]);
   } catch (error) {
-    console.error(`skein: ${error instanceof Error ? error.message : String(error)}`);
+    console.error(`skein: ${describeError(error)}`);
     process.exitCode = 1;
     return;
   }

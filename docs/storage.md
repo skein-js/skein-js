@@ -35,10 +35,11 @@ interface SkeinStore {
   // assistants (derived from langgraph.json graphs, plus user-created)
   assistants: AssistantRepo;
 
-  // threads: metadata + status (idle | busy | interrupted | error)
+  // threads: metadata + status (idle | busy | interrupted | error), plus the latest turn's error
   threads: ThreadRepo;
 
-  // runs: status + queue rows (pending | running | success | error | cancelled)
+  // runs: status + queue rows (pending | running | success | error | cancelled | timeout),
+  // and — for a failed run — why (see errors-and-logging.md)
   runs: RunRepo;
 
   // long-term memory: namespace/key items with optional semantic search

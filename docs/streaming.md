@@ -53,7 +53,9 @@ data: <json payload>
 - **Event id sequencing** — each run assigns monotonically increasing ids so a reconnecting
   client can resume via `Last-Event-ID` (replay support; full replay buffering is iterative).
 - **Terminal frames** — a final `event: end` (or `error`) closes the stream with the run's
-  status.
+  status. An `error` frame's payload is a `RunError` — `{ error, message, name, cause?, errors? }`,
+  plus `stack` when the server sets `exposeErrorStacks`. See
+  [errors-and-logging.md](./errors-and-logging.md).
 - **Transport ownership** — `@skein-js/core` produces an async iterator of normalized frames;
   each framework adapter writes them as `text/event-stream` (Express `res.write`, Fastify
   reply stream, etc.). The core stays framework-agnostic.

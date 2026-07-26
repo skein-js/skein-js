@@ -156,6 +156,27 @@ describe("PostgresSkeinStore.restore", () => {
     expect(item).toMatchObject({ key: "k1", value: { note: "remember" }, createdAt: at });
   });
 
+  it("round-trips a failed run's error and the thread's mirrored message", async () => {
+    // `restore` is documented as the lossless sink for migration tooling, so a snapshot that
+    // records *why* a run failed has to arrive with that intact.
+    const snapshot = fixture();
+    const failure = {
+      error: "TypeError",
+      name: "TypeError",
+      message: "model call failed",
+      cause: { error: "Error", name: "Error", message: "429 rate limit" },
+    };
+    snapshot.runs[0]![1].status = "error";
+    snapshot.runs[0]![1].error = failure;
+    snapshot.threads[0]![1].status = "error";
+    snapshot.threads[0]![1].error = "model call failed";
+
+    await store.restore(snapshot);
+
+    expect((await store.runs.get("r1"))?.error).toEqual(failure);
+    expect((await store.threads.get("t1"))?.error).toBe("model call failed");
+  });
+
   it("is idempotent — re-running leaves existing rows untouched (ON CONFLICT DO NOTHING)", async () => {
     await store.restore(fixture());
 

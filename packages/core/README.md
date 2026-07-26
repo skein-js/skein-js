@@ -33,6 +33,8 @@ them. Everything downstream imports it:
 - **`AuthEngine`** — the authentication + authorization contract (LangGraph-style custom auth),
   consulted per request by the engine when present.
 - **`SkeinHttpError`** — the typed edge error carrying an HTTP status.
+- **`RunError`** / **`toRunError`** — why a run failed, as one JSON-safe payload shared by the
+  `error` SSE frame, the persisted `Run.error`, and a failed `POST /runs/wait`.
 - **`serializeWireJson`** — flattens LangChain messages to the Agent Protocol wire shape for output.
 
 ## Install

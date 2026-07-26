@@ -158,6 +158,28 @@ describe("run service", () => {
     expect((await deps.store.threads.list()).length).toBe(before);
   });
 
+  it("reports a failed wait run as __error__ instead of an empty success", async () => {
+    // A `POST /runs/wait` whose graph threw used to answer 200 with `{}` — indistinguishable from a
+    // graph that legitimately returned nothing. `__error__` is the key LangGraph Platform uses.
+    const { service } = await serviceWithAssistants();
+    const values = await service.runs.createWait({ assistant_id: "throwing", input: {} });
+
+    expect(values).toEqual({
+      __error__: { error: "Error", name: "Error", message: "boom" },
+    });
+  });
+
+  it("returns plain values for a wait run that succeeded", async () => {
+    const { service } = await serviceWithAssistants();
+    const values = await service.runs.createWait({
+      assistant_id: "echo",
+      input: { value: "hi" },
+    });
+
+    expect(values).toEqual({ value: "echo: hi" });
+    expect(values).not.toHaveProperty("__error__");
+  });
+
   it("clears a prior error from thread metadata once a later run succeeds", async () => {
     const { service } = await serviceWithAssistants();
     const thread = await service.threads.create();

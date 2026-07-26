@@ -36,6 +36,12 @@ export interface ViteGraphLoader {
   clearCache(): void;
   /** Tear down the runner and the vite dev server. */
   close(): Promise<void>;
+  /**
+   * The workspace root vite resolved for file serving — the outermost directory a transformed module
+   * can legitimately come from. The dev logger bounds its code frame to this, so an aliased lib above
+   * the project dir still gets a frame while nothing outside the workspace is ever read.
+   */
+  workspaceRoot: string;
 }
 
 /**
@@ -87,6 +93,7 @@ export async function createViteGraphLoader(
   return {
     importModule: (sourceFile) => runner.import(sourceFile) as Promise<Record<string, unknown>>,
     watcher: server.watcher,
+    workspaceRoot,
     clearCache: () => runner.clearCache(),
     close: async () => {
       await runner.close();

@@ -4,9 +4,11 @@
 
 import {
   isTerminalRunStatus,
+  toRunError,
   type QueuedRun,
   type Run,
   type RunConsumer,
+  type RunError,
   type RunStatus,
 } from "@skein-js/core";
 
@@ -80,16 +82,24 @@ function logRunLifecycle(
   status: RunStatus,
   startedAt: number,
   endedAt: number,
+  failure?: RunError,
 ): void {
-  logger.info(status === "success" ? "Background run succeeded" : `Background run ${status}`, {
+  const message = status === "success" ? "Background run succeeded" : `Background run ${status}`;
+  const meta = {
     run_id: run.run_id,
+    // A summary that says a run failed but not why sends you hunting through the log for the
+    // engine's report. The full stack stays there; this is the breadcrumb.
+    ...(failure ? { run_error: `${failure.name}: ${failure.message}` } : {}),
     run_attempt: 1,
     run_created_at: run.created_at,
     run_started_at: new Date(startedAt).toISOString(),
     run_ended_at: new Date(endedAt).toISOString(),
     run_exec_ms: endedAt - startedAt,
     run_queue_ms: startedAt - Date.parse(run.created_at),
-  });
+  };
+  // Called, not passed as a reference, so a class-based logger keeps its `this`.
+  if (status === "error" || status === "timeout") logger.error(message, meta);
+  else logger.info(message, meta);
 }
 
 export function createRunWorker(ctx: ProtocolContext, options: RunWorkerOptions = {}): RunWorker {
@@ -129,10 +139,18 @@ export function createRunWorker(ctx: ProtocolContext, options: RunWorkerOptions 
     // capture, and any pending rollback — the same path inline runs take, so behavior can't drift.
     const startedAt = Date.now();
     let status: RunStatus = "error";
+    let failure: RunError | undefined;
     try {
-      status = (await startRunExecution(ctx, run, kwargs)).status;
+      const outcome = await startRunExecution(ctx, run, kwargs);
+      status = outcome.status;
+      failure = outcome.error;
+    } catch (error) {
+      // `executeRun` swallows graph errors, so a throw here is a store/precondition failure. It used
+      // to vanish into the queue's retry with no trace; record it before letting it propagate.
+      failure = toRunError(error);
+      throw error;
     } finally {
-      logRunLifecycle(deps.logger, run, status, startedAt, Date.now());
+      logRunLifecycle(deps.logger, run, status, startedAt, Date.now(), failure);
       inFlight.delete(queued.run_id);
     }
   };

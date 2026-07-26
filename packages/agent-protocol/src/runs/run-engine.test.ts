@@ -62,6 +62,99 @@ describe("executeRun", () => {
     expect(frames.at(-1)?.event).toBe("error");
   });
 
+  it("publishes the failure in LangGraph Platform's `{ error, message }` shape", async () => {
+    const { deps, run, kwargs } = await seed(createFixtureDeps(), "throwing");
+    const control = new RunControlRegistry().register(run.run_id);
+
+    const framesPromise = collect(deps.bus.subscribe(run.run_id, 0));
+    await executeRun(deps, { run, kwargs, control });
+    const frames = await framesPromise;
+
+    // `error` is the field the SDK's `ErrorStreamEvent` declares; `name` is the alias its
+    // `StreamError` prefers. Both carry the constructor name, so every consumer agrees.
+    expect(frames.at(-1)?.data).toEqual({ error: "Error", name: "Error", message: "boom" });
+  });
+
+  it("persists the failure on the run row, so a later GET can still explain it", async () => {
+    const { deps, run, kwargs } = await seed(createFixtureDeps(), "throwing-with-cause");
+    const control = new RunControlRegistry().register(run.run_id);
+
+    const framesPromise = collect(deps.bus.subscribe(run.run_id, 0));
+    const outcome = await executeRun(deps, { run, kwargs, control });
+    const frames = await framesPromise;
+
+    const expected = {
+      error: "Error",
+      name: "Error",
+      message: "model call failed",
+      cause: { error: "Error", name: "Error", message: "429 rate limit" },
+    };
+    // The frame, the run row, and the returned outcome are the same payload — they cannot disagree.
+    expect(frames.at(-1)?.data).toEqual(expected);
+    expect((await deps.store.runs.get(run.run_id))?.error).toEqual(expected);
+    expect(outcome.error).toEqual(expected);
+  });
+
+  it("keeps stacks off the wire by default, and includes them under exposeErrorStacks", async () => {
+    const hidden = await seed(createFixtureDeps(), "throwing");
+    const hiddenFrames = collect(hidden.deps.bus.subscribe(hidden.run.run_id, 0));
+    await executeRun(hidden.deps, {
+      run: hidden.run,
+      kwargs: hidden.kwargs,
+      control: new RunControlRegistry().register(hidden.run.run_id),
+    });
+    expect((await hiddenFrames).at(-1)?.data).not.toHaveProperty("stack");
+    expect((await hidden.deps.store.runs.get(hidden.run.run_id))?.error).not.toHaveProperty(
+      "stack",
+    );
+
+    const shown = await seed(
+      { ...createFixtureDeps(), exposeErrorStacks: true },
+      "throwing-with-cause",
+    );
+    const shownFrames = collect(shown.deps.bus.subscribe(shown.run.run_id, 0));
+    await executeRun(shown.deps, {
+      run: shown.run,
+      kwargs: shown.kwargs,
+      control: new RunControlRegistry().register(shown.run.run_id),
+    });
+    const data = (await shownFrames).at(-1)?.data as { stack?: string; cause?: { stack?: string } };
+    expect(data.stack).toContain("Error: model call failed");
+    expect(data.cause?.stack).toBeDefined();
+  });
+
+  it("mirrors the failure onto the thread's SDK `error` field and clears it on recovery", async () => {
+    const deps = createFixtureDeps();
+    const failed = await seed(deps, "throwing");
+    await executeRun(failed.deps, {
+      run: failed.run,
+      kwargs: failed.kwargs,
+      control: new RunControlRegistry().register(failed.run.run_id),
+    });
+
+    const thread = await failed.deps.store.threads.get(failed.threadId);
+    expect(thread?.error).toBe("boom");
+    expect(thread?.metadata?.["error"]).toBe("boom");
+
+    // A later healthy run on the same thread must not keep reporting the old failure.
+    const echo = await failed.deps.store.assistants.create({ graph_id: "echo", assistant_id: "e" });
+    const next = await failed.deps.store.runs.create({
+      thread_id: failed.threadId,
+      assistant_id: echo.assistant_id,
+      status: "pending",
+    });
+    await executeRun(failed.deps, {
+      run: next,
+      kwargs: { input: { value: "hi" }, stream_mode: "values" as const },
+      control: new RunControlRegistry().register(next.run_id),
+    });
+
+    const recovered = await failed.deps.store.threads.get(failed.threadId);
+    expect(recovered?.status).toBe("idle");
+    expect(recovered?.error).toBeUndefined();
+    expect(recovered?.metadata?.["error"]).toBeUndefined();
+  });
+
   it("interrupts, persisting the pending interrupt onto the thread", async () => {
     const { deps, run, threadId, kwargs } = await seed(createFixtureDeps(), "interrupting");
     const control = new RunControlRegistry().register(run.run_id);

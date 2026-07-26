@@ -78,12 +78,14 @@ describe("applySkeinMigrations", () => {
       "0001_init",
       "0002_store_ttl",
       "0003_assistant_versions",
+      "0004_run_error",
     ]);
 
     expect((await readLedger(pool)).map((row) => row.name)).toEqual([
       "0001_init",
       "0002_store_ttl",
       "0003_assistant_versions",
+      "0004_run_error",
     ]);
 
     for (const table of ["assistants", "assistant_versions", "threads", "runs", "store_items"]) {
@@ -101,6 +103,17 @@ describe("applySkeinMigrations", () => {
       `SELECT indexname FROM pg_indexes WHERE tablename = 'store_items'`,
     );
     expect(indexes.rows.map((row) => row.indexname)).toContain("store_items_expires_at_idx");
+
+    // 0004 hangs the failure reason off both the run and the thread.
+    const failureColumns = await pool.query<{ table_name: string; data_type: string }>(
+      `SELECT table_name, data_type FROM information_schema.columns
+        WHERE column_name = 'error' AND table_name IN ('runs', 'threads')
+        ORDER BY table_name`,
+    );
+    expect(failureColumns.rows).toEqual([
+      { table_name: "runs", data_type: "jsonb" },
+      { table_name: "threads", data_type: "text" },
+    ]);
   });
 
   it("creates the ledger with the column types node-pg-migrate used", async () => {
@@ -162,13 +175,18 @@ describe("applySkeinMigrations", () => {
     );
     const [legacyRow] = await readLedger(pool);
 
-    expect(await applySkeinMigrations(pool)).toEqual(["0002_store_ttl", "0003_assistant_versions"]);
+    expect(await applySkeinMigrations(pool)).toEqual([
+      "0002_store_ttl",
+      "0003_assistant_versions",
+      "0004_run_error",
+    ]);
 
     const ledger = await readLedger(pool);
     expect(ledger.map((row) => row.name)).toEqual([
       "0001_init",
       "0002_store_ttl",
       "0003_assistant_versions",
+      "0004_run_error",
     ]);
     // The pre-existing row is untouched, so 0001_init was not re-applied.
     expect(ledger[0]).toEqual(legacyRow);
@@ -228,11 +246,12 @@ describe("applySkeinMigrations", () => {
       applySkeinMigrations(second),
     ]);
 
-    expect([firstApplied.length, secondApplied.length].sort()).toEqual([0, 3]);
+    expect([firstApplied.length, secondApplied.length].sort()).toEqual([0, 4]);
     expect((await readLedger(first)).map((row) => row.name)).toEqual([
       "0001_init",
       "0002_store_ttl",
       "0003_assistant_versions",
+      "0004_run_error",
     ]);
   });
 });

@@ -7,15 +7,22 @@ import { createProtocolServiceFromContext } from "../service.js";
 
 import { createRunWorker, DEFAULT_RUN_CONCURRENCY } from "./run-worker.js";
 
-/** A logger that records every `info` call's message + meta for assertions. */
-function capturingLogger(): Logger & { infos: { message: string; meta?: unknown }[] } {
-  const infos: { message: string; meta?: unknown }[] = [];
+interface CapturedLine {
+  message: string;
+  meta?: unknown;
+}
+
+/** A logger that records every `info` and `error` call's message + meta for assertions. */
+function capturingLogger(): Logger & { infos: CapturedLine[]; errors: CapturedLine[] } {
+  const infos: CapturedLine[] = [];
+  const errors: CapturedLine[] = [];
   return {
     infos,
+    errors,
     debug: () => {},
     info: (message, meta) => infos.push({ message, meta }),
     warn: () => {},
-    error: () => {},
+    error: (message, meta) => errors.push({ message, meta }),
   };
 }
 
@@ -98,6 +105,32 @@ describe("run worker", () => {
       expect(summary?.meta).toHaveProperty("run_created_at");
       expect(summary?.meta).toHaveProperty("run_exec_ms");
       expect(summary?.meta).toHaveProperty("run_queue_ms");
+    } finally {
+      await worker.stop();
+    }
+  });
+
+  it("summarizes a failed background run at error level, saying why", async () => {
+    // The summary used to say "Background run error" and nothing about the cause, so a background
+    // failure left only timings behind.
+    const logger = capturingLogger();
+    const deps = createFixtureDeps({ logger });
+    const ctx = createContext(deps);
+    const service = createProtocolServiceFromContext(ctx);
+    await service.assistants.registerGraphAssistants();
+    const worker = createRunWorker(ctx);
+    worker.start();
+    try {
+      const thread = await service.threads.create();
+      const run = await service.runs.createBackground(thread.thread_id, {
+        assistant_id: "throwing",
+        input: {},
+      });
+      await waitFor(async () => logger.errors.some((e) => e.message === "Background run error"));
+
+      const summary = logger.errors.find((e) => e.message === "Background run error");
+      expect(summary?.meta).toMatchObject({ run_id: run.run_id, run_error: "Error: boom" });
+      expect(summary?.meta).toHaveProperty("run_exec_ms");
     } finally {
       await worker.stop();
     }

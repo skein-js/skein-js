@@ -70,12 +70,31 @@ function toCheckpoint(config: StateSnapshot["config"] | undefined): Checkpoint |
   };
 }
 
+/**
+ * A failed task's error, as the wire's `ThreadTask.error` string.
+ *
+ * LangGraph records a task failure as an *object* (`{ name, message }`), so the obvious `String()`
+ * yields `"[object Object]"`. It has to be JSON: the SDK's `useStream` reads this field back with
+ * `JSON.parse` and rebuilds a `StreamError` from it when the result carries a `message`, falling
+ * back to showing the raw string. `@langchain/langgraph-api` lands on the same JSON by way of its
+ * `serializeError`, so this matches the platform on the shape clients actually parse.
+ */
+function toTaskError(error: unknown): string | null {
+  if (error === undefined || error === null) return null;
+  if (typeof error === "string") return error;
+  try {
+    return JSON.stringify(error) ?? String(error);
+  } catch {
+    return String(error);
+  }
+}
+
 function toThreadTask(task: StateSnapshot["tasks"][number]): ThreadTask {
   return {
     id: task.id,
     name: task.name,
     result: task.result,
-    error: task.error === undefined ? null : String(task.error),
+    error: toTaskError(task.error),
     interrupts: (task.interrupts ?? []) as unknown as Interrupt[],
     checkpoint: null,
     state: null,

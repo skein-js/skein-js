@@ -164,6 +164,45 @@ describe("createGraphInvokeHandler", () => {
       expect(text).not.toContain(`"status":"success"`);
     });
 
+    it("uses the same payload shape as the run engine, stacks off by default", async () => {
+      const invoke = createGraphInvokeHandler(createFixtureDeps());
+
+      const text = await sseText(await invoke(asStream("throwing", { value: "x" })));
+
+      expect(text).toContain(`data: {"error":"Error","name":"Error","message":"boom"}`);
+      expect(text).not.toContain(`"stack"`);
+    });
+
+    it("includes the stack on the wire only under exposeErrorStacks", async () => {
+      const invoke = createGraphInvokeHandler(createFixtureDeps({ exposeErrorStacks: true }));
+
+      const text = await sseText(await invoke(asStream("throwing", { value: "x" })));
+
+      expect(text).toContain(`"stack"`);
+      // Still one frame — the escaped newlines must not split the SSE block.
+      expect(text.split("event: error")).toHaveLength(2);
+    });
+
+    it("logs a mid-stream failure even though it never becomes an HTTP status", async () => {
+      const errors: { message: string; meta?: unknown }[] = [];
+      const invoke = createGraphInvokeHandler(
+        createFixtureDeps({
+          logger: {
+            debug: () => {},
+            info: () => {},
+            warn: () => {},
+            error: (message, meta) => errors.push({ message, meta }),
+          },
+        }),
+      );
+
+      await sseText(await invoke(asStream("throwing", { value: "x" })));
+
+      expect(errors[0]?.message).toBe('Graph "throwing" failed: boom');
+      // A bare Error, since this surface has no run/thread/assistant to name.
+      expect(errors[0]?.meta).toBeInstanceOf(Error);
+    });
+
     // `events` isn't a Pregel mode — it would filter down to an empty streamMode and stream nothing.
     it("rejects stream_mode=events with a 400 rather than streaming nothing", async () => {
       const invoke = createGraphInvokeHandler(createFixtureDeps());

@@ -293,6 +293,26 @@ export function runSkeinStoreConformance(label: string, makeStore: SkeinStoreFac
         expect(updated.interrupts).toEqual(interrupts);
       });
 
+      it("mirrors why a thread failed, and clears it when the thread recovers", async () => {
+        const store = await makeStore();
+        const { thread_id } = await store.threads.create();
+
+        expect((await store.threads.get(thread_id))?.error).toBeUndefined();
+
+        const failed = await store.threads.update(thread_id, { status: "error", error: "boom" });
+        expect(failed.error).toBe("boom");
+        expect((await store.threads.get(thread_id))?.error).toBe("boom");
+
+        // An update that doesn't mention `error` leaves it alone...
+        const untouched = await store.threads.update(thread_id, { metadata: { a: 1 } });
+        expect(untouched.error).toBe("boom");
+
+        // ...and an explicit null clears it.
+        const recovered = await store.threads.update(thread_id, { status: "idle", error: null });
+        expect(recovered.error).toBeUndefined();
+        expect((await store.threads.get(thread_id))?.error).toBeUndefined();
+      });
+
       it("rejects updating an unknown thread", async () => {
         const store = await makeStore();
         await expect(store.threads.update("nope", { status: "idle" })).rejects.toThrow();
@@ -453,6 +473,48 @@ export function runSkeinStoreConformance(label: string, makeStore: SkeinStoreFac
       it("rejects setting status on an unknown run", async () => {
         const store = await makeStore();
         await expect(store.runs.setStatus("nope", "running")).rejects.toThrow();
+      });
+
+      it("leaves error absent on a run that never failed", async () => {
+        const store = await makeStore();
+        const thread_id = await seedThread(store);
+        const run = await store.runs.create({ thread_id, assistant_id: "a" });
+
+        expect((await store.runs.get(run.run_id))?.error).toBeUndefined();
+        await store.runs.setStatus(run.run_id, "success");
+        expect((await store.runs.get(run.run_id))?.error).toBeUndefined();
+      });
+
+      it("records why a run failed, including the cause chain", async () => {
+        const store = await makeStore();
+        const thread_id = await seedThread(store);
+        const run = await store.runs.create({ thread_id, assistant_id: "a" });
+        const failure = {
+          error: "TypeError",
+          name: "TypeError",
+          message: "model call failed",
+          cause: { error: "Error", name: "Error", message: "429 rate limit" },
+        };
+
+        expect((await store.runs.setStatus(run.run_id, "error", failure)).error).toEqual(failure);
+        expect((await store.runs.get(run.run_id))?.error).toEqual(failure);
+        // listByThread is a separate read path in the Postgres driver, so assert through it too.
+        const listed = await store.runs.listByThread(thread_id);
+        expect(listed.find((each) => each.run_id === run.run_id)?.error).toEqual(failure);
+      });
+
+      it("clears a stored error when the status moves on without one", async () => {
+        const store = await makeStore();
+        const thread_id = await seedThread(store);
+        const run = await store.runs.create({ thread_id, assistant_id: "a" });
+
+        await store.runs.setStatus(run.run_id, "error", {
+          error: "Error",
+          name: "Error",
+          message: "boom",
+        });
+        await store.runs.setStatus(run.run_id, "success");
+        expect((await store.runs.get(run.run_id))?.error).toBeUndefined();
       });
 
       it("reports an active run via the concurrency guard until it reaches a terminal status", async () => {

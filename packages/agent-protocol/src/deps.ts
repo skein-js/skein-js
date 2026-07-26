@@ -81,6 +81,17 @@ export interface ProtocolDeps {
    * --verbose` turns it on. Zero cost when off (the engine skips the stream inspection entirely).
    */
   logRunActivity?: boolean;
+  /**
+   * When true, a failed run's stack trace travels **to the client**: the `error` SSE frame and the
+   * persisted `Run.error` both carry `stack`. Off by default, because a stack names server file
+   * paths, dependency versions, and sometimes argument values that a production caller has no
+   * business seeing — LangGraph Platform never puts one on the wire either. `skein dev` turns it on;
+   * `skein start` and production leave it off.
+   *
+   * Server-side logging is unaffected either way: the engine always hands the original `Error` to
+   * {@link logger}, so stacks and `cause` chains are in the logs regardless of this flag.
+   */
+  exposeErrorStacks?: boolean;
   /** Optional per-run wall-clock timeout in ms. When set, a run exceeding it becomes `"timeout"`. */
   runTimeoutMs?: number;
   /**
@@ -102,6 +113,16 @@ const noopLogger: Logger = {
   warn: () => {},
   error: () => {},
 };
+
+/**
+ * True when nothing was injected and {@link resolveDeps} filled in the discarding default. Callers
+ * use this to skip *assembling* an expensive log payload, not to skip logging: the failed-run report
+ * costs a checkpointer read to name the node that threw, and paying that to hand it to a function
+ * that drops it is pure waste on a path that already went wrong.
+ */
+export function isNoopLogger(logger: Logger): boolean {
+  return logger === noopLogger;
+}
 
 // Minimal shape of the global `fetch` we rely on — declared locally so this file needs neither the
 // DOM lib nor @types/node's web-globals (the workspace compiles with `lib: ["ES2023"]`). Node 18+

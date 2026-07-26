@@ -21,6 +21,7 @@ import {
   type Item,
   type Run,
   type RunCreate,
+  type RunError,
   type RunKwargs,
   type RunRepo,
   type RunStatus,
@@ -317,14 +318,19 @@ export class MemorySkeinStore implements SkeinStore {
       const existing = this.#threads.get(threadId);
       if (!existing) throw SkeinHttpError.notFound(`Thread "${threadId}" not found.`);
       const at = nowIso();
+      // `error` is tri-state: absent leaves it alone, `null` clears it, a string sets it. The key
+      // is dropped rather than set to null when cleared, so a healthy thread carries no `error`.
+      const { error: _replaced, ...withoutError } = existing;
+      const error = patch.error === undefined ? existing.error : patch.error;
       const updated: Thread = {
-        ...existing,
+        ...withoutError,
         metadata: patch.metadata ?? existing.metadata,
         status: patch.status ?? existing.status,
         values: patch.values ?? existing.values,
         interrupts: patch.interrupts ?? existing.interrupts,
         updated_at: at,
         state_updated_at: patch.values !== undefined ? at : existing.state_updated_at,
+        ...(error == null ? {} : { error }),
       };
       return write(this.#threads, threadId, updated);
     },
@@ -373,10 +379,19 @@ export class MemorySkeinStore implements SkeinStore {
       if (input.kwargs) this.#runKwargs.set(run.run_id, clone(input.kwargs));
       return stored;
     },
-    setStatus: async (runId, status: RunStatus) => {
+    setStatus: async (runId, status: RunStatus, error?: RunError) => {
       const existing = this.#runs.get(runId);
       if (!existing) throw SkeinHttpError.notFound(`Run "${runId}" not found.`);
-      return write(this.#runs, runId, { ...existing, status, updated_at: nowIso() });
+      // `error` is authoritative on every call, so a stale one is dropped rather than merged. The
+      // conditional spread (over `error: undefined`) keeps the key genuinely absent on a run that
+      // did not fail, matching the Postgres driver's NULL column.
+      const { error: _replaced, ...rest } = existing;
+      return write(this.#runs, runId, {
+        ...rest,
+        status,
+        updated_at: nowIso(),
+        ...(error ? { error } : {}),
+      });
     },
     delete: async (runId) => {
       this.#runs.delete(runId);

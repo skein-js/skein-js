@@ -124,12 +124,14 @@ export function createAuthScopedStore(
       listByThread: async (threadId) =>
         (await inner.runs.listByThread(threadId)).filter((run) => matches(run.metadata)),
       create: (input) => inner.runs.create({ ...input, metadata: stamp(input.metadata) }),
-      setStatus: async (runId, status) => {
+      // `error` must be forwarded: dropping it here compiles fine and would silently discard every
+      // run failure reason on every auth-enabled deployment.
+      setStatus: async (runId, status, error) => {
         const run = await inner.runs.get(runId);
         if (!run || !matches(run.metadata)) {
           throw SkeinHttpError.notFound(`Run "${runId}" not found.`);
         }
-        return inner.runs.setStatus(runId, status);
+        return inner.runs.setStatus(runId, status, error);
       },
       delete: async (runId) => {
         const run = await inner.runs.get(runId);

@@ -61,10 +61,6 @@ const RELOAD_DEBOUNCE_MS = 120;
 /** How often to autosave dev state to disk while running. */
 const AUTOSAVE_MS = 2000;
 
-/** Console logger for the dev server — colored, `info:`-prefixed output that drives per-request
- * logging, the background-run summaries, the startup banner, and surfaces engine warnings. */
-const devLogger = createDevLogger();
-
 export async function runDev(options: DevCommandOptions): Promise<void> {
   const configPath = path.resolve(process.cwd(), options.config);
 
@@ -85,6 +81,11 @@ export async function runDev(options: DevCommandOptions): Promise<void> {
   // Ignore our own persisted-state dir: its periodic autosave writes would otherwise be seen as
   // source changes and trigger an endless reload loop.
   const loader = await createViteGraphLoader(configDir, [`${STATE_DIR}/**`, `**/${STATE_DIR}/**`]);
+  // The dev server's console logger — colored, `info:`-prefixed output that drives per-request
+  // logging, the background-run summaries, the startup banner, and engine warnings. Its failure-block
+  // code frame is bounded to the workspace vite serves from: wide enough for an aliased lib above the
+  // project dir, closed to everything else.
+  const devLogger = createDevLogger({ sourceRoot: loader.workspaceRoot });
   const runtime = await buildRuntime({
     configPath,
     importModule: loader.importModule,
@@ -110,9 +111,7 @@ export async function runDev(options: DevCommandOptions): Promise<void> {
       runtime.hydrateState?.(JSON.parse(readFileSync(stateFile, "utf8")) as DevStateSnapshot);
       console.log("skein: restored dev state.");
     } catch (error) {
-      console.warn(
-        `skein: could not restore dev state: ${error instanceof Error ? error.message : String(error)}`,
-      );
+      devLogger.warn("could not restore dev state", error);
     }
   } else if (canPersist && existsSync(path.join(configDir, LANGGRAPH_DIR))) {
     // No skein state yet, but a LangGraph dev state is present — import it once so switching from
@@ -129,14 +128,21 @@ export async function runDev(options: DevCommandOptions): Promise<void> {
         );
       }
     } catch (error) {
-      console.warn(
-        `skein: could not import ${LANGGRAPH_DIR}/: ${error instanceof Error ? error.message : String(error)}`,
-      );
+      devLogger.warn(`could not import ${LANGGRAPH_DIR}/`, error);
     }
   }
 
+  // Give the run engine the console logger. Without this it holds the default no-op, so nothing it
+  // reports — a failed run, `--verbose` activity, a webhook that didn't deliver — ever reaches the
+  // terminal. The adapter's own `logger` option below covers only request lines and adapter faults.
+  runtime.deps.logger = devLogger;
   // `--verbose`: have the run engine log per-run activity (start/finish, tool calls, interrupts).
   if (options.verbose) runtime.deps.logRunActivity = true;
+  // The dev server sends a failed run's stack to the client too (the `error` SSE frame and the
+  // persisted `Run.error`), so a browser-side `useStream` can show it. Deliberately unconditional
+  // rather than behind `--verbose`: needing a flag to find out why your graph crashed is the very
+  // problem this reporting exists to remove. `skein start` leaves it off.
+  runtime.deps.exposeErrorStacks = true;
 
   let server: SkeinExpressServer;
   try {
@@ -176,9 +182,7 @@ export async function runDev(options: DevCommandOptions): Promise<void> {
       writeDevStateFile(stateFile, serialized);
       lastSaved = serialized;
     } catch (error) {
-      console.warn(
-        `skein: could not persist dev state: ${error instanceof Error ? error.message : String(error)}`,
-      );
+      devLogger.warn("could not persist dev state", error);
     }
   };
 
@@ -208,7 +212,9 @@ export async function runDev(options: DevCommandOptions): Promise<void> {
         await Promise.all(
           runtime.deps.graphs.ids.map((id) =>
             runtime.deps.graphs.load(id).catch((error: unknown) => {
-              console.error(`skein: graph "${id}" failed to load: ${String(error)}`);
+              // The Error goes as meta, so the dev logger prints the stack and, for a config
+              // error, the `caused by:` chain that names the real import failure.
+              devLogger.error(`graph "${id}" failed to load`, error);
             }),
           ),
         );
@@ -216,9 +222,7 @@ export async function runDev(options: DevCommandOptions): Promise<void> {
       } catch (error) {
         // A bad config (e.g. langgraph.json edited to invalid JSON) rejects reloadGraphs. Log and
         // keep the watcher alive — never let it become an unhandled rejection that kills the server.
-        console.error(
-          `skein: reload failed: ${error instanceof Error ? error.message : String(error)}`,
-        );
+        devLogger.error("reload failed", error);
       } finally {
         reloading = false;
         if (dirty) {

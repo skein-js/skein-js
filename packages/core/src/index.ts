@@ -71,6 +71,11 @@ export { serializeWireJson } from "./wire/serialize-wire-json.js";
 // Edge error type.
 export { isSkeinHttpError, SkeinHttpError } from "./errors/skein-http-error.js";
 
+// Run failure payload — the one shape carried by the `error` SSE frame, the persisted `Run.error`,
+// and the `__error__` body of a failed `POST /runs/wait`.
+export { runError, toRunError } from "./errors/run-error.js";
+export type { RunError, ToRunErrorOptions } from "./errors/run-error.js";
+
 // Authentication + authorization contract (the injectable engine consulted per request).
 export type {
   AuthAction,

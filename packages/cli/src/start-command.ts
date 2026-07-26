@@ -18,6 +18,7 @@ import {
 import { resolveRunConcurrency, resolveShutdownGraceMs } from "@skein-js/server-kit";
 
 import { printBanner } from "./banner.js";
+import { describeError } from "./describe-error.js";
 import { createDevLogger } from "./dev-logger.js";
 import { applyProjectEnv } from "./project-env.js";
 import { describeBindError, envHost, envPort } from "./serve-env.js";
@@ -44,8 +45,6 @@ export interface StartCommandOptions {
   /** `true` when `--verbose` was passed: log per-run activity. */
   verbose?: boolean;
 }
-
-const logger = createDevLogger();
 
 /** Load the artifact's precomputed schemas (baked by `skein build`), keyed by graph id. */
 function readBakedSchemas(configDir: string): Record<string, GraphSchemas> {
@@ -91,10 +90,16 @@ export async function runStart(options: StartCommandOptions): Promise<void> {
     shutdownGraceMs = resolveShutdownGraceMs();
     schemas = readBakedSchemas(configDir);
   } catch (error) {
-    console.error(`skein: ${error instanceof Error ? error.message : String(error)}`);
+    console.error(`skein: ${describeError(error)}`);
     process.exitCode = 1;
     return;
   }
+
+  // The console logger, once the project root is known. Its failure-block code frame is bounded to
+  // that root: an error message can be attacker-influenced, and a frame is only ever useful for the
+  // deployment's own source. In a production image the bundled artifact usually has no original
+  // sources at all, so the frame is simply omitted and the stack still prints.
+  const logger = createDevLogger({ sourceRoot: configDir });
 
   // No `importModule`: graphs load via native `import()` of the bundled JS. `schemas` short-circuits
   // schema introspection to the baked map, so the runtime never parses TypeScript. Guarded because a
@@ -109,10 +114,13 @@ export async function runStart(options: StartCommandOptions): Promise<void> {
       schemas,
     });
   } catch (error) {
-    console.error(`skein: ${error instanceof Error ? error.message : String(error)}`);
+    console.error(`skein: ${describeError(error)}`);
     process.exitCode = 1;
     return;
   }
+  // The run engine's own logger — see the note in dev-command.ts. `exposeErrorStacks` stays off
+  // here: production logs the full stack, but never puts it on the wire.
+  runtime.deps.logger = logger;
   if (options.verbose) runtime.deps.logRunActivity = true;
 
   const port = options.portExplicit ? options.port : envPort(options.port);

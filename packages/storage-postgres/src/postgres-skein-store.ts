@@ -18,6 +18,7 @@ import {
   type Item,
   type Run,
   type RunCreate,
+  type RunError,
   type RunKwargs,
   type RunRepo,
   type RunStatus,
@@ -146,6 +147,7 @@ interface ThreadRow {
   metadata: Record<string, unknown>;
   values: Record<string, unknown>;
   interrupts: Record<string, unknown>;
+  error: string | null;
   created_at: Date;
   updated_at: Date;
   state_updated_at: Date;
@@ -158,6 +160,7 @@ interface RunRow {
   status: RunStatus;
   metadata: Record<string, unknown>;
   multitask_strategy: Run["multitask_strategy"];
+  error: RunError | null;
   created_at: Date;
   updated_at: Date;
 }
@@ -233,6 +236,8 @@ function rowToThread(row: ThreadRow): Thread {
     status: row.status,
     values: row.values,
     interrupts: row.interrupts,
+    // Absent rather than null on a healthy thread, matching the memory driver.
+    ...(row.error === null ? {} : { error: row.error }),
   } as Thread;
 }
 
@@ -246,6 +251,8 @@ function rowToRun(row: RunRow): Run {
     status: row.status,
     metadata: row.metadata,
     multitask_strategy: row.multitask_strategy ?? null,
+    // Absent rather than null on a run that did not fail, matching the memory driver.
+    ...(row.error === null ? {} : { error: row.error }),
   } as Run;
 }
 
@@ -452,8 +459,8 @@ export class PostgresSkeinStore implements SkeinStore {
       for (const [, thread] of snapshot.threads) {
         await client.query(
           `INSERT INTO threads
-             (thread_id, status, metadata, values, interrupts, created_at, updated_at, state_updated_at)
-           VALUES ($1, $2, $3::jsonb, $4::jsonb, $5::jsonb, $6, $7, $8)
+             (thread_id, status, metadata, values, interrupts, error, created_at, updated_at, state_updated_at)
+           VALUES ($1, $2, $3::jsonb, $4::jsonb, $5::jsonb, $6, $7, $8, $9)
            ON CONFLICT (thread_id) DO NOTHING`,
           [
             thread.thread_id,
@@ -461,6 +468,7 @@ export class PostgresSkeinStore implements SkeinStore {
             JSON.stringify(thread.metadata ?? {}),
             JSON.stringify(thread.values ?? {}),
             JSON.stringify(thread.interrupts ?? {}),
+            typeof thread.error === "string" ? thread.error : null,
             thread.created_at,
             thread.updated_at,
             thread.state_updated_at ?? thread.updated_at,
@@ -475,8 +483,8 @@ export class PostgresSkeinStore implements SkeinStore {
         const kwargs = kwargsByRun.get(run.run_id) ?? null;
         await client.query(
           `INSERT INTO runs
-             (run_id, thread_id, assistant_id, status, metadata, multitask_strategy, kwargs, created_at, updated_at)
-           VALUES ($1, $2, $3, $4, $5::jsonb, $6, $7::jsonb, $8, $9)
+             (run_id, thread_id, assistant_id, status, metadata, multitask_strategy, kwargs, error, created_at, updated_at)
+           VALUES ($1, $2, $3, $4, $5::jsonb, $6, $7::jsonb, $8::jsonb, $9, $10)
            ON CONFLICT (run_id) DO NOTHING`,
           [
             run.run_id,
@@ -486,6 +494,7 @@ export class PostgresSkeinStore implements SkeinStore {
             JSON.stringify(run.metadata ?? {}),
             run.multitask_strategy ?? null,
             kwargs === null ? null : JSON.stringify(kwargs),
+            run.error === undefined ? null : JSON.stringify(run.error),
             run.created_at,
             run.updated_at,
           ],
@@ -814,6 +823,7 @@ export class PostgresSkeinStore implements SkeinStore {
            status = COALESCE($3, status),
            values = COALESCE($4::jsonb, values),
            interrupts = COALESCE($5::jsonb, interrupts),
+           error = CASE WHEN $6::boolean THEN $7::text ELSE error END,
            updated_at = now(),
            state_updated_at = CASE WHEN $4::jsonb IS NOT NULL THEN now() ELSE state_updated_at END
          WHERE thread_id = $1 RETURNING *`,
@@ -823,6 +833,10 @@ export class PostgresSkeinStore implements SkeinStore {
           patch.status ?? null,
           patch.values === undefined ? null : JSON.stringify(patch.values),
           patch.interrupts === undefined ? null : JSON.stringify(patch.interrupts),
+          // `error` is tri-state, so COALESCE can't express it: absent leaves the column alone,
+          // `null` clears it, a string sets it. The boolean says "the patch mentioned error".
+          patch.error !== undefined,
+          patch.error ?? null,
         ],
       );
       if (!rows[0]) throw SkeinHttpError.notFound(`Thread "${threadId}" not found.`);
@@ -832,8 +846,8 @@ export class PostgresSkeinStore implements SkeinStore {
       // Duplicate the row under a fresh id and timestamps; checkpoint history is copied separately
       // at the service layer via the LangGraph checkpointer.
       const { rows } = await this.#pool.query<ThreadRow>(
-        `INSERT INTO threads (thread_id, status, metadata, values, interrupts)
-         SELECT $1, status, metadata, values, interrupts FROM threads WHERE thread_id = $2
+        `INSERT INTO threads (thread_id, status, metadata, values, interrupts, error)
+         SELECT $1, status, metadata, values, interrupts, error FROM threads WHERE thread_id = $2
          RETURNING *`,
         [randomUUID(), threadId],
       );
@@ -876,10 +890,13 @@ export class PostgresSkeinStore implements SkeinStore {
       );
       return rowToRun(rows[0] as RunRow);
     },
-    setStatus: async (runId, status: RunStatus) => {
+    setStatus: async (runId, status: RunStatus, error?: RunError) => {
+      // `error` is written unconditionally, so omitting it clears a stale one — a run row's error
+      // always describes its current status. Status and error move in the same single write; see
+      // the `RunRepo.setStatus` contract for why they must not be split.
       const { rows } = await this.#pool.query<RunRow>(
-        "UPDATE runs SET status = $2, updated_at = now() WHERE run_id = $1 RETURNING *",
-        [runId, status],
+        "UPDATE runs SET status = $2, error = $3::jsonb, updated_at = now() WHERE run_id = $1 RETURNING *",
+        [runId, status, error === undefined ? null : JSON.stringify(error)],
       );
       if (!rows[0]) throw SkeinHttpError.notFound(`Run "${runId}" not found.`);
       return rowToRun(rows[0]);

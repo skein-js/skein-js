@@ -9,6 +9,28 @@ describe("encodeFrame", () => {
       `id: 2\nevent: values\ndata: {"a":1}\n\n`,
     );
   });
+
+  it("keeps a multi-line stack inside one SSE block", () => {
+    // SSE delimits on a blank line, so a raw newline in the payload would split one frame into two
+    // and desynchronize the client. JSON.stringify escapes them — pinned, because `exposeErrorStacks`
+    // is what first put multi-line text on this wire.
+    const encoded = encodeFrame({
+      seq: 1,
+      event: "error",
+      data: {
+        error: "Error",
+        name: "Error",
+        message: "boom",
+        stack: "Error: boom\n    at callModel (/app/src/graph.ts:42:11)",
+        cause: { error: "Error", name: "Error", message: "429\nrate limit" },
+      },
+    });
+
+    // One trailing blank line, and no other blank line to be mistaken for a frame boundary.
+    expect(encoded.endsWith("\n\n")).toBe(true);
+    expect(encoded.slice(0, -2)).not.toContain("\n\n");
+    expect(encoded.split("\n").filter((line) => line.startsWith("data: "))).toHaveLength(1);
+  });
 });
 
 describe("encodeTerminal", () => {

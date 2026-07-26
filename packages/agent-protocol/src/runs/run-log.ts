@@ -84,6 +84,31 @@ export function extractToolActivity(data: unknown): {
   return { calls, results };
 }
 
+/**
+ * The node(s) LangGraph was executing when the run threw, read from the post-failure state snapshot.
+ *
+ * The error object itself never names the node: LangGraph's `PregelRunner` rethrows a node's error
+ * verbatim, and its own `NodeError` (which does carry `.node`) is only ever handed to a per-node
+ * `errorHandler`, never thrown out of the graph. What the runner *does* do is record an `__error__`
+ * write against the failing task, which surfaces on `StateSnapshot.tasks[].error` next to the task's
+ * name — so the snapshot taken after the failure is the one reliable source.
+ *
+ * Best-effort, and honest about it: returns `[]` when the graph failed before any task ran, and
+ * names the *parent* node when the failure happened inside a subgraph. Never throws.
+ */
+export function describeFailingNodes(snapshot: StateSnapshot): string[] {
+  const names: string[] = [];
+  try {
+    for (const task of snapshot.tasks ?? []) {
+      if (task.error === undefined || task.error === null) continue;
+      if (typeof task.name === "string" && task.name.length > 0) names.push(task.name);
+    }
+  } catch {
+    // best-effort — an unexpected snapshot shape must not break the run.
+  }
+  return names;
+}
+
 /** The interrupt prompts a paused snapshot is waiting on, as short strings (best-effort). */
 export function describeInterrupts(snapshot: StateSnapshot): string[] {
   const prompts: string[] = [];

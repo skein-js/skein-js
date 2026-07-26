@@ -149,6 +149,8 @@ _branch_ from any past checkpoint:
 - JSON for all non-streaming payloads.
 - Request bodies carry `input`, optional `metadata`, optional `config`.
 - Responses carry status (`pending` / `success` / `error`), timestamps, and resource IDs.
+- A failed run also carries `error` — a skein extension over the SDK's `Run`, which records only
+  _that_ a run failed. See [errors-and-logging.md](./errors-and-logging.md).
 - Schemas use JSON Schema for interoperability.
 
 ## Authentication + authorization

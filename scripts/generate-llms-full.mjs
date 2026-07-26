@@ -24,6 +24,7 @@ const DOCS = [
   "docs/serving-a-single-graph.md",
   "docs/agent-protocol.md",
   "docs/streaming.md",
+  "docs/errors-and-logging.md",
   "docs/react-sdk.md",
   "docs/storage.md",
   "docs/runs-and-redis.md",

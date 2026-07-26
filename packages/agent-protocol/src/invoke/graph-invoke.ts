@@ -23,6 +23,7 @@ import { randomUUID } from "node:crypto";
 import { MemorySaver, type CompiledGraph } from "@langchain/langgraph";
 import {
   SkeinHttpError,
+  toRunError,
   type AuthContext,
   type RunFrame,
   type RunStatus,
@@ -36,7 +37,7 @@ import type { ProtocolHandler, ProtocolRequest, ProtocolResponse } from "../crea
 import type { ProtocolDeps } from "../deps.js";
 import { resolveCompiledGraph } from "../graphs/resolve-compiled-graph.js";
 import type { RouteBinding } from "../http/routes.js";
-import { serializeError } from "../normalize-error.js";
+import { toError } from "../runs/run-failure.js";
 import { toGraphStreamModes, withAuthUser } from "../runs/run-input.js";
 import { chunkToFrameBody, toRunFrame } from "../sse/run-frame-stream.js";
 import { toSseEvents } from "../sse/sse.js";
@@ -239,7 +240,12 @@ export function createGraphInvokeHandler(
         // travels as a frame, the same contract the run engine gives streaming clients.
         status = "error";
         seq += 1;
-        yield { seq, event: "error", data: serializeError(error) };
+        const wireError = toRunError(error, { includeStack: deps.exposeErrorStacks === true });
+        yield { seq, event: "error", data: wireError };
+        // Always logged, like the run engine. There is no run/thread/assistant to name on this
+        // surface, so the bare Error goes as meta — a console logger still renders its stack and
+        // `cause` chain from that.
+        deps.logger?.error(`Graph "${graphId}" failed: ${wireError.message}`, toError(error));
       } finally {
         dispose();
       }

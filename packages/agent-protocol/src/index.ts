@@ -53,6 +53,11 @@ export {
 } from "./runs/run-worker.js";
 export type { RunWorker, RunWorkerOptions } from "./runs/run-worker.js";
 
+// The structured `meta` on the always-on failed-run log line. A console logger can recognize it and
+// render a graph failure prominently; anything else just sees an object.
+export { isRunFailureReport, RUN_FAILURE_REPORT_KIND } from "./runs/run-failure.js";
+export type { RunFailureReport } from "./runs/run-failure.js";
+
 // The injected dependency contract.
 export type {
   Clock,
@@ -88,7 +93,12 @@ export type {
   ThreadStreamInput,
   ThreadStreamService,
 } from "./threads/thread-stream-service.js";
-export type { CreateRunInput, RunService, StartedStream } from "./runs/run-service.js";
+export type {
+  CreateRunInput,
+  RunService,
+  StartedStream,
+  WaitRunResult,
+} from "./runs/run-service.js";
 
 // SSE helpers, for adapters that write the event stream themselves.
 export { encodeFrame, encodeTerminal, parseAfterSeq, SSE_HEADERS, toSseEvents } from "./sse/sse.js";

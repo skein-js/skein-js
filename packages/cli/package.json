@@ -52,6 +52,7 @@
   "dependencies": {
     "@commander-js/extra-typings": "~13.1.0",
     "@langchain/langgraph-checkpoint-postgres": "^1.0.4",
+    "@skein-js/agent-protocol": "workspace:*",
     "@skein-js/core": "workspace:*",
     "@skein-js/config": "workspace:*",
     "@skein-js/express": "workspace:*",

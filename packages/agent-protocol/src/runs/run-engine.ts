@@ -13,19 +13,21 @@
 import type { CompiledGraph, StateSnapshot } from "@langchain/langgraph";
 import {
   isTerminalRunStatus,
+  runError,
   SkeinHttpError,
+  toRunError,
   type DefaultValues,
   type Metadata,
   type Run,
+  type RunError,
   type RunKwargs,
   type RunStatus,
   type ThreadStatus,
   type ThreadUpdate,
 } from "@skein-js/core";
 
-import type { ResolvedDeps } from "../deps.js";
+import { isNoopLogger, type ResolvedDeps } from "../deps.js";
 import { resolveCompiledGraph } from "../graphs/resolve-compiled-graph.js";
-import { serializeError } from "../normalize-error.js";
 import {
   chunkToFrameBody,
   streamEventToFrameBody,
@@ -35,6 +37,7 @@ import {
 import { runStatusForSnapshot, snapshotToThreadUpdate } from "../threads/thread-mirror.js";
 
 import type { AbortReason, RunControl } from "./cancellation.js";
+import { RUN_FAILURE_REPORT_KIND, toError, type RunFailureReport } from "./run-failure.js";
 import {
   toFactoryConfigurable,
   toGraphCallOptions,
@@ -42,7 +45,7 @@ import {
   toGraphStreamModes,
   wantsEventsMode,
 } from "./run-input.js";
-import { describeInterrupts, extractToolActivity } from "./run-log.js";
+import { describeFailingNodes, describeInterrupts, extractToolActivity } from "./run-log.js";
 
 /** What the engine needs to execute one run. */
 export interface RunExecution {
@@ -57,6 +60,12 @@ export interface RunExecution {
   recordBaseCheckpoint?: (baseCheckpointId: string | undefined) => void;
 }
 
+/**
+ * Why a timed-out run stopped. Persisted like any other failure so `timeout` — the one terminal
+ * status that isn't the graph's fault — is still explainable from the run row alone.
+ */
+const RUN_TIMEOUT_ERROR: RunError = runError("TimeoutError", "Run timed out.");
+
 /** Map an abort reason to the run's terminal status. `interrupt` keeps work; the rest are stops. */
 function abortedStatus(reason: AbortReason | null): RunStatus {
   if (reason === "timeout") return "timeout";
@@ -68,6 +77,12 @@ function abortedStatus(reason: AbortReason | null): RunStatus {
 export interface RunOutcome {
   status: RunStatus;
   values: DefaultValues;
+  /**
+   * Why the run failed, for a `error`/`timeout` status. The same payload published on the `error`
+   * frame and persisted on the run row, so a caller that never subscribed (wait, the background
+   * worker) can still report the failure.
+   */
+  error?: RunError;
 }
 
 type StreamOptions = Parameters<CompiledGraph<string>["stream"]>[1];
@@ -91,16 +106,21 @@ async function resolveGraph(
   });
 }
 
-/** Set a run's status only if it hasn't already reached a terminal state; returns the effective status. */
+/**
+ * Set a run's status only if it hasn't already reached a terminal state; returns the effective
+ * status. `error` travels with the status in the same single write, so a run row is never briefly
+ * readable as failed-with-no-reason, and a racing cancel can't end up wearing this run's error.
+ */
 async function finalizeRun(
   deps: ResolvedDeps,
   runId: string,
   status: RunStatus,
+  error?: RunError,
 ): Promise<RunStatus> {
   const fresh = await deps.store.runs.get(runId);
   if (!fresh) return status; // deleted mid-run (e.g. its thread was removed)
   if (isTerminalRunStatus(fresh.status)) return fresh.status; // cancel/timeout already won
-  await deps.store.runs.setStatus(runId, status);
+  await deps.store.runs.setStatus(runId, status, error);
   return status;
 }
 
@@ -113,19 +133,18 @@ async function mirrorThread(
 ): Promise<void> {
   const thread = await deps.store.threads.get(threadId);
   if (!thread) return;
-  // When leaving the error state, drop a stale `error` left in metadata by a prior failed run, so a
-  // now-healthy thread doesn't keep reporting an old message. (The patch's own metadata wins.)
+  // When leaving the error state, drop a stale error left behind by a prior failed run, so a
+  // now-healthy thread doesn't keep reporting an old message. Note this clearing is why the thread
+  // is only a mirror of the *latest* turn — the durable per-run record is `Run.error`.
   let effective = patch;
-  if (
-    patch.status &&
-    patch.status !== "error" &&
-    patch.metadata === undefined &&
-    thread.metadata != null &&
-    "error" in thread.metadata
-  ) {
-    const cleared: Metadata = { ...thread.metadata };
-    delete cleared["error"];
-    effective = { ...patch, metadata: cleared };
+  if (patch.status && patch.status !== "error") {
+    effective = { ...patch, error: null };
+    // (The patch's own metadata wins if it brought one.)
+    if (patch.metadata === undefined && thread.metadata != null && "error" in thread.metadata) {
+      const cleared: Metadata = { ...thread.metadata };
+      delete cleared["error"];
+      effective = { ...effective, metadata: cleared };
+    }
   }
   await deps.store.threads.update(threadId, effective);
 }
@@ -138,7 +157,12 @@ async function mirrorThreadStatus(
   await mirrorThread(deps, threadId, { status });
 }
 
-/** Mirror a failed run onto the thread: status `error`, with the message kept in metadata. */
+/**
+ * Mirror a failed run onto the thread: status `error`, carrying the message in two places. `error`
+ * is the SDK's own `Thread.error` field, which is where a client looks; `metadata.error` is skein's
+ * older home for it, kept so existing readers don't break. Both are cleared by `mirrorThread` when
+ * the thread recovers — the durable per-run record is `Run.error`.
+ */
 async function mirrorThreadError(
   deps: ResolvedDeps,
   threadId: string,
@@ -147,7 +171,25 @@ async function mirrorThreadError(
   const thread = await deps.store.threads.get(threadId);
   if (!thread) return;
   const metadata: Metadata = { ...thread.metadata, error: message };
-  await deps.store.threads.update(threadId, { status: "error", metadata });
+  await deps.store.threads.update(threadId, { status: "error", metadata, error: message });
+}
+
+/**
+ * Name the node(s) the graph died in, for the failure report. Entirely best-effort: it re-reads the
+ * state after the throw, and a graph that failed before it started (or whose state read also fails)
+ * simply yields nothing. Reporting must never turn one failure into two.
+ */
+async function readFailingNodes(
+  graph: CompiledGraph<string> | undefined,
+  threadId: string,
+): Promise<string[]> {
+  if (!graph) return [];
+  try {
+    const snapshot = await graph.getState({ configurable: { thread_id: threadId } });
+    return describeFailingNodes(snapshot);
+  } catch {
+    return [];
+  }
 }
 
 /**
@@ -165,6 +207,8 @@ export async function executeRun(deps: ResolvedDeps, exec: RunExecution): Promis
   let started = false;
   let outcome: RunOutcome = { status: "error", values: {} as DefaultValues };
   let webhookErrorMessage: string | undefined;
+  // Hoisted out of the `try` so the catch can take a post-mortem snapshot to name the failing node.
+  let graph: CompiledGraph<string> | undefined;
 
   // Verbose run activity (start/finish, tool calls, interrupts) — `skein dev --verbose`. Guarded so
   // it costs nothing when off. Tool calls/results are logged once each; streaming repeats the same
@@ -236,7 +280,7 @@ export async function executeRun(deps: ResolvedDeps, exec: RunExecution): Promis
       throw SkeinHttpError.notFound(`Assistant "${run.assistant_id}" not found.`);
     }
 
-    const graph = await resolveGraph(deps, assistant.graph_id, kwargs);
+    graph = await resolveGraph(deps, assistant.graph_id, kwargs);
     const input = toGraphInput(kwargs);
     const options = toGraphCallOptions(kwargs, threadId, control.signal);
 
@@ -271,11 +315,18 @@ export async function executeRun(deps: ResolvedDeps, exec: RunExecution): Promis
     // uninterruptible node can complete despite the abort). Honor the abort over a success result so
     // the stored status, the returned outcome, and the client's request all agree.
     if (control.signal.aborted) {
-      const finalStatus = await finalizeRun(deps, runId, abortedStatus(control.reason.current));
-      if (finalStatus === "timeout") await mirrorThreadError(deps, threadId, "Run timed out.");
+      const abortStatus = abortedStatus(control.reason.current);
+      const timedOut = abortStatus === "timeout" ? RUN_TIMEOUT_ERROR : undefined;
+      const finalStatus = await finalizeRun(deps, runId, abortStatus, timedOut);
+      if (finalStatus === "timeout")
+        await mirrorThreadError(deps, threadId, RUN_TIMEOUT_ERROR.message);
       else await mirrorThreadStatus(deps, threadId, "idle");
       logFinished(finalStatus);
-      outcome = { status: finalStatus, values: {} as DefaultValues };
+      outcome = {
+        status: finalStatus,
+        values: {} as DefaultValues,
+        ...(timedOut ? { error: timedOut } : {}),
+      };
       return outcome;
     }
 
@@ -300,10 +351,11 @@ export async function executeRun(deps: ResolvedDeps, exec: RunExecution): Promis
   } catch (error) {
     const reason = control.reason.current;
     if (reason === "timeout") {
-      const finalStatus = await finalizeRun(deps, runId, "timeout");
-      if (finalStatus === "timeout") await mirrorThreadError(deps, threadId, "Run timed out.");
+      const finalStatus = await finalizeRun(deps, runId, "timeout", RUN_TIMEOUT_ERROR);
+      if (finalStatus === "timeout")
+        await mirrorThreadError(deps, threadId, RUN_TIMEOUT_ERROR.message);
       logFinished(finalStatus);
-      outcome = { status: finalStatus, values: {} as DefaultValues };
+      outcome = { status: finalStatus, values: {} as DefaultValues, error: RUN_TIMEOUT_ERROR };
       return outcome;
     }
     if (
@@ -320,16 +372,35 @@ export async function executeRun(deps: ResolvedDeps, exec: RunExecution): Promis
       outcome = { status: finalStatus, values: {} as DefaultValues };
       return outcome;
     }
-    // Genuine graph error: surface it as the terminal frame, then persist error state.
-    const serialized = serializeError(error);
+    // Genuine graph error: surface it as the terminal frame, then persist error state. One payload
+    // serves the frame, the run row, and the returned outcome, so they can never disagree.
+    const wireError = toRunError(error, { includeStack: deps.exposeErrorStacks === true });
     seq += 1;
-    await deps.bus.publish(runId, { seq, event: "error", data: serialized });
-    const finalStatus = await finalizeRun(deps, runId, "error");
-    if (finalStatus === "error") await mirrorThreadError(deps, threadId, serialized.message);
-    if (deps.logRunActivity) deps.logger.error(`run ${runId} error: ${serialized.message}`);
+    await deps.bus.publish(runId, { seq, event: "error", data: wireError });
+    const finalStatus = await finalizeRun(deps, runId, "error", wireError);
+    if (finalStatus === "error") await mirrorThreadError(deps, threadId, wireError.message);
+    // ALWAYS logged, ungated by `logRunActivity`: a run that fails silently is the whole problem
+    // this reporting exists to solve. The report carries the original Error, so a console logger can
+    // render its stack and `cause` chain.
+    //
+    // Assembling it is skipped entirely for the discarding default logger, because naming the node
+    // that threw costs a checkpointer read — a network round trip in production. Paying that to
+    // build an object nobody reads is waste on a path that has already gone wrong.
+    if (!isNoopLogger(deps.logger)) {
+      const failingNodes = await readFailingNodes(graph, threadId);
+      deps.logger.error(`Graph run failed: ${wireError.message}`, {
+        kind: RUN_FAILURE_REPORT_KIND,
+        runId,
+        threadId,
+        assistantId: run.assistant_id,
+        failingNodes,
+        error: toError(error),
+        wireError,
+      } satisfies RunFailureReport);
+    }
     logFinished(finalStatus);
-    webhookErrorMessage = serialized.message;
-    outcome = { status: finalStatus, values: {} as DefaultValues };
+    webhookErrorMessage = wireError.message;
+    outcome = { status: finalStatus, values: {} as DefaultValues, error: wireError };
     return outcome;
   } finally {
     if (timer !== undefined) clearTimeout(timer);

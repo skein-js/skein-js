@@ -41,12 +41,13 @@ describe("assistant service", () => {
       "slow",
       "store",
       "throwing",
+      "throwing-with-cause",
     ]);
     expect((await service.get("echo")).graph_id).toBe("echo");
 
     // Second registration doesn't duplicate.
     await service.registerGraphAssistants();
-    expect((await service.list()).length).toBe(5);
+    expect((await service.list()).length).toBe(6);
   });
 
   it("returns schemas for a known assistant and 404s an unknown one", async () => {

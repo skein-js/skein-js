@@ -12,6 +12,7 @@ import {
   type Metadata,
   type MultitaskStrategy,
   type Run,
+  type RunError,
   type RunFrame,
   type RunKwargs,
   type RunStatus,
@@ -48,8 +49,15 @@ export interface StartedStream {
   frames: AsyncIterable<RunFrame>;
 }
 
+/**
+ * The body of `POST /runs/wait`: the graph's final state values, or — when the run failed — the
+ * reason under `__error__`. Both are objects, so the union is structural rather than discriminated;
+ * it exists to make the failure case visible in the signature instead of hidden behind a cast.
+ */
+export type WaitRunResult = DefaultValues | { __error__: RunError };
+
 export interface RunService {
-  createWait(input: CreateRunInput): Promise<DefaultValues>;
+  createWait(input: CreateRunInput): Promise<WaitRunResult>;
   createStream(input: CreateRunInput): Promise<StartedStream>;
   createBackground(threadId: string, input: CreateRunInput): Promise<Run>;
   get(runId: string): Promise<Run>;
@@ -217,6 +225,13 @@ export function createRunService(ctx: ProtocolContext): RunService {
       const run = await createPendingRun(input, thread.thread_id, assistant.assistant_id, kwargs);
       await stampGraphOnThread(thread, assistant);
       const outcome = await runInline(run, kwargs);
+      // A failed run must not read as an empty success. There are no headers left to turn into a
+      // status (the run already executed), so the failure travels in the body under `__error__` —
+      // the key `@langchain/langgraph-api` uses for exactly this. We match the key but not its
+      // double-encoding bug: the payload here is the `RunError` itself, not a JSON string of one.
+      if (outcome.error !== undefined) {
+        return { __error__: outcome.error };
+      }
       return outcome.values;
     },
 

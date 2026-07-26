@@ -49,6 +49,7 @@ describe("SKEIN_MIGRATIONS", () => {
       "0001_init",
       "0002_store_ttl",
       "0003_assistant_versions",
+      "0004_run_error",
     ]);
   });
 

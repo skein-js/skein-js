@@ -41,6 +41,15 @@ export const throwingGraph: CompiledGraph<string> = new StateGraph(ValueState)
   .addEdge("boom", "__end__")
   .compile() as unknown as CompiledGraph<string>;
 
+/** Throws an error that wraps a cause, to exercise the chain-walking in the failure report. */
+export const throwingWithCauseGraph: CompiledGraph<string> = new StateGraph(ValueState)
+  .addNode("call_model", () => {
+    throw new Error("model call failed", { cause: new Error("429 rate limit") });
+  })
+  .addEdge("__start__", "call_model")
+  .addEdge("call_model", "__end__")
+  .compile() as unknown as CompiledGraph<string>;
+
 /** Waits until aborted (or ~10s), for cancellation/timeout tests. Rejects promptly on abort. */
 export const slowGraph: CompiledGraph<string> = new StateGraph(ValueState)
   .addNode("wait", async (_state, config?: LangGraphRunnableConfig) => {
@@ -79,6 +88,7 @@ export const fixtureGraphs: Record<string, CompiledGraph<string>> = {
   echo: echoGraph,
   interrupting: interruptingGraph,
   throwing: throwingGraph,
+  "throwing-with-cause": throwingWithCauseGraph,
   slow: slowGraph,
   store: storeGraph,
 };

@@ -19,6 +19,7 @@ skein-js implements LangChain's Agent Protocol, so the whole LangChain client ec
 - [Serving a graph as a plain endpoint](https://github.com/skein-js/skein-js/blob/main/docs/serving-a-single-graph.md): The non-chat surface — `POST /invoke/:graph_id`, body-in / final-state-out, no threads or runs.
 - [Agent Protocol surface](https://github.com/skein-js/skein-js/blob/main/docs/agent-protocol.md): The REST + SSE endpoint inventory skein implements, plus the auth route→permission map.
 - [Streaming](https://github.com/skein-js/skein-js/blob/main/docs/streaming.md): LangGraph stream modes mapped onto Agent Protocol SSE, with cross-instance fan-out.
+- [Errors & logging](https://github.com/skein-js/skein-js/blob/main/docs/errors-and-logging.md): What happens when a graph throws — the `RunError` payload, `exposeErrorStacks`, the `Logger` interface, and the `skein dev` failure block.
 - [React SDK / useStream](https://github.com/skein-js/skein-js/blob/main/docs/react-sdk.md): Frontend compatibility — `@langchain/langgraph-sdk` and `useStream` over SSE.
 - [Storage](https://github.com/skein-js/skein-js/blob/main/docs/storage.md): `SkeinStore`, in-memory vs Postgres, pgvector semantic search, checkpointer, and `getStore()` in a graph.
 - [Runs & Redis](https://github.com/skein-js/skein-js/blob/main/docs/runs-and-redis.md): The run engine, the queue, and cross-instance streaming with Redis.

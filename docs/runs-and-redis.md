@@ -37,6 +37,8 @@ instance executes at once.
 
 1. Resolves the target graph via [`@skein-js/config`](./langgraph-cli-compat.md).
 2. Persists a run row through [`SkeinStore`](./storage.md) (`pending → running → success/error`).
+   A failed run also records _why_ on the row, so `GET /threads/{tid}/runs/{rid}` can still explain
+   it afterwards — see [errors and logging](./errors-and-logging.md).
 3. Invokes the graph (`invoke` for wait, `stream` for streaming), threading the LangGraph
    **checkpointer** so state/history persist and **interrupt/resume** (human-in-the-loop)
    works.

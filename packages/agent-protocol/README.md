@@ -55,7 +55,7 @@ const runtime = createProtocolRuntime({
   queue, // a RunQueue for background runs
   bus, // a RunEventBus for streaming fan-out
   checkpointer, // a LangGraph BaseCheckpointSaver (MemorySaver in dev)
-  // optional: auth, logger, clock, logRunActivity, runTimeoutMs
+  // optional: auth, logger, clock, logRunActivity, exposeErrorStacks, runTimeoutMs
 });
 
 // One-time startup: register an assistant per graph, then start processing background runs.
@@ -82,18 +82,19 @@ you don't run a worker in the same process.
 
 ### The injected contract (`ProtocolDeps`)
 
-| Dependency        | Type                                           | Responsibility                                                           |
-| ----------------- | ---------------------------------------------- | ------------------------------------------------------------------------ |
-| `store`           | `SkeinStore` (core)                            | Protocol resource rows (assistants/threads/runs/store)                   |
-| `graphs`          | `GraphResolver` (this package)                 | Resolve a `graph_id` to a compiled graph + schemas                       |
-| `queue`           | `RunQueue` (core)                              | Hand background runs to a worker                                         |
-| `bus`             | `RunEventBus` (core)                           | Fan run frames out to streaming clients                                  |
-| `checkpointer`    | `BaseCheckpointSaver` (`@langchain/langgraph`) | Graph state, history, and interrupt/resume                               |
-| `auth?`           | `AuthEngine` (core)                            | Per-request 401/403 + ownership filtering; absent = all allowed          |
-| `logger?`         | `Logger` (this package)                        | Structured logging; default no-op                                        |
-| `clock?`          | `Clock`                                        | Time source; default `() => new Date()`                                  |
-| `logRunActivity?` | `boolean`                                      | Log per-run start/finish, tool calls, interrupts (`skein dev --verbose`) |
-| `runTimeoutMs?`   | `number`                                       | Optional per-run wall-clock timeout → `"timeout"`                        |
+| Dependency           | Type                                           | Responsibility                                                                                              |
+| -------------------- | ---------------------------------------------- | ----------------------------------------------------------------------------------------------------------- |
+| `store`              | `SkeinStore` (core)                            | Protocol resource rows (assistants/threads/runs/store)                                                      |
+| `graphs`             | `GraphResolver` (this package)                 | Resolve a `graph_id` to a compiled graph + schemas                                                          |
+| `queue`              | `RunQueue` (core)                              | Hand background runs to a worker                                                                            |
+| `bus`                | `RunEventBus` (core)                           | Fan run frames out to streaming clients                                                                     |
+| `checkpointer`       | `BaseCheckpointSaver` (`@langchain/langgraph`) | Graph state, history, and interrupt/resume                                                                  |
+| `auth?`              | `AuthEngine` (core)                            | Per-request 401/403 + ownership filtering; absent = all allowed                                             |
+| `logger?`            | `Logger` (this package)                        | Structured logging; default no-op                                                                           |
+| `clock?`             | `Clock`                                        | Time source; default `() => new Date()`                                                                     |
+| `logRunActivity?`    | `boolean`                                      | Log per-run start/finish, tool calls, interrupts (`skein dev --verbose`). A failed run is logged regardless |
+| `exposeErrorStacks?` | `boolean`                                      | Send a failed run's stack to the client (SSE frame + `Run.error`). Off by default; `skein dev` sets it      |
+| `runTimeoutMs?`      | `number`                                       | Optional per-run wall-clock timeout → `"timeout"`                                                           |
 
 Graph **state, history, and interrupt/resume are 100% LangGraph-native** via the checkpointer. The
 `SkeinStore` owns only the protocol resource rows — it is deliberately not the checkpointer.

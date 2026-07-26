@@ -8,6 +8,7 @@
 // `../wire`, so a handler can pass a repo result straight to the client.
 
 import type { AuthUser } from "../auth/auth.js";
+import type { RunError } from "../errors/run-error.js";
 import type {
   Assistant,
   AssistantVersion,
@@ -123,6 +124,13 @@ export interface ThreadUpdate {
   values?: DefaultValues;
   /** Pending human-in-the-loop interrupts, mirrored from the graph state onto the thread row. */
   interrupts?: Record<string, Interrupt[]>;
+  /**
+   * Why the thread is in `status: "error"` — the SDK's `Thread.error`, which skein previously left
+   * empty in favour of a `metadata.error` key. Set alongside an `error` status and cleared when the
+   * thread recovers. Like the thread's status, this is a mirror of the *latest* turn; the durable
+   * per-run record is `Run.error`. Pass `null` to clear it.
+   */
+  error?: string | null;
 }
 
 /** Filter + pagination for `POST /threads/search`. Omitted fields don't constrain the result. */
@@ -246,7 +254,18 @@ export interface RunRepo {
   get(runId: string): Promise<Run | null>;
   listByThread(threadId: string): Promise<Run[]>;
   create(input: RunCreate): Promise<Run>;
-  setStatus(runId: string, status: RunStatus): Promise<Run>;
+  /**
+   * Move a run to `status`, recording why it got there when the transition is a failure. The run's
+   * stored `error` is rewritten on *every* call, so omitting it clears any previously stored one —
+   * a run row's `error` always describes its current status, never a stale earlier one.
+   *
+   * Status and error are set together deliberately: the run engine's `finalizeRun` re-reads the row
+   * and then makes exactly one guarded write, so whichever of {engine finishes, cancel/timeout
+   * fires} lands first wins. Splitting the error into a second write would reopen a window where a
+   * run reads as `error` with no explanation, or where a racing cancel takes the status while the
+   * error lands on top of it.
+   */
+  setStatus(runId: string, status: RunStatus, error?: RunError): Promise<Run>;
   delete(runId: string): Promise<void>;
   /** The opaque execution payload stored with a run, or null if the run is unknown. */
   getKwargs(runId: string): Promise<RunKwargs | null>;
