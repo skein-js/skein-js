@@ -22,6 +22,8 @@ import {
   type RunError,
   type RunKwargs,
   type RunStatus,
+  type RunTelemetryContext,
+  type RunTrigger,
   type ThreadStatus,
   type ThreadUpdate,
 } from "@skein-js/core";
@@ -46,6 +48,7 @@ import {
   wantsEventsMode,
 } from "./run-input.js";
 import { describeFailingNodes, describeInterrupts, extractToolActivity } from "./run-log.js";
+import { emitRunEvent, telemetryCallOptions, toRunTelemetryContext } from "./run-telemetry.js";
 
 /** What the engine needs to execute one run. */
 export interface RunExecution {
@@ -58,6 +61,16 @@ export interface RunExecution {
    * this one. Optional so tests can omit it.
    */
   recordBaseCheckpoint?: (baseCheckpointId: string | undefined) => void;
+  /**
+   * How this run was started, for telemetry. Defaults to `"wait"` — the inline, non-streaming shape —
+   * so a caller that doesn't care (and every existing test) needn't say.
+   */
+  trigger?: RunTrigger;
+  /**
+   * When the run was enqueued, as epoch ms, so telemetry can report how long it waited for a worker.
+   * Background runs only; inline runs never queue.
+   */
+  queuedAtMs?: number;
 }
 
 /**
@@ -209,6 +222,14 @@ export async function executeRun(deps: ResolvedDeps, exec: RunExecution): Promis
   let webhookErrorMessage: string | undefined;
   // Hoisted out of the `try` so the catch can take a post-mortem snapshot to name the failing node.
   let graph: CompiledGraph<string> | undefined;
+  // Telemetry, all hoisted so the `finally` can close the span the `try` opened. The context needs
+  // the assistant's graph id, so it only exists once the assistant has loaded — and `run.finished`
+  // is gated on it, so the two events are always emitted as a pair. A run that fails its
+  // preconditions (a deleted assistant) never ran a graph and reports no span; it is still logged
+  // as a failure and still recorded on the run row.
+  let telemetryContext: RunTelemetryContext | undefined;
+  let failingNodes: readonly string[] | undefined;
+  let thrownError: Error | undefined;
 
   // Verbose run activity (start/finish, tool calls, interrupts) — `skein dev --verbose`. Guarded so
   // it costs nothing when off. Tool calls/results are logged once each; streaming repeats the same
@@ -280,9 +301,30 @@ export async function executeRun(deps: ResolvedDeps, exec: RunExecution): Promis
       throw SkeinHttpError.notFound(`Assistant "${run.assistant_id}" not found.`);
     }
 
+    if (deps.telemetryEnabled) {
+      telemetryContext = toRunTelemetryContext(
+        run,
+        kwargs,
+        assistant.graph_id,
+        exec.trigger ?? "wait",
+      );
+      emitRunEvent(deps, {
+        type: "run.started",
+        context: telemetryContext,
+        startedAt: new Date(startedAt),
+        ...(exec.queuedAtMs !== undefined ? { queuedMs: startedAt - exec.queuedAtMs } : {}),
+      });
+    }
+
     graph = await resolveGraph(deps, assistant.graph_id, kwargs);
     const input = toGraphInput(kwargs);
-    const options = toGraphCallOptions(kwargs, threadId, control.signal);
+    // Trace identity (metadata/tags/runName) and any tracer handlers ride along with the call, so a
+    // callback-based tracer's spans nest under this run instead of floating free. Empty when no
+    // sink is configured.
+    const options = {
+      ...toGraphCallOptions(kwargs, threadId, control.signal),
+      ...(telemetryContext ? telemetryCallOptions(deps, telemetryContext) : {}),
+    };
 
     if (wantsEventsMode(kwargs.stream_mode)) {
       // True `events` mode: drive the graph via `streamEvents` and demux each event — internal
@@ -385,16 +427,24 @@ export async function executeRun(deps: ResolvedDeps, exec: RunExecution): Promis
     //
     // Assembling it is skipped entirely for the discarding default logger, because naming the node
     // that threw costs a checkpointer read — a network round trip in production. Paying that to
-    // build an object nobody reads is waste on a path that has already gone wrong.
-    if (!isNoopLogger(deps.logger)) {
-      const failingNodes = await readFailingNodes(graph, threadId);
+    // build an object nobody reads is waste on a path that has already gone wrong. Telemetry wants
+    // the same node names, so the read happens once and both consumers share it.
+    thrownError = toError(error);
+    const reportingLogger = !isNoopLogger(deps.logger);
+    // Gated on a sink that actually *consumes* run events, not merely on telemetry being on: a
+    // trace-only sink (LangSmith contributes metadata and no `onRunEvent`) would otherwise pay a
+    // checkpointer round trip per failure to build a field nothing reads.
+    if (reportingLogger || deps.telemetryWantsRunEvents) {
+      failingNodes = await readFailingNodes(graph, threadId);
+    }
+    if (reportingLogger) {
       deps.logger.error(`Graph run failed: ${wireError.message}`, {
         kind: RUN_FAILURE_REPORT_KIND,
         runId,
         threadId,
         assistantId: run.assistant_id,
-        failingNodes,
-        error: toError(error),
+        failingNodes: failingNodes ?? [],
+        error: thrownError,
         wireError,
       } satisfies RunFailureReport);
     }
@@ -404,6 +454,29 @@ export async function executeRun(deps: ResolvedDeps, exec: RunExecution): Promis
     return outcome;
   } finally {
     if (timer !== undefined) clearTimeout(timer);
+    // Close the telemetry span the `try` opened, BEFORE anything here that can reject. `bus.close`
+    // can (a Redis blip), and a rejection escaping this block would skip the event — leaving a
+    // span-based sink holding an unclosed span for a run that is definitively over. Enough of those
+    // and it hits its in-flight ceiling and silently stops recording.
+    //
+    // Fires for *every* terminal status — success, error, cancelled, timeout, interrupted — and is
+    // ungated by `logRunActivity`: this is the record of what happened, not the verbose chatter that
+    // flag controls. A sink is server-side like the log, so it gets the original `Error` whatever
+    // `exposeErrorStacks` says.
+    if (telemetryContext) {
+      const endedAt = deps.clock();
+      emitRunEvent(deps, {
+        type: "run.finished",
+        context: telemetryContext,
+        status: outcome.status,
+        durationMs: endedAt.getTime() - startedAt,
+        frameCount: seq,
+        endedAt,
+        ...(outcome.error !== undefined ? { error: outcome.error } : {}),
+        ...(failingNodes !== undefined ? { failingNodes } : {}),
+        ...(thrownError !== undefined ? { cause: thrownError } : {}),
+      });
+    }
     // Always close the bus so every subscriber's iterator completes and emits the terminal event.
     await deps.bus.close(runId);
     // Run-completion webhook: fire once, best-effort, only for a run that actually executed. A

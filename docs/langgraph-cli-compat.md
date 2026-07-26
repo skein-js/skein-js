@@ -153,6 +153,14 @@ it but is never required.
     "disable_studio_auth": false,
   },
 
+  // where runs report themselves — traces + lifecycle events (a skein extension; see below)
+  "telemetry": {
+    "langsmith": true,
+    "posthog": { "host": "https://eu.i.posthog.com" },
+    "otel": true,
+    "paths": ["./src/my-telemetry.ts:sink"], // your own TelemetrySink
+  },
+
   // extra Dockerfile lines appended after the base image
   "dockerfile_lines": [],
 }
@@ -169,6 +177,7 @@ it but is never required.
 | `checkpointer`         | `"default"` → `PostgresSaver`; dev falls back to an in-memory `MemorySaver`.                                                                                     |
 | `http`                 | CORS + `disable_*` route flags applied by the framework adapter.                                                                                                 |
 | `auth`                 | `auth.path` loads an `Auth` from `@langchain/langgraph-sdk/auth`; every request is authenticated + authorized; `disable_studio_auth` honored.                    |
+| `telemetry`            | **skein extension.** Builds the telemetry sinks runs report to — see [observability.md](./observability.md). Unknown to `langgraph dev`, which ignores it.       |
 | `dockerfile_lines`     | Appended by `skein dockerfile` / `skein build`.                                                                                                                  |
 
 ## Graph loading (`path:export` notation)

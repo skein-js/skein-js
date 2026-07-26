@@ -58,6 +58,9 @@
     "@langchain/core": "^1.2.0",
     "@langchain/langgraph": "^1.4.0",
     "@langchain/langgraph-checkpoint-postgres": "^1.0.4",
+    "@skein-js/langsmith": "workspace:*",
+    "@skein-js/otel": "workspace:*",
+    "@skein-js/posthog": "workspace:*",
     "@skein-js/test-support": "workspace:*",
     "@types/cors": "^2.8.17"
   },

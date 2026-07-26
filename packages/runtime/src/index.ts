@@ -24,3 +24,12 @@ export {
   embedRuntimePackage,
   type ResolveEmbedOptions,
 } from "./resolve-embed.js";
+// Telemetry resolution: the `langgraph.json` `telemetry` block plus environment auto-detection into
+// the sinks the engine reports to. `telemetryRuntimePackages` tells `skein build` which optional
+// adapter packages to pin into the image, since they're dynamically imported and so invisible to the
+// bundler. See docs/observability.md.
+export {
+  resolveTelemetry,
+  telemetryRuntimePackages,
+  type ResolveTelemetryOptions,
+} from "./resolve-telemetry.js";

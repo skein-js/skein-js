@@ -10,6 +10,7 @@ import {
   loadConfig,
   type GraphRegistry,
   type GraphSchemas as ConfigGraphSchemas,
+  type LanggraphJson,
   type ModuleImporter,
 } from "@skein-js/config";
 import { MemoryRunEventBus, MemoryRunQueue, MemorySkeinStore } from "@skein-js/storage-memory";
@@ -67,6 +68,13 @@ export async function loadInMemoryRuntime(
 
 export interface ReloadableInMemoryRuntime extends InMemoryRuntimeConfig {
   /**
+   * The parsed `langgraph.json`, so a caller that needs a block this runtime doesn't act on itself
+   * (`telemetry`, say) can read it without a second `loadConfig` — which would re-import every graph.
+   */
+  config: LanggraphJson;
+  /** Directory holding `langgraph.json`, for resolving paths declared relative to it. */
+  configDir: string;
+  /**
    * Re-read the config and swap in freshly imported graphs, keeping the same drivers. Because the
    * run engine calls `graphs.load()` per run (it never caches the compiled graph itself), the next
    * run picks up the new code while every thread, run, checkpoint, and store item survives. This is
@@ -89,6 +97,13 @@ export async function loadReloadableInMemoryRuntime(
   configPath: string,
   importModule?: ModuleImporter,
   staticSchemas?: Record<string, ConfigGraphSchemas>,
+  /**
+   * Extra deps to build in, for a caller that acts on a config block this runtime doesn't itself
+   * read (`telemetry`). Merged **into** the constructed `deps`, so every consumer sees the same
+   * object — patching the returned `deps` afterwards would miss anything that already snapshotted it
+   * (`resolveDeps` spreads, it doesn't alias).
+   */
+  extraDeps?: Partial<Omit<ProtocolDeps, "graphs">>,
 ): Promise<ReloadableInMemoryRuntime> {
   const first = await loadConfig({ configPath, importModule, staticSchemas });
   let current: GraphRegistry = first.graphs;
@@ -110,11 +125,14 @@ export async function loadReloadableInMemoryRuntime(
     bus: new MemoryRunEventBus(),
     checkpointer,
     auth: await loadAuthEngine(first.config.auth, { configDir: first.configDir, importModule }),
+    ...extraDeps,
   };
 
   return {
     deps,
     cors: corsFromHttpConfig(first.config.http),
+    config: first.config,
+    configDir: first.configDir,
     reloadGraphs: async () => {
       current = (await loadConfig({ configPath, importModule, staticSchemas })).graphs;
     },

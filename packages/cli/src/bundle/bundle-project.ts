@@ -12,7 +12,11 @@ import { createRequire, isBuiltin } from "node:module";
 import path from "node:path";
 
 import { loadConfig, parseGraphSpec } from "@skein-js/config";
-import { providerEmbedPackage, isCustomFunctionPath } from "@skein-js/runtime";
+import {
+  providerEmbedPackage,
+  isCustomFunctionPath,
+  telemetryRuntimePackages,
+} from "@skein-js/runtime";
 import type { Plugin } from "vite";
 
 import { precomputeSchemas } from "./precompute-schemas.js";
@@ -183,6 +187,18 @@ export async function bundleProject(options: BundleProjectOptions): Promise<Buil
     input["embed"] = spec.sourceFile;
     rewrites.embed = `./embed.js:${spec.exportSymbol}`;
   }
+  // Custom telemetry sinks are `path:export` specs like auth/embed, so they need the same treatment:
+  // bundled into the artifact and repointed at the emitted JS. Without this the production config
+  // would still name a `.ts` file that isn't in the image, and the container would fail to boot.
+  const telemetryPaths = config.telemetry?.paths ?? [];
+  if (telemetryPaths.length > 0) {
+    rewrites.telemetryPaths = telemetryPaths.map((pathSpec, index) => {
+      const spec = parseGraphSpec(pathSpec, configDir);
+      const entryKey = `telemetry/${index}`;
+      input[entryKey] = spec.sourceFile;
+      return `./${entryKey}.js:${spec.exportSymbol}`;
+    });
+  }
 
   // Bundle and precompute schemas concurrently — the bundler produces JS, the schema pass reads the
   // original TS source; independent inputs, so run them together.
@@ -224,10 +240,14 @@ export async function bundleProject(options: BundleProjectOptions): Promise<Buil
   }
   // Runtime deps the bundle can't discover from graph imports, so they must be pinned explicitly:
   //  • a `provider:model` embed dynamically imports `@langchain/<provider>` (never a code import);
+  //  • a declared `telemetry` provider dynamically imports its `@skein-js/*` adapter;
   //  • `langgraph.json` `dependencies` — the user's escape hatch for packages loaded by name.
   // The old full-install image happened to carry these; the slim image must add them or break.
   const embedPkg = config.store?.index?.embed && providerEmbedPackage(config.store.index.embed);
   if (embedPkg) dependencies[embedPkg] = resolveInstalledVersion(embedPkg, workspaceRoot);
+  for (const pkg of telemetryRuntimePackages(config.telemetry)) {
+    dependencies[pkg] = resolveInstalledVersion(pkg, workspaceRoot);
+  }
   for (const dep of config.dependencies ?? []) {
     // Skip local-path deps (".", "./pkg") — those are the project's own source, already bundled.
     if (dep.startsWith(".") || dep.startsWith("/")) continue;

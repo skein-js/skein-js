@@ -5,7 +5,16 @@
 // this package never has to know `@skein-js/config` exists.
 
 import type { BaseCheckpointSaver, CompiledGraph } from "@langchain/langgraph";
-import type { AuthEngine, GraphSchema, RunEventBus, RunQueue, SkeinStore } from "@skein-js/core";
+import {
+  anySinkWantsRunEvents,
+  combineTelemetrySinks,
+  type AuthEngine,
+  type GraphSchema,
+  type RunEventBus,
+  type RunQueue,
+  type SkeinStore,
+  type TelemetrySink,
+} from "@skein-js/core";
 
 /** A factory export: called (optionally with per-run config) to produce a compiled graph. */
 export type CompiledGraphFactory = (config: {
@@ -105,6 +114,16 @@ export interface ProtocolDeps {
    * Absent means no authentication/authorization — every request is allowed (the current behavior).
    */
   auth?: AuthEngine;
+  /**
+   * Where runs report themselves — traces (LangSmith, Langfuse) and lifecycle events (PostHog,
+   * OpenTelemetry). Absent means no telemetry, which costs nothing: the engine skips building any
+   * context. Pass an array to feed several backends at once.
+   *
+   * A sink is server-side, like {@link logger} — it receives a failure's full `Error`, stack and
+   * `cause` chain included, regardless of {@link exposeErrorStacks} (which governs only what reaches
+   * a client). Nothing a sink does can fail a run: every call is guarded. See docs/observability.md.
+   */
+  telemetry?: TelemetrySink | TelemetrySink[];
 }
 
 const noopLogger: Logger = {
@@ -158,18 +177,53 @@ const fetchWebhookDispatcher: WebhookDispatcher = async (url, payload) => {
   }
 };
 
-/** Fill in the optional deps (`clock`, `logger`, `webhookDispatcher`) so the rest can rely on them. */
+/**
+ * Fill in the optional deps (`clock`, `logger`, `webhookDispatcher`, `telemetry`) so the rest can
+ * rely on them.
+ */
 export interface ResolvedDeps extends ProtocolDeps {
   clock: Clock;
   logger: Logger;
   webhookDispatcher: WebhookDispatcher;
+  /**
+   * Always present — the combined form of {@link ProtocolDeps.telemetry}, a no-op when none was
+   * configured, so callers never branch on "is telemetry on". Every method is guarded against
+   * throwing. {@link telemetryEnabled} is what tells you whether anything is actually listening.
+   */
+  telemetry: TelemetrySink;
+  /**
+   * Whether any sink was configured. The engine checks this before doing telemetry-only work
+   * (building a context, reading a metadata map), so an unconfigured server pays nothing.
+   */
+  telemetryEnabled: boolean;
+  /**
+   * Whether any sink actually consumes run lifecycle events. Separate from {@link telemetryEnabled}
+   * because reporting a *failure* costs a checkpointer read (to name the node that threw) — a
+   * network round trip in production. A trace-only sink (LangSmith contributes metadata and no
+   * `onRunEvent`) must not pay for a field nothing reads.
+   */
+  telemetryWantsRunEvents: boolean;
 }
 
 export function resolveDeps(deps: ProtocolDeps): ResolvedDeps {
+  const logger = deps.logger ?? noopLogger;
+  const sinks =
+    deps.telemetry === undefined
+      ? []
+      : Array.isArray(deps.telemetry)
+        ? deps.telemetry
+        : [deps.telemetry];
   return {
     ...deps,
     clock: deps.clock ?? (() => new Date()),
-    logger: deps.logger ?? noopLogger,
+    logger,
     webhookDispatcher: deps.webhookDispatcher ?? fetchWebhookDispatcher,
+    // Even a single sink goes through `combineTelemetrySinks`, so the throw-isolation guard applies
+    // uniformly and the engine never has to wonder whether a given sink is trustworthy.
+    telemetry: combineTelemetrySinks(sinks, (error, sinkName) => {
+      logger.warn(`telemetry sink "${sinkName}" threw; the event was dropped`, error);
+    }),
+    telemetryEnabled: sinks.length > 0,
+    telemetryWantsRunEvents: anySinkWantsRunEvents(sinks),
   };
 }

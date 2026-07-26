@@ -6,7 +6,7 @@ export { loadConfig } from "./load-config.js";
 export type { GraphRegistry, GraphSchemas, LoadConfigOptions, SkeinConfig } from "./load-config.js";
 
 export { langgraphJsonSchema, parseLanggraphJson } from "./langgraph-json.js";
-export type { LanggraphJson } from "./langgraph-json.js";
+export type { LanggraphJson, TelemetryConfig } from "./langgraph-json.js";
 
 export { loadGraph, parseGraphSpec } from "./graph-spec.js";
 export type {

@@ -28,6 +28,7 @@ const DOCS = [
   "docs/react-sdk.md",
   "docs/storage.md",
   "docs/runs-and-redis.md",
+  "docs/observability.md",
   "docs/recipes.md",
   "docs/building-an-adapter.md",
   "docs/deploy.md",

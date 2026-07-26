@@ -67,7 +67,18 @@ export type {
   Logger,
   ProtocolDeps,
   ResolvedGraph,
+  WebhookDispatcher,
 } from "./deps.js";
+
+// The telemetry contract, re-exported from @skein-js/core so a sink author needs only this package.
+export type {
+  RunFinishedEvent,
+  RunStartedEvent,
+  RunTelemetryContext,
+  RunTelemetryEvent,
+  RunTrigger,
+  TelemetrySink,
+} from "@skein-js/core";
 
 // Service input/output types (useful when building an adapter or driving the service directly).
 export type {

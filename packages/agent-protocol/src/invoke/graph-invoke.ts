@@ -34,11 +34,12 @@ import { z } from "zod";
 import { resolveAuthContext } from "../auth/authenticate-request.js";
 import { authValue } from "../auth/route-authz.js";
 import type { ProtocolHandler, ProtocolRequest, ProtocolResponse } from "../create-handlers.js";
-import type { ProtocolDeps } from "../deps.js";
+import { resolveDeps, type ProtocolDeps } from "../deps.js";
 import { resolveCompiledGraph } from "../graphs/resolve-compiled-graph.js";
 import type { RouteBinding } from "../http/routes.js";
 import { toError } from "../runs/run-failure.js";
 import { toGraphStreamModes, withAuthUser } from "../runs/run-input.js";
+import { telemetryCallOptions } from "../runs/run-telemetry.js";
 import { chunkToFrameBody, toRunFrame } from "../sse/run-frame-stream.js";
 import { toSseEvents } from "../sse/sse.js";
 import { parse, requireParam } from "../validation/parse.js";
@@ -156,10 +157,17 @@ function streamModeFromQuery(
  * adapter serializes it through the same JSON/SSE path the protocol routes already use.
  */
 export function createGraphInvokeHandler(
-  deps: ProtocolDeps,
+  rawDeps: ProtocolDeps,
   options: GraphInvokeOptions = {},
 ): ProtocolHandler {
   return async (req: ProtocolRequest): Promise<ProtocolResponse> => {
+    // Resolved per request, not once at construction. This surface bypasses `createContext`, so it
+    // has to fill the optional deps itself — but `resolveDeps` returns a *snapshot* (`{...deps}`),
+    // and adapters build this handler eagerly at mount time. Resolving once would freeze whatever
+    // the deps held then, so a host that configures after mounting (`skein dev` sets `logger`,
+    // `exposeErrorStacks`, and `logRunActivity` on the deps object after the router exists) would
+    // get an invoke surface silently disagreeing with the protocol routes about its own config.
+    const deps = resolveDeps(rawDeps);
     const graphId = requireParam(req.params, "graph_id");
 
     // Authenticate + authorize exactly as a run does — a graph invocation *is* a run. This runs
@@ -194,11 +202,26 @@ export function createGraphInvokeHandler(
       store: deps.store.store,
     });
 
+    const threadId = randomUUID();
     const configurable = withAuthUser(
-      { thread_id: randomUUID() },
+      { thread_id: threadId },
       authContext?.user,
       authContext?.scopes,
     );
+
+    // Trace identity for this invocation, so a tracer's spans are attributable here too. This surface
+    // has no run row and no assistant, so it reports traces but not the `run.started`/`run.finished`
+    // lifecycle events — there is no durable run for those to describe. See docs/observability.md.
+    const trace = deps.telemetryEnabled
+      ? telemetryCallOptions(deps, {
+          runId: randomUUID(),
+          threadId,
+          graphId,
+          trigger: "invoke",
+          streamModes: [],
+          ...(authContext?.user.identity ? { userId: authContext.user.identity } : {}),
+        })
+      : {};
     // The body IS the input — no `{ input }` envelope. An absent body becomes `{}` (run with the
     // state's defaults) rather than `null`, which LangGraph rejects with an opaque `EmptyInputError`;
     // a graph that genuinely needs fields still fails with its own validation error.
@@ -211,7 +234,11 @@ export function createGraphInvokeHandler(
 
     if (!wantsEventStream(req)) {
       try {
-        const output = await graph.invoke(input, { configurable, signal } as InvokeOptions);
+        const output = await graph.invoke(input, {
+          configurable,
+          signal,
+          ...trace,
+        } as InvokeOptions);
         return { kind: "json", status: 200, body: output };
       } finally {
         dispose();
@@ -230,6 +257,7 @@ export function createGraphInvokeHandler(
           configurable,
           streamMode,
           signal,
+          ...trace,
         } as StreamOptions);
         for await (const chunk of stream) {
           seq += 1;

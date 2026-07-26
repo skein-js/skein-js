@@ -32,6 +32,27 @@ const storeTtlSchema = z
   })
   .passthrough();
 
+/**
+ * One telemetry provider: `true` for defaults, `false` to hard-disable (even when its env vars are
+ * set), or an options object passed through to the adapter. Passthrough, because each adapter owns
+ * its own option names — validating them here would mean this file had to know all three.
+ */
+const telemetryProviderSchema = z.union([z.boolean(), z.object({}).passthrough()]);
+
+/** `telemetry` — which backends runs report to. See the field docs on {@link langgraphJsonSchema}. */
+const telemetrySchema = z
+  .object({
+    langsmith: telemetryProviderSchema.optional(),
+    posthog: telemetryProviderSchema.optional(),
+    otel: telemetryProviderSchema.optional(),
+    /** Your own sinks, as `"./telemetry.ts:sink"` specs — the same form as `auth.path`. */
+    paths: z.array(z.string()).optional(),
+  })
+  .passthrough();
+
+/** The validated `telemetry` block. */
+export type TelemetryConfig = z.infer<typeof telemetrySchema>;
+
 export const langgraphJsonSchema = z
   .object({
     /** REQUIRED: map of graph id → "path:export". */
@@ -62,6 +83,16 @@ export const langgraphJsonSchema = z
       })
       .passthrough()
       .optional(),
+    /**
+     * Where runs report themselves — traces and lifecycle events. A skein extension (the LangGraph
+     * CLI has no equivalent); additive, so a config carrying it still loads under `langgraph dev`.
+     *
+     * Each provider is `true` to enable with defaults, `false` to hard-disable even when its
+     * environment variables are present, or an options object. Omitting a provider leaves it to
+     * environment auto-detection. `paths` point at your own `TelemetrySink` exports, `"file:export"`
+     * like `auth.path`. See docs/observability.md.
+     */
+    telemetry: telemetrySchema.optional(),
     /** Extra lines appended by `skein dockerfile` / `build`. */
     dockerfile_lines: z.array(z.string()).optional(),
     /** Dependency hints for image builds. */

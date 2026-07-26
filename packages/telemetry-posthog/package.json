@@ -1,0 +1,63 @@
+{
+  "name": "@skein-js/posthog",
+  "version": "0.10.0",
+  "description": "PostHog analytics for skein-js — run lifecycle events plus $ai_generation LLM analytics.",
+  "license": "Apache-2.0",
+  "author": "Maina Wycliffe <wmmaina7@gmail.com>",
+  "homepage": "https://github.com/skein-js/skein-js/tree/main/packages/telemetry-posthog#readme",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/skein-js/skein-js.git",
+    "directory": "packages/telemetry-posthog"
+  },
+  "bugs": {
+    "url": "https://github.com/skein-js/skein-js/issues"
+  },
+  "keywords": [
+    "typescript",
+    "langgraph",
+    "agent-protocol",
+    "telemetry",
+    "observability",
+    "posthog",
+    "analytics",
+    "llm-analytics"
+  ],
+  "type": "module",
+  "main": "./dist/index.js",
+  "module": "./dist/index.js",
+  "types": "./dist/index.d.ts",
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "import": "./dist/index.js",
+      "default": "./dist/index.js"
+    }
+  },
+  "files": [
+    "dist",
+    "LICENSE",
+    "README.md"
+  ],
+  "sideEffects": false,
+  "engines": {
+    "node": ">=20"
+  },
+  "dependencies": {
+    "@skein-js/core": "workspace:*"
+  },
+  "peerDependencies": {
+    "posthog-node": ">=4.0.0"
+  },
+  "peerDependenciesMeta": {
+    "posthog-node": {
+      "optional": true
+    }
+  },
+  "devDependencies": {
+    "posthog-node": "^4.18.0"
+  },
+  "publishConfig": {
+    "access": "public"
+  }
+}

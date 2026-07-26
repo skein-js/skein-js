@@ -7,15 +7,20 @@
 // hot-reload + cross-restart persistence; Postgres/Redis are assembled here around the same
 // reroutable graph resolver so graph hot-reload still works against durable storage.
 
+import { readFile } from "node:fs/promises";
+import path from "node:path";
+
 import { MemorySaver } from "@langchain/langgraph";
 import type { GraphResolver, GraphSchemas, ProtocolDeps } from "@skein-js/agent-protocol";
 import {
   loadAuthEngine,
   loadConfig,
+  parseLanggraphJson,
   type GraphRegistry,
   type ModuleImporter,
 } from "@skein-js/config";
 import type { GraphSchemas as ConfigGraphSchemas } from "@skein-js/config";
+import type { TelemetrySink } from "@skein-js/core";
 import {
   corsFromHttpConfig,
   loadReloadableInMemoryRuntime,
@@ -36,6 +41,7 @@ import {
 } from "./drivers.js";
 import { RuntimeConfigError } from "./errors.js";
 import { resolveEmbed } from "./resolve-embed.js";
+import { resolveTelemetry } from "./resolve-telemetry.js";
 
 /** Where protocol resources (assistants/threads/runs/store) and checkpoints are persisted. */
 export type StoreDriver = "memory" | "postgres";
@@ -121,18 +127,54 @@ async function resolveStoreIndex(
   return { dims: index.dims, fields: index.fields, embed };
 }
 
+/**
+ * Drain every telemetry sink on shutdown. Batching exporters (PostHog, OTel) lose the tail of a
+ * process without this — precisely the events you most want after a crash. Best-effort and never
+ * throws: `dispose()` runs from a signal handler whose job is to exit cleanly regardless.
+ *
+ * The run worker flushes too, for a host that stops the worker without disposing the runtime; a
+ * second flush on an already-drained sink is a no-op.
+ */
+async function flushTelemetry(sinks: readonly TelemetrySink[]): Promise<void> {
+  await Promise.allSettled(
+    sinks.map(async (sink) => {
+      await sink.flush?.();
+      await sink.shutdown?.();
+    }),
+  );
+}
+
 /** Assemble a {@link SkeinRuntime} for the requested driver combination. */
 export async function buildRuntime(options: BuildRuntimeOptions): Promise<SkeinRuntime> {
   const { configPath, importModule, store, queue, schemas } = options;
 
   // All-memory: reuse the express reloadable in-memory runtime verbatim (hot-reload + snapshot).
   if (store === "memory" && queue === "memory") {
-    const runtime = await loadReloadableInMemoryRuntime(configPath, importModule, schemas);
+    // `skein dev` traces too — watching a graph while you build it is most of the point of LangSmith.
+    // Resolved *before* the runtime so the sinks are built into `deps` rather than patched on after:
+    // `resolveDeps` spreads its input, so anything that already resolved a copy would never see a
+    // later mutation. Reading the manifest here costs one small JSON parse — the expensive part
+    // (importing graphs) still happens exactly once, inside `loadReloadableInMemoryRuntime`.
+    const configDir = path.dirname(configPath);
+    const manifest = parseLanggraphJson(JSON.parse(await readFile(configPath, "utf8")));
+    const telemetry = await resolveTelemetry({
+      config: manifest.telemetry,
+      configDir,
+      importModule,
+    });
+    const runtime = await loadReloadableInMemoryRuntime(
+      configPath,
+      importModule,
+      schemas,
+      telemetry.length > 0 ? { telemetry } : undefined,
+    );
     return {
       deps: runtime.deps,
       cors: runtime.cors,
       reloadGraphs: () => runtime.reloadGraphs(),
-      dispose: async () => {},
+      dispose: async () => {
+        await flushTelemetry(telemetry);
+      },
       snapshotState: () => runtime.snapshotState(),
       hydrateState: (snapshot) => runtime.hydrateState(snapshot),
     };
@@ -177,6 +219,14 @@ export async function buildRuntime(options: BuildRuntimeOptions): Promise<SkeinR
         ? connectRedisQueue({ url: requireEnv("REDIS_URI", "redis"), disposers })
         : { queue: new MemoryRunQueue(), bus: new MemoryRunEventBus() };
 
+    // Telemetry sinks from the `telemetry` block plus environment auto-detection. Left off the deps
+    // entirely when nothing is configured, so the engine's `telemetryEnabled` guards stay false.
+    const telemetry = await resolveTelemetry({
+      config: first.config.telemetry,
+      configDir: first.configDir,
+      importModule,
+    });
+
     const deps: ProtocolDeps = {
       store: skeinStore,
       graphs: resolver,
@@ -187,6 +237,7 @@ export async function buildRuntime(options: BuildRuntimeOptions): Promise<SkeinR
         configDir: first.configDir,
         importModule,
       }),
+      ...(telemetry.length > 0 ? { telemetry } : {}),
     };
 
     return {
@@ -195,7 +246,11 @@ export async function buildRuntime(options: BuildRuntimeOptions): Promise<SkeinR
       reloadGraphs: async () => {
         reroute((await loadConfig({ configPath, importModule, staticSchemas: schemas })).graphs);
       },
-      dispose: disposeAll,
+      dispose: async () => {
+        // Telemetry first: drain what the run just produced before the drivers underneath it go.
+        await flushTelemetry(telemetry);
+        await disposeAll();
+      },
     };
   } catch (error) {
     await disposeAll();

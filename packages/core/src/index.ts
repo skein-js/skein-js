@@ -76,6 +76,19 @@ export { isSkeinHttpError, SkeinHttpError } from "./errors/skein-http-error.js";
 export { runError, toRunError } from "./errors/run-error.js";
 export type { RunError, ToRunErrorOptions } from "./errors/run-error.js";
 
+// Telemetry contract — the injectable sink a run reports itself to (traces + lifecycle events).
+// A third surface alongside logs and the wire; see docs/observability.md.
+export { anySinkWantsRunEvents, combineTelemetrySinks } from "./telemetry/telemetry.js";
+export type {
+  RunFinishedEvent,
+  RunStartedEvent,
+  RunTelemetryContext,
+  RunTelemetryEvent,
+  RunTrigger,
+  TelemetrySink,
+  TelemetrySinkErrorReporter,
+} from "./telemetry/telemetry.js";
+
 // Authentication + authorization contract (the injectable engine consulted per request).
 export type {
   AuthAction,

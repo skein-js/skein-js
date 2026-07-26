@@ -13,6 +13,8 @@ export interface ManifestRewrites {
   auth?: string;
   /** Rewritten `store.index.embed`, e.g. `"./embed.js:embed"` — only for a custom-function path. */
   embed?: string;
+  /** Rewritten `telemetry.paths`, e.g. `["./telemetry/0.js:sink"]` — one per declared custom sink. */
+  telemetryPaths?: string[];
 }
 
 /**
@@ -38,6 +40,9 @@ export function buildProductionConfig(
       ...config.store,
       index: { ...config.store.index, embed: rewrites.embed },
     };
+  }
+  if (rewrites.telemetryPaths && config.telemetry) {
+    config.telemetry = { ...config.telemetry, paths: rewrites.telemetryPaths };
   }
 
   // A string `env` is a path to a `.env` file (a secret, excluded from the image). Drop it so the

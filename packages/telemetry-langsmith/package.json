@@ -1,0 +1,67 @@
+{
+  "name": "@skein-js/langsmith",
+  "version": "0.10.0",
+  "description": "LangSmith tracing for skein-js — run identity and thread grouping on every graph call.",
+  "license": "Apache-2.0",
+  "author": "Maina Wycliffe <wmmaina7@gmail.com>",
+  "homepage": "https://github.com/skein-js/skein-js/tree/main/packages/telemetry-langsmith#readme",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/skein-js/skein-js.git",
+    "directory": "packages/telemetry-langsmith"
+  },
+  "bugs": {
+    "url": "https://github.com/skein-js/skein-js/issues"
+  },
+  "keywords": [
+    "typescript",
+    "langgraph",
+    "agent-protocol",
+    "telemetry",
+    "observability",
+    "langsmith",
+    "tracing"
+  ],
+  "type": "module",
+  "main": "./dist/index.js",
+  "module": "./dist/index.js",
+  "types": "./dist/index.d.ts",
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "import": "./dist/index.js",
+      "default": "./dist/index.js"
+    }
+  },
+  "files": [
+    "dist",
+    "LICENSE",
+    "README.md"
+  ],
+  "sideEffects": false,
+  "engines": {
+    "node": ">=20"
+  },
+  "dependencies": {
+    "@skein-js/core": "workspace:*"
+  },
+  "peerDependencies": {
+    "langsmith": ">=0.3.0",
+    "@langchain/core": ">=0.3.0"
+  },
+  "peerDependenciesMeta": {
+    "langsmith": {
+      "optional": true
+    },
+    "@langchain/core": {
+      "optional": true
+    }
+  },
+  "devDependencies": {
+    "langsmith": "^0.7.3",
+    "@langchain/core": "^1.2.0"
+  },
+  "publishConfig": {
+    "access": "public"
+  }
+}

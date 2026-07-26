@@ -141,7 +141,13 @@ export function createRunWorker(ctx: ProtocolContext, options: RunWorkerOptions 
     let status: RunStatus = "error";
     let failure: RunError | undefined;
     try {
-      const outcome = await startRunExecution(ctx, run, kwargs);
+      // `queuedAtMs` is the run's `created_at` — the same instant `run_queue_ms` measures from, so
+      // the log summary and the telemetry event report one number, not two that nearly agree.
+      const queuedAtMs = Date.parse(run.created_at);
+      const outcome = await startRunExecution(ctx, run, kwargs, {
+        trigger: "background",
+        ...(Number.isNaN(queuedAtMs) ? {} : { queuedAtMs }),
+      });
       status = outcome.status;
       failure = outcome.error;
     } catch (error) {
@@ -207,6 +213,15 @@ export function createRunWorker(ctx: ProtocolContext, options: RunWorkerOptions 
           error: drainFailure instanceof Error ? drainFailure.message : String(drainFailure),
         });
       }
+
+      // Last, once every run has settled: drain buffered telemetry, so a batching exporter doesn't
+      // lose the tail — precisely the events you most want after a crash.
+      //
+      // `flush` only, never `shutdown`: the worker did not build these sinks and does not own their
+      // lifetime. A host can stop the worker while continuing to serve inline `wait`/`stream` runs,
+      // and closing the underlying client here would silently drop every event for the rest of the
+      // process. Whoever assembled the sinks closes them (see `buildRuntime`'s `dispose`).
+      if (deps.telemetryEnabled) await deps.telemetry.flush?.();
     },
   };
 }

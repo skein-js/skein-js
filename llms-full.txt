@@ -513,6 +513,17 @@ cross-instance fan-out). These map directly to the CLI's `--store` and `--queue`
 | [`@skein-js/storage-postgres`](./packages/storage-postgres) | Production Postgres store with **pgvector** semantic search; `PostgresSaver` checkpoints | `pnpm add @skein-js/storage-postgres` |
 | [`@skein-js/redis`](./packages/runtime-redis)               | Redis job queue (BullMQ) + cross-instance streaming bus (multi-instance prod)            | `pnpm add @skein-js/redis`            |
 
+### Observability
+
+Optional telemetry sinks — traces and metrics for your runs. Off by default; see
+[docs/observability.md](./docs/observability.md).
+
+| Package                                                     | Use it for                                                                               | Install                               |
+| ----------------------------------------------------------- | ---------------------------------------------------------------------------------------- | ------------------------------------- |
+| [`@skein-js/langsmith`](./packages/telemetry-langsmith)     | LangSmith tracing — run identity, and thread grouping in the **Threads** view             | `pnpm add @skein-js/langsmith`        |
+| [`@skein-js/posthog`](./packages/telemetry-posthog)         | PostHog — run lifecycle events plus `$ai_generation` LLM analytics (tokens, latency)     | `pnpm add @skein-js/posthog`          |
+| [`@skein-js/otel`](./packages/telemetry-otel)               | OpenTelemetry spans + metrics; API-only, so Datadog/Grafana/Honeycomb/Jaeger all work    | `pnpm add @skein-js/otel`             |
+
 ### Coming soon
 
 Planned (LangGraph Platform parity): **cron / scheduled runs**, **time travel** (fork from a
@@ -526,7 +537,8 @@ thread **copy** (with history), store item **TTL**, and a distinct **`cancelled`
 
 > Package names are the npm names; a few on-disk directories differ (`@skein-js/express` →
 > `packages/server-express`, likewise `@skein-js/fastify` · `@skein-js/nestjs` · `@skein-js/nextjs` →
-> `packages/server-{fastify,nestjs,nextjs}`, `@skein-js/redis` → `packages/runtime-redis`, `skein-js`
+> `packages/server-{fastify,nestjs,nextjs}`, `@skein-js/redis` → `packages/runtime-redis`,
+> `@skein-js/{langsmith,posthog,otel}` → `packages/telemetry-{langsmith,posthog,otel}`, `skein-js`
 > → `packages/cli`). The links above point at the directories.
 
 ## Examples
@@ -591,6 +603,8 @@ Full design and how-to guides live in [`docs/`](./docs):
 - [React SDK / `useStream`](./docs/react-sdk.md) — building the frontend
 - [Storage](./docs/storage.md) — persistence, long-term memory, pgvector
 - [Runs & Redis](./docs/runs-and-redis.md) — the run engine and scaling to multiple instances
+- [Errors & logging](./docs/errors-and-logging.md) — what a failed run reports, and where
+- [Observability](./docs/observability.md) — tracing + metrics: LangSmith, PostHog, OpenTelemetry
 - [Deploy anywhere](./docs/deploy.md) — Cloud Run, Railway, Fly.io, Render, AWS, Kubernetes, VPS
 - [Reuse-first architecture](./docs/reuse.md) — what we reuse vs. rebuild _(design)_
 - [Roadmap](./docs/roadmap.md)
@@ -816,6 +830,8 @@ machine-readable [`llms.txt`](../llms.txt) / [`llms-full.txt`](../llms-full.txt)
 | [react-sdk.md](./react-sdk.md)                           | `@langchain/langgraph-sdk` + `useStream` compatibility          |
 | [storage.md](./storage.md)                               | `SkeinStore`, in-memory + Postgres, pgvector, checkpointer      |
 | [runs-and-redis.md](./runs-and-redis.md)                 | Run engine, queue, cross-instance streaming                     |
+| [errors-and-logging.md](./errors-and-logging.md)         | What a failed run reports, and where — wire, log, `skein dev`   |
+| [observability.md](./observability.md)                   | Tracing + metrics — LangSmith, PostHog, OpenTelemetry, custom   |
 | [deploy.md](./deploy.md)                                 | Deploy anywhere — Cloud Run, Railway, Fly, Render, AWS, K8s     |
 | [bundling.md](./bundling.md)                             | Bundling skein yourself — ESM, `require()`, what to externalize |
 | [reuse.md](./reuse.md)                                   | _(design)_ What we reuse from LangGraph OSS vs. rebuild         |
@@ -1433,6 +1449,14 @@ it but is never required.
     "disable_studio_auth": false,
   },
 
+  // where runs report themselves — traces + lifecycle events (a skein extension; see below)
+  "telemetry": {
+    "langsmith": true,
+    "posthog": { "host": "https://eu.i.posthog.com" },
+    "otel": true,
+    "paths": ["./src/my-telemetry.ts:sink"], // your own TelemetrySink
+  },
+
   // extra Dockerfile lines appended after the base image
   "dockerfile_lines": [],
 }
@@ -1449,6 +1473,7 @@ it but is never required.
 | `checkpointer`         | `"default"` → `PostgresSaver`; dev falls back to an in-memory `MemorySaver`.                                                                                     |
 | `http`                 | CORS + `disable_*` route flags applied by the framework adapter.                                                                                                 |
 | `auth`                 | `auth.path` loads an `Auth` from `@langchain/langgraph-sdk/auth`; every request is authenticated + authorized; `disable_studio_auth` honored.                    |
+| `telemetry`            | **skein extension.** Builds the telemetry sinks runs report to — see [observability.md](./observability.md). Unknown to `langgraph dev`, which ignores it.       |
 | `dockerfile_lines`     | Appended by `skein dockerfile` / `skein build`.                                                                                                                  |
 
 ## Graph loading (`path:export` notation)
@@ -2457,6 +2482,25 @@ a code frame while a JSON logger can serialize the fields. Recognize it with `is
 Also always logged: background-run lifecycle summaries (at `error` level, with a `run_error` field,
 when the run failed), webhook delivery failures, rollback failures, and queue-shutdown problems.
 
+### Sending failures somewhere else
+
+The log is one of **three** surfaces a failure reaches. The third is a telemetry sink — LangSmith,
+PostHog, OpenTelemetry, or your own — which receives a `run.finished` event carrying the `RunError`,
+the node that threw, and the original `Error`:
+
+```ts
+const sink: TelemetrySink = {
+  name: "sentry",
+  onRunEvent: (event) => {
+    if (event.type === "run.finished" && event.cause) Sentry.captureException(event.cause);
+  },
+};
+```
+
+A sink is **server-side, like the log** — so it always gets the full `Error`, stack and `cause` chain
+included, **regardless of `exposeErrorStacks`**. That flag governs only what reaches a client. See
+[observability.md](./observability.md).
+
 ### What `--verbose` adds
 
 `skein dev --verbose` sets `ProtocolDeps.logRunActivity`, which adds per-run _chatter_: run
@@ -2869,7 +2913,7 @@ instance executes at once.
 
 1. Resolves the target graph via [`@skein-js/config`](./langgraph-cli-compat.md).
 2. Persists a run row through [`SkeinStore`](./storage.md) (`pending → running → success/error`).
-   A failed run also records *why* on the row, so `GET /threads/{tid}/runs/{rid}` can still explain
+   A failed run also records _why_ on the row, so `GET /threads/{tid}/runs/{rid}` can still explain
    it afterwards — see [errors and logging](./errors-and-logging.md).
 3. Invokes the graph (`invoke` for wait, `stream` for streaming), threading the LangGraph
    **checkpointer** so state/history persist and **interrupt/resume** (human-in-the-loop)
@@ -2981,6 +3025,347 @@ To run the same topology on a hosted platform, the generated image is PaaS-frien
 injected `$PORT`, non-root, `/ok` health probe, graceful `SIGTERM`) — see
 [deploy.md](./deploy.md) for what every platform needs, plus per-platform guides for Cloud Run,
 Railway, Fly.io, Render, AWS, Kubernetes and a plain VPS.
+
+
+---
+
+<!-- source: docs/observability.md -->
+
+# Observability
+
+How to see what your agents are doing in production — traces in LangSmith or Langfuse, metrics and
+spans in OpenTelemetry, product analytics in PostHog — and how to write a sink for anything else.
+
+For **logs** and what happens when a graph throws, see
+[errors-and-logging.md](./errors-and-logging.md). This doc is about the other two surfaces.
+
+## Contents
+
+- [Three surfaces](#three-surfaces)
+- [Turning it on](#turning-it-on)
+- [LangSmith](#langsmith)
+- [PostHog](#posthog)
+- [OpenTelemetry](#opentelemetry)
+- [Other backends](#other-backends)
+- [Writing your own sink](#writing-your-own-sink)
+- [Cost and safety](#cost-and-safety)
+
+## Three surfaces
+
+skein reports what a run did in three places, deliberately carrying different amounts of detail:
+
+| Surface      | Who reads it      | What it gets                                                  |
+| ------------ | ----------------- | ------------------------------------------------------------- |
+| **The wire** | your API client   | `RunError` — a stack only when you set `exposeErrorStacks`    |
+| **The log**  | you, the operator | everything: the original `Error`, its stack and `cause` chain |
+| **A sink**   | you, the operator | everything, same as the log — it's server-side too            |
+
+That last row is the rule worth remembering: **`exposeErrorStacks` governs the wire, not telemetry.**
+A sink always receives the real `Error`. See [errors-and-logging.md](./errors-and-logging.md).
+
+Telemetry itself splits in two, and one interface covers both:
+
+- **Traces** — spans for what happens _inside_ a graph: each LLM call, tool, and chain. These come
+  from LangChain's callback system, so any callback-based tracer works (LangSmith, Langfuse,
+  Braintrust, OpenLLMetry).
+- **Events** — the run's own lifecycle: started, settled, how long, how many frames, what failed.
+  skein emits these itself, from the one code path every run mode goes through.
+
+## Turning it on
+
+Three ways, highest precedence first.
+
+**1. In code** — pass a sink as `ProtocolDeps.telemetry`. Works everywhere, CLI or not:
+
+```ts
+import { createPostHogTelemetry } from "@skein-js/posthog";
+import { embedInMemoryGraphs } from "@skein-js/server-kit";
+
+const telemetry = createPostHogTelemetry();
+const deps = embedInMemoryGraphs({ agent }, { overrides: telemetry ? { telemetry } : {} });
+```
+
+Each `create*Telemetry()` returns `undefined` when its backend isn't configured, so that ternary is
+the whole "is it enabled" story. Pass an **array** to feed several backends at once.
+
+**2. In `langgraph.json`** — for `skein dev` / `skein start`:
+
+```json
+{
+  "graphs": { "agent": "./src/agent.ts:graph" },
+  "telemetry": {
+    "langsmith": true,
+    "posthog": { "host": "https://eu.i.posthog.com" },
+    "otel": true,
+    "paths": ["./src/my-telemetry.ts:sink"]
+  }
+}
+```
+
+`true` enables with defaults, `false` **hard-disables** even when the environment says otherwise, and
+an object is passed through to the adapter. This is a skein extension; it's additive, so a config
+carrying it still loads under `langgraph dev`.
+
+**3. From the environment** — a provider the config doesn't mention turns itself on when its
+variables are present:
+
+| Provider      | Detected from                                                                              |
+| ------------- | ------------------------------------------------------------------------------------------ |
+| LangSmith     | `LANGSMITH_TRACING=true` **and** `LANGSMITH_API_KEY` (or the `LANGCHAIN_` equivalents)     |
+| PostHog       | `POSTHOG_API_KEY`                                                                          |
+| OpenTelemetry | `OTEL_EXPORTER_OTLP_ENDPOINT` · `OTEL_EXPORTER_OTLP_TRACES_ENDPOINT` · `OTEL_SERVICE_NAME` |
+
+With nothing configured there is no telemetry and no cost — the engine skips building any context at
+all. A provider that is only _detected_ and whose package isn't installed quietly stays off; one you
+**declared** in `langgraph.json` fails at startup naming what to install, because a silent no-op for
+something you explicitly asked for would be worse.
+
+> **Why LangSmith needs two variables.** Turning tracing on uploads every prompt, tool argument, and
+> model response — your users' messages — to a third party. A stray `LANGSMITH_API_KEY` (common in
+> environments that use LangSmith for something else) is not consent for that. `LANGSMITH_TRACING=true`
+> is LangChain's own opt-in, so that is the signal skein takes; declaring `telemetry.langsmith` in
+> `langgraph.json` is the other way to say yes.
+
+> **Building an image?** `skein build` can't see a dynamically imported adapter, so declare the
+> provider in `langgraph.json` and it gets pinned into the image. Environment-detected providers are
+> deliberately **not** pinned: the build machine's environment isn't the runtime's.
+
+## LangSmith
+
+```bash
+pnpm add @skein-js/langsmith langsmith
+export LANGSMITH_API_KEY=lsv2_pt_...
+export LANGSMITH_TRACING=true
+```
+
+Both variables, deliberately — see the note above. Declaring `{"telemetry": {"langsmith": true}}` in
+`langgraph.json` switches tracing on for you, so the key alone is enough on that path.
+
+**What this actually fixes.** LangSmith's tracer already instruments everything inside your graph.
+What it can't know is what a "run" is on your server, so without help every run lands as an anonymous
+root trace: no thread, no assistant, no user. This adapter supplies that identity — above all
+**`session_id`**, the key LangSmith's **Threads** view groups on, so a conversation reads as one
+thread there just as it does through the Agent Protocol.
+
+It deliberately attaches **no tracer of its own**. `@langchain/core` installs a global tracer when
+`LANGSMITH_TRACING` is on; a second one would send every span twice — you'd pay double and couldn't
+trust the numbers. The adapter enriches that one tracer instead.
+
+Credentials are **read from the environment, never written to it**: skein will not copy an API key
+into `process.env`, where every module and every child process would inherit it. Set
+`LANGSMITH_API_KEY` (and `LANGSMITH_ENDPOINT` for self-hosted) in the environment — that is where
+LangChain's tracer reads them from.
+
+| Set on every trace |                                                                             |
+| ------------------ | --------------------------------------------------------------------------- |
+| `metadata`         | `session_id` (thread id), `run_id`, `thread_id`, `assistant_id`, `graph_id` |
+| `metadata`         | `ls_user_id` when auth is on, `skein_trigger`                               |
+| `tags`             | `skein`, `graph:<id>`, `trigger:<how>`, `assistant:<id>`                    |
+| run name           | the graph id                                                                |
+
+Full options in the [package README](../packages/telemetry-langsmith/README.md).
+
+## PostHog
+
+```bash
+pnpm add @skein-js/posthog posthog-node
+export POSTHOG_API_KEY=phc_...
+```
+
+Two layers, correlated by `$ai_trace_id` (= skein's run id):
+
+- **`skein_run_started` / `skein_run_finished`** — status, duration, queue wait, frame count, and the
+  graph, assistant, and thread. The operational picture.
+- **`$ai_generation`** — PostHog's LLM Analytics schema, per model call: `$ai_model`, `$ai_provider`,
+  input/output/total tokens, `$ai_latency`, `$ai_is_error`. This is what fills PostHog's LLM
+  dashboards — cost per user, tokens per conversation.
+
+Token counts come from the message's `usage_metadata` where the provider supplies it, falling back to
+the older `llmOutput.tokenUsage`. When neither is present the token fields are **omitted** rather
+than reported as zero — a missing number is more honest than a wrong one.
+
+Runs are attributed to the authenticated user's identity, falling back to the thread id so anonymous
+traffic groups per conversation instead of collapsing into one distinct id. Override with
+`distinctId`. Turn the LLM layer off with `captureGenerations: false`. See the
+[package README](../packages/telemetry-posthog/README.md).
+
+## OpenTelemetry
+
+```bash
+pnpm add @skein-js/otel @opentelemetry/api
+```
+
+`@skein-js/otel` depends on the OTel **API only** — never the SDK, never an exporter. Your app owns
+the SDK and decides where data goes, exactly as it already does for the rest of your service. That's
+why one small package covers every OTLP backend. If no SDK is registered, the API's no-op
+implementation takes over and this costs almost nothing.
+
+**Span** `skein.run <graph_id>`, one per run, with `skein.run.id` / `.thread.id` / `.assistant.id` /
+`.graph.id` / `.trigger` / `.status` / `.queue_ms` / `.frames` / `.failing_nodes`, plus the
+`gen_ai.*` semconv equivalents. A failure records the exception and sets an `ERROR` status.
+
+**Metrics** `skein.runs` (counter) and `skein.run.duration` (histogram, ms), dimensioned by graph,
+trigger, and status — deliberately **low-cardinality**, with no run, thread, or user id, so they stay
+cheap in Prometheus and friends.
+
+### Spans inside the graph
+
+skein reports the _run_. For LLM- and tool-level spans, add a LangChain instrumentation —
+[`@traceloop/node-server-sdk`](https://github.com/traceloop/openllmetry-js) or
+[`@arizeai/openinference-instrumentation-langchain`](https://github.com/Arize-ai/openinference).
+
+Those spans are **correlated with** the run span, not **nested under** it. Nesting would need the run
+span to be _active_ in the OTel context for the whole of the graph's execution, and the sink seam is
+a pair of one-shot notifications with no way to hold a context open between them. Join on
+`skein.run.id` or `gen_ai.conversation.id` and you get the same grouping in a query — but you won't
+see generations indented under the run in a trace waterfall.
+
+### Datadog, Grafana, Honeycomb, Jaeger, New Relic, Sentry
+
+All of these are the OTel adapter plus their own exporter — no skein-specific code. Configure the SDK
+the way that vendor documents, then:
+
+```json
+{ "telemetry": { "otel": true } }
+```
+
+For most, exporting `OTEL_EXPORTER_OTLP_ENDPOINT` and `OTEL_EXPORTER_OTLP_HEADERS` at their collector
+is the entire integration.
+
+## Other backends
+
+### Langfuse
+
+Langfuse ships a LangChain callback handler, so it needs only a small sink:
+
+```ts
+import { CallbackHandler } from "langfuse-langchain";
+import type { TelemetrySink } from "@skein-js/core";
+
+export const sink: TelemetrySink = {
+  name: "langfuse",
+  callbacks: (context) => [
+    new CallbackHandler({
+      sessionId: context.threadId, // groups a conversation in Langfuse
+      userId: context.userId,
+      metadata: { run_id: context.runId, graph_id: context.graphId },
+    }),
+  ],
+};
+```
+
+```json
+{ "telemetry": { "paths": ["./src/langfuse.ts:sink"] } }
+```
+
+### Braintrust
+
+Same shape — Braintrust's LangChain handler in `callbacks`, with the thread id as the span's parent
+identifier.
+
+### Sentry
+
+Sentry reads OTel spans, so `@skein-js/otel` plus Sentry's SDK covers tracing. For error _events_
+specifically, a lifecycle sink is more direct:
+
+```ts
+import * as Sentry from "@sentry/node";
+import type { TelemetrySink } from "@skein-js/core";
+
+export const sink: TelemetrySink = {
+  name: "sentry",
+  onRunEvent: (event) => {
+    if (event.type !== "run.finished" || !event.cause) return;
+    // `event.cause` is the original Error — stack and cause chain intact.
+    Sentry.captureException(event.cause, {
+      tags: { graph_id: event.context.graphId, status: event.status },
+      contexts: { skein: { run_id: event.context.runId, thread_id: event.context.threadId } },
+    });
+  },
+};
+```
+
+### Your existing logger
+
+If you already ship structured logs somewhere, a sink is a ten-line bridge:
+
+```ts
+export const sink: TelemetrySink = {
+  name: "logger",
+  onRunEvent: (event) =>
+    logger.info(event.type, {
+      ...event.context,
+      ...(event.type === "run.finished" && {
+        status: event.status,
+        duration_ms: event.durationMs,
+      }),
+    }),
+};
+```
+
+## Writing your own sink
+
+The whole interface, from `@skein-js/core`. Every method is optional — implement the half you need:
+
+```ts
+export interface TelemetrySink {
+  name: string;
+  /** Run lifecycle. Fire-and-forget: never awaited. */
+  onRunEvent?(event: RunTelemetryEvent): void;
+  /** LangChain callback handlers, so a tracer's spans nest under the run. */
+  callbacks?(context: RunTelemetryContext): unknown[];
+  /** Extra metadata / tags stamped on the graph call. */
+  traceMetadata?(context: RunTelemetryContext): Record<string, unknown>;
+  traceTags?(context: RunTelemetryContext): string[];
+  /** Drain buffered data — called on shutdown. */
+  flush?(): Promise<void>;
+  shutdown?(): Promise<void>;
+}
+```
+
+`RunTelemetryContext` carries `runId`, `threadId`, `assistantId`, `graphId`, `userId`, `trigger`
+(`wait` / `stream` / `background` / `invoke`), `streamModes`, and the run's `metadata`.
+
+`run.finished` adds `status`, `durationMs`, `frameCount`, and on failure `error` (the JSON-safe
+`RunError`), `failingNodes` (which graph node threw), and `cause` (the original `Error`).
+
+Two things to know:
+
+- **`assistantId` is absent for `trigger: "invoke"`.** The `POST /invoke/:graph_id` surface addresses
+  a graph directly, with no assistant in between. That surface reports **traces but not lifecycle
+  events** — there is no run row for them to describe.
+- **Sinks may not throw or block.** Every call is guarded, so a throw is logged and swallowed rather
+  than failing a run — but a sink doing inline I/O still slows every run it observes. Buffer, and
+  implement `flush()`; skein calls it on shutdown so buffering is the safe default.
+
+Point `langgraph.json` at it:
+
+```json
+{ "telemetry": { "paths": ["./src/my-telemetry.ts:sink"] } }
+```
+
+The export may be the sink itself or a function returning one, so your module can read its own
+configuration.
+
+## Cost and safety
+
+- **Off by default, free when off.** With no sink configured the engine builds no context and reads
+  no metadata. There is no "disabled telemetry" tax.
+- **A broken sink can't break a run.** Every method is wrapped; a throw is logged through
+  `ProtocolDeps.logger` and dropped. One sink failing doesn't stop the others.
+- **Flushed on shutdown.** The run worker and the runtime both drain sinks when stopping, so batching
+  exporters don't lose the tail of a process — which is exactly the telemetry you want after a crash.
+- **Metric cardinality.** skein's own OTel metrics carry no run, thread, or user id. If you write a
+  sink, resist adding them as metric dimensions — they belong on spans and events, not counters.
+- **What leaves your server.** Traces carry your graph's inputs and outputs, which for an agent means
+  user messages. Check that against your data-handling obligations before pointing them at a hosted
+  backend; self-hosted LangSmith, Langfuse, and any OTLP collector are all supported.
+
+## Learn more
+
+- [Errors & logging](./errors-and-logging.md) — the other two reporting surfaces
+- [Runs & Redis](./runs-and-redis.md) — the run engine these events come from
+- [Deploy](./deploy.md) — running skein in production
 
 
 ---

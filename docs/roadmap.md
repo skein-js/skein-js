@@ -94,6 +94,14 @@ Also shipped, beyond the original MVP plan:
   Rides the LangGraph checkpointer — no new storage. The fork target is server-validated and injected
   server-side, so a client can't redirect a run to an arbitrary checkpoint through config. See
   [agent-protocol.md](./agent-protocol.md).
+- ✅ **Observability — tracing + metrics** — an injectable `TelemetrySink` on `ProtocolDeps`, driven
+  from the one run-execution path, with three adapters: [`@skein-js/langsmith`](../packages/telemetry-langsmith)
+  (run identity + LangSmith Threads grouping), [`@skein-js/posthog`](../packages/telemetry-posthog)
+  (run lifecycle + `$ai_generation` LLM analytics), and [`@skein-js/otel`](../packages/telemetry-otel)
+  (spans + metrics against the OTel **API only**, so Datadog/Grafana/Honeycomb/Jaeger/Sentry work
+  unchanged). Configured in code, via a `langgraph.json` `telemetry` block, or auto-detected from the
+  environment; off by default and free when off, and a sink can never fail or slow a run. See
+  [observability.md](./observability.md).
 - ✅ **`skein import-langgraph`** — import an existing LangGraph `.langgraph_api/` dev-state directory
   (threads, runs, assistants, store) into skein, so adopting it off `langgraph dev` carries local state
   over losslessly. See [langgraph-cli-compat.md](./langgraph-cli-compat.md).
@@ -155,7 +163,7 @@ valuable feedback we can get.
 | Next.js API-route adapter             | ✅ shipped         | App Router + Pages Router; same-origin, `useStream` UI example.              |
 | WebSocket streaming transport         | ❌ non-goal (v1)   | SSE covers the client UX; does not affect the React SDK.                     |
 | `deploy` to a hosted platform         | ❌ non-goal        | skein-js is self-hosted by design.                                           |
-| Full OpenTelemetry observability      | ❌ non-goal (v1)   | May revisit post-v1.                                                         |
+| OpenTelemetry / tracing observability | ✅ shipped         | `TelemetrySink` seam + LangSmith, PostHog, and OTel adapters.                |
 
 ## Non-goals for v1
 
@@ -164,8 +172,6 @@ Deliberately out of scope for the first stable release (may be revisited later):
 - **WebSocket streaming transport** — SSE covers the client UX and **does not affect the React SDK**.
 - **`skein deploy` to a hosted platform** — skein-js is self-hosted by design; there's no managed
   target to push to.
-- **Full OpenTelemetry observability** — structured logging ships today; full OTel tracing is a
-  later consideration.
 
 ## Verification
 

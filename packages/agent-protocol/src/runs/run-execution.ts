@@ -4,17 +4,25 @@
 // `rollback` plan once the displaced run has released the lock, registers the run's cancellation
 // control, and records its base checkpoint for a future rollback.
 
-import type { RunKwargs, Run } from "@skein-js/core";
+import type { RunKwargs, Run, RunTrigger } from "@skein-js/core";
 
 import type { ProtocolContext } from "../context.js";
 import { rollbackThreadCheckpointsTo } from "../threads/checkpoint-history.js";
 
 import { executeRun, type RunOutcome } from "./run-engine.js";
 
+/** Telemetry-only context about how this run was started. Omitted entirely by callers that don't care. */
+export interface RunExecutionOrigin {
+  trigger?: RunTrigger;
+  /** When the run was enqueued, epoch ms — background runs only, for queue-latency reporting. */
+  queuedAtMs?: number;
+}
+
 export async function startRunExecution(
   ctx: ProtocolContext,
   run: Run,
   kwargs: RunKwargs,
+  origin: RunExecutionOrigin = {},
 ): Promise<RunOutcome> {
   const { deps, control, executionLocks, runBaseCheckpoints, rollbackPlans } = ctx;
   const runId = run.run_id;
@@ -60,6 +68,7 @@ export async function startRunExecution(
         kwargs,
         control: runControl,
         recordBaseCheckpoint: (base) => runBaseCheckpoints.set(runId, base),
+        ...origin,
       });
     });
   } finally {

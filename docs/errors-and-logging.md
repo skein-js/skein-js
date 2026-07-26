@@ -108,6 +108,25 @@ a code frame while a JSON logger can serialize the fields. Recognize it with `is
 Also always logged: background-run lifecycle summaries (at `error` level, with a `run_error` field,
 when the run failed), webhook delivery failures, rollback failures, and queue-shutdown problems.
 
+### Sending failures somewhere else
+
+The log is one of **three** surfaces a failure reaches. The third is a telemetry sink — LangSmith,
+PostHog, OpenTelemetry, or your own — which receives a `run.finished` event carrying the `RunError`,
+the node that threw, and the original `Error`:
+
+```ts
+const sink: TelemetrySink = {
+  name: "sentry",
+  onRunEvent: (event) => {
+    if (event.type === "run.finished" && event.cause) Sentry.captureException(event.cause);
+  },
+};
+```
+
+A sink is **server-side, like the log** — so it always gets the full `Error`, stack and `cause` chain
+included, **regardless of `exposeErrorStacks`**. That flag governs only what reaches a client. See
+[observability.md](./observability.md).
+
 ### What `--verbose` adds
 
 `skein dev --verbose` sets `ProtocolDeps.logRunActivity`, which adds per-run _chatter_: run

@@ -124,6 +124,15 @@ export interface GraphCallOptions {
   recursionLimit?: number;
   interruptBefore?: string[] | "*";
   interruptAfter?: string[] | "*";
+  /**
+   * Trace identity (`metadata`/`tags`/`runName`) and tracer handlers (`callbacks`), merged in by the
+   * engine from the configured telemetry sink — see `run-telemetry.ts`. Server-owned and absent
+   * unless telemetry is configured; `toGraphCallOptions` never sets them itself.
+   */
+  metadata?: Record<string, unknown>;
+  tags?: string[];
+  runName?: string;
+  callbacks?: unknown[];
 }
 
 /**

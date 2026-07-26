@@ -505,6 +505,17 @@ cross-instance fan-out). These map directly to the CLI's `--store` and `--queue`
 | [`@skein-js/storage-postgres`](./packages/storage-postgres) | Production Postgres store with **pgvector** semantic search; `PostgresSaver` checkpoints | `pnpm add @skein-js/storage-postgres` |
 | [`@skein-js/redis`](./packages/runtime-redis)               | Redis job queue (BullMQ) + cross-instance streaming bus (multi-instance prod)            | `pnpm add @skein-js/redis`            |
 
+### Observability
+
+Optional telemetry sinks — traces and metrics for your runs. Off by default; see
+[docs/observability.md](./docs/observability.md).
+
+| Package                                                 | Use it for                                                                            | Install                        |
+| ------------------------------------------------------- | ------------------------------------------------------------------------------------- | ------------------------------ |
+| [`@skein-js/langsmith`](./packages/telemetry-langsmith) | LangSmith tracing — run identity, and thread grouping in the **Threads** view         | `pnpm add @skein-js/langsmith` |
+| [`@skein-js/posthog`](./packages/telemetry-posthog)     | PostHog — run lifecycle events plus `$ai_generation` LLM analytics (tokens, latency)  | `pnpm add @skein-js/posthog`   |
+| [`@skein-js/otel`](./packages/telemetry-otel)           | OpenTelemetry spans + metrics; API-only, so Datadog/Grafana/Honeycomb/Jaeger all work | `pnpm add @skein-js/otel`      |
+
 ### Coming soon
 
 Planned (LangGraph Platform parity): **cron / scheduled runs**, **time travel** (fork from a
@@ -518,7 +529,8 @@ thread **copy** (with history), store item **TTL**, and a distinct **`cancelled`
 
 > Package names are the npm names; a few on-disk directories differ (`@skein-js/express` →
 > `packages/server-express`, likewise `@skein-js/fastify` · `@skein-js/nestjs` · `@skein-js/nextjs` →
-> `packages/server-{fastify,nestjs,nextjs}`, `@skein-js/redis` → `packages/runtime-redis`, `skein-js`
+> `packages/server-{fastify,nestjs,nextjs}`, `@skein-js/redis` → `packages/runtime-redis`,
+> `@skein-js/{langsmith,posthog,otel}` → `packages/telemetry-{langsmith,posthog,otel}`, `skein-js`
 > → `packages/cli`). The links above point at the directories.
 
 ## Examples
@@ -583,6 +595,8 @@ Full design and how-to guides live in [`docs/`](./docs):
 - [React SDK / `useStream`](./docs/react-sdk.md) — building the frontend
 - [Storage](./docs/storage.md) — persistence, long-term memory, pgvector
 - [Runs & Redis](./docs/runs-and-redis.md) — the run engine and scaling to multiple instances
+- [Errors & logging](./docs/errors-and-logging.md) — what a failed run reports, and where
+- [Observability](./docs/observability.md) — tracing + metrics: LangSmith, PostHog, OpenTelemetry
 - [Deploy anywhere](./docs/deploy.md) — Cloud Run, Railway, Fly.io, Render, AWS, Kubernetes, VPS
 - [Reuse-first architecture](./docs/reuse.md) — what we reuse vs. rebuild _(design)_
 - [Roadmap](./docs/roadmap.md)

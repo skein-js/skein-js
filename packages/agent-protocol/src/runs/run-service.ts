@@ -16,6 +16,7 @@ import {
   type RunFrame,
   type RunKwargs,
   type RunStatus,
+  type RunTrigger,
   type StreamMode,
   type Thread,
 } from "@skein-js/core";
@@ -214,8 +215,10 @@ export function createRunService(ctx: ProtocolContext): RunService {
   };
 
   // Execute a run inline (wait/stream) via the shared per-thread execution path, publishing frames
-  // to the bus. Returns the outcome promise.
-  const runInline = (run: Run, kwargs: RunKwargs) => startRunExecution(ctx, run, kwargs);
+  // to the bus. Returns the outcome promise. `trigger` is telemetry-only — it distinguishes the two
+  // inline shapes, which have very different latency profiles worth separating in a dashboard.
+  const runInline = (run: Run, kwargs: RunKwargs, trigger: RunTrigger) =>
+    startRunExecution(ctx, run, kwargs, { trigger });
 
   return {
     async createWait(input) {
@@ -224,7 +227,7 @@ export function createRunService(ctx: ProtocolContext): RunService {
       const kwargs = toKwargs(input, authUser, authScopes);
       const run = await createPendingRun(input, thread.thread_id, assistant.assistant_id, kwargs);
       await stampGraphOnThread(thread, assistant);
-      const outcome = await runInline(run, kwargs);
+      const outcome = await runInline(run, kwargs, "wait");
       // A failed run must not read as an empty success. There are no headers left to turn into a
       // status (the run already executed), so the failure travels in the body under `__error__` —
       // the key `@langchain/langgraph-api` uses for exactly this. We match the key but not its
@@ -243,7 +246,7 @@ export function createRunService(ctx: ProtocolContext): RunService {
       await stampGraphOnThread(thread, assistant);
       // Kick off execution; the subscription below replays from seq 0 (frames are buffered), so
       // nothing is lost between starting the run and subscribing.
-      void runInline(run, kwargs).catch((error: unknown) =>
+      void runInline(run, kwargs, "stream").catch((error: unknown) =>
         deps.logger.error("stream run failed", error),
       );
       return { runId: run.run_id, frames: deps.bus.subscribe(run.run_id, 0) };
