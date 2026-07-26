@@ -1,3 +1,13 @@
+## 0.11.1 (2026-07-26)
+
+### 🩹 Fixes
+
+- **repo:** restore prettier to 3.9.x so format:check passes ([f592343](https://github.com/skein-js/skein-js/commit/f592343))
+
+### ❤️ Thank You
+
+- Maina Wycliffe
+
 ## 0.11.0 (2026-07-26)
 
 ### 🚀 Features
