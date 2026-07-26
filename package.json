@@ -45,13 +45,12 @@
     "eslint-plugin-import": "^2.31.0",
     "eslint-plugin-unused-imports": "^4.1.4",
     "nx": "23.0.2",
-    "prettier": "^3.4.2",
+    "prettier": "^3.9.6",
     "testcontainers": "^10.16.0",
     "tsup": "^8.3.5",
     "typescript": "^5.7.2",
     "typescript-eslint": "^8.18.1",
     "vite": "8.1.4",
     "vitest": "4.1.9"
-  },
-  "dependencies": {}
+  }
 }

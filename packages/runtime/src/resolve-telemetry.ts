@@ -69,8 +69,8 @@ const PROVIDERS: Record<string, TelemetryProvider> = {
     detect: (env) =>
       Boolean(
         env["OTEL_EXPORTER_OTLP_ENDPOINT"] ??
-          env["OTEL_EXPORTER_OTLP_TRACES_ENDPOINT"] ??
-          env["OTEL_SERVICE_NAME"],
+        env["OTEL_EXPORTER_OTLP_TRACES_ENDPOINT"] ??
+        env["OTEL_SERVICE_NAME"],
       ),
   },
 };
