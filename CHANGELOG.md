@@ -1,3 +1,13 @@
+## 0.11.2 (2026-07-26)
+
+### 🚀 Features
+
+- **adapters:** wire the logger option through to the run engine ([ebf810d](https://github.com/skein-js/skein-js/commit/ebf810d))
+
+### ❤️ Thank You
+
+- Maina Wycliffe
+
 ## 0.11.1 (2026-07-26)
 
 ### 🩹 Fixes
