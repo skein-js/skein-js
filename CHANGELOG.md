@@ -1,3 +1,14 @@
+## 0.11.0 (2026-07-26)
+
+### 🚀 Features
+
+- **agent-protocol:** surface errors thrown inside graphs ([0fbfae4](https://github.com/skein-js/skein-js/commit/0fbfae4))
+- **telemetry:** add LangSmith, PostHog, and OpenTelemetry sinks ([c07e763](https://github.com/skein-js/skein-js/commit/c07e763))
+
+### ❤️ Thank You
+
+- Maina Wycliffe
+
 ## 0.10.0 (2026-07-25)
 
 ### 🚀 Features
