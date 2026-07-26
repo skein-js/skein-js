@@ -239,11 +239,24 @@ function sendError(error, res, logger) {
   `corsFromHttpConfig` / `toCorsOptions` (the shared, framework-agnostic home; also re-exported from
   `@skein-js/express`) to derive `cors`-style options from the `langgraph.json` `http.cors` block; on
   another framework, apply the equivalent middleware.
+- **Logging** — `resolveProtocolRuntime(options, frameworkLogger?)` takes an optional second argument:
+  your framework's own logger, used only when the caller supplied neither `options.logger` nor
+  `deps.logger`. Pass one **only if your framework owns a logger the host has already configured**
+  (NestJS's `Logger`, `fastify.log`) — then defaulting it on borrows the host's decision, silence
+  included. If it doesn't, pass nothing; a library should not decide on its host's behalf to start
+  writing to stdout. Either way, read the resolved logger back off the result and use _that_ for your
+  transport-fault logging, so the engine and the transport can't disagree about where output goes:
+
+  ```ts
+  const { runtime, cors, logger } = await resolveProtocolRuntime(options, myFrameworkLogger);
+  // …later, in your error path:
+  sendError(error, res, logger);
+  ```
 
 > **Shortcut:** [`@skein-js/server-kit`](../packages/server-kit)'s `resolveProtocolRuntime(options)`
 > does Steps 1 + the worker lifecycle in one call — resolve `{ config } | { deps }` into a running
-> runtime (assistants seeded, worker started) plus any CORS from the config. It's what the Express,
-> Fastify, NestJS, and Next.js adapters all use.
+> runtime (assistants seeded, worker started) plus any CORS from the config and the resolved logger.
+> It's what the Express, Fastify, NestJS, and Next.js adapters all use.
 
 ## A complete minimal adapter
 

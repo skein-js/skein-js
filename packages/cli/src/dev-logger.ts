@@ -5,13 +5,31 @@
 // injected `Logger`, so they stay framework-agnostic. Color disables itself for non-TTY / `NO_COLOR`.
 
 import { isRunFailureReport, type Logger, type RunFailureReport } from "@skein-js/agent-protocol";
+import { describeError } from "@skein-js/server-kit";
 
 import { codeFrameForStack } from "./code-frame.js";
 import { bold, cyan, dim, green, red, yellow } from "./colors.js";
-import { describeError } from "./describe-error.js";
 
 /** Indent for the meta block and continuation lines — aligns under the level prefix. */
 const INDENT = "       ";
+
+/** `String()` that never throws — a null-prototype object has no `toPrimitive` to convert through. */
+function safeString(value: unknown): string {
+  try {
+    return String(value);
+  } catch {
+    return Object.prototype.toString.call(value);
+  }
+}
+
+/** `JSON.stringify` that never throws — meta is `unknown` and may hold cycles or hostile getters. */
+function safeStringify(value: unknown): string {
+  try {
+    return JSON.stringify(value) ?? safeString(value);
+  } catch {
+    return safeString(value);
+  }
+}
 
 /** Indent every line of a block, so multi-line output stays under the level prefix. */
 function indent(text: string): string {
@@ -31,9 +49,20 @@ function metaBlock(meta: unknown): string {
     return `\n${indent(dim(describeError(meta)))}`;
   }
   if (typeof meta === "object") {
-    const pairs = Object.entries(meta as Record<string, unknown>).map(([key, value]) => {
+    // Reading the entries is guarded because `Object.entries` *invokes getters*, and rendering is
+    // guarded because a cyclic value defeats `JSON.stringify` — either would throw out of a logger
+    // that is, by then, reporting a crash. Kept local rather than delegated to server-kit's
+    // `formatLogMeta`: this block is colored and two-space-aligned, and matching that exactly is
+    // more coupling than the shared line is worth.
+    let entries: [string, unknown][];
+    try {
+      entries = Object.entries(meta as Record<string, unknown>);
+    } catch {
+      return `\n${indent(dim(safeString(meta)))}`;
+    }
+    const pairs = entries.map(([key, value]) => {
       const rendered =
-        typeof value === "object" && value !== null ? JSON.stringify(value) : String(value);
+        typeof value === "object" && value !== null ? safeStringify(value) : safeString(value);
       return `${dim(`${key}=`)}${rendered}`;
     });
     return pairs.length ? `\n${INDENT}${pairs.join("  ")}` : "";

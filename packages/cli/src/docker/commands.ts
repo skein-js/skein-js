@@ -8,9 +8,9 @@ import { createRequire } from "node:module";
 import path from "node:path";
 
 import { loadConfig, type LanggraphJson } from "@skein-js/config";
+import { describeError } from "@skein-js/server-kit";
 
 import { bundleProject } from "../bundle/bundle-project.js";
-import { describeError } from "../describe-error.js";
 import { DEFAULT_CONTAINER_PORT } from "../serve-env.js";
 
 import { generateCompose } from "./compose.js";

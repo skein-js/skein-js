@@ -35,12 +35,29 @@ function buildEchoGraph(): CompiledGraph<string> {
     .compile() as unknown as CompiledGraph<string>;
 }
 
-/** A `GraphResolver` exposing a single `echo` graph. */
+/** A graph that always throws, for exercising the failure-reporting path. */
+function buildExplodingGraph(): CompiledGraph<string> {
+  return new StateGraph(MessagesAnnotation)
+    .addNode("boom", () => {
+      throw new Error("graph exploded");
+    })
+    .addEdge("__start__", "boom")
+    .compile() as unknown as CompiledGraph<string>;
+}
+
+/** A `GraphResolver` exposing the `echo` graph plus a `boom` graph that always throws. */
 export function createEchoResolver(): GraphResolver {
-  const graph = buildEchoGraph();
+  const graphs: Record<string, CompiledGraph<string>> = {
+    echo: buildEchoGraph(),
+    boom: buildExplodingGraph(),
+  };
   return {
-    ids: ["echo"],
-    load: async () => graph,
+    ids: Object.keys(graphs),
+    load: async (graphId) => {
+      const graph = graphs[graphId];
+      if (!graph) throw new Error(`unknown graph "${graphId}"`);
+      return graph;
+    },
     schemas: async (graphId) => ({ [graphId]: { graph_id: graphId } }) as unknown as GraphSchemas,
   };
 }

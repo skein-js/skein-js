@@ -14,7 +14,7 @@ import {
   type ProtocolRequest,
 } from "@skein-js/agent-protocol";
 import { SkeinHttpError } from "@skein-js/core";
-import type { CorsSetting, SkeinRuntimeOptions } from "@skein-js/server-kit";
+import type { CorsSetting, Logger, SkeinRuntimeOptions } from "@skein-js/server-kit";
 
 import { getSkeinInvokeDeps } from "./runtime-singleton.js";
 import { toWebResponse, webErrorResponse } from "./send-web-response.js";
@@ -65,7 +65,10 @@ export function createSkeinInvokeRouteHandlers(
   options: SkeinInvokeRouteHandlerOptions,
 ): SkeinInvokeRouteHandlers {
   const basePath = options.basePath ?? "/api/invoke";
-  const logger = options.logger;
+  const optionLogger = options.logger === false ? undefined : options.logger;
+  // This handler's own option outranks the shared memoized runtime's. See create-route-handlers.ts.
+  const loggerFor = (resolved: { logger?: Logger }): Logger | undefined =>
+    options.logger === false ? undefined : (optionLogger ?? resolved.logger);
   // Built once for these options (the deps behind them are memoized too), not per request.
   let invoke: ReturnType<typeof createGraphInvokeHandler> | undefined;
 
@@ -78,7 +81,7 @@ export function createSkeinInvokeRouteHandlers(
     try {
       resolved = await getSkeinInvokeDeps(options);
     } catch (error) {
-      return webErrorResponse(error, {}, logger);
+      return webErrorResponse(error, {}, optionLogger);
     }
     // Explicit `options.cors` (incl. an explicit `false`) wins; otherwise fall back to config CORS.
     const cors: CorsSetting | false | undefined =
@@ -106,7 +109,7 @@ export function createSkeinInvokeRouteHandlers(
       });
       return toWebResponse(response, extraHeaders);
     } catch (error) {
-      return webErrorResponse(error, extraHeaders, logger);
+      return webErrorResponse(error, extraHeaders, loggerFor(resolved));
     }
   };
 

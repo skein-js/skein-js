@@ -39,6 +39,27 @@ afterEach(() => {
   vi.restoreAllMocks();
 });
 
+describe("createDevLogger — hostile meta", () => {
+  it("never throws while rendering, whatever the meta holds", () => {
+    // This runs on the path that already went wrong; throwing here loses both the original failure
+    // and the report of it.
+    const logger = createDevLogger();
+    const cyclic: Record<string, unknown> = { name: "loop" };
+    cyclic.self = cyclic;
+    const hostile = {
+      get boom(): string {
+        throw new Error("nope");
+      },
+    };
+    const unstringifiable = Object.create(null) as Record<string, unknown>;
+    unstringifiable.self = unstringifiable;
+
+    expect(() => logger.info("summary", cyclic)).not.toThrow();
+    expect(() => logger.info("summary", hostile)).not.toThrow();
+    expect(() => logger.info("summary", { nested: unstringifiable })).not.toThrow();
+  });
+});
+
 describe("createDevLogger", () => {
   it("renders a normal info line with its message unchanged", () => {
     const captured = capture("log");

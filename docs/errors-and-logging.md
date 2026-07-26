@@ -85,19 +85,73 @@ interface Logger {
 }
 ```
 
-Pass one as `ProtocolDeps.logger`. **It defaults to a no-op**, so an embedded server that injects
-nothing logs nothing — deliberate, but worth knowing. The CLI injects a console logger for you.
+Every adapter takes a `logger` option, and it reaches **the run engine** — not just the transport. It
+is the one knob that decides whether a crashed graph is visible at all.
 
-Bridging to pino, winston, or anything else is four lines:
+### What each adapter does by default
+
+|                     | Default              | Why                                                                |
+| ------------------- | -------------------- | ------------------------------------------------------------------ |
+| `@skein-js/nestjs`  | Nest's own `Logger`  | A facade over `app.useLogger()` / `NestFactory.create({ logger })` |
+| `@skein-js/fastify` | `fastify.log` (pino) | The host's own instance, honoring its config                       |
+| `@skein-js/express` | **nothing**          | Express owns no logger — pass `createConsoleLogger()`              |
+| `@skein-js/nextjs`  | **nothing**          | Same                                                               |
+
+The split is deliberate. Where the framework owns a logger the host has already configured, skein
+_borrows_ that decision — including the decision to be silent (`NestFactory.create({ logger: false })`,
+`Fastify({ logger: false })`). Where it doesn't, defaulting on would mean a library writing into
+someone's stdout uninvited, so skein stays quiet until asked:
+
+> **The two standalone servers are the exception, and differ from each other.** `createNestServer`
+> owns its bootstrap and keeps Nest's banner off, which silences the global facade — so it defaults to
+> its own `ConsoleLogger` and `app.useLogger()` does _not_ redirect it; pass `logger` instead.
+> `createFastifyServer` leaves pino off exactly as Fastify does, so it stays silent until you enable
+> it with `{ fastify: { logger: true } }` or pass a `logger`.
 
 ```ts
-const logger: Logger = {
-  debug: (message, meta) => pino.debug({ meta }, message),
-  info: (message, meta) => pino.info({ meta }, message),
-  warn: (message, meta) => pino.warn({ meta }, message),
-  error: (message, meta) => pino.error({ meta }, message),
-};
+import { createConsoleLogger, createExpressServer } from "@skein-js/express";
+
+createExpressServer({ config: "./langgraph.json", logger: createConsoleLogger() });
 ```
+
+`createConsoleLogger({ level, prefix })` is plain uncolored output — `level: "warn"` suppresses the
+per-run summaries while still reporting every failure. (The colored, code-framed failure block is
+`skein dev`'s; it knows your source root and can safely read from it.)
+
+### Precedence
+
+| Situation                    | Result                                                |
+| ---------------------------- | ----------------------------------------------------- |
+| `deps.logger` is set         | that logger, always — the adapter never overwrites it |
+| otherwise, `logger` a Logger | that logger                                           |
+| otherwise, `logger: false`   | nothing — no default installed                        |
+| otherwise                    | the adapter's default from the table above            |
+
+An injected `deps.logger` outranking the adapter option is deliberate, and it is what makes the rest
+safe: the adapter only ever _fills_ `deps.logger`, never replaces it. That in turn lets it hand the
+engine your actual deps object rather than a copy — which is what keeps post-mount configuration
+(`deps.exposeErrorStacks = true` after mounting) working, since the invoke surface re-reads its deps
+on every request.
+
+### Bridging to your own logger
+
+Each bridge ships with its adapter, so meta lands in the shape that logger actually wants:
+
+```ts
+import { createNestLogger } from "@skein-js/nestjs";
+// Point skein at a specific LoggerService rather than the globally configured one.
+SkeinModule.forRoot({ config, logger: createNestLogger({ logger: myPinoNestLogger }) });
+
+import { createFastifyLogger } from "@skein-js/fastify";
+// pino is object-first, so a failed run's ids become queryable fields and `err` gets pino's
+// error serializer — not a pre-flattened string.
+app.register(skeinPlugin, {
+  config,
+  logger: createFastifyLogger(app.log.child({ svc: "graphs" })),
+});
+```
+
+Anything else is four lines against the interface above.
 
 ### What is always logged
 
@@ -107,6 +161,13 @@ a code frame while a JSON logger can serialize the fields. Recognize it with `is
 
 Also always logged: background-run lifecycle summaries (at `error` level, with a `run_error` field,
 when the run failed), webhook delivery failures, rollback failures, and queue-shutdown problems.
+
+That is the whole steady-state volume — failures, plus one line per background run. The noisy
+per-run chatter is behind `logRunActivity` and stays off.
+
+One cost worth knowing: naming the node that threw takes a checkpointer read, so the engine skips
+building the report when nothing is listening. With a logger configured — which, under NestJS and
+Fastify, is now the default — a **failed** run pays that read. Successful runs are unaffected.
 
 ### Sending failures somewhere else
 

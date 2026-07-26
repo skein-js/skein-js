@@ -4,9 +4,16 @@
 
 // Convenience assemblers — the common entry points.
 export { createFastifyServer } from "./create-fastify-server.js";
-export type { SkeinFastifyServer } from "./create-fastify-server.js";
+export type { SkeinFastifyServer, SkeinFastifyServerOptions } from "./create-fastify-server.js";
 export { skeinPlugin, registerSkeinHandlers } from "./skein-plugin.js";
 export type { SkeinPluginOptions, HandlerRoutesOptions } from "./skein-plugin.js";
+
+// Logging. `skeinPlugin` already defaults to the host's `fastify.log`, so failed runs land in the
+// app's log stream without wiring — `createFastifyLogger` is for pointing skein at a *specific* pino
+// instance (a child logger, say). `createConsoleLogger` is re-exported for plain non-pino output.
+export { createFastifyLogger } from "./fastify-logger.js";
+export { createConsoleLogger } from "@skein-js/server-kit";
+export type { Logger } from "@skein-js/server-kit";
 
 // The simplified serving surface: every graph as a plain `POST /invoke/:graph_id` endpoint, for
 // non-chat workloads. See docs/serving-a-single-graph.md.

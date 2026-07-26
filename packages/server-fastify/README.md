@@ -85,6 +85,14 @@ pre-serialized frames the engine produced, tearing the run's subscription down o
   **plus** either `{ config, importModule? }` (in-memory runtime from a `langgraph.json`) **or**
   `{ deps }` (bring-your-own `ProtocolDeps`, e.g. from [`@skein-js/runtime`](../runtime)'s
   `buildRuntime`). `warm: true` eagerly loads graphs at startup.
+- **Logging** — defaults to the host's own `fastify.log`, so a failed graph run lands in your app's log
+  stream as a structured pino record (`err` plus `run_id` / `thread_id` / `assistant_id` fields). It
+  honors your Fastify config, `logger: false` included. Pass `logger` to redirect it, or
+  `logger: false` to opt out. `createFastifyServer` leaves pino off as Fastify does — enable it with
+  `{ fastify: { logger: true } }`.
+- **`createFastifyLogger(log)`** — bridge a specific pino instance (a child logger, say).
+  **`createConsoleLogger()`** (re-exported from [`@skein-js/server-kit`](../server-kit)) gives plain
+  non-pino output. See [errors-and-logging.md](../../docs/errors-and-logging.md#logging).
 - **`skeinRoutes`** — the transport-neutral route table, re-exported for composing your own routing.
 - Low-level mappers: `toProtocolRequest`, `sendProtocolResponse`, `sendErrorResponse`.
 

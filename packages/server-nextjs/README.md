@@ -104,6 +104,12 @@ details, including the "Critical dependency" warning, in
   (assistants, handlers, worker).
 - **`SkeinRuntimeOptions`** — the shared runtime-resolution option shape, re-exported for typing your
   own wrappers.
+- **Logging** — unlike the NestJS and Fastify adapters, which default to the host framework's own
+  logger, Next.js owns none, so skein stays **silent** here until you pass one. `logger` reaches the
+  run engine, so failed graph runs and webhook failures are reported.
+  **`createConsoleLogger({ level?, prefix? })`** (re-exported from
+  [`@skein-js/server-kit`](../server-kit)) is the one-liner. See
+  [errors-and-logging.md](../../docs/errors-and-logging.md#logging).
 - Low-level serializers: `toWebResponse` / `webErrorResponse` (Web `Response`), plus
   `sendNodeResponse` / `sendNodeError` (re-exported from [`@skein-js/server-kit`](../server-kit)).
 

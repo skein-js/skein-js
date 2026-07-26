@@ -19,7 +19,25 @@ import { resolveRunConcurrency } from "./run-concurrency.js";
 import { resolveShutdownGraceMs } from "./shutdown-grace.js";
 
 export interface SkeinRuntimeCommonOptions {
-  logger?: Logger;
+  /**
+   * Where skein reports itself: failed runs, webhook delivery failures, background-run summaries, and
+   * the adapter's own transport faults. It reaches **the run engine**, not just the transport — this
+   * is the one knob that decides whether a crashed graph is visible at all.
+   *
+   * Precedence, most explicit first:
+   *
+   * | You pass                 | Result                                                            |
+   * | ------------------------ | ----------------------------------------------------------------- |
+   * | a `Logger`               | that logger, overriding any `deps.logger`                          |
+   * | `false`                  | the adapter contributes nothing and installs no default; an injected `deps.logger` still stands |
+   * | nothing                  | `deps.logger` if you injected one, else the adapter's framework default |
+   *
+   * The framework default exists only where the framework owns a logger the host has already
+   * configured: NestJS (`@nestjs/common`'s `Logger`, honoring `app.useLogger()`) and Fastify
+   * (`fastify.log`). Express and Next.js own no such thing, so they stay silent unless you pass one —
+   * `createConsoleLogger()` is the one-liner.
+   */
+  logger?: Logger | false;
   /**
    * Cross-origin access for browser clients (Agent Chat UI, React `useStream`). When omitted, CORS is
    * driven by the config's `http.cors` block (LangGraph-compatible) and is otherwise **off** — we do
@@ -72,6 +90,13 @@ export interface ResolvedProtocolRuntime {
   runtime: ProtocolRuntime;
   /** CORS mapped from the config's `http.cors`, or `undefined` for the injected-`deps` path. */
   cors?: CorsOptions;
+  /**
+   * The logger the engine ended up with, after {@link SkeinRuntimeCommonOptions.logger}'s precedence
+   * chain. `undefined` means nothing logs. Adapters read this (rather than `options.logger`) for
+   * their own transport-fault logging, so the engine and the transport can never disagree about
+   * where output goes.
+   */
+  logger?: Logger;
 }
 
 /** Just the dependencies behind a `{ config } | { deps }` bag — no runtime, no worker. */
@@ -79,6 +104,25 @@ export interface ResolvedRuntimeDeps {
   deps: ProtocolDeps;
   /** CORS mapped from the config's `http.cors`, or `undefined` for the injected-`deps` path. */
   cors?: CorsOptions;
+  /** The resolved logger — see {@link ResolvedProtocolRuntime.logger}. */
+  logger?: Logger;
+}
+
+/**
+ * Apply {@link SkeinRuntimeCommonOptions.logger}'s precedence chain. A `deps.logger` you injected
+ * always wins — it is the more specific statement, and it is the one field we must not overwrite
+ * (see {@link resolveRuntimeDeps} on why this fills in place rather than copying). Otherwise the
+ * explicit option, then the adapter's framework default. `false` means the adapter stays out of it
+ * entirely: no default installed, an injected `deps.logger` still standing.
+ */
+function resolveLogger(
+  option: Logger | false | undefined,
+  injected: Logger | undefined,
+  frameworkLogger: Logger | undefined,
+): Logger | undefined {
+  if (injected) return injected;
+  if (option === false) return undefined;
+  return option ?? frameworkLogger;
 }
 
 /**
@@ -87,13 +131,30 @@ export interface ResolvedRuntimeDeps {
  * {@link resolveProtocolRuntime} that stops short of building the engine, so the simplified invoke
  * surface (which needs only graphs + store) doesn't seed assistants or start a run worker it will
  * never use.
+ *
+ * `frameworkLogger` is the adapter's own default (Nest's `Logger`, `fastify.log`), used only when the
+ * caller supplied neither `options.logger` nor `deps.logger`.
  */
 export async function resolveRuntimeDeps(
   options: SkeinRuntimeOptions,
+  frameworkLogger?: Logger,
 ): Promise<ResolvedRuntimeDeps> {
-  if (options.deps) return { deps: options.deps };
-  const loaded = await loadInMemoryRuntime(options.config, options.importModule);
-  return { deps: loaded.deps, cors: loaded.cors };
+  const loaded = options.deps
+    ? { deps: options.deps, cors: undefined }
+    : await loadInMemoryRuntime(options.config, options.importModule);
+
+  const logger = resolveLogger(options.logger, loaded.deps.logger, frameworkLogger);
+  // Filled in place, never copied. `createGraphInvokeHandler` re-reads its deps on *every request*
+  // precisely so a host that configures after mounting still takes effect — `skein dev` sets
+  // `exposeErrorStacks` and `logRunActivity` on the deps object after the router exists. Handing the
+  // adapters a snapshot would silently freeze those out, and under NestJS/Fastify (which always
+  // resolve a framework logger) a copy would happen on every single mount.
+  //
+  // Only ever *fills a hole*: `resolveLogger` returns an existing `deps.logger` untouched, so this
+  // never overwrites a choice the caller made. That is also why an injected `deps.logger` outranks
+  // the adapter option rather than the other way round.
+  if (logger && !loaded.deps.logger) loaded.deps.logger = logger;
+  return { deps: loaded.deps, cors: loaded.cors, logger };
 }
 
 /**
@@ -101,11 +162,14 @@ export async function resolveRuntimeDeps(
  * drivers from a `langgraph.json`), seed one assistant per declared graph, optionally warm the
  * graphs, and start the background run worker. Returns the runtime plus any CORS derived from the
  * config so the adapter can apply it. The caller owns shutdown (`runtime.worker.stop()`).
+ *
+ * `frameworkLogger` is the adapter's own default — see {@link resolveRuntimeDeps}.
  */
 export async function resolveProtocolRuntime(
   options: SkeinRuntimeOptions,
+  frameworkLogger?: Logger,
 ): Promise<ResolvedProtocolRuntime> {
-  const { deps, cors: corsFromConfig } = await resolveRuntimeDeps(options);
+  const { deps, cors: corsFromConfig, logger } = await resolveRuntimeDeps(options, frameworkLogger);
 
   // Resolve worker settings here rather than in each adapter: this is the ONE place options +
   // environment become the worker's settings, so Express/Fastify/NestJS/Next.js and `skein dev`/`start`
@@ -122,12 +186,12 @@ export async function resolveProtocolRuntime(
     await Promise.all(
       deps.graphs.ids.map((graphId) =>
         deps.graphs.load(graphId).catch((error: unknown) => {
-          options.logger?.warn(`Failed to warm graph "${graphId}".`, error);
+          logger?.warn(`Failed to warm graph "${graphId}".`, error);
         }),
       ),
     );
   }
   runtime.worker.start();
 
-  return { runtime, cors: corsFromConfig };
+  return { runtime, cors: corsFromConfig, logger };
 }

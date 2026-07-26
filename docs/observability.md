@@ -254,6 +254,11 @@ export const sink: TelemetrySink = {
 
 ### Your existing logger
 
+A sink is the right seam for feeding **run lifecycle events** into your logs. If you only want skein's
+own reports — failed runs, webhook failures — that is `ProtocolDeps.logger`, and under NestJS and
+Fastify it is already wired to the host's logger by default. See
+[errors-and-logging.md](./errors-and-logging.md#logging).
+
 If you already ship structured logs somewhere, a sink is a ten-line bridge:
 
 ```ts

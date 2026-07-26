@@ -5,11 +5,12 @@
 //
 // Targets NestJS's default Express platform (`@nestjs/platform-express`).
 
-import { Controller, Get, Module, type INestApplication } from "@nestjs/common";
+import { ConsoleLogger, Controller, Get, Module, type INestApplication } from "@nestjs/common";
 import { NestFactory } from "@nestjs/core";
 import type { ProtocolRuntime } from "@skein-js/agent-protocol";
 import { resolveProtocolRuntime, type SkeinRuntimeOptions } from "@skein-js/server-kit";
 
+import { createNestLogger } from "./nest-logger.js";
 import { SkeinModule } from "./skein.module.js";
 
 /** Dependency-free liveness probe (`GET /ok`), mirroring the LangGraph platform's `/ok`. */
@@ -36,12 +37,21 @@ export interface SkeinNestServer {
 export async function createNestServer(options: SkeinRuntimeOptions): Promise<SkeinNestServer> {
   // Resolve the runtime once here (not inside the module) so `close()` and the module's shutdown hook
   // act on the same worker.
-  const resolved = await resolveProtocolRuntime(options);
+  //
+  // The default logger differs from the embedded `SkeinModule.forRoot` case, and has to. This server
+  // keeps Nest's bootstrap chatter off via `{ logger: false }` below, which silences the *global*
+  // `Logger` facade — so the facade-backed default would write nowhere. A directly-constructed
+  // `ConsoleLogger` isn't subject to that global override, so a standalone server still reports its
+  // failed runs. Embedded, skein borrows the host's logging config; standalone, it owns it.
+  const resolved = await resolveProtocolRuntime(
+    options,
+    createNestLogger({ logger: new ConsoleLogger("Skein") }),
+  );
 
   // CORS is applied by SkeinModule's middleware (scoped to skein routes), not `app.enableCors`, so it
   // works identically here and in the embedded `SkeinModule.forRoot` case.
   @Module({
-    imports: [SkeinModule.forResolvedRuntime(resolved, options.logger, options.cors)],
+    imports: [SkeinModule.forResolvedRuntime(resolved, options.cors)],
     controllers: [SkeinHealthController],
   })
   class SkeinRootModule {}

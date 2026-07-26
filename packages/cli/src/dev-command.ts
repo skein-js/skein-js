@@ -132,10 +132,6 @@ export async function runDev(options: DevCommandOptions): Promise<void> {
     }
   }
 
-  // Give the run engine the console logger. Without this it holds the default no-op, so nothing it
-  // reports — a failed run, `--verbose` activity, a webhook that didn't deliver — ever reaches the
-  // terminal. The adapter's own `logger` option below covers only request lines and adapter faults.
-  runtime.deps.logger = devLogger;
   // `--verbose`: have the run engine log per-run activity (start/finish, tool calls, interrupts).
   if (options.verbose) runtime.deps.logRunActivity = true;
   // The dev server sends a failed run's stack to the client too (the `error` SSE frame and the

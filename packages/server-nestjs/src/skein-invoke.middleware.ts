@@ -31,6 +31,8 @@ export interface ResolvedInvokeSurface {
   match: RouteMatcher<GraphInvokeHandlerName>;
   /** CORS derived from the config's `http.cors`, when the `{ config }` path was used. */
   cors?: CorsSetting;
+  /** The logger the invoke handler was built with — see `ResolvedRuntimeDeps.logger`. */
+  logger?: Logger;
 }
 
 @Injectable()

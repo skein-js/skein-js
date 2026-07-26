@@ -1,6 +1,8 @@
 // Render any thrown value as plain text: its stack, any structured `details` it carries, and its
-// whole `cause` chain. Plain text only — coloring lives in dev-logger.ts, so this is equally usable
-// from the pre-banner console paths (`skein start`, the docker commands) that have no logger.
+// whole `cause` chain. Plain text only — coloring is the caller's business — so this serves every
+// logging surface alike: the framework logger bridges (Nest, Fastify), `createConsoleLogger`, the
+// CLI's colored dev logger, and the CLI's pre-banner console paths (`skein start`, the docker
+// commands) that have no logger at all.
 //
 // This exists because every one of those paths used to print `String(error)` or `error.message`,
 // which drops exactly the part that explains the failure: a `SkeinConfigError`'s `cause` is the real

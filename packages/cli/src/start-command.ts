@@ -15,10 +15,9 @@ import {
   type SkeinRuntime,
   type StoreDriver,
 } from "@skein-js/runtime";
-import { resolveRunConcurrency, resolveShutdownGraceMs } from "@skein-js/server-kit";
+import { describeError, resolveRunConcurrency, resolveShutdownGraceMs } from "@skein-js/server-kit";
 
 import { printBanner } from "./banner.js";
-import { describeError } from "./describe-error.js";
 import { createDevLogger } from "./dev-logger.js";
 import { applyProjectEnv } from "./project-env.js";
 import { describeBindError, envHost, envPort } from "./serve-env.js";
@@ -118,9 +117,8 @@ export async function runStart(options: StartCommandOptions): Promise<void> {
     process.exitCode = 1;
     return;
   }
-  // The run engine's own logger — see the note in dev-command.ts. `exposeErrorStacks` stays off
-  // here: production logs the full stack, but never puts it on the wire.
-  runtime.deps.logger = logger;
+  // `exposeErrorStacks` stays off here: production logs the full stack (the adapter's `logger`
+  // option below reaches the run engine), but never puts it on the wire.
   if (options.verbose) runtime.deps.logRunActivity = true;
 
   const port = options.portExplicit ? options.port : envPort(options.port);

@@ -21,6 +21,15 @@ export type { ResolvedInvokeSurface } from "./skein-invoke.middleware.js";
 export { createNestServer } from "./create-nest-server.js";
 export type { SkeinNestServer } from "./create-nest-server.js";
 
+// Logging. `SkeinModule` already defaults to Nest's own `Logger`, so failed runs surface in the host
+// app's output without wiring — `createNestLogger` is for pointing skein at a *specific*
+// `LoggerService` instead of the globally configured one. `createConsoleLogger` is re-exported so a
+// caller needn't depend on @skein-js/server-kit to opt out of Nest's logger entirely.
+export { createNestLogger } from "./nest-logger.js";
+export type { NestLoggerOptions } from "./nest-logger.js";
+export { createConsoleLogger } from "@skein-js/server-kit";
+export type { Logger } from "@skein-js/server-kit";
+
 // Low-level mappers, for callers composing their own routing. The Node response serializers are
 // shared and re-exported from @skein-js/server-kit for convenience.
 export { toProtocolRequest } from "./to-protocol-request.js";

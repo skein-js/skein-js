@@ -156,6 +156,17 @@ produced, tearing the run's subscription down on client disconnect.
   `{ deps }` (bring-your-own `ProtocolDeps`). Build `deps` in code with `embedInMemoryGraphs`
   ([`@skein-js/server-kit`](../server-kit)) or `embedPostgresGraphs` ([`@skein-js/runtime`](../runtime)),
   or from a `langgraph.json` with that package's `buildRuntime`.
+- **Logging** — `SkeinModule` defaults to NestJS's own `Logger`, so a failed graph run appears in your
+  app's output with no wiring, formatted like everything else it prints. It honors whatever the host
+  configured (`app.useLogger()`, `NestFactory.create({ logger: false })`), because skein writes
+  through the same facade. Pass `logger` to redirect it, or `logger: false` to opt out.
+  **`createNestServer` differs**: it keeps Nest's bootstrap banner off, which silences that facade, so
+  it defaults to its own `ConsoleLogger` and `app.useLogger()` will _not_ redirect skein's output —
+  pass `logger` to that call instead.
+- **`createNestLogger(options?)`** — point skein at a specific `LoggerService` instead of the globally
+  configured one. **`createConsoleLogger()`** (re-exported from
+  [`@skein-js/server-kit`](../server-kit)) bypasses Nest entirely. See
+  [errors-and-logging.md](../../docs/errors-and-logging.md#logging).
 - Low-level mappers: `toProtocolRequest`, plus `sendNodeResponse` / `sendNodeError` (re-exported from
   [`@skein-js/server-kit`](../server-kit)).
 

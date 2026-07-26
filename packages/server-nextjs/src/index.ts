@@ -30,6 +30,12 @@ export type {
 // The memoized runtime/deps accessors (shared across both routers and module reloads).
 export { getSkeinRuntime, getSkeinInvokeDeps } from "./runtime-singleton.js";
 
+// Logging. Next.js owns no logger of its own, so — unlike the NestJS and Fastify adapters, which
+// default to the host framework's — skein stays silent here until you pass one:
+// `createSkeinRouteHandlers({ deps, logger: createConsoleLogger() })`.
+export { createConsoleLogger } from "@skein-js/server-kit";
+export type { Logger, ConsoleLoggerOptions, ConsoleLogLevel } from "@skein-js/server-kit";
+
 // Low-level serializers, for callers composing their own Next.js routing. The Web serializers are
 // Next-specific; the Node ones are shared and re-exported from @skein-js/server-kit for convenience.
 export { toWebResponse, webErrorResponse } from "./send-web-response.js";

@@ -4,7 +4,7 @@
 // `skein dev` runtime, or `{ deps }` to bring your own persistent drivers (Postgres + Redis for
 // `skein up`) through the same `ProtocolDeps` seam.
 
-import type { ProtocolRuntime } from "@skein-js/agent-protocol";
+import type { Logger, ProtocolRuntime } from "@skein-js/agent-protocol";
 import { resolveProtocolRuntime, type SkeinRuntimeOptions } from "@skein-js/server-kit";
 import type { Router } from "express";
 
@@ -18,6 +18,12 @@ export interface SkeinRouter {
   router: Router;
   /** The wired runtime — call `runtime.worker.stop()` on shutdown to drain background runs. */
   runtime: ProtocolRuntime;
+  /**
+   * The logger the engine ended up with — `options.logger`, else an injected `deps.logger`, else
+   * nothing. Express owns no logger of its own, so unlike NestJS and Fastify there is no default
+   * here: pass `createConsoleLogger()` to see what skein reports.
+   */
+  logger?: Logger;
 }
 
 /**
@@ -25,11 +31,14 @@ export interface SkeinRouter {
  * and starts the background run worker before returning, so the router is ready to serve.
  */
 export async function skeinRouter(options: SkeinRouterOptions): Promise<SkeinRouter> {
-  const { runtime, cors } = await resolveProtocolRuntime(options);
+  // No framework fallback: Express has no logger of its own to borrow, and a library should not
+  // decide on its host's behalf to start writing to stdout.
+  const { runtime, cors, logger } = await resolveProtocolRuntime(options);
   const router = createHandlerRouter(runtime.handlers, {
-    logger: options.logger,
+    // The resolved logger, so transport faults and engine failures land in the same place.
+    logger,
     // Explicit option wins; otherwise fall back to the config's `http.cors`, else off.
     cors: options.cors ?? cors ?? false,
   });
-  return { router, runtime };
+  return { router, runtime, logger };
 }

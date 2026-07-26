@@ -5,10 +5,15 @@
 
 import type { Server } from "node:http";
 
-import type { ProtocolRuntime } from "@skein-js/agent-protocol";
-import { resolveProtocolRuntime, type SkeinRuntimeOptions } from "@skein-js/server-kit";
-import Fastify, { type FastifyInstance } from "fastify";
+import type { Logger, ProtocolRuntime } from "@skein-js/agent-protocol";
+import {
+  resolveProtocolRuntime,
+  type CorsOptions,
+  type SkeinRuntimeOptions,
+} from "@skein-js/server-kit";
+import Fastify, { type FastifyInstance, type FastifyServerOptions } from "fastify";
 
+import { createFastifyLogger } from "./fastify-logger.js";
 import { registerSkeinHandlers } from "./skein-plugin.js";
 
 export interface SkeinFastifyServer {
@@ -22,22 +27,51 @@ export interface SkeinFastifyServer {
   close(): Promise<void>;
 }
 
+export type SkeinFastifyServerOptions = SkeinRuntimeOptions & {
+  /**
+   * Options for the underlying `Fastify()` instance. Most usefully `{ logger: true }`, which turns on
+   * pino — skein's own logging defaults to that instance, so enabling it here is all it takes to see
+   * failed runs. Left off by default, as Fastify itself leaves it off.
+   *
+   * For plain, uncolored output instead of pino's JSON, pass skein's `logger: createConsoleLogger()`.
+   */
+  fastify?: FastifyServerOptions;
+};
+
 /** Build a Fastify server hosting the Agent Protocol, ready to `listen`. */
 export async function createFastifyServer(
-  options: SkeinRuntimeOptions,
+  options: SkeinFastifyServerOptions,
 ): Promise<SkeinFastifyServer> {
-  const { runtime, cors } = await resolveProtocolRuntime(options);
-  const app = Fastify();
+  // Built before the runtime is resolved so `app.log` can be skein's default logger — see
+  // fastify-logger.ts. With Fastify's own default (`logger` unset) that instance is a no-op, so this
+  // server stays as quiet as it always has unless the caller asks for output.
+  const app = Fastify(options.fastify);
 
-  // Liveness probe for platform health checks (Railway's healthcheckPath, k8s, load balancers).
-  // Kept dependency-free on purpose, mirroring the LangGraph platform's `/ok`.
-  app.get("/ok", async () => ({ ok: true }));
+  // The instance now exists before anything that can fail, so every failure path has to close it —
+  // otherwise a bad graph import leaks the app and, with `fastify: { logger: … }`, its log
+  // destination (an open file handle or socket) along with it.
+  let runtime: ProtocolRuntime;
+  let cors: CorsOptions | undefined;
+  let logger: Logger | undefined;
+  try {
+    ({ runtime, cors, logger } = await resolveProtocolRuntime(
+      options,
+      createFastifyLogger(app.log),
+    ));
 
-  await registerSkeinHandlers(app, runtime.handlers, {
-    logger: options.logger,
-    // Explicit option wins; otherwise fall back to the config's `http.cors`, else off.
-    cors: options.cors ?? cors ?? false,
-  });
+    // Liveness probe for platform health checks (Railway's healthcheckPath, k8s, load balancers).
+    // Kept dependency-free on purpose, mirroring the LangGraph platform's `/ok`.
+    app.get("/ok", async () => ({ ok: true }));
+
+    await registerSkeinHandlers(app, runtime.handlers, {
+      logger,
+      // Explicit option wins; otherwise fall back to the config's `http.cors`, else off.
+      cors: options.cors ?? cors ?? false,
+    });
+  } catch (error) {
+    await app.close();
+    throw error;
+  }
 
   let listening = false;
 

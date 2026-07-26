@@ -124,6 +124,10 @@ import { loadAuthEngine } from "@skein-js/config";
 embedInMemoryGraphs({ agent: graph }, { auth: await loadAuthEngine(/* … */), logger: myLogger });
 ```
 
+A `logger` set here is used unless the adapter is given an explicit `logger` option, which wins. Under
+NestJS and Fastify, leaving both unset falls back to the host framework's own logger rather than to
+silence — see [errors-and-logging.md](./errors-and-logging.md#what-each-adapter-does-by-default).
+
 ## Going to production
 
 The in-memory drivers are ideal for a single long-lived process (dev, tests, a small app). For durable,

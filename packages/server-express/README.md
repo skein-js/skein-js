@@ -98,7 +98,14 @@ Send `Accept: text/event-stream` to stream the steps instead. See
   options add `prefix` (default `/invoke`) and `streamMode`.
 - **`SkeinRouterOptions`** — common `{ logger?, cors?, warm? }` **plus** either `{ config, importModule? }`
   (in-memory runtime from a `langgraph.json`) **or** `{ deps }` (bring-your-own `ProtocolDeps`).
-  `warm: true` eagerly loads graphs at startup; `logger` mounts per-request logging.
+  `warm: true` eagerly loads graphs at startup.
+- **Logging** — unlike the NestJS and Fastify adapters, which default to the host framework's own
+  logger, Express owns none, so skein stays **silent** here until you pass one — a library should not
+  decide on its host's behalf to start writing to stdout. `logger` both mounts per-request logging and
+  reaches the run engine, so failed graph runs and webhook failures are reported.
+  **`createConsoleLogger({ level?, prefix? })`** (re-exported from
+  [`@skein-js/server-kit`](../server-kit)) is the one-liner. See
+  [errors-and-logging.md](../../docs/errors-and-logging.md#logging).
 - **`createHandlerRouter(handlers, options?)`** / **`skeinRoutes`** — the pure route table, for
   composing your own routing over an existing `ProtocolHandlers`.
 - **`corsFromHttpConfig(http)`** / **`toCorsOptions(config)`** — map a `langgraph.json` `http.cors`

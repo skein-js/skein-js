@@ -14,7 +14,12 @@ import {
   type ProtocolRequest,
 } from "@skein-js/agent-protocol";
 import { SkeinHttpError } from "@skein-js/core";
-import { stripBasePath, type CorsSetting, type SkeinRuntimeOptions } from "@skein-js/server-kit";
+import {
+  stripBasePath,
+  type CorsSetting,
+  type Logger,
+  type SkeinRuntimeOptions,
+} from "@skein-js/server-kit";
 
 import { getSkeinRuntime } from "./runtime-singleton.js";
 import { toWebResponse, webErrorResponse } from "./send-web-response.js";
@@ -86,7 +91,14 @@ async function toProtocolRequest(
 /** Build the App Router Route Handlers for the given options. */
 export function createSkeinRouteHandlers(options: SkeinRouteHandlerOptions): SkeinRouteHandlers {
   const basePath = options.basePath ?? "/api";
-  const logger = options.logger;
+  // Next.js owns no logger to default to, so this may well be undefined.
+  const optionLogger = options.logger === false ? undefined : options.logger;
+  // This handler's own option outranks the resolved runtime's logger. The runtime is memoized by
+  // config path / deps identity (runtime-singleton.ts), so two route files sharing a `langgraph.json`
+  // share one runtime — and whichever served the first request would otherwise decide where the
+  // other one logs. `logger: false` here means silence here, whatever the sibling asked for.
+  const loggerFor = (resolved: { logger?: Logger }): Logger | undefined =>
+    options.logger === false ? undefined : (optionLogger ?? resolved.logger);
 
   const dispatchRequest: SkeinRouteHandler = async (request) => {
     const url = new URL(request.url);
@@ -99,7 +111,7 @@ export function createSkeinRouteHandlers(options: SkeinRouteHandlerOptions): Ske
     try {
       resolved = await getSkeinRuntime(options);
     } catch (error) {
-      return webErrorResponse(error, {}, logger);
+      return webErrorResponse(error, {}, optionLogger);
     }
     // Explicit `options.cors` (incl. an explicit `false`) wins; otherwise fall back to config CORS.
     const cors: CorsSetting | false | undefined = options.cors ?? resolved.cors;
@@ -126,7 +138,7 @@ export function createSkeinRouteHandlers(options: SkeinRouteHandlerOptions): Ske
       );
       return toWebResponse(response, extraHeaders);
     } catch (error) {
-      return webErrorResponse(error, extraHeaders, logger);
+      return webErrorResponse(error, extraHeaders, loggerFor(resolved));
     }
   };
 

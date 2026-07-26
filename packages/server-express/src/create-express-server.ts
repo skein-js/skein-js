@@ -40,6 +40,11 @@ export interface SkeinExpressServer {
   app: Express;
   /** The wired runtime (assistants, handlers, worker). */
   runtime: ProtocolRuntime;
+  /**
+   * The logger skein resolved to, so a host's own error paths can log where skein does. Express
+   * installs no default — see `SkeinRouter.logger`.
+   */
+  logger?: Logger;
   /** Start listening; resolves with the Node `Server` once bound. Defaults to port 2024. */
   listen(port?: number, host?: string): Promise<Server>;
   /** Stop the run worker and close the HTTP server (if listening). */
@@ -50,9 +55,11 @@ export interface SkeinExpressServer {
 export async function createExpressServer(
   options: SkeinRouterOptions,
 ): Promise<SkeinExpressServer> {
-  const { router, runtime } = await skeinRouter(options);
+  const { router, runtime, logger } = await skeinRouter(options);
   const app = express();
-  // Log requests before the router handles them, when a logger is provided (e.g. `skein dev`).
+  // Request lines are keyed on the *explicit* option, not the resolved logger: asking the adapter for
+  // a logger is asking for request logging (`skein dev` does), whereas injecting `deps.logger` is
+  // asking for skein's own reports — a per-request line for every poll is not what that user wanted.
   if (options.logger) app.use(requestLogger(options.logger));
   // Liveness probe for platform health checks (Railway's healthcheckPath, k8s, load balancers).
   // Kept dependency-free on purpose: a readiness check that touches Postgres/Redis would let a
@@ -67,6 +74,7 @@ export async function createExpressServer(
   return {
     app,
     runtime,
+    logger,
     listen: (port = 2024, host = "localhost") =>
       new Promise<Server>((resolve, reject) => {
         const bound = app.listen(port, host, () => resolve(bound));

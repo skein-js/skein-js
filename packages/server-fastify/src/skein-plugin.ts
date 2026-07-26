@@ -19,6 +19,7 @@ import {
 import type { FastifyInstance, FastifyPluginAsync, HTTPMethods } from "fastify";
 
 import { sendErrorResponse } from "./error-response.js";
+import { createFastifyLogger } from "./fastify-logger.js";
 import { sendProtocolResponse } from "./send-protocol-response.js";
 import { toProtocolRequest } from "./to-protocol-request.js";
 
@@ -143,9 +144,16 @@ export async function registerSkeinHandlers(
  * ```
  */
 export const skeinPlugin: FastifyPluginAsync<SkeinPluginOptions> = async (fastify, options) => {
-  const { runtime, cors } = await resolveProtocolRuntime(options);
+  // `fastify.log` is the default: the host's own pino instance, honoring its config (including
+  // `logger: false`, which yields a no-op). See fastify-logger.ts.
+  const { runtime, cors, logger } = await resolveProtocolRuntime(
+    options,
+    createFastifyLogger(fastify.log),
+  );
   await registerSkeinHandlers(fastify, runtime.handlers, {
-    logger: options.logger,
+    // The resolved logger, not `options.logger` — so the transport's fault logging and the engine's
+    // always agree on where output goes.
+    logger,
     // Explicit option wins; otherwise fall back to the config's `http.cors`, else off.
     cors: options.cors ?? cors ?? false,
   });

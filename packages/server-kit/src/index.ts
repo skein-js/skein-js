@@ -18,6 +18,16 @@ export type {
   ResolvedRuntimeDeps,
 } from "./resolve-runtime.js";
 
+// Logging. `createConsoleLogger` is the opt-in `Logger` for adapters whose framework owns none
+// (Express, Next.js) — NestJS and Fastify default to bridges over the host's own logger instead.
+// `formatLogMeta` + `describeError` are the shared rendering every line-oriented logger needs, so
+// the bridges and the CLI's dev logger can't drift on how a failed run reads.
+export { createConsoleLogger } from "./console-logger.js";
+export type { ConsoleLoggerOptions, ConsoleLogLevel } from "./console-logger.js";
+export { formatLogMeta, runFailureIdentity } from "./log-meta.js";
+export { describeError } from "./describe-error.js";
+export type { Logger } from "@skein-js/agent-protocol";
+
 // Run concurrency: the one precedence chain (explicit option → SKEIN_RUN_CONCURRENCY →
 // N_JOBS_PER_WORKER → DEFAULT_RUN_CONCURRENCY) behind `worker.maxConcurrency`. Exported so
 // `skein dev`/`start` resolve the exact number they print in the startup banner, rather than

@@ -13,6 +13,7 @@ import { resolveRuntimeDeps, type SkeinRuntimeOptions } from "@skein-js/server-k
 import type { FastifyPluginAsync } from "fastify";
 
 import { sendErrorResponse } from "./error-response.js";
+import { createFastifyLogger } from "./fastify-logger.js";
 import { sendProtocolResponse } from "./send-protocol-response.js";
 import { HTTP_METHOD_TO_FASTIFY, prepareSkeinContext } from "./skein-plugin.js";
 import { toProtocolRequest } from "./to-protocol-request.js";
@@ -40,11 +41,15 @@ export const skeinInvokePlugin: FastifyPluginAsync<SkeinInvokePluginOptions> = a
   fastify,
   options,
 ) => {
-  const { deps, cors } = await resolveRuntimeDeps(options);
+  // Defaults to the host's own `fastify.log` — see skein-plugin.ts.
+  const { deps, cors, logger } = await resolveRuntimeDeps(
+    options,
+    createFastifyLogger(fastify.log),
+  );
   const invoke = createGraphInvokeHandler(deps, { streamMode: options.streamMode });
 
   await prepareSkeinContext(fastify, {
-    logger: options.logger,
+    logger,
     // Explicit option wins; otherwise fall back to the config's `http.cors`, else off.
     cors: options.cors ?? cors ?? false,
   });
@@ -62,7 +67,7 @@ export const skeinInvokePlugin: FastifyPluginAsync<SkeinInvokePluginOptions> = a
           const request = { ...toProtocolRequest(req), signal: disconnected.signal };
           await sendProtocolResponse(await invoke(request), reply);
         } catch (error) {
-          sendErrorResponse(error, reply, options.logger);
+          sendErrorResponse(error, reply, logger);
         }
         // Returning the (sent or hijacked) reply tells Fastify the response is fully handled.
         return reply;

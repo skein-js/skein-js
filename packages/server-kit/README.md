@@ -34,6 +34,10 @@ handler table.
   / SSE) onto a Node `ServerResponse`, shared by the NestJS + Next.js Pages Router adapters.
 - **Mount prefix** — `stripBasePath`: strip the path an adapter is mounted under before matching the
   route table, for adapters that mount a catch-all and match by hand (NestJS, Next.js).
+- **Logging** — `createConsoleLogger`: the opt-in `Logger` for adapters whose framework owns none
+  (Express, Next.js). `formatLogMeta` / `describeError` are the shared rendering every line-oriented
+  logger needs — a failed run's identity, stack, and `cause` chain — so the framework bridges and the
+  CLI's dev logger can't drift on how a failure reads.
 
 > The route table itself (`skeinRoutes`) is **not** here — it lives with the engine in
 > [`@skein-js/agent-protocol`](../agent-protocol), since it references the handler names. Adapters
@@ -73,11 +77,16 @@ Pass `overrides` to swap in production drivers or an auth engine while keeping t
   replaces any dep (e.g. a Postgres store, an `auth` engine). `createInMemoryDeps` is a
   **`@deprecated`** alias. `graphMapToResolver` / `normalizeEmbeddableGraphs` are the lower-level
   graph→`GraphResolver` helpers.
-- **`resolveProtocolRuntime(options): Promise<ResolvedProtocolRuntime>`** — turn a
+- **`resolveProtocolRuntime(options, frameworkLogger?): Promise<ResolvedProtocolRuntime>`** — turn a
   `{ config } | { deps }` bag (`SkeinRuntimeOptions`) into a live runtime (assistants seeded, worker
   started) — the step every adapter runs before mounting routes. `options.worker`
   (`RunWorkerOptions`) tunes the background worker; `worker.maxConcurrency` is how many queued runs
-  run at once.
+  run at once. `frameworkLogger` is the adapter's own default, applied only when the caller supplied
+  neither `options.logger` nor `deps.logger`; the result's `.logger` is the winner, which the adapter
+  should also use for its transport-fault logging.
+- **`createConsoleLogger(options?): Logger`** — a plain `console.*` logger (`level`, `prefix`), for
+  adapters whose framework owns none. `formatLogMeta(meta)` / `describeError(thrown)` render a failed
+  run's identity, stack, and `cause` chain as text.
 - **`resolveRunConcurrency(explicit?, env?): number`** — the one precedence chain behind
   `worker.maxConcurrency`: explicit value → `SKEIN_RUN_CONCURRENCY` → `N_JOBS_PER_WORKER` →
   `DEFAULT_RUN_CONCURRENCY` (10, matching the LangGraph CLI). The environment is validated even when

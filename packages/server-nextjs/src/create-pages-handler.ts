@@ -24,6 +24,7 @@ import {
   sendNodeResponse,
   stripBasePath,
   type CorsSetting,
+  type Logger,
   type SkeinRuntimeOptions,
 } from "@skein-js/server-kit";
 
@@ -66,7 +67,10 @@ function toSingleValueHeaders(
 /** Build the Pages Router API handler for the given options. */
 export function createSkeinPagesHandler(options: SkeinPagesHandlerOptions): SkeinPagesHandler {
   const basePath = options.basePath ?? "/api";
-  const logger = options.logger;
+  const optionLogger = options.logger === false ? undefined : options.logger;
+  // This handler's own option outranks the shared memoized runtime's. See create-route-handlers.ts.
+  const loggerFor = (resolved: { logger?: Logger }): Logger | undefined =>
+    options.logger === false ? undefined : (optionLogger ?? resolved.logger);
 
   return async (req, res) => {
     const host = req.headers.host ?? "localhost";
@@ -90,7 +94,7 @@ export function createSkeinPagesHandler(options: SkeinPagesHandlerOptions): Skei
     try {
       resolved = await getSkeinRuntime(options);
     } catch (error) {
-      sendNodeError(error, res, logger, "skein Next.js");
+      sendNodeError(error, res, optionLogger, "skein Next.js");
       return;
     }
     const cors: CorsSetting | false | undefined = options.cors ?? resolved.cors;
@@ -124,7 +128,7 @@ export function createSkeinPagesHandler(options: SkeinPagesHandlerOptions): Skei
       );
       await sendNodeResponse(response, res);
     } catch (error) {
-      sendNodeError(error, res, logger, "skein Next.js");
+      sendNodeError(error, res, loggerFor(resolved), "skein Next.js");
     }
   };
 }

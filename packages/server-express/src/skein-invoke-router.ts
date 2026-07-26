@@ -8,6 +8,7 @@ import {
   createGraphInvokeHandler,
   graphInvokeRoutes,
   type GraphInvokeOptions,
+  type Logger,
   type ProtocolDeps,
 } from "@skein-js/agent-protocol";
 import { resolveRuntimeDeps, type SkeinRuntimeOptions } from "@skein-js/server-kit";
@@ -30,6 +31,11 @@ export interface SkeinInvokeRouter {
   router: Router;
   /** The resolved dependencies, so a caller can reuse them (e.g. to also mount `skeinRouter`). */
   deps: ProtocolDeps;
+  /**
+   * The logger the invoke handler resolved to, so a caller's own error paths can log where skein
+   * does. Express installs no default — see `SkeinRouter.logger`.
+   */
+  logger?: Logger;
 }
 
 /**
@@ -39,7 +45,7 @@ export interface SkeinInvokeRouter {
 export async function skeinInvokeRouter(
   options: SkeinInvokeRouterOptions,
 ): Promise<SkeinInvokeRouter> {
-  const { deps, cors: corsFromConfig } = await resolveRuntimeDeps(options);
+  const { deps, cors: corsFromConfig, logger } = await resolveRuntimeDeps(options);
   const invoke = createGraphInvokeHandler(deps, { streamMode: options.streamMode });
 
   const router = express.Router();
@@ -58,10 +64,10 @@ export async function skeinInvokeRouter(
         const request = { ...toProtocolRequest(req), signal: disconnected.signal };
         await sendProtocolResponse(await invoke(request), res);
       } catch (error) {
-        sendErrorResponse(error, res, options.logger);
+        sendErrorResponse(error, res, logger);
       }
     });
   }
 
-  return { router, deps };
+  return { router, deps, logger };
 }

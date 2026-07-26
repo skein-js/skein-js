@@ -18,6 +18,12 @@ export type { SkeinInvokeRouter, SkeinInvokeRouterOptions } from "./skein-invoke
 export { createHandlerRouter, skeinRoutes } from "./routes.js";
 export type { HandlerRouterOptions } from "./routes.js";
 
+// Logging. Express owns no logger of its own, so — unlike the NestJS and Fastify adapters, which
+// default to the host framework's — skein stays silent here until you pass one. This is the one-liner:
+// `createExpressServer({ config, logger: createConsoleLogger() })`.
+export { createConsoleLogger } from "@skein-js/server-kit";
+export type { Logger, ConsoleLoggerOptions, ConsoleLogLevel } from "@skein-js/server-kit";
+
 // Low-level request/response mappers, for adapters composing their own routing.
 export { toProtocolRequest } from "./to-protocol-request.js";
 export { sendProtocolResponse } from "./send-protocol-response.js";
