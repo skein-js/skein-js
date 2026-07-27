@@ -539,6 +539,42 @@ importers:
         specifier: workspace:*
         version: link:../storage-memory
 
+  packages/bench:
+    dependencies:
+      '@langchain/core':
+        specifier: ^1.2.0
+        version: 1.2.2(@opentelemetry/api@1.9.1)(ws@8.21.0)
+      '@langchain/langgraph':
+        specifier: ^1.4.0
+        version: 1.4.7(@langchain/core@1.2.2(@opentelemetry/api@1.9.1)(ws@8.21.0))(react-dom@19.2.6(react@19.2.6))(react@19.2.6)(zod@3.25.76)
+      '@skein-js/agent-protocol':
+        specifier: workspace:*
+        version: link:../agent-protocol
+      '@skein-js/core':
+        specifier: workspace:*
+        version: link:../core
+      '@skein-js/express':
+        specifier: workspace:*
+        version: link:../server-express
+      '@skein-js/runtime':
+        specifier: workspace:*
+        version: link:../runtime
+      '@skein-js/server-kit':
+        specifier: workspace:*
+        version: link:../server-kit
+      '@skein-js/storage-memory':
+        specifier: workspace:*
+        version: link:../storage-memory
+      '@skein-js/test-support':
+        specifier: workspace:*
+        version: link:../test-support
+      express:
+        specifier: ^5.2.1
+        version: 5.2.1
+      testcontainers:
+        specifier: ^10.16.0
+        version: 10.28.0
+
   packages/cli:
     dependencies:
       '@commander-js/extra-typings':

@@ -1,0 +1,44 @@
+{
+  "name": "@skein-js/bench",
+  "version": "0.11.3",
+  "description": "Private performance benchmarks for skein-js: streaming memory ceilings, throughput, and boot time.",
+  "license": "Apache-2.0",
+  "author": "Maina Wycliffe <wmmaina7@gmail.com>",
+  "homepage": "https://github.com/skein-js/skein-js/tree/main/packages/bench#readme",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/skein-js/skein-js.git",
+    "directory": "packages/bench"
+  },
+  "bugs": {
+    "url": "https://github.com/skein-js/skein-js/issues"
+  },
+  "keywords": [
+    "skein",
+    "benchmark",
+    "performance",
+    "memory"
+  ],
+  "private": true,
+  "type": "module",
+  "main": "./src/index.ts",
+  "exports": {
+    ".": "./src/index.ts"
+  },
+  "scripts": {
+    "typecheck": "tsc --noEmit"
+  },
+  "dependencies": {
+    "@langchain/core": "^1.2.0",
+    "@langchain/langgraph": "^1.4.0",
+    "@skein-js/agent-protocol": "workspace:*",
+    "@skein-js/core": "workspace:*",
+    "@skein-js/express": "workspace:*",
+    "@skein-js/runtime": "workspace:*",
+    "@skein-js/server-kit": "workspace:*",
+    "@skein-js/storage-memory": "workspace:*",
+    "@skein-js/test-support": "workspace:*",
+    "express": "^5.2.1",
+    "testcontainers": "^10.16.0"
+  }
+}

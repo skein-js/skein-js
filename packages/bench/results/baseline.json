@@ -1,0 +1,83 @@
+{
+  "environment": {
+    "runtime": "node",
+    "runtimeVersion": "v24.12.0",
+    "platform": "darwin",
+    "arch": "arm64",
+    "cpus": 12
+  },
+  "results": [
+    {
+      "scenario": "fast-client",
+      "driver": "memory",
+      "streams": 50,
+      "bootMs": 9.309333000000038,
+      "timeToFirstFrameMs": 657.2569169999999,
+      "framesPerSecond": 37823.11550665743,
+      "latencyP50Ms": 0.00016699999991942605,
+      "latencyP99Ms": 0.05999999999994543,
+      "totalFrames": 25150,
+      "durationMs": 664.9372920000001,
+      "memory": {
+        "rssPeakBytes": 358301696,
+        "heapUsedPeakBytes": 148257736,
+        "heapLimitBytes": 4496293888,
+        "rssSettledBytes": 398032896,
+        "heapUsedSettledBytes": 70374064,
+        "probePeaks": {
+          "sseBufferedBytes": 12035310,
+          "openSockets": 51
+        }
+      },
+      "gcForced": true
+    },
+    {
+      "scenario": "slow-client",
+      "driver": "memory",
+      "streams": 50,
+      "bootMs": 3.088416999999936,
+      "timeToFirstFrameMs": 174.77987500000017,
+      "framesPerSecond": 1211.526256049711,
+      "latencyP50Ms": 40.899749999999585,
+      "latencyP99Ms": 43.0424579999999,
+      "totalFrames": 25150,
+      "durationMs": 20758.939292,
+      "memory": {
+        "rssPeakBytes": 649150464,
+        "heapUsedPeakBytes": 301944104,
+        "heapLimitBytes": 4496293888,
+        "rssSettledBytes": 408387584,
+        "heapUsedSettledBytes": 156835912,
+        "probePeaks": {
+          "sseBufferedBytes": 65963042,
+          "openSockets": 100
+        }
+      },
+      "gcForced": true
+    },
+    {
+      "scenario": "idle-retention",
+      "driver": "memory",
+      "streams": 200,
+      "bootMs": 4.176832999997714,
+      "timeToFirstFrameMs": 437.5881670000017,
+      "framesPerSecond": 12557.892219504007,
+      "latencyP50Ms": 0.0002499999973224476,
+      "latencyP99Ms": 0.0004160000025876798,
+      "totalFrames": 5600,
+      "durationMs": 445.9347080000007,
+      "memory": {
+        "rssPeakBytes": 414220288,
+        "heapUsedPeakBytes": 92744992,
+        "heapLimitBytes": 4496293888,
+        "rssSettledBytes": 426328064,
+        "heapUsedSettledBytes": 47995112,
+        "probePeaks": {
+          "sseBufferedBytes": 0,
+          "openSockets": 201
+        }
+      },
+      "gcForced": true
+    }
+  ]
+}

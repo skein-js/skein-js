@@ -1,0 +1,5 @@
+# Only `baseline.json` is tracked: a regression should show up as a reviewable diff, and ad-hoc runs
+# (the default `--output results/latest.json`) would otherwise churn it on every invocation.
+*
+!.gitignore
+!baseline.json
