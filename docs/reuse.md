@@ -63,8 +63,9 @@ for Python — is skein-js's actual product:
   LangGraph version and avoid duplicate installs.
 - **Upgrades are cheap.** When LangGraph ships new stream modes or schema fields, skein-js
   inherits them through the shared runtime/types instead of chasing them by hand.
-- **Honest positioning.** skein-js is "aegra for TypeScript" — but lighter, because on JS the
-  server internals are already open. We add production durability, not a second server.
+- **Honest positioning.** skein-js is an open alternative to LangGraph Platform — "aegra for
+  TypeScript" — but lighter than aegra, because on JS the server internals are already open. We add
+  production durability, not a second server.
 
 See [code-practices.md](./code-practices.md) for how we keep the code we _do_ write small
 and neat, and [storage.md](./storage.md) / [runs-and-redis.md](./runs-and-redis.md) for the

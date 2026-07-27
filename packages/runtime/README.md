@@ -2,7 +2,7 @@
 
 > Assembles a production `ProtocolDeps` (memory / Postgres / Redis) from a `langgraph.json`.
 
-Part of **[skein-js](../../README.md)** — a TypeScript [Agent Protocol](https://github.com/langchain-ai/agent-protocol) server for [LangGraph.js](https://github.com/langchain-ai/langgraphjs), and a drop-in replacement for the LangGraph CLI.
+Part of **[skein-js](../../README.md)** — the open-source alternative to LangGraph Platform for TypeScript: a self-hosted [Agent Protocol](https://github.com/langchain-ai/agent-protocol) server for [LangGraph.js](https://github.com/langchain-ai/langgraphjs), and a drop-in replacement for the LangGraph CLI.
 
 **Status:** 🚧 Pre-alpha — implemented; the assembler behind `skein dev` and `skein up`.
 

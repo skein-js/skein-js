@@ -1,9 +1,10 @@
 # skein-js — Overview
 
-skein-js is a framework-agnostic TypeScript library that implements LangChain's
+skein-js is the **open-source alternative to LangGraph Platform** (now LangSmith Deployment) **for
+TypeScript** — a framework-agnostic library that implements LangChain's
 [**Agent Protocol**](https://github.com/langchain-ai/agent-protocol) on top of
-[**LangGraph.js**](https://github.com/langchain-ai/langgraphjs), and ships a CLI that is a
-**drop-in replacement for the LangGraph CLI**.
+[**LangGraph.js**](https://github.com/langchain-ai/langgraphjs), so you can self-host your agents on
+your own infrastructure. It also ships a CLI that is a **drop-in replacement for the LangGraph CLI**.
 
 ## Contents
 
@@ -67,7 +68,8 @@ change. See [agent-protocol.md](./agent-protocol.md) for the exact endpoints.
 
 ## The solution
 
-skein-js is "aegra for TypeScript." It exposes the Agent Protocol wire format from any Node
+skein-js is an open, self-hostable alternative to LangGraph Platform for the Node ecosystem —
+"aegra for TypeScript." It exposes the Agent Protocol wire format from any Node
 HTTP framework (Express, Fastify, NestJS, and Next.js adapters ship today), so the whole LangChain
 client surface keeps working with only a URL change.
 
@@ -82,7 +84,7 @@ multi-framework, drop-in-CLI layer that OSS lacks. See [reuse.md](./reuse.md).
 
 ## The drop-in promise
 
-The headline developer experience is **zero-effort migration off the LangGraph CLI**:
+If you're coming from the LangGraph CLI, migration is **zero-effort**:
 
 ```diff
 - "dev": "langgraph dev",

@@ -1,8 +1,9 @@
 # skein-js
 
-> The `skein` CLI — a drop-in replacement for the LangGraph CLI (`dev` / `up` / `build` / `dockerfile`).
+> The `skein` CLI — self-host your LangGraph.js agents as an open-source alternative to LangGraph
+> Platform, with a drop-in replacement for the LangGraph CLI (`dev` / `up` / `build` / `dockerfile`).
 
-Part of **[skein-js](../../README.md)** — a TypeScript [Agent Protocol](https://github.com/langchain-ai/agent-protocol) server for [LangGraph.js](https://github.com/langchain-ai/langgraphjs), and a drop-in replacement for the LangGraph CLI.
+Part of **[skein-js](../../README.md)** — the open-source alternative to LangGraph Platform for TypeScript: a self-hosted [Agent Protocol](https://github.com/langchain-ai/agent-protocol) server for [LangGraph.js](https://github.com/langchain-ai/langgraphjs), and a drop-in replacement for the LangGraph CLI.
 
 **Status:** 🚧 Pre-alpha — `dev`, `up`, `build`, and `dockerfile` all work today.
 

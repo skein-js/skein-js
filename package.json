@@ -2,7 +2,7 @@
   "name": "@skein-js/monorepo",
   "version": "0.0.0",
   "private": true,
-  "description": "skein-js — a TypeScript Agent Protocol server for LangGraph.js, and a drop-in for the LangGraph CLI.",
+  "description": "skein-js — the open-source alternative to LangGraph Platform for TypeScript: a self-hosted Agent Protocol server for LangGraph.js, and a drop-in for the LangGraph CLI.",
   "homepage": "https://github.com/skein-js/skein-js#readme",
   "repository": {
     "type": "git",

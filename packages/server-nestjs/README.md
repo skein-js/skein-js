@@ -2,7 +2,7 @@
 
 > NestJS adapter for skein-js — serve the [Agent Protocol](https://github.com/langchain-ai/agent-protocol) from a Nest module.
 
-Part of **[skein-js](../../README.md)** — a TypeScript Agent Protocol server for [LangGraph.js](https://github.com/langchain-ai/langgraphjs), and a drop-in replacement for the LangGraph CLI.
+Part of **[skein-js](../../README.md)** — the open-source alternative to LangGraph Platform for TypeScript: a self-hosted Agent Protocol server for [LangGraph.js](https://github.com/langchain-ai/langgraphjs), and a drop-in replacement for the LangGraph CLI.
 
 A thin transport shim over the framework-agnostic [`@skein-js/agent-protocol`](../agent-protocol)
 handler table — it adds no protocol logic, exactly like [`@skein-js/express`](../server-express).

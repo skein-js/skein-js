@@ -17,7 +17,7 @@ A great bug report includes:
 - **Versions** — the `skein-js` / `@skein-js/*` version, Node version, and OS.
 - **How you ran it** — `skein dev`, `skein up`, or an embedded server; which `--store` / `--queue`.
 
-Because skein-js aims to be a **drop-in for the LangGraph CLI**, one of the most valuable reports is
+Because the `skein` CLI aims to be a **drop-in for the LangGraph CLI**, one of the most valuable reports is
 "this works under `langgraph dev` but not under `skein dev`" (or vice-versa) — a compatibility gap.
 Please call that out explicitly if you hit one.
 

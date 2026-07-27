@@ -2,7 +2,7 @@
 
 > The framework-agnostic Agent Protocol **engine** — run engine, handler table, and SSE mapping. The heart of skein-js.
 
-Part of **[skein-js](../../README.md)** — a TypeScript [Agent Protocol](https://github.com/langchain-ai/agent-protocol) server for [LangGraph.js](https://github.com/langchain-ai/langgraphjs), and a drop-in replacement for the LangGraph CLI.
+Part of **[skein-js](../../README.md)** — the open-source alternative to LangGraph Platform for TypeScript: a self-hosted [Agent Protocol](https://github.com/langchain-ai/agent-protocol) server for [LangGraph.js](https://github.com/langchain-ai/langgraphjs), and a drop-in replacement for the LangGraph CLI.
 
 **Status:** 🚧 Pre-alpha — implemented. Depends only on the [`@skein-js/core`](../core) contracts and is designed to be consumed on its own.
 
