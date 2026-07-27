@@ -67,6 +67,34 @@ makes this safe by skipping any run already terminal in the store.
 - **Cross-instance pub/sub** — run stream frames are published to a Redis Stream + channel so a
   client connected to instance B can join a run executing on instance A (see [streaming.md](./streaming.md)).
 
+### What a frame costs
+
+Publishing sits inside the graph's own loop — the engine awaits it per chunk — so at token
+granularity its cost is paid per token. It is **one pipelined round trip**: `XADD` and `PUBLISH`
+batched together, with the frame serialized once for both. The stream's TTL is refreshed every 256
+frames and on close, rather than on every frame, since the window only has to outlive the run.
+
+All in-flight subscribers share **one** pub/sub connection, with a `SUBSCRIBE` per run rather than a
+connection per stream — an instance serving 500 SSE streams holds two Redis sockets, not 501.
+
+Replay is paged (`XRANGE … COUNT`), and a reconnecting subscriber resumes from the last stream id it
+read rather than re-reading the whole stream.
+
+Two knobs bound what this costs:
+
+| Variable                     | Default | Purpose                                                                                 |
+| ---------------------------- | ------- | --------------------------------------------------------------------------------------- |
+| `SKEIN_REDIS_STREAM_MAXLEN`  | 10000   | Approximate cap on a run's stream, in frames. `0` disables trimming (TTL only).         |
+| `SKEIN_STREAM_BUFFER_FRAMES` | 512     | Frames one subscriber may queue before it is judged too far behind and its stream ends. |
+
+`MAXLEN` exists because the 1-hour TTL bounds a stream in _time_ but not in size, and a chatty graph
+can produce a very large one well inside an hour. Trimming is approximate (`~`), which lets Redis trim
+whole nodes instead of walking the stream on every append.
+
+A subscriber whose buffer overflows has its stream ended rather than being allowed to grow without
+bound behind a reader that cannot drain it; the client reconnects with `Last-Event-ID` and replays from
+the stream, which is what the stream is for.
+
 This is the same shape aegra uses (Redis job queue + pub/sub, crash recovery, Postgres
 checkpoints) — <https://github.com/aegra/aegra>.
 

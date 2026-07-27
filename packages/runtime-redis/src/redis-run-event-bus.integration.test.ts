@@ -76,4 +76,100 @@ describe("RedisRunEventBus cross-instance", () => {
       raw.disconnect();
     }
   });
+
+  it("trims a run's stream to approximately MAXLEN", async () => {
+    const prefix = `skein:test:${randomUUID()}`;
+    const bus = new RedisRunEventBus(redis.url, { keyPrefix: prefix, streamMaxLen: 100 });
+    const raw = new Redis(redis.url);
+    try {
+      for (let seq = 1; seq <= 5000; seq += 1) await bus.publish("big", frame(seq));
+
+      // A bracket, not an equality: `~` trims on whole-node boundaries, so the exact length is a
+      // Redis implementation detail. What matters is that it is bounded rather than 5000.
+      const length = await raw.xlen(`${prefix}:runs:stream:big`);
+      expect(length).toBeGreaterThanOrEqual(100);
+      expect(length).toBeLessThan(5000);
+    } finally {
+      await bus.dispose();
+      raw.disconnect();
+    }
+  });
+
+  it("replays a stream longer than one page, in order and without duplicates", async () => {
+    // Paged replay is the part a fake cannot check: the exclusive-cursor arithmetic between pages is
+    // where an off-by-one would silently repeat or skip a frame.
+    const prefix = `skein:test:${randomUUID()}`;
+    const bus = new RedisRunEventBus(redis.url, { keyPrefix: prefix, closedCheckIntervalMs: 50 });
+    try {
+      for (let seq = 1; seq <= 1200; seq += 1) await bus.publish("long", frame(seq));
+      await bus.close("long");
+
+      const seqs = (await collect(bus.subscribe("long"))).map((f) => f.seq);
+      expect(seqs).toEqual(Array.from({ length: 1200 }, (_unused, index) => index + 1));
+    } finally {
+      await bus.dispose();
+    }
+  });
+
+  it("keeps every subscriber fed from one shared pub/sub connection", async () => {
+    const prefix = `skein:test:${randomUUID()}`;
+    const bus = new RedisRunEventBus(redis.url, { keyPrefix: prefix, closedCheckIntervalMs: 50 });
+    try {
+      const received = Promise.all([
+        collect(bus.subscribe("shared")),
+        collect(bus.subscribe("shared")),
+        collect(bus.subscribe("shared")),
+      ]);
+      // Let all three attach before publishing, so this exercises live fan-out rather than replay.
+      await new Promise((resolve) => setTimeout(resolve, 100));
+
+      await bus.publish("shared", frame(1));
+      await bus.publish("shared", frame(2));
+      await bus.close("shared");
+
+      for (const frames of await received) {
+        expect(frames.map((f) => f.seq)).toEqual([1, 2]);
+      }
+    } finally {
+      await bus.dispose();
+    }
+  });
+
+  it("resubscribes after the shared connection drops", async () => {
+    // The shared connection is a shared failure domain, so ioredis's auto-resubscribe is now
+    // load-bearing for every in-flight stream rather than for one.
+    const prefix = `skein:test:${randomUUID()}`;
+    // Captured through the injected factory rather than reached for on the instance: `#pubsub` is a
+    // real private field, so `bus["#pubsub"]` reads a string-named property that does not exist and
+    // quietly yields `undefined` — the disconnect below would be a no-op and this would pass without
+    // testing anything.
+    const opened: Redis[] = [];
+    const bus = new RedisRunEventBus(redis.url, {
+      keyPrefix: prefix,
+      closedCheckIntervalMs: 50,
+      createClient: (url, options) => {
+        const client = new Redis(url, options ?? {});
+        opened.push(client);
+        return client;
+      },
+    });
+    try {
+      const received = collect(bus.subscribe("flaky"));
+      await new Promise((resolve) => setTimeout(resolve, 100));
+
+      // The pub/sub connection is the one opened after the (lazy) command connection.
+      expect(opened.length).toBeGreaterThanOrEqual(2);
+      opened[opened.length - 1]?.disconnect(true); // drop it the way a Redis blip would
+      await new Promise((resolve) => setTimeout(resolve, 300));
+
+      await bus.publish("flaky", frame(1));
+      await bus.close("flaky");
+
+      // Frames published during the outage are recovered from the durable stream by the close sweep,
+      // so the subscriber completes with them either way.
+      expect((await received).map((f) => f.seq)).toEqual([1]);
+    } finally {
+      await bus.dispose();
+    }
+  });
 });

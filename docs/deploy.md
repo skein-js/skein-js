@@ -308,3 +308,12 @@ rather than the image's default `--queue redis`. They bound what a long-lived pr
 | ------------------------------------- | ------- | ------------------------------------------------------------- |
 | `SKEIN_MEMORY_BUS_MAX_FRAMES_PER_RUN` | 10000   | Frames one run may buffer. A hard maximum, not a target.      |
 | `SKEIN_MEMORY_BUS_MAX_RETAINED_RUNS`  | 50      | Finished runs whose frames stay replayable for a late `join`. |
+
+And two that apply on the **Redis** bus — the image's default — bounding what a run costs in Redis and
+what one slow subscriber may queue in the process. See
+[runs-and-redis.md](./runs-and-redis.md#what-a-frame-costs).
+
+| Variable                     | Default | Purpose                                                                    |
+| ---------------------------- | ------- | -------------------------------------------------------------------------- |
+| `SKEIN_REDIS_STREAM_MAXLEN`  | 10000   | Approximate cap on a run's frame stream. `0` disables trimming (TTL only). |
+| `SKEIN_STREAM_BUFFER_FRAMES` | 512     | Frames one subscriber may queue before its stream is ended to reconnect.   |

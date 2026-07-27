@@ -8,7 +8,7 @@
 
 import { PostgresSaver } from "@langchain/langgraph-checkpoint-postgres";
 import type { ProtocolDeps } from "@skein-js/agent-protocol";
-import { RedisRunEventBus, RedisRunQueue } from "@skein-js/redis";
+import { RedisRunEventBus, RedisRunQueue, type RedisRunEventBusOptions } from "@skein-js/redis";
 import {
   createPostgresPool,
   PostgresSkeinStore,
@@ -96,6 +96,38 @@ export async function connectPostgresStore(args: {
   return { store, checkpointer };
 }
 
+/** Read a positive-integer (or zero, where that is meaningful) setting from the environment. */
+function redisCountFromEnv(name: string, allowZero = false): number | undefined {
+  const raw = process.env[name];
+  // Blank counts as unset — `Number("")` is 0, which would otherwise silently mean something.
+  if (raw === undefined || raw.trim() === "") return undefined;
+  const value = Number(raw);
+  const floor = allowZero ? 0 : 1;
+  if (!Number.isInteger(value) || value < floor) {
+    throw new RuntimeConfigError(
+      `${name} must be an integer >= ${floor} (got "${raw}").`, //
+    );
+  }
+  return value;
+}
+
+/**
+ * Optional Redis event-bus tuning from the environment.
+ *
+ * `SKEIN_REDIS_STREAM_MAXLEN` bounds what one run's frame stream costs in Redis — the retention TTL
+ * alone does not, since a chatty graph can produce an enormous stream well inside an hour. `0`
+ * disables trimming. `SKEIN_STREAM_BUFFER_FRAMES` bounds what a single slow SSE subscriber may queue
+ * in this process before its stream is ended and it is left to reconnect.
+ */
+export function redisEventBusOptions(): RedisRunEventBusOptions {
+  const options: RedisRunEventBusOptions = {};
+  const maxLen = redisCountFromEnv("SKEIN_REDIS_STREAM_MAXLEN", true);
+  if (maxLen !== undefined) options.streamMaxLen = maxLen;
+  const bufferFrames = redisCountFromEnv("SKEIN_STREAM_BUFFER_FRAMES");
+  if (bufferFrames !== undefined) options.subscriberBufferFrames = bufferFrames;
+  return options;
+}
+
 /** Connect the Redis run queue + event bus against one URL. Pushes queue then bus disposers. */
 export function connectRedisQueue(args: {
   url: string;
@@ -104,7 +136,7 @@ export function connectRedisQueue(args: {
   const { url, disposers } = args;
   const queue = new RedisRunQueue(url);
   disposers.push(() => queue.dispose());
-  const bus = new RedisRunEventBus(url);
+  const bus = new RedisRunEventBus(url, redisEventBusOptions());
   disposers.push(() => bus.dispose());
   return { queue, bus };
 }

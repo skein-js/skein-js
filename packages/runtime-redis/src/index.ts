@@ -3,4 +3,8 @@
 // See docs/runs-and-redis.md and docs/streaming.md.
 
 export { RedisRunQueue, type RedisRunQueueOptions } from "./redis-run-queue.js";
-export { RedisRunEventBus, type RedisRunEventBusOptions } from "./redis-run-event-bus.js";
+export {
+  RedisRunEventBus,
+  type RedisClientFactory,
+  type RedisRunEventBusOptions,
+} from "./redis-run-event-bus.js";
