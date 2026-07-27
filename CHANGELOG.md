@@ -1,3 +1,13 @@
+## 0.11.3 (2026-07-27)
+
+### 🩹 Fixes
+
+- **cli:** stop advertising a /docs route the server does not serve ([f0e0a1b](https://github.com/skein-js/skein-js/commit/f0e0a1b))
+
+### ❤️ Thank You
+
+- Maina Wycliffe
+
 ## 0.11.2 (2026-07-26)
 
 ### 🚀 Features
