@@ -60,6 +60,42 @@ data: <json payload>
   each framework adapter writes them as `text/event-stream` (Express `res.write`, Fastify
   reply stream, etc.). The core stays framework-agnostic.
 
+## Slow clients and backpressure
+
+A stream is only as fast as the client reading it, and skein paces itself accordingly. Every adapter's
+write loop honors the response stream's backpressure signal: when the socket's buffer is full it waits
+for `drain` before pulling the next frame, rather than queueing whatever the graph produces.
+
+That matters because the alternative is unbounded. A client on a bad connection — a phone on mobile
+data, a buffering reverse proxy — that reads more slowly than the graph writes would otherwise be
+served entirely out of the server's memory, one full copy of the stream per connection.
+
+Measured in [`packages/bench`](../packages/bench) on the `slow-client` scenario (clients reading at
+~25 fps against a 500 fps graph, ~2 MB per stream):
+
+| Concurrent slow streams | Unflushed server-side buffer | Per streaming connection |
+| ----------------------- | ---------------------------- | ------------------------ |
+| 50, before              | 62.9 MB                      | ~1.26 MB                 |
+| 100, before             | 125.5 MB                     | ~1.26 MB                 |
+| 50, after               | 3.3 MB                       | ~67 KB                   |
+| 100, after              | 6.5 MB                       | ~65 KB                   |
+
+Before, the per-connection cost was the whole stream, so total memory grew with both the number of
+clients **and** the length of each run. After, it is a constant close to the socket's own 64 KB
+high-water mark: still linear in connection count, as it must be, but no longer proportional to how
+much the graph produces.
+
+Two consequences worth knowing:
+
+- **The graph does not slow down.** The run engine publishes into the event bus and the write loop
+  reads from it, so pacing the reader changes how fast frames leave the bus, not how fast they enter
+  it. A slow client cannot stall the run, or any other client's stream.
+- **Frames are not dropped.** Backpressure delays delivery; it never discards. A slow client receives
+  every frame, just later.
+
+The Next.js App Router adapter gets this for free: it maps frames onto a `ReadableStream` whose `pull`
+is demand-driven by the platform.
+
 ## Joining and cross-instance fan-out
 
 - `GET /runs/{run_id}/stream` lets a late client join a run already in progress.

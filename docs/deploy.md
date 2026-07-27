@@ -226,7 +226,10 @@ If you depend on any of these, run a single instance, or route by thread with se
 ## Streaming through proxies (SSE)
 
 skein sends `text/event-stream` with `cache-control: no-cache, no-transform` and flushes headers
-immediately. Two things it does _not_ do, which matter in front of a proxy:
+immediately. Streams are **back-pressured**: a client that reads slowly is paced rather than buffered
+in the server's memory, so a few hundred slow connections cost a bounded ~65 KB each instead of a full
+copy of each stream — see [streaming.md](./streaming.md#slow-clients-and-backpressure). Two things it
+does _not_ do, which matter in front of a proxy:
 
 - It sends **no `X-Accel-Buffering: no` header**. A buffering reverse proxy will hold the stream
   until the run finishes, which looks exactly like a hang. Turn buffering off: nginx

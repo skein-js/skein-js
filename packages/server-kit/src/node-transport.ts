@@ -7,7 +7,12 @@
 
 import type { ServerResponse } from "node:http";
 
-import { SSE_HEADERS, type Logger, type ProtocolResponse } from "@skein-js/agent-protocol";
+import {
+  SSE_HEADERS,
+  writeWithBackpressure,
+  type Logger,
+  type ProtocolResponse,
+} from "@skein-js/agent-protocol";
 import { isSkeinHttpError, serializeWireJson } from "@skein-js/core";
 
 /** A vanished client turns writes into `EPIPE`/`ERR_STREAM_DESTROYED`; swallow them — we're closing. */
@@ -34,7 +39,10 @@ async function pipeServerSentEvents(
     for (;;) {
       const next = await iterator.next();
       if (next.done || clientDisconnected) break;
-      res.write(next.value);
+      // Pace the loop to the client. Ignoring `write`'s return value would let a fast graph queue its
+      // entire output in this socket's buffer for a client that cannot keep up.
+      const drained = writeWithBackpressure(res, next.value);
+      if (drained) await drained;
     }
   } finally {
     res.removeListener("close", releaseOnClientClose);

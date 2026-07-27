@@ -1,8 +1,14 @@
 // The direct backpressure signal. When an SSE writer ignores `res.write()`'s return value, the bytes
 // it produced but the client has not read pile up in each socket's writable buffer — so the sum of
 // `writableLength` across live sockets *is* the leak, observed at its source rather than inferred
-// from RSS. A working backpressure fix drives this series to roughly zero regardless of how slow the
-// client is; without one it tracks the graph's total output.
+// from RSS.
+//
+// Read it per connection, not as a total. Backpressure does not drive this to zero: each socket still
+// buffers up to its own high-water mark (~64 KB), so the sum stays linear in connection count no
+// matter what. What changes is the *per-connection* figure — the whole stream when the signal is
+// ignored, a bounded constant when it is honored. Note the divisor is the number of **streaming**
+// connections, which is not the same as `openSockets()`: idle keep-alive connections are tracked too
+// and contribute zero.
 
 import type { Server } from "node:http";
 import type { Socket } from "node:net";

@@ -3,7 +3,11 @@
 // pre-serialized event strings the core already produced (each ends `\n\n` — we never re-encode
 // frames), tearing the run's frame subscription down when the client disconnects.
 
-import { SSE_HEADERS, type ProtocolResponse } from "@skein-js/agent-protocol";
+import {
+  SSE_HEADERS,
+  writeWithBackpressure,
+  type ProtocolResponse,
+} from "@skein-js/agent-protocol";
 import { serializeWireJson } from "@skein-js/core";
 import type { FastifyReply } from "fastify";
 
@@ -40,7 +44,10 @@ async function pipeServerSentEvents(
     for (;;) {
       const next = await iterator.next();
       if (next.done || clientDisconnected) break;
-      res.write(next.value);
+      // Pace the loop to the client. Ignoring `write`'s return value would let a fast graph queue its
+      // entire output in this socket's buffer for a client that cannot keep up.
+      const drained = writeWithBackpressure(res, next.value);
+      if (drained) await drained;
     }
   } finally {
     res.removeListener("close", releaseOnClientClose);
