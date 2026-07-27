@@ -117,11 +117,15 @@ and `skein dev --store postgres`); pure in-memory `skein dev` still enforces exp
 
 ## Drivers
 
-### `@skein-js/storage-memory` (dev/tests)
+### `@skein-js/storage-memory` (dev/tests — and the Redis-less production path)
 
 - In-process maps; zero external dependencies.
 - Paired with an in-memory queue and a `MemorySaver` checkpointer for `skein dev`.
 - `store` semantic search falls back to a naive scan/embedding compare.
+- **Not only a dev driver.** `embedPostgresGraphs` uses this queue and event bus whenever no Redis URL
+  is configured, so its retention bounds apply to real traffic — see
+  [embedding.md](./embedding.md#going-to-production) for `SKEIN_MEMORY_BUS_MAX_FRAMES_PER_RUN` and
+  `SKEIN_MEMORY_BUS_MAX_RETAINED_RUNS`.
 
 ### `@skein-js/storage-postgres` (prod)
 

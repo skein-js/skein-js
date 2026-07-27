@@ -4,4 +4,10 @@
 
 export { MemorySkeinStore } from "./memory-skein-store.js";
 export type { MemoryStoreSnapshot } from "./memory-skein-store.js";
-export { MemoryRunEventBus, MemoryRunQueue } from "./memory-queue.js";
+export {
+  DEFAULT_MEMORY_BUS_MAX_FRAMES_PER_RUN,
+  DEFAULT_MEMORY_BUS_MAX_RETAINED_RUNS,
+  MemoryRunEventBus,
+  MemoryRunQueue,
+  type MemoryRunEventBusOptions,
+} from "./memory-queue.js";

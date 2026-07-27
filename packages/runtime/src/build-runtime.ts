@@ -24,6 +24,7 @@ import type { TelemetrySink } from "@skein-js/core";
 import {
   corsFromHttpConfig,
   loadReloadableInMemoryRuntime,
+  resolveMemoryBusLimits,
   type DevStateSnapshot,
 } from "@skein-js/server-kit";
 import { MemoryRunEventBus, MemoryRunQueue, MemorySkeinStore } from "@skein-js/storage-memory";
@@ -217,7 +218,7 @@ export async function buildRuntime(options: BuildRuntimeOptions): Promise<SkeinR
     const { queue: runQueue, bus } =
       queue === "redis"
         ? connectRedisQueue({ url: requireEnv("REDIS_URI", "redis"), disposers })
-        : { queue: new MemoryRunQueue(), bus: new MemoryRunEventBus() };
+        : { queue: new MemoryRunQueue(), bus: new MemoryRunEventBus(resolveMemoryBusLimits()) };
 
     // Telemetry sinks from the `telemetry` block plus environment auto-detection. Left off the deps
     // entirely when nothing is configured, so the engine's `telemetryEnabled` guards stay false.

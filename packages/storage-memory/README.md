@@ -72,8 +72,18 @@ const runtime = createProtocolRuntime({
   `enqueue(run)` · `consume(process, options?)` (`options.concurrency` default `1`) → a `RunConsumer`
   with `close(force?)`.
 - **`class MemoryRunEventBus implements RunEventBus`** —
-  `new MemoryRunEventBus(options?: { maxRetainedRuns?: number })` (default `1000`; LRU-evicts closed
-  runs' buffers). `publish(runId, frame)` · `close(runId)` · `subscribe(runId, afterSeq = 0)`.
+  `new MemoryRunEventBus(options?)`. `publish(runId, frame)` · `close(runId)` ·
+  `subscribe(runId, afterSeq = 0)`, plus `trackedChannelCount` / `bufferedFrameCount` for diagnostics.
+
+  Options: `maxFramesPerRun` (default `10000`) is a hard maximum on one run's buffer — past it the
+  oldest frames go, which ends the stream of any subscriber that had not read them.
+  `maxRetainedRuns` (default `50`) is how many finished runs stay replayable for a late join; beyond
+  it a run's channel is **deleted**, not blanked, and its id is remembered for `finishedIdTtlMs`
+  (default 24h) so the join still completes rather than waiting forever. `now` injects a clock.
+
+  Prefer `resolveMemoryBusLimits()` from [`@skein-js/server-kit`](../server-kit) over hand-passing the
+  bounds — it applies `SKEIN_MEMORY_BUS_*` from the environment, which is what every skein-assembled
+  runtime does.
 
 See [`@skein-js/core`](../core) for the full `SkeinStore` / `RunQueue` / `RunEventBus` method
 signatures these implement.

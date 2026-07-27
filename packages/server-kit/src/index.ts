@@ -28,6 +28,10 @@ export { formatLogMeta, runFailureIdentity } from "./log-meta.js";
 export { describeError } from "./describe-error.js";
 export type { Logger } from "@skein-js/agent-protocol";
 
+// How much the in-memory event bus may retain (SKEIN_MEMORY_BUS_*). Exported so a host assembling
+// its own drivers bounds them the same way skein's own paths do.
+export { resolveMemoryBusLimits, type ResolvedMemoryBusLimits } from "./memory-bus-limits.js";
+
 // Run concurrency: the one precedence chain (explicit option → SKEIN_RUN_CONCURRENCY →
 // N_JOBS_PER_WORKER → DEFAULT_RUN_CONCURRENCY) behind `worker.maxConcurrency`. Exported so
 // `skein dev`/`start` resolve the exact number they print in the startup banner, rather than

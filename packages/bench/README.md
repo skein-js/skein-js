@@ -37,6 +37,10 @@ rather than a measurement, and the harness says so rather than reporting them as
   is missing.
 - **`idle-retention`** — many short runs, then idle. Isolates what the bus retains after runs finish,
   independent of anything still in flight.
+- **`long-run`** — runs that exceed the bus's per-run frame cap, so frame eviction actually happens.
+  Read `busBufferedFrames` and the settled-memory figures here; **ignore its `frames/s`, `p99`, and
+  delivered-frame count**, which are decided by where each reader happened to be truncated and do not
+  reproduce.
 
 ## Two things the harness has to get right
 

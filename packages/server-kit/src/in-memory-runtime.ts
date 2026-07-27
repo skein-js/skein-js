@@ -23,6 +23,7 @@ import {
   type DevStateSnapshot,
 } from "./dev-persistence.js";
 import { embedInMemoryGraphs } from "./in-memory-deps.js";
+import { resolveMemoryBusLimits } from "./memory-bus-limits.js";
 
 /**
  * Bridge a config `GraphRegistry` to the engine's `GraphResolver`. They are structurally identical
@@ -122,7 +123,9 @@ export async function loadReloadableInMemoryRuntime(
     store,
     graphs,
     queue: new MemoryRunQueue(),
-    bus: new MemoryRunEventBus(),
+    // This is the path `skein start` and `skein up` take by default, so it is the longest-lived
+    // memory bus skein runs — the bounds have to be resolved here too, not just on the embed paths.
+    bus: new MemoryRunEventBus(resolveMemoryBusLimits()),
     checkpointer,
     auth: await loadAuthEngine(first.config.auth, { configDir: first.configDir, importModule }),
     ...extraDeps,

@@ -299,3 +299,12 @@ platform names; map them onto skein's.
 | `SKEIN_RUN_CONCURRENCY`   | no                   | Queued runs each instance executes at once (default 10).          |
 | `N_JOBS_PER_WORKER`       | no                   | LangGraph-compatible alias for `SKEIN_RUN_CONCURRENCY`.           |
 | `SKEIN_SHUTDOWN_GRACE_MS` | no                   | Drain window for in-flight runs on `SIGTERM` (default 5000).      |
+
+Two more apply only when the run queue and event bus are **in-memory** — that is, `--queue memory`
+rather than the image's default `--queue redis`. They bound what a long-lived process retains; see
+[embedding.md](./embedding.md#going-to-production) for the sizing math.
+
+| Variable                              | Default | Purpose                                                       |
+| ------------------------------------- | ------- | ------------------------------------------------------------- |
+| `SKEIN_MEMORY_BUS_MAX_FRAMES_PER_RUN` | 10000   | Frames one run may buffer. A hard maximum, not a target.      |
+| `SKEIN_MEMORY_BUS_MAX_RETAINED_RUNS`  | 50      | Finished runs whose frames stay replayable for a late `join`. |

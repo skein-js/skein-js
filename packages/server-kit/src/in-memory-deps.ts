@@ -15,6 +15,8 @@ import type {
 } from "@skein-js/agent-protocol";
 import { MemoryRunEventBus, MemoryRunQueue, MemorySkeinStore } from "@skein-js/storage-memory";
 
+import { resolveMemoryBusLimits } from "./memory-bus-limits.js";
+
 // The graph's node-name/state generics are left open so a concretely-typed `.compile()` result (e.g.
 // from `MessagesAnnotation`) is accepted without a cast at the call site — the engine only drives the
 // runnable surface every compiled graph shares, and `graphMapToResolver` widens to the engine's
@@ -112,7 +114,9 @@ export function embedInMemoryGraphs(
     store: new MemorySkeinStore(),
     graphs: normalizeEmbeddableGraphs(graphs),
     queue: new MemoryRunQueue(),
-    bus: new MemoryRunEventBus(),
+    // Resolved rather than defaulted, so `SKEIN_MEMORY_BUS_*` reaches an embedded host too — this is
+    // the driver set a long-lived single-process deployment actually runs on.
+    bus: new MemoryRunEventBus(resolveMemoryBusLimits()),
     checkpointer: new MemorySaver(),
     ...overrides,
   };

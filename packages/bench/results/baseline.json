@@ -11,22 +11,24 @@
       "scenario": "fast-client",
       "driver": "memory",
       "streams": 50,
-      "bootMs": 8.858833000000004,
-      "timeToFirstFrameMs": 564.259125,
-      "framesPerSecond": 44347.99954593997,
-      "latencyP50Ms": 0.00016600000003563764,
-      "latencyP99Ms": 0.026542000000063126,
+      "bootMs": 12.874249999999961,
+      "timeToFirstFrameMs": 550.7637500000001,
+      "framesPerSecond": 45423.28425220139,
+      "latencyP50Ms": 0.00016699999991942605,
+      "latencyP99Ms": 0.009958000000096945,
       "totalFrames": 25150,
-      "durationMs": 567.1056249999999,
+      "durationMs": 553.6807920000001,
       "memory": {
-        "rssPeakBytes": 329629696,
-        "heapUsedPeakBytes": 96873720,
+        "rssPeakBytes": 332595200,
+        "heapUsedPeakBytes": 96719688,
         "heapLimitBytes": 4496293888,
-        "rssSettledBytes": 358203392,
-        "heapUsedSettledBytes": 70422896,
+        "rssSettledBytes": 369033216,
+        "heapUsedSettledBytes": 70447680,
         "probePeaks": {
           "sseBufferedBytes": 0,
-          "openSockets": 51
+          "openSockets": 51,
+          "busBufferedFrames": 24598,
+          "busTrackedChannels": 49
         }
       },
       "gcForced": true
@@ -35,22 +37,24 @@
       "scenario": "slow-client",
       "driver": "memory",
       "streams": 50,
-      "bootMs": 3.030790999999226,
-      "timeToFirstFrameMs": 139.96658399999978,
-      "framesPerSecond": 1211.8466758094032,
-      "latencyP50Ms": 40.919708999997965,
-      "latencyP99Ms": 43.04404100000011,
+      "bootMs": 3.1313329999993584,
+      "timeToFirstFrameMs": 174.04079199999978,
+      "framesPerSecond": 1213.2492120802879,
+      "latencyP50Ms": 40.82616600000256,
+      "latencyP99Ms": 43.291165999999976,
       "totalFrames": 25150,
-      "durationMs": 20753.4505,
+      "durationMs": 20729.459166,
       "memory": {
-        "rssPeakBytes": 464912384,
-        "heapUsedPeakBytes": 225710216,
+        "rssPeakBytes": 489668608,
+        "heapUsedPeakBytes": 219943272,
         "heapLimitBytes": 4496293888,
-        "rssSettledBytes": 465698816,
-        "heapUsedSettledBytes": 157338760,
+        "rssSettledBytes": 489766912,
+        "heapUsedSettledBytes": 157392456,
         "probePeaks": {
           "sseBufferedBytes": 3417600,
-          "openSockets": 100
+          "openSockets": 100,
+          "busBufferedFrames": 25100,
+          "busTrackedChannels": 50
         }
       },
       "gcForced": true
@@ -59,22 +63,50 @@
       "scenario": "idle-retention",
       "driver": "memory",
       "streams": 200,
-      "bootMs": 3.01270900000236,
-      "timeToFirstFrameMs": 446.78104099999473,
-      "framesPerSecond": 12345.42500032731,
-      "latencyP50Ms": 0.0002499999973224476,
-      "latencyP99Ms": 0.0004580000022542663,
+      "bootMs": 3.161041999999725,
+      "timeToFirstFrameMs": 458.54699999999866,
+      "framesPerSecond": 12038.801469896438,
+      "latencyP50Ms": 0.0002500000045984052,
+      "latencyP99Ms": 0.00041700000292621553,
       "totalFrames": 5600,
-      "durationMs": 453.60933300000033,
+      "durationMs": 465.1625839999979,
       "memory": {
-        "rssPeakBytes": 468729856,
-        "heapUsedPeakBytes": 92359888,
+        "rssPeakBytes": 492584960,
+        "heapUsedPeakBytes": 93493048,
         "heapLimitBytes": 4496293888,
-        "rssSettledBytes": 420478976,
-        "heapUsedSettledBytes": 48027456,
+        "rssSettledBytes": 504807424,
+        "heapUsedSettledBytes": 43797392,
         "probePeaks": {
           "sseBufferedBytes": 0,
-          "openSockets": 201
+          "openSockets": 201,
+          "busBufferedFrames": 1350,
+          "busTrackedChannels": 50
+        }
+      },
+      "gcForced": true
+    },
+    {
+      "scenario": "long-run",
+      "driver": "memory",
+      "streams": 10,
+      "bootMs": 0.9866670000046724,
+      "timeToFirstFrameMs": 851.5114580000009,
+      "framesPerSecond": 1150.2039724777646,
+      "latencyP50Ms": 0.0002499999973224476,
+      "latencyP99Ms": 0.02937499999825377,
+      "totalFrames": 980,
+      "durationMs": 852.0227920000034,
+      "memory": {
+        "rssPeakBytes": 510558208,
+        "heapUsedPeakBytes": 156684576,
+        "heapLimitBytes": 4496293888,
+        "rssSettledBytes": 511426560,
+        "heapUsedSettledBytes": 99335408,
+        "probePeaks": {
+          "sseBufferedBytes": 0,
+          "openSockets": 11,
+          "busBufferedFrames": 90000,
+          "busTrackedChannels": 9
         }
       },
       "gcForced": true

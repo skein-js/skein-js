@@ -9,7 +9,11 @@
 // docs/embedding.md.
 
 import type { GraphResolver, ProtocolDeps } from "@skein-js/agent-protocol";
-import { normalizeEmbeddableGraphs, type EmbeddableGraph } from "@skein-js/server-kit";
+import {
+  normalizeEmbeddableGraphs,
+  resolveMemoryBusLimits,
+  type EmbeddableGraph,
+} from "@skein-js/server-kit";
 import { MemoryRunEventBus, MemoryRunQueue } from "@skein-js/storage-memory";
 import type { StoreIndexConfig } from "@skein-js/storage-postgres";
 
@@ -131,9 +135,12 @@ export async function embedPostgresGraphs(
           "process-local and streaming isn't fanned across instances. Set a Redis URL to scale out.",
       );
     }
+    // No Redis means the in-memory bus in production. Bound it from the environment rather than
+    // leaving it at the constructor defaults — this is the path a Postgres-only deployment runs on,
+    // and it is the one that has to survive weeks of uptime.
     const { queue, bus } = redisUrl
       ? connectRedisQueue({ url: redisUrl, disposers })
-      : { queue: new MemoryRunQueue(), bus: new MemoryRunEventBus() };
+      : { queue: new MemoryRunQueue(), bus: new MemoryRunEventBus(resolveMemoryBusLimits()) };
 
     const deps: ProtocolDeps = {
       store,

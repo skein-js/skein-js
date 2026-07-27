@@ -7,30 +7,11 @@
 // boot instead of being silently ignored.
 
 import { DEFAULT_RUN_CONCURRENCY } from "@skein-js/agent-protocol";
-import { SkeinConfigError } from "@skein-js/config";
+
+import { positiveIntegerFromEnv, requirePositiveInteger } from "./env-numbers.js";
 
 /** Canonical env var first, then the LangGraph CLI spelling we also accept. */
 const CONCURRENCY_ENV_VARS = ["SKEIN_RUN_CONCURRENCY", "N_JOBS_PER_WORKER"] as const;
-
-function requirePositiveInteger(source: string, raw: string | number): number {
-  const parsed = Number(raw);
-  if (!Number.isInteger(parsed) || parsed <= 0) {
-    throw new SkeinConfigError(`${source} must be a positive integer (got "${String(raw)}").`);
-  }
-  return parsed;
-}
-
-/** The declared concurrency, or undefined when neither variable is set (or both are blank). */
-function runConcurrencyFromEnv(env: NodeJS.ProcessEnv): number | undefined {
-  for (const name of CONCURRENCY_ENV_VARS) {
-    const raw = env[name];
-    // Blank counts as unset — `Number("")` is 0, which would otherwise throw a confusing
-    // "must be a positive integer (got "")" for a variable the user effectively left empty.
-    if (raw === undefined || raw.trim() === "") continue;
-    return requirePositiveInteger(name, raw);
-  }
-  return undefined;
-}
 
 /**
  * The one precedence chain for background-run concurrency: an explicit value (a `worker.maxConcurrency`
@@ -46,7 +27,7 @@ export function resolveRunConcurrency(
   explicit?: number,
   env: NodeJS.ProcessEnv = process.env,
 ): number {
-  const fromEnv = runConcurrencyFromEnv(env);
+  const fromEnv = positiveIntegerFromEnv(CONCURRENCY_ENV_VARS, env);
   if (explicit === undefined) return fromEnv ?? DEFAULT_RUN_CONCURRENCY;
   return requirePositiveInteger("worker.maxConcurrency", explicit);
 }

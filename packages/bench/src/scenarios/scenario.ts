@@ -59,6 +59,19 @@ export const SCENARIOS: readonly Scenario[] = [
     graphFramesPerSecond: 0,
     clientFramesPerSecond: 0,
   },
+  {
+    name: "long-run",
+    description: "Exceeds the bus's per-run frame cap — exercises eviction and its truncation.",
+    // The other scenarios produce ~500 frames per run, far below the bus's 10,000-frame default, so
+    // none of them ever reaches the cap. This one must exceed it or the eviction path is invisible
+    // here and a regression in it would show up in no number at all — which is exactly what happened
+    // when this scenario was first written against a 2,000-frame assumption.
+    streams: 10,
+    frames: 12_000,
+    frameBytes: DEFAULT_FRAME_BYTES,
+    graphFramesPerSecond: 0,
+    clientFramesPerSecond: 0,
+  },
 ];
 
 /** Look a scenario up by name. */
