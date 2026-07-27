@@ -79,6 +79,7 @@ describe("applySkeinMigrations", () => {
       "0002_store_ttl",
       "0003_assistant_versions",
       "0004_run_error",
+      "0005_performance_indexes",
     ]);
 
     expect((await readLedger(pool)).map((row) => row.name)).toEqual([
@@ -86,6 +87,7 @@ describe("applySkeinMigrations", () => {
       "0002_store_ttl",
       "0003_assistant_versions",
       "0004_run_error",
+      "0005_performance_indexes",
     ]);
 
     for (const table of ["assistants", "assistant_versions", "threads", "runs", "store_items"]) {
@@ -114,6 +116,63 @@ describe("applySkeinMigrations", () => {
       { table_name: "runs", data_type: "jsonb" },
       { table_name: "threads", data_type: "text" },
     ]);
+  });
+
+  it("creates the performance indexes, and drops the one they supersede", async () => {
+    const pool = await connectScratch("migrate_indexes");
+    await applySkeinMigrations(pool);
+
+    const { rows } = await pool.query<{ indexname: string }>(
+      `SELECT indexname FROM pg_indexes
+        WHERE schemaname = 'public' AND tablename IN ('threads', 'assistants', 'runs', 'store_items')`,
+    );
+    const indexes = rows.map((row) => row.indexname);
+
+    expect(indexes).toEqual(
+      expect.arrayContaining([
+        "threads_created_at_thread_id_idx",
+        "threads_updated_at_thread_id_idx",
+        "threads_status_created_at_idx",
+        "threads_metadata_idx",
+        "assistants_metadata_idx",
+        "assistants_created_at_assistant_id_idx",
+        "runs_thread_id_created_at_idx",
+        "store_items_created_at_key_idx",
+      ]),
+    );
+    // Superseded by the composite whose leading column is the same; a redundant index costs writes.
+    expect(indexes).not.toContain("runs_thread_id_idx");
+  });
+
+  it("leaves no invalid index behind", async () => {
+    // A CREATE INDEX CONCURRENTLY that is interrupted leaves an *invalid* index that `IF NOT EXISTS`
+    // then skips forever, so the query silently never uses it. Cheap to assert, and the failure mode
+    // is otherwise invisible.
+    const pool = await connectScratch("migrate_indexes_valid");
+    await applySkeinMigrations(pool);
+
+    const { rows } = await pool.query<{ relname: string }>(
+      `SELECT c.relname FROM pg_class c
+         JOIN pg_index i ON i.indexrelid = c.oid
+        WHERE NOT i.indisvalid`,
+    );
+    expect(rows.map((row) => row.relname)).toEqual([]);
+  });
+
+  it("uses an index for the thread search's default sort", async () => {
+    // The point of the migration: `POST /threads/search` was a sequential scan plus a sort.
+    const pool = await connectScratch("migrate_index_used");
+    await applySkeinMigrations(pool);
+    for (let index = 0; index < 2000; index += 1) {
+      await pool.query(`INSERT INTO threads (thread_id) VALUES ($1)`, [`t-${index}`]);
+    }
+    await pool.query("ANALYZE threads");
+
+    const { rows } = await pool.query<{ "QUERY PLAN": string }>(
+      `EXPLAIN SELECT * FROM threads ORDER BY created_at DESC, thread_id DESC LIMIT 20`,
+    );
+    const plan = rows.map((row) => row["QUERY PLAN"]).join("\n");
+    expect(plan).toContain("threads_created_at_thread_id_idx");
   });
 
   it("creates the ledger with the column types node-pg-migrate used", async () => {
@@ -179,6 +238,7 @@ describe("applySkeinMigrations", () => {
       "0002_store_ttl",
       "0003_assistant_versions",
       "0004_run_error",
+      "0005_performance_indexes",
     ]);
 
     const ledger = await readLedger(pool);
@@ -187,6 +247,7 @@ describe("applySkeinMigrations", () => {
       "0002_store_ttl",
       "0003_assistant_versions",
       "0004_run_error",
+      "0005_performance_indexes",
     ]);
     // The pre-existing row is untouched, so 0001_init was not re-applied.
     expect(ledger[0]).toEqual(legacyRow);
@@ -246,12 +307,13 @@ describe("applySkeinMigrations", () => {
       applySkeinMigrations(second),
     ]);
 
-    expect([firstApplied.length, secondApplied.length].sort()).toEqual([0, 4]);
+    expect([firstApplied.length, secondApplied.length].sort()).toEqual([0, 5]);
     expect((await readLedger(first)).map((row) => row.name)).toEqual([
       "0001_init",
       "0002_store_ttl",
       "0003_assistant_versions",
       "0004_run_error",
+      "0005_performance_indexes",
     ]);
   });
 });

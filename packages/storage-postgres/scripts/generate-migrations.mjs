@@ -45,6 +45,57 @@ function escapeTemplateLiteral(sql) {
   return sql.replace(/\\/g, "\\\\").replace(/`/g, "\\`").replace(/\$\{/g, "\\${");
 }
 
+/**
+ * Marks a migration whose statements must run outside a transaction, one at a time.
+ *
+ * `CREATE INDEX CONCURRENTLY` is rejected inside a transaction block, and `pg`'s simple query
+ * protocol wraps a multi-statement string in an implicit one — so such a migration cannot go through
+ * the normal BEGIN/COMMIT path and has to be pre-split.
+ */
+const CONCURRENT_MARKER = /^\s*--\s*skein:concurrent\s*$/im;
+
+/**
+ * Split a concurrent migration into single statements at build time rather than in the runner.
+ *
+ * Build time because a bad split should fail `pnpm migrations:generate`, where the author sees it,
+ * not a production boot. The split is deliberately naive — one statement per `;` — so the checks
+ * below reject anything it could get wrong: a dollar-quoted body (`DO $$ … $$`) or a literal
+ * containing a semicolon. Concurrent migrations exist for index DDL; that is all they may contain.
+ */
+function splitConcurrentStatements(file, up) {
+  const body = up
+    .split("\n")
+    .filter((line) => !/^\s*--/.test(line))
+    .join("\n");
+  if (body.includes("$$")) {
+    throw new Error(
+      `${file} is marked skein:concurrent but contains a dollar-quoted body, which this splitter ` +
+        `cannot parse. Concurrent migrations may only contain single-statement index DDL.`,
+    );
+  }
+  if (body.includes("'")) {
+    throw new Error(
+      `${file} is marked skein:concurrent but contains a string literal, which could hide a ` +
+        `semicolon from this splitter. Concurrent migrations may only contain index DDL.`,
+    );
+  }
+  const statements = body
+    .split(";")
+    .map((statement) => statement.trim())
+    .filter((statement) => statement !== "");
+  if (statements.length === 0) {
+    throw new Error(`${file} is marked skein:concurrent but has no statements.`);
+  }
+  for (const statement of statements) {
+    if (!/^(CREATE|DROP)\s+INDEX\b/i.test(statement)) {
+      throw new Error(
+        `${file} is marked skein:concurrent but has a non-index statement: ${statement.slice(0, 60)}…`,
+      );
+    }
+  }
+  return statements;
+}
+
 /** `0001_init` → `MIGRATION_0001_INIT`. */
 function constantNameOf(migrationName) {
   return `MIGRATION_${migrationName.toUpperCase()}`;
@@ -59,9 +110,11 @@ const migrations = await Promise.all(
     if (!/^\d{4}_[a-z0-9_]+$/.test(name)) {
       throw new Error(`Migration filename must look like 0001_snake_case.sql, got: ${file}`);
     }
-    const up = extractUpMigration(await readFile(path.join(migrationsDir, file), "utf8"));
+    const contents = await readFile(path.join(migrationsDir, file), "utf8");
+    const up = extractUpMigration(contents);
     if (up.trim() === "") throw new Error(`Migration ${file} has an empty up section`);
-    return { name, up };
+    const concurrent = CONCURRENT_MARKER.test(up);
+    return { name, up, statements: concurrent ? splitConcurrentStatements(file, up) : undefined };
   }),
 );
 
@@ -78,6 +131,15 @@ export interface SkeinMigration {
   readonly name: string;
   /** The up SQL, executed as a single multi-statement query. */
   readonly up: string;
+  /**
+   * Present when the migration is marked \`-- skein:concurrent\`: \`up\` pre-split into single
+   * statements, to be run one at a time *outside* any transaction.
+   *
+   * \`CREATE INDEX CONCURRENTLY\` is rejected inside a transaction block, and \`pg\`'s simple query
+   * protocol wraps a multi-statement string in an implicit one — so these cannot go through the
+   * normal BEGIN/COMMIT path. Split at generate time so a malformed one fails the build.
+   */
+  readonly statements?: readonly string[];
 }
 
 ${migrations
@@ -86,7 +148,14 @@ ${migrations
 
 /** Every migration, oldest first. Order is the contract — never reorder or rename. */
 export const SKEIN_MIGRATIONS: readonly SkeinMigration[] = [
-${migrations.map(({ name }) => `  { name: "${name}", up: ${constantNameOf(name)} },`).join("\n")}
+${migrations
+  .map(({ name, statements }) => {
+    const split = statements
+      ? `, statements: [${statements.map((statement) => `\`${escapeTemplateLiteral(statement)}\``).join(", ")}]`
+      : "";
+    return `  { name: "${name}", up: ${constantNameOf(name)}${split} },`;
+  })
+  .join("\n")}
 ];
 `;
 

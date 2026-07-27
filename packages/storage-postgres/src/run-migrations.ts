@@ -111,6 +111,44 @@ export function selectPendingMigrations(
 }
 
 /**
+ * Apply a migration whose statements must run outside a transaction, one at a time.
+ *
+ * `CREATE INDEX CONCURRENTLY` is rejected inside a transaction block, and `pg`'s simple query protocol
+ * wraps a multi-statement string in an implicit one — so this cannot go through the BEGIN/COMMIT path
+ * above. The trade-off is that the migration is not atomic: a failure partway leaves some statements
+ * applied and the ledger row unwritten, so the next boot re-runs the whole thing. Every statement is
+ * therefore written `IF NOT EXISTS` / `IF EXISTS`.
+ *
+ * The advisory lock still serializes instances, so a rolling deploy does not build the same index
+ * twice concurrently.
+ */
+async function applyConcurrentMigration(
+  client: PoolClient,
+  migration: SkeinMigration,
+): Promise<void> {
+  for (const statement of migration.statements ?? []) {
+    try {
+      await client.query(statement);
+    } catch (error) {
+      throw new Error(
+        `Migration "${migration.name}" failed on a concurrent statement and was NOT rolled back ` +
+          `(concurrent index builds cannot be transactional). Statements already applied remain; ` +
+          `the ledger row was not written, so the next boot retries the whole migration. If a ` +
+          `CREATE INDEX CONCURRENTLY was interrupted, Postgres may have left an *invalid* index that ` +
+          `\`IF NOT EXISTS\` will skip — see docs/storage.md for how to find and drop one. ` +
+          `Statement: ${statement.slice(0, 120)}. Cause: ` +
+          `${error instanceof Error ? error.message : String(error)}`,
+        { cause: error },
+      );
+    }
+  }
+  // Recorded only once every statement landed, which is what makes the retry above safe.
+  await client.query(`INSERT INTO ${MIGRATIONS_TABLE} (name, run_on) VALUES ($1, NOW())`, [
+    migration.name,
+  ]);
+}
+
+/**
  * Apply every pending migration and record it, serialized across instances by an advisory lock.
  * Idempotent — a fully-migrated database applies nothing. Returns the names applied, oldest first.
  *
@@ -141,6 +179,10 @@ export async function applySkeinMigrations(
       );
 
       for (const migration of pending) {
+        if (migration.statements) {
+          await applyConcurrentMigration(client, migration);
+          continue;
+        }
         await client.query("BEGIN");
         try {
           // No values array — that keeps `pg` on the simple query protocol, which is what allows a

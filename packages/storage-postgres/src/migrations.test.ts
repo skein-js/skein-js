@@ -17,8 +17,19 @@ const migrationsDir = path.resolve(path.dirname(fileURLToPath(import.meta.url)),
 const sectionMarker = (direction: "up" | "down") =>
   new RegExp(`^\\s*--[\\s-]*${direction}\\s+migration`, "im");
 
+/** Independently re-derived split for a `-- skein:concurrent` migration. */
+function splitStatements(up: string): string[] {
+  return up
+    .split("\n")
+    .filter((line) => !line.trimStart().startsWith("--"))
+    .join("\n")
+    .split(";")
+    .map((statement) => statement.trim())
+    .filter((statement) => statement !== "");
+}
+
 /** What SKEIN_MIGRATIONS should contain, read straight from the .sql files. */
-function readMigrationsFromDisk(): { name: string; up: string }[] {
+function readMigrationsFromDisk(): { name: string; up: string; statements?: string[] }[] {
   return readdirSync(migrationsDir)
     .filter((file) => file.endsWith(".sql"))
     .sort()
@@ -26,13 +37,16 @@ function readMigrationsFromDisk(): { name: string; up: string }[] {
       const contents = readFileSync(path.join(migrationsDir, file), "utf8");
       const upStart = contents.search(sectionMarker("up"));
       const downStart = contents.search(sectionMarker("down"));
-      return {
-        name: path.basename(file, ".sql"),
-        up:
-          upStart < 0
-            ? contents
-            : contents.slice(upStart, downStart < upStart ? undefined : downStart),
-      };
+      const up =
+        upStart < 0
+          ? contents
+          : contents.slice(upStart, downStart < upStart ? undefined : downStart);
+      const name = path.basename(file, ".sql");
+      // A concurrent migration carries its statements pre-split, since `CREATE INDEX CONCURRENTLY`
+      // cannot run inside the transaction the normal multi-statement path implies.
+      return /^\s*--\s*skein:concurrent\s*$/im.test(up)
+        ? { name, up, statements: splitStatements(up) }
+        : { name, up };
     });
 }
 
@@ -50,7 +64,34 @@ describe("SKEIN_MIGRATIONS", () => {
       "0002_store_ttl",
       "0003_assistant_versions",
       "0004_run_error",
+      "0005_performance_indexes",
     ]);
+  });
+
+  it("pre-splits a concurrent migration into index DDL only", () => {
+    // The runner executes these outside a transaction, one at a time, so each must genuinely be a
+    // single statement — and only index DDL, which is the one thing the naive `;` split is safe for.
+    const concurrent = SKEIN_MIGRATIONS.filter((migration) => migration.statements !== undefined);
+    expect(concurrent.length).toBeGreaterThan(0);
+
+    for (const migration of concurrent) {
+      expect(migration.statements?.length).toBeGreaterThan(0);
+      for (const statement of migration.statements ?? []) {
+        expect(statement).toMatch(/^(CREATE|DROP)\s+INDEX\b/i);
+        expect(statement).not.toContain(";");
+        // Non-transactional means non-atomic, so a retry has to be a no-op for what already applied.
+        expect(statement).toMatch(/IF (NOT )?EXISTS/i);
+      }
+    }
+  });
+
+  it("marks only migrations that need it as concurrent", () => {
+    // A migration wrongly marked concurrent loses its transaction; one wrongly left unmarked fails
+    // outright, since Postgres rejects CONCURRENTLY inside a transaction block.
+    for (const migration of SKEIN_MIGRATIONS) {
+      const usesConcurrently = /\bCONCURRENTLY\b/i.test(migration.up);
+      expect(migration.statements !== undefined).toBe(usesConcurrently);
+    }
   });
 
   it("carries only the up half of each file", () => {

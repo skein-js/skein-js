@@ -144,6 +144,34 @@ and `skein dev --store postgres`); pure in-memory `skein dev` still enforces exp
   `CREATE EXTENSION IF NOT EXISTS vector` and add the `embedding` column — which requires a Postgres
   that ships pgvector (see the provider table in [deploy.md](./deploy.md#1-a-postgres)).
 
+#### Indexes, and the one thing to watch on upgrade
+
+Migration `0005_performance_indexes` adds the indexes the list/search paths need: composite
+`(created_at, thread_id)` and `(updated_at, thread_id)` on `threads` matching the `ORDER BY … , <id>`
+the queries actually emit, `(status, created_at)` for the status filter, GIN `jsonb_path_ops` on
+`threads.metadata` and `assistants.metadata` for the `metadata @> …` containment the auth ownership
+check performs on **every** request, `runs (thread_id, created_at)`, and `store_items (created_at, key)`.
+`runs_thread_id_idx` is dropped, superseded by the composite with the same leading column.
+
+They are built with **`CREATE INDEX CONCURRENTLY`**, so the boot migration does not hold a
+write-blocking lock while indexing an existing table — a plain `CREATE INDEX` on a large `threads`
+would stall writes for minutes, at boot, during a rolling deploy. Concurrency has one cost: such a
+migration cannot be transactional, so a failure partway leaves some indexes created and the ledger row
+unwritten, and the next boot retries the whole migration. Every statement is `IF NOT EXISTS` for that
+reason.
+
+**If an index build is interrupted** (the pod is killed mid-migration, say), Postgres leaves an
+_invalid_ index behind — and `IF NOT EXISTS` will then skip it forever, so queries silently never use
+it. Nothing breaks; it just stays slow. To check and fix:
+
+```sql
+-- Any invalid indexes?
+SELECT c.relname FROM pg_class c JOIN pg_index i ON i.indexrelid = c.oid WHERE NOT i.indisvalid;
+
+-- Drop each one; the next boot rebuilds it.
+DROP INDEX CONCURRENTLY <name>;
+```
+
 ```ts
 import { PostgresSaver } from "@langchain/langgraph-checkpoint-postgres";
 
