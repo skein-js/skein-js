@@ -76,3 +76,26 @@ describe("toSseEvents", () => {
     expect(out.at(-1)).toContain("event: error");
   });
 });
+
+describe("encodeFrame caching", () => {
+  it("returns the identical string for a frame it has already encoded", () => {
+    // The in-process bus hands one frame object to every subscriber on a run, which is what makes this
+    // worth caching at all.
+    const frame = { seq: 1, event: "values", data: { a: 1 } } as const;
+
+    const first = encodeFrame(frame);
+    const second = encodeFrame(frame);
+
+    expect(second).toBe(first);
+  });
+
+  it("encodes distinct frame objects independently, even when structurally equal", () => {
+    // Keyed by object identity, so two equal-looking frames must not share an entry — a `seq`-keyed
+    // cache would collide across runs.
+    const encoded = encodeFrame({ seq: 1, event: "values", data: { a: 1 } });
+    const other = encodeFrame({ seq: 1, event: "values", data: { a: 2 } });
+
+    expect(other).not.toBe(encoded);
+    expect(other).toContain('"a":2');
+  });
+});
