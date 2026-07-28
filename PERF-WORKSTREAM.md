@@ -36,6 +36,7 @@ with sane defaults and documented sizing math.
 | `cac874d` | P2    | Frame-encode cache + replacer fix               |
 | `dfb450d` | P5a   | Postgres indexes for list/search paths          |
 | `713672b` | P5b   | Opt-in HNSW index                               |
+| _pending_ | P6a   | Postgres pool timeouts                          |
 
 ### Measured
 
@@ -49,12 +50,15 @@ with sane defaults and documented sizing math.
 
 ### New knobs
 
-| Variable                              | Default | Bounds                                        |
-| ------------------------------------- | ------- | --------------------------------------------- |
-| `SKEIN_MEMORY_BUS_MAX_FRAMES_PER_RUN` | 10000   | Frames one run may buffer (hard max)          |
-| `SKEIN_MEMORY_BUS_MAX_RETAINED_RUNS`  | 50      | Finished runs replayable for a late `join`    |
-| `SKEIN_REDIS_STREAM_MAXLEN`           | 10000   | Approximate cap on a run's Redis stream       |
-| `SKEIN_STREAM_BUFFER_FRAMES`          | 512     | Frames one subscriber may queue before ending |
+| Variable                              | Default  | Bounds                                        |
+| ------------------------------------- | -------- | --------------------------------------------- |
+| `SKEIN_MEMORY_BUS_MAX_FRAMES_PER_RUN` | 10000    | Frames one run may buffer (hard max)          |
+| `SKEIN_MEMORY_BUS_MAX_RETAINED_RUNS`  | 50       | Finished runs replayable for a late `join`    |
+| `SKEIN_REDIS_STREAM_MAXLEN`           | 10000    | Approximate cap on a run's Redis stream       |
+| `SKEIN_STREAM_BUFFER_FRAMES`          | 512      | Frames one subscriber may queue before ending |
+| `PG_CONNECTION_TIMEOUT_MS`            | 30000    | Wait for a pool connection (`0` = forever)    |
+| `PG_IDLE_TIMEOUT_MS`                  | pg's 10s | How long an unused pooled client is kept      |
+| `PG_STATEMENT_TIMEOUT_MS`             | off      | Ceiling on one statement (`0` = off)          |
 
 ---
 
@@ -64,12 +68,19 @@ with sane defaults and documented sizing math.
 
 **The highest-value work left.** Four separable commits.
 
-**6a — pool options.** `createPostgresPool` (`packages/storage-postgres/src/postgres-skein-store.ts`)
-sets only `max` and `ssl`. No `idleTimeoutMillis`, `connectionTimeoutMillis`, `keepAlive` — so a wedged
-database hangs a request forever with no connect timeout. Extend `postgresConnectionOptions()` in
-`packages/runtime/src/drivers.ts`, which already does this shape for `PG_POOL_MAX`. Surface on
-`EmbedPostgresGraphsOptions` too. Suggested: `PG_IDLE_TIMEOUT_MS` 30000 (small shape 10000),
-`PG_CONNECTION_TIMEOUT_MS` 10000. Pure win.
+**6a — pool options. DONE** (see the shipped table). Two things review caught that are worth
+remembering if this area is touched again, because neither is obvious:
+
+- A `statement_timeout` must **not** reach the clients that run migrations or pgvector setup. Schema DDL
+  is legitimately slow, and a cancelled `CREATE INDEX CONCURRENTLY` leaves an _invalid_ index that the
+  retry's `IF NOT EXISTS` matches by name and skips — so the migration records as applied while the
+  index goes permanently unused. Both paths now `SET statement_timeout = 0` on their own client.
+- It is applied with a `SET` on connect, not as a startup parameter: PgBouncer and Supabase's pooler
+  _reject_ unrecognised startup parameters, so every connection would fail rather than degrade. Under
+  transaction pooling the `SET` silently does not persist — a backstop, not a guarantee.
+- `connectionTimeoutMs` also bounds waiting for a **free client** when the pool is at `max`, not just
+  the handshake. That is why the default is 30s rather than 10s: a tighter bound fails a burst against a
+  small `PG_POOL_MAX` and an autosuspended serverless Postgres waking on the boot path.
 
 **6b — bound the unbounded queries.** Cap at 1000 with `SKEIN_MAX_PAGE_SIZE`:
 

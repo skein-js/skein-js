@@ -8,7 +8,7 @@ import { Pool } from "pg";
 import { afterAll, afterEach, beforeAll, describe, expect, it } from "vitest";
 
 import { SKEIN_MIGRATIONS } from "./migrations.generated.js";
-import { PostgresSkeinStore } from "./postgres-skein-store.js";
+import { createPostgresPool, PostgresSkeinStore } from "./postgres-skein-store.js";
 import { applySkeinMigrations } from "./run-migrations.js";
 
 /**
@@ -333,5 +333,52 @@ describe("PostgresSkeinStore.migrate", () => {
     } finally {
       await store.close();
     }
+  });
+});
+
+describe("createPostgresPool connection tuning", () => {
+  it("applies statement_timeout on the server, not just in JS", async () => {
+    // The whole point of passing it as a connection parameter: it bounds *every* statement on every
+    // client, including ones skein does not issue itself. 57014 is Postgres's query_canceled.
+    const url = await createScratchDatabase("pool_statement_timeout");
+    const pool = createPostgresPool(url, { statementTimeoutMs: 250 });
+    openPools.push(pool);
+
+    await expect(pool.query("SELECT pg_sleep(5)")).rejects.toMatchObject({ code: "57014" });
+    // The connection survives the cancellation and stays usable.
+    expect((await pool.query<{ ok: number }>("SELECT 1 AS ok")).rows[0]?.ok).toBe(1);
+  });
+
+  it("passes the connection and idle timeouts through to pg", async () => {
+    // Asserted on the pool's own resolved options rather than by timing a failed connect: a refused
+    // connection rejects in about a millisecond whether or not a timeout is configured, so a timing
+    // assertion passes with the mapping deleted entirely and proves nothing.
+    const pool = createPostgresPool(pg.url, { connectionTimeoutMs: 500, idleTimeoutMs: 1234 });
+    openPools.push(pool);
+
+    expect(pool.options).toMatchObject({
+      connectionTimeoutMillis: 500,
+      idleTimeoutMillis: 1234,
+    });
+  });
+
+  it("exempts schema migrations from a configured statement timeout", async () => {
+    // Schema DDL is legitimately slow — a concurrent index build takes minutes on a large table — and a
+    // cancelled build leaves an *invalid* index that the retry's `IF NOT EXISTS` matches by name and
+    // skips, recording the migration as applied while the index is permanently unused.
+    const url = await createScratchDatabase("migrate_statement_timeout");
+    const pool = createPostgresPool(url, { statementTimeoutMs: 50 });
+    openPools.push(pool);
+
+    // The timeout is in force for ordinary queries on this pool...
+    await expect(pool.query("SELECT pg_sleep(1)")).rejects.toMatchObject({ code: "57014" });
+    // ...but migrations, which include concurrent index builds, still complete.
+    await expect(applySkeinMigrations(pool)).resolves.toContain("0005_performance_indexes");
+
+    const { rows } = await pool.query<{ relname: string }>(
+      `SELECT c.relname FROM pg_class c JOIN pg_index i ON i.indexrelid = c.oid
+        WHERE NOT i.indisvalid`,
+    );
+    expect(rows.map((row) => row.relname)).toEqual([]);
   });
 });

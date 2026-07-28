@@ -77,6 +77,24 @@ export interface PostgresPoolOptions {
    * networking (plaintext) or a proper CA chain. `sslmode` in the URL is honored by `pg` regardless.
    */
   sslNoVerify?: boolean;
+  /**
+   * How long to wait for a connection from the pool before failing (ms).
+   *
+   * `pg` waits **forever** by default, so a database that has become unreachable turns every request
+   * into a hang rather than an error — no status code, no log line, just a socket the client eventually
+   * gives up on. A bounded wait surfaces the fault.
+   */
+  connectionTimeoutMs?: number;
+  /** How long an unused client stays in the pool before being closed (ms). `pg` default is 10s. */
+  idleTimeoutMs?: number;
+  /**
+   * Server-side ceiling on a single statement (ms), applied per connection.
+   *
+   * The last line of defence against one pathological query pinning a pool connection indefinitely.
+   * Off by default for now — it is being introduced only once the query bounds and indexes are in
+   * place, since enabling it first would turn today's slow-but-working queries into hard errors.
+   */
+  statementTimeoutMs?: number;
 }
 
 export interface PostgresSkeinStoreOptions extends PostgresPoolOptions {
@@ -97,7 +115,24 @@ export function createPostgresPool(url: string, options: PostgresPoolOptions = {
     // Only override TLS to skip verification; otherwise let `pg` derive `ssl` from the URL's
     // `sslmode`, so a proper CA chain (or plaintext private networking) is unaffected.
     ...(options.sslNoVerify ? { ssl: { rejectUnauthorized: false } } : {}),
+    ...(options.connectionTimeoutMs !== undefined
+      ? { connectionTimeoutMillis: options.connectionTimeoutMs }
+      : {}),
+    ...(options.idleTimeoutMs !== undefined ? { idleTimeoutMillis: options.idleTimeoutMs } : {}),
   });
+  // Applied with a `SET` on connect rather than as a startup parameter. A startup parameter would be
+  // marginally cheaper, but PgBouncer and Supabase's pooler *reject* unrecognised ones outright
+  // ("unsupported startup parameter"), so every connection would fail rather than degrade. `SET` is
+  // safe in session pooling; under transaction pooling it does not persist, which is a silent
+  // no-op — acceptable, since this is a backstop rather than a correctness guarantee.
+  if (options.statementTimeoutMs !== undefined && options.statementTimeoutMs > 0) {
+    const timeout = Math.trunc(options.statementTimeoutMs);
+    pool.on("connect", (client) => {
+      // Swallowed: the pool's own 'error' handler below deals with a broken client, and failing to set
+      // a backstop must not take down a connection that is otherwise fine.
+      client.query(`SET statement_timeout = ${timeout}`).catch(() => {});
+    });
+  }
   // An idle client can emit 'error' (server restart, dropped connection); without a listener
   // node-postgres re-emits it as an unhandled 'error' that crashes the process. The pool evicts
   // the bad client on its own, so swallowing here is safe — the next query gets a fresh client.
@@ -117,15 +152,6 @@ const PGVECTOR_MAX_DIMENSIONS = 16_000;
 /** The HNSW index `store.index.hnsw` builds. Named once — it is referenced by three statements. */
 const HNSW_INDEX_NAME = "store_items_embedding_hnsw_idx";
 
-/**
- * Validate `dims` before it is interpolated into `ALTER TABLE … TYPE vector(<dims>)`.
- *
- * A type modifier cannot be a bind parameter, so this value reaches the SQL as text and has to be
- * proven safe first. The bounds are pgvector's own, and they double as the guard that keeps it an
- * integer *literal*: `Number.isInteger(1e21)` is true, but `String(1e21)` is `"1e+21"`, which is not
- * valid SQL. Lives here rather than in config validation because `embedPostgresGraphs` takes `index`
- * straight from code and never sees the `langgraph.json` schema.
- */
 /**
  * Make every connection in `pool` scan an HNSW index iteratively rather than once.
  *
@@ -161,6 +187,15 @@ function enableIterativeIndexScan(pool: Pool): void {
 /** One warning per process, not per connection. */
 let warnedAboutIterativeScan = false;
 
+/**
+ * Validate `dims` before it is interpolated into `ALTER TABLE … TYPE vector(<dims>)`.
+ *
+ * A type modifier cannot be a bind parameter, so this value reaches the SQL as text and has to be
+ * proven safe first. The bounds are pgvector's own, and they double as the guard that keeps it an
+ * integer *literal*: `Number.isInteger(1e21)` is true, but `String(1e21)` is `"1e+21"`, which is not
+ * valid SQL. Lives here rather than in config validation because `embedPostgresGraphs` takes `index`
+ * straight from code and never sees the `langgraph.json` schema.
+ */
 function requireIndexableDimensions(dims: number | undefined): number {
   if (
     typeof dims !== "number" ||
@@ -424,6 +459,11 @@ export class PostgresSkeinStore implements SkeinStore {
     const client = await this.#pool.connect();
     let locked = false;
     try {
+      // Exempt from any configured `statement_timeout`, for the same reason migrations are: the column
+      // rewrite and the concurrent index build below are legitimately slow, a cancelled build leaves an
+      // invalid index, and the blocking lock acquire would otherwise be cancelled while merely waiting
+      // for a peer instance during a rolling deploy.
+      await client.query("SET statement_timeout = 0");
       await client.query("SELECT pg_advisory_lock($1)", [PGVECTOR_SETUP_LOCK]);
       locked = true;
 

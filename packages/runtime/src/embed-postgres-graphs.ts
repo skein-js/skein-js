@@ -52,6 +52,16 @@ export interface EmbedPostgresGraphsOptions {
   /** Disable TLS cert verification (self-signed managed cert). Defaults to env `DATABASE_SSL_NO_VERIFY`. */
   sslNoVerify?: boolean;
   /**
+   * How long to wait for a pool connection before failing (ms). Defaults to env
+   * `PG_CONNECTION_TIMEOUT_MS`, else 10s — `pg` itself waits forever, which turns an unreachable
+   * database into a hang rather than an error.
+   */
+  connectionTimeoutMs?: number;
+  /** How long an unused pooled client is kept (ms). Defaults to env `PG_IDLE_TIMEOUT_MS`. */
+  idleTimeoutMs?: number;
+  /** Server-side ceiling on one statement (ms). Defaults to env `PG_STATEMENT_TIMEOUT_MS`; off by default. */
+  statementTimeoutMs?: number;
+  /**
    * Replace or add any NON-driver dep — `auth`, `logger`, `clock`, `logRunActivity`, `runTimeoutMs`,
    * `webhookDispatcher`. The drivers (`store`/`queue`/`bus`/`checkpointer`) and `graphs` are owned by
    * this helper and excluded, so a stray override can't void the durable wiring or the graph source.
@@ -103,7 +113,21 @@ export async function embedPostgresGraphs(
       options.poolMax !== undefined &&
       (!Number.isInteger(options.poolMax) || options.poolMax <= 0)
     ) {
-      throw new RuntimeConfigError(`poolMax must be a positive integer (got ${options.poolMax}).`);
+      throw new RuntimeConfigError(`poolMax must be an integer >= 1 (got ${options.poolMax}).`);
+    }
+    // Same treatment for the timeouts, so the in-code path and the environment path agree. Left
+    // unchecked these fail in ways that are hard to trace: `pg` reads `0` as falsy and waits forever,
+    // a negative `connectionTimeoutMs` makes `setTimeout` fire immediately so *every* connect
+    // "times out", and a fractional statement timeout reaches Postgres as an invalid value.
+    for (const [name, value] of [
+      ["connectionTimeoutMs", options.connectionTimeoutMs],
+      ["idleTimeoutMs", options.idleTimeoutMs],
+      ["statementTimeoutMs", options.statementTimeoutMs],
+    ] as const) {
+      // Zero is legal for all three — it means "no limit" / "pg default" — so the floor is 0, not 1.
+      if (value !== undefined && (!Number.isInteger(value) || value < 0)) {
+        throw new RuntimeConfigError(`${name} must be an integer >= 0 (got ${value}).`);
+      }
     }
     // Explicit options win over env-derived tuning; the env is still read + validated (a bad
     // PG_POOL_MAX throws) so both sources agree, matching `buildRuntime`.
@@ -111,6 +135,13 @@ export async function embedPostgresGraphs(
       ...postgresConnectionOptions(),
       ...(options.poolMax !== undefined ? { poolMax: options.poolMax } : {}),
       ...(options.sslNoVerify !== undefined ? { sslNoVerify: options.sslNoVerify } : {}),
+      ...(options.connectionTimeoutMs !== undefined
+        ? { connectionTimeoutMs: options.connectionTimeoutMs }
+        : {}),
+      ...(options.idleTimeoutMs !== undefined ? { idleTimeoutMs: options.idleTimeoutMs } : {}),
+      ...(options.statementTimeoutMs !== undefined
+        ? { statementTimeoutMs: options.statementTimeoutMs }
+        : {}),
     };
 
     const { store, checkpointer } = await connectPostgresStore({

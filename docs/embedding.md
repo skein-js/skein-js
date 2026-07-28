@@ -300,6 +300,9 @@ function embedPostgresGraphs(
     ttl?: StoreTtl; //          store-item expiry + background sweep
     poolMax?: number; //        default env PG_POOL_MAX
     sslNoVerify?: boolean; //   default env DATABASE_SSL_NO_VERIFY
+    connectionTimeoutMs?: number; // default env PG_CONNECTION_TIMEOUT_MS, else 30s (0 = wait forever)
+    idleTimeoutMs?: number; //       default env PG_IDLE_TIMEOUT_MS
+    statementTimeoutMs?: number; //  default env PG_STATEMENT_TIMEOUT_MS; off unless set
     overrides?: Omit<Partial<ProtocolDeps>, "graphs" | "store" | "queue" | "bus" | "checkpointer">;
   },
 ): Promise<{ deps: ProtocolDeps; dispose(): Promise<void> }>;

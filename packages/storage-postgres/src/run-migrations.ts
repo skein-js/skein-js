@@ -165,6 +165,12 @@ export async function applySkeinMigrations(
   // the pool — a client that may still hold the session lock would wedge every later boot.
   let discardClient = false;
   try {
+    // Migrations are exempt from any configured `statement_timeout`. Schema DDL is legitimately slow —
+    // `CREATE INDEX CONCURRENTLY` on a large table takes minutes — and a cancelled index build leaves
+    // an *invalid* index that the retry's `IF NOT EXISTS` matches by name and skips, so the migration
+    // records as applied while the index is permanently unused. A cancelled `pg_advisory_lock` would
+    // also kill an instance merely waiting for a peer during a rolling deploy.
+    await client.query("SET statement_timeout = 0");
     await acquireMigrationLock(client, lockTimeoutMs);
     try {
       await client.query(CREATE_MIGRATIONS_TABLE);

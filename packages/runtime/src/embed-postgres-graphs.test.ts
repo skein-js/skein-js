@@ -27,6 +27,9 @@ describe("embedPostgresGraphs — config validation (no connection)", () => {
     stash("POSTGRES_URI");
     stash("REDIS_URI");
     stash("PG_POOL_MAX");
+    stash("PG_CONNECTION_TIMEOUT_MS");
+    stash("PG_IDLE_TIMEOUT_MS");
+    stash("PG_STATEMENT_TIMEOUT_MS");
   });
 
   afterEach(() => {

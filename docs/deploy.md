@@ -152,6 +152,30 @@ max connections ≈ 2 × PG_POOL_MAX × instances
 Check that against your database's limit — this is the most common way to exhaust a small managed
 Postgres once autoscaling kicks in. `PG_POOL_MAX=5` is a sane starting point.
 
+### When the database stops answering
+
+`pg` waits for a pool connection **forever** by default, which turns an unreachable database into a
+**hang** rather than an error: no status code, no log line, just a socket the client eventually
+abandons. skein applies a 30s `PG_CONNECTION_TIMEOUT_MS` so the fault surfaces.
+
+Thirty rather than something tighter, because `pg` uses that one timer for two different waits — the
+connection handshake **and** waiting for a free client when the pool is already at `PG_POOL_MAX`. A
+tight bound therefore fails two ordinary situations: a burst of slow-but-working queries against a
+small pool, and an autosuspended serverless Postgres (Neon, Supabase) waking up, which regularly takes
+longer than ten seconds and happens on the boot path. Set `PG_CONNECTION_TIMEOUT_MS=0` for `pg`'s
+original wait-forever behaviour.
+
+`PG_STATEMENT_TIMEOUT_MS` bounds a single statement server-side — the last line of defence against one
+pathological query pinning a pool connection. **Off by default**; set it explicitly to opt in, `0` to
+disable. Schema migrations and pgvector setup are exempt: index builds are legitimately slow, and a
+cancelled `CREATE INDEX CONCURRENTLY` leaves an _invalid_ index that the retry skips by name, recording
+the migration as applied while the index goes permanently unused.
+
+It is applied with a `SET` on each new connection rather than as a startup parameter, because
+PgBouncer and Supabase's pooler reject unrecognised startup parameters outright. Under **transaction**
+pooling a `SET` does not persist, so the timeout silently does not apply there — it is a backstop, not
+a guarantee.
+
 ### Run concurrency
 
 Each instance executes up to **10** queued runs at once. Set `SKEIN_RUN_CONCURRENCY` (or the
@@ -288,17 +312,20 @@ platform's guide.
 skein reads these and nothing else. Note there is **no `DATABASE_URL` or `REDIS_URL`** — those are
 platform names; map them onto skein's.
 
-| Variable                  | Required             | Purpose                                                           |
-| ------------------------- | -------------------- | ----------------------------------------------------------------- |
-| `POSTGRES_URI`            | yes (postgres store) | Postgres connection string (resources + checkpoints).             |
-| `REDIS_URI`               | yes (redis queue)    | Redis connection string (run queue + stream pub/sub).             |
-| `PORT`                    | usually injected     | Port to bind. Defaults to 8123 — the port the image exposes.      |
-| `HOST`                    | no                   | Host to bind. The image already passes `--host 0.0.0.0`.          |
-| `PG_POOL_MAX`             | no                   | Max connections **per pool**; there are two (`pg` default 10).    |
-| `DATABASE_SSL_NO_VERIFY`  | no                   | `true` to skip TLS cert verification (self-signed database cert). |
-| `SKEIN_RUN_CONCURRENCY`   | no                   | Queued runs each instance executes at once (default 10).          |
-| `N_JOBS_PER_WORKER`       | no                   | LangGraph-compatible alias for `SKEIN_RUN_CONCURRENCY`.           |
-| `SKEIN_SHUTDOWN_GRACE_MS` | no                   | Drain window for in-flight runs on `SIGTERM` (default 5000).      |
+| Variable                   | Required             | Purpose                                                           |
+| -------------------------- | -------------------- | ----------------------------------------------------------------- |
+| `POSTGRES_URI`             | yes (postgres store) | Postgres connection string (resources + checkpoints).             |
+| `REDIS_URI`                | yes (redis queue)    | Redis connection string (run queue + stream pub/sub).             |
+| `PORT`                     | usually injected     | Port to bind. Defaults to 8123 — the port the image exposes.      |
+| `HOST`                     | no                   | Host to bind. The image already passes `--host 0.0.0.0`.          |
+| `PG_POOL_MAX`              | no                   | Max connections **per pool**; there are two (`pg` default 10).    |
+| `PG_CONNECTION_TIMEOUT_MS` | no                   | Wait for a pool connection before failing. Default 10000.         |
+| `PG_IDLE_TIMEOUT_MS`       | no                   | How long an unused pooled client is kept (`pg` default 10000).    |
+| `PG_STATEMENT_TIMEOUT_MS`  | no                   | Server-side ceiling on one statement. Off by default; `0` = off.  |
+| `DATABASE_SSL_NO_VERIFY`   | no                   | `true` to skip TLS cert verification (self-signed database cert). |
+| `SKEIN_RUN_CONCURRENCY`    | no                   | Queued runs each instance executes at once (default 10).          |
+| `N_JOBS_PER_WORKER`        | no                   | LangGraph-compatible alias for `SKEIN_RUN_CONCURRENCY`.           |
+| `SKEIN_SHUTDOWN_GRACE_MS`  | no                   | Drain window for in-flight runs on `SIGTERM` (default 5000).      |
 
 Two more apply only when the run queue and event bus are **in-memory** — that is, `--queue memory`
 rather than the image's default `--queue redis`. They bound what a long-lived process retains; see

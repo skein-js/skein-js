@@ -37,7 +37,25 @@ export type StoreTtl = NonNullable<PostgresSkeinStoreOptions["ttl"]>;
 export interface PostgresConnectionOptions {
   poolMax?: number;
   sslNoVerify?: boolean;
+  connectionTimeoutMs?: number;
+  idleTimeoutMs?: number;
+  statementTimeoutMs?: number;
 }
+
+/**
+ * How long to wait for a pool connection when nothing is configured.
+ *
+ * Applied as a default rather than left to `pg`, whose default is to wait indefinitely — so a database
+ * that has gone away turns every request into a hang with no error and no log line.
+ *
+ * Thirty seconds, not ten, because `pg` uses this timer for two different waits: the TCP/TLS/startup
+ * handshake *and* waiting for a free client when the pool is already at `max`. A tighter bound would
+ * turn two ordinary situations into hard failures — a burst of slow-but-working queries against a small
+ * `PG_POOL_MAX`, and an autosuspended serverless Postgres (Neon, Supabase) which routinely takes well
+ * over ten seconds to wake, on the boot path where `migrate()` connects. Set
+ * `PG_CONNECTION_TIMEOUT_MS=0` to restore `pg`'s wait-forever behaviour.
+ */
+const DEFAULT_CONNECTION_TIMEOUT_MS = 30_000;
 
 /** Read a required connection env var, or throw an actionable {@link RuntimeConfigError}. */
 export function requireEnv(name: string, driver: string): string {
@@ -49,21 +67,62 @@ export function requireEnv(name: string, driver: string): string {
 }
 
 /**
+ * Read an optional integer env var, or `undefined` when unset or blank. Throws on a malformed value.
+ *
+ * `minimum` differs per setting: most are counts or durations where zero is meaningless, but a couple
+ * (`PG_STATEMENT_TIMEOUT_MS`, `SKEIN_REDIS_STREAM_MAXLEN`) use zero to mean "no limit".
+ */
+function integerFromEnv(name: string, minimum: number): number | undefined {
+  const raw = process.env[name];
+  // Blank counts as unset — `Number("")` is 0, which for a timeout or a cap would silently mean
+  // something rather than nothing.
+  if (raw === undefined || raw.trim() === "") return undefined;
+  const value = Number(raw);
+  if (!Number.isInteger(value) || value < minimum) {
+    throw new RuntimeConfigError(`${name} must be an integer >= ${minimum} (got "${raw}").`);
+  }
+  return value;
+}
+
+/**
  * Optional Postgres connection tuning from the environment — for fitting a managed database's
- * connection cap and its TLS setup. `PG_POOL_MAX` caps the pool size (skein opens a second pool
- * for `PostgresSaver`, so budget for both per instance); `DATABASE_SSL_NO_VERIFY=1|true` disables
- * TLS cert verification for a self-signed managed cert over a public URL.
+ * connection cap, its TLS setup, and how it should behave when it stops responding.
+ *
+ * `PG_POOL_MAX` caps the pool size (skein opens a second pool for `PostgresSaver`, so budget for both
+ * per instance). `DATABASE_SSL_NO_VERIFY=1|true` disables TLS cert verification for a self-signed
+ * managed cert over a public URL.
+ *
+ * `PG_CONNECTION_TIMEOUT_MS` bounds waiting for a pool connection, which `pg` otherwise waits for
+ * indefinitely — turning an unreachable database into a hang rather than an error. `PG_IDLE_TIMEOUT_MS`
+ * overrides how long an unused client is kept (`pg`'s own default is 10s, not forever), and
+ * `PG_STATEMENT_TIMEOUT_MS` bounds a single statement.
+ *
+ * All three read `0` as "no limit", which for the first two is the escape hatch back to `pg`'s own
+ * behaviour and for the third means off.
  */
 export function postgresConnectionOptions(): PostgresConnectionOptions {
   const options: PostgresConnectionOptions = {};
-  const rawMax = process.env["PG_POOL_MAX"];
-  if (rawMax !== undefined && rawMax.trim() !== "") {
-    const max = Number(rawMax);
-    if (!Number.isInteger(max) || max <= 0) {
-      throw new RuntimeConfigError(`PG_POOL_MAX must be a positive integer (got "${rawMax}").`);
-    }
-    options.poolMax = max;
+  const poolMax = integerFromEnv("PG_POOL_MAX", 1);
+  if (poolMax !== undefined) options.poolMax = poolMax;
+
+  // `0` is the escape hatch back to `pg`'s wait-forever behaviour, so zero has to be *accepted* here
+  // rather than rejected as out of range — an operator hitting the default's downsides will reach for
+  // it, and the sibling `PG_STATEMENT_TIMEOUT_MS` already uses `0` to mean off.
+  options.connectionTimeoutMs =
+    integerFromEnv("PG_CONNECTION_TIMEOUT_MS", 0) ?? DEFAULT_CONNECTION_TIMEOUT_MS;
+
+  // Zero is meaningful to `pg` here too: keep idle clients indefinitely.
+  const idleTimeoutMs = integerFromEnv("PG_IDLE_TIMEOUT_MS", 0);
+  if (idleTimeoutMs !== undefined) options.idleTimeoutMs = idleTimeoutMs;
+
+  const statementTimeoutMs = integerFromEnv("PG_STATEMENT_TIMEOUT_MS", 0);
+  // Only when asked for. Turning this on by default is deliberately deferred until the query bounds
+  // and indexes have shipped and settled — before that it converts slow-but-working queries into
+  // errors. `0` is an explicit "no limit" and is passed through as such.
+  if (statementTimeoutMs !== undefined && statementTimeoutMs > 0) {
+    options.statementTimeoutMs = statementTimeoutMs;
   }
+
   const noVerify = process.env["DATABASE_SSL_NO_VERIFY"];
   if (noVerify === "1" || noVerify?.toLowerCase() === "true") options.sslNoVerify = true;
   return options;
@@ -96,21 +155,6 @@ export async function connectPostgresStore(args: {
   return { store, checkpointer };
 }
 
-/** Read a positive-integer (or zero, where that is meaningful) setting from the environment. */
-function redisCountFromEnv(name: string, allowZero = false): number | undefined {
-  const raw = process.env[name];
-  // Blank counts as unset — `Number("")` is 0, which would otherwise silently mean something.
-  if (raw === undefined || raw.trim() === "") return undefined;
-  const value = Number(raw);
-  const floor = allowZero ? 0 : 1;
-  if (!Number.isInteger(value) || value < floor) {
-    throw new RuntimeConfigError(
-      `${name} must be an integer >= ${floor} (got "${raw}").`, //
-    );
-  }
-  return value;
-}
-
 /**
  * Optional Redis event-bus tuning from the environment.
  *
@@ -121,9 +165,9 @@ function redisCountFromEnv(name: string, allowZero = false): number | undefined 
  */
 export function redisEventBusOptions(): RedisRunEventBusOptions {
   const options: RedisRunEventBusOptions = {};
-  const maxLen = redisCountFromEnv("SKEIN_REDIS_STREAM_MAXLEN", true);
+  const maxLen = integerFromEnv("SKEIN_REDIS_STREAM_MAXLEN", 0);
   if (maxLen !== undefined) options.streamMaxLen = maxLen;
-  const bufferFrames = redisCountFromEnv("SKEIN_STREAM_BUFFER_FRAMES");
+  const bufferFrames = integerFromEnv("SKEIN_STREAM_BUFFER_FRAMES", 1);
   if (bufferFrames !== undefined) options.subscriberBufferFrames = bufferFrames;
   return options;
 }
