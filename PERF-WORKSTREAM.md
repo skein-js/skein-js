@@ -39,7 +39,8 @@ with sane defaults and documented sizing math.
 | `be7d550` | P6a     | Postgres pool timeouts                          |
 | `6d39d45` | P6b     | Page bound on every list/search                 |
 | `91ac7c6` | P6b-bis | Thread-history bound (body-read + real limit)   |
-| _pending_ | P6c     | Ownership filter pushed into the driver query   |
+| `d8d313f` | P6c     | Ownership filter pushed into the driver query   |
+| _pending_ | P7      | `statement_timeout` on by default (30s)         |
 
 ### Measured
 
@@ -61,7 +62,7 @@ with sane defaults and documented sizing math.
 | `SKEIN_STREAM_BUFFER_FRAMES`          | 512      | Frames one subscriber may queue before ending |
 | `PG_CONNECTION_TIMEOUT_MS`            | 30000    | Wait for a pool connection (`0` = forever)    |
 | `PG_IDLE_TIMEOUT_MS`                  | pg's 10s | How long an unused pooled client is kept      |
-| `PG_STATEMENT_TIMEOUT_MS`             | off      | Ceiling on one statement (`0` = off)          |
+| `PG_STATEMENT_TIMEOUT_MS`             | 30000    | Ceiling on one statement (`0` = off)          |
 
 ---
 
@@ -202,9 +203,40 @@ Verified by neutering the driver clause: the conformance and paging cases fail, 
 
 ### P7 — `statement_timeout` on by default
 
-Deliberately a **separate release** after P6 has baked. Turning it on before the bounds and indexes
-exist converts today's slow-but-working `threads.search` into a hard error.
-`PG_STATEMENT_TIMEOUT_MS` default 30000 (small 15000 / large 60000), `=0` disables.
+**DONE** (see the shipped table). `PG_STATEMENT_TIMEOUT_MS` defaults to 30000; `0` disables. Safe to turn
+on now that P5's indexes and P6's bounds have landed — before them it would have converted
+slow-but-working queries into errors.
+
+The trap, which the new integration test found rather than review: **a lifted timeout leaks through the
+pool.** `SET statement_timeout = 0` is session-level, so the connection that ran migrations came back to
+the pool still exempt, and every later query that happened to reuse it was silently uncapped for the
+life of the process. Both DDL sites now destroy their connection (`client.release(true)`) instead of
+returning it, so the pool opens a fresh one and the connect hook re-applies the configured timeout.
+
+The other DDL path is `PostgresSaver.setup()`, which takes its client from whatever pool it is given —
+there is no way to lift the timeout for it from outside. It runs on a separate untimed pool that is
+closed immediately afterwards, and the tuned pool is used for queries. Getting this wrong is a boot
+_loop_ on an existing database (cancelled DDL → failed boot → retry → cancelled DDL), which is why the
+integration test boots the whole driver stack at `statementTimeoutMs: 1`.
+
+Per _statement_, not per request — a long sequence of quick queries is unaffected. Still-slow shapes that
+will now error rather than crawl: a deep `OFFSET`, an unindexed `values @>` filter, `SELECT DISTINCT
+namespace` behind `POST /store/namespaces`, text store-search with no `store.index`, and anything walking
+a whole large checkpoint history (`PostgresSaver.list()` is one unbounded query).
+
+Two of those needed more than documenting:
+
+- **The TTL sweep would have wedged permanently.** One unbounded `DELETE` is all-or-nothing: past the
+  timeout it is cancelled and rolled back, so the next hourly sweep faces a _larger_ backlog and can
+  never succeed. The only symptom is a table growing forever, because reads filter expired rows out
+  anyway. It now deletes in batches of 5000, each independently committed, so progress is guaranteed.
+- **`multitask_strategy: "rollback"` reads a thread's whole checkpoint history unbounded**
+  (`checkpoint-history.ts` `listCheckpoints`), and `run-execution.ts` catches a failure into a
+  `logger.warn` — so on a very large thread the rollback now silently does not happen and the run
+  proceeds on state that should have been reverted. The read happens _before_ the delete, so nothing is
+  destroyed; the pre-existing wipe window (a failure between `deleteThread` and `replayCheckpoints`) is
+  unchanged, since those are many small statements. **Follow-up:** bound that read, or make the failure
+  loud instead of a warning.
 
 ### P8 — bundle & boot footprint
 
@@ -433,6 +465,8 @@ entry under a **Behavior changes** heading:
   `limit`, where it previously returned every row; a `limit` above 1000 is now a 400. `/history` will
   default to 100 in 6b-bis. The one most likely to surprise someone — and truncation is not signalled on
   the response, so say so: page by what you received, not by what you asked for.
+- **P7** — `PG_STATEMENT_TIMEOUT_MS` defaults to 30s, so a query that used to crawl now errors with
+  `57014`. `0` restores the old behaviour.
 - **P8** — root exports move to `/dev` and `/errors` subpaths.
 - **P9** — **`skein start` refuses memory drivers**; Node 22 base image; request logs off under `start`.
 - **P10** — slow webhook targets now fail instead of hanging a thread lock.

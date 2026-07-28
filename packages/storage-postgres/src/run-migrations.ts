@@ -161,8 +161,10 @@ export async function applySkeinMigrations(
 ): Promise<string[]> {
   const { migrations = SKEIN_MIGRATIONS, lockTimeoutMs = DEFAULT_LOCK_TIMEOUT_MS } = options;
   const client = await pool.connect();
-  // Set when the connection can no longer be trusted, so it is destroyed rather than returned to
-  // the pool — a client that may still hold the session lock would wedge every later boot.
+  // Set when the connection must not go back to the pool: a client that may still hold the session lock
+  // would wedge every later boot, and one carrying the `SET statement_timeout = 0` below would silently
+  // exempt whatever query reused it. Destroying it makes the pool open a fresh connection, which runs
+  // the connect hook and gets the configured timeout.
   let discardClient = false;
   try {
     // Migrations are exempt from any configured `statement_timeout`. Schema DDL is legitimately slow —
@@ -171,6 +173,8 @@ export async function applySkeinMigrations(
     // records as applied while the index is permanently unused. A cancelled `pg_advisory_lock` would
     // also kill an instance merely waiting for a peer during a rolling deploy.
     await client.query("SET statement_timeout = 0");
+    // Session-level, so it outlives this function unless the connection does not survive it.
+    discardClient = true;
     await acquireMigrationLock(client, lockTimeoutMs);
     try {
       await client.query(CREATE_MIGRATIONS_TABLE);

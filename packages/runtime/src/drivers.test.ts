@@ -55,12 +55,12 @@ describe("postgresConnectionOptions", () => {
     });
   });
 
-  it("leaves the idle and statement timeouts unset when nothing is configured", () => {
+  it("leaves the idle timeout unset and defaults the statement timeout", () => {
     const options = postgresConnectionOptions();
     expect(options.idleTimeoutMs).toBeUndefined();
-    // Off by default on purpose — enabling it before the query bounds and indexes have settled would
-    // convert slow-but-working queries into hard errors.
-    expect(options.statementTimeoutMs).toBeUndefined();
+    // On by default: the list/search paths are page-bounded and indexed now, so a statement still
+    // running after 30s is a stuck query rather than a large one.
+    expect(options.statementTimeoutMs).toBe(30_000);
   });
 
   it("reads each timeout from its own variable", () => {
@@ -76,10 +76,11 @@ describe("postgresConnectionOptions", () => {
   });
 
   it("treats a statement timeout of 0 as an explicit no-limit", () => {
-    // It has to be *accepted* rather than rejected as out-of-range, so an operator can turn the
-    // timeout off once it is on by default — but it reaches the pool as "unset", not as `0`.
+    // The escape hatch from the default, so it has to be *accepted* rather than rejected as
+    // out-of-range — and it has to reach the pool as `0`, which suppresses the `SET`. Falling back to
+    // the default here would make the knob impossible to turn off.
     process.env["PG_STATEMENT_TIMEOUT_MS"] = "0";
-    expect(postgresConnectionOptions().statementTimeoutMs).toBeUndefined();
+    expect(postgresConnectionOptions().statementTimeoutMs).toBe(0);
   });
 
   it("treats a blank value as unset", () => {

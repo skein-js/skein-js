@@ -389,6 +389,46 @@ describe("createPostgresPool connection tuning", () => {
     });
   });
 
+  it("sweeps an expired backlog larger than one batch, in batches", async () => {
+    // The sweep deletes in batches so it stays under the statement timeout. An unbounded DELETE is
+    // all-or-nothing: once the backlog exceeds the timeout it is cancelled and rolled back, and the next
+    // sweep faces a *larger* backlog, so it could never succeed again — with no symptom but a table
+    // growing forever, since reads filter expired rows out anyway.
+    const url = await createScratchDatabase("store_sweep_batches");
+    const pool = createPostgresPool(url);
+    openPools.push(pool);
+    await applySkeinMigrations(pool);
+    // One statement, so seeding past the batch size is cheap. 5001 forces a second (short) batch, which
+    // is what proves the loop continues rather than stopping at the first full one.
+    await pool.query(
+      `INSERT INTO store_items (namespace, key, value, expires_at)
+         SELECT ARRAY['ns'], 'k' || i, '{}'::jsonb, now() - interval '1 hour'
+           FROM generate_series(1, 5001) AS i`,
+    );
+
+    const store = await PostgresSkeinStore.connect(url);
+    try {
+      expect(await store.store.sweepExpired()).toBe(5001);
+      const { rows } = await pool.query<{ count: string }>("SELECT count(*) FROM store_items");
+      expect(rows[0]?.count).toBe("0");
+    } finally {
+      await store.close();
+    }
+  });
+
+  it("does not hand the migration connection back with the timeout lifted", async () => {
+    // The exemption is a session-level `SET statement_timeout = 0`. Returning that client to the pool
+    // would silently exempt whatever query reused it — invisible, and permanent for the process's life.
+    // `poolMax: 1` forces the reuse, so this fails if the connection is recycled instead of destroyed.
+    const url = await createScratchDatabase("migrate_timeout_not_leaked");
+    const pool = createPostgresPool(url, { statementTimeoutMs: 250, poolMax: 1 });
+    openPools.push(pool);
+
+    await applySkeinMigrations(pool);
+
+    await expect(pool.query("SELECT pg_sleep(5)")).rejects.toMatchObject({ code: "57014" });
+  });
+
   it("exempts schema migrations from a configured statement timeout", async () => {
     // Schema DDL is legitimately slow — a concurrent index build takes minutes on a large table — and a
     // cancelled build leaves an *invalid* index that the retry's `IF NOT EXISTS` matches by name and

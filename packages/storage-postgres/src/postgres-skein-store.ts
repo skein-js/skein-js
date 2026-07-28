@@ -93,8 +93,10 @@ export interface PostgresPoolOptions {
    * Server-side ceiling on a single statement (ms), applied per connection.
    *
    * The last line of defence against one pathological query pinning a pool connection indefinitely.
-   * Off by default for now — it is being introduced only once the query bounds and indexes are in
-   * place, since enabling it first would turn today's slow-but-working queries into hard errors.
+   * Unset here means no timeout; `@skein-js/runtime` resolves the default (30s) from the environment.
+   * Per *statement*, not per request. Schema DDL must not run under it — see `migrate()` and
+   * `#setupPgvector`, which lift it on their own client and then destroy that connection rather than
+   * returning a session-exempt one to the pool.
    */
   statementTimeoutMs?: number;
 }
@@ -156,6 +158,13 @@ const PGVECTOR_SETUP_LOCK = 0x736b6569; // "skei"
 
 /** pgvector's own ceiling on a `vector` column's dimensionality. */
 const PGVECTOR_MAX_DIMENSIONS = 16_000;
+
+/**
+ * Expired store items deleted per statement by `sweepExpired`. Small enough that one batch stays well
+ * inside any sane `statement_timeout`, large enough that a big backlog clears in a reasonable number of
+ * round trips. The sweep loops until a batch comes back short.
+ */
+const SWEEP_BATCH_ROWS = 5000;
 
 /** The HNSW index `store.index.hnsw` builds. Named once — it is referenced by three statements. */
 const HNSW_INDEX_NAME = "store_items_embedding_hnsw_idx";
@@ -528,15 +537,16 @@ export class PostgresSkeinStore implements SkeinStore {
       // On the same client, so the session lock above still covers it.
       if (dims !== undefined) await this.#createHnswIndex(client);
     } finally {
-      // Released before the client goes back to the pool: a session lock outlives the transaction, so
-      // a returned-but-still-locked connection would wedge every later boot.
+      // Unlock explicitly so a waiting peer proceeds immediately rather than when the socket tears down.
+      // Swallowed on failure: destroying the connection below ends the session, which frees it anyway.
       if (locked) {
-        await client.query("SELECT pg_advisory_unlock($1)", [PGVECTOR_SETUP_LOCK]).catch(() => {
-          // Swallowed: the connection is destroyed below, which ends the session and frees the lock.
-          locked = false;
-        });
+        await client.query("SELECT pg_advisory_unlock($1)", [PGVECTOR_SETUP_LOCK]).catch(() => {});
       }
-      client.release(!locked);
+      // Destroyed, never returned to the pool. This session ran `SET statement_timeout = 0` above, which
+      // is session-level: a client handed back carrying it would silently exempt whatever query reused
+      // it. Destroying makes the pool open a fresh connection, which runs the connect hook and gets the
+      // configured timeout — and it guarantees the advisory lock is gone even if the unlock failed.
+      client.release(true);
     }
   }
 
@@ -1262,10 +1272,27 @@ export class PostgresSkeinStore implements SkeinStore {
       return rows.map((row) => row.namespace);
     },
     sweepExpired: async () => {
-      const { rowCount } = await this.#pool.query(
-        `DELETE FROM store_items WHERE expires_at IS NOT NULL AND expires_at <= now()`,
-      );
-      return rowCount ?? 0;
+      // Deleted in batches, not in one statement. A single unbounded DELETE is all-or-nothing under the
+      // statement timeout: once the expired backlog is large enough to exceed it — a first sweep after
+      // enabling TTL on an existing store, or a restart after downtime — the statement is cancelled, the
+      // whole delete rolls back, and the next sweep starts from a *larger* backlog. It could then never
+      // succeed again, and the only symptom would be a table growing forever, since reads filter expired
+      // rows out anyway. Batching makes each round independently committed, so progress is guaranteed.
+      let swept = 0;
+      for (;;) {
+        // `ctid` rather than the primary key: it is the physical row pointer, so the subselect feeds the
+        // delete without a second index lookup per row.
+        const { rowCount } = await this.#pool.query(
+          `DELETE FROM store_items WHERE ctid IN (
+             SELECT ctid FROM store_items
+              WHERE expires_at IS NOT NULL AND expires_at <= now()
+              LIMIT ${SWEEP_BATCH_ROWS}
+           )`,
+        );
+        const deleted = rowCount ?? 0;
+        swept += deleted;
+        if (deleted < SWEEP_BATCH_ROWS) return swept;
+      }
     },
   };
 

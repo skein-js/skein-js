@@ -1892,7 +1892,7 @@ function embedPostgresGraphs(
     sslNoVerify?: boolean; //   default env DATABASE_SSL_NO_VERIFY
     connectionTimeoutMs?: number; // default env PG_CONNECTION_TIMEOUT_MS, else 30s (0 = wait forever)
     idleTimeoutMs?: number; //       default env PG_IDLE_TIMEOUT_MS
-    statementTimeoutMs?: number; //  default env PG_STATEMENT_TIMEOUT_MS; off unless set
+    statementTimeoutMs?: number; //  default env PG_STATEMENT_TIMEOUT_MS, else 30s (0 = no limit)
     maxPageSize?: number; //         default env SKEIN_MAX_PAGE_SIZE, else 1000 (list/search bound)
     overrides?: Omit<Partial<ProtocolDeps>, "graphs" | "store" | "queue" | "bus" | "checkpointer">;
   },
@@ -4512,10 +4512,27 @@ longer than ten seconds and happens on the boot path. Set `PG_CONNECTION_TIMEOUT
 original wait-forever behaviour.
 
 `PG_STATEMENT_TIMEOUT_MS` bounds a single statement server-side — the last line of defence against one
-pathological query pinning a pool connection. **Off by default**; set it explicitly to opt in, `0` to
-disable. Schema migrations and pgvector setup are exempt: index builds are legitimately slow, and a
-cancelled `CREATE INDEX CONCURRENTLY` leaves an _invalid_ index that the retry skips by name, recording
-the migration as applied while the index goes permanently unused.
+pathological query pinning a pool connection. **On by default at 30s**; `0` disables it. It is per
+_statement_, not per request, so a legitimately long sequence of quick queries is unaffected; what it
+catches is one query that is stuck or scanning something it shouldn't. Suggested 15000 on a small
+instance, 60000 on a large one.
+
+It became a default only once the list/search paths were page-bounded and indexed — before that it would
+have turned slow-but-working queries into errors. If your deployment has a query that genuinely runs
+longer, raise it or set `0`; a cancelled statement surfaces as a `57014` error naming the statement,
+rather than as a hang. The shapes that can still take a while, all of them either bounded by you or
+inherently large: a deep `OFFSET`, an unindexed `values` filter, `POST /store/namespaces`
+(`SELECT DISTINCT` over the store), store search by text with no `store.index` configured (a whole-table
+read by design), and anything that walks a very large thread's whole checkpoint history — copying a
+thread, or a `multitask_strategy: "rollback"` on one. Rollback in particular reports a failure as a
+warning and continues, so on very large threads either raise the timeout or prefer another strategy.
+
+Schema DDL is exempt, and deliberately so: our migrations and the pgvector setup lift the timeout on
+their own connection, and the checkpointer's `setup()` runs on a separate untimed pool. Index builds are
+legitimately slow, a cancelled `CREATE INDEX CONCURRENTLY` leaves an _invalid_ index that the retry skips
+by name (recording the migration as applied while the index goes permanently unused), and a cancelled
+boot migration is a boot _loop_ rather than a slow boot. Those connections are destroyed rather than
+returned to the pool, so the lifted timeout can't leak into a later query that happens to reuse them.
 
 It is applied with a `SET` on each new connection rather than as a startup parameter, because
 PgBouncer and Supabase's pooler reject unrecognised startup parameters outright. Under **transaction**
@@ -4665,9 +4682,9 @@ platform names; map them onto skein's.
 | `PORT`                     | usually injected     | Port to bind. Defaults to 8123 — the port the image exposes.      |
 | `HOST`                     | no                   | Host to bind. The image already passes `--host 0.0.0.0`.          |
 | `PG_POOL_MAX`              | no                   | Max connections **per pool**; there are two (`pg` default 10).    |
-| `PG_CONNECTION_TIMEOUT_MS` | no                   | Wait for a pool connection before failing. Default 10000.         |
+| `PG_CONNECTION_TIMEOUT_MS` | no                   | Wait for a pool connection before failing (default 30000).        |
 | `PG_IDLE_TIMEOUT_MS`       | no                   | How long an unused pooled client is kept (`pg` default 10000).    |
-| `PG_STATEMENT_TIMEOUT_MS`  | no                   | Server-side ceiling on one statement. Off by default; `0` = off.  |
+| `PG_STATEMENT_TIMEOUT_MS`  | no                   | Server-side ceiling on one statement (default 30000). `0` = off.  |
 | `DATABASE_SSL_NO_VERIFY`   | no                   | `true` to skip TLS cert verification (self-signed database cert). |
 | `SKEIN_RUN_CONCURRENCY`    | no                   | Queued runs each instance executes at once (default 10).          |
 | `N_JOBS_PER_WORKER`        | no                   | LangGraph-compatible alias for `SKEIN_RUN_CONCURRENCY`.           |

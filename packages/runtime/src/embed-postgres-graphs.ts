@@ -54,13 +54,16 @@ export interface EmbedPostgresGraphsOptions {
   sslNoVerify?: boolean;
   /**
    * How long to wait for a pool connection before failing (ms). Defaults to env
-   * `PG_CONNECTION_TIMEOUT_MS`, else 10s — `pg` itself waits forever, which turns an unreachable
+   * `PG_CONNECTION_TIMEOUT_MS`, else 30s — `pg` itself waits forever, which turns an unreachable
    * database into a hang rather than an error.
    */
   connectionTimeoutMs?: number;
   /** How long an unused pooled client is kept (ms). Defaults to env `PG_IDLE_TIMEOUT_MS`. */
   idleTimeoutMs?: number;
-  /** Server-side ceiling on one statement (ms). Defaults to env `PG_STATEMENT_TIMEOUT_MS`; off by default. */
+  /**
+   * Server-side ceiling on one statement (ms). Defaults to env `PG_STATEMENT_TIMEOUT_MS`, else 30s.
+   * `0` disables it. Schema DDL is exempt.
+   */
   statementTimeoutMs?: number;
   /**
    * The largest page any store list/search returns, including when the caller asks for no limit.

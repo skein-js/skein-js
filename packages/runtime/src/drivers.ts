@@ -57,6 +57,17 @@ export interface PostgresConnectionOptions {
  */
 const DEFAULT_CONNECTION_TIMEOUT_MS = 30_000;
 
+/**
+ * Server-side ceiling on one statement. A query still running after this is a stuck or pathological one:
+ * the list/search paths are page-bounded and indexed, so the shapes that used to take minutes no longer
+ * exist. Bounding it turns "a request hangs and holds a pool connection until the client gives up" into
+ * an error with `57014` that names the statement.
+ *
+ * `PG_STATEMENT_TIMEOUT_MS=0` disables it, which is the escape hatch for a deployment with a genuinely
+ * long-running query of its own.
+ */
+const DEFAULT_STATEMENT_TIMEOUT_MS = 30_000;
+
 /** Read a required connection env var, or throw an actionable {@link RuntimeConfigError}. */
 export function requireEnv(name: string, driver: string): string {
   const value = process.env[name];
@@ -95,7 +106,9 @@ function integerFromEnv(name: string, minimum: number): number | undefined {
  * `PG_CONNECTION_TIMEOUT_MS` bounds waiting for a pool connection, which `pg` otherwise waits for
  * indefinitely — turning an unreachable database into a hang rather than an error. `PG_IDLE_TIMEOUT_MS`
  * overrides how long an unused client is kept (`pg`'s own default is 10s, not forever), and
- * `PG_STATEMENT_TIMEOUT_MS` bounds a single statement.
+ * `PG_STATEMENT_TIMEOUT_MS` bounds a single statement (30s by default). It is *per statement*, not per
+ * request, so it bounds one runaway query rather than a legitimately long sequence of them; schema DDL is
+ * exempted explicitly (see `connectPostgresStore` and `run-migrations.ts`).
  *
  * All three read `0` as "no limit", which for the first two is the escape hatch back to `pg`'s own
  * behaviour and for the third means off.
@@ -115,13 +128,11 @@ export function postgresConnectionOptions(): PostgresConnectionOptions {
   const idleTimeoutMs = integerFromEnv("PG_IDLE_TIMEOUT_MS", 0);
   if (idleTimeoutMs !== undefined) options.idleTimeoutMs = idleTimeoutMs;
 
-  const statementTimeoutMs = integerFromEnv("PG_STATEMENT_TIMEOUT_MS", 0);
-  // Only when asked for. Turning this on by default is deliberately deferred until the query bounds
-  // and indexes have shipped and settled — before that it converts slow-but-working queries into
-  // errors. `0` is an explicit "no limit" and is passed through as such.
-  if (statementTimeoutMs !== undefined && statementTimeoutMs > 0) {
-    options.statementTimeoutMs = statementTimeoutMs;
-  }
+  // On by default now that the query bounds and the indexes have shipped: without them this turned
+  // slow-but-working queries into errors, and with them a statement that runs for 30s is a symptom, not
+  // a workload. `0` is an explicit "no limit" and is passed through as such.
+  options.statementTimeoutMs =
+    integerFromEnv("PG_STATEMENT_TIMEOUT_MS", 0) ?? DEFAULT_STATEMENT_TIMEOUT_MS;
 
   const noVerify = process.env["DATABASE_SSL_NO_VERIFY"];
   if (noVerify === "1" || noVerify?.toLowerCase() === "true") options.sslNoVerify = true;
@@ -152,9 +163,21 @@ export async function connectPostgresStore(args: {
   });
   disposers.push(() => store.close());
   await store.migrate();
+
+  // `PostgresSaver.setup()` runs the checkpointer's schema migrations — DDL, which is legitimately slow
+  // on an existing large database and must not be cancelled by the statement timeout. A cancelled boot
+  // migration is a boot *loop*, not a slow boot. It takes its client from whatever pool it is given, so
+  // the only way to exempt it is to give it one with no timeout, then query through the tuned pool.
+  // (`store.migrate()` and the pgvector setup lift the timeout on their own clients instead.)
+  const setupPool = createPostgresPool(url, { ...connectionOptions, statementTimeoutMs: 0 });
+  try {
+    await new PostgresSaver(setupPool).setup();
+  } finally {
+    await setupPool.end();
+  }
+
   const checkpointer = new PostgresSaver(createPostgresPool(url, connectionOptions));
   disposers.push(() => checkpointer.end());
-  await checkpointer.setup();
   return { store, checkpointer };
 }
 
