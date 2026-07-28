@@ -2,7 +2,7 @@ import { DEFAULT_RUN_CONCURRENCY } from "@skein-js/agent-protocol";
 import { SkeinConfigError } from "@skein-js/config";
 import { describe, expect, it } from "vitest";
 
-import { resolveRunConcurrency } from "./run-concurrency.js";
+import { describePoolPressure, resolveRunConcurrency } from "./run-concurrency.js";
 
 describe("resolveRunConcurrency", () => {
   it("defaults to the LangGraph-matching default when nothing is configured", () => {
@@ -57,5 +57,37 @@ describe("resolveRunConcurrency", () => {
 
   it.each([0, -1, 1.5])("rejects an explicit maxConcurrency of %s", (explicit) => {
     expect(() => resolveRunConcurrency(explicit, {})).toThrow(/worker\.maxConcurrency/);
+  });
+});
+
+// The failure this warns about is invisible in logs: runs queue on the Postgres pool rather than on
+// the run queue, so throughput flattens and nothing points at the pool.
+describe("describePoolPressure", () => {
+  it("is quiet when the pool can serve every concurrent run", () => {
+    expect(describePoolPressure(10, 10)).toBeUndefined();
+    expect(describePoolPressure(4, 20)).toBeUndefined();
+  });
+
+  it("warns when concurrency outgrows an explicit PG_POOL_MAX, naming both numbers", () => {
+    const warning = describePoolPressure(20, 5);
+
+    expect(warning).toContain("20");
+    expect(warning).toContain("5");
+    expect(warning).toContain("PG_POOL_MAX");
+  });
+
+  // The case a deployment falls into without touching anything: `PG_POOL_MAX` unset leaves `pg`'s
+  // default of 10, which a raised `SKEIN_RUN_CONCURRENCY` then silently outgrows.
+  it("assumes pg's default when PG_POOL_MAX is unset, and says so", () => {
+    expect(describePoolPressure(10, undefined)).toBeUndefined();
+
+    const warning = describePoolPressure(11, undefined);
+    expect(warning).toContain("pg's default of 10");
+  });
+
+  // skein opens two pools per instance (store + checkpointer), which is the number that actually has
+  // to fit a managed database's connection cap.
+  it("budgets for both pools in its advice", () => {
+    expect(describePoolPressure(20, 5)).toContain("40 connections");
   });
 });

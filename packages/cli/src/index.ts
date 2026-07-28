@@ -11,6 +11,7 @@ import { Command, InvalidArgumentError } from "@commander-js/extra-typings";
 
 import { runDev } from "./dev-command.js";
 import { runBuild, runDockerfile, runUp } from "./docker/commands.js";
+import { parseQueue, parseStartQueue, parseStartStore, parseStore } from "./driver-flags.js";
 import { runImportLanggraph } from "./import-command.js";
 import { DEFAULT_CONTAINER_PORT, DEFAULT_DEV_PORT } from "./serve-env.js";
 import { runStart } from "./start-command.js";
@@ -37,18 +38,6 @@ function parseConcurrency(value: string): number {
 }
 
 /** Build a commander parser that accepts only one of `choices`, rejecting anything else. */
-function parseChoice<const T extends string>(choices: readonly T[]) {
-  return (value: string): T => {
-    if (!(choices as readonly string[]).includes(value)) {
-      throw new InvalidArgumentError(`Must be one of: ${choices.join(", ")}.`);
-    }
-    return value as T;
-  };
-}
-
-const parseStore = parseChoice(["memory", "postgres"] as const);
-const parseQueue = parseChoice(["memory", "redis"] as const);
-
 const program = new Command()
   .name("skein")
   .description(
@@ -86,6 +75,10 @@ program
     parseConcurrency,
   )
   .option("-v, --verbose", "Log per-run activity: start/finish, tool calls, and interrupts")
+  // On by default here, off by default under `start` — see `request-log.ts`. No commander
+  // default so an unset flag stays `undefined` and the env var gets a look in.
+  .option("--request-log", "Log a line per HTTP request (default on; env SKEIN_REQUEST_LOG)")
+  .option("--no-request-log", "Don't log a line per HTTP request")
   // Pass whether --port/--host came from the CLI so runDev only applies the PORT/HOST env fallback
   // when the user left them at their defaults (an explicit flag always wins over the env).
   .action((options, command) =>
@@ -107,8 +100,11 @@ program
   // resolved after the config's inline env is merged.
   .option("-p, --port <port>", "Port to bind", parsePort, DEFAULT_CONTAINER_PORT)
   .option("--host <host>", "Host to bind", "127.0.0.1")
-  .option("--store <driver>", "Store driver: memory | postgres", parseStore, "memory")
-  .option("--queue <driver>", "Queue driver: memory | redis", parseQueue, "memory")
+  // Durable-only, and defaulted so a bare `skein start` reaches for them. `@skein-js/runtime`'s
+  // `requireEnv` then fails with an actionable error when POSTGRES_URI / REDIS_URI is missing, so the
+  // hard requirement mostly falls out of the defaults — the restricted parsers close the rest.
+  .option("--store <driver>", "Store driver: postgres", parseStartStore, "postgres")
+  .option("--queue <driver>", "Queue driver: redis", parseStartQueue, "redis")
   // Same pair as `dev` — see the note there on why neither carries a commander default.
   .option(
     "--concurrency <count>",
@@ -121,6 +117,7 @@ program
     parseConcurrency,
   )
   .option("-v, --verbose", "Log per-run activity: start/finish, tool calls, and interrupts")
+  .option("--request-log", "Log a line per HTTP request (default off; env SKEIN_REQUEST_LOG)")
   .action((options, command) =>
     runStart({
       ...options,

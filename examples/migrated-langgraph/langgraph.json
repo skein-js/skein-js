@@ -1,5 +1,5 @@
 {
-  "node_version": "20",
+  "node_version": "22",
   "graphs": {
     "agent": "./src/graph.ts:graph"
   },

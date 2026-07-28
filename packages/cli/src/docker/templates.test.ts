@@ -18,9 +18,11 @@ describe("generateDockerfile", () => {
     expect(out.indexOf("RUN echo hello")).toBeLessThan(out.indexOf("CMD ["));
   });
 
-  it("defaults to node 20 and boots the compiled artifact via `skein start`", () => {
+  it("defaults to a supported node and boots the compiled artifact via `skein start`", () => {
     const out = generateDockerfile({ port: 8123 });
-    expect(out).toContain("FROM node:20-slim");
+    // 22, not 20: Node 20 went EOL in April 2026, and a config with no `node_version` should not
+    // silently generate an image on an unpatched runtime.
+    expect(out).toContain("FROM node:22-slim");
     // Pre-built path: runs `skein start` (compiled JS), not `skein dev` (runtime TS transform).
     expect(out).toContain('"/app/node_modules/skein-js/dist/index.js", "start"');
     expect(out).not.toContain('"dev"');
@@ -58,10 +60,14 @@ describe("generateDockerfile", () => {
     expect(out).toContain("ENV NODE_OPTIONS=--enable-source-maps");
   });
 
-  it("declares a healthcheck against /ok on the bound port", () => {
+  it("declares a healthcheck against /ok on the bound port, spaced out", () => {
     const out = generateDockerfile({ port: 8123 });
     expect(out).toContain("HEALTHCHECK");
     expect(out).toContain("/ok");
+    // 60s, not 30s: the probe spawns a whole Node process (a ~40MB transient spike), which is real
+    // money in a 512Mi container — and wasted entirely on Cloud Run / k8s / ECS, which ignore
+    // HEALTHCHECK and use their own probes.
+    expect(out).toContain("--interval=60s");
   });
 
   it("enables the BuildKit cache mount and the syntax directive on line 1", () => {

@@ -26,6 +26,7 @@ import { printBanner } from "./banner.js";
 import { createDevLogger } from "./dev-logger.js";
 import { devStateFile, LANGGRAPH_DIR, STATE_DIR, writeDevStateFile } from "./dev-state.js";
 import { applyProjectEnv } from "./project-env.js";
+import { resolveRequestLog } from "./request-log.js";
 import { describeBindError, envHost, envPort } from "./serve-env.js";
 import { createShutdownHandler, forceExitDelayMs } from "./shutdown.js";
 import { createViteGraphLoader } from "./vite-graph-loader.js";
@@ -53,6 +54,8 @@ export interface DevCommandOptions {
   nJobsPerWorker?: number;
   /** `true` when `--verbose` was passed: log per-run activity (start/finish, tool calls, interrupts). */
   verbose?: boolean;
+  /** `--request-log` / `--no-request-log`: a line per HTTP request. Unset → env → on for `dev`. */
+  requestLog?: boolean;
 }
 
 /** Wait this long after the last change event before reloading, so a burst of saves is one reload. */
@@ -146,6 +149,7 @@ export async function runDev(options: DevCommandOptions): Promise<void> {
       cors: runtime.cors,
       warm: true,
       logger: devLogger,
+      requestLog: resolveRequestLog(options.requestLog, true),
       worker: { maxConcurrency: runConcurrency, shutdownGraceMs },
     });
     await server.listen(port, host);

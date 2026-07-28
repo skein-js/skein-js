@@ -1433,7 +1433,7 @@ it but is never required.
   },
 
   // JS/Node runtime pin (20 | 22 | 24)
-  "node_version": "20",
+  "node_version": "22",
 
   // .env path OR inline map
   "env": ".env",
@@ -1478,7 +1478,7 @@ it but is never required.
 | `langgraph.json` field | skein-js wiring                                                                                                                                                                             |
 | ---------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | `graphs`               | [`@skein-js/config`](./storage.md) resolves each `path:export`, loading a compiled graph or `makeGraph` factory. Drives `/agents` introspection + run execution.                            |
-| `node_version`         | Used by `skein build` / `skein dockerfile` base image selection.                                                                                                                            |
+| `node_version`         | Used by `skein build` / `skein dockerfile` base image selection. Defaults to 22 when omitted (20 is EOL); an explicit value is honoured verbatim, including an older one.                   |
 | `env`                  | Loaded into `process.env` at boot (dev) / baked into the image (build).                                                                                                                     |
 | `store`                | `store.index.{embed,dims,fields}` configures pgvector semantic search on the Postgres driver — see [storage.md](./storage.md).                                                              |
 | `checkpointer`         | `"default"` → `PostgresSaver`; dev falls back to an in-memory `MemorySaver`.                                                                                                                |
@@ -4454,7 +4454,11 @@ Set `REDIS_URI`. skein uses it for the run queue (BullMQ) and for cross-instance
 replay. Configure the instance with `maxmemory-policy noeviction` — BullMQ's job data must not be
 evicted.
 
-**The image requires it.** Its CMD runs `skein start --store postgres --queue redis`, and the redis
+**The image requires it, and so does the entrypoint.** Its CMD runs
+`skein start --store postgres --queue redis` — but those are also `skein start`'s own defaults now, and
+it _rejects_ `--store memory` / `--queue memory` outright. Overriding the CMD, or running the binary by
+hand, can no longer produce a production server whose queue is process-local and whose state disappears
+on restart. The redis
 queue driver fails the boot if `REDIS_URI` is unset. (Redis is only _optional_ on the in-code
 embedding path — `embedPostgresGraphs` falls back to an in-memory queue and bus when no Redis URL is
 given, which keeps state durable but limits you to a single instance. See
@@ -4538,6 +4542,36 @@ It is applied with a `SET` on each new connection rather than as a startup param
 PgBouncer and Supabase's pooler reject unrecognised startup parameters outright. Under **transaction**
 pooling a `SET` does not persist, so the timeout silently does not apply there — it is a backstop, not
 a guarantee.
+
+### Heap size vs. the container's memory limit
+
+The image bakes **no** `--max-old-space-size`, because a Dockerfile cannot know the limit the container
+will be given. Instead `skein start` compares the two at boot and warns when V8's ceiling is above ~75% of
+the container's limit, naming the flag and a computed value.
+
+Node **is** cgroup-aware — since v12 it sizes the heap from the container's limit, not the host's — so the
+usual advice to set `--max-old-space-size` on every container is wrong here, and following it can make
+things worse. Measured on `node:22-slim`, V8's ceiling tracks about half the limit: 512Mi → 259MB,
+1Gi → 524MB, 2Gi → 1048MB. Setting it to "75% of the limit" on a 512Mi container would _raise_ the heap
+from 259MB to 432MB and make an OOM kill more likely, not less.
+
+What the automatic sizing does not do is go below a floor of about **259MB**. So under roughly 345Mi —
+256Mi and 128Mi are ordinary Cloud Run and Kubernetes settings — V8's ceiling meets or exceeds the whole
+container, it never feels the pressure that would trigger a full GC, and the kernel kills the process
+first. That appears as a restart with no stack, no log line, and nothing in your metrics.
+
+**Only act on this when the warning fires**, and then lower the heap rather than raising it. The warning
+names a computed value. Include the image's own flag when you set it — `NODE_OPTIONS` replaces the
+image's value rather than adding to it, so omitting `--enable-source-maps` silently costs you TypeScript
+stack traces:
+
+```
+NODE_OPTIONS="--enable-source-maps --max-old-space-size=153"
+```
+
+`skein start` also warns when run concurrency exceeds `PG_POOL_MAX`, for the same reason: runs then queue
+waiting for a connection rather than executing, which looks like flat throughput rather than like a pool
+limit. Budget **two** pools per instance (store + checkpointer).
 
 ### Run concurrency
 
@@ -4675,25 +4709,27 @@ platform's guide.
 skein reads these and nothing else. Note there is **no `DATABASE_URL` or `REDIS_URL`** — those are
 platform names; map them onto skein's.
 
-| Variable                   | Required             | Purpose                                                           |
-| -------------------------- | -------------------- | ----------------------------------------------------------------- |
-| `POSTGRES_URI`             | yes (postgres store) | Postgres connection string (resources + checkpoints).             |
-| `REDIS_URI`                | yes (redis queue)    | Redis connection string (run queue + stream pub/sub).             |
-| `PORT`                     | usually injected     | Port to bind. Defaults to 8123 — the port the image exposes.      |
-| `HOST`                     | no                   | Host to bind. The image already passes `--host 0.0.0.0`.          |
-| `PG_POOL_MAX`              | no                   | Max connections **per pool**; there are two (`pg` default 10).    |
-| `PG_CONNECTION_TIMEOUT_MS` | no                   | Wait for a pool connection before failing (default 30000).        |
-| `PG_IDLE_TIMEOUT_MS`       | no                   | How long an unused pooled client is kept (`pg` default 10000).    |
-| `PG_STATEMENT_TIMEOUT_MS`  | no                   | Server-side ceiling on one statement (default 30000). `0` = off.  |
-| `DATABASE_SSL_NO_VERIFY`   | no                   | `true` to skip TLS cert verification (self-signed database cert). |
-| `SKEIN_RUN_CONCURRENCY`    | no                   | Queued runs each instance executes at once (default 10).          |
-| `N_JOBS_PER_WORKER`        | no                   | LangGraph-compatible alias for `SKEIN_RUN_CONCURRENCY`.           |
-| `SKEIN_SHUTDOWN_GRACE_MS`  | no                   | Drain window for in-flight runs on `SIGTERM` (default 5000).      |
-| `SKEIN_MAX_PAGE_SIZE`      | no                   | Largest page a list/search returns (default 1000).                |
+| Variable                   | Required             | Purpose                                                            |
+| -------------------------- | -------------------- | ------------------------------------------------------------------ |
+| `POSTGRES_URI`             | yes (postgres store) | Postgres connection string (resources + checkpoints).              |
+| `REDIS_URI`                | yes (redis queue)    | Redis connection string (run queue + stream pub/sub).              |
+| `PORT`                     | usually injected     | Port to bind. Defaults to 8123 — the port the image exposes.       |
+| `HOST`                     | no                   | Host to bind. The image already passes `--host 0.0.0.0`.           |
+| `PG_POOL_MAX`              | no                   | Max connections **per pool**; there are two (`pg` default 10).     |
+| `PG_CONNECTION_TIMEOUT_MS` | no                   | Wait for a pool connection before failing (default 30000).         |
+| `PG_IDLE_TIMEOUT_MS`       | no                   | How long an unused pooled client is kept (`pg` default 10000).     |
+| `PG_STATEMENT_TIMEOUT_MS`  | no                   | Server-side ceiling on one statement (default 30000). `0` = off.   |
+| `DATABASE_SSL_NO_VERIFY`   | no                   | `true` to skip TLS cert verification (self-signed database cert).  |
+| `SKEIN_RUN_CONCURRENCY`    | no                   | Queued runs each instance executes at once (default 10).           |
+| `N_JOBS_PER_WORKER`        | no                   | LangGraph-compatible alias for `SKEIN_RUN_CONCURRENCY`.            |
+| `SKEIN_SHUTDOWN_GRACE_MS`  | no                   | Drain window for in-flight runs on `SIGTERM` (default 5000).       |
+| `SKEIN_MAX_PAGE_SIZE`      | no                   | Largest page a list/search returns (default 1000).                 |
+| `SKEIN_REQUEST_LOG`        | no                   | `1` to log a line per HTTP request (off by default under `start`). |
 
-Two more apply only when the run queue and event bus are **in-memory** — that is, `--queue memory`
-rather than the image's default `--queue redis`. They bound what a long-lived process retains; see
-[embedding.md](./embedding.md#going-to-production) for the sizing math.
+Two more apply only when the run queue and event bus are **in-memory**. That is no longer reachable from
+the image — `skein start` rejects `--queue memory` — so these matter on the embedded path
+(`embedPostgresGraphs` with no `REDIS_URI`) and under `skein dev`. They bound what a long-lived process
+retains; see [embedding.md](./embedding.md#going-to-production) for the sizing math.
 
 | Variable                              | Default | Purpose                                                       |
 | ------------------------------------- | ------- | ------------------------------------------------------------- |

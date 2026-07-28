@@ -127,7 +127,7 @@ it but is never required.
   },
 
   // JS/Node runtime pin (20 | 22 | 24)
-  "node_version": "20",
+  "node_version": "22",
 
   // .env path OR inline map
   "env": ".env",
@@ -172,7 +172,7 @@ it but is never required.
 | `langgraph.json` field | skein-js wiring                                                                                                                                                                             |
 | ---------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | `graphs`               | [`@skein-js/config`](./storage.md) resolves each `path:export`, loading a compiled graph or `makeGraph` factory. Drives `/agents` introspection + run execution.                            |
-| `node_version`         | Used by `skein build` / `skein dockerfile` base image selection.                                                                                                                            |
+| `node_version`         | Used by `skein build` / `skein dockerfile` base image selection. Defaults to 22 when omitted (20 is EOL); an explicit value is honoured verbatim, including an older one.                   |
 | `env`                  | Loaded into `process.env` at boot (dev) / baked into the image (build).                                                                                                                     |
 | `store`                | `store.index.{embed,dims,fields}` configures pgvector semantic search on the Postgres driver — see [storage.md](./storage.md).                                                              |
 | `checkpointer`         | `"default"` → `PostgresSaver`; dev falls back to an in-memory `MemorySaver`.                                                                                                                |

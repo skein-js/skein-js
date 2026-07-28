@@ -41,7 +41,8 @@ with sane defaults and documented sizing math.
 | `91ac7c6` | P6b-bis | Thread-history bound (body-read + real limit)   |
 | `d8d313f` | P6c     | Ownership filter pushed into the driver query   |
 | `8c4add3` | P7      | `statement_timeout` on by default (30s)         |
-| _pending_ | P8      | Adapter module graph: dev-only tooling removed  |
+| `4b8a3af` | P8      | Adapter module graph: dev-only tooling removed  |
+| _pending_ | P9      | `skein start` durable-only; container hardening |
 
 ### Measured
 
@@ -295,25 +296,35 @@ map. Task-hash propagation through `dependsOn` is what actually invalidates the 
 
 ### P9 — CLI & container
 
-1. **`skein start` must hard-require durable drivers.** `packages/cli/src/index.ts:110-111` defaults
-   both `--store` and `--queue` to `memory`; only the generated Dockerfile CMD flips them, so any CMD
-   override yields an unbounded in-memory production server whose state vanishes on restart. Give
-   `start` its own `parseChoice(["postgres"])` / `parseChoice(["redis"])`, default the flags to the
-   durable values, **keep the flags** (older images pass them in CMD), and make the rejection name
-   `skein dev` as the no-infrastructure alternative. Consistent with `readBakedSchemas`, which already
-   hard-fails `start` outside a built artifact. **Removes** `--store postgres --queue memory`; that
-   topology stays supported via `embedPostgresGraphs`, where it is documented. Nothing in the repo
-   depends on the old default — there is no `start-command.test.ts`.
-2. Base image `node:20-slim` → `node:22-slim`. Node 20 went EOL April 2026.
-3. **No hardcoded heap size** — the Dockerfile cannot know the container limit. Log
-   `v8.getHeapStatistics().heap_size_limit` against `/sys/fs/cgroup/memory.max` at boot, warning above
-   ~75%. Keep `NODE_OPTIONS` as the documented override.
-4. `HEALTHCHECK --interval` 30s → 60s (it spawns a whole Node process, ~40MB transient in a 512Mi box)
-   and document that Cloud Run/k8s/ECS use their own probes and ignore it.
-5. `express.json()` is pinned at the default 100kb with no override — add `json?: { limit?: string }`.
-6. `--request-log` / `SKEIN_REQUEST_LOG`, on for `dev`, **off** for `start`: `start-command.ts:132`
-   always passes a logger for failure reporting, which silently also enables 2 log lines per request.
-7. Warn at boot when `runConcurrency > PG_POOL_MAX`.
+**DONE** (see the shipped table).
+
+- **`skein start` refuses the in-memory drivers.** Its `--store`/`--queue` default to `postgres`/`redis`
+  and reject `memory` at parse time, via its own parsers (`driver-flags.ts`) separate from `dev`'s. The
+  flags are kept, not removed: images built by older `skein build` versions pass them in their CMD.
+- Base image fallback `node:20-slim` → `node:22-slim` (20 went EOL April 2026), and every shipped example
+  bumped with it — they each pin `node_version` explicitly, so the default change alone left them all
+  still emitting EOL images.
+- `HEALTHCHECK --interval` 30s → 60s. The probe spawns a whole Node process (~40MB transient), which is
+  real money in a 512Mi box and wasted entirely on Cloud Run / k8s / ECS, which ignore it.
+- Boot warnings for the two sizing mistakes that are already true before any traffic: V8's heap ceiling
+  against the cgroup limit, and run concurrency against `PG_POOL_MAX`.
+- `json: { limit }` on the Express router (and the invoke router), and `requestLog` decoupled from
+  `logger` — `start` needs a logger to report failed runs but not two lines per request.
+
+**The heap warning's premise had to be rewritten after review measured it.** The standard telling —
+"V8 sizes from the host, so a small container gets a multi-gigabyte heap" — is **false** for any runtime
+skein ships on: Node has been cgroup-aware since v12. Measured on `node:22-slim`, `heap_size_limit` is
+about half the cgroup limit (512Mi → 259MB, 1Gi → 524MB, 2Gi → 1048MB). What is real is a **floor** at
+~259MB, so below roughly 345Mi the ceiling meets or exceeds the whole container — 256Mi → 101%,
+128Mi → 202%. The check is worth having for that band and silent above it. Two consequences worth
+remembering:
+
+- The suggested `--max-old-space-size` must sit **below** the warning threshold, because `heap_size_limit`
+  runs a few MB above whatever the flag is set to. Suggesting the threshold exactly meant the operator
+  followed the advice, redeployed, and got the identical warning.
+- Advice must include `--enable-source-maps`. The image bakes it into `NODE_OPTIONS`, and a platform env
+  var **replaces** rather than appends — so advice naming only the heap flag silently costs TypeScript
+  stack traces.
 
 ### P9b — runtime heap-pressure detection
 
@@ -500,5 +511,7 @@ entry under a **Behavior changes** heading:
   `@skein-js/server-kit` (and `@skein-js/express`) to `@skein-js/server-kit/dev`. No deprecation alias:
   a re-export would defeat the split. `SkeinConfigError` gains a `@skein-js/config/errors` subpath; the
   root export stays.
-- **P9** — **`skein start` refuses memory drivers**; Node 22 base image; request logs off under `start`.
+- **P9** — **`skein start` refuses `--store memory` / `--queue memory`** and defaults to
+  postgres/redis. Node 22 base image (examples bumped too). Request logging off by default under
+  `start` (`--request-log` / `SKEIN_REQUEST_LOG` to restore). HEALTHCHECK every 60s, not 30s.
 - **P10** — slow webhook targets now fail instead of hanging a thread lock.

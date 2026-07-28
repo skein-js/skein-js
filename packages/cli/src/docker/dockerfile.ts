@@ -7,14 +7,21 @@
 // and the user's lockfile are irrelevant here; a single `npm install --omit=dev` is deterministic
 // because every dependency is exact-pinned.
 
-/** Node major version → base image tag; falls back to 20 (the examples' pin). */
+/**
+ * Node major version → base image tag.
+ *
+ * Falls back to **22**: Node 20 reached end of life in April 2026, so a config without an explicit
+ * `node_version` would otherwise generate an image with an unpatched runtime. An explicit
+ * `node_version` is still honoured verbatim, including an older one — that is the user's call, and
+ * pinning is exactly what the field is for.
+ */
 function baseImage(nodeVersion: string | undefined): string {
-  const major = nodeVersion?.trim().match(/^\d+/)?.[0] ?? "20";
+  const major = nodeVersion?.trim().match(/^\d+/)?.[0] ?? "22";
   return `node:${major}-slim`;
 }
 
 export interface DockerfileOptions {
-  /** `node_version` from the config (major version); defaults to 20. */
+  /** `node_version` from the config (major version); defaults to 22 (20 is EOL). */
   nodeVersion?: string;
   /** `dockerfile_lines` from the config, appended verbatim after the base layers. */
   dockerfileLines?: readonly string[];
@@ -85,7 +92,10 @@ export function generateDockerfile(options: DockerfileOptions): string {
     // is resolved exactly as `envPort` resolves it — integer, in range, blank counts as unset —
     // rather than by truthiness, so a malformed value (`PORT=8080a`, `PORT=0`) has the probe and the
     // server agree on the fallback instead of probing a URL the server never bound.
-    `HEALTHCHECK --interval=30s --timeout=3s --start-period=20s --retries=3 \\`,
+    // 60s, not 30s: this probe spawns a whole Node process, which is a ~40MB transient spike — real
+    // money in a 512Mi container, and pure waste on Cloud Run / Kubernetes / ECS, which ignore
+    // HEALTHCHECK entirely and use their own probes. It is here for `docker run` and Compose.
+    `HEALTHCHECK --interval=60s --timeout=3s --start-period=20s --retries=3 \\`,
     `    CMD node -e "const r=Number(process.env.PORT);const p=Number.isInteger(r)&&r>=0&&r<=65535?r:${port};fetch('http://127.0.0.1:'+p+'/ok').then(r=>process.exit(r.ok?0:1)).catch(()=>process.exit(1))"`,
     // Run unprivileged. The bundle writes nothing to disk, and /app is world-readable, so no chown.
     `USER node`,

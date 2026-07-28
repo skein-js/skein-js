@@ -60,7 +60,16 @@ export async function createExpressServer(
   // Request lines are keyed on the *explicit* option, not the resolved logger: asking the adapter for
   // a logger is asking for request logging (`skein dev` does), whereas injecting `deps.logger` is
   // asking for skein's own reports — a per-request line for every poll is not what that user wanted.
-  if (options.logger) app.use(requestLogger(options.logger));
+  //
+  // `requestLog` overrides that inference in both directions, which is what a production server needs:
+  // it must pass a logger so a failed run is reported at all, but two lines per request is noise that
+  // buries the reports it was passed for.
+  // Inference keys on the *explicit* option; the mounted logger is the *resolved* one. An injected
+  // `deps.logger` therefore stays quiet by default (right — that user asked for skein's reports, not a
+  // line per poll) but is used when `requestLog: true` asks for traffic, which is what "overrides in
+  // both directions" has to mean.
+  const requestLog = options.requestLog ?? Boolean(options.logger);
+  if (requestLog && logger) app.use(requestLogger(logger));
   // Liveness probe for platform health checks (Railway's healthcheckPath, k8s, load balancers).
   // Kept dependency-free on purpose: a readiness check that touches Postgres/Redis would let a
   // transient DB blip flap a healthy instance. Path mirrors the LangGraph platform's `/ok`.

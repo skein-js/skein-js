@@ -17,6 +17,7 @@ import express from "express";
 import type { Request, Response, Router } from "express";
 
 import { sendErrorResponse } from "./error-response.js";
+import { requireParsableLimit } from "./routes.js";
 import { sendProtocolResponse } from "./send-protocol-response.js";
 import { toProtocolRequest } from "./to-protocol-request.js";
 
@@ -24,6 +25,12 @@ export type SkeinInvokeRouterOptions = SkeinRuntimeOptions &
   GraphInvokeOptions & {
     /** Path prefix for the endpoint; defaults to `/invoke` (→ `POST /invoke/:graph_id`). */
     prefix?: string;
+    /**
+     * Body-parser limits, same shape and default as `skeinRouter`'s. Worth setting here first: this
+     * endpoint takes a graph's whole input in one body, so it is the surface most likely to outgrow
+     * `express.json()`'s 100kb.
+     */
+    json?: { limit?: string | number };
   };
 
 export interface SkeinInvokeRouter {
@@ -52,7 +59,8 @@ export async function skeinInvokeRouter(
   // Explicit option wins; otherwise fall back to the config's `http.cors`, else off.
   const corsSetting = options.cors ?? corsFromConfig ?? false;
   if (corsSetting) router.use(cors(corsSetting === true ? { origin: true } : corsSetting));
-  router.use(express.json());
+  requireParsableLimit(options.json?.limit);
+  router.use(express.json(options.json ?? {}));
 
   for (const binding of graphInvokeRoutes(options.prefix)) {
     router[binding.method](binding.path, async (req: Request, res: Response) => {

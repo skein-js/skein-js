@@ -31,6 +31,37 @@ export interface HandlerRouterOptions {
    * `skein dev`); pass `CorsOptions` to restrict origins for `skein up`; omit/`false` to disable.
    */
   cors?: boolean | CorsOptions;
+  /**
+   * Body-parser limits for the JSON request bodies the protocol accepts. Defaults to `express.json()`'s
+   * own 100kb.
+   *
+   * Worth raising deliberately rather than by accident: a run's `input` is a graph state, and a thread
+   * carrying a long message history or a base64 attachment passes 100kb easily — at which point every
+   * request 413s with an error that names the body parser, not skein. Worth *lowering* on a small
+   * instance, since the limit is per in-flight request.
+   */
+  json?: { limit?: string | number };
+}
+
+/**
+ * Reject a `limit` the body parser would silently read as *unlimited*.
+ *
+ * `bytes.parse` returns `null` for anything it cannot understand (`"10mbb"`, `"10 MB"`), and `raw-body`
+ * treats a `null` limit as no limit at all — so a typo in this option would remove the body cap from
+ * every route rather than failing. Loud at mount time instead.
+ */
+export function requireParsableLimit(limit: string | number | undefined): void {
+  if (limit === undefined) return;
+  if (typeof limit === "number") {
+    if (Number.isFinite(limit) && limit > 0) return;
+    throw new TypeError(`json.limit must be a positive number of bytes (got ${limit}).`);
+  }
+  // The same grammar `bytes.parse` accepts: a number with an optional unit suffix.
+  if (/^\d+(\.\d+)?\s*(b|kb|mb|gb|tb|pb)?$/i.test(limit.trim())) return;
+  throw new TypeError(
+    `json.limit must be a byte size like "1mb" or a number of bytes (got "${limit}"). ` +
+      `An unparsable value would be read as *no* limit.`,
+  );
 }
 
 /**
@@ -47,7 +78,8 @@ export function createHandlerRouter(
   // (including the SSE streams the browser SDKs read cross-origin). `true` reflects the request
   // origin (rather than a bare `*`), which also works for credentialed requests.
   if (options.cors) router.use(cors(options.cors === true ? { origin: true } : options.cors));
-  router.use(express.json());
+  requireParsableLimit(options.json?.limit);
+  router.use(express.json(options.json ?? {}));
 
   for (const binding of skeinRoutes) {
     const invoke = handlers[binding.handler];

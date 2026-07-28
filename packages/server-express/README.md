@@ -95,14 +95,20 @@ Send `Accept: text/event-stream` to stream the steps instead. See
 - **`skeinRouter(options): Promise<SkeinRouter>`** — `SkeinRouter` = `{ router, runtime }`.
 - **`skeinInvokeRouter(options): Promise<SkeinInvokeRouter>`** — the simplified serving surface
   (`POST /invoke/:graph_id`, body-in / final-state-out). `SkeinInvokeRouter` = `{ router, deps }`;
-  options add `prefix` (default `/invoke`) and `streamMode`.
-- **`SkeinRouterOptions`** — common `{ logger?, cors?, warm? }` **plus** either `{ config, importModule? }`
-  (in-memory runtime from a `langgraph.json`) **or** `{ deps }` (bring-your-own `ProtocolDeps`).
-  `warm: true` eagerly loads graphs at startup.
+  options add `prefix` (default `/invoke`), `streamMode`, and `json`.
+- **`SkeinRouterOptions`** — common `{ logger?, cors?, warm?, json?, requestLog? }` **plus** either
+  `{ config, importModule? }` (in-memory runtime from a `langgraph.json`) **or** `{ deps }`
+  (bring-your-own `ProtocolDeps`). `warm: true` eagerly loads graphs at startup.
+  - `json: { limit }` — body-parser limit, default `express.json()`'s 100kb. A run's `input` is a graph
+    state, so a long message history or a base64 attachment passes 100kb easily. `skeinInvokeRouter`
+    takes the same option and needs it more, since that endpoint carries the whole input in one body.
+  - `requestLog` — a line per HTTP request. Defaults to whether you passed a `logger`.
 - **Logging** — unlike the NestJS and Fastify adapters, which default to the host framework's own
   logger, Express owns none, so skein stays **silent** here until you pass one — a library should not
-  decide on its host's behalf to start writing to stdout. `logger` both mounts per-request logging and
-  reaches the run engine, so failed graph runs and webhook failures are reported.
+  decide on its host's behalf to start writing to stdout. `logger` reaches the run engine, so failed
+  graph runs and webhook failures are reported, and by default it also mounts per-request logging.
+  Those are separable: a production server wants the reports without two lines per request, which is
+  what `requestLog: false` is for (and what `skein start` does).
   **`createConsoleLogger({ level?, prefix? })`** (re-exported from
   [`@skein-js/server-kit`](../server-kit)) is the one-liner. See
   [errors-and-logging.md](../../docs/errors-and-logging.md#logging).

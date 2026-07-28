@@ -54,13 +54,13 @@ LangGraph Studio — any Agent Protocol client works with only a URL change. See
 
 ## Commands
 
-| Command            | What it does                                                        | LangGraph CLI equivalent | Key flags                                                                |
-| ------------------ | ------------------------------------------------------------------- | ------------------------ | ------------------------------------------------------------------------ |
-| `skein dev`        | In-process dev server, hot reload, `.skein/` state, no Docker.      | `langgraph dev`          | see [`skein dev` flags](#skein-dev-flags)                                |
-| `skein up`         | Self-hosted stack via Docker Compose (app + Postgres + Redis).      | `langgraph up`           | `-p, --port` (8123) · `--host` (0.0.0.0) · `-n, --npmrc <path>`          |
-| `skein build`      | Build a deployable Docker image from the config.                    | `langgraph build`        | `-t, --tag` (defaults to the project dir name) · `-n, --npmrc <path>`    |
-| `skein dockerfile` | Emit a standalone Dockerfile (stdout by default).                   | `langgraph dockerfile`   | `-o, --output <path>`                                                    |
-| `skein start`      | Serve a pre-built `.skein/build` artifact (the image's entrypoint). | —                        | `-p, --port` (8123) · `--host` · `--store` · `--queue` · `--concurrency` |
+| Command            | What it does                                                        | LangGraph CLI equivalent | Key flags                                                                                   |
+| ------------------ | ------------------------------------------------------------------- | ------------------------ | ------------------------------------------------------------------------------------------- |
+| `skein dev`        | In-process dev server, hot reload, `.skein/` state, no Docker.      | `langgraph dev`          | see [`skein dev` flags](#skein-dev-flags)                                                   |
+| `skein up`         | Self-hosted stack via Docker Compose (app + Postgres + Redis).      | `langgraph up`           | `-p, --port` (8123) · `--host` (0.0.0.0) · `-n, --npmrc <path>`                             |
+| `skein build`      | Build a deployable Docker image from the config.                    | `langgraph build`        | `-t, --tag` (defaults to the project dir name) · `-n, --npmrc <path>`                       |
+| `skein dockerfile` | Emit a standalone Dockerfile (stdout by default).                   | `langgraph dockerfile`   | `-o, --output <path>`                                                                       |
+| `skein start`      | Serve a pre-built `.skein/build` artifact (the image's entrypoint). | —                        | `-p, --port` (8123) · `--host` · `--store` (postgres) · `--queue` (redis) · `--concurrency` |
 
 All commands take `-c, --config <path>` (default `langgraph.json`).
 
@@ -81,11 +81,27 @@ any layer. Public-registry builds don't need it.
 | `--no-persist`            | —                    | persists    | Don't snapshot dev state to `.skein/` across restarts.                             |
 | `--no-reload`             | —                    | reloads     | Disable hot reload on source change.                                               |
 | `-v, --verbose`           | —                    | off         | Log per-run activity (tool calls, interrupts, timing). Failures are always logged. |
+| `--request-log`           | —                    | on          | A line per HTTP request. `--no-request-log` turns it off; env `SKEIN_REQUEST_LOG`. |
 
-`--store`, `--queue`, `--concurrency`, and `-n, --n-jobs-per-worker` are accepted by `skein start`
-too. Concurrency also reads `SKEIN_RUN_CONCURRENCY` (or `N_JOBS_PER_WORKER`) when no flag is passed —
-the path that reaches a container. See
-[runs-and-redis.md](../../docs/runs-and-redis.md#run-concurrency).
+`--concurrency` and `-n, --n-jobs-per-worker` are accepted by `skein start` too, and also read
+`SKEIN_RUN_CONCURRENCY` (or `N_JOBS_PER_WORKER`) when no flag is passed — the path that reaches a
+container. See [runs-and-redis.md](../../docs/runs-and-redis.md#run-concurrency).
+
+**`skein start` takes `--store` and `--queue` too, but only the durable values.** It is the production
+entrypoint: `--store postgres` and `--queue redis` are its defaults, and `--store memory` is rejected at
+parse time. It used to default to the in-memory drivers, with only the generated Dockerfile's CMD
+flipping them — so any CMD override, or a hand-rolled `docker run`, quietly produced a production server
+with a process-local queue and state that vanished on restart. For a local run with no infrastructure use
+`skein dev`; to develop against production drivers, `skein dev --store postgres --queue redis`.
+
+`skein start` also defaults `--request-log` **off**: it always passes a logger (that is how a failed run
+gets reported at all), and a line per request under production traffic buries those reports. Pass
+`--request-log` or `SKEIN_REQUEST_LOG=1` to turn it on.
+
+The combination `--store postgres --queue memory` — durable state, process-local queue, single instance —
+is still fully supported, but on the **embedded** path where it is documented
+([embedding.md](../../docs/embedding.md), `embedPostgresGraphs` with no `REDIS_URI`) rather than on the
+container entrypoint.
 
 `skein dev --store postgres --queue redis` is a capability the LangGraph CLI does **not** offer: it
 lets you develop against **production-shaped** storage (durable Postgres checkpoints, pgvector

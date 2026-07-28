@@ -11,7 +11,18 @@ import type { Router } from "express";
 import { createHandlerRouter } from "./routes.js";
 
 /** Either point at a `langgraph.json` (in-memory runtime) or inject a ready `ProtocolDeps`. */
-export type SkeinRouterOptions = SkeinRuntimeOptions;
+export type SkeinRouterOptions = SkeinRuntimeOptions & {
+  /** Body-parser limits for JSON request bodies. Defaults to `express.json()`'s 100kb. */
+  json?: { limit?: string | number };
+  /**
+   * Log a line per HTTP request. Defaults to whether a `logger` was passed to the adapter.
+   *
+   * That default is right for `skein dev` — asking the adapter for a logger is asking to see traffic —
+   * and wrong for a production server, which needs a logger so failed runs are reported at all but does
+   * not want two lines per request. Set it explicitly to separate the two.
+   */
+  requestLog?: boolean;
+};
 
 export interface SkeinRouter {
   /** Mount on an Express app: `app.use(router)`. */
@@ -39,6 +50,7 @@ export async function skeinRouter(options: SkeinRouterOptions): Promise<SkeinRou
     logger,
     // Explicit option wins; otherwise fall back to the config's `http.cors`, else off.
     cors: options.cors ?? cors ?? false,
+    ...(options.json ? { json: options.json } : {}),
   });
   return { router, runtime, logger };
 }

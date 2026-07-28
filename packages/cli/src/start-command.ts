@@ -11,15 +11,23 @@ import { loadConfig, type GraphSchemas } from "@skein-js/config";
 import { createExpressServer, type SkeinExpressServer } from "@skein-js/express";
 import {
   buildRuntime,
+  postgresConnectionOptions,
   type QueueDriver,
   type SkeinRuntime,
   type StoreDriver,
 } from "@skein-js/runtime";
-import { describeError, resolveRunConcurrency, resolveShutdownGraceMs } from "@skein-js/server-kit";
+import {
+  checkHeapHeadroom,
+  describeError,
+  describePoolPressure,
+  resolveRunConcurrency,
+  resolveShutdownGraceMs,
+} from "@skein-js/server-kit";
 
 import { printBanner } from "./banner.js";
 import { createDevLogger } from "./dev-logger.js";
 import { applyProjectEnv } from "./project-env.js";
+import { resolveRequestLog } from "./request-log.js";
 import { describeBindError, envHost, envPort } from "./serve-env.js";
 import { createShutdownHandler, forceExitDelayMs } from "./shutdown.js";
 
@@ -33,16 +41,21 @@ export interface StartCommandOptions {
   portExplicit?: boolean;
   /** `true` when `--host` was passed on the CLI; suppresses the `HOST` env fallback. */
   hostExplicit?: boolean;
-  /** Protocol-resource + checkpoint store: `"memory"` or `"postgres"` (`POSTGRES_URI`). */
-  store: StoreDriver;
-  /** Run queue + stream bus: `"memory"` or `"redis"` (`REDIS_URI`). */
-  queue: QueueDriver;
+  /**
+   * Protocol-resource + checkpoint store. Postgres only (`POSTGRES_URI`) — narrower than `StoreDriver`
+   * on purpose, since this is the production entrypoint and the flag rejects `memory` at parse time.
+   */
+  store: Extract<StoreDriver, "postgres">;
+  /** Run queue + stream bus. Redis only (`REDIS_URI`), for the same reason as `store`. */
+  queue: Extract<QueueDriver, "redis">;
   /** `--concurrency`: queued runs the background worker executes at once. Unset → env → default. */
   concurrency?: number;
   /** `--n-jobs-per-worker` / `-n`: the LangGraph spelling; used only when `--concurrency` is absent. */
   nJobsPerWorker?: number;
   /** `true` when `--verbose` was passed: log per-run activity. */
   verbose?: boolean;
+  /** `--request-log`: a line per HTTP request. Unset → `SKEIN_REQUEST_LOG` → off for `start`. */
+  requestLog?: boolean;
 }
 
 /** Load the artifact's precomputed schemas (baked by `skein build`), keyed by graph id. */
@@ -131,6 +144,9 @@ export async function runStart(options: StartCommandOptions): Promise<void> {
       cors: runtime.cors,
       warm: true,
       logger,
+      // Off unless asked for. The logger above is not optional — it is how a failed run gets reported —
+      // but a line per request under production traffic buries exactly those reports.
+      requestLog: resolveRequestLog(options.requestLog, false),
       worker: { maxConcurrency: runConcurrency, shutdownGraceMs },
     });
     await server.listen(port, host);
@@ -143,6 +159,15 @@ export async function runStart(options: StartCommandOptions): Promise<void> {
   }
 
   printBanner({ host, port, graphIds: runtime.deps.graphs.ids, authPath, runConcurrency }, logger);
+
+  // Two sizing mistakes that are already true before any traffic arrives, and that otherwise only show
+  // up as symptoms much later: an unexplained restart (OOM kill), and requests queuing on the pool.
+  // Reported once, after the banner, so they read as part of the startup summary.
+  const { warning: heapWarning } = checkHeapHeadroom();
+  if (heapWarning) logger.warn?.(`skein: ${heapWarning}`);
+
+  const poolWarning = describePoolPressure(runConcurrency, postgresConnectionOptions().poolMax);
+  if (poolWarning) logger.warn?.(`skein: ${poolWarning}`);
 
   // `server.close()` stops the worker (draining in-flight runs for `shutdownGraceMs`, then aborting
   // stragglers) before closing the HTTP server, so the force-exit timer has to outlast that window.

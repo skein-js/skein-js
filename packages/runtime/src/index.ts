@@ -17,6 +17,10 @@ export type {
 // Re-exported so callers can type their in-code graph map from one package alongside the helper.
 export type { EmbeddableGraph } from "@skein-js/server-kit";
 export { RuntimeConfigError } from "./errors.js";
+// Exposed so a host can read the same resolved pool tuning skein itself uses — `skein start` compares
+// `poolMax` against the run concurrency at boot.
+export { postgresConnectionOptions } from "./drivers.js";
+export type { PostgresConnectionOptions } from "./drivers.js";
 export {
   resolveEmbed,
   isCustomFunctionPath,
