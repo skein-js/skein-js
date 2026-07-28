@@ -43,6 +43,18 @@ export {
   type FileReader,
   type HeapHeadroom,
 } from "./heap-headroom.js";
+export {
+  DEFAULT_HEAP_SAMPLE_MS,
+  DEFAULT_HEAP_WARN_PERCENT,
+  HEAP_REARM_MARGIN_PERCENT,
+  HEAP_REARM_PERCENT,
+  resolveHeapPressureOptions,
+  startHeapPressureMonitor,
+  type HeapPressureContext,
+  type HeapPressureMonitor,
+  type HeapPressureMonitorOptions,
+  type IntervalHandle,
+} from "./heap-pressure.js";
 export { resolveMaxPageSize } from "./max-page-size.js";
 export { describePoolPressure, resolveRunConcurrency } from "./run-concurrency.js";
 export { DEFAULT_RUN_CONCURRENCY } from "@skein-js/agent-protocol";

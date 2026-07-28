@@ -6,6 +6,7 @@
 
 import {
   createProtocolRuntime,
+  type RunWorker,
   type Logger,
   type ProtocolDeps,
   type ProtocolRuntime,
@@ -14,6 +15,7 @@ import {
 import type { ModuleImporter } from "@skein-js/config";
 import type { CorsOptions } from "cors";
 
+import { resolveHeapPressureOptions, startHeapPressureMonitor } from "./heap-pressure.js";
 import { resolveRunConcurrency } from "./run-concurrency.js";
 import { resolveShutdownGraceMs } from "./shutdown-grace.js";
 
@@ -175,6 +177,13 @@ export async function resolveProtocolRuntime(
 ): Promise<ResolvedProtocolRuntime> {
   const { deps, cors: corsFromConfig, logger } = await resolveRuntimeDeps(options, frameworkLogger);
 
+  // Every environment knob is resolved *before* anything is started, so a typo fails cleanly instead of
+  // part-way through assembly. Resolving the heap options after `worker.start()` meant a bad
+  // `SKEIN_HEAP_WARN_PERCENT` threw with a live queue consumer already running: `skein start` would then
+  // tear down the drivers underneath it, and Next.js — which evicts a rejected runtime so the next
+  // request retries — would start another worker on every request.
+  const heapPressureOptions = resolveHeapPressureOptions();
+
   // Resolve worker settings here rather than in each adapter: this is the ONE place options +
   // environment become the worker's settings, so Express/Fastify/NestJS/Next.js and `skein dev`/`start`
   // can't drift.
@@ -197,5 +206,41 @@ export async function resolveProtocolRuntime(
   }
   runtime.worker.start();
 
-  return { runtime, cors: corsFromConfig, logger };
+  // Watch heap usage for the life of the worker. Started here rather than in each adapter for the same
+  // reason the worker settings are resolved here: one place, so the four adapters and `skein dev`/`start`
+  // cannot drift. Free when no logger is configured — it schedules nothing at all.
+  const heapMonitor = startHeapPressureMonitor({
+    ...(logger ? { logger } : {}),
+    ...heapPressureOptions,
+    // Read at warn time only. `bufferedFrameCount` is a diagnostic the in-memory bus exposes and the
+    // Redis one does not, so it is probed rather than required — on Redis the frames are not in this
+    // process's heap anyway, which is itself part of the answer.
+    context: () => {
+      const bufferedFrames = (deps.bus as { bufferedFrameCount?: number }).bufferedFrameCount;
+      return {
+        inFlightRuns: runtime.worker.inFlightRunCount,
+        ...(typeof bufferedFrames === "number" ? { bufferedFrames } : {}),
+      };
+    },
+  });
+
+  // Stopped wherever the worker is stopped, so no adapter has to remember a second teardown call — and
+  // an adapter that forgets cannot leave a timer behind. That coupling matters beyond tidiness: a live
+  // interval is a GC root, and this one closes over `runtime` and `deps`, so a host that *abandons* a
+  // resolved runtime without stopping it now pins the whole thing (store, threads, buffered frames)
+  // rather than letting it be collected. `stop()` is the contract; Next.js's runtime singleton and every
+  // adapter's shutdown path already honour it. Delegated field by field rather than spread:
+  // `inFlightRunCount` is a getter, and spreading would freeze it at its value right now.
+  const worker: RunWorker = {
+    get inFlightRunCount() {
+      return runtime.worker.inFlightRunCount;
+    },
+    start: () => runtime.worker.start(),
+    stop: async () => {
+      heapMonitor.stop();
+      await runtime.worker.stop();
+    },
+  };
+
+  return { runtime: { ...runtime, worker }, cors: corsFromConfig, logger };
 }

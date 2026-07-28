@@ -42,7 +42,8 @@ with sane defaults and documented sizing math.
 | `d8d313f` | P6c     | Ownership filter pushed into the driver query   |
 | `8c4add3` | P7      | `statement_timeout` on by default (30s)         |
 | `4b8a3af` | P8      | Adapter module graph: dev-only tooling removed  |
-| _pending_ | P9      | `skein start` durable-only; container hardening |
+| `9b6ef9c` | P9      | `skein start` durable-only; container hardening |
+| _pending_ | P9b     | Runtime heap-pressure monitor                   |
 
 ### Measured
 
@@ -328,17 +329,28 @@ remembering:
 
 ### P9b — runtime heap-pressure detection
 
-Bounding leaks is not knowing when a deployment is near its ceiling; today the first signal is an OOM
-kill, which on Cloud Run/k8s looks like an unexplained restart. Add
-`packages/server-kit/src/heap-pressure.ts`: sample `v8.getHeapStatistics()` on a 30s
-`setInterval().unref()`, warn **once per threshold crossing** with hysteresis (warn at 85%, re-arm
-below 70%) — a monitor that logs every 30s under sustained pressure gets filtered out.
+**DONE** (see the shipped table). Samples `v8.getHeapStatistics()` on an unref'd 30s interval, warns once
+per crossing at 85% and re-arms 15 points below, started by `resolveProtocolRuntime` and stopped with the
+worker. `SKEIN_HEAP_WARN_PERCENT` (`0` off) / `SKEIN_HEAP_SAMPLE_MS`. `RunWorker` gained
+`inFlightRunCount` so the warning can say _why_ the heap is full.
 
-The payload is what makes it useful: heap used/limit, RSS, container limit, in-flight run count, active
-SSE subscriber count, and `bufferedFrameCount` from the bus. That combination distinguishes "too many
-concurrent runs" from "one slow client buffering" from "a genuine leak". Emit through the injected
-`Logger` and, when telemetry is on, as a `TelemetrySink` gauge. `SKEIN_HEAP_WARN_PERCENT` (85, `0`
-disables), `SKEIN_HEAP_SAMPLE_MS` (30000). Test with an injected `heapStatistics` reader and fake clock.
+Three things worth keeping:
+
+- **The re-arm band has to be derived from the threshold, not fixed.** A hardcoded 70% floor with
+  `SKEIN_HEAP_WARN_PERCENT=60` re-arms on the very samples that trip the warning — a flat, healthy 65%
+  then logs one line every other sample, forever, which is precisely the flood the latch exists to
+  prevent. Reproduced before fixing.
+- **Resolve every env knob before starting anything.** The options were resolved after
+  `worker.start()`, so a typo'd `SKEIN_HEAP_WARN_PERCENT` threw with a live queue consumer already
+  running: `skein start` tore the drivers down underneath it, and Next.js — which evicts a rejected
+  runtime so the next request retries — started another worker on _every request_.
+- **The band must be wider than the GC sawtooth.** Measured in `node:22-slim`: a busy process swings
+  12–15 points between collections. At 85/70 a healthy-but-loaded instance warns zero times and a
+  genuinely loaded one warns once. The residual risk is under-reporting (a process parked at 80–92%
+  never re-arms), not noise.
+
+Scope limit, stated in the docs rather than implied: it watches the **JS heap only**, so an RSS-driven
+kernel OOM (large Buffers, many sockets) never trips it.
 
 ### P10 — run timeout & webhook
 

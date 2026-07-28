@@ -93,6 +93,17 @@ Pass `overrides` to swap in production drivers or an auth engine while keeping t
   `DEFAULT_RUN_CONCURRENCY` (10, matching the LangGraph CLI). The environment is validated even when
   an explicit value is given, so the two sources can't silently disagree. `skein dev`/`start` use it
   to resolve the number they print in the startup banner.
+- **`startHeapPressureMonitor(options): HeapPressureMonitor`** — samples `v8.getHeapStatistics()` on an
+  unref'd interval and warns **once per crossing** (85% of the heap limit, re-arming below 70%), with
+  in-flight runs and buffered frames alongside so the line distinguishes too-much-concurrency from a slow
+  SSE consumer from a leak. `resolveHeapPressureOptions()` reads `SKEIN_HEAP_WARN_PERCENT` (`0` disables)
+  and `SKEIN_HEAP_SAMPLE_MS`. Started by `resolveProtocolRuntime` and stopped with the worker, so no
+  adapter has to remember it. Free when no logger is configured — it schedules nothing.
+- **`checkHeapHeadroom(): HeapHeadroom`** — the boot-time counterpart: compares V8's ceiling with the
+  container's cgroup limit and warns when the automatic sizing does not fit (see
+  [deploy.md](../../docs/deploy.md)).
+- **`describePoolPressure(runConcurrency, poolMax): string | undefined`** — warns when the worker can
+  execute more runs at once than the Postgres pool can serve.
 - **`resolveMaxPageSize(explicit?, env?): number`** — the same chain for the store page bound:
   explicit `maxPageSize` → `SKEIN_MAX_PAGE_SIZE` → `DEFAULT_MAX_PAGE_SIZE` (1000). Every driver applies
   it to list/search, including when the caller asks for no limit.

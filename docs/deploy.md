@@ -227,6 +227,31 @@ NODE_OPTIONS="--enable-source-maps --max-old-space-size=153"
 waiting for a connection rather than executing, which looks like flat throughput rather than like a pool
 limit. Budget **two** pools per instance (store + checkpointer).
 
+### Heap pressure while running
+
+Separately from the boot check, skein samples heap usage every 30s and warns once when it passes 85% of
+the limit — then stays quiet until it drops back below 70%, so a sustained episode is one log line rather
+than one every 30 seconds. It runs for the life of the background worker and needs a `logger` to be
+configured; `SKEIN_HEAP_WARN_PERCENT=0` turns it off.
+
+The warning carries what makes it actionable, because the percentage alone does not:
+
+| What the line shows                                | What it means                                                                                                          |
+| -------------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------- |
+| High `runs in flight`, at or near your concurrency | Too much work at once — lower `SKEIN_RUN_CONCURRENCY` or scale out.                                                    |
+| High `buffered frames`                             | A slow SSE consumer is holding a run's frames in memory — see `SKEIN_MEMORY_BUS_MAX_FRAMES_PER_RUN`, or move to Redis. |
+| Neither, and the heap stays high across episodes   | A genuine leak. Capture a heap snapshot.                                                                               |
+
+On Redis there is no `buffered frames` figure, because the frames are not in this process's heap — which
+is itself part of the answer.
+
+Two limits worth knowing. It watches the **JS heap only**: `used_heap_size` excludes external memory, so
+a process killed for RSS — large `Buffer`s, many sockets — never trips it. That is the right scope for
+what skein itself retains (buffered frames, mirrored graph state), but it does not make the boot check
+above redundant. And the re-arm band sits 15 points under whatever threshold you set, so
+`SKEIN_HEAP_WARN_PERCENT=60` re-arms at 45%; a value at or below 15 latches after its first warning for
+the life of the process, which is the safe direction rather than a flood.
+
 ### Run concurrency
 
 Each instance executes up to **10** queued runs at once. Set `SKEIN_RUN_CONCURRENCY` (or the
@@ -379,6 +404,8 @@ platform names; map them onto skein's.
 | `SKEIN_SHUTDOWN_GRACE_MS`  | no                   | Drain window for in-flight runs on `SIGTERM` (default 5000).       |
 | `SKEIN_MAX_PAGE_SIZE`      | no                   | Largest page a list/search returns (default 1000).                 |
 | `SKEIN_REQUEST_LOG`        | no                   | `1` to log a line per HTTP request (off by default under `start`). |
+| `SKEIN_HEAP_WARN_PERCENT`  | no                   | Warn above this % of the heap limit (default 85; `0` disables).    |
+| `SKEIN_HEAP_SAMPLE_MS`     | no                   | How often the heap monitor samples (default 30000).                |
 
 Two more apply only when the run queue and event bus are **in-memory**. That is no longer reachable from
 the image — `skein start` rejects `--queue memory` — so these matter on the embedded path

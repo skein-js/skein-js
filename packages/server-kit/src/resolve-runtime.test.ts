@@ -22,6 +22,11 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 import { embedInMemoryGraphs } from "./in-memory-deps.js";
 import { resolveProtocolRuntime, resolveRuntimeDeps } from "./resolve-runtime.js";
 
+/** A logger that satisfies the interface without printing — the monitor needs one to schedule at all. */
+function silentLogger(): Logger {
+  return { debug: () => {}, info: () => {}, warn: () => {}, error: () => {} };
+}
+
 /** A minimal, real compiled graph — enough to be a valid `ResolvedGraph` map value. */
 function buildGraph() {
   return new StateGraph(MessagesAnnotation)
@@ -228,5 +233,81 @@ describe("resolveRuntimeDeps — logger precedence", () => {
     expect(logger.entries).toContainEqual(
       expect.objectContaining({ level: "error", message: expect.stringContaining("kaboom") }),
     );
+  });
+});
+
+// The monitor is started here rather than in each adapter, and tied to the worker's lifetime so no
+// adapter has to remember a second teardown call. Both halves matter: an unstarted monitor reports
+// nothing, and one that outlives the worker leaves a timer behind in an embedded host.
+describe("heap pressure monitor lifecycle", () => {
+  afterEach(() => {
+    delete process.env["SKEIN_HEAP_WARN_PERCENT"];
+    delete process.env["SKEIN_HEAP_SAMPLE_MS"];
+  });
+
+  it("stops the monitor when the worker is stopped", async () => {
+    const cleared = vi.fn();
+    const timers = vi.spyOn(globalThis, "setInterval");
+    const clears = vi.spyOn(globalThis, "clearInterval").mockImplementation(cleared);
+
+    const { runtime } = await resolveProtocolRuntime({
+      deps: embedInMemoryGraphs({ agent: buildGraph() }),
+      logger: silentLogger(),
+    });
+    expect(timers).toHaveBeenCalled();
+
+    await runtime.worker.stop();
+
+    expect(cleared).toHaveBeenCalled();
+    timers.mockRestore();
+    clears.mockRestore();
+  });
+
+  it("schedules nothing when the monitor is disabled", async () => {
+    process.env["SKEIN_HEAP_WARN_PERCENT"] = "0";
+    const timers = vi.spyOn(globalThis, "setInterval");
+
+    const { runtime } = await resolveProtocolRuntime({
+      deps: embedInMemoryGraphs({ agent: buildGraph() }),
+      logger: silentLogger(),
+    });
+
+    expect(timers).not.toHaveBeenCalled();
+    await runtime.worker.stop();
+    timers.mockRestore();
+  });
+
+  // A malformed knob must fail *before* anything is started. Resolving it after `worker.start()` left a
+  // live queue consumer behind: `skein start` then tore down the drivers underneath it, and Next.js —
+  // which evicts a rejected runtime so the next request retries — started another worker per request.
+  it("rejects a malformed heap knob without starting a worker", async () => {
+    process.env["SKEIN_HEAP_WARN_PERCENT"] = "101";
+    const consume = vi.fn(() => ({ close: async () => {} }) as never);
+    const queue = { ...new MemoryRunQueue(), consume } as unknown as RunQueue;
+
+    await expect(
+      resolveProtocolRuntime({
+        deps: { ...embedInMemoryGraphs({ agent: buildGraph() }), queue },
+        logger: silentLogger(),
+      }),
+    ).rejects.toThrow(/SKEIN_HEAP_WARN_PERCENT/);
+
+    expect(consume).not.toHaveBeenCalled();
+  });
+
+  // `inFlightRunCount` is a getter on the worker. The wrapper delegates field by field precisely
+  // because spreading would freeze it at its value at wrap time — which would read 0 forever, exactly
+  // when the warning most needs it.
+  it("exposes a live in-flight run count through the wrapped worker", async () => {
+    const { runtime } = await resolveProtocolRuntime({
+      deps: embedInMemoryGraphs({ agent: buildGraph() }),
+    });
+
+    expect(runtime.worker.inFlightRunCount).toBe(0);
+    expect(Object.getOwnPropertyDescriptor(runtime.worker, "inFlightRunCount")?.get).toBeTypeOf(
+      "function",
+    );
+
+    await runtime.worker.stop();
   });
 });

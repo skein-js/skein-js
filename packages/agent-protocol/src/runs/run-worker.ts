@@ -50,6 +50,12 @@ export interface RunWorkerOptions {
 }
 
 export interface RunWorker {
+  /**
+   * Runs this worker is executing right now. Read-only diagnostics — the number that tells a heap
+   * warning apart from a run-concurrency problem, since "the heap is full" reads very differently at 1
+   * in-flight run than at the concurrency limit.
+   */
+  readonly inFlightRunCount: number;
   /** Begin consuming and executing queued runs. Idempotent. */
   start(): void;
   /** Stop consuming; drain in-flight runs, then abort any still running past the grace deadline. */
@@ -164,6 +170,10 @@ export function createRunWorker(ctx: ProtocolContext, options: RunWorkerOptions 
   let consumer: RunConsumer | undefined;
 
   return {
+    get inFlightRunCount() {
+      return inFlight.size;
+    },
+
     start() {
       if (consumer) return;
       consumer = deps.queue.consume(executeQueuedRun, { concurrency: maxConcurrency });
