@@ -1,8 +1,18 @@
 import { describe, expect, it } from "vitest";
 
-import { createFixtureDeps } from "../__fixtures__/deps.js";
+import { createFixtureDeps, createFixtureResolver } from "../__fixtures__/deps.js";
 import { createContext } from "../context.js";
+import type { GraphResolver, ResolvedGraph } from "../deps.js";
 import { createProtocolServiceFromContext } from "../service.js";
+
+import { DEFAULT_THREAD_HISTORY_LIMIT } from "./thread-service.js";
+
+/** The `getStateHistory` options shape, spelled out to avoid a direct `@langchain/core` dependency. */
+interface CheckpointListOptions {
+  limit?: number;
+  before?: { configurable?: Record<string, unknown> };
+  filter?: Record<string, unknown>;
+}
 
 async function serviceWithAssistants(deps = createFixtureDeps()) {
   const service = createProtocolServiceFromContext(createContext(deps));
@@ -263,5 +273,80 @@ describe("thread service — time travel", () => {
     expect((await service.threads.getState(attacker.thread_id)).values).toEqual({
       value: "poisoned",
     });
+  });
+});
+
+// The limit has to reach the *checkpointer*, not just end the loop. `PostgresSaver.list` materializes
+// every checkpoint row and its `channel_values` in one query unless it is given a limit, so a `break`
+// after the fact saves no memory at all — the history is already on the heap. These assert on the
+// options `getStateHistory` actually receives, which is the only place that distinction is visible.
+describe("thread history bounds", () => {
+  /** A resolver that records the options each `getStateHistory` call receives, then delegates. */
+  function recordingResolver(calls: (CheckpointListOptions | undefined)[]): GraphResolver {
+    const inner = createFixtureResolver();
+    return {
+      ...inner,
+      load: async (graphId) => {
+        const graph = await inner.load(graphId);
+        return new Proxy(graph as object, {
+          get(target, property, receiver) {
+            if (property !== "getStateHistory") return Reflect.get(target, property, receiver);
+            return (config: unknown, options?: CheckpointListOptions) => {
+              calls.push(options);
+              return (
+                target as {
+                  getStateHistory: (
+                    c: unknown,
+                    o?: CheckpointListOptions,
+                  ) => AsyncIterable<unknown>;
+                }
+              ).getStateHistory(config, options);
+            };
+          },
+        }) as ResolvedGraph;
+      },
+    };
+  }
+
+  async function threadWithHistory(calls: (CheckpointListOptions | undefined)[]) {
+    const service = await serviceWithAssistants(
+      createFixtureDeps({ graphs: recordingResolver(calls) }),
+    );
+    const thread = await service.threads.create();
+    await service.runs.createWait({
+      thread_id: thread.thread_id,
+      assistant_id: "echo",
+      input: { value: "hi" },
+    });
+    calls.length = 0; // the run itself reads state; only the history calls below matter
+    return { service, thread };
+  }
+
+  it("passes the default limit into getStateHistory when the caller names none", async () => {
+    const calls: (CheckpointListOptions | undefined)[] = [];
+    const { service, thread } = await threadWithHistory(calls);
+
+    await service.threads.history(thread.thread_id);
+
+    expect(calls).toEqual([{ limit: DEFAULT_THREAD_HISTORY_LIMIT }]);
+  });
+
+  it("passes an explicit limit, before, and metadata filter through", async () => {
+    const calls: (CheckpointListOptions | undefined)[] = [];
+    const { service, thread } = await threadWithHistory(calls);
+
+    await service.threads.history(thread.thread_id, {
+      limit: 3,
+      before: { configurable: { checkpoint_id: "c-1" } },
+      filter: { source: "loop" },
+    });
+
+    expect(calls).toEqual([
+      {
+        limit: 3,
+        before: { configurable: { checkpoint_id: "c-1" } },
+        filter: { source: "loop" },
+      },
+    ]);
   });
 });

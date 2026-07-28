@@ -59,12 +59,13 @@ default is **1000 rows**. This is a memory bound: a thread row carries the threa
 state, so an unbounded `POST /threads/search` on a large deployment materializes the table twice over
 (the rows, then the JSON response string) inside one request.
 
-| Surface                             | Bound                                                  |
-| ----------------------------------- | ------------------------------------------------------ |
-| `limit` on a search request         | rejected above 1000 by the wire schema                 |
-| `limit` omitted, or a `list()` call | the first `SKEIN_MAX_PAGE_SIZE` rows (default 1000)    |
-| `assistants.count()`                | **not** bounded — it answers "how many match" in total |
-| `runs.listByThread()`               | **not** bounded — run rows carry no graph state        |
+| Surface                             | Bound                                                   |
+| ----------------------------------- | ------------------------------------------------------- |
+| `limit` on a search request         | rejected above 1000 by the wire schema                  |
+| `limit` omitted, or a `list()` call | the first `SKEIN_MAX_PAGE_SIZE` rows (default 1000)     |
+| `assistants.count()`                | **not** bounded — it answers "how many match" in total  |
+| `runs.listByThread()`               | **not** bounded — run rows carry no graph state         |
+| `POST /threads/{id}/history`        | 100 checkpoints by default, 1000 max — a separate bound |
 
 Set `SKEIN_MAX_PAGE_SIZE` to change the driver bound (`maxPageSize` on the store constructor and on
 `embedPostgresGraphs` do the same in code). Lowering it is the useful direction on a small container.

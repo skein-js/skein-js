@@ -27,17 +27,18 @@ with sane defaults and documented sizing math.
 
 ## Shipped
 
-| Commit    | Phase | What changed                                    |
-| --------- | ----- | ----------------------------------------------- |
-| `ffd779f` | P0    | `packages/bench` harness + baseline             |
-| `7e63ed8` | P1    | SSE backpressure in all three Node transports   |
-| `d1c5ba9` | P3    | In-memory event bus bounded                     |
-| `df31b68` | P4    | Redis bus: one round trip/frame, one connection |
-| `cac874d` | P2    | Frame-encode cache + replacer fix               |
-| `dfb450d` | P5a   | Postgres indexes for list/search paths          |
-| `713672b` | P5b   | Opt-in HNSW index                               |
-| `be7d550` | P6a   | Postgres pool timeouts                          |
-| _pending_ | P6b   | Page bound on every list/search                 |
+| Commit    | Phase   | What changed                                    |
+| --------- | ------- | ----------------------------------------------- |
+| `ffd779f` | P0      | `packages/bench` harness + baseline             |
+| `7e63ed8` | P1      | SSE backpressure in all three Node transports   |
+| `d1c5ba9` | P3      | In-memory event bus bounded                     |
+| `df31b68` | P4      | Redis bus: one round trip/frame, one connection |
+| `cac874d` | P2      | Frame-encode cache + replacer fix               |
+| `dfb450d` | P5a     | Postgres indexes for list/search paths          |
+| `713672b` | P5b     | Opt-in HNSW index                               |
+| `be7d550` | P6a     | Postgres pool timeouts                          |
+| `6d39d45` | P6b     | Page bound on every list/search                 |
+| _pending_ | P6b-bis | Thread-history bound (body-read + real limit)   |
 
 ### Measured
 
@@ -128,8 +129,21 @@ search **with** a `query` string and no `store.index` configured, and `offset` i
 deep offset still walks the index — 137 ms measured at `OFFSET 299000`). The bound is on **row count,
 not bytes**: 1000 thread rows each carrying a multi-MB `values` blob is still a very large response.
 
-**6b-bis — bound thread history. Highest single-request win, and the limit that exists today is a
-no-op.** `packages/agent-protocol/src/create-handlers.ts:287-291` passes `options: undefined` when no
+**6b-bis — bound thread history. DONE** (see the shipped table). Default 100, schema cap 1000, options
+read from the body, and the limit passed into `getStateHistory({ limit, before, filter })`.
+
+Two deliberate departures from the plan above: the default is **not** derived from `SKEIN_MAX_PAGE_SIZE`
+(history reads the checkpointer, not the store, so a store page bound does not apply to it), and `before`
+/`metadata` are now _honoured_ rather than ignored — bounding the endpoint without them would make older
+history unreachable, so paging had to start working. `before.configurable` is enumerated down to
+`checkpoint_id` the way `checkpointSchema` is, so a client `thread_id` cannot ride along; forwarding it
+verbatim was safe only because today's savers ignore it.
+
+Worth knowing: `useStream` sends `limit: 10`, which was previously dropped, so it used to receive the
+whole history and now receives 10 checkpoints — parity with LangGraph Platform. The transcript is
+unaffected; the branch/edit tree over older turns is what shrinks.
+
+For reference, the state before the fix: `packages/agent-protocol/src/create-handlers.ts:287-291` passes `options: undefined` when no
 `limit` query param is given, and `thread-service.ts:141-149` then drains `graph.getStateHistory()` to
 exhaustion, pushing **every checkpoint's full `values`** into one array, which is then
 `serializeWireJson`'d into one response string. A 200-turn thread materializes its entire state history

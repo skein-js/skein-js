@@ -25,6 +25,7 @@ import {
   storeSearchSchema,
   threadCreateSchema,
   threadPatchSchema,
+  threadHistorySchema,
   threadSearchSchema,
   threadStateUpdateSchema,
   threadStreamSchema,
@@ -109,6 +110,12 @@ function queryValue(value: string | string[] | undefined): string | undefined {
   return Array.isArray(value) ? value[0] : value;
 }
 
+/**
+ * Ceiling on any integer read from the query string. Matches the cap the request *body* schemas apply
+ * to a `limit`, so the two ways of asking for a page size agree.
+ */
+const MAX_QUERY_INT = 1000;
+
 /** Parse a namespace query param: repeated values, or a single dot-separated string. */
 function namespaceFromQuery(value: string | string[] | undefined): string[] {
   if (Array.isArray(value)) return value;
@@ -116,11 +123,19 @@ function namespaceFromQuery(value: string | string[] | undefined): string[] {
   return [];
 }
 
+/**
+ * A positive-integer query param, bounded by {@link MAX_QUERY_INT}.
+ *
+ * Bounded rather than rejected: these are all "how much do you want" params, and a caller asking for
+ * more than the ceiling wants as much as it can get. An *unbounded* value is the problem — it used to
+ * mean `?limit=1000000` was accepted verbatim.
+ */
 function positiveIntQuery(value: string | string[] | undefined): number | undefined {
   const raw = queryValue(value);
   if (raw === undefined) return undefined;
   const parsed = Number.parseInt(raw, 10);
-  return Number.isInteger(parsed) && parsed > 0 ? parsed : undefined;
+  if (!Number.isInteger(parsed) || parsed <= 0) return undefined;
+  return Math.min(parsed, MAX_QUERY_INT);
 }
 
 /** Coerce a `?flag=true|false` query param to a boolean (anything else → undefined). */
@@ -134,6 +149,18 @@ function booleanQuery(value: string | string[] | undefined): boolean | undefined
 /** `?xray` is `boolean | number` (a depth bound) — try boolean first, then a positive integer. */
 function xrayQuery(value: string | string[] | undefined): number | boolean | undefined {
   return booleanQuery(value) ?? positiveIntQuery(value);
+}
+
+/**
+ * Normalize `before` to the config `getStateHistory` expects. The SDK sends a config; a hand-rolled
+ * caller is more likely to send the bare checkpoint id, so accept both — and forward *only* the id, so
+ * the thread scope stays server-owned.
+ */
+function historyBefore(before: string | { configurable: { checkpoint_id: string } }): {
+  configurable: { checkpoint_id: string };
+} {
+  const checkpointId = typeof before === "string" ? before : before.configurable.checkpoint_id;
+  return { configurable: { checkpoint_id: checkpointId } };
 }
 
 export function createProtocolHandlers(service: ProtocolService): ProtocolHandlers {
@@ -285,9 +312,18 @@ export function createProtocolHandlers(service: ProtocolService): ProtocolHandle
     },
 
     getThreadHistory: async (req) => {
-      const limit = positiveIntQuery(req.query["limit"]);
-      const options = limit === undefined ? undefined : { limit };
-      return json(await service.threads.history(requireParam(req.params, "thread_id"), options));
+      // The SDK sends every option in the body; `?limit=` is kept as a fallback for hand-rolled callers
+      // that reach for a query param on a POST. It is *clamped* rather than rejected, unlike the body's
+      // limit — a query string has no schema to 400 from.
+      const body = parse(threadHistorySchema, req.body ?? {}) ?? {};
+      const limit = body.limit ?? positiveIntQuery(req.query["limit"]);
+      return json(
+        await service.threads.history(requireParam(req.params, "thread_id"), {
+          ...(limit !== undefined ? { limit } : {}),
+          ...(body.before ? { before: historyBefore(body.before) } : {}),
+          ...(body.metadata ? { filter: body.metadata } : {}),
+        }),
+      );
     },
 
     getThreadState: async (req) =>

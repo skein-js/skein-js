@@ -34,8 +34,29 @@ export interface PatchThreadInput {
 }
 
 export interface HistoryOptions {
+  /** Checkpoints to return, newest first. Defaults to {@link DEFAULT_THREAD_HISTORY_LIMIT}. */
   limit?: number;
+  /**
+   * Read the history before this checkpoint, for paging back through a long thread. Structurally a
+   * `RunnableConfig` — spelled out here so this package need not depend on `@langchain/core` directly.
+   */
+  before?: { configurable?: Record<string, unknown> };
+  /** Keep only checkpoints whose metadata matches. */
+  filter?: Record<string, unknown>;
 }
+
+/**
+ * Checkpoints `POST /threads/{id}/history` returns when the caller names no limit.
+ *
+ * Much smaller than the store's page bound: an element here is a checkpoint's **entire graph state**,
+ * not a row, and the response holds every one of them plus the serialized string at the same time. A
+ * long-lived thread has thousands of checkpoints, so "all of them" was never a sensible default — and
+ * the LangGraph SDK itself asks for 10.
+ *
+ * Not derived from `SKEIN_MAX_PAGE_SIZE`: history is read from the checkpointer, not the store, so the
+ * store's page bound does not apply to it.
+ */
+export const DEFAULT_THREAD_HISTORY_LIMIT = 100;
 
 /** Body of `POST /threads/{id}/state` — a time-travel update that forks a new checkpoint. */
 export interface UpdateStateInput {
@@ -139,12 +160,22 @@ export function createThreadService(ctx: ProtocolContext): ThreadService {
     if (!graph) return [];
 
     const states: ThreadState[] = [];
-    const limit = options?.limit;
-    for await (const snapshot of graph.getStateHistory({
-      configurable: { thread_id: threadId },
-    })) {
+    const limit = options?.limit ?? DEFAULT_THREAD_HISTORY_LIMIT;
+    // The limit goes *into* `getStateHistory`, not just into a `break`. `PostgresSaver.list` only emits
+    // a SQL `LIMIT` when it is given one, and otherwise runs a single query that materializes every
+    // checkpoint row — including its `channel_values` — before yielding the first snapshot. Breaking out
+    // of the loop afterwards therefore saves nothing at all: the heap has already taken the whole
+    // history. The `break` stays as a backstop for a checkpointer that ignores the option.
+    for await (const snapshot of graph.getStateHistory(
+      { configurable: { thread_id: threadId } },
+      {
+        limit,
+        ...(options?.before ? { before: options.before } : {}),
+        ...(options?.filter ? { filter: options.filter } : {}),
+      },
+    )) {
       states.push(snapshotToThreadState(snapshot));
-      if (limit !== undefined && states.length >= limit) break;
+      if (states.length >= limit) break;
     }
     return states;
   };

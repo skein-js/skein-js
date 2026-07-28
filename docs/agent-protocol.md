@@ -74,7 +74,7 @@ version and mirrors its fields, and `POST .../latest` rolls back to any past ver
 | `GET`    | `/threads/{thread_id}/state`                 | Current state snapshot (`useStream` hydrates) |
 | `POST`   | `/threads/{thread_id}/state`                 | Time travel: fork state at a checkpoint       |
 | `GET`    | `/threads/{thread_id}/state/{checkpoint_id}` | Time travel: state at a checkpoint            |
-| `POST`   | `/threads/{thread_id}/history`               | Checkpoint history, newest-first              |
+| `POST`   | `/threads/{thread_id}/history`               | Checkpoint history, newest-first (paged)      |
 | `PATCH`  | `/threads/{thread_id}`                       |                                               |
 | `POST`   | `/threads/{thread_id}/copy`                  | Duplicates the thread + its history           |
 | `DELETE` | `/threads/{thread_id}`                       |                                               |
@@ -90,7 +90,27 @@ LangGraph), so listing the threads for a graph is just:
 
 The stamp reflects the thread's most recent run; a thread that has never run carries no `graph_id`.
 
-**Time travel (fork from a checkpoint).** `GET /threads/{id}/history` is read-only, but you can also
+**Paging checkpoint history.** `POST /threads/{id}/history` takes its options in the **body** (as the
+LangGraph SDK sends them): `{ limit?, before?, metadata? }`. It returns at most **100** checkpoints when
+`limit` is omitted, and rejects a `limit` above 1000 — each element is a checkpoint's whole graph state,
+so a long thread's full history is one of the largest single responses skein can produce. Page back
+through it with `before` (a checkpoint config carrying `checkpoint_id`, or a bare `checkpoint_id`) — the
+bound is exclusive, so pass the last checkpoint you received — and narrow it with `metadata`, which
+becomes the checkpointer's filter. Only the `checkpoint_id` reaches the checkpointer: the thread scope is
+server-owned, so a `thread_id` in `before.configurable` is dropped rather than honoured.
+
+A `?limit=` query param is still accepted for hand-rolled callers, but it is _clamped_ to 1000 rather
+than rejected (a query string has no schema to 400 from). The body wins if both are present.
+
+`useStream` sends `limit: 10`, which skein previously **dropped** — it now returns 10 checkpoints instead
+of every one, matching LangGraph Platform. The rendered transcript is unaffected (the newest checkpoint's
+`values` carry the whole message list); what shrinks is how far back the branch/edit tree reaches. Raise
+it by passing your own `limit` if you need deeper history.
+
+The 100-checkpoint default is independent of `SKEIN_MAX_PAGE_SIZE` — history is read from the
+checkpointer, not from the store, so the store's page bound does not apply to it.
+
+**Time travel (fork from a checkpoint).** `POST /threads/{id}/history` is read-only, but you can also
 _branch_ from any past checkpoint:
 
 - `POST /threads/{id}/state` with `{ values, as_node?, checkpoint_id? }` calls `graph.updateState` to

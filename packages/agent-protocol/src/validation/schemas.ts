@@ -205,6 +205,42 @@ export const storePutSchema = z
   })
   .passthrough();
 
+/**
+ * `POST /threads/{id}/history`.
+ *
+ * Every field arrives in the **body**, not the query string — that is what the LangGraph SDK sends
+ * (`json: { limit, before, metadata, checkpoint }`, with `limit` defaulting to 10). Reading `?limit`
+ * instead means a real client's limit is silently dropped, which is how this endpoint came to drain a
+ * thread's entire checkpoint history.
+ *
+ * `checkpoint` is accepted and ignored: `getStateHistory` has no equivalent option, and rejecting a
+ * field the SDK always sends would 400 every call.
+ */
+export const threadHistorySchema = z
+  .object({
+    // Bounded harder than a search page: each element carries a full graph state, not a row.
+    limit: z.number().int().positive().max(1000).optional(),
+    /**
+     * Read the history *before* this checkpoint — a config, or a bare checkpoint id.
+     *
+     * `configurable` is enumerated rather than passed through, matching `checkpointSchema` above: only
+     * `checkpoint_id` reaches the checkpointer, so a client-supplied `thread_id` cannot ride along and
+     * redirect the read at another thread. Today's savers read nothing else from `before`, so this loses
+     * nothing — and it turns a bad `checkpoint_id` into a 400 here instead of an error thrown from inside
+     * the saver, which surfaces as a 500.
+     */
+    before: z
+      .union([
+        z.string().min(1),
+        z.object({ configurable: z.object({ checkpoint_id: z.string().min(1) }) }),
+      ])
+      .optional(),
+    /** Keep only checkpoints whose metadata matches — `getStateHistory`'s `filter`. */
+    metadata: z.record(z.unknown()).optional(),
+    checkpoint: z.record(z.unknown()).optional(),
+  })
+  .optional();
+
 /** `POST /store/items/search`. `limit` is capped so a client can't request an unbounded page. */
 export const storeSearchSchema = z
   .object({
