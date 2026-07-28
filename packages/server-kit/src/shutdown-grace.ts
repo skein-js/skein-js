@@ -7,7 +7,10 @@
 // different SIGTERM→SIGKILL window), not of a command line.
 
 import { DEFAULT_SHUTDOWN_GRACE_MS } from "@skein-js/agent-protocol";
-import { SkeinConfigError } from "@skein-js/config";
+// Imported from the `/errors` subpath, not the package root: the root barrel pulls in the
+// `langgraph.json` loader and with it `@langchain/langgraph-api`, which would then land in every
+// adapter bundle for the sake of one error class. Guarded by `static-imports.test.ts`.
+import { SkeinConfigError } from "@skein-js/config/errors";
 
 const SHUTDOWN_GRACE_ENV_VAR = "SKEIN_SHUTDOWN_GRACE_MS";
 

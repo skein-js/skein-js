@@ -7,7 +7,7 @@
     "build": {
       "executor": "nx:run-commands",
       "options": {
-        "command": "tsup src/index.ts --format esm --dts --clean",
+        "command": "tsup src/index.ts src/dev.ts --format esm --dts --clean",
         "cwd": "packages/server-kit"
       }
     },

@@ -6,7 +6,10 @@
 // `resolveShutdownGraceMs` deliberately does not use this and keeps its own validator: zero is a
 // legitimate value there ("abort in-flight runs immediately"), so it needs non-negative, not positive.
 
-import { SkeinConfigError } from "@skein-js/config";
+// Imported from the `/errors` subpath, not the package root: the root barrel pulls in the
+// `langgraph.json` loader and with it `@langchain/langgraph-api`, which would then land in every
+// adapter bundle for the sake of one error class. Guarded by `static-imports.test.ts`.
+import { SkeinConfigError } from "@skein-js/config/errors";
 
 /** Parse `raw` as a positive integer, naming `source` in the error so a bad value is traceable. */
 export function requirePositiveInteger(source: string, raw: string | number): number {

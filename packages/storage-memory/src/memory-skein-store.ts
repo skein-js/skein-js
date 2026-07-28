@@ -604,7 +604,7 @@ export class MemorySkeinStore implements SkeinStore {
    * Bulk-load rows from a snapshot, preserving ids + timestamps and *without* clearing what's
    * already here: existing ids are left untouched (insert-if-absent). Unlike {@link hydrate} (a
    * full replace for cross-restart persistence), this is the additive, lossless sink used by
-   * migration tooling — see `@skein-js/express`'s LangGraph importer. `loadSnapshotIntoStore`
+   * migration tooling — see the LangGraph importer in `@skein-js/server-kit/dev`. `loadSnapshotIntoStore`
    * feature-detects this method, so the memory and Postgres drivers import identically.
    */
   async restore(snapshot: SkeinStoreSnapshot): Promise<void> {

@@ -55,8 +55,33 @@ start. Prefer `import` where your toolchain allows it.
 
 The first two only matter if you point skein at a `langgraph.json` (`buildRuntime`, the CLI, the
 `{ config }` form of any adapter). If you embed graphs in code — `embedPostgresGraphs`,
-`embedInMemoryGraphs`, the `{ deps }` form — the graph loader is never reached and a bundler that
-tree-shakes will drop it for you.
+`embedInMemoryGraphs`, the `{ deps }` form — nothing reaches them: `@langchain/langgraph-api` is loaded
+with `await import()` at the two points that genuinely need it (analysing a graph's schema, and adapting
+a user's `Auth` instance), and the in-memory runtime loader is behind a dynamic import on the `{ config }`
+branch. So on an embedded path they are never in the module graph at all, rather than being present and
+merely tree-shakeable.
+
+That is asserted, not asserted-by-comment: `packages/test-support/src/static-imports.test.ts` walks each
+adapter's built output — following `@skein-js/*` edges into their own `dist` — and fails if
+`@langchain/langgraph-api`, `@typescript/vfs`, or `superjson` is statically reachable. The walk is
+transitive because the regression it caught was: no adapter imported `@langchain/langgraph-api`, but
+every adapter imported `@skein-js/server-kit`, which imported the `@skein-js/config` barrel for one error
+class, and that barrel imported `@langchain/langgraph-api`.
+
+One trade-off worth knowing: because `@langchain/langgraph-api` is now loaded on demand, a bundling
+mistake around it (the `serverExternalPackages` config below) surfaces when something first asks for a
+graph schema rather than at startup. The container boots and passes its probes, and
+`GET /assistants/{id}/schemas` returns a 500. Bake your schemas at build time (`skein build` does) and
+the path is never taken at all.
+
+Two consequences for the public API, both of which exist to keep that graph clean:
+
+- `SkeinConfigError` is importable from `@skein-js/config/errors` as well as the root, and internal code
+  uses the subpath. The root barrel is the `langgraph.json` loader.
+- `readLanggraphDevState` / `loadSnapshotIntoStore` / `describeSnapshot` live at
+  `@skein-js/server-kit/dev`, not on the root barrel — they carry `superjson` and `node:fs/promises`, and
+  only `skein dev` / `skein import` call them. They are deliberately **not** re-exported from the root or
+  from `@skein-js/express`: a re-export is still a static import, which would undo the split.
 
 ## Copy-paste configs
 

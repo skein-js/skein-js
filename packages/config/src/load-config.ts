@@ -8,10 +8,7 @@
 import { readFile } from "node:fs/promises";
 import path from "node:path";
 
-import {
-  getStaticGraphSchema,
-  type GraphSchema as GraphIntrospectionSchema,
-} from "@langchain/langgraph-api/schema";
+import type { GraphSchema as GraphIntrospectionSchema } from "@langchain/langgraph-api/schema";
 
 import { SkeinConfigError } from "./errors.js";
 import {
@@ -161,7 +158,16 @@ export async function loadConfig(options: LoadConfigOptions = {}): Promise<Skein
       const spec = specFor(graphId);
       // Static analysis of the TypeScript source — no module execution — so this works the same
       // whether graphs load natively or through a custom `importModule` (vite `skein dev`).
-      return memoize(schemaCache, graphId, () => getStaticGraphSchema(spec));
+      //
+      // Imported here rather than at module scope. `getStaticGraphSchema` drags `@langchain/langgraph-api`
+      // (and its TypeScript parser) in with it, and this barrel is reachable from every framework
+      // adapter — so a static import puts a whole TypeScript toolchain into the module graph of a
+      // production server, which either bakes its schemas at build time or never asks for one. Reaching
+      // this line is precisely the case that needs it. See `static-imports.test.ts`.
+      return memoize(schemaCache, graphId, async () => {
+        const { getStaticGraphSchema } = await import("@langchain/langgraph-api/schema");
+        return getStaticGraphSchema(spec);
+      });
     },
   };
 

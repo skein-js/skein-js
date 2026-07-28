@@ -73,12 +73,13 @@ export type {
   ProtocolDeps,
 } from "@skein-js/agent-protocol";
 
-// Import an existing LangGraph in-memory dev state (`.langgraph_api/`) into skein, losslessly.
-export {
-  readLanggraphDevState,
-  loadSnapshotIntoStore,
-  describeSnapshot,
-} from "./langgraph-import.js";
+// Importing an existing LangGraph in-memory dev state (`.langgraph_api/`) lives at
+// `@skein-js/server-kit/dev`, not here — it pulls in `superjson` and `node:fs/promises`, which every
+// adapter would then carry for a path only the CLI takes. The three *functions* are deliberately not
+// re-exported: that would be a static import again, defeating the split.
+//
+// The type is, though. A `export type` is erased at build time, so it costs nothing in the bundle — and
+// removing it would break anyone naming the shape without buying anything back.
 export type { DevStateCounts } from "./langgraph-import.js";
 
 // LangGraph-compatible CORS: map a langgraph.json `http.cors` block to `cors` options. `CorsOptions`

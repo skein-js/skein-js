@@ -14,7 +14,6 @@ import {
 import type { ModuleImporter } from "@skein-js/config";
 import type { CorsOptions } from "cors";
 
-import { loadInMemoryRuntime } from "./in-memory-runtime.js";
 import { resolveRunConcurrency } from "./run-concurrency.js";
 import { resolveShutdownGraceMs } from "./shutdown-grace.js";
 
@@ -139,9 +138,14 @@ export async function resolveRuntimeDeps(
   options: SkeinRuntimeOptions,
   frameworkLogger?: Logger,
 ): Promise<ResolvedRuntimeDeps> {
+  // Imported only on the `{ config }` branch. An adapter handed ready-made `deps` — which is what
+  // `embedPostgresGraphs` and every production embedding does — then never loads the `langgraph.json`
+  // loader, the in-memory drivers, or `MemorySaver`.
   const loaded = options.deps
     ? { deps: options.deps, cors: undefined }
-    : await loadInMemoryRuntime(options.config, options.importModule);
+    : await (
+        await import("./in-memory-runtime.js")
+      ).loadInMemoryRuntime(options.config, options.importModule);
 
   const logger = resolveLogger(options.logger, loaded.deps.logger, frameworkLogger);
   // Filled in place, never copied. `createGraphInvokeHandler` re-reads its deps on *every request*

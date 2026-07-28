@@ -70,6 +70,38 @@ describe("publishable package manifests", () => {
     },
   );
 
+  // The same contract for every *subpath* (`@skein-js/config/errors`, `@skein-js/server-kit/dev`).
+  // Asserting only `.` left the newer surface unguarded: reorder a subpath's conditions or drop its
+  // `default` and `require()` breaks with `ERR_PACKAGE_PATH_NOT_EXPORTED` for every CJS-emitting
+  // bundler, with nothing failing here.
+  it.each(
+    libraryPackages.flatMap((pkg) =>
+      Object.entries((pkg.manifest.exports ?? {}) as Record<string, Record<string, string>>)
+        .filter(([subpath]) => subpath !== ".")
+        .map(
+          ([subpath, conditions]) =>
+            [`${pkg.manifest.name as string}${subpath.slice(1)}`, subpath, conditions] as const,
+        ),
+    ),
+  )("%s resolves under both import and require", (_name, subpath, conditions) => {
+    expect(Object.keys(conditions)).toEqual(["types", "import", "default"]);
+    const stem = subpath.slice(2); // "./errors" -> "errors"
+    expect(conditions.types).toBe(`./dist/${stem}.d.ts`);
+    expect(conditions.import).toBe(`./dist/${stem}.js`);
+    expect(conditions.default).toBe(conditions.import);
+  });
+
+  // Self-guarding, like the package count above: the subpath cases are generated, so if every subpath
+  // disappeared the `it.each` would assert nothing at all rather than failing.
+  it("still has subpath exports to check", () => {
+    const subpaths = libraryPackages.flatMap((pkg) =>
+      Object.keys((pkg.manifest.exports ?? {}) as Record<string, unknown>).filter(
+        (subpath) => subpath !== ".",
+      ),
+    );
+    expect(subpaths.sort()).toEqual(["./dev", "./errors"]);
+  });
+
   it.each(libraryPackages.map((pkg) => [pkg.manifest.name as string, pkg] as const))(
     "%s is ESM-only and side-effect free",
     (_name, pkg) => {

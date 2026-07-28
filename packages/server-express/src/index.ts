@@ -34,12 +34,13 @@ export { sendErrorResponse } from "./error-response.js";
 export {
   loadInMemoryRuntime,
   loadReloadableInMemoryRuntime,
-  readLanggraphDevState,
-  loadSnapshotIntoStore,
-  describeSnapshot,
   corsFromHttpConfig,
   toCorsOptions,
 } from "@skein-js/server-kit";
+// `readLanggraphDevState` / `loadSnapshotIntoStore` / `describeSnapshot` are **not** re-exported: they
+// moved to `@skein-js/server-kit/dev` so their `superjson` + `node:fs` dependencies stay out of every
+// adapter bundle, and re-exporting them here would pull them straight back in. Their `DevStateCounts`
+// type still is — `export type` is erased, so it costs nothing.
 export type {
   InMemoryRuntimeConfig,
   ReloadableInMemoryRuntime,

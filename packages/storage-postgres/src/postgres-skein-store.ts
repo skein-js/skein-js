@@ -644,7 +644,7 @@ export class PostgresSkeinStore implements SkeinStore {
    * embeddings are computed in one batch outside the transaction; if the embedder fails, items are
    * still imported (just not semantically indexed) rather than failing the whole migration — this
    * matches the memory driver, which never embeds. The lossless Postgres sink for migration tooling
-   * (`loadSnapshotIntoStore` in `@skein-js/express` feature-detects it — see the LangGraph importer).
+   * (`loadSnapshotIntoStore` in `@skein-js/server-kit/dev` feature-detects it — see the importer).
    */
   async restore(snapshot: SkeinStoreSnapshot): Promise<void> {
     const kwargsByRun = new Map(snapshot.runKwargs);

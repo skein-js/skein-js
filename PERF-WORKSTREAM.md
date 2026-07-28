@@ -40,7 +40,8 @@ with sane defaults and documented sizing math.
 | `6d39d45` | P6b     | Page bound on every list/search                 |
 | `91ac7c6` | P6b-bis | Thread-history bound (body-read + real limit)   |
 | `d8d313f` | P6c     | Ownership filter pushed into the driver query   |
-| _pending_ | P7      | `statement_timeout` on by default (30s)         |
+| `8c4add3` | P7      | `statement_timeout` on by default (30s)         |
+| _pending_ | P8      | Adapter module graph: dev-only tooling removed  |
 
 ### Measured
 
@@ -240,29 +241,57 @@ Two of those needed more than documenting:
 
 ### P8 — bundle & boot footprint
 
-`@langchain/langgraph-api` + `@typescript/vfs` land in **every** adapter bundle regardless of on-ramp,
-contradicting the promise in `docs/bundling.md:57-60`. Two causes, both needed:
+**DONE** (see the shipped table), and the honest summary is: **the correctness goal was met, the
+performance goal was not there to be met.**
 
-1. `packages/server-kit/src/resolve-runtime.ts:17` statically imports `loadInMemoryRuntime`, used in a
-   live conditional at `:142-144`. Make it `await import()` in the else branch.
-2. `run-concurrency.ts:10` and `shutdown-grace.ts:10` import `SkeinConfigError` from the **single-entry**
-   `@skein-js/config` barrel, whose `dist/index.js` opens with
-   `import { getStaticGraphSchema } from "@langchain/langgraph-api/schema"`. Both resolvers run on every
-   path. Add a `./errors` subpath export to `@skein-js/config` (second tsup entry) and import from
-   there. Rejected alternatives: moving the class to `@skein-js/core` inverts the documented layering;
-   throwing a different error type is observable (both `.test.ts` files assert on it).
+`docs/bundling.md` promised that embedding skein does not pull in `@langchain/langgraph-api`. That was
+false. Measured, by tracing every module an `import("@skein-js/express")` resolves:
 
-Also: move `readLanggraphDevState`/`loadSnapshotIntoStore`/`describeSnapshot` (which drag `superjson`,
-`zod`, `node:fs/promises` into the same barrel as `embedInMemoryGraphs`) to a
-`@skein-js/server-kit/dev` subpath — consumers are only `cli/src/import-command.ts`, `dev-command.ts`,
-and a re-export at `server-express/src/index.ts:37-39`. **No deprecated root re-export**: a re-export is
-still a static import and defeats the point. And dynamic-import `@langchain/langgraph-api/schema` at
-its one call site (`config/src/load-config.ts:164`) so `staticSchemas` production boots never load it.
+|                                   | before      | after       |
+| --------------------------------- | ----------- | ----------- |
+| modules loaded                    | 1436        | 1433        |
+| RSS                               | ~128 MB     | ~130 MB     |
+| import time                       | ~270–400 ms | ~270–400 ms |
+| `@langchain/langgraph-api` loaded | **yes**     | no          |
 
-Guard it with a new `packages/test-support/src/static-imports.test.ts` modelled on the existing
-`package-exports.test.ts`: read each adapter's `dist/index.js`, extract top-level import specifiers,
-assert none matches `@skein-js/config`, `@langchain/langgraph-api`, or `superjson`. That test is what
-stops this regressing.
+So the leak was real and is gone, but it was never the expensive part. The graph is
+`@langchain/core` (775 modules) + `@langchain/langgraph` (307) + `zod` (174) + `langsmith` (88) — 94% of
+it — reached through `@skein-js/agent-protocol`, which genuinely needs the run engine. The two lazy
+modules cost about **6 ms and 5.5 MB** between them; the TypeScript toolchain everyone assumes is behind
+`@langchain/langgraph-api` turns out to be lazy _inside_ it already. **Do not expect P8 to move boot time
+or RSS**, and do not let the plan's framing suggest otherwise to whoever reads this next.
+
+What actually changed, all of it about what a host application is made to load rather than about speed:
+
+- `@skein-js/config/errors` — a second entry point, so importing `SkeinConfigError` does not drag the
+  `langgraph.json` loader. Internal code uses the subpath.
+- `@skein-js/server-kit/dev` — `readLanggraphDevState` / `loadSnapshotIntoStore` / `describeSnapshot`
+  moved off the root barrel, taking `superjson` and `node:fs/promises` with them. **No re-export** from
+  the root or from `@skein-js/express`: a re-export is a static import, which would undo the split. This
+  is the one breaking export move.
+- `@langchain/langgraph-api/schema` and `/auth` are `await import()`ed at their single call sites — the
+  points that analyse a graph schema and adapt a user's `Auth` instance. A server with baked schemas and
+  no `auth` block never loads either.
+- `./in-memory-runtime.js` is dynamically imported on the `{ config }` branch of `resolveRuntimeDeps`.
+  This one helps a **tree-shaking bundler** and not much else: `loadInMemoryRuntime` is still statically
+  re-exported from server-kit's root barrel, so under plain Node a `{ deps }` mount does still load that
+  module (measured: 3 modules from `@skein-js/config`, 1 from `storage-memory`). Removing the barrel
+  export would fix it and is a second breaking move — deliberately not taken for a handful of modules.
+
+**The guard is the deliverable.** `packages/test-support/src/static-imports.test.ts` walks each adapter's
+built output _transitively_, following `@skein-js/*` edges into their own `dist`, and fails if any of the
+forbidden packages is statically reachable. Transitive because the original leak was invisible per
+package: no adapter imported `@langchain/langgraph-api`; every adapter imported `@skein-js/server-kit`;
+server-kit imported the `@skein-js/config` barrel for one error class; that barrel imported
+`@langchain/langgraph-api`. A direct-imports check would have passed throughout. Verified by reverting
+the lazy schema import: all four adapters fail.
+
+Note the Nx wiring — the guard reads other packages' `dist`, so `packages/test-support/project.json`
+gives its `test` target an explicit `dependsOn` on the four adapter builds. That is what makes it both
+ordered _and_ cache-correct: an input glob over `packages/*/dist/*.js` looks like the right answer but
+does nothing, because `dist/` is gitignored and Nx resolves `workspaceRoot` globs against the git file
+map. Task-hash propagation through `dependsOn` is what actually invalidates the cache. (An explicit
+`dependsOn` also _replaces_ `targetDefaults`, so `^build` has to be listed again by hand.)
 
 ### P9 — CLI & container
 
@@ -467,6 +496,9 @@ entry under a **Behavior changes** heading:
   the response, so say so: page by what you received, not by what you asked for.
 - **P7** — `PG_STATEMENT_TIMEOUT_MS` defaults to 30s, so a query that used to crawl now errors with
   `57014`. `0` restores the old behaviour.
-- **P8** — root exports move to `/dev` and `/errors` subpaths.
+- **P8** — `readLanggraphDevState` / `loadSnapshotIntoStore` / `describeSnapshot` move from
+  `@skein-js/server-kit` (and `@skein-js/express`) to `@skein-js/server-kit/dev`. No deprecation alias:
+  a re-export would defeat the split. `SkeinConfigError` gains a `@skein-js/config/errors` subpath; the
+  root export stays.
 - **P9** — **`skein start` refuses memory drivers**; Node 22 base image; request logs off under `start`.
 - **P10** — slow webhook targets now fail instead of hanging a thread lock.

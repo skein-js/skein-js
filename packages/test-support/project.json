@@ -12,6 +12,13 @@
       }
     },
     "test": {
+      "dependsOn": [
+        "^build",
+        "server-express:build",
+        "server-fastify:build",
+        "server-nestjs:build",
+        "server-nextjs:build"
+      ],
       "inputs": ["default", "^production", "{workspaceRoot}/packages/*/package.json"]
     }
   }

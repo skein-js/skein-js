@@ -24,8 +24,9 @@ handler table.
   `{ deps }` to any adapter. `overrides` swaps in production drivers/auth. See
   [docs/embedding.md](../../docs/embedding.md).
 - **LangGraph dev-state import** — `readLanggraphDevState` / `loadSnapshotIntoStore` /
-  `describeSnapshot`: read an existing `.langgraph_api/` directory and reconstruct skein's own
-  `DevStateSnapshot`, so adopting skein carries all local state over losslessly.
+  `describeSnapshot`, from the **`@skein-js/server-kit/dev` subpath**: read an existing
+  `.langgraph_api/` directory and reconstruct skein's own `DevStateSnapshot`, so adopting skein carries
+  all local state over losslessly.
 - **CORS** — `corsFromHttpConfig` / `toCorsOptions` map a `langgraph.json` `http.cors` block to
   `cors`-style `CorsOptions`; `allowedOrigin` / `corsResponseHeaders` / `applyNodeCors` /
   `sendNodePreflight` derive CORS headers for the adapters without a CORS middleware of their own
@@ -101,6 +102,19 @@ Pass `overrides` to swap in production drivers or an auth engine while keeping t
 - **`readLanggraphDevState` / `loadSnapshotIntoStore` / `describeSnapshot`** — read an existing
   `.langgraph_api/` directory and reconstruct a `DevStateSnapshot`, so adopting skein carries local
   state over losslessly.
+
+  Imported from **`@skein-js/server-kit/dev`**, not the package root:
+
+  ```ts
+  import { readLanggraphDevState } from "@skein-js/server-kit/dev";
+  ```
+
+  They carry `superjson` and `node:fs/promises`, and only `skein dev` / `skein import` call them, so
+  keeping them on the root barrel put a filesystem snapshot deserializer into every adapter's module
+  graph. There is deliberately no root re-export — a re-export is still a static import. The
+  `DevStateCounts` _type_ remains exported from the root, since `export type` is erased. See
+  [docs/bundling.md](../../docs/bundling.md).
+
 - **CORS** — `corsFromHttpConfig` / `toCorsOptions` map a `langgraph.json` `http.cors` block to
   `cors`-style options; `allowedOrigin` / `corsResponseHeaders` / `applyNodeCors` / `sendNodePreflight`
   derive CORS headers for adapters without a CORS middleware of their own.

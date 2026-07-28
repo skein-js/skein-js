@@ -7,7 +7,6 @@
 
 import { pathToFileURL } from "node:url";
 
-import { isAuthMatching } from "@langchain/langgraph-api/auth";
 import type { AuthContext, AuthEngine, AuthFilters, AuthUser } from "@skein-js/core";
 import { SkeinHttpError } from "@skein-js/core";
 
@@ -98,8 +97,25 @@ function normalizeUser(response: unknown): AuthContext {
   );
 }
 
-/** Build an {@link AuthEngine} bound to one loaded `Auth` instance — no module-global state. */
-function createAuthEngine(handlers: AuthHandlerCache, studioAuthDisabled: boolean): AuthEngine {
+/** `isAuthMatching`'s signature, so the module can be typed without importing it eagerly. */
+type FilterMatcher = (
+  metadata: Record<string, unknown> | undefined,
+  filters?: AuthFilters,
+) => boolean;
+
+/**
+ * Build an {@link AuthEngine} bound to one loaded `Auth` instance — no module-global state.
+ *
+ * `isAuthMatching` is passed in rather than imported at module scope. It is the only thing this package
+ * uses from `@langchain/langgraph-api`, and a static import of it puts that whole package — reachable
+ * from every framework adapter through the config barrel — into the module graph of a server that has no
+ * auth configured at all. See `loadAuthEngine`, and `static-imports.test.ts`.
+ */
+function createAuthEngine(
+  handlers: AuthHandlerCache,
+  studioAuthDisabled: boolean,
+  isAuthMatching: FilterMatcher,
+): AuthEngine {
   return {
     enabled: true,
     studioAuthDisabled,
@@ -184,5 +200,12 @@ export async function loadAuthEngine(
     );
   }
 
-  return createAuthEngine(exported["~handlerCache"], auth.disable_studio_auth ?? false);
+  // Imported here, not at module scope: this line is only reached when a `langgraph.json` declares an
+  // `auth` block, so a deployment without one never loads `@langchain/langgraph-api`.
+  const { isAuthMatching } = await import("@langchain/langgraph-api/auth");
+  return createAuthEngine(
+    exported["~handlerCache"],
+    auth.disable_studio_auth ?? false,
+    isAuthMatching,
+  );
 }
