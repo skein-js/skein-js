@@ -32,6 +32,7 @@ const DOCS = [
   "docs/recipes.md",
   "docs/building-an-adapter.md",
   "docs/deploy.md",
+  "docs/performance.md",
   "docs/deploy-cloud-run.md",
   "docs/bundling.md",
   "docs/reuse.md",

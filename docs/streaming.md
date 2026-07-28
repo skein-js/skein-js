@@ -90,8 +90,17 @@ Two consequences worth knowing:
 - **The graph does not slow down.** The run engine publishes into the event bus and the write loop
   reads from it, so pacing the reader changes how fast frames leave the bus, not how fast they enter
   it. A slow client cannot stall the run, or any other client's stream.
-- **Frames are not dropped.** Backpressure delays delivery; it never discards. A slow client receives
-  every frame, just later.
+- **Backpressure itself never discards.** It delays delivery; a slow client receives every frame, just
+  later. What it does is move the queue from the socket into the event bus — and the bus is bounded, so a
+  client slow enough to exceed that bound has its stream **ended** rather than being left hanging.
+
+  What happens next differs by bus. On **Redis** the frames are still in the durable stream, so
+  reconnecting with `Last-Event-ID` replays them: nothing is lost. On the **in-memory bus** the stream
+  ended precisely _because_ the frames were evicted to stay under
+  `SKEIN_MEMORY_BUS_MAX_FRAMES_PER_RUN`, and that buffer is also the replay log — so a reconnect resumes
+  from what survives, with a gap. See
+  [performance.md](./performance.md#streaming-backpressure-drops-and-recovery) for the bounds, and why
+  that asymmetry is a reason to run Redis for unreliable clients.
 
 The Next.js App Router adapter gets this for free: it maps frames onto a `ReadableStream` whose `pull`
 is demand-driven by the platform.

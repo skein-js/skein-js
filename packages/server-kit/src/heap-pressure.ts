@@ -180,12 +180,15 @@ export function resolveHeapPressureOptions(
   explicit: { warnPercent?: number; sampleMs?: number } = {},
   env: NodeJS.ProcessEnv = process.env,
 ): { warnPercent: number; sampleMs: number } {
-  const warnPercent = explicit.warnPercent ?? percentFromEnv(env["SKEIN_HEAP_WARN_PERCENT"]);
-  const sampleMs =
-    explicit.sampleMs ??
-    positiveIntegerFromEnv(["SKEIN_HEAP_SAMPLE_MS"], env) ??
-    DEFAULT_HEAP_SAMPLE_MS;
-  return { warnPercent: warnPercent ?? DEFAULT_HEAP_WARN_PERCENT, sampleMs };
+  // Both read *before* the explicit values are applied, not short-circuited by `??`. Otherwise a
+  // deployment that passes the option and also has a typo'd variable never learns about the typo —
+  // which is the exact promise the docstring above makes, and which every sibling resolver keeps.
+  const warnFromEnv = percentFromEnv(env["SKEIN_HEAP_WARN_PERCENT"]);
+  const sampleFromEnv = positiveIntegerFromEnv(["SKEIN_HEAP_SAMPLE_MS"], env);
+  return {
+    warnPercent: explicit.warnPercent ?? warnFromEnv ?? DEFAULT_HEAP_WARN_PERCENT,
+    sampleMs: explicit.sampleMs ?? sampleFromEnv ?? DEFAULT_HEAP_SAMPLE_MS,
+  };
 }
 
 /** A 0–100 percentage, where `0` means off. Blank counts as unset. */

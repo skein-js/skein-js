@@ -174,7 +174,7 @@ it but is never required.
 | `graphs`               | [`@skein-js/config`](./storage.md) resolves each `path:export`, loading a compiled graph or `makeGraph` factory. Drives `/agents` introspection + run execution.                            |
 | `node_version`         | Used by `skein build` / `skein dockerfile` base image selection. Defaults to 22 when omitted (20 is EOL); an explicit value is honoured verbatim, including an older one.                   |
 | `env`                  | Loaded into `process.env` at boot (dev) / baked into the image (build).                                                                                                                     |
-| `store`                | `store.index.{embed,dims,fields}` configures pgvector semantic search on the Postgres driver — see [storage.md](./storage.md).                                                              |
+| `store`                | `store.index.{embed,dims,fields,hnsw}` configures pgvector semantic search on the Postgres driver; `hnsw: true` opts into the approximate index — see [storage.md](./storage.md).           |
 | `checkpointer`         | `"default"` → `PostgresSaver`; dev falls back to an in-memory `MemorySaver`.                                                                                                                |
 | `http`                 | **`http.cors` only** — mapped to the adapter's CORS options. Other keys (`disable_*` route flags, `app`) are accepted but **not yet implemented**, so they're ignored rather than rejected. |
 | `auth`                 | `auth.path` loads an `Auth` from `@langchain/langgraph-sdk/auth`; every request is authenticated + authorized; `disable_studio_auth` honored.                                               |

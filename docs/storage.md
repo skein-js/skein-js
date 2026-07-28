@@ -68,7 +68,8 @@ state, so an unbounded `POST /threads/search` on a large deployment materializes
 | `runs.listByThread()`               | **not** bounded — run rows carry no graph state         |
 | `POST /threads/{id}/history`        | 100 checkpoints by default, 1000 max — a separate bound |
 
-Set `SKEIN_MAX_PAGE_SIZE` to change the driver bound (`maxPageSize` on the store constructor and on
+Sizing guidance is in [performance.md](./performance.md#sizing). Set `SKEIN_MAX_PAGE_SIZE` to change the
+driver bound (`maxPageSize` on the store constructor and on
 `embedPostgresGraphs` do the same in code). Lowering it is the useful direction on a small container.
 Raising it widens what an omitted `limit` returns, but **not** the wire cap: a client-supplied `limit`
 is still rejected above 1000, deliberately, so a single request can't be made arbitrarily expensive

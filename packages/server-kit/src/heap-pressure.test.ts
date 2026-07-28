@@ -262,4 +262,15 @@ describe("resolveHeapPressureOptions", () => {
     expect(() => resolveHeapPressureOptions({}, { SKEIN_HEAP_WARN_PERCENT: "high" })).toThrow();
     expect(() => resolveHeapPressureOptions({}, { SKEIN_HEAP_SAMPLE_MS: "0" })).toThrow();
   });
+
+  // The promise every resolver in this package makes: a typo is caught even by a deployment that also
+  // passes the option, so it can't sit unnoticed.
+  it("validates the environment even when explicit values are given", () => {
+    expect(() =>
+      resolveHeapPressureOptions({ warnPercent: 50 }, { SKEIN_HEAP_WARN_PERCENT: "101" }),
+    ).toThrow();
+    expect(() =>
+      resolveHeapPressureOptions({ sampleMs: 1000 }, { SKEIN_HEAP_SAMPLE_MS: "-1" }),
+    ).toThrow();
+  });
 });

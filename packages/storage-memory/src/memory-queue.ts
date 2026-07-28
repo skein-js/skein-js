@@ -116,10 +116,11 @@ export const DEFAULT_MEMORY_BUS_MAX_RETAINED_RUNS = 50;
  * Deliberately well above what an ordinary run produces: this is the point at which a client that has
  * stopped keeping up begins losing frames, not a level to sit at.
  *
- * Note this is *not* the same rule the Redis driver uses. `RedisRunEventBus` bounds a run's stream by
- * a one-hour key TTL and does not trim it, so on Redis a subscriber that falls far behind keeps every
- * frame while here it eventually loses the oldest. Nothing in-process can express "an hour of frames"
- * as a memory bound, hence a count — but the two are a genuine behavioural difference, not parity.
+ * Note this is *not* the same rule the Redis driver uses. `RedisRunEventBus` trims its stream by
+ * approximate length (`SKEIN_REDIS_STREAM_MAXLEN`) alongside a one-hour key TTL, and — the difference
+ * that matters — those frames live outside this process. A far-behind subscriber there overflows its own
+ * in-process mailbox and can replay from the durable stream; here the eviction *is* the loss, because
+ * this buffer is also the replay log. See docs/performance.md.
  */
 export const DEFAULT_MEMORY_BUS_MAX_FRAMES_PER_RUN = 10_000;
 
@@ -178,10 +179,10 @@ function requirePositiveInteger(optionName: string, value: number): number {
  * Buffering also means publish never blocks on a slow consumer.
  *
  * **This is not only a dev driver.** `embedPostgresGraphs` falls back to it whenever no Redis URL is
- * configured — a common first production deploy — and it is what `skein start` and `skein up` use by
- * default, so the bounds below apply to real traffic. `@skein-js/redis` bounds the equivalent with a
- * one-hour Redis key TTL rather than by count, so the two drivers do not behave identically under a
- * far-behind subscriber; see {@link DEFAULT_MEMORY_BUS_MAX_FRAMES_PER_RUN}.
+ * configured — a common first production deploy — so the bounds below apply to real traffic. (`skein
+ * start` no longer reaches it: the production entrypoint requires Redis. `skein dev` and the embedded
+ * path are where it runs now.) The two drivers do not behave identically under a far-behind subscriber;
+ * see {@link DEFAULT_MEMORY_BUS_MAX_FRAMES_PER_RUN}.
  *
  * Three things are bounded, in decreasing order of how much they cost:
  *

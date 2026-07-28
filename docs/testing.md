@@ -119,6 +119,41 @@ the **real `@langchain/langgraph-sdk` client** as the wire-format oracle: if
 protocol is right. The [`examples/react-usestream`](../examples/react-usestream) app is the
 front-end signal for the SSE/`useStream` path. See the [roadmap verification table](./roadmap.md#verification).
 
+## Testing memory and performance work
+
+Memory fixes are easy to "prove" and hard to test. The rule here is: **never assert on
+`process.memoryUsage()` in Vitest.** It belongs in [`packages/bench`](../packages/bench) as a reported
+number, never as a pass/fail gate — it depends on what else the machine is doing, on GC timing, and on
+the worker pool. `WeakRef`/`FinalizationRegistry` are rejected for the same reason: they need
+`--expose-gc` and are non-deterministic under Vitest.
+
+Assert on the **mechanism** instead. Every pattern below is deterministic, has no timers, and fails when
+the fix is reverted:
+
+| What you're proving                                                                                                    | What to assert                                                                                                                                                                                                                                                     |
+| ---------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| Backpressure                                                                                                           | How many times the frame iterator was **pulled**. A fake sink that refuses writes until `drain()` is called: 1 pull before, 2 after.                                                                                                                               |
+| A Redis round-trip fix                                                                                                 | Integer command counts through an injected `createClient`: one `exec` carrying both the `xadd` and the `publish`, the `expire` in the same pipeline, and                                                                                                           |
+| `redis.clients` still length 2 after 200 subscribers. `MAXLEN ~` is approximate, so assert a **bracket**, not a value. |
+| A bounded buffer                                                                                                       | Documented read-only accessors (`trackedChannelCount`, `bufferedFrameCount`) — diagnostics the product uses, not test-only scaffolding — plus a behavioural cap test: publish 1000 with `maxFramesPerRun: 10`, assert `seen.length === 10 && seen[0].seq === 991`. |
+| A module-graph fix                                                                                                     | Parse the built `dist/`, walk static imports transitively, assert the forbidden package is unreachable (`packages/test-support/src/static-imports.test.ts`).                                                                                                       |
+| An index or a query bound                                                                                              | Testcontainers: assert on the `pg_indexes` catalog, on `EXPLAIN` output, and on error code `57014` for a statement timeout.                                                                                                                                        |
+| A sampling monitor                                                                                                     | Inject the clock **and** the reading. Assert one warn on crossing, none on the next three samples above the threshold, and a second only after dropping below the re-arm band.                                                                                     |
+
+Two habits that caught real bugs in this codebase, both worth copying:
+
+- **Run the negative check.** After a test passes, revert the fix and confirm the test fails. Several
+  tests here passed for the wrong reason until that was done — a fake whose `once` was really `on`, an
+  assertion on a string-named private field that was always `undefined`, a `clearInterval` spy that set
+  a boolean so double-clearing went unnoticed.
+- **Measure before writing the rationale.** Two "obvious" premises in this area turned out to be false
+  when measured: that V8 sizes its heap from the host in a container (it hasn't since Node 12), and that
+  `@langchain/langgraph-api` was the expensive import (it costs ~6ms). Comments and docs asserting
+  mechanism should say how they were checked.
+
+See [performance.md](./performance.md#measuring-it-yourself) for the benchmark harness, and why it is
+deliberately outside `pnpm test`.
+
 ## Layout & naming
 
 - Co-locate tests with the code: `foo.ts` → `foo.test.ts`.

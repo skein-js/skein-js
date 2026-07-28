@@ -44,7 +44,8 @@ with sane defaults and documented sizing math.
 | `4b8a3af` | P8      | Adapter module graph: dev-only tooling removed  |
 | `9b6ef9c` | P9      | `skein start` durable-only; container hardening |
 | `18681bc` | P9b     | Runtime heap-pressure monitor                   |
-| _pending_ | P10     | Run + webhook timeouts; webhook out of the lock |
+| `7321cdd` | P10     | Run + webhook timeouts; webhook out of the lock |
+| _pending_ | P11     | `docs/performance.md` + doc-set updates         |
 
 ### Measured
 
@@ -392,19 +393,41 @@ boundary.
 
 ### P11 — docs
 
-**New `docs/performance.md`** is warranted: the knobs span five packages and `deploy.md`'s "Sizing &
-tuning" is already ~300 lines. It should own the sizing math per shape, **one table of every knob**
-(env / flag / option / default / small / large), backpressure and drop semantics with `Last-Event-ID`
-recovery, a symptom→knob triage table, and how to run the benchmark.
+**DONE** (see the shipped table). `docs/performance.md`: what actually uses memory (in the order it
+matters), worked sizing for both deployment shapes, **every knob in one table** with default/small/large,
+backpressure + drop + `Last-Event-ID` recovery semantics, query bounds, a symptom→knob triage table, and
+how to run the benchmark. Registered in `docs/index.md`, `llms.txt`, the README list, and
+`scripts/generate-llms-full.mjs`.
 
-Updates needed: `deploy.md` (link out), `runs-and-redis.md`, `storage.md`, `embedding.md`,
-`bundling.md`, `streaming.md`, `testing.md` (the assertion patterns below). Register new pages in
-`docs/index.md`, `llms.txt`, the README doc table, and `scripts/generate-llms-full.mjs`, then run
-`pnpm docs:llms`.
+Every default in the knob table was checked against the source constants by script rather than from
+memory — worth repeating whenever that table is edited, since it is the one page a reader will trust
+without verifying. Review then caught four claims the script could not: that the environment is
+validated even when an option is passed (untrue of the heap knobs until the code was fixed to match its
+own docstring, and still untrue of the two that deliberately fall back), that every knob has a code
+path (four are environment-only), that _every_ list/search is bounded (`assistants.count` and
+`runs.listByThread` are deliberately not), and — the one that would have sent someone the wrong way —
+that `Last-Event-ID` recovers an ended stream on both buses.
 
-Known stale spots: `docs/bundling.md:57-60` (fixed by P8), `packages/bench/README.md:4` links to
-`docs/performance.md` which does not exist yet, and `docs/langgraph-cli-compat.md` omits
-`store.index.hnsw` from the compat table.
+**That last one is worth remembering.** On Redis the mailbox overflows while the frames survive in the
+durable stream, so replay works. On the in-memory bus the stream ends _because_ the frames were evicted,
+and that buffer is also the replay log — so a reconnect resumes with a hole, and
+`SKEIN_STREAM_BUFFER_FRAMES` (Redis-only) does nothing about it. Both `performance.md` and
+`streaming.md` had promised recovery on both.
+
+Two stale claims the pass turned up, both of which had become false as the bounds landed:
+
+- `docs/streaming.md` still said "**Frames are not dropped.** Backpressure delays delivery; it never
+  discards." True of backpressure itself, but backpressure moves the queue into the bus — and the bus is
+  bounded, so a subscriber past `SKEIN_STREAM_BUFFER_FRAMES` / `SKEIN_MEMORY_BUS_MAX_FRAMES_PER_RUN` has
+  its stream _ended_. Now says so, and points at the recovery path.
+- `docs/deploy.md` had grown a second copy of the tuning numbers, and it had already drifted — its
+  webhook-timeout row still said 10000 after P10 changed the default to 5000. Its env section now lists
+  only the required + container-specific variables and hands the tuning table off. Duplicating a knob
+  table is how a doc set ends up disagreeing with itself; the fix is one table, not two kept in sync.
+
+`docs/testing.md` gained the assertion patterns this workstream established — assert the mechanism, never
+`process.memoryUsage()` — plus the two habits that actually caught bugs here: run the negative check, and
+measure before writing the rationale.
 
 ### P12 — Bun/Deno spike
 

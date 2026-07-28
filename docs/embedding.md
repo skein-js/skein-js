@@ -187,6 +187,9 @@ Worst case is roughly `MAX_FRAMES_PER_RUN × (concurrent runs + MAX_RETAINED_RUN
 references to the graph's own chunks, so under `stream_mode: "values"` each is a copy of the whole
 state — size these against what your graph emits, not just against the counts.
 
+Every other knob, and worked sizing for both deployment shapes, is in
+[performance.md](./performance.md).
+
 **Take that formula seriously rather than trusting the defaults.** At 10000 × 50 the ceiling is half a
 million retained frames, which even at 512 bytes each is hundreds of MB. The defaults are chosen so an
 ordinary run never loses a frame, not so the worst case fits a small container: on 256–512Mi set

@@ -197,6 +197,10 @@ PgBouncer and Supabase's pooler reject unrecognised startup parameters outright.
 pooling a `SET` does not persist, so the timeout silently does not apply there — it is a backstop, not
 a guarantee.
 
+**Full sizing guidance, and every tuning knob in one table, is in
+[performance.md](./performance.md).** This section covers only what is specific to running the
+container.
+
 ### Heap size vs. the container's memory limit
 
 The image bakes **no** `--max-old-space-size`, because a Dockerfile cannot know the limit the container
@@ -388,42 +392,23 @@ platform's guide.
 skein reads these and nothing else. Note there is **no `DATABASE_URL` or `REDIS_URL`** — those are
 platform names; map them onto skein's.
 
-| Variable                   | Required             | Purpose                                                            |
-| -------------------------- | -------------------- | ------------------------------------------------------------------ |
-| `POSTGRES_URI`             | yes (postgres store) | Postgres connection string (resources + checkpoints).              |
-| `REDIS_URI`                | yes (redis queue)    | Redis connection string (run queue + stream pub/sub).              |
-| `PORT`                     | usually injected     | Port to bind. Defaults to 8123 — the port the image exposes.       |
-| `HOST`                     | no                   | Host to bind. The image already passes `--host 0.0.0.0`.           |
-| `PG_POOL_MAX`              | no                   | Max connections **per pool**; there are two (`pg` default 10).     |
-| `PG_CONNECTION_TIMEOUT_MS` | no                   | Wait for a pool connection before failing (default 30000).         |
-| `PG_IDLE_TIMEOUT_MS`       | no                   | How long an unused pooled client is kept (`pg` default 10000).     |
-| `PG_STATEMENT_TIMEOUT_MS`  | no                   | Server-side ceiling on one statement (default 30000). `0` = off.   |
-| `DATABASE_SSL_NO_VERIFY`   | no                   | `true` to skip TLS cert verification (self-signed database cert).  |
-| `SKEIN_RUN_CONCURRENCY`    | no                   | Queued runs each instance executes at once (default 10).           |
-| `N_JOBS_PER_WORKER`        | no                   | LangGraph-compatible alias for `SKEIN_RUN_CONCURRENCY`.            |
-| `SKEIN_SHUTDOWN_GRACE_MS`  | no                   | Drain window for in-flight runs on `SIGTERM` (default 5000).       |
-| `SKEIN_MAX_PAGE_SIZE`      | no                   | Largest page a list/search returns (default 1000).                 |
-| `SKEIN_REQUEST_LOG`        | no                   | `1` to log a line per HTTP request (off by default under `start`). |
-| `SKEIN_HEAP_WARN_PERCENT`  | no                   | Warn above this % of the heap limit (default 85; `0` disables).    |
-| `SKEIN_HEAP_SAMPLE_MS`     | no                   | How often the heap monitor samples (default 30000).                |
-| `SKEIN_RUN_TIMEOUT_MS`     | no                   | Abort a run executing longer than this. Off by default.            |
-| `SKEIN_WEBHOOK_TIMEOUT_MS` | no                   | Ceiling on one webhook POST (default 10000).                       |
+| Variable                 | Required             | Purpose                                                           |
+| ------------------------ | -------------------- | ----------------------------------------------------------------- |
+| `POSTGRES_URI`           | yes (postgres store) | Postgres connection string (resources + checkpoints).             |
+| `REDIS_URI`              | yes (redis queue)    | Redis connection string (run queue + stream pub/sub).             |
+| `PORT`                   | usually injected     | Port to bind. Defaults to 8123 — the port the image exposes.      |
+| `HOST`                   | no                   | Host to bind. The image already passes `--host 0.0.0.0`.          |
+| `DATABASE_SSL_NO_VERIFY` | no                   | `true` to skip TLS cert verification (self-signed database cert). |
 
-Two more apply only when the run queue and event bus are **in-memory**. That is no longer reachable from
-the image — `skein start` rejects `--queue memory` — so these matter on the embedded path
-(`embedPostgresGraphs` with no `REDIS_URI`) and under `skein dev`. They bound what a long-lived process
-retains; see [embedding.md](./embedding.md#going-to-production) for the sizing math.
+Everything else is **tuning**, and lives in one place so the numbers can't drift apart:
+**[performance.md](./performance.md#every-knob)** has every knob with its default and a suggested value
+for a small (256–512Mi) and a large (1–4Gi) deployment — run concurrency, the shutdown drain, page and
+stream bounds, the pool and statement timeouts, the heap monitor, and request logging.
 
-| Variable                              | Default | Purpose                                                       |
-| ------------------------------------- | ------- | ------------------------------------------------------------- |
-| `SKEIN_MEMORY_BUS_MAX_FRAMES_PER_RUN` | 10000   | Frames one run may buffer. A hard maximum, not a target.      |
-| `SKEIN_MEMORY_BUS_MAX_RETAINED_RUNS`  | 50      | Finished runs whose frames stay replayable for a late `join`. |
+Two notes specific to the container:
 
-And two that apply on the **Redis** bus — the image's default — bounding what a run costs in Redis and
-what one slow subscriber may queue in the process. See
-[runs-and-redis.md](./runs-and-redis.md#what-a-frame-costs).
-
-| Variable                     | Default | Purpose                                                                    |
-| ---------------------------- | ------- | -------------------------------------------------------------------------- |
-| `SKEIN_REDIS_STREAM_MAXLEN`  | 10000   | Approximate cap on a run's frame stream. `0` disables trimming (TTL only). |
-| `SKEIN_STREAM_BUFFER_FRAMES` | 512     | Frames one subscriber may queue before its stream is ended to reconnect.   |
+- The in-memory bus knobs (`SKEIN_MEMORY_BUS_*`) are **not** reachable from this image — `skein start`
+  rejects `--queue memory`. They apply on the embedded path (`embedPostgresGraphs` with no `REDIS_URI`)
+  and under `skein dev`; see [embedding.md](./embedding.md#going-to-production).
+- `PG_POOL_MAX` is per pool and skein opens **two** per instance, so budget twice your setting against
+  the database's own connection cap — per replica.

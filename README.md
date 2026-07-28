@@ -605,6 +605,7 @@ Full design and how-to guides live in [`docs/`](./docs):
 - [Errors & logging](./docs/errors-and-logging.md) — what a failed run reports, and where
 - [Observability](./docs/observability.md) — tracing + metrics: LangSmith, PostHog, OpenTelemetry
 - [Deploy anywhere](./docs/deploy.md) — Cloud Run, Railway, Fly.io, Render, AWS, Kubernetes, VPS
+- [Performance & memory](./docs/performance.md) — sizing, every knob, backpressure, triage
 - [Reuse-first architecture](./docs/reuse.md) — what we reuse vs. rebuild _(design)_
 - [Roadmap](./docs/roadmap.md)
 

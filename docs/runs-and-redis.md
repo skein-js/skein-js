@@ -104,6 +104,10 @@ How many **queued** (background) runs one instance executes at once. It defaults
 the LangGraph CLI's `--n-jobs-per-worker`, so a project moving off `langgraph dev` keeps its
 throughput. Inline `wait`/`stream` runs never touch the queue and are unaffected.
 
+Concurrency is the knob with the widest blast radius: it multiplies memory, Postgres connections, and
+in-flight graph state at once. Size it together with `PG_POOL_MAX` — see
+[performance.md](./performance.md#sizing), and note `skein start` warns at boot when the two disagree.
+
 **One worker, N concurrent runs.** skein runs a _single_ background worker whose consumer executes up
 to N runs at a time — which is why the startup banner says `Starting 1 worker, up to 10 concurrent
 runs` rather than `langgraph dev`'s `Starting 10 workers` (it really does spawn 10 loops; we don't).

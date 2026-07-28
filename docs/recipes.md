@@ -223,11 +223,19 @@ stays permissive because internal targets are legitimate in a self-hosted setup.
 [roadmap.md](./roadmap.md).
 
 **Delivery is bounded and does not hold the thread.** Each POST is aborted after
-`SKEIN_WEBHOOK_TIMEOUT_MS` (default 10s), so an unresponsive receiver can't hold a run open
-indefinitely. Delivery happens _after_ the thread's execution lock is released, so a slow target no
-longer makes every other run on that thread queue behind it — but it is still awaited before the run
-settles, so a shutdown can't exit mid-POST. A failed delivery is logged and never fails the run; there
-is no retry, so treat the webhook as a notification and the API as the source of truth.
+`SKEIN_WEBHOOK_TIMEOUT_MS` (default 5s), so an unresponsive receiver can't hold a run open indefinitely.
+The default is sized against the shutdown budget: `skein start` force-exits 8s after SIGTERM
+(`SKEIN_SHUTDOWN_GRACE_MS` + 3s), so a longer webhook timeout would mean being killed mid-POST rather
+than abandoning it cleanly. Raise both together if your receiver is slower.
+
+Delivery happens _after_ the thread's execution lock is released, so a slow target no longer makes every
+other run on that thread queue behind it. It is still awaited before the run's execution promise
+resolves, so a shutdown drain waits for it — though the run row itself is already terminal by then, as it
+always has been. One consequence of that hoist: webhooks for two runs on the same thread are no longer
+guaranteed to arrive in run order, since a slow one no longer blocks the next.
+
+A failed delivery is logged and never fails the run; there is no retry, so treat the webhook as a
+notification and the API as the source of truth.
 
 ## Bound a runaway run
 
