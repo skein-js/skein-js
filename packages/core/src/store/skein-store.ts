@@ -137,6 +137,18 @@ export interface ThreadUpdate {
 export interface ThreadSearchQuery {
   /** Match threads whose metadata contains every one of these key/value pairs (subset match). */
   metadata?: Metadata;
+  /**
+   * A **second** metadata subset, AND-ed with `metadata` — the server's own scoping, not the caller's.
+   *
+   * Separate from `metadata` rather than merged into it for two reasons. A merge would silently drop one
+   * side on a key collision (a caller filtering `owner: "bob"` under an ownership filter of
+   * `owner: "alice"` must match *nothing*, not one or the other), and this field is set by the server
+   * only — a value arriving from a request body is discarded, so it cannot be widened from outside.
+   *
+   * Used by the auth ownership filter, which previously read every matching row and filtered in JS.
+   * Both drivers apply it with the same containment semantics as `metadata`.
+   */
+  enforcedMetadata?: Metadata;
   /** Match threads whose mirrored graph values contain every one of these key/value pairs. */
   values?: DefaultValues;
   /** Restrict to threads in this status. */

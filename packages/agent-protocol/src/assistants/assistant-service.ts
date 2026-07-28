@@ -10,6 +10,7 @@
 
 import type { CompiledGraph } from "@langchain/langgraph";
 import {
+  type AuthFilters,
   isSkeinHttpError,
   SkeinHttpError,
   type Assistant,
@@ -22,6 +23,7 @@ import {
   type Thread,
 } from "@skein-js/core";
 
+import { authFiltersToMetadataSubset } from "../auth/auth-filters-to-metadata.js";
 import type { ProtocolContext } from "../context.js";
 import type { GraphSchemas } from "../deps.js";
 import { collectPages } from "../store/collect-pages.js";
@@ -111,12 +113,42 @@ export function createAssistantService(
   // destroy other owners' threads. When auth is configured we authorize a threads:delete for the
   // caller and keep only the threads its ownership filter matches; denial (403) cascades nothing.
   const deletableThreads = async (assistantId: string): Promise<Thread[]> => {
+    // Resolve the ownership filter *before* reading, so it can be pushed into the query instead of
+    // being applied to every matching thread afterwards.
+    const engine = deps.auth;
+    let ownership: AuthFilters | undefined;
+    if (engine?.enabled && ctx.authUser) {
+      try {
+        ({ filters: ownership } = await engine.authorize({
+          resource: "threads",
+          action: "delete",
+          value: { assistant_id: assistantId },
+          context: { user: ctx.authUser, scopes: ctx.authScopes ?? [] },
+        }));
+      } catch {
+        return []; // caller not permitted to delete threads → cascade none
+      }
+    }
+    const enforcedMetadata = authFiltersToMetadataSubset(ownership);
+
     // Every matching thread, not a page of them: this chooses what to delete. Stopping at the page
     // bound would leave the rest orphaned *and* unreachable, because the assistant row is deleted
     // afterwards and cannot be re-deleted.
     const { rows: owned, truncated } = await collectPages({
       fetchPage: (offset) =>
-        deps.store.threads.search({ metadata: { assistant_id: assistantId }, offset }),
+        deps.store.threads.search({
+          metadata: { assistant_id: assistantId },
+          offset,
+          ...(enforcedMetadata ? { enforcedMetadata } : {}),
+        }),
+      // Still filtered here: the pushdown errs broad on any clause it cannot express exactly, so this
+      // is what actually enforces ownership.
+      ...(ownership && engine
+        ? {
+            keep: (thread: Thread) =>
+              engine.matchesFilters(thread.metadata ?? undefined, ownership),
+          }
+        : {}),
     });
     // Beyond any realistic assistant, but say so rather than reporting a partial cascade as complete:
     // the assistant row is deleted afterwards, so whatever is left behind can't be cleaned up here.
@@ -126,20 +158,7 @@ export function createAssistantService(
           `${owned.length} will be deleted and the rest left behind. Delete them via /threads.`,
       );
     }
-    const engine = deps.auth;
-    if (!engine?.enabled || !ctx.authUser) return owned;
-    try {
-      const { filters } = await engine.authorize({
-        resource: "threads",
-        action: "delete",
-        value: { assistant_id: assistantId },
-        context: { user: ctx.authUser, scopes: ctx.authScopes ?? [] },
-      });
-      if (!filters) return owned;
-      return owned.filter((thread) => engine.matchesFilters(thread.metadata ?? undefined, filters));
-    } catch {
-      return []; // caller not permitted to delete threads → cascade none
-    }
+    return owned;
   };
 
   // Compile the assistant's graph for introspection (draw/subgraphs). A factory export is built with

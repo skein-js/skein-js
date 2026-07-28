@@ -19,13 +19,14 @@ function pagedSource(rows: number[], pageSize: number) {
 }
 
 describe("collectPages", () => {
-  it("reads past the first page, and reports the driver's stride rather than a requested one", async () => {
+  it("reads past the first page, paging by the stride the driver actually returned", async () => {
+    // The stride has to come off the first page: a driver clamps a requested limit to its own bound, so
+    // assuming the requested size makes every page look short and stops the drain after one.
     const source = pagedSource([1, 2, 3, 4, 5, 6, 7], 3);
 
-    const { rows, stride, truncated } = await collectPages({ fetchPage: source.fetchPage });
+    const { rows, truncated } = await collectPages({ fetchPage: source.fetchPage });
 
     expect(rows).toEqual([1, 2, 3, 4, 5, 6, 7]);
-    expect(stride).toBe(3);
     expect(truncated).toBe(false);
     expect(source.offsets).toEqual([0, 3, 6]);
   });
@@ -48,7 +49,9 @@ describe("collectPages", () => {
     expect(source.offsets).toEqual([0, 3, 6]);
   });
 
-  it("keeps only the rows the filter accepts, counting scanned rows against maxRows", async () => {
+  // `keep` filters during the drain, but the offsets must still advance by rows *fetched*, not kept —
+  // offsetting by the kept count would re-read rows the filter rejected, forever.
+  it("keeps only the rows the filter accepts, while paging by rows fetched", async () => {
     const source = pagedSource([1, 2, 3, 4, 5, 6], 2);
 
     const { rows } = await collectPages({
@@ -57,23 +60,7 @@ describe("collectPages", () => {
     });
 
     expect(rows).toEqual([2, 4, 6]);
-  });
-
-  it("stops early once `stop` is satisfied, and hands it the stride", async () => {
-    const source = pagedSource([1, 2, 3, 4, 5, 6, 7, 8, 9], 3);
-    const strides: number[] = [];
-
-    const { rows } = await collectPages({
-      fetchPage: source.fetchPage,
-      stop: (kept, stride) => {
-        strides.push(stride);
-        return kept.length >= 4;
-      },
-    });
-
-    expect(rows).toEqual([1, 2, 3, 4, 5, 6]);
-    expect(strides).toEqual([3, 3]);
-    expect(source.offsets).toEqual([0, 3]);
+    expect(source.offsets).toEqual([0, 2, 4, 6]);
   });
 
   it("reports truncated when it gives up at maxRows with rows still unread", async () => {
@@ -96,10 +83,9 @@ describe("collectPages", () => {
   it("handles an empty source", async () => {
     const source = pagedSource([], 3);
 
-    const { rows, stride, truncated } = await collectPages({ fetchPage: source.fetchPage });
+    const { rows, truncated } = await collectPages({ fetchPage: source.fetchPage });
 
     expect(rows).toEqual([]);
-    expect(stride).toBe(0);
     expect(truncated).toBe(false);
   });
 });

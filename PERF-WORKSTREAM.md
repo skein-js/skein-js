@@ -38,7 +38,8 @@ with sane defaults and documented sizing math.
 | `713672b` | P5b     | Opt-in HNSW index                               |
 | `be7d550` | P6a     | Postgres pool timeouts                          |
 | `6d39d45` | P6b     | Page bound on every list/search                 |
-| _pending_ | P6b-bis | Thread-history bound (body-read + real limit)   |
+| `91ac7c6` | P6b-bis | Thread-history bound (body-read + real limit)   |
+| _pending_ | P6c     | Ownership filter pushed into the driver query   |
 
 ### Measured
 
@@ -164,15 +165,40 @@ Default the limit to **100** (smaller than the search cap — each element is a 
 row), clamp to `SKEIN_MAX_PAGE_SIZE`, and pass it into `graph.getStateHistory({ limit })` rather than
 draining and breaking, so the checkpointer stops fetching too.
 
-**6c — push the auth ownership filter into SQL.** Own commit. Since 6b,
-`packages/agent-protocol/src/auth/auth-scoped-store.ts` drains pages via `collectPages` instead of
-fetching every row at once — correct, but still reads and discards other tenants' rows, and still gives
-up at `DEFAULT_MAX_COLLECTED_ROWS`. Pushing the filter down removes the scan entirely, and the
-`collectPages` call there goes away with it. `AuthFilters` map cleanly:
-`$eq`/string → `metadata @> $n::jsonb`; `$contains` → `metadata->k ? v`. Add an internal
-`metadataFilters` to `ThreadSearchQuery`, implement in both drivers, keep the JS filter as a
-belt-and-braces conformance assertion. **The GIN indexes from `dfb450d` already exist**, so this turns a
-full table scan into an index lookup — the largest memory win on the auth path.
+**6c — push the auth ownership filter into SQL. DONE** (see the shipped table). `ThreadSearchQuery`
+gained `enforcedMetadata`, a second metadata subset AND-ed with `metadata`; both drivers apply it with the
+same containment semantics, and an `EXPLAIN` integration test pins that Postgres reaches
+`threads_metadata_idx` for it. The `collectPages` drain in the auth-scoped store is gone — `limit`/`offset`
+now page owned rows directly — and the `delete_threads` cascade pushes the same filter down (it still
+drains, because it must read every row it is about to delete).
+
+Four things worth keeping:
+
+- **Two subsets, not one merged object.** A merge silently drops one side on a key collision: a caller
+  filtering `owner: "bob"` under an ownership filter of `owner: "alice"` must match _nothing_, not one or
+  the other. Also, `threadSearchSchema` is `.passthrough()`, so a request body can carry
+  `enforcedMetadata` this far — the decorator _strips_ it before applying the server's own, so that holds
+  even when the ownership filter translates to nothing. A test pins it.
+- **The translation must never be narrower than `isAuthMatching`.** Too broad costs a few extra rows the
+  in-process filter then drops; too strict silently hides rows a caller owns, and nothing downstream can
+  notice. So `authFiltersToMetadataSubset` skips what it cannot express exactly — notably `{ $eq: "" }` and
+  `{}`, which the engine treats as _no constraint_ because it tests the operand for truthiness. This is
+  checked as a property over a (metadata × filters) matrix rather than by asserting shapes, and the
+  in-process `matchesFilters` pass stays as the actual enforcement.
+- **An off-type `undefined` filter value diverged between the drivers in opposite directions** — the
+  memory driver matched _nothing_ (`isMetadataSubset` needs the key present-and-undefined) while Postgres
+  matched _everything_ (`JSON.stringify` drops the key, leaving `metadata @> '{}'`). Reachable from an
+  ordinary auth handler: `{ owner: user.metadata?.org }` for a user with no org. Skipped now. The lesson
+  for the next translation of this kind: put the runtime-invalid values in the matrix, not just the
+  well-typed ones — that is the class user code actually produces.
+- **`$contains` wraps in an array** (`{ tags: ["red"] }`): jsonb array containment requires the stored
+  value to _be_ an array holding every wanted element, which is exactly `$contains`. An unwrapped
+  `{ tags: "red" }` would instead match a plain string and miss the array it was meant to find.
+- The scoped `list` routes through `search` now. It takes no filter of its own, so filtering its page
+  afterwards hid every row past the page bound — the same bug class as the search path.
+
+Verified by neutering the driver clause: the conformance and paging cases fail, and **no leak test does**
+— the in-process filter still holds the line.
 
 ### P7 — `statement_timeout` on by default
 

@@ -175,6 +175,33 @@ describe("applySkeinMigrations", () => {
     expect(plan).toContain("threads_created_at_thread_id_idx");
   });
 
+  it("can answer an ownership-scoped search from the metadata GIN index", async () => {
+    // The auth ownership filter is pushed into the query as `metadata @> …` (`enforcedMetadata`), which is
+    // only worth doing if that clause can be answered from the GIN index rather than by reading the table.
+    //
+    // Asserted without `ORDER BY … LIMIT`: with them the planner may legitimately prefer the
+    // `created_at` btree (walk it backwards, filter, stop at 20) and that choice flips with row count and
+    // selectivity, which would make this a flaky test rather than a statement about the index. What
+    // matters here is that the clause is indexable at all.
+    const pool = await connectScratch("migrate_ownership_index_used");
+    await applySkeinMigrations(pool);
+    for (let index = 0; index < 2000; index += 1) {
+      await pool.query(`INSERT INTO threads (thread_id, metadata) VALUES ($1, $2)`, [
+        `t-${index}`,
+        JSON.stringify({ owner: index === 0 ? "alice" : `bob-${index}` }),
+      ]);
+    }
+    await pool.query("ANALYZE threads");
+
+    const { rows } = await pool.query<{ "QUERY PLAN": string }>(
+      `EXPLAIN SELECT count(*) FROM threads WHERE metadata @> $1::jsonb`,
+      [JSON.stringify({ owner: "alice" })],
+    );
+    const plan = rows.map((row) => row["QUERY PLAN"]).join("\n");
+    expect(plan).toContain("threads_metadata_idx");
+    expect(plan).not.toContain("Seq Scan");
+  });
+
   it("creates the ledger with the column types node-pg-migrate used", async () => {
     const pool = await connectScratch("migrate_ledger_shape");
     await applySkeinMigrations(pool);

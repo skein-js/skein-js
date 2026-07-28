@@ -52,9 +52,9 @@ describe("createAuthScopedStore", () => {
     expect((await inner.runs.get(run.run_id))?.error).toEqual(failure);
   });
 
-  // The store bounds every search to a page (docs/storage.md), and ownership is filtered *after* the
-  // read — so one page of rows is not one page of the caller's rows. Reading a single page and
-  // paginating it returns nothing at all to an owner whose threads sit past the bound.
+  // The store bounds every search to a page (docs/storage.md). With the ownership filter pushed into the
+  // query the page is a page of the *caller's* rows, so this works with one query; before the pushdown
+  // it needed a paged drain, and before that it returned nothing at all.
   it("finds the caller's threads past the driver's page bound", async () => {
     const inner = new MemorySkeinStore({ maxPageSize: 3 });
     const scoped = createAuthScopedStore(inner, ownerEngine, { owner: "alice" }, "threads");
@@ -83,6 +83,59 @@ describe("createAuthScopedStore", () => {
     expect(first.length).toBe(2);
     expect(second.length).toBe(1);
     expect(new Set([...first, ...second].map((thread) => thread.thread_id)).size).toBe(3);
+  });
+
+  // `threadSearchSchema` passes unknown fields through, so a request body can carry `enforcedMetadata`
+  // as far as this decorator. It must be overwritten, not merged or honoured.
+  it("ignores an enforcedMetadata supplied by the caller", async () => {
+    const inner = new MemorySkeinStore();
+    const scoped = createAuthScopedStore(inner, ownerEngine, { owner: "alice" }, "threads");
+    await inner.threads.create({ metadata: { owner: "alice" } });
+    await inner.threads.create({ metadata: { owner: "bob" } });
+
+    const found = await scoped.threads.search({
+      enforcedMetadata: { owner: "bob" },
+    } as Parameters<typeof scoped.threads.search>[0]);
+
+    expect(found.length).toBe(1);
+    expect(found[0]?.metadata?.["owner"]).toBe("alice");
+  });
+
+  // The scoped `list` has to go through `search` for the same reason: it takes no filter of its own, so
+  // filtering its page afterwards hides rows past the page bound.
+  it("scopes list to the caller's own threads, past the page bound", async () => {
+    const inner = new MemorySkeinStore({ maxPageSize: 3 });
+    const scoped = createAuthScopedStore(inner, ownerEngine, { owner: "alice" }, "threads");
+    // Alice's are the newest here, so an ascending `list` page of three would hold only bob's.
+    for (const owner of ["bob", "bob", "bob", "alice", "alice"]) {
+      await inner.threads.create({ metadata: { owner } });
+    }
+
+    const listed = await scoped.threads.list();
+
+    expect(listed.length).toBe(2);
+    expect(listed.every((thread) => thread.metadata?.["owner"] === "alice")).toBe(true);
+  });
+
+  // The pushdown deliberately errs broad: a filter clause it cannot express exactly is left out, so the
+  // in-process filter is what actually enforces ownership. Proven with an engine whose `matchesFilters`
+  // is stricter than anything the translation can express.
+  it("still filters in process when the pushdown cannot express the filter", async () => {
+    const oddOwnerEngine = {
+      ...ownerEngine,
+      matchesFilters: (metadata: Metadata | undefined) =>
+        typeof metadata?.["owner"] === "string" && metadata["owner"].startsWith("a"),
+    } as unknown as AuthEngine;
+    const inner = new MemorySkeinStore();
+    // `{}` translates to no clause at all, so every row reaches the in-process filter.
+    const scoped = createAuthScopedStore(inner, oddOwnerEngine, { owner: {} }, "threads");
+    await inner.threads.create({ metadata: { owner: "alice" } });
+    await inner.threads.create({ metadata: { owner: "bob" } });
+
+    const found = await scoped.threads.search({});
+
+    expect(found.length).toBe(1);
+    expect(found[0]?.metadata?.["owner"]).toBe("alice");
   });
 
   it("still hides a run the caller does not own", async () => {

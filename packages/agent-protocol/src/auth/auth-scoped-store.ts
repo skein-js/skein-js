@@ -7,8 +7,9 @@
 // assistants are auto-registered with no owner and must stay visible to every caller, and store
 // items carry no metadata to filter on. Per-owner scoping of those two is a Depth-2 follow-up.
 //
-// Depth-1 note: filtering happens in-process after a full fetch. Correct and parity-complete;
-// pushing filters into SQL for scale is a separate follow-up (docs/roadmap.md).
+// Ownership scoping is pushed into the driver query (`enforcedMetadata`), so a read returns only the
+// caller's own rows; the in-process `matchesFilters` pass over the result is what actually enforces it,
+// because the translation errs broad. See `auth-filters-to-metadata.ts`.
 
 import {
   SkeinHttpError,
@@ -21,7 +22,7 @@ import {
   type ThreadRepo,
 } from "@skein-js/core";
 
-import { collectPages } from "../store/collect-pages.js";
+import { authFiltersToMetadataSubset } from "./auth-filters-to-metadata.js";
 
 /** Merge a filter's values into metadata so a created resource satisfies its own filter. */
 function stampFromFilters(metadata: Metadata | undefined, filters: AuthFilters): Metadata {
@@ -58,28 +59,38 @@ export function createAuthScopedStore(
     engine.matchesFilters(metadata ?? undefined, filters);
   const stamp = (metadata: Metadata | null | undefined): Metadata =>
     stampFromFilters(metadata ?? undefined, filters);
+  // The same filters as a metadata subset a driver can match, so ownership scoping is a WHERE clause
+  // rather than a full read plus a JS pass.
+  const ownershipMetadata = authFiltersToMetadataSubset(filters);
 
   if (resource === "threads") {
     const threads: ThreadRepo = {
-      // Not HTTP-routed (no route maps to `threads.list`) and it takes no offset, so there is nothing
-      // to page through: this filters the driver's first page. `search` is the paged surface.
-      list: async () => (await inner.threads.list()).filter((thread) => matches(thread.metadata)),
+      // Routed through `search` so the ownership filter is applied by the *driver*: `list` itself takes
+      // no filter, and reading a page and filtering it afterwards returns nothing at all to an owner
+      // whose threads sit past the page bound. `sortBy: created_at` ascending is `list`'s own ordering.
+      list: () => threads.search({ sortBy: "created_at", sortOrder: "asc" }),
       search: async (query) => {
-        // Pagination must count only rows this caller *owns*, and ownership is filtered in-process, so
-        // a driver page of rows is not a page of owned rows — reading one page and paginating it would
-        // return nothing at all to an owner whose threads sit past the page bound. Drain pages until
-        // there are enough owned rows to answer. (Pushing the ownership filter into the driver query
-        // removes the scan entirely — the SQL-pushdown follow-up in docs/roadmap.md.)
-        const { limit, offset, ...filters } = query;
-        const start = offset ?? 0;
-        const { rows: owned, stride } = await collectPages({
-          fetchPage: (offset) => inner.threads.search({ ...filters, offset }),
-          keep: (thread) => matches(thread.metadata),
-          // An absent `limit` means "one page" for an unscoped search, so it means one page of owned
-          // rows here — the driver's own page size, which the first page reveals.
-          stop: (kept, stride) => kept.length >= start + (limit ?? stride),
+        // The ownership filter goes into the query, so the driver returns only rows this caller owns —
+        // one indexed lookup instead of reading every matching row (each carrying a thread's full
+        // mirrored graph state) to sift in JS. `limit`/`offset` therefore page owned rows directly.
+        //
+        // `enforcedMetadata` is *dropped* from the caller's query before the server's own is applied:
+        // the search schema passes unknown fields through, so a request body naming it must not be able
+        // to influence the scoping — including when the ownership filter translates to nothing.
+        const { enforcedMetadata: _fromCaller, ...requested } = query;
+        const owned = await inner.threads.search({
+          ...requested,
+          ...(ownershipMetadata ? { enforcedMetadata: ownershipMetadata } : {}),
         });
-        return owned.slice(start, start + (limit ?? stride));
+        // This is what actually enforces ownership: `authFiltersToMetadataSubset` deliberately errs broad,
+        // leaving out any clause it cannot express exactly.
+        //
+        // It can only ever *shorten* a page, never leak a row — but a short page is not free. Paging is
+        // exact only while the translation is (which it is for every shape `AuthFilterValue` declares); a
+        // custom engine whose `matchesFilters` is stricter than its own filters would produce sparse
+        // pages, and `offset` would then skip matched-but-unowned rows. That is the trade for one query
+        // instead of a drain over every row in the table.
+        return owned.filter((thread) => matches(thread.metadata));
       },
       get: async (threadId) => {
         const thread = await inner.threads.get(threadId);

@@ -348,6 +348,8 @@ export class MemorySkeinStore implements SkeinStore {
           (!query.ids || query.ids.includes(thread.thread_id)) &&
           (!query.status || thread.status === query.status) &&
           isMetadataSubset(thread.metadata, query.metadata) &&
+          // The server's own scoping, AND-ed with the caller's filter — see `enforcedMetadata`.
+          isMetadataSubset(thread.metadata, query.enforcedMetadata) &&
           isMetadataSubset(thread.values, query.values),
       );
       const sortBy = query.sortBy ?? "created_at";

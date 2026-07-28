@@ -197,6 +197,23 @@ Per request the wrapper:
    is applied yet (graph assistants have no owner and must stay runnable; store items carry no metadata
    to filter on).
 
+**Ownership scoping runs in the database.** A thread search under an ownership filter translates the
+filter into a metadata containment clause the driver matches (`metadata @> …` in Postgres, hitting the
+`threads_metadata_idx` GIN index), so a request reads only the caller's own rows and `limit`/`offset` page
+them directly. It used to read every matching thread — each carrying its full mirrored graph state — and
+filter in JS.
+
+The in-process `matchesFilters` check still runs over whatever comes back, and is what actually enforces
+ownership: the translation deliberately errs **broad**, leaving out any clause it cannot express exactly
+(`{ $eq: "" }` and `{}` constrain nothing, matching the engine), because a clause that were too strict
+would silently hide rows a caller owns. `$contains` becomes array containment, which is the same check.
+
+For every filter shape `AuthFilterValue` declares the two agree exactly, so paging an ownership-scoped
+search behaves like an unscoped one. A **custom** `AuthEngine` whose `matchesFilters` is stricter than its
+own filters is the exception: the in-process check then drops rows the query returned, so pages come back
+short and `offset` counts query-matched rather than owned rows. Keep the two consistent, or page by
+`offset` until a request returns nothing at all rather than stopping at the first short page.
+
 **Principal in the run config.** The authenticated caller is injected into the graph's `configurable`,
 matching LangGraph Platform, so nodes and tools read `config.configurable.langgraph_auth_user` (the
 full user), `langgraph_auth_user_id` (its `identity`), and `langgraph_auth_permissions` (its scopes).
@@ -220,8 +237,8 @@ Route → resource/action (runs authorize through their owning thread — there 
 
 **Reuse & limits.** The `Auth` contract and the `$eq`/`$contains` filter semantics come from
 `@langchain/*`; skein adds only the instance-scoped dispatch (see [reuse.md](./reuse.md)). Ownership
-filtering runs in-process after a fetch (correct at any scale; a SQL-pushdown for large tenants — plus
-per-owner scoping of `assistants`/`store` — is on the [roadmap](./roadmap.md)).
+scoping is pushed into the driver query (above), with the in-process check kept as the enforcement point.
+Per-owner scoping of `assistants`/`store` is still on the [roadmap](./roadmap.md).
 
 ## Conformance strategy
 

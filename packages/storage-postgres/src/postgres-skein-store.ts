@@ -1021,6 +1021,13 @@ export class PostgresSkeinStore implements SkeinStore {
         params.push(JSON.stringify(query.metadata));
         clauses.push(`metadata @> $${params.length}::jsonb`);
       }
+      // A second containment clause rather than one merged object, so a caller's filter and the
+      // server's scoping can name the same key and correctly match nothing. Uses `threads_metadata_idx`
+      // (GIN, jsonb_path_ops) the same way, which is what turns the auth path into an index lookup.
+      if (query.enforcedMetadata && Object.keys(query.enforcedMetadata).length > 0) {
+        params.push(JSON.stringify(query.enforcedMetadata));
+        clauses.push(`metadata @> $${params.length}::jsonb`);
+      }
       if (query.values && Object.keys(query.values).length > 0) {
         params.push(JSON.stringify(query.values));
         clauses.push(`values @> $${params.length}::jsonb`);

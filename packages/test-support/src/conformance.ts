@@ -713,6 +713,92 @@ export function runSkeinStoreConformance(label: string, makeStore: SkeinStoreFac
       });
     });
 
+    // The server's own metadata scoping, AND-ed with the caller's filter. Both drivers must apply it
+    // with the same containment semantics as `metadata`, because the auth ownership filter is pushed
+    // into it — a driver that ignored it would return other tenants' rows for the JS filter to catch,
+    // and one that matched it differently would hide rows a caller owns.
+    describe("driver parity — enforcedMetadata", () => {
+      it("restricts results the same way a metadata filter does", async () => {
+        const store = await makeStore();
+        await store.threads.create({ metadata: { owner: "alice" } });
+        await store.threads.create({ metadata: { owner: "bob" } });
+
+        const alices = await store.threads.search({ enforcedMetadata: { owner: "alice" } });
+        expect(alices.length).toBe(1);
+        expect(alices[0]?.metadata?.["owner"]).toBe("alice");
+      });
+
+      it("is AND-ed with the caller's metadata filter, not merged with it", async () => {
+        const store = await makeStore();
+        await store.threads.create({ metadata: { owner: "alice", topic: "x" } });
+        await store.threads.create({ metadata: { owner: "bob", topic: "x" } });
+
+        // Same key, different values: the correct answer is nothing at all. A merge would answer with
+        // whichever side won, handing one tenant the other's row.
+        expect(
+          await store.threads.search({
+            metadata: { owner: "bob" },
+            enforcedMetadata: { owner: "alice" },
+          }),
+        ).toEqual([]);
+        // Different keys: both apply.
+        expect(
+          (
+            await store.threads.search({
+              metadata: { topic: "x" },
+              enforcedMetadata: { owner: "alice" },
+            })
+          ).length,
+        ).toBe(1);
+      });
+
+      it("matches an array clause by containment, the way $contains needs", async () => {
+        const store = await makeStore();
+        await store.threads.create({ metadata: { tags: ["red", "blue"] } });
+        await store.threads.create({ metadata: { tags: ["blue"] } });
+        await store.threads.create({ metadata: { tags: "red" } });
+
+        expect((await store.threads.search({ enforcedMetadata: { tags: ["red"] } })).length).toBe(
+          1,
+        );
+        expect(
+          (await store.threads.search({ enforcedMetadata: { tags: ["red", "blue"] } })).length,
+        ).toBe(1);
+        expect((await store.threads.search({ enforcedMetadata: { tags: ["green"] } })).length).toBe(
+          0,
+        );
+      });
+
+      it("excludes a thread with no metadata at all", async () => {
+        const store = await makeStore();
+        await store.threads.create();
+
+        expect(await store.threads.search({ enforcedMetadata: { owner: "alice" } })).toEqual([]);
+      });
+
+      it("pages the restricted set, not the whole table", async () => {
+        const store = await makeStore();
+        for (const owner of ["alice", "bob", "alice", "bob", "alice"]) {
+          await store.threads.create({ metadata: { owner } });
+        }
+
+        const page = await store.threads.search({
+          enforcedMetadata: { owner: "alice" },
+          limit: 2,
+        });
+        const next = await store.threads.search({
+          enforcedMetadata: { owner: "alice" },
+          limit: 2,
+          offset: 2,
+        });
+        expect(page.length).toBe(2);
+        expect(next.length).toBe(1);
+        expect([...page, ...next].every((thread) => thread.metadata?.["owner"] === "alice")).toBe(
+          true,
+        );
+      });
+    });
+
     // Every list/search path is bounded, including when the caller passes no `limit` at all — that is
     // what stops one request materializing a whole table. The bound is a driver concern (the memory
     // driver slices, Postgres emits `LIMIT`), so it belongs here rather than in either driver's tests.

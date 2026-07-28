@@ -71,8 +71,9 @@ Also shipped, beyond the original MVP plan:
 - ✅ **Authentication + authorization (LangGraph parity)** — custom auth via a `langgraph.json` `auth`
   block loading a `@langchain/langgraph-sdk/auth` `Auth` instance; transport-neutral, so every adapter
   inherits it. Per-request authenticate (`401`) + authorize per resource/action (`403`) with ownership
-  filters. See [agent-protocol.md](./agent-protocol.md#authentication--authorization). _Follow-up:_
-  push ownership filters into SQL, and per-owner scoping for `assistants` / `store`.
+  filters, pushed into the driver query rather than applied to a full read. See
+  [agent-protocol.md](./agent-protocol.md#authentication--authorization). _Follow-up:_ per-owner scoping
+  for `assistants` / `store`.
 - ✅ **Assistants CRUD + versioning (LangGraph parity)** — the full SDK surface beyond the
   auto-registered one-per-graph assistant: `POST/PATCH/DELETE`, `search`/`count`, immutable version
   history with rollback, and graph/subgraph introspection. See

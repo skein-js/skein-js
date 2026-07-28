@@ -1,4 +1,4 @@
-import type { AuthEngine } from "@skein-js/core";
+import { SkeinHttpError, type AuthEngine } from "@skein-js/core";
 import { MemorySkeinStore } from "@skein-js/storage-memory";
 import { describe, expect, it } from "vitest";
 
@@ -150,6 +150,38 @@ describe("assistant service", () => {
     for (const thread of mine) {
       expect(await deps.store.threads.get(thread.thread_id)).toBeNull();
     }
+  });
+
+  // A caller the engine refuses for threads:delete cascades *nothing* — and since the authorize now runs
+  // before the read, it must still short-circuit rather than deleting and then failing.
+  it("delete_threads cascades nothing when the caller may not delete threads", async () => {
+    const denyingEngine = {
+      ...ownerScopedEngine("alice"),
+      authorize: async () => {
+        throw SkeinHttpError.forbidden("nope");
+      },
+    } as AuthEngine;
+    const deps = createFixtureDeps({ auth: denyingEngine });
+    // A principal is required: with no authenticated user the cascade is unscoped by design (that is the
+    // no-auth path), so the deny branch would never be reached.
+    const ctx: ProtocolContext = {
+      ...createContext(deps),
+      authUser: {
+        identity: "alice",
+        display_name: "alice",
+        is_authenticated: true,
+        permissions: [],
+      },
+      authScopes: [],
+    };
+    const service = createAssistantService(ctx, createThreadService(ctx));
+    await service.create({ graph_id: "echo", assistant_id: "a" });
+    const thread = await deps.store.threads.create({ metadata: { assistant_id: "a" } });
+
+    await service.delete("a", { deleteThreads: true });
+
+    expect(await deps.store.threads.get(thread.thread_id)).not.toBeNull();
+    expect(await deps.store.assistants.get("a")).toBeNull();
   });
 
   it("delete_threads scopes the cascade to the caller's own threads when auth is configured", async () => {

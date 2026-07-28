@@ -23,6 +23,7 @@ skein-js separates two kinds of persistence, and it is important not to conflate
 
 - [`SkeinStore` interface](#skeinstore-interface)
 - [Page bound (`SKEIN_MAX_PAGE_SIZE`)](#page-bound-skein_max_page_size)
+- [Server-enforced metadata](#server-enforced-metadata-enforcedmetadata)
 - [Drivers](#drivers)
 - [Checkpointer selection](#checkpointer-selection)
 - [Why the split matters](#why-the-split-matters)
@@ -77,6 +78,18 @@ Truncation is **not** signalled on the response today — a short page is indist
 of the results, so page with `offset` until you get fewer rows than you asked for. Lowering the bound
 below 1000 clamps a client-supplied `limit` silently for the same reason, so page by what you _received_
 rather than by what you requested.
+
+### Server-enforced metadata (`enforcedMetadata`)
+
+`ThreadSearchQuery` carries a second metadata subset alongside `metadata`, AND-ed with it. It is set by
+the server, never read from a request body, and exists so the auth ownership filter is a `WHERE` clause
+instead of a full read plus an in-process pass — see
+[agent-protocol.md](./agent-protocol.md#authentication--authorization).
+
+Two subsets rather than one merged object, because a merge would silently drop one side on a key
+collision: a caller filtering `owner: "bob"` while the ownership filter requires `owner: "alice"` must
+match **nothing**, not one or the other. Both drivers apply it with the same containment semantics as
+`metadata`, and the shared conformance suite holds them to that.
 
 ### Assistant versioning
 
