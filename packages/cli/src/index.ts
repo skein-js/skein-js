@@ -28,14 +28,19 @@ function parsePort(value: string): number {
   return port;
 }
 
-/** Parse a `--concurrency` value into a positive integer, rejecting anything else. */
-function parseConcurrency(value: string): number {
-  const concurrency = Number(value);
-  if (!Number.isInteger(concurrency) || concurrency <= 0) {
-    throw new InvalidArgumentError("Concurrency must be a positive integer.");
-  }
-  return concurrency;
+/** Parse a positive-integer flag, naming the setting so the rejection says which one was wrong. */
+function parsePositiveInt(label: string) {
+  return (value: string): number => {
+    const parsed = Number(value);
+    if (!Number.isInteger(parsed) || parsed <= 0) {
+      throw new InvalidArgumentError(`${label} must be a positive integer.`);
+    }
+    return parsed;
+  };
 }
+
+const parseConcurrency = parsePositiveInt("Concurrency");
+const parseRunTimeout = parsePositiveInt("Run timeout");
 
 /** Build a commander parser that accepts only one of `choices`, rejecting anything else. */
 const program = new Command()
@@ -79,6 +84,11 @@ program
   // default so an unset flag stays `undefined` and the env var gets a look in.
   .option("--request-log", "Log a line per HTTP request (default on; env SKEIN_REQUEST_LOG)")
   .option("--no-request-log", "Don't log a line per HTTP request")
+  .option(
+    "--run-timeout <ms>",
+    "Abort a run that executes for longer than this (default off; env SKEIN_RUN_TIMEOUT_MS)",
+    parseRunTimeout,
+  )
   // Pass whether --port/--host came from the CLI so runDev only applies the PORT/HOST env fallback
   // when the user left them at their defaults (an explicit flag always wins over the env).
   .action((options, command) =>
@@ -118,6 +128,11 @@ program
   )
   .option("-v, --verbose", "Log per-run activity: start/finish, tool calls, and interrupts")
   .option("--request-log", "Log a line per HTTP request (default off; env SKEIN_REQUEST_LOG)")
+  .option(
+    "--run-timeout <ms>",
+    "Abort a run that executes for longer than this (default off; env SKEIN_RUN_TIMEOUT_MS)",
+    parseRunTimeout,
+  )
   .action((options, command) =>
     runStart({
       ...options,

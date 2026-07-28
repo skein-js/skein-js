@@ -406,6 +406,8 @@ platform names; map them onto skein's.
 | `SKEIN_REQUEST_LOG`        | no                   | `1` to log a line per HTTP request (off by default under `start`). |
 | `SKEIN_HEAP_WARN_PERCENT`  | no                   | Warn above this % of the heap limit (default 85; `0` disables).    |
 | `SKEIN_HEAP_SAMPLE_MS`     | no                   | How often the heap monitor samples (default 30000).                |
+| `SKEIN_RUN_TIMEOUT_MS`     | no                   | Abort a run executing longer than this. Off by default.            |
+| `SKEIN_WEBHOOK_TIMEOUT_MS` | no                   | Ceiling on one webhook POST (default 10000).                       |
 
 Two more apply only when the run queue and event bus are **in-memory**. That is no longer reachable from
 the image — `skein start` rejects `--queue memory` — so these matter on the embedded path

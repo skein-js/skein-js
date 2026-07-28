@@ -17,6 +17,7 @@ import type { CorsOptions } from "cors";
 
 import { resolveHeapPressureOptions, startHeapPressureMonitor } from "./heap-pressure.js";
 import { resolveRunConcurrency } from "./run-concurrency.js";
+import { resolveRunTimeoutMs } from "./run-timeout.js";
 import { resolveShutdownGraceMs } from "./shutdown-grace.js";
 
 export interface SkeinRuntimeCommonOptions {
@@ -183,6 +184,11 @@ export async function resolveProtocolRuntime(
   // tear down the drivers underneath it, and Next.js — which evicts a rejected runtime so the next
   // request retries — would start another worker on every request.
   const heapPressureOptions = resolveHeapPressureOptions();
+
+  // Fills the hole only when nothing has already chosen: an injected `deps.runTimeoutMs` is a deliberate
+  // decision by whoever built the deps and outranks the environment, exactly like `deps.logger`.
+  const runTimeoutMs = resolveRunTimeoutMs(deps.runTimeoutMs);
+  if (runTimeoutMs !== undefined) deps.runTimeoutMs = runTimeoutMs;
 
   // Resolve worker settings here rather than in each adapter: this is the ONE place options +
   // environment become the worker's settings, so Express/Fastify/NestJS/Next.js and `skein dev`/`start`

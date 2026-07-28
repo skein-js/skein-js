@@ -54,6 +54,8 @@ export interface DevCommandOptions {
   nJobsPerWorker?: number;
   /** `true` when `--verbose` was passed: log per-run activity (start/finish, tool calls, interrupts). */
   verbose?: boolean;
+  /** `--run-timeout`: abort a run executing longer than this (ms). Unset → env → no timeout. */
+  runTimeout?: number;
   /** `--request-log` / `--no-request-log`: a line per HTTP request. Unset → env → on for `dev`. */
   requestLog?: boolean;
 }
@@ -136,6 +138,7 @@ export async function runDev(options: DevCommandOptions): Promise<void> {
 
   // `--verbose`: have the run engine log per-run activity (start/finish, tool calls, interrupts).
   if (options.verbose) runtime.deps.logRunActivity = true;
+  if (options.runTimeout !== undefined) runtime.deps.runTimeoutMs = options.runTimeout;
   // The dev server sends a failed run's stack to the client too (the `error` SSE frame and the
   // persisted `Run.error`), so a browser-side `useStream` can show it. Deliberately unconditional
   // rather than behind `--verbose`: needing a flag to find out why your graph crashed is the very

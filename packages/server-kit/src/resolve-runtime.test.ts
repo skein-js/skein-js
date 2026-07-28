@@ -311,3 +311,42 @@ describe("heap pressure monitor lifecycle", () => {
     await runtime.worker.stop();
   });
 });
+
+// `deps.runTimeoutMs` was honoured by the run engine but nothing exposed it, so a hung graph held a
+// worker slot until the process restarted. It is filled here, where the other worker settings resolve.
+describe("run timeout", () => {
+  afterEach(() => {
+    delete process.env["SKEIN_RUN_TIMEOUT_MS"];
+  });
+
+  it("fills runTimeoutMs from the environment", async () => {
+    process.env["SKEIN_RUN_TIMEOUT_MS"] = "120000";
+    const deps = embedInMemoryGraphs({ agent: buildGraph() });
+
+    const { runtime } = await resolveProtocolRuntime({ deps });
+
+    expect(deps.runTimeoutMs).toBe(120_000);
+    await runtime.worker.stop();
+  });
+
+  // An injected value is a deliberate decision by whoever built the deps, so it outranks the
+  // environment — the same precedence `deps.logger` has.
+  it("leaves an injected runTimeoutMs alone", async () => {
+    process.env["SKEIN_RUN_TIMEOUT_MS"] = "120000";
+    const deps = { ...embedInMemoryGraphs({ agent: buildGraph() }), runTimeoutMs: 5_000 };
+
+    const { runtime } = await resolveProtocolRuntime({ deps });
+
+    expect(deps.runTimeoutMs).toBe(5_000);
+    await runtime.worker.stop();
+  });
+
+  it("leaves it unset when nothing asks for one", async () => {
+    const deps = embedInMemoryGraphs({ agent: buildGraph() });
+
+    const { runtime } = await resolveProtocolRuntime({ deps });
+
+    expect(deps.runTimeoutMs).toBeUndefined();
+    await runtime.worker.stop();
+  });
+});

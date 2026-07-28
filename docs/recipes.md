@@ -16,6 +16,7 @@ solves it, and links to the deeper doc. For a terse API reference, see
 - [CORS & browser clients](#cors--browser-clients)
 - [Background runs, join & cancel](#background-runs-join--cancel)
 - [Run-completion webhooks](#run-completion-webhooks)
+- [Bound a runaway run](#bound-a-runaway-run)
 - [Deploy](#deploy)
 
 ## Choose & expand a framework adapter
@@ -220,6 +221,23 @@ The default dispatcher restricts the scheme to `http(s)`. A server that accepts 
 should inject a `webhookDispatcher` (via `overrides`) that allowlists the target host — the default
 stays permissive because internal targets are legitimate in a self-hosted setup. See
 [roadmap.md](./roadmap.md).
+
+**Delivery is bounded and does not hold the thread.** Each POST is aborted after
+`SKEIN_WEBHOOK_TIMEOUT_MS` (default 10s), so an unresponsive receiver can't hold a run open
+indefinitely. Delivery happens _after_ the thread's execution lock is released, so a slow target no
+longer makes every other run on that thread queue behind it — but it is still awaited before the run
+settles, so a shutdown can't exit mid-POST. A failed delivery is logged and never fails the run; there
+is no retry, so treat the webhook as a notification and the API as the source of truth.
+
+## Bound a runaway run
+
+**Problem:** a graph hangs — a model call with no timeout of its own, a node that loops — and holds a
+worker slot until the process restarts. Set a ceiling with `--run-timeout <ms>` or
+`SKEIN_RUN_TIMEOUT_MS`; the run is aborted and settles as `timeout`.
+
+It is **off by default**, deliberately. A legitimate agent run takes minutes, and a research or
+multi-step tool graph can take much longer — a default would turn slow-but-working into killed, which is
+the failure the timeout exists to prevent. Pick a number from your own graphs' worst honest case.
 
 ## Deploy
 

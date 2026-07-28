@@ -71,6 +71,17 @@ export interface RunExecution {
    * Background runs only; inline runs never queue.
    */
   queuedAtMs?: number;
+  /**
+   * Receives the run-completion webhook delivery instead of it being awaited here.
+   *
+   * The engine's `finally` runs inside the thread's execution lock, so awaiting a slow or hung webhook
+   * target there blocks every other run on that thread and keeps the run's whole final state alive
+   * meanwhile. `startRunExecution` passes this and awaits the delivery once the lock has released.
+   *
+   * Omitted → delivered inline, which is what a direct caller (and every test that drives the engine
+   * on its own) wants.
+   */
+  deferWebhook?: (deliver: () => Promise<void>) => void;
 }
 
 /**
@@ -492,11 +503,20 @@ export async function executeRun(deps: ResolvedDeps, exec: RunExecution): Promis
         webhook_sent_at: sentAt,
         ...(webhookErrorMessage !== undefined ? { error: webhookErrorMessage } : {}),
       };
-      try {
-        await deps.webhookDispatcher(kwargs.webhook, payload);
-      } catch (error) {
-        deps.logger.warn(`run ${runId}: webhook delivery to ${kwargs.webhook} failed`, error);
-      }
+      const url = kwargs.webhook;
+      const deliver = async (): Promise<void> => {
+        try {
+          await deps.webhookDispatcher(url, payload);
+        } catch (error) {
+          deps.logger.warn(`run ${runId}: webhook delivery to ${url} failed`, error);
+        }
+      };
+      // Handed to the caller rather than awaited here, when the caller asks for it. This `finally` runs
+      // inside the thread's execution lock, so awaiting a hung target here blocks every other run on
+      // the thread — and holds `payload`, which carries the run's whole final state, alive for as long
+      // as it hangs. See `startRunExecution`.
+      if (exec.deferWebhook) exec.deferWebhook(deliver);
+      else await deliver();
     }
   }
 }

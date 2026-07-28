@@ -43,7 +43,8 @@ with sane defaults and documented sizing math.
 | `8c4add3` | P7      | `statement_timeout` on by default (30s)         |
 | `4b8a3af` | P8      | Adapter module graph: dev-only tooling removed  |
 | `9b6ef9c` | P9      | `skein start` durable-only; container hardening |
-| _pending_ | P9b     | Runtime heap-pressure monitor                   |
+| `18681bc` | P9b     | Runtime heap-pressure monitor                   |
+| _pending_ | P10     | Run + webhook timeouts; webhook out of the lock |
 
 ### Measured
 
@@ -354,18 +355,40 @@ kernel OOM (large Buffers, many sockets) never trips it.
 
 ### P10 — run timeout & webhook
 
-1. `deps.runTimeoutMs` exists in the engine (`run-engine.ts:262-265`) but **no CLI flag or env var
-   reaches it**, so production runs have no wall-clock ceiling. Add
-   `packages/server-kit/src/run-timeout.ts` following `run-concurrency.ts`; default **unset** (opt-in —
-   defaulting it would kill long graphs).
-2. `fetchWebhookDispatcher` (`deps.ts:155-178`) has no `AbortSignal`. Add
-   `AbortSignal.timeout(...)`, `SKEIN_WEBHOOK_TIMEOUT_MS` default 10000.
-3. **Hoist webhook dispatch out of the thread lock.** `run-engine.ts:484-500` awaits delivery in
-   `executeRun`'s `finally`, which runs inside `executionLocks.run(threadId, …)` — so a hung target
-   blocks every other run on that thread and holds `outcome.values` (the whole graph state) alive. Move
-   it to `startRunExecution` after the lock releases, still awaited so shutdown cannot exit mid-delivery.
-   Test with a dispatcher that never resolves, asserting a second run on the same thread acquires the
-   lock.
+**DONE** (see the shipped table).
+
+- **Webhook delivery hoisted out of the thread execution lock.** It was awaited in the engine's
+  `finally`, which runs _inside_ `executionLocks.run(threadId, …)` — so a target taking 30s to answer
+  made every other run on that thread wait 30s, and held the payload (the run's whole final state) alive
+  for the duration. The engine now hands the delivery to `startRunExecution` via `deferWebhook`.
+- `AbortSignal.timeout` on the default dispatcher, `SKEIN_WEBHOOK_TIMEOUT_MS`.
+- `runTimeoutMs` finally reachable: `resolveRunTimeoutMs` + `--run-timeout` on both commands. Opt-in with
+  no default, because a legitimate agent run takes minutes and a default would turn slow-but-working
+  into killed.
+- A failed `rollback` revert logs at `error`, not `warn` — the run continues on state that should have
+  been reverted (P7's follow-up).
+
+Two things review caught, both reproduced:
+
+- **The hoist dropped the webhook whenever the run's own failure handling threw.** The engine hands the
+  delivery over from _its_ `finally`, which runs on the failure path too — so a delivery awaited after
+  the lock (on the success path) was silently skipped when a store write in the `catch` rejected. The
+  client saw a terminal `error` run and the receiver watching for failures never heard about it: exactly
+  the case webhooks exist for. Delivery now happens in `startRunExecution`'s own `finally`.
+- **The timeout has to be sized against the shutdown budget, not picked round.** 10s outlived the CLI's
+  force-exit deadline (`DEFAULT_SHUTDOWN_GRACE_MS` 5s + a 3s buffer = 8s), so the process would be
+  killed mid-POST rather than abandoning it cleanly — and the code comment and the docs both claimed the
+  opposite. Now 5s, with the arithmetic written down.
+
+Two consequences worth knowing, both documented: webhooks for two runs on the same thread are no longer
+guaranteed to arrive in run order (a slow one no longer blocks the next), and the run row is terminal
+before the POST is sent — which was already true, but the hoist makes it easier to notice.
+
+**Not done, and worth its own change:** a client-supplied `webhook` URL reaches the log lines raw, and
+`z.string().url()` accepts embedded control characters (`new URL` strips them from the parsed form but
+not from the original string), so an authenticated caller can forge lines in the server log. Pre-existing
+— this phase only added a third interpolation site. The fix is to log `new URL(url).href` at the
+boundary.
 
 ### P11 — docs
 

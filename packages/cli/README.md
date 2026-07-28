@@ -82,8 +82,10 @@ any layer. Public-registry builds don't need it.
 | `--no-reload`             | —                    | reloads     | Disable hot reload on source change.                                               |
 | `-v, --verbose`           | —                    | off         | Log per-run activity (tool calls, interrupts, timing). Failures are always logged. |
 | `--request-log`           | —                    | on          | A line per HTTP request. `--no-request-log` turns it off; env `SKEIN_REQUEST_LOG`. |
+| `--run-timeout <ms>`      | number               | off         | Abort a run executing longer than this; env `SKEIN_RUN_TIMEOUT_MS`.                |
 
-`--concurrency` and `-n, --n-jobs-per-worker` are accepted by `skein start` too, and also read
+`--concurrency`, `-n, --n-jobs-per-worker`, and `--run-timeout` are accepted by `skein start` too. The
+first two also read
 `SKEIN_RUN_CONCURRENCY` (or `N_JOBS_PER_WORKER`) when no flag is passed — the path that reaches a
 container. See [runs-and-redis.md](../../docs/runs-and-redis.md#run-concurrency).
 

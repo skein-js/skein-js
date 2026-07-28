@@ -54,6 +54,8 @@ export interface StartCommandOptions {
   nJobsPerWorker?: number;
   /** `true` when `--verbose` was passed: log per-run activity. */
   verbose?: boolean;
+  /** `--run-timeout`: abort a run executing longer than this (ms). Unset → env → no timeout. */
+  runTimeout?: number;
   /** `--request-log`: a line per HTTP request. Unset → `SKEIN_REQUEST_LOG` → off for `start`. */
   requestLog?: boolean;
 }
@@ -133,6 +135,9 @@ export async function runStart(options: StartCommandOptions): Promise<void> {
   // `exposeErrorStacks` stays off here: production logs the full stack (the adapter's `logger`
   // option below reaches the run engine), but never puts it on the wire.
   if (options.verbose) runtime.deps.logRunActivity = true;
+  // Set on the deps rather than passed to the adapter: `runTimeoutMs` is a run-engine setting, and the
+  // engine reads it from the deps. `resolveProtocolRuntime` fills it from the environment when unset.
+  if (options.runTimeout !== undefined) runtime.deps.runTimeoutMs = options.runTimeout;
 
   const port = options.portExplicit ? options.port : envPort(options.port);
   const host = options.hostExplicit ? options.host : envHost(options.host);

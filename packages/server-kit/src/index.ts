@@ -57,6 +57,7 @@ export {
 } from "./heap-pressure.js";
 export { resolveMaxPageSize } from "./max-page-size.js";
 export { describePoolPressure, resolveRunConcurrency } from "./run-concurrency.js";
+export { resolveRunTimeoutMs } from "./run-timeout.js";
 export { DEFAULT_RUN_CONCURRENCY } from "@skein-js/agent-protocol";
 export type { RunWorkerOptions } from "@skein-js/agent-protocol";
 

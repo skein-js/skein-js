@@ -148,8 +148,56 @@ export function isNoopLogger(logger: Logger): boolean {
 // provides `fetch` at runtime; if a host lacks it, inject a `webhookDispatcher` instead.
 type GlobalFetch = (
   input: string,
-  init?: { method?: string; headers?: Record<string, string>; body?: string },
+  init?: {
+    method?: string;
+    headers?: Record<string, string>;
+    body?: string;
+    signal?: AbortSignalLike;
+  },
 ) => Promise<{ ok: boolean; status: number }>;
+
+/** Just enough of `AbortSignal` to hand one to `fetch`, for the same reason `GlobalFetch` is local. */
+type AbortSignalLike = { readonly aborted: boolean };
+
+/**
+ * `AbortSignal.timeout` if the runtime has it. Probed rather than assumed, matching how `fetch` itself
+ * is treated here: a host old enough to lack it still delivers webhooks, just without the bound.
+ */
+function timeoutSignal(ms: number): AbortSignalLike | undefined {
+  const ctor = (globalThis as { AbortSignal?: { timeout?: (ms: number) => AbortSignalLike } })
+    .AbortSignal;
+  return ctor?.timeout?.(ms);
+}
+
+/**
+ * How long a webhook POST may take before it is aborted.
+ *
+ * Without one, `fetch` waits as long as the target keeps the socket open — and delivery is awaited
+ * before `startRunExecution` resolves, so an unresponsive target used to hold a run (and, before the
+ * delivery was hoisted out of the thread lock, every other run on that thread) indefinitely.
+ *
+ * Five seconds, chosen against the shutdown budget rather than picked round: the CLI arms its
+ * force-exit at `DEFAULT_SHUTDOWN_GRACE_MS` (5s) + its own buffer (3s) = 8s after SIGTERM. A timeout
+ * longer than that would let the process be killed mid-POST rather than the POST being abandoned
+ * cleanly, which is precisely the case this bound exists to make well-defined. Raise it with
+ * `SKEIN_WEBHOOK_TIMEOUT_MS` if your receiver is genuinely slower — and raise
+ * `SKEIN_SHUTDOWN_GRACE_MS` alongside it, or the two disagree again.
+ */
+export const DEFAULT_WEBHOOK_TIMEOUT_MS = 5_000;
+
+/**
+ * The effective timeout, read at delivery time rather than at module load — an embedded host may set
+ * the variable after importing skein, and a value that only ever mattered per-request should not be
+ * frozen by import order.
+ */
+function webhookTimeoutMs(): number {
+  const raw = process.env["SKEIN_WEBHOOK_TIMEOUT_MS"]?.trim();
+  if (!raw) return DEFAULT_WEBHOOK_TIMEOUT_MS;
+  const value = Number(raw);
+  // Invalid or non-positive falls back rather than throwing: this runs inside a best-effort delivery
+  // whose failure is only logged, so throwing here would replace a working default with silence.
+  return Number.isSafeInteger(value) && value > 0 ? value : DEFAULT_WEBHOOK_TIMEOUT_MS;
+}
 
 /** POST the payload as JSON via the global `fetch`. The default {@link WebhookDispatcher}. */
 const fetchWebhookDispatcher: WebhookDispatcher = async (url, payload) => {
@@ -167,11 +215,28 @@ const fetchWebhookDispatcher: WebhookDispatcher = async (url, payload) => {
   if (!send) {
     throw new Error("global fetch is unavailable; inject a webhookDispatcher to deliver webhooks");
   }
-  const response = await send(url, {
-    method: "POST",
-    headers: { "content-type": "application/json" },
-    body: JSON.stringify(payload),
-  });
+  const timeoutMs = webhookTimeoutMs();
+  const signal = timeoutSignal(timeoutMs);
+  let response: Awaited<ReturnType<GlobalFetch>>;
+  try {
+    response = await send(url, {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify(payload),
+      // `AbortSignal.timeout` rather than a manual controller + `setTimeout`: it needs no clearing, so
+      // it cannot keep the event loop alive past a delivery that finished early.
+      ...(signal ? { signal } : {}),
+    });
+  } catch (error) {
+    // A timeout arrives as an `AbortError`/`TimeoutError`, which on its own reads like a client bug
+    // rather than an unresponsive receiver.
+    if (error instanceof Error && (error.name === "TimeoutError" || error.name === "AbortError")) {
+      throw new Error(`Webhook POST to ${url} timed out after ${timeoutMs}ms`, {
+        cause: error,
+      });
+    }
+    throw error;
+  }
   if (!response.ok) {
     throw new Error(`Webhook POST to ${url} failed with status ${response.status}`);
   }
