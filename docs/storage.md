@@ -172,6 +172,49 @@ SELECT c.relname FROM pg_class c JOIN pg_index i ON i.indexrelid = c.oid WHERE N
 DROP INDEX CONCURRENTLY <name>;
 ```
 
+#### Semantic search: exact by default, HNSW opt-in
+
+With `store.index` configured, semantic search ranks by cosine distance over an **unindexed**
+`embedding` column — an exact scan of every row. Correct, and fine until the store is large. Add
+`"hnsw": true` to opt into an HNSW index:
+
+```json
+{
+  "store": {
+    "index": { "embed": "openai:text-embedding-3-small", "dims": 1536, "hnsw": true }
+  }
+}
+```
+
+Off by default deliberately: HNSW is an **approximate** nearest-neighbour index, so turning it on
+changes which rows a search returns. That is a semantic change, not something to inherit from an
+upgrade.
+
+Enabling it also **pins the column to `vector(dims)`** — pgvector cannot index a dimensionless
+`vector`, which is how the column is created so the base schema works without knowing `dims`. If rows
+already exist at a different dimensionality (an embedder or model change), boot fails with an error
+saying so rather than a raw Postgres one; re-embed or clear those rows before enabling it.
+
+Three things to know before turning it on:
+
+- **The first boot is not free.** Pinning the column rewrites the table under `ACCESS EXCLUSIVE`, which
+  blocks reads and writes on `store_items` for the duration and queues behind any long-running query
+  already touching it. The index build that follows is concurrent and does _not_ block, but it does
+  hold boot until it finishes. If pgvector warns that the graph no longer fits in
+  `maintenance_work_mem`, raise it — that is the biggest lever on build time.
+- **Namespace-filtered search needs pgvector ≥ 0.8.** HNSW selects a fixed candidate set
+  (`hnsw.ef_search`) and the namespace predicate is applied _after_ it, so a prefixed search can return
+  fewer rows than exist — or none. skein sets `hnsw.iterative_scan = strict_order` on every connection
+  to prevent that, which requires pgvector 0.8. On an older server it warns once at startup and the
+  post-filter behaviour stands; leave `hnsw` off there.
+- **Turning it back off does not unpin the column.** `hnsw: false` skips the `ALTER`, it does not
+  reverse it, so a later `dims` change still fails on the pinned column. Undo it by hand:
+  `ALTER TABLE store_items ALTER COLUMN embedding TYPE vector;`
+
+An interrupted build leaves an invalid index; the next boot detects it, drops it concurrently and
+rebuilds. That check exists because pinning a column whose index is invalid rebuilds that index
+_inline_ and non-concurrently, holding `ACCESS EXCLUSIVE` for the whole build.
+
 ```ts
 import { PostgresSaver } from "@langchain/langgraph-checkpoint-postgres";
 

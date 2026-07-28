@@ -43,12 +43,25 @@ export type EmbedFunction = (texts: string[]) => Promise<number[][]>;
 
 /** Semantic-search config, sourced from `langgraph.json`'s `store.index` (see docs/storage.md). */
 export interface StoreIndexConfig {
-  /** Embedding dimensionality (informational; the column is dimensionless). */
+  /**
+   * Embedding dimensionality. Informational while the column stays dimensionless — but required, and
+   * enforced on the column, when {@link StoreIndexConfig.hnsw} is on: pgvector cannot index a
+   * dimensionless `vector`.
+   */
   dims: number;
   /** Value fields to embed. `["$"]` (default) embeds the whole value as JSON. */
   fields?: string[];
   /** The embedder. Required to enable semantic search; without it, search is naive text matching. */
   embed: EmbedFunction;
+  /**
+   * Build an HNSW index on the embedding column. Off by default.
+   *
+   * Opt-in because HNSW is **approximate**: it changes which rows a semantic search returns, which is
+   * a semantic change and not one to inherit from an upgrade. Without it every search is an exact
+   * sequential scan computing cosine distance over every row — correct, and fine until the store
+   * grows. Turning it on also pins the column to `vector(dims)`.
+   */
+  hnsw?: boolean;
 }
 
 /** Connection tuning shared by every `pg` pool skein opens against the same database. */
@@ -97,6 +110,72 @@ export function createPostgresPool(url: string, options: PostgresPoolOptions = {
  * column) across concurrently-booting instances, so a rolling deploy doesn't race `CREATE EXTENSION`.
  */
 const PGVECTOR_SETUP_LOCK = 0x736b6569; // "skei"
+
+/** pgvector's own ceiling on a `vector` column's dimensionality. */
+const PGVECTOR_MAX_DIMENSIONS = 16_000;
+
+/** The HNSW index `store.index.hnsw` builds. Named once — it is referenced by three statements. */
+const HNSW_INDEX_NAME = "store_items_embedding_hnsw_idx";
+
+/**
+ * Validate `dims` before it is interpolated into `ALTER TABLE … TYPE vector(<dims>)`.
+ *
+ * A type modifier cannot be a bind parameter, so this value reaches the SQL as text and has to be
+ * proven safe first. The bounds are pgvector's own, and they double as the guard that keeps it an
+ * integer *literal*: `Number.isInteger(1e21)` is true, but `String(1e21)` is `"1e+21"`, which is not
+ * valid SQL. Lives here rather than in config validation because `embedPostgresGraphs` takes `index`
+ * straight from code and never sees the `langgraph.json` schema.
+ */
+/**
+ * Make every connection in `pool` scan an HNSW index iteratively rather than once.
+ *
+ * Without this, a filtered semantic search can come back **empty**. HNSW returns a fixed candidate set
+ * (`hnsw.ef_search`, 40 by default) and the namespace predicate is applied *after* it — so if none of
+ * those nearest neighbours happen to be in the requested namespace, the query yields nothing even
+ * though matching rows exist. skein's store is namespace-partitioned by design and `getStore()` always
+ * searches with a prefix, so that is the dominant query shape, not an edge case.
+ *
+ * `strict_order` rather than `relaxed_order`: the search returns a similarity score and callers rank
+ * on it, so exact ordering has to hold.
+ *
+ * Set per connection (once, on connect) rather than per query, which would need a transaction and
+ * three extra round trips on every search. Failure is tolerated and logged: `iterative_scan` arrived
+ * in pgvector 0.8, and on an older server the old post-filter behaviour is the best available.
+ */
+function enableIterativeIndexScan(pool: Pool): void {
+  pool.on("connect", (client) => {
+    client.query("SET hnsw.iterative_scan = strict_order").catch(() => {
+      // Swallowed per connection, warned once — see `warnedAboutIterativeScan`.
+      if (!warnedAboutIterativeScan) {
+        warnedAboutIterativeScan = true;
+        console.warn(
+          "skein: this Postgres does not support hnsw.iterative_scan (pgvector < 0.8), so a " +
+            "namespace-filtered semantic search may return fewer rows than exist — HNSW filters " +
+            "after selecting candidates. Upgrade pgvector, or unset store.index.hnsw for exact search.",
+        );
+      }
+    });
+  });
+}
+
+/** One warning per process, not per connection. */
+let warnedAboutIterativeScan = false;
+
+function requireIndexableDimensions(dims: number | undefined): number {
+  if (
+    typeof dims !== "number" ||
+    !Number.isInteger(dims) ||
+    dims <= 0 ||
+    dims > PGVECTOR_MAX_DIMENSIONS
+  ) {
+    throw new Error(
+      `store.index.hnsw needs store.index.dims to be an integer between 1 and ` +
+        `${PGVECTOR_MAX_DIMENSIONS} — pgvector cannot index a dimensionless vector column, and that ` +
+        `is its own limit. Got: ${String(dims)}.`,
+    );
+  }
+  return dims;
+}
 
 const toIsoString = (date: Date): string => date.toISOString();
 
@@ -308,7 +387,9 @@ export class PostgresSkeinStore implements SkeinStore {
     url: string,
     options: PostgresSkeinStoreOptions = {},
   ): Promise<PostgresSkeinStore> {
-    return new PostgresSkeinStore(createPostgresPool(url, options), options.index, options.ttl);
+    const pool = createPostgresPool(url, options);
+    if (options.index?.hnsw) enableIterativeIndexScan(pool);
+    return new PostgresSkeinStore(pool, options.index, options.ttl);
   }
 
   /**
@@ -323,35 +404,144 @@ export class PostgresSkeinStore implements SkeinStore {
     if (this.#index !== undefined) await this.#setupPgvector();
   }
 
-  // Enable pgvector + add the embedding column, serialized by a transaction-scoped advisory lock so
-  // concurrently-booting instances (a rolling deploy) don't race `CREATE EXTENSION` — which can
-  // raise "tuple concurrently updated" when two sessions run it at once. The xact lock frees on
-  // COMMIT/ROLLBACK. applySkeinMigrations lock-serializes the schema, but this DDL runs after it.
+  /**
+   * Enable pgvector, add the embedding column, and — when `store.index.hnsw` is on — pin the column's
+   * dimension and build the index.
+   *
+   * Serialized across concurrently-booting instances by a **session**-scoped advisory lock held on one
+   * client for the whole sequence. It cannot be transaction-scoped: `CREATE INDEX CONCURRENTLY` is
+   * rejected inside a transaction block, so it has to run after the COMMIT — and a transaction-scoped
+   * lock is released *by* that COMMIT, leaving the index build unprotected. Two instances then race it
+   * and Postgres deadlocks one of them, while the survivor leaves an **invalid** index that
+   * `IF NOT EXISTS` skips forever, so HNSW is silently never used. `applyConcurrentMigration` in
+   * run-migrations.ts holds a session lock for exactly this reason.
+   *
+   * The `dims` validation happens before any of it, so a misconfigured deployment fails without first
+   * taking the lock and doing DDL it will only roll back.
+   */
   async #setupPgvector(): Promise<void> {
+    const dims = this.#index?.hnsw ? requireIndexableDimensions(this.#index.dims) : undefined;
     const client = await this.#pool.connect();
+    let locked = false;
     try {
+      await client.query("SELECT pg_advisory_lock($1)", [PGVECTOR_SETUP_LOCK]);
+      locked = true;
+
+      // Before the ALTER, not after: pinning a column that has an *invalid* index attached drops and
+      // rebuilds that index inline, non-concurrently, holding ACCESS EXCLUSIVE on store_items for the
+      // whole build — measured at ~48s on 400k rows where the same ALTER against a valid index is
+      // ~3ms. That would block every read and write, at boot, with nothing in the logs. Clearing it
+      // first means the rebuild happens concurrently below instead.
+      if (dims !== undefined) await this.#dropInvalidHnswIndex(client);
+
       await client.query("BEGIN");
-      await client.query("SELECT pg_advisory_xact_lock($1)", [PGVECTOR_SETUP_LOCK]);
       try {
-        await client.query("CREATE EXTENSION IF NOT EXISTS vector");
+        try {
+          await client.query("CREATE EXTENSION IF NOT EXISTS vector");
+        } catch (error) {
+          // `CREATE EXTENSION` only enables an extension already installed on the server — it can't
+          // install pgvector onto a server that lacks it (Railway's default Postgres, most stock
+          // images). Turn the raw Postgres error into an actionable one.
+          throw new Error(
+            `Could not enable pgvector, required by the configured store.index. Use a Postgres with ` +
+              `pgvector installed (e.g. the pgvector/pgvector image, or Railway's pgvector template) — ` +
+              `or remove store.index to run without semantic search. Original error: ` +
+              `${error instanceof Error ? error.message : String(error)}`,
+          );
+        }
+        await client.query("ALTER TABLE store_items ADD COLUMN IF NOT EXISTS embedding vector");
+        if (dims !== undefined) await this.#pinEmbeddingDimension(client, dims);
+        await client.query("COMMIT");
       } catch (error) {
-        // `CREATE EXTENSION` only enables an extension already installed on the server — it can't
-        // install pgvector onto a server that lacks it (Railway's default Postgres, most stock
-        // images). Turn the raw Postgres error into an actionable one.
-        throw new Error(
-          `Could not enable pgvector, required by the configured store.index. Use a Postgres with ` +
-            `pgvector installed (e.g. the pgvector/pgvector image, or Railway's pgvector template) — ` +
-            `or remove store.index to run without semantic search. Original error: ` +
-            `${error instanceof Error ? error.message : String(error)}`,
-        );
+        await client.query("ROLLBACK");
+        throw error;
       }
-      await client.query("ALTER TABLE store_items ADD COLUMN IF NOT EXISTS embedding vector");
-      await client.query("COMMIT");
-    } catch (error) {
-      await client.query("ROLLBACK");
-      throw error;
+
+      // On the same client, so the session lock above still covers it.
+      if (dims !== undefined) await this.#createHnswIndex(client);
     } finally {
-      client.release();
+      // Released before the client goes back to the pool: a session lock outlives the transaction, so
+      // a returned-but-still-locked connection would wedge every later boot.
+      if (locked) {
+        await client.query("SELECT pg_advisory_unlock($1)", [PGVECTOR_SETUP_LOCK]).catch(() => {
+          // Swallowed: the connection is destroyed below, which ends the session and frees the lock.
+          locked = false;
+        });
+      }
+      client.release(!locked);
+    }
+  }
+
+  /**
+   * Drop a leftover invalid HNSW index so the next build is concurrent rather than inline.
+   *
+   * An interrupted `CREATE INDEX CONCURRENTLY` leaves the index behind marked invalid: unusable by
+   * queries, skipped by `IF NOT EXISTS`, and — the expensive part — silently rebuilt inline by any
+   * later `ALTER COLUMN … TYPE` on the column it covers.
+   */
+  async #dropInvalidHnswIndex(client: PoolClient): Promise<void> {
+    const { rows } = await client.query<{ exists: boolean }>(
+      `SELECT EXISTS (
+         SELECT 1 FROM pg_class c JOIN pg_index i ON i.indexrelid = c.oid
+          WHERE c.relname = $1 AND NOT i.indisvalid
+       ) AS exists`,
+      [HNSW_INDEX_NAME],
+    );
+    if (rows[0]?.exists !== true) return;
+    await client.query(`DROP INDEX CONCURRENTLY IF EXISTS ${HNSW_INDEX_NAME}`);
+  }
+
+  /**
+   * Give the embedding column a fixed dimension, which pgvector requires before it can be indexed.
+   *
+   * The column is created dimensionless so the base schema works without knowing `dims`; HNSW cannot
+   * work that way. This is a rewrite of the column under ACCESS EXCLUSIVE, so on a large
+   * `store_items` the first boot with `hnsw` on blocks reads and writes for the duration — and it
+   * queues behind any long-running query already touching the table.
+   *
+   * `dims` is pre-validated by {@link requireIndexableDimensions}, which is what makes interpolating
+   * it safe.
+   */
+  async #pinEmbeddingDimension(client: PoolClient, dims: number): Promise<void> {
+    try {
+      await client.query(`ALTER TABLE store_items ALTER COLUMN embedding TYPE vector(${dims})`);
+    } catch (error) {
+      throw new Error(
+        `Could not pin store_items.embedding to vector(${dims}), which store.index.hnsw requires. ` +
+          `The usual cause is existing rows embedded at a different dimensionality — an embedder or ` +
+          `model change. Re-embed those rows, or clear them, or turn store.index.hnsw off to keep ` +
+          `exact (unindexed) search. Original error: ` +
+          `${error instanceof Error ? error.message : String(error)}`,
+        { cause: error },
+      );
+    }
+  }
+
+  /**
+   * Build the HNSW index, concurrently and outside any transaction.
+   *
+   * `IF NOT EXISTS` so every boot is a no-op once it exists. On a large `store_items` the first build
+   * is slow; it does not block reads or writes, but it does hold the boot until it finishes. Raise
+   * `maintenance_work_mem` if pgvector warns that the graph no longer fits in it — that is by far the
+   * biggest lever on build time.
+   */
+  async #createHnswIndex(client: PoolClient): Promise<void> {
+    try {
+      await client.query(
+        `CREATE INDEX CONCURRENTLY IF NOT EXISTS ${HNSW_INDEX_NAME}
+           ON store_items USING hnsw (embedding vector_cosine_ops)`,
+      );
+    } catch (error) {
+      throw new Error(
+        `Could not build ${HNSW_INDEX_NAME}, required by store.index.hnsw. If this reports that the ` +
+          `"hnsw" access method does not exist, the server's pgvector predates 0.5.0 — upgrade it or ` +
+          `turn store.index.hnsw off. If it reports that CREATE INDEX CONCURRENTLY cannot run inside ` +
+          `a transaction block, connect to the database directly rather than through a ` +
+          `transaction-pooling proxy such as PgBouncer. An interrupted build leaves an invalid index, ` +
+          `which the next boot clears and retries. Original error: ` +
+          `${error instanceof Error ? error.message : String(error)}`,
+        { cause: error },
+      );
     }
   }
 

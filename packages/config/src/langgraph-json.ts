@@ -11,8 +11,19 @@ import { SkeinConfigError } from "./errors.js";
 const storeIndexSchema = z
   .object({
     embed: z.string().optional(),
-    dims: z.number().optional(),
+    // Bounded here as well as in the store: pgvector's own ceiling, and the store interpolates this
+    // into a type modifier, so a bad value should fail while parsing config rather than at boot.
+    dims: z.number().int().positive().max(16_000).optional(),
     fields: z.array(z.string()).optional(),
+    /**
+     * Build an HNSW index on the embedding column (skein extension, not a LangGraph key).
+     *
+     * Off by default, and deliberately opt-in rather than inferred: HNSW is an **approximate**
+     * nearest-neighbour index, so enabling it changes which rows a semantic search returns. Without
+     * it every search is an exact scan computing cosine distance over every row — correct, and fine
+     * until the store is large.
+     */
+    hnsw: z.boolean().optional(),
   })
   .passthrough();
 

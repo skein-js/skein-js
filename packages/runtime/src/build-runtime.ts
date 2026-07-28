@@ -114,7 +114,7 @@ function reroutableGraphResolver(initial: GraphRegistry): {
  * when no `embed` is configured, in which case Postgres search falls back to naive text matching.
  */
 async function resolveStoreIndex(
-  index: { embed?: string; dims?: number; fields?: string[] } | undefined,
+  index: { embed?: string; dims?: number; fields?: string[]; hnsw?: boolean } | undefined,
   options: { configDir: string; importModule?: ModuleImporter },
 ): Promise<StoreIndexConfig | undefined> {
   if (!index?.embed) return undefined;
@@ -125,7 +125,7 @@ async function resolveStoreIndex(
     );
   }
   const embed = await resolveEmbed(index.embed, options);
-  return { dims: index.dims, fields: index.fields, embed };
+  return { dims: index.dims, fields: index.fields, embed, hnsw: index.hnsw };
 }
 
 /**
