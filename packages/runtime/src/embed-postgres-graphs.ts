@@ -11,6 +11,7 @@
 import type { GraphResolver, ProtocolDeps } from "@skein-js/agent-protocol";
 import {
   normalizeEmbeddableGraphs,
+  resolveMaxPageSize,
   resolveMemoryBusLimits,
   type EmbeddableGraph,
 } from "@skein-js/server-kit";
@@ -61,6 +62,12 @@ export interface EmbedPostgresGraphsOptions {
   idleTimeoutMs?: number;
   /** Server-side ceiling on one statement (ms). Defaults to env `PG_STATEMENT_TIMEOUT_MS`; off by default. */
   statementTimeoutMs?: number;
+  /**
+   * The largest page any store list/search returns, including when the caller asks for no limit.
+   * Defaults to env `SKEIN_MAX_PAGE_SIZE`, else 1000 — a bound on how much one request can materialize,
+   * not a correctness setting (the wire schemas cap a client-supplied `limit` at 1000 regardless).
+   */
+  maxPageSize?: number;
   /**
    * Replace or add any NON-driver dep — `auth`, `logger`, `clock`, `logRunActivity`, `runTimeoutMs`,
    * `webhookDispatcher`. The drivers (`store`/`queue`/`bus`/`checkpointer`) and `graphs` are owned by
@@ -151,6 +158,8 @@ export async function embedPostgresGraphs(
       index: options.index,
       ttl: options.ttl,
       connectionOptions,
+      // Validates an explicit value the same way the env path validates SKEIN_MAX_PAGE_SIZE.
+      maxPageSize: resolveMaxPageSize(options.maxPageSize),
       disposers,
     });
     if (options.ttl) startStoreTtlSweeper(store, options.ttl, disposers);

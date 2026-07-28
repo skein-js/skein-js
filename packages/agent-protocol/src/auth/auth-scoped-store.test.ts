@@ -52,6 +52,39 @@ describe("createAuthScopedStore", () => {
     expect((await inner.runs.get(run.run_id))?.error).toEqual(failure);
   });
 
+  // The store bounds every search to a page (docs/storage.md), and ownership is filtered *after* the
+  // read — so one page of rows is not one page of the caller's rows. Reading a single page and
+  // paginating it returns nothing at all to an owner whose threads sit past the bound.
+  it("finds the caller's threads past the driver's page bound", async () => {
+    const inner = new MemorySkeinStore({ maxPageSize: 3 });
+    const scoped = createAuthScopedStore(inner, ownerEngine, { owner: "alice" }, "threads");
+    // Alice's three are the *oldest*, and search defaults to created_at DESC, so they fall outside the
+    // first page of three entirely.
+    for (const owner of ["alice", "alice", "alice", "bob", "bob", "bob"]) {
+      await inner.threads.create({ metadata: { owner } });
+    }
+
+    const found = await scoped.threads.search({});
+
+    expect(found.length).toBe(3);
+    expect(found.every((thread) => thread.metadata?.["owner"] === "alice")).toBe(true);
+  });
+
+  it("pages the caller's own threads with limit/offset, not the driver's rows", async () => {
+    const inner = new MemorySkeinStore({ maxPageSize: 3 });
+    const scoped = createAuthScopedStore(inner, ownerEngine, { owner: "alice" }, "threads");
+    for (const owner of ["alice", "alice", "alice", "bob", "bob", "bob"]) {
+      await inner.threads.create({ metadata: { owner } });
+    }
+
+    const first = await scoped.threads.search({ limit: 2 });
+    const second = await scoped.threads.search({ limit: 2, offset: 2 });
+
+    expect(first.length).toBe(2);
+    expect(second.length).toBe(1);
+    expect(new Set([...first, ...second].map((thread) => thread.thread_id)).size).toBe(3);
+  });
+
   it("still hides a run the caller does not own", async () => {
     const inner = new MemorySkeinStore();
     const scoped = createAuthScopedStore(inner, ownerEngine, { owner: "bob" }, "threads");

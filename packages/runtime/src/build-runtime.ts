@@ -24,6 +24,7 @@ import type { TelemetrySink } from "@skein-js/core";
 import {
   corsFromHttpConfig,
   loadReloadableInMemoryRuntime,
+  resolveMaxPageSize,
   resolveMemoryBusLimits,
   type DevStateSnapshot,
 } from "@skein-js/server-kit";
@@ -205,10 +206,14 @@ export async function buildRuntime(options: BuildRuntimeOptions): Promise<SkeinR
             }),
             ttl: storeTtl,
             connectionOptions: postgresConnectionOptions(),
+            maxPageSize: resolveMaxPageSize(),
             disposers,
           })
         : {
-            store: new MemorySkeinStore(storeTtl ? { ttl: storeTtl } : undefined),
+            store: new MemorySkeinStore({
+              ...(storeTtl ? { ttl: storeTtl } : {}),
+              maxPageSize: resolveMaxPageSize(),
+            }),
             checkpointer: new MemorySaver(),
           };
 

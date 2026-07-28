@@ -1,10 +1,22 @@
-import type { SkeinStore } from "@skein-js/core";
+import type { SkeinStore, Thread } from "@skein-js/core";
 import { describe, expect, it } from "vitest";
+
+/** Driver-agnostic knobs the conformance suite needs to set on the store it is handed. */
+export interface ConformanceStoreOptions {
+  /**
+   * The driver's page bound. The suite sets a tiny value to assert the bound is applied without
+   * inserting a thousand rows, so every driver has to accept it.
+   */
+  maxPageSize?: number;
+}
 
 /**
  * Produces a fresh, empty {@link SkeinStore}. Called once per test so cases never share state.
+ * `options` is passed through to the driver's constructor.
  */
-export type SkeinStoreFactory = () => SkeinStore | Promise<SkeinStore>;
+export type SkeinStoreFactory = (
+  options?: ConformanceStoreOptions,
+) => SkeinStore | Promise<SkeinStore>;
 
 /**
  * The single behavioral contract every SkeinStore driver must satisfy. Memory and Postgres run
@@ -698,6 +710,87 @@ export function runSkeinStoreConformance(label: string, makeStore: SkeinStoreFac
         // The sweeper physically deletes remaining expired rows (idempotent afterwards).
         await store.store.sweepExpired();
         expect(await store.store.sweepExpired()).toBe(0);
+      });
+    });
+
+    // Every list/search path is bounded, including when the caller passes no `limit` at all — that is
+    // what stops one request materializing a whole table. The bound is a driver concern (the memory
+    // driver slices, Postgres emits `LIMIT`), so it belongs here rather than in either driver's tests.
+    describe("driver parity — page bound", () => {
+      /** Five threads, oldest first. `created_at` ordering is what the paging assertions rely on. */
+      async function seedThreads(store: SkeinStore): Promise<void> {
+        for (const index of [0, 1, 2, 3, 4]) {
+          await store.threads.create({ metadata: { index } });
+        }
+      }
+
+      // Asserts *which* rows, not just how many: a truncated page is only interchangeable across
+      // drivers if they order it the same way. Insertion order and `ORDER BY created_at, <id>` agree on
+      // freshly-created rows but diverge after a snapshot restore, so pin the ordering.
+      //
+      // Timestamps are forced apart because a *tie* cannot be asserted across drivers: Postgres stores
+      // `created_at` at microsecond resolution but exposes it on the wire at millisecond resolution, so
+      // rows that look tied here are strictly ordered there. Ties are a within-driver determinism
+      // concern, which the id tiebreaker handles; they are not a parity contract.
+      it("bounds threads.list to the oldest rows, ordered the same on every driver", async () => {
+        const store = await makeStore({ maxPageSize: 2 });
+        const created: Thread[] = [];
+        for (const index of [0, 1, 2, 3, 4]) {
+          created.push(await store.threads.create({ metadata: { index } }));
+          await new Promise((resolve) => setTimeout(resolve, 2));
+        }
+        const expected = [...created]
+          .sort((a, b) => a.created_at.localeCompare(b.created_at))
+          .slice(0, 2)
+          .map((thread) => thread.thread_id);
+
+        expect((await store.threads.list()).map((thread) => thread.thread_id)).toEqual(expected);
+      });
+
+      it("bounds threads.search when no limit is given", async () => {
+        const store = await makeStore({ maxPageSize: 2 });
+        await seedThreads(store);
+
+        expect((await store.threads.search({})).length).toBe(2);
+      });
+
+      it("bounds a limit larger than the page bound rather than honouring it", async () => {
+        const store = await makeStore({ maxPageSize: 2 });
+        await seedThreads(store);
+
+        expect((await store.threads.search({ limit: 100 })).length).toBe(2);
+      });
+
+      it("honours a limit below the page bound, and still pages with an offset", async () => {
+        const store = await makeStore({ maxPageSize: 2 });
+        await seedThreads(store);
+
+        const first = await store.threads.search({ limit: 1 });
+        const second = await store.threads.search({ limit: 1, offset: 1 });
+        expect(first.length).toBe(1);
+        expect(second.length).toBe(1);
+        expect(second[0]?.thread_id).not.toBe(first[0]?.thread_id);
+      });
+
+      it("bounds assistants.search but not assistants.count", async () => {
+        const store = await makeStore({ maxPageSize: 2 });
+        for (const index of [0, 1, 2, 3, 4]) {
+          await store.assistants.create({ graph_id: "agent", name: `a${index}` });
+        }
+
+        // `count` answers "how many match" — bounding it would make it report the page size instead of
+        // the total, which is the one number that says a page was truncated.
+        expect((await store.assistants.search({})).length).toBe(2);
+        expect(await store.assistants.count({})).toBe(5);
+      });
+
+      it("bounds store.search when no limit is given", async () => {
+        const store = await makeStore({ maxPageSize: 2 });
+        for (const index of [0, 1, 2, 3, 4]) {
+          await store.store.put(["ns"], `k${index}`, { index });
+        }
+
+        expect((await store.store.search({ prefix: ["ns"] })).length).toBe(2);
       });
     });
 

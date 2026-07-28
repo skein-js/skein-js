@@ -36,6 +36,7 @@ export { resolveMemoryBusLimits, type ResolvedMemoryBusLimits } from "./memory-b
 // N_JOBS_PER_WORKER → DEFAULT_RUN_CONCURRENCY) behind `worker.maxConcurrency`. Exported so
 // `skein dev`/`start` resolve the exact number they print in the startup banner, rather than
 // re-implementing the chain.
+export { resolveMaxPageSize } from "./max-page-size.js";
 export { resolveRunConcurrency } from "./run-concurrency.js";
 export { DEFAULT_RUN_CONCURRENCY } from "@skein-js/agent-protocol";
 export type { RunWorkerOptions } from "@skein-js/agent-protocol";

@@ -21,6 +21,8 @@ import {
   type ThreadRepo,
 } from "@skein-js/core";
 
+import { collectPages } from "../store/collect-pages.js";
+
 /** Merge a filter's values into metadata so a created resource satisfies its own filter. */
 function stampFromFilters(metadata: Metadata | undefined, filters: AuthFilters): Metadata {
   const stamped: Metadata = { ...(metadata ?? {}) };
@@ -59,17 +61,25 @@ export function createAuthScopedStore(
 
   if (resource === "threads") {
     const threads: ThreadRepo = {
+      // Not HTTP-routed (no route maps to `threads.list`) and it takes no offset, so there is nothing
+      // to page through: this filters the driver's first page. `search` is the paged surface.
       list: async () => (await inner.threads.list()).filter((thread) => matches(thread.metadata)),
       search: async (query) => {
-        // Pagination must count only rows this caller owns, so strip limit/offset from the inner
-        // query, apply the ownership filter, then paginate here. (Ownership filtering is in-process
-        // today — see the SQL-pushdown follow-up in docs/roadmap.md.)
+        // Pagination must count only rows this caller *owns*, and ownership is filtered in-process, so
+        // a driver page of rows is not a page of owned rows — reading one page and paginating it would
+        // return nothing at all to an owner whose threads sit past the page bound. Drain pages until
+        // there are enough owned rows to answer. (Pushing the ownership filter into the driver query
+        // removes the scan entirely — the SQL-pushdown follow-up in docs/roadmap.md.)
         const { limit, offset, ...filters } = query;
-        const owned = (await inner.threads.search(filters)).filter((thread) =>
-          matches(thread.metadata),
-        );
         const start = offset ?? 0;
-        return owned.slice(start, limit === undefined ? undefined : start + limit);
+        const { rows: owned, stride } = await collectPages({
+          fetchPage: (offset) => inner.threads.search({ ...filters, offset }),
+          keep: (thread) => matches(thread.metadata),
+          // An absent `limit` means "one page" for an unscoped search, so it means one page of owned
+          // rows here — the driver's own page size, which the first page reveals.
+          stop: (kept, stride) => kept.length >= start + (limit ?? stride),
+        });
+        return owned.slice(start, start + (limit ?? stride));
       },
       get: async (threadId) => {
         const thread = await inner.threads.get(threadId);

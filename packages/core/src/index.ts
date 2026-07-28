@@ -28,6 +28,8 @@ export type {
 } from "./wire/wire.js";
 
 // Persistence contract for protocol resources.
+// The page-size bound is a value, not a type: both drivers apply it, so it has to be shared.
+export { DEFAULT_MAX_PAGE_SIZE, requireValidMaxPageSize } from "./store/skein-store.js";
 export type {
   AssistantCreate,
   AssistantRepo,

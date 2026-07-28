@@ -24,6 +24,7 @@ import {
 
 import type { ProtocolContext } from "../context.js";
 import type { GraphSchemas } from "../deps.js";
+import { collectPages } from "../store/collect-pages.js";
 import type { ThreadService } from "../threads/thread-service.js";
 
 /** `POST /assistants` — create input plus LangGraph's `if_exists` conflict policy. */
@@ -110,7 +111,21 @@ export function createAssistantService(
   // destroy other owners' threads. When auth is configured we authorize a threads:delete for the
   // caller and keep only the threads its ownership filter matches; denial (403) cascades nothing.
   const deletableThreads = async (assistantId: string): Promise<Thread[]> => {
-    const owned = await deps.store.threads.search({ metadata: { assistant_id: assistantId } });
+    // Every matching thread, not a page of them: this chooses what to delete. Stopping at the page
+    // bound would leave the rest orphaned *and* unreachable, because the assistant row is deleted
+    // afterwards and cannot be re-deleted.
+    const { rows: owned, truncated } = await collectPages({
+      fetchPage: (offset) =>
+        deps.store.threads.search({ metadata: { assistant_id: assistantId }, offset }),
+    });
+    // Beyond any realistic assistant, but say so rather than reporting a partial cascade as complete:
+    // the assistant row is deleted afterwards, so whatever is left behind can't be cleaned up here.
+    if (truncated) {
+      deps.logger?.warn?.(
+        `Assistant "${assistantId}" has more threads than one delete cascade reads; ` +
+          `${owned.length} will be deleted and the rest left behind. Delete them via /threads.`,
+      );
+    }
     const engine = deps.auth;
     if (!engine?.enabled || !ctx.authUser) return owned;
     try {

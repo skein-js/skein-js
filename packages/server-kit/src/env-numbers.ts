@@ -1,5 +1,5 @@
 // Reading and validating a positive-integer setting from the environment — shared by the knobs that
-// resolve this way, currently `resolveRunConcurrency` and `resolveMemoryBusLimits`. Both follow the
+// resolve this way, currently `resolveRunConcurrency`, `resolveMemoryBusLimits`, and `resolveMaxPageSize`. Both follow the
 // same rule: an explicit value wins, but the environment is still read *and validated*, so a typo in
 // a deployment fails loudly at boot instead of being silently ignored.
 //
@@ -11,7 +11,10 @@ import { SkeinConfigError } from "@skein-js/config";
 /** Parse `raw` as a positive integer, naming `source` in the error so a bad value is traceable. */
 export function requirePositiveInteger(source: string, raw: string | number): number {
   const parsed = Number(raw);
-  if (!Number.isInteger(parsed) || parsed <= 0) {
+  // `Number.isSafeInteger`, not `isInteger`: `1e21` is an integer, but it stringifies in exponential
+  // notation and overflows a Postgres bigint, so it passes boot validation and then breaks every query
+  // that uses it. Nothing this validates is a legitimate count above 2^53.
+  if (!Number.isSafeInteger(parsed) || parsed <= 0) {
     throw new SkeinConfigError(`${source} must be a positive integer (got "${String(raw)}").`);
   }
   return parsed;

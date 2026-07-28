@@ -92,6 +92,9 @@ Pass `overrides` to swap in production drivers or an auth engine while keeping t
   `DEFAULT_RUN_CONCURRENCY` (10, matching the LangGraph CLI). The environment is validated even when
   an explicit value is given, so the two sources can't silently disagree. `skein dev`/`start` use it
   to resolve the number they print in the startup banner.
+- **`resolveMaxPageSize(explicit?, env?): number`** — the same chain for the store page bound:
+  explicit `maxPageSize` → `SKEIN_MAX_PAGE_SIZE` → `DEFAULT_MAX_PAGE_SIZE` (1000). Every driver applies
+  it to list/search, including when the caller asks for no limit.
 - **`loadInMemoryRuntime` / `loadReloadableInMemoryRuntime`** — assemble a `ProtocolDeps` from a
   `langgraph.json` using in-process drivers. The reloadable variant adds `reloadGraphs` /
   `snapshotState` / `hydrateState` (what powers `skein dev`'s hot reload + cross-restart persistence).

@@ -112,14 +112,17 @@ export const threadPatchSchema = z
   })
   .passthrough();
 
-/** `POST /threads/search`. */
+/** `POST /threads/search`. `limit` is capped so a client can't request an unbounded page. */
 export const threadSearchSchema = z
   .object({
     metadata: z.record(z.unknown()).optional(),
     values: z.record(z.unknown()).optional(),
     status: z.enum(["idle", "busy", "interrupted", "error"]).optional(),
     ids: z.array(z.string()).optional(),
-    limit: z.number().int().positive().optional(),
+    // Capped to match `assistantSearchSchema`. A thread row carries its full mirrored graph state, so
+    // an unbounded page here is the most expensive one in the protocol. An *absent* limit is bounded
+    // too — the drivers resolve it to a page rather than to every row.
+    limit: z.number().int().positive().max(1000).optional(),
     offset: z.number().int().nonnegative().optional(),
     sort_by: z.enum(["thread_id", "status", "created_at", "updated_at"]).optional(),
     sort_order: z.enum(["asc", "desc"]).optional(),
@@ -202,12 +205,12 @@ export const storePutSchema = z
   })
   .passthrough();
 
-/** `POST /store/items/search`. */
+/** `POST /store/items/search`. `limit` is capped so a client can't request an unbounded page. */
 export const storeSearchSchema = z
   .object({
     namespace_prefix: z.array(z.string()).optional(),
     query: z.string().optional(),
-    limit: z.number().int().positive().optional(),
+    limit: z.number().int().positive().max(1000).optional(),
     offset: z.number().int().nonnegative().optional(),
   })
   .passthrough();

@@ -22,6 +22,7 @@ skein-js separates two kinds of persistence, and it is important not to conflate
 ## Contents
 
 - [`SkeinStore` interface](#skeinstore-interface)
+- [Page bound (`SKEIN_MAX_PAGE_SIZE`)](#page-bound-skein_max_page_size)
 - [Drivers](#drivers)
 - [Checkpointer selection](#checkpointer-selection)
 - [Why the split matters](#why-the-split-matters)
@@ -50,6 +51,31 @@ interface SkeinStore {
 Each repo exposes CRUD + list/search shaped to the [Agent Protocol](./agent-protocol.md)
 endpoints. All drivers are validated against **one shared conformance test suite**, so
 memory and Postgres behave identically.
+
+### Page bound (`SKEIN_MAX_PAGE_SIZE`)
+
+Every list and search path is **bounded — including when the caller passes no `limit` at all**. The
+default is **1000 rows**. This is a memory bound: a thread row carries the thread's mirrored graph
+state, so an unbounded `POST /threads/search` on a large deployment materializes the table twice over
+(the rows, then the JSON response string) inside one request.
+
+| Surface                             | Bound                                                  |
+| ----------------------------------- | ------------------------------------------------------ |
+| `limit` on a search request         | rejected above 1000 by the wire schema                 |
+| `limit` omitted, or a `list()` call | the first `SKEIN_MAX_PAGE_SIZE` rows (default 1000)    |
+| `assistants.count()`                | **not** bounded — it answers "how many match" in total |
+| `runs.listByThread()`               | **not** bounded — run rows carry no graph state        |
+
+Set `SKEIN_MAX_PAGE_SIZE` to change the driver bound (`maxPageSize` on the store constructor and on
+`embedPostgresGraphs` do the same in code). Lowering it is the useful direction on a small container.
+Raising it widens what an omitted `limit` returns, but **not** the wire cap: a client-supplied `limit`
+is still rejected above 1000, deliberately, so a single request can't be made arbitrarily expensive
+from outside.
+
+Truncation is **not** signalled on the response today — a short page is indistinguishable from the end
+of the results, so page with `offset` until you get fewer rows than you asked for. Lowering the bound
+below 1000 clamps a client-supplied `limit` silently for the same reason, so page by what you _received_
+rather than by what you requested.
 
 ### Assistant versioning
 

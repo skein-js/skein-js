@@ -36,7 +36,8 @@ with sane defaults and documented sizing math.
 | `cac874d` | P2    | Frame-encode cache + replacer fix               |
 | `dfb450d` | P5a   | Postgres indexes for list/search paths          |
 | `713672b` | P5b   | Opt-in HNSW index                               |
-| _pending_ | P6a   | Postgres pool timeouts                          |
+| `be7d550` | P6a   | Postgres pool timeouts                          |
+| _pending_ | P6b   | Page bound on every list/search                 |
 
 ### Measured
 
@@ -82,39 +83,78 @@ remembering if this area is touched again, because neither is obvious:
   the handshake. That is why the default is 30s rather than 10s: a tighter bound fails a burst against a
   small `PG_POOL_MAX` and an autosuspended serverless Postgres waking on the boot path.
 
-**6b — bound the unbounded queries.** Cap at 1000 with `SKEIN_MAX_PAGE_SIZE`:
+**6b — bound the unbounded queries. DONE** (see the shipped table). `SKEIN_MAX_PAGE_SIZE` (default
+1000, resolved by `server-kit/src/max-page-size.ts`) bounds every list/search in both drivers, including
+one with **no** `limit`; `threadSearchSchema`/`storeSearchSchema` cap a client-supplied `limit` at 1000.
+Measured on 300k threads: `POST /threads/search {}` went 202 ms / 605k buffers → 0.67 ms / 1.9k buffers,
+same index, no plan flip on any of the four shapes that could have flipped.
 
-- `threadSearchSchema` (`packages/agent-protocol/src/validation/schemas.ts:116-122`) and
-  `storeSearchSchema` (`:206-210`) have `limit: z.number().int().positive().optional()` — no `.max()`,
-  no default. `assistantSearchSchema` (`:157-162`) already caps at 1000; match it.
-- `threads.list` (`postgres-skein-store.ts` ~755) is `SELECT * FROM threads ORDER BY created_at` with
-  no LIMIT — and `threads.values` is the **full mirrored graph state per row**.
-- `threads.search` (~794): `limitClause` is empty when `limit` is undefined. Absent limit must mean
-  "first 1000", applied in the driver so `list` is covered too. Both drivers change together
-  (conformance suite).
-- Non-semantic store search (~1059): no LIMIT/OFFSET pushdown — loads the whole table then
-  `.filter(JSON.stringify(value).toLowerCase().includes(needle))` and `.slice()` in JS. Push down for
-  the no-`query` case (identical rows, pure win). For the `query` case, `value::text ILIKE` is **not**
-  equivalent — jsonb `::text` canonicalizes key order and whitespace — so align both drivers on one
-  normalized text, covered by the conformance suite.
+Five things review caught that are worth keeping, because each was invisible in the diff:
 
-Clients detect truncation via `x-pagination-total`, already in the always-exposed CORS header list.
+- **A page bound silently breaks any read used as _logic_ rather than as a page.** Two such reads
+  existed. The auth-scoped store deliberately stripped `limit`/`offset` to get every row before
+  filtering by ownership, so with a bound a tenant whose threads sit past row 1000 saw **zero** of their
+  own threads and no `offset` could reach them. And `delete_threads` chose its cascade set from an
+  unbounded search, so it deleted one page and then deleted the assistant row — leaving the rest
+  orphaned _and_ unreachable, since the endpoint then 404s. Both now drain pages via
+  `agent-protocol/src/store/collect-pages.ts`. **Grep for reads with no `limit` before bounding anything
+  else.**
+- `collectPages` reads the page **stride off the first page**, never from what it requested: a driver
+  clamps the requested limit to its own bound, so assuming the requested size makes every page look
+  short and the drain stops after one. That is the bug the helper exists to prevent, and it is why the
+  helper exists at all rather than a two-line loop at each call site.
+- **Bounding the response is not bounding the work.** The memory driver's searches still `readAll`'d —
+  deep-cloning the whole table — and then sliced, so the "one request materializes a table" property
+  survived on the default dev/embedded driver. Filter and sort over the stored references; clone only
+  the page (`clonePage`).
+- `Number.isInteger` is the wrong validator for a count. `SKEIN_MAX_PAGE_SIZE=1e21` passed boot and then
+  failed **every** query (`pg` stringifies it as `1e+21`, which is not a bigint). `requirePositiveInteger`
+  now uses `Number.isSafeInteger`, and `requireValidMaxPageSize` in core guards the constructors too —
+  a non-positive bound makes the memory driver return empty results with no error at all.
+- **Cross-driver row identity under a truncated page is not assertable on ties.** Postgres stores
+  `created_at` at microsecond resolution and exposes it at millisecond resolution, so rows that look tied
+  to a test are strictly ordered in the database. The id tiebreaker is a within-driver determinism
+  contract, not a parity one — the conformance case forces timestamps apart instead.
 
-**6b-bis — bound thread history. Highest single-request win.**
-`packages/agent-protocol/src/create-handlers.ts:287-291` passes `options: undefined` when no `limit`
-query param is given, and `thread-service.ts:141-149` then drains `graph.getStateHistory()` to
+Not done, deliberately: `x-pagination-total` **does not exist**. `ProtocolResponse` has no headers
+channel (`create-handlers.ts:52-55`), and the header appears only in the CORS exposed-headers list. So
+truncation is currently undetectable by a client — page by what you _received_. Adding it needs a
+`headers` field on `ProtocolResponse` plus every adapter, which is its own change.
+
+Also still unbounded, all pre-existing and reachable unauthenticated: `POST /store/namespaces`
+(`SELECT DISTINCT namespace`, and the handler takes no limit at all), `GET /threads/{id}/runs`
+(`runs.listByThread`, also hit internally by `loadThreadGraph` on every state read), non-semantic store
+search **with** a `query` string and no `store.index` configured, and `offset` itself (uncapped, and a
+deep offset still walks the index — 137 ms measured at `OFFSET 299000`). The bound is on **row count,
+not bytes**: 1000 thread rows each carrying a multi-MB `values` blob is still a very large response.
+
+**6b-bis — bound thread history. Highest single-request win, and the limit that exists today is a
+no-op.** `packages/agent-protocol/src/create-handlers.ts:287-291` passes `options: undefined` when no
+`limit` query param is given, and `thread-service.ts:141-149` then drains `graph.getStateHistory()` to
 exhaustion, pushing **every checkpoint's full `values`** into one array, which is then
 `serializeWireJson`'d into one response string. A 200-turn thread materializes its entire state history
 plus that string at once. `positiveIntQuery` has no cap either, so `?limit=1000000` is accepted.
 Unauthenticated by default.
 
+Two details found while reviewing 6b, both of which make today's limit ineffective even when a client
+sends one:
+
+- The handler reads `limit` from **`req.query`**, but the route is a `POST` (`http/routes.ts:68`) and the
+  LangGraph SDK sends `limit` in the **JSON body** — so for a real client the limit is silently dropped.
+- Even when honoured, the limit is applied by breaking out of the `for await`. `PostgresSaver.list`
+  only emits a SQL `LIMIT` when `options.limit` is set, and otherwise runs **one query that materializes
+  every checkpoint row plus its `channel_values` before yielding the first one**. So the limit has to go
+  into `getStateHistory({ limit })` to have any effect on memory at all.
+
 Default the limit to **100** (smaller than the search cap — each element is a full graph state, not a
 row), clamp to `SKEIN_MAX_PAGE_SIZE`, and pass it into `graph.getStateHistory({ limit })` rather than
 draining and breaking, so the checkpointer stops fetching too.
 
-**6c — push the auth ownership filter into SQL.** Own commit.
-`packages/agent-protocol/src/auth/auth-scoped-store.ts:62-73` strips `limit`/`offset`, fetches every
-matching thread (each with full `values`), filters in JS, then slices. `AuthFilters` map cleanly:
+**6c — push the auth ownership filter into SQL.** Own commit. Since 6b,
+`packages/agent-protocol/src/auth/auth-scoped-store.ts` drains pages via `collectPages` instead of
+fetching every row at once — correct, but still reads and discards other tenants' rows, and still gives
+up at `DEFAULT_MAX_COLLECTED_ROWS`. Pushing the filter down removes the scan entirely, and the
+`collectPages` call there goes away with it. `AuthFilters` map cleanly:
 `$eq`/string → `metadata @> $n::jsonb`; `$contains` → `metadata->k ? v`. Add an internal
 `metadataFilters` to `ThreadSearchQuery`, implement in both drivers, keep the JS filter as a
 belt-and-braces conformance assertion. **The GIN indexes from `dfb450d` already exist**, so this turns a
@@ -349,8 +389,10 @@ entry under a **Behavior changes** heading:
   subscribers now share one connection (a shared failure domain).
 - **P5** — `0005` builds indexes concurrently at boot; HNSW is approximate and pins the embedding
   column when enabled.
-- **P6** — **`threads.search` truncates at 1000** and `/history` defaults to 100. The one most likely
-  to surprise someone.
+- **P6** — **every list/search truncates at 1000** (`SKEIN_MAX_PAGE_SIZE`), including one with no
+  `limit`, where it previously returned every row; a `limit` above 1000 is now a 400. `/history` will
+  default to 100 in 6b-bis. The one most likely to surprise someone — and truncation is not signalled on
+  the response, so say so: page by what you received, not by what you asked for.
 - **P8** — root exports move to `/dev` and `/errors` subpaths.
 - **P9** — **`skein start` refuses memory drivers**; Node 22 base image; request logs off under `start`.
 - **P10** — slow webhook targets now fail instead of hanging a thread lock.

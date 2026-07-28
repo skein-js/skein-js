@@ -303,6 +303,7 @@ function embedPostgresGraphs(
     connectionTimeoutMs?: number; // default env PG_CONNECTION_TIMEOUT_MS, else 30s (0 = wait forever)
     idleTimeoutMs?: number; //       default env PG_IDLE_TIMEOUT_MS
     statementTimeoutMs?: number; //  default env PG_STATEMENT_TIMEOUT_MS; off unless set
+    maxPageSize?: number; //         default env SKEIN_MAX_PAGE_SIZE, else 1000 (list/search bound)
     overrides?: Omit<Partial<ProtocolDeps>, "graphs" | "store" | "queue" | "bus" | "checkpointer">;
   },
 ): Promise<{ deps: ProtocolDeps; dispose(): Promise<void> }>;

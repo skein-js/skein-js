@@ -8,6 +8,8 @@
 import { randomUUID } from "node:crypto";
 
 import {
+  DEFAULT_MAX_PAGE_SIZE,
+  requireValidMaxPageSize,
   isMetadataSubset,
   isTerminalRunStatus,
   SkeinHttpError,
@@ -74,6 +76,34 @@ function readAll<T>(map: Map<string, T>): T[] {
   return [...map.values()].map((row) => clone(row));
 }
 
+/**
+ * A page of already-filtered/sorted rows, deep-cloned on the way out.
+ *
+ * The clone is what makes the driver behave like a real database (see the isolation cases in the
+ * conformance suite), and it is the expensive part — a thread row carries the thread's whole mirrored
+ * graph state. So filter and sort over the *stored* references and clone only the rows that leave.
+ * Cloning the table first and slicing afterwards is the cost the page bound exists to avoid.
+ */
+function clonePage<T>(rows: readonly T[], offset: number, limit: number): T[] {
+  return rows.slice(offset, offset + limit).map((row) => clone(row));
+}
+
+/**
+ * Sort ascending by `created_at`, breaking ties on the row's id — the ordering the Postgres driver's
+ * `list` uses. The tiebreaker matters once a page bound truncates: `created_at` alone ties at
+ * millisecond resolution, and a restored snapshot carries its original timestamps.
+ */
+function sortByCreatedAtThenId<T extends { created_at: string }>(
+  rows: T[],
+  idOf: (row: T) => string,
+): T[] {
+  return rows.sort((a, b) =>
+    a.created_at === b.created_at
+      ? idOf(a).localeCompare(idOf(b))
+      : a.created_at.localeCompare(b.created_at),
+  );
+}
+
 /** Store a row (deep-cloned in, so later caller mutation can't reach it) and return a fresh copy. */
 function write<T>(map: Map<string, T>, id: string, row: T): T {
   const stored = clone(row);
@@ -114,8 +144,21 @@ export class MemorySkeinStore implements SkeinStore {
   readonly #itemExpiry = new Map<string, { expiresAt: number | null; ttlMinutes: number | null }>();
   readonly #ttl?: StoreTtlConfig;
 
-  constructor(options?: { ttl?: StoreTtlConfig }) {
+  readonly #maxPageSize: number;
+
+  constructor(options?: { ttl?: StoreTtlConfig; maxPageSize?: number }) {
     this.#ttl = options?.ttl;
+    this.#maxPageSize = requireValidMaxPageSize(options?.maxPageSize ?? DEFAULT_MAX_PAGE_SIZE);
+  }
+
+  /**
+   * The effective page size for a search: the caller's limit, bounded by `maxPageSize`.
+   *
+   * An absent limit means the first page, not everything — matching the Postgres driver, which the
+   * shared conformance suite holds both to. Unbounded was the old behaviour on both.
+   */
+  #pageLimit(limit: number | undefined): number {
+    return Math.min(limit ?? this.#maxPageSize, this.#maxPageSize);
   }
 
   /** Record (or clear) an item's expiry from a resolved per-item TTL in minutes. */
@@ -161,31 +204,48 @@ export class MemorySkeinStore implements SkeinStore {
     return max;
   }
 
+  /**
+   * Every assistant matching `query`'s filters, sorted — before pagination. **Stored references, not
+   * copies**: callers must clone whatever they hand out (`clonePage`).
+   *
+   * Extracted so `count` does not go through `search`: `search` now bounds an absent limit to a page,
+   * so counting via it would report at most one page. Postgres counts with `count(*)`, and the two
+   * drivers have to agree.
+   */
+  #matchingAssistants(query: AssistantSearchQuery): Assistant[] {
+    const matched = [...this.#assistants.values()].filter(
+      (assistant) =>
+        (query.graph_id === undefined || assistant.graph_id === query.graph_id) &&
+        (query.name === undefined || assistant.name === query.name) &&
+        isMetadataSubset(assistant.metadata, query.metadata),
+    );
+    const sortBy = query.sortBy ?? "created_at";
+    const direction = query.sortOrder === "asc" ? 1 : -1;
+    const compare = (a: string, b: string): number => (a < b ? -1 : a > b ? 1 : 0);
+    matched.sort((a, b) => {
+      const primary = compare(String(a[sortBy] ?? ""), String(b[sortBy] ?? ""));
+      // Break ties on assistant_id in the same direction, so paging is deterministic and matches
+      // the Postgres driver's `ORDER BY <sortBy> <dir>, assistant_id <dir>`.
+      const ordered = primary !== 0 ? primary : compare(a.assistant_id, b.assistant_id);
+      return direction * ordered;
+    });
+    return matched;
+  }
+
   readonly assistants: AssistantRepo = {
-    list: async () => readAll(this.#assistants),
+    // Ordered like the Postgres driver's `ORDER BY created_at, assistant_id`, so a page bounded at the
+    // same size holds the *same* rows on both drivers — insertion order would diverge after `hydrate`.
+    list: async () =>
+      clonePage(
+        sortByCreatedAtThenId([...this.#assistants.values()], (row) => row.assistant_id),
+        0,
+        this.#pageLimit(undefined),
+      ),
     search: async (query: AssistantSearchQuery) => {
-      const matched = readAll(this.#assistants).filter(
-        (assistant) =>
-          (query.graph_id === undefined || assistant.graph_id === query.graph_id) &&
-          (query.name === undefined || assistant.name === query.name) &&
-          isMetadataSubset(assistant.metadata, query.metadata),
-      );
-      const sortBy = query.sortBy ?? "created_at";
-      const direction = query.sortOrder === "asc" ? 1 : -1;
-      const compare = (a: string, b: string): number => (a < b ? -1 : a > b ? 1 : 0);
-      matched.sort((a, b) => {
-        const primary = compare(String(a[sortBy] ?? ""), String(b[sortBy] ?? ""));
-        // Break ties on assistant_id in the same direction, so paging is deterministic and matches
-        // the Postgres driver's `ORDER BY <sortBy> <dir>, assistant_id <dir>`.
-        const ordered = primary !== 0 ? primary : compare(a.assistant_id, b.assistant_id);
-        return direction * ordered;
-      });
-      const offset = query.offset ?? 0;
-      const limit = query.limit ?? matched.length;
-      return matched.slice(offset, offset + limit);
+      const matched = this.#matchingAssistants(query);
+      return clonePage(matched, query.offset ?? 0, this.#pageLimit(query.limit));
     },
-    count: async (query: AssistantSearchQuery) =>
-      (await this.assistants.search({ ...query, limit: undefined, offset: undefined })).length,
+    count: async (query: AssistantSearchQuery) => this.#matchingAssistants(query).length,
     get: async (assistantId) => readOne(this.#assistants, assistantId),
     create: async (input: AssistantCreate) => {
       const assistantId = input.assistant_id ?? randomUUID();
@@ -244,8 +304,7 @@ export class MemorySkeinStore implements SkeinStore {
         )
         .sort((a, b) => b.version - a.version);
       const offset = query?.offset ?? 0;
-      const limit = query?.limit ?? versions.length;
-      return versions.slice(offset, offset + limit).map(clone);
+      return versions.slice(offset, offset + this.#pageLimit(query?.limit)).map(clone);
     },
     setLatest: async (assistantId, version) => {
       const existing = this.#assistants.get(assistantId);
@@ -276,9 +335,15 @@ export class MemorySkeinStore implements SkeinStore {
   };
 
   readonly threads: ThreadRepo = {
-    list: async () => readAll(this.#threads),
+    list: async () =>
+      clonePage(
+        sortByCreatedAtThenId([...this.#threads.values()], (row) => row.thread_id),
+        0,
+        this.#pageLimit(undefined),
+      ),
     search: async (query: ThreadSearchQuery) => {
-      const matched = readAll(this.#threads).filter(
+      // Stored references — `clonePage` copies only the page that leaves.
+      const matched = [...this.#threads.values()].filter(
         (thread) =>
           (!query.ids || query.ids.includes(thread.thread_id)) &&
           (!query.status || thread.status === query.status) &&
@@ -295,9 +360,7 @@ export class MemorySkeinStore implements SkeinStore {
         const ordered = primary !== 0 ? primary : compare(a.thread_id, b.thread_id);
         return direction * ordered;
       });
-      const offset = query.offset ?? 0;
-      const limit = query.limit ?? matched.length;
-      return matched.slice(offset, offset + limit);
+      return clonePage(matched, query.offset ?? 0, this.#pageLimit(query.limit));
     },
     get: async (threadId) => readOne(this.#threads, threadId),
     create: async (input?: ThreadCreate) => {
@@ -451,23 +514,20 @@ export class MemorySkeinStore implements SkeinStore {
     },
     search: async (query: StoreSearchQuery) => {
       const needle = query.query?.toLowerCase();
+      // Stored references, filtered in place; only the page is cloned and scored below.
       const matches: SearchItem[] = [...this.#items.entries()]
         .filter(([id]) => !this.#isExpired(id))
         .map(([, item]) => item)
         .filter((item) => hasPrefix(item.namespace, query.prefix))
         .filter((item) =>
           needle ? JSON.stringify(item.value).toLowerCase().includes(needle) : true,
-        )
-        .map((item) => {
-          const result: SearchItem = clone(item);
-          // Naive relevance: any query is an exact-substring hit, so score 1 (pgvector does the
-          // real semantic ranking in the Postgres driver).
-          if (needle) result.score = 1;
-          return result;
-        });
+        );
 
-      const offset = query.offset ?? 0;
-      return matches.slice(offset, query.limit === undefined ? undefined : offset + query.limit);
+      const page = clonePage(matches, query.offset ?? 0, this.#pageLimit(query.limit));
+      // Naive relevance: any query is an exact-substring hit, so score 1 (pgvector does the real
+      // semantic ranking in the Postgres driver).
+      if (needle) for (const item of page) item.score = 1;
+      return page;
     },
     listNamespaces: async (prefix) => {
       // Key by JSON.stringify (not join) so distinct namespaces whose segments contain the

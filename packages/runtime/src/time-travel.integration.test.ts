@@ -11,6 +11,7 @@ import {
   type GraphSchemas,
   type ProtocolDeps,
 } from "@skein-js/agent-protocol";
+import { resolveMaxPageSize } from "@skein-js/server-kit";
 import { MemoryRunEventBus, MemoryRunQueue } from "@skein-js/storage-memory";
 import { startPostgres, type StartedResource } from "@skein-js/test-support";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
@@ -51,6 +52,7 @@ async function serviceOnPostgres() {
   const { store, checkpointer } = await connectPostgresStore({
     url: pg.url,
     connectionOptions: postgresConnectionOptions(),
+    maxPageSize: resolveMaxPageSize(),
     disposers,
   });
   const deps: ProtocolDeps = {

@@ -23,6 +23,8 @@ import {
   type RunRepo,
   type RunStatus,
   type SearchItem,
+  DEFAULT_MAX_PAGE_SIZE,
+  requireValidMaxPageSize,
   type SkeinStore,
   type SkeinStoreSnapshot,
   type StorePutOptions,
@@ -98,6 +100,12 @@ export interface PostgresPoolOptions {
 }
 
 export interface PostgresSkeinStoreOptions extends PostgresPoolOptions {
+  /**
+   * Rows a `search` returns when the caller asks for no limit. Defaults to
+   * {@link DEFAULT_MAX_PAGE_SIZE}. Lower it on a small instance; an absent limit used to mean *every*
+   * row, which for threads meant every thread's full mirrored graph state.
+   */
+  maxPageSize?: number;
   /** Enables pgvector semantic store search. Omitted → search falls back to naive text matching. */
   index?: StoreIndexConfig;
   /** Store-item expiry policy (from `langgraph.json` `store.ttl`). Omitted → items never expire. */
@@ -395,10 +403,30 @@ export class PostgresSkeinStore implements SkeinStore {
   readonly #index?: StoreIndexConfig;
   readonly #ttl?: StoreTtlConfig;
 
-  private constructor(pool: Pool, index?: StoreIndexConfig, ttl?: StoreTtlConfig) {
+  readonly #maxPageSize: number;
+
+  private constructor(
+    pool: Pool,
+    index?: StoreIndexConfig,
+    ttl?: StoreTtlConfig,
+    maxPageSize?: number,
+  ) {
+    this.#maxPageSize = requireValidMaxPageSize(maxPageSize ?? DEFAULT_MAX_PAGE_SIZE);
     this.#pool = pool;
     this.#index = index;
     this.#ttl = ttl;
+  }
+
+  /**
+   * The effective `LIMIT` for a search: the caller's, bounded by `maxPageSize`.
+   *
+   * An absent limit resolves to `maxPageSize` rather than to "no limit". Unbounded was the old
+   * behaviour and it meant a single `POST /threads/search` with an empty body pulled every thread —
+   * each carrying its full mirrored graph state — into the heap. An explicit limit is clamped too, so
+   * lowering `maxPageSize` on a small instance actually holds.
+   */
+  #pageLimit(limit: number | undefined): number {
+    return Math.min(limit ?? this.#maxPageSize, this.#maxPageSize);
   }
 
   /** Run `work` inside a transaction, committing on success and rolling back on any error. */
@@ -424,7 +452,7 @@ export class PostgresSkeinStore implements SkeinStore {
   ): Promise<PostgresSkeinStore> {
     const pool = createPostgresPool(url, options);
     if (options.index?.hnsw) enableIterativeIndexScan(pool);
-    return new PostgresSkeinStore(pool, options.index, options.ttl);
+    return new PostgresSkeinStore(pool, options.index, options.ttl, options.maxPageSize);
   }
 
   /**
@@ -779,7 +807,10 @@ export class PostgresSkeinStore implements SkeinStore {
   readonly assistants: AssistantRepo = {
     list: async () => {
       const { rows } = await this.#pool.query<AssistantRow>(
-        "SELECT * FROM assistants ORDER BY created_at",
+        // Tiebreaker for the same reason `search` has one: with a LIMIT, *which* rows come back is
+        // undefined when `created_at` ties (a restored snapshot can tie at millisecond resolution).
+        "SELECT * FROM assistants ORDER BY created_at, assistant_id LIMIT $1",
+        [this.#pageLimit(undefined)],
       );
       return rows.map(rowToAssistant);
     },
@@ -791,11 +822,9 @@ export class PostgresSkeinStore implements SkeinStore {
       const direction = query.sortOrder === "asc" ? "ASC" : "DESC";
       params.push(query.offset ?? 0);
       const offsetParam = `$${params.length}`;
-      let limitClause = "";
-      if (query.limit !== undefined) {
-        params.push(query.limit);
-        limitClause = `LIMIT $${params.length}`;
-      }
+      // Always bounded: an absent limit means the first page, not the whole table.
+      params.push(this.#pageLimit(query.limit));
+      const limitClause = `LIMIT $${params.length}`;
       // `assistant_id` is a unique tiebreaker so OFFSET/LIMIT paging is stable when the primary sort
       // key ties — mirrors the memory driver's `ORDER BY <sortBy> <dir>, assistant_id <dir>`.
       const { rows } = await this.#pool.query<AssistantRow>(
@@ -923,11 +952,8 @@ export class PostgresSkeinStore implements SkeinStore {
       }
       params.push(query?.offset ?? 0);
       const offsetParam = `$${params.length}`;
-      let limitClause = "";
-      if (query?.limit !== undefined) {
-        params.push(query.limit);
-        limitClause = `LIMIT $${params.length}`;
-      }
+      params.push(this.#pageLimit(query?.limit));
+      const limitClause = `LIMIT $${params.length}`;
       const { rows } = await this.#pool.query<AssistantVersionRow>(
         `SELECT * FROM assistant_versions ${where} ORDER BY version DESC OFFSET ${offsetParam} ${limitClause}`,
         params,
@@ -983,7 +1009,8 @@ export class PostgresSkeinStore implements SkeinStore {
   readonly threads: ThreadRepo = {
     list: async () => {
       const { rows } = await this.#pool.query<ThreadRow>(
-        "SELECT * FROM threads ORDER BY created_at",
+        "SELECT * FROM threads ORDER BY created_at, thread_id LIMIT $1",
+        [this.#pageLimit(undefined)],
       );
       return rows.map(rowToThread);
     },
@@ -1013,11 +1040,9 @@ export class PostgresSkeinStore implements SkeinStore {
       const direction = query.sortOrder === "asc" ? "ASC" : "DESC";
       params.push(query.offset ?? 0);
       const offsetParam = `$${params.length}`;
-      let limitClause = "";
-      if (query.limit !== undefined) {
-        params.push(query.limit);
-        limitClause = `LIMIT $${params.length}`;
-      }
+      // Always bounded: an absent limit means the first page, not the whole table.
+      params.push(this.#pageLimit(query.limit));
+      const limitClause = `LIMIT $${params.length}`;
       // `thread_id` is a unique tiebreaker so OFFSET/LIMIT paging is stable when the primary sort key
       // ties (equal timestamps/status) — without it Postgres row order is undefined across queries and
       // a page could drop or duplicate a row.
@@ -1269,11 +1294,9 @@ export class PostgresSkeinStore implements SkeinStore {
       }
       params.push(query.offset ?? 0);
       const offsetParam = `$${params.length}`;
-      let limitClause = "";
-      if (query.limit !== undefined) {
-        params.push(query.limit);
-        limitClause = `LIMIT $${params.length}`;
-      }
+      // Always bounded: an absent limit means the first page, not the whole table.
+      params.push(this.#pageLimit(query.limit));
+      const limitClause = `LIMIT $${params.length}`;
       const { rows } = await this.#pool.query<ItemRow & { score: number }>(
         `SELECT namespace, key, value, created_at, updated_at, 1 - (embedding <=> $1::vector) AS score
          FROM store_items WHERE ${where}
@@ -1283,22 +1306,43 @@ export class PostgresSkeinStore implements SkeinStore {
       return rows.map((row) => rowToItem(row, row.score));
     }
 
+    const params: unknown[] = usePrefix ? [query.prefix] : [];
     const clause = usePrefix
       ? `WHERE namespace[1:cardinality($1::text[])] = $1::text[] AND ${NOT_EXPIRED}`
       : `WHERE ${NOT_EXPIRED}`;
+
+    // Without a text query the rows SQL returns are exactly the rows we return, so paginate in the
+    // database. This is the common shape — a plain namespace listing — and it used to read the whole
+    // table to slice it in JS.
+    //
+    // *With* a text query the filter runs in JS, and it cannot be pushed down as-is: the JS predicate
+    // matches against `JSON.stringify(value)`, whereas jsonb `::text` canonicalizes key order and
+    // whitespace, so `value::text ILIKE` is a different match. Pushing `LIMIT` down ahead of the JS
+    // filter would also drop true matches beyond the window. That path is therefore still an unbounded
+    // read; fixing it means aligning both drivers on one normalized text, which is a conformance-level
+    // change and its own piece of work. Configure `store.index` for pgvector search to avoid it.
+    let pagination = "";
+    if (query.query === undefined) {
+      params.push(query.offset ?? 0);
+      const offsetParam = `$${params.length}`;
+      params.push(this.#pageLimit(query.limit));
+      pagination = `OFFSET ${offsetParam} LIMIT $${params.length}`;
+    }
+
     const { rows } = await this.#pool.query<ItemRow>(
-      `SELECT namespace, key, value, created_at, updated_at FROM store_items ${clause} ORDER BY created_at, key`,
-      usePrefix ? [query.prefix] : [],
+      `SELECT namespace, key, value, created_at, updated_at FROM store_items ${clause}
+       ORDER BY created_at, key ${pagination}`,
+      params,
     );
 
     let items: SearchItem[] = rows.map((row) => rowToItem(row));
-    if (query.query !== undefined) {
-      const needle = query.query.toLowerCase();
-      items = items
-        .filter((item) => JSON.stringify(item.value).toLowerCase().includes(needle))
-        .map((item) => ({ ...item, score: 1 }));
-    }
+    if (query.query === undefined) return items;
+
+    const needle = query.query.toLowerCase();
+    items = items
+      .filter((item) => JSON.stringify(item.value).toLowerCase().includes(needle))
+      .map((item) => ({ ...item, score: 1 }));
     const offset = query.offset ?? 0;
-    return items.slice(offset, query.limit === undefined ? undefined : offset + query.limit);
+    return items.slice(offset, offset + this.#pageLimit(query.limit));
   }
 }

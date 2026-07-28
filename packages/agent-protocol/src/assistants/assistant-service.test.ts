@@ -1,4 +1,5 @@
 import type { AuthEngine } from "@skein-js/core";
+import { MemorySkeinStore } from "@skein-js/storage-memory";
 import { describe, expect, it } from "vitest";
 
 import { createFixtureDeps } from "../__fixtures__/deps.js";
@@ -131,6 +132,24 @@ describe("assistant service", () => {
     expect(await deps.store.threads.get(other.thread_id)).not.toBeNull();
 
     await expect(service.delete("ghost")).rejects.toMatchObject({ status: 404 });
+  });
+
+  // The cascade chooses what to delete, so it must read *every* matching thread, not the first page.
+  // Truncating orphans the rest permanently: the assistant row is deleted afterwards, so the endpoint
+  // 404s on a retry and the leftovers are unreachable through it.
+  it("cascades past the store's page bound", async () => {
+    const { service, deps } = makeService({ store: new MemorySkeinStore({ maxPageSize: 2 }) });
+    await service.create({ graph_id: "echo", assistant_id: "a" });
+    const mine = [];
+    for (let index = 0; index < 5; index += 1) {
+      mine.push(await deps.store.threads.create({ metadata: { assistant_id: "a" } }));
+    }
+
+    await service.delete("a", { deleteThreads: true });
+
+    for (const thread of mine) {
+      expect(await deps.store.threads.get(thread.thread_id)).toBeNull();
+    }
   });
 
   it("delete_threads scopes the cascade to the caller's own threads when auth is configured", async () => {

@@ -139,13 +139,16 @@ export async function connectPostgresStore(args: {
   index?: StoreIndexConfig;
   ttl?: StoreTtl;
   connectionOptions: PostgresConnectionOptions;
+  /** The largest page any list/search returns — see `resolveMaxPageSize`. */
+  maxPageSize: number;
   disposers: Disposer[];
 }): Promise<Pick<ProtocolDeps, "store" | "checkpointer">> {
-  const { url, index, ttl, connectionOptions, disposers } = args;
+  const { url, index, ttl, connectionOptions, maxPageSize, disposers } = args;
   const store = await PostgresSkeinStore.connect(url, {
     ...(index ? { index } : {}),
     ...(ttl ? { ttl } : {}),
     ...connectionOptions,
+    maxPageSize,
   });
   disposers.push(() => store.close());
   await store.migrate();

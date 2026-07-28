@@ -23,6 +23,7 @@ import {
   type DevStateSnapshot,
 } from "./dev-persistence.js";
 import { embedInMemoryGraphs } from "./in-memory-deps.js";
+import { resolveMaxPageSize } from "./max-page-size.js";
 import { resolveMemoryBusLimits } from "./memory-bus-limits.js";
 
 /**
@@ -117,7 +118,7 @@ export async function loadReloadableInMemoryRuntime(
   };
 
   // Hold the concrete drivers so their state can be snapshot/restored for cross-restart persistence.
-  const store = new MemorySkeinStore();
+  const store = new MemorySkeinStore({ maxPageSize: resolveMaxPageSize() });
   const checkpointer = new MemorySaver();
   const deps: ProtocolDeps = {
     store,

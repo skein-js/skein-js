@@ -15,6 +15,7 @@ import type {
 } from "@skein-js/agent-protocol";
 import { MemoryRunEventBus, MemoryRunQueue, MemorySkeinStore } from "@skein-js/storage-memory";
 
+import { resolveMaxPageSize } from "./max-page-size.js";
 import { resolveMemoryBusLimits } from "./memory-bus-limits.js";
 
 // The graph's node-name/state generics are left open so a concretely-typed `.compile()` result (e.g.
@@ -111,7 +112,9 @@ export function embedInMemoryGraphs(
   overrides: Omit<Partial<ProtocolDeps>, "graphs"> = {},
 ): ProtocolDeps {
   return {
-    store: new MemorySkeinStore(),
+    // `maxPageSize` resolved for the same reason as the bus limits below: an embedded host's
+    // `SKEIN_MAX_PAGE_SIZE` has to reach the driver that applies it.
+    store: new MemorySkeinStore({ maxPageSize: resolveMaxPageSize() }),
     graphs: normalizeEmbeddableGraphs(graphs),
     queue: new MemoryRunQueue(),
     // Resolved rather than defaulted, so `SKEIN_MEMORY_BUS_*` reaches an embedded host too — this is

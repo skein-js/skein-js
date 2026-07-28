@@ -61,7 +61,9 @@ const runtime = createProtocolRuntime({
 
 ## API
 
-- **`class MemorySkeinStore implements SkeinStore`** — `new MemorySkeinStore()`. Exposes the four
+- **`class MemorySkeinStore implements SkeinStore`** — `new MemorySkeinStore({ ttl?, maxPageSize? })`.
+  `maxPageSize` (default 1000) bounds every list/search, **including one with no `limit`** — see
+  [docs/storage.md](../../docs/storage.md#page-bound-skein_max_page_size). Exposes the four
   repos (`assistants`, `threads`, `runs`, `store`) defined by [`SkeinStore`](../core). Plus two
   methods used by `skein dev`'s persistence:
   - `snapshot(): MemoryStoreSnapshot` — serialize all rows.
