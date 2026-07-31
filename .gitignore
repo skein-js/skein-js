@@ -36,6 +36,10 @@ pnpm-debug.log*
 
 # test / coverage
 coverage/
+.profiles/
+*.cpuprofile
+*.heapprofile
+*.heapsnapshot
 
 .nx/migrate-runs
 .claude/worktrees

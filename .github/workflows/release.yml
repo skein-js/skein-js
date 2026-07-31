@@ -37,7 +37,7 @@ jobs:
         with:
           # Trusted publishing needs Node >= 22.14 and npm >= 11.5.1 (installed below). No
           # `registry-url` here on purpose: it would write an empty _authToken line that defeats OIDC.
-          node-version: 22.14.0
+          node-version: 24
 
       # OIDC trusted publishing requires npm >= 11.5.1; the Node 22 bundle ships an older npm (10.9.2).
       # Pin npm 11, NOT @latest: npm 12 requires Node >= 22.22.2 (newer than the Node pinned above), so

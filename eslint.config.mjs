@@ -75,11 +75,35 @@ export default tseslint.config(
     rules: { "import/no-default-export": "off" },
   },
 
-  // Build-time codegen scripts run in Node, not in the library sandbox — they may use the console
-  // and the filesystem freely. (Root-level scripts/ isn't linted at all; it belongs to no project.)
+  // Build-time codegen and test-harness scripts run in Node, not in the library sandbox — they may use
+  // the console, the filesystem, timers, and fetch freely. Globals are enumerated rather than pulled
+  // from the `globals` package, which is only a transitive dependency here.
+  // (Root-level scripts/ isn't linted at all; it belongs to no project.)
   {
     files: ["packages/*/scripts/**/*.mjs"],
-    languageOptions: { globals: { console: "readonly", process: "readonly" } },
+    languageOptions: {
+      globals: {
+        console: "readonly",
+        process: "readonly",
+        fetch: "readonly",
+        AbortSignal: "readonly",
+        URL: "readonly",
+        setTimeout: "readonly",
+        clearTimeout: "readonly",
+        setInterval: "readonly",
+        clearInterval: "readonly",
+      },
+    },
+  },
+
+  // Fixtures that stand in for build output — a `skein build` artifact's compiled JS graphs. They are
+  // plain Node modules by definition (see packages/test-support/fixtures/runtime-artifact/README.md),
+  // so they get Node's globals rather than the library sandbox's.
+  {
+    files: ["packages/*/fixtures/**/*.js"],
+    languageOptions: {
+      globals: { process: "readonly", setTimeout: "readonly", console: "readonly" },
+    },
   },
 
   // @skein-js/storage-postgres must stay bundleable: it is the driver that framework adapters and

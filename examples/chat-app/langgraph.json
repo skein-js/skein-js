@@ -1,5 +1,5 @@
 {
-  "node_version": "22",
+  "node_version": "24",
   "graphs": {
     "research": "./src/research-agent.ts:graph"
   },

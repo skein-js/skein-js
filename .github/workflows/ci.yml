@@ -12,6 +12,11 @@ concurrency:
   group: ci-${{ github.workflow }}-${{ github.ref }}
   cancel-in-progress: true
 
+env:
+  # Node 24 is the current Active LTS and the version `skein build` bakes into a production image.
+  # Testing on an older major than we ship is how a whole phase of Bun/Deno image defects went unseen.
+  NODE_LTS: 24
+
 jobs:
   check:
     name: lint · typecheck · test · build
@@ -24,7 +29,7 @@ jobs:
       - uses: pnpm/action-setup@v4
       - uses: actions/setup-node@v4
         with:
-          node-version: 20
+          node-version: ${{ env.NODE_LTS }}
           cache: pnpm
 
       - run: pnpm install --frozen-lockfile
@@ -52,7 +57,7 @@ jobs:
       - uses: pnpm/action-setup@v4
       - uses: actions/setup-node@v4
         with:
-          node-version: 20
+          node-version: ${{ env.NODE_LTS }}
           cache: pnpm
 
       - run: pnpm install --frozen-lockfile
@@ -68,3 +73,95 @@ jobs:
       # ubuntu-latest ships Docker, which Testcontainers uses to spin up Postgres + Redis.
       - name: Integration tests
         run: pnpm exec nx run-many -t test-integration --output-style=stream
+
+  # The correctness half of the Bun/Deno graduation matrix (PERF-WORKSTREAM.md, P12). Correctness is
+  # what a shared runner can decide: co-tenancy moves timings, not pass/fail. The performance half
+  # deliberately lives nowhere near CI — see docs/profiling.md for where it belongs and why.
+  runtime-matrix:
+    name: protocol conformance (${{ matrix.runtime }})
+    runs-on: ubuntu-latest
+    strategy:
+      # Every runtime reports: one failure must not hide the other two's status.
+      fail-fast: false
+      matrix:
+        runtime: [node, bun, deno]
+    services:
+      postgres:
+        image: pgvector/pgvector:pg17
+        env:
+          POSTGRES_PASSWORD: skein
+          POSTGRES_DB: skein
+        ports: ["5432:5432"]
+        options: >-
+          --health-cmd "pg_isready -U postgres" --health-interval 5s
+          --health-timeout 5s --health-retries 20
+      redis:
+        image: redis:7-alpine
+        ports: ["6379:6379"]
+        options: >-
+          --health-cmd "redis-cli ping" --health-interval 5s
+          --health-timeout 5s --health-retries 20
+    steps:
+      - uses: actions/checkout@v4
+      - uses: pnpm/action-setup@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: ${{ env.NODE_LTS }}
+          cache: pnpm
+
+      # The harness itself always runs on Node; only the SERVER changes runtime. These steps install the
+      # runtime under test and nothing else.
+      - if: matrix.runtime == 'bun'
+        uses: oven-sh/setup-bun@v2
+      - if: matrix.runtime == 'deno'
+        uses: denoland/setup-deno@v2
+        with:
+          deno-version: v2.x
+
+      - run: pnpm install --frozen-lockfile
+
+      # `skein start` runs the built CLI, so the build has to have happened first.
+      - name: Build
+        run: pnpm exec nx run-many -t build --output-style=stream
+
+      - name: Protocol conformance
+        env:
+          POSTGRES_URI: postgresql://postgres:skein@127.0.0.1:5432/skein
+          REDIS_URI: redis://127.0.0.1:6379
+        run: node packages/test-support/scripts/runtime-conformance.mjs --runtime ${{ matrix.runtime }}
+
+  # Builds the real production image per runtime and runs it under the 512Mi shape. The build alone
+  # earns the job: it is what exercises the generated Dockerfile, its base image, its install step, and
+  # the graph compatibility probe — where a malformed `deno eval` invocation was hiding.
+  runtime-images:
+    name: production image (${{ matrix.runtime }})
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - runtime: node
+          - runtime: bun
+          # Build-only: Deno's installer will not recurse into a vendored package's own `file:` deps, so
+          # an image built from *unpublished* sources cannot boot. That is a property of substituting
+          # local packages, not of the generated image — this runtime's serving behaviour is covered by
+          # `runtime-matrix` above. Drop the flag once a prerelease is on npm.
+          - runtime: deno
+            build-only: "--build-only"
+    steps:
+      - uses: actions/checkout@v4
+      - uses: pnpm/action-setup@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: ${{ env.NODE_LTS }}
+          cache: pnpm
+
+      - run: pnpm install --frozen-lockfile
+
+      - name: Build
+        run: pnpm exec nx run-many -t build --output-style=stream
+
+      - name: Image smoke
+        run: >-
+          node scripts/runtime-image-smoke.mjs --runtime ${{ matrix.runtime }}
+          ${{ matrix['build-only'] }}

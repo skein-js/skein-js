@@ -1,5 +1,5 @@
 {
-  "node_version": "22",
+  "node_version": "24",
   "graphs": {
     "gemini": "./src/gemini-graph.ts:graph"
   },

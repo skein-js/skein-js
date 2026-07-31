@@ -1,0 +1,10 @@
+{
+  "tokens": {
+    "graph": {
+      "state": {
+        "type": "object",
+        "properties": { "messages": { "type": "array", "items": { "type": "object" } } }
+      }
+    }
+  }
+}

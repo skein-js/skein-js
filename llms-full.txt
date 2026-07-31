@@ -165,7 +165,7 @@ export const graph = new StateGraph(MessagesAnnotation)
 
 ```json
 {
-  "node_version": "20",
+  "node_version": "24",
   "graphs": { "agent": "./src/graph.ts:graph" },
   "env": ".env"
 }
@@ -271,6 +271,7 @@ skein dev                                  # in-process dev server, hot reload, 
 skein dev --store postgres --queue redis   # dev against production-shaped storage (POSTGRES_URI / REDIS_URI)
 skein up                                    # self-hosted stack via Docker Compose: app + Postgres + Redis
 skein build -t my-agent                     # build a deployable Docker image
+skein build -t my-agent --runtime bun       # native Bun image (Deno is also available)
 skein dockerfile -o Dockerfile              # emit a standalone Dockerfile
 ```
 
@@ -286,6 +287,12 @@ Useful `skein dev` flags: `-p, --port` (default 2024), `--host`, `--store memory
 `-n, --n-jobs-per-worker`, as in the LangGraph CLI), `--no-persist`, `--no-reload`, `-v, --verbose`.
 Full mapping and the annotated `langgraph.json`:
 [`docs/langgraph-cli-compat.md`](./docs/langgraph-cli-compat.md).
+
+Production images default to Node 24 LTS. Select Node, Bun, or Deno with `--runtime` and optionally
+`--runtime-version`, or set `skein.runtime` in `langgraph.json`. Bun and Deno use the native Fetch
+transport rather than Express compatibility and remain preview targets pending their full clean-image
+conformance matrices; see [deployment](./docs/deploy.md) and the
+[profiling guide](./docs/profiling.md).
 
 Private production deps? `skein build`/`up` take `-n, --npmrc <path>`, mounting an `.npmrc` as a
 BuildKit secret so the image can install from a **private/authenticated npm registry** without baking
@@ -428,7 +435,7 @@ const runtime = createProtocolRuntime(deps); // service + HTTP handlers + backgr
 
 → [`packages/agent-protocol`](./packages/agent-protocol)
 
-### Framework adapters — Express, Fastify, NestJS, Next.js
+### Server adapters — Fetch, Express, Fastify, NestJS, Next.js
 
 Each adapter is a thin transport shim that mounts the Agent Protocol engine on its framework — no
 protocol logic of its own, just request/response translation over the shared handler table. Pick the
@@ -454,6 +461,7 @@ await server.listen(2024);
 
 | Adapter                                          | Serve it as                                          |
 | ------------------------------------------------ | ---------------------------------------------------- |
+| [`@skein-js/fetch`](./packages/server-fetch)     | Native Web Fetch handler; `Bun.serve` / `Deno.serve` |
 | [`@skein-js/express`](./packages/server-express) | Express `Router` / standalone server                 |
 | [`@skein-js/fastify`](./packages/server-fastify) | Fastify plugin / standalone server                   |
 | [`@skein-js/nestjs`](./packages/server-nestjs)   | `SkeinModule` / standalone server (Express platform) |
@@ -615,6 +623,7 @@ Full design and how-to guides live in [`docs/`](./docs):
 - [Observability](./docs/observability.md) — tracing + metrics: LangSmith, PostHog, OpenTelemetry
 - [Deploy anywhere](./docs/deploy.md) — Cloud Run, Railway, Fly.io, Render, AWS, Kubernetes, VPS
 - [Performance & memory](./docs/performance.md) — sizing, every knob, backpressure, triage
+- [Profiling](./docs/profiling.md) — learn latency, memory, CPU, and compare Node/Bun/Deno correctly
 - [Reuse-first architecture](./docs/reuse.md) — what we reuse vs. rebuild _(design)_
 - [Roadmap](./docs/roadmap.md)
 
@@ -711,9 +720,10 @@ change. See [agent-protocol.md](./agent-protocol.md) for the exact endpoints.
 
 ## The solution
 
-skein-js is an open, self-hostable alternative to LangGraph Platform for the Node ecosystem —
+skein-js is an open, self-hostable alternative to LangGraph Platform for the TypeScript ecosystem —
 "aegra for TypeScript." It exposes the Agent Protocol wire format from any Node
-HTTP framework (Express, Fastify, NestJS, and Next.js adapters ship today), so the whole LangChain
+HTTP framework on Node, or native Fetch on Bun and Deno (Express, Fastify, NestJS, Next.js, and Fetch
+adapters ship today), so the whole LangChain
 client surface keeps working with only a URL change.
 
 Unlike aegra — which had to reimplement the server in Python because the Python
@@ -781,7 +791,7 @@ Available on every adapter — see [serving-a-single-graph.md](./serving-a-singl
              └──────────────────────┬──────────────────────┘
                                     │ Agent Protocol (HTTP + SSE)
              ┌──────────────────────▼──────────────────────┐
-  adapters   │  @skein-js/express · fastify · nestjs · nextjs  │
+  adapters   │ express · fastify · nestjs · nextjs · native fetch │
              ├─────────────────────────────────────────────┤
   protocol   │   @skein-js/agent-protocol — handler table ·    │
              │   run engine · streaming (SSE)               │
@@ -845,6 +855,7 @@ machine-readable [`llms.txt`](../llms.txt) / [`llms-full.txt`](../llms-full.txt)
 | [observability.md](./observability.md)                   | Tracing + metrics — LangSmith, PostHog, OpenTelemetry, custom   |
 | [deploy.md](./deploy.md)                                 | Deploy anywhere — Cloud Run, Railway, Fly, Render, AWS, K8s     |
 | [performance.md](./performance.md)                       | Sizing, every tuning knob, backpressure + drops, triage         |
+| [profiling.md](./profiling.md)                           | Learn measurement/profiling; Node, Bun, Deno hands-on recipes   |
 | [bundling.md](./bundling.md)                             | Bundling skein yourself — ESM, `require()`, what to externalize |
 | [reuse.md](./reuse.md)                                   | _(design)_ What we reuse from LangGraph OSS vs. rebuild         |
 | [code-practices.md](./code-practices.md)                 | _(contributor)_ Readability, functional style, conventions      |
@@ -1335,6 +1346,10 @@ mirror the same command surface.
 Shared flags where sensible: `--port`, `--host`, `--no-reload`, `--config`,
 `-n, --n-jobs-per-worker`.
 
+Production commands (`up`, `build`, `dockerfile`, and the generated `start`) also accept
+`--runtime node|bun|deno` and `--runtime-version`. Precedence is CLI flag, then
+`skein.runtime` in config, then Node 24 LTS. Legacy `node_version` remains the Node version fallback.
+
 **skein-only:** `skein start` serves a pre-built `.skein/build` artifact (the production image's
 entrypoint) — plain compiled JS, no vite, no reload. You rarely run it by hand; `skein build`/`up`
 produce the artifact and the generated Dockerfile invokes it. The LangGraph CLI has no equivalent
@@ -1435,7 +1450,12 @@ it but is never required.
   },
 
   // JS/Node runtime pin (20 | 22 | 24)
-  "node_version": "22",
+  "node_version": "24",
+
+  // Native production runtime (skein extension). Omit for Node.
+  "skein": {
+    "runtime": { "name": "bun", "version": "1.3.14" },
+  },
 
   // .env path OR inline map
   "env": ".env",
@@ -1480,7 +1500,8 @@ it but is never required.
 | `langgraph.json` field | skein-js wiring                                                                                                                                                                             |
 | ---------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | `graphs`               | [`@skein-js/config`](./storage.md) resolves each `path:export`, loading a compiled graph or `makeGraph` factory. Drives `/agents` introspection + run execution.                            |
-| `node_version`         | Used by `skein build` / `skein dockerfile` base image selection. Defaults to 22 when omitted (20 is EOL); an explicit value is honoured verbatim, including an older one.                   |
+| `node_version`         | Used by `skein build` / `skein dockerfile` base image selection. Defaults to Node 24 LTS when omitted; an explicit value is honoured verbatim, including an older one.                      |
+| `skein.runtime`        | Native production server and pinned official image: `node`, `bun`, or `deno`. Bun/Deno use `@skein-js/fetch` with `Bun.serve`/`Deno.serve`, never Express compatibility.                    |
 | `env`                  | Loaded into `process.env` at boot (dev) / baked into the image (build).                                                                                                                     |
 | `store`                | `store.index.{embed,dims,fields,hnsw}` configures pgvector semantic search on the Postgres driver; `hnsw: true` opts into the approximate index — see [storage.md](./storage.md).           |
 | `checkpointer`         | `"default"` → `PostgresSaver`; dev falls back to an in-memory `MemorySaver`.                                                                                                                |
@@ -2273,7 +2294,7 @@ _branch_ from any past checkpoint:
 | Method   | Path                                               | Notes                            |
 | -------- | -------------------------------------------------- | -------------------------------- |
 | `POST`   | `/threads/{thread_id}/runs`                        | Start a background run           |
-| `GET`    | `/threads/{thread_id}/runs`                        | List a thread's runs             |
+| `GET`    | `/threads/{thread_id}/runs`                        | List a thread's runs (paginated) |
 | `GET`    | `/threads/{thread_id}/runs/{run_id}`               | Fetch one run                    |
 | `GET`    | `/threads/{thread_id}/runs/{run_id}/stream` (join) | Join a run's stream              |
 | `POST`   | `/threads/{thread_id}/runs/{run_id}/cancel`        | Cancel a run                     |
@@ -2288,7 +2309,15 @@ _branch_ from any past checkpoint:
 | `GET`    | `/store/items`        | Fetch by namespace + key        |
 | `DELETE` | `/store/items`        |                                 |
 | `POST`   | `/store/items/search` | pgvector semantic search        |
-| `POST`   | `/store/namespaces`   | List namespaces                 |
+| `POST`   | `/store/namespaces`   | List namespaces (paginated)     |
+
+**Pagination on these two.** `GET /threads/{thread_id}/runs` takes `?limit`/`?offset` and
+`POST /store/namespaces` takes `limit`/`offset` in the body; both default to a **100**-row page, the
+same default the SDK sends for `store.listNamespaces`. A query `limit` above 1000 is clamped rather than
+rejected, matching every other query-string limit here. Truncation is not signalled on the response
+(only assistant search carries `x-pagination-total`), so page until you receive fewer rows than you
+asked for. `status` and `select` on `runs.list`, and `suffix`/`max_depth` on `listNamespaces`, are
+accepted and **ignored** — they are not implemented yet.
 
 ### Thread streaming (SSE)
 
@@ -3473,9 +3502,11 @@ variables are present:
 | OpenTelemetry | `OTEL_EXPORTER_OTLP_ENDPOINT` · `OTEL_EXPORTER_OTLP_TRACES_ENDPOINT` · `OTEL_SERVICE_NAME` |
 
 With nothing configured there is no telemetry and no cost — the engine skips building any context at
-all. A provider that is only _detected_ and whose package isn't installed quietly stays off; one you
-**declared** in `langgraph.json` fails at startup naming what to install, because a silent no-op for
-something you explicitly asked for would be worse.
+all. A provider that is only _detected_ stays quietly off when it can't be built — its package isn't
+installed, or its API key is absent. One you **declared** in `langgraph.json` instead **fails at
+startup**, naming what is missing, because a silent no-op for something you explicitly asked for is
+worse: the first you'd hear of it is an incident with no traces to investigate. Remove the entry to run
+without it.
 
 > **Why LangSmith needs two variables.** Turning tracing on uploads every prompt, tool argument, and
 > model response — your users' messages — to a third party. A stray `LANGSMITH_API_KEY` (common in
@@ -3561,7 +3592,8 @@ implementation takes over and this costs almost nothing.
 `.graph.id` / `.trigger` / `.status` / `.queue_ms` / `.frames` / `.failing_nodes`, plus the
 `gen_ai.*` semconv equivalents. A failure records the exception and sets an `ERROR` status.
 
-**Metrics** `skein.runs` (counter) and `skein.run.duration` (histogram, ms), dimensioned by graph,
+**Metrics** `skein.runs` (counter), `skein.run.duration` (histogram, ms),
+`skein.run.queue.duration` (histogram, ms), and `skein.run.frames` (histogram), dimensioned by graph,
 trigger, and status — deliberately **low-cardinality**, with no run, thread, or user id, so they stay
 cheap in Prometheus and friends.
 
@@ -3571,11 +3603,9 @@ skein reports the _run_. For LLM- and tool-level spans, add a LangChain instrume
 [`@traceloop/node-server-sdk`](https://github.com/traceloop/openllmetry-js) or
 [`@arizeai/openinference-instrumentation-langchain`](https://github.com/Arize-ai/openinference).
 
-Those spans are **correlated with** the run span, not **nested under** it. Nesting would need the run
-span to be _active_ in the OTel context for the whole of the graph's execution, and the sink seam is
-a pair of one-shot notifications with no way to hold a context open between them. Join on
-`skein.run.id` or `gen_ai.conversation.id` and you get the same grouping in a query — but you won't
-see generations indented under the run in a trace waterfall.
+The OTel sink makes the Skein run span active while LangGraph executes. Instrumentation that respects
+the OTel context therefore nests model, tool, and chain spans under the run span, including across
+awaits; the run and thread attributes remain available for correlation and filtering too.
 
 ### Datadog, Grafana, Honeycomb, Jaeger, New Relic, Sentry
 
@@ -3679,6 +3709,8 @@ export interface TelemetrySink {
   /** Extra metadata / tags stamped on the graph call. */
   traceMetadata?(context: RunTelemetryContext): Record<string, unknown>;
   traceTags?(context: RunTelemetryContext): string[];
+  /** Make a backend context active while the graph executes. */
+  withRunContext?<T>(context: RunTelemetryContext, body: () => Promise<T>): Promise<T>;
   /** Drain buffered data — called on shutdown. */
   flush?(): Promise<void>;
   shutdown?(): Promise<void>;
@@ -3694,8 +3726,8 @@ export interface TelemetrySink {
 Two things to know:
 
 - **`assistantId` is absent for `trigger: "invoke"`.** The `POST /invoke/:graph_id` surface addresses
-  a graph directly, with no assistant in between. That surface reports **traces but not lifecycle
-  events** — there is no run row for them to describe.
+  a graph directly, with no assistant in between. It emits lifecycle telemetry using a synthetic run
+  identity for correlation, but deliberately creates no persistent run row.
 - **Sinks may not throw or block.** Every call is guarded, so a throw is logged and swallowed rather
   than failing a run — but a sink doing inline I/O still slows every run it observes. Buffer, and
   implement `flush()`; skein calls it on shutdown so buffering is the safe default.
@@ -4065,9 +4097,14 @@ interface ProtocolRequest {
 }
 
 type ProtocolResponse =
-  | { kind: "json"; status: number; body: unknown }
-  | { kind: "empty"; status: number }
-  | { kind: "sse"; status: number; events: AsyncIterable<string> };
+  | { kind: "json"; status: number; body: unknown; headers?: Record<string, string> }
+  | { kind: "empty"; status: number; headers?: Record<string, string> }
+  | {
+      kind: "sse";
+      status: number;
+      events: AsyncIterable<string>;
+      headers?: Record<string, string>;
+    };
 
 type ProtocolHandler = (req: ProtocolRequest) => Promise<ProtocolResponse>;
 ```
@@ -4075,6 +4112,10 @@ type ProtocolHandler = (req: ProtocolRequest) => Promise<ProtocolResponse>;
 `ProtocolHandlers` is a table of named handlers (`createThread`, `createStreamRun`, `joinRunStream`,
 `putStoreItem`, …). Each validates the request (with Zod), calls the typed service, and returns a
 `ProtocolResponse`. You dispatch to them by name.
+
+For a worked example, `@skein-js/fetch` is the shortest one to read: a single file over WHATWG
+`Request`/`Response`, so it shows the whole contract — request mapping, the headers channel, a
+pull-driven SSE body, and a bounded request read — without a framework's conventions in the way.
 
 ## Step 1 — assemble a runtime
 
@@ -4175,6 +4216,10 @@ Switch on `response.kind`:
   `res.json`.** Bodies may contain LangChain messages (thread state, history, `runs.wait` values)
   that must be flattened to the wire shape clients expect. Send with
   `Content-Type: application/json`.
+- **`headers`** — present on every kind, and **optional to you but not invisible to clients**: this is
+  how the engine returns response metadata it cannot put in the body, such as `x-pagination-total` on
+  assistant search. Set them all before writing the body. Dropping them costs no test failure and no
+  error — the client just silently loses the metadata — so it is worth wiring in from the start.
 - **`empty`** — just write the status and end.
 - **`sse`** — set the SSE headers (`SSE_HEADERS`), flush them, then write each string from
   `response.events` as-is. **Do not re-encode** — the core already produced complete frames (each
@@ -4370,6 +4415,7 @@ produced by the same handler table the Express adapter uses.
 - [ ] Bound every route in `skeinRoutes`, most-specific-first, with `foldThreadIdIntoBody` honored.
 - [ ] `ProtocolRequest` has lowercased single-value headers and an absolute `url` (with query).
 - [ ] JSON responses serialized with `serializeWireJson` (not a plain `JSON.stringify`/`res.json`).
+- [ ] `response.headers` forwarded on all three kinds (silently lost otherwise — see step 4).
 - [ ] SSE responses stream frames unmodified, set `SSE_HEADERS`, and tear down on client close.
 - [ ] `SkeinHttpError` mapped to its status; everything else → `500`; no status changes mid-stream.
 - [ ] CORS applied for browser clients; `worker.stop()` on shutdown.
@@ -4396,6 +4442,28 @@ no control plane — that's the point ([roadmap.md](./roadmap.md) lists it as an
 What it ships instead is an ordinary OCI image: `skein build` bundles your TypeScript graphs to plain
 JS and produces a Docker image that needs a Postgres, a Redis, and two environment variables. Nothing
 about it is specific to any host.
+
+Production artifacts can run on Node, Bun, or Deno. Node 24 LTS is the default and uses Express. Bun and
+Deno use the Web-standard `@skein-js/fetch` adapter and their native HTTP servers. Select one in
+`langgraph.json` or at build time:
+
+Node is the graduated production fallback. Bun and Deno are preview targets until each complete
+clean-image conformance matrix (real SDK, Postgres/Redis, multi-instance streaming, slow clients,
+telemetry parenting, and PID-1 shutdown) is green; the native launchers themselves are tested.
+
+```json
+{ "skein": { "runtime": { "name": "deno", "version": "2.9.4" } } }
+```
+
+```bash
+skein build --runtime bun --runtime-version 1.3.14 -t my-agent
+```
+
+CLI flags override config. The image pins the official runtime image, imports every graph under that
+runtime during the build, starts the runtime directly as PID 1, and uses a non-root user. Deno gets
+explicit network, environment, artifact-read, system, and native-library permissions. Skein cannot
+make an arbitrary Node-native graph dependency portable; the compatibility probe fails that image
+build so the dependency can be replaced or isolated before deployment.
 
 This page is everything that is true on **every** platform. The per-platform guides are just the
 dashboard and CLI steps on top of it.
@@ -4444,14 +4512,14 @@ it and let your platform build it. Either way:
   back to **8123** — the same port the image `EXPOSE`s and health-checks — so a bare
   `docker run -p 8123:8123` works, as do platforms that route to a port you declare without setting
   `PORT` for you (Fly.io, ECS, Kubernetes).
-- **Handles `SIGTERM` properly.** node is PID 1 (the CMD invokes the entry directly, not through
+- **Handles `SIGTERM` properly.** The selected runtime is PID 1 (the CMD invokes it directly, not through
   `npx` — under `npx`, PID 1 is npm, which exits on `SIGTERM` without waiting for the server). On
   signal, skein stops accepting queued runs, gives in-flight runs
   [a grace window](#graceful-shutdown) to finish, aborts whatever is left so it lands in a **terminal**
   status rather than stranded as `running`, then closes the pools.
 - **Serves a health probe** at `GET /ok` → `200 {"ok":true}`, and declares a Docker `HEALTHCHECK`
   against it with a 20s start period.
-- **Runs unprivileged** as `USER node`.
+- **Runs unprivileged** as the runtime image's `node`, `bun`, or `deno` user.
 - **Reads config from the environment only** — `POSTGRES_URI` and `REDIS_URI`. The generated
   `.dockerignore` excludes `.env*` and `.npmrc*`, so secrets are never baked into a layer.
 - **Installs pinned production dependencies only.** No vite/tsx, no devDependencies, no runtime
@@ -4987,8 +5055,13 @@ serialized it into a single response string.
   `before`. Each element is a checkpoint's whole graph state, so this is bounded harder than a row-based
   page — and separately from `SKEIN_MAX_PAGE_SIZE`, since history comes from the checkpointer rather
   than the store.
-- Truncation is **not** signalled on the response. Page with `offset` until you get fewer rows than you
-  asked for, and page by what you received rather than by what you requested.
+- `GET /threads/{thread_id}/runs` and `POST /store/namespaces` page too, defaulting to **100** rows
+  (`limit`/`offset`; a query `limit` above 1000 is clamped, not rejected). Both previously returned
+  every row. 100 matches what the LangGraph SDK sends for `store.listNamespaces`, so an SDK caller sees
+  no change.
+- Assistant search reports the unpaginated match count in `x-pagination-total`. Other collections do
+  not: a total costs a second query, and for those it would be a count over exactly the rows the bound
+  exists to avoid touching. Page them until they return fewer rows than you asked for.
 
 With auth configured, the ownership filter is pushed into the driver query, so a tenant's search is an
 indexed lookup rather than a full read filtered in JS. Details in [storage.md](./storage.md) and
@@ -5032,6 +5105,221 @@ Alongside it, the counters are deterministic and make a regression provable rath
 buffered frames, Redis commands per frame, socket `writableLength`, iterator pulls, connections opened.
 Those are integers with no timing in them, which is why they can gate CI where throughput and latency
 cannot. See [testing.md](./testing.md) for how the same idea is applied in the unit tests.
+
+
+---
+
+<!-- source: docs/profiling.md -->
+
+# Profiling and performance tuning Skein
+
+This guide is the practical bridge between “the server feels slow” and an evidence-backed change.
+It assumes no profiling experience.
+
+## The four tools and the tuning loop
+
+- A **benchmark** tells you how much: latency, throughput, memory, boot time.
+- A **profiler** tells you where: hot functions, allocation sites, retained objects, garbage collection.
+- **Telemetry** tells you when and why in production: graph, runtime, queue delay, failures, saturation.
+- A **correctness test** tells you whether a faster result is still the same product.
+
+Use the same loop every time:
+
+1. Write an SLO, such as “p99 time to first frame below 250 ms at 100 streams.”
+2. Reproduce it with a deterministic graph and fixed container CPU/memory.
+3. Warm the runtime, then record a baseline and raw artifacts.
+4. Profile the failing interval, not server startup or an idle process.
+5. Change one variable.
+6. Run protocol/conformance tests and a negative test designed to expose the suspected failure.
+7. Repeat the identical benchmark and compare confidence intervals, not one lucky run.
+
+Create a directory per experiment; generated profiles are ignored by Git and production images:
+
+```bash
+mkdir -p .profiles/2026-07-31-slow-sse/{before,after}
+nx build bench
+```
+
+## Reading the numbers
+
+Latency percentiles answer different questions. p50 is the ordinary request. p95/p99 are the tail
+your users notice during queueing, GC, pool waits, or a noisy dependency. For streams, record both
+**time to first frame** and total duration; an agent that starts responding in 150 ms and finishes in
+20 seconds feels different from one silent for 10 seconds.
+
+Throughput is completed requests/second or frames/second. It means little without concurrency and
+saturation. Increase concurrency until throughput stops rising; then inspect CPU, event-loop delay,
+Postgres pool waits, Redis, and the load generator. The first saturated component is the limit.
+
+Memory has several layers:
+
+- **JS heap used** is live/recent JavaScript data.
+- **Heap capacity/limit** is what the collector/runtime reserved or may grow to; it is not usage.
+- **RSS** is resident process memory: JS heap plus runtime, native clients, stacks, code, and buffers.
+- **Native/external memory** includes socket buffers and runtime allocations outside the JS heap.
+- A healthy GC graph is a sawtooth. A leak has a rising _post-GC floor_ after the same work becomes
+  unreachable. A bounded cache rises and then plateaus.
+
+For CPU profiles, **self time** is time in the function itself. **Total time** includes callees. High
+self time points at the hot implementation; high total but low self time says to descend into its
+children. Wide flame-graph boxes consumed more samples. GC width means allocation pressure, not
+necessarily that the collector itself is defective.
+
+## Skein’s cross-runtime benchmark
+
+Use deterministic graphs first—no model calls—then repeat with a separate realistic model workload.
+The existing harness exercises real HTTP/SSE and can use real Postgres and Redis:
+
+```bash
+nx bench bench -- --scenario fast-client
+nx bench bench -- --scenario slow-client --streams 1
+nx bench bench -- --scenario slow-client --streams 50
+nx bench bench -- --scenario slow-client --streams 100
+nx bench bench -- --scenario slow-client --streams 500
+nx bench bench -- --driver postgres-redis
+```
+
+Do not model a slow client with `fetch()` plus delayed reads: the client runtime may eagerly drain the
+socket into its own heap. Skein’s slow-client harness pauses a raw socket so the TCP receive window
+closes and backpressure reaches the server.
+
+For Node/Bun/Deno comparisons there is **no harness support yet** — `packages/bench` starts the server
+inside its own process, so it cannot measure another runtime, and adding an external-target mode is
+tracked follow-up work. Today the comparison is a manual procedure: build each production artifact and
+run the load generator outside the measured container. Keep identical CPU/memory limits, graph bundle, payloads, Postgres/Redis versions,
+telemetry setting, warm-up, sample duration, and runtime image architecture. Record:
+
+- cold boot and readiness;
+- p50/p95/p99 and time to first frame;
+- requests/s and frames/s;
+- RSS, runtime heap values, and settled post-GC memory;
+- memory slope at 1/50/100/500 slow streams;
+- queue delay and Postgres pool saturation;
+- Redis commands, connections, and retained frames;
+- telemetry-off versus telemetry-on overhead;
+- SIGTERM drain duration and lost terminal states/events;
+- a sustained mixed-load soak.
+
+Run at least five measured repetitions after warm-up and report the median plus a 95% confidence
+interval. Save raw JSON beside runtime, image digest, CPU model, memory limit, OS/kernel, and commit.
+
+## Node recipes
+
+Profile the built production entry, send representative traffic from another process, then terminate
+it cleanly so profiles flush:
+
+```bash
+mkdir -p .profiles/node/cpu .profiles/node/heap
+node --cpu-prof --cpu-prof-dir=.profiles/node/cpu \
+  packages/cli/dist/index.js start --runtime node
+
+node --heap-prof --heap-prof-dir=.profiles/node/heap \
+  packages/cli/dist/index.js start --runtime node
+
+node --trace-gc packages/cli/dist/index.js start --runtime node
+node --inspect packages/cli/dist/index.js start --runtime node
+```
+
+Load `.cpuprofile` in Chrome DevTools’ Performance panel. Load `.heapprofile` in Memory. In an
+inspector session, take two heap snapshots only after the same forced-idle/GC point, repeat the
+workload between them, and compare retained size and retaining paths. Snapshots pause the process and
+can temporarily require roughly another heap’s worth of memory; capture them on a replica you can
+remove from traffic.
+
+## Bun recipes
+
+```bash
+mkdir -p .profiles/bun/cpu .profiles/bun/heap
+bun --cpu-prof --cpu-prof-dir=.profiles/bun/cpu \
+  packages/cli/dist/index.js start --runtime bun
+bun --heap-prof --heap-prof-dir=.profiles/bun/heap \
+  packages/cli/dist/index.js start --runtime bun
+```
+
+Bun has separate JavaScriptCore and native heaps. For an instrumented experiment, record
+`heapStats()` from `bun:jsc` for JS objects, `Bun.memoryUsage()` for Bun/native allocations, and RSS.
+A flat JS heap with rising RSS points away from retained JS objects and toward native/socket buffers.
+Bun’s heap profiler can also emit Markdown summaries; follow the options supported by the pinned Bun
+version used by the artifact.
+
+## Deno recipes
+
+The production launcher needs explicit access to the artifact, environment, network, system data, and
+native dependencies. Deno’s profiler can produce the raw profile, a Markdown report, and an
+interactive flamegraph together:
+
+```bash
+mkdir -p .profiles/deno/cpu
+deno run --allow-net --allow-env --allow-read=. --allow-sys --allow-ffi \
+  --cpu-prof --cpu-prof-dir=.profiles/deno/cpu \
+  --cpu-prof-md --cpu-prof-flamegraph \
+  packages/cli/dist/index.js start --runtime deno
+
+deno run --inspect --allow-net --allow-env --allow-read=. --allow-sys --allow-ffi \
+  packages/cli/dist/index.js start --runtime deno
+```
+
+Open the SVG directly or load `.cpuprofile` in DevTools. Deno reports transpiled JavaScript line
+numbers in CPU profiles, so use function names and sourcemaps to get back to TypeScript.
+
+## Five diagnostic exercises
+
+### 1. SSE backpressure
+
+Run `slow-client` at 1, 50, 100, and 500 streams. Watch server RSS, socket buffered bytes, and bus
+frames. Expected: socket bytes and bus retention plateau at configured bounds. Negative verification:
+temporarily replace the raw paused client with a fast client—the pressure disappears, proving a fast
+client cannot validate slow-client safety.
+
+### 2. Event-bus retention
+
+Run `long-run`, let all clients disconnect, force idle+GC, and inspect retained objects. Expected:
+completed-run retention stops at `SKEIN_MEMORY_BUS_MAX_RETAINED_RUNS`, and frames per run stop at
+`SKEIN_MEMORY_BUS_MAX_FRAMES_PER_RUN`. A retaining path through a subscription after cancellation is
+a leak; a bounded map at its configured ceiling is not.
+
+### 3. Serialization cost
+
+Compare `stream_mode: "values"` with `"updates"` using the same graph. If CPU self time concentrates
+in wire serialization and GC grows, reduce full-state frames or payload size. Verify final state and
+frame order before accepting the change.
+
+### 4. Postgres pool saturation
+
+Sweep run concurrency through 1/5/10/20 while holding `PG_POOL_MAX=5`, then repeat at 20. Throughput
+should flatten and queue time rise when the pool saturates. Raising worker concurrency alone cannot
+fix a five-connection bottleneck; remember Skein uses separate store and checkpointer pools.
+
+### 5. Telemetry shutdown leak
+
+Create a test sink that buffers events and whose `flush()` rejects. Send SIGTERM. The test passes only
+if `shutdown()` still runs, the other sinks flush, terminal run state is persisted, and the process
+exits within the configured grace. This distinguishes exporter failure from lifecycle loss.
+
+## Benchmark traps
+
+- Warm-up/JIT: keep cold start as its own metric; do not mix it into steady state.
+- Coordinated omission: a closed-loop generator waits during stalls and under-samples the stall.
+- Noisy neighbours and CPU turbo: pin container resources and repeat.
+- A weak load generator: if its CPU is full, you measured the client. This is especially easy with a
+  fast native Bun server.
+- Model/network variance: deterministic graphs establish runtime overhead; model-backed tests answer a
+  different question.
+- Different hardware, regions, images, database sizes, or TLS paths: not a runtime comparison.
+- Average-only reporting: averages hide queue and GC tails.
+- Optimizing without a negative verification: a benchmark win can be dropped frames or skipped work.
+
+## Comparing Skein with LangGraph Platform
+
+Treat Platform as a black box. Use the same graph, SDK client, client region, payloads, concurrency,
+warm-up, and observation window. Publish raw results and methodology. A “better” claim requires full
+protocol correctness plus a reproducible win in p99, memory, throughput, cold start, or operating cost,
+with no material regression in the others. If infrastructure cannot be made identical, label the
+result as an end-to-end deployment comparison rather than a runtime benchmark.
+
+Official references: [Node CLI profiling](https://nodejs.org/api/cli.html#--cpu-prof),
+[Bun benchmarking and profiling](https://bun.sh/docs/project/benchmarking), and
+[Deno CPU profiling](https://docs.deno.com/runtime/fundamentals/cpu_profiling/).
 
 
 ---

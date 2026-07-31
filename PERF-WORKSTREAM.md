@@ -20,8 +20,9 @@ with sane defaults and documented sizing math.
 - Search limits capped at **1000** with a `SKEIN_MAX_PAGE_SIZE` escape hatch. Accepted as a behavior
   change.
 - Postgres index migrations use **`CREATE INDEX CONCURRENTLY`**, not a documented warning.
-- Bun/Deno is an **investigation with a docs deliverable**, not a shipped runtime.
-- All 12 phases in scope.
+- Bun/Deno are first-class production targets, but only graduate after their full clean-artifact
+  conformance matrices pass.
+- P0–P11 shipped. The original P12 spike is replaced by the three-runtime production program below.
 
 ---
 
@@ -45,7 +46,10 @@ with sane defaults and documented sizing math.
 | `9b6ef9c` | P9      | `skein start` durable-only; container hardening |
 | `18681bc` | P9b     | Runtime heap-pressure monitor                   |
 | `7321cdd` | P10     | Run + webhook timeouts; webhook out of the lock |
-| _pending_ | P11     | `docs/performance.md` + doc-set updates         |
+| shipped   | P11     | `docs/performance.md` + doc-set updates         |
+| active    | P12+    | Node/Bun/Deno production and profiling program  |
+| active    | P12m    | First three-runtime measurements + three fixes  |
+| active    | P12ci   | Runtime + image matrices in CI; Node 24 LTS     |
 
 ### Measured
 
@@ -129,12 +133,21 @@ channel (`create-handlers.ts:52-55`), and the header appears only in the CORS ex
 truncation is currently undetectable by a client — page by what you _received_. Adding it needs a
 `headers` field on `ProtocolResponse` plus every adapter, which is its own change.
 
-Also still unbounded, all pre-existing and reachable unauthenticated: `POST /store/namespaces`
-(`SELECT DISTINCT namespace`, and the handler takes no limit at all), `GET /threads/{id}/runs`
-(`runs.listByThread`, also hit internally by `loadThreadGraph` on every state read), non-semantic store
-search **with** a `query` string and no `store.index` configured, and `offset` itself (uncapped, and a
-deep offset still walks the index — 137 ms measured at `OFFSET 299000`). The bound is on **row count,
-not bytes**: 1000 thread rows each carrying a multi-MB `values` blob is still a very large response.
+`POST /store/namespaces` and `GET /threads/{id}/runs` were on this list and are **now bounded** (P12ci):
+both take `limit`/`offset` through to the driver and default to a 100-row page —
+`DEFAULT_COLLECTION_PAGE_SIZE` in `create-handlers.ts`, matching what the SDK itself sends for
+`listNamespaces`. `GET /threads/{id}/runs` clamps a query `limit` rather than rejecting it, like every
+other query-string limit in that table. **With auth configured the runs bound still does not reach
+SQL** — `auth-scoped-store.ts` reads the thread's runs, filters by ownership, then slices — which is
+the same "bounding the response is not bounding the work" trap 6b documented, and the next thing to fix
+here (the `enforcedMetadata` pushdown 6c established for threads).
+
+Still unbounded, all pre-existing and reachable unauthenticated: `runs.listByThread` as called
+_internally_ by `loadThreadGraph` on every state read (the HTTP path is bounded now, that one is not),
+non-semantic store search **with** a `query` string and no `store.index` configured, and `offset` itself
+(uncapped, and a deep offset still walks the index — 137 ms measured at `OFFSET 299000`). The bound is
+on **row count, not bytes**: 1000 thread rows each carrying a multi-MB `values` blob is still a very
+large response.
 
 **6b-bis — bound thread history. DONE** (see the shipped table). Default 100, schema cap 1000, options
 read from the body, and the limit passed into `getStateHistory({ limit, before, filter })`.
@@ -304,9 +317,9 @@ map. Task-hash propagation through `dependsOn` is what actually invalidates the 
 - **`skein start` refuses the in-memory drivers.** Its `--store`/`--queue` default to `postgres`/`redis`
   and reject `memory` at parse time, via its own parsers (`driver-flags.ts`) separate from `dev`'s. The
   flags are kept, not removed: images built by older `skein build` versions pass them in their CMD.
-- Base image fallback `node:20-slim` → `node:22-slim` (20 went EOL April 2026), and every shipped example
-  bumped with it — they each pin `node_version` explicitly, so the default change alone left them all
-  still emitting EOL images.
+- Base image fallback moved off EOL Node 20 and now tracks Node 24 LTS. Every shipped example was
+  bumped with it — they each pin `node_version` explicitly, so changing the fallback alone would
+  leave them emitting an older image.
 - `HEALTHCHECK --interval` 30s → 60s. The probe spawns a whole Node process (~40MB transient), which is
   real money in a 512Mi box and wasted entirely on Cloud Run / k8s / ECS, which ignore it.
 - Boot warnings for the two sizing mistakes that are already true before any traffic: V8's heap ceiling
@@ -429,50 +442,149 @@ Two stale claims the pass turned up, both of which had become false as the bound
 `process.memoryUsage()` — plus the two habits that actually caught bugs here: run the negative check, and
 measure before writing the rationale.
 
-### P12 — Bun/Deno spike
+### P12 — replaced by the three-runtime production program
 
-Time-boxed to 2 days; deliverable `docs/alternative-runtimes.md` **whether the answer is yes or no** — a
-documented negative stops the question recurring.
+P12 is no longer a compatibility spike. Node, Bun, and Deno are explicit production targets, with
+Node remaining the fallback until each alternative passes its own production-artifact conformance
+matrix.
 
-**Run it after P1–P4 (done), which it now is.** Benchmarking against a leaky baseline would only
-measure which runtime buffers garbage more efficiently.
+Implemented foundations:
 
-Favourable signals, all verified: no `cluster`, no `worker_threads`, no native addons; `pg`/`ioredis`/
-`bullmq` pure JS; Express 5; schemas precomputed at build time so the image never spawns
-langgraph-api's parser worker; `vite` lazily imported and absent from the image. Bun 1.3.14 and Deno
-2.9.4 are installed locally.
+- `@skein-js/fetch`: native WHATWG Request/Response transport with pull-driven SSE, cancellation,
+  bounded buffering, and direct `Bun.serve` / `Deno.serve` launchers.
+- `skein.runtime.{name,version}` and `--runtime` / `--runtime-version`, with CLI → config → default
+  precedence and legacy `node_version` support.
+- runtime-specific production Dockerfiles, pinned defaults, native health checks, non-root users,
+  explicit Deno permissions, PID-1 commands, and a selected-runtime graph compatibility probe.
+- an injected runtime-capability boundary for environment, clocks, memory, signals, and exit.
+- `/invoke` lifecycle telemetry, active OTel run context, queue/frame metrics, safe partial
+  initialization, and flush-then-shutdown cleanup even when flushing fails.
+- `docs/profiling.md`, including a reproducible cross-runtime performance contract and exercises.
 
-Test in order, stopping at the first hard failure:
+#### First measurements (2026-07-31)
 
-1. **`AsyncLocalStorage` fidelity — the gate.** `@langchain/core` uses ALS for callback singletons. The
-   probe is not "does ALS exist" but whether `graph.streamEvents(…, { version: "v2" })` emits
-   correctly-parented events: a graph with a tool calling a nested chain, asserting `run_id` /
-   `parent_ids` / `tags`. Context leaking across awaits means `events` mode silently mis-parents.
-2. **`res.write`/`drain` semantics** on each runtime's `node:http` shim. Load-bearing for P1: if
-   `write()` does not return `false` past the high-water mark, backpressure is a **no-op** there and
-   memory is _worse_ than Node.
-3. Full `pnpm test` + `pnpm test:integration`, then the SDK-driven e2e (`examples/express-basic` is the
-   wire-format oracle) with the server on Bun/Deno and the client on Node.
-4. ioredis handshake-flush lifecycle — the failure `redis-connection.ts` exists to work around;
-   unhandled-rejection defaults differ.
-5. `process.on("SIGTERM")` as PID 1.
-6. P0 harness numbers, same scenarios.
-7. Deno specifics: `--allow-net/--allow-env/--allow-read`, `--node-modules-dir`, Express 5 on Deno's
-   `node:http`. Expect this to be the harder of the two.
+The foundations above had **no numbers attached**, which is the one habit this workstream's notes say
+never to skip. These are the first. They are also what found the two defects below — neither was
+visible in review, and one made every run fail.
 
-**"Yes" needs all four:** (1) and (2) clean; full suite + SDK e2e green including interrupts and
-`events` parenting; SIGTERM drain works as PID 1; and **≥25% RSS reduction or ≥40% boot-time reduction
-at equal-or-better p99**.
+**Rig.** Deterministic model-free graph (500 frames × 4 KB at 500 fps, the same shape
+`packages/bench` uses), one `.skein/build` artifact shared by all three runtimes, `skein start` from
+this tree, one Postgres 17 + Redis 7 container pair, `SKEIN_RUN_CONCURRENCY=10` everywhere. Load is
+generated from a **separate process** (`.profiles/runtime-matrix/`), slow clients over a **raw paused
+socket** — `packages/bench` drives a server it starts in its own process, so it cannot measure another
+runtime, and a throttled `fetch` reader moves the backlog client-side. A fresh server per scenario,
+because RSS never returns: reusing one folds the previous scenario's retention into the next
+baseline. Server RSS from `ps` against the server PID.
 
-**Expectation setting.** skein's hot path is I/O-bound (model calls, then Redis/Postgres round trips),
-so headline Bun benchmarks do not map. Expect a modest win in baseline RSS — which lands on the
-small-container target — and some boot gain that P8 probably beats. No gain on run throughput, and
-**none at all on what P1–P7 fix**: a faster runtime does not fix an unbounded buffer, it fills it sooner.
+| scenario   | metric               |        Node |         Bun |        Deno |
+| ---------- | -------------------- | ----------: | ----------: | ----------: |
+| boot       | to `GET /ok` (ms)    |         657 |         536 |         414 |
+| idle       | RSS (MB)             |         181 |         113 |         129 |
+| fast × 50  | frames/s             |       6,934 |       6,709 |       6,800 |
+| fast × 50  | p99 first frame (ms) |         231 |         196 |         175 |
+| fast × 50  | peak RSS (MB)        |         407 |         323 |         360 |
+| slow × 1   | peak RSS (MB)        |         193 |         130 |         164 |
+| slow × 100 | peak RSS (MB)        |         493 |         490 |         481 |
+| slow × 100 | RSS after load (MB)  |         177 |         500 |         480 |
+| SIGTERM    | exit (ms)            |       5,168 |       5,134 |       5,194 |
+| SIGTERM    | in-flight run ends   | `cancelled` | `cancelled` | `cancelled` |
 
-**Does it help the adapters? Mostly no.** They are libraries running in the _user's_ process; skein does
-not pick that runtime. The real adapter payoff is the compatibility answer from test 2. A genuine
-adapter-level Bun win would be a separate `@skein-js/bun` package on `Bun.serve` — the transport-neutral
-handler table makes that cheap later, but it is out of scope.
+What the numbers say, and only that:
+
+- **Throughput is a wash.** Within 3% across all three, so the transport choice — Express versus native
+  Fetch — is not where time goes on this workload. Bun and Deno boot 120–240 ms faster and start
+  streaming 35–55 ms sooner at p99, on a **single-instance, warm, localhost** measurement.
+- **The operationally interesting number is the last RSS row, not the peak.** Peaks are within 2% of
+  each other. But after the load drains, Node returns memory (493 → 177 MB) while Bun and Deno hold
+  what they took (490 → 500, 481 → 480). On a 512Mi box that is the difference between headroom for the
+  next burst and an OOM kill, and it is the opposite of what the lower idle RSS suggests. Anyone sizing
+  a Bun or Deno deployment from the idle figure will undersize it.
+- **This does not re-verify P1's plateau.** An external harness cannot separate a socket buffer from
+  live run state, and 100 concurrent slow streams means 100 concurrent graph executions. RSS over idle
+  works out to ~3 MB per stream against a 2 MB payload — consistent with bounded per-stream cost, and
+  nothing like the 5× amplification the pre-P1 numbers showed — but the in-process assertions in
+  `packages/bench` remain the actual guard.
+- **SIGTERM is correct on all three.** ~5.15 s (the 5 s grace plus abort) and the in-flight run lands
+  `cancelled`, read from Postgres after the process is gone. No stranded `running` row on any runtime.
+
+**Honest limits:** single run per cell, not the five repetitions plus confidence interval
+`docs/profiling.md` prescribes; host processes, not containers, so no pinned CPU/memory; macOS, not the
+Linux the images run on; one deterministic workload. Directional, not publishable. The container matrix
+is still required, and it is where the two defects below would have surfaced far later.
+
+#### Three defects the measurement found
+
+- **`skein build` was broken for any project inside a monorepo.** Version pinning resolved every
+  dependency from `searchForWorkspaceRoot(configDir)`. A pnpm workspace root hoists nothing, so the
+  app's own dependencies are invisible there and the build threw
+  `could not resolve an installed version of "@langchain/langgraph"` — for **every example in this
+  repo**. It survived because the fixture in `bundle-project.test.ts` lives under `packages/cli`, whose
+  own `node_modules` carries the dep, so the walk-up happened to succeed. Externals now resolve from
+  the project; `SKEIN_RUNTIME_PEERS` resolve from the CLI's own tree first, because under pnpm's strict
+  layout a peer of `skein-js` is not reachable from the project at all. The regression test pins a
+  dependency installed _only_ next to the app — verified by reverting the fix.
+- **The generated Deno image would have failed every single run.** Deno's read permission is scoped to
+  `/app`, and a denial is a _throw_, not a miss: `langsmith` (reached through `@langchain/core`, so
+  present in every graph) reads `~/.langsmith/config.json` while constructing its client, so every run
+  ended with `NotCapable: Requires read access to "/root/.langsmith/config.json"`. In the matrix this
+  looked exactly like a broken transport — Deno delivered **1 frame per stream where Node and Bun
+  delivered 501** — which is why "the Fetch adapter works on Deno" could not have been concluded from
+  the code. `ENV HOME=/app` puts the probe inside the granted scope. Two things checked while fixing
+  it: the image's `HOME` is `/root` even under `USER deno` (so widening the read scope to the real home
+  would not have helped), and `deno install` materialises packages into `/app/node_modules/.deno/`
+  rather than symlinking into `DENO_DIR`, so `--allow-read=/app` is genuinely sufficient for module
+  loading. **The lesson for the rest of this program: a sandboxed runtime turns a dependency's
+  optional file probe into a hard failure, and the failure surfaces as data loss, not as a permission
+  error at boot.**
+
+- **The generated Deno image could never have been built.** `deno eval` — used by both the build-time
+  graph compatibility probe and the `HEALTHCHECK` — has **implicit access to every permission and
+  rejects `--allow-*` outright** (`error: unexpected argument '--allow-read' found`). So the probe
+  failed the image build, and had it not, the health command would have exited non-zero forever and
+  pinned the container permanently unhealthy. `deno run` is the exact opposite: it needs every grant
+  spelled out. Found by actually building the image, which nothing did until now.
+
+Also confirmed while measuring: the LangGraph CLI (1.4.3+js) accepts both `node_version: "24"` and an
+unknown top-level `skein` key, so the `skein.runtime` block does not break the drop-in promise.
+
+#### The graduation matrix is now CI, not a manual ritual
+
+The correctness half is automated, because runner co-tenancy moves timings but not pass/fail:
+
+- **`runtime-matrix`** (`.github/workflows/ci.yml`) runs
+  `packages/test-support/scripts/runtime-conformance.mjs` for node, bun, and deno against Postgres and
+  Redis services. Fourteen checks driven by the **real `@langchain/langgraph-sdk`** — assistants,
+  streaming, `runs.list` limit/offset, store, history, cross-instance join through Redis, burst
+  retention, and SIGTERM leaving no run stranded as `running`. Verified to catch the Deno `HOME` defect
+  by reverting the fix.
+- **`runtime-images`** builds the real production image per runtime from the local packages and runs it
+  under `--memory=512m`. Node and Bun get the full run pass (boot, no error frame, SIGTERM, terminal
+  status); Deno is **build-only**, because `deno install` will not recurse into a vendored package's own
+  `file:` dependencies. That is a property of substituting _unpublished_ packages — a released
+  `skein-js` installs from the registry — so drop `--build-only` once a prerelease exists.
+- Both jobs, and the two existing ones, now run on **Node 24 LTS**. They were on Node 20, which the
+  codebase's own comments call EOL, while `skein build` shipped images on 24. Testing a different major
+  than you ship is how three image defects survived a full phase of review.
+
+Worth keeping from writing the image harness: **no single local-package form works across the three
+installers.** Tarballs are what npm and bun want (devDependencies dropped, root `overrides` reach
+inside); `deno install` symlinks `node_modules/<pkg>` straight at the `.tgz` and dies with
+`Not a directory`. Extracted directories are what Deno needs, but npm then treats them as links,
+installs their devDependencies even under `--omit=dev`, and refuses to apply `overrides` to them. The
+script picks per runtime and says why.
+
+Graduation work still required before Bun or Deno is labelled fully supported: the **performance** half,
+on a machine whose CPU nobody else is using (see the environment options in `docs/profiling.md`) —
+slow/disconnected SSE clients under pinned CPU and memory, AsyncLocalStorage parentage, and the raw
+results published. The benchmark claim remains deliberately measurable: full protocol correctness plus a
+reproducible win in p99, memory, throughput, cold start, or operating cost without a material regression
+elsewhere. On the numbers above there is **no such win yet** — throughput is a wash and Node reclaims
+memory better — so the honest status stays "⚠️ preview".
+
+One blocker to know about before attempting the image matrix: the artifact pins `skein-js` to the
+**published** version, so an image built from this tree installs 0.11.3 from npm and its CMD passes
+`--runtime`, which that version does not understand. Measuring the real images needs local tarballs
+plus npm `overrides` for every `@skein-js/*` package, or a prerelease publish.
 
 ---
 
@@ -570,6 +682,6 @@ entry under a **Behavior changes** heading:
   a re-export would defeat the split. `SkeinConfigError` gains a `@skein-js/config/errors` subpath; the
   root export stays.
 - **P9** — **`skein start` refuses `--store memory` / `--queue memory`** and defaults to
-  postgres/redis. Node 22 base image (examples bumped too). Request logging off by default under
+  postgres/redis. Node 24 LTS base image. Request logging off by default under
   `start` (`--request-log` / `SKEIN_REQUEST_LOG` to restore). HEALTHCHECK every 60s, not 30s.
 - **P10** — slow webhook targets now fail instead of hanging a thread lock.

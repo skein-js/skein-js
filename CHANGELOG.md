@@ -1,3 +1,58 @@
+## Unreleased
+
+### Behavior changes
+
+- **`GET /threads/{thread_id}/runs` is paginated.** It now honours the `limit`/`offset` query params
+  the LangGraph SDK has always sent (`runs.list` sends `limit ?? 10`) — previously both were dropped
+  and every run on the thread was returned. With no `limit`, the default page is **100**. An
+  over-ceiling `?limit=5000` is clamped to 1000, not rejected.
+- **`POST /store/namespaces` is paginated**, defaulting to `limit: 100` — the same default the SDK's
+  `store.listNamespaces` sends, so an SDK caller sees no change.
+- **A telemetry provider declared in `langgraph.json` now fails startup when its configuration is
+  incomplete** (missing API key, say), instead of silently running with telemetry off. An
+  environment-*detected* provider still stays quietly off. Remove the `telemetry.<provider>` entry to
+  run without it.
+- **OpenTelemetry model/tool spans now nest under the run span** rather than being correlated with it
+  by attribute. Dashboards built on a flat span structure will see a different shape.
+- **`webhook` URLs are canonicalized** (`new URL(url).href`) before being stored, dispatched, and
+  logged, so a round-tripped value can differ from the one submitted. This removes embedded control
+  characters that `z.string().url()` accepts, which could otherwise forge lines in the server log.
+- **Production images default to Node 24 LTS** (from 22), and the bundle's syntax target moves from
+  Node 20 to 24. An explicit `node_version` is still honoured verbatim.
+- `readLanggraphDevState` / `loadSnapshotIntoStore` / `describeSnapshot` remain at
+  `@skein-js/server-kit/dev`; no root re-export, since that would undo the module-graph split.
+
+### Features
+
+- Add native Fetch transport (`@skein-js/fetch`) and production launchers/images for Node 24 LTS, Bun,
+  and Deno, selectable with `skein.runtime`, `--runtime`, and `--runtime-version`. Bun and Deno are
+  **preview** targets: their protocol conformance runs in CI, their performance is not yet published.
+- Add a protocol conformance matrix and production-image smoke job covering all three runtimes, driven
+  by the real `@langchain/langgraph-sdk`.
+- Add `docs/profiling.md` — how to measure latency, memory, and CPU, and how to compare runtimes
+  without fooling yourself.
+- Add `/invoke` lifecycle telemetry, an active OpenTelemetry parent context, queue/frame metrics, and
+  `x-pagination-total` on assistant search.
+
+### Fixes
+
+- **`skein build` works for a project inside a monorepo.** Dependency versions are pinned from the
+  project's module tree instead of the workspace root, which in a pnpm workspace hoists nothing — so
+  the build failed with `could not resolve an installed version of "@langchain/langgraph"`.
+- **The generated Deno image runs.** `deno eval` rejects `--allow-*` flags, which broke the build-time
+  graph probe and would have pinned the container permanently unhealthy; and `$HOME` now points inside
+  the granted read scope, without which `langsmith`'s config probe failed **every run** with
+  `NotCapable`.
+- **The Fetch transport bounds request bodies** (413 above 100kb, matching `express.json()`), rather
+  than reading an unbounded body into memory before validation.
+- **A telemetry sink can no longer fail the run it observes** through `withRunContext`; it was the one
+  sink method not guarded.
+- **Heap-pressure warnings work on Bun and Deno.** They were silently disabled there by a heap limit
+  nothing populated.
+- Drain workers before production drivers on bind failures and shutdown, while stopping listeners from
+  accepting new traffic first.
+- Drain partially initialized telemetry sinks, and run exporter shutdown even when flush rejects.
+
 ## 0.11.3 (2026-07-27)
 
 ### 🩹 Fixes
