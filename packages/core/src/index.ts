@@ -39,6 +39,7 @@ export type {
   Pagination,
   RunCreate,
   RunKwargs,
+  RunListQuery,
   RunRepo,
   SkeinStore,
   SkeinStoreSnapshot,
@@ -54,8 +55,21 @@ export type {
 export {
   isMetadataSubset,
   isTerminalRunStatus,
+  RUN_STATUSES,
   TERMINAL_RUN_STATUSES,
 } from "./store/skein-store.js";
+
+// Cross-instance per-thread execution serialization contract.
+export type { ThreadExecutionGate, ThreadExecutionLease } from "./queue/thread-execution-gate.js";
+
+// Cross-instance run cancellation contract.
+export type {
+  RunAbortChannel,
+  RunAbortListener,
+  RunAbortReason,
+  RunAbortRequest,
+  RunAbortSubscription,
+} from "./queue/run-abort-channel.js";
 
 // Run queue + streaming pub/sub contract.
 export type {

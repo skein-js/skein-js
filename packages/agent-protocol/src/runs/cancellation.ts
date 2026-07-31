@@ -1,8 +1,15 @@
 // Per-run cancellation, kept in one small stateful place. Each executing run registers an
 // `AbortController`; a cancel or timeout aborts its signal (which LangGraph's `stream`/`invoke`
 // honor) and records *why*, so the engine's catch can distinguish a cancel from a timeout from a
-// genuine graph error. This registry is per-process — cross-instance cancel is a `@skein-js/redis`
-// concern layered on top later.
+// genuine graph error.
+//
+// The registry itself is per-process — it holds `AbortController`s, which cannot leave one. What crosses
+// instances is the *request*: when a `RunAbortChannel` is configured, an abort for a run this process is
+// not executing is republished on it, so it reaches whichever instance is. See `RunAbortChannel`.
+
+import type { RunAbortChannel } from "@skein-js/core";
+
+import type { Logger } from "../deps.js";
 
 /**
  * Why a run was aborted. Absent (`null`) means the run failed on its own.
@@ -32,6 +39,22 @@ interface ControlEntry {
 
 export class RunControlRegistry {
   readonly #entries = new Map<string, ControlEntry>();
+  /**
+   * Where an abort for a run this process is not executing goes. Set once by the runtime when a
+   * `RunAbortChannel` is configured; absent means single-process, which is the default and was the only
+   * behaviour before.
+   */
+  #abortChannel?: RunAbortChannel;
+  #logger?: Logger;
+
+  /**
+   * Broadcast aborts that miss locally onto `channel`, so they reach the instance that is executing the
+   * run. Called by the runtime during assembly, before any run starts.
+   */
+  useAbortChannel(channel: RunAbortChannel, logger?: Logger): void {
+    this.#abortChannel = channel;
+    this.#logger = logger;
+  }
 
   /** Start tracking a run and return its abort signal + reason box. */
   register(runId: string): RunControl {
@@ -46,12 +69,40 @@ export class RunControlRegistry {
     return { signal: controller.signal, reason, abort };
   }
 
-  /** Abort a tracked run with a reason. Returns false if the run isn't currently executing. */
+  /**
+   * Abort a tracked run with a reason. Returns whether it was aborted **here** — false means this
+   * process is not executing it.
+   *
+   * A false also publishes the request on the abort channel, when one is configured: "not executing
+   * here" is exactly the multi-instance case, so the request is forwarded rather than dropped. Published
+   * fire-and-forget — the caller has already marked the run terminal in the store, so a publish failure
+   * costs promptness, not correctness, and must not fail the cancel that triggered it.
+   */
   abort(runId: string, reason: AbortReason): boolean {
     const entry = this.#entries.get(runId);
-    if (!entry) return false;
+    if (!entry) {
+      this.#forwardAbort(runId, reason);
+      return false;
+    }
     entry.abort(reason);
     return true;
+  }
+
+  /**
+   * Apply an abort request that arrived *from* the channel. Never re-publishes — that would bounce the
+   * message back and forth between instances forever, since neither can tell a forwarded request from a
+   * fresh one.
+   */
+  applyRemoteAbort(runId: string, reason: AbortReason): void {
+    this.#entries.get(runId)?.abort(reason);
+  }
+
+  #forwardAbort(runId: string, reason: AbortReason): void {
+    const channel = this.#abortChannel;
+    if (!channel) return;
+    void channel.requestAbort({ run_id: runId, reason }).catch((error: unknown) => {
+      this.#logger?.warn(`run ${runId}: could not broadcast the ${reason} request to peers`, error);
+    });
   }
 
   /** Stop tracking a run once it has settled. */

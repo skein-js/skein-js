@@ -1,5 +1,5 @@
-// The NestJS transport shim, as middleware. It matches each request against the shared route table
-// (`skeinRoutes` via `matchSkeinRoute`); a skein route is dispatched to the handler table and its
+// The NestJS transport shim, as middleware. It matches each request against the resolved route table
+// (`skeinRoutes`, minus any `http.disable_*` group); a skein route is dispatched to the handler table and its
 // response serialized (via server-kit's shared Node transport), while anything else is passed through
 // with `next()` — so the protocol coexists with the host app's own controllers. CORS (when enabled) is
 // applied only to skein routes. Adds no protocol logic. Assumes NestJS's default Express platform.
@@ -8,7 +8,12 @@ import type { ServerResponse } from "node:http";
 
 import { Inject, Injectable, Optional, type NestMiddleware } from "@nestjs/common";
 import { ApplicationConfig } from "@nestjs/core";
-import { copyThreadIdIntoBody, matchSkeinRoute, type Logger } from "@skein-js/agent-protocol";
+import {
+  copyThreadIdIntoBody,
+  createRouteMatcher,
+  type Logger,
+  type RouteMatcher,
+} from "@skein-js/agent-protocol";
 import {
   applyNodeCors,
   sendNodeError,
@@ -40,7 +45,15 @@ export class SkeinMiddleware implements NestMiddleware {
     // hand (it is a public export) — without it, a 3-argument `new SkeinMiddleware(...)` would 500 on
     // every request. Absent config simply means "no global prefix".
     @Optional() @Inject(ApplicationConfig) private readonly appConfig?: ApplicationConfig,
-  ) {}
+  ) {
+    // Built from the *resolved* table, so a group the config's `http.disable_*` flags switched off
+    // simply does not match and the request passes through to the host app (a 404 there, rather than a
+    // skein response) — the same outcome as an adapter that never registered the route.
+    this.matchRoute = createRouteMatcher(this.resolved.routes);
+  }
+
+  /** Matches a request against the route table this server actually serves. */
+  private readonly matchRoute: RouteMatcher;
 
   async use(req: NestRequest, res: ServerResponse, next: (error?: unknown) => void): Promise<void> {
     const rawUrl = req.originalUrl ?? req.url ?? "/";
@@ -76,7 +89,7 @@ export class SkeinMiddleware implements NestMiddleware {
     // own OPTIONS handling is untouched.
     if (method === "OPTIONS") {
       const requestedMethod = firstHeader(req.headers["access-control-request-method"]);
-      if (cors && requestedMethod && matchSkeinRoute(requestedMethod, skeinPathname)) {
+      if (cors && requestedMethod && this.matchRoute(requestedMethod, skeinPathname)) {
         sendNodePreflight(req.headers, res, cors);
         return;
       }
@@ -84,7 +97,7 @@ export class SkeinMiddleware implements NestMiddleware {
       return;
     }
 
-    const match = matchSkeinRoute(method, skeinPathname);
+    const match = this.matchRoute(method, skeinPathname);
     if (!match) {
       next();
       return;

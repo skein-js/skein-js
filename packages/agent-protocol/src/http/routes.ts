@@ -9,6 +9,14 @@ import type { ProtocolHandlers, ProtocolRequest } from "../create-handlers.js";
 export type HttpMethod = "get" | "post" | "put" | "patch" | "delete";
 
 /**
+ * The resource family a route belongs to, and the unit `langgraph.json`'s `http.disable_*` flags switch
+ * off. Grouped the way LangGraph groups its route *files*, not by path prefix — so
+ * `/threads/{id}/runs/...` is `runs`, not `threads`, and `disable_runs` removes it exactly as
+ * `langgraph dev` would.
+ */
+export type RouteGroup = "assistants" | "threads" | "runs" | "store" | "meta";
+
+/**
  * One route. `HandlerName` defaults to a member of the protocol handler table; a surface mounted
  * outside that table (the single-graph invoke endpoint) parameterizes it with its own handler names,
  * so `handler` never has to lie about being a `keyof ProtocolHandlers` an adapter could look up.
@@ -18,6 +26,11 @@ export interface RouteBinding<HandlerName = keyof ProtocolHandlers> {
   /** Path with `:param` placeholders, e.g. `/threads/:thread_id/runs/stream`. */
   path: string;
   handler: HandlerName;
+  /**
+   * Which `http.disable_*` flag removes this route. Optional so a table outside the protocol (the
+   * invoke surface) need not invent a group; an ungrouped route is never disabled.
+   */
+  group?: RouteGroup;
   /**
    * Fold the path `thread_id` into the request body before dispatch. The SDK addresses a
    * thread-scoped run by its path (`POST /threads/{id}/runs/stream`) while carrying only
@@ -30,78 +43,191 @@ export interface RouteBinding<HandlerName = keyof ProtocolHandlers> {
 /** The route table, ordered most-specific-first within each method so literals win over params. */
 export const skeinRoutes: readonly RouteBinding[] = [
   // assistants — literals (search/count) before `:assistant_id`, and nested paths before the bare id.
-  { method: "post", path: "/assistants/search", handler: "searchAssistants" },
-  { method: "post", path: "/assistants/count", handler: "countAssistants" },
-  { method: "post", path: "/assistants", handler: "createAssistant" },
-  { method: "get", path: "/assistants/:assistant_id/schemas", handler: "getAssistantSchemas" },
-  { method: "get", path: "/assistants/:assistant_id/graph", handler: "getAssistantGraph" },
+  { method: "post", path: "/assistants/search", handler: "searchAssistants", group: "assistants" },
+  { method: "post", path: "/assistants/count", handler: "countAssistants", group: "assistants" },
+  { method: "post", path: "/assistants", handler: "createAssistant", group: "assistants" },
+  {
+    method: "get",
+    path: "/assistants/:assistant_id/schemas",
+    handler: "getAssistantSchemas",
+    group: "assistants",
+  },
+  {
+    method: "get",
+    path: "/assistants/:assistant_id/graph",
+    handler: "getAssistantGraph",
+    group: "assistants",
+  },
   {
     method: "get",
     path: "/assistants/:assistant_id/subgraphs/:namespace",
     handler: "getAssistantSubgraphs",
+    group: "assistants",
   },
-  { method: "get", path: "/assistants/:assistant_id/subgraphs", handler: "getAssistantSubgraphs" },
-  { method: "post", path: "/assistants/:assistant_id/versions", handler: "listAssistantVersions" },
+  {
+    method: "get",
+    path: "/assistants/:assistant_id/subgraphs",
+    handler: "getAssistantSubgraphs",
+    group: "assistants",
+  },
+  {
+    method: "post",
+    path: "/assistants/:assistant_id/versions",
+    handler: "listAssistantVersions",
+    group: "assistants",
+  },
   {
     method: "post",
     path: "/assistants/:assistant_id/latest",
     handler: "setAssistantLatestVersion",
+    group: "assistants",
   },
-  { method: "get", path: "/assistants/:assistant_id", handler: "getAssistant" },
-  { method: "patch", path: "/assistants/:assistant_id", handler: "updateAssistant" },
-  { method: "delete", path: "/assistants/:assistant_id", handler: "deleteAssistant" },
+  {
+    method: "get",
+    path: "/assistants/:assistant_id",
+    handler: "getAssistant",
+    group: "assistants",
+  },
+  {
+    method: "patch",
+    path: "/assistants/:assistant_id",
+    handler: "updateAssistant",
+    group: "assistants",
+  },
+  {
+    method: "delete",
+    path: "/assistants/:assistant_id",
+    handler: "deleteAssistant",
+    group: "assistants",
+  },
 
   // threads
-  { method: "post", path: "/threads/search", handler: "listThreads" },
-  { method: "post", path: "/threads", handler: "createThread" },
-  { method: "post", path: "/threads/:thread_id/copy", handler: "copyThread" },
-  { method: "get", path: "/threads/:thread_id", handler: "getThread" },
-  { method: "patch", path: "/threads/:thread_id", handler: "patchThread" },
-  { method: "delete", path: "/threads/:thread_id", handler: "deleteThread" },
-  { method: "get", path: "/threads/:thread_id/state", handler: "getThreadState" },
-  { method: "post", path: "/threads/:thread_id/state", handler: "updateThreadState" },
+  { method: "post", path: "/threads/search", handler: "listThreads", group: "threads" },
+  { method: "post", path: "/threads/count", handler: "countThreads", group: "threads" },
+  { method: "post", path: "/threads/prune", handler: "pruneThreads", group: "threads" },
+  { method: "post", path: "/threads", handler: "createThread", group: "threads" },
+  { method: "post", path: "/threads/:thread_id/copy", handler: "copyThread", group: "threads" },
+  { method: "get", path: "/threads/:thread_id", handler: "getThread", group: "threads" },
+  { method: "patch", path: "/threads/:thread_id", handler: "patchThread", group: "threads" },
+  { method: "delete", path: "/threads/:thread_id", handler: "deleteThread", group: "threads" },
+  { method: "get", path: "/threads/:thread_id/state", handler: "getThreadState", group: "threads" },
+  {
+    method: "post",
+    path: "/threads/:thread_id/state",
+    handler: "updateThreadState",
+    group: "threads",
+  },
   {
     method: "get",
     path: "/threads/:thread_id/state/:checkpoint_id",
     handler: "getThreadStateAtCheckpoint",
+    group: "threads",
   },
-  { method: "post", path: "/threads/:thread_id/history", handler: "getThreadHistory" },
+  {
+    method: "post",
+    path: "/threads/:thread_id/history",
+    handler: "getThreadHistory",
+    group: "threads",
+  },
 
-  // runs — the stateless handlers are reused on the thread-scoped path with the id folded in
-  { method: "post", path: "/runs/wait", handler: "createWaitRun" },
-  { method: "post", path: "/runs/stream", handler: "createStreamRun" },
+  // runs — the stateless handlers are reused on the thread-scoped path with the id folded in.
+  // `/runs/wait|stream|batch|cancel` and bare `/runs` are all literal paths, so their relative order
+  // does not matter (each regex is anchored); they are grouped by resource for readability.
+  { method: "post", path: "/runs/wait", handler: "createWaitRun", group: "runs" },
+  { method: "post", path: "/runs/stream", handler: "createStreamRun", group: "runs" },
+  { method: "post", path: "/runs/batch", handler: "createRunBatch", group: "runs" },
+  { method: "post", path: "/runs/cancel", handler: "cancelManyRuns", group: "runs" },
+  { method: "post", path: "/runs", handler: "createStatelessRun", group: "runs" },
   {
     method: "post",
     path: "/threads/:thread_id/runs/wait",
     handler: "createWaitRun",
+    group: "runs",
     foldThreadIdIntoBody: true,
   },
   {
     method: "post",
     path: "/threads/:thread_id/runs/stream",
     handler: "createStreamRun",
+    group: "runs",
     foldThreadIdIntoBody: true,
   },
-  { method: "post", path: "/threads/:thread_id/runs", handler: "createBackgroundRun" },
-  { method: "get", path: "/threads/:thread_id/runs", handler: "listThreadRuns" },
-  { method: "post", path: "/threads/:thread_id/runs/:run_id/cancel", handler: "cancelRun" },
-  { method: "get", path: "/threads/:thread_id/runs/:run_id/stream", handler: "joinRunStream" },
-  { method: "get", path: "/threads/:thread_id/runs/:run_id", handler: "getRun" },
-  { method: "delete", path: "/threads/:thread_id/runs/:run_id", handler: "deleteRun" },
-  { method: "get", path: "/runs/:run_id/stream", handler: "joinRunStream" },
+  {
+    method: "post",
+    path: "/threads/:thread_id/runs",
+    handler: "createBackgroundRun",
+    group: "runs",
+  },
+  { method: "get", path: "/threads/:thread_id/runs", handler: "listThreadRuns", group: "runs" },
+  {
+    method: "post",
+    path: "/threads/:thread_id/runs/:run_id/cancel",
+    handler: "cancelRun",
+    group: "runs",
+  },
+  {
+    method: "get",
+    path: "/threads/:thread_id/runs/:run_id/stream",
+    handler: "joinRunStream",
+    group: "runs",
+  },
+  { method: "get", path: "/threads/:thread_id/runs/:run_id", handler: "getRun", group: "runs" },
+  {
+    method: "delete",
+    path: "/threads/:thread_id/runs/:run_id",
+    handler: "deleteRun",
+    group: "runs",
+  },
+  { method: "get", path: "/runs/:run_id/stream", handler: "joinRunStream", group: "runs" },
 
   // thread streaming / commands
-  { method: "post", path: "/threads/:thread_id/stream", handler: "postThreadStream" },
-  { method: "get", path: "/threads/:thread_id/stream", handler: "getThreadStream" },
-  { method: "post", path: "/threads/:thread_id/commands", handler: "postThreadCommands" },
+  {
+    method: "post",
+    path: "/threads/:thread_id/stream",
+    handler: "postThreadStream",
+    group: "runs",
+  },
+  { method: "get", path: "/threads/:thread_id/stream", handler: "getThreadStream", group: "runs" },
+  {
+    method: "post",
+    path: "/threads/:thread_id/commands",
+    handler: "postThreadCommands",
+    group: "runs",
+  },
+
+  // meta — `/ok` is deliberately not here; each adapter serves it so no config flag can disable the
+  // container health probe (see meta/server-info.ts).
+  { method: "get", path: "/info", handler: "getServerInfo", group: "meta" },
 
   // store
-  { method: "put", path: "/store/items", handler: "putStoreItem" },
-  { method: "get", path: "/store/items", handler: "getStoreItem" },
-  { method: "delete", path: "/store/items", handler: "deleteStoreItem" },
-  { method: "post", path: "/store/items/search", handler: "searchStoreItems" },
-  { method: "post", path: "/store/namespaces", handler: "listStoreNamespaces" },
+  { method: "put", path: "/store/items", handler: "putStoreItem", group: "store" },
+  { method: "get", path: "/store/items", handler: "getStoreItem", group: "store" },
+  { method: "delete", path: "/store/items", handler: "deleteStoreItem", group: "store" },
+  { method: "post", path: "/store/items/search", handler: "searchStoreItems", group: "store" },
+  { method: "post", path: "/store/namespaces", handler: "listStoreNamespaces", group: "store" },
 ];
+
+/**
+ * Which route groups a server should not serve — the resolved `http.disable_*` block of a
+ * `langgraph.json`. Absent/false means served, matching LangGraph's defaults.
+ */
+export type DisabledRouteGroups = Partial<Record<RouteGroup, boolean>>;
+
+/**
+ * Drop every route belonging to a disabled group, so a disabled resource is simply **not mounted** and
+ * a request for it gets the framework's own 404 — exactly what `langgraph dev` does (it skips the
+ * `app.route(...)` call rather than answering 403 or 501).
+ *
+ * A route with no `group` is always kept: the field is optional so tables outside the protocol (the
+ * invoke surface) need not classify themselves, and "unclassified" must not mean "switchable off".
+ */
+export function filterSkeinRoutes(
+  bindings: readonly RouteBinding[],
+  disabled: DisabledRouteGroups,
+): readonly RouteBinding[] {
+  if (!Object.values(disabled).some(Boolean)) return bindings; // nothing disabled — same array
+  return bindings.filter((binding) => binding.group === undefined || !disabled[binding.group]);
+}
 
 /**
  * Copy the path `thread_id` into an object body so a stateless run handler runs on the right thread.

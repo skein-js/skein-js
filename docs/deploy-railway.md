@@ -73,15 +73,15 @@ Run the [verification sequence](./deploy.md#verify-a-deployment) against your se
 
 ## Tuning & caveats
 
-Pool budgets, run concurrency, shutdown windows and the multi-instance caveats are the same
+Pool budgets, run concurrency, shutdown windows and multi-instance behaviour are the same
 everywhere — see [Sizing & tuning](./deploy.md#sizing--tuning) and
 [Scaling past one instance](./deploy.md#scaling-past-one-instance). Railway-specific notes:
 
 - **Private networking needs no TLS config.** Over `*.railway.internal` you need neither `sslmode`
   nor `DATABASE_SSL_NO_VERIFY`. Only set `DATABASE_SSL_NO_VERIFY=true` if you must use a public
   database URL presenting a self-signed certificate.
-- **Replicas vs. your Postgres plan.** Each instance opens two pools, so `2 × PG_POOL_MAX × replicas`
-  is what your plan's connection cap has to absorb — see
+- **Replicas vs. your Postgres plan.** Each instance opens three pools, so
+  `3 × PG_POOL_MAX × replicas` is what your plan's connection cap has to absorb — see
   [Connection budget](./deploy.md#connection-budget).
 - **Railway's stop signal is generous** (~30s), so you can raise `SKEIN_SHUTDOWN_GRACE_MS` well above
   the 5s default and let long runs finish rather than be aborted on every deploy.

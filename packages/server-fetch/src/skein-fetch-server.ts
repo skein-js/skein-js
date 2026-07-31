@@ -1,6 +1,6 @@
 import {
   copyThreadIdIntoBody,
-  matchSkeinRoute,
+  createRouteMatcher,
   SSE_HEADERS,
   type ProtocolRequest,
   type ProtocolResponse,
@@ -205,6 +205,10 @@ function createFetchHandler(
   const basePath = options.basePath ?? "";
   const cors: CorsSetting | false | undefined = options.cors ?? resolved.cors;
   const maxBodyBytes = options.maxBodyBytes ?? DEFAULT_MAX_BODY_BYTES;
+  // Compiled once, here rather than per request: the resolved table is fixed for this server's
+  // lifetime. Built from `resolved.routes`, so a group the config's `http.disable_*` flags switched off
+  // does not match and 404s like any unknown path.
+  const matchRoute = createRouteMatcher(resolved.routes);
 
   return async (request) => {
     const url = new URL(request.url);
@@ -232,7 +236,7 @@ function createFetchHandler(
     const extraHeaders = cors
       ? corsResponseHeaders(request.headers.get("origin") ?? undefined, cors)
       : {};
-    const match = matchSkeinRoute(request.method, skeinPathname);
+    const match = matchRoute(request.method, skeinPathname);
     if (!match) {
       return new Response(JSON.stringify({ status: 404, message: "Not Found" }), {
         status: 404,

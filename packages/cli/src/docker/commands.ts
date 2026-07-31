@@ -4,13 +4,13 @@
 
 import { spawn, spawnSync } from "node:child_process";
 import { existsSync, writeFileSync } from "node:fs";
-import { createRequire } from "node:module";
 import path from "node:path";
 
 import { loadConfig, type LanggraphJson } from "@skein-js/config";
 import { describeError } from "@skein-js/server-kit";
 
 import { bundleProject } from "../bundle/bundle-project.js";
+import { skeinCliVersion } from "../cli-version.js";
 import {
   resolveRuntimeSelection,
   type ResolvedRuntimeSelection,
@@ -20,15 +20,6 @@ import { DEFAULT_CONTAINER_PORT } from "../serve-env.js";
 
 import { generateCompose } from "./compose.js";
 import { generateDockerfile, generateDockerignore } from "./dockerfile.js";
-
-/**
- * The CLI's own version, pinned as `skein-js` in the generated artifact package.json. Resolved
- * lazily (not at module load) relative to the bundled entry (`dist/index.js` → `../package.json`),
- * matching how index.ts reads it.
- */
-function skeinCliVersion(): string {
-  return (createRequire(import.meta.url)("../package.json") as { version: string }).version;
-}
 
 /** The build artifact dir, relative to the config dir — the self-contained docker build context. */
 const ARTIFACT_SUBDIR = path.join(".skein", "build");

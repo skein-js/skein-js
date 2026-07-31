@@ -6,6 +6,7 @@ import { createAssistantService, type AssistantService } from "./assistants/assi
 import type { ProtocolContext } from "./context.js";
 import { createContext } from "./context.js";
 import type { ProtocolDeps } from "./deps.js";
+import { createMetaService, type MetaService } from "./meta/server-info.js";
 import { createRunService, type RunService } from "./runs/run-service.js";
 import { createStoreService, type StoreService } from "./store/store-service.js";
 import { createThreadService, type ThreadService } from "./threads/thread-service.js";
@@ -20,6 +21,8 @@ export interface ProtocolService {
   threadStream: ThreadStreamService;
   runs: RunService;
   store: StoreService;
+  /** Server capability/version handshake — `GET /info`. */
+  meta: MetaService;
 }
 
 /** Assemble the service over an existing context (used by the runtime to share the context). */
@@ -35,6 +38,7 @@ export function createProtocolServiceFromContext(ctx: ProtocolContext): Protocol
     threadStream: createThreadStreamService(ctx, runs),
     runs,
     store: createStoreService(ctx.deps),
+    meta: createMetaService(ctx.deps),
   };
 }
 

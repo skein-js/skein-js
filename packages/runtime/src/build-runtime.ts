@@ -65,6 +65,11 @@ export interface BuildRuntimeOptions {
   store: StoreDriver;
   /** `"memory"` (default dev) or `"redis"` (reads `REDIS_URI`). */
   queue: QueueDriver;
+  /**
+   * The version `GET /info` reports. Passed in by the CLI, which — as an *application* rather than a
+   * library — may read its own `package.json`; see `ProtocolDeps.serverVersion`.
+   */
+  serverVersion?: string;
 }
 
 /**
@@ -151,7 +156,7 @@ async function flushTelemetry(sinks: readonly TelemetrySink[]): Promise<void> {
 
 /** Assemble a {@link SkeinRuntime} for the requested driver combination. */
 export async function buildRuntime(options: BuildRuntimeOptions): Promise<SkeinRuntime> {
-  const { configPath, importModule, store, queue, schemas } = options;
+  const { configPath, importModule, store, queue, schemas, serverVersion } = options;
 
   // All-memory: reuse the express reloadable in-memory runtime verbatim (hot-reload + snapshot).
   if (store === "memory" && queue === "memory") {
@@ -173,6 +178,9 @@ export async function buildRuntime(options: BuildRuntimeOptions): Promise<SkeinR
       schemas,
       telemetry.length > 0 ? { telemetry } : undefined,
     );
+    // Filled in place rather than copied, matching how `resolveRuntimeDeps` fills the logger: a
+    // reloadable runtime hands out the same deps object it keeps.
+    if (serverVersion !== undefined) runtime.deps.serverVersion = serverVersion;
     return {
       deps: runtime.deps,
       cors: runtime.cors,
@@ -199,34 +207,44 @@ export async function buildRuntime(options: BuildRuntimeOptions): Promise<SkeinR
     // `requireEnv` is evaluated eagerly (before any connect), so a missing POSTGRES_URI still throws
     // before a pool is opened. The Postgres store + saver assembly (shared connection tuning, ordered
     // teardown) lives in `connectPostgresStore` — reused by `embedPostgresGraphs`.
-    const { store: skeinStore, checkpointer } =
-      store === "postgres"
-        ? await connectPostgresStore({
-            url: requireEnv("POSTGRES_URI", "postgres"),
-            index: await resolveStoreIndex(first.config.store?.index, {
-              configDir: first.configDir,
-              importModule,
-            }),
-            ttl: storeTtl,
-            connectionOptions: postgresConnectionOptions(),
+    // `threadExecutionGate` comes with the Postgres store: it is the cross-instance per-thread
+    // execution claim, and the memory driver has no second instance to coordinate with.
+    const {
+      store: skeinStore,
+      checkpointer,
+      threadExecutionGate,
+    } = store === "postgres"
+      ? await connectPostgresStore({
+          url: requireEnv("POSTGRES_URI", "postgres"),
+          index: await resolveStoreIndex(first.config.store?.index, {
+            configDir: first.configDir,
+            importModule,
+          }),
+          ttl: storeTtl,
+          connectionOptions: postgresConnectionOptions(),
+          maxPageSize: resolveMaxPageSize(),
+          disposers,
+        })
+      : {
+          store: new MemorySkeinStore({
+            ...(storeTtl ? { ttl: storeTtl } : {}),
             maxPageSize: resolveMaxPageSize(),
-            disposers,
-          })
-        : {
-            store: new MemorySkeinStore({
-              ...(storeTtl ? { ttl: storeTtl } : {}),
-              maxPageSize: resolveMaxPageSize(),
-            }),
-            checkpointer: new MemorySaver(),
-          };
+          }),
+          checkpointer: new MemorySaver(),
+        };
 
     // When TTL is configured, sweep expired store items on a background interval (memory or postgres).
     if (storeTtl) startStoreTtlSweeper(skeinStore, storeTtl, disposers);
 
-    const { queue: runQueue, bus } =
-      queue === "redis"
-        ? connectRedisQueue({ url: requireEnv("REDIS_URI", "redis"), disposers })
-        : { queue: new MemoryRunQueue(), bus: new MemoryRunEventBus(resolveMemoryBusLimits()) };
+    // `abortChannel` comes with the Redis queue, for the same reason: it is what carries a cancel to
+    // the instance executing the run, and in-memory means there is only this one.
+    const {
+      queue: runQueue,
+      bus,
+      abortChannel,
+    } = queue === "redis"
+      ? connectRedisQueue({ url: requireEnv("REDIS_URI", "redis"), disposers })
+      : { queue: new MemoryRunQueue(), bus: new MemoryRunEventBus(resolveMemoryBusLimits()) };
 
     // Telemetry sinks from the `telemetry` block plus environment auto-detection. Left off the deps
     // entirely when nothing is configured, so the engine's `telemetryEnabled` guards stay false.
@@ -242,6 +260,9 @@ export async function buildRuntime(options: BuildRuntimeOptions): Promise<SkeinR
       queue: runQueue,
       bus,
       checkpointer,
+      ...(abortChannel ? { abortChannel } : {}),
+      ...(threadExecutionGate ? { threadExecutionGate } : {}),
+      ...(serverVersion !== undefined ? { serverVersion } : {}),
       auth: await loadAuthEngine(first.config.auth, {
         configDir: first.configDir,
         importModule,

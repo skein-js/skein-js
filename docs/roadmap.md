@@ -80,8 +80,7 @@ Also shipped, beyond the original MVP plan:
   [storage.md](./storage.md#assistant-versioning) and [agent-protocol.md](./agent-protocol.md#assistants).
 - ✅ **Multitask / double-texting (LangGraph parity)** — all four `multitask_strategy` values
   (`reject` → `422`, `enqueue`, `interrupt`, `rollback`) via a per-thread execution lock in the run
-  engine. Single-process correct (the `langgraph dev` bar); cross-instance coordination is tracked with
-  the concurrency guard.
+  engine — and now correct **across instances** too (see the multi-instance entry below).
 - ✅ **Run-completion webhooks (LangGraph parity)** — a `webhook` URL on run creation is POSTed the
   settled run at terminal status (LangGraph's payload shape), best-effort so a delivery failure never
   fails the run. Inject a `webhookDispatcher` to allowlist hosts when accepting untrusted clients. See
@@ -107,6 +106,25 @@ Also shipped, beyond the original MVP plan:
   (threads, runs, assistants, store) into skein, so adopting it off `langgraph dev` carries local state
   over losslessly. See [langgraph-cli-compat.md](./langgraph-cli-compat.md).
 
+- ✅ **The rest of the SDK's runs + threads surface** — `POST /runs` (stateless background),
+  `POST /runs/batch`, `POST /runs/cancel` (`cancelMany`, including a whole-server sweep),
+  `POST /threads/count`, and `POST /threads/prune` (`delete` and `keep_latest`). Plus the small parity
+  items around them: `?action=rollback` / `?wait` honoured on cancel, `?status` honoured on
+  `GET /threads/{id}/runs`, `on_completion` on stateless runs (defaulting to `keep`, unlike LangGraph —
+  see [agent-protocol.md](./agent-protocol.md)), a `GET /info` capability handshake, and a
+  **`Content-Location`** header on every run-create response, which is what makes the SDK's
+  `onRunCreated` — and therefore `useStream`'s `reconnectOnMount` — work at all.
+- ✅ **`http.disable_*` route flags** — `disable_assistants`/`threads`/`runs`/`store`/`meta` filter the
+  shared route table before it is mounted, so a disabled resource 404s from the host app exactly as
+  under `langgraph dev`. `/ok` is served outside the table, so no config flag can break the container
+  health probe.
+- ✅ **Multi-instance double-texting** — the four per-process seams are gone: the `reject` guard is an
+  atomic check-and-insert in the driver (`RunRepo.createIfThreadIdle`), cancellation crosses instances
+  over a `RunAbortChannel` (Redis pub/sub), a run's base checkpoint and rollback plan live on its own
+  kwargs so any instance can apply them, and execution is serialized per thread by a
+  `ThreadExecutionGate` (a Postgres session advisory lock). See
+  [deploy.md](./deploy.md#scaling-past-one-instance).
+
 ## Planned / coming soon (post-MVP)
 
 These are on the map but not yet built. Want one sooner? Upvote or open an issue —
@@ -127,10 +145,12 @@ The remaining backlog is skein-js's own adapter/tooling roadmap:
 
 - 🗺️ **Per-thread partitioned dispatch.** Background runs are executed up to
   [run concurrency](./runs-and-redis.md#run-concurrency) at a time, and a run waiting on a busy
-  thread's execution lock still holds a slot — so a burst of `multitask_strategy: "enqueue"` runs on
+  thread's execution claim still holds a slot — so a burst of `multitask_strategy: "enqueue"` runs on
   one thread can occupy the worker, and their relative order isn't guaranteed. (LangGraph behaves the
-  same way at `N_JOBS_PER_WORKER > 1`.) The real fix is a `partitionKey` on `QueuedRun` plus
-  driver-level per-key gating, so the queue never hands out two runs for the same thread at once.
+  same way at `N_JOBS_PER_WORKER > 1`.) This is now purely about **worker utilization**, not
+  correctness — the execution claim makes the ordering safe either way. The fix is a `partitionKey` on
+  `QueuedRun` plus driver-level per-key gating, so the queue never hands out two runs for the same
+  thread at once and no slot is spent waiting.
 
 - 🗺️ **Custom-adapter example.** The [Building your own adapter](./building-an-adapter.md) guide
   exists; we still want a runnable `examples/custom-adapter` (a dependency-free Node `http` — or Hono
@@ -156,10 +176,10 @@ valuable feedback we can get.
 | Human-in-the-loop (interrupt/resume)     | ✅ shipped         | Via LangGraph checkpointers.                                                         |
 | Auth + authorization                     | ✅ shipped         | LangGraph `Auth` parity — see below.                                                 |
 | Multitask / double-texting               | ✅ shipped         | `reject` (422) / `enqueue` / `interrupt` / `rollback`.                               |
-| Multi-instance double-texting            | ⚠️ single-process  | The per-thread lock is in-process; cross-instance coordination is future work.       |
+| Multi-instance double-texting            | ✅ shipped         | Atomic create guard, cross-instance cancel, and a per-thread execution claim.        |
 | **Cron / scheduled runs**                | 🗺️ planned         | LangGraph Platform's Crons resource; not yet implemented.                            |
-| Stateless + batch run endpoints          | 🗺️ planned         | `POST /runs`, `/runs/batch`, `/runs/cancel` (cancelMany) not yet served.             |
-| `POST /threads/count` · `/threads/prune` | 🗺️ planned         | The rest of the threads surface is shipped.                                          |
+| Stateless + batch run endpoints          | ✅ shipped         | `POST /runs`, `/runs/batch`, `/runs/cancel` (cancelMany).                            |
+| `POST /threads/count` · `/threads/prune` | ✅ shipped         | `delete` and `keep_latest` prune strategies.                                         |
 | Time travel (fork from checkpoint)       | ✅ shipped         | Update state at a checkpoint + fork a run from one; rides the checkpointer.          |
 | Assistants CRUD + versioning             | ✅ shipped         | Create/update/delete + version history/rollback; graph/subgraphs.                    |
 | **MCP endpoint (`/mcp`)**                | 🗺️ planned         | LangGraph exposes graphs as MCP tools; not yet implemented.                          |
@@ -167,7 +187,8 @@ valuable feedback we can get.
 | True `events` stream mode                | ✅ shipped         | Real `streamEvents` (v2); full token/tool/step granularity.                          |
 | Fastify / NestJS adapters                | ✅ shipped         | Plugin / `SkeinModule`; standalone + embedded examples.                              |
 | Next.js API-route adapter                | ✅ shipped         | App Router + Pages Router; same-origin, `useStream` UI example.                      |
-| `http.disable_*` route flags             | 🗺️ planned         | Only `http.cors` is read; other `http` keys are ignored, not rejected.               |
+| `http.disable_*` route flags             | ✅ shipped         | `disable_assistants`/`threads`/`runs`/`store`/`meta`; `/ok` is never disabled.       |
+| `GET /info` capability handshake         | ✅ shipped         | Version + `flags`; `/ok` stays outside the table so no flag can break the probe.     |
 | `/docs` OpenAPI page                     | 🗺️ planned         | LangGraph Server serves one; `skein dev` links the published docs instead.           |
 | WebSocket streaming transport            | ❌ non-goal (v1)   | SSE covers the client UX; does not affect the React SDK.                             |
 | `deploy` to a hosted platform            | ❌ non-goal        | skein-js is self-hosted by design.                                                   |

@@ -68,16 +68,21 @@ The defaults are close to right; raise concurrency to match the database.
 
 ```bash
 SKEIN_RUN_CONCURRENCY=25
-PG_POOL_MAX=30              # ≥ concurrency, and skein opens TWO pools per instance
+PG_POOL_MAX=30              # ≥ concurrency, and skein opens THREE pools per instance
 SKEIN_REDIS_STREAM_MAXLEN=50000
 SKEIN_STREAM_BUFFER_FRAMES=2048
 PG_STATEMENT_TIMEOUT_MS=60000
 ```
 
-**Budget two pools per instance** (store + checkpointer), so 25 concurrency at `PG_POOL_MAX=30` is 60
-connections against your database's cap, per replica. `skein start` warns at boot when concurrency
-exceeds `PG_POOL_MAX`, because the symptom otherwise is flat throughput with nothing pointing at the
-pool.
+**Budget three pools per instance** (store + checkpointer + the per-thread execution claim), so 25
+concurrency at `PG_POOL_MAX=30` is 90 connections against your database's cap, per replica. `skein start`
+warns at boot when concurrency exceeds `PG_POOL_MAX`, because the symptom otherwise is flat throughput
+with nothing pointing at the pool.
+
+The claim pool is the one that makes `PG_POOL_MAX ≥ concurrency` a hard requirement rather than advice:
+it holds one connection per _executing_ run for that run's whole duration (see
+[deploy.md](./deploy.md#connection-budget)), so a pool smaller than the concurrency simply caps how many
+runs can execute at once.
 
 ### The one that isn't about size
 
@@ -116,7 +121,7 @@ second one sensibly.
 | Variable                   | Default    | Small | Large | What it bounds                                         |
 | -------------------------- | ---------- | ----- | ----- | ------------------------------------------------------ |
 | `SKEIN_MAX_PAGE_SIZE`      | 1000       | 200   | 1000  | Largest page any list/search returns                   |
-| `PG_POOL_MAX`              | pg's 10    | 5     | 30    | Connections per pool — skein opens two per instance    |
+| `PG_POOL_MAX`              | pg's 10    | 5     | 30    | Connections per pool — skein opens three per instance  |
 | `PG_CONNECTION_TIMEOUT_MS` | 30000      | 30000 | 30000 | Waiting for a free connection (`0` = wait forever)     |
 | `PG_IDLE_TIMEOUT_MS`       | pg's 10000 | 10000 | 30000 | How long an unused pooled client is kept               |
 | `PG_STATEMENT_TIMEOUT_MS`  | 30000      | 15000 | 60000 | One statement server-side (`0` = off). Not per request |

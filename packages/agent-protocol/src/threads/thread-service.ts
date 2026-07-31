@@ -17,7 +17,7 @@ import {
 
 import type { ProtocolContext } from "../context.js";
 
-import { copyCheckpointHistory } from "./checkpoint-history.js";
+import { copyCheckpointHistory, pruneThreadCheckpointsToLatest } from "./checkpoint-history.js";
 import {
   runStatusForSnapshot,
   snapshotToThreadState,
@@ -70,12 +70,29 @@ export interface UpdateStateInput {
   checkpoint?: Record<string, unknown>;
 }
 
+/** Body of `POST /threads/prune`. */
+export interface PruneThreadsInput {
+  threadIds: string[];
+  /**
+   * `"delete"` (the default, and the SDK's) removes the threads outright. `"keep_latest"` keeps each
+   * thread and its current state, discarding only the checkpoint history behind it.
+   */
+  strategy?: "delete" | "keep_latest";
+}
+
 export interface ThreadService {
   create(input?: CreateThreadInput): Promise<Thread>;
   get(threadId: string): Promise<Thread>;
   list(): Promise<Thread[]>;
   /** Filtered + paginated listing — `POST /threads/search`. */
   search(query: ThreadSearchQuery): Promise<Thread[]>;
+  /** How many threads match the filters, ignoring pagination — `POST /threads/count`. */
+  count(query: ThreadSearchQuery): Promise<number>;
+  /**
+   * Bulk-remove threads or their history — `POST /threads/prune`. Returns how many threads were
+   * actually changed; an unknown (or non-owned) id is skipped rather than failing the request.
+   */
+  prune(input: PruneThreadsInput): Promise<{ pruned_count: number }>;
   patch(threadId: string, patch: PatchThreadInput): Promise<Thread>;
   /** Duplicate a thread (new id) together with its full checkpoint history — `POST /threads/{id}/copy`. */
   copy(threadId: string): Promise<Thread>;
@@ -180,6 +197,21 @@ export function createThreadService(ctx: ProtocolContext): ThreadService {
     return states;
   };
 
+  /** Delete a thread, stopping anything still executing on it first. A local so `prune` can reuse it
+   * without reaching through `this` (the service object is routinely destructured). */
+  const deleteThread = async (threadId: string): Promise<void> => {
+    await requireThread(threadId);
+    // Abort any run still executing on this thread before the rows disappear.
+    const runs = await deps.store.runs.listByThread(threadId);
+    for (const run of runs) {
+      if (!isTerminalRunStatus(run.status)) {
+        control.abort(run.run_id, "cancel");
+        await deps.bus.close(run.run_id);
+      }
+    }
+    await deps.store.threads.delete(threadId);
+  };
+
   return {
     create: (input) => deps.store.threads.create(input as ThreadCreate | undefined),
 
@@ -188,6 +220,35 @@ export function createThreadService(ctx: ProtocolContext): ThreadService {
     list: () => deps.store.threads.list(),
 
     search: (query) => deps.store.threads.search(query),
+
+    count: (query) => deps.store.threads.count(query),
+
+    async prune({ threadIds, strategy = "delete" }) {
+      let prunedCount = 0;
+      for (const threadId of new Set(threadIds)) {
+        // A thread that is gone — or that this caller does not own, which the auth-scoped store makes
+        // indistinguishable from gone — is skipped, not counted, and never 404s the batch. That is what
+        // keeps the count from doubling as an existence oracle for another owner's threads.
+        const thread = await deps.store.threads.get(threadId);
+        if (!thread) continue;
+
+        if (strategy === "delete") {
+          await deleteThread(threadId);
+          prunedCount += 1;
+          continue;
+        }
+
+        // keep_latest rewrites the checkpoint tip, so it must not race a run mid-write — the same
+        // reason `updateState` refuses on a busy thread, and the same 409.
+        if (await deps.store.runs.hasActiveRun(threadId)) {
+          throw SkeinHttpError.conflict(
+            `Thread "${threadId}" is busy; wait for its active run to finish before pruning it.`,
+          );
+        }
+        if (await pruneThreadCheckpointsToLatest(deps.checkpointer, threadId)) prunedCount += 1;
+      }
+      return { pruned_count: prunedCount };
+    },
 
     async patch(threadId, patch) {
       await requireThread(threadId);
@@ -225,18 +286,7 @@ export function createThreadService(ctx: ProtocolContext): ThreadService {
       return copy;
     },
 
-    async delete(threadId) {
-      await requireThread(threadId);
-      // Abort any run still executing on this thread before the rows disappear.
-      const runs = await deps.store.runs.listByThread(threadId);
-      for (const run of runs) {
-        if (!isTerminalRunStatus(run.status)) {
-          control.abort(run.run_id, "cancel");
-          await deps.bus.close(run.run_id);
-        }
-      }
-      await deps.store.threads.delete(threadId);
-    },
+    delete: deleteThread,
 
     history: readHistory,
 

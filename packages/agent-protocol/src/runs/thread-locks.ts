@@ -1,7 +1,12 @@
-// A per-key async mutex. The concurrency guard ("does this thread already have an active run?")
-// reads then writes with an `await` in between, so two concurrent run-creates could both slip
-// through. Serializing the guarded section per thread closes that window in a single process;
-// `@skein-js/redis` will replace it with an atomic conditional insert for the multi-instance case.
+// A per-key async mutex, used for two things: guarding the run-create decision, and serializing run
+// *execution* per thread.
+//
+// In-process only, which is the whole reason the two cross-instance seams exist beside it — the create
+// guard is now decided by `RunRepo.createIfThreadIdle` (an atomic check-and-insert in the driver), and
+// execution can be serialized across instances by a `ThreadExecutionGate`. This remains the default and
+// is complete for a single instance.
+
+import type { ThreadExecutionGate, ThreadExecutionLease } from "@skein-js/core";
 
 export class ThreadLocks {
   readonly #tails = new Map<string, Promise<unknown>>();
@@ -24,4 +29,39 @@ export class ThreadLocks {
       if (this.#tails.get(key) === tail) this.#tails.delete(key);
     }
   }
+}
+
+/**
+ * Run `task` holding exclusive execution rights to `threadId`.
+ *
+ * With a {@link ThreadExecutionGate} configured the claim is the gate's, so it holds across instances;
+ * without one it is `locks`, which holds within this process. Both are released in a `finally`, so a
+ * task that throws never leaves the thread claimed.
+ *
+ * The gate is layered *on top of* the local mutex rather than replacing it: acquiring a cross-instance
+ * claim is a round trip, and letting this process' own waiters queue locally first means a burst of
+ * `enqueue` runs on one thread costs one acquisition rather than one per run.
+ */
+export async function withThreadExecution<T>(
+  locks: ThreadLocks,
+  gate: ThreadExecutionGate | undefined,
+  threadId: string,
+  task: () => Promise<T>,
+): Promise<T> {
+  return locks.run(threadId, async () => {
+    if (!gate) return task();
+    let lease: ThreadExecutionLease;
+    try {
+      lease = await gate.acquire(threadId);
+    } catch (error) {
+      // Deliberately fatal to this run: proceeding without the claim is the unsafe direction — it would
+      // let two instances write one thread's checkpoints, which is what the gate exists to prevent.
+      throw new Error(`could not claim thread "${threadId}" for execution`, { cause: error });
+    }
+    try {
+      return await task();
+    } finally {
+      await lease.release();
+    }
+  });
 }

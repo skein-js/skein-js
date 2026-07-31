@@ -10,3 +10,4 @@ export {
   type PostgresSkeinStoreOptions,
   type StoreIndexConfig,
 } from "./postgres-skein-store.js";
+export { createPostgresThreadExecutionGate, threadLockKey } from "./thread-execution-gate.js";

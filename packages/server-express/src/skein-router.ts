@@ -4,7 +4,7 @@
 // `skein dev` runtime, or `{ deps }` to bring your own persistent drivers (Postgres + Redis for
 // `skein up`) through the same `ProtocolDeps` seam.
 
-import type { Logger, ProtocolRuntime } from "@skein-js/agent-protocol";
+import type { Logger, ProtocolRuntime, RouteBinding } from "@skein-js/agent-protocol";
 import { resolveProtocolRuntime, type SkeinRuntimeOptions } from "@skein-js/server-kit";
 import type { Router } from "express";
 
@@ -22,6 +22,12 @@ export type SkeinRouterOptions = SkeinRuntimeOptions & {
    * not want two lines per request. Set it explicitly to separate the two.
    */
   requestLog?: boolean;
+  /**
+   * Route table to mount, overriding what the config's `http.disable_*` flags resolved to. Rarely
+   * needed — pass it to serve a deliberately narrower surface than the config declares (or, in a test,
+   * to exercise a disabled group over the injected-`deps` path, which has no config to read).
+   */
+  routes?: readonly RouteBinding[];
 };
 
 export interface SkeinRouter {
@@ -44,8 +50,10 @@ export interface SkeinRouter {
 export async function skeinRouter(options: SkeinRouterOptions): Promise<SkeinRouter> {
   // No framework fallback: Express has no logger of its own to borrow, and a library should not
   // decide on its host's behalf to start writing to stdout.
-  const { runtime, cors, logger } = await resolveProtocolRuntime(options);
+  const { runtime, cors, routes, logger } = await resolveProtocolRuntime(options);
   const router = createHandlerRouter(runtime.handlers, {
+    // Explicit option wins; otherwise the table the config's `http.disable_*` flags left behind.
+    routes: options.routes ?? routes,
     // The resolved logger, so transport faults and engine failures land in the same place.
     logger,
     // Explicit option wins; otherwise fall back to the config's `http.cors`, else off.

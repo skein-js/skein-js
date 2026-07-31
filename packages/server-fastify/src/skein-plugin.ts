@@ -10,6 +10,7 @@ import {
   type HttpMethod,
   type Logger,
   type ProtocolHandlers,
+  type RouteBinding,
 } from "@skein-js/agent-protocol";
 import {
   resolveProtocolRuntime,
@@ -35,6 +36,12 @@ export interface HandlerRoutesOptions {
    * omit/`false` to disable. Enabling CORS requires the optional peer `@fastify/cors` to be installed.
    */
   cors?: boolean | CorsOptions;
+  /**
+   * The route table to mount. Defaults to the whole protocol; `skeinPlugin` passes the table the
+   * config's `http.disable_*` flags left behind, so a disabled resource is never registered and a
+   * request for it falls through to the app's own 404 (what `langgraph dev` does).
+   */
+  routes?: readonly RouteBinding[];
 }
 
 export const HTTP_METHOD_TO_FASTIFY: Record<HttpMethod, HTTPMethods> = {
@@ -111,7 +118,7 @@ export async function registerSkeinHandlers(
 ): Promise<void> {
   await prepareSkeinContext(fastify, options);
 
-  for (const binding of skeinRoutes) {
+  for (const binding of options.routes ?? skeinRoutes) {
     const invoke = handlers[binding.handler];
     fastify.route({
       method: HTTP_METHOD_TO_FASTIFY[binding.method],
@@ -146,11 +153,12 @@ export async function registerSkeinHandlers(
 export const skeinPlugin: FastifyPluginAsync<SkeinPluginOptions> = async (fastify, options) => {
   // `fastify.log` is the default: the host's own pino instance, honoring its config (including
   // `logger: false`, which yields a no-op). See fastify-logger.ts.
-  const { runtime, cors, logger } = await resolveProtocolRuntime(
+  const { runtime, cors, routes, logger } = await resolveProtocolRuntime(
     options,
     createFastifyLogger(fastify.log),
   );
   await registerSkeinHandlers(fastify, runtime.handlers, {
+    routes,
     // The resolved logger, not `options.logger` — so the transport's fault logging and the engine's
     // always agree on where output goes.
     logger,

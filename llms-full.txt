@@ -1468,12 +1468,15 @@ it but is never required.
   // checkpointer backend; "default" == Postgres (via PostgresSaver)
   "checkpointer": { "type": "default" },
 
-  // server customization — skein reads `cors`; the rest is accepted but not yet implemented
+  // server customization — `cors` plus LangGraph's route toggles
   "http": {
     "cors": { "allow_origins": ["*"] },
-    "disable_assistants": false, // ignored by skein today
-    "disable_threads": false, //    ignored by skein today
-    // custom user routes may be attached here in a later iteration
+    "disable_assistants": false,
+    "disable_threads": false,
+    "disable_runs": false,
+    "disable_store": false,
+    "disable_meta": false, // turns off GET /info; never the /ok health probe
+    // `http.app` (custom user routes) is still accepted and ignored
   },
 
   // custom authentication + authorization (see below)
@@ -1497,18 +1500,18 @@ it but is never required.
 
 ### How each field maps into skein-js
 
-| `langgraph.json` field | skein-js wiring                                                                                                                                                                             |
-| ---------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `graphs`               | [`@skein-js/config`](./storage.md) resolves each `path:export`, loading a compiled graph or `makeGraph` factory. Drives `/agents` introspection + run execution.                            |
-| `node_version`         | Used by `skein build` / `skein dockerfile` base image selection. Defaults to Node 24 LTS when omitted; an explicit value is honoured verbatim, including an older one.                      |
-| `skein.runtime`        | Native production server and pinned official image: `node`, `bun`, or `deno`. Bun/Deno use `@skein-js/fetch` with `Bun.serve`/`Deno.serve`, never Express compatibility.                    |
-| `env`                  | Loaded into `process.env` at boot (dev) / baked into the image (build).                                                                                                                     |
-| `store`                | `store.index.{embed,dims,fields,hnsw}` configures pgvector semantic search on the Postgres driver; `hnsw: true` opts into the approximate index — see [storage.md](./storage.md).           |
-| `checkpointer`         | `"default"` → `PostgresSaver`; dev falls back to an in-memory `MemorySaver`.                                                                                                                |
-| `http`                 | **`http.cors` only** — mapped to the adapter's CORS options. Other keys (`disable_*` route flags, `app`) are accepted but **not yet implemented**, so they're ignored rather than rejected. |
-| `auth`                 | `auth.path` loads an `Auth` from `@langchain/langgraph-sdk/auth`; every request is authenticated + authorized; `disable_studio_auth` honored.                                               |
-| `telemetry`            | **skein extension.** Builds the telemetry sinks runs report to — see [observability.md](./observability.md). Unknown to `langgraph dev`, which ignores it.                                  |
-| `dockerfile_lines`     | Appended by `skein dockerfile` / `skein build`.                                                                                                                                             |
+| `langgraph.json` field | skein-js wiring                                                                                                                                                                                                       |
+| ---------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `graphs`               | [`@skein-js/config`](./storage.md) resolves each `path:export`, loading a compiled graph or `makeGraph` factory. Drives `/agents` introspection + run execution.                                                      |
+| `node_version`         | Used by `skein build` / `skein dockerfile` base image selection. Defaults to Node 24 LTS when omitted; an explicit value is honoured verbatim, including an older one.                                                |
+| `skein.runtime`        | Native production server and pinned official image: `node`, `bun`, or `deno`. Bun/Deno use `@skein-js/fetch` with `Bun.serve`/`Deno.serve`, never Express compatibility.                                              |
+| `env`                  | Loaded into `process.env` at boot (dev) / baked into the image (build).                                                                                                                                               |
+| `store`                | `store.index.{embed,dims,fields,hnsw}` configures pgvector semantic search on the Postgres driver; `hnsw: true` opts into the approximate index — see [storage.md](./storage.md).                                     |
+| `checkpointer`         | `"default"` → `PostgresSaver`; dev falls back to an in-memory `MemorySaver`.                                                                                                                                          |
+| `http`                 | `http.cors` maps to the adapter's CORS options; the `disable_*` flags remove that resource's routes before mounting, so it 404s from the host app as under `langgraph dev`. `http.app` is still accepted and ignored. |
+| `auth`                 | `auth.path` loads an `Auth` from `@langchain/langgraph-sdk/auth`; every request is authenticated + authorized; `disable_studio_auth` honored.                                                                         |
+| `telemetry`            | **skein extension.** Builds the telemetry sinks runs report to — see [observability.md](./observability.md). Unknown to `langgraph dev`, which ignores it.                                                            |
+| `dockerfile_lines`     | Appended by `skein dockerfile` / `skein build`.                                                                                                                                                                       |
 
 ## Graph loading (`path:export` notation)
 
@@ -2229,6 +2232,8 @@ version and mirrors its fields, and `POST .../latest` rolls back to any past ver
 | `POST`   | `/threads`                                   |                                               |
 | `GET`    | `/threads/{thread_id}`                       |                                               |
 | `POST`   | `/threads/search`                            |                                               |
+| `POST`   | `/threads/count`                             | How many match the filters (no pagination)    |
+| `POST`   | `/threads/prune`                             | Bulk `delete`, or `keep_latest` history trim  |
 | `GET`    | `/threads/{thread_id}/state`                 | Current state snapshot (`useStream` hydrates) |
 | `POST`   | `/threads/{thread_id}/state`                 | Time travel: fork state at a checkpoint       |
 | `GET`    | `/threads/{thread_id}/state/{checkpoint_id}` | Time travel: state at a checkpoint            |
@@ -2284,22 +2289,70 @@ _branch_ from any past checkpoint:
 
 ### Runs — stateless / ephemeral
 
-| Method | Path           | MVP |
-| ------ | -------------- | --- |
-| `POST` | `/runs/wait`   | ✅  |
-| `POST` | `/runs/stream` | ✅  |
+Each of these creates its own thread. `on_completion` decides what happens to it (below).
+
+| Method | Path           | Notes                                            |
+| ------ | -------------- | ------------------------------------------------ |
+| `POST` | `/runs/wait`   | Run to completion, answer with the final values  |
+| `POST` | `/runs/stream` | Run and stream frames as SSE                     |
+| `POST` | `/runs`        | Queue a background run, answer with the `Run`    |
+| `POST` | `/runs/batch`  | An **array** of run-creates; max 100 per request |
+| `POST` | `/runs/cancel` | `cancelMany` — see below                         |
 
 ### Runs — background (thread-scoped)
 
-| Method   | Path                                               | Notes                            |
-| -------- | -------------------------------------------------- | -------------------------------- |
-| `POST`   | `/threads/{thread_id}/runs`                        | Start a background run           |
-| `GET`    | `/threads/{thread_id}/runs`                        | List a thread's runs (paginated) |
-| `GET`    | `/threads/{thread_id}/runs/{run_id}`               | Fetch one run                    |
-| `GET`    | `/threads/{thread_id}/runs/{run_id}/stream` (join) | Join a run's stream              |
-| `POST`   | `/threads/{thread_id}/runs/{run_id}/cancel`        | Cancel a run                     |
-| `DELETE` | `/threads/{thread_id}/runs/{run_id}`               | Delete a run                     |
-| `GET`    | `/runs/{run_id}/stream` (join)                     | Join by run id (thread-agnostic) |
+| Method   | Path                                               | Notes                             |
+| -------- | -------------------------------------------------- | --------------------------------- |
+| `POST`   | `/threads/{thread_id}/runs`                        | Start a background run            |
+| `GET`    | `/threads/{thread_id}/runs`                        | List a thread's runs (paginated)  |
+| `GET`    | `/threads/{thread_id}/runs/{run_id}`               | Fetch one run                     |
+| `GET`    | `/threads/{thread_id}/runs/{run_id}/stream` (join) | Join a run's stream               |
+| `POST`   | `/threads/{thread_id}/runs/{run_id}/cancel`        | Cancel a run (`?action`, `?wait`) |
+| `DELETE` | `/threads/{thread_id}/runs/{run_id}`               | Delete a run                      |
+| `GET`    | `/runs/{run_id}/stream` (join)                     | Join by run id (thread-agnostic)  |
+
+**Cancelling in bulk.** `POST /runs/cancel` takes `{ thread_id?, run_ids?, status? }`, narrowest
+selector first: explicit `run_ids`, else one thread's inflight runs, else **every** inflight run on the
+server. `status` is `pending` / `running` / `all` (the default). An unknown — or non-owned — run id is
+skipped rather than failing the sweep, so the response reports what actually happened:
+`{ cancelled_count, cancelled_run_ids, truncated }`. `truncated: true` means the whole-server sweep filled
+the store's page bound and should be repeated; the SDK types this call as returning `void` and ignores the
+body, so it is skein's to shape.
+
+`truncated` is deliberately a boolean about the caller's own page rather than a count of what is left.
+The per-thread concurrency guard the sweep reads through is **not** ownership-scoped — it has to see every
+inflight run on a thread whoever started it — so a total would tell an authenticated caller how much work
+every other principal has in flight.
+
+**`?action` and `?wait` on a cancel.** Both are sent by every `client.runs.cancel(...)` and were
+previously ignored. `action=interrupt` (the default) settles the run `cancelled` and keeps whatever it
+wrote; `action=rollback` additionally discards its checkpoint writes and deletes the run row, so the turn
+reads as never having happened. `wait=1` returns only once the run has actually stopped executing rather
+than as soon as it is marked.
+
+**`on_completion` on a stateless run.** `"delete"` removes the server-created thread once the run
+settles; `"keep"` leaves it. **skein defaults to `keep`, LangGraph to `delete`** — a deliberate
+divergence, so a stateless run stays inspectable and so adding the field did not silently change what
+`/runs/wait` and `/runs/stream` already did. Pass `"delete"` for LangGraph's behaviour. An `interrupted`
+run keeps its thread either way: it has yielded to a human, and its checkpoint is the whole value of the
+turn.
+
+**`Content-Location` on run creation.** Every run-create response (and `POST /threads/{id}/stream`)
+carries `Content-Location: /threads/{thread_id}/runs/{run_id}`. The `@langchain/langgraph-sdk` client
+parses it to fire `onRunCreated`, which is what `useStream` stores to rejoin a stream after a remount —
+so without it that callback never fires and `reconnectOnMount` cannot work. It is also the only way a
+caller learns the thread id of a stateless `/runs/wait`, whose body is the graph's state.
+
+### Meta
+
+| Method | Path    | Notes                                                                |
+| ------ | ------- | -------------------------------------------------------------------- |
+| `GET`  | `/info` | Version + `flags` capability handshake (Studio reads it)             |
+| `GET`  | `/ok`   | Liveness probe — served by each adapter, **outside** the route table |
+
+`/ok` sits outside the protocol table on purpose. LangGraph groups it with `/info` under one
+`disable_meta` flag; in skein it is the container health check (see the generated Dockerfile), so no
+config flag may be able to make a healthy instance read as dead.
 
 ### Store (long-term memory)
 
@@ -2316,8 +2369,8 @@ _branch_ from any past checkpoint:
 same default the SDK sends for `store.listNamespaces`. A query `limit` above 1000 is clamped rather than
 rejected, matching every other query-string limit here. Truncation is not signalled on the response
 (only assistant search carries `x-pagination-total`), so page until you receive fewer rows than you
-asked for. `status` and `select` on `runs.list`, and `suffix`/`max_depth` on `listNamespaces`, are
-accepted and **ignored** — they are not implemented yet.
+asked for. `status` on `runs.list` **is** honoured, filtered in the driver so it pages the filtered set;
+`select` on `runs.list` and `suffix`/`max_depth` on `listNamespaces` are still accepted and **ignored**.
 
 ### Thread streaming (SSE)
 
@@ -2395,16 +2448,24 @@ Route → resource/action (runs authorize through their owning thread — there 
 | `POST /assistants/search`                                                                                               | `assistants:search`                             |
 | `POST /threads`                                                                                                         | `threads:create`                                |
 | `GET /threads/{id}`, `/state`, `/state/{checkpoint_id}`; `POST /history`; `GET .../runs`, `.../runs/{run_id}`, run join | `threads:read`                                  |
-| `POST /threads/search`                                                                                                  | `threads:search`                                |
-| `PATCH /threads/{id}`; `POST /threads/{id}/state` (state fork); run cancel                                              | `threads:update`                                |
-| `DELETE /threads/{id}`; run delete                                                                                      | `threads:delete`                                |
-| run create (wait/stream/background), thread stream / commands                                                           | `threads:create_run`                            |
+| `POST /threads/search`, `POST /threads/count`                                                                           | `threads:search`                                |
+| `PATCH /threads/{id}`; `POST /threads/{id}/state` (state fork); run cancel; `POST /runs/cancel`                         | `threads:update`                                |
+| `DELETE /threads/{id}`; run delete; `POST /threads/prune`                                                               | `threads:delete`                                |
+| run create (wait/stream/background/stateless/batch), thread stream / commands                                           | `threads:create_run`                            |
+| `GET /info`                                                                                                             | `assistants:read`                               |
 | `PUT/GET/DELETE /store/items`, `/store/items/search`, `/store/namespaces`                                               | `store:{put,get,delete,search,list_namespaces}` |
 
 **Reuse & limits.** The `Auth` contract and the `$eq`/`$contains` filter semantics come from
 `@langchain/*`; skein adds only the instance-scoped dispatch (see [reuse.md](./reuse.md)). Ownership
 scoping is pushed into the driver query (above), with the in-process check kept as the enforcement point.
 Per-owner scoping of `assistants`/`store` is still on the [roadmap](./roadmap.md).
+
+`POST /runs/cancel` sweeps broadly but authorizes narrowly: every run it touches goes back through the
+ownership-filtered `get`, so a non-owned run reads as absent and is skipped. The per-thread concurrency
+guard (`hasActiveRun` / `listActiveRuns`) is deliberately _not_ ownership-filtered — it must see every
+inflight run on a thread whoever started it, or two runs could execute at once and interleave their
+checkpoint writes. Nothing leaks: the thread itself is ownership-gated, so the guard is unreachable for a
+thread the caller does not own.
 
 ## Conformance strategy
 
@@ -2997,13 +3058,14 @@ default is **1000 rows**. This is a memory bound: a thread row carries the threa
 state, so an unbounded `POST /threads/search` on a large deployment materializes the table twice over
 (the rows, then the JSON response string) inside one request.
 
-| Surface                             | Bound                                                   |
-| ----------------------------------- | ------------------------------------------------------- |
-| `limit` on a search request         | rejected above 1000 by the wire schema                  |
-| `limit` omitted, or a `list()` call | the first `SKEIN_MAX_PAGE_SIZE` rows (default 1000)     |
-| `assistants.count()`                | **not** bounded — it answers "how many match" in total  |
-| `runs.listByThread()`               | **not** bounded — run rows carry no graph state         |
-| `POST /threads/{id}/history`        | 100 checkpoints by default, 1000 max — a separate bound |
+| Surface                                 | Bound                                                       |
+| --------------------------------------- | ----------------------------------------------------------- |
+| `limit` on a search request             | rejected above 1000 by the wire schema                      |
+| `limit` omitted, or a `list()` call     | the first `SKEIN_MAX_PAGE_SIZE` rows (default 1000)         |
+| `assistants.count()`, `threads.count()` | **not** bounded — they answer "how many match" in total     |
+| `runs.listByThread()`                   | **not** bounded — run rows carry no graph state             |
+| `runs.listActiveRuns()` (all threads)   | bounded — the whole-server sweep behind `POST /runs/cancel` |
+| `POST /threads/{id}/history`            | 100 checkpoints by default, 1000 max — a separate bound     |
 
 Sizing guidance is in [performance.md](./performance.md#sizing). Set `SKEIN_MAX_PAGE_SIZE` to change the
 driver bound (`maxPageSize` on the store constructor and on
@@ -3296,6 +3358,11 @@ makes this safe by skipping any run already terminal in the store.
   BullMQ's stalled-job check and retried, so runs survive restarts.
 - **Cross-instance pub/sub** — run stream frames are published to a Redis Stream + channel so a
   client connected to instance B can join a run executing on instance A (see [streaming.md](./streaming.md)).
+- **Cross-instance cancellation** — a `RunAbortChannel` over Redis pub/sub carries the _stop now_ signal
+  to whichever instance is executing a run, so a cancel routed to the wrong replica still stops the
+  graph. The cancel itself is durable in the run row before the message is published, so a dropped
+  message costs promptness rather than correctness. See
+  [deploy.md](./deploy.md#scaling-past-one-instance).
 
 ### What a frame costs
 
@@ -3368,8 +3435,10 @@ execution lock at _every_ concurrency, so the per-thread guard above holds regar
 
 ### Head-of-line blocking
 
-A run waiting on a busy thread's lock still occupies a slot. So N queued runs on the _same_ thread
-occupy N slots with N−1 merely waiting, and other threads wait behind them. Two things bound this:
+A run waiting on a busy thread's execution claim still occupies a slot. So N queued runs on the _same_
+thread occupy N slots with N−1 merely waiting, and other threads wait behind them. This is a
+**utilization** limit, not a correctness one — the claim keeps the runs correctly serialized either way.
+Two things bound it:
 
 - It needs an explicit opt-in. The default `multitask_strategy` is `"reject"`, and a pending run
   counts as active — so a second background run on a busy thread is rejected before it can queue.
@@ -3377,14 +3446,15 @@ occupy N slots with N−1 merely waiting, and other threads wait behind them. Tw
 - The worst case degrades to serial execution. No deadlock, no dropped run.
 
 Relatedly, **ordering across background `"enqueue"` runs is not guaranteed above concurrency 1**:
-several are dequeued at once and race for the thread's lock. This matches LangGraph at
+several are dequeued at once and race for the thread's claim. This matches LangGraph at
 `N_JOBS_PER_WORKER=10`, whose N worker loops have no cross-loop ordering guarantee either. If you
 need strict FIFO across background runs on one thread, set concurrency to 1.
 
 **Concurrency vs. replicas.** Raise concurrency when you have many independent threads and runs are
 I/O-bound (model calls). Add instances when runs are CPU-bound, or when threads are long-lived and
 serialized. Note each concurrent run holds a Postgres connection — see the pool-sizing note in
-[deploy.md](./deploy.md#connection-budget).
+[deploy.md](./deploy.md#connection-budget) — and, on the Postgres driver, a second one for its
+per-thread execution claim, held for the whole run.
 
 ## Deployment topology (`skein up`)
 
@@ -4605,15 +4675,23 @@ your startup probe accordingly — the image's own estimate is 20 seconds.
 
 ### Connection budget
 
-skein opens **two** Postgres pools per instance: one for protocol resources, one for LangGraph's
-`PostgresSaver`. Both are capped by `PG_POOL_MAX`, so plan for:
+skein opens **three** Postgres pools per instance: one for protocol resources, one for LangGraph's
+`PostgresSaver`, and one for the per-thread execution claim (see
+[Scaling past one instance](#scaling-past-one-instance)). All three are capped by `PG_POOL_MAX`, so plan
+for:
 
 ```text
-max connections ≈ 2 × PG_POOL_MAX × instances
+max connections ≈ 3 × PG_POOL_MAX × instances
 ```
 
 Check that against your database's limit — this is the most common way to exhaust a small managed
 Postgres once autoscaling kicks in. `PG_POOL_MAX=5` is a sane starting point.
+
+The execution-claim pool behaves differently from the other two, and it is worth knowing how: a
+connection is held for the **whole duration** of an executing run, not for the length of a query. So its
+working size is your run concurrency, not your request rate — if `SKEIN_RUN_CONCURRENCY` exceeds
+`PG_POOL_MAX`, runs queue on the pool instead of on the worker. Keep `PG_POOL_MAX` at or above run
+concurrency; `skein start` warns at boot when it is not.
 
 ### When the database stops answering
 
@@ -4773,17 +4851,35 @@ platforms that scale to zero, this is paid on the first request after an idle pe
 ## Scaling past one instance
 
 With Postgres and Redis, replicas share state and streams — a client can join a run executing on
-another instance, and rolling deploys are safe. But some semantics are still **per-process**, and
-Redis does not currently fix them:
+another instance, rolling deploys are safe, **and the run semantics hold across instances**. No session
+affinity or single-instance restriction is needed for any of it:
 
-- **Cancellation.** `POST …/runs/{id}/cancel` routed to instance B will not abort a run executing on
-  instance A. The cancellation registry is in-process.
-- **One-active-run-per-thread.** The guard that serializes runs on a thread is an in-process lock, so
-  two instances can race it.
-- **`multitask_strategy: "rollback"` and `"interrupt"`.** Both rely on in-process state and are
-  single-instance-scoped.
+- **Cancellation** crosses instances. `POST …/runs/{id}/cancel` routed to instance B stops a run
+  executing on instance A: the run row is settled immediately (which is what makes the cancel durable),
+  and the _signal to stop now_ travels over a Redis pub/sub channel to whichever instance is executing
+  it. Delivery is best-effort by design — a dropped message costs promptness, never correctness.
+- **One-active-run-per-thread** is decided by Postgres, not by a lock in one process:
+  `multitask_strategy: "reject"` is an atomic check-and-insert, so two instances racing the same thread
+  cannot both win.
+- **`multitask_strategy: "enqueue"`, `"interrupt"` and `"rollback"`** all hold. A run claims its thread
+  with a Postgres **session advisory lock** held for the run's duration, so a queued run waits for the
+  active one wherever that one is running. The displaced run's base checkpoint and the displacing run's
+  rollback plan are persisted on the runs themselves, so any instance can apply them — and a run
+  recovered after a crash still cleans up what it displaced.
 
-If you depend on any of these, run a single instance, or route by thread with session affinity. See
+**Why a Postgres lock and not a Redis lease.** A run holds its claim for its whole execution, which can
+be minutes. A TTL lease has to be renewed for all of it, and a late renewal — a blocked event loop, a GC
+pause — expires the lease while the run is still writing, putting two instances on one thread's
+checkpoint history. A session lock has no TTL: Postgres holds it until the session releases it _or the
+connection dies_, so a crashed instance frees its threads at once and a slow one keeps them. This is the
+same split LangGraph Platform makes (Postgres for rows and exclusivity, Redis for ephemeral pub/sub).
+
+**Budget for it.** Each _concurrently-executing_ run holds one connection from a dedicated pool for the
+run's duration — the same trade LangGraph Platform makes. See [Connection budget](#connection-budget).
+
+The one remaining caveat is utilization, not correctness: a queued run waiting for a busy thread still
+occupies a worker slot, so a burst of `enqueue` runs on one thread can crowd out other threads' work.
+Tracked as per-thread partitioned dispatch on the [roadmap](./roadmap.md). See
 [runs-and-redis.md](./runs-and-redis.md).
 
 ## Streaming through proxies (SSE)
@@ -4869,7 +4965,7 @@ Two notes specific to the container:
 - The in-memory bus knobs (`SKEIN_MEMORY_BUS_*`) are **not** reachable from this image — `skein start`
   rejects `--queue memory`. They apply on the embedded path (`embedPostgresGraphs` with no `REDIS_URI`)
   and under `skein dev`; see [embedding.md](./embedding.md#going-to-production).
-- `PG_POOL_MAX` is per pool and skein opens **two** per instance, so budget twice your setting against
+- `PG_POOL_MAX` is per pool and skein opens **three** per instance, so budget three times your setting against
   the database's own connection cap — per replica.
 
 
@@ -4947,16 +5043,21 @@ The defaults are close to right; raise concurrency to match the database.
 
 ```bash
 SKEIN_RUN_CONCURRENCY=25
-PG_POOL_MAX=30              # ≥ concurrency, and skein opens TWO pools per instance
+PG_POOL_MAX=30              # ≥ concurrency, and skein opens THREE pools per instance
 SKEIN_REDIS_STREAM_MAXLEN=50000
 SKEIN_STREAM_BUFFER_FRAMES=2048
 PG_STATEMENT_TIMEOUT_MS=60000
 ```
 
-**Budget two pools per instance** (store + checkpointer), so 25 concurrency at `PG_POOL_MAX=30` is 60
-connections against your database's cap, per replica. `skein start` warns at boot when concurrency
-exceeds `PG_POOL_MAX`, because the symptom otherwise is flat throughput with nothing pointing at the
-pool.
+**Budget three pools per instance** (store + checkpointer + the per-thread execution claim), so 25
+concurrency at `PG_POOL_MAX=30` is 90 connections against your database's cap, per replica. `skein start`
+warns at boot when concurrency exceeds `PG_POOL_MAX`, because the symptom otherwise is flat throughput
+with nothing pointing at the pool.
+
+The claim pool is the one that makes `PG_POOL_MAX ≥ concurrency` a hard requirement rather than advice:
+it holds one connection per _executing_ run for that run's whole duration (see
+[deploy.md](./deploy.md#connection-budget)), so a pool smaller than the concurrency simply caps how many
+runs can execute at once.
 
 ### The one that isn't about size
 
@@ -4995,7 +5096,7 @@ second one sensibly.
 | Variable                   | Default    | Small | Large | What it bounds                                         |
 | -------------------------- | ---------- | ----- | ----- | ------------------------------------------------------ |
 | `SKEIN_MAX_PAGE_SIZE`      | 1000       | 200   | 1000  | Largest page any list/search returns                   |
-| `PG_POOL_MAX`              | pg's 10    | 5     | 30    | Connections per pool — skein opens two per instance    |
+| `PG_POOL_MAX`              | pg's 10    | 5     | 30    | Connections per pool — skein opens three per instance  |
 | `PG_CONNECTION_TIMEOUT_MS` | 30000      | 30000 | 30000 | Waiting for a free connection (`0` = wait forever)     |
 | `PG_IDLE_TIMEOUT_MS`       | pg's 10000 | 10000 | 30000 | How long an unused pooled client is kept               |
 | `PG_STATEMENT_TIMEOUT_MS`  | 30000      | 15000 | 60000 | One statement server-side (`0` = off). Not per request |
@@ -5482,9 +5583,10 @@ processes you'll want `tini` — add it via `dockerfile_lines` in `langgraph.jso
 
 ### Multi-instance semantics
 
-With `--max-instances` above 1, read
-[Scaling past one instance](./deploy.md#scaling-past-one-instance) — cross-instance cancellation and
-the one-run-per-thread guard are still per-process.
+With `--max-instances` above 1 and Postgres + Redis configured, cross-instance cancellation and the
+one-run-per-thread guard both hold — no session affinity needed. See
+[Scaling past one instance](./deploy.md#scaling-past-one-instance) for what that costs in Postgres
+connections.
 
 
 ---

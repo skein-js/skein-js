@@ -81,6 +81,36 @@ export async function copyCheckpointHistory(
 }
 
 /**
+ * Drop every checkpoint of a thread except its newest — `POST /threads/prune` with
+ * `strategy: "keep_latest"`. The thread and its current state survive; the history behind them does not.
+ *
+ * Same shape as {@link rollbackThreadCheckpointsTo}, because the saver interface offers no per-checkpoint
+ * delete: read, `deleteThread`, replay the keeper. The difference is the keeper's **parent link is
+ * cleared** — its ancestors are precisely what this is removing, so replaying it with the original link
+ * would leave the thread's tip pointing at a checkpoint that no longer exists, and `getState`'s
+ * `parent_checkpoint` would name a dead id.
+ *
+ * Returns whether anything was pruned, so a caller can count only the threads it actually changed. A
+ * thread with 0 or 1 checkpoints is left completely untouched — there is nothing to remove, and doing
+ * the delete-and-replay anyway would risk its only checkpoint for no gain.
+ */
+export async function pruneThreadCheckpointsToLatest(
+  checkpointer: BaseCheckpointSaver,
+  threadId: string,
+): Promise<boolean> {
+  const tuples = await listCheckpoints(checkpointer, threadId);
+  if (tuples.length <= 1) return false;
+
+  // Dropping `parentConfig` is what re-roots the keeper: `replayCheckpoints` derives the parent link
+  // from it, so an absent one produces the same root `put` it already uses for the oldest tuple in a
+  // chain — and its pending-writes handling comes along for free.
+  const { parentConfig: _removedAncestor, ...rootedLatest } = tuples[0]!; // newest-first; length > 1
+  await checkpointer.deleteThread(threadId);
+  await replayCheckpoints(checkpointer, threadId, [rootedLatest]);
+  return true;
+}
+
+/**
  * Roll a thread's checkpoint history back to `baseCheckpointId` — the tip that existed before the
  * displaced run wrote anything — dropping every checkpoint the displaced run added. This is skein's
  * `rollback` multitask strategy: the standard `BaseCheckpointSaver` has no per-run delete, so we

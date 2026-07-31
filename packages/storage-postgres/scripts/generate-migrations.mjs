@@ -55,12 +55,42 @@ function escapeTemplateLiteral(sql) {
 const CONCURRENT_MARKER = /^\s*--\s*skein:concurrent\s*$/im;
 
 /**
+ * Whether a `;` sits inside a single-quoted literal — the one thing that would make splitting on `;`
+ * wrong. Tracks literal state character by character, treating a doubled `''` as SQL's escaped quote
+ * rather than a terminator.
+ *
+ * Returns `"unparsable"` for an unterminated literal: that means this scan lost track (a trailing
+ * `-- don't` comment does it, since only whole-line comments are stripped above), and a splitter that
+ * cannot see the structure must refuse rather than guess.
+ */
+function literalSemicolonState(body) {
+  let inLiteral = false;
+  for (let index = 0; index < body.length; index += 1) {
+    const char = body[index];
+    if (char === "'") {
+      if (inLiteral && body[index + 1] === "'") {
+        index += 1; // an escaped quote, still inside the literal
+        continue;
+      }
+      inLiteral = !inLiteral;
+      continue;
+    }
+    if (inLiteral && char === ";") return "hidden-semicolon";
+  }
+  return inLiteral ? "unparsable" : "safe";
+}
+
+/**
  * Split a concurrent migration into single statements at build time rather than in the runner.
  *
  * Build time because a bad split should fail `pnpm migrations:generate`, where the author sees it,
  * not a production boot. The split is deliberately naive — one statement per `;` — so the checks
- * below reject anything it could get wrong: a dollar-quoted body (`DO $$ … $$`) or a literal
- * containing a semicolon. Concurrent migrations exist for index DDL; that is all they may contain.
+ * below reject anything it could get wrong: a dollar-quoted body (`DO $$ … $$`) or a semicolon hidden
+ * inside a string literal. Concurrent migrations exist for index DDL; that is all they may contain.
+ *
+ * A literal on its own is fine, and has to be: a **partial** index (`… WHERE status IN ('pending',
+ * 'running')`) cannot be expressed without one, and a partial index is the whole point for a
+ * predicate that matches a tiny slice of a large table.
  */
 function splitConcurrentStatements(file, up) {
   const body = up
@@ -73,10 +103,18 @@ function splitConcurrentStatements(file, up) {
         `cannot parse. Concurrent migrations may only contain single-statement index DDL.`,
     );
   }
-  if (body.includes("'")) {
+  const literals = literalSemicolonState(body);
+  if (literals === "hidden-semicolon") {
     throw new Error(
-      `${file} is marked skein:concurrent but contains a string literal, which could hide a ` +
-        `semicolon from this splitter. Concurrent migrations may only contain index DDL.`,
+      `${file} is marked skein:concurrent but has a ';' inside a string literal, which this ` +
+        `splitter would split on. Rewrite the predicate without it.`,
+    );
+  }
+  if (literals === "unparsable") {
+    throw new Error(
+      `${file} is marked skein:concurrent but has an unterminated string literal, so this splitter ` +
+        `cannot tell where its statements end. A trailing '-- don't' style comment does this — move ` +
+        `it onto its own line.`,
     );
   }
   const statements = body

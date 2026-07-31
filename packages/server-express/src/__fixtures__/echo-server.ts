@@ -9,7 +9,14 @@ import {
   MessagesAnnotation,
   StateGraph,
 } from "@langchain/langgraph";
-import type { GraphResolver, GraphSchemas, ProtocolDeps } from "@skein-js/agent-protocol";
+import {
+  filterSkeinRoutes,
+  skeinRoutes,
+  type DisabledRouteGroups,
+  type GraphResolver,
+  type GraphSchemas,
+  type ProtocolDeps,
+} from "@skein-js/agent-protocol";
 import type { AuthEngine } from "@skein-js/core";
 import { MemoryRunEventBus, MemoryRunQueue, MemorySkeinStore } from "@skein-js/storage-memory";
 import type { CorsOptions } from "cors";
@@ -62,11 +69,17 @@ export interface RunningServer {
 
 /** Boot the echo server on an ephemeral loopback port. `cors` is off unless explicitly enabled. */
 export async function startEchoServer(
-  options: { cors?: boolean | CorsOptions; auth?: AuthEngine } = {},
+  options: {
+    cors?: boolean | CorsOptions;
+    auth?: AuthEngine;
+    /** Route groups to switch off, as a `langgraph.json` `http.disable_*` block would. */
+    disable?: DisabledRouteGroups;
+  } = {},
 ): Promise<RunningServer> {
   const server = await createExpressServer({
     deps: createEchoDeps(options.auth),
     cors: options.cors,
+    ...(options.disable ? { routes: filterSkeinRoutes(skeinRoutes, options.disable) } : {}),
   });
   const httpServer = await server.listen(0, "127.0.0.1");
   const address = httpServer.address();

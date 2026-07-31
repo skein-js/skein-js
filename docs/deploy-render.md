@@ -106,6 +106,6 @@ stream can still hit an idle timeout — see
 
 ### Scaling
 
-More than one instance means reading
-[Scaling past one instance](./deploy.md#scaling-past-one-instance) — cross-instance cancellation and
-the per-thread run guard are still per-process.
+More than one instance is fine with Postgres + Redis configured: cross-instance cancellation and the
+per-thread run guard both hold. See
+[Scaling past one instance](./deploy.md#scaling-past-one-instance) for the connection budget it implies.

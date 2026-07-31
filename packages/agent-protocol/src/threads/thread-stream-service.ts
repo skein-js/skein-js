@@ -72,7 +72,11 @@ export function createThreadStreamService(
       const sorted = [...threadRuns].sort((a, b) => b.created_at.localeCompare(a.created_at));
       const target = sorted.find((run) => !isTerminalRunStatus(run.status)) ?? sorted[0];
       if (!target) throw SkeinHttpError.notFound(`Thread "${threadId}" has no runs to stream.`);
-      return { runId: target.run_id, frames: await runs.join(target.run_id, afterSeq) };
+      return {
+        runId: target.run_id,
+        threadId,
+        frames: await runs.join(target.run_id, afterSeq),
+      };
     },
 
     async command(threadId, input) {

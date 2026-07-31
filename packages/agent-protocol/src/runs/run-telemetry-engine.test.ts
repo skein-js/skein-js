@@ -22,7 +22,13 @@ function recordingSink(): TelemetrySink & { events: RunTelemetryEvent[] } {
 async function runToCompletion(overrides: Partial<ProtocolDeps>, assistantId = "echo") {
   const service = createProtocolServiceFromContext(createContext(createFixtureDeps(overrides)));
   await service.assistants.registerGraphAssistants();
-  return service.runs.createWait({ assistant_id: assistantId, input: { value: "hi" } });
+  // Unwrapped to the graph's own output: these tests are about telemetry, not about the ids
+  // `createWait` also returns for the response's `Content-Location`.
+  const { result } = await service.runs.createWait({
+    assistant_id: assistantId,
+    input: { value: "hi" },
+  });
+  return result;
 }
 
 const started = (sink: { events: RunTelemetryEvent[] }) =>

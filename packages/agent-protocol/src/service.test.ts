@@ -9,6 +9,7 @@ describe("createProtocolServiceFromContext", () => {
     const service = createProtocolServiceFromContext(createContext(createFixtureDeps()));
     expect(Object.keys(service).sort()).toEqual([
       "assistants",
+      "meta",
       "runs",
       "store",
       "threadStream",

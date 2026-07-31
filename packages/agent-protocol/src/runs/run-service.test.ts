@@ -23,11 +23,15 @@ async function waitFor(predicate: () => boolean, timeoutMs = 2000): Promise<void
 describe("run service", () => {
   it("createWait runs to completion and returns the final values", async () => {
     const { service } = await serviceWithAssistants();
-    const values = await service.runs.createWait({
+    const { result, runId, threadId } = await service.runs.createWait({
       assistant_id: "echo",
       input: { value: "hi" },
     });
-    expect(values).toEqual({ value: "echo: hi" });
+    expect(result).toEqual({ value: "echo: hi" });
+    // The ids come back alongside the values so the transport can set `Content-Location` — a
+    // stateless run's thread is created by the server, so this is the caller's only sight of it.
+    expect(runId).toEqual(expect.any(String));
+    expect((await service.runs.get(runId)).thread_id).toBe(threadId);
   });
 
   it("createStream yields frames and ends the run in success", async () => {
@@ -57,13 +61,13 @@ describe("run service", () => {
     expect(forkPoint).toBeDefined();
 
     // A second run forks from that checkpoint (server-validated top-level field, not client config).
-    const values = await service.runs.createWait({
+    const { result } = await service.runs.createWait({
       thread_id: thread.thread_id,
       assistant_id: "echo",
       input: { value: "two" },
       checkpoint_id: forkPoint,
     });
-    expect(values).toEqual({ value: "echo: two" });
+    expect(result).toEqual({ value: "echo: two" });
 
     // The forked run stored the fork target opaquely so a background/crash-recovered run forks the same.
     const runs = await service.runs.listByThread(thread.thread_id);
@@ -162,22 +166,22 @@ describe("run service", () => {
     // A `POST /runs/wait` whose graph threw used to answer 200 with `{}` — indistinguishable from a
     // graph that legitimately returned nothing. `__error__` is the key LangGraph Platform uses.
     const { service } = await serviceWithAssistants();
-    const values = await service.runs.createWait({ assistant_id: "throwing", input: {} });
+    const { result } = await service.runs.createWait({ assistant_id: "throwing", input: {} });
 
-    expect(values).toEqual({
+    expect(result).toEqual({
       __error__: { error: "Error", name: "Error", message: "boom" },
     });
   });
 
   it("returns plain values for a wait run that succeeded", async () => {
     const { service } = await serviceWithAssistants();
-    const values = await service.runs.createWait({
+    const { result } = await service.runs.createWait({
       assistant_id: "echo",
       input: { value: "hi" },
     });
 
-    expect(values).toEqual({ value: "echo: hi" });
-    expect(values).not.toHaveProperty("__error__");
+    expect(result).toEqual({ value: "echo: hi" });
+    expect(result).not.toHaveProperty("__error__");
   });
 
   it("clears a prior error from thread metadata once a later run succeeds", async () => {

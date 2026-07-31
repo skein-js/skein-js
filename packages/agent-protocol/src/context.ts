@@ -3,7 +3,7 @@
 // in the same process — inline or on the worker), and the per-thread locks. Built once and threaded
 // through, so there is exactly one of each per runtime.
 
-import type { AuthUser } from "@skein-js/core";
+import type { AuthUser, RunKwargs } from "@skein-js/core";
 
 import { resolveDeps, type ProtocolDeps, type ResolvedDeps } from "./deps.js";
 import { RunControlRegistry } from "./runs/cancellation.js";
@@ -22,6 +22,37 @@ import { ThreadLocks } from "./runs/thread-locks.js";
 export interface RollbackPlan {
   revertToCheckpoint: { baseCheckpointId: string | undefined } | false;
   displacedRunIds: string[];
+}
+
+/**
+ * Encode a {@link RollbackPlan} for storage on the displacing run's kwargs, and decode it back.
+ *
+ * Two spellings on purpose: kwargs are a persisted, JSON-round-tripped blob (snake_case, `null` rather
+ * than `undefined` so "no checkpoint" survives serialization), while the plan itself is ordinary
+ * TypeScript. They live here, with the type, so neither the run service nor the execution path has to
+ * import the other just to agree on the shape.
+ */
+export function toStoredRollbackPlan(plan: RollbackPlan): NonNullable<RunKwargs["rollback_plan"]> {
+  return {
+    revert_to_checkpoint:
+      plan.revertToCheckpoint === false
+        ? false
+        : { base_checkpoint_id: plan.revertToCheckpoint.baseCheckpointId ?? null },
+    displaced_run_ids: plan.displacedRunIds,
+  };
+}
+
+/** The rollback work carried on a run's own kwargs, decoded — `undefined` when it has none. */
+export function storedRollbackPlan(kwargs: RunKwargs): RollbackPlan | undefined {
+  const stored = kwargs.rollback_plan;
+  if (!stored) return undefined;
+  return {
+    revertToCheckpoint:
+      stored.revert_to_checkpoint === false
+        ? false
+        : { baseCheckpointId: stored.revert_to_checkpoint.base_checkpoint_id ?? undefined },
+    displacedRunIds: stored.displaced_run_ids,
+  };
 }
 
 export interface ProtocolContext {

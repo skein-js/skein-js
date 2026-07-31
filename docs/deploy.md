@@ -168,15 +168,23 @@ your startup probe accordingly — the image's own estimate is 20 seconds.
 
 ### Connection budget
 
-skein opens **two** Postgres pools per instance: one for protocol resources, one for LangGraph's
-`PostgresSaver`. Both are capped by `PG_POOL_MAX`, so plan for:
+skein opens **three** Postgres pools per instance: one for protocol resources, one for LangGraph's
+`PostgresSaver`, and one for the per-thread execution claim (see
+[Scaling past one instance](#scaling-past-one-instance)). All three are capped by `PG_POOL_MAX`, so plan
+for:
 
 ```text
-max connections ≈ 2 × PG_POOL_MAX × instances
+max connections ≈ 3 × PG_POOL_MAX × instances
 ```
 
 Check that against your database's limit — this is the most common way to exhaust a small managed
 Postgres once autoscaling kicks in. `PG_POOL_MAX=5` is a sane starting point.
+
+The execution-claim pool behaves differently from the other two, and it is worth knowing how: a
+connection is held for the **whole duration** of an executing run, not for the length of a query. So its
+working size is your run concurrency, not your request rate — if `SKEIN_RUN_CONCURRENCY` exceeds
+`PG_POOL_MAX`, runs queue on the pool instead of on the worker. Keep `PG_POOL_MAX` at or above run
+concurrency; `skein start` warns at boot when it is not.
 
 ### When the database stops answering
 
@@ -336,17 +344,35 @@ platforms that scale to zero, this is paid on the first request after an idle pe
 ## Scaling past one instance
 
 With Postgres and Redis, replicas share state and streams — a client can join a run executing on
-another instance, and rolling deploys are safe. But some semantics are still **per-process**, and
-Redis does not currently fix them:
+another instance, rolling deploys are safe, **and the run semantics hold across instances**. No session
+affinity or single-instance restriction is needed for any of it:
 
-- **Cancellation.** `POST …/runs/{id}/cancel` routed to instance B will not abort a run executing on
-  instance A. The cancellation registry is in-process.
-- **One-active-run-per-thread.** The guard that serializes runs on a thread is an in-process lock, so
-  two instances can race it.
-- **`multitask_strategy: "rollback"` and `"interrupt"`.** Both rely on in-process state and are
-  single-instance-scoped.
+- **Cancellation** crosses instances. `POST …/runs/{id}/cancel` routed to instance B stops a run
+  executing on instance A: the run row is settled immediately (which is what makes the cancel durable),
+  and the _signal to stop now_ travels over a Redis pub/sub channel to whichever instance is executing
+  it. Delivery is best-effort by design — a dropped message costs promptness, never correctness.
+- **One-active-run-per-thread** is decided by Postgres, not by a lock in one process:
+  `multitask_strategy: "reject"` is an atomic check-and-insert, so two instances racing the same thread
+  cannot both win.
+- **`multitask_strategy: "enqueue"`, `"interrupt"` and `"rollback"`** all hold. A run claims its thread
+  with a Postgres **session advisory lock** held for the run's duration, so a queued run waits for the
+  active one wherever that one is running. The displaced run's base checkpoint and the displacing run's
+  rollback plan are persisted on the runs themselves, so any instance can apply them — and a run
+  recovered after a crash still cleans up what it displaced.
 
-If you depend on any of these, run a single instance, or route by thread with session affinity. See
+**Why a Postgres lock and not a Redis lease.** A run holds its claim for its whole execution, which can
+be minutes. A TTL lease has to be renewed for all of it, and a late renewal — a blocked event loop, a GC
+pause — expires the lease while the run is still writing, putting two instances on one thread's
+checkpoint history. A session lock has no TTL: Postgres holds it until the session releases it _or the
+connection dies_, so a crashed instance frees its threads at once and a slow one keeps them. This is the
+same split LangGraph Platform makes (Postgres for rows and exclusivity, Redis for ephemeral pub/sub).
+
+**Budget for it.** Each _concurrently-executing_ run holds one connection from a dedicated pool for the
+run's duration — the same trade LangGraph Platform makes. See [Connection budget](#connection-budget).
+
+The one remaining caveat is utilization, not correctness: a queued run waiting for a busy thread still
+occupies a worker slot, so a burst of `enqueue` runs on one thread can crowd out other threads' work.
+Tracked as per-thread partitioned dispatch on the [roadmap](./roadmap.md). See
 [runs-and-redis.md](./runs-and-redis.md).
 
 ## Streaming through proxies (SSE)
@@ -432,5 +458,5 @@ Two notes specific to the container:
 - The in-memory bus knobs (`SKEIN_MEMORY_BUS_*`) are **not** reachable from this image — `skein start`
   rejects `--queue memory`. They apply on the embedded path (`embedPostgresGraphs` with no `REDIS_URI`)
   and under `skein dev`; see [embedding.md](./embedding.md#going-to-production).
-- `PG_POOL_MAX` is per pool and skein opens **two** per instance, so budget twice your setting against
+- `PG_POOL_MAX` is per pool and skein opens **three** per instance, so budget three times your setting against
   the database's own connection cap — per replica.

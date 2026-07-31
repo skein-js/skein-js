@@ -8,13 +8,10 @@
 //   export const { GET, POST, PUT, PATCH, DELETE, OPTIONS } =
 //     createSkeinRouteHandlers({ config: "./langgraph.json" });
 
-import {
-  copyThreadIdIntoBody,
-  matchSkeinRoute,
-  type ProtocolRequest,
-} from "@skein-js/agent-protocol";
+import { copyThreadIdIntoBody, type ProtocolRequest } from "@skein-js/agent-protocol";
 import { SkeinHttpError } from "@skein-js/core";
 import {
+  routeMatcherFor,
   stripBasePath,
   type CorsSetting,
   type Logger,
@@ -122,7 +119,8 @@ export function createSkeinRouteHandlers(options: SkeinRouteHandlerOptions): Ske
 
     const extraHeaders = cors ? corsHeaders(request, cors) : {};
 
-    const match = matchSkeinRoute(request.method, skeinPathname);
+    // The resolved table, so a group disabled by `http.disable_*` 404s here instead of being served.
+    const match = routeMatcherFor(resolved.routes)(request.method, skeinPathname);
     if (!match) {
       return new Response(JSON.stringify({ status: 404, message: "Not Found" }), {
         status: 404,

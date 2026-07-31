@@ -4,7 +4,12 @@
 // up` can swap Postgres + Redis deps through the adapters' `{ deps }` seam (see skein-router.ts).
 
 import { MemorySaver } from "@langchain/langgraph";
-import type { GraphResolver, GraphSchemas, ProtocolDeps } from "@skein-js/agent-protocol";
+import type {
+  GraphResolver,
+  GraphSchemas,
+  ProtocolDeps,
+  RouteBinding,
+} from "@skein-js/agent-protocol";
 import {
   loadAuthEngine,
   loadConfig,
@@ -16,7 +21,7 @@ import {
 import { MemoryRunEventBus, MemoryRunQueue, MemorySkeinStore } from "@skein-js/storage-memory";
 import type { CorsOptions } from "cors";
 
-import { corsFromHttpConfig } from "./cors-config.js";
+import { corsFromHttpConfig, routesFromHttpConfig } from "./cors-config.js";
 import {
   hydrateCheckpointer,
   snapshotCheckpointer,
@@ -47,6 +52,8 @@ export interface InMemoryRuntimeConfig {
   deps: ProtocolDeps;
   /** CORS mapped from the config's `http.cors`, or `undefined` when none is declared. */
   cors?: CorsOptions;
+  /** The route table to mount, with any `http.disable_*` groups already removed. */
+  routes: readonly RouteBinding[];
 }
 
 /** Load `langgraph.json`, wiring fresh in-memory drivers and reading its `http.cors` for the adapter. */
@@ -65,6 +72,7 @@ export async function loadInMemoryRuntime(
   return {
     deps,
     cors: corsFromHttpConfig(config.http),
+    routes: routesFromHttpConfig(config.http),
   };
 }
 
@@ -135,6 +143,7 @@ export async function loadReloadableInMemoryRuntime(
   return {
     deps,
     cors: corsFromHttpConfig(first.config.http),
+    routes: routesFromHttpConfig(first.config.http),
     config: first.config,
     configDir: first.configDir,
     reloadGraphs: async () => {

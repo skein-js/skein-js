@@ -12,16 +12,13 @@
 
 import type { IncomingMessage, ServerResponse } from "node:http";
 
-import {
-  copyThreadIdIntoBody,
-  matchSkeinRoute,
-  type ProtocolRequest,
-} from "@skein-js/agent-protocol";
+import { copyThreadIdIntoBody, type ProtocolRequest } from "@skein-js/agent-protocol";
 import {
   applyNodeCors,
   sendNodeError,
   sendNodePreflight,
   sendNodeResponse,
+  routeMatcherFor,
   stripBasePath,
   type CorsSetting,
   type Logger,
@@ -106,7 +103,8 @@ export function createSkeinPagesHandler(options: SkeinPagesHandlerOptions): Skei
     }
     if (cors) applyNodeCors(req.headers, res, cors);
 
-    const match = matchSkeinRoute(req.method ?? "GET", skeinPathname);
+    // The resolved table, so a group disabled by `http.disable_*` 404s here instead of being served.
+    const match = routeMatcherFor(resolved.routes)(req.method ?? "GET", skeinPathname);
     if (!match) {
       res.writeHead(404, { "content-type": "application/json" });
       res.end(JSON.stringify({ status: 404, message: "Not Found" }));

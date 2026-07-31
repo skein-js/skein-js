@@ -92,8 +92,23 @@ export const langgraphJsonSchema = z
       .optional(),
     /** Checkpointer backend; `"default"` == Postgres, absent == in-memory. */
     checkpointer: z.object({ type: z.string() }).passthrough().optional(),
-    /** Server customization (CORS, route toggles) applied by the framework adapter. */
-    http: z.object({}).passthrough().optional(),
+    /**
+     * Server customization applied by the framework adapter: `cors`, plus LangGraph's `disable_*`
+     * route toggles. Still `.passthrough()`, so a key skein does not implement yet (`http.app`) is
+     * carried rather than rejected — a `langgraph.json` must keep loading under both CLIs.
+     */
+    http: z
+      .object({
+        cors: z.object({}).passthrough().optional(),
+        disable_assistants: z.boolean().optional(),
+        disable_threads: z.boolean().optional(),
+        disable_runs: z.boolean().optional(),
+        disable_store: z.boolean().optional(),
+        /** Turns off `GET /info`. skein's `/ok` health probe is unaffected — see meta/server-info.ts. */
+        disable_meta: z.boolean().optional(),
+      })
+      .passthrough()
+      .optional(),
     /**
      * Custom authentication + authorization. `path` is a `"file:export"` spec pointing at a module
      * that default-exports (or named-exports) an `@langchain/langgraph-sdk/auth` `Auth` instance;

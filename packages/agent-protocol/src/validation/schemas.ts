@@ -58,10 +58,39 @@ export const runCreateSchema = z
       // URL parser, preventing a caller from forging additional log lines with the original text.
       .transform((value) => new URL(value).href)
       .optional(),
+    /**
+     * What to do with a stateless run's server-created thread once it settles. Ignored for a
+     * thread-scoped run. Defaults to `keep` — see `CreateRunInput.on_completion` for why skein's
+     * default differs from LangGraph's.
+     */
+    on_completion: z.enum(["delete", "keep"]).optional(),
     /** Time travel: fork this run from a prior checkpoint instead of the thread tip. */
     checkpoint_id: z.string().optional(),
     /** Time travel: full checkpoint pointer to fork from (its `checkpoint_id` is what matters). */
     checkpoint: checkpointSchema.optional(),
+  })
+  .passthrough();
+
+/**
+ * `POST /runs/batch` — an array of stateless run-creates.
+ *
+ * Bounded, unlike LangGraph's unbounded `RunBatchCreate`: each element creates a thread, a run row and
+ * a queue job, so one request is an N-fold write amplifier on the store and the queue. 100 is far more
+ * than a client batches in practice and small enough that the burst stays inside a normal pool.
+ * Exceeding it is a 400 with the flattened issues, like every other schema violation here.
+ */
+export const runBatchCreateSchema = z.array(runCreateSchema).min(1).max(100);
+
+/**
+ * `POST /runs/cancel` — `cancelMany`. Every selector is optional; an empty body means "every inflight
+ * run on the server", which is the request the SDK's `cancelMany({})` sends.
+ */
+export const cancelManySchema = z
+  .object({
+    thread_id: z.string().min(1).optional(),
+    run_ids: z.array(z.string().min(1)).optional(),
+    /** `all` (the default) is every inflight run; the others narrow to that single status. */
+    status: z.enum(["pending", "running", "all"]).optional(),
   })
   .passthrough();
 
@@ -133,6 +162,30 @@ export const threadSearchSchema = z
     offset: z.number().int().nonnegative().optional(),
     sort_by: z.enum(["thread_id", "status", "created_at", "updated_at"]).optional(),
     sort_order: z.enum(["asc", "desc"]).optional(),
+  })
+  .passthrough();
+
+/** `POST /threads/count` — the search filters without pagination or sort. */
+export const threadCountSchema = z
+  .object({
+    metadata: z.record(z.unknown()).optional(),
+    values: z.record(z.unknown()).optional(),
+    status: z.enum(["idle", "busy", "interrupted", "error"]).optional(),
+    ids: z.array(z.string()).optional(),
+  })
+  .passthrough();
+
+/**
+ * `POST /threads/prune`.
+ *
+ * `thread_ids` is bounded for the same reason `runBatchCreateSchema` is: each entry is a delete (a
+ * transaction, plus a cascade over the thread's runs) or a checkpoint delete-and-replay, so one request
+ * with an unbounded list is an unbounded unit of work holding a connection.
+ */
+export const threadPruneSchema = z
+  .object({
+    thread_ids: z.array(z.string().min(1)).min(1).max(1000),
+    strategy: z.enum(["delete", "keep_latest"]).optional(),
   })
   .passthrough();
 

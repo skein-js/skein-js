@@ -4,9 +4,9 @@
 // /store. SSE responses carry a pre-serialized event iterable (data frames + a synthesized
 // terminal event read from the run's final status).
 
-import type { RunFrame } from "@skein-js/core";
+import { RUN_STATUSES, type RunFrame, type RunStatus } from "@skein-js/core";
 
-import type { CreateRunInput } from "./runs/run-service.js";
+import type { CancelRunOptions, CreateRunInput } from "./runs/run-service.js";
 import type { ProtocolService } from "./service.js";
 import { parseAfterSeq, toSseEvents } from "./sse/sse.js";
 import type { CommandInput, ThreadStreamInput } from "./threads/thread-stream-service.js";
@@ -18,14 +18,18 @@ import {
   assistantSetLatestSchema,
   assistantUpdateSchema,
   assistantVersionsSchema,
+  cancelManySchema,
   commandBodySchema,
   listNamespacesSchema,
+  runBatchCreateSchema,
   runCreateSchema,
   storePutSchema,
   storeSearchSchema,
   threadCreateSchema,
   threadPatchSchema,
   threadHistorySchema,
+  threadCountSchema,
+  threadPruneSchema,
   threadSearchSchema,
   threadStateUpdateSchema,
   threadStreamSchema,
@@ -79,6 +83,8 @@ export interface ProtocolHandlers {
   createThread: ProtocolHandler;
   getThread: ProtocolHandler;
   listThreads: ProtocolHandler;
+  countThreads: ProtocolHandler;
+  pruneThreads: ProtocolHandler;
   copyThread: ProtocolHandler;
   patchThread: ProtocolHandler;
   deleteThread: ProtocolHandler;
@@ -90,15 +96,20 @@ export interface ProtocolHandlers {
   createWaitRun: ProtocolHandler;
   createStreamRun: ProtocolHandler;
   createBackgroundRun: ProtocolHandler;
+  createStatelessRun: ProtocolHandler;
+  createRunBatch: ProtocolHandler;
   getRun: ProtocolHandler;
   listThreadRuns: ProtocolHandler;
   joinRunStream: ProtocolHandler;
   cancelRun: ProtocolHandler;
+  cancelManyRuns: ProtocolHandler;
   deleteRun: ProtocolHandler;
   // thread streaming / commands
   postThreadStream: ProtocolHandler;
   getThreadStream: ProtocolHandler;
   postThreadCommands: ProtocolHandler;
+  // meta
+  getServerInfo: ProtocolHandler;
   // store
   putStoreItem: ProtocolHandler;
   getStoreItem: ProtocolHandler;
@@ -174,6 +185,32 @@ function xrayQuery(value: string | string[] | undefined): number | boolean | und
 }
 
 /**
+ * `?status=` on `GET /threads/{id}/runs`. Ignored rather than rejected when it is not a run status —
+ * this is a query string, which every other filter in this table absorbs rather than 400s on, and the
+ * SDK sends the field on calls that do not mean to filter.
+ */
+function runStatusQuery(value: string | string[] | undefined): RunStatus | undefined {
+  const raw = queryValue(value);
+  return raw !== undefined && (RUN_STATUSES as readonly string[]).includes(raw)
+    ? (raw as RunStatus)
+    : undefined;
+}
+
+/**
+ * `?action=` and `?wait=` on the two cancel endpoints — both sent by every `client.runs.cancel(...)`
+ * call. An unrecognized `action` falls back to `interrupt`, its default and the safer of the two: it
+ * keeps the run's writes, where a mistyped value silently discarding them would be unrecoverable.
+ */
+function cancelOptionsFrom(req: ProtocolRequest): CancelRunOptions {
+  const action = queryValue(req.query["action"]);
+  return {
+    action: action === "rollback" ? "rollback" : "interrupt",
+    // `wait=1` is what the SDK sends (not `true`), so both spellings are accepted.
+    wait: booleanQuery(req.query["wait"]) ?? queryValue(req.query["wait"]) === "1",
+  };
+}
+
+/**
  * Normalize `before` to the config `getStateHistory` expects. The SDK sends a config; a hand-rolled
  * caller is more likely to send the bare checkpoint id, so accept both — and forward *only* the id, so
  * the thread scope stays server-owned.
@@ -185,12 +222,30 @@ function historyBefore(before: string | { configurable: { checkpoint_id: string 
   return { configurable: { checkpoint_id: checkpointId } };
 }
 
+/**
+ * `Content-Location` for a created run — the header the SDK parses (`getRunMetadataFromResponse`) to
+ * fire `onRunCreated`, which is how `useStream` learns the run id it stores to rejoin a stream after a
+ * remount. Without it that callback never fires and `reconnectOnMount` cannot work.
+ *
+ * The thread-scoped spelling always, even for a stateless run: the SDK's own regex makes the
+ * `/threads/{id}` prefix optional and reports `thread_id: undefined` when it is missing, so naming the
+ * server-created thread is strictly more useful to a client that wants to follow the run.
+ */
+function runLocationHeaders(threadId: string, runId: string): Record<string, string> {
+  return { "content-location": `/threads/${threadId}/runs/${runId}` };
+}
+
 export function createProtocolHandlers(service: ProtocolService): ProtocolHandlers {
   // Build an SSE response whose terminal event reflects the run's final status once frames end.
-  const sse = (runId: string, frames: AsyncIterable<RunFrame>): ProtocolResponse => ({
+  const sse = (
+    runId: string,
+    frames: AsyncIterable<RunFrame>,
+    headers?: Record<string, string>,
+  ): ProtocolResponse => ({
     kind: "sse",
     status: 200,
     events: toSseEvents(frames, () => service.runs.finalStatus(runId)),
+    ...(headers ? { headers } : {}),
   });
 
   const afterSeqFrom = (req: ProtocolRequest): number =>
@@ -320,6 +375,28 @@ export function createProtocolHandlers(service: ProtocolService): ProtocolHandle
       );
     },
 
+    countThreads: async (req) => {
+      const body = parse(threadCountSchema, req.body ?? {});
+      return json(
+        await service.threads.count({
+          metadata: body.metadata,
+          values: body.values,
+          status: body.status,
+          ids: body.ids,
+        }),
+      );
+    },
+
+    pruneThreads: async (req) => {
+      const body = parse(threadPruneSchema, req.body);
+      return json(
+        await service.threads.prune({
+          threadIds: body.thread_ids,
+          ...(body.strategy !== undefined ? { strategy: body.strategy } : {}),
+        }),
+      );
+    },
+
     copyThread: async (req) =>
       json(await service.threads.copy(requireParam(req.params, "thread_id"))),
 
@@ -375,22 +452,44 @@ export function createProtocolHandlers(service: ProtocolService): ProtocolHandle
     },
 
     // --- runs ---------------------------------------------------------------------------------
-    createWaitRun: async (req) =>
-      json(await service.runs.createWait(parse(runCreateSchema, req.body) as CreateRunInput)),
+    createWaitRun: async (req) => {
+      const { runId, threadId, result } = await service.runs.createWait(
+        parse(runCreateSchema, req.body) as CreateRunInput,
+      );
+      return json(result, 200, runLocationHeaders(threadId, runId));
+    },
 
     createStreamRun: async (req) => {
       const started = await service.runs.createStream(
         parse(runCreateSchema, req.body) as CreateRunInput,
       );
-      return sse(started.runId, started.frames);
+      return sse(
+        started.runId,
+        started.frames,
+        runLocationHeaders(started.threadId, started.runId),
+      );
     },
 
-    createBackgroundRun: async (req) =>
+    createBackgroundRun: async (req) => {
+      const run = await service.runs.createBackground(
+        requireParam(req.params, "thread_id"),
+        parse(runCreateSchema, req.body) as CreateRunInput,
+      );
+      return json(run, 200, runLocationHeaders(run.thread_id, run.run_id));
+    },
+
+    createStatelessRun: async (req) => {
+      const run = await service.runs.createStatelessBackground(
+        parse(runCreateSchema, req.body) as CreateRunInput,
+      );
+      return json(run, 200, runLocationHeaders(run.thread_id, run.run_id));
+    },
+
+    createRunBatch: async (req) =>
+      // No `Content-Location`: it names one run, and this response carries many. The runs themselves
+      // are in the body, each with its `run_id` and `thread_id`.
       json(
-        await service.runs.createBackground(
-          requireParam(req.params, "thread_id"),
-          parse(runCreateSchema, req.body) as CreateRunInput,
-        ),
+        await service.runs.createBatch(parse(runBatchCreateSchema, req.body) as CreateRunInput[]),
       ),
 
     getRun: async (req) => json(await service.runs.get(requireParam(req.params, "run_id"))),
@@ -401,10 +500,12 @@ export function createProtocolHandlers(service: ProtocolService): ProtocolHandle
       // GET in the protocol reject `?limit=5000` and `?offset=-1` where its siblings absorb them.
       const limit = positiveIntQuery(req.query["limit"]) ?? DEFAULT_COLLECTION_PAGE_SIZE;
       const offset = positiveIntQuery(req.query["offset"]);
+      const status = runStatusQuery(req.query["status"]);
       return json(
         await service.runs.listByThread(requireParam(req.params, "thread_id"), {
           limit,
           ...(offset !== undefined ? { offset } : {}),
+          ...(status !== undefined ? { status } : {}),
         }),
       );
     },
@@ -415,7 +516,27 @@ export function createProtocolHandlers(service: ProtocolService): ProtocolHandle
       return sse(runId, frames);
     },
 
-    cancelRun: async (req) => json(await service.runs.cancel(requireParam(req.params, "run_id"))),
+    cancelRun: async (req) =>
+      json(await service.runs.cancel(requireParam(req.params, "run_id"), cancelOptionsFrom(req))),
+
+    cancelManyRuns: async (req) => {
+      const body = parse(cancelManySchema, req.body ?? {});
+      const { cancelledRunIds, truncated } = await service.runs.cancelMany({
+        threadId: body.thread_id,
+        runIds: body.run_ids,
+        status: body.status,
+        ...cancelOptionsFrom(req),
+      });
+      // The SDK types `cancelMany` as `Promise<void>` and ignores the body, so its shape is skein's to
+      // choose. It reports what happened rather than nothing: a bounded sweep that left runs going has
+      // to be visible to a caller that asked to cancel everything. `truncated` is a fact about the
+      // caller's own page — never a count of what other principals are running.
+      return json({
+        cancelled_count: cancelledRunIds.length,
+        cancelled_run_ids: cancelledRunIds,
+        truncated,
+      });
+    },
 
     deleteRun: async (req) => {
       await service.runs.delete(requireParam(req.params, "run_id"));
@@ -428,7 +549,11 @@ export function createProtocolHandlers(service: ProtocolService): ProtocolHandle
         requireParam(req.params, "thread_id"),
         parse(threadStreamSchema, req.body) as ThreadStreamInput,
       );
-      return sse(started.runId, started.frames);
+      return sse(
+        started.runId,
+        started.frames,
+        runLocationHeaders(started.threadId, started.runId),
+      );
     },
 
     getThreadStream: async (req) => {
@@ -436,7 +561,11 @@ export function createProtocolHandlers(service: ProtocolService): ProtocolHandle
         requireParam(req.params, "thread_id"),
         afterSeqFrom(req),
       );
-      return sse(started.runId, started.frames);
+      return sse(
+        started.runId,
+        started.frames,
+        runLocationHeaders(started.threadId, started.runId),
+      );
     },
 
     postThreadCommands: async (req) => {
@@ -444,8 +573,15 @@ export function createProtocolHandlers(service: ProtocolService): ProtocolHandle
         requireParam(req.params, "thread_id"),
         parse(commandBodySchema, req.body ?? {}) as CommandInput,
       );
-      return sse(started.runId, started.frames);
+      return sse(
+        started.runId,
+        started.frames,
+        runLocationHeaders(started.threadId, started.runId),
+      );
     },
+
+    // --- meta ---------------------------------------------------------------------------------
+    getServerInfo: async () => json(await service.meta.info()),
 
     // --- store --------------------------------------------------------------------------------
     putStoreItem: async (req) => {

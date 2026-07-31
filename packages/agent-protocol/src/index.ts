@@ -30,11 +30,19 @@ export type {
 export {
   skeinRoutes,
   copyThreadIdIntoBody,
+  filterSkeinRoutes,
   foldThreadId,
   matchSkeinRoute,
   createRouteMatcher,
 } from "./http/routes.js";
-export type { HttpMethod, RouteBinding, RouteMatch, RouteMatcher } from "./http/routes.js";
+export type {
+  DisabledRouteGroups,
+  HttpMethod,
+  RouteBinding,
+  RouteGroup,
+  RouteMatch,
+  RouteMatcher,
+} from "./http/routes.js";
 
 // The simplified serving surface: one graph mounted as a plain endpoint (`POST /invoke/:graph_id`),
 // for non-chat workloads that don't need threads/assistants/runs. See docs/serving-a-single-graph.md.
@@ -89,6 +97,7 @@ export type {
   SubgraphsOptions,
 } from "./assistants/assistant-service.js";
 export type { StoreService } from "./store/store-service.js";
+export type { MetaService, ServerInfo } from "./meta/server-info.js";
 
 // The LangGraph `BaseStore` bridge over a skein `StoreRepo`, injected into every graph run so nodes
 // reach long-term memory via `getStore()`. Exported for direct use in tests and embeddings.
@@ -97,6 +106,7 @@ export type {
   CreateThreadInput,
   HistoryOptions,
   PatchThreadInput,
+  PruneThreadsInput,
   ThreadService,
 } from "./threads/thread-service.js";
 export type {
@@ -105,6 +115,10 @@ export type {
   ThreadStreamService,
 } from "./threads/thread-stream-service.js";
 export type {
+  CancelManyQuery,
+  CancelManyResult,
+  CancelRunOptions,
+  CompletedWaitRun,
   CreateRunInput,
   RunService,
   StartedStream,

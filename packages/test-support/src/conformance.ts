@@ -406,6 +406,33 @@ export function runSkeinStoreConformance(label: string, makeStore: SkeinStoreFac
         expect(ids.has(nextOne[0]?.thread_id ?? "")).toBe(false);
       });
 
+      it("counts threads with exactly the filters search applies", async () => {
+        // `POST /threads/count`. The two share a WHERE builder in the Postgres driver and a matcher in
+        // the memory one precisely so they cannot drift — a count that disagrees with its own listing
+        // reads as a race rather than as the bug it is.
+        const store = await makeStore();
+        const busy = await store.threads.create({ metadata: { graph_id: "chat" } });
+        await store.threads.update(busy.thread_id, { status: "busy", values: { turns: 2 } });
+        await store.threads.create({ metadata: { graph_id: "chat" } });
+        await store.threads.create({ metadata: { graph_id: "research" } });
+
+        const filters = [
+          {},
+          { metadata: { graph_id: "chat" } },
+          { metadata: { graph_id: "nope" } },
+          { status: "busy" as const },
+          { values: { turns: 2 } },
+          { ids: [busy.thread_id] },
+        ];
+        for (const filter of filters) {
+          expect(await store.threads.count(filter)).toBe(
+            (await store.threads.search(filter)).length,
+          );
+        }
+        expect(await store.threads.count({})).toBe(3);
+        expect(await store.threads.count({ metadata: { graph_id: "chat" } })).toBe(2);
+      });
+
       it("paginates deterministically when the sort key ties on every row", async () => {
         const store = await makeStore();
         const created: string[] = [];
@@ -481,6 +508,31 @@ export function runSkeinStoreConformance(label: string, makeStore: SkeinStoreFac
         }
         const all = await store.runs.listByThread(thread_id);
         expect(await store.runs.listByThread(thread_id, { offset: 1, limit: 1 })).toEqual([all[1]]);
+      });
+
+      it("filters runs by status, before paging", async () => {
+        const store = await makeStore();
+        const thread_id = await seedThread(store);
+        const first = await store.runs.create({ thread_id, assistant_id: "a" });
+        const second = await store.runs.create({ thread_id, assistant_id: "a" });
+        const third = await store.runs.create({ thread_id, assistant_id: "a" });
+        await store.runs.setStatus(first.run_id, "success");
+        await store.runs.setStatus(third.run_id, "success");
+
+        expect(
+          (await store.runs.listByThread(thread_id, { status: "success" })).map((r) => r.run_id),
+        ).toEqual([first.run_id, third.run_id]);
+        expect(
+          (await store.runs.listByThread(thread_id, { status: "pending" })).map((r) => r.run_id),
+        ).toEqual([second.run_id]);
+
+        // The filter must be applied *before* the page bound, or `limit`/`offset` would describe the
+        // unfiltered set and page 2 of "the successful runs" would skip rows it never returned.
+        expect(
+          (
+            await store.runs.listByThread(thread_id, { status: "success", offset: 1, limit: 1 })
+          ).map((r) => r.run_id),
+        ).toEqual([third.run_id]);
       });
 
       it("transitions run status", async () => {
@@ -586,6 +638,156 @@ export function runSkeinStoreConformance(label: string, makeStore: SkeinStoreFac
         await store.runs.setStatus(pending.run_id, "cancelled");
         await store.runs.setStatus(running.run_id, "interrupted");
         expect(await store.runs.listActiveRuns(thread_id)).toEqual([]);
+      });
+
+      it("records a base checkpoint onto a run's kwargs, keeping the rest intact", async () => {
+        const store = await makeStore();
+        const thread_id = await seedThread(store);
+        const run = await store.runs.create({
+          thread_id,
+          assistant_id: "a",
+          kwargs: { input: { messages: ["hi"] }, stream_mode: "values" },
+        });
+
+        await store.runs.recordBaseCheckpoint(run.run_id, "ckpt-3");
+
+        const kwargs = await store.runs.getKwargs(run.run_id);
+        expect(kwargs?.base_checkpoint_id).toBe("ckpt-3");
+        // A targeted patch: the run's input must survive it, or a crash-recovered run would restart with
+        // nothing to run on.
+        expect(kwargs?.input).toEqual({ messages: ["hi"] });
+        expect(kwargs?.stream_mode).toBe("values");
+      });
+
+      it("keeps 'recorded as no checkpoint' distinct from 'never recorded'", async () => {
+        // The distinction a rollback turns on: null means revert the thread to empty, absent means leave
+        // its checkpoints alone. Collapsing them would wipe history the run never wrote.
+        const store = await makeStore();
+        const thread_id = await seedThread(store);
+        // Created with kwargs, as every run skein makes is — so this asserts the *key* is absent from a
+        // real blob, not that the blob itself is missing.
+        const untouched = await store.runs.create({
+          thread_id,
+          assistant_id: "a",
+          kwargs: { input: {} },
+        });
+        expect(await store.runs.getKwargs(untouched.run_id)).not.toHaveProperty(
+          "base_checkpoint_id",
+        );
+
+        await store.runs.setStatus(untouched.run_id, "success");
+        const recorded = await store.runs.create({
+          thread_id,
+          assistant_id: "a",
+          kwargs: { input: {} },
+        });
+        await store.runs.recordBaseCheckpoint(recorded.run_id, null);
+
+        const kwargs = await store.runs.getKwargs(recorded.run_id);
+        expect(kwargs).toHaveProperty("base_checkpoint_id");
+        expect(kwargs?.base_checkpoint_id).toBeNull();
+      });
+
+      it("records a base checkpoint onto a run created with no kwargs at all", async () => {
+        const store = await makeStore();
+        const thread_id = await seedThread(store);
+        const run = await store.runs.create({ thread_id, assistant_id: "a" });
+
+        await store.runs.recordBaseCheckpoint(run.run_id, "ckpt-1");
+        expect((await store.runs.getKwargs(run.run_id))?.base_checkpoint_id).toBe("ckpt-1");
+      });
+
+      it("ignores a base checkpoint recorded for an unknown run", async () => {
+        // Best-effort bookkeeping: the run may have been deleted mid-start.
+        const store = await makeStore();
+        await expect(store.runs.recordBaseCheckpoint("ghost", "ckpt-1")).resolves.toBeUndefined();
+      });
+
+      it("round-trips a rollback plan through a run's kwargs", async () => {
+        // Persisted so the instance executing a displacing run applies the plan, even when a different
+        // instance created it.
+        const store = await makeStore();
+        const thread_id = await seedThread(store);
+        const run = await store.runs.create({
+          thread_id,
+          assistant_id: "a",
+          kwargs: {
+            rollback_plan: {
+              revert_to_checkpoint: { base_checkpoint_id: "ckpt-2" },
+              displaced_run_ids: ["r-1", "r-2"],
+            },
+          },
+        });
+
+        expect((await store.runs.getKwargs(run.run_id))?.rollback_plan).toEqual({
+          revert_to_checkpoint: { base_checkpoint_id: "ckpt-2" },
+          displaced_run_ids: ["r-1", "r-2"],
+        });
+      });
+
+      it("createIfThreadIdle creates on an idle thread and refuses on a busy one", async () => {
+        const store = await makeStore();
+        const thread_id = await seedThread(store);
+
+        const first = await store.runs.createIfThreadIdle({ thread_id, assistant_id: "a" });
+        expect(first).not.toBeNull();
+
+        // The thread now has an inflight run, so the guard refuses rather than throwing — the service
+        // turns the null into the 422 `multitask_strategy: "reject"` promises.
+        expect(await store.runs.createIfThreadIdle({ thread_id, assistant_id: "a" })).toBeNull();
+
+        // Once it settles the thread is idle again.
+        await store.runs.setStatus(first!.run_id, "success");
+        expect(
+          await store.runs.createIfThreadIdle({ thread_id, assistant_id: "a" }),
+        ).not.toBeNull();
+      });
+
+      it("createIfThreadIdle admits exactly one of many concurrent creates", async () => {
+        // The race the method exists to close. Fired without awaiting in between, so the driver — not
+        // the caller's ordering — is what decides. A check-then-create pair passes this in one process
+        // and fails across two; a driver that serializes properly passes both.
+        const store = await makeStore();
+        const thread_id = await seedThread(store);
+
+        const results = await Promise.all(
+          Array.from({ length: 5 }, () =>
+            store.runs.createIfThreadIdle({ thread_id, assistant_id: "a" }),
+          ),
+        );
+
+        expect(results.filter((run) => run !== null)).toHaveLength(1);
+        expect(await store.runs.listActiveRuns(thread_id)).toHaveLength(1);
+      });
+
+      it("createIfThreadIdle refuses when the thread does not exist", async () => {
+        // Rather than inserting a run whose foreign key is about to fail anyway.
+        const store = await makeStore();
+        expect(
+          await store.runs.createIfThreadIdle({ thread_id: "ghost", assistant_id: "a" }),
+        ).toBeNull();
+      });
+
+      it("lists every thread's inflight runs when no thread is named", async () => {
+        // The sweep behind `POST /runs/cancel` with only a status filter.
+        const store = await makeStore();
+        const first = await seedThread(store);
+        const second = await seedThread(store);
+        expect(await store.runs.listActiveRuns()).toEqual([]);
+
+        const onFirst = await store.runs.create({ thread_id: first, assistant_id: "a" });
+        const onSecond = await store.runs.create({ thread_id: second, assistant_id: "a" });
+        await store.runs.setStatus(onSecond.run_id, "running");
+        const done = await store.runs.create({ thread_id: second, assistant_id: "a" });
+        await store.runs.setStatus(done.run_id, "success");
+
+        expect((await store.runs.listActiveRuns()).map((run) => run.run_id).sort()).toEqual(
+          [onFirst.run_id, onSecond.run_id].sort(),
+        );
+        // Naming a thread still narrows to it, so the two forms cannot drift.
+        expect((await store.runs.listActiveRuns(first)).map((run) => run.run_id)).toEqual([
+          onFirst.run_id,
+        ]);
       });
 
       it("round-trips a run's opaque kwargs and returns null for an unknown run", async () => {
@@ -889,6 +1091,29 @@ export function runSkeinStoreConformance(label: string, makeStore: SkeinStoreFac
         // the total, which is the one number that says a page was truncated.
         expect((await store.assistants.search({})).length).toBe(2);
         expect(await store.assistants.count({})).toBe(5);
+      });
+
+      it("publishes the page bound it actually applies", async () => {
+        // A caller that reads an unbounded collection needs to tell a complete result from a truncated
+        // one — `POST /runs/cancel` reports `truncated` from exactly this. Reporting a bound the driver
+        // does not apply would be worse than reporting none, so it is asserted against real behaviour.
+        const store = await makeStore({ maxPageSize: 2 });
+        expect(store.maxPageSize).toBe(2);
+
+        for (const index of [0, 1, 2, 3, 4]) await store.threads.create({ metadata: { index } });
+        expect((await store.threads.search({})).length).toBe(store.maxPageSize);
+      });
+
+      it("bounds threads.search but not threads.count", async () => {
+        const store = await makeStore({ maxPageSize: 2 });
+        for (const index of [0, 1, 2, 3, 4]) {
+          await store.threads.create({ metadata: { index } });
+        }
+
+        // Same contract as assistants: a count measured through `search` would report the page size,
+        // which is exactly the number that cannot tell a caller their page was truncated.
+        expect((await store.threads.search({})).length).toBe(2);
+        expect(await store.threads.count({})).toBe(5);
       });
 
       it("bounds store.search when no limit is given", async () => {

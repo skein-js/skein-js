@@ -36,6 +36,10 @@ export const ROUTE_AUTHZ: Record<keyof ProtocolHandlers, RouteAuthz> = {
   getThreadStateAtCheckpoint: { resource: "threads", action: "read" },
   getThreadHistory: { resource: "threads", action: "read" },
   listThreads: { resource: "threads", action: "search" },
+  countThreads: { resource: "threads", action: "search" },
+  // A prune *removes* threads (or their history), so it authorizes as a delete rather than as the
+  // search that selects them.
+  pruneThreads: { resource: "threads", action: "delete" },
   patchThread: { resource: "threads", action: "update" },
   // Time-travel state update forks a checkpoint — a write, so read-only principals can't fork.
   updateThreadState: { resource: "threads", action: "update" },
@@ -45,16 +49,26 @@ export const ROUTE_AUTHZ: Record<keyof ProtocolHandlers, RouteAuthz> = {
   createWaitRun: { resource: "threads", action: "create_run" },
   createStreamRun: { resource: "threads", action: "create_run" },
   createBackgroundRun: { resource: "threads", action: "create_run" },
+  createStatelessRun: { resource: "threads", action: "create_run" },
+  createRunBatch: { resource: "threads", action: "create_run" },
   getRun: { resource: "threads", action: "read" },
   listThreadRuns: { resource: "threads", action: "read" },
   joinRunStream: { resource: "threads", action: "read" },
   cancelRun: { resource: "threads", action: "update" },
+  // Like `cancelRun` — and each run it sweeps is re-checked against the ownership filter by the
+  // scoped store's `get`, so a broad sweep cannot reach another owner's runs.
+  cancelManyRuns: { resource: "threads", action: "update" },
   deleteRun: { resource: "threads", action: "delete" },
 
   // thread streaming / commands
   postThreadStream: { resource: "threads", action: "create_run" },
   getThreadStream: { resource: "threads", action: "read" },
   postThreadCommands: { resource: "threads", action: "create_run" },
+
+  // meta — the capability handshake. Authorized as an assistants *read*, the narrowest existing
+  // resource:action that fits: `/info` reports which resources are served, so a principal that may not
+  // read any of them has no business enumerating them either. It exposes no thread or store content.
+  getServerInfo: { resource: "assistants", action: "read" },
 
   // store
   putStoreItem: { resource: "store", action: "put" },

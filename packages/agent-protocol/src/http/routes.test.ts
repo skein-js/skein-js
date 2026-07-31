@@ -1,8 +1,16 @@
 import { describe, expect, it } from "vitest";
 
+import { ROUTE_AUTHZ } from "../auth/route-authz.js";
 import type { ProtocolRequest } from "../create-handlers.js";
 
-import { copyThreadIdIntoBody, foldThreadId, matchSkeinRoute } from "./routes.js";
+import {
+  copyThreadIdIntoBody,
+  createRouteMatcher,
+  filterSkeinRoutes,
+  foldThreadId,
+  matchSkeinRoute,
+  skeinRoutes,
+} from "./routes.js";
 
 function request(overrides: Partial<ProtocolRequest> = {}): ProtocolRequest {
   return {
@@ -37,6 +45,67 @@ describe("copyThreadIdIntoBody", () => {
 
   it("keeps the deprecated foldThreadId alias pointing at the same function", () => {
     expect(foldThreadId).toBe(copyThreadIdIntoBody);
+  });
+});
+
+describe("the route table itself", () => {
+  it("classifies every route into a group, so nothing escapes the http.disable_* flags", () => {
+    // A missing `group` is silently un-disableable, and the omission would only show up as a resource
+    // a user could not turn off. Every handler in the table is also in ROUTE_AUTHZ, so the two views of
+    // the surface stay in step.
+    for (const binding of skeinRoutes) {
+      expect(binding.group, `${binding.method} ${binding.path} has no group`).toBeDefined();
+      expect(ROUTE_AUTHZ[binding.handler], `${binding.handler} has no authz entry`).toBeDefined();
+    }
+  });
+
+  it("groups the thread-scoped run and streaming paths under runs, as LangGraph does", () => {
+    // Grouped by resource *family*, not by path prefix: LangGraph serves `/threads/:id/runs*` and the
+    // thread-centric streaming surface from its runs module, so `disable_runs` takes them there too.
+    const groupOf = (method: string, path: string) =>
+      skeinRoutes.find((binding) => binding.method === method && binding.path === path)?.group;
+
+    expect(groupOf("post", "/threads/:thread_id/runs")).toBe("runs");
+    expect(groupOf("post", "/threads/:thread_id/stream")).toBe("runs");
+    expect(groupOf("post", "/threads/:thread_id/history")).toBe("threads");
+    expect(groupOf("get", "/info")).toBe("meta");
+  });
+});
+
+describe("filterSkeinRoutes", () => {
+  it("removes only the disabled group's routes", () => {
+    const filtered = filterSkeinRoutes(skeinRoutes, { store: true });
+
+    expect(filtered.some((binding) => binding.group === "store")).toBe(false);
+    // Everything else survives untouched.
+    expect(filtered.length).toBe(skeinRoutes.filter((b) => b.group !== "store").length);
+    expect(filtered.some((binding) => binding.group === "threads")).toBe(true);
+  });
+
+  it("returns the same array when nothing is disabled, so a matcher can be cached on identity", () => {
+    // `routeMatcherFor` keys a WeakMap on the table's identity; a fresh copy per call would recompile
+    // every route's regex on every request.
+    expect(filterSkeinRoutes(skeinRoutes, {})).toBe(skeinRoutes);
+    expect(filterSkeinRoutes(skeinRoutes, { store: false })).toBe(skeinRoutes);
+  });
+
+  it("makes a disabled route simply not match, so the host app answers instead", () => {
+    const match = createRouteMatcher(filterSkeinRoutes(skeinRoutes, { runs: true }));
+
+    expect(match("post", "/threads/t-1/runs")).toBeUndefined();
+    expect(match("post", "/runs/wait")).toBeUndefined();
+    // The threads resource is untouched by disable_runs.
+    expect(match("get", "/threads/t-1")?.binding.handler).toBe("getThread");
+  });
+
+  it("can disable several groups at once", () => {
+    const match = createRouteMatcher(
+      filterSkeinRoutes(skeinRoutes, { assistants: true, meta: true }),
+    );
+
+    expect(match("get", "/info")).toBeUndefined();
+    expect(match("post", "/assistants/search")).toBeUndefined();
+    expect(match("post", "/threads/search")?.binding.handler).toBe("listThreads");
   });
 });
 

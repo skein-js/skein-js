@@ -138,11 +138,11 @@ Then run the [verification sequence](./deploy.md#verify-a-deployment) against
 - **Autoscaling on CPU is usually wrong.** Runs are typically I/O-bound on a model provider, so CPU
   stays low while the worker is saturated. Raise `SKEIN_RUN_CONCURRENCY` first; scale replicas when
   runs are genuinely CPU-bound, and watch the
-  [connection budget](./deploy.md#connection-budget) — `2 × PG_POOL_MAX × replicas`.
-- **`replicas: 2` and above**: read
-  [Scaling past one instance](./deploy.md#scaling-past-one-instance). Cross-instance cancellation and
-  the one-active-run-per-thread guard are per-process, so if you depend on them, run one replica or
-  route by thread with session affinity.
+  [connection budget](./deploy.md#connection-budget) — `3 × PG_POOL_MAX × replicas`.
+- **`replicas: 2` and above**: cross-instance cancellation and the one-active-run-per-thread guard hold
+  with Postgres + Redis configured, so no session affinity or thread-affinity routing is needed. Read
+  [Scaling past one instance](./deploy.md#scaling-past-one-instance) for the connection budget, since
+  each executing run holds one connection for its whole duration.
 - Add a **PodDisruptionBudget** (`minAvailable: 1`) so a node drain doesn't take every replica at
   once.
 - `readOnlyRootFilesystem: true` works because skein itself writes nothing to disk in production (the

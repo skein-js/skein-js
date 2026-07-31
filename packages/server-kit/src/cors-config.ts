@@ -3,6 +3,13 @@
 // skein deliberately does NOT copy LangGraph's permissive `origin: "*"` default: CORS is off until
 // `http.cors` is configured (or a `cors` option is passed). See docs/langgraph-cli-compat.md.
 
+import {
+  filterSkeinRoutes,
+  skeinRoutes,
+  type DisabledRouteGroups,
+  type RouteBinding,
+  type RouteGroup,
+} from "@skein-js/agent-protocol";
 import type { CorsOptions } from "cors";
 
 /** The `http.cors` block of a langgraph.json — LangGraph's field names (snake_case). */
@@ -60,4 +67,38 @@ export function corsFromHttpConfig(http: unknown): CorsOptions | undefined {
   const cors = (http as { cors?: unknown }).cors;
   if (typeof cors !== "object" || cors === null) return undefined;
   return toCorsOptions(cors as LanggraphCorsConfig);
+}
+
+/** The `http.disable_*` flag that switches off each route group. */
+const DISABLE_FLAGS: Record<string, RouteGroup> = {
+  disable_assistants: "assistants",
+  disable_threads: "threads",
+  disable_runs: "runs",
+  disable_store: "store",
+  disable_meta: "meta",
+};
+
+/**
+ * Read the `http.disable_*` route toggles from a langgraph.json `http` block.
+ *
+ * Only literal `true` disables a group: LangGraph's schema defaults each flag to `false`, and a
+ * truthy-but-not-true value (a `"false"` string from an env-substituted config) must not silently
+ * remove a resource.
+ */
+export function disabledRoutesFromHttpConfig(http: unknown): DisabledRouteGroups {
+  if (typeof http !== "object" || http === null) return {};
+  const flags = http as Record<string, unknown>;
+  const disabled: DisabledRouteGroups = {};
+  for (const [flag, group] of Object.entries(DISABLE_FLAGS)) {
+    if (flags[flag] === true) disabled[group] = true;
+  }
+  return disabled;
+}
+
+/**
+ * The route table a server should mount given a langgraph.json `http` block — the full table when
+ * nothing is disabled (the same array, not a copy).
+ */
+export function routesFromHttpConfig(http: unknown): readonly RouteBinding[] {
+  return filterSkeinRoutes(skeinRoutes, disabledRoutesFromHttpConfig(http));
 }

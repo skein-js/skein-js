@@ -7,6 +7,7 @@ import { readdirSync, readFileSync } from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 
+import { isTerminalRunStatus, type RunStatus } from "@skein-js/core";
 import { describe, expect, it } from "vitest";
 
 import { SKEIN_MIGRATIONS } from "./migrations.generated.js";
@@ -65,7 +66,26 @@ describe("SKEIN_MIGRATIONS", () => {
       "0003_assistant_versions",
       "0004_run_error",
       "0005_performance_indexes",
+      "0006_inflight_runs_index",
     ]);
+  });
+
+  it("keeps the inflight partial index in step with TERMINAL_RUN_STATUSES", () => {
+    // `listActiveRuns` filters with `NOT (status = ANY(TERMINAL_RUN_STATUSES))` while the index is
+    // predicated on a literal list Postgres can match against — the planner needs a literal. If the
+    // two ever disagree the query silently stops using the index and the global sweep goes back to a
+    // sequential scan over every run ever recorded, with nothing failing to say so.
+    const migration = SKEIN_MIGRATIONS.find((entry) => entry.name === "0006_inflight_runs_index");
+    const predicate = /WHERE status IN \(([^)]*)\)/.exec(migration?.up ?? "")?.[1];
+    const indexed = predicate?.split(",").map((status) => status.trim().replace(/'/g, ""));
+
+    expect(indexed).toBeDefined();
+    for (const status of indexed ?? []) {
+      expect(isTerminalRunStatus(status as RunStatus)).toBe(false);
+    }
+    // …and nothing non-terminal is left out, which is the direction that would make the index wrong
+    // rather than merely unused.
+    expect(indexed?.sort()).toEqual(["pending", "running"]);
   });
 
   it("pre-splits a concurrent migration into index DDL only", () => {

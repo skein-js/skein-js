@@ -1,6 +1,6 @@
-// @skein-js/redis — Redis job queue + cross-instance pub/sub streaming. Implements the
-// `@skein-js/core` RunQueue and RunEventBus contracts so the run engine/worker use it unchanged.
-// See docs/runs-and-redis.md and docs/streaming.md.
+// @skein-js/redis — Redis job queue, cross-instance pub/sub streaming, and cross-instance run
+// cancellation. Implements the `@skein-js/core` RunQueue, RunEventBus, and RunAbortChannel contracts so
+// the run engine/worker use them unchanged. See docs/runs-and-redis.md and docs/streaming.md.
 
 export { RedisRunQueue, type RedisRunQueueOptions } from "./redis-run-queue.js";
 export {
@@ -8,3 +8,7 @@ export {
   type RedisClientFactory,
   type RedisRunEventBusOptions,
 } from "./redis-run-event-bus.js";
+export {
+  RedisRunAbortChannel,
+  type RedisRunAbortChannelOptions,
+} from "./redis-run-abort-channel.js";

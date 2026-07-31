@@ -168,6 +168,6 @@ Run the [verification sequence](./deploy.md#verify-a-deployment) against your do
   stored off the box.
 - **Updates.** `skein build -t my-agent && docker compose up -d`. Migrations run on boot; there is no
   separate migrate step.
-- **One box is one instance**, so none of the
-  [multi-instance caveats](./deploy.md#scaling-past-one-instance) apply — cancellation and the
-  per-thread run guard work exactly as documented. That's a genuine advantage of this setup.
+- **One box is one instance**, so the cross-instance machinery
+  ([Scaling past one instance](./deploy.md#scaling-past-one-instance)) never has to do anything —
+  cancellation and the per-thread run guard stay entirely in-process, and you pay for neither.

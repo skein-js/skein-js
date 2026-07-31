@@ -312,3 +312,80 @@ describe("@skein-js/express adapter", () => {
     expect(actual.headers.get("access-control-allow-origin")).toBe("http://localhost:3000");
   });
 });
+
+describe("http.disable_* route flags", () => {
+  let running: RunningServer | undefined;
+
+  afterEach(async () => {
+    await running?.close();
+    running = undefined;
+  });
+
+  it("does not mount a disabled group, so its paths 404 like any unknown route", async () => {
+    // Not 403 or 501: LangGraph skips the `app.route(...)` call for a disabled group, so the request
+    // falls through to the host app. An embedded skein must leave that path free for the app's own
+    // handler.
+    running = await startEchoServer({ disable: { store: true } });
+    const { baseUrl } = running;
+
+    const store = await fetch(`${baseUrl}/store/items?namespace=ns&key=k`);
+    expect(store.status).toBe(404);
+    const search = await fetch(`${baseUrl}/store/items/search`, {
+      method: "POST",
+      headers: jsonHeaders,
+      body: "{}",
+    });
+    expect(search.status).toBe(404);
+
+    // Every other resource is untouched.
+    const thread = await fetch(`${baseUrl}/threads`, {
+      method: "POST",
+      headers: jsonHeaders,
+      body: "{}",
+    });
+    expect(thread.status).toBe(200);
+  });
+
+  it("disable_runs takes the thread-scoped run paths with it, and leaves threads serving", async () => {
+    running = await startEchoServer({ disable: { runs: true } });
+    const { baseUrl } = running;
+
+    const created = await fetch(`${baseUrl}/threads`, {
+      method: "POST",
+      headers: jsonHeaders,
+      body: "{}",
+    });
+    const { thread_id } = (await created.json()) as { thread_id: string };
+
+    // Grouped by resource family rather than path prefix, so these go with `runs`.
+    for (const path of [
+      `/threads/${thread_id}/runs`,
+      "/runs/wait",
+      `/threads/${thread_id}/stream`,
+    ]) {
+      const response = await fetch(`${baseUrl}${path}`, {
+        method: "POST",
+        headers: jsonHeaders,
+        body: JSON.stringify({ assistant_id: "echo", input: {} }),
+      });
+      expect(response.status, `${path} should not be served`).toBe(404);
+    }
+
+    expect((await fetch(`${baseUrl}/threads/${thread_id}`)).status).toBe(200);
+  });
+
+  it("serves everything when no flag is set", async () => {
+    running = await startEchoServer();
+    expect((await fetch(`${running.baseUrl}/info`)).status).toBe(200);
+  });
+
+  it("disable_meta removes /info but never the /ok health probe", async () => {
+    // The container health check hits `/ok`; a config flag that could turn it off would make a healthy
+    // instance read as dead, so the adapter serves it outside the protocol table.
+    running = await startEchoServer({ disable: { meta: true } });
+    const { baseUrl } = running;
+
+    expect((await fetch(`${baseUrl}/info`)).status).toBe(404);
+    expect((await fetch(`${baseUrl}/ok`)).status).toBe(200);
+  });
+});

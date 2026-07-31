@@ -23,6 +23,7 @@ import { resolveRunConcurrency, resolveShutdownGraceMs } from "@skein-js/server-
 import { describeSnapshot, readLanggraphDevState } from "@skein-js/server-kit/dev";
 
 import { printBanner } from "./banner.js";
+import { skeinCliVersion } from "./cli-version.js";
 import { createDevLogger } from "./dev-logger.js";
 import { devStateFile, LANGGRAPH_DIR, STATE_DIR, writeDevStateFile } from "./dev-state.js";
 import { applyProjectEnv } from "./project-env.js";
@@ -95,6 +96,8 @@ export async function runDev(options: DevCommandOptions): Promise<void> {
     importModule: loader.importModule,
     store: options.store,
     queue: options.queue,
+    // The CLI knows its own version and the engine deliberately does not — see cli-version.ts.
+    serverVersion: skeinCliVersion(),
   });
   // Fall back to PORT/HOST env only when the flag wasn't passed explicitly (so an explicit --port
   // always wins). Resolved after applyProjectEnv above, so a PORT in the project's .env counts.

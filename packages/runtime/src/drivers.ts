@@ -8,9 +8,15 @@
 
 import { PostgresSaver } from "@langchain/langgraph-checkpoint-postgres";
 import type { ProtocolDeps } from "@skein-js/agent-protocol";
-import { RedisRunEventBus, RedisRunQueue, type RedisRunEventBusOptions } from "@skein-js/redis";
+import {
+  RedisRunAbortChannel,
+  RedisRunEventBus,
+  RedisRunQueue,
+  type RedisRunEventBusOptions,
+} from "@skein-js/redis";
 import {
   createPostgresPool,
+  createPostgresThreadExecutionGate,
   PostgresSkeinStore,
   type PostgresSkeinStoreOptions,
   type StoreIndexConfig,
@@ -140,7 +146,8 @@ export function postgresConnectionOptions(): PostgresConnectionOptions {
 }
 
 /**
- * Connect the Postgres `SkeinStore` (+ migrate) and the `PostgresSaver` checkpointer (+ setup) against
+ * Connect the Postgres `SkeinStore` (+ migrate), the `PostgresSaver` checkpointer (+ setup), and the
+ * cross-instance per-thread execution gate against
  * one URL, sharing connection tuning across both pools — the saver's `fromConnString` would ignore the
  * tuning, so it is built on an explicit `createPostgresPool`. Pushes `store.close()` then `saver.end()`
  * onto `disposers` in that order, so teardown releases both pools even on a partial-assembly failure.
@@ -153,7 +160,7 @@ export async function connectPostgresStore(args: {
   /** The largest page any list/search returns — see `resolveMaxPageSize`. */
   maxPageSize: number;
   disposers: Disposer[];
-}): Promise<Pick<ProtocolDeps, "store" | "checkpointer">> {
+}): Promise<Pick<ProtocolDeps, "store" | "checkpointer" | "threadExecutionGate">> {
   const { url, index, ttl, connectionOptions, maxPageSize, disposers } = args;
   const store = await PostgresSkeinStore.connect(url, {
     ...(index ? { index } : {}),
@@ -178,7 +185,34 @@ export async function connectPostgresStore(args: {
 
   const checkpointer = new PostgresSaver(createPostgresPool(url, connectionOptions));
   disposers.push(() => checkpointer.end());
-  return { store, checkpointer };
+
+  // Per-thread execution serialization across instances, on its **own** pool: every executing run holds
+  // one connection from it for the run's whole duration, so sharing the store's pool would let a burst
+  // of runs starve ordinary queries. Sized to the run concurrency plus a small margin rather than to
+  // `PG_POOL_MAX` — see docs/deploy.md on the connection budget.
+  const gatePool = createPostgresPool(url, {
+    ...connectionOptions,
+    poolMax: threadGatePoolMax(connectionOptions.poolMax),
+  });
+  disposers.push(() => gatePool.end());
+  return {
+    store,
+    checkpointer,
+    threadExecutionGate: createPostgresThreadExecutionGate(gatePool),
+  };
+}
+
+/**
+ * How many connections the execution gate's pool may hold.
+ *
+ * One per concurrently-executing run, so it is bounded by the same thing run concurrency is. Mirroring
+ * `PG_POOL_MAX` is the honest default: an operator who sized that pool for their instance's load has
+ * already expressed how many runs they expect in flight, and the gate cannot need more claims than there
+ * are runs. The floor keeps a deliberately tiny `PG_POOL_MAX` from deadlocking execution outright —
+ * a gate pool of zero would mean no run could ever start.
+ */
+function threadGatePoolMax(configuredPoolMax: number | undefined): number {
+  return Math.max(configuredPoolMax ?? 10, 2);
 }
 
 /**
@@ -198,17 +232,30 @@ export function redisEventBusOptions(): RedisRunEventBusOptions {
   return options;
 }
 
-/** Connect the Redis run queue + event bus against one URL. Pushes queue then bus disposers. */
+/**
+ * Connect the Redis run queue, event bus, and abort channel against one URL. Pushes their disposers in
+ * that order.
+ *
+ * The abort channel comes along automatically rather than behind a flag: Redis is already what makes a
+ * deployment multi-instance here, and a multi-instance deployment whose cancels reach only the replica
+ * that received the request is the bug this closes — see docs/deploy.md, "Scaling past one instance".
+ */
 export function connectRedisQueue(args: {
   url: string;
   disposers: Disposer[];
-}): Pick<ProtocolDeps, "queue" | "bus"> {
+}): Pick<ProtocolDeps, "queue" | "bus" | "abortChannel"> {
   const { url, disposers } = args;
   const queue = new RedisRunQueue(url);
   disposers.push(() => queue.dispose());
   const bus = new RedisRunEventBus(url, redisEventBusOptions());
   disposers.push(() => bus.dispose());
-  return { queue, bus };
+  const abortChannel = new RedisRunAbortChannel(url, {
+    // Reported, not thrown: losing the abort channel degrades cancellation to per-instance, which must
+    // not take the process down or fail the request that triggered it.
+    onError: (error) => console.warn("skein: run abort channel error", error),
+  });
+  disposers.push(() => abortChannel.dispose());
+  return { queue, bus, abortChannel };
 }
 
 /**

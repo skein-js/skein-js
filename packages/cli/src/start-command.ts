@@ -25,6 +25,7 @@ import {
 } from "@skein-js/server-kit";
 
 import { printBanner } from "./banner.js";
+import { skeinCliVersion } from "./cli-version.js";
 import { createDevLogger } from "./dev-logger.js";
 import { applyProjectEnv } from "./project-env.js";
 import { resolveRequestLog } from "./request-log.js";
@@ -148,6 +149,8 @@ export async function runStart(options: StartCommandOptions): Promise<void> {
       store: options.store,
       queue: options.queue,
       schemas,
+      // The CLI knows its own version and the engine deliberately does not — see cli-version.ts.
+      serverVersion: skeinCliVersion(),
     });
   } catch (error) {
     console.error(`skein: ${describeError(error)}`);

@@ -149,12 +149,15 @@ it but is never required.
   // checkpointer backend; "default" == Postgres (via PostgresSaver)
   "checkpointer": { "type": "default" },
 
-  // server customization — skein reads `cors`; the rest is accepted but not yet implemented
+  // server customization — `cors` plus LangGraph's route toggles
   "http": {
     "cors": { "allow_origins": ["*"] },
-    "disable_assistants": false, // ignored by skein today
-    "disable_threads": false, //    ignored by skein today
-    // custom user routes may be attached here in a later iteration
+    "disable_assistants": false,
+    "disable_threads": false,
+    "disable_runs": false,
+    "disable_store": false,
+    "disable_meta": false, // turns off GET /info; never the /ok health probe
+    // `http.app` (custom user routes) is still accepted and ignored
   },
 
   // custom authentication + authorization (see below)
@@ -178,18 +181,18 @@ it but is never required.
 
 ### How each field maps into skein-js
 
-| `langgraph.json` field | skein-js wiring                                                                                                                                                                             |
-| ---------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `graphs`               | [`@skein-js/config`](./storage.md) resolves each `path:export`, loading a compiled graph or `makeGraph` factory. Drives `/agents` introspection + run execution.                            |
-| `node_version`         | Used by `skein build` / `skein dockerfile` base image selection. Defaults to Node 24 LTS when omitted; an explicit value is honoured verbatim, including an older one.                      |
-| `skein.runtime`        | Native production server and pinned official image: `node`, `bun`, or `deno`. Bun/Deno use `@skein-js/fetch` with `Bun.serve`/`Deno.serve`, never Express compatibility.                    |
-| `env`                  | Loaded into `process.env` at boot (dev) / baked into the image (build).                                                                                                                     |
-| `store`                | `store.index.{embed,dims,fields,hnsw}` configures pgvector semantic search on the Postgres driver; `hnsw: true` opts into the approximate index — see [storage.md](./storage.md).           |
-| `checkpointer`         | `"default"` → `PostgresSaver`; dev falls back to an in-memory `MemorySaver`.                                                                                                                |
-| `http`                 | **`http.cors` only** — mapped to the adapter's CORS options. Other keys (`disable_*` route flags, `app`) are accepted but **not yet implemented**, so they're ignored rather than rejected. |
-| `auth`                 | `auth.path` loads an `Auth` from `@langchain/langgraph-sdk/auth`; every request is authenticated + authorized; `disable_studio_auth` honored.                                               |
-| `telemetry`            | **skein extension.** Builds the telemetry sinks runs report to — see [observability.md](./observability.md). Unknown to `langgraph dev`, which ignores it.                                  |
-| `dockerfile_lines`     | Appended by `skein dockerfile` / `skein build`.                                                                                                                                             |
+| `langgraph.json` field | skein-js wiring                                                                                                                                                                                                       |
+| ---------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `graphs`               | [`@skein-js/config`](./storage.md) resolves each `path:export`, loading a compiled graph or `makeGraph` factory. Drives `/agents` introspection + run execution.                                                      |
+| `node_version`         | Used by `skein build` / `skein dockerfile` base image selection. Defaults to Node 24 LTS when omitted; an explicit value is honoured verbatim, including an older one.                                                |
+| `skein.runtime`        | Native production server and pinned official image: `node`, `bun`, or `deno`. Bun/Deno use `@skein-js/fetch` with `Bun.serve`/`Deno.serve`, never Express compatibility.                                              |
+| `env`                  | Loaded into `process.env` at boot (dev) / baked into the image (build).                                                                                                                                               |
+| `store`                | `store.index.{embed,dims,fields,hnsw}` configures pgvector semantic search on the Postgres driver; `hnsw: true` opts into the approximate index — see [storage.md](./storage.md).                                     |
+| `checkpointer`         | `"default"` → `PostgresSaver`; dev falls back to an in-memory `MemorySaver`.                                                                                                                                          |
+| `http`                 | `http.cors` maps to the adapter's CORS options; the `disable_*` flags remove that resource's routes before mounting, so it 404s from the host app as under `langgraph dev`. `http.app` is still accepted and ignored. |
+| `auth`                 | `auth.path` loads an `Auth` from `@langchain/langgraph-sdk/auth`; every request is authenticated + authorized; `disable_studio_auth` honored.                                                                         |
+| `telemetry`            | **skein extension.** Builds the telemetry sinks runs report to — see [observability.md](./observability.md). Unknown to `langgraph dev`, which ignores it.                                                            |
+| `dockerfile_lines`     | Appended by `skein dockerfile` / `skein build`.                                                                                                                                                                       |
 
 ## Graph loading (`path:export` notation)
 

@@ -105,7 +105,13 @@ export type { DevStateCounts } from "./langgraph-import.js";
 // LangGraph-compatible CORS: map a langgraph.json `http.cors` block to `cors` options. `CorsOptions`
 // is re-exported so adapters can type their `cors` option without depending on the `cors` package
 // directly (Fastify/NestJS/Next.js use their own CORS mechanisms but accept this shared shape).
-export { corsFromHttpConfig, toCorsOptions } from "./cors-config.js";
+export { routeMatcherFor } from "./route-matcher-cache.js";
+export {
+  corsFromHttpConfig,
+  disabledRoutesFromHttpConfig,
+  routesFromHttpConfig,
+  toCorsOptions,
+} from "./cors-config.js";
 export type { LanggraphCorsConfig } from "./cors-config.js";
 export type { CorsOptions } from "cors";
 

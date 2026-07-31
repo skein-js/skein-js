@@ -154,6 +154,7 @@ processes you'll want `tini` — add it via `dockerfile_lines` in `langgraph.jso
 
 ### Multi-instance semantics
 
-With `--max-instances` above 1, read
-[Scaling past one instance](./deploy.md#scaling-past-one-instance) — cross-instance cancellation and
-the one-run-per-thread guard are still per-process.
+With `--max-instances` above 1 and Postgres + Redis configured, cross-instance cancellation and the
+one-run-per-thread guard both hold — no session affinity needed. See
+[Scaling past one instance](./deploy.md#scaling-past-one-instance) for what that costs in Postgres
+connections.

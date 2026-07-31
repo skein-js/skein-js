@@ -92,6 +92,24 @@ export function createAuthScopedStore(
         // instead of a drain over every row in the table.
         return owned.filter((thread) => matches(thread.metadata));
       },
+      /**
+       * Counted with the ownership scoping pushed into the driver, like `search` — so a caller is told
+       * how many threads *they* have, not how many exist.
+       *
+       * The one asymmetry with `search`: there is no result set to re-filter here, so a count relies on
+       * `authFiltersToMetadataSubset` alone. That translation deliberately errs *broad* (it omits any
+       * clause it cannot express exactly), so for a custom engine whose `matchesFilters` is stricter
+       * than its own filters the count can exceed what `search` would return. Every shape
+       * `AuthFilterValue` declares translates exactly, so the two agree in practice — and erring high
+       * on a count is the harmless direction, where erring high on a *read* would leak a row.
+       */
+      count: async (query) => {
+        const { enforcedMetadata: _fromCaller, ...requested } = query;
+        return inner.threads.count({
+          ...requested,
+          ...(ownershipMetadata ? { enforcedMetadata: ownershipMetadata } : {}),
+        });
+      },
       get: async (threadId) => {
         const thread = await inner.threads.get(threadId);
         return thread && matches(thread.metadata) ? thread : null;
@@ -142,15 +160,32 @@ export function createAuthScopedStore(
         const run = await inner.runs.get(runId);
         return run && matches(run.metadata) ? run : null;
       },
-      listByThread: async (threadId, pagination) => {
-        const matchingRuns = (await inner.runs.listByThread(threadId)).filter((run) =>
-          matches(run.metadata),
-        );
-        const offset = pagination?.offset ?? 0;
-        const end = pagination?.limit === undefined ? undefined : offset + pagination.limit;
+      // The caller's `limit`/`offset` are applied *here*, after the ownership filter, so a page holds
+      // owned rows rather than owned-rows-within-a-page. `status` is forwarded to the driver instead
+      // (it is not an ownership concern, and pushing it down keeps the read narrow).
+      listByThread: async (threadId, query) => {
+        const matchingRuns = (
+          await inner.runs.listByThread(
+            threadId,
+            query?.status !== undefined ? { status: query.status } : undefined,
+          )
+        ).filter((run) => matches(run.metadata));
+        const offset = query?.offset ?? 0;
+        const end = query?.limit === undefined ? undefined : offset + query.limit;
         return matchingRuns.slice(offset, end);
       },
+      // `hasActiveRun` and `listActiveRuns` are deliberately inherited **unfiltered** (via the spread
+      // above). They are the per-thread concurrency guard, not a user-facing read: filtering them by
+      // ownership would hide another principal's inflight run from the guard, and two runs would then
+      // execute on one thread and interleave their checkpoint writes. Nothing leaks — the thread itself
+      // is ownership-gated, so a caller cannot reach the guard for a thread it does not own, and
+      // `POST /runs/cancel` re-authorizes every run it sweeps through the filtered `get`.
       create: (input) => inner.runs.create({ ...input, metadata: stamp(input.metadata) }),
+      // Stamped the same way as `create`, so a run created through the `reject` guard is owned by its
+      // caller too. The guard's inflight check is deliberately NOT ownership-filtered — see the note on
+      // `listActiveRuns` above: it must see every inflight run on the thread, whoever started it.
+      createIfThreadIdle: (input) =>
+        inner.runs.createIfThreadIdle({ ...input, metadata: stamp(input.metadata) }),
       // `error` must be forwarded: dropping it here compiles fine and would silently discard every
       // run failure reason on every auth-enabled deployment.
       setStatus: async (runId, status, error) => {

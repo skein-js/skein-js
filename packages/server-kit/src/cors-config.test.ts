@@ -1,6 +1,13 @@
+import { skeinRoutes } from "@skein-js/agent-protocol";
 import { describe, expect, it } from "vitest";
 
-import { corsFromHttpConfig, toCorsOptions, type LanggraphCorsConfig } from "./cors-config.js";
+import {
+  corsFromHttpConfig,
+  disabledRoutesFromHttpConfig,
+  routesFromHttpConfig,
+  toCorsOptions,
+  type LanggraphCorsConfig,
+} from "./cors-config.js";
 
 /** Resolve the function `origin` option into a simple `(origin) => boolean` allow predicate. */
 function originPredicate(config: LanggraphCorsConfig): (candidate: string | undefined) => boolean {
@@ -69,5 +76,32 @@ describe("toCorsOptions (LangGraph http.cors → cors options)", () => {
     expect(corsFromHttpConfig({ cors: { allow_origins: ["*"] } })?.origin).toBe("*");
     expect(corsFromHttpConfig({})).toBeUndefined();
     expect(corsFromHttpConfig(undefined)).toBeUndefined();
+  });
+});
+
+describe("disabledRoutesFromHttpConfig / routesFromHttpConfig", () => {
+  it("reads each disable_* flag onto its route group", () => {
+    expect(disabledRoutesFromHttpConfig({ disable_store: true, disable_meta: true })).toEqual({
+      store: true,
+      meta: true,
+    });
+  });
+
+  it("treats only literal true as disabling", () => {
+    // LangGraph's schema defaults each flag to false, and an env-substituted config can carry the
+    // string "false" — which must not remove a resource.
+    expect(disabledRoutesFromHttpConfig({ disable_runs: false })).toEqual({});
+    expect(disabledRoutesFromHttpConfig({ disable_runs: "false" })).toEqual({});
+    expect(disabledRoutesFromHttpConfig({ disable_runs: 1 })).toEqual({});
+    expect(disabledRoutesFromHttpConfig(undefined)).toEqual({});
+  });
+
+  it("returns the untouched table when no flag is set, and a narrower one when they are", () => {
+    expect(routesFromHttpConfig(undefined)).toBe(skeinRoutes);
+    expect(routesFromHttpConfig({ cors: { allow_origins: ["*"] } })).toBe(skeinRoutes);
+
+    const withoutStore = routesFromHttpConfig({ disable_store: true });
+    expect(withoutStore.length).toBeLessThan(skeinRoutes.length);
+    expect(withoutStore.some((binding) => binding.group === "store")).toBe(false);
   });
 });

@@ -151,6 +151,11 @@ export class MemorySkeinStore implements SkeinStore {
     this.#maxPageSize = requireValidMaxPageSize(options?.maxPageSize ?? DEFAULT_MAX_PAGE_SIZE);
   }
 
+  /** The bound this driver applies to an unbounded read — see `SkeinStore.maxPageSize`. */
+  get maxPageSize(): number {
+    return this.#maxPageSize;
+  }
+
   /**
    * The effective page size for a search: the caller's limit, bounded by `maxPageSize`.
    *
@@ -212,6 +217,36 @@ export class MemorySkeinStore implements SkeinStore {
    * so counting via it would report at most one page. Postgres counts with `count(*)`, and the two
    * drivers have to agree.
    */
+  /**
+   * Every thread matching `query`'s filters, sorted — before pagination. **Stored references, not
+   * copies**: callers must clone whatever they hand out (`clonePage`).
+   *
+   * Extracted for the same reason as {@link #matchingAssistants}: `search` bounds an absent limit to a
+   * page, so `count` cannot be measured through it.
+   */
+  #matchingThreads(query: ThreadSearchQuery): Thread[] {
+    const matched = [...this.#threads.values()].filter(
+      (thread) =>
+        (!query.ids || query.ids.includes(thread.thread_id)) &&
+        (!query.status || thread.status === query.status) &&
+        isMetadataSubset(thread.metadata, query.metadata) &&
+        // The server's own scoping, AND-ed with the caller's filter — see `enforcedMetadata`.
+        isMetadataSubset(thread.metadata, query.enforcedMetadata) &&
+        isMetadataSubset(thread.values, query.values),
+    );
+    const sortBy = query.sortBy ?? "created_at";
+    const direction = query.sortOrder === "asc" ? 1 : -1;
+    const compare = (a: string, b: string): number => (a < b ? -1 : a > b ? 1 : 0);
+    matched.sort((a, b) => {
+      const primary = compare(String(a[sortBy] ?? ""), String(b[sortBy] ?? ""));
+      // Break ties on thread_id in the same direction, so paging is deterministic and matches the
+      // Postgres driver's `ORDER BY <sortBy> <dir>, thread_id <dir>`.
+      const ordered = primary !== 0 ? primary : compare(a.thread_id, b.thread_id);
+      return direction * ordered;
+    });
+    return matched;
+  }
+
   #matchingAssistants(query: AssistantSearchQuery): Assistant[] {
     const matched = [...this.#assistants.values()].filter(
       (assistant) =>
@@ -341,29 +376,9 @@ export class MemorySkeinStore implements SkeinStore {
         0,
         this.#pageLimit(undefined),
       ),
-    search: async (query: ThreadSearchQuery) => {
-      // Stored references — `clonePage` copies only the page that leaves.
-      const matched = [...this.#threads.values()].filter(
-        (thread) =>
-          (!query.ids || query.ids.includes(thread.thread_id)) &&
-          (!query.status || thread.status === query.status) &&
-          isMetadataSubset(thread.metadata, query.metadata) &&
-          // The server's own scoping, AND-ed with the caller's filter — see `enforcedMetadata`.
-          isMetadataSubset(thread.metadata, query.enforcedMetadata) &&
-          isMetadataSubset(thread.values, query.values),
-      );
-      const sortBy = query.sortBy ?? "created_at";
-      const direction = query.sortOrder === "asc" ? 1 : -1;
-      const compare = (a: string, b: string): number => (a < b ? -1 : a > b ? 1 : 0);
-      matched.sort((a, b) => {
-        const primary = compare(String(a[sortBy] ?? ""), String(b[sortBy] ?? ""));
-        // Break ties on thread_id in the same direction, so paging is deterministic and matches the
-        // Postgres driver's `ORDER BY <sortBy> <dir>, thread_id <dir>`.
-        const ordered = primary !== 0 ? primary : compare(a.thread_id, b.thread_id);
-        return direction * ordered;
-      });
-      return clonePage(matched, query.offset ?? 0, this.#pageLimit(query.limit));
-    },
+    search: async (query: ThreadSearchQuery) =>
+      clonePage(this.#matchingThreads(query), query.offset ?? 0, this.#pageLimit(query.limit)),
+    count: async (query: ThreadSearchQuery) => this.#matchingThreads(query).length,
     get: async (threadId) => readOne(this.#threads, threadId),
     create: async (input?: ThreadCreate) => {
       const at = nowIso();
@@ -426,10 +441,16 @@ export class MemorySkeinStore implements SkeinStore {
 
   readonly runs: RunRepo = {
     get: async (runId) => readOne(this.#runs, runId),
-    listByThread: async (threadId, pagination) => {
-      const matches = readAll(this.#runs).filter((run) => run.thread_id === threadId);
-      const offset = pagination?.offset ?? 0;
-      const end = pagination?.limit === undefined ? undefined : offset + pagination.limit;
+    listByThread: async (threadId, query) => {
+      // The status filter is applied *before* paging, so `limit`/`offset` page the filtered set —
+      // see `RunListQuery.status`.
+      const matches = readAll(this.#runs).filter(
+        (run) =>
+          run.thread_id === threadId &&
+          (query?.status === undefined || run.status === query.status),
+      );
+      const offset = query?.offset ?? 0;
+      const end = query?.limit === undefined ? undefined : offset + query.limit;
       return matches.slice(offset, end);
     },
     create: async (input: RunCreate) => {
@@ -447,6 +468,19 @@ export class MemorySkeinStore implements SkeinStore {
       const stored = write(this.#runs, run.run_id, run);
       if (input.kwargs) this.#runKwargs.set(run.run_id, clone(input.kwargs));
       return stored;
+    },
+    // Atomic here for free, and deliberately written to stay that way: the scan and the insert both run
+    // to completion in a single event-loop turn (nothing here suspends, and `create`'s own body has no
+    // `await`), so no other caller can interleave between them. Adding an `await` above the write would
+    // silently reopen the race this method exists to close.
+    createIfThreadIdle: async (input: RunCreate) => {
+      // Checked explicitly because this driver has no foreign key to do it: the Postgres driver refuses
+      // an unknown thread (its `SELECT … FOR UPDATE` finds no row), and the two must not disagree.
+      if (!this.#threads.has(input.thread_id)) return null;
+      for (const run of this.#runs.values()) {
+        if (run.thread_id === input.thread_id && !isTerminalRunStatus(run.status)) return null;
+      }
+      return this.runs.create(input);
     },
     setStatus: async (runId, status: RunStatus, error?: RunError) => {
       const existing = this.#runs.get(runId);
@@ -470,16 +504,30 @@ export class MemorySkeinStore implements SkeinStore {
       const found = this.#runKwargs.get(runId);
       return found ? clone(found) : null;
     },
+    recordBaseCheckpoint: async (runId, baseCheckpointId) => {
+      // A run created with no kwargs at all still gets the field, so the value is never lost to the
+      // absence of a blob to put it in.
+      if (!this.#runs.has(runId)) return;
+      const existing = this.#runKwargs.get(runId) ?? {};
+      this.#runKwargs.set(runId, { ...existing, base_checkpoint_id: baseCheckpointId });
+    },
     hasActiveRun: async (threadId) => {
       for (const run of this.#runs.values()) {
         if (run.thread_id === threadId && !isTerminalRunStatus(run.status)) return true;
       }
       return false;
     },
+    // `threadId` omitted sweeps every thread (see the `RunRepo.listActiveRuns` contract). Bounded like
+    // every other unbounded read, so a server with a very large backlog can't be made to materialize
+    // all of it in one call.
     listActiveRuns: async (threadId) =>
-      readAll(this.#runs).filter(
-        (run) => run.thread_id === threadId && !isTerminalRunStatus(run.status),
-      ),
+      readAll(this.#runs)
+        .filter(
+          (run) =>
+            (threadId === undefined || run.thread_id === threadId) &&
+            !isTerminalRunStatus(run.status),
+        )
+        .slice(0, this.#pageLimit(undefined)),
   };
 
   readonly store: StoreRepo = {

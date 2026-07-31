@@ -66,6 +66,11 @@ makes this safe by skipping any run already terminal in the store.
   BullMQ's stalled-job check and retried, so runs survive restarts.
 - **Cross-instance pub/sub** — run stream frames are published to a Redis Stream + channel so a
   client connected to instance B can join a run executing on instance A (see [streaming.md](./streaming.md)).
+- **Cross-instance cancellation** — a `RunAbortChannel` over Redis pub/sub carries the _stop now_ signal
+  to whichever instance is executing a run, so a cancel routed to the wrong replica still stops the
+  graph. The cancel itself is durable in the run row before the message is published, so a dropped
+  message costs promptness rather than correctness. See
+  [deploy.md](./deploy.md#scaling-past-one-instance).
 
 ### What a frame costs
 
@@ -138,8 +143,10 @@ execution lock at _every_ concurrency, so the per-thread guard above holds regar
 
 ### Head-of-line blocking
 
-A run waiting on a busy thread's lock still occupies a slot. So N queued runs on the _same_ thread
-occupy N slots with N−1 merely waiting, and other threads wait behind them. Two things bound this:
+A run waiting on a busy thread's execution claim still occupies a slot. So N queued runs on the _same_
+thread occupy N slots with N−1 merely waiting, and other threads wait behind them. This is a
+**utilization** limit, not a correctness one — the claim keeps the runs correctly serialized either way.
+Two things bound it:
 
 - It needs an explicit opt-in. The default `multitask_strategy` is `"reject"`, and a pending run
   counts as active — so a second background run on a busy thread is rejected before it can queue.
@@ -147,14 +154,15 @@ occupy N slots with N−1 merely waiting, and other threads wait behind them. Tw
 - The worst case degrades to serial execution. No deadlock, no dropped run.
 
 Relatedly, **ordering across background `"enqueue"` runs is not guaranteed above concurrency 1**:
-several are dequeued at once and race for the thread's lock. This matches LangGraph at
+several are dequeued at once and race for the thread's claim. This matches LangGraph at
 `N_JOBS_PER_WORKER=10`, whose N worker loops have no cross-loop ordering guarantee either. If you
 need strict FIFO across background runs on one thread, set concurrency to 1.
 
 **Concurrency vs. replicas.** Raise concurrency when you have many independent threads and runs are
 I/O-bound (model calls). Add instances when runs are CPU-bound, or when threads are long-lived and
 serialized. Note each concurrent run holds a Postgres connection — see the pool-sizing note in
-[deploy.md](./deploy.md#connection-budget).
+[deploy.md](./deploy.md#connection-budget) — and, on the Postgres driver, a second one for its
+per-thread execution claim, held for the whole run.
 
 ## Deployment topology (`skein up`)
 

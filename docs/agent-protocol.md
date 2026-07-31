@@ -71,6 +71,8 @@ version and mirrors its fields, and `POST .../latest` rolls back to any past ver
 | `POST`   | `/threads`                                   |                                               |
 | `GET`    | `/threads/{thread_id}`                       |                                               |
 | `POST`   | `/threads/search`                            |                                               |
+| `POST`   | `/threads/count`                             | How many match the filters (no pagination)    |
+| `POST`   | `/threads/prune`                             | Bulk `delete`, or `keep_latest` history trim  |
 | `GET`    | `/threads/{thread_id}/state`                 | Current state snapshot (`useStream` hydrates) |
 | `POST`   | `/threads/{thread_id}/state`                 | Time travel: fork state at a checkpoint       |
 | `GET`    | `/threads/{thread_id}/state/{checkpoint_id}` | Time travel: state at a checkpoint            |
@@ -126,22 +128,70 @@ _branch_ from any past checkpoint:
 
 ### Runs — stateless / ephemeral
 
-| Method | Path           | MVP |
-| ------ | -------------- | --- |
-| `POST` | `/runs/wait`   | ✅  |
-| `POST` | `/runs/stream` | ✅  |
+Each of these creates its own thread. `on_completion` decides what happens to it (below).
+
+| Method | Path           | Notes                                            |
+| ------ | -------------- | ------------------------------------------------ |
+| `POST` | `/runs/wait`   | Run to completion, answer with the final values  |
+| `POST` | `/runs/stream` | Run and stream frames as SSE                     |
+| `POST` | `/runs`        | Queue a background run, answer with the `Run`    |
+| `POST` | `/runs/batch`  | An **array** of run-creates; max 100 per request |
+| `POST` | `/runs/cancel` | `cancelMany` — see below                         |
 
 ### Runs — background (thread-scoped)
 
-| Method   | Path                                               | Notes                            |
-| -------- | -------------------------------------------------- | -------------------------------- |
-| `POST`   | `/threads/{thread_id}/runs`                        | Start a background run           |
-| `GET`    | `/threads/{thread_id}/runs`                        | List a thread's runs (paginated) |
-| `GET`    | `/threads/{thread_id}/runs/{run_id}`               | Fetch one run                    |
-| `GET`    | `/threads/{thread_id}/runs/{run_id}/stream` (join) | Join a run's stream              |
-| `POST`   | `/threads/{thread_id}/runs/{run_id}/cancel`        | Cancel a run                     |
-| `DELETE` | `/threads/{thread_id}/runs/{run_id}`               | Delete a run                     |
-| `GET`    | `/runs/{run_id}/stream` (join)                     | Join by run id (thread-agnostic) |
+| Method   | Path                                               | Notes                             |
+| -------- | -------------------------------------------------- | --------------------------------- |
+| `POST`   | `/threads/{thread_id}/runs`                        | Start a background run            |
+| `GET`    | `/threads/{thread_id}/runs`                        | List a thread's runs (paginated)  |
+| `GET`    | `/threads/{thread_id}/runs/{run_id}`               | Fetch one run                     |
+| `GET`    | `/threads/{thread_id}/runs/{run_id}/stream` (join) | Join a run's stream               |
+| `POST`   | `/threads/{thread_id}/runs/{run_id}/cancel`        | Cancel a run (`?action`, `?wait`) |
+| `DELETE` | `/threads/{thread_id}/runs/{run_id}`               | Delete a run                      |
+| `GET`    | `/runs/{run_id}/stream` (join)                     | Join by run id (thread-agnostic)  |
+
+**Cancelling in bulk.** `POST /runs/cancel` takes `{ thread_id?, run_ids?, status? }`, narrowest
+selector first: explicit `run_ids`, else one thread's inflight runs, else **every** inflight run on the
+server. `status` is `pending` / `running` / `all` (the default). An unknown — or non-owned — run id is
+skipped rather than failing the sweep, so the response reports what actually happened:
+`{ cancelled_count, cancelled_run_ids, truncated }`. `truncated: true` means the whole-server sweep filled
+the store's page bound and should be repeated; the SDK types this call as returning `void` and ignores the
+body, so it is skein's to shape.
+
+`truncated` is deliberately a boolean about the caller's own page rather than a count of what is left.
+The per-thread concurrency guard the sweep reads through is **not** ownership-scoped — it has to see every
+inflight run on a thread whoever started it — so a total would tell an authenticated caller how much work
+every other principal has in flight.
+
+**`?action` and `?wait` on a cancel.** Both are sent by every `client.runs.cancel(...)` and were
+previously ignored. `action=interrupt` (the default) settles the run `cancelled` and keeps whatever it
+wrote; `action=rollback` additionally discards its checkpoint writes and deletes the run row, so the turn
+reads as never having happened. `wait=1` returns only once the run has actually stopped executing rather
+than as soon as it is marked.
+
+**`on_completion` on a stateless run.** `"delete"` removes the server-created thread once the run
+settles; `"keep"` leaves it. **skein defaults to `keep`, LangGraph to `delete`** — a deliberate
+divergence, so a stateless run stays inspectable and so adding the field did not silently change what
+`/runs/wait` and `/runs/stream` already did. Pass `"delete"` for LangGraph's behaviour. An `interrupted`
+run keeps its thread either way: it has yielded to a human, and its checkpoint is the whole value of the
+turn.
+
+**`Content-Location` on run creation.** Every run-create response (and `POST /threads/{id}/stream`)
+carries `Content-Location: /threads/{thread_id}/runs/{run_id}`. The `@langchain/langgraph-sdk` client
+parses it to fire `onRunCreated`, which is what `useStream` stores to rejoin a stream after a remount —
+so without it that callback never fires and `reconnectOnMount` cannot work. It is also the only way a
+caller learns the thread id of a stateless `/runs/wait`, whose body is the graph's state.
+
+### Meta
+
+| Method | Path    | Notes                                                                |
+| ------ | ------- | -------------------------------------------------------------------- |
+| `GET`  | `/info` | Version + `flags` capability handshake (Studio reads it)             |
+| `GET`  | `/ok`   | Liveness probe — served by each adapter, **outside** the route table |
+
+`/ok` sits outside the protocol table on purpose. LangGraph groups it with `/info` under one
+`disable_meta` flag; in skein it is the container health check (see the generated Dockerfile), so no
+config flag may be able to make a healthy instance read as dead.
 
 ### Store (long-term memory)
 
@@ -158,8 +208,8 @@ _branch_ from any past checkpoint:
 same default the SDK sends for `store.listNamespaces`. A query `limit` above 1000 is clamped rather than
 rejected, matching every other query-string limit here. Truncation is not signalled on the response
 (only assistant search carries `x-pagination-total`), so page until you receive fewer rows than you
-asked for. `status` and `select` on `runs.list`, and `suffix`/`max_depth` on `listNamespaces`, are
-accepted and **ignored** — they are not implemented yet.
+asked for. `status` on `runs.list` **is** honoured, filtered in the driver so it pages the filtered set;
+`select` on `runs.list` and `suffix`/`max_depth` on `listNamespaces` are still accepted and **ignored**.
 
 ### Thread streaming (SSE)
 
@@ -237,16 +287,24 @@ Route → resource/action (runs authorize through their owning thread — there 
 | `POST /assistants/search`                                                                                               | `assistants:search`                             |
 | `POST /threads`                                                                                                         | `threads:create`                                |
 | `GET /threads/{id}`, `/state`, `/state/{checkpoint_id}`; `POST /history`; `GET .../runs`, `.../runs/{run_id}`, run join | `threads:read`                                  |
-| `POST /threads/search`                                                                                                  | `threads:search`                                |
-| `PATCH /threads/{id}`; `POST /threads/{id}/state` (state fork); run cancel                                              | `threads:update`                                |
-| `DELETE /threads/{id}`; run delete                                                                                      | `threads:delete`                                |
-| run create (wait/stream/background), thread stream / commands                                                           | `threads:create_run`                            |
+| `POST /threads/search`, `POST /threads/count`                                                                           | `threads:search`                                |
+| `PATCH /threads/{id}`; `POST /threads/{id}/state` (state fork); run cancel; `POST /runs/cancel`                         | `threads:update`                                |
+| `DELETE /threads/{id}`; run delete; `POST /threads/prune`                                                               | `threads:delete`                                |
+| run create (wait/stream/background/stateless/batch), thread stream / commands                                           | `threads:create_run`                            |
+| `GET /info`                                                                                                             | `assistants:read`                               |
 | `PUT/GET/DELETE /store/items`, `/store/items/search`, `/store/namespaces`                                               | `store:{put,get,delete,search,list_namespaces}` |
 
 **Reuse & limits.** The `Auth` contract and the `$eq`/`$contains` filter semantics come from
 `@langchain/*`; skein adds only the instance-scoped dispatch (see [reuse.md](./reuse.md)). Ownership
 scoping is pushed into the driver query (above), with the in-process check kept as the enforcement point.
 Per-owner scoping of `assistants`/`store` is still on the [roadmap](./roadmap.md).
+
+`POST /runs/cancel` sweeps broadly but authorizes narrowly: every run it touches goes back through the
+ownership-filtered `get`, so a non-owned run reads as absent and is skipped. The per-thread concurrency
+guard (`hasActiveRun` / `listActiveRuns`) is deliberately _not_ ownership-filtered — it must see every
+inflight run on a thread whoever started it, or two runs could execute at once and interleave their
+checkpoint writes. Nothing leaks: the thread itself is ownership-gated, so the guard is unreachable for a
+thread the caller does not own.
 
 ## Conformance strategy
 

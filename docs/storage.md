@@ -60,13 +60,14 @@ default is **1000 rows**. This is a memory bound: a thread row carries the threa
 state, so an unbounded `POST /threads/search` on a large deployment materializes the table twice over
 (the rows, then the JSON response string) inside one request.
 
-| Surface                             | Bound                                                   |
-| ----------------------------------- | ------------------------------------------------------- |
-| `limit` on a search request         | rejected above 1000 by the wire schema                  |
-| `limit` omitted, or a `list()` call | the first `SKEIN_MAX_PAGE_SIZE` rows (default 1000)     |
-| `assistants.count()`                | **not** bounded — it answers "how many match" in total  |
-| `runs.listByThread()`               | **not** bounded — run rows carry no graph state         |
-| `POST /threads/{id}/history`        | 100 checkpoints by default, 1000 max — a separate bound |
+| Surface                                 | Bound                                                       |
+| --------------------------------------- | ----------------------------------------------------------- |
+| `limit` on a search request             | rejected above 1000 by the wire schema                      |
+| `limit` omitted, or a `list()` call     | the first `SKEIN_MAX_PAGE_SIZE` rows (default 1000)         |
+| `assistants.count()`, `threads.count()` | **not** bounded — they answer "how many match" in total     |
+| `runs.listByThread()`                   | **not** bounded — run rows carry no graph state             |
+| `runs.listActiveRuns()` (all threads)   | bounded — the whole-server sweep behind `POST /runs/cancel` |
+| `POST /threads/{id}/history`            | 100 checkpoints by default, 1000 max — a separate bound     |
 
 Sizing guidance is in [performance.md](./performance.md#sizing). Set `SKEIN_MAX_PAGE_SIZE` to change the
 driver bound (`maxPageSize` on the store constructor and on

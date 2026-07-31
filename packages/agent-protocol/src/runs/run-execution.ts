@@ -6,10 +6,11 @@
 
 import type { RunKwargs, Run, RunTrigger } from "@skein-js/core";
 
-import type { ProtocolContext } from "../context.js";
+import { storedRollbackPlan, type ProtocolContext } from "../context.js";
 import { rollbackThreadCheckpointsTo } from "../threads/checkpoint-history.js";
 
 import { executeRun, type RunOutcome } from "./run-engine.js";
+import { withThreadExecution } from "./thread-locks.js";
 
 /** Telemetry-only context about how this run was started. Omitted entirely by callers that don't care. */
 export interface RunExecutionOrigin {
@@ -37,56 +38,82 @@ export async function startRunExecution(
   let deliverWebhook: (() => Promise<void>) | undefined;
   try {
     // Serialize per thread: a second run on a busy thread blocks here until the active run's
-    // execution (below) settles and releases the lock — giving enqueue its ordering and letting an
-    // interrupt/rollback run start only after the run it displaced has fully stopped.
-    const outcome = await executionLocks.run(threadId, async () => {
-      // A `rollback` run drops the displaced run's writes now that it has settled (we hold the lock
-      // it released), then removes its row so the run "never happened". Best-effort on the checkpoint
-      // side — a failure to revert must not strand the new run.
-      const plan = rollbackPlans.get(runId);
-      if (plan) {
-        rollbackPlans.delete(runId);
-        if (plan.revertToCheckpoint !== false) {
-          try {
-            await rollbackThreadCheckpointsTo(
-              deps.checkpointer,
-              threadId,
-              plan.revertToCheckpoint.baseCheckpointId,
-            );
-          } catch (error) {
-            // `error`, not `warn`: the run continues on state that should have been reverted, so the
-            // displaced run's writes are still in the thread's history. That is a correctness outcome,
-            // not a slow path — and it became reachable in ordinary operation once a statement timeout
-            // arrived, because reading a large thread's checkpoint history is one unbounded query.
-            // Nothing is destroyed (the read precedes the delete), but the caller has to know.
-            deps.logger.error(
-              `run ${runId}: rollback of the displaced run's writes failed — this run is continuing ` +
-                `on state that was not reverted. On a very large thread, raise ` +
-                `PG_STATEMENT_TIMEOUT_MS or use a different multitask_strategy.`,
-              error,
-            );
+    // execution (below) settles and releases the claim — giving enqueue its ordering and letting an
+    // interrupt/rollback run start only after the run it displaced has fully stopped. With a
+    // `threadExecutionGate` configured that claim spans instances; without one it is this process'.
+    const outcome = await withThreadExecution(
+      executionLocks,
+      deps.threadExecutionGate,
+      threadId,
+      async () => {
+        // A `rollback` run drops the displaced run's writes now that it has settled (we hold the lock
+        // it released), then removes its row so the run "never happened". Best-effort on the checkpoint
+        // side — a failure to revert must not strand the new run.
+        //
+        // The in-process note first, then the run's own kwargs: the latter is what makes this work when the
+        // instance that *created* this run is not the one executing it, and what makes a crash-recovered
+        // run still clean up. Re-applying is safe — reverting to the same base twice lands on the same
+        // history, and deleting an already-deleted row is tolerated below.
+        const plan = rollbackPlans.get(runId) ?? storedRollbackPlan(kwargs);
+        if (plan) {
+          rollbackPlans.delete(runId);
+          if (plan.revertToCheckpoint !== false) {
+            try {
+              await rollbackThreadCheckpointsTo(
+                deps.checkpointer,
+                threadId,
+                plan.revertToCheckpoint.baseCheckpointId,
+              );
+            } catch (error) {
+              // `error`, not `warn`: the run continues on state that should have been reverted, so the
+              // displaced run's writes are still in the thread's history. That is a correctness outcome,
+              // not a slow path — and it became reachable in ordinary operation once a statement timeout
+              // arrived, because reading a large thread's checkpoint history is one unbounded query.
+              // Nothing is destroyed (the read precedes the delete), but the caller has to know.
+              deps.logger.error(
+                `run ${runId}: rollback of the displaced run's writes failed — this run is continuing ` +
+                  `on state that was not reverted. On a very large thread, raise ` +
+                  `PG_STATEMENT_TIMEOUT_MS or use a different multitask_strategy.`,
+                error,
+              );
+            }
+          }
+          for (const displacedId of plan.displacedRunIds) {
+            try {
+              await deps.store.runs.delete(displacedId);
+            } catch {
+              // already gone — nothing to do
+            }
           }
         }
-        for (const displacedId of plan.displacedRunIds) {
-          try {
-            await deps.store.runs.delete(displacedId);
-          } catch {
-            // already gone — nothing to do
-          }
-        }
-      }
 
-      return await executeRun(deps, {
-        run,
-        kwargs,
-        control: runControl,
-        recordBaseCheckpoint: (base) => runBaseCheckpoints.set(runId, base),
-        deferWebhook: (deliver) => {
-          deliverWebhook = deliver;
-        },
-        ...origin,
-      });
-    });
+        return await executeRun(deps, {
+          run,
+          kwargs,
+          control: runControl,
+          // Noted in-process *and* persisted onto the run. The map is the fast path for a displacement
+          // decided in this process; the persisted copy is what a *different* instance reads when it is
+          // the one displacing this run. Persisting is best-effort — failing a run because a bookkeeping
+          // write failed would be a much worse outcome than a rollback that declines to revert.
+          recordBaseCheckpoint: (base) => {
+            runBaseCheckpoints.set(runId, base);
+            void deps.store.runs
+              .recordBaseCheckpoint(runId, base ?? null)
+              .catch((error: unknown) =>
+                deps.logger.warn(
+                  `run ${runId}: could not persist its base checkpoint; a rollback decided on another ` +
+                    `instance will not revert this run's writes`,
+                  error,
+                ),
+              );
+          },
+          deferWebhook: (deliver) => {
+            deliverWebhook = deliver;
+          },
+          ...origin,
+        });
+      },
+    );
 
     return outcome;
   } finally {
@@ -105,5 +132,41 @@ export async function startRunExecution(
     if (deliverWebhook) await deliverWebhook();
     control.clear(runId);
     runBaseCheckpoints.delete(runId);
+    await deleteThreadIfRunOwnedIt(ctx, run, kwargs);
+  }
+}
+
+/**
+ * Clean up a stateless run's server-created thread — the resolved `on_completion: "delete"` (see
+ * `RunKwargs.delete_thread_on_completion`).
+ *
+ * Here rather than in the run service, because this is the one path all three run modes funnel
+ * through: a background run settles on the worker, where the service call that created it is long
+ * gone. After the webhook, because deleting the thread cascades the run row away in Postgres and a
+ * receiver reading back the run it was just told about should still find it.
+ *
+ * An `interrupted` run keeps its thread. It has yielded to a human rather than finished, and its
+ * checkpoint is the entire value of the turn — LangGraph deletes it regardless, but destroying
+ * resumable state to reclaim one row is the wrong side of that trade, and the same reasoning already
+ * governs `rollbackThreadCheckpointsTo`.
+ */
+async function deleteThreadIfRunOwnedIt(
+  ctx: ProtocolContext,
+  run: Run,
+  kwargs: RunKwargs,
+): Promise<void> {
+  if (kwargs.delete_thread_on_completion !== true) return;
+  const { deps } = ctx;
+  const settled = await deps.store.runs.get(run.run_id);
+  if (settled?.status === "interrupted") return;
+  try {
+    await deps.store.threads.delete(run.thread_id);
+  } catch (error) {
+    // Best-effort by construction: the run itself succeeded, and failing it now — after the client has
+    // its result and the webhook has fired — would report a completed run as broken.
+    deps.logger.warn(
+      `run ${run.run_id}: could not delete its stateless thread ${run.thread_id} on completion`,
+      error,
+    );
   }
 }

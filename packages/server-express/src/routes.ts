@@ -9,6 +9,7 @@ import {
   skeinRoutes,
   type Logger,
   type ProtocolHandlers,
+  type RouteBinding,
 } from "@skein-js/agent-protocol";
 import cors, { type CorsOptions } from "cors";
 import express from "express";
@@ -41,6 +42,12 @@ export interface HandlerRouterOptions {
    * instance, since the limit is per in-flight request.
    */
   json?: { limit?: string | number };
+  /**
+   * The route table to mount. Defaults to the whole protocol; `skeinRouter` passes the table the
+   * config's `http.disable_*` flags left behind, so a disabled resource is simply never registered and
+   * a request for it falls through to the app's own 404 (what `langgraph dev` does).
+   */
+  routes?: readonly RouteBinding[];
 }
 
 /**
@@ -81,7 +88,7 @@ export function createHandlerRouter(
   requireParsableLimit(options.json?.limit);
   router.use(express.json(options.json ?? {}));
 
-  for (const binding of skeinRoutes) {
+  for (const binding of options.routes ?? skeinRoutes) {
     const invoke = handlers[binding.handler];
     router[binding.method](binding.path, async (req: Request, res: Response) => {
       try {

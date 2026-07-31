@@ -34,6 +34,7 @@ import {
   type Thread,
   type ThreadCreate,
   type ThreadRepo,
+  type ThreadSearchQuery,
   type ThreadUpdate,
 } from "@skein-js/core";
 import { Pool, type PoolClient } from "pg";
@@ -343,6 +344,40 @@ function assistantSearchWhere(query: AssistantSearchQuery): { where: string; par
   return { where: clauses.length > 0 ? `WHERE ${clauses.join(" AND ")}` : "", params };
 }
 
+/**
+ * Build the shared WHERE clause + params for thread search/count (metadata, ownership scoping, values,
+ * status, ids). Extracted so `count` filters *identically* to `search` — the two disagreeing is a
+ * silent bug, since a count that does not match its own listing looks like a race rather than a defect.
+ */
+function threadSearchWhere(query: ThreadSearchQuery): { where: string; params: unknown[] } {
+  const params: unknown[] = [];
+  const clauses: string[] = [];
+  if (query.metadata && Object.keys(query.metadata).length > 0) {
+    params.push(JSON.stringify(query.metadata));
+    clauses.push(`metadata @> $${params.length}::jsonb`);
+  }
+  // A second containment clause rather than one merged object, so a caller's filter and the
+  // server's scoping can name the same key and correctly match nothing. Uses `threads_metadata_idx`
+  // (GIN, jsonb_path_ops) the same way, which is what turns the auth path into an index lookup.
+  if (query.enforcedMetadata && Object.keys(query.enforcedMetadata).length > 0) {
+    params.push(JSON.stringify(query.enforcedMetadata));
+    clauses.push(`metadata @> $${params.length}::jsonb`);
+  }
+  if (query.values && Object.keys(query.values).length > 0) {
+    params.push(JSON.stringify(query.values));
+    clauses.push(`values @> $${params.length}::jsonb`);
+  }
+  if (query.status) {
+    params.push(query.status);
+    clauses.push(`status = $${params.length}`);
+  }
+  if (query.ids) {
+    params.push(query.ids);
+    clauses.push(`thread_id = ANY($${params.length}::text[])`);
+  }
+  return { where: clauses.length > 0 ? `WHERE ${clauses.join(" AND ")}` : "", params };
+}
+
 function rowToAssistantVersion(row: AssistantVersionRow): AssistantVersion {
   return {
     assistant_id: row.assistant_id,
@@ -424,6 +459,11 @@ export class PostgresSkeinStore implements SkeinStore {
     this.#pool = pool;
     this.#index = index;
     this.#ttl = ttl;
+  }
+
+  /** The bound this driver applies to an unbounded read — see `SkeinStore.maxPageSize`. */
+  get maxPageSize(): number {
+    return this.#maxPageSize;
   }
 
   /**
@@ -1025,32 +1065,7 @@ export class PostgresSkeinStore implements SkeinStore {
       return rows.map(rowToThread);
     },
     search: async (query) => {
-      const params: unknown[] = [];
-      const clauses: string[] = [];
-      if (query.metadata && Object.keys(query.metadata).length > 0) {
-        params.push(JSON.stringify(query.metadata));
-        clauses.push(`metadata @> $${params.length}::jsonb`);
-      }
-      // A second containment clause rather than one merged object, so a caller's filter and the
-      // server's scoping can name the same key and correctly match nothing. Uses `threads_metadata_idx`
-      // (GIN, jsonb_path_ops) the same way, which is what turns the auth path into an index lookup.
-      if (query.enforcedMetadata && Object.keys(query.enforcedMetadata).length > 0) {
-        params.push(JSON.stringify(query.enforcedMetadata));
-        clauses.push(`metadata @> $${params.length}::jsonb`);
-      }
-      if (query.values && Object.keys(query.values).length > 0) {
-        params.push(JSON.stringify(query.values));
-        clauses.push(`values @> $${params.length}::jsonb`);
-      }
-      if (query.status) {
-        params.push(query.status);
-        clauses.push(`status = $${params.length}`);
-      }
-      if (query.ids) {
-        params.push(query.ids);
-        clauses.push(`thread_id = ANY($${params.length}::text[])`);
-      }
-      const where = clauses.length > 0 ? `WHERE ${clauses.join(" AND ")}` : "";
+      const { where, params } = threadSearchWhere(query);
       // Whitelist the sort column — it is interpolated, never parameterized.
       const sortColumns = new Set(["thread_id", "status", "created_at", "updated_at"]);
       const sortBy = sortColumns.has(query.sortBy ?? "") ? query.sortBy : "created_at";
@@ -1068,6 +1083,16 @@ export class PostgresSkeinStore implements SkeinStore {
         params,
       );
       return rows.map(rowToThread);
+    },
+    count: async (query) => {
+      const { where, params } = threadSearchWhere(query);
+      const { rows } = await this.#pool.query<{ count: string }>(
+        `SELECT count(*)::text AS count FROM threads ${where}`,
+        params,
+      );
+      // ::text then parse: a bare count(*) is bigint, which `pg` hands back as a string anyway, and
+      // being explicit keeps the driver from silently depending on that.
+      return Number.parseInt(rows[0]?.count ?? "0", 10);
     },
     get: async (threadId) => {
       const { rows } = await this.#pool.query<ThreadRow>(
@@ -1139,15 +1164,24 @@ export class PostgresSkeinStore implements SkeinStore {
       ]);
       return rows[0] ? rowToRun(rows[0]) : null;
     },
-    listByThread: async (threadId, pagination) => {
+    listByThread: async (threadId, query) => {
       const params: unknown[] = [threadId];
+      // The status filter joins the WHERE clause rather than filtering a page afterwards, so
+      // `limit`/`offset` page the filtered set — see `RunListQuery.status`.
+      let statusSql = "";
+      if (query?.status !== undefined) {
+        params.push(query.status);
+        statusSql = ` AND status = $${params.length}`;
+      }
       let paginationSql = "";
-      if (pagination?.limit !== undefined) {
-        params.push(pagination.offset ?? 0, pagination.limit);
-        paginationSql = " OFFSET $2 LIMIT $3";
+      if (query?.limit !== undefined) {
+        params.push(query.offset ?? 0);
+        const offsetParam = `$${params.length}`;
+        params.push(query.limit);
+        paginationSql = ` OFFSET ${offsetParam} LIMIT $${params.length}`;
       }
       const { rows } = await this.#pool.query<RunRow>(
-        `SELECT * FROM runs WHERE thread_id = $1 ORDER BY created_at, run_id${paginationSql}`,
+        `SELECT * FROM runs WHERE thread_id = $1${statusSql} ORDER BY created_at, run_id${paginationSql}`,
         params,
       );
       return rows.map(rowToRun);
@@ -1167,6 +1201,51 @@ export class PostgresSkeinStore implements SkeinStore {
         ],
       );
       return rowToRun(rows[0] as RunRow);
+    },
+    createIfThreadIdle: async (input: RunCreate) => {
+      // Serialized on the **thread row**, not on the runs table: `SELECT … FOR UPDATE` takes a row lock
+      // that concurrent run-creates for the same thread queue behind, so the inflight check below and
+      // the insert are indivisible against other connections — which is the whole point (see the
+      // `createIfThreadIdle` contract).
+      //
+      // A bare `INSERT … WHERE NOT EXISTS (…)` is NOT enough, and that is the trap this replaces: under
+      // READ COMMITTED the subquery reads a snapshot and takes no predicate lock, so two concurrent
+      // inserts both see an idle thread and both land. A unique partial index would be airtight but is
+      // wrong here — `enqueue` legitimately creates a second inflight run on a busy thread.
+      //
+      // Locking the *parent* row rather than raising the isolation level keeps the contention exactly as
+      // narrow as the invariant (one thread), and Postgres releases it on commit or on a dropped
+      // connection with no timeout to tune.
+      return this.#withTransaction(async (client) => {
+        const { rows: threadRows } = await client.query<{ thread_id: string }>(
+          "SELECT thread_id FROM threads WHERE thread_id = $1 FOR UPDATE",
+          [input.thread_id],
+        );
+        // No thread row means the caller's `ensureThread` did not run (or it was deleted meanwhile).
+        // Refuse rather than insert a run whose foreign key is about to fail anyway.
+        if (!threadRows[0]) return null;
+
+        const { rows: inflight } = await client.query<{ exists: boolean }>(
+          "SELECT EXISTS(SELECT 1 FROM runs WHERE thread_id = $1 AND NOT (status = ANY($2::text[]))) AS exists",
+          [input.thread_id, TERMINAL_RUN_STATUSES],
+        );
+        if (inflight[0]?.exists) return null;
+
+        const { rows } = await client.query<RunRow>(
+          `INSERT INTO runs (run_id, thread_id, assistant_id, status, metadata, multitask_strategy, kwargs)
+           VALUES ($1, $2, $3, $4, $5::jsonb, $6, $7::jsonb) RETURNING *`,
+          [
+            input.run_id ?? randomUUID(),
+            input.thread_id,
+            input.assistant_id,
+            input.status ?? "pending",
+            JSON.stringify(input.metadata ?? {}),
+            input.multitask_strategy ?? null,
+            input.kwargs === undefined ? null : JSON.stringify(input.kwargs),
+          ],
+        );
+        return rowToRun(rows[0] as RunRow);
+      });
     },
     setStatus: async (runId, status: RunStatus, error?: RunError) => {
       // `error` is written unconditionally, so omitting it clears a stale one — a run row's error
@@ -1189,6 +1268,19 @@ export class PostgresSkeinStore implements SkeinStore {
       );
       return rows[0]?.kwargs ?? null;
     },
+    recordBaseCheckpoint: async (runId, baseCheckpointId) => {
+      // `jsonb_set` patches the one key server-side, so a concurrent write to another key is not lost
+      // and the run's whole input blob is neither read back nor re-serialized. `coalesce` covers a run
+      // created without kwargs; `create_missing = true` adds the key on first record. The value is
+      // JSON-encoded so a `null` lands as jsonb null (recorded-as-empty) rather than as SQL NULL, which
+      // `jsonb_set` would turn the entire kwargs column into.
+      await this.#pool.query(
+        `UPDATE runs
+            SET kwargs = jsonb_set(coalesce(kwargs, '{}'::jsonb), '{base_checkpoint_id}', $2::jsonb, true)
+          WHERE run_id = $1`,
+        [runId, JSON.stringify(baseCheckpointId)],
+      );
+    },
     hasActiveRun: async (threadId) => {
       const { rows } = await this.#pool.query<{ active: boolean }>(
         "SELECT EXISTS(SELECT 1 FROM runs WHERE thread_id = $1 AND NOT (status = ANY($2::text[]))) AS active",
@@ -1196,10 +1288,21 @@ export class PostgresSkeinStore implements SkeinStore {
       );
       return rows[0]?.active ?? false;
     },
+    // `threadId` omitted sweeps every thread (see the `RunRepo.listActiveRuns` contract). Bounded like
+    // every other unbounded read, so a server with a very large backlog can't be made to materialize
+    // all of it in one call.
     listActiveRuns: async (threadId) => {
+      const params: unknown[] = [TERMINAL_RUN_STATUSES];
+      let threadSql = "";
+      if (threadId !== undefined) {
+        params.push(threadId);
+        threadSql = ` AND thread_id = $${params.length}`;
+      }
+      params.push(this.#pageLimit(undefined));
       const { rows } = await this.#pool.query<RunRow>(
-        "SELECT * FROM runs WHERE thread_id = $1 AND NOT (status = ANY($2::text[])) ORDER BY created_at",
-        [threadId, TERMINAL_RUN_STATUSES],
+        `SELECT * FROM runs WHERE NOT (status = ANY($1::text[]))${threadSql} ` +
+          `ORDER BY created_at, run_id LIMIT $${params.length}`,
+        params,
       );
       return rows.map(rowToRun);
     },

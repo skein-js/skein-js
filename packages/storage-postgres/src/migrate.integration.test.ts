@@ -80,6 +80,7 @@ describe("applySkeinMigrations", () => {
       "0003_assistant_versions",
       "0004_run_error",
       "0005_performance_indexes",
+      "0006_inflight_runs_index",
     ]);
 
     expect((await readLedger(pool)).map((row) => row.name)).toEqual([
@@ -88,6 +89,7 @@ describe("applySkeinMigrations", () => {
       "0003_assistant_versions",
       "0004_run_error",
       "0005_performance_indexes",
+      "0006_inflight_runs_index",
     ]);
 
     for (const table of ["assistants", "assistant_versions", "threads", "runs", "store_items"]) {
@@ -266,6 +268,7 @@ describe("applySkeinMigrations", () => {
       "0003_assistant_versions",
       "0004_run_error",
       "0005_performance_indexes",
+      "0006_inflight_runs_index",
     ]);
 
     const ledger = await readLedger(pool);
@@ -275,6 +278,7 @@ describe("applySkeinMigrations", () => {
       "0003_assistant_versions",
       "0004_run_error",
       "0005_performance_indexes",
+      "0006_inflight_runs_index",
     ]);
     // The pre-existing row is untouched, so 0001_init was not re-applied.
     expect(ledger[0]).toEqual(legacyRow);
@@ -334,13 +338,19 @@ describe("applySkeinMigrations", () => {
       applySkeinMigrations(second),
     ]);
 
-    expect([firstApplied.length, secondApplied.length].sort()).toEqual([0, 5]);
+    // One racer applies every migration and the other applies none — derived from the migration list
+    // rather than pinned to a count, so adding a migration does not fail this unrelated assertion.
+    expect([firstApplied.length, secondApplied.length].sort((a, b) => a - b)).toEqual([
+      0,
+      SKEIN_MIGRATIONS.length,
+    ]);
     expect((await readLedger(first)).map((row) => row.name)).toEqual([
       "0001_init",
       "0002_store_ttl",
       "0003_assistant_versions",
       "0004_run_error",
       "0005_performance_indexes",
+      "0006_inflight_runs_index",
     ]);
   });
 });

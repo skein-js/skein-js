@@ -10,9 +10,11 @@ import {
   combineTelemetrySinks,
   type AuthEngine,
   type GraphSchema,
+  type RunAbortChannel,
   type RunEventBus,
   type RunQueue,
   type SkeinStore,
+  type ThreadExecutionGate,
   type TelemetrySink,
 } from "@skein-js/core";
 
@@ -78,8 +80,28 @@ export interface ProtocolDeps {
   queue: RunQueue;
   /** Fans run frames out to streaming clients (replay + live-tail). */
   bus: RunEventBus;
+  /**
+   * Carries run-abort requests between instances, so a cancel routed to one replica stops a run
+   * executing on another. Absent means single-process cancellation — correct and complete for one
+   * instance, and what skein did before. `@skein-js/redis` provides an implementation.
+   */
+  abortChannel?: RunAbortChannel;
+  /**
+   * Serializes run *execution* per thread across instances. Absent means the engine's in-process mutex,
+   * which is correct for a single instance and is what skein did before.
+   * `@skein-js/storage-postgres` provides `createPostgresThreadExecutionGate`.
+   */
+  threadExecutionGate?: ThreadExecutionGate;
   /** LangGraph checkpointer — owns graph state, history, and interrupt/resume. */
   checkpointer: BaseCheckpointSaver;
+  /**
+   * skein's own version, reported by `GET /info`. Absent when the host does not know or does not care.
+   *
+   * Injected rather than read here: a library cannot read its own `package.json` at runtime (bundlers
+   * rewrite `import.meta.url` — docs/bundling.md), while an *application* can and does. The `skein`
+   * CLI passes its version through; an embedder may pass its own.
+   */
+  serverVersion?: string;
   /** Time source; defaults to `() => new Date()`. */
   clock?: Clock;
   /** Structured logger; defaults to a no-op. */

@@ -141,7 +141,7 @@ describe("webhook delivery and the thread lock", () => {
       input: { value: "two" },
     });
 
-    expect(second).toEqual({ value: "echo: two" });
+    expect(second.result).toEqual({ value: "echo: two" });
     expect(dispatch).toHaveBeenCalledTimes(1);
     void first;
   });

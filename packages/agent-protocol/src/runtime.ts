@@ -41,9 +41,32 @@ export function createProtocolRuntime(
   const handlers = deps.auth
     ? createAuthorizingHandlers(context, deps.auth)
     : createProtocolHandlers(service);
+  const worker = createRunWorker(context, options.worker);
+  if (!deps.abortChannel) return { service, handlers, worker };
+
+  // Cross-instance cancellation, wired in one place because both halves must agree: outbound (an abort
+  // for a run executing elsewhere is republished) and inbound (a peer's request is applied to the local
+  // registry). Subscribed here, at assembly, so a request cannot arrive before there is anywhere to put
+  // it. `applyRemoteAbort`, not `abort` — the latter would forward it straight back out.
+  context.control.useAbortChannel(deps.abortChannel, deps.logger);
+  const subscription = deps.abortChannel.subscribe(({ run_id, reason }) => {
+    context.control.applyRemoteAbort(run_id, reason);
+  });
   return {
     service,
     handlers,
-    worker: createRunWorker(context, options.worker),
+    // Closed with the worker, so a host that already calls `worker.stop()` on shutdown needs no second
+    // teardown call — and one that forgets cannot leave a Redis subscriber holding the process open.
+    // The worker drains first: an in-flight run may still be signalled while it is winding down.
+    worker: {
+      get inFlightRunCount() {
+        return worker.inFlightRunCount;
+      },
+      start: () => worker.start(),
+      stop: async () => {
+        await worker.stop();
+        await subscription.close();
+      },
+    },
   };
 }

@@ -6,10 +6,12 @@
 
 import {
   createProtocolRuntime,
+  skeinRoutes,
   type RunWorker,
   type Logger,
   type ProtocolDeps,
   type ProtocolRuntime,
+  type RouteBinding,
   type RunWorkerOptions,
 } from "@skein-js/agent-protocol";
 import type { ModuleImporter } from "@skein-js/config";
@@ -93,6 +95,12 @@ export interface ResolvedProtocolRuntime {
   /** CORS mapped from the config's `http.cors`, or `undefined` for the injected-`deps` path. */
   cors?: CorsOptions;
   /**
+   * The route table to mount: the full protocol, minus any group the config's `http.disable_*` flags
+   * switched off. Always present — the injected-`deps` path has no config to read flags from, so it
+   * gets the complete table.
+   */
+  routes: readonly RouteBinding[];
+  /**
    * The logger the engine ended up with, after {@link SkeinRuntimeCommonOptions.logger}'s precedence
    * chain. `undefined` means nothing logs. Adapters read this (rather than `options.logger`) for
    * their own transport-fault logging, so the engine and the transport can never disagree about
@@ -106,6 +114,8 @@ export interface ResolvedRuntimeDeps {
   deps: ProtocolDeps;
   /** CORS mapped from the config's `http.cors`, or `undefined` for the injected-`deps` path. */
   cors?: CorsOptions;
+  /** The route table to mount — see {@link ResolvedProtocolRuntime.routes}. */
+  routes: readonly RouteBinding[];
   /** The resolved logger — see {@link ResolvedProtocolRuntime.logger}. */
   logger?: Logger;
 }
@@ -145,7 +155,7 @@ export async function resolveRuntimeDeps(
   // `embedPostgresGraphs` and every production embedding does — then never loads the `langgraph.json`
   // loader, the in-memory drivers, or `MemorySaver`.
   const loaded = options.deps
-    ? { deps: options.deps, cors: undefined }
+    ? { deps: options.deps, cors: undefined, routes: skeinRoutes }
     : await (
         await import("./in-memory-runtime.js")
       ).loadInMemoryRuntime(options.config, options.importModule);
@@ -161,7 +171,7 @@ export async function resolveRuntimeDeps(
   // never overwrites a choice the caller made. That is also why an injected `deps.logger` outranks
   // the adapter option rather than the other way round.
   if (logger && !loaded.deps.logger) loaded.deps.logger = logger;
-  return { deps: loaded.deps, cors: loaded.cors, logger };
+  return { deps: loaded.deps, cors: loaded.cors, routes: loaded.routes, logger };
 }
 
 /**
@@ -176,7 +186,12 @@ export async function resolveProtocolRuntime(
   options: SkeinRuntimeOptions,
   frameworkLogger?: Logger,
 ): Promise<ResolvedProtocolRuntime> {
-  const { deps, cors: corsFromConfig, logger } = await resolveRuntimeDeps(options, frameworkLogger);
+  const {
+    deps,
+    cors: corsFromConfig,
+    routes,
+    logger,
+  } = await resolveRuntimeDeps(options, frameworkLogger);
 
   // Every environment knob is resolved *before* anything is started, so a typo fails cleanly instead of
   // part-way through assembly. Resolving the heap options after `worker.start()` meant a bad
@@ -253,5 +268,5 @@ export async function resolveProtocolRuntime(
     },
   };
 
-  return { runtime: { ...runtime, worker }, cors: corsFromConfig, logger };
+  return { runtime: { ...runtime, worker }, cors: corsFromConfig, routes, logger };
 }
