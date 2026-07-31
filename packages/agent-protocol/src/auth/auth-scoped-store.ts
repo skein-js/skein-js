@@ -204,7 +204,12 @@ export function createAuthScopedStore(
       },
     };
 
-    return { ...inner, threads, runs };
+    // `maxPageSize` is carried explicitly. Both drivers expose it as a class **getter**, and object
+    // spread copies own enumerable properties only — a prototype accessor is silently dropped, so the
+    // spread alone would hand back a store whose bound reads as `undefined`. That is invisible at the
+    // type level (the field is optional) and would quietly disable `cancelMany`'s truncation reporting
+    // on exactly the auth-enabled deployments where it matters.
+    return { ...inner, threads, runs, maxPageSize: inner.maxPageSize };
   }
 
   // `assistants` and `store` are gate-only in Depth 1: the `@auth.on.*` handler still runs (it can

@@ -225,6 +225,7 @@ export function createThreadService(ctx: ProtocolContext): ThreadService {
 
     async prune({ threadIds, strategy = "delete" }) {
       let prunedCount = 0;
+      const busyThreadIds: string[] = [];
       for (const threadId of new Set(threadIds)) {
         // A thread that is gone — or that this caller does not own, which the auth-scoped store makes
         // indistinguishable from gone — is skipped, not counted, and never 404s the batch. That is what
@@ -238,14 +239,25 @@ export function createThreadService(ctx: ProtocolContext): ThreadService {
           continue;
         }
 
-        // keep_latest rewrites the checkpoint tip, so it must not race a run mid-write — the same
-        // reason `updateState` refuses on a busy thread, and the same 409.
+        // keep_latest rewrites the checkpoint tip, so it must not race a run mid-write (the same reason
+        // `updateState` refuses on a busy thread). **Skipped, not thrown**: this is a bulk endpoint that
+        // has already irreversibly trimmed the threads before this one, and a 409 carries no body — so
+        // throwing would leave the caller unable to learn what was destroyed, with a naive retry
+        // re-running the whole list. Skipping keeps the contract every other branch here has: a thread
+        // that could not be pruned is simply not counted.
         if (await deps.store.runs.hasActiveRun(threadId)) {
-          throw SkeinHttpError.conflict(
-            `Thread "${threadId}" is busy; wait for its active run to finish before pruning it.`,
-          );
+          busyThreadIds.push(threadId);
+          continue;
         }
         if (await pruneThreadCheckpointsToLatest(deps.checkpointer, threadId)) prunedCount += 1;
+      }
+      if (busyThreadIds.length > 0) {
+        // Logged rather than silent: the count already tells the caller these were not pruned, but an
+        // operator retrying a prune needs to know *why* some ids keep not being counted.
+        deps.logger.warn(
+          `prune skipped ${busyThreadIds.length} busy thread(s); a keep_latest prune cannot run while a ` +
+            `thread has an active run. Retry once they settle: ${busyThreadIds.slice(0, 10).join(", ")}`,
+        );
       }
       return { pruned_count: prunedCount };
     },

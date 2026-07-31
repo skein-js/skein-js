@@ -26,6 +26,7 @@ import { toStoredRollbackPlan, type ProtocolContext, type RollbackPlan } from ".
 import { rollbackThreadCheckpointsTo } from "../threads/checkpoint-history.js";
 
 import { startRunExecution } from "./run-execution.js";
+import { withThreadExecution } from "./thread-locks.js";
 
 /** A run request as it arrives from any of the run endpoints (already validated). */
 export interface CreateRunInput {
@@ -67,6 +68,19 @@ export interface StartedStream {
   runId: string;
   threadId: string;
   frames: AsyncIterable<RunFrame>;
+  /**
+   * The run's terminal status, for the SSE stream's synthesized `end` event.
+   *
+   * Resolved from the **execution outcome** rather than by re-reading the run row, which is racy for a
+   * run whose row is about to disappear: `on_completion: "delete"` removes the thread once the run
+   * settles, and that cascades the run away. A lost race there makes `finalStatus` answer `null`, which
+   * the SSE builder reads as `"success"` — so a cancelled or timed-out stateless run would close its
+   * stream claiming it succeeded.
+   *
+   * Absent for a *joined* stream (`GET .../stream`), which has no outcome promise to read and whose run
+   * is not being deleted; the transport falls back to `RunService.finalStatus` there.
+   */
+  finalStatus?: () => Promise<RunStatus | null>;
 }
 
 /**
@@ -97,9 +111,8 @@ export interface CancelRunOptions {
    * Return only once the run has actually stopped executing, rather than as soon as it has been
    * marked cancelled and signalled.
    *
-   * Waits on the thread's execution lock, so it is exact for a run executing in *this* process and
-   * returns early for one executing on another instance — the same single-process boundary the rest of
-   * cancellation has (see docs/deploy.md, "Scaling past one instance").
+   * Waits on the thread's execution claim, so with a `threadExecutionGate` configured it is exact for a
+   * run executing on any instance; without one it covers this process (which is the whole deployment).
    */
   wait?: boolean;
 }
@@ -406,10 +419,15 @@ export function createRunService(ctx: ProtocolContext): RunService {
   /**
    * Discard a cancelled run's checkpoint writes — `?action=rollback`.
    *
-   * Runs **inside the thread's execution lock**, which is what makes it safe: the lock is held by the
-   * run being cancelled until its engine finishes unwinding, so acquiring it here queues behind that
-   * and the revert cannot race the writes it is undoing. The base checkpoint is read by the caller
-   * *before* the abort, because the engine clears it as the run settles.
+   * Runs **holding the thread's execution claim**, which is what makes it safe: the claim is held by
+   * the run being cancelled until its engine finishes unwinding, so acquiring it here queues behind that
+   * and the revert cannot race the writes it is undoing. Taken through `withThreadExecution`, so with a
+   * `threadExecutionGate` configured it waits for the run even when that run is executing on **another
+   * instance** — the local lock alone is uncontended there, and the revert would delete and replay the
+   * thread's checkpoints while the peer's graph was still writing supersteps.
+   *
+   * The base checkpoint is read by the caller *before* the abort, because the engine clears its
+   * in-process note as the run settles.
    *
    * Best-effort, and deliberately so: the run is cancelled either way, and failing the cancel because
    * the cleanup failed would leave the caller thinking the run is still going. A failure is logged at
@@ -420,7 +438,7 @@ export function createRunService(ctx: ProtocolContext): RunService {
     baseCheckpointId: string | undefined,
   ): Promise<void> => {
     try {
-      await ctx.executionLocks.run(run.thread_id, () =>
+      await withThreadExecution(ctx.executionLocks, deps.threadExecutionGate, run.thread_id, () =>
         rollbackThreadCheckpointsTo(deps.checkpointer, run.thread_id, baseCheckpointId),
       );
       // The row goes last, so a failed revert above leaves the run visible and its writes explained
@@ -465,8 +483,15 @@ export function createRunService(ctx: ProtocolContext): RunService {
     if (rollingBack && base.recorded) {
       await rollbackCancelledRun(run, base.checkpointId);
     } else if (options?.wait) {
-      // Same wait the rollback path gets for free: the lock frees once the run's engine has unwound.
-      await ctx.executionLocks.run(run.thread_id, async () => undefined);
+      // Same wait the rollback path gets for free: the claim frees once the run's engine has unwound.
+      // Through the gate too, so `?wait=1` is exact for a run executing on another instance rather than
+      // returning immediately on an uncontended local lock.
+      await withThreadExecution(
+        ctx.executionLocks,
+        deps.threadExecutionGate,
+        run.thread_id,
+        async () => undefined,
+      );
     }
     return (await deps.store.runs.get(runId)) ?? { ...run, status: "cancelled" };
   };
@@ -483,7 +508,11 @@ export function createRunService(ctx: ProtocolContext): RunService {
   const resolveCancelTargets = async (
     query: CancelManyQuery,
   ): Promise<{ runIds: string[]; truncated: boolean }> => {
-    if (query.runIds !== undefined && query.runIds.length > 0) {
+    // `runIds !== undefined` is the whole test, **including an empty array**. A caller that sent
+    // `run_ids: []` named a set of zero runs; falling through to the whole-server sweep on that would
+    // turn "cancel these (none)" into "cancel everything running" — the most destructive possible
+    // reading of an empty list, and the natural encoding for a client looping over a filtered array.
+    if (query.runIds !== undefined) {
       return { runIds: [...new Set(query.runIds)], truncated: false };
     }
     if (query.threadId !== undefined) await requireThread(query.threadId);
@@ -495,7 +524,7 @@ export function createRunService(ctx: ProtocolContext): RunService {
     // A driver that does not publish its bound simply never reports truncation, rather than having one
     // guessed for it — `maxPageSize` is optional so an existing third-party driver still conforms.
     const pageBound = deps.store.maxPageSize;
-    const sweptEverything = query.threadId === undefined && query.runIds === undefined;
+    const sweptEverything = query.threadId === undefined;
     return {
       runIds: wanted.map((run) => run.run_id),
       truncated: sweptEverything && pageBound !== undefined && inflight.length >= pageBound,
@@ -530,13 +559,18 @@ export function createRunService(ctx: ProtocolContext): RunService {
       const { run, kwargs } = await prepareRun(input, () => ensureThread(input.thread_id));
       // Kick off execution; the subscription below replays from seq 0 (frames are buffered), so
       // nothing is lost between starting the run and subscribing.
-      void runInline(run, kwargs, "stream").catch((error: unknown) =>
-        deps.logger.error("stream run failed", error),
-      );
+      const outcome = runInline(run, kwargs, "stream").catch((error: unknown) => {
+        deps.logger.error("stream run failed", error);
+        return undefined;
+      });
       return {
         runId: run.run_id,
         threadId: run.thread_id,
         frames: deps.bus.subscribe(run.run_id, 0),
+        // The outcome, not a re-read of the row — see `StartedStream.finalStatus`. Falls back to the row
+        // only when execution rejected outright, which is the one case with no outcome to report.
+        finalStatus: async () =>
+          (await outcome)?.status ?? (await deps.store.runs.get(run.run_id))?.status ?? null,
       };
     },
 

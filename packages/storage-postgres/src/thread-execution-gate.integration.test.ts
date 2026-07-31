@@ -1,10 +1,12 @@
 // The Postgres execution gate against a real server. These are the assertions that cannot be made with
 // a stub: an advisory lock only serializes across *connections*, so proving it takes two of them.
 
+import { INFLIGHT_RUN_STATUSES, TERMINAL_RUN_STATUSES } from "@skein-js/core";
 import { startPostgres, type StartedResource } from "@skein-js/test-support";
+import type { Pool } from "pg";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 
-import { createPostgresPool } from "./postgres-skein-store.js";
+import { createPostgresPool, PostgresSkeinStore } from "./postgres-skein-store.js";
 import { createPostgresThreadExecutionGate, threadLockKey } from "./thread-execution-gate.js";
 
 let pg: StartedResource;
@@ -157,5 +159,59 @@ describe("threadLockKey", () => {
       Array.from({ length: 64 }, (_unused, index) => threadLockKey(`thread-${index}`)),
     );
     expect(keys.size).toBe(64);
+  });
+});
+
+describe("runs_inflight_created_at_idx", () => {
+  /** The plan Postgres chooses for `sql`, with sequential scans disabled. */
+  async function planWithoutSeqScan(pool: Pool, sql: string, params: unknown[] = []) {
+    const client = await pool.connect();
+    try {
+      // Disabling seq scans isolates the question this test is about: *can* the planner match the query
+      // against the partial index's predicate. Left enabled, a small table is legitimately faster to scan
+      // and the plan says nothing either way — which is exactly how the negated form's failure to match
+      // stayed invisible.
+      await client.query("SET enable_seqscan = off");
+      const { rows } = await client.query<{ "QUERY PLAN": string }>(`EXPLAIN ${sql}`, params);
+      return rows.map((row) => row["QUERY PLAN"]).join("\n");
+    } finally {
+      client.release(true);
+    }
+  }
+
+  it("is matched by the positive filter the drivers use, and not by a negated parameterized one", async () => {
+    const store = await PostgresSkeinStore.connect(pg.url, {});
+    await store.migrate();
+    const pool = createPostgresPool(pg.url, {});
+    try {
+      const thread = await store.threads.create();
+      for (let index = 0; index < 200; index += 1) {
+        const run = await store.runs.create({ thread_id: thread.thread_id, assistant_id: "a" });
+        if (index % 5 !== 0) await store.runs.setStatus(run.run_id, "success");
+      }
+      await pool.query("ANALYZE runs");
+
+      // What `listActiveRuns` now sends: a literal list, built from INFLIGHT_RUN_STATUSES.
+      const positive = await planWithoutSeqScan(
+        pool,
+        `SELECT * FROM runs WHERE status IN (${INFLIGHT_RUN_STATUSES.map((s) => `'${s}'`).join(", ")})
+           ORDER BY created_at, run_id LIMIT 1000`,
+      );
+      expect(positive).toContain("runs_inflight_created_at_idx");
+
+      // What it sent before, and why migration 0006 was dead weight: the planner cannot prove a negated,
+      // parameterized filter implies the index predicate, so it cannot use the index *even when a
+      // sequential scan is off the table*. This is the assertion that pins the coupling.
+      const negated = await planWithoutSeqScan(
+        pool,
+        `SELECT * FROM runs WHERE NOT (status = ANY($1::text[]))
+           ORDER BY created_at, run_id LIMIT 1000`,
+        [TERMINAL_RUN_STATUSES],
+      );
+      expect(negated).not.toContain("runs_inflight_created_at_idx");
+    } finally {
+      await pool.end();
+      await store.close();
+    }
   });
 });

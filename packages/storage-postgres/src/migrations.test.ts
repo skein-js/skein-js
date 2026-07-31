@@ -7,7 +7,7 @@ import { readdirSync, readFileSync } from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 
-import { isTerminalRunStatus, type RunStatus } from "@skein-js/core";
+import { INFLIGHT_RUN_STATUSES, isTerminalRunStatus, type RunStatus } from "@skein-js/core";
 import { describe, expect, it } from "vitest";
 
 import { SKEIN_MIGRATIONS } from "./migrations.generated.js";
@@ -70,22 +70,21 @@ describe("SKEIN_MIGRATIONS", () => {
     ]);
   });
 
-  it("keeps the inflight partial index in step with TERMINAL_RUN_STATUSES", () => {
-    // `listActiveRuns` filters with `NOT (status = ANY(TERMINAL_RUN_STATUSES))` while the index is
-    // predicated on a literal list Postgres can match against — the planner needs a literal. If the
-    // two ever disagree the query silently stops using the index and the global sweep goes back to a
-    // sequential scan over every run ever recorded, with nothing failing to say so.
+  it("keeps the inflight partial index in step with INFLIGHT_RUN_STATUSES", () => {
+    // The queries behind `POST /runs/cancel` filter `status IN (…)` from `INFLIGHT_RUN_STATUSES`; this
+    // index is predicated on a literal list. The planner matches a partial index only when the query's
+    // restriction implies the predicate, so if the two lists ever disagree the sweep silently reverts to
+    // a sequential scan over every run ever recorded — with nothing failing to say so.
     const migration = SKEIN_MIGRATIONS.find((entry) => entry.name === "0006_inflight_runs_index");
     const predicate = /WHERE status IN \(([^)]*)\)/.exec(migration?.up ?? "")?.[1];
     const indexed = predicate?.split(",").map((status) => status.trim().replace(/'/g, ""));
 
     expect(indexed).toBeDefined();
+    expect(indexed?.sort()).toEqual([...INFLIGHT_RUN_STATUSES].sort());
+    // And they really are the non-terminal ones, so the index covers the set the guard calls inflight.
     for (const status of indexed ?? []) {
       expect(isTerminalRunStatus(status as RunStatus)).toBe(false);
     }
-    // …and nothing non-terminal is left out, which is the direction that would make the index wrong
-    // rather than merely unused.
-    expect(indexed?.sort()).toEqual(["pending", "running"]);
   });
 
   it("pre-splits a concurrent migration into index DDL only", () => {

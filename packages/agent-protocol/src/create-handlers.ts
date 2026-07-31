@@ -238,13 +238,21 @@ function runLocationHeaders(threadId: string, runId: string): Record<string, str
 export function createProtocolHandlers(service: ProtocolService): ProtocolHandlers {
   // Build an SSE response whose terminal event reflects the run's final status once frames end.
   const sse = (
-    runId: string,
-    frames: AsyncIterable<RunFrame>,
+    started: {
+      runId: string;
+      frames: AsyncIterable<RunFrame>;
+      finalStatus?: () => Promise<RunStatus | null>;
+    },
     headers?: Record<string, string>,
   ): ProtocolResponse => ({
     kind: "sse",
     status: 200,
-    events: toSseEvents(frames, () => service.runs.finalStatus(runId)),
+    // The started run's own resolver when it has one (exact, read from the execution outcome), else the
+    // run row. See `StartedStream.finalStatus` for why the row is not good enough on its own.
+    events: toSseEvents(
+      started.frames,
+      started.finalStatus ?? (() => service.runs.finalStatus(started.runId)),
+    ),
     ...(headers ? { headers } : {}),
   });
 
@@ -463,11 +471,7 @@ export function createProtocolHandlers(service: ProtocolService): ProtocolHandle
       const started = await service.runs.createStream(
         parse(runCreateSchema, req.body) as CreateRunInput,
       );
-      return sse(
-        started.runId,
-        started.frames,
-        runLocationHeaders(started.threadId, started.runId),
-      );
+      return sse(started, runLocationHeaders(started.threadId, started.runId));
     },
 
     createBackgroundRun: async (req) => {
@@ -513,7 +517,7 @@ export function createProtocolHandlers(service: ProtocolService): ProtocolHandle
     joinRunStream: async (req) => {
       const runId = requireParam(req.params, "run_id");
       const frames = await service.runs.join(runId, afterSeqFrom(req));
-      return sse(runId, frames);
+      return sse({ runId, frames });
     },
 
     cancelRun: async (req) =>
@@ -549,11 +553,7 @@ export function createProtocolHandlers(service: ProtocolService): ProtocolHandle
         requireParam(req.params, "thread_id"),
         parse(threadStreamSchema, req.body) as ThreadStreamInput,
       );
-      return sse(
-        started.runId,
-        started.frames,
-        runLocationHeaders(started.threadId, started.runId),
-      );
+      return sse(started, runLocationHeaders(started.threadId, started.runId));
     },
 
     getThreadStream: async (req) => {
@@ -561,11 +561,7 @@ export function createProtocolHandlers(service: ProtocolService): ProtocolHandle
         requireParam(req.params, "thread_id"),
         afterSeqFrom(req),
       );
-      return sse(
-        started.runId,
-        started.frames,
-        runLocationHeaders(started.threadId, started.runId),
-      );
+      return sse(started, runLocationHeaders(started.threadId, started.runId));
     },
 
     postThreadCommands: async (req) => {
@@ -573,11 +569,7 @@ export function createProtocolHandlers(service: ProtocolService): ProtocolHandle
         requireParam(req.params, "thread_id"),
         parse(commandBodySchema, req.body ?? {}) as CommandInput,
       );
-      return sse(
-        started.runId,
-        started.frames,
-        runLocationHeaders(started.threadId, started.runId),
-      );
+      return sse(started, runLocationHeaders(started.threadId, started.runId));
     },
 
     // --- meta ---------------------------------------------------------------------------------

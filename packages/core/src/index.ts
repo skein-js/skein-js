@@ -53,6 +53,7 @@ export type {
   ThreadUpdate,
 } from "./store/skein-store.js";
 export {
+  INFLIGHT_RUN_STATUSES,
   isMetadataSubset,
   isTerminalRunStatus,
   RUN_STATUSES,

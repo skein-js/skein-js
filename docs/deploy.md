@@ -182,9 +182,15 @@ Postgres once autoscaling kicks in. `PG_POOL_MAX=5` is a sane starting point.
 
 The execution-claim pool behaves differently from the other two, and it is worth knowing how: a
 connection is held for the **whole duration** of an executing run, not for the length of a query. So its
-working size is your run concurrency, not your request rate — if `SKEIN_RUN_CONCURRENCY` exceeds
-`PG_POOL_MAX`, runs queue on the pool instead of on the worker. Keep `PG_POOL_MAX` at or above run
-concurrency; `skein start` warns at boot when it is not.
+working size is your run concurrency, not your request rate — and it is sized from
+`SKEIN_RUN_CONCURRENCY` plus headroom for the inline run modes (`/runs/wait`, `/runs/stream`,
+`/threads/{id}/stream`, `/threads/{id}/commands`), which execute without consuming a worker slot and are
+therefore bounded by request arrival rather than by run concurrency.
+
+Past that headroom an inline run waits for a free claim connection and then **fails** rather than
+executing unguarded — the safe direction, since executing without the claim is what interleaves two runs'
+checkpoint writes. Keep `PG_POOL_MAX` at or above run concurrency (`skein start` warns at boot when it is
+not), and raise it if you serve heavy concurrent streaming alongside a saturated background worker.
 
 ### When the database stops answering
 

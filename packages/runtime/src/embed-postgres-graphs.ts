@@ -12,6 +12,7 @@ import type { GraphResolver, ProtocolDeps } from "@skein-js/agent-protocol";
 import {
   normalizeEmbeddableGraphs,
   resolveMaxPageSize,
+  resolveRunConcurrency,
   resolveMemoryBusLimits,
   type EmbeddableGraph,
 } from "@skein-js/server-kit";
@@ -163,6 +164,7 @@ export async function embedPostgresGraphs(
       connectionOptions,
       // Validates an explicit value the same way the env path validates SKEIN_MAX_PAGE_SIZE.
       maxPageSize: resolveMaxPageSize(options.maxPageSize),
+      runConcurrency: resolveRunConcurrency(),
       disposers,
     });
     if (options.ttl) startStoreTtlSweeper(store, options.ttl, disposers);

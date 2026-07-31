@@ -159,9 +159,11 @@ export async function connectPostgresStore(args: {
   connectionOptions: PostgresConnectionOptions;
   /** The largest page any list/search returns — see `resolveMaxPageSize`. */
   maxPageSize: number;
+  /** Max runs executing at once — sizes the execution-gate pool. See `threadGatePoolMax`. */
+  runConcurrency: number;
   disposers: Disposer[];
 }): Promise<Pick<ProtocolDeps, "store" | "checkpointer" | "threadExecutionGate">> {
-  const { url, index, ttl, connectionOptions, maxPageSize, disposers } = args;
+  const { url, index, ttl, connectionOptions, maxPageSize, runConcurrency, disposers } = args;
   const store = await PostgresSkeinStore.connect(url, {
     ...(index ? { index } : {}),
     ...(ttl ? { ttl } : {}),
@@ -188,32 +190,48 @@ export async function connectPostgresStore(args: {
 
   // Per-thread execution serialization across instances, on its **own** pool: every executing run holds
   // one connection from it for the run's whole duration, so sharing the store's pool would let a burst
-  // of runs starve ordinary queries. Sized to the run concurrency plus a small margin rather than to
-  // `PG_POOL_MAX` — see docs/deploy.md on the connection budget.
+  // of runs starve ordinary queries. See docs/deploy.md on the connection budget.
   const gatePool = createPostgresPool(url, {
     ...connectionOptions,
-    poolMax: threadGatePoolMax(connectionOptions.poolMax),
+    poolMax: threadGatePoolMax(connectionOptions.poolMax, runConcurrency),
   });
   disposers.push(() => gatePool.end());
   return {
     store,
     checkpointer,
-    threadExecutionGate: createPostgresThreadExecutionGate(gatePool),
+    threadExecutionGate: createPostgresThreadExecutionGate(gatePool, {
+      warn: (message, meta) => console.warn(`skein: ${message}`, meta ?? ""),
+    }),
   };
 }
 
 /**
  * How many connections the execution gate's pool may hold.
  *
- * One per concurrently-executing run, so it is bounded by the same thing run concurrency is. Mirroring
- * `PG_POOL_MAX` is the honest default: an operator who sized that pool for their instance's load has
- * already expressed how many runs they expect in flight, and the gate cannot need more claims than there
- * are runs. The floor keeps a deliberately tiny `PG_POOL_MAX` from deadlocking execution outright —
- * a gate pool of zero would mean no run could ever start.
+ * Sized from **run concurrency**, not from `PG_POOL_MAX`, because that is what it actually bounds: one
+ * claim per concurrently-executing run. Sizing it at `PG_POOL_MAX` alone is subtly wrong — the inline
+ * run modes (`/runs/wait`, `/runs/stream`, `/threads/{id}/stream`, `/threads/{id}/commands`) execute
+ * without consuming a worker slot, so a server at its background-run limit can still have streaming
+ * requests arriving. A pool with no room for them turns a valid request into a failed run rather than a
+ * queued one.
+ *
+ * The `+ INLINE_RUN_HEADROOM` covers exactly that overlap, and the `PG_POOL_MAX` floor keeps an operator
+ * who deliberately raised it from being narrowed here.
  */
-function threadGatePoolMax(configuredPoolMax: number | undefined): number {
-  return Math.max(configuredPoolMax ?? 10, 2);
+function threadGatePoolMax(configuredPoolMax: number | undefined, runConcurrency: number): number {
+  return Math.max(configuredPoolMax ?? 10, runConcurrency + INLINE_RUN_HEADROOM);
 }
+
+/**
+ * Extra execution claims kept available for inline (wait/stream/command) runs, which are bounded by
+ * request arrival rather than by `SKEIN_RUN_CONCURRENCY`.
+ *
+ * Not a guarantee — nothing bounds concurrent HTTP requests — but enough that an ordinary streaming
+ * request is not queued behind a saturated background worker. Past it, an inline run waits for a free
+ * claim connection (`PG_CONNECTION_TIMEOUT_MS`) and then fails rather than executing unguarded, which is
+ * the safe direction: executing without the claim is what corrupts a thread's checkpoints.
+ */
+const INLINE_RUN_HEADROOM = 4;
 
 /**
  * Optional Redis event-bus tuning from the environment.

@@ -55,10 +55,15 @@ function langsmithTracingEnabled(env: Record<string, string | undefined>): boole
  * A dynamic *package* import, not a file read: `@langchain/langgraph` declares `"./package.json"` in
  * its own `exports`, so a bundler resolves this like any other import instead of leaving a dangling
  * path. Resolved once and memoized — this is a handshake endpoint, and health checkers poll it.
+ *
+ * `with { type: "json" }` is **required**, not decoration: Node rejects a JSON import without it
+ * (`ERR_IMPORT_ATTRIBUTE_MISSING`), so omitting it made this throw on every unbundled deployment and the
+ * `.catch` below swallowed it into a permanently absent field. A bundler inlines the JSON either way,
+ * which is why a test run under vitest passes regardless — the attribute is what makes plain `node` work.
  */
 let langgraphVersion: Promise<string | undefined> | undefined;
 function readLanggraphVersion(): Promise<string | undefined> {
-  langgraphVersion ??= import("@langchain/langgraph/package.json")
+  langgraphVersion ??= import("@langchain/langgraph/package.json", { with: { type: "json" } })
     .then((module) => (module as { default?: { version?: string } }).default?.version)
     .catch(() => undefined);
   return langgraphVersion;

@@ -25,6 +25,7 @@ import {
   corsFromHttpConfig,
   loadReloadableInMemoryRuntime,
   resolveMaxPageSize,
+  resolveRunConcurrency,
   resolveMemoryBusLimits,
   type DevStateSnapshot,
 } from "@skein-js/server-kit";
@@ -223,6 +224,7 @@ export async function buildRuntime(options: BuildRuntimeOptions): Promise<SkeinR
           ttl: storeTtl,
           connectionOptions: postgresConnectionOptions(),
           maxPageSize: resolveMaxPageSize(),
+          runConcurrency: resolveRunConcurrency(),
           disposers,
         })
       : {

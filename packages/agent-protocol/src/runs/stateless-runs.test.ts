@@ -10,7 +10,11 @@ import { describe, expect, it } from "vitest";
 
 import { createFixtureDeps } from "../__fixtures__/deps.js";
 import { createContext } from "../context.js";
-import { createProtocolHandlers, type ProtocolRequest } from "../create-handlers.js";
+import {
+  createProtocolHandlers,
+  type ProtocolRequest,
+  type ProtocolResponse,
+} from "../create-handlers.js";
 import { createProtocolServiceFromContext } from "../service.js";
 
 async function harness(deps = createFixtureDeps()) {
@@ -31,6 +35,12 @@ function request(overrides: Partial<ProtocolRequest> = {}): ProtocolRequest {
     ...overrides,
   };
 }
+
+/** The JSON body of a handler response, narrowed so assertions read as the value rather than a cast. */
+const bodyOf = <T>(response: ProtocolResponse): T => {
+  if (response.kind !== "json") throw new Error(`expected a json response, got "${response.kind}"`);
+  return response.body as T;
+};
 
 /** Poll until `predicate` holds — the background worker settles a run asynchronously. */
 async function waitFor(predicate: () => Promise<boolean> | boolean, timeoutMs = 2000) {
@@ -309,6 +319,19 @@ describe("POST /runs/cancel (cancelMany)", () => {
 
     expect((await deps.store.runs.get(running.run_id))?.status).toBe("cancelled");
     expect((await deps.store.runs.get(pending.run_id))?.status).toBe("pending");
+  });
+
+  it("cancels nothing for an explicitly empty run_ids, rather than sweeping the server", async () => {
+    // The most destructive possible reading of `run_ids: []` — the natural encoding for a client looping
+    // over a filtered array — would be "cancel everything running". It means the set it names: none.
+    const { deps, service, handlers } = await harness();
+    const thread = await service.threads.create();
+    const spared = await service.runs.createBackground(thread.thread_id, { assistant_id: "echo" });
+
+    const response = await handlers.cancelManyRuns(request({ body: { run_ids: [] } }));
+
+    expect(bodyOf<{ cancelled_count: number }>(response).cancelled_count).toBe(0);
+    expect((await deps.store.runs.get(spared.run_id))?.status).toBe("pending");
   });
 
   it("404s a thread that does not exist rather than silently sweeping nothing", async () => {

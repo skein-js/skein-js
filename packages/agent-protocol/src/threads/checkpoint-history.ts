@@ -54,14 +54,24 @@ async function replayCheckpoints(
   }
 }
 
-/** Read all of a thread's checkpoint tuples (the saver yields newest-first). */
+/**
+ * Read a thread's checkpoint tuples, newest-first. `limit` bounds the read at the saver — which is where
+ * it has to be: `PostgresSaver.list` only emits a SQL `LIMIT` when given one, and otherwise materializes
+ * every checkpoint row (channel values included) before yielding the first tuple, so breaking out of the
+ * loop afterwards saves nothing.
+ */
 async function listCheckpoints(
   checkpointer: BaseCheckpointSaver,
   threadId: string,
+  limit?: number,
 ): Promise<CheckpointTuple[]> {
   const tuples: CheckpointTuple[] = [];
-  for await (const tuple of checkpointer.list({ configurable: { thread_id: threadId } })) {
+  for await (const tuple of checkpointer.list(
+    { configurable: { thread_id: threadId } },
+    limit === undefined ? undefined : { limit },
+  )) {
     tuples.push(tuple);
+    if (limit !== undefined && tuples.length >= limit) break;
   }
   return tuples;
 }
@@ -98,15 +108,41 @@ export async function pruneThreadCheckpointsToLatest(
   checkpointer: BaseCheckpointSaver,
   threadId: string,
 ): Promise<boolean> {
-  const tuples = await listCheckpoints(checkpointer, threadId);
+  // Two tuples, not the whole history: all this needs is the keeper plus the answer to "is there more
+  // than one?". Draining the history would re-introduce the unbounded read `rollbackThreadCheckpointsTo`
+  // documents as a statement-timeout hazard — on the very operation a user reaches for *because* a thread
+  // got large.
+  const tuples = await listCheckpoints(checkpointer, threadId, 2);
   if (tuples.length <= 1) return false;
 
   // Dropping `parentConfig` is what re-roots the keeper: `replayCheckpoints` derives the parent link
   // from it, so an absent one produces the same root `put` it already uses for the oldest tuple in a
   // chain — and its pending-writes handling comes along for free.
   const { parentConfig: _removedAncestor, ...rootedLatest } = tuples[0]!; // newest-first; length > 1
-  await checkpointer.deleteThread(threadId);
-  await replayCheckpoints(checkpointer, threadId, [rootedLatest]);
+
+  // Written under a scratch thread id *before* the delete, so the keeper exists in two places for the
+  // duration of the destructive step. Without it, a `put` that fails after `deleteThread` — a statement
+  // timeout, a pool exhaustion, a serialization error on a large checkpoint — leaves the thread with
+  // **zero** checkpoints: its current state gone, not just its history, on a bulk endpoint that can be
+  // pointed at a thousand threads. The insurance copy is removed on the way out.
+  const scratchThreadId = `${threadId}::skein-prune`;
+  await replayCheckpoints(checkpointer, scratchThreadId, [rootedLatest]);
+  try {
+    await checkpointer.deleteThread(threadId);
+    await replayCheckpoints(checkpointer, threadId, [rootedLatest]);
+  } catch (error) {
+    // The scratch copy is deliberately left behind here: it is the only remaining copy of the state, and
+    // the id is derived from the thread's own so an operator can find it. Recover with
+    // `copyCheckpointHistory(checkpointer, "<thread>::skein-prune", "<thread>")`.
+    throw new Error(
+      `pruning thread "${threadId}" failed after its checkpoints were deleted; the kept checkpoint ` +
+        `survives under "${scratchThreadId}"`,
+      { cause: error },
+    );
+  }
+  // Best-effort: the prune has already succeeded, so a leftover scratch thread is clutter rather than a
+  // failure — and reporting it as one would make a successful prune look broken.
+  await checkpointer.deleteThread(scratchThreadId).catch(() => undefined);
   return true;
 }
 

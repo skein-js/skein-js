@@ -36,6 +36,7 @@ describe("connectPostgresStore — statement timeout", () => {
       url: pg.url,
       connectionOptions: { statementTimeoutMs: 1 },
       maxPageSize: 1000,
+      runConcurrency: 10,
       disposers,
     });
 

@@ -100,12 +100,18 @@ export const langgraphJsonSchema = z
     http: z
       .object({
         cors: z.object({}).passthrough().optional(),
-        disable_assistants: z.boolean().optional(),
-        disable_threads: z.boolean().optional(),
-        disable_runs: z.boolean().optional(),
-        disable_store: z.boolean().optional(),
+        // Declared as `unknown`, not `boolean`. This block used to be opaque
+        // (`z.object({}).passthrough()`), so a config carrying `"disable_runs": "${DISABLE_RUNS}"` — env
+        // substitution, which this loader supports — or a hand-written `"true"` string loaded fine.
+        // Typing these as booleans would turn those into a *startup failure*, since `parseLanggraphJson`
+        // throws on any violation. Only a literal `true` disables a group; that decision lives in
+        // `disabledRoutesFromHttpConfig`, which is also where the string/number cases are handled.
+        disable_assistants: z.unknown().optional(),
+        disable_threads: z.unknown().optional(),
+        disable_runs: z.unknown().optional(),
+        disable_store: z.unknown().optional(),
         /** Turns off `GET /info`. skein's `/ok` health probe is unaffected — see meta/server-info.ts. */
-        disable_meta: z.boolean().optional(),
+        disable_meta: z.unknown().optional(),
       })
       .passthrough()
       .optional(),

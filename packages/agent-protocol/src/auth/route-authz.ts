@@ -65,9 +65,10 @@ export const ROUTE_AUTHZ: Record<keyof ProtocolHandlers, RouteAuthz> = {
   getThreadStream: { resource: "threads", action: "read" },
   postThreadCommands: { resource: "threads", action: "create_run" },
 
-  // meta — the capability handshake. Authorized as an assistants *read*, the narrowest existing
-  // resource:action that fits: `/info` reports which resources are served, so a principal that may not
-  // read any of them has no business enumerating them either. It exposes no thread or store content.
+  // meta — the capability handshake. `createAuthorizingHandlers` serves this one **unauthenticated**,
+  // matching `@langchain/langgraph-api` (whose auth middleware skips `/info` explicitly): clients probe
+  // it before they have credentials. The entry is kept so this table stays exhaustive over the handler
+  // table, and names the resource:action that *would* apply if that exemption were ever removed.
   getServerInfo: { resource: "assistants", action: "read" },
 
   // store

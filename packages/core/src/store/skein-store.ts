@@ -405,6 +405,18 @@ export function isTerminalRunStatus(status: RunStatus): boolean {
 }
 
 /**
+ * The complement of {@link TERMINAL_RUN_STATUSES} — a run in one of these is *inflight* and holds its
+ * thread.
+ *
+ * Stated positively as well as negatively because a SQL driver needs it that way. Postgres will only use
+ * a partial index when it can prove the query's restriction implies the index predicate, and it cannot
+ * prove that of `NOT (status = ANY($1))` — enumerating a column's domain is not something
+ * `predicate_implied_by` does, and with a generic plan the parameter is not even a constant. Filtering
+ * *positively* on this list matches an `IN (…)` predicate directly.
+ */
+export const INFLIGHT_RUN_STATUSES: readonly RunStatus[] = ["pending", "running"];
+
+/**
  * Every run status as a *value*, for checking a string (a `?status=` query param) against the union.
  *
  * Derived from a `Record<RunStatus, true>` rather than written as an array so the compiler enforces

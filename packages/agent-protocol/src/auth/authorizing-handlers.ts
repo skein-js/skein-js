@@ -32,6 +32,15 @@ export function createAuthorizingHandlers(
 
   const wrapped = {} as ProtocolHandlers;
   for (const name of names) {
+    // `GET /info` is served unauthenticated, matching `@langchain/langgraph-api`, whose auth middleware
+    // opens with an explicit `if (c.req.path === "/info") return next()`. It is a *capability
+    // handshake*: Studio and monitoring clients probe it before they have credentials, so 401-ing it
+    // would break connecting to an auth-enabled skein server that `langgraph dev` would have answered.
+    // It exposes no thread, run, or store content — only versions and which resources are served.
+    if (name === "getServerInfo") {
+      wrapped[name] = baseHandlers[name];
+      continue;
+    }
     const route = ROUTE_AUTHZ[name];
     wrapped[name] = async (req) => {
       const authContext: AuthContext | undefined = await resolveAuthContext(engine, req);

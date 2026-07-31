@@ -11,7 +11,7 @@ import {
   type GraphSchemas,
   type ProtocolDeps,
 } from "@skein-js/agent-protocol";
-import { resolveMaxPageSize } from "@skein-js/server-kit";
+import { resolveMaxPageSize, resolveRunConcurrency } from "@skein-js/server-kit";
 import { MemoryRunEventBus, MemoryRunQueue } from "@skein-js/storage-memory";
 import { startPostgres, type StartedResource } from "@skein-js/test-support";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
@@ -53,6 +53,7 @@ async function serviceOnPostgres() {
     url: pg.url,
     connectionOptions: postgresConnectionOptions(),
     maxPageSize: resolveMaxPageSize(),
+    runConcurrency: resolveRunConcurrency(),
     disposers,
   });
   const deps: ProtocolDeps = {
@@ -78,7 +79,7 @@ describe("time travel — postgres store + PostgresSaver checkpointer", () => {
       assistant_id: "echo",
       input: { value: "hi" },
     });
-    expect(first).toEqual({ value: "echo: hi" });
+    expect(first.result).toEqual({ value: "echo: hi" });
     const tip =
       (await service.threads.history(thread.thread_id))[0]?.checkpoint.checkpoint_id ?? undefined;
     expect(typeof tip).toBe("string");

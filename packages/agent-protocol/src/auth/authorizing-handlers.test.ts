@@ -93,6 +93,27 @@ describe("authorizing handlers", () => {
     await expectStatus(runtime.handlers.createThread(makeReq({ method: "POST", body: {} })), 401);
   });
 
+  it("serves GET /info unauthenticated, as @langchain/langgraph-api does", async () => {
+    // Its auth middleware opens with an explicit `if (c.req.path === "/info") return next()`. `/info` is
+    // a capability handshake — Studio and monitoring clients probe it *before* they have credentials — so
+    // 401-ing it would break connecting to an auth-enabled skein server that `langgraph dev` answers.
+    const response = await runtime.handlers.getServerInfo(
+      makeReq({ method: "GET", body: undefined }),
+    );
+
+    expect(response.status).toBe(200);
+    expect((response as { body: { context: string } }).body.context).toBe("js");
+  });
+
+  it("still guards every other handler when /info is exempt", async () => {
+    // The exemption is one named handler, not a hole in the wrapper.
+    await expectStatus(runtime.handlers.listThreads(makeReq({ method: "POST", body: {} })), 401);
+    await expectStatus(
+      runtime.handlers.searchAssistants(makeReq({ method: "POST", body: {} })),
+      401,
+    );
+  });
+
   it("stamps the owner onto a created thread", async () => {
     const response = await runtime.handlers.createThread(
       asUser("alice", { method: "POST", body: {} }),

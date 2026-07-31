@@ -165,15 +165,20 @@ export const threadSearchSchema = z
   })
   .passthrough();
 
-/** `POST /threads/count` — the search filters without pagination or sort. */
-export const threadCountSchema = z
-  .object({
-    metadata: z.record(z.unknown()).optional(),
-    values: z.record(z.unknown()).optional(),
-    status: z.enum(["idle", "busy", "interrupted", "error"]).optional(),
-    ids: z.array(z.string()).optional(),
-  })
-  .passthrough();
+/**
+ * `POST /threads/count` — the search filters without pagination or sort.
+ *
+ * Derived from {@link threadSearchSchema} rather than restated, so a filter added there reaches this
+ * endpoint too. Restating them meant a new filter would be silently swallowed by `.passthrough()` and
+ * ignored — a count that disagrees with its own listing, which is exactly the drift the driver-level
+ * `threadSearchWhere` extraction exists to prevent one layer lower.
+ */
+export const threadCountSchema = threadSearchSchema.omit({
+  limit: true,
+  offset: true,
+  sort_by: true,
+  sort_order: true,
+});
 
 /**
  * `POST /threads/prune`.

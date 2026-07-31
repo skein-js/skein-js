@@ -193,6 +193,11 @@ caller learns the thread id of a stateless `/runs/wait`, whose body is the graph
 `disable_meta` flag; in skein it is the container health check (see the generated Dockerfile), so no
 config flag may be able to make a healthy instance read as dead.
 
+**`/info` is served unauthenticated**, even with an `auth` block configured — matching
+`@langchain/langgraph-api`, whose auth middleware skips it explicitly. It is a handshake: Studio and
+monitoring clients probe it before they have credentials, so requiring auth would break connecting to a
+server `langgraph dev` would have answered. It exposes only versions and which resources are served.
+
 ### Store (long-term memory)
 
 | Method   | Path                  | Notes                           |
@@ -291,7 +296,7 @@ Route → resource/action (runs authorize through their owning thread — there 
 | `PATCH /threads/{id}`; `POST /threads/{id}/state` (state fork); run cancel; `POST /runs/cancel`                         | `threads:update`                                |
 | `DELETE /threads/{id}`; run delete; `POST /threads/prune`                                                               | `threads:delete`                                |
 | run create (wait/stream/background/stateless/batch), thread stream / commands                                           | `threads:create_run`                            |
-| `GET /info`                                                                                                             | `assistants:read`                               |
+| `GET /info`                                                                                                             | _(unauthenticated — see the Meta section)_      |
 | `PUT/GET/DELETE /store/items`, `/store/items/search`, `/store/namespaces`                                               | `store:{put,get,delete,search,list_namespaces}` |
 
 **Reuse & limits.** The `Auth` contract and the `$eq`/`$contains` filter semantics come from

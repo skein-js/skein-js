@@ -145,14 +145,31 @@ describe("POST /threads/prune", () => {
     expect(await service.threads.history(thread.thread_id)).toEqual([]);
   });
 
-  it("409s a keep_latest prune of a busy thread rather than racing its writes", async () => {
-    const { service, handlers } = await harness();
-    const thread = await service.threads.create();
-    await service.runs.createBackground(thread.thread_id, { assistant_id: "echo" });
+  it("skips a busy thread on keep_latest rather than aborting a partly-applied batch", async () => {
+    // A keep_latest prune cannot run while a thread has an active run — it would race the run's
+    // checkpoint writes. Skipped rather than thrown: this is a bulk endpoint, so by the time a busy
+    // thread is reached the earlier ids have already been irreversibly trimmed, and a 409 carries no body
+    // to tell the caller which. The count is what reports the outcome.
+    const { deps, service, handlers } = await harness();
+    const busy = await service.threads.create();
+    const prunable = await service.threads.create();
+    for (const value of ["one", "two", "three"]) {
+      await service.runs.createWait({
+        thread_id: prunable.thread_id,
+        assistant_id: "echo",
+        input: { value },
+      });
+    }
+    await service.runs.createBackground(busy.thread_id, { assistant_id: "echo" });
 
-    await expect(
-      handlers.pruneThreads(request({ thread_ids: [thread.thread_id], strategy: "keep_latest" })),
-    ).rejects.toMatchObject({ status: 409 });
+    const response = await handlers.pruneThreads(
+      request({ thread_ids: [busy.thread_id, prunable.thread_id], strategy: "keep_latest" }),
+    );
+
+    // Only the prunable one counted, and both threads still exist.
+    expect(bodyOf<{ pruned_count: number }>(response).pruned_count).toBe(1);
+    expect(await deps.store.threads.get(busy.thread_id)).not.toBeNull();
+    expect((await service.threads.history(prunable.thread_id)).length).toBe(1);
   });
 
   it("rejects an empty or oversized thread_ids list", async () => {

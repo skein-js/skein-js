@@ -213,10 +213,15 @@ const MIGRATION_0006_INFLIGHT_RUNS_INDEX = `-- Up Migration
 -- entries per run's lifetime — one on insert, one when it settles out of the predicate. An index on
 -- all of \`status\` would carry every historical row to serve a query that never wants one.
 --
--- The predicate is spelled out rather than derived from TERMINAL_RUN_STATUSES: Postgres needs a
--- literal, immutable predicate to match a query against it. It must stay in step with the
--- \`NOT (status = ANY(...))\` filter in \`listActiveRuns\` — the planner silently falls back to a seq
--- scan if the two ever disagree, so this is a performance coupling, not a correctness one.
+-- The predicate is a literal because Postgres needs one to match a query against it. The queries that
+-- must match it (\`listActiveRuns\`, \`hasActiveRun\`, \`createIfThreadIdle\`) therefore filter *positively*
+-- with \`status IN ('pending','running')\`, built from \`INFLIGHT_RUN_STATUSES\` — see INFLIGHT_STATUS_SQL.
+--
+-- A negated, parameterized filter (\`NOT (status = ANY($1))\`) does NOT match: proving it implies this
+-- predicate would require enumerating the column's domain, which the planner does not do, and under a
+-- generic plan the parameter is not even a constant. That form silently sequential-scans the whole table
+-- while still paying this index's write cost — a performance coupling, not a correctness one, and the
+-- reason the query and this predicate are both derived from one constant.
 --
 -- \`skein:concurrent\` for the same reason as 0005: CREATE INDEX CONCURRENTLY cannot run inside a
 -- transaction, and a plain build would hold a write-blocking lock on \`runs\` at boot.

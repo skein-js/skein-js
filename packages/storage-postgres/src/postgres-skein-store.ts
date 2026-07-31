@@ -7,7 +7,7 @@ import { randomUUID } from "node:crypto";
 
 import {
   SkeinHttpError,
-  TERMINAL_RUN_STATUSES,
+  INFLIGHT_RUN_STATUSES,
   type Assistant,
   type AssistantCreate,
   type AssistantRepo,
@@ -318,6 +318,43 @@ function rowToAssistant(row: AssistantRow): Assistant {
     name: row.name,
     description: row.description ?? undefined,
   } as Assistant;
+}
+
+/**
+ * `INFLIGHT_RUN_STATUSES` as a SQL literal list, for a predicate the planner can match against
+ * `runs_inflight_created_at_idx` (migration 0006). Interpolated rather than parameterized *because* a
+ * parameter defeats the match — and safely so: these are internal enum values from a `readonly` constant,
+ * never anything a caller supplies. Quoted through a single helper so the two places that need the
+ * predicate cannot spell it differently.
+ */
+const INFLIGHT_STATUS_SQL = INFLIGHT_RUN_STATUSES.map((status) => `'${status}'`).join(", ");
+
+/**
+ * Insert a run row and return it, on whatever executor the caller has — the pool for `create`, a
+ * transaction's client for `createIfThreadIdle`.
+ *
+ * Shared rather than duplicated because `reject` is the *default* multitask strategy, so the guarded path
+ * is the one most run creations take: a column added to `runs` and wired into only one of the two copies
+ * would be silently missing from most runs, and no test could notice — both spellings return a `Run`.
+ */
+async function insertRun(
+  executor: Pick<Pool, "query"> | Pick<PoolClient, "query">,
+  input: RunCreate,
+): Promise<Run> {
+  const { rows } = await executor.query<RunRow>(
+    `INSERT INTO runs (run_id, thread_id, assistant_id, status, metadata, multitask_strategy, kwargs)
+     VALUES ($1, $2, $3, $4, $5::jsonb, $6, $7::jsonb) RETURNING *`,
+    [
+      input.run_id ?? randomUUID(),
+      input.thread_id,
+      input.assistant_id,
+      input.status ?? "pending",
+      JSON.stringify(input.metadata ?? {}),
+      input.multitask_strategy ?? null,
+      input.kwargs === undefined ? null : JSON.stringify(input.kwargs),
+    ],
+  );
+  return rowToRun(rows[0] as RunRow);
 }
 
 /** True for a Postgres `unique_violation` (SQLSTATE 23505) — a duplicate primary/unique key. */
@@ -1186,22 +1223,7 @@ export class PostgresSkeinStore implements SkeinStore {
       );
       return rows.map(rowToRun);
     },
-    create: async (input: RunCreate) => {
-      const { rows } = await this.#pool.query<RunRow>(
-        `INSERT INTO runs (run_id, thread_id, assistant_id, status, metadata, multitask_strategy, kwargs)
-         VALUES ($1, $2, $3, $4, $5::jsonb, $6, $7::jsonb) RETURNING *`,
-        [
-          input.run_id ?? randomUUID(),
-          input.thread_id,
-          input.assistant_id,
-          input.status ?? "pending",
-          JSON.stringify(input.metadata ?? {}),
-          input.multitask_strategy ?? null,
-          input.kwargs === undefined ? null : JSON.stringify(input.kwargs),
-        ],
-      );
-      return rowToRun(rows[0] as RunRow);
-    },
+    create: async (input: RunCreate) => insertRun(this.#pool, input),
     createIfThreadIdle: async (input: RunCreate) => {
       // Serialized on the **thread row**, not on the runs table: `SELECT … FOR UPDATE` takes a row lock
       // that concurrent run-creates for the same thread queue behind, so the inflight check below and
@@ -1226,25 +1248,12 @@ export class PostgresSkeinStore implements SkeinStore {
         if (!threadRows[0]) return null;
 
         const { rows: inflight } = await client.query<{ exists: boolean }>(
-          "SELECT EXISTS(SELECT 1 FROM runs WHERE thread_id = $1 AND NOT (status = ANY($2::text[]))) AS exists",
-          [input.thread_id, TERMINAL_RUN_STATUSES],
+          `SELECT EXISTS(SELECT 1 FROM runs WHERE thread_id = $1 AND status IN (${INFLIGHT_STATUS_SQL})) AS exists`,
+          [input.thread_id],
         );
         if (inflight[0]?.exists) return null;
 
-        const { rows } = await client.query<RunRow>(
-          `INSERT INTO runs (run_id, thread_id, assistant_id, status, metadata, multitask_strategy, kwargs)
-           VALUES ($1, $2, $3, $4, $5::jsonb, $6, $7::jsonb) RETURNING *`,
-          [
-            input.run_id ?? randomUUID(),
-            input.thread_id,
-            input.assistant_id,
-            input.status ?? "pending",
-            JSON.stringify(input.metadata ?? {}),
-            input.multitask_strategy ?? null,
-            input.kwargs === undefined ? null : JSON.stringify(input.kwargs),
-          ],
-        );
-        return rowToRun(rows[0] as RunRow);
+        return insertRun(client, input);
       });
     },
     setStatus: async (runId, status: RunStatus, error?: RunError) => {
@@ -1283,16 +1292,22 @@ export class PostgresSkeinStore implements SkeinStore {
     },
     hasActiveRun: async (threadId) => {
       const { rows } = await this.#pool.query<{ active: boolean }>(
-        "SELECT EXISTS(SELECT 1 FROM runs WHERE thread_id = $1 AND NOT (status = ANY($2::text[]))) AS active",
-        [threadId, TERMINAL_RUN_STATUSES],
+        `SELECT EXISTS(SELECT 1 FROM runs WHERE thread_id = $1 AND status IN (${INFLIGHT_STATUS_SQL})) AS active`,
+        [threadId],
       );
       return rows[0]?.active ?? false;
     },
     // `threadId` omitted sweeps every thread (see the `RunRepo.listActiveRuns` contract). Bounded like
     // every other unbounded read, so a server with a very large backlog can't be made to materialize
     // all of it in one call.
+    //
+    // Filtered *positively* against `INFLIGHT_STATUS_SQL`, not with `NOT (status = ANY($n))`. Postgres
+    // uses a partial index only when it can prove the query implies the index predicate, and it cannot
+    // prove that of a negated, parameterized list — so the negated form made the whole-server sweep
+    // sequential-scan and sort the entire `runs` table while still paying `runs_inflight_created_at_idx`'s
+    // write cost. See migration 0006.
     listActiveRuns: async (threadId) => {
-      const params: unknown[] = [TERMINAL_RUN_STATUSES];
+      const params: unknown[] = [];
       let threadSql = "";
       if (threadId !== undefined) {
         params.push(threadId);
@@ -1300,7 +1315,7 @@ export class PostgresSkeinStore implements SkeinStore {
       }
       params.push(this.#pageLimit(undefined));
       const { rows } = await this.#pool.query<RunRow>(
-        `SELECT * FROM runs WHERE NOT (status = ANY($1::text[]))${threadSql} ` +
+        `SELECT * FROM runs WHERE status IN (${INFLIGHT_STATUS_SQL})${threadSql} ` +
           `ORDER BY created_at, run_id LIMIT $${params.length}`,
         params,
       );
