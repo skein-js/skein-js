@@ -10,6 +10,7 @@ import { existsSync, readFileSync } from "node:fs";
 import { mkdir, writeFile } from "node:fs/promises";
 import { createRequire, isBuiltin } from "node:module";
 import path from "node:path";
+import { fileURLToPath } from "node:url";
 
 import { loadConfig, parseGraphSpec } from "@skein-js/config";
 import {
@@ -34,7 +35,7 @@ export interface BundleProjectOptions {
   configPath: string;
   /** Absolute path to the artifact output dir (e.g. `<configDir>/.skein/build`). */
   outDir: string;
-  /** `node_version` from the config, for the bundle target; defaults to 20. */
+  /** ECMAScript bundle target derived from the selected runtime; defaults to Node 24 syntax. */
   nodeVersion?: string;
   /** The CLI's own version, pinned as `skein-js` in the artifact package.json. */
   skeinVersion: string;
@@ -72,9 +73,9 @@ function uniqueSafeName(graphId: string, used: Set<string>): string {
   return candidate;
 }
 
-/** Node major from `node_version` (e.g. "20", ">=20", "20.11.0") for the bundle target; default 20. */
+/** Node major used as the portable JS syntax target; defaults to the Node 24 LTS baseline. */
 function nodeMajor(nodeVersion: string | undefined): string {
-  return nodeVersion?.trim().match(/\d+/)?.[0] ?? "20";
+  return nodeVersion?.trim().match(/\d+/)?.[0] ?? "24";
 }
 
 /** Read a `version` from a package.json path, or undefined if unreadable. */
@@ -90,12 +91,8 @@ function readVersion(pkgJsonPath: string): string | undefined {
   }
 }
 
-/**
- * Resolve an installed package's exact version from `fromDir`'s module tree. Tries `<pkg>/package.json`
- * first, then walks up from the package's entry to the owning `package.json` (for packages whose
- * `exports` hides `package.json`). Throws a clear error when the package isn't installed.
- */
-function resolveInstalledVersion(pkg: string, fromDir: string): string {
+/** One module tree's answer for a package's installed version, or undefined if it isn't there. */
+function findInstalledVersion(pkg: string, fromDir: string): string | undefined {
   const require = createRequire(path.join(fromDir, "__skein_resolver__.js"));
 
   try {
@@ -119,7 +116,24 @@ function resolveInstalledVersion(pkg: string, fromDir: string): string {
       dir = path.dirname(dir);
     }
   } catch {
-    // fall through to the error below
+    return undefined;
+  }
+  return undefined;
+}
+
+/**
+ * Resolve an installed package's exact version, trying each module tree in order.
+ *
+ * Node's algorithm walks up from each directory, so one entry covers a project *and* anything hoisted
+ * above it. More than one is needed because the two kinds of pinned dependency live in different
+ * trees: a graph's imports belong to the **project**, while skein's own runtime peers belong to the
+ * **CLI's** tree — under pnpm's strict layout a peer of `skein-js` is not reachable from the project
+ * at all. Trying the project first still lets a user pin a peer themselves and have that win.
+ */
+function resolveInstalledVersion(pkg: string, fromDirs: readonly string[]): string {
+  for (const fromDir of fromDirs) {
+    const version = findInstalledVersion(pkg, fromDir);
+    if (version) return version;
   }
 
   throw new Error(
@@ -230,13 +244,21 @@ export async function bundleProject(options: BundleProjectOptions): Promise<Buil
     precomputeSchemas(graphs),
   ]);
 
-  // Pin every external + the skein runtime closure to its installed version, resolved from the
-  // workspace's module tree (the source of truth for what dev ran against).
+  // Pin every external + the skein runtime closure to its installed version, resolved from **the
+  // project's** module tree — the source of truth for what dev ran against. Not from `workspaceRoot`:
+  // in a monorepo the dependency is installed next to the project, and a workspace root commonly has
+  // no application dependencies at all (a pnpm workspace hoists nothing by default), so resolving
+  // from there fails for every project that is a package inside a repo. Node's own algorithm walks up
+  // from here, so a hoisted root install is still found.
+  const projectTree = [configDir];
+  // skein's own peers are dependencies of `skein-js`, not of the user's project, so the CLI's tree has
+  // to be searched as well — see `resolveInstalledVersion`.
+  const peerTree = [configDir, path.dirname(fileURLToPath(import.meta.url))];
   const dependencies: Record<string, string> = {};
-  for (const pkg of externals) dependencies[pkg] = resolveInstalledVersion(pkg, workspaceRoot);
+  for (const pkg of externals) dependencies[pkg] = resolveInstalledVersion(pkg, projectTree);
   dependencies["skein-js"] = skeinVersion;
   for (const peer of SKEIN_RUNTIME_PEERS) {
-    dependencies[peer] = resolveInstalledVersion(peer, workspaceRoot);
+    dependencies[peer] = resolveInstalledVersion(peer, peerTree);
   }
   // Runtime deps the bundle can't discover from graph imports, so they must be pinned explicitly:
   //  • a `provider:model` embed dynamically imports `@langchain/<provider>` (never a code import);
@@ -244,15 +266,15 @@ export async function bundleProject(options: BundleProjectOptions): Promise<Buil
   //  • `langgraph.json` `dependencies` — the user's escape hatch for packages loaded by name.
   // The old full-install image happened to carry these; the slim image must add them or break.
   const embedPkg = config.store?.index?.embed && providerEmbedPackage(config.store.index.embed);
-  if (embedPkg) dependencies[embedPkg] = resolveInstalledVersion(embedPkg, workspaceRoot);
+  if (embedPkg) dependencies[embedPkg] = resolveInstalledVersion(embedPkg, projectTree);
   for (const pkg of telemetryRuntimePackages(config.telemetry)) {
-    dependencies[pkg] = resolveInstalledVersion(pkg, workspaceRoot);
+    dependencies[pkg] = resolveInstalledVersion(pkg, projectTree);
   }
   for (const dep of config.dependencies ?? []) {
     // Skip local-path deps (".", "./pkg") — those are the project's own source, already bundled.
     if (dep.startsWith(".") || dep.startsWith("/")) continue;
     const pkg = packageNameOf(dep);
-    dependencies[pkg] = resolveInstalledVersion(pkg, workspaceRoot);
+    dependencies[pkg] = resolveInstalledVersion(pkg, projectTree);
   }
 
   await mkdir(outDir, { recursive: true });

@@ -1,4 +1,4 @@
-import { readFile, rm } from "node:fs/promises";
+import { mkdir, readFile, rm, writeFile } from "node:fs/promises";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 
@@ -18,6 +18,20 @@ const appDir = path.resolve(
 const outDir = path.join(appDir, ".skein", "build");
 const artifactConfig = path.join(outDir, "langgraph.json");
 
+// A dependency installed next to the *app* and nowhere above it. Version pinning has to resolve from
+// the project, so this is the one case a fixture nested inside `packages/cli` can still prove: the
+// walk-up from the workspace root cannot reach it. Written at setup because node_modules is gitignored.
+const pinnedDepDir = path.join(appDir, "node_modules", "@fixture", "pinned");
+
+beforeAll(async () => {
+  await mkdir(pinnedDepDir, { recursive: true });
+  await writeFile(
+    path.join(pinnedDepDir, "package.json"),
+    JSON.stringify({ name: "@fixture/pinned", version: "1.2.3", main: "index.js" }),
+  );
+  await writeFile(path.join(pinnedDepDir, "index.js"), "export const pinned = true;\n");
+});
+
 let artifact: BuildArtifact;
 
 beforeAll(async () => {
@@ -31,6 +45,7 @@ beforeAll(async () => {
 
 afterAll(async () => {
   await rm(path.join(appDir, ".skein"), { recursive: true, force: true });
+  await rm(path.join(appDir, "node_modules"), { recursive: true, force: true });
 });
 
 describe("bundleProject", () => {
@@ -50,6 +65,16 @@ describe("bundleProject", () => {
     expect(artifact.externals["@langchain/langgraph-checkpoint-postgres"]).toMatch(
       /^\d+\.\d+\.\d+/,
     );
+  });
+
+  it("pins a dependency installed next to the project, not only ones visible from the workspace root", () => {
+    // Resolving from the workspace root instead fails for every project that is a package inside a
+    // repo: a pnpm workspace root hoists nothing, so the app's own dependencies are invisible there.
+    // Reproduced before the fix — `skein build` threw for every example in this repo.
+    expect(artifact.externals["@fixture/pinned"]).toBe("1.2.3");
+    // A local-path entry is the project's own source, already bundled — never a pinned dependency.
+    // Checked as a key rather than with `toHaveProperty`, which reads "." as a nested path separator.
+    expect(Object.keys(artifact.externals)).not.toContain(".");
   });
 
   it("writes a production manifest, precomputed schemas, and a pinned package.json", async () => {
