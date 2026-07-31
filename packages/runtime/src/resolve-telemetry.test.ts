@@ -150,10 +150,10 @@ describe("resolveTelemetry", () => {
       expect(sinks.map((sink) => sink.name)).toEqual(["posthog"]);
     });
 
-    it("treats an enabled-but-unconfigured provider as off rather than half-built", async () => {
-      // `langsmith: true` with no key anywhere: the adapter returns undefined, and we drop it.
-      const sinks = await resolveTelemetry({ configDir, env: {}, config: { langsmith: true } });
-      expect(sinks).toEqual([]);
+    it("fails loudly for an explicitly enabled provider with incomplete configuration", async () => {
+      await expect(
+        resolveTelemetry({ configDir, env: {}, config: { langsmith: true } }),
+      ).rejects.toThrow(/telemetry\.langsmith.*incomplete/);
     });
   });
 
@@ -208,6 +208,26 @@ describe("resolveTelemetry", () => {
         importModule: async () => ({ sink: { name: "custom" } }),
       });
       expect(sinks.map((s) => s.name)).toEqual(["posthog", "custom"]);
+    });
+
+    it("drains sinks already constructed when a later sink fails to load", async () => {
+      const flush = vi.fn(async () => {});
+      const shutdown = vi.fn(async () => {});
+
+      await expect(
+        resolveTelemetry({
+          configDir,
+          env: {},
+          config: { paths: ["./first.ts:sink", "./broken.ts:sink"] },
+          importModule: async (path) =>
+            path.endsWith("first.ts")
+              ? { sink: { name: "first", flush, shutdown } }
+              : { wrongExport: {} },
+        }),
+      ).rejects.toThrow(/has no export "sink"/);
+
+      expect(flush).toHaveBeenCalledOnce();
+      expect(shutdown).toHaveBeenCalledOnce();
     });
   });
 });

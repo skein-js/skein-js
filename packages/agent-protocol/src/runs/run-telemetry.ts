@@ -72,6 +72,16 @@ export function emitRunEvent(deps: ResolvedDeps, event: RunTelemetryEvent): void
   }
 }
 
+/** Execute graph work inside every telemetry sink's active run context. */
+export function withRunTelemetryContext<T>(
+  deps: ResolvedDeps,
+  context: RunTelemetryContext | undefined,
+  body: () => Promise<T>,
+): Promise<T> {
+  if (!context || !deps.telemetry.withRunContext) return body();
+  return deps.telemetry.withRunContext(context, body);
+}
+
 /**
  * The trace identity to merge into a run's LangGraph call options. Two things happen here:
  *

@@ -96,6 +96,76 @@ describe("combineTelemetrySinks", () => {
     expect(combined.traceTags?.(context)).toEqual(["before", "after"]);
   });
 
+  describe("withRunContext", () => {
+    it("is absent when no sink implements it, so callers can take a fast path", () => {
+      // Defining it unconditionally puts a wrapper on the streaming hot path — one closure chain per
+      // frame — for sinks that never use it.
+      expect(combineTelemetrySinks([recordingSink("a")]).withRunContext).toBeUndefined();
+      expect(combineTelemetrySinks([]).withRunContext).toBeUndefined();
+    });
+
+    it("nests implementing sinks around the body, outermost first", async () => {
+      const order: string[] = [];
+      const contextual = (name: string): TelemetrySink => ({
+        name,
+        withRunContext: async (_context, body) => {
+          order.push(`enter:${name}`);
+          try {
+            return await body();
+          } finally {
+            order.push(`exit:${name}`);
+          }
+        },
+      });
+
+      const combined = combineTelemetrySinks([contextual("outer"), contextual("inner")]);
+      await expect(
+        combined.withRunContext?.(context, async () => {
+          order.push("body");
+          return "value";
+        }),
+      ).resolves.toBe("value");
+      expect(order).toEqual(["enter:outer", "enter:inner", "body", "exit:inner", "exit:outer"]);
+    });
+
+    it("still runs the body when a sink's own plumbing throws", async () => {
+      // The documented guarantee is that a sink cannot fail the run it observes. This was the one
+      // method not covered by `guard`, so a sink whose tracer had shut down failed the graph run.
+      const report = vi.fn();
+      const broken: TelemetrySink = {
+        name: "broken",
+        withRunContext: () => {
+          throw new Error("tracer already shut down");
+        },
+      };
+
+      const combined = combineTelemetrySinks([broken], report);
+      await expect(combined.withRunContext?.(context, async () => "ran")).resolves.toBe("ran");
+      expect(report).toHaveBeenCalledTimes(1);
+      expect(report.mock.calls[0]?.[1]).toBe("broken");
+    });
+
+    it("propagates the body's own failure rather than reporting it as a sink fault", async () => {
+      // A graph that fails inside the context must surface as that failure, not be masked or retried.
+      const report = vi.fn();
+      const passthrough: TelemetrySink = {
+        name: "passthrough",
+        withRunContext: (_context, body) => body(),
+      };
+      let bodyRuns = 0;
+
+      const combined = combineTelemetrySinks([passthrough], report);
+      await expect(
+        combined.withRunContext?.(context, async () => {
+          bodyRuns += 1;
+          throw new Error("graph exploded");
+        }),
+      ).rejects.toThrow("graph exploded");
+      expect(bodyRuns).toBe(1);
+      expect(report).not.toHaveBeenCalled();
+    });
+  });
+
   it("reports a throwing sink by name instead of swallowing it silently", () => {
     const report = vi.fn();
 

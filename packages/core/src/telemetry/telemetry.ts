@@ -115,6 +115,11 @@ export interface TelemetrySink {
   /** Extra tags to stamp on the graph call. */
   traceTags?(context: RunTelemetryContext): string[];
   /**
+   * Run `body` with this run as the active backend context. OTel uses this to parent LangChain and
+   * model spans under the Skein run span; non-contextual sinks omit it.
+   */
+  withRunContext?<T>(context: RunTelemetryContext, body: () => Promise<T>): Promise<T>;
+  /**
    * Drain anything buffered. Called on runtime shutdown — a batching exporter that skips this loses
    * the tail of every process, which is exactly the telemetry you most wanted after a crash.
    */
@@ -224,6 +229,43 @@ export function combineTelemetrySinks(
       }
       return merged;
     },
+    // Omitted entirely when nothing implements it, so `withRunTelemetryContext` can take its fast path.
+    // Defining it unconditionally would put a wrapper on the streaming hot path — one array copy and a
+    // closure chain per frame — for sinks that all decline to use it.
+    ...(active.some((sink) => sink.withRunContext)
+      ? {
+          async withRunContext<T>(
+            context: RunTelemetryContext,
+            body: () => Promise<T>,
+          ): Promise<T> {
+            let wrapped = body;
+            for (const sink of [...active].reverse()) {
+              if (!sink.withRunContext) continue;
+              const inner = wrapped;
+              wrapped = async () => {
+                // Guarded like every other method here: a sink may not perturb the run it observes.
+                // `guard()` can't be reused because this one has to return the body's value.
+                let started: Promise<T> | undefined;
+                const runBody = () => (started ??= inner());
+                try {
+                  return await sink.withRunContext!(context, runBody);
+                } catch (error) {
+                  // The body ran: its outcome IS the run's outcome, including a genuine graph failure.
+                  // Only a sink that broke *before* running it gets reported and bypassed.
+                  if (started) return started;
+                  try {
+                    report?.(error, sink.name);
+                  } catch {
+                    // A reporter that throws would defeat the point of the guard.
+                  }
+                  return runBody();
+                }
+              };
+            }
+            return wrapped();
+          },
+        }
+      : {}),
     flush: () => drain("flush"),
     shutdown: () => drain("shutdown"),
   };

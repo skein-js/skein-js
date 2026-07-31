@@ -11,13 +11,8 @@
 // add a LangChain instrumentation (`@traceloop/node-server-sdk` or
 // `@arizeai/openinference-instrumentation-langchain`).
 //
-// Those instrumentation spans are **not** children of the run span. Making them children would mean
-// the run span were *active* in the OTel context for the whole of the graph's execution, which needs
-// `context.with(...)` wrapped around the call — and the sink seam is a pair of one-shot
-// `onRunEvent` notifications, with no way to hold a context open across them. So the run span and
-// any instrumentation spans are correlated by attribute (`skein.run.id`, `gen_ai.conversation.id`)
-// rather than by parentage. Query by those and you get the same grouping; expand the run span in a
-// trace view and you will not see the generations underneath it.
+// The sink's `withRunContext` hook makes the run span active while LangGraph executes, so LangChain,
+// model, and tool instrumentation can parent its spans correctly across async callbacks.
 
 import type { RunTelemetryContext, RunTelemetryEvent, TelemetrySink } from "@skein-js/core";
 
@@ -55,6 +50,13 @@ interface OtelMeter {
 export interface OtelApiLike {
   tracer: OtelTracer;
   meter?: OtelMeter;
+  context?: {
+    active(): unknown;
+    with<T>(context: unknown, body: () => T): T;
+  };
+  traceContext?: {
+    setSpan(context: unknown, span: OtelSpan): unknown;
+  };
 }
 
 export interface OtelTelemetryOptions {
@@ -127,11 +129,20 @@ async function loadGlobalApi(
 ): Promise<OtelApiLike | undefined> {
   try {
     const otel = (await import("@opentelemetry/api")) as {
-      trace: { getTracer(name: string, version?: string): OtelTracer };
+      trace: {
+        getTracer(name: string, version?: string): OtelTracer;
+        setSpan(context: unknown, span: OtelSpan): unknown;
+      };
+      context: {
+        active(): unknown;
+        with<T>(context: unknown, body: () => T): T;
+      };
       metrics?: { getMeter(name: string, version?: string): OtelMeter };
     };
     return {
       tracer: otel.trace.getTracer(scopeName, scopeVersion),
+      context: otel.context,
+      traceContext: otel.trace,
       ...(otel.metrics ? { meter: otel.metrics.getMeter(scopeName, scopeVersion) } : {}),
     };
   } catch {
@@ -157,6 +168,8 @@ export function createOtelTelemetry(options: OtelTelemetryOptions = {}): Telemet
   const wantMetrics = options.metrics ?? true;
 
   let api: OtelApiLike | undefined = options.api;
+  const apiReady: Promise<OtelApiLike | undefined> =
+    api === undefined ? loadGlobalApi(scopeName, options.scopeVersion) : Promise.resolve(api);
   // Events that arrived before the dynamic import settled. Without this buffer the first run of a
   // process loses its `run.started`, and its `run.finished` then finds no span to close — a hole in
   // the trace exactly where a cold start is most worth looking at.
@@ -164,7 +177,7 @@ export function createOtelTelemetry(options: OtelTelemetryOptions = {}): Telemet
   const handlers: { emit(event: RunTelemetryEvent): void } = { emit: () => {} };
 
   if (api === undefined) {
-    void loadGlobalApi(scopeName, options.scopeVersion).then((resolved) => {
+    void apiReady.then((resolved) => {
       api = resolved;
       const pending = buffered ?? [];
       buffered = undefined;
@@ -177,6 +190,8 @@ export function createOtelTelemetry(options: OtelTelemetryOptions = {}): Telemet
   // bind them to the no-op provider for the life of the process.
   let runCounter: OtelCounter | undefined;
   let durationHistogram: OtelHistogram | undefined;
+  let queueHistogram: OtelHistogram | undefined;
+  let frameHistogram: OtelHistogram | undefined;
   const instruments = (meter: OtelMeter) => {
     runCounter ??= meter.createCounter("skein.runs", {
       description: "Runs that reached a terminal status, dimensioned by that status.",
@@ -185,7 +200,15 @@ export function createOtelTelemetry(options: OtelTelemetryOptions = {}): Telemet
       description: "How long a run took, from running to settled.",
       unit: "ms",
     });
-    return { runCounter, durationHistogram };
+    queueHistogram ??= meter.createHistogram("skein.run.queue.duration", {
+      description: "How long a background run waited before a worker started it.",
+      unit: "ms",
+    });
+    frameHistogram ??= meter.createHistogram("skein.run.frames", {
+      description: "Frames emitted by a completed run.",
+      unit: "{frame}",
+    });
+    return { runCounter, durationHistogram, queueHistogram, frameHistogram };
   };
 
   const inFlight = new Map<string, OtelSpan>();
@@ -206,6 +229,12 @@ export function createOtelTelemetry(options: OtelTelemetryOptions = {}): Telemet
           startTime: event.startedAt,
         }),
       );
+      if (wantMetrics && active.meter && event.queuedMs !== undefined) {
+        instruments(active.meter).queueHistogram.record(
+          event.queuedMs,
+          metricAttributes(event.context, "running"),
+        );
+      }
       return;
     }
 
@@ -233,10 +262,15 @@ export function createOtelTelemetry(options: OtelTelemetryOptions = {}): Telemet
     }
 
     if (wantMetrics && active.meter) {
-      const { runCounter: counter, durationHistogram: histogram } = instruments(active.meter);
+      const {
+        runCounter: counter,
+        durationHistogram: histogram,
+        frameHistogram: frames,
+      } = instruments(active.meter);
       const attributes = metricAttributes(event.context, event.status);
       counter.add(1, attributes);
       histogram.record(event.durationMs, attributes);
+      frames.record(event.frameCount, attributes);
     }
   };
 
@@ -250,6 +284,14 @@ export function createOtelTelemetry(options: OtelTelemetryOptions = {}): Telemet
         return;
       }
       handlers.emit(event);
+    },
+
+    async withRunContext<T>(context: RunTelemetryContext, body: () => Promise<T>): Promise<T> {
+      const active = api ?? (await apiReady);
+      const span = inFlight.get(context.runId);
+      if (!active?.context || !active.traceContext || !span) return body();
+      const parent = active.traceContext.setSpan(active.context.active(), span);
+      return active.context.with(parent, body);
     },
 
     async shutdown() {

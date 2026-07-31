@@ -27,6 +27,7 @@ import {
   type AuthContext,
   type RunFrame,
   type RunStatus,
+  type RunTelemetryContext,
   type StreamMode,
 } from "@skein-js/core";
 import { z } from "zod";
@@ -39,7 +40,11 @@ import { resolveCompiledGraph } from "../graphs/resolve-compiled-graph.js";
 import type { RouteBinding } from "../http/routes.js";
 import { toError } from "../runs/run-failure.js";
 import { toGraphStreamModes, withAuthUser } from "../runs/run-input.js";
-import { telemetryCallOptions } from "../runs/run-telemetry.js";
+import {
+  emitRunEvent,
+  telemetryCallOptions,
+  withRunTelemetryContext,
+} from "../runs/run-telemetry.js";
 import { chunkToFrameBody, toRunFrame } from "../sse/run-frame-stream.js";
 import { toSseEvents } from "../sse/sse.js";
 import { parse, requireParam } from "../validation/parse.js";
@@ -93,20 +98,27 @@ function wantsEventStream(req: ProtocolRequest): boolean {
 function createRunSignal(
   timeoutMs: number | undefined,
   callerSignal: AbortSignal | undefined,
-): { signal: AbortSignal | undefined; dispose: () => void } {
-  if (timeoutMs === undefined && !callerSignal) return { signal: undefined, dispose: () => {} };
+): { signal: AbortSignal | undefined; timedOut: () => boolean; dispose: () => void } {
+  if (timeoutMs === undefined && !callerSignal) {
+    return { signal: undefined, timedOut: () => false, dispose: () => {} };
+  }
 
   const controller = new AbortController();
+  let timeoutReached = false;
   const timer =
     timeoutMs === undefined
       ? undefined
-      : setTimeout(() => controller.abort(new Error(`Run exceeded ${timeoutMs}ms`)), timeoutMs);
+      : setTimeout(() => {
+          timeoutReached = true;
+          controller.abort(new Error(`Run exceeded ${timeoutMs}ms`));
+        }, timeoutMs);
   const onCallerAbort = () => controller.abort(callerSignal?.reason);
   if (callerSignal?.aborted) onCallerAbort();
   else callerSignal?.addEventListener("abort", onCallerAbort);
 
   return {
     signal: controller.signal,
+    timedOut: () => timeoutReached,
     dispose: () => {
       if (timer !== undefined) clearTimeout(timer);
       callerSignal?.removeEventListener("abort", onCallerAbort);
@@ -209,19 +221,19 @@ export function createGraphInvokeHandler(
       authContext?.scopes,
     );
 
-    // Trace identity for this invocation, so a tracer's spans are attributable here too. This surface
-    // has no run row and no assistant, so it reports traces but not the `run.started`/`run.finished`
-    // lifecycle events — there is no durable run for those to describe. See docs/observability.md.
-    const trace = deps.telemetryEnabled
-      ? telemetryCallOptions(deps, {
+    // A synthetic run identity gives `/invoke` the same trace parenting and lifecycle metrics as the
+    // durable run surfaces, while remaining deliberately absent from the run repository.
+    const telemetryContext: RunTelemetryContext | undefined = deps.telemetryEnabled
+      ? {
           runId: randomUUID(),
           threadId,
           graphId,
           trigger: "invoke",
-          streamModes: [],
+          streamModes: [] as StreamMode[],
           ...(authContext?.user.identity ? { userId: authContext.user.identity } : {}),
-        })
-      : {};
+        }
+      : undefined;
+    const trace = telemetryContext ? telemetryCallOptions(deps, telemetryContext) : {};
     // The body IS the input — no `{ input }` envelope. An absent body becomes `{}` (run with the
     // state's defaults) rather than `null`, which LangGraph rejects with an opaque `EmptyInputError`;
     // a graph that genuinely needs fields still fails with its own validation error.
@@ -230,16 +242,58 @@ export function createGraphInvokeHandler(
     // Bound the run: `deps.runTimeoutMs` (the same budget the run engine applies) plus the caller's
     // own signal when the adapter supplies one, so a client that disconnects stops the graph instead
     // of leaving it running to completion against nobody.
-    const { signal, dispose } = createRunSignal(deps.runTimeoutMs, req.signal);
+    const { signal, timedOut, dispose } = createRunSignal(deps.runTimeoutMs, req.signal);
 
     if (!wantsEventStream(req)) {
+      const startedAt = deps.clock();
+      if (telemetryContext) {
+        emitRunEvent(deps, { type: "run.started", context: telemetryContext, startedAt });
+      }
       try {
-        const output = await graph.invoke(input, {
-          configurable,
-          signal,
-          ...trace,
-        } as InvokeOptions);
+        const output = await withRunTelemetryContext(deps, telemetryContext, () =>
+          graph.invoke(input, {
+            configurable,
+            signal,
+            ...trace,
+          } as InvokeOptions),
+        );
+        if (telemetryContext) {
+          const endedAt = deps.clock();
+          emitRunEvent(deps, {
+            type: "run.finished",
+            context: telemetryContext,
+            status: "success",
+            durationMs: endedAt.getTime() - startedAt.getTime(),
+            frameCount: 0,
+            endedAt,
+          });
+        }
         return { kind: "json", status: 200, body: output };
+      } catch (error) {
+        if (telemetryContext) {
+          const endedAt = deps.clock();
+          const cause = toError(error);
+          const status: RunStatus = timedOut()
+            ? "timeout"
+            : req.signal?.aborted
+              ? "cancelled"
+              : "error";
+          emitRunEvent(deps, {
+            type: "run.finished",
+            context: telemetryContext,
+            status,
+            durationMs: endedAt.getTime() - startedAt.getTime(),
+            frameCount: 0,
+            endedAt,
+            ...(status === "error"
+              ? {
+                  error: toRunError(error, { includeStack: deps.exposeErrorStacks === true }),
+                  cause,
+                }
+              : {}),
+          });
+        }
+        throw error;
       } finally {
         dispose();
       }
@@ -252,29 +306,55 @@ export function createGraphInvokeHandler(
     let status: RunStatus = "success";
     const frames = async function* (): AsyncIterable<RunFrame> {
       let seq = 0;
+      const startedAt = deps.clock();
+      if (telemetryContext) {
+        emitRunEvent(deps, { type: "run.started", context: telemetryContext, startedAt });
+      }
+      let cause: Error | undefined;
+      let wireError: ReturnType<typeof toRunError> | undefined;
       try {
-        const stream = await graph.stream(input, {
-          configurable,
-          streamMode,
-          signal,
-          ...trace,
-        } as StreamOptions);
-        for await (const chunk of stream) {
+        const stream = await withRunTelemetryContext(deps, telemetryContext, () =>
+          graph.stream(input, {
+            configurable,
+            streamMode,
+            signal,
+            ...trace,
+          } as StreamOptions),
+        );
+        const iterator = stream[Symbol.asyncIterator]();
+        for (;;) {
+          const next = await withRunTelemetryContext(deps, telemetryContext, () => iterator.next());
+          if (next.done) break;
           seq += 1;
-          yield toRunFrame(seq, chunkToFrameBody(chunk));
+          yield toRunFrame(seq, chunkToFrameBody(next.value));
         }
       } catch (error) {
         // Mid-stream failures can't become an HTTP status — headers are already sent — so the error
         // travels as a frame, the same contract the run engine gives streaming clients.
-        status = "error";
+        status = timedOut() ? "timeout" : req.signal?.aborted ? "cancelled" : "error";
         seq += 1;
-        const wireError = toRunError(error, { includeStack: deps.exposeErrorStacks === true });
+        wireError = toRunError(error, { includeStack: deps.exposeErrorStacks === true });
+        cause = toError(error);
         yield { seq, event: "error", data: wireError };
         // Always logged, like the run engine. There is no run/thread/assistant to name on this
         // surface, so the bare Error goes as meta — a console logger still renders its stack and
         // `cause` chain from that.
-        deps.logger?.error(`Graph "${graphId}" failed: ${wireError.message}`, toError(error));
+        deps.logger?.error(`Graph "${graphId}" failed: ${wireError.message}`, cause);
       } finally {
+        if (status === "success" && req.signal?.aborted) status = "cancelled";
+        if (telemetryContext) {
+          const endedAt = deps.clock();
+          emitRunEvent(deps, {
+            type: "run.finished",
+            context: telemetryContext,
+            status,
+            durationMs: endedAt.getTime() - startedAt.getTime(),
+            frameCount: seq,
+            endedAt,
+            ...(wireError ? { error: wireError } : {}),
+            ...(cause ? { cause } : {}),
+          });
+        }
         dispose();
       }
     };

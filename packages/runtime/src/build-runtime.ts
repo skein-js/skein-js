@@ -140,8 +140,11 @@ async function resolveStoreIndex(
 async function flushTelemetry(sinks: readonly TelemetrySink[]): Promise<void> {
   await Promise.allSettled(
     sinks.map(async (sink) => {
-      await sink.flush?.();
-      await sink.shutdown?.();
+      try {
+        await sink.flush?.();
+      } finally {
+        await sink.shutdown?.();
+      }
     }),
   );
 }

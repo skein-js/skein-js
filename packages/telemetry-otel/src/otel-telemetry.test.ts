@@ -151,13 +151,22 @@ describe("createOtelTelemetry", () => {
     expect(api.spans[0]?.status?.code).toBe(2);
   });
 
-  it("records a run counter and a duration histogram", () => {
+  it("records run, duration, queue, and frame metrics", () => {
     const api = fakeApi();
     const sink = createOtelTelemetry({ api });
     sink.onRunEvent?.(started);
     sink.onRunEvent?.(finished());
 
     expect(api.metrics).toEqual([
+      {
+        instrument: "skein.run.queue.duration",
+        value: 300,
+        attributes: {
+          "skein.graph.id": "agent",
+          "skein.run.trigger": "background",
+          "skein.run.status": "running",
+        },
+      },
       {
         instrument: "skein.runs",
         value: 1,
@@ -170,6 +179,15 @@ describe("createOtelTelemetry", () => {
       {
         instrument: "skein.run.duration",
         value: 2000,
+        attributes: {
+          "skein.graph.id": "agent",
+          "skein.run.trigger": "background",
+          "skein.run.status": "success",
+        },
+      },
+      {
+        instrument: "skein.run.frames",
+        value: 4,
         attributes: {
           "skein.graph.id": "agent",
           "skein.run.trigger": "background",
@@ -217,7 +235,31 @@ describe("createOtelTelemetry", () => {
     // Metrics still land — they don't depend on a span — but nothing crashes on the missing span.
     expect(() => createOtelTelemetry({ api }).onRunEvent?.(finished())).not.toThrow();
     expect(api.spans).toEqual([]);
-    expect(api.metrics).toHaveLength(2);
+    expect(api.metrics).toHaveLength(3);
+  });
+
+  it("makes the run span active while graph work executes", async () => {
+    const api = fakeApi();
+    let active = false;
+    api.context = {
+      active: () => ({ root: true }),
+      with: (_context, body) => {
+        active = true;
+        try {
+          return body();
+        } finally {
+          active = false;
+        }
+      },
+    };
+    api.traceContext = { setSpan: (_context, span) => ({ span }) };
+    const sink = createOtelTelemetry({ api });
+    sink.onRunEvent?.(started);
+
+    await sink.withRunContext?.(context, async () => {
+      expect(active).toBe(true);
+    });
+    expect(active).toBe(false);
   });
 
   it("closes a stranded span on shutdown rather than losing it silently", async () => {

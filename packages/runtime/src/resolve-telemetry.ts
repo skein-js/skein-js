@@ -146,11 +146,26 @@ async function buildProviderSink(
   if (typeof factory !== "function") {
     throw new RuntimeConfigError(`${provider.package} does not export "${provider.exportName}".`);
   }
-  // Each factory returns `undefined` when its own configuration is incomplete (no API key, say), so
-  // an enabled-but-unconfigured provider degrades to "off" rather than to a broken sink.
-  return (factory as (options: Record<string, unknown>) => TelemetrySink | undefined)(
+  // A factory returns `undefined` when its own configuration is incomplete — no API key, say.
+  //
+  // What happens next depends on who asked for the provider, and the distinction is the whole point:
+  //
+  //  • **Declared in `langgraph.json`** → boot fails. Someone wrote it down, so silently running with
+  //    no tracing is worse than not starting: the first anyone learns of it is an incident with no
+  //    traces to investigate. Behaviour change — it used to degrade to "off".
+  //  • **Inferred from the environment** (a stray `LANGSMITH_API_KEY` in the shell) → stays off. Nobody
+  //    asked, so a half-configured provider is not an error.
+  const sink = (factory as (options: Record<string, unknown>) => TelemetrySink | undefined)(
     decision.options,
   );
+  if (!sink && decision.declared) {
+    throw new RuntimeConfigError(
+      `telemetry.${name} is enabled in langgraph.json but its required configuration is incomplete; ` +
+        `see docs/observability.md for the provider's required environment variables. Remove the ` +
+        `\`telemetry.${name}\` entry to run without it.`,
+    );
+  }
+  return sink;
 }
 
 /** Load a user's own sink from a `"./telemetry.ts:sink"` spec — the same form as `auth.path`. */
@@ -193,23 +208,39 @@ export async function resolveTelemetry(options: ResolveTelemetryOptions): Promis
   const config = options.config;
   const sinks: TelemetrySink[] = [];
 
-  for (const [name, provider] of Object.entries(PROVIDERS)) {
-    const decision = resolveSetting(config?.[name] as ProviderSetting, provider, env);
-    if (decision === undefined) continue;
-    // Hand the adapter the same environment detection used, so the two can never disagree. The
-    // config block still wins — an explicit `env` there is left alone. `enableTracing` rides along
-    // for a *declared* provider only: switching LangSmith's global tracer on starts sending user
-    // content off-box, so it follows the config, never a stray environment variable.
-    const factoryOptions =
-      provider.readsEnv && decision.options["env"] === undefined
-        ? { ...(decision.declared ? { enableTracing: true } : {}), ...decision.options, env }
-        : decision.options;
-    const sink = await buildProviderSink(name, provider, { ...decision, options: factoryOptions });
-    if (sink) sinks.push(sink);
-  }
+  try {
+    for (const [name, provider] of Object.entries(PROVIDERS)) {
+      const decision = resolveSetting(config?.[name] as ProviderSetting, provider, env);
+      if (decision === undefined) continue;
+      // Hand the adapter the same environment detection used, so the two can never disagree. The
+      // config block still wins — an explicit `env` there is left alone. `enableTracing` rides along
+      // for a *declared* provider only: switching LangSmith's global tracer on starts sending user
+      // content off-box, so it follows the config, never a stray environment variable.
+      const factoryOptions =
+        provider.readsEnv && decision.options["env"] === undefined
+          ? { ...(decision.declared ? { enableTracing: true } : {}), ...decision.options, env }
+          : decision.options;
+      const sink = await buildProviderSink(name, provider, {
+        ...decision,
+        options: factoryOptions,
+      });
+      if (sink) sinks.push(sink);
+    }
 
-  for (const spec of config?.paths ?? []) {
-    sinks.push(await loadCustomSink(spec, options));
+    for (const spec of config?.paths ?? []) {
+      sinks.push(await loadCustomSink(spec, options));
+    }
+  } catch (error) {
+    await Promise.allSettled(
+      sinks.map(async (sink) => {
+        try {
+          await sink.flush?.();
+        } finally {
+          await sink.shutdown?.();
+        }
+      }),
+    );
+    throw error;
   }
 
   return sinks;

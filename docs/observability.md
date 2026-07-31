@@ -83,9 +83,11 @@ variables are present:
 | OpenTelemetry | `OTEL_EXPORTER_OTLP_ENDPOINT` · `OTEL_EXPORTER_OTLP_TRACES_ENDPOINT` · `OTEL_SERVICE_NAME` |
 
 With nothing configured there is no telemetry and no cost — the engine skips building any context at
-all. A provider that is only _detected_ and whose package isn't installed quietly stays off; one you
-**declared** in `langgraph.json` fails at startup naming what to install, because a silent no-op for
-something you explicitly asked for would be worse.
+all. A provider that is only _detected_ stays quietly off when it can't be built — its package isn't
+installed, or its API key is absent. One you **declared** in `langgraph.json` instead **fails at
+startup**, naming what is missing, because a silent no-op for something you explicitly asked for is
+worse: the first you'd hear of it is an incident with no traces to investigate. Remove the entry to run
+without it.
 
 > **Why LangSmith needs two variables.** Turning tracing on uploads every prompt, tool argument, and
 > model response — your users' messages — to a third party. A stray `LANGSMITH_API_KEY` (common in
@@ -171,7 +173,8 @@ implementation takes over and this costs almost nothing.
 `.graph.id` / `.trigger` / `.status` / `.queue_ms` / `.frames` / `.failing_nodes`, plus the
 `gen_ai.*` semconv equivalents. A failure records the exception and sets an `ERROR` status.
 
-**Metrics** `skein.runs` (counter) and `skein.run.duration` (histogram, ms), dimensioned by graph,
+**Metrics** `skein.runs` (counter), `skein.run.duration` (histogram, ms),
+`skein.run.queue.duration` (histogram, ms), and `skein.run.frames` (histogram), dimensioned by graph,
 trigger, and status — deliberately **low-cardinality**, with no run, thread, or user id, so they stay
 cheap in Prometheus and friends.
 
@@ -181,11 +184,9 @@ skein reports the _run_. For LLM- and tool-level spans, add a LangChain instrume
 [`@traceloop/node-server-sdk`](https://github.com/traceloop/openllmetry-js) or
 [`@arizeai/openinference-instrumentation-langchain`](https://github.com/Arize-ai/openinference).
 
-Those spans are **correlated with** the run span, not **nested under** it. Nesting would need the run
-span to be _active_ in the OTel context for the whole of the graph's execution, and the sink seam is
-a pair of one-shot notifications with no way to hold a context open between them. Join on
-`skein.run.id` or `gen_ai.conversation.id` and you get the same grouping in a query — but you won't
-see generations indented under the run in a trace waterfall.
+The OTel sink makes the Skein run span active while LangGraph executes. Instrumentation that respects
+the OTel context therefore nests model, tool, and chain spans under the run span, including across
+awaits; the run and thread attributes remain available for correlation and filtering too.
 
 ### Datadog, Grafana, Honeycomb, Jaeger, New Relic, Sentry
 
@@ -289,6 +290,8 @@ export interface TelemetrySink {
   /** Extra metadata / tags stamped on the graph call. */
   traceMetadata?(context: RunTelemetryContext): Record<string, unknown>;
   traceTags?(context: RunTelemetryContext): string[];
+  /** Make a backend context active while the graph executes. */
+  withRunContext?<T>(context: RunTelemetryContext, body: () => Promise<T>): Promise<T>;
   /** Drain buffered data — called on shutdown. */
   flush?(): Promise<void>;
   shutdown?(): Promise<void>;
@@ -304,8 +307,8 @@ export interface TelemetrySink {
 Two things to know:
 
 - **`assistantId` is absent for `trigger: "invoke"`.** The `POST /invoke/:graph_id` surface addresses
-  a graph directly, with no assistant in between. That surface reports **traces but not lifecycle
-  events** — there is no run row for them to describe.
+  a graph directly, with no assistant in between. It emits lifecycle telemetry using a synthetic run
+  identity for correlation, but deliberately creates no persistent run row.
 - **Sinks may not throw or block.** Every call is guarded, so a throw is logged and swallowed rather
   than failing a run — but a sink doing inline I/O still slows every run it observes. Buffer, and
   implement `flush()`; skein calls it on shutdown so buffering is the safe default.

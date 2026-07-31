@@ -3,7 +3,12 @@
 // graph runs it. Also pins the two properties that define "simplified": calls are independent (no
 // thread state leaks between them) and the long-term store is still reachable via `getStore()`.
 
-import { SkeinHttpError, isSkeinHttpError, type AuthEngine } from "@skein-js/core";
+import {
+  SkeinHttpError,
+  isSkeinHttpError,
+  type AuthEngine,
+  type RunTelemetryEvent,
+} from "@skein-js/core";
 import { describe, expect, it } from "vitest";
 
 import { createFixtureDeps, collect } from "../__fixtures__/deps.js";
@@ -91,6 +96,46 @@ describe("createGraphInvokeHandler", () => {
     const invoke = createGraphInvokeHandler(createFixtureDeps());
 
     await expect(invoke(invokeReq("throwing", { value: "x" }))).rejects.toThrow("boom");
+  });
+
+  it("emits a complete lifecycle and runs graph work in the telemetry context", async () => {
+    const events: RunTelemetryEvent[] = [];
+    let contextEntries = 0;
+    const invoke = createGraphInvokeHandler(
+      createFixtureDeps({
+        telemetry: {
+          name: "recording",
+          onRunEvent: (event) => events.push(event),
+          withRunContext: async (_context, body) => {
+            contextEntries += 1;
+            return body();
+          },
+        },
+      }),
+    );
+
+    await invoke(invokeReq("echo", { value: "hi" }));
+
+    expect(events.map((event) => event.type)).toEqual(["run.started", "run.finished"]);
+    expect(events[0]?.context).toMatchObject({ graphId: "echo", trigger: "invoke" });
+    expect(events[1]).toMatchObject({ type: "run.finished", status: "success", frameCount: 0 });
+    expect(contextEntries).toBe(1);
+  });
+
+  it("finishes streaming telemetry only after the stream is consumed", async () => {
+    const events: RunTelemetryEvent[] = [];
+    const invoke = createGraphInvokeHandler(
+      createFixtureDeps({
+        telemetry: { name: "recording", onRunEvent: (event) => events.push(event) },
+      }),
+    );
+
+    const response = await invoke(asStream("echo", { value: "hi" }));
+    expect(events).toEqual([]);
+    await sseText(response);
+
+    expect(events.map((event) => event.type)).toEqual(["run.started", "run.finished"]);
+    expect(events[1]).toMatchObject({ type: "run.finished", status: "success" });
   });
 
   it("keeps calls independent — no thread state carries over", async () => {

@@ -48,7 +48,12 @@ import {
   wantsEventsMode,
 } from "./run-input.js";
 import { describeFailingNodes, describeInterrupts, extractToolActivity } from "./run-log.js";
-import { emitRunEvent, telemetryCallOptions, toRunTelemetryContext } from "./run-telemetry.js";
+import {
+  emitRunEvent,
+  telemetryCallOptions,
+  toRunTelemetryContext,
+  withRunTelemetryContext,
+} from "./run-telemetry.js";
 
 /** What the engine needs to execute one run. */
 export interface RunExecution {
@@ -328,6 +333,7 @@ export async function executeRun(deps: ResolvedDeps, exec: RunExecution): Promis
     }
 
     graph = await resolveGraph(deps, assistant.graph_id, kwargs);
+    const activeGraph = graph;
     const input = toGraphInput(kwargs);
     // Trace identity (metadata/tags/runName) and any tracer handlers ride along with the call, so a
     // callback-based tracer's spans nest under this run instead of floating free. Empty when no
@@ -337,32 +343,34 @@ export async function executeRun(deps: ResolvedDeps, exec: RunExecution): Promis
       ...(telemetryContext ? telemetryCallOptions(deps, telemetryContext) : {}),
     };
 
-    if (wantsEventsMode(kwargs.stream_mode)) {
-      // True `events` mode: drive the graph via `streamEvents` and demux each event — internal
-      // `on_chain_stream` chunks become mode frames, everything else becomes an `events` frame.
-      // `runId` tags the root run so the demux can tell this run's stream chunks from a subgraph's.
-      const graphModes = toGraphStreamModes(kwargs.stream_mode);
-      const eventStream = graph.streamEvents(input, {
-        ...options,
-        version: "v2",
-        runId,
-      } as unknown as StreamEventsOptions) as unknown as AsyncIterable<GraphStreamEvent>;
-      for await (const event of eventStream) {
-        const body = streamEventToFrameBody(event, runId, graphModes);
-        if (!body) continue;
-        seq += 1;
-        await deps.bus.publish(runId, toRunFrame(seq, body));
-        if (deps.logRunActivity) logToolActivity(body.data);
+    await withRunTelemetryContext(deps, telemetryContext, async () => {
+      if (wantsEventsMode(kwargs.stream_mode)) {
+        // True `events` mode: drive the graph via `streamEvents` and demux each event — internal
+        // `on_chain_stream` chunks become mode frames, everything else becomes an `events` frame.
+        // `runId` tags the root run so the demux can tell this run's stream chunks from a subgraph's.
+        const graphModes = toGraphStreamModes(kwargs.stream_mode);
+        const eventStream = activeGraph.streamEvents(input, {
+          ...options,
+          version: "v2",
+          runId,
+        } as unknown as StreamEventsOptions) as unknown as AsyncIterable<GraphStreamEvent>;
+        for await (const event of eventStream) {
+          const body = streamEventToFrameBody(event, runId, graphModes);
+          if (!body) continue;
+          seq += 1;
+          await deps.bus.publish(runId, toRunFrame(seq, body));
+          if (deps.logRunActivity) logToolActivity(body.data);
+        }
+      } else {
+        const stream = await activeGraph.stream(input, options as unknown as StreamOptions);
+        for await (const chunk of stream) {
+          seq += 1;
+          const body = chunkToFrameBody(chunk);
+          await deps.bus.publish(runId, toRunFrame(seq, body));
+          if (deps.logRunActivity) logToolActivity(body.data);
+        }
       }
-    } else {
-      const stream = await graph.stream(input, options as unknown as StreamOptions);
-      for await (const chunk of stream) {
-        seq += 1;
-        const body = chunkToFrameBody(chunk);
-        await deps.bus.publish(runId, toRunFrame(seq, body));
-        if (deps.logRunActivity) logToolActivity(body.data);
-      }
-    }
+    });
 
     // A cancel/timeout/interrupt/rollback may have raced in while the graph was finishing (an
     // uninterruptible node can complete despite the abort). Honor the abort over a success result so
@@ -384,7 +392,9 @@ export async function executeRun(deps: ResolvedDeps, exec: RunExecution): Promis
     }
 
     // Classify from the authoritative snapshot, not the stream: paused -> interrupted, else success.
-    const snapshot: StateSnapshot = await graph.getState({ configurable: { thread_id: threadId } });
+    const snapshot: StateSnapshot = await activeGraph.getState({
+      configurable: { thread_id: threadId },
+    });
     const computed = runStatusForSnapshot(snapshot);
     const finalStatus = await finalizeRun(deps, runId, computed);
     if (finalStatus === computed) {
