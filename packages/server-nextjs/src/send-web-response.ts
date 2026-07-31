@@ -40,14 +40,17 @@ export function toWebResponse(
       // `serializeWireJson` (not `JSON.stringify`) so LangChain messages go out flattened to the wire.
       return new Response(serializeWireJson(response.body), {
         status: response.status,
-        headers: { "content-type": "application/json", ...extraHeaders },
+        headers: { "content-type": "application/json", ...response.headers, ...extraHeaders },
       });
     case "empty":
-      return new Response(null, { status: response.status, headers: extraHeaders });
+      return new Response(null, {
+        status: response.status,
+        headers: { ...response.headers, ...extraHeaders },
+      });
     case "sse":
       return new Response(sseStream(response.events), {
         status: response.status,
-        headers: { ...SSE_HEADERS, ...extraHeaders },
+        headers: { ...SSE_HEADERS, ...response.headers, ...extraHeaders },
       });
   }
 }

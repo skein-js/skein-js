@@ -264,7 +264,7 @@ export interface RunCreate {
 
 export interface RunRepo {
   get(runId: string): Promise<Run | null>;
-  listByThread(threadId: string): Promise<Run[]>;
+  listByThread(threadId: string, pagination?: Pagination): Promise<Run[]>;
   create(input: RunCreate): Promise<Run>;
   /**
    * Move a run to `status`, recording why it got there when the transition is a failure. The run's
@@ -389,9 +389,15 @@ export interface StoreRepo {
   ): Promise<Item>;
   delete(namespace: string[], key: string): Promise<void>;
   search(query: StoreSearchQuery): Promise<SearchItem[]>;
-  listNamespaces(prefix?: string[]): Promise<string[][]>;
+  listNamespaces(prefix?: string[], pagination?: Pagination): Promise<string[][]>;
   /** Delete every expired item; returns how many were removed. No-op when TTL is unconfigured. */
   sweepExpired(): Promise<number>;
+}
+
+/** Offset pagination shared by collection repositories. HTTP callers must always set a limit. */
+export interface Pagination {
+  limit?: number;
+  offset?: number;
 }
 
 // --- the store ----------------------------------------------------------------------------

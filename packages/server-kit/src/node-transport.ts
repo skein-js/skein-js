@@ -22,8 +22,9 @@ async function pipeServerSentEvents(
   status: number,
   events: AsyncIterable<string>,
   res: ServerResponse,
+  headers: Record<string, string> = {},
 ): Promise<void> {
-  res.writeHead(status, SSE_HEADERS);
+  res.writeHead(status, { ...SSE_HEADERS, ...headers });
   res.flushHeaders();
 
   const iterator = events[Symbol.asyncIterator]();
@@ -59,14 +60,17 @@ export async function sendNodeResponse(
     case "json":
       // `serializeWireJson` (not `res.json`) so any LangChain messages in the body go out flattened
       // to the wire shape clients expect.
-      res.writeHead(response.status, { "content-type": "application/json" });
+      res.writeHead(response.status, {
+        "content-type": "application/json",
+        ...response.headers,
+      });
       res.end(serializeWireJson(response.body));
       return;
     case "empty":
-      res.writeHead(response.status).end();
+      res.writeHead(response.status, response.headers).end();
       return;
     case "sse":
-      await pipeServerSentEvents(response.status, response.events, res);
+      await pipeServerSentEvents(response.status, response.events, res, response.headers);
       return;
   }
 }

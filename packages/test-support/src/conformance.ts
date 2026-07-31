@@ -473,6 +473,16 @@ export function runSkeinStoreConformance(label: string, makeStore: SkeinStoreFac
         ]);
       });
 
+      it("pages runs by thread", async () => {
+        const store = await makeStore();
+        const thread_id = await seedThread(store);
+        for (let index = 0; index < 3; index += 1) {
+          await store.runs.create({ thread_id, assistant_id: "a" });
+        }
+        const all = await store.runs.listByThread(thread_id);
+        expect(await store.runs.listByThread(thread_id, { offset: 1, limit: 1 })).toEqual([all[1]]);
+      });
+
       it("transitions run status", async () => {
         const store = await makeStore();
         const thread_id = await seedThread(store);
@@ -674,6 +684,17 @@ export function runSkeinStoreConformance(label: string, makeStore: SkeinStoreFac
         expect(all).toHaveLength(2);
         const users = await store.store.listNamespaces(["users"]);
         expect(users).toEqual([["users", "1"]]);
+      });
+
+      it("pages distinct namespaces", async () => {
+        const store = await makeStore();
+        await store.store.put(["users", "1"], "a", {});
+        await store.store.put(["users", "2"], "b", {});
+        await store.store.put(["users", "3"], "c", {});
+
+        await expect(
+          store.store.listNamespaces(["users"], { offset: 1, limit: 1 }),
+        ).resolves.toEqual([["users", "2"]]);
       });
 
       it("does not collide namespaces whose segments contain a separator", async () => {

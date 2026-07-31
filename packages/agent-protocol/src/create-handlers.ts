@@ -51,9 +51,14 @@ export interface ProtocolRequest {
 
 /** A normalized response an adapter serializes back onto its framework response. */
 export type ProtocolResponse =
-  | { kind: "json"; status: number; body: unknown }
-  | { kind: "empty"; status: number }
-  | { kind: "sse"; status: number; events: AsyncIterable<string> };
+  | { kind: "json"; status: number; body: unknown; headers?: Record<string, string> }
+  | { kind: "empty"; status: number; headers?: Record<string, string> }
+  | {
+      kind: "sse";
+      status: number;
+      events: AsyncIterable<string>;
+      headers?: Record<string, string>;
+    };
 
 export type ProtocolHandler = (req: ProtocolRequest) => Promise<ProtocolResponse>;
 
@@ -102,7 +107,12 @@ export interface ProtocolHandlers {
   listStoreNamespaces: ProtocolHandler;
 }
 
-const json = (body: unknown, status = 200): ProtocolResponse => ({ kind: "json", status, body });
+const json = (body: unknown, status = 200, headers?: Record<string, string>): ProtocolResponse => ({
+  kind: "json",
+  status,
+  body,
+  headers,
+});
 const empty = (status = 204): ProtocolResponse => ({ kind: "empty", status });
 
 /** A single query value: the first entry if repeated, else the string, else undefined. */
@@ -115,6 +125,18 @@ function queryValue(value: string | string[] | undefined): string | undefined {
  * to a `limit`, so the two ways of asking for a page size agree.
  */
 const MAX_QUERY_INT = 1000;
+
+/**
+ * Default page for the two collections that had no bound at all: `GET /threads/{id}/runs` and
+ * `POST /store/namespaces`.
+ *
+ * 100, matching what the LangGraph SDK itself sends for `store.listNamespaces` (`limit ?? 100`), so a
+ * caller that omits the parameter gets the same page from skein as from Platform. Smaller than
+ * `MAX_QUERY_INT`/`SKEIN_MAX_PAGE_SIZE` on purpose: a run row carries its error and metadata, so a
+ * page of them is heavier than a page of ids, and both endpoints previously returned *everything*.
+ * A caller wanting more asks for more, up to the 1000 ceiling every other collection shares.
+ */
+const DEFAULT_COLLECTION_PAGE_SIZE = 100;
 
 /** Parse a namespace query param: repeated values, or a single dot-separated string. */
 function namespaceFromQuery(value: string | string[] | undefined): string[] {
@@ -181,17 +203,20 @@ export function createProtocolHandlers(service: ProtocolService): ProtocolHandle
 
     searchAssistants: async (req) => {
       const body = parse(assistantSearchSchema, req.body ?? {});
-      return json(
-        await service.assistants.search({
-          graph_id: body.graph_id,
-          name: body.name,
-          metadata: body.metadata,
-          limit: body.limit,
-          offset: body.offset,
-          sortBy: body.sort_by,
-          sortOrder: body.sort_order,
-        }),
-      );
+      const query = {
+        graph_id: body.graph_id,
+        name: body.name,
+        metadata: body.metadata,
+        limit: body.limit,
+        offset: body.offset,
+        sortBy: body.sort_by,
+        sortOrder: body.sort_order,
+      };
+      const [assistants, total] = await Promise.all([
+        service.assistants.search(query),
+        service.assistants.count(query),
+      ]);
+      return json(assistants, 200, { "x-pagination-total": String(total) });
     },
 
     countAssistants: async (req) => {
@@ -370,8 +395,19 @@ export function createProtocolHandlers(service: ProtocolService): ProtocolHandle
 
     getRun: async (req) => json(await service.runs.get(requireParam(req.params, "run_id"))),
 
-    listThreadRuns: async (req) =>
-      json(await service.runs.listByThread(requireParam(req.params, "thread_id"))),
+    listThreadRuns: async (req) => {
+      // `positiveIntQuery`, not a Zod schema: this is a GET, and every other query-string limit in this
+      // table clamps rather than 400s — see its docstring. A schema here would make the one paginated
+      // GET in the protocol reject `?limit=5000` and `?offset=-1` where its siblings absorb them.
+      const limit = positiveIntQuery(req.query["limit"]) ?? DEFAULT_COLLECTION_PAGE_SIZE;
+      const offset = positiveIntQuery(req.query["offset"]);
+      return json(
+        await service.runs.listByThread(requireParam(req.params, "thread_id"), {
+          limit,
+          ...(offset !== undefined ? { offset } : {}),
+        }),
+      );
+    },
 
     joinRunStream: async (req) => {
       const runId = requireParam(req.params, "run_id");
@@ -444,7 +480,12 @@ export function createProtocolHandlers(service: ProtocolService): ProtocolHandle
 
     listStoreNamespaces: async (req) => {
       const body = parse(listNamespacesSchema, req.body ?? {});
-      return json(await service.store.listNamespaces(body.prefix));
+      return json(
+        await service.store.listNamespaces(body.prefix, {
+          limit: body.limit ?? DEFAULT_COLLECTION_PAGE_SIZE,
+          ...(body.offset !== undefined ? { offset: body.offset } : {}),
+        }),
+      );
     },
   };
 }

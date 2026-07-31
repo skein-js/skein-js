@@ -136,7 +136,7 @@ _branch_ from any past checkpoint:
 | Method   | Path                                               | Notes                            |
 | -------- | -------------------------------------------------- | -------------------------------- |
 | `POST`   | `/threads/{thread_id}/runs`                        | Start a background run           |
-| `GET`    | `/threads/{thread_id}/runs`                        | List a thread's runs             |
+| `GET`    | `/threads/{thread_id}/runs`                        | List a thread's runs (paginated) |
 | `GET`    | `/threads/{thread_id}/runs/{run_id}`               | Fetch one run                    |
 | `GET`    | `/threads/{thread_id}/runs/{run_id}/stream` (join) | Join a run's stream              |
 | `POST`   | `/threads/{thread_id}/runs/{run_id}/cancel`        | Cancel a run                     |
@@ -151,7 +151,15 @@ _branch_ from any past checkpoint:
 | `GET`    | `/store/items`        | Fetch by namespace + key        |
 | `DELETE` | `/store/items`        |                                 |
 | `POST`   | `/store/items/search` | pgvector semantic search        |
-| `POST`   | `/store/namespaces`   | List namespaces                 |
+| `POST`   | `/store/namespaces`   | List namespaces (paginated)     |
+
+**Pagination on these two.** `GET /threads/{thread_id}/runs` takes `?limit`/`?offset` and
+`POST /store/namespaces` takes `limit`/`offset` in the body; both default to a **100**-row page, the
+same default the SDK sends for `store.listNamespaces`. A query `limit` above 1000 is clamped rather than
+rejected, matching every other query-string limit here. Truncation is not signalled on the response
+(only assistant search carries `x-pagination-total`), so page until you receive fewer rows than you
+asked for. `status` and `select` on `runs.list`, and `suffix`/`max_depth` on `listNamespaces`, are
+accepted and **ignored** — they are not implemented yet.
 
 ### Thread streaming (SSE)
 

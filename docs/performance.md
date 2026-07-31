@@ -176,8 +176,13 @@ serialized it into a single response string.
   `before`. Each element is a checkpoint's whole graph state, so this is bounded harder than a row-based
   page — and separately from `SKEIN_MAX_PAGE_SIZE`, since history comes from the checkpointer rather
   than the store.
-- Truncation is **not** signalled on the response. Page with `offset` until you get fewer rows than you
-  asked for, and page by what you received rather than by what you requested.
+- `GET /threads/{thread_id}/runs` and `POST /store/namespaces` page too, defaulting to **100** rows
+  (`limit`/`offset`; a query `limit` above 1000 is clamped, not rejected). Both previously returned
+  every row. 100 matches what the LangGraph SDK sends for `store.listNamespaces`, so an SDK caller sees
+  no change.
+- Assistant search reports the unpaginated match count in `x-pagination-total`. Other collections do
+  not: a total costs a second query, and for those it would be a count over exactly the rows the bound
+  exists to avoid touching. Page them until they return fewer rows than you asked for.
 
 With auth configured, the ownership filter is pushed into the driver query, so a tenant's search is an
 indexed lookup rather than a full read filtered in JS. Details in [storage.md](./storage.md) and

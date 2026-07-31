@@ -36,6 +36,7 @@ export type {
   AssistantSearchQuery,
   AssistantUpdate,
   AssistantVersionsQuery,
+  Pagination,
   RunCreate,
   RunKwargs,
   RunRepo,

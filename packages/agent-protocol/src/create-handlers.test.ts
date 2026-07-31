@@ -167,3 +167,68 @@ describe("getThreadHistory", () => {
     expect(calls).toEqual([{ limit: DEFAULT_THREAD_HISTORY_LIMIT }]);
   });
 });
+
+describe("listThreadRuns pagination", () => {
+  async function threadWithRuns(count: number) {
+    const service = createProtocolServiceFromContext(createContext(createFixtureDeps()));
+    await service.assistants.registerGraphAssistants();
+    const handlers = createProtocolHandlers(service);
+    const thread = await service.threads.create();
+    for (let index = 0; index < count; index += 1) {
+      await service.runs.createWait({
+        thread_id: thread.thread_id,
+        assistant_id: "echo",
+        input: { value: `run ${index}` },
+      });
+    }
+    const list = async (query: Record<string, string>) =>
+      handlers.listThreadRuns({
+        ...request(),
+        params: { thread_id: thread.thread_id },
+        query,
+      });
+    return { list };
+  }
+
+  it("clamps an over-ceiling limit instead of rejecting it", async () => {
+    // Every other query-string limit in this table clamps — `positiveIntQuery` says so in its
+    // docstring, and a caller asking for more than the ceiling wants as much as it can get. Rejecting
+    // here would make the one paginated GET in the protocol behave unlike all its siblings.
+    const { list } = await threadWithRuns(3);
+
+    const huge = await list({ limit: "5000" });
+    expect(huge.status).toBe(200);
+    expect((huge as { body: unknown[] }).body).toHaveLength(3);
+
+    // Garbage and a negative offset read as absent rather than as a 4xx.
+    expect((await list({ limit: "abc" })).status).toBe(200);
+    expect((await list({ offset: "-1" })).status).toBe(200);
+  });
+
+  it("pages with limit and offset", async () => {
+    const { list } = await threadWithRuns(4);
+
+    const first = (await list({ limit: "2" })) as { body: Array<{ run_id: string }> };
+    const second = (await list({ limit: "2", offset: "2" })) as {
+      body: Array<{ run_id: string }>;
+    };
+
+    expect(first.body).toHaveLength(2);
+    expect(second.body).toHaveLength(2);
+    expect(second.body.map((run) => run.run_id)).not.toEqual(first.body.map((run) => run.run_id));
+  });
+});
+
+describe("pagination response metadata", () => {
+  it("reports the unpaginated assistant total in a transport-neutral response header", async () => {
+    const service = createProtocolServiceFromContext(createContext(createFixtureDeps()));
+    await service.assistants.registerGraphAssistants();
+    const response = await createProtocolHandlers(service).searchAssistants({
+      ...request(),
+      body: { limit: 1 },
+    });
+
+    expect(response.kind).toBe("json");
+    expect(response.headers?.["x-pagination-total"]).toBe("6");
+  });
+});

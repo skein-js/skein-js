@@ -142,8 +142,14 @@ export function createAuthScopedStore(
         const run = await inner.runs.get(runId);
         return run && matches(run.metadata) ? run : null;
       },
-      listByThread: async (threadId) =>
-        (await inner.runs.listByThread(threadId)).filter((run) => matches(run.metadata)),
+      listByThread: async (threadId, pagination) => {
+        const matchingRuns = (await inner.runs.listByThread(threadId)).filter((run) =>
+          matches(run.metadata),
+        );
+        const offset = pagination?.offset ?? 0;
+        const end = pagination?.limit === undefined ? undefined : offset + pagination.limit;
+        return matchingRuns.slice(offset, end);
+      },
       create: (input) => inner.runs.create({ ...input, metadata: stamp(input.metadata) }),
       // `error` must be forwarded: dropping it here compiles fine and would silently discard every
       // run failure reason on every auth-enabled deployment.

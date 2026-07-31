@@ -19,12 +19,13 @@ async function pipeServerSentEvents(
   status: number,
   events: AsyncIterable<string>,
   reply: FastifyReply,
+  headers: Record<string, string> = {},
 ): Promise<void> {
   // Take the response out of Fastify's hands: we write the raw Node stream ourselves so Fastify does
   // not try to serialize a body or send its own headers.
   reply.hijack();
   const res = reply.raw;
-  res.writeHead(status, SSE_HEADERS);
+  res.writeHead(status, { ...SSE_HEADERS, ...headers });
   // Node buffers headers until the first body write on some platforms; flush now so the client's
   // EventSource/`fetch` sees the stream open immediately.
   res.flushHeaders();
@@ -67,14 +68,18 @@ export async function sendProtocolResponse(
       // send an already-serialized string, so set the content type explicitly.
       reply
         .status(response.status)
+        .headers(response.headers ?? {})
         .header("content-type", "application/json")
         .send(serializeWireJson(response.body));
       return;
     case "empty":
-      reply.status(response.status).send();
+      reply
+        .status(response.status)
+        .headers(response.headers ?? {})
+        .send();
       return;
     case "sse":
-      await pipeServerSentEvents(response.status, response.events, reply);
+      await pipeServerSentEvents(response.status, response.events, reply, response.headers);
       return;
   }
 }

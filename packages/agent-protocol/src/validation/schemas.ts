@@ -50,7 +50,14 @@ export const runCreateSchema = z
     interrupt_before: interruptWhenSchema.optional(),
     interrupt_after: interruptWhenSchema.optional(),
     /** Run-completion webhook: an absolute `http(s)` URL POSTed the settled run when it finishes. */
-    webhook: z.string().url().optional(),
+    webhook: z
+      .string()
+      .url()
+      // `URL` canonicalizes the value the server stores, dispatches, and logs. In particular it
+      // removes embedded ASCII control characters that `z.string().url()` accepts via the platform
+      // URL parser, preventing a caller from forging additional log lines with the original text.
+      .transform((value) => new URL(value).href)
+      .optional(),
     /** Time travel: fork this run from a prior checkpoint instead of the thread tip. */
     checkpoint_id: z.string().optional(),
     /** Time travel: full checkpoint pointer to fork from (its `checkpoint_id` is what matters). */
@@ -255,5 +262,7 @@ export const storeSearchSchema = z
 export const listNamespacesSchema = z
   .object({
     prefix: z.array(z.string()).optional(),
+    limit: z.number().int().positive().max(1000).optional(),
+    offset: z.number().int().nonnegative().optional(),
   })
   .passthrough();

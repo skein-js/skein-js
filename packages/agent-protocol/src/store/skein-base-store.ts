@@ -104,12 +104,10 @@ export class SkeinBaseStore extends BaseStore {
     limit?: number;
     offset?: number;
   }): Promise<string[][]> {
-    // `StoreRepo.listNamespaces` has no pagination, so apply `offset`/`limit` here — otherwise
-    // offset paging never advances. (`suffix`/`maxDepth` remain unsupported, per the class doc.)
-    const all = await this.repo.listNamespaces(options?.prefix);
-    const offset = options?.offset ?? 0;
-    const end = options?.limit === undefined ? undefined : offset + options.limit;
-    return all.slice(offset, end);
+    return this.repo.listNamespaces(options?.prefix, {
+      limit: options?.limit,
+      offset: options?.offset,
+    });
   }
 
   // BaseStore's only abstract method. The convenience methods above are overridden to hit the repo

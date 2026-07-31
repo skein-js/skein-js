@@ -48,9 +48,14 @@ interface ProtocolRequest {
 }
 
 type ProtocolResponse =
-  | { kind: "json"; status: number; body: unknown }
-  | { kind: "empty"; status: number }
-  | { kind: "sse"; status: number; events: AsyncIterable<string> };
+  | { kind: "json"; status: number; body: unknown; headers?: Record<string, string> }
+  | { kind: "empty"; status: number; headers?: Record<string, string> }
+  | {
+      kind: "sse";
+      status: number;
+      events: AsyncIterable<string>;
+      headers?: Record<string, string>;
+    };
 
 type ProtocolHandler = (req: ProtocolRequest) => Promise<ProtocolResponse>;
 ```
@@ -58,6 +63,10 @@ type ProtocolHandler = (req: ProtocolRequest) => Promise<ProtocolResponse>;
 `ProtocolHandlers` is a table of named handlers (`createThread`, `createStreamRun`, `joinRunStream`,
 `putStoreItem`, …). Each validates the request (with Zod), calls the typed service, and returns a
 `ProtocolResponse`. You dispatch to them by name.
+
+For a worked example, `@skein-js/fetch` is the shortest one to read: a single file over WHATWG
+`Request`/`Response`, so it shows the whole contract — request mapping, the headers channel, a
+pull-driven SSE body, and a bounded request read — without a framework's conventions in the way.
 
 ## Step 1 — assemble a runtime
 
@@ -158,6 +167,10 @@ Switch on `response.kind`:
   `res.json`.** Bodies may contain LangChain messages (thread state, history, `runs.wait` values)
   that must be flattened to the wire shape clients expect. Send with
   `Content-Type: application/json`.
+- **`headers`** — present on every kind, and **optional to you but not invisible to clients**: this is
+  how the engine returns response metadata it cannot put in the body, such as `x-pagination-total` on
+  assistant search. Set them all before writing the body. Dropping them costs no test failure and no
+  error — the client just silently loses the metadata — so it is worth wiring in from the start.
 - **`empty`** — just write the status and end.
 - **`sse`** — set the SSE headers (`SSE_HEADERS`), flush them, then write each string from
   `response.events` as-is. **Do not re-encode** — the core already produced complete frames (each
@@ -353,6 +366,7 @@ produced by the same handler table the Express adapter uses.
 - [ ] Bound every route in `skeinRoutes`, most-specific-first, with `foldThreadIdIntoBody` honored.
 - [ ] `ProtocolRequest` has lowercased single-value headers and an absolute `url` (with query).
 - [ ] JSON responses serialized with `serializeWireJson` (not a plain `JSON.stringify`/`res.json`).
+- [ ] `response.headers` forwarded on all three kinds (silently lost otherwise — see step 4).
 - [ ] SSE responses stream frames unmodified, set `SSE_HEADERS`, and tear down on client close.
 - [ ] `SkeinHttpError` mapped to its status; everything else → `500`; no status changes mid-stream.
 - [ ] CORS applied for browser clients; `worker.stop()` on shutdown.

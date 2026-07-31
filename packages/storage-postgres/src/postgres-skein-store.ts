@@ -1139,10 +1139,16 @@ export class PostgresSkeinStore implements SkeinStore {
       ]);
       return rows[0] ? rowToRun(rows[0]) : null;
     },
-    listByThread: async (threadId) => {
+    listByThread: async (threadId, pagination) => {
+      const params: unknown[] = [threadId];
+      let paginationSql = "";
+      if (pagination?.limit !== undefined) {
+        params.push(pagination.offset ?? 0, pagination.limit);
+        paginationSql = " OFFSET $2 LIMIT $3";
+      }
       const { rows } = await this.#pool.query<RunRow>(
-        "SELECT * FROM runs WHERE thread_id = $1 ORDER BY created_at",
-        [threadId],
+        `SELECT * FROM runs WHERE thread_id = $1 ORDER BY created_at, run_id${paginationSql}`,
+        params,
       );
       return rows.map(rowToRun);
     },
@@ -1260,14 +1266,20 @@ export class PostgresSkeinStore implements SkeinStore {
       ]);
     },
     search: async (query: StoreSearchQuery) => this.#search(query),
-    listNamespaces: async (prefix) => {
+    listNamespaces: async (prefix, pagination) => {
       const usePrefix = prefix !== undefined && prefix.length > 0;
       const clause = usePrefix
         ? `WHERE namespace[1:cardinality($1::text[])] = $1::text[] AND ${NOT_EXPIRED}`
         : `WHERE ${NOT_EXPIRED}`;
+      const params: unknown[] = usePrefix ? [prefix] : [];
+      let paginationSql = "";
+      if (pagination?.limit !== undefined) {
+        params.push(pagination.offset ?? 0, pagination.limit);
+        paginationSql = ` OFFSET $${params.length - 1} LIMIT $${params.length}`;
+      }
       const { rows } = await this.#pool.query<{ namespace: string[] }>(
-        `SELECT DISTINCT namespace FROM store_items ${clause} ORDER BY namespace`,
-        usePrefix ? [prefix] : [],
+        `SELECT DISTINCT namespace FROM store_items ${clause} ORDER BY namespace${paginationSql}`,
+        params,
       );
       return rows.map((row) => row.namespace);
     },

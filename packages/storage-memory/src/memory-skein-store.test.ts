@@ -55,3 +55,27 @@ describe("memory store page bound validation", () => {
     );
   });
 });
+
+describe("collection pagination", () => {
+  it("pages runs inside the repository instead of materializing the whole thread", async () => {
+    const store = new MemorySkeinStore();
+    const thread = await store.threads.create();
+    for (let index = 0; index < 4; index += 1) {
+      await store.runs.create({ thread_id: thread.thread_id, assistant_id: "agent" });
+    }
+
+    const page = await store.runs.listByThread(thread.thread_id, { offset: 1, limit: 2 });
+    expect(page).toHaveLength(2);
+  });
+
+  it("pages distinct namespaces", async () => {
+    const store = new MemorySkeinStore();
+    await store.store.put(["users", "1"], "a", { value: 1 });
+    await store.store.put(["users", "2"], "b", { value: 2 });
+    await store.store.put(["users", "3"], "c", { value: 3 });
+
+    await expect(store.store.listNamespaces(["users"], { offset: 1, limit: 1 })).resolves.toEqual([
+      ["users", "2"],
+    ]);
+  });
+});

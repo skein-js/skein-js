@@ -18,9 +18,11 @@ async function pipeServerSentEvents(
   status: number,
   events: AsyncIterable<string>,
   res: Response,
+  headers: Record<string, string> = {},
 ): Promise<void> {
   res.status(status);
   for (const [name, value] of Object.entries(SSE_HEADERS)) res.setHeader(name, value);
+  for (const [name, value] of Object.entries(headers)) res.setHeader(name, value);
   res.flushHeaders();
 
   const iterator = events[Symbol.asyncIterator]();
@@ -59,13 +61,20 @@ export async function sendProtocolResponse(
     case "json":
       // `serializeWireJson` (not `res.json`) so any LangChain messages in the body — thread state,
       // history, `runs.wait` values — go out flattened to the wire shape clients expect.
-      res.status(response.status).type("application/json").send(serializeWireJson(response.body));
+      res
+        .status(response.status)
+        .set(response.headers ?? {})
+        .type("application/json")
+        .send(serializeWireJson(response.body));
       return;
     case "empty":
-      res.status(response.status).end();
+      res
+        .status(response.status)
+        .set(response.headers ?? {})
+        .end();
       return;
     case "sse":
-      await pipeServerSentEvents(response.status, response.events, res);
+      await pipeServerSentEvents(response.status, response.events, res, response.headers);
       return;
   }
 }

@@ -11,6 +11,7 @@ import {
   type DefaultValues,
   type Metadata,
   type MultitaskStrategy,
+  type Pagination,
   type Run,
   type RunError,
   type RunFrame,
@@ -62,7 +63,7 @@ export interface RunService {
   createStream(input: CreateRunInput): Promise<StartedStream>;
   createBackground(threadId: string, input: CreateRunInput): Promise<Run>;
   get(runId: string): Promise<Run>;
-  listByThread(threadId: string): Promise<Run[]>;
+  listByThread(threadId: string, pagination?: Pagination): Promise<Run[]>;
   cancel(runId: string): Promise<Run>;
   delete(runId: string): Promise<void>;
   join(runId: string, afterSeq?: number): Promise<AsyncIterable<RunFrame>>;
@@ -273,9 +274,9 @@ export function createRunService(ctx: ProtocolContext): RunService {
       return run;
     },
 
-    async listByThread(threadId) {
+    async listByThread(threadId, pagination) {
       await requireThread(threadId);
-      return deps.store.runs.listByThread(threadId);
+      return deps.store.runs.listByThread(threadId, pagination);
     },
 
     async cancel(runId) {

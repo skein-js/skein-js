@@ -426,8 +426,12 @@ export class MemorySkeinStore implements SkeinStore {
 
   readonly runs: RunRepo = {
     get: async (runId) => readOne(this.#runs, runId),
-    listByThread: async (threadId) =>
-      readAll(this.#runs).filter((run) => run.thread_id === threadId),
+    listByThread: async (threadId, pagination) => {
+      const matches = readAll(this.#runs).filter((run) => run.thread_id === threadId);
+      const offset = pagination?.offset ?? 0;
+      const end = pagination?.limit === undefined ? undefined : offset + pagination.limit;
+      return matches.slice(offset, end);
+    },
     create: async (input: RunCreate) => {
       const at = nowIso();
       const run: Run = {
@@ -531,7 +535,7 @@ export class MemorySkeinStore implements SkeinStore {
       if (needle) for (const item of page) item.score = 1;
       return page;
     },
-    listNamespaces: async (prefix) => {
+    listNamespaces: async (prefix, pagination) => {
       // Key by JSON.stringify (not join) so distinct namespaces whose segments contain the
       // separator can't collide.
       const seen = new Map<string, string[]>();
@@ -541,7 +545,10 @@ export class MemorySkeinStore implements SkeinStore {
           seen.set(JSON.stringify(item.namespace), item.namespace);
         }
       }
-      return [...seen.values()].map((namespace) => [...namespace]);
+      const namespaces = [...seen.values()].map((namespace) => [...namespace]);
+      const offset = pagination?.offset ?? 0;
+      const end = pagination?.limit === undefined ? undefined : offset + pagination.limit;
+      return namespaces.slice(offset, end);
     },
     sweepExpired: async () => {
       let removed = 0;
