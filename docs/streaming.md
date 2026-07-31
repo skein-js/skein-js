@@ -59,6 +59,12 @@ data: <json payload>
 - **Transport ownership** — `@skein-js/core` produces an async iterator of normalized frames;
   each framework adapter writes them as `text/event-stream` (Express `res.write`, Fastify
   reply stream, etc.). The core stays framework-agnostic.
+- **Idle heartbeats** — a stream that goes 15s without a frame gets a `: heartbeat` line. An SSE
+  comment is spec-defined as ignorable, so no client dispatches it as an event; it exists for the
+  machinery in between. Without it, a graph thinking for a minute before its first token looks
+  identical to a dead socket — nginx, ALB, and Cloud Run all default to closing an idle connection
+  around 60s, and the SDK's `stream_idle_reconnect: "auto"` has nothing to distinguish the two either.
+  Tune it with `toSseEvents(..., { heartbeatMs })`; `0` writes only real frames.
 
 ## Slow clients and backpressure
 

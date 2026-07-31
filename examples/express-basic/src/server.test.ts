@@ -44,4 +44,43 @@ describe("express-basic over @langchain/langgraph-sdk", () => {
 
     expect(chunks.join("\n")).toContain("echo: streamed");
   });
+
+  // The four routes the official SDK calls that skein previously 404'd. Driven through the real
+  // client rather than the handler table, so a path or verb mismatch in any adapter shows up here.
+  it("blocks on runs.join and returns the settled run's final state", async () => {
+    const thread = await client.threads.create();
+    const run = await client.runs.create(thread.thread_id, "echo", {
+      input: { messages: [{ role: "user", content: "joined" }] },
+    });
+
+    const values = await client.runs.join(thread.thread_id, run.run_id);
+
+    expect(JSON.stringify(values)).toContain("echo: joined");
+  });
+
+  it("reads state at a checkpoint given as an object, not just as an id", async () => {
+    // `threads.getState` picks its route from the argument's *type*: an object checkpoint is POSTed
+    // to `/state/checkpoint`, which is the route that did not exist.
+    const thread = await client.threads.create();
+    await client.runs.wait(thread.thread_id, "echo", {
+      input: { messages: [{ role: "user", content: "checkpointed" }] },
+    });
+
+    const tip = await client.threads.getState(thread.thread_id);
+    const atCheckpoint = await client.threads.getState(thread.thread_id, tip.checkpoint);
+
+    expect(JSON.stringify(atCheckpoint.values)).toContain("echo: checkpointed");
+  });
+
+  it("serves thread history, which the SDK pages with a body", async () => {
+    const thread = await client.threads.create();
+    await client.runs.wait(thread.thread_id, "echo", {
+      input: { messages: [{ role: "user", content: "historic" }] },
+    });
+
+    const history = await client.threads.getHistory(thread.thread_id, { limit: 5 });
+
+    expect(history.length).toBeGreaterThan(0);
+    expect(history.length).toBeLessThanOrEqual(5);
+  });
 });

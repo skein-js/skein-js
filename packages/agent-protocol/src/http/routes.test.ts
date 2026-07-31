@@ -127,4 +127,64 @@ describe("matchSkeinRoute — time-travel state routes", () => {
     expect(match?.binding.handler).toBe("getThreadState");
     expect(match?.params).toEqual({ thread_id: "t-1" });
   });
+
+  it("routes POST /threads/:id/state/checkpoint to the body-shaped read, not the id-shaped one", () => {
+    // The literal `checkpoint` segment must not be captured as a `:checkpoint_id`. It cannot be here —
+    // that route is a GET — but the two live one path apart, so the distinction is worth pinning.
+    const match = matchSkeinRoute("post", "/threads/t-1/state/checkpoint");
+    expect(match?.binding.handler).toBe("getThreadStateAtCheckpointFromBody");
+    expect(match?.params).toEqual({ thread_id: "t-1" });
+  });
+});
+
+describe("matchSkeinRoute — routes the official SDK calls", () => {
+  it("routes GET /threads/:id/runs/:id/join to the blocking join, not getRun", () => {
+    const match = matchSkeinRoute("get", "/threads/t-1/runs/r-1/join");
+    expect(match?.binding.handler).toBe("joinRun");
+    expect(match?.params).toEqual({ thread_id: "t-1", run_id: "r-1" });
+  });
+
+  it("keeps the blocking join and the SSE join on separate handlers", () => {
+    expect(matchSkeinRoute("get", "/threads/t-1/runs/r-1/stream")?.binding.handler).toBe(
+      "joinRunStream",
+    );
+    // The bare run read must not swallow either of the two nested paths.
+    expect(matchSkeinRoute("get", "/threads/t-1/runs/r-1")?.binding.handler).toBe("getRun");
+  });
+
+  it("serves GET /threads/:id/stream/events as a synonym for the join stream", () => {
+    expect(matchSkeinRoute("get", "/threads/t-1/stream/events")?.binding.handler).toBe(
+      "getThreadStream",
+    );
+    expect(matchSkeinRoute("get", "/threads/t-1/stream/events")?.params).toEqual({
+      thread_id: "t-1",
+    });
+  });
+
+  it("does NOT alias POST /stream/events onto the run-creating thread stream", () => {
+    // The v2 transport POSTs a *subscription* there and reopens it on every reconnect, while
+    // `postThreadStream` starts a run — aliasing them would turn one subscribe into several runs.
+    expect(matchSkeinRoute("post", "/threads/t-1/stream/events")).toBeUndefined();
+  });
+
+  it("serves thread history on both verbs", () => {
+    expect(matchSkeinRoute("post", "/threads/t-1/history")?.binding.handler).toBe(
+      "getThreadHistory",
+    );
+    expect(matchSkeinRoute("get", "/threads/t-1/history")?.binding.handler).toBe(
+      "getThreadHistory",
+    );
+  });
+
+  it("keeps every new route inside a disable_* group", () => {
+    // Same guarantee the table-wide test makes, asserted where a hand-added binding would most likely
+    // forget it: `/stream/events` is a runs route, `/state/checkpoint` and `/history` are threads.
+    const groupOf = (method: string, path: string) =>
+      skeinRoutes.find((binding) => binding.method === method && binding.path === path)?.group;
+
+    expect(groupOf("get", "/threads/:thread_id/runs/:run_id/join")).toBe("runs");
+    expect(groupOf("get", "/threads/:thread_id/stream/events")).toBe("runs");
+    expect(groupOf("post", "/threads/:thread_id/state/checkpoint")).toBe("threads");
+    expect(groupOf("get", "/threads/:thread_id/history")).toBe("threads");
+  });
 });

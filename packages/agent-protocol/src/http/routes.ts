@@ -123,8 +123,25 @@ export const skeinRoutes: readonly RouteBinding[] = [
     handler: "getThreadStateAtCheckpoint",
     group: "threads",
   },
+  // The SDK's `threads.getState(id, checkpoint)` splits on the argument's *type*: a bare string id
+  // goes to the GET above, while a checkpoint **object** (one carrying `checkpoint_ns`, i.e. subgraph
+  // state) is POSTed here instead. Serving only the GET form 404s every object-shaped read.
   {
     method: "post",
+    path: "/threads/:thread_id/state/checkpoint",
+    handler: "getThreadStateAtCheckpointFromBody",
+    group: "threads",
+  },
+  {
+    method: "post",
+    path: "/threads/:thread_id/history",
+    handler: "getThreadHistory",
+    group: "threads",
+  },
+  // `@langchain/langgraph-api` registers history on both verbs; the SDK only ever sends POST. The GET
+  // costs one line because the handler already reads `?limit=` and tolerates an absent body.
+  {
+    method: "get",
     path: "/threads/:thread_id/history",
     handler: "getThreadHistory",
     group: "threads",
@@ -171,6 +188,14 @@ export const skeinRoutes: readonly RouteBinding[] = [
     handler: "joinRunStream",
     group: "runs",
   },
+  // The *blocking* join: `client.runs.join()` waits for the run to settle and reads its final state as
+  // JSON, where `.../stream` above tails it as SSE. Two different clients want two different shapes.
+  {
+    method: "get",
+    path: "/threads/:thread_id/runs/:run_id/join",
+    handler: "joinRun",
+    group: "runs",
+  },
   { method: "get", path: "/threads/:thread_id/runs/:run_id", handler: "getRun", group: "runs" },
   {
     method: "delete",
@@ -188,6 +213,20 @@ export const skeinRoutes: readonly RouteBinding[] = [
     group: "runs",
   },
   { method: "get", path: "/threads/:thread_id/stream", handler: "getThreadStream", group: "runs" },
+  // `/stream/events` is the path the SDK's v2 agent-server transport reads from, served here as a
+  // synonym for the join-stream above. Same handler, hence no new authz row.
+  //
+  // Only the GET. The v2 transport's POST is a *subscription* (`{ channels, ... }`, no
+  // `assistant_id`) that it reopens on every reconnect, whereas `postThreadStream` **starts a run** —
+  // aliasing them would turn one subscribe into up to `maxReconnectAttempts` runs on the thread.
+  // Serving the GET alone does not make that transport work end to end (its POST and the protocol
+  // command envelope on `/commands` are both unimplemented); it just costs nothing and is correct.
+  {
+    method: "get",
+    path: "/threads/:thread_id/stream/events",
+    handler: "getThreadStream",
+    group: "runs",
+  },
   {
     method: "post",
     path: "/threads/:thread_id/commands",

@@ -2237,7 +2237,9 @@ version and mirrors its fields, and `POST .../latest` rolls back to any past ver
 | `GET`    | `/threads/{thread_id}/state`                 | Current state snapshot (`useStream` hydrates) |
 | `POST`   | `/threads/{thread_id}/state`                 | Time travel: fork state at a checkpoint       |
 | `GET`    | `/threads/{thread_id}/state/{checkpoint_id}` | Time travel: state at a checkpoint            |
+| `POST`   | `/threads/{thread_id}/state/checkpoint`      | Same read, checkpoint given as an object      |
 | `POST`   | `/threads/{thread_id}/history`               | Checkpoint history, newest-first (paged)      |
+| `GET`    | `/threads/{thread_id}/history`               | Same, with `?limit` (the SDK sends `POST`)    |
 | `PATCH`  | `/threads/{thread_id}`                       |                                               |
 | `POST`   | `/threads/{thread_id}/copy`                  | Duplicates the thread + its history           |
 | `DELETE` | `/threads/{thread_id}`                       |                                               |
@@ -2280,7 +2282,12 @@ _branch_ from any past checkpoint:
   write a **new checkpoint** that forks history at `checkpoint_id` (or the tip). It returns the new
   checkpoint pointer, `{ "checkpoint": { "thread_id", "checkpoint_ns", "checkpoint_id" } }`, and mirrors
   the forked values onto the thread row. Rejected with `409` while a run is in flight on the thread.
-- `GET /threads/{id}/state/{checkpoint_id}` reads the state snapshot at a specific checkpoint.
+- `GET /threads/{id}/state/{checkpoint_id}` reads the state snapshot at a specific checkpoint, and
+  `POST /threads/{id}/state/checkpoint` reads the same thing with the pointer in the body. Both exist
+  because the SDK picks between them by argument _type_: `threads.getState(id, "ckpt-1")` takes the
+  `GET`, while `threads.getState(id, { checkpoint_id, checkpoint_ns })` takes the `POST`. Only
+  `checkpoint_id` is read from the pointer either way. A pointer with no id reads the tip rather than
+  404ing, and `subgraphs` is accepted and ignored on both.
 - Run creation accepts a top-level **`checkpoint_id`** to start a run from a chosen checkpoint instead
   of the thread tip. This is **server-validated and server-injected** — it is _not_ read from the
   client's `config.configurable` (which strips it), so a client can never redirect a run to an arbitrary
@@ -2307,9 +2314,18 @@ Each of these creates its own thread. `on_completion` decides what happens to it
 | `GET`    | `/threads/{thread_id}/runs`                        | List a thread's runs (paginated)  |
 | `GET`    | `/threads/{thread_id}/runs/{run_id}`               | Fetch one run                     |
 | `GET`    | `/threads/{thread_id}/runs/{run_id}/stream` (join) | Join a run's stream               |
+| `GET`    | `/threads/{thread_id}/runs/{run_id}/join`          | Block until it settles, then JSON |
 | `POST`   | `/threads/{thread_id}/runs/{run_id}/cancel`        | Cancel a run (`?action`, `?wait`) |
 | `DELETE` | `/threads/{thread_id}/runs/{run_id}`               | Delete a run                      |
 | `GET`    | `/runs/{run_id}/stream` (join)                     | Join by run id (thread-agnostic)  |
+
+**Joining a run: two shapes.** `.../runs/{run_id}/stream` tails a run as SSE (`client.runs.joinStream()`,
+resumable with `Last-Event-ID`). `.../runs/{run_id}/join` is the blocking form (`client.runs.join()`): it
+waits for the run to settle and answers the thread's final `values` as plain JSON, or
+`{ "__error__": ... }` for a failed one — the same envelope `POST /runs/wait` uses. Joining a run that has
+_already_ settled returns immediately, including long after its frames have aged out of the event bus,
+because the wait is decided by the run row rather than by the bus. `?cancel_on_disconnect` is accepted and
+ignored: a JSON response has no disconnect signal to hang the behaviour on (neither does LangGraph's).
 
 **Cancelling in bulk.** `POST /runs/cancel` takes `{ thread_id?, run_ids?, status? }`, narrowest
 selector first: explicit `run_ids`, else one thread's inflight runs, else **every** inflight run on the
@@ -2379,11 +2395,20 @@ asked for. `status` on `runs.list` **is** honoured, filtered in the driver so it
 
 ### Thread streaming (SSE)
 
-| Method | Path                            | MVP |
-| ------ | ------------------------------- | --- |
-| `POST` | `/threads/{thread_id}/stream`   | ✅  |
-| `GET`  | `/threads/{thread_id}/stream`   | ✅  |
-| `POST` | `/threads/{thread_id}/commands` | ✅  |
+| Method | Path                                 | MVP |
+| ------ | ------------------------------------ | --- |
+| `POST` | `/threads/{thread_id}/stream`        | ✅  |
+| `GET`  | `/threads/{thread_id}/stream`        | ✅  |
+| `GET`  | `/threads/{thread_id}/stream/events` | ✅  |
+| `POST` | `/threads/{thread_id}/commands`      | ✅  |
+
+`GET /stream/events` is a synonym for `GET /stream`: `client.threads.joinStream()` asks for the
+latter, the SDK's v2 agent-server transport reads from the former.
+
+The v2 transport as a whole is **not** supported — its `POST /stream/events` is a subscription
+(`{ channels, ... }`, carrying no `assistant_id`) rather than a run-create, and `/commands` expects a
+protocol command envelope skein does not implement. Use the run endpoints, which is what `useStream`
+does by default.
 
 > The protocol also describes a WebSocket upgrade for bidirectional streaming. That is
 > **post-MVP** — SSE covers the full client UX (see [streaming.md](./streaming.md)).
@@ -2447,18 +2472,18 @@ principal. With no `auth` configured, no keys are added (identical to `langgraph
 
 Route → resource/action (runs authorize through their owning thread — there is no `runs` resource):
 
-| Endpoint(s)                                                                                                             | resource\:action                                |
-| ----------------------------------------------------------------------------------------------------------------------- | ----------------------------------------------- |
-| `GET /assistants/{id}`, `/assistants/{id}/schemas`                                                                      | `assistants:read`                               |
-| `POST /assistants/search`                                                                                               | `assistants:search`                             |
-| `POST /threads`                                                                                                         | `threads:create`                                |
-| `GET /threads/{id}`, `/state`, `/state/{checkpoint_id}`; `POST /history`; `GET .../runs`, `.../runs/{run_id}`, run join | `threads:read`                                  |
-| `POST /threads/search`, `POST /threads/count`                                                                           | `threads:search`                                |
-| `PATCH /threads/{id}`; `POST /threads/{id}/state` (state fork); run cancel; `POST /runs/cancel`                         | `threads:update`                                |
-| `DELETE /threads/{id}`; run delete; `POST /threads/prune`                                                               | `threads:delete`                                |
-| run create (wait/stream/background/stateless/batch), thread stream / commands                                           | `threads:create_run`                            |
-| `GET /info`                                                                                                             | _(unauthenticated — see the Meta section)_      |
-| `PUT/GET/DELETE /store/items`, `/store/items/search`, `/store/namespaces`                                               | `store:{put,get,delete,search,list_namespaces}` |
+| Endpoint(s)                                                                                                                                                                   | resource\:action                                |
+| ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ----------------------------------------------- |
+| `GET /assistants/{id}`, `/assistants/{id}/schemas`                                                                                                                            | `assistants:read`                               |
+| `POST /assistants/search`                                                                                                                                                     | `assistants:search`                             |
+| `POST /threads`                                                                                                                                                               | `threads:create`                                |
+| `GET /threads/{id}`, `/state`, `/state/{checkpoint_id}`; `POST /state/checkpoint`, `/history`; `GET /history`, `.../runs`, `.../runs/{run_id}`, run join (stream or blocking) | `threads:read`                                  |
+| `POST /threads/search`, `POST /threads/count`                                                                                                                                 | `threads:search`                                |
+| `PATCH /threads/{id}`; `POST /threads/{id}/state` (state fork); run cancel; `POST /runs/cancel`                                                                               | `threads:update`                                |
+| `DELETE /threads/{id}`; run delete; `POST /threads/prune`                                                                                                                     | `threads:delete`                                |
+| run create (wait/stream/background/stateless/batch), thread stream / commands                                                                                                 | `threads:create_run`                            |
+| `GET /info`                                                                                                                                                                   | _(unauthenticated — see the Meta section)_      |
+| `PUT/GET/DELETE /store/items`, `/store/items/search`, `/store/namespaces`                                                                                                     | `store:{put,get,delete,search,list_namespaces}` |
 
 **Reuse & limits.** The `Auth` contract and the `$eq`/`$contains` filter semantics come from
 `@langchain/*`; skein adds only the instance-scoped dispatch (see [reuse.md](./reuse.md)). Ownership
@@ -2550,6 +2575,12 @@ data: <json payload>
 - **Transport ownership** — `@skein-js/core` produces an async iterator of normalized frames;
   each framework adapter writes them as `text/event-stream` (Express `res.write`, Fastify
   reply stream, etc.). The core stays framework-agnostic.
+- **Idle heartbeats** — a stream that goes 15s without a frame gets a `: heartbeat` line. An SSE
+  comment is spec-defined as ignorable, so no client dispatches it as an event; it exists for the
+  machinery in between. Without it, a graph thinking for a minute before its first token looks
+  identical to a dead socket — nginx, ALB, and Cloud Run all default to closing an idle connection
+  around 60s, and the SDK's `stream_idle_reconnect: "auto"` has nothing to distinguish the two either.
+  Tune it with `toSseEvents(..., { heartbeatMs })`; `0` writes only real frames.
 
 ## Slow clients and backpressure
 

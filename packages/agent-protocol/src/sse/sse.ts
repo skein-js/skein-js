@@ -45,16 +45,94 @@ export function encodeTerminal(status: RunStatus): string {
 }
 
 /**
+ * An SSE **comment**, written during an idle gap to keep the connection alive.
+ *
+ * A line starting with `:` is spec-defined as ignorable, so no client — `EventSource`, the LangGraph
+ * SDK, or a hand-rolled reader — dispatches it as an event. It exists for the machinery in between: a
+ * proxy or load balancer that closes a connection with no bytes on it, and the SDK's
+ * `stream_idle_reconnect: "auto"`, which needs traffic to distinguish "still thinking" from "dead".
+ */
+export const SSE_HEARTBEAT = ": heartbeat\n\n";
+
+/**
+ * How long a stream may go without bytes before a heartbeat is written. Well under the 60s idle
+ * timeout common to nginx, ALB, and Cloud Run, so a slow first token cannot be mistaken for a dead
+ * connection — and long enough that a normal token stream never emits one.
+ */
+export const DEFAULT_SSE_HEARTBEAT_MS = 15_000;
+
+/** Tuning for {@link toSseEvents}. */
+export interface SseOptions {
+  /** Idle gap before a {@link SSE_HEARTBEAT}. `0` (or negative) disables heartbeats entirely. */
+  heartbeatMs?: number;
+}
+
+/** An idle tick from {@link withIdleTicks} — a heartbeat is due. Distinct from any real frame. */
+const IDLE_TICK = Symbol("idle-tick");
+
+/**
+ * Re-yield `frames`, injecting an {@link IDLE_TICK} whenever `heartbeatMs` passes with no frame.
+ *
+ * The in-flight `next()` is deliberately held across idle turns. An async iterator rejects a second
+ * `next()` while the first is unsettled, and abandoning the promise would drop the frame it later
+ * yields — so the losing side of the race is kept, not re-issued.
+ */
+async function* withIdleTicks(
+  frames: AsyncIterable<RunFrame>,
+  heartbeatMs: number,
+): AsyncIterable<RunFrame | typeof IDLE_TICK> {
+  const iterator = frames[Symbol.asyncIterator]();
+  let pending: Promise<IteratorResult<RunFrame>> | undefined;
+  try {
+    for (;;) {
+      pending ??= iterator.next();
+      let timer: ReturnType<typeof setTimeout> | undefined;
+      const idle = new Promise<typeof IDLE_TICK>((resolve) => {
+        timer = setTimeout(() => resolve(IDLE_TICK), heartbeatMs);
+      });
+      let settled: IteratorResult<RunFrame> | typeof IDLE_TICK;
+      try {
+        settled = await Promise.race([pending, idle]);
+      } finally {
+        // Cleared on the throwing path too, so a failed frame iterator cannot leave a timer holding
+        // the event loop open for the rest of the interval.
+        clearTimeout(timer);
+      }
+      if (settled === IDLE_TICK) {
+        yield IDLE_TICK; // `pending` stays in flight and is raced again next turn
+        continue;
+      }
+      pending = undefined;
+      if (settled.done === true) return;
+      yield settled.value;
+    }
+  } finally {
+    // A consumer that hung up or broke out must tear the subscription down rather than leave it
+    // live-tailing a run nobody reads.
+    await iterator.return?.();
+  }
+}
+
+/**
  * Turn a frame iterable into an SSE string iterable, appending a terminal `end`/`error` event read
  * from `finalStatus()` once the frames are exhausted (the bus closed). `finalStatus` is called
  * lazily at the end so it reflects the run's terminal row, not its status when streaming began.
+ *
+ * Idle gaps are filled with {@link SSE_HEARTBEAT} every {@link DEFAULT_SSE_HEARTBEAT_MS} unless
+ * `options.heartbeatMs` says otherwise; pass `0` to write only real frames.
  */
 export async function* toSseEvents(
   frames: AsyncIterable<RunFrame>,
   finalStatus: () => Promise<RunStatus | null>,
+  options: SseOptions = {},
 ): AsyncIterable<string> {
+  const heartbeatMs = options.heartbeatMs ?? DEFAULT_SSE_HEARTBEAT_MS;
   let sawErrorFrame = false;
-  for await (const frame of frames) {
+  for await (const frame of heartbeatMs > 0 ? withIdleTicks(frames, heartbeatMs) : frames) {
+    if (frame === IDLE_TICK) {
+      yield SSE_HEARTBEAT;
+      continue;
+    }
     if (frame.event === "error") sawErrorFrame = true;
     yield encodeFrame(frame);
   }

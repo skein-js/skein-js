@@ -1,7 +1,7 @@
 import type { RunFrame } from "@skein-js/core";
 import { describe, expect, it } from "vitest";
 
-import { encodeFrame, encodeTerminal, parseAfterSeq, toSseEvents } from "./sse.js";
+import { encodeFrame, encodeTerminal, parseAfterSeq, SSE_HEARTBEAT, toSseEvents } from "./sse.js";
 
 describe("encodeFrame", () => {
   it("formats id, event, and JSON data", () => {
@@ -74,6 +74,106 @@ describe("toSseEvents", () => {
     for await (const chunk of toSseEvents(frames(), async () => "error")) out.push(chunk);
 
     expect(out.at(-1)).toContain("event: error");
+  });
+});
+
+describe("toSseEvents heartbeats", () => {
+  /** Resolves after `ms` of real time — the gap a heartbeat is meant to fill. */
+  const idleFor = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms));
+
+  it("fills an idle gap with heartbeats without disturbing the frames around it", async () => {
+    async function* frames(): AsyncIterable<RunFrame> {
+      yield { seq: 1, event: "values", data: 1 };
+      await idleFor(60); // ~3 heartbeat intervals
+      yield { seq: 2, event: "values", data: 2 };
+    }
+
+    const out: string[] = [];
+    for await (const chunk of toSseEvents(frames(), async () => "success", { heartbeatMs: 20 })) {
+      out.push(chunk);
+    }
+
+    expect(out.filter((chunk) => chunk === SSE_HEARTBEAT).length).toBeGreaterThan(0);
+    // The frames still arrive, in order, exactly once each — the race must not drop or duplicate the
+    // `next()` it loses to the timer.
+    expect(out.filter((chunk) => chunk !== SSE_HEARTBEAT)).toEqual([
+      encodeFrame({ seq: 1, event: "values", data: 1 }),
+      encodeFrame({ seq: 2, event: "values", data: 2 }),
+      encodeTerminal("success"),
+    ]);
+  });
+
+  it("writes an SSE comment, which no client dispatches as an event", () => {
+    expect(SSE_HEARTBEAT.startsWith(":")).toBe(true);
+    expect(SSE_HEARTBEAT.endsWith("\n\n")).toBe(true);
+    expect(SSE_HEARTBEAT).not.toContain("event:");
+    expect(SSE_HEARTBEAT).not.toContain("data:");
+  });
+
+  it("emits nothing extra for a stream that never goes idle", async () => {
+    async function* frames(): AsyncIterable<RunFrame> {
+      yield { seq: 1, event: "values", data: 1 };
+      yield { seq: 2, event: "values", data: 2 };
+    }
+
+    const out: string[] = [];
+    for await (const chunk of toSseEvents(frames(), async () => "success", { heartbeatMs: 50 })) {
+      out.push(chunk);
+    }
+
+    expect(out).not.toContain(SSE_HEARTBEAT);
+    expect(out).toHaveLength(3);
+  });
+
+  it("stops heartbeating once the stream ends, even if the consumer keeps waiting", async () => {
+    async function* frames(): AsyncIterable<RunFrame> {
+      yield { seq: 1, event: "values", data: 1 };
+    }
+
+    const out: string[] = [];
+    for await (const chunk of toSseEvents(frames(), async () => "success", { heartbeatMs: 10 })) {
+      out.push(chunk);
+    }
+    // Well past several intervals: a timer left armed after the terminal event would show up here.
+    await idleFor(40);
+
+    expect(out).toHaveLength(2);
+    expect(out.at(-1)).toContain("event: end");
+  });
+
+  it("disables heartbeats entirely at heartbeatMs: 0", async () => {
+    async function* frames(): AsyncIterable<RunFrame> {
+      yield { seq: 1, event: "values", data: 1 };
+      await idleFor(30);
+    }
+
+    const out: string[] = [];
+    for await (const chunk of toSseEvents(frames(), async () => "success", { heartbeatMs: 0 })) {
+      out.push(chunk);
+    }
+
+    expect(out).not.toContain(SSE_HEARTBEAT);
+  });
+
+  it("closes the underlying iterator when the consumer breaks early", async () => {
+    // A client that hangs up mid-stream must release the bus subscription rather than leave it
+    // live-tailing a run nobody reads.
+    let closed = false;
+    const frames: AsyncIterable<RunFrame> = {
+      [Symbol.asyncIterator]: () => ({
+        next: async () => ({ done: false, value: { seq: 1, event: "values", data: 1 } }),
+        return: async () => {
+          closed = true;
+          return { done: true, value: undefined };
+        },
+      }),
+    };
+
+    for await (const _chunk of toSseEvents(frames, async () => "success", { heartbeatMs: 20 })) {
+      break; // hang up on the first frame
+    }
+
+    expect(closed).toBe(true);
   });
 });
 

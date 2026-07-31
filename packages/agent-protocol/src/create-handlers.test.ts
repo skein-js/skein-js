@@ -3,11 +3,16 @@
 // instead meant a real client's limit was silently dropped and the endpoint drained the thread's whole
 // checkpoint history — so these assert on the request shape, not just on the response length.
 
+import { SkeinHttpError, type RunEventBus } from "@skein-js/core";
 import { describe, expect, it } from "vitest";
 
 import { createFixtureDeps, createFixtureResolver } from "./__fixtures__/deps.js";
 import { createContext } from "./context.js";
-import { createProtocolHandlers, type ProtocolRequest } from "./create-handlers.js";
+import {
+  createProtocolHandlers,
+  type ProtocolRequest,
+  type ProtocolResponse,
+} from "./create-handlers.js";
 import type { GraphResolver, ResolvedGraph } from "./deps.js";
 import { createProtocolServiceFromContext } from "./service.js";
 import { DEFAULT_THREAD_HISTORY_LIMIT } from "./threads/thread-service.js";
@@ -230,5 +235,270 @@ describe("pagination response metadata", () => {
 
     expect(response.kind).toBe("json");
     expect(response.headers?.["x-pagination-total"]).toBe("6");
+  });
+});
+
+/** The decoded body of a JSON response — `ProtocolResponse` is a union, so it needs narrowing. */
+const jsonBody = (response: ProtocolResponse): unknown => {
+  if (response.kind !== "json") throw new Error(`expected a json response, got "${response.kind}"`);
+  return response.body;
+};
+
+/** A service + handlers over the fixture graphs, with the graph assistants registered. */
+async function fixtureHandlers() {
+  const service = createProtocolServiceFromContext(createContext(createFixtureDeps()));
+  await service.assistants.registerGraphAssistants();
+  return { service, handlers: createProtocolHandlers(service) };
+}
+
+describe("joinRun", () => {
+  it("returns the settled run's final state", async () => {
+    const { service, handlers } = await fixtureHandlers();
+    const thread = await service.threads.create();
+    const { runId } = await service.runs.createWait({
+      thread_id: thread.thread_id,
+      assistant_id: "echo",
+      input: { value: "hi" },
+    });
+
+    const response = await handlers.joinRun({
+      ...request(),
+      method: "get",
+      params: { thread_id: thread.thread_id, run_id: runId },
+    });
+
+    expect(response.status).toBe(200);
+    expect(jsonBody(response)).toEqual({ value: "echo: hi" });
+  });
+
+  it("answers a terminal run whose frames the bus has already forgotten", async () => {
+    // The guard that makes this work is not an optimization. Both buses remember a closed run for 24h
+    // and then drop it; past that window `subscribe` treats the id as a run that has not started and
+    // waits forever. Modelled here by a bus that never yields for a forgotten run — so a handler that
+    // subscribed unconditionally would hang, and this test would time out rather than pass.
+    const neverSettles = new Promise<never>(() => undefined);
+    const forgetfulBus: RunEventBus = {
+      publish: async () => undefined,
+      close: async () => undefined,
+      subscribe: () => ({ [Symbol.asyncIterator]: () => ({ next: () => neverSettles }) }),
+    };
+    const service = createProtocolServiceFromContext(
+      createContext(createFixtureDeps({ bus: forgetfulBus })),
+    );
+    await service.assistants.registerGraphAssistants();
+    const handlers = createProtocolHandlers(service);
+    const thread = await service.threads.create();
+    const { runId } = await service.runs.createWait({
+      thread_id: thread.thread_id,
+      assistant_id: "echo",
+      input: { value: "hi" },
+    });
+
+    const response = await handlers.joinRun({
+      ...request(),
+      method: "get",
+      params: { thread_id: thread.thread_id, run_id: runId },
+    });
+
+    expect(response.status).toBe(200);
+    expect(jsonBody(response)).toEqual({ value: "echo: hi" });
+  });
+
+  it("reports a failed run as __error__ rather than an empty success", async () => {
+    const { service, handlers } = await fixtureHandlers();
+    const thread = await service.threads.create();
+    const { runId } = await service.runs.createWait({
+      thread_id: thread.thread_id,
+      assistant_id: "throwing",
+      input: { value: "hi" },
+    });
+
+    const response = await handlers.joinRun({
+      ...request(),
+      method: "get",
+      params: { thread_id: thread.thread_id, run_id: runId },
+    });
+
+    // Asserted on the *value*: `Run.error` is optional, and `{ __error__: undefined }` serializes to
+    // `{}` — an empty success, exactly what this envelope exists to prevent.
+    expect(jsonBody(response)).toMatchObject({ __error__: { message: expect.any(String) } });
+  });
+
+  it("answers with state, not a 404, when the run row is deleted while the join waits", async () => {
+    // `cancel?action=rollback` and `on_completion: "delete"` both delete the row out from under a
+    // join. The caller waited successfully, so the *settled-row re-read* 404ing must not become the
+    // response. Modelled by letting the first read (the ownership gate) succeed and the second — the
+    // one after the wait — find the row gone.
+    const service = createProtocolServiceFromContext(createContext(createFixtureDeps()));
+    await service.assistants.registerGraphAssistants();
+    const thread = await service.threads.create();
+    const { runId } = await service.runs.createWait({
+      thread_id: thread.thread_id,
+      assistant_id: "echo",
+      input: { value: "hi" },
+    });
+
+    let reads = 0;
+    const handlers = createProtocolHandlers({
+      ...service,
+      runs: {
+        ...service.runs,
+        get: async (id: string) => {
+          reads += 1;
+          if (reads > 1) throw SkeinHttpError.notFound(`Run "${id}" not found.`);
+          return service.runs.get(id);
+        },
+      },
+    });
+
+    const response = await handlers.joinRun({
+      ...request(),
+      method: "get",
+      params: { thread_id: thread.thread_id, run_id: runId },
+    });
+
+    expect(reads).toBe(2); // the gate read plus the settled re-read
+    expect(response.status).toBe(200);
+    expect(jsonBody(response)).toEqual({ value: "echo: hi" });
+  });
+
+  it("404s for a run that does not exist", async () => {
+    const { service, handlers } = await fixtureHandlers();
+    const thread = await service.threads.create();
+
+    await expect(
+      handlers.joinRun({
+        ...request(),
+        method: "get",
+        params: { thread_id: thread.thread_id, run_id: "nope" },
+      }),
+    ).rejects.toMatchObject({ status: 404 });
+  });
+
+  it("ignores ?cancel_on_disconnect instead of rejecting it", async () => {
+    const { service, handlers } = await fixtureHandlers();
+    const thread = await service.threads.create();
+    const { runId } = await service.runs.createWait({
+      thread_id: thread.thread_id,
+      assistant_id: "echo",
+      input: { value: "hi" },
+    });
+
+    const response = await handlers.joinRun({
+      ...request(),
+      method: "get",
+      params: { thread_id: thread.thread_id, run_id: runId },
+      query: { cancel_on_disconnect: "1" },
+    });
+
+    expect(response.status).toBe(200);
+  });
+});
+
+describe("getThreadStateAtCheckpointFromBody", () => {
+  it("reads state at the checkpoint named in the body", async () => {
+    const { service, handlers } = await fixtureHandlers();
+    const thread = await service.threads.create();
+    await service.runs.createWait({
+      thread_id: thread.thread_id,
+      assistant_id: "echo",
+      input: { value: "hi" },
+    });
+    const tip = await service.threads.getState(thread.thread_id);
+    const checkpointId = tip.checkpoint?.checkpoint_id;
+    expect(checkpointId).toBeTypeOf("string");
+
+    const response = await handlers.getThreadStateAtCheckpointFromBody({
+      ...request(),
+      params: { thread_id: thread.thread_id },
+      body: { checkpoint: { checkpoint_id: checkpointId } },
+    });
+
+    expect(response.status).toBe(200);
+    expect(jsonBody(response)).toMatchObject({ values: tip.values });
+  });
+
+  it("falls back to the thread tip when the checkpoint pointer carries no id", async () => {
+    // `@langchain/langgraph-api` spreads the pointer into `configurable` and lets the checkpointer
+    // resolve the tip, so an absent/blank pointer means "current state", not a 404.
+    const { service, handlers } = await fixtureHandlers();
+    const thread = await service.threads.create();
+    await service.runs.createWait({
+      thread_id: thread.thread_id,
+      assistant_id: "echo",
+      input: { value: "hi" },
+    });
+    const tip = await service.threads.getState(thread.thread_id);
+
+    for (const body of [{}, { checkpoint: null }, { checkpoint: {} }]) {
+      const response = await handlers.getThreadStateAtCheckpointFromBody({
+        ...request(),
+        params: { thread_id: thread.thread_id },
+        body,
+      });
+      expect(jsonBody(response)).toMatchObject({ values: tip.values });
+    }
+  });
+
+  it("forwards checkpoint_ns, which is the only reason the SDK routes an object here", async () => {
+    // A subgraph pointer must not silently read the root graph's state. Asserted on the config the
+    // graph actually receives, since both namespaces return a 200 either way.
+    const seen: Array<Record<string, unknown> | undefined> = [];
+    const inner = createFixtureResolver();
+    const recording: GraphResolver = {
+      ...inner,
+      load: async (graphId) => {
+        const graph = await inner.load(graphId);
+        return new Proxy(graph as object, {
+          get(target, property, receiver) {
+            if (property !== "getState") return Reflect.get(target, property, receiver);
+            return (config: { configurable?: Record<string, unknown> }) => {
+              seen.push(config.configurable);
+              return (target as { getState: (c: unknown) => unknown }).getState(config);
+            };
+          },
+        }) as ResolvedGraph;
+      },
+    };
+    const service = createProtocolServiceFromContext(
+      createContext(createFixtureDeps({ graphs: recording })),
+    );
+    await service.assistants.registerGraphAssistants();
+    const handlers = createProtocolHandlers(service);
+    const thread = await service.threads.create();
+    await service.runs.createWait({
+      thread_id: thread.thread_id,
+      assistant_id: "echo",
+      input: { value: "hi" },
+    });
+    seen.length = 0;
+
+    await handlers.getThreadStateAtCheckpointFromBody({
+      ...request(),
+      params: { thread_id: thread.thread_id },
+      body: { checkpoint: { checkpoint_id: "c-1", checkpoint_ns: "child:abc" } },
+    });
+
+    expect(seen).toEqual([
+      { thread_id: thread.thread_id, checkpoint_ns: "child:abc", checkpoint_id: "c-1" },
+    ]);
+  });
+
+  it("accepts and ignores `subgraphs`, which the SDK always sends", async () => {
+    const { service, handlers } = await fixtureHandlers();
+    const thread = await service.threads.create();
+    await service.runs.createWait({
+      thread_id: thread.thread_id,
+      assistant_id: "echo",
+      input: { value: "hi" },
+    });
+
+    const response = await handlers.getThreadStateAtCheckpointFromBody({
+      ...request(),
+      params: { thread_id: thread.thread_id },
+      body: { checkpoint: null, subgraphs: true },
+    });
+
+    expect(response.status).toBe(200);
   });
 });

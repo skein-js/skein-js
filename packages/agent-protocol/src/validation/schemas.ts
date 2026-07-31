@@ -271,6 +271,28 @@ export const storePutSchema = z
   .passthrough();
 
 /**
+ * `POST /threads/{id}/state/checkpoint` — read state at a checkpoint given as an **object**.
+ *
+ * The SDK's `threads.getState(id, checkpoint)` picks its route from the argument's type: a bare
+ * string id goes to `GET /threads/{id}/state/{checkpoint_id}`, while a checkpoint object is POSTed
+ * here. Only `checkpoint_id` is read from the pointer (see `checkpointSchema`) — enumerated rather
+ * than passed through so a client cannot smuggle a `thread_id` in and redirect the read.
+ *
+ * `checkpoint` is nullish and may carry no id: `@langchain/langgraph-api` spreads it into
+ * `configurable` and lets the checkpointer resolve the tip, so an absent pointer means "current
+ * state" rather than an error.
+ *
+ * `subgraphs` is accepted and ignored, matching the sibling GET route — the thread service reads a
+ * single namespace, and rejecting a field the SDK always sends would 400 every call.
+ */
+export const threadStateCheckpointSchema = z
+  .object({
+    checkpoint: checkpointSchema.nullish(),
+    subgraphs: z.boolean().optional(),
+  })
+  .passthrough();
+
+/**
  * `POST /threads/{id}/history`.
  *
  * Every field arrives in the **body**, not the query string — that is what the LangGraph SDK sends

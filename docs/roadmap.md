@@ -118,6 +118,15 @@ Also shipped, beyond the original MVP plan:
   shared route table before it is mounted, so a disabled resource 404s from the host app exactly as
   under `langgraph dev`. `/ok` is served outside the table, so no config flag can break the container
   health probe.
+- ✅ **The last four SDK-reachable routes** — found by diffing the route table against the installed
+  `@langchain/langgraph-sdk` and `@langchain/langgraph-api` rather than against the docs:
+  `GET /threads/{id}/runs/{run_id}/join` (`client.runs.join()` — blocks, then answers final state as
+  JSON), `POST /threads/{id}/state/checkpoint` (`threads.getState()` with an **object** checkpoint,
+  which the SDK routes by argument type), `/threads/{id}/stream/events` (the v2 stream transport's
+  default path, alongside the `/stream` spelling `joinStream()` uses), and `GET /threads/{id}/history`
+  (LangGraph serves history on both verbs). Each rides services that already existed. Also: SSE
+  streams now emit `: heartbeat` comments in idle gaps, so a long first-token wait survives a proxy's
+  idle timeout and the SDK's `stream_idle_reconnect` has something to read.
 - ✅ **Multi-instance double-texting** — the four per-process seams are gone: the `reject` guard is an
   atomic check-and-insert in the driver (`RunRepo.createIfThreadIdle`), cancellation crosses instances
   over a `RunAbortChannel` (Redis pub/sub), a run's base checkpoint and rollback plan live on its own
@@ -189,6 +198,8 @@ valuable feedback we can get.
 | Next.js API-route adapter                | ✅ shipped         | App Router + Pages Router; same-origin, `useStream` UI example.                      |
 | `http.disable_*` route flags             | ✅ shipped         | `disable_assistants`/`threads`/`runs`/`store`/`meta`; `/ok` is never disabled.       |
 | `GET /info` capability handshake         | ✅ shipped         | Version + `flags`; `/ok` stays outside the table so no flag can break the probe.     |
+| Blocking run join · state-at-checkpoint  | ✅ shipped         | `runs.join()`, `threads.getState()` with an object checkpoint, `/stream/events`.     |
+| Generative UI (`/ui/{agent}`)            | 🗺️ planned         | `LoadExternalComponent`; needs a `ui` config block, a bundler, and asset serving.    |
 | `/docs` OpenAPI page                     | 🗺️ planned         | LangGraph Server serves one; `skein dev` links the published docs instead.           |
 | WebSocket streaming transport            | ❌ non-goal (v1)   | SSE covers the client UX; does not affect the React SDK.                             |
 | `deploy` to a hosted platform            | ❌ non-goal        | skein-js is self-hosted by design.                                                   |

@@ -34,6 +34,7 @@ export const ROUTE_AUTHZ: Record<keyof ProtocolHandlers, RouteAuthz> = {
   getThread: { resource: "threads", action: "read" },
   getThreadState: { resource: "threads", action: "read" },
   getThreadStateAtCheckpoint: { resource: "threads", action: "read" },
+  getThreadStateAtCheckpointFromBody: { resource: "threads", action: "read" },
   getThreadHistory: { resource: "threads", action: "read" },
   listThreads: { resource: "threads", action: "search" },
   countThreads: { resource: "threads", action: "search" },
@@ -54,6 +55,7 @@ export const ROUTE_AUTHZ: Record<keyof ProtocolHandlers, RouteAuthz> = {
   getRun: { resource: "threads", action: "read" },
   listThreadRuns: { resource: "threads", action: "read" },
   joinRunStream: { resource: "threads", action: "read" },
+  joinRun: { resource: "threads", action: "read" },
   cancelRun: { resource: "threads", action: "update" },
   // Like `cancelRun` — and each run it sweeps is re-checked against the ownership filter by the
   // scoped store's `get`, so a broad sweep cannot reach another owner's runs.

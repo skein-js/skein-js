@@ -126,7 +126,16 @@ export type {
 } from "./runs/run-service.js";
 
 // SSE helpers, for adapters that write the event stream themselves.
-export { encodeFrame, encodeTerminal, parseAfterSeq, SSE_HEADERS, toSseEvents } from "./sse/sse.js";
+export {
+  DEFAULT_SSE_HEARTBEAT_MS,
+  encodeFrame,
+  encodeTerminal,
+  parseAfterSeq,
+  SSE_HEADERS,
+  SSE_HEARTBEAT,
+  type SseOptions,
+  toSseEvents,
+} from "./sse/sse.js";
 // Every adapter's SSE write loop uses this: without it a slow client is served out of the server's
 // memory, unbounded and per connection. See docs/streaming.md.
 export {

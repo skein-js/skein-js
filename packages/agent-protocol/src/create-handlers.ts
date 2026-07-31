@@ -4,7 +4,13 @@
 // /store. SSE responses carry a pre-serialized event iterable (data frames + a synthesized
 // terminal event read from the run's final status).
 
-import { RUN_STATUSES, type RunFrame, type RunStatus } from "@skein-js/core";
+import {
+  isTerminalRunStatus,
+  RUN_STATUSES,
+  SkeinHttpError,
+  type RunFrame,
+  type RunStatus,
+} from "@skein-js/core";
 
 import type { CancelRunOptions, CreateRunInput } from "./runs/run-service.js";
 import type { ProtocolService } from "./service.js";
@@ -31,6 +37,7 @@ import {
   threadCountSchema,
   threadPruneSchema,
   threadSearchSchema,
+  threadStateCheckpointSchema,
   threadStateUpdateSchema,
   threadStreamSchema,
 } from "./validation/schemas.js";
@@ -91,6 +98,7 @@ export interface ProtocolHandlers {
   getThreadHistory: ProtocolHandler;
   getThreadState: ProtocolHandler;
   getThreadStateAtCheckpoint: ProtocolHandler;
+  getThreadStateAtCheckpointFromBody: ProtocolHandler;
   updateThreadState: ProtocolHandler;
   // runs
   createWaitRun: ProtocolHandler;
@@ -101,6 +109,7 @@ export interface ProtocolHandlers {
   getRun: ProtocolHandler;
   listThreadRuns: ProtocolHandler;
   joinRunStream: ProtocolHandler;
+  joinRun: ProtocolHandler;
   cancelRun: ProtocolHandler;
   cancelManyRuns: ProtocolHandler;
   deleteRun: ProtocolHandler;
@@ -447,6 +456,26 @@ export function createProtocolHandlers(service: ProtocolService): ProtocolHandle
         ),
       ),
 
+    // The object-shaped sibling of the route above, and the only one that can address a **subgraph**:
+    // the pointer's `checkpoint_ns` is forwarded, which is the whole reason the SDK routes an object
+    // checkpoint here instead of to the id-shaped GET. An absent pointer (or one carrying no
+    // `checkpoint_id`) reads the thread tip rather than 404ing, matching `@langchain/langgraph-api`,
+    // which spreads the checkpoint into `configurable` and lets the checkpointer resolve it.
+    getThreadStateAtCheckpointFromBody: async (req) => {
+      const threadId = requireParam(req.params, "thread_id");
+      const body = parse(threadStateCheckpointSchema, req.body ?? {});
+      const checkpointId = body.checkpoint?.checkpoint_id;
+      return json(
+        checkpointId !== undefined
+          ? await service.threads.getStateAt(
+              threadId,
+              checkpointId,
+              body.checkpoint?.checkpoint_ns ?? undefined,
+            )
+          : await service.threads.getState(threadId),
+      );
+    },
+
     updateThreadState: async (req) => {
       const body = parse(threadStateUpdateSchema, req.body ?? {});
       return json(
@@ -518,6 +547,51 @@ export function createProtocolHandlers(service: ProtocolService): ProtocolHandle
       const runId = requireParam(req.params, "run_id");
       const frames = await service.runs.join(runId, afterSeqFrom(req));
       return sse({ runId, frames });
+    },
+
+    /**
+     * Block until the run settles, then answer its final state as JSON — the SDK's `runs.join()`,
+     * where `joinRunStream` above is `runs.joinStream()`.
+     *
+     * The terminal check before subscribing is load-bearing, not an optimization. Both event buses
+     * remember a closed run for 24h and then forget it (`MemoryRunEventBus`'s `finishedIdTtlMs`, the
+     * Redis driver's closed marker); past that window `subscribe` treats the id as a run that has not
+     * started yet and **waits forever**. The run row has no such expiry, so it — not the bus — decides
+     * whether there is anything left to wait for.
+     *
+     * `?cancel_on_disconnect` is accepted and ignored: honouring it needs a transport-level disconnect
+     * signal, which a JSON `ProtocolResponse` (unlike the SSE ones) never sees. `@langchain/langgraph-api`
+     * does not read it on this route either.
+     */
+    joinRun: async (req) => {
+      const runId = requireParam(req.params, "run_id");
+      const run = await service.runs.get(runId); // 404s when absent or not this caller's
+      if (!isTerminalRunStatus(run.status)) {
+        const frames = await service.runs.join(runId, 0);
+        for await (const _frame of frames) {
+          // Drain rather than forward: this route reports the outcome, not the transcript. The bus
+          // closes when the run settles, which is what makes this the "block until done" wait.
+        }
+      }
+      // Re-read for the settled row: the status above is stale by now for a run we just waited on.
+      // `runs.get` *throws* on absence, and the row can legitimately be gone by the time we wake —
+      // `cancel?action=rollback` deletes it, as does `on_completion: "delete"` cascading the thread.
+      // The caller waited successfully, so that must answer with state, not the 404 the throw would
+      // otherwise produce.
+      const settled = await service.runs.get(runId).catch((error: unknown) => {
+        if (error instanceof SkeinHttpError && error.status === 404) return undefined;
+        throw error;
+      });
+      // A failed run must not read as an empty success — same `__error__` envelope `createWait` uses.
+      // `error` is optional on the row, so fall back to the status rather than emitting a bare `{}`.
+      if (settled && (settled.status === "error" || settled.status === "timeout")) {
+        return json({
+          __error__: settled.error ?? {
+            message: `Run "${runId}" finished with status "${settled.status}".`,
+          },
+        });
+      }
+      return json((await service.threads.getState(run.thread_id)).values);
     },
 
     cancelRun: async (req) =>

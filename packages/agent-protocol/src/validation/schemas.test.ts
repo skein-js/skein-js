@@ -5,6 +5,7 @@ import {
   runCreateSchema,
   storePutSchema,
   threadCreateSchema,
+  threadStateCheckpointSchema,
   threadStateUpdateSchema,
 } from "./schemas.js";
 
@@ -75,6 +76,28 @@ describe("validation", () => {
         run_id: "r1",
         langgraph_auth_user: { identity: "attacker" },
       },
+    });
+    expect(parsed.checkpoint).toEqual({ checkpoint_id: "c1" });
+  });
+
+  it("accepts the checkpoint-read body the SDK POSTs, including `subgraphs`", () => {
+    const parsed = parse(threadStateCheckpointSchema, {
+      checkpoint: { checkpoint_id: "c1", checkpoint_ns: "" },
+      subgraphs: true,
+    });
+    expect(parsed.checkpoint?.checkpoint_id).toBe("c1");
+  });
+
+  it("treats an absent or null checkpoint pointer as a tip read, not an error", () => {
+    expect(parse(threadStateCheckpointSchema, {}).checkpoint).toBeUndefined();
+    expect(parse(threadStateCheckpointSchema, { checkpoint: null }).checkpoint).toBeNull();
+  });
+
+  it("strips a thread_id smuggled through the checkpoint-read pointer", () => {
+    // Same guarantee as the state-update route above: only `checkpoint_id` reaches the checkpointer,
+    // so a pointer cannot redirect the read at another caller's thread.
+    const parsed = parse(threadStateCheckpointSchema, {
+      checkpoint: { checkpoint_id: "c1", thread_id: "victim-thread" },
     });
     expect(parsed.checkpoint).toEqual({ checkpoint_id: "c1" });
   });

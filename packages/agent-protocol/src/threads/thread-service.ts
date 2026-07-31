@@ -100,8 +100,14 @@ export interface ThreadService {
   history(threadId: string, options?: HistoryOptions): Promise<ThreadState[]>;
   /** The thread's current state snapshot — `GET /threads/{id}/state`, what `useStream` hydrates from. */
   getState(threadId: string): Promise<ThreadState>;
-  /** State at a specific checkpoint (time travel) — `GET /threads/{id}/state/{checkpoint_id}`. */
-  getStateAt(threadId: string, checkpointId: string): Promise<ThreadState>;
+  /**
+   * State at a specific checkpoint (time travel) — `GET /threads/{id}/state/{checkpoint_id}` and its
+   * body-shaped sibling `POST /threads/{id}/state/checkpoint`.
+   *
+   * `checkpointNs` selects a **subgraph**'s namespace and defaults to the root graph (`""`). It scopes
+   * *within* the already-resolved thread, so unlike `thread_id` it is safe to take from the client.
+   */
+  getStateAt(threadId: string, checkpointId: string, checkpointNs?: string): Promise<ThreadState>;
   /**
    * Update (fork) thread state at a checkpoint — `POST /threads/{id}/state`. Writes a new checkpoint
    * via `graph.updateState`, mirrors it onto the thread row, and returns the new checkpoint pointer.
@@ -307,12 +313,16 @@ export function createThreadService(ctx: ProtocolContext): ThreadService {
       return current ?? emptyThreadState(threadId);
     },
 
-    async getStateAt(threadId, checkpointId) {
+    async getStateAt(threadId, checkpointId, checkpointNs = "") {
       const graph = await loadThreadGraph(threadId);
       if (!graph) return emptyThreadState(threadId);
       // An unknown checkpoint yields an empty snapshot from LangGraph rather than throwing.
       const snapshot = await graph.getState({
-        configurable: { thread_id: threadId, checkpoint_ns: "", checkpoint_id: checkpointId },
+        configurable: {
+          thread_id: threadId,
+          checkpoint_ns: checkpointNs,
+          checkpoint_id: checkpointId,
+        },
       });
       return snapshotToThreadState(snapshot);
     },
