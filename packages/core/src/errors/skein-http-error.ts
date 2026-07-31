@@ -51,6 +51,11 @@ export class SkeinHttpError extends Error {
     return new SkeinHttpError(409, message, options);
   }
 
+  /** 413 — the request body is larger than the adapter accepts. */
+  static payloadTooLarge(message: string, options?: SkeinHttpErrorOptions): SkeinHttpError {
+    return new SkeinHttpError(413, message, options);
+  }
+
   /**
    * 422 — the request was well-formed but can't be processed in the current state. Used for a
    * `reject` multitask strategy hitting a busy thread, matching `@langchain/langgraph-api`.

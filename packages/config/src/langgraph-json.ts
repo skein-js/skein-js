@@ -64,12 +64,25 @@ const telemetrySchema = z
 /** The validated `telemetry` block. */
 export type TelemetryConfig = z.infer<typeof telemetrySchema>;
 
+const runtimeSchema = z
+  .object({
+    /** Native runtime used by the built production artifact. */
+    name: z.enum(["node", "bun", "deno"]),
+    /** Official image tag/version. Omit to use Skein's tested default. */
+    version: z.string().trim().min(1).optional(),
+  })
+  .passthrough();
+
+export type SkeinRuntimeName = z.infer<typeof runtimeSchema>["name"];
+
 export const langgraphJsonSchema = z
   .object({
     /** REQUIRED: map of graph id → "path:export". */
     graphs: z.record(z.string()),
     /** JS/Node runtime pin (used by `skein build` / `dockerfile`). */
     node_version: z.string().optional(),
+    /** Skein production settings. Unknown keys remain forward-compatible. */
+    skein: z.object({ runtime: runtimeSchema.optional() }).passthrough().optional(),
     /** `.env` path or an inline map, loaded into `process.env` at boot. */
     env: z.union([z.string(), z.record(z.string())]).optional(),
     /** Long-term memory store config. */

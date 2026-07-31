@@ -68,9 +68,10 @@ change. See [agent-protocol.md](./agent-protocol.md) for the exact endpoints.
 
 ## The solution
 
-skein-js is an open, self-hostable alternative to LangGraph Platform for the Node ecosystem —
+skein-js is an open, self-hostable alternative to LangGraph Platform for the TypeScript ecosystem —
 "aegra for TypeScript." It exposes the Agent Protocol wire format from any Node
-HTTP framework (Express, Fastify, NestJS, and Next.js adapters ship today), so the whole LangChain
+HTTP framework on Node, or native Fetch on Bun and Deno (Express, Fastify, NestJS, Next.js, and Fetch
+adapters ship today), so the whole LangChain
 client surface keeps working with only a URL change.
 
 Unlike aegra — which had to reimplement the server in Python because the Python
@@ -138,7 +139,7 @@ Available on every adapter — see [serving-a-single-graph.md](./serving-a-singl
              └──────────────────────┬──────────────────────┘
                                     │ Agent Protocol (HTTP + SSE)
              ┌──────────────────────▼──────────────────────┐
-  adapters   │  @skein-js/express · fastify · nestjs · nextjs  │
+  adapters   │ express · fastify · nestjs · nextjs · native fetch │
              ├─────────────────────────────────────────────┤
   protocol   │   @skein-js/agent-protocol — handler table ·    │
              │   run engine · streaming (SSE)               │
@@ -202,6 +203,7 @@ machine-readable [`llms.txt`](../llms.txt) / [`llms-full.txt`](../llms-full.txt)
 | [observability.md](./observability.md)                   | Tracing + metrics — LangSmith, PostHog, OpenTelemetry, custom   |
 | [deploy.md](./deploy.md)                                 | Deploy anywhere — Cloud Run, Railway, Fly, Render, AWS, K8s     |
 | [performance.md](./performance.md)                       | Sizing, every tuning knob, backpressure + drops, triage         |
+| [profiling.md](./profiling.md)                           | Learn measurement/profiling; Node, Bun, Deno hands-on recipes   |
 | [bundling.md](./bundling.md)                             | Bundling skein yourself — ESM, `require()`, what to externalize |
 | [reuse.md](./reuse.md)                                   | _(design)_ What we reuse from LangGraph OSS vs. rebuild         |
 | [code-practices.md](./code-practices.md)                 | _(contributor)_ Readability, functional style, conventions      |

@@ -33,7 +33,13 @@ const packagesDir = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "
 const FORBIDDEN_IN_ADAPTERS = ["@langchain/langgraph-api", "@typescript/vfs", "superjson"];
 
 /** Adapters — the packages that get mounted inside somebody else's server. */
-const ADAPTERS = ["@skein-js/express", "@skein-js/fastify", "@skein-js/nestjs", "@skein-js/nextjs"];
+const ADAPTERS = [
+  "@skein-js/express",
+  "@skein-js/fastify",
+  "@skein-js/nestjs",
+  "@skein-js/nextjs",
+  "@skein-js/fetch",
+];
 
 /** `name` → built entry file, for every workspace package that has been built. */
 function readBuiltPackages(): Map<string, string> {
@@ -132,6 +138,21 @@ describe("adapter static import graph", () => {
       ),
     );
     expect(leaked).toEqual([]);
+  });
+
+  // The native Fetch adapter carries one more promise than the others: it exists so a Bun or Deno
+  // production image never loads Express or Node's HTTP shim. That is a claim about its module graph,
+  // so it belongs here rather than in a comment.
+  it("@skein-js/fetch does not statically reach Express or node:http", () => {
+    const entry = builtPackages.get("@skein-js/fetch");
+    expect(entry).toBeTruthy();
+    const reached = [...reachableSpecifiers(entry as string, builtPackages)];
+
+    expect(reached).not.toContain("express");
+    expect(reached).not.toContain("@skein-js/express");
+    expect(
+      reached.filter((specifier) => specifier === "node:http" || specifier === "http"),
+    ).toEqual([]);
   });
 
   // The walk is only meaningful if it actually crosses package boundaries. Without this, a bug that

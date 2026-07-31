@@ -93,14 +93,26 @@ export async function createExpressServer(
         server = bound;
       }),
     close: async () => {
-      await runtime.worker.stop();
       const bound = server;
       server = undefined; // idempotent: a second close() is a no-op, not ERR_SERVER_NOT_RUNNING
-      if (bound) {
-        await new Promise<void>((resolve, reject) => {
-          bound.close((error) => (error ? reject(error) : resolve()));
-        });
-      }
+      // Stop accepting traffic immediately, but keep the listener's close promise pending while the
+      // worker drains: active SSE requests need that worker to reach their terminal frame.
+      const httpClosed = bound
+        ? new Promise<void>((resolve, reject) => {
+            bound.close((error) => {
+              if ((error as NodeJS.ErrnoException | undefined)?.code === "ERR_SERVER_NOT_RUNNING") {
+                resolve();
+              } else if (error) reject(error);
+              else resolve();
+            });
+          })
+        : Promise.resolve();
+      const [workerResult, httpResult] = await Promise.allSettled([
+        runtime.worker.stop(),
+        httpClosed,
+      ]);
+      if (workerResult.status === "rejected") throw workerResult.reason;
+      if (httpResult.status === "rejected") throw httpResult.reason;
     },
   };
 }

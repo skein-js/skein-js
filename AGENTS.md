@@ -127,6 +127,7 @@ Prerequisites: the git remote must point at `skein-js/skein-js` (Nx derives the 
 | `@skein-js/config`                                                                  | `langgraph.json` parser + graph loader (wraps `@langchain/langgraph-api`)                                                                           |
 | `@skein-js/server-kit`                                                              | Shared, framework-agnostic adapter building blocks (in-memory runtime, dev-state import, CORS mapping)                                              |
 | `@skein-js/express` · `@skein-js/fastify` · `@skein-js/nestjs` · `@skein-js/nextjs` | Framework adapters — thin transport shims over the engine's handler table + `skeinRoutes`                                                           |
+| `@skein-js/fetch`                                                                   | Web-standard Fetch transport — `Bun.serve` / `Deno.serve`; the production path on those runtimes                                                    |
 | `@skein-js/storage-memory`                                                          | In-memory `SkeinStore` + queue (dev/tests)                                                                                                          |
 | `@skein-js/storage-postgres`                                                        | Postgres `SkeinStore` + pgvector; reuses `PostgresSaver`                                                                                            |
 | `@skein-js/redis`                                                                   | Run **queue** + cross-instance pub/sub (not a checkpointer)                                                                                         |
@@ -140,7 +141,10 @@ Examples live in `examples/`: `chat-app` (flagship — research assistant + Next
 (zero-setup), `react-usestream` (`useStream` harness). Each non-Express adapter ships a **standalone**
 example (a dedicated graph server) and an **embedded** one (graphs mounted alongside the app's own
 routes): `fastify-basic`/`fastify-app`, `nestjs-basic`/`nestjs-app`, and `nextjs-basic` (Pages Router,
-headless) / `nextjs-app` (App Router, same-origin `useStream` UI).
+headless) / `nextjs-app` (App Router, same-origin `useStream` UI). **`@skein-js/fetch` is the exception**
+— it has no example yet. It is not mounted by hand in a Bun/Deno app so much as selected with
+`skein build --runtime`, and its serving behaviour is covered by the runtime matrix in
+[`ci.yml`](.github/workflows/ci.yml) rather than by an example anyone would copy.
 
 ## Conventions (enforced)
 

@@ -598,6 +598,9 @@ importers:
       '@skein-js/express':
         specifier: workspace:*
         version: link:../server-express
+      '@skein-js/fetch':
+        specifier: workspace:*
+        version: link:../server-fetch
       '@skein-js/runtime':
         specifier: workspace:*
         version: link:../runtime
@@ -769,6 +772,22 @@ importers:
         specifier: ^5.2.0
         version: 5.10.0
 
+  packages/server-fetch:
+    dependencies:
+      '@skein-js/agent-protocol':
+        specifier: workspace:*
+        version: link:../agent-protocol
+      '@skein-js/core':
+        specifier: workspace:*
+        version: link:../core
+      '@skein-js/server-kit':
+        specifier: workspace:*
+        version: link:../server-kit
+    devDependencies:
+      '@langchain/langgraph':
+        specifier: ^1.4.0
+        version: 1.4.7(@langchain/core@1.2.2(@opentelemetry/api@1.9.1)(ws@8.21.0))(react-dom@19.2.6(react@19.2.6))(react@19.2.6)(zod@3.25.76)
+
   packages/server-kit:
     dependencies:
       '@skein-js/agent-protocol':
@@ -938,6 +957,16 @@ importers:
       vitest:
         specifier: '>=2'
         version: 2.1.9(@types/node@22.20.0)(lightningcss@1.32.0)
+    devDependencies:
+      '@langchain/core':
+        specifier: ^1.2.0
+        version: 1.2.2(@opentelemetry/api@1.9.1)(ws@8.21.0)
+      '@langchain/langgraph':
+        specifier: ^1.4.0
+        version: 1.4.7(@langchain/core@1.2.2(@opentelemetry/api@1.9.1)(ws@8.21.0))(react-dom@19.2.6(react@19.2.6))(react@19.2.6)(zod@3.25.76)
+      '@langchain/langgraph-sdk':
+        specifier: ^1.9.0
+        version: 1.9.25(@langchain/core@1.2.2(@opentelemetry/api@1.9.1)(ws@8.21.0))(react-dom@19.2.6(react@19.2.6))(react@19.2.6)
 
 packages:
 

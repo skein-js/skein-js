@@ -11,6 +11,11 @@ import { loadConfig, type LanggraphJson } from "@skein-js/config";
 import { describeError } from "@skein-js/server-kit";
 
 import { bundleProject } from "../bundle/bundle-project.js";
+import {
+  resolveRuntimeSelection,
+  type ResolvedRuntimeSelection,
+  type RuntimeSelectionOptions,
+} from "../runtime-selection.js";
 import { DEFAULT_CONTAINER_PORT } from "../serve-env.js";
 
 import { generateCompose } from "./compose.js";
@@ -59,6 +64,7 @@ async function loadConfigContext(configOption: string): Promise<ConfigContext> {
  */
 async function prepareArtifact(
   context: ConfigContext,
+  runtime: ResolvedRuntimeSelection,
   extraAssets: Array<{ name: string; contents: string }> = [],
 ): Promise<string> {
   const outDir = path.join(context.configDir, ARTIFACT_SUBDIR);
@@ -66,10 +72,13 @@ async function prepareArtifact(
   await bundleProject({
     configPath: context.configPath,
     outDir,
-    nodeVersion: context.config.node_version,
+    nodeVersion: runtime.name === "node" ? runtime.version : "24",
     skeinVersion: skeinCliVersion(),
   });
-  writeFileSync(path.join(outDir, DOCKERFILE_NAME), renderDockerfile(context, CONTAINER_PORT));
+  writeFileSync(
+    path.join(outDir, DOCKERFILE_NAME),
+    renderDockerfile(context, CONTAINER_PORT, runtime),
+  );
   writeFileSync(path.join(outDir, DOCKERIGNORE_NAME), generateDockerignore());
   for (const asset of extraAssets) writeFileSync(path.join(outDir, asset.name), asset.contents);
   console.log(`skein: wrote artifact to ${path.relative(process.cwd(), outDir) || "."}.`);
@@ -77,9 +86,15 @@ async function prepareArtifact(
 }
 
 /** Render the Dockerfile for a loaded config. */
-function renderDockerfile({ config }: ConfigContext, port: number): string {
+function renderDockerfile(
+  { config }: ConfigContext,
+  port: number,
+  runtime: ResolvedRuntimeSelection,
+): string {
   return generateDockerfile({
     nodeVersion: config.node_version,
+    runtime: runtime.name,
+    runtimeVersion: runtime.version,
     dockerfileLines: config.dockerfile_lines,
     port,
   });
@@ -159,7 +174,7 @@ function describeExit(result: ProcessResult): string {
   return result.signal !== null ? `killed by ${result.signal}` : `exit ${result.code}`;
 }
 
-export interface DockerfileCommandOptions {
+export interface DockerfileCommandOptions extends RuntimeSelectionOptions {
   config: string;
   /** Write to this path instead of stdout. */
   output?: string;
@@ -168,7 +183,8 @@ export interface DockerfileCommandOptions {
 /** `skein dockerfile` — emit the generated Dockerfile to stdout (or `--output`). */
 export async function runDockerfile(options: DockerfileCommandOptions): Promise<void> {
   const context = await loadConfigContext(options.config);
-  const contents = renderDockerfile(context, CONTAINER_PORT);
+  const runtime = resolveRuntimeSelection(context.config, options);
+  const contents = renderDockerfile(context, CONTAINER_PORT, runtime);
   // The emitted Dockerfile builds against a `.skein/build` artifact (bundled JS + pinned package.json
   // + schemas.json), not the project root — building it by hand won't work. `skein build` is the path
   // that produces the artifact and builds this Dockerfile against it; this command is for inspection.
@@ -185,7 +201,7 @@ export async function runDockerfile(options: DockerfileCommandOptions): Promise<
   process.stdout.write(contents);
 }
 
-export interface BuildCommandOptions {
+export interface BuildCommandOptions extends RuntimeSelectionOptions {
   config: string;
   /** Image tag; defaults to the project directory name. */
   tag?: string;
@@ -196,13 +212,14 @@ export interface BuildCommandOptions {
 /** `skein build` — bundle the project into a self-contained artifact and build the image from it. */
 export async function runBuild(options: BuildCommandOptions): Promise<void> {
   const context = await loadConfigContext(options.config);
+  const runtime = resolveRuntimeSelection(context.config, options);
   const npmrcPath = resolveNpmrcSecret(options.npmrc);
   if (npmrcPath === null) return;
   if (!requireDocker()) return;
 
   let artifactDir: string;
   try {
-    artifactDir = await prepareArtifact(context);
+    artifactDir = await prepareArtifact(context, runtime);
   } catch (error) {
     console.error(`skein: ${describeError(error)}`);
     process.exitCode = 1;
@@ -225,7 +242,7 @@ export async function runBuild(options: BuildCommandOptions): Promise<void> {
   console.log(`skein: built image "${tag}".`);
 }
 
-export interface UpCommandOptions {
+export interface UpCommandOptions extends RuntimeSelectionOptions {
   config: string;
   port: number;
   host: string;
@@ -236,13 +253,14 @@ export interface UpCommandOptions {
 /** `skein up` — bundle into an artifact, then bring up app (built from it) + Postgres + Redis. */
 export async function runUp(options: UpCommandOptions): Promise<void> {
   const context = await loadConfigContext(options.config);
+  const runtime = resolveRuntimeSelection(context.config, options);
   const npmrcPath = resolveNpmrcSecret(options.npmrc);
   if (npmrcPath === null) return;
   if (!requireDocker()) return;
 
   let artifactDir: string;
   try {
-    artifactDir = await prepareArtifact(context, [
+    artifactDir = await prepareArtifact(context, runtime, [
       {
         name: COMPOSE_NAME,
         contents: generateCompose({

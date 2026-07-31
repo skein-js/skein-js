@@ -17,7 +17,8 @@
         "server-express:build",
         "server-fastify:build",
         "server-nestjs:build",
-        "server-nextjs:build"
+        "server-nextjs:build",
+        "server-fetch:build"
       ],
       "inputs": ["default", "^production", "{workspaceRoot}/packages/*/package.json"]
     }

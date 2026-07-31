@@ -1,0 +1,56 @@
+{
+  "name": "@skein-js/fetch",
+  "version": "0.11.3",
+  "description": "Runtime-neutral Fetch adapter for serving the Skein Agent Protocol on Bun and Deno.",
+  "license": "Apache-2.0",
+  "author": "Maina Wycliffe <wmmaina7@gmail.com>",
+  "homepage": "https://github.com/skein-js/skein-js/tree/main/packages/server-fetch#readme",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/skein-js/skein-js.git",
+    "directory": "packages/server-fetch"
+  },
+  "bugs": {
+    "url": "https://github.com/skein-js/skein-js/issues"
+  },
+  "keywords": [
+    "typescript",
+    "fetch",
+    "bun",
+    "deno",
+    "langgraph",
+    "agent-protocol",
+    "sse"
+  ],
+  "type": "module",
+  "main": "./dist/index.js",
+  "module": "./dist/index.js",
+  "types": "./dist/index.d.ts",
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "import": "./dist/index.js",
+      "default": "./dist/index.js"
+    }
+  },
+  "files": [
+    "dist",
+    "LICENSE",
+    "README.md"
+  ],
+  "sideEffects": false,
+  "dependencies": {
+    "@skein-js/agent-protocol": "workspace:*",
+    "@skein-js/core": "workspace:*",
+    "@skein-js/server-kit": "workspace:*"
+  },
+  "peerDependencies": {
+    "@langchain/langgraph": "^1.4.0"
+  },
+  "devDependencies": {
+    "@langchain/langgraph": "^1.4.0"
+  },
+  "publishConfig": {
+    "access": "public"
+  }
+}

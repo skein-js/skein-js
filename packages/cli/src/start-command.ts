@@ -7,8 +7,7 @@
 import { existsSync, readFileSync } from "node:fs";
 import path from "node:path";
 
-import { loadConfig, type GraphSchemas } from "@skein-js/config";
-import { createExpressServer, type SkeinExpressServer } from "@skein-js/express";
+import { loadConfig, type GraphSchemas, type SkeinRuntimeName } from "@skein-js/config";
 import {
   buildRuntime,
   postgresConnectionOptions,
@@ -18,6 +17,7 @@ import {
 } from "@skein-js/runtime";
 import {
   checkHeapHeadroom,
+  detectRuntimeCapabilities,
   describeError,
   describePoolPressure,
   resolveRunConcurrency,
@@ -28,6 +28,7 @@ import { printBanner } from "./banner.js";
 import { createDevLogger } from "./dev-logger.js";
 import { applyProjectEnv } from "./project-env.js";
 import { resolveRequestLog } from "./request-log.js";
+import { resolveRuntimeSelection } from "./runtime-selection.js";
 import { describeBindError, envHost, envPort } from "./serve-env.js";
 import { createShutdownHandler, forceExitDelayMs } from "./shutdown.js";
 
@@ -58,6 +59,14 @@ export interface StartCommandOptions {
   runTimeout?: number;
   /** `--request-log`: a line per HTTP request. Unset → `SKEIN_REQUEST_LOG` → off for `start`. */
   requestLog?: boolean;
+  /** CLI override for `skein.runtime.name`. */
+  runtime?: SkeinRuntimeName;
+  /** CLI override for `skein.runtime.version` (recorded for precedence consistency). */
+  runtimeVersion?: string;
+}
+
+interface ProductionServer {
+  close: () => Promise<void>;
 }
 
 /** Load the artifact's precomputed schemas (baked by `skein build`), keyed by graph id. */
@@ -74,6 +83,7 @@ function readBakedSchemas(configDir: string): Record<string, GraphSchemas> {
 
 export async function runStart(options: StartCommandOptions): Promise<void> {
   const configPath = path.resolve(process.cwd(), options.config);
+  const capabilities = detectRuntimeCapabilities();
 
   // Take a signal disposition *before* the boot, not after it. In the production image node is PID
   // 1, and the kernel silently discards signals with default disposition for PID 1 — so with no
@@ -81,17 +91,29 @@ export async function runStart(options: StartCommandOptions): Promise<void> {
   // ~20s) would be dropped entirely and the platform would have to SIGKILL. Nothing is draining yet
   // at this point, so the boot-time handler just exits; `handleSignal` is swapped for the real
   // graceful one once the server is listening.
-  let handleSignal = (): void => process.exit(0);
-  process.on("SIGINT", () => handleSignal());
-  process.on("SIGTERM", () => handleSignal());
+  let handleSignal = (): void => capabilities.exit(0);
+  capabilities.signals.on("SIGINT", () => handleSignal());
+  capabilities.signals.on("SIGTERM", () => handleSignal());
 
   let schemas: Record<string, GraphSchemas>;
   let configDir: string;
   let authPath: string | undefined;
   let runConcurrency: number;
   let shutdownGraceMs: number;
+  let selectedRuntime: SkeinRuntimeName;
   try {
     const loaded = await loadConfig({ configPath });
+    const runtimeSelection = resolveRuntimeSelection(loaded.config, options);
+    selectedRuntime = runtimeSelection.name;
+    // `capabilities.name` rather than a second hand-rolled detection: two sources of truth for the
+    // same fact can disagree, and then this guard validates the wrong one.
+    const actualRuntime = capabilities.name;
+    if (actualRuntime !== selectedRuntime) {
+      throw new Error(
+        `artifact selected runtime ${selectedRuntime}, but it was launched with ${actualRuntime}. ` +
+          `Use the generated image command or pass --runtime ${actualRuntime}.`,
+      );
+    }
     configDir = loaded.configDir;
     authPath = loaded.config.auth?.path;
     // Apply an inline `env` map baked into the production config (a file `env` was dropped at build).
@@ -142,22 +164,75 @@ export async function runStart(options: StartCommandOptions): Promise<void> {
   const port = options.portExplicit ? options.port : envPort(options.port);
   const host = options.hostExplicit ? options.host : envHost(options.host);
 
-  let server: SkeinExpressServer;
+  let server: ProductionServer | undefined;
   try {
-    server = await createExpressServer({
+    const sharedOptions = {
       deps: runtime.deps,
       cors: runtime.cors,
       warm: true,
       logger,
-      // Off unless asked for. The logger above is not optional — it is how a failed run gets reported —
-      // but a line per request under production traffic buries exactly those reports.
-      requestLog: resolveRequestLog(options.requestLog, false),
       worker: { maxConcurrency: runConcurrency, shutdownGraceMs },
-    });
-    await server.listen(port, host);
+    } as const;
+    // Resolved on every runtime, not just the branch that can honour it: `resolveRequestLog` is what
+    // validates `SKEIN_REQUEST_LOG`, and every sibling resolver in this codebase reads the environment
+    // whether or not an explicit value wins, so a typo fails at boot instead of sitting unnoticed.
+    const requestLog = resolveRequestLog(options.requestLog, false);
+    if (selectedRuntime === "node") {
+      // Loaded only on Node. Bun/Deno production artifacts never import Express or Node's HTTP shim.
+      const { createExpressServer } = await import("@skein-js/express");
+      const expressServer = await createExpressServer({
+        ...sharedOptions,
+        requestLog,
+      });
+      server = expressServer;
+      await expressServer.listen(port, host);
+    } else {
+      if (requestLog) {
+        logger.warn?.(
+          `skein: --request-log / SKEIN_REQUEST_LOG is ignored on ${selectedRuntime}: the native ` +
+            `Fetch transport has no request-logging middleware. Failed runs are still reported.`,
+        );
+      }
+      const { createSkeinFetchServer, startBunServer, startDenoServer } =
+        await import("@skein-js/fetch");
+      const fetchServer = await createSkeinFetchServer(sharedOptions);
+      // Install a teardown immediately: native bind can throw synchronously after the worker starts.
+      server = { close: fetchServer.close };
+      if (selectedRuntime === "bun") {
+        const listener = startBunServer(fetchServer.fetch, { port, hostname: host });
+        server = {
+          close: async () => {
+            listener.stop(false);
+            await fetchServer.close();
+          },
+        };
+      } else {
+        const listener = startDenoServer(fetchServer.fetch, { port, hostname: host });
+        server = {
+          close: async () => {
+            // Initiate listener shutdown first so no new requests enter, then let the worker finish
+            // active streams before waiting for Deno's listener to report every connection closed.
+            const listenerClosed = listener.shutdown();
+            const [workerResult, listenerResult] = await Promise.allSettled([
+              fetchServer.close(),
+              listenerClosed,
+            ]);
+            if (workerResult.status === "rejected") throw workerResult.reason;
+            if (listenerResult.status === "rejected") throw listenerResult.reason;
+          },
+        };
+      }
+    }
   } catch (error) {
-    // Match `skein dev`: close the worker on a bind failure so the process exits instead of hanging.
-    await runtime.dispose();
+    // A listener can fail after its protocol worker has started. Drain it before disposing the
+    // Postgres/Redis drivers it still needs to persist terminal state.
+    try {
+      await server?.close();
+    } catch (cleanupError) {
+      console.error(`skein: startup cleanup failed: ${describeError(cleanupError)}`);
+    } finally {
+      await runtime.dispose();
+    }
     console.error(`skein: ${describeBindError(error, port)}`);
     process.exitCode = 1;
     return;
@@ -168,8 +243,21 @@ export async function runStart(options: StartCommandOptions): Promise<void> {
   // Two sizing mistakes that are already true before any traffic arrives, and that otherwise only show
   // up as symptoms much later: an unexplained restart (OOM kill), and requests queuing on the pool.
   // Reported once, after the banner, so they read as part of the startup summary.
-  const { warning: heapWarning } = checkHeapHeadroom();
-  if (heapWarning) logger.warn?.(`skein: ${heapWarning}`);
+  if (capabilities.name === "node") {
+    const { warning: heapWarning } = checkHeapHeadroom();
+    if (heapWarning) logger.warn?.(`skein: ${heapWarning}`);
+  } else {
+    // Only the BOOT-TIME sizing check is Node-specific: its remedy is `--max-old-space-size`, a V8
+    // flag, and its threshold is calibrated against V8's cgroup-derived ceiling. The ongoing
+    // heap-pressure monitor runs on every runtime — `node:v8`'s `getHeapStatistics()` answers under
+    // Bun (JavaScriptCore's ceiling) and Deno alike — so say which one is unavailable, or an operator
+    // reads this as "no OOM early warning" and stops watching for the line that does still arrive.
+    logger.info?.(
+      `skein: ${capabilities.name} ${capabilities.version}; boot-time heap sizing advice is ` +
+        `Node-specific and skipped. Runtime heap-pressure warnings remain active ` +
+        `(SKEIN_HEAP_WARN_PERCENT).`,
+    );
+  }
 
   const poolWarning = describePoolPressure(runConcurrency, postgresConnectionOptions().poolMax);
   if (poolWarning) logger.warn?.(`skein: ${poolWarning}`);
@@ -183,7 +271,7 @@ export async function runStart(options: StartCommandOptions): Promise<void> {
     forceExitMs: forceExitDelayMs(shutdownGraceMs),
     close: async () => {
       try {
-        await server.close();
+        await server?.close();
       } finally {
         await runtime.dispose();
       }

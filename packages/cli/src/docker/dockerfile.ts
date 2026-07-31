@@ -10,19 +10,27 @@
 /**
  * Node major version → base image tag.
  *
- * Falls back to **22**: Node 20 reached end of life in April 2026, so a config without an explicit
+ * Falls back to **24**, the current Active LTS, so a config without an explicit
  * `node_version` would otherwise generate an image with an unpatched runtime. An explicit
  * `node_version` is still honoured verbatim, including an older one — that is the user's call, and
  * pinning is exactly what the field is for.
  */
-function baseImage(nodeVersion: string | undefined): string {
-  const major = nodeVersion?.trim().match(/^\d+/)?.[0] ?? "22";
+export type ProductionRuntime = "node" | "bun" | "deno";
+
+function baseImage(runtime: ProductionRuntime, version: string): string {
+  if (runtime === "bun") return `oven/bun:${version}-slim`;
+  if (runtime === "deno") return `denoland/deno:${version}`;
+  const major = version.trim().match(/^\d+/)?.[0] ?? "24";
   return `node:${major}-slim`;
 }
 
 export interface DockerfileOptions {
-  /** `node_version` from the config (major version); defaults to 22 (20 is EOL). */
+  /** `node_version` from the config (major version); defaults to the current LTS, Node 24. */
   nodeVersion?: string;
+  /** Native runtime selected by CLI/config. */
+  runtime?: ProductionRuntime;
+  /** Exact official runtime image version. */
+  runtimeVersion?: string;
   /** `dockerfile_lines` from the config, appended verbatim after the base layers. */
   dockerfileLines?: readonly string[];
   /** Port the server binds inside the container. */
@@ -56,6 +64,59 @@ export function generateDockerignore(): string {
 /** Render the Dockerfile text for `skein build` / `skein dockerfile`, run against the build artifact. */
 export function generateDockerfile(options: DockerfileOptions): string {
   const { nodeVersion, dockerfileLines = [], port } = options;
+  const runtime = options.runtime ?? "node";
+  // `nodeVersion` is only a fallback ON NODE. Letting it through on the other branches turns a config
+  // carrying `node_version: "24"` plus `skein.runtime.name: "bun"` into `FROM oven/bun:24-slim` — a tag
+  // that does not exist, failing the build with an opaque manifest-not-found instead of using the
+  // tested default.
+  const defaultVersion = runtime === "bun" ? "1.3.14" : runtime === "deno" ? "2.9.4" : "24";
+  const runtimeVersion =
+    options.runtimeVersion ?? (runtime === "node" ? nodeVersion : undefined) ?? defaultVersion;
+  const install =
+    runtime === "node"
+      ? [
+          `RUN --mount=type=cache,target=/root/.npm \\`,
+          `    --mount=type=secret,id=npmrc,target=/app/.npmrc \\`,
+          `    npm install --omit=dev --omit=optional --no-audit --no-fund`,
+        ]
+      : runtime === "bun"
+        ? [
+            `RUN --mount=type=cache,target=/root/.bun/install/cache \\`,
+            `    --mount=type=secret,id=npmrc,target=/root/.npmrc \\`,
+            `    bun install --production --no-save`,
+          ]
+        : [
+            `RUN --mount=type=cache,target=/deno-dir \\`,
+            `    --mount=type=secret,id=npmrc,target=/root/.npmrc \\`,
+            `    DENO_DIR=/deno-dir deno install --allow-scripts`,
+          ];
+  const healthCommand =
+    runtime === "node"
+      ? `node -e "const r=Number(process.env.PORT);const p=Number.isInteger(r)&&r>=0&&r<=65535?r:${port};fetch('http://127.0.0.1:'+p+'/ok').then(r=>process.exit(r.ok?0:1)).catch(()=>process.exit(1))"`
+      : runtime === "bun"
+        ? `bun -e "const r=Number(process.env.PORT);const p=Number.isInteger(r)&&r>=0&&r<=65535?r:${port};fetch('http://127.0.0.1:'+p+'/ok').then(r=>process.exit(r.ok?0:1)).catch(()=>process.exit(1))"`
+        : // No `--allow-*` here, and that is not an omission: `deno eval` runs with all permissions
+          // implicitly and **rejects** permission flags outright (`unexpected argument '--allow-net'`),
+          // so passing them makes the probe exit non-zero forever — an image that reports unhealthy no
+          // matter how well it is serving. Same reason the compatibility probe below carries none.
+          `deno eval "const r=Number(Deno.env.get('PORT'));const p=Number.isInteger(r)&&r>=0&&r<=65535?r:${port};fetch('http://127.0.0.1:'+p+'/ok').then(r=>Deno.exit(r.ok?0:1)).catch(()=>Deno.exit(1))"`;
+  const command =
+    runtime === "node"
+      ? // No `--runtime node`: node is already the default, and the artifact pins `skein-js` to the
+        // CLI's *published* version — so a flag added in an unreleased commit would make every Node
+        // image built from that commit die on `error: unknown option '--runtime'` before serving. Only
+        // the two runtimes that genuinely need selecting pass it, which confines that coupling to the
+        // preview targets instead of breaking the default one.
+        `["node", "/app/node_modules/skein-js/dist/index.js", "start", "--store", "postgres", "--queue", "redis", "--host", "0.0.0.0"]`
+      : runtime === "bun"
+        ? `["bun", "/app/node_modules/skein-js/dist/index.js", "start", "--runtime", "bun", "--store", "postgres", "--queue", "redis", "--host", "0.0.0.0"]`
+        : `["deno", "run", "--allow-net", "--allow-env", "--allow-read=/app", "--allow-sys", "--allow-ffi=/app/node_modules", "/app/node_modules/skein-js/dist/index.js", "start", "--runtime", "deno", "--store", "postgres", "--queue", "redis", "--host", "0.0.0.0"]`;
+  const user = runtime === "node" ? "node" : runtime === "bun" ? "bun" : "deno";
+  const compatibilityProbe =
+    runtime === "deno"
+      ? // `deno eval` takes no permission flags — see the health command above.
+        `RUN deno eval "const c=JSON.parse(await Deno.readTextFile('/app/langgraph.json'));for(const s of Object.values(c.graphs)){const i=s.lastIndexOf(':');const f=i<0?s:s.slice(0,i);const e=i<0?'default':s.slice(i+1);const m=await import(new URL(f,'file:///app/').href);if(!(e in m))throw new Error('missing graph export '+e+' in '+f)}"`
+      : `RUN ${runtime} --input-type=module -e "import fs from 'node:fs';const c=JSON.parse(fs.readFileSync('/app/langgraph.json','utf8'));for(const s of Object.values(c.graphs)){const i=s.lastIndexOf(':');const f=i<0?s:s.slice(0,i);const e=i<0?'default':s.slice(i+1);const m=await import(new URL(f,'file:///app/').href);if(!(e in m))throw new Error('missing graph export '+e+' in '+f)}"`;
 
   const lines = [
     // The syntax directive must be the first line to be honored — it enables the RUN cache mount.
@@ -65,7 +126,7 @@ export function generateDockerfile(options: DockerfileOptions): string {
     // which `skein build`/`up` create under `.skein/build`. Building this Dockerfile against a raw
     // project dir will fail — run `skein build` instead of `docker build` by hand.
     `# Build context: a \`.skein/build\` artifact produced by \`skein build\` (not the project root).`,
-    `FROM ${baseImage(nodeVersion)}`,
+    `FROM ${baseImage(runtime, runtimeVersion)}`,
     `WORKDIR /app`,
     ``,
     // Install prod deps first for layer caching: the artifact's pinned package.json changes rarely,
@@ -77,16 +138,24 @@ export function generateDockerfile(options: DockerfileOptions): string {
     // standalone Dockerfile, `docker build --secret id=npmrc,src=<path>`.
     `# Install the artifact's pinned production dependencies (exact versions — deterministic).`,
     `COPY package.json ./`,
-    `RUN --mount=type=cache,target=/root/.npm \\`,
-    `    --mount=type=secret,id=npmrc,target=/app/.npmrc \\`,
-    `    npm install --omit=dev --omit=optional --no-audit --no-fund`,
+    ...install,
     ``,
     `# Copy the pre-built artifact (bundled JS graphs, production langgraph.json, baked schemas).`,
     `COPY . .`,
+    `# Import every graph under the selected runtime now, so incompatible dependencies fail the build.`,
+    compatibilityProbe,
     ``,
     `ENV NODE_ENV=production`,
     // The bundle ships sourcemaps; enable them so stack traces map back to the original TypeScript.
-    `ENV NODE_OPTIONS=--enable-source-maps`,
+    ...(runtime === "node" ? [`ENV NODE_OPTIONS=--enable-source-maps`] : []),
+    // Deno's read permission is scoped to /app, so anything probing the user's home directory is
+    // denied — and a denial is a *throw*, not a miss. `langsmith` (reached through `@langchain/core`,
+    // so present in every graph) reads `~/.langsmith/config.json` while constructing its client, which
+    // made **every run** fail with `NotCapable: Requires read access to "/root/.langsmith/config.json"`
+    // — reproduced against a real Deno server before this line existed. Pointing HOME at the artifact
+    // root keeps the probe inside the granted scope, where a missing file is tolerated normally.
+    // Deliberately not widened to the image's real home: /root is unreadable to USER deno anyway.
+    ...(runtime === "deno" ? [`ENV HOME=/app`] : []),
     `EXPOSE ${port}`,
     // Liveness probe against skein's `/ok` endpoint, targeting the same port the server binds. PORT
     // is resolved exactly as `envPort` resolves it — integer, in range, blank counts as unset —
@@ -96,9 +165,9 @@ export function generateDockerfile(options: DockerfileOptions): string {
     // money in a 512Mi container, and pure waste on Cloud Run / Kubernetes / ECS, which ignore
     // HEALTHCHECK entirely and use their own probes. It is here for `docker run` and Compose.
     `HEALTHCHECK --interval=60s --timeout=3s --start-period=20s --retries=3 \\`,
-    `    CMD node -e "const r=Number(process.env.PORT);const p=Number.isInteger(r)&&r>=0&&r<=65535?r:${port};fetch('http://127.0.0.1:'+p+'/ok').then(r=>process.exit(r.ok?0:1)).catch(()=>process.exit(1))"`,
+    `    CMD ${healthCommand}`,
     // Run unprivileged. The bundle writes nothing to disk, and /app is world-readable, so no chown.
-    `USER node`,
+    `USER ${user}`,
     ...dockerfileLines,
     ``,
     `# Serve the compiled artifact against Postgres + Redis (POSTGRES_URI / REDIS_URI from the env).`,
@@ -112,7 +181,7 @@ export function generateDockerfile(options: DockerfileOptions): string {
     `# (no shell) keeps the signal path direct, so SIGTERM reaches skein's graceful-shutdown handler.`,
     // Absolute, so a `dockerfile_lines` entry that changes WORKDIR (spliced in just above) can't
     // leave the CMD resolving against the wrong directory.
-    `CMD ["node", "/app/node_modules/skein-js/dist/index.js", "start", "--store", "postgres", "--queue", "redis", "--host", "0.0.0.0"]`,
+    `CMD ${command}`,
   ];
   return `${lines.join("\n")}\n`;
 }

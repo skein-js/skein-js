@@ -20,6 +20,23 @@ describe("parseLanggraphJson", () => {
     expect(config.checkpointer).toEqual({ type: "default" });
   });
 
+  it("accepts a native production runtime", () => {
+    const config = parseLanggraphJson({
+      graphs: { agent: "./a.ts:graph" },
+      skein: { runtime: { name: "bun", version: "1.3.14" } },
+    });
+    expect(config.skein?.runtime).toEqual({ name: "bun", version: "1.3.14" });
+  });
+
+  it("rejects an unknown production runtime", () => {
+    expect(() =>
+      parseLanggraphJson({
+        graphs: { agent: "./a.ts:graph" },
+        skein: { runtime: { name: "workerd" } },
+      }),
+    ).toThrow(SkeinConfigError);
+  });
+
   it("passes unknown keys through unchanged (so an existing config round-trips)", () => {
     const config = parseLanggraphJson({ graphs: {}, future_field: 42 }) as Record<string, unknown>;
     expect(config["future_field"]).toBe(42);

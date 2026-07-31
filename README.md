@@ -156,7 +156,7 @@ export const graph = new StateGraph(MessagesAnnotation)
 
 ```json
 {
-  "node_version": "20",
+  "node_version": "24",
   "graphs": { "agent": "./src/graph.ts:graph" },
   "env": ".env"
 }
@@ -262,6 +262,7 @@ skein dev                                  # in-process dev server, hot reload, 
 skein dev --store postgres --queue redis   # dev against production-shaped storage (POSTGRES_URI / REDIS_URI)
 skein up                                    # self-hosted stack via Docker Compose: app + Postgres + Redis
 skein build -t my-agent                     # build a deployable Docker image
+skein build -t my-agent --runtime bun       # native Bun image (Deno is also available)
 skein dockerfile -o Dockerfile              # emit a standalone Dockerfile
 ```
 
@@ -277,6 +278,12 @@ Useful `skein dev` flags: `-p, --port` (default 2024), `--host`, `--store memory
 `-n, --n-jobs-per-worker`, as in the LangGraph CLI), `--no-persist`, `--no-reload`, `-v, --verbose`.
 Full mapping and the annotated `langgraph.json`:
 [`docs/langgraph-cli-compat.md`](./docs/langgraph-cli-compat.md).
+
+Production images default to Node 24 LTS. Select Node, Bun, or Deno with `--runtime` and optionally
+`--runtime-version`, or set `skein.runtime` in `langgraph.json`. Bun and Deno use the native Fetch
+transport rather than Express compatibility and remain preview targets pending their full clean-image
+conformance matrices; see [deployment](./docs/deploy.md) and the
+[profiling guide](./docs/profiling.md).
 
 Private production deps? `skein build`/`up` take `-n, --npmrc <path>`, mounting an `.npmrc` as a
 BuildKit secret so the image can install from a **private/authenticated npm registry** without baking
@@ -419,7 +426,7 @@ const runtime = createProtocolRuntime(deps); // service + HTTP handlers + backgr
 
 → [`packages/agent-protocol`](./packages/agent-protocol)
 
-### Framework adapters — Express, Fastify, NestJS, Next.js
+### Server adapters — Fetch, Express, Fastify, NestJS, Next.js
 
 Each adapter is a thin transport shim that mounts the Agent Protocol engine on its framework — no
 protocol logic of its own, just request/response translation over the shared handler table. Pick the
@@ -445,6 +452,7 @@ await server.listen(2024);
 
 | Adapter                                          | Serve it as                                          |
 | ------------------------------------------------ | ---------------------------------------------------- |
+| [`@skein-js/fetch`](./packages/server-fetch)     | Native Web Fetch handler; `Bun.serve` / `Deno.serve` |
 | [`@skein-js/express`](./packages/server-express) | Express `Router` / standalone server                 |
 | [`@skein-js/fastify`](./packages/server-fastify) | Fastify plugin / standalone server                   |
 | [`@skein-js/nestjs`](./packages/server-nestjs)   | `SkeinModule` / standalone server (Express platform) |
@@ -606,6 +614,7 @@ Full design and how-to guides live in [`docs/`](./docs):
 - [Observability](./docs/observability.md) — tracing + metrics: LangSmith, PostHog, OpenTelemetry
 - [Deploy anywhere](./docs/deploy.md) — Cloud Run, Railway, Fly.io, Render, AWS, Kubernetes, VPS
 - [Performance & memory](./docs/performance.md) — sizing, every knob, backpressure, triage
+- [Profiling](./docs/profiling.md) — learn latency, memory, CPU, and compare Node/Bun/Deno correctly
 - [Reuse-first architecture](./docs/reuse.md) — what we reuse vs. rebuild _(design)_
 - [Roadmap](./docs/roadmap.md)
 

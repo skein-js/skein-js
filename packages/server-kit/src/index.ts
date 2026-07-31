@@ -128,3 +128,10 @@ export { sendNodeResponse, sendNodeError } from "./node-transport.js";
 // Mount-prefix stripping for adapters that mount a catch-all and match the route table by hand
 // (NestJS middleware, Next.js handlers) — `null` means "not under the mount, pass it through".
 export { stripBasePath } from "./base-path.js";
+
+export { detectRuntimeCapabilities } from "./runtime-capabilities.js";
+export type {
+  RuntimeCapabilities,
+  RuntimeMemorySnapshot,
+  RuntimeSignalSubscription,
+} from "./runtime-capabilities.js";

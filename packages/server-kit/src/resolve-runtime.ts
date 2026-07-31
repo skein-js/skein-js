@@ -215,6 +215,11 @@ export async function resolveProtocolRuntime(
   // Watch heap usage for the life of the worker. Started here rather than in each adapter for the same
   // reason the worker settings are resolved here: one place, so the four adapters and `skein dev`/`start`
   // cannot drift. Free when no logger is configured — it schedules nothing at all.
+  // No per-runtime override of `heapStatistics`/`rss`: `node:v8`'s `getHeapStatistics()` and
+  // `process.memoryUsage()` both answer on all three runtimes — measured, Bun reports JavaScriptCore's
+  // ~262MB ceiling and Deno reports V8's. An override that fed the monitor a snapshot without a limit
+  // would make `heap-pressure.ts`'s `if (limit <= 0) return` bail on every tick, so the OOM early
+  // warning docs/deploy.md promises would be silently dead on exactly the two runtimes it was added for.
   const heapMonitor = startHeapPressureMonitor({
     ...(logger ? { logger } : {}),
     ...heapPressureOptions,

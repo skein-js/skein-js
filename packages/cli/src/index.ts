@@ -8,6 +8,7 @@
 import { createRequire } from "node:module";
 
 import { Command, InvalidArgumentError } from "@commander-js/extra-typings";
+import type { SkeinRuntimeName } from "@skein-js/config";
 
 import { runDev } from "./dev-command.js";
 import { runBuild, runDockerfile, runUp } from "./docker/commands.js";
@@ -41,6 +42,11 @@ function parsePositiveInt(label: string) {
 
 const parseConcurrency = parsePositiveInt("Concurrency");
 const parseRunTimeout = parsePositiveInt("Run timeout");
+
+function parseRuntime(value: string): SkeinRuntimeName {
+  if (value === "node" || value === "bun" || value === "deno") return value;
+  throw new InvalidArgumentError("Runtime must be one of: node, bun, deno.");
+}
 
 /** Build a commander parser that accepts only one of `choices`, rejecting anything else. */
 const program = new Command()
@@ -115,6 +121,8 @@ program
   // hard requirement mostly falls out of the defaults — the restricted parsers close the rest.
   .option("--store <driver>", "Store driver: postgres", parseStartStore, "postgres")
   .option("--queue <driver>", "Queue driver: redis", parseStartQueue, "redis")
+  .option("--runtime <runtime>", "Production runtime: node | bun | deno", parseRuntime)
+  .option("--runtime-version <version>", "Override the configured runtime version")
   // Same pair as `dev` — see the note there on why neither carries a commander default.
   .option(
     "--concurrency <count>",
@@ -147,6 +155,8 @@ program
   .option("-c, --config <path>", "Path to langgraph.json", "langgraph.json")
   .option("-p, --port <port>", "Port to expose", parsePort, DEFAULT_CONTAINER_PORT)
   .option("--host <host>", "Host to bind", "0.0.0.0")
+  .option("--runtime <runtime>", "Production runtime: node | bun | deno", parseRuntime)
+  .option("--runtime-version <version>", "Override the configured runtime version")
   .option(
     "-n, --npmrc <path>",
     "Path to an .npmrc for authenticating private-registry installs (wired in as a build secret)",
@@ -158,6 +168,8 @@ program
   .description("Build a deployable Docker image from the config.")
   .option("-c, --config <path>", "Path to langgraph.json", "langgraph.json")
   .option("-t, --tag <tag>", "Image tag (defaults to the project directory name)")
+  .option("--runtime <runtime>", "Production runtime: node | bun | deno", parseRuntime)
+  .option("--runtime-version <version>", "Override the configured runtime version")
   .option(
     "-n, --npmrc <path>",
     "Path to an .npmrc for authenticating private-registry installs (passed to docker build as a BuildKit secret)",
@@ -169,6 +181,8 @@ program
   .description("Emit a standalone Dockerfile from the config.")
   .option("-c, --config <path>", "Path to langgraph.json", "langgraph.json")
   .option("-o, --output <path>", "Write the Dockerfile here instead of stdout")
+  .option("--runtime <runtime>", "Production runtime: node | bun | deno", parseRuntime)
+  .option("--runtime-version <version>", "Override the configured runtime version")
   .action((options) => runDockerfile(options));
 
 program

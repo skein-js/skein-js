@@ -6,6 +6,28 @@ What it ships instead is an ordinary OCI image: `skein build` bundles your TypeS
 JS and produces a Docker image that needs a Postgres, a Redis, and two environment variables. Nothing
 about it is specific to any host.
 
+Production artifacts can run on Node, Bun, or Deno. Node 24 LTS is the default and uses Express. Bun and
+Deno use the Web-standard `@skein-js/fetch` adapter and their native HTTP servers. Select one in
+`langgraph.json` or at build time:
+
+Node is the graduated production fallback. Bun and Deno are preview targets until each complete
+clean-image conformance matrix (real SDK, Postgres/Redis, multi-instance streaming, slow clients,
+telemetry parenting, and PID-1 shutdown) is green; the native launchers themselves are tested.
+
+```json
+{ "skein": { "runtime": { "name": "deno", "version": "2.9.4" } } }
+```
+
+```bash
+skein build --runtime bun --runtime-version 1.3.14 -t my-agent
+```
+
+CLI flags override config. The image pins the official runtime image, imports every graph under that
+runtime during the build, starts the runtime directly as PID 1, and uses a non-root user. Deno gets
+explicit network, environment, artifact-read, system, and native-library permissions. Skein cannot
+make an arbitrary Node-native graph dependency portable; the compatibility probe fails that image
+build so the dependency can be replaced or isolated before deployment.
+
 This page is everything that is true on **every** platform. The per-platform guides are just the
 dashboard and CLI steps on top of it.
 
@@ -53,14 +75,14 @@ it and let your platform build it. Either way:
   back to **8123** — the same port the image `EXPOSE`s and health-checks — so a bare
   `docker run -p 8123:8123` works, as do platforms that route to a port you declare without setting
   `PORT` for you (Fly.io, ECS, Kubernetes).
-- **Handles `SIGTERM` properly.** node is PID 1 (the CMD invokes the entry directly, not through
+- **Handles `SIGTERM` properly.** The selected runtime is PID 1 (the CMD invokes it directly, not through
   `npx` — under `npx`, PID 1 is npm, which exits on `SIGTERM` without waiting for the server). On
   signal, skein stops accepting queued runs, gives in-flight runs
   [a grace window](#graceful-shutdown) to finish, aborts whatever is left so it lands in a **terminal**
   status rather than stranded as `running`, then closes the pools.
 - **Serves a health probe** at `GET /ok` → `200 {"ok":true}`, and declares a Docker `HEALTHCHECK`
   against it with a 20s start period.
-- **Runs unprivileged** as `USER node`.
+- **Runs unprivileged** as the runtime image's `node`, `bun`, or `deno` user.
 - **Reads config from the environment only** — `POSTGRES_URI` and `REDIS_URI`. The generated
   `.dockerignore` excludes `.env*` and `.npmrc*`, so secrets are never baked into a layer.
 - **Installs pinned production dependencies only.** No vite/tsx, no devDependencies, no runtime

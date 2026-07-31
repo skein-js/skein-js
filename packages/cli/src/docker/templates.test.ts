@@ -20,9 +20,8 @@ describe("generateDockerfile", () => {
 
   it("defaults to a supported node and boots the compiled artifact via `skein start`", () => {
     const out = generateDockerfile({ port: 8123 });
-    // 22, not 20: Node 20 went EOL in April 2026, and a config with no `node_version` should not
-    // silently generate an image on an unpatched runtime.
-    expect(out).toContain("FROM node:22-slim");
+    // Node 24 is the current LTS; an omitted `node_version` follows that production baseline.
+    expect(out).toContain("FROM node:24-slim");
     // Pre-built path: runs `skein start` (compiled JS), not `skein dev` (runtime TS transform).
     expect(out).toContain('"/app/node_modules/skein-js/dist/index.js", "start"');
     expect(out).not.toContain('"dev"');
@@ -98,6 +97,87 @@ describe("generateDockerfile", () => {
     const out = generateDockerfile({ port: DEFAULT_CONTAINER_PORT });
     expect(out).toContain(`EXPOSE ${DEFAULT_CONTAINER_PORT}`);
     expect(out).toContain(`:${DEFAULT_CONTAINER_PORT};fetch(`);
+  });
+
+  it("generates a native Bun image and PID-1 launcher", () => {
+    const out = generateDockerfile({
+      runtime: "bun",
+      runtimeVersion: "1.3.14",
+      port: 8123,
+    });
+    expect(out).toContain("FROM oven/bun:1.3.14-slim");
+    expect(out).toContain("bun install --production");
+    expect(out).toContain("USER bun");
+    expect(out).toContain('CMD ["bun", "/app/node_modules/skein-js/dist/index.js", "start"');
+    expect(out).toContain('"--runtime", "bun"');
+    expect(out).not.toContain('CMD ["node"');
+  });
+
+  it("generates a native permission-bounded Deno image and launcher", () => {
+    const out = generateDockerfile({
+      runtime: "deno",
+      runtimeVersion: "2.9.4",
+      port: 8123,
+    });
+    expect(out).toContain("FROM denoland/deno:2.9.4");
+    expect(out).toContain("deno install --allow-scripts");
+    expect(out).toContain("USER deno");
+    expect(out).toContain('CMD ["deno", "run", "--allow-net", "--allow-env"');
+    expect(out).toContain('"--allow-read=/app"');
+    expect(out).toContain('"--runtime", "deno"');
+  });
+
+  it("keeps the Node CMD free of --runtime, so an image can boot a published CLI", () => {
+    // The artifact pins `skein-js` to the CLI's published version. A flag that only exists in an
+    // unreleased commit would kill every Node image built from it with `unknown option '--runtime'`.
+    const out = generateDockerfile({ port: 8123 });
+    expect(out).toContain('CMD ["node", "/app/node_modules/skein-js/dist/index.js", "start"');
+    expect(out).not.toContain('"--runtime"');
+    // Bun and Deno genuinely need selecting, so they still pass it.
+    expect(generateDockerfile({ runtime: "bun", port: 8123 })).toContain('"--runtime", "bun"');
+  });
+
+  it("never uses a Node major as a Bun or Deno image tag", () => {
+    // A config with both `node_version` and `skein.runtime.name` must not produce `oven/bun:24-slim`.
+    expect(generateDockerfile({ runtime: "bun", nodeVersion: "24", port: 8123 })).toContain(
+      "FROM oven/bun:1.3.14-slim",
+    );
+    expect(generateDockerfile({ runtime: "deno", nodeVersion: "24", port: 8123 })).toContain(
+      "FROM denoland/deno:2.9.4",
+    );
+    // On Node it remains the fallback it was written to be.
+    expect(generateDockerfile({ nodeVersion: "22", port: 8123 })).toContain("FROM node:22-slim");
+  });
+
+  it("passes no permission flags to `deno eval`", () => {
+    // `deno eval` has implicit access to everything and *rejects* `--allow-*` with
+    // `unexpected argument`. Both the build-time graph probe and the HEALTHCHECK use it, so a flag
+    // here fails the image build and pins the container permanently unhealthy. Both reproduced.
+    const out = generateDockerfile({ runtime: "deno", runtimeVersion: "2.9.4", port: 8123 });
+    for (const line of out.split("\n").filter((l) => l.includes("deno eval"))) {
+      expect(line).not.toMatch(/--allow-(net|env|read|sys|ffi|write|run)/);
+    }
+    // `deno run` — the CMD — is the opposite: it must carry the explicit grants.
+    expect(out).toContain('CMD ["deno", "run", "--allow-net", "--allow-env"');
+  });
+
+  it("keeps Deno's home directory inside the granted read scope", () => {
+    // Without this, `langsmith` (reached via `@langchain/core`, so every graph) throws `NotCapable`
+    // reading `~/.langsmith/config.json` and every run fails. Reproduced on a real Deno server.
+    const out = generateDockerfile({ runtime: "deno", runtimeVersion: "2.9.4", port: 8123 });
+    expect(out).toContain("ENV HOME=/app");
+    expect(out).toContain('"--allow-read=/app"');
+
+    // Node and Bun have no read sandbox, so they must not carry the override.
+    expect(generateDockerfile({ runtime: "node", port: 8123 })).not.toContain("ENV HOME=");
+    expect(generateDockerfile({ runtime: "bun", port: 8123 })).not.toContain("ENV HOME=");
+  });
+
+  it("runs a selected-runtime graph compatibility probe during the image build", () => {
+    const out = generateDockerfile({ runtime: "bun", runtimeVersion: "1.3.14", port: 8123 });
+    expect(out).toContain("Import every graph under the selected runtime");
+    expect(out).toContain("RUN bun --input-type=module -e");
+    expect(out.indexOf("COPY . .")).toBeLessThan(out.indexOf("missing graph export"));
   });
 });
 

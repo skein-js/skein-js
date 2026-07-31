@@ -27,6 +27,10 @@ mirror the same command surface.
 Shared flags where sensible: `--port`, `--host`, `--no-reload`, `--config`,
 `-n, --n-jobs-per-worker`.
 
+Production commands (`up`, `build`, `dockerfile`, and the generated `start`) also accept
+`--runtime node|bun|deno` and `--runtime-version`. Precedence is CLI flag, then
+`skein.runtime` in config, then Node 24 LTS. Legacy `node_version` remains the Node version fallback.
+
 **skein-only:** `skein start` serves a pre-built `.skein/build` artifact (the production image's
 entrypoint) — plain compiled JS, no vite, no reload. You rarely run it by hand; `skein build`/`up`
 produce the artifact and the generated Dockerfile invokes it. The LangGraph CLI has no equivalent
@@ -127,7 +131,12 @@ it but is never required.
   },
 
   // JS/Node runtime pin (20 | 22 | 24)
-  "node_version": "22",
+  "node_version": "24",
+
+  // Native production runtime (skein extension). Omit for Node.
+  "skein": {
+    "runtime": { "name": "bun", "version": "1.3.14" },
+  },
 
   // .env path OR inline map
   "env": ".env",
@@ -172,7 +181,8 @@ it but is never required.
 | `langgraph.json` field | skein-js wiring                                                                                                                                                                             |
 | ---------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | `graphs`               | [`@skein-js/config`](./storage.md) resolves each `path:export`, loading a compiled graph or `makeGraph` factory. Drives `/agents` introspection + run execution.                            |
-| `node_version`         | Used by `skein build` / `skein dockerfile` base image selection. Defaults to 22 when omitted (20 is EOL); an explicit value is honoured verbatim, including an older one.                   |
+| `node_version`         | Used by `skein build` / `skein dockerfile` base image selection. Defaults to Node 24 LTS when omitted; an explicit value is honoured verbatim, including an older one.                      |
+| `skein.runtime`        | Native production server and pinned official image: `node`, `bun`, or `deno`. Bun/Deno use `@skein-js/fetch` with `Bun.serve`/`Deno.serve`, never Express compatibility.                    |
 | `env`                  | Loaded into `process.env` at boot (dev) / baked into the image (build).                                                                                                                     |
 | `store`                | `store.index.{embed,dims,fields,hnsw}` configures pgvector semantic search on the Postgres driver; `hnsw: true` opts into the approximate index — see [storage.md](./storage.md).           |
 | `checkpointer`         | `"default"` → `PostgresSaver`; dev falls back to an in-memory `MemorySaver`.                                                                                                                |

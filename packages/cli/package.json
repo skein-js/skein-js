@@ -58,6 +58,7 @@
     "@skein-js/core": "workspace:*",
     "@skein-js/config": "workspace:*",
     "@skein-js/express": "workspace:*",
+    "@skein-js/fetch": "workspace:*",
     "@skein-js/runtime": "workspace:*",
     "@skein-js/server-kit": "workspace:*",
     "commander": "~13.1.0"
