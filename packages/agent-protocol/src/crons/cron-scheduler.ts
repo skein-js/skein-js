@@ -59,7 +59,7 @@ export interface CronTickSummary {
   failed: number;
   /** Crons retired this tick: the occurrence fired, and there is no next one. */
   exhausted: number;
-  /** `pending` runs past the grace window that were re-enqueued (the outbox sweep). */
+  /** Cron-fired `pending` runs past the grace window that were re-enqueued (the outbox sweep). */
   requeued: number;
   /** The scan filled its batch, so more was due than was fired. Triggers an immediate re-tick. */
   truncated: boolean;
@@ -196,7 +196,25 @@ export function createCronScheduler(
     occurrenceSeq: number,
     nextRunDate: string | null,
   ): Promise<{ outcome: "fired"; runId: string } | { outcome: "lost" }> => {
-    const auth = await deps.store.crons.getAuth(cron.cron_id);
+    // Read only when there is an auth engine to replay it into: on an unauthenticated deployment —
+    // `skein dev`, and every server with no `auth` block — this would be one extra round trip per
+    // occurrence for a value nothing downstream reads.
+    const auth = deps.auth?.enabled ? await deps.store.crons.getAuth(cron.cron_id) : null;
+    // A cron that recorded an owner but has lost the principal behind it must not fire. The
+    // principal is what the run executes as and what scopes the thread it writes to, so firing
+    // anyway would produce unowned runs on an auth-enabled server — and would keep producing them
+    // for a principal whose access may since have been revoked.
+    //
+    // Reachable through any store that keeps the row but drops the sidecar. `skein dev`'s snapshot
+    // is the concrete one: it deliberately does not persist credentials to `.skein/`, so a cron
+    // restored after a restart has a `user_id` and no `auth`. Unauthenticated deployments never have
+    // a `user_id` at all, so nothing changes there.
+    if (deps.auth?.enabled && cron.user_id != null && !auth) {
+      throw new Error(
+        `cron records user_id "${cron.user_id}" but its stored principal is gone, so the run has no ` +
+          `identity to execute as; recreate the cron to re-attach one`,
+      );
+    }
     const { store: fireStore, ownerMetadata } = await storeForFire(cron, auth);
     const stateless = cron.thread_id == null;
 
@@ -205,8 +223,8 @@ export function createCronScheduler(
     // instances tick the same occurrence at once.
     const thread = stateless
       ? await fireStore.threads.create({
-          // Stamped so `runs.search({ metadata: { cron_id } })` finds a schedule's output, which is
-          // the documented way to trace what a cron has produced.
+          // Stamped so `threads.search({ metadata: { cron_id } })` finds the threads a schedule has
+          // produced — the way in for a stateless cron, whose every fire gets its own thread.
           metadata: { cron_id: cron.cron_id },
         })
       : await deps.store.threads.get(cron.thread_id as string);
@@ -237,7 +255,8 @@ export function createCronScheduler(
         thread_id: thread.thread_id,
         assistant_id: cron.assistant_id,
         status: "pending",
-        // `cron_id` on the run is the documented trace key, and it is also what the worker reads to
+        // `cron_id` on the run says which schedule produced it (runs are listed per thread, so this
+        // is what identifies them once you have the thread), and it is also what the worker reads to
         // report this run's trigger as `cron` rather than `background`.
         //
         // The owner tag rides along because the run is created inside `claimAndCreateRun` — a
@@ -280,9 +299,19 @@ export function createCronScheduler(
    * against a run that *is* queued, because enqueue is idempotent on `run_id` and the worker skips
    * runs already terminal in the store.
    *
-   * Not cron-specific: it covers every background run, which has always had the same window between
-   * `prepareRun` and `enqueueBackgroundRun`. The scheduler owns it only because it is the loop that
-   * is already running.
+   * Scoped to **cron-fired runs only**, and that scope is load-bearing rather than modest. A
+   * `pending` row does not mean "waiting for a worker" — an inline `wait`/`stream` run is written
+   * `pending` too and only flips to `running` once `executeRun` starts, so one queued behind a long
+   * peer under `multitask_strategy: "enqueue"` sits `pending` for as long as that peer runs, while
+   * its caller holds the HTTP request open waiting to execute it *inline*. Handing that run to a
+   * worker would execute the same graph twice, duplicating checkpoint writes and firing the webhook
+   * twice. Nothing dedupes it either, because it was never on the queue to begin with.
+   *
+   * A cron-fired run has no such ambiguity: it is created by `claimAndCreateRun` and enqueued
+   * immediately, never executed inline. `cron_id` is on the run row already, so the check costs
+   * nothing. (Widening this to all background runs would need a durable "this run belongs to the
+   * queue" marker written at create time — worth doing, but it is a change to the run engine rather
+   * than to crons.)
    */
   const sweepUnqueuedRuns = async (
     now: Date,
@@ -296,6 +325,9 @@ export function createCronScheduler(
       // `running` is excluded: a run the engine has picked up is not lost, and re-enqueueing it
       // could hand a second worker the same run before it settles.
       if (run.status !== "pending") continue;
+      // Only runs a cron fired — see the note above on why a bare `pending` is not enough to
+      // conclude a run is queue-bound.
+      if (run.metadata?.["cron_id"] === undefined) continue;
       // A run this very tick enqueued is not lost by definition — and its `created_at` comes from
       // the store's clock while `now` comes from ours, so on any skew it would otherwise look stale
       // the instant it was written.
@@ -312,11 +344,17 @@ export function createCronScheduler(
 
   const tickOnce = async (): Promise<CronTickSummary> => {
     const now = deps.clock();
-    const due = await deps.store.crons.listDue({ dueAt: now.toISOString(), limit: batchSize });
+    // Bounded by the driver's own page cap as well as by `batchSize`, and the smaller of the two is
+    // what a full scan actually looks like. Comparing against `batchSize` alone means a deployment
+    // whose `maxPageSize` is below it never sees `truncated` — so a backlog drains one page per tick
+    // instead of re-ticking immediately, and `lagMs` (the metric operators alert on) climbs for
+    // minutes with nothing saying the batch was capped.
+    const scanLimit = Math.min(batchSize, deps.store.maxPageSize ?? batchSize);
+    const due = await deps.store.crons.listDue({ dueAt: now.toISOString(), limit: scanLimit });
     const summary: CronTickSummary = {
       ...EMPTY_SUMMARY,
       scanned: due.length,
-      truncated: due.length >= batchSize,
+      truncated: due.length >= scanLimit,
     };
 
     // Run ids this tick put on the queue, so its own sweep does not treat them as lost.

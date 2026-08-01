@@ -212,8 +212,8 @@ describe("cron scheduler", () => {
       ]);
     });
 
-    // The documented trace key: `runs.search({ metadata: { cron_id } })` is how a client finds what
-    // a schedule has produced.
+    // How a client finds what a schedule produced: `threads.search({ metadata: { cron_id } })` for a
+    // stateless cron's per-fire threads, then the runs on them, each tagged with the same id.
     it("stamps cron_id onto the fired run and its thread", async () => {
       const h = await harness();
       const cron = await h.service.crons.create({
@@ -479,10 +479,14 @@ describe("cron scheduler", () => {
   describe("the outbox sweep", () => {
     // The at-least-once half: a run committed but never enqueued (the instance died in between) is
     // found and re-enqueued rather than silently lost.
-    it("re-enqueues a pending run that never reached the queue", async () => {
+    it("re-enqueues a cron-fired pending run that never reached the queue", async () => {
       const h = await harness({}, { unqueuedRunGraceMs: 300_000 });
       const thread = await h.service.threads.create();
-      await h.store.runs.create({ thread_id: thread.thread_id, assistant_id: h.assistantId });
+      await h.store.runs.create({
+        thread_id: thread.thread_id,
+        assistant_id: h.assistantId,
+        metadata: { cron_id: "some-cron" },
+      });
       // Past the grace window, so the sweep stops assuming it is merely queued behind a busy worker.
       h.advance(10 * 60_000);
 
@@ -492,10 +496,31 @@ describe("cron scheduler", () => {
       expect(h.queue.enqueued).toHaveLength(1);
     });
 
-    it("leaves a freshly created pending run alone", async () => {
+    // The bug this scope exists to prevent. An inline `wait`/`stream` run is written `pending` and
+    // only flips to `running` once it acquires the thread lock, so one queued behind a long peer
+    // under `multitask_strategy: "enqueue"` looks exactly like a lost run — but its caller is
+    // waiting to execute it inline. Handing it to a worker would run the graph twice, and nothing
+    // would dedupe it, because it was never on the queue to begin with.
+    it("never re-enqueues a run that no cron produced", async () => {
       const h = await harness({}, { unqueuedRunGraceMs: 300_000 });
       const thread = await h.service.threads.create();
       await h.store.runs.create({ thread_id: thread.thread_id, assistant_id: h.assistantId });
+      h.advance(10 * 60_000);
+
+      const summary = await h.scheduler.tickOnce();
+
+      expect(summary.requeued).toBe(0);
+      expect(h.queue.enqueued).toEqual([]);
+    });
+
+    it("leaves a freshly created pending run alone", async () => {
+      const h = await harness({}, { unqueuedRunGraceMs: 300_000 });
+      const thread = await h.service.threads.create();
+      await h.store.runs.create({
+        thread_id: thread.thread_id,
+        assistant_id: h.assistantId,
+        metadata: { cron_id: "some-cron" },
+      });
 
       expect((await h.scheduler.tickOnce()).requeued).toBe(0);
     });
@@ -508,6 +533,7 @@ describe("cron scheduler", () => {
       const run = await h.store.runs.create({
         thread_id: thread.thread_id,
         assistant_id: h.assistantId,
+        metadata: { cron_id: "some-cron" },
       });
       await h.store.runs.setStatus(run.run_id, "running");
       h.advance(10 * 60_000);
@@ -521,6 +547,7 @@ describe("cron scheduler", () => {
       const run = await h.store.runs.create({
         thread_id: thread.thread_id,
         assistant_id: h.assistantId,
+        metadata: { cron_id: "some-cron" },
       });
       await h.store.runs.setStatus(run.run_id, "success");
       h.advance(10 * 60_000);

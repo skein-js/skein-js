@@ -55,7 +55,10 @@ export function createProtocolRuntime(
   deps: ProtocolDeps,
   options: ProtocolRuntimeOptions = {},
 ): ProtocolRuntime {
-  const context = createContext(deps);
+  // Resolved before the context is built, so `GET /info` reports what this server actually serves
+  // rather than what the engine can do in principle.
+  const cronsEnabled = options.scheduler?.enabled ?? deps.cronsEnabled ?? true;
+  const context = createContext({ ...deps, cronsEnabled });
   const service = createProtocolServiceFromContext(context);
   // When an auth engine is injected, every request is authenticated + authorized through one
   // transport-neutral seam; without it, the handler table is unchanged (unauthenticated, as before).

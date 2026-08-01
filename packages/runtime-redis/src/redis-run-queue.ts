@@ -60,10 +60,18 @@ export class RedisRunQueue implements RunQueue {
         // bare id would turn a numeric run id into a 500 on enqueue only, long after it was accepted.
         jobId: `${JOB_NAME}-${run.run_id}`,
         attempts: this.#attempts,
-        // Completed runs live in the store, so drop them from Redis. Keep a bounded history of
-        // failed jobs (a processor that threw) for diagnosis rather than discarding them silently.
+        // Completed runs live in the store, so drop them from Redis.
         removeOnComplete: true,
-        removeOnFail: { count: 1000 },
+        // Failed jobs are dropped too, which is a change of posture that `jobId` forces. BullMQ
+        // treats a retained job as still occupying its id: `add` with the same `jobId` returns the
+        // existing job without queueing anything. So a retained *failed* job would make that run
+        // permanently un-re-enqueueable — the cron scheduler's recovery sweep would call `enqueue`,
+        // get a silent no-op, and warn about the same run on every tick forever.
+        //
+        // Little is lost: a run that failed records its status *and* its `RunError` on its own row
+        // (`RunRepo.setStatus`), which outlives Redis and is what `GET /threads/{tid}/runs/{rid}`
+        // reads. The retained job carried no information the store does not.
+        removeOnFail: true,
       },
     );
   }

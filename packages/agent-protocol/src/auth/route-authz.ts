@@ -26,8 +26,15 @@ export interface RouteAuthz {
    * caller enumerate every tenant's schedules and attach one to a thread they cannot even read.
    *
    * So crons fall back to `threads`, which is also the honest description of what they are: runs,
-   * scheduled. A deployment that does register `@auth.on.crons` keeps full control and never reaches
-   * the fallback.
+   * scheduled.
+   *
+   * The limit worth knowing: `authorize` answers `{ filters: undefined }` for *three* different
+   * cases — no handler matched, the handler returned `null`, and the handler returned `true` — and
+   * they are indistinguishable from here. A deployment that registers `@auth.on.crons` returning
+   * `true` to mean "allow, unscoped" therefore still reaches this fallback and gets thread scoping.
+   * Returning an explicit filter object (or `false`) is unambiguous and is not affected. Erring
+   * toward the narrower scope is the right direction for a resource that writes into threads, but
+   * it is a real constraint rather than a free win.
    */
   fallbackResource?: AuthResource;
   /** The action to authorize against {@link fallbackResource}; defaults to {@link action}. */

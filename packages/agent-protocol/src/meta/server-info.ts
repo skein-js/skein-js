@@ -26,7 +26,7 @@ export interface ServerInfo {
   flags: {
     /** Full assistants CRUD + versioning is served. */
     assistants: boolean;
-    /** Scheduled runs. Still on the roadmap, so honestly false. */
+    /** Scheduled runs — the crons resource and the scheduler. False when `disable_crons` is set. */
     crons: boolean;
     /** Whether LangSmith tracing is configured, by the same environment test LangGraph applies. */
     langsmith: boolean;
@@ -88,7 +88,7 @@ export function createMetaService(
         context: "js",
         flags: {
           assistants: true,
-          crons: true,
+          crons: deps.cronsEnabled !== false,
           langsmith: langsmithTracingEnabled(env),
         },
       };

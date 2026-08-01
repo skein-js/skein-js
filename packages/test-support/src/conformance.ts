@@ -890,6 +890,29 @@ export function runSkeinStoreConformance(label: string, makeStore: SkeinStoreFac
         expect(read?.user_id).toBe("ada");
       });
 
+      // Both drivers must answer a duplicate id the same way — the Postgres one let a raw `pg`
+      // unique-violation escape as a 500 while memory threw a typed 409.
+      it("rejects a duplicate cron id as a conflict", async () => {
+        const store = await makeStore();
+        await store.crons.create({ cron_id: "fixed", assistant_id: "a", schedule: "* * * * *" });
+
+        await expect(
+          store.crons.create({ cron_id: "fixed", assistant_id: "a", schedule: "* * * * *" }),
+        ).rejects.toMatchObject({ status: 409 });
+      });
+
+      // A capped batch must select the *same* crons on both drivers, which needs a tiebreak once
+      // several share an occurrence — otherwise one driver can starve the same crons every tick.
+      it("orders a due scan by cron_id when occurrences tie", async () => {
+        const store = await makeStore();
+        for (const cronId of ["c", "a", "b"]) {
+          await seedDueCron(store, { cron_id: cronId });
+        }
+
+        const due = await store.crons.listDue({ dueAt: "2020-01-02T00:00:00.000Z", limit: 2 });
+        expect(due.map((entry) => entry.cron.cron_id)).toEqual(["a", "b"]);
+      });
+
       it("returns null for an unknown cron", async () => {
         const store = await makeStore();
         expect(await store.crons.get("nope")).toBeNull();

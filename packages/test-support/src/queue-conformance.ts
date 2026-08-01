@@ -75,13 +75,18 @@ export function runRunQueueConformance(label: string, makeQueue: RunQueueFactory
     // key on the run id to dedupe — BullMQ via `jobId`, the memory queue by scanning its FIFO.
     it("does not deliver the same run twice when it is enqueued twice", async () => {
       const queue = await make();
+      // Both enqueues happen **before** a consumer exists. With one running, a driver that drops a
+      // finished job (BullMQ's `removeOnComplete`) can complete the first `dupe` before the second
+      // `enqueue` round-trips, freeing the id and letting the duplicate through — a race that would
+      // make this fail intermittently rather than assert the property.
+      await queue.enqueue({ run_id: "dupe", thread_id: "t" });
+      await queue.enqueue({ run_id: "dupe", thread_id: "t" });
+      await queue.enqueue({ run_id: "other", thread_id: "t" });
+
       const received: string[] = [];
       const consumer = queue.consume(async (run) => {
         received.push(run.run_id);
       });
-      await queue.enqueue({ run_id: "dupe", thread_id: "t" });
-      await queue.enqueue({ run_id: "dupe", thread_id: "t" });
-      await queue.enqueue({ run_id: "other", thread_id: "t" });
 
       // Waiting on the *second* id proves the first was not merely slow: it is behind `dupe` in the
       // queue, so by the time it lands any duplicate delivery would already have happened.

@@ -384,6 +384,36 @@ async function insertRun(
   return rowToRun(rows[0] as RunRow);
 }
 
+/** Insert a cron row and return it. Extracted so `create` can wrap it in one try/catch. */
+async function insertCron(
+  executor: Pick<Pool, "query">,
+  cronId: string,
+  input: CronCreate,
+): Promise<Cron> {
+  const { rows } = await executor.query<CronRow>(
+    `INSERT INTO crons (cron_id, assistant_id, thread_id, schedule, timezone, end_time,
+                        next_run_date, enabled, on_run_completed, payload, metadata, user_id, auth)
+     VALUES ($1, $2, $3, $4, $5, $6::timestamptz, $7::timestamptz, $8, $9, $10::jsonb, $11::jsonb, $12, $13::jsonb)
+     RETURNING *`,
+    [
+      cronId,
+      input.assistant_id,
+      input.thread_id ?? null,
+      input.schedule,
+      input.timezone ?? null,
+      input.end_time ?? null,
+      input.next_run_date ?? null,
+      input.enabled ?? true,
+      input.on_run_completed ?? null,
+      JSON.stringify(input.payload ?? {}),
+      JSON.stringify(input.metadata ?? {}),
+      input.user_id ?? null,
+      input.auth === undefined ? null : JSON.stringify(input.auth),
+    ],
+  );
+  return rowToCron(rows[0] as CronRow);
+}
+
 /**
  * The compare-and-swap behind both claim methods: advance `next_run_date` only if the cron still
  * holds `expectedSeq` and is still enabled, returning the advanced row or `null` for a loser.
@@ -1528,28 +1558,18 @@ export class PostgresSkeinStore implements SkeinStore {
       return Number.parseInt(rows[0]?.count ?? "0", 10);
     },
     create: async (input: CronCreate) => {
-      const { rows } = await this.#pool.query<CronRow>(
-        `INSERT INTO crons (cron_id, assistant_id, thread_id, schedule, timezone, end_time,
-                            next_run_date, enabled, on_run_completed, payload, metadata, user_id, auth)
-         VALUES ($1, $2, $3, $4, $5, $6::timestamptz, $7::timestamptz, $8, $9, $10::jsonb, $11::jsonb, $12, $13::jsonb)
-         RETURNING *`,
-        [
-          input.cron_id ?? randomUUID(),
-          input.assistant_id,
-          input.thread_id ?? null,
-          input.schedule,
-          input.timezone ?? null,
-          input.end_time ?? null,
-          input.next_run_date ?? null,
-          input.enabled ?? true,
-          input.on_run_completed ?? null,
-          JSON.stringify(input.payload ?? {}),
-          JSON.stringify(input.metadata ?? {}),
-          input.user_id ?? null,
-          input.auth === undefined ? null : JSON.stringify(input.auth),
-        ],
-      );
-      return rowToCron(rows[0] as CronRow);
+      const cronId = input.cron_id ?? randomUUID();
+      try {
+        return await insertCron(this.#pool, cronId, input);
+      } catch (error) {
+        // A duplicate id is a typed 409, matching the memory driver and every other create here.
+        // Not reachable over HTTP today (the service assigns the id), but a direct `store.crons.create`
+        // — the embedded path — would otherwise get a raw `pg` error as a 500.
+        if (isUniqueViolation(error)) {
+          throw SkeinHttpError.conflict(`Cron "${cronId}" already exists.`);
+        }
+        throw error;
+      }
     },
     update: async (cronId, patch: CronUpdate) => {
       // Every nullable field is tri-state: a `$n::boolean` "was it supplied" flag drives a CASE, so

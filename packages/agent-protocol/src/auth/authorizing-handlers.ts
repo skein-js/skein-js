@@ -58,10 +58,10 @@ export function createAuthorizingHandlers(
       // `crons`). Falling open is right for a gate-only resource and wrong for one that can write
       // into another tenant's thread, so a route may nominate a resource to inherit scoping from.
       //
-      // Scoped with the *fallback's* resource, deliberately: the filters came from that resource's
-      // handler, so they must be applied under its rules — a crons route scoped by thread filters
-      // still needs the crons branch's cron-shaped reads, which is why the branch keys on `crons`
-      // while the filters themselves are the caller's thread ownership.
+      // Whichever handler produced the filters, they are applied under the **route's own** resource
+      // (`route.resource` at the call site below), not the fallback's. That is what a crons route
+      // needs: the crons branch of `createAuthScopedStore` knows how to filter cron-shaped reads,
+      // and the filters it applies are simply the caller's thread ownership.
       const fallback =
         !primary.filters && route.fallbackResource
           ? await engine.authorize({

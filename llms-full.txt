@@ -3590,8 +3590,9 @@ const cron = await client.crons.create("agent", {
   input: { messages: [{ role: "user", content: "Summarize yesterday's issues." }] },
 });
 
-// What has it produced?
-const runs = await client.runs.search({ metadata: { cron_id: cron.cron_id } });
+// What has it produced? A stateless cron makes a thread per fire, each tagged with the cron id.
+const threads = await client.threads.search({ metadata: { cron_id: cron.cron_id } });
+const runs = await client.runs.list(threads[0].thread_id);
 
 await client.crons.update(cron.cron_id, { enabled: false }); // pause
 await client.crons.delete(cron.cron_id);
@@ -3691,7 +3692,10 @@ schedule is twelve times the model spend on near-identical inputs, and on a thre
 so the catch-up becomes the outage. This matches APScheduler's `coalesce` default; there is no knob.
 
 **Traceability.** Every fired run — and every thread a stateless cron creates — carries `cron_id` in
-its metadata, so `client.runs.search({ metadata: { cron_id } })` finds a schedule's output.
+its metadata. For a **stateless** cron that makes `client.threads.search({ metadata: { cron_id } })`
+the way in, since each fire has its own thread; for a **thread** cron the thread is already known, so
+`client.runs.list(thread_id)` lists the runs and each carries the `cron_id` that produced it. (The SDK
+has no `runs.search` — runs are always addressed through their thread.)
 
 **Failures.** If a fire fails (a deleted assistant, a store error) the cron is logged at `error`,
 counted, and **left enabled** — the next occurrence is the retry. skein never auto-disables a
@@ -3733,6 +3737,11 @@ the run would silently skip the occurrence if the instance died in between; crea
 would re-fire it. Committed together, the worst case is a `pending` run that never reached the queue —
 which the next tick re-enqueues. Because enqueue is idempotent (keyed on the run id) and the worker
 skips runs already terminal, delivery is **at-least-once** and execution **exactly-once**.
+
+The recovery sweep looks only at runs a cron produced. A bare `pending` is not enough to conclude a
+run is waiting for a worker: an inline `wait`/`stream` run is written `pending` too and only becomes
+`running` once it acquires its thread's lock, so one queued behind a long peer would look identical
+while its caller waits to execute it in-process. Handing that to a worker would run the graph twice.
 
 The run itself then goes through the ordinary run queue — on Redis that is BullMQ, so cron-fired runs
 get its retries, backoff, and stalled-job crash recovery like any other background run.

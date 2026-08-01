@@ -113,6 +113,14 @@ export interface ProtocolDeps {
    */
   logRunActivity?: boolean;
   /**
+   * Whether this server serves the crons resource — reported as `flags.crons` by `GET /info`.
+   *
+   * Defaults to true. Set false when `http.disable_crons` has removed the routes and stopped the
+   * scheduler, so the handshake stays honest: Studio feature-detects this flag and would otherwise
+   * offer a cron UI whose every call 404s.
+   */
+  cronsEnabled?: boolean;
+  /**
    * When true, a failed run's stack trace travels **to the client**: the `error` SSE frame and the
    * persisted `Run.error` both carry `stack`. Off by default, because a stack names server file
    * paths, dependency versions, and sometimes argument values that a production caller has no

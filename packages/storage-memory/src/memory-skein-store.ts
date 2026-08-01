@@ -700,8 +700,15 @@ export class MemorySkeinStore implements SkeinStore {
       clonePage(
         this.#matchingCrons({ enabled: true })
           .filter((cron) => cron.next_run_date != null && cron.next_run_date <= query.dueAt)
-          // Soonest first, so a truncated scan still drains the backlog in order.
-          .sort((a, b) => (a.next_run_date ?? "").localeCompare(b.next_run_date ?? "")),
+          // Soonest first, so a truncated scan still drains the backlog in order — with `cron_id`
+          // breaking ties, matching the Postgres driver's `ORDER BY next_run_date ASC, cron_id ASC`.
+          // Without the tiebreak, crons sharing an occurrence come back in an unrelated order and a
+          // capped batch selects a different subset per driver — which, being stable, can starve the
+          // same crons tick after tick here while Postgres rotates through them.
+          .sort((a, b) => {
+            const byDate = (a.next_run_date ?? "").localeCompare(b.next_run_date ?? "");
+            return byDate !== 0 ? byDate : a.cron_id.localeCompare(b.cron_id);
+          }),
         0,
         this.#pageLimit(query.limit),
       ).map((cron) => ({ cron, occurrenceSeq: this.#cronSeq.get(cron.cron_id) ?? 0 })),
@@ -851,7 +858,10 @@ export class MemorySkeinStore implements SkeinStore {
     // *within* a process, since a claim never outlives the tick that took it.
     this.#cronSeq.clear();
     for (const cronId of this.#crons.keys()) this.#cronSeq.set(cronId, 0);
-    // Auth is not part of the snapshot, so a restored cron fires unauthenticated unless recreated.
+    // Credentials are deliberately not in the snapshot — it is written to `.skein/` on disk. So a
+    // restored cron keeps its `user_id` but loses the principal behind it, and the scheduler refuses
+    // to fire that combination rather than running it unowned (see `fireCron`). On an
+    // unauthenticated server there is no `user_id` to begin with, so `skein dev` is unaffected.
     this.#cronAuth.clear();
     // Backfill a version snapshot for any assistant restored from a pre-versioning dev-state file
     // (which has no assistantVersions), so getVersions/setLatest work and the next update mints

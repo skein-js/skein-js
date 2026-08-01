@@ -135,13 +135,20 @@ export function createCronService(ctx: ProtocolContext): CronService {
    * store is not enough). With no auth engine configured this is a plain read, so `skein dev` is
    * unaffected.
    */
-  const readThreadForCaller = async (threadId: string): Promise<Thread | null> => {
+  const readThreadForCaller = async (
+    threadId: string,
+    assistantId: string,
+  ): Promise<Thread | null> => {
     const thread = await deps.store.threads.get(threadId);
     if (!thread || !deps.auth?.enabled || !authUser) return thread;
     const { filters } = await deps.auth.authorize({
       resource: "threads",
       action: "create_run",
-      value: { thread_id: threadId, assistant_id: undefined },
+      // The same `value` shape the scheduler passes at fire time, `assistant_id` included. A handler
+      // that gates on `value.assistant_id` — the documented way to express per-assistant permissions
+      // — would otherwise be asked a different question here than at every subsequent fire, and a
+      // cron accepted at create would then fail on every occurrence forever (or the reverse).
+      value: { thread_id: threadId, assistant_id: assistantId },
       context: { user: authUser, scopes: authScopes ?? [] },
     });
     // No filters means the caller's thread handler allowed this outright (or scopes nothing).
@@ -187,13 +194,13 @@ export function createCronService(ctx: ProtocolContext): CronService {
       // repo carries only the read gate the crons branch adds, and that gate compares against the
       // **crons** filters. Where a deployment's cron and thread handlers return different filter
       // shapes, that gate is weaker than thread ownership. Asking the thread resource directly is the
-      // only way to get the answer thread ownership would give — and it is the same question the
-      // scheduler asks at fire time, so create-time and fire-time agree.
+      // only way to get the answer thread ownership would give — and it asks it with the same
+      // resource, action and `value` shape the scheduler uses, so create-time and fire-time agree.
       //
       // A 404 rather than a 403 for a thread the caller cannot see, matching how every other
       // ownership-scoped read hides a foreign row rather than confirming it exists.
       if (input.thread_id !== undefined) {
-        const thread = await readThreadForCaller(input.thread_id);
+        const thread = await readThreadForCaller(input.thread_id, assistant.assistant_id);
         if (!thread) throw SkeinHttpError.notFound(`Thread "${input.thread_id}" not found.`);
       }
 
