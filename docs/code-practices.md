@@ -141,7 +141,7 @@ Full strategy in **[testing.md](./testing.md)**. In short:
 - **Vitest** everywhere; test files co-located as `*.test.ts`, named as sentences
   (`it("rejects a second active run on the same thread")`).
 - **Unit tests** for pure logic (run-engine transitions, SSE mapping, config parsing).
-- **[Testcontainers](https://testcontainers.com)** integration tests for anything touching
+- **[Testcontainers for Node.js](https://node.testcontainers.org/)** integration tests for anything touching
   real infrastructure (`storage-postgres`, `redis`) — a real Postgres/Redis per suite.
 - **Shared `SkeinStore` conformance suite** run against _every_ storage driver, so memory and
   Postgres are held to the identical contract.

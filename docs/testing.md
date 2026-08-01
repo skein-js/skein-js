@@ -11,7 +11,7 @@
 > shared contract suite so every driver behaves identically.
 
 Runner: **[Vitest](https://vitest.dev)** across the whole workspace. Integration:
-**[Testcontainers](https://testcontainers.com)** for ephemeral Postgres/Redis.
+**[Testcontainers for Node.js](https://node.testcontainers.org/)** for ephemeral Postgres/Redis.
 
 ## The three layers
 
