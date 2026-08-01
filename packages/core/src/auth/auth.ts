@@ -27,8 +27,14 @@ export interface AuthContext {
   scopes: string[];
 }
 
-/** A protocol resource an `@auth.on.*` handler can guard. Runs authorize through their thread. */
-export type AuthResource = "threads" | "assistants" | "store";
+/**
+ * A protocol resource an `@auth.on.*` handler can guard. Runs authorize through their thread.
+ *
+ * Crons get a resource of their own rather than authorizing through a thread, because that is what
+ * the SDK's `Auth` class already declares (`crons:create|read|update|delete|search`) — and because a
+ * *stateless* cron has no thread to authorize through.
+ */
+export type AuthResource = "threads" | "assistants" | "store" | "crons";
 
 /** An action on a resource, mirroring LangGraph's `resource:action` event names. */
 export type AuthAction =

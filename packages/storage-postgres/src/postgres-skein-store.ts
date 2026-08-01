@@ -15,6 +15,13 @@ import {
   type AssistantUpdate,
   type AssistantVersion,
   type AssistantVersionsQuery,
+  type Cron,
+  type CronAuth,
+  type CronClaim,
+  type CronCreate,
+  type CronRepo,
+  type CronSearchQuery,
+  type CronUpdate,
   type Item,
   type Run,
   type RunCreate,
@@ -305,6 +312,26 @@ interface ItemRow {
   updated_at: Date;
 }
 
+interface CronRow {
+  cron_id: string;
+  assistant_id: string;
+  thread_id: string | null;
+  schedule: string;
+  timezone: string | null;
+  end_time: Date | null;
+  next_run_date: Date | null;
+  enabled: boolean;
+  // bigint: `pg` hands it back as a string rather than risk a lossy Number, so it is parsed on the
+  // way out (see `rowToCron`). Occurrence counts never approach 2^53, so a JS number is safe here.
+  occurrence_seq: string;
+  on_run_completed: "delete" | "keep" | null;
+  payload: Record<string, unknown>;
+  metadata: Record<string, unknown>;
+  user_id: string | null;
+  created_at: Date;
+  updated_at: Date;
+}
+
 function rowToAssistant(row: AssistantRow): Assistant {
   return {
     assistant_id: row.assistant_id,
@@ -355,6 +382,38 @@ async function insertRun(
     ],
   );
   return rowToRun(rows[0] as RunRow);
+}
+
+/**
+ * The compare-and-swap behind both claim methods: advance `next_run_date` only if the cron still
+ * holds `expectedSeq` and is still enabled, returning the advanced row or `null` for a loser.
+ *
+ * This single statement is what replaces a leader election. Every instance ticks, every instance may
+ * see the same due cron, and Postgres serializes them on the primary-key row — exactly one matches
+ * `occurrence_seq` and the rest update zero rows. No lock ordering, no deadlock surface, no
+ * isolation-level dependency, and nothing to reclaim if the winner then dies.
+ *
+ * `enabled` is in the predicate, not just in the due scan: a cron disabled between the scan and the
+ * claim must lose rather than fire one last time.
+ *
+ * Runs on whatever executor the caller has — the pool for a bare advance, a transaction's client
+ * when the run row has to commit with it.
+ */
+async function claimCronOccurrence(
+  executor: Pick<Pool, "query"> | Pick<PoolClient, "query">,
+  cronId: string,
+  claim: CronClaim,
+): Promise<Cron | null> {
+  const { rows } = await executor.query<CronRow>(
+    `UPDATE crons
+        SET next_run_date = $3::timestamptz,
+            occurrence_seq = occurrence_seq + 1,
+            updated_at = now()
+      WHERE cron_id = $1 AND occurrence_seq = $2 AND enabled
+      RETURNING *`,
+    [cronId, claim.expectedSeq, claim.nextRunDate],
+  );
+  return rows[0] ? rowToCron(rows[0]) : null;
 }
 
 /** True for a Postgres `unique_violation` (SQLSTATE 23505) — a duplicate primary/unique key. */
@@ -459,6 +518,62 @@ function rowToRun(row: RunRow): Run {
   } as Run;
 }
 
+function rowToCron(row: CronRow): Cron {
+  return {
+    cron_id: row.cron_id,
+    assistant_id: row.assistant_id,
+    thread_id: row.thread_id,
+    schedule: row.schedule,
+    timezone: row.timezone,
+    end_time: row.end_time === null ? null : toIsoString(row.end_time),
+    next_run_date: row.next_run_date === null ? null : toIsoString(row.next_run_date),
+    enabled: row.enabled,
+    payload: row.payload,
+    metadata: row.metadata,
+    user_id: row.user_id,
+    created_at: toIsoString(row.created_at),
+    updated_at: toIsoString(row.updated_at),
+    // Absent rather than null on a thread cron, matching the memory driver: the field only means
+    // anything for the per-fire thread a stateless cron creates.
+    ...(row.on_run_completed === null ? {} : { on_run_completed: row.on_run_completed }),
+  };
+}
+
+/** The claim token as the scheduler sees it — `pg` returns `bigint` as a string. */
+const rowToOccurrenceSeq = (row: { occurrence_seq: string }): number =>
+  Number.parseInt(row.occurrence_seq, 10);
+
+/**
+ * The shared `WHERE` for cron search and count, so the two cannot drift on what they match.
+ * `enforcedMetadata` is AND-ed with the caller's own filter rather than merged into it, so a caller
+ * cannot widen the server's scoping by supplying an overlapping key.
+ */
+function cronSearchWhere(query: CronSearchQuery): { where: string; params: unknown[] } {
+  const clauses: string[] = [];
+  const params: unknown[] = [];
+  if (query.assistant_id !== undefined) {
+    params.push(query.assistant_id);
+    clauses.push(`assistant_id = $${params.length}`);
+  }
+  if (query.thread_id !== undefined) {
+    params.push(query.thread_id);
+    clauses.push(`thread_id = $${params.length}`);
+  }
+  if (query.enabled !== undefined) {
+    params.push(query.enabled);
+    clauses.push(`enabled = $${params.length}`);
+  }
+  if (query.metadata !== undefined) {
+    params.push(JSON.stringify(query.metadata));
+    clauses.push(`metadata @> $${params.length}::jsonb`);
+  }
+  if (query.enforcedMetadata !== undefined) {
+    params.push(JSON.stringify(query.enforcedMetadata));
+    clauses.push(`metadata @> $${params.length}::jsonb`);
+  }
+  return { where: clauses.length > 0 ? `WHERE ${clauses.join(" AND ")}` : "", params };
+}
+
 function rowToItem(row: ItemRow, score?: number): SearchItem {
   const item: Item = {
     namespace: row.namespace,
@@ -501,6 +616,11 @@ export class PostgresSkeinStore implements SkeinStore {
   /** The bound this driver applies to an unbounded read — see `SkeinStore.maxPageSize`. */
   get maxPageSize(): number {
     return this.#maxPageSize;
+  }
+
+  /** Rows here outlive the process — see `SkeinStore.durable`. */
+  get durable(): boolean {
+    return true;
   }
 
   /**
@@ -708,7 +828,7 @@ export class PostgresSkeinStore implements SkeinStore {
   /** Empty every resource table. For tests that need a clean schema without re-migrating. */
   async truncateAll(): Promise<void> {
     await this.#pool.query(
-      "TRUNCATE assistants, assistant_versions, threads, runs, store_items CASCADE",
+      "TRUNCATE assistants, assistant_versions, threads, runs, crons, store_items CASCADE",
     );
   }
 
@@ -752,6 +872,7 @@ export class PostgresSkeinStore implements SkeinStore {
     // it instead of aborting the whole transaction (the memory driver has no FK and tolerates it).
     const importedThreadIds = new Set(snapshot.threads.map(([, thread]) => thread.thread_id));
     let skippedOrphanRuns = 0;
+    let skippedOrphanCrons = 0;
 
     const client = await this.#pool.connect();
     try {
@@ -845,6 +966,40 @@ export class PostgresSkeinStore implements SkeinStore {
           ],
         );
       }
+      // After threads, since a thread cron FK-references one. A cron whose thread is not part of
+      // this import is skipped rather than aborting the transaction, exactly like runs above.
+      // `auth` is deliberately not restored: it is not in the snapshot (a snapshot is written to
+      // disk, and a caller's permission scopes are not something to persist there), so a restored
+      // cron fires unauthenticated until it is recreated.
+      for (const [, cron] of snapshot.crons ?? []) {
+        if (cron.thread_id != null && !importedThreadIds.has(cron.thread_id)) {
+          skippedOrphanCrons += 1;
+          continue;
+        }
+        await client.query(
+          `INSERT INTO crons
+             (cron_id, assistant_id, thread_id, schedule, timezone, end_time, next_run_date, enabled,
+              on_run_completed, payload, metadata, user_id, created_at, updated_at)
+           VALUES ($1, $2, $3, $4, $5, $6::timestamptz, $7::timestamptz, $8, $9, $10::jsonb, $11::jsonb, $12, $13, $14)
+           ON CONFLICT (cron_id) DO NOTHING`,
+          [
+            cron.cron_id,
+            cron.assistant_id,
+            cron.thread_id ?? null,
+            cron.schedule,
+            cron.timezone ?? null,
+            cron.end_time ?? null,
+            cron.next_run_date ?? null,
+            cron.enabled ?? true,
+            cron.on_run_completed ?? null,
+            JSON.stringify(cron.payload ?? {}),
+            JSON.stringify(cron.metadata ?? {}),
+            cron.user_id ?? null,
+            cron.created_at,
+            cron.updated_at,
+          ],
+        );
+      }
       for (const [id, item] of snapshot.items) {
         // The `embedding` column only exists when a store index is configured (see migrate());
         // without one, insert the pgvector-free row so a stock Postgres never sees the column.
@@ -881,6 +1036,11 @@ export class PostgresSkeinStore implements SkeinStore {
       if (skippedOrphanRuns > 0) {
         console.warn(
           `skein: skipped ${skippedOrphanRuns} imported run(s) whose thread was not part of the import.`,
+        );
+      }
+      if (skippedOrphanCrons > 0) {
+        console.warn(
+          `skein: skipped ${skippedOrphanCrons} imported cron(s) whose thread was not part of the import.`,
         );
       }
     } catch (error) {
@@ -1320,6 +1480,165 @@ export class PostgresSkeinStore implements SkeinStore {
         params,
       );
       return rows.map(rowToRun);
+    },
+  };
+
+  readonly crons: CronRepo = {
+    get: async (cronId) => {
+      const { rows } = await this.#pool.query<CronRow>("SELECT * FROM crons WHERE cron_id = $1", [
+        cronId,
+      ]);
+      return rows[0] ? rowToCron(rows[0]) : null;
+    },
+    search: async (query) => {
+      const { where, params } = cronSearchWhere(query);
+      // Whitelist the sort column — it is interpolated, never parameterized.
+      const sortColumns = new Set([
+        "cron_id",
+        "assistant_id",
+        "thread_id",
+        "created_at",
+        "updated_at",
+        "next_run_date",
+        // In the OpenAPI spec's `sort_by` enum but not the SDK's; accepted so a client written
+        // against either does not get a silent fallback to `created_at`.
+        "end_time",
+      ]);
+      const sortBy = sortColumns.has(query.sortBy ?? "") ? query.sortBy : "created_at";
+      const direction = query.sortOrder === "asc" ? "ASC" : "DESC";
+      params.push(query.offset ?? 0);
+      const offsetParam = `$${params.length}`;
+      params.push(this.#pageLimit(query.limit));
+      // `NULLS LAST` explicitly in both directions: `next_run_date` and `end_time` are nullable, and
+      // Postgres defaults nulls first on DESC — which would put every dormant cron at the top of
+      // "soonest next run". The memory driver sorts nulls last unconditionally to match.
+      const { rows } = await this.#pool.query<CronRow>(
+        `SELECT * FROM crons ${where} ORDER BY ${sortBy} ${direction} NULLS LAST, cron_id ${direction} ` +
+          `OFFSET ${offsetParam} LIMIT $${params.length}`,
+        params,
+      );
+      return rows.map(rowToCron);
+    },
+    count: async (query) => {
+      const { where, params } = cronSearchWhere(query);
+      const { rows } = await this.#pool.query<{ count: string }>(
+        `SELECT count(*)::text AS count FROM crons ${where}`,
+        params,
+      );
+      return Number.parseInt(rows[0]?.count ?? "0", 10);
+    },
+    create: async (input: CronCreate) => {
+      const { rows } = await this.#pool.query<CronRow>(
+        `INSERT INTO crons (cron_id, assistant_id, thread_id, schedule, timezone, end_time,
+                            next_run_date, enabled, on_run_completed, payload, metadata, user_id, auth)
+         VALUES ($1, $2, $3, $4, $5, $6::timestamptz, $7::timestamptz, $8, $9, $10::jsonb, $11::jsonb, $12, $13::jsonb)
+         RETURNING *`,
+        [
+          input.cron_id ?? randomUUID(),
+          input.assistant_id,
+          input.thread_id ?? null,
+          input.schedule,
+          input.timezone ?? null,
+          input.end_time ?? null,
+          input.next_run_date ?? null,
+          input.enabled ?? true,
+          input.on_run_completed ?? null,
+          JSON.stringify(input.payload ?? {}),
+          JSON.stringify(input.metadata ?? {}),
+          input.user_id ?? null,
+          input.auth === undefined ? null : JSON.stringify(input.auth),
+        ],
+      );
+      return rowToCron(rows[0] as CronRow);
+    },
+    update: async (cronId, patch: CronUpdate) => {
+      // Every nullable field is tri-state: a `$n::boolean` "was it supplied" flag drives a CASE, so
+      // an explicit `null` clears while an omitted key leaves the stored value. `COALESCE` alone
+      // cannot express that — it reads null as "not supplied", making "clear my end date"
+      // unexpressible, which the wire contract requires (PATCH: send null to clear).
+      const { rows } = await this.#pool.query<CronRow>(
+        `UPDATE crons SET
+           schedule = COALESCE($2, schedule),
+           timezone = CASE WHEN $3::boolean THEN $4::text ELSE timezone END,
+           end_time = CASE WHEN $5::boolean THEN $6::timestamptz ELSE end_time END,
+           next_run_date = CASE WHEN $7::boolean THEN $8::timestamptz ELSE next_run_date END,
+           enabled = COALESCE($9::boolean, enabled),
+           on_run_completed = CASE WHEN $10::boolean THEN $11::text ELSE on_run_completed END,
+           payload = COALESCE($12::jsonb, payload),
+           -- metadata MERGES (shallow) via ||, matching assistants and LangGraph's PATCH semantics.
+           metadata = CASE WHEN $13::jsonb IS NULL THEN metadata ELSE metadata || $13::jsonb END,
+           -- Bumped on every write, so a claim raced by this patch loses and the scheduler re-reads
+           -- next tick rather than firing against a payload the caller has just replaced.
+           occurrence_seq = occurrence_seq + 1,
+           updated_at = now()
+         WHERE cron_id = $1
+         RETURNING *`,
+        [
+          cronId,
+          patch.schedule ?? null,
+          patch.timezone !== undefined,
+          patch.timezone ?? null,
+          patch.end_time !== undefined,
+          patch.end_time ?? null,
+          patch.next_run_date !== undefined,
+          patch.next_run_date ?? null,
+          patch.enabled ?? null,
+          patch.on_run_completed !== undefined,
+          patch.on_run_completed ?? null,
+          patch.payload === undefined ? null : JSON.stringify(patch.payload),
+          patch.metadata === undefined ? null : JSON.stringify(patch.metadata),
+        ],
+      );
+      if (!rows[0]) throw SkeinHttpError.notFound(`Cron "${cronId}" not found.`);
+      return rowToCron(rows[0]);
+    },
+    delete: async (cronId) => {
+      await this.#pool.query("DELETE FROM crons WHERE cron_id = $1", [cronId]);
+    },
+    // `WHERE enabled` is a bare literal, deliberately: that is what lets the planner match the
+    // partial index `crons_due_idx`. `enabled = $n` would sequential-scan while still paying the
+    // index's write cost — the same trap migration 0006 documents for inflight runs.
+    listDue: async (query) => {
+      const { rows } = await this.#pool.query<CronRow>(
+        `SELECT * FROM crons
+          WHERE enabled AND next_run_date IS NOT NULL AND next_run_date <= $1::timestamptz
+          ORDER BY next_run_date ASC, cron_id ASC
+          LIMIT $2`,
+        [query.dueAt, this.#pageLimit(query.limit)],
+      );
+      return rows.map((row) => ({ cron: rowToCron(row), occurrenceSeq: rowToOccurrenceSeq(row) }));
+    },
+    claimAndCreateRun: async (cronId, claim, runInput) =>
+      // One transaction, so the claim and the run row commit together. That is what makes the run
+      // row a transactional outbox: advancing alone would silently skip the occurrence if this
+      // instance died before the insert, and inserting first would re-fire it. Committed together,
+      // the worst case is a `pending` run that was never enqueued — which the scheduler re-enqueues,
+      // and which is the window every background run already has.
+      this.#withTransaction(async (client) => {
+        const claimed = await claimCronOccurrence(client, cronId, claim);
+        if (!claimed) return null;
+        const run = await insertRun(client, runInput);
+        return { cron: claimed, run };
+      }),
+    claimNextRun: async (cronId, claim) => claimCronOccurrence(this.#pool, cronId, claim),
+    getAuth: async (cronId) => {
+      const { rows } = await this.#pool.query<{ auth: CronAuth | null }>(
+        "SELECT auth FROM crons WHERE cron_id = $1",
+        [cronId],
+      );
+      return rows[0]?.auth ?? null;
+    },
+    maxOverdueMs: async (now) => {
+      // `min(next_run_date)` over the same predicate the due scan uses, so it reads the partial
+      // index rather than the table, and cannot be under-reported by a truncated page.
+      const { rows } = await this.#pool.query<{ overdue_ms: string | null }>(
+        `SELECT extract(epoch FROM ($1::timestamptz - min(next_run_date))) * 1000 AS overdue_ms
+           FROM crons
+          WHERE enabled AND next_run_date IS NOT NULL AND next_run_date <= $1::timestamptz`,
+        [now],
+      );
+      const overdue = rows[0]?.overdue_ms;
+      return overdue == null ? null : Math.round(Number(overdue));
     },
   };
 

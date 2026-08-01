@@ -24,8 +24,13 @@ import type { Metadata, RunStatus, StreamMode } from "../wire/wire.js";
 /**
  * How a run was started. `background` runs are the ones that waited in the queue first; `invoke` is
  * the non-chat `POST /invoke/:graph_id` surface, which has no thread, no run row, and no assistant.
+ *
+ * `cron` is a background run in every mechanical respect — it goes through the same queue and the
+ * same worker — but its latency profile is not: it waited on a clock, not on a caller. Separating it
+ * keeps a scheduled fleet's queue time from skewing the percentiles operators watch for interactive
+ * traffic.
  */
-export type RunTrigger = "wait" | "stream" | "background" | "invoke";
+export type RunTrigger = "wait" | "stream" | "background" | "invoke" | "cron";
 
 /** Who and what a run is, as a telemetry backend needs to see it. Stable across both run events. */
 export interface RunTelemetryContext {

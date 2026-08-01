@@ -832,6 +832,451 @@ export function runSkeinStoreConformance(label: string, makeStore: SkeinStoreFac
       });
     });
 
+    describe("crons", () => {
+      /** A cron due now, so a `listDue` scan picks it up without waiting for a clock. */
+      const seedDueCron = async (
+        store: SkeinStore,
+        overrides: Partial<Parameters<SkeinStore["crons"]["create"]>[0]> = {},
+      ) =>
+        store.crons.create({
+          assistant_id: "a",
+          schedule: "*/5 * * * *",
+          next_run_date: "2020-01-01T00:00:00.000Z",
+          ...overrides,
+        });
+
+      it("creates a cron with the documented defaults", async () => {
+        const store = await makeStore();
+        const cron = await store.crons.create({ assistant_id: "a", schedule: "0 9 * * *" });
+
+        expect(cron.cron_id).toBeTruthy();
+        expect(cron.schedule).toBe("0 9 * * *");
+        // Stateless by default, enabled by default, dormant until a next_run_date is computed.
+        expect(cron.thread_id ?? null).toBeNull();
+        expect(cron.enabled).toBe(true);
+        expect(cron.next_run_date ?? null).toBeNull();
+        expect(cron.timezone ?? null).toBeNull();
+        expect(cron.payload).toEqual({});
+        expect(cron.metadata).toEqual({});
+      });
+
+      it("round-trips every field, including a thread and an explicit id", async () => {
+        const store = await makeStore();
+        const { thread_id } = await store.threads.create();
+        const created = await store.crons.create({
+          cron_id: "fixed",
+          assistant_id: "a",
+          thread_id,
+          schedule: "0 9 * * 1-5",
+          timezone: "America/New_York",
+          end_time: "2030-01-01T00:00:00.000Z",
+          next_run_date: "2026-08-03T13:00:00.000Z",
+          enabled: false,
+          on_run_completed: "delete",
+          payload: { input: { topic: "ai" } },
+          metadata: { owner: "ada" },
+          user_id: "ada",
+        });
+
+        const read = await store.crons.get("fixed");
+        expect(read).toEqual(created);
+        expect(read?.thread_id).toBe(thread_id);
+        expect(read?.timezone).toBe("America/New_York");
+        expect(read?.end_time).toBe("2030-01-01T00:00:00.000Z");
+        expect(read?.next_run_date).toBe("2026-08-03T13:00:00.000Z");
+        expect(read?.enabled).toBe(false);
+        expect(read?.on_run_completed).toBe("delete");
+        expect(read?.payload).toEqual({ input: { topic: "ai" } });
+        expect(read?.user_id).toBe("ada");
+      });
+
+      it("returns null for an unknown cron", async () => {
+        const store = await makeStore();
+        expect(await store.crons.get("nope")).toBeNull();
+      });
+
+      it("filters a search by assistant, thread, enabled, and metadata", async () => {
+        const store = await makeStore();
+        const { thread_id } = await store.threads.create();
+        await store.crons.create({ assistant_id: "a", schedule: "* * * * *", thread_id });
+        await store.crons.create({ assistant_id: "b", schedule: "* * * * *" });
+        await store.crons.create({
+          assistant_id: "b",
+          schedule: "* * * * *",
+          enabled: false,
+          metadata: { owner: "ada", tier: "pro" },
+        });
+
+        expect((await store.crons.search({ assistant_id: "a" })).length).toBe(1);
+        expect((await store.crons.search({ thread_id })).length).toBe(1);
+        expect((await store.crons.search({ enabled: false })).length).toBe(1);
+        expect((await store.crons.search({ enabled: true })).length).toBe(2);
+        // Metadata matches on a *subset*, like Postgres' `@>`.
+        expect((await store.crons.search({ metadata: { owner: "ada" } })).length).toBe(1);
+        expect((await store.crons.search({ metadata: { owner: "nobody" } })).length).toBe(0);
+      });
+
+      it("sorts by each supported key, in both directions", async () => {
+        const store = await makeStore();
+        await store.crons.create({
+          cron_id: "b",
+          assistant_id: "a",
+          schedule: "* * * * *",
+          next_run_date: "2030-01-02T00:00:00.000Z",
+        });
+        await store.crons.create({
+          cron_id: "a",
+          assistant_id: "a",
+          schedule: "* * * * *",
+          next_run_date: "2030-01-01T00:00:00.000Z",
+        });
+
+        const ids = async (sortBy: "cron_id" | "next_run_date", sortOrder: "asc" | "desc") =>
+          (await store.crons.search({ sortBy, sortOrder })).map((cron) => cron.cron_id);
+
+        expect(await ids("cron_id", "asc")).toEqual(["a", "b"]);
+        expect(await ids("cron_id", "desc")).toEqual(["b", "a"]);
+        expect(await ids("next_run_date", "asc")).toEqual(["a", "b"]);
+        expect(await ids("next_run_date", "desc")).toEqual(["b", "a"]);
+      });
+
+      // Postgres sorts NULLs first on DESC by default, which would put every dormant cron at the
+      // top of "soonest next run". Both drivers pin them last in both directions instead.
+      it("sorts a dormant cron last, in both directions", async () => {
+        const store = await makeStore();
+        await store.crons.create({ cron_id: "dormant", assistant_id: "a", schedule: "* * * * *" });
+        await store.crons.create({
+          cron_id: "armed",
+          assistant_id: "a",
+          schedule: "* * * * *",
+          next_run_date: "2030-01-01T00:00:00.000Z",
+        });
+
+        for (const sortOrder of ["asc", "desc"] as const) {
+          const found = await store.crons.search({ sortBy: "next_run_date", sortOrder });
+          expect(found.map((cron) => cron.cron_id)).toEqual(["armed", "dormant"]);
+        }
+      });
+
+      it("pages a search with limit and offset", async () => {
+        const store = await makeStore();
+        for (const cronId of ["a", "b", "c"]) {
+          await store.crons.create({ cron_id: cronId, assistant_id: "a", schedule: "* * * * *" });
+        }
+
+        const page = await store.crons.search({ sortBy: "cron_id", sortOrder: "asc", limit: 2 });
+        expect(page.map((cron) => cron.cron_id)).toEqual(["a", "b"]);
+        const next = await store.crons.search({
+          sortBy: "cron_id",
+          sortOrder: "asc",
+          limit: 2,
+          offset: 2,
+        });
+        expect(next.map((cron) => cron.cron_id)).toEqual(["c"]);
+      });
+
+      it("counts every match, ignoring limit and offset", async () => {
+        const store = await makeStore();
+        for (const cronId of ["a", "b", "c"]) {
+          await store.crons.create({ cron_id: cronId, assistant_id: "a", schedule: "* * * * *" });
+        }
+
+        expect(await store.crons.count({})).toBe(3);
+        expect(await store.crons.count({ limit: 1, offset: 2 })).toBe(3);
+        expect(await store.crons.count({ assistant_id: "nobody" })).toBe(0);
+      });
+
+      it("patches only the fields it is given", async () => {
+        const store = await makeStore();
+        const created = await store.crons.create({
+          assistant_id: "a",
+          schedule: "0 9 * * *",
+          timezone: "UTC",
+          payload: { input: { topic: "ai" } },
+        });
+
+        const patched = await store.crons.update(created.cron_id, { schedule: "0 10 * * *" });
+        expect(patched.schedule).toBe("0 10 * * *");
+        expect(patched.timezone).toBe("UTC");
+        expect(patched.payload).toEqual({ input: { topic: "ai" } });
+      });
+
+      // The wire contract is explicit: on PATCH, send null to clear, omit to leave unchanged.
+      // `COALESCE` alone cannot express that, which is why both drivers carry a "was it supplied" flag.
+      it("treats end_time and timezone as tri-state on update", async () => {
+        const store = await makeStore();
+        const created = await store.crons.create({
+          assistant_id: "a",
+          schedule: "* * * * *",
+          timezone: "America/New_York",
+          end_time: "2030-01-01T00:00:00.000Z",
+        });
+
+        const untouched = await store.crons.update(created.cron_id, { schedule: "0 * * * *" });
+        expect(untouched.timezone).toBe("America/New_York");
+        expect(untouched.end_time).toBe("2030-01-01T00:00:00.000Z");
+
+        const cleared = await store.crons.update(created.cron_id, {
+          timezone: null,
+          end_time: null,
+        });
+        expect(cleared.timezone ?? null).toBeNull();
+        expect(cleared.end_time ?? null).toBeNull();
+      });
+
+      it("merges metadata on update rather than replacing it", async () => {
+        const store = await makeStore();
+        const created = await store.crons.create({
+          assistant_id: "a",
+          schedule: "* * * * *",
+          metadata: { owner: "ada", tier: "pro" },
+        });
+
+        const patched = await store.crons.update(created.cron_id, { metadata: { tier: "free" } });
+        expect(patched.metadata).toEqual({ owner: "ada", tier: "free" });
+      });
+
+      it("throws when updating an unknown cron", async () => {
+        const store = await makeStore();
+        await expect(store.crons.update("nope", { schedule: "* * * * *" })).rejects.toThrow();
+      });
+
+      it("deletes a cron", async () => {
+        const store = await makeStore();
+        const created = await store.crons.create({ assistant_id: "a", schedule: "* * * * *" });
+
+        await store.crons.delete(created.cron_id);
+        expect(await store.crons.get(created.cron_id)).toBeNull();
+        // Idempotent, like every other delete in the contract.
+        await store.crons.delete(created.cron_id);
+      });
+
+      it("lists only enabled, armed, due crons — soonest first", async () => {
+        const store = await makeStore();
+        await seedDueCron(store, { cron_id: "later", next_run_date: "2020-01-01T00:05:00.000Z" });
+        await seedDueCron(store, { cron_id: "sooner", next_run_date: "2020-01-01T00:00:00.000Z" });
+        await seedDueCron(store, { cron_id: "disabled", enabled: false });
+        // Dormant: armed with no next_run_date at all.
+        await store.crons.create({ cron_id: "dormant", assistant_id: "a", schedule: "* * * * *" });
+        // Not yet due.
+        await seedDueCron(store, { cron_id: "future", next_run_date: "2030-01-01T00:00:00.000Z" });
+
+        const due = await store.crons.listDue({ dueAt: "2020-01-01T00:10:00.000Z" });
+        expect(due.map((entry) => entry.cron.cron_id)).toEqual(["sooner", "later"]);
+      });
+
+      it("treats dueAt as inclusive", async () => {
+        const store = await makeStore();
+        await seedDueCron(store, { next_run_date: "2020-01-01T00:00:00.000Z" });
+
+        expect((await store.crons.listDue({ dueAt: "2020-01-01T00:00:00.000Z" })).length).toBe(1);
+      });
+
+      it("bounds a due scan by its limit", async () => {
+        const store = await makeStore();
+        for (const cronId of ["a", "b", "c"]) await seedDueCron(store, { cron_id: cronId });
+
+        expect(
+          (await store.crons.listDue({ dueAt: "2020-01-02T00:00:00.000Z", limit: 2 })).length,
+        ).toBe(2);
+      });
+
+      it("claims an occurrence, advancing next_run_date and creating the run together", async () => {
+        const store = await makeStore();
+        const { thread_id } = await store.threads.create();
+        const cron = await seedDueCron(store, { thread_id });
+        const [due] = await store.crons.listDue({ dueAt: "2020-01-02T00:00:00.000Z" });
+
+        const claimed = await store.crons.claimAndCreateRun(
+          cron.cron_id,
+          { expectedSeq: due?.occurrenceSeq ?? 0, nextRunDate: "2030-01-01T00:00:00.000Z" },
+          { thread_id, assistant_id: "a" },
+        );
+
+        expect(claimed?.cron.next_run_date).toBe("2030-01-01T00:00:00.000Z");
+        expect(claimed?.run.status).toBe("pending");
+        expect(claimed?.run.thread_id).toBe(thread_id);
+        // Both writes landed: the advance is visible, and the run is readable.
+        expect((await store.crons.get(cron.cron_id))?.next_run_date).toBe(
+          "2030-01-01T00:00:00.000Z",
+        );
+        expect(await store.runs.get(claimed?.run.run_id ?? "")).not.toBeNull();
+      });
+
+      // The heart of the multi-instance story: two schedulers see the same due cron, and exactly
+      // one fires it. Losing is not an error — it is the normal outcome for every other instance.
+      it("lets only the holder of the current token claim an occurrence", async () => {
+        const store = await makeStore();
+        const { thread_id } = await store.threads.create();
+        const cron = await seedDueCron(store, { thread_id });
+        const [due] = await store.crons.listDue({ dueAt: "2020-01-02T00:00:00.000Z" });
+        const claim = {
+          expectedSeq: due?.occurrenceSeq ?? 0,
+          nextRunDate: "2030-01-01T00:00:00.000Z",
+        };
+
+        const first = await store.crons.claimAndCreateRun(cron.cron_id, claim, {
+          thread_id,
+          assistant_id: "a",
+        });
+        const second = await store.crons.claimAndCreateRun(cron.cron_id, claim, {
+          thread_id,
+          assistant_id: "a",
+        });
+
+        expect(first).not.toBeNull();
+        expect(second).toBeNull();
+        // The loser created no run — that is what makes the occurrence fire exactly once.
+        expect((await store.runs.listByThread(thread_id)).length).toBe(1);
+      });
+
+      it("rolls back the run when the claim loses", async () => {
+        const store = await makeStore();
+        const { thread_id } = await store.threads.create();
+        const cron = await seedDueCron(store, { thread_id });
+
+        const lost = await store.crons.claimAndCreateRun(
+          cron.cron_id,
+          { expectedSeq: 999, nextRunDate: "2030-01-01T00:00:00.000Z" },
+          { thread_id, assistant_id: "a" },
+        );
+
+        expect(lost).toBeNull();
+        expect(await store.runs.listByThread(thread_id)).toEqual([]);
+      });
+
+      it("refuses a claim on a cron disabled since the scan", async () => {
+        const store = await makeStore();
+        const { thread_id } = await store.threads.create();
+        const cron = await seedDueCron(store, { thread_id });
+        const [due] = await store.crons.listDue({ dueAt: "2020-01-02T00:00:00.000Z" });
+        await store.crons.update(cron.cron_id, { enabled: false });
+
+        const claimed = await store.crons.claimAndCreateRun(
+          cron.cron_id,
+          { expectedSeq: due?.occurrenceSeq ?? 0, nextRunDate: "2030-01-01T00:00:00.000Z" },
+          { thread_id, assistant_id: "a" },
+        );
+        expect(claimed).toBeNull();
+      });
+
+      // A PATCH between the scan and the claim must invalidate the claim, so the scheduler never
+      // fires against a payload the caller has just replaced.
+      it("invalidates an in-flight claim when the cron is patched", async () => {
+        const store = await makeStore();
+        const { thread_id } = await store.threads.create();
+        const cron = await seedDueCron(store, { thread_id });
+        const [due] = await store.crons.listDue({ dueAt: "2020-01-02T00:00:00.000Z" });
+        await store.crons.update(cron.cron_id, { payload: { input: { topic: "changed" } } });
+
+        const claimed = await store.crons.claimAndCreateRun(
+          cron.cron_id,
+          { expectedSeq: due?.occurrenceSeq ?? 0, nextRunDate: "2030-01-01T00:00:00.000Z" },
+          { thread_id, assistant_id: "a" },
+        );
+        expect(claimed).toBeNull();
+      });
+
+      it("advances an exhausted cron to dormant without creating a run", async () => {
+        const store = await makeStore();
+        const cron = await seedDueCron(store);
+        const [due] = await store.crons.listDue({ dueAt: "2020-01-02T00:00:00.000Z" });
+
+        const advanced = await store.crons.claimNextRun(cron.cron_id, {
+          expectedSeq: due?.occurrenceSeq ?? 0,
+          nextRunDate: null,
+        });
+
+        expect(advanced?.next_run_date ?? null).toBeNull();
+        // Dormant drops straight out of the due scan.
+        expect(await store.crons.listDue({ dueAt: "2030-01-01T00:00:00.000Z" })).toEqual([]);
+      });
+
+      it("returns null from claimNextRun for an unknown cron", async () => {
+        const store = await makeStore();
+        expect(
+          await store.crons.claimNextRun("nope", { expectedSeq: 0, nextRunDate: null }),
+        ).toBeNull();
+      });
+
+      it("round-trips the cron's principal, and keeps it off the wire row", async () => {
+        const store = await makeStore();
+        const user = {
+          identity: "ada",
+          display_name: "Ada",
+          is_authenticated: true,
+          permissions: ["runs:write"],
+        };
+        const cron = await store.crons.create({
+          assistant_id: "a",
+          schedule: "* * * * *",
+          auth: { user, scopes: ["runs:write"] },
+        });
+
+        expect(await store.crons.getAuth(cron.cron_id)).toEqual({
+          user,
+          scopes: ["runs:write"],
+        });
+        // `payload` is echoed to any reader of the cron, so the principal must not ride along on it.
+        expect(JSON.stringify(await store.crons.get(cron.cron_id))).not.toContain("runs:write");
+      });
+
+      it("returns null auth for a cron created without a principal", async () => {
+        const store = await makeStore();
+        const cron = await store.crons.create({ assistant_id: "a", schedule: "* * * * *" });
+
+        expect(await store.crons.getAuth(cron.cron_id)).toBeNull();
+        expect(await store.crons.getAuth("nope")).toBeNull();
+      });
+
+      it("reports how overdue the most overdue cron is", async () => {
+        const store = await makeStore();
+        await seedDueCron(store, { next_run_date: "2020-01-01T00:00:00.000Z" });
+        await seedDueCron(store, { next_run_date: "2020-01-01T00:00:30.000Z" });
+        // Neither of these counts: one is disabled, one is not due yet.
+        await seedDueCron(store, { enabled: false });
+        await seedDueCron(store, { next_run_date: "2030-01-01T00:00:00.000Z" });
+
+        expect(await store.crons.maxOverdueMs("2020-01-01T00:01:00.000Z")).toBe(60_000);
+      });
+
+      it("reports no lag when nothing is due", async () => {
+        const store = await makeStore();
+        await seedDueCron(store, { next_run_date: "2030-01-01T00:00:00.000Z" });
+
+        expect(await store.crons.maxOverdueMs("2020-01-01T00:00:00.000Z")).toBeNull();
+      });
+
+      // Designed out rather than handled: with the cron gone, "a thread cron whose thread was
+      // deleted" is not a state the scheduler ever has to reason about.
+      it("deletes a thread's crons along with the thread", async () => {
+        const store = await makeStore();
+        const { thread_id } = await store.threads.create();
+        const threadCron = await store.crons.create({
+          assistant_id: "a",
+          schedule: "* * * * *",
+          thread_id,
+        });
+        const stateless = await store.crons.create({ assistant_id: "a", schedule: "* * * * *" });
+
+        await store.threads.delete(thread_id);
+
+        expect(await store.crons.get(threadCron.cron_id)).toBeNull();
+        // A stateless cron has no thread to be cascaded by.
+        expect(await store.crons.get(stateless.cron_id)).not.toBeNull();
+      });
+
+      it("preserves sub-second precision on next_run_date", async () => {
+        const store = await makeStore();
+        // Not a cosmetic assertion: the scan reads this value and the wire returns it, so a driver
+        // that rounds it would report a fire time it will not honour.
+        const precise = "2030-01-01T00:00:00.123Z";
+        const cron = await seedDueCron(store, { next_run_date: precise });
+
+        expect((await store.crons.get(cron.cron_id))?.next_run_date).toBe(precise);
+      });
+    });
+
     describe("store (long-term memory)", () => {
       it("puts and gets an item by namespace + key", async () => {
         const store = await makeStore();

@@ -20,6 +20,13 @@ import {
   type AssistantUpdate,
   type AssistantVersion,
   type AssistantVersionsQuery,
+  type Cron,
+  type CronAuth,
+  type CronClaim,
+  type CronCreate,
+  type CronRepo,
+  type CronSearchQuery,
+  type CronUpdate,
   type Item,
   type Run,
   type RunCreate,
@@ -138,6 +145,13 @@ export class MemorySkeinStore implements SkeinStore {
   readonly #runs = new Map<string, Run>();
   // The opaque execution payload lives beside the run row (it is not part of the wire `Run`).
   readonly #runKwargs = new Map<string, RunKwargs>();
+  readonly #crons = new Map<string, Cron>();
+  // The principal a cron's fired runs execute as — beside the row, never on the wire (see `CronAuth`).
+  readonly #cronAuth = new Map<string, CronAuth>();
+  // The compare-and-swap claim token, keyed by cron_id. Beside the row rather than on it because it
+  // is scheduler bookkeeping, not wire state — the Postgres driver keeps it as a column for the same
+  // reason `runs.kwargs` is a column rather than part of the wire `Run`.
+  readonly #cronSeq = new Map<string, number>();
   readonly #items = new Map<string, Item>();
   // Item expiry lives beside the item (never on the wire `Item`), keyed the same way as #items:
   // `expiresAt` is epoch-ms (null = never expires), `ttlMinutes` is what a refresh-on-read extends by.
@@ -154,6 +168,15 @@ export class MemorySkeinStore implements SkeinStore {
   /** The bound this driver applies to an unbounded read — see `SkeinStore.maxPageSize`. */
   get maxPageSize(): number {
     return this.#maxPageSize;
+  }
+
+  /**
+   * Rows here do not survive the process — see `SkeinStore.durable`. `skein dev` snapshots them to
+   * `.skein/` on a timer, which covers a restart but is not durability: it is best-effort, lossy up
+   * to the last autosave, and off entirely under `--no-persist`.
+   */
+  get durable(): boolean {
+    return false;
   }
 
   /**
@@ -191,6 +214,35 @@ export class MemorySkeinStore implements SkeinStore {
     if (entry?.ttlMinutes != null) {
       this.#itemExpiry.set(id, { ...entry, expiresAt: Date.now() + entry.ttlMinutes * 60_000 });
     }
+  }
+
+  /** Advance the claim token for a cron, so any in-flight claim holding the old one loses. */
+  #bumpCronSeq(cronId: string): number {
+    const next = (this.#cronSeq.get(cronId) ?? 0) + 1;
+    this.#cronSeq.set(cronId, next);
+    return next;
+  }
+
+  /**
+   * The compare-and-swap behind both claim methods: advance `next_run_date` only if the cron still
+   * holds `expectedSeq` and is still enabled, returning the advanced row or `null` for a loser.
+   *
+   * Synchronous on purpose. It is called from `async` repo methods, but its own body must never
+   * suspend — that is what makes the claim indivisible in this driver, exactly as a single
+   * conditional `UPDATE` is in Postgres.
+   */
+  #claimCron(cronId: string, claim: CronClaim): Cron | null {
+    const existing = this.#crons.get(cronId);
+    // A cron deleted or disabled between the scan and the claim is a loss, not an error: the
+    // scheduler treats every `null` the same way, and both mean "do not fire this occurrence".
+    if (!existing || !existing.enabled) return null;
+    if ((this.#cronSeq.get(cronId) ?? 0) !== claim.expectedSeq) return null;
+    this.#bumpCronSeq(cronId);
+    return write(this.#crons, cronId, {
+      ...existing,
+      next_run_date: claim.nextRunDate,
+      updated_at: nowIso(),
+    });
   }
 
   /** Drop every version snapshot belonging to an assistant (memory has no cascading FK). */
@@ -436,6 +488,15 @@ export class MemorySkeinStore implements SkeinStore {
           this.#runKwargs.delete(runId);
         }
       }
+      // Thread crons go too, mirroring the Postgres driver's `ON DELETE CASCADE`. This is what makes
+      // "a cron whose thread was deleted" a state that cannot exist, rather than one the scheduler
+      // has to handle every time it fires.
+      for (const [cronId, cron] of this.#crons) {
+        if (cron.thread_id === threadId) {
+          this.#crons.delete(cronId);
+          this.#cronAuth.delete(cronId);
+        }
+      }
     },
   };
 
@@ -528,6 +589,147 @@ export class MemorySkeinStore implements SkeinStore {
             !isTerminalRunStatus(run.status),
         )
         .slice(0, this.#pageLimit(undefined)),
+  };
+
+  /**
+   * Every cron matching `query`'s filters, sorted — before pagination. **Stored references, not
+   * copies**: callers must clone whatever they hand out. Extracted so `count` does not measure
+   * through `search`, for the same reason as {@link #matchingThreads}.
+   */
+  #matchingCrons(query: CronSearchQuery): Cron[] {
+    const matched = [...this.#crons.values()].filter(
+      (cron) =>
+        (query.assistant_id === undefined || cron.assistant_id === query.assistant_id) &&
+        (query.thread_id === undefined || cron.thread_id === query.thread_id) &&
+        (query.enabled === undefined || cron.enabled === query.enabled) &&
+        isMetadataSubset(cron.metadata, query.metadata) &&
+        // The server's own scoping, AND-ed with the caller's filter — see `enforcedMetadata`.
+        isMetadataSubset(cron.metadata, query.enforcedMetadata),
+    );
+    const sortBy = query.sortBy ?? "created_at";
+    const direction = query.sortOrder === "asc" ? 1 : -1;
+    const compare = (a: string, b: string): number => (a < b ? -1 : a > b ? 1 : 0);
+    matched.sort((a, b) => {
+      // `next_run_date` is nullable (a dormant cron), and null sorts LAST in both directions to match
+      // the Postgres driver's explicit `NULLS LAST`. Everything else compares as a string, which is
+      // correct for ISO timestamps and ids alike.
+      const left = a[sortBy] ?? null;
+      const right = b[sortBy] ?? null;
+      let primary: number;
+      if (left === null && right === null) primary = 0;
+      // Pre-multiplied by the direction so the null still lands last once the sign is applied below.
+      else if (left === null) primary = direction;
+      else if (right === null) primary = -direction;
+      else primary = compare(String(left), String(right));
+      // Break ties on cron_id in the same direction, so paging is deterministic and matches the
+      // Postgres driver's `ORDER BY <sortBy> <dir> NULLS LAST, cron_id <dir>`.
+      const ordered = primary !== 0 ? primary : compare(a.cron_id, b.cron_id);
+      return direction * ordered;
+    });
+    return matched;
+  }
+
+  readonly crons: CronRepo = {
+    get: async (cronId) => readOne(this.#crons, cronId),
+    search: async (query: CronSearchQuery) =>
+      clonePage(this.#matchingCrons(query), query.offset ?? 0, this.#pageLimit(query.limit)),
+    count: async (query: CronSearchQuery) => this.#matchingCrons(query).length,
+    create: async (input: CronCreate) => {
+      const cronId = input.cron_id ?? randomUUID();
+      if (this.#crons.has(cronId)) {
+        throw SkeinHttpError.conflict(`Cron "${cronId}" already exists.`);
+      }
+      const at = nowIso();
+      const cron: Cron = {
+        cron_id: cronId,
+        assistant_id: input.assistant_id,
+        thread_id: input.thread_id ?? null,
+        schedule: input.schedule,
+        timezone: input.timezone ?? null,
+        end_time: input.end_time ?? null,
+        next_run_date: input.next_run_date ?? null,
+        enabled: input.enabled ?? true,
+        payload: input.payload ?? {},
+        metadata: input.metadata ?? {},
+        user_id: input.user_id ?? null,
+        created_at: at,
+        updated_at: at,
+        // Absent rather than null on a thread cron: the field only means anything for the per-fire
+        // thread a stateless cron creates, and the wire type has it optional for exactly that reason.
+        ...(input.on_run_completed ? { on_run_completed: input.on_run_completed } : {}),
+      };
+      if (input.auth) this.#cronAuth.set(cronId, clone(input.auth));
+      this.#cronSeq.set(cronId, 0);
+      return write(this.#crons, cronId, cron);
+    },
+    update: async (cronId, patch: CronUpdate) => {
+      const existing = this.#crons.get(cronId);
+      if (!existing) throw SkeinHttpError.notFound(`Cron "${cronId}" not found.`);
+      const updated: Cron = {
+        ...existing,
+        schedule: patch.schedule ?? existing.schedule,
+        // Tri-state: `undefined` leaves the stored value, an explicit `null` clears it. `??` would
+        // conflate the two and make "clear my end date" unexpressible.
+        timezone: patch.timezone !== undefined ? patch.timezone : existing.timezone,
+        end_time: patch.end_time !== undefined ? patch.end_time : existing.end_time,
+        next_run_date:
+          patch.next_run_date !== undefined ? patch.next_run_date : existing.next_run_date,
+        enabled: patch.enabled ?? existing.enabled,
+        payload: patch.payload ?? existing.payload,
+        // metadata MERGES (shallow), matching assistants and LangGraph's own PATCH semantics.
+        metadata:
+          patch.metadata !== undefined
+            ? { ...existing.metadata, ...patch.metadata }
+            : existing.metadata,
+        updated_at: nowIso(),
+        ...(patch.on_run_completed !== undefined
+          ? { on_run_completed: patch.on_run_completed }
+          : {}),
+      };
+      // Every write bumps the claim token, so a claim raced by this patch loses and the scheduler
+      // re-reads next tick instead of firing against a payload the caller has just replaced.
+      this.#bumpCronSeq(cronId);
+      return write(this.#crons, cronId, updated);
+    },
+    delete: async (cronId) => {
+      this.#crons.delete(cronId);
+      this.#cronAuth.delete(cronId);
+      this.#cronSeq.delete(cronId);
+    },
+    listDue: async (query) =>
+      clonePage(
+        this.#matchingCrons({ enabled: true })
+          .filter((cron) => cron.next_run_date != null && cron.next_run_date <= query.dueAt)
+          // Soonest first, so a truncated scan still drains the backlog in order.
+          .sort((a, b) => (a.next_run_date ?? "").localeCompare(b.next_run_date ?? "")),
+        0,
+        this.#pageLimit(query.limit),
+      ).map((cron) => ({ cron, occurrenceSeq: this.#cronSeq.get(cron.cron_id) ?? 0 })),
+    // Atomic for free, and deliberately written to stay that way — the same rule `createIfThreadIdle`
+    // documents. The compare, the advance and the run insert all run in one event-loop turn because
+    // nothing between them suspends. Introducing an `await` above the writes would silently reopen
+    // the race this method exists to close, and would break the two-schedulers conformance case.
+    claimAndCreateRun: async (cronId, claim, runInput) => {
+      const advanced = this.#claimCron(cronId, claim);
+      if (!advanced) return null;
+      const run = await this.runs.create(runInput);
+      return { cron: advanced, run };
+    },
+    claimNextRun: async (cronId, claim) => this.#claimCron(cronId, claim),
+    getAuth: async (cronId) => {
+      const found = this.#cronAuth.get(cronId);
+      return found ? clone(found) : null;
+    },
+    maxOverdueMs: async (now) => {
+      const at = Date.parse(now);
+      let worst: number | null = null;
+      for (const cron of this.#crons.values()) {
+        if (!cron.enabled || cron.next_run_date == null) continue;
+        const overdue = at - Date.parse(cron.next_run_date);
+        if (overdue >= 0 && (worst === null || overdue > worst)) worst = overdue;
+      }
+      return worst;
+    },
   };
 
   readonly store: StoreRepo = {
@@ -625,6 +827,10 @@ export class MemorySkeinStore implements SkeinStore {
       runs: entries(this.#runs),
       runKwargs: entries(this.#runKwargs),
       items: entries(this.#items),
+      // This is what gives `skein dev` cron persistence across restarts for free. `#cronAuth` is
+      // deliberately not persisted: a snapshot is written to disk, and a caller's permission scopes
+      // are not something to leave in `.skein/`.
+      crons: entries(this.#crons),
     };
   }
 
@@ -640,6 +846,13 @@ export class MemorySkeinStore implements SkeinStore {
     fill(this.#runs, snapshot.runs);
     fill(this.#runKwargs, snapshot.runKwargs);
     fill(this.#items, snapshot.items);
+    fill(this.#crons, snapshot.crons ?? []);
+    // A restored cron starts its claim sequence from zero — the token only has to be consistent
+    // *within* a process, since a claim never outlives the tick that took it.
+    this.#cronSeq.clear();
+    for (const cronId of this.#crons.keys()) this.#cronSeq.set(cronId, 0);
+    // Auth is not part of the snapshot, so a restored cron fires unauthenticated unless recreated.
+    this.#cronAuth.clear();
     // Backfill a version snapshot for any assistant restored from a pre-versioning dev-state file
     // (which has no assistantVersions), so getVersions/setLatest work and the next update mints
     // max+1 with no gap. Uses the row's current version, since older history wasn't persisted.
@@ -672,6 +885,18 @@ export class MemorySkeinStore implements SkeinStore {
     add(this.#runs, snapshot.runs);
     add(this.#runKwargs, snapshot.runKwargs);
     add(this.#items, snapshot.items);
+    // Crons go in after threads, since a thread cron references one. A cron whose thread is absent
+    // from the import is skipped rather than restored dangling — the same rule the Postgres driver's
+    // foreign key enforces for it, and what `runs` already does there.
+    add(
+      this.#crons,
+      (snapshot.crons ?? []).filter(
+        ([, cron]) => cron.thread_id == null || this.#threads.has(cron.thread_id),
+      ),
+    );
+    for (const cronId of this.#crons.keys()) {
+      if (!this.#cronSeq.has(cronId)) this.#cronSeq.set(cronId, 0);
+    }
   }
 }
 
