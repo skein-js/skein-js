@@ -44,12 +44,35 @@ export function createAuthorizingHandlers(
     const route = ROUTE_AUTHZ[name];
     wrapped[name] = async (req) => {
       const authContext: AuthContext | undefined = await resolveAuthContext(engine, req);
-      const { filters } = await engine.authorize({
+      const value = authValue(req);
+      const primary = await engine.authorize({
         resource: route.resource,
         action: route.action,
-        value: authValue(req),
+        value,
         context: authContext,
       });
+
+      // No filters from the primary resource means one of two things the engine cannot tell apart:
+      // the caller's handler allowed this outright, or *there is no handler for this resource at
+      // all* (callbacks are matched by exact event key, so `.on("threads", …)` matches nothing named
+      // `crons`). Falling open is right for a gate-only resource and wrong for one that can write
+      // into another tenant's thread, so a route may nominate a resource to inherit scoping from.
+      //
+      // Scoped with the *fallback's* resource, deliberately: the filters came from that resource's
+      // handler, so they must be applied under its rules — a crons route scoped by thread filters
+      // still needs the crons branch's cron-shaped reads, which is why the branch keys on `crons`
+      // while the filters themselves are the caller's thread ownership.
+      const fallback =
+        !primary.filters && route.fallbackResource
+          ? await engine.authorize({
+              resource: route.fallbackResource,
+              action: route.fallbackAction ?? route.action,
+              value,
+              context: authContext,
+            })
+          : undefined;
+      const filters = primary.filters ?? fallback?.filters;
+
       // Fast path: nothing request-specific to inject — reuse the shared, once-built handler table.
       if (!filters && !authContext) return baseHandlers[name](req);
 

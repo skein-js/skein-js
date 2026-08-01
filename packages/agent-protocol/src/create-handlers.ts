@@ -26,6 +26,10 @@ import {
   assistantVersionsSchema,
   cancelManySchema,
   commandBodySchema,
+  cronCountSchema,
+  cronCreateSchema,
+  cronSearchSchema,
+  cronUpdateSchema,
   listNamespacesSchema,
   runBatchCreateSchema,
   runCreateSchema,
@@ -113,6 +117,13 @@ export interface ProtocolHandlers {
   cancelRun: ProtocolHandler;
   cancelManyRuns: ProtocolHandler;
   deleteRun: ProtocolHandler;
+  // crons
+  createCron: ProtocolHandler;
+  getCron: ProtocolHandler;
+  searchCrons: ProtocolHandler;
+  countCrons: ProtocolHandler;
+  updateCron: ProtocolHandler;
+  deleteCron: ProtocolHandler;
   // thread streaming / commands
   postThreadStream: ProtocolHandler;
   getThreadStream: ProtocolHandler;
@@ -619,6 +630,46 @@ export function createProtocolHandlers(service: ProtocolService): ProtocolHandle
     deleteRun: async (req) => {
       await service.runs.delete(requireParam(req.params, "run_id"));
       return empty();
+    },
+
+    // --- crons --------------------------------------------------------------------------------
+    // One handler for both create routes: the thread-scoped path folds `thread_id` into the body
+    // (`foldThreadIdIntoBody`), exactly as the thread-scoped wait/stream runs do.
+    createCron: async (req) => {
+      const body = parse(cronCreateSchema, req.body ?? {});
+      return json(await service.crons.create(body));
+    },
+
+    getCron: async (req) => json(await service.crons.get(requireParam(req.params, "cron_id"))),
+
+    searchCrons: async (req) => {
+      const body = parse(cronSearchSchema, req.body ?? {});
+      // Paired with a total, like assistants and threads — the SDK ignores the header, but a client
+      // paging a cron list has no other way to know how far it goes.
+      const [crons, total] = await Promise.all([
+        service.crons.search(body),
+        service.crons.count(body),
+      ]);
+      return json(crons, 200, { "x-pagination-total": String(total) });
+    },
+
+    // Answers a **bare integer**, not `{ count }` — matching the OpenAPI spec and what the SDK's
+    // `crons.count()` reads.
+    countCrons: async (req) =>
+      json(await service.crons.count(parse(cronCountSchema, req.body ?? {}))),
+
+    updateCron: async (req) => {
+      const body = parse(cronUpdateSchema, req.body ?? {});
+      return json(await service.crons.update(requireParam(req.params, "cron_id"), body));
+    },
+
+    // 200 with a JSON body, not 204 — and the body matters. The SDK's `BaseClient` skips
+    // `response.json()` only for 202 and 204, so a 200 with an empty body makes the official client
+    // throw `SyntaxError: Unexpected end of JSON input` on a request that actually succeeded.
+    // `serializeWireJson(null)` is `"null"`, which parses.
+    deleteCron: async (req) => {
+      await service.crons.delete(requireParam(req.params, "cron_id"));
+      return json(null);
     },
 
     // --- thread streaming / commands ----------------------------------------------------------

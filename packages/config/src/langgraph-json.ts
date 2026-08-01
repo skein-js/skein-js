@@ -109,6 +109,11 @@ export const langgraphJsonSchema = z
         disable_assistants: z.unknown().optional(),
         disable_threads: z.unknown().optional(),
         disable_runs: z.unknown().optional(),
+        /**
+         * Turns off the crons resource — both the HTTP routes and the scheduler, so a disabled
+         * deployment does not keep firing schedules it will not let anyone see or cancel.
+         */
+        disable_crons: z.unknown().optional(),
         disable_store: z.unknown().optional(),
         /** Turns off `GET /info`. skein's `/ok` health probe is unaffected — see meta/server-info.ts. */
         disable_meta: z.unknown().optional(),

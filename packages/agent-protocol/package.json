@@ -45,6 +45,7 @@
   },
   "dependencies": {
     "@skein-js/core": "workspace:*",
+    "croner": "^10.0.1",
     "zod": "^3.25.76"
   },
   "peerDependencies": {

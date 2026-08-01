@@ -83,4 +83,53 @@ describe("express-basic over @langchain/langgraph-sdk", () => {
     expect(history.length).toBeGreaterThan(0);
     expect(history.length).toBeLessThanOrEqual(5);
   });
+
+  // Crons are the one resource the OSS langgraph server does not implement at all, so the SDK's
+  // client is the only thing that can say whether skein's answers are shaped right. Two of these
+  // routes are where a plausible implementation breaks it: `count` must answer a bare integer, and
+  // `delete` must answer 200 with a JSON *body* — the client skips `response.json()` only for 202
+  // and 204, so an empty 200 throws inside the client on a request that actually succeeded.
+  describe("crons", () => {
+    it("creates, reads, searches, counts, updates and deletes through the SDK client", async () => {
+      const created = await client.crons.create("echo", {
+        schedule: "0 9 * * 1-5",
+        timezone: "America/New_York",
+        input: { messages: [{ role: "user", content: "scheduled" }] },
+        metadata: { suite: "express-basic" },
+      });
+      expect(typeof created.cron_id).toBe("string");
+
+      const found = await client.crons.search({ metadata: { suite: "express-basic" } });
+      expect(found.map((cron) => cron.cron_id)).toContain(created.cron_id);
+      // Derived server-side and returned on the wire, so a client can show the next fire time.
+      expect(typeof found[0]?.next_run_date).toBe("string");
+
+      // Would throw if the server answered `{ count: n }` instead of a bare integer.
+      expect(await client.crons.count({ metadata: { suite: "express-basic" } })).toBe(1);
+
+      const paused = await client.crons.update(created.cron_id, { enabled: false });
+      expect(paused.enabled).toBe(false);
+      // Dormant: a paused cron reports no next fire, rather than a time it will not honour.
+      expect(paused.next_run_date ?? null).toBeNull();
+
+      // Would throw `SyntaxError: Unexpected end of JSON input` on an empty 200.
+      await client.crons.delete(created.cron_id);
+      expect(await client.crons.count({ metadata: { suite: "express-basic" } })).toBe(0);
+    });
+
+    it("schedules onto an existing thread", async () => {
+      const thread = await client.threads.create();
+      const cron = await client.crons.createForThread(thread.thread_id, "echo", {
+        schedule: "*/30 * * * *",
+        input: { messages: [{ role: "user", content: "on a thread" }] },
+      });
+
+      expect(cron.thread_id).toBe(thread.thread_id);
+      await client.crons.delete(cron.cron_id);
+    });
+
+    it("rejects a six-field expression, as LangGraph does", async () => {
+      await expect(client.crons.create("echo", { schedule: "0 0 9 * * *" })).rejects.toThrow();
+    });
+  });
 });

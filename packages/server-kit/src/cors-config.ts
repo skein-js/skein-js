@@ -74,6 +74,7 @@ const DISABLE_FLAGS: Record<string, RouteGroup> = {
   disable_assistants: "assistants",
   disable_threads: "threads",
   disable_runs: "runs",
+  disable_crons: "crons",
   disable_store: "store",
   disable_meta: "meta",
 };

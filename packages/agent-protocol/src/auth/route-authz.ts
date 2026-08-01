@@ -11,6 +11,27 @@ import type { ProtocolHandlers, ProtocolRequest } from "../create-handlers.js";
 export interface RouteAuthz {
   resource: AuthResource;
   action: AuthAction;
+  /**
+   * A second resource to authorize against when {@link resource} produced no ownership filters —
+   * used to inherit scoping rather than fall open.
+   *
+   * This exists because `@auth.on.*` callbacks are matched by **exact event key**
+   * (`resource:action` → `resource` → `*:action` → `*`), so a deployment that registered
+   * `.on("threads", …)` has no callback for a resource named anything else, and `authorize` answers
+   * "no filters" — which the dispatcher reads as "nothing to scope", not as "deny".
+   *
+   * For `assistants` and `store` that is the documented gate-only behaviour and is harmless: neither
+   * can write into another tenant's data. `crons` is the first resource for which it is *not* — a
+   * schedule creates runs on a thread, so an unscoped cron resource would let any authenticated
+   * caller enumerate every tenant's schedules and attach one to a thread they cannot even read.
+   *
+   * So crons fall back to `threads`, which is also the honest description of what they are: runs,
+   * scheduled. A deployment that does register `@auth.on.crons` keeps full control and never reaches
+   * the fallback.
+   */
+  fallbackResource?: AuthResource;
+  /** The action to authorize against {@link fallbackResource}; defaults to {@link action}. */
+  fallbackAction?: AuthAction;
 }
 
 /** Every handler's resource + action. Keyed by handler name so it stays in lockstep with the table. */
@@ -61,6 +82,28 @@ export const ROUTE_AUTHZ: Record<keyof ProtocolHandlers, RouteAuthz> = {
   // scoped store's `get`, so a broad sweep cannot reach another owner's runs.
   cancelManyRuns: { resource: "threads", action: "update" },
   deleteRun: { resource: "threads", action: "delete" },
+
+  // crons — the one resource besides threads/assistants/store with `@auth.on` events of its own,
+  // because the SDK's `Auth` class already declares them (`crons:create|read|update|delete|search`)
+  // and because a *stateless* cron has no thread to authorize through.
+  //
+  // Every one falls back to `threads` when no cron handler is registered — see
+  // `RouteAuthz.fallbackResource`. Without that, a deployment scoping only threads (the idiomatic
+  // pattern, and what this repo's own chat-app example does) would serve the entire crons resource
+  // unscoped.
+  createCron: {
+    resource: "crons",
+    action: "create",
+    fallbackResource: "threads",
+    // Creating a schedule is asking for runs on a thread, so it inherits the permission that
+    // governs exactly that — not `threads:create`.
+    fallbackAction: "create_run",
+  },
+  getCron: { resource: "crons", action: "read", fallbackResource: "threads" },
+  searchCrons: { resource: "crons", action: "search", fallbackResource: "threads" },
+  countCrons: { resource: "crons", action: "search", fallbackResource: "threads" },
+  updateCron: { resource: "crons", action: "update", fallbackResource: "threads" },
+  deleteCron: { resource: "crons", action: "delete", fallbackResource: "threads" },
 
   // thread streaming / commands
   postThreadStream: { resource: "threads", action: "create_run" },

@@ -14,7 +14,7 @@ export type HttpMethod = "get" | "post" | "put" | "patch" | "delete";
  * `/threads/{id}/runs/...` is `runs`, not `threads`, and `disable_runs` removes it exactly as
  * `langgraph dev` would.
  */
-export type RouteGroup = "assistants" | "threads" | "runs" | "store" | "meta";
+export type RouteGroup = "assistants" | "threads" | "runs" | "crons" | "store" | "meta";
 
 /**
  * One route. `HandlerName` defaults to a member of the protocol handler table; a surface mounted
@@ -145,6 +145,26 @@ export const skeinRoutes: readonly RouteBinding[] = [
     path: "/threads/:thread_id/history",
     handler: "getThreadHistory",
     group: "threads",
+  },
+
+  // crons — a LangGraph Platform extension, not part of the open Agent Protocol spec.
+  //
+  // These MUST precede the `/runs/...` bindings below. `/runs` itself is an anchored literal so it
+  // cannot shadow `/runs/crons`, but `/runs/crons/search` and `/runs/crons/count` are literals
+  // competing with the `/runs/crons/:cron_id` parameter path, and the matcher takes the first
+  // binding that matches — so a literal must come before the `:param` that would swallow it.
+  { method: "post", path: "/runs/crons/search", handler: "searchCrons", group: "crons" },
+  { method: "post", path: "/runs/crons/count", handler: "countCrons", group: "crons" },
+  { method: "post", path: "/runs/crons", handler: "createCron", group: "crons" },
+  { method: "get", path: "/runs/crons/:cron_id", handler: "getCron", group: "crons" },
+  { method: "patch", path: "/runs/crons/:cron_id", handler: "updateCron", group: "crons" },
+  { method: "delete", path: "/runs/crons/:cron_id", handler: "deleteCron", group: "crons" },
+  {
+    method: "post",
+    path: "/threads/:thread_id/runs/crons",
+    handler: "createCron",
+    group: "crons",
+    foldThreadIdIntoBody: true,
   },
 
   // runs — the stateless handlers are reused on the thread-scoped path with the id folded in.

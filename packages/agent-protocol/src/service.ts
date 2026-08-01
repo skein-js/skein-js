@@ -5,6 +5,7 @@
 import { createAssistantService, type AssistantService } from "./assistants/assistant-service.js";
 import type { ProtocolContext } from "./context.js";
 import { createContext } from "./context.js";
+import { createCronService, type CronService } from "./crons/cron-service.js";
 import type { ProtocolDeps } from "./deps.js";
 import { createMetaService, type MetaService } from "./meta/server-info.js";
 import { createRunService, type RunService } from "./runs/run-service.js";
@@ -20,6 +21,8 @@ export interface ProtocolService {
   threads: ThreadService;
   threadStream: ThreadStreamService;
   runs: RunService;
+  /** Scheduled runs — a LangGraph Platform extension, not part of the open protocol spec. */
+  crons: CronService;
   store: StoreService;
   /** Server capability/version handshake — `GET /info`. */
   meta: MetaService;
@@ -37,6 +40,7 @@ export function createProtocolServiceFromContext(ctx: ProtocolContext): Protocol
     threads,
     threadStream: createThreadStreamService(ctx, runs),
     runs,
+    crons: createCronService(ctx),
     store: createStoreService(ctx.deps),
     meta: createMetaService(ctx.deps),
   };

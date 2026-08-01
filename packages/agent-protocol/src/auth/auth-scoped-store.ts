@@ -212,6 +212,77 @@ export function createAuthScopedStore(
     return { ...inner, threads, runs, maxPageSize: inner.maxPageSize };
   }
 
+  if (resource === "crons") {
+    const crons = {
+      // `listDue`, `claimAndCreateRun`, `claimNextRun`, `getAuth` and `maxOverdueMs` are inherited
+      // **unfiltered** through this spread, for the same reason `listActiveRuns` is above: they are
+      // scheduler machinery, not user-facing reads, and a filtered version would hide a cron from the
+      // very loop that has to fire it. Nothing leaks either — this decorator is only ever built
+      // per-request in `authorizing-handlers.ts`, while the scheduler runs off the base context and
+      // never sees a filtered store at all.
+      ...inner.crons,
+      get: async (cronId: string) => {
+        const cron = await inner.crons.get(cronId);
+        return cron && matches(cron.metadata) ? cron : null;
+      },
+      search: async (query: Parameters<SkeinStore["crons"]["search"]>[0]) => {
+        // Ownership goes into the driver query, so paging walks owned rows rather than
+        // owned-rows-within-a-page. The caller's own `enforcedMetadata` is dropped first: it is the
+        // server's field, and honouring a caller-supplied one would let them widen their own scope.
+        const { enforcedMetadata: _fromCaller, ...requested } = query;
+        const found = await inner.crons.search({
+          ...requested,
+          ...(ownershipMetadata ? { enforcedMetadata: ownershipMetadata } : {}),
+        });
+        // The in-process pass is what actually enforces it — the metadata translation errs broad.
+        return found.filter((cron) => matches(cron.metadata));
+      },
+      count: async (query: Parameters<SkeinStore["crons"]["count"]>[0]) => {
+        const { enforcedMetadata: _fromCaller, ...requested } = query;
+        return inner.crons.count({
+          ...requested,
+          ...(ownershipMetadata ? { enforcedMetadata: ownershipMetadata } : {}),
+        });
+      },
+      create: (input: Parameters<SkeinStore["crons"]["create"]>[0]) =>
+        inner.crons.create({ ...input, metadata: stamp(input.metadata) }),
+      update: async (cronId: string, patch: Parameters<SkeinStore["crons"]["update"]>[1]) => {
+        const cron = await inner.crons.get(cronId);
+        if (!cron || !matches(cron.metadata)) {
+          throw SkeinHttpError.notFound(`Cron "${cronId}" not found.`);
+        }
+        // Re-stamp when the patch touches metadata, so a caller can't drop their own owner tag and
+        // orphan the cron out of their own listing.
+        const next =
+          patch.metadata !== undefined ? { ...patch, metadata: stamp(patch.metadata) } : patch;
+        return inner.crons.update(cronId, next);
+      },
+      delete: async (cronId: string) => {
+        const cron = await inner.crons.get(cronId);
+        if (!cron || !matches(cron.metadata)) {
+          throw SkeinHttpError.notFound(`Cron "${cronId}" not found.`);
+        }
+        return inner.crons.delete(cronId);
+      },
+    };
+
+    // A thread cron must not be attachable to a thread the caller cannot see. This route's resource
+    // is `crons`, so the `threads` branch above does not run and `inner.threads` would be unscoped —
+    // which would let `POST /threads/{tid}/runs/crons` schedule runs onto another tenant's thread.
+    // Only the one read the cron service performs needs gating: nothing here creates or writes a
+    // thread, and the fired run does its own stamping under the `threads` resource at fire time.
+    const threads: ThreadRepo = {
+      ...inner.threads,
+      get: async (threadId) => {
+        const thread = await inner.threads.get(threadId);
+        return thread && matches(thread.metadata) ? thread : null;
+      },
+    };
+
+    // `maxPageSize` carried explicitly for the same prototype-getter reason as the threads branch.
+    return { ...inner, crons, threads, maxPageSize: inner.maxPageSize };
+  }
+
   // `assistants` and `store` are gate-only in Depth 1: the `@auth.on.*` handler still runs (it can
   // deny with 403), but we do NOT apply its ownership filter. Assistants are auto-registered from the
   // graphs with no owner metadata, so filtering them would hide the shared/system assistants every

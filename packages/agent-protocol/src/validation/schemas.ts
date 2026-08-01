@@ -346,3 +346,151 @@ export const listNamespacesSchema = z
     offset: z.number().int().nonnegative().optional(),
   })
   .passthrough();
+
+/**
+ * The run-shaped half of a cron body: what each fire replays. A superset of what the SDK sends on
+ * `crons.create`, and stored verbatim as `Cron.payload`.
+ *
+ * `assistant_id` is absent here — it lives on the cron row itself, and the SDK passes it as a
+ * separate argument rather than in the payload.
+ */
+const cronRunPayloadSchema = z.object({
+  input: z.unknown().optional(),
+  command: commandSchema.optional(),
+  config: configSchema.optional(),
+  context: z.unknown().optional(),
+  stream_mode: streamModeSchema.optional(),
+  multitask_strategy: multitaskStrategySchema.optional(),
+  interrupt_before: interruptWhenSchema.optional(),
+  interrupt_after: interruptWhenSchema.optional(),
+  webhook: z
+    .string()
+    .url()
+    .transform((value) => new URL(value).href)
+    .optional(),
+  checkpoint_id: z.string().optional(),
+  /**
+   * Accepted and ignored, like the SDK's other forward-looking run knobs. Named explicitly rather
+   * than swallowed by `.passthrough()` so a reader can see they were considered.
+   */
+  checkpoint_during: z.boolean().optional(),
+  durability: z.string().optional(),
+  stream_subgraphs: z.boolean().optional(),
+  stream_resumable: z.boolean().optional(),
+});
+
+/**
+ * `POST /runs/crons` and `POST /threads/{thread_id}/runs/crons`.
+ *
+ * One schema for both, because the SDK sends the same body to both: the OpenAPI spec splits
+ * `CronCreate` (which has `on_run_completed`) from `ThreadCronCreate` (which has
+ * `multitask_strategy`), but `@langchain/langgraph-sdk` sends both fields on both routes. Accepting
+ * the union is what keeps the official client working; the service then resolves which of them
+ * actually applies from whether a thread was named.
+ */
+export const cronCreateSchema = cronRunPayloadSchema
+  .extend({
+    assistant_id: z.string().min(1),
+    /** Validated as a real 5-field expression by the service, which owns the cron parser. */
+    schedule: z.string().min(1),
+    /** Folded in from the path on the thread-scoped route (`foldThreadIdIntoBody`). */
+    thread_id: z.string().min(1).optional(),
+    /** IANA zone; `null` means UTC. */
+    timezone: z.string().min(1).nullish(),
+    end_time: z.string().datetime({ offset: true }).nullish(),
+    enabled: z.boolean().optional(),
+    /** Only meaningful for a stateless cron; the service ignores it for a thread cron. */
+    on_run_completed: z.enum(["delete", "keep"]).optional(),
+    metadata: z.record(z.unknown()).optional(),
+  })
+  .passthrough();
+
+/**
+ * `PATCH /runs/crons/{cron_id}`.
+ *
+ * Every nullable field is `.nullish()` rather than `.optional()`, and that distinction is the whole
+ * contract: omitted leaves the stored value, an explicit `null` clears it. The wire spec says so for
+ * `end_time` ("send null to clear a previously set end time; omit to leave it unchanged"), and Zod
+ * is where the two are told apart — by the time the service sees the object, `undefined` and `null`
+ * have to still mean different things.
+ */
+export const cronUpdateSchema = cronRunPayloadSchema
+  .extend({
+    schedule: z.string().min(1).optional(),
+    timezone: z.string().min(1).nullish(),
+    end_time: z.string().datetime({ offset: true }).nullish(),
+    enabled: z.boolean().optional(),
+    on_run_completed: z.enum(["delete", "keep"]).optional(),
+    /** MERGES into the stored metadata rather than replacing it, matching LangGraph. */
+    metadata: z.record(z.unknown()).optional(),
+  })
+  .passthrough();
+
+/**
+ * `POST /runs/crons/search`.
+ *
+ * `sort_by` accepts the union of the SDK's `CronSortBy` and the OpenAPI spec's enum (which also
+ * allows `end_time`), so a client written against either gets the sort it asked for rather than a
+ * silent fallback to `created_at`.
+ */
+export const cronSearchSchema = z
+  .object({
+    assistant_id: z.string().min(1).optional(),
+    thread_id: z.string().min(1).optional(),
+    enabled: z.boolean().optional(),
+    metadata: z.record(z.unknown()).optional(),
+    limit: z.number().int().positive().max(1000).optional(),
+    offset: z.number().int().nonnegative().optional(),
+    sort_by: z
+      .enum([
+        "cron_id",
+        "assistant_id",
+        "thread_id",
+        "created_at",
+        "updated_at",
+        "next_run_date",
+        "end_time",
+      ])
+      .optional(),
+    sort_order: z.enum(["asc", "desc"]).optional(),
+    /**
+     * Field projection. Validated so a typo is a 400 rather than silence, then ignored: skein always
+     * returns the full `Cron`. Projection saves nothing on a row this small, and the SDK's enum
+     * includes a pseudo-field (`now`) whose server-side meaning LangGraph does not document —
+     * inventing semantics for it would be worse than honestly not implementing it.
+     */
+    select: z
+      .array(
+        z.enum([
+          "cron_id",
+          "assistant_id",
+          "thread_id",
+          "end_time",
+          "schedule",
+          "created_at",
+          "updated_at",
+          "user_id",
+          "payload",
+          "next_run_date",
+          "metadata",
+          "now",
+          "timezone",
+          "enabled",
+          "on_run_completed",
+        ]),
+      )
+      .optional(),
+  })
+  .passthrough();
+
+/**
+ * `POST /runs/crons/count` — the search filters without pagination, sort, or projection. Derived
+ * from {@link cronSearchSchema} for the same reason {@link threadCountSchema} is derived.
+ */
+export const cronCountSchema = cronSearchSchema.omit({
+  limit: true,
+  offset: true,
+  sort_by: true,
+  sort_order: true,
+  select: true,
+});
