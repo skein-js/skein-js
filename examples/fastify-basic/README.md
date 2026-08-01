@@ -30,7 +30,7 @@ pnpm install
 pnpm dev                      # → tsx watch src/server.ts, listening on http://127.0.0.1:2024
 ```
 
-Then point the [`@langchain/langgraph-sdk`](https://www.npmjs.com/package/@langchain/langgraph-sdk)
+Then point the [`@langchain/langgraph-sdk`](https://github.com/langchain-ai/langgraphjs/tree/main/libs/sdk)
 `Client` (or React `useStream`) at `http://127.0.0.1:2024`:
 
 ```ts

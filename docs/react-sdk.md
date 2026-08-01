@@ -4,7 +4,8 @@ A core promise of skein-js: **your existing frontend code keeps working by chang
 API URL.** That includes the React streaming hook, which is the most common way LangGraph
 apps render agent output.
 
-**What this gives you:** point [`useStream`](https://langchain-ai.github.io/langgraphjs/) at a
+**What this gives you:** point
+[`useStream`](https://reference.langchain.com/javascript/langchain-langgraph-sdk/react/useStream) at a
 skein-js server and you get the whole rich chat UX for free — live token streaming, model
 **thinking**, structured **tool-result cards**, and **human-in-the-loop** interrupt/resume — with no
 custom SDK and no bespoke wire format. You send a turn with `thread.submit(...)`, read live state off
@@ -90,6 +91,7 @@ a real browser. See [roadmap.md](./roadmap.md#verification).
 
 ## References
 
-- LangGraph JS SDK — <https://www.npmjs.com/package/@langchain/langgraph-sdk>
-- `useStream` docs — <https://docs.langchain.com/oss/javascript/langgraph/streaming>
+- LangGraph JS SDK — <https://github.com/langchain-ai/langgraphjs/tree/main/libs/sdk>
+- `useStream` API reference — <https://reference.langchain.com/javascript/langchain-langgraph-sdk/react/useStream>
+- LangGraph streaming — <https://docs.langchain.com/oss/javascript/langgraph/streaming>
 - Agent Chat UI — <https://github.com/langchain-ai/agent-chat-ui>

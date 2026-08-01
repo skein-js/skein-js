@@ -19,7 +19,8 @@ graph, then to production. If you already have a `langgraph.json` and just want 
 ## Prerequisites
 
 - **Node ≥ 20** and a package manager (`pnpm`/`npm`).
-- A **LangGraph.js graph** — a `CompiledStateGraph` from `@langchain/langgraph`. Any graph works; a
+- A **[LangGraph.js graph](https://docs.langchain.com/oss/javascript/langgraph/graph-api)** — a
+  `CompiledStateGraph` from `@langchain/langgraph`. Any graph works; a
   keyless "echo" graph is the fastest way to see the server before wiring a model. The runnable
   [`express-basic`](../examples/express-basic) and [`embed-graph`](../examples/embed-graph) examples
   ship one.

@@ -116,7 +116,8 @@ The memory driver holds versions in a second map; Postgres uses an `assistant_ve
 ### Long-term memory in the graph (`getStore()`)
 
 The `store` repo isn't only reachable over the `/store/items` HTTP endpoints — it is also injected
-into **every graph run** as a LangGraph [`BaseStore`](https://langchain-ai.github.io/langgraphjs/reference/classes/checkpoint.BaseStore.html),
+into **every graph run** as a LangGraph
+[`BaseStore`](https://docs.langchain.com/oss/javascript/langgraph/persistence),
 alongside the checkpointer. A node reads and writes cross-thread memory the LangGraph-native way:
 
 ```ts
@@ -178,7 +179,7 @@ and `skein dev --store postgres`); pure in-memory `skein dev` still enforces exp
   externals — see [bundling.md](./bundling.md).
 - Uses **`@langchain/langgraph-checkpoint-postgres`** (`PostgresSaver.fromConnString`) for
   graph checkpoints — we wrap it rather than reimplement checkpointing.
-  <https://www.npmjs.com/package/@langchain/langgraph-checkpoint-postgres>
+  <https://github.com/langchain-ai/langgraphjs/tree/main/libs/checkpoint-postgres>
 - **pgvector** for semantic store search, configured from `langgraph.json`'s
   `store.index.{embed, dims, fields}` (see [langgraph-cli-compat.md](./langgraph-cli-compat.md)).
   pgvector is **opt-in**: the base schema needs no extension, so skein runs on a stock managed

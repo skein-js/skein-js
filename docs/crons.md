@@ -6,7 +6,7 @@ and driven by the official `@langchain/langgraph-sdk` client.
 > **Compatibility note:** crons are **not** part of the open
 > [Agent Protocol](https://github.com/langchain-ai/agent-protocol) spec — its `openapi.json` has no
 > cron paths. They are a LangGraph Platform / LangSmith Deployment extension, and a paid-tier one.
-> The OSS [`@langchain/langgraph-api`](https://www.npmjs.com/package/@langchain/langgraph-api) server
+> The OSS [`@langchain/langgraph-api`](https://github.com/langchain-ai/langgraphjs/tree/main/libs/langgraph-api) server
 > registers the routes but every handler throws `500 Not implemented`, and its `GET /info` reports
 > `crons: false`. skein implements them against the LangSmith Deployment OpenAPI spec plus the SDK's
 > TypeScript types — the same oracle the rest of the wire surface uses ([reuse.md](./reuse.md)).

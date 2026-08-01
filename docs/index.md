@@ -3,7 +3,7 @@
 skein-js is the **open-source alternative to LangGraph Platform** (now LangSmith Deployment) **for
 TypeScript** — a framework-agnostic library that implements LangChain's
 [**Agent Protocol**](https://github.com/langchain-ai/agent-protocol) on top of
-[**LangGraph.js**](https://github.com/langchain-ai/langgraphjs), so you can self-host your agents on
+[**LangGraph.js**](https://docs.langchain.com/oss/javascript/langgraph/overview), so you can self-host your agents on
 your own infrastructure. It also ships a CLI that is a **drop-in replacement for the LangGraph CLI**.
 
 ## Contents
@@ -39,11 +39,11 @@ ecosystem:
   it, but production self-hosting is an **Enterprise add-on requiring a commercial license key** —
   the platform's server runtime is source-available under the
   [Elastic License 2.0](https://www.elastic.co/licensing/elastic-license), not open source. The
-  managed **Plus** plan is **$39 / seat / month** plus usage-based deployment pricing (~$0.005 per
-  deployment run and per-minute uptime); fully self-hosted / hybrid is **Enterprise-only** with
-  custom pricing. A free **Self-Hosted Lite** exists but is node-capped and still needs a LangSmith
-  API key. ([pricing](https://www.langchain.com/pricing) ·
-  [self-hosting docs](https://docs.langchain.com/langgraph-platform/self-hosted), as of July 2026.)
+  managed **Plus** plan is **$39 / seat / month**, includes one small serverless deployment, and
+  meters additional deployment compute and storage through usage-based LCU/LSU rates. Fully
+  self-hosted and hybrid deployment are **Enterprise-only** with custom pricing.
+  ([pricing](https://www.langchain.com/pricing) ·
+  [self-hosting docs](https://docs.langchain.com/langsmith/self-hosted), as of August 2026.)
 - **[aegra](https://github.com/aegra/aegra)** — the leading _open_ self-hosted alternative — is
   **Python / FastAPI only**.
 
@@ -56,9 +56,9 @@ The [**Agent Protocol**](https://github.com/langchain-ai/agent-protocol) is the 
 standard that describes an agent server's surface — assistants, threads, runs, streaming,
 interrupts, and a store. Because it's a standard, the entire LangChain client ecosystem speaks it:
 
-- [`@langchain/langgraph-sdk`](https://www.npmjs.com/package/@langchain/langgraph-sdk) — the vanilla
+- [`@langchain/langgraph-sdk`](https://github.com/langchain-ai/langgraphjs/tree/main/libs/sdk) — the vanilla
   JS client (`client.threads` / `client.runs` / …)
-- [`@langchain/langgraph-sdk/react`](https://langchain-ai.github.io/langgraphjs/) — the **`useStream`**
+- [`@langchain/langgraph-sdk/react`](https://reference.langchain.com/javascript/langchain-langgraph-sdk/react/useStream) — the **`useStream`**
   hook, streaming over SSE
 - [Agent Chat UI](https://github.com/langchain-ai/agent-chat-ui) and LangGraph Studio
 
@@ -76,7 +76,7 @@ client surface keeps working with only a URL change.
 
 Unlike aegra — which had to reimplement the server in Python because the Python
 `langgraph-api` is proprietary — the **JavaScript Agent Protocol server is open source and
-MIT** ([`@langchain/langgraph-api`](https://www.npmjs.com/package/@langchain/langgraph-api)).
+MIT** ([`@langchain/langgraph-api`](https://github.com/langchain-ai/langgraphjs/tree/main/libs/langgraph-api)).
 So skein-js is deliberately thin: it **reuses as much LangGraph OSS as possible** (runtime,
 checkpointers, parser, schemas, SDK/types) and rebuilds only the durable-production,
 multi-framework, drop-in-CLI layer that OSS lacks. See [reuse.md](./reuse.md).
@@ -216,6 +216,6 @@ Want to contribute? See [CONTRIBUTING.md](../CONTRIBUTING.md) and [AGENTS.md](..
 ## References
 
 - Agent Protocol — <https://github.com/langchain-ai/agent-protocol>
-- LangGraph.js — <https://github.com/langchain-ai/langgraphjs>
-- LangGraph docs — <https://docs.langchain.com>
+- LangGraph.js docs — <https://docs.langchain.com/oss/javascript/langgraph/overview>
+- LangGraph.js source — <https://github.com/langchain-ai/langgraphjs>
 - aegra (Python prior art) — <https://github.com/aegra/aegra> · <https://www.aegra.dev>

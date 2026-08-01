@@ -1,7 +1,7 @@
 # `nextjs-app` example
 
 A **full-stack Next.js app**: the Agent Protocol is served **same-origin** from an App Router
-catch-all route, and a [`useStream`](https://www.npmjs.com/package/@langchain/langgraph-sdk) chat UI
+catch-all route, and a [`useStream`](https://github.com/langchain-ai/langgraphjs/tree/main/libs/sdk) chat UI
 talks to it — one app, one process, **no CORS**. This is the flagship for
 [`@skein-js/nextjs`](../../packages/server-nextjs) (the App Router half; see
 [`nextjs-basic`](../nextjs-basic) for the Pages Router).

@@ -284,9 +284,11 @@ does by default.
 
 ## Authentication + authorization
 
-Auth is **transport-neutral**: it lives in `@skein-js/agent-protocol`, wrapping the handler table
-every adapter mounts, so Express, Fastify, NestJS, and Next.js inherit it identically. It's active only
-when an `Auth` engine is configured — a `langgraph.json` `auth` block (see
+Auth follows LangGraph's
+[custom-auth model](https://docs.langchain.com/langsmith/custom-auth) and is **transport-neutral**: it
+lives in `@skein-js/agent-protocol`, wrapping the handler table every adapter mounts, so Express,
+Fastify, NestJS, and Next.js inherit it identically. It's active only when an `Auth` engine is
+configured — a `langgraph.json` `auth` block (see
 [langgraph-cli-compat.md](./langgraph-cli-compat.md#authentication--authorization-auth)) or an injected
 `auth` dep; otherwise the server is unauthenticated.
 

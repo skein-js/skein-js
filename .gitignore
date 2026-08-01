@@ -28,6 +28,9 @@ out/
 npm-debug.log*
 pnpm-debug.log*
 
+# documentation link checker
+.lycheecache
+
 # os / editor
 .DS_Store
 .idea/

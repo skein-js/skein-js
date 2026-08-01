@@ -51,8 +51,9 @@ Copy-paste mount snippets for each framework are in
 ## Custom auth
 
 **Problem:** the server is open by default; you want authenticated, per-owner access. skein implements
-LangGraph's custom-auth model — export a `@langchain/langgraph-sdk/auth` `Auth` instance (the same
-class LangGraph Platform uses, so an existing file is drop-in):
+[LangGraph's custom-auth model](https://docs.langchain.com/langsmith/custom-auth) — export a
+`@langchain/langgraph-sdk/auth` `Auth` instance (the same class LangGraph Platform uses, so an
+existing file is drop-in):
 
 ```ts
 // auth.ts
@@ -105,7 +106,8 @@ These are present only when an `auth` engine is configured; without it, nothing 
 
 ## Human-in-the-loop (interrupt / resume)
 
-**Problem:** pause a run for approval, then resume it later. This is LangGraph-native — skein reuses the
+**Problem:** pause a run for approval, then resume it later. This is
+[LangGraph-native](https://docs.langchain.com/oss/javascript/langgraph/interrupts) — skein reuses the
 checkpointer so `interrupt()` and resume work unchanged. In the graph:
 
 ```ts
@@ -127,8 +129,10 @@ for free through [`useStream`](./react-sdk.md). Endpoint details:
 ## Long-term memory (`getStore()`)
 
 **Problem:** remember a fact about a user across threads/sessions. The long-term store is injected into
-every run as a LangGraph `BaseStore`, so a node reads/writes it the native way — and skein swaps the
-backend (in-memory in `skein dev`, Postgres in production) with no code change:
+every run as a LangGraph
+[`BaseStore`](https://docs.langchain.com/oss/javascript/langgraph/persistence), so a node reads/writes
+it the native way — and skein swaps the backend (in-memory in `skein dev`, Postgres in production)
+with no code change:
 
 ```ts
 import { getStore } from "@langchain/langgraph";

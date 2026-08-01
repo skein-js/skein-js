@@ -81,7 +81,7 @@ but leaves a hand-edited `Dockerfile`/`compose.yaml` untouched.
 References:
 
 - LangGraph CLI docs — <https://docs.langchain.com/langsmith/cli>
-- `@langchain/langgraph-cli` (npm) — <https://www.npmjs.com/package/@langchain/langgraph-cli>
+- `@langchain/langgraph-cli` source — <https://github.com/langchain-ai/langgraphjs/tree/main/libs/langgraph-cli>
 
 ## Under the hood: what skein-js changes (transparently)
 
@@ -107,7 +107,7 @@ multi-framework, drop-in-CLI layer that isn't open — so your project moves ove
 | Run queue (prod)         | [BullMQ](https://docs.bullmq.io) on Redis — background runs, retries, backoff, and crash recovery.                                                                                                                                                                                                                                              |
 | Cross-instance streaming | [ioredis](https://github.com/redis/ioredis) + **Redis Streams**/pub-sub — join a run's SSE stream from any instance.                                                                                                                                                                                                                            |
 | Postgres store (prod)    | [pg](https://node-postgres.com) + compiled-in schema migrations + **pgvector** semantic search.                                                                                                                                                                                                                                                 |
-| Checkpoints (prod)       | LangGraph-native [`PostgresSaver`](https://www.npmjs.com/package/@langchain/langgraph-checkpoint-postgres) — reused, not reinvented.                                                                                                                                                                                                            |
+| Checkpoints (prod)       | LangGraph-native [`PostgresSaver`](https://github.com/langchain-ai/langgraphjs/tree/main/libs/checkpoint-postgres) — reused, not reinvented.                                                                                                                                                                                                    |
 
 **Transparent improvements over `langgraph dev`.** Because the storage/queue are pluggable drivers,
 `skein dev` can run against **production-shaped** Postgres/Redis **without Docker** (`--store
@@ -210,7 +210,7 @@ are required** to move a project onto skein-js.
 ## Authentication + authorization (`auth`)
 
 skein-js implements LangGraph's **custom-auth** model. Point `auth.path` at a module exporting a
-[`@langchain/langgraph-sdk/auth`](https://www.npmjs.com/package/@langchain/langgraph-sdk) `Auth`
+[`@langchain/langgraph-sdk/auth`](https://github.com/langchain-ai/langgraphjs/tree/main/libs/sdk) `Auth`
 instance — the same class LangGraph Platform uses, so an existing auth file is drop-in:
 
 ```ts

@@ -1,0 +1,17 @@
+# Keep the link check deterministic enough for pull requests while still following redirects and
+# retrying transient failures. CI persists `.lycheecache` between runs.
+cache = true
+max_cache_age = "1d"
+cache_exclude_status = [429, "500.."]
+max_redirects = 10
+max_retries = 3
+retry_wait_time = 2
+timeout = 20
+include_fragments = "anchor-only"
+exclude_loopback = true
+
+# These hosts are intentionally illustrative, not resources readers should be able to open.
+exclude = [
+  '^https?://(?:[^/]+\.)?example\.(?:com|org|net)(?:/|$)',
+  '^https?://[^/]+\.invalid(?:/|$)',
+]

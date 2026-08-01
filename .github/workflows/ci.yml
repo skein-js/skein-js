@@ -49,6 +49,35 @@ jobs:
       - name: Lint, typecheck, test, build
         run: pnpm exec nx run-many -t lint typecheck test build --output-style=stream
 
+  docs-links:
+    name: docs links
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Restore link-check cache
+        uses: actions/cache@v4
+        with:
+          path: .lycheecache
+          key: lychee-${{ runner.os }}-${{ hashFiles('lychee.toml', 'README.md', 'llms.txt', 'docs/**/*.md', 'packages/*/README.md', 'examples/*/README.md') }}
+          restore-keys: |
+            lychee-${{ runner.os }}-
+
+      - name: Check documentation links
+        uses: lycheeverse/lychee-action@v2
+        with:
+          args: >-
+            --root-dir ${{ github.workspace }}
+            --config lychee.toml
+            --no-progress
+            README.md
+            llms.txt
+            'docs/**/*.md'
+            'packages/*/README.md'
+            'examples/*/README.md'
+          fail: true
+          token: ${{ secrets.GITHUB_TOKEN }}
+
   integration:
     name: integration tests (Testcontainers)
     runs-on: ubuntu-latest

@@ -4,6 +4,8 @@
 
 skein-js implements LangChain's Agent Protocol, so the whole LangChain client ecosystem (`@langchain/langgraph-sdk`, the `useStream` React hook, Agent Chat UI, LangGraph Studio) works against your server by changing only a URL — no custom SDK, no bespoke wire format. It deliberately reuses LangGraph OSS (runtime, checkpointers, config parser, schemas, SDK types) and rebuilds only the durable-production, multi-framework, drop-in-CLI layer OSS lacks. The one thing to know when consuming it: every framework adapter takes the same `{ config } | { deps }` options bag — point it at a `langgraph.json`, or hand it a `ProtocolDeps` you assembled (in-memory for dev, Postgres + Redis for production).
 
+Upstream references: [LangGraph.js overview](https://docs.langchain.com/oss/javascript/langgraph/overview), [LangGraph CLI](https://docs.langchain.com/langsmith/cli), and [Agent Server](https://docs.langchain.com/langsmith/agent-server).
+
 ## Getting started
 
 - [Getting started](https://github.com/skein-js/skein-js/blob/main/docs/getting-started.md): Guided walkthrough from zero to a running server, then to production (both on-ramps).

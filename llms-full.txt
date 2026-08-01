@@ -11,7 +11,7 @@
 
 **The open-source alternative to LangGraph Platform (now LangSmith Deployment) — for TypeScript.**
 
-Self-host your [LangGraph.js](https://github.com/langchain-ai/langgraphjs) agents behind the same
+Self-host your [LangGraph.js](https://docs.langchain.com/oss/javascript/langgraph/overview) agents behind the same
 standard [Agent Protocol](https://github.com/langchain-ai/agent-protocol) API the LangGraph SDK,
 `useStream`, and Agent Chat UI already speak — threads, runs, token streaming, long-term memory, and
 human-in-the-loop — on **your own infrastructure** and your own Postgres. Google Cloud Run, Railway,
@@ -60,8 +60,8 @@ capable agent server is a surprising amount of plumbing:
 
 The **[Agent Protocol](https://github.com/langchain-ai/agent-protocol)** is the open HTTP + SSE
 standard that describes all of this. Because it's a standard, any client that speaks it —
-[`@langchain/langgraph-sdk`](https://www.npmjs.com/package/@langchain/langgraph-sdk), the
-[`useStream`](https://langchain-ai.github.io/langgraphjs/) React hook,
+[`@langchain/langgraph-sdk`](https://github.com/langchain-ai/langgraphjs/tree/main/libs/sdk), the
+[`useStream`](https://reference.langchain.com/javascript/langchain-langgraph-sdk/react/useStream) React hook,
 [Agent Chat UI](https://github.com/langchain-ai/agent-chat-ui), LangGraph Studio — works with any
 server that implements it.
 
@@ -92,7 +92,7 @@ clients keep working unchanged.
   CLI is a one-word change. If something works under `langgraph dev` but not `skein dev`, that's a
   bug we want to hear about — [please file it](https://github.com/skein-js/skein-js/issues).
 - **♻️ Reuse first.** On JavaScript the Agent Protocol server internals are already open source
-  ([`@langchain/langgraph-api`](https://www.npmjs.com/package/@langchain/langgraph-api), MIT), so
+  ([`@langchain/langgraph-api`](https://github.com/langchain-ai/langgraphjs/tree/main/libs/langgraph-api), MIT), so
   skein-js doesn't rebuild them. It reuses the LangGraph runtime, checkpointers, `langgraph.json`
   parser, schemas, and SDK/types, and adds only the durable-production, multi-framework, and
   drop-in-CLI layer that OSS lacks. See [docs/reuse.md](./docs/reuse.md).
@@ -104,7 +104,7 @@ clients keep working unchanged.
 |                                 | LangGraph Platform                      | aegra            | **skein-js**                             |
 | ------------------------------- | --------------------------------------- | ---------------- | ---------------------------------------- |
 | Self-hosted in production       | 💲 Enterprise license only              | ✅ free          | ✅ free                                  |
-| License                         | Elastic License 2.0 (source-available)  | MIT              | **Apache-2.0**                           |
+| Server runtime license          | Elastic License 2.0 (source-available)  | MIT              | **Apache-2.0**                           |
 | Cost                            | $39/seat/mo + usage; self-host = custom | free             | **free**                                 |
 | Language                        | —                                       | Python / FastAPI | **TypeScript / Node**                    |
 | HTTP framework                  | —                                       | FastAPI          | **Express · Fastify · NestJS · Next.js** |
@@ -117,10 +117,9 @@ clients keep working unchanged.
 You _can_ self-host **LangGraph Platform** — but production self-hosting is an **Enterprise add-on
 that requires a commercial license key** (contact sales), because the platform's server runtime is
 source-available under the [Elastic License 2.0](https://www.elastic.co/licensing/elastic-license),
-not open source. The managed tiers are paid too: the **Plus** plan is **$39 / seat / month** plus
-usage-based deployment pricing (currently ~$0.005 per deployment run and per-minute uptime), and
-fully self-hosted / hybrid deployment is **Enterprise-only** with custom pricing. A free
-**Self-Hosted Lite** exists but is node-capped and still needs a LangSmith API key.
+not open source. The managed **Plus** plan is **$39 / seat / month**, includes one small serverless
+deployment, and meters additional deployment compute and storage through usage-based LCU/LSU rates.
+Fully self-hosted and hybrid deployment are **Enterprise-only** with custom pricing.
 
 If you're a **hobbyist or just getting started**, that model isn't ideal — you shouldn't need a
 commercial license or a per-run bill to ship a side project. And if the LangGraph Platform license
@@ -130,7 +129,7 @@ to make moving **either direction** painless. Because it's a drop-in for the Lan
 not a migration. Our goal is low lock-in in both directions, so you can start free on skein-js and
 adopt the platform if and when it's worth it.
 
-_LangGraph Platform pricing/licensing as of July 2026 — see [langchain.com/pricing](https://www.langchain.com/pricing) and the [self-hosting docs](https://docs.langchain.com/langgraph-platform/self-hosted). Always verify current terms._
+_LangSmith Deployment pricing/licensing as of August 2026 — see [langchain.com/pricing](https://www.langchain.com/pricing) and the [self-hosting docs](https://docs.langchain.com/langsmith/self-hosted). Always verify current terms._
 
 > 🚧 **Status: pre-alpha, but end-to-end.** Dev _and_ self-hosted production both work today, with
 > Express, Fastify, NestJS, and Next.js adapters. See the [roadmap](./docs/roadmap.md).
@@ -391,7 +390,7 @@ toolset:
   across instances so a client on one instance can follow a run on another.
 - **[pgvector](https://github.com/pgvector/pgvector)** (via `pg`) backs
   long-term memory with semantic search, while checkpoints stay LangGraph-native via
-  **[`PostgresSaver`](https://www.npmjs.com/package/@langchain/langgraph-checkpoint-postgres)** —
+  **[`PostgresSaver`](https://github.com/langchain-ai/langgraphjs/tree/main/libs/checkpoint-postgres)** —
   reused, not reinvented.
 
 Because storage and the queue are **pluggable drivers**, `skein dev` can even run against
@@ -656,7 +655,7 @@ your `langgraph dev` project work under `skein dev`?).
 skein-js is the **open-source alternative to LangGraph Platform** (now LangSmith Deployment) **for
 TypeScript** — a framework-agnostic library that implements LangChain's
 [**Agent Protocol**](https://github.com/langchain-ai/agent-protocol) on top of
-[**LangGraph.js**](https://github.com/langchain-ai/langgraphjs), so you can self-host your agents on
+[**LangGraph.js**](https://docs.langchain.com/oss/javascript/langgraph/overview), so you can self-host your agents on
 your own infrastructure. It also ships a CLI that is a **drop-in replacement for the LangGraph CLI**.
 
 ## Contents
@@ -692,11 +691,11 @@ ecosystem:
   it, but production self-hosting is an **Enterprise add-on requiring a commercial license key** —
   the platform's server runtime is source-available under the
   [Elastic License 2.0](https://www.elastic.co/licensing/elastic-license), not open source. The
-  managed **Plus** plan is **$39 / seat / month** plus usage-based deployment pricing (~$0.005 per
-  deployment run and per-minute uptime); fully self-hosted / hybrid is **Enterprise-only** with
-  custom pricing. A free **Self-Hosted Lite** exists but is node-capped and still needs a LangSmith
-  API key. ([pricing](https://www.langchain.com/pricing) ·
-  [self-hosting docs](https://docs.langchain.com/langgraph-platform/self-hosted), as of July 2026.)
+  managed **Plus** plan is **$39 / seat / month**, includes one small serverless deployment, and
+  meters additional deployment compute and storage through usage-based LCU/LSU rates. Fully
+  self-hosted and hybrid deployment are **Enterprise-only** with custom pricing.
+  ([pricing](https://www.langchain.com/pricing) ·
+  [self-hosting docs](https://docs.langchain.com/langsmith/self-hosted), as of August 2026.)
 - **[aegra](https://github.com/aegra/aegra)** — the leading _open_ self-hosted alternative — is
   **Python / FastAPI only**.
 
@@ -709,9 +708,9 @@ The [**Agent Protocol**](https://github.com/langchain-ai/agent-protocol) is the 
 standard that describes an agent server's surface — assistants, threads, runs, streaming,
 interrupts, and a store. Because it's a standard, the entire LangChain client ecosystem speaks it:
 
-- [`@langchain/langgraph-sdk`](https://www.npmjs.com/package/@langchain/langgraph-sdk) — the vanilla
+- [`@langchain/langgraph-sdk`](https://github.com/langchain-ai/langgraphjs/tree/main/libs/sdk) — the vanilla
   JS client (`client.threads` / `client.runs` / …)
-- [`@langchain/langgraph-sdk/react`](https://langchain-ai.github.io/langgraphjs/) — the **`useStream`**
+- [`@langchain/langgraph-sdk/react`](https://reference.langchain.com/javascript/langchain-langgraph-sdk/react/useStream) — the **`useStream`**
   hook, streaming over SSE
 - [Agent Chat UI](https://github.com/langchain-ai/agent-chat-ui) and LangGraph Studio
 
@@ -729,7 +728,7 @@ client surface keeps working with only a URL change.
 
 Unlike aegra — which had to reimplement the server in Python because the Python
 `langgraph-api` is proprietary — the **JavaScript Agent Protocol server is open source and
-MIT** ([`@langchain/langgraph-api`](https://www.npmjs.com/package/@langchain/langgraph-api)).
+MIT** ([`@langchain/langgraph-api`](https://github.com/langchain-ai/langgraphjs/tree/main/libs/langgraph-api)).
 So skein-js is deliberately thin: it **reuses as much LangGraph OSS as possible** (runtime,
 checkpointers, parser, schemas, SDK/types) and rebuilds only the durable-production,
 multi-framework, drop-in-CLI layer that OSS lacks. See [reuse.md](./reuse.md).
@@ -869,8 +868,8 @@ Want to contribute? See [CONTRIBUTING.md](../CONTRIBUTING.md) and [AGENTS.md](..
 ## References
 
 - Agent Protocol — <https://github.com/langchain-ai/agent-protocol>
-- LangGraph.js — <https://github.com/langchain-ai/langgraphjs>
-- LangGraph docs — <https://docs.langchain.com>
+- LangGraph.js docs — <https://docs.langchain.com/oss/javascript/langgraph/overview>
+- LangGraph.js source — <https://github.com/langchain-ai/langgraphjs>
 - aegra (Python prior art) — <https://github.com/aegra/aegra> · <https://www.aegra.dev>
 
 
@@ -899,7 +898,8 @@ graph, then to production. If you already have a `langgraph.json` and just want 
 ## Prerequisites
 
 - **Node ≥ 20** and a package manager (`pnpm`/`npm`).
-- A **LangGraph.js graph** — a `CompiledStateGraph` from `@langchain/langgraph`. Any graph works; a
+- A **[LangGraph.js graph](https://docs.langchain.com/oss/javascript/langgraph/graph-api)** — a
+  `CompiledStateGraph` from `@langchain/langgraph`. Any graph works; a
   keyless "echo" graph is the fastest way to see the server before wiring a model. The runnable
   [`express-basic`](../examples/express-basic) and [`embed-graph`](../examples/embed-graph) examples
   ship one.
@@ -1402,7 +1402,7 @@ but leaves a hand-edited `Dockerfile`/`compose.yaml` untouched.
 References:
 
 - LangGraph CLI docs — <https://docs.langchain.com/langsmith/cli>
-- `@langchain/langgraph-cli` (npm) — <https://www.npmjs.com/package/@langchain/langgraph-cli>
+- `@langchain/langgraph-cli` source — <https://github.com/langchain-ai/langgraphjs/tree/main/libs/langgraph-cli>
 
 ## Under the hood: what skein-js changes (transparently)
 
@@ -1428,7 +1428,7 @@ multi-framework, drop-in-CLI layer that isn't open — so your project moves ove
 | Run queue (prod)         | [BullMQ](https://docs.bullmq.io) on Redis — background runs, retries, backoff, and crash recovery.                                                                                                                                                                                                                                              |
 | Cross-instance streaming | [ioredis](https://github.com/redis/ioredis) + **Redis Streams**/pub-sub — join a run's SSE stream from any instance.                                                                                                                                                                                                                            |
 | Postgres store (prod)    | [pg](https://node-postgres.com) + compiled-in schema migrations + **pgvector** semantic search.                                                                                                                                                                                                                                                 |
-| Checkpoints (prod)       | LangGraph-native [`PostgresSaver`](https://www.npmjs.com/package/@langchain/langgraph-checkpoint-postgres) — reused, not reinvented.                                                                                                                                                                                                            |
+| Checkpoints (prod)       | LangGraph-native [`PostgresSaver`](https://github.com/langchain-ai/langgraphjs/tree/main/libs/checkpoint-postgres) — reused, not reinvented.                                                                                                                                                                                                    |
 
 **Transparent improvements over `langgraph dev`.** Because the storage/queue are pluggable drivers,
 `skein dev` can run against **production-shaped** Postgres/Redis **without Docker** (`--store
@@ -1531,7 +1531,7 @@ are required** to move a project onto skein-js.
 ## Authentication + authorization (`auth`)
 
 skein-js implements LangGraph's **custom-auth** model. Point `auth.path` at a module exporting a
-[`@langchain/langgraph-sdk/auth`](https://www.npmjs.com/package/@langchain/langgraph-sdk) `Auth`
+[`@langchain/langgraph-sdk/auth`](https://github.com/langchain-ai/langgraphjs/tree/main/libs/sdk) `Auth`
 instance — the same class LangGraph Platform uses, so an existing auth file is drop-in:
 
 ```ts
@@ -2448,9 +2448,11 @@ does by default.
 
 ## Authentication + authorization
 
-Auth is **transport-neutral**: it lives in `@skein-js/agent-protocol`, wrapping the handler table
-every adapter mounts, so Express, Fastify, NestJS, and Next.js inherit it identically. It's active only
-when an `Auth` engine is configured — a `langgraph.json` `auth` block (see
+Auth follows LangGraph's
+[custom-auth model](https://docs.langchain.com/langsmith/custom-auth) and is **transport-neutral**: it
+lives in `@skein-js/agent-protocol`, wrapping the handler table every adapter mounts, so Express,
+Fastify, NestJS, and Next.js inherit it identically. It's active only when an `Auth` engine is
+configured — a `langgraph.json` `auth` block (see
 [langgraph-cli-compat.md](./langgraph-cli-compat.md#authentication--authorization-auth)) or an injected
 `auth` dep; otherwise the server is unauthenticated.
 
@@ -2965,7 +2967,8 @@ A core promise of skein-js: **your existing frontend code keeps working by chang
 API URL.** That includes the React streaming hook, which is the most common way LangGraph
 apps render agent output.
 
-**What this gives you:** point [`useStream`](https://langchain-ai.github.io/langgraphjs/) at a
+**What this gives you:** point
+[`useStream`](https://reference.langchain.com/javascript/langchain-langgraph-sdk/react/useStream) at a
 skein-js server and you get the whole rich chat UX for free — live token streaming, model
 **thinking**, structured **tool-result cards**, and **human-in-the-loop** interrupt/resume — with no
 custom SDK and no bespoke wire format. You send a turn with `thread.submit(...)`, read live state off
@@ -3051,8 +3054,9 @@ a real browser. See [roadmap.md](./roadmap.md#verification).
 
 ## References
 
-- LangGraph JS SDK — <https://www.npmjs.com/package/@langchain/langgraph-sdk>
-- `useStream` docs — <https://docs.langchain.com/oss/javascript/langgraph/streaming>
+- LangGraph JS SDK — <https://github.com/langchain-ai/langgraphjs/tree/main/libs/sdk>
+- `useStream` API reference — <https://reference.langchain.com/javascript/langchain-langgraph-sdk/react/useStream>
+- LangGraph streaming — <https://docs.langchain.com/oss/javascript/langgraph/streaming>
 - Agent Chat UI — <https://github.com/langchain-ai/agent-chat-ui>
 
 
@@ -3178,7 +3182,8 @@ The memory driver holds versions in a second map; Postgres uses an `assistant_ve
 ### Long-term memory in the graph (`getStore()`)
 
 The `store` repo isn't only reachable over the `/store/items` HTTP endpoints — it is also injected
-into **every graph run** as a LangGraph [`BaseStore`](https://langchain-ai.github.io/langgraphjs/reference/classes/checkpoint.BaseStore.html),
+into **every graph run** as a LangGraph
+[`BaseStore`](https://docs.langchain.com/oss/javascript/langgraph/persistence),
 alongside the checkpointer. A node reads and writes cross-thread memory the LangGraph-native way:
 
 ```ts
@@ -3240,7 +3245,7 @@ and `skein dev --store postgres`); pure in-memory `skein dev` still enforces exp
   externals — see [bundling.md](./bundling.md).
 - Uses **`@langchain/langgraph-checkpoint-postgres`** (`PostgresSaver.fromConnString`) for
   graph checkpoints — we wrap it rather than reimplement checkpointing.
-  <https://www.npmjs.com/package/@langchain/langgraph-checkpoint-postgres>
+  <https://github.com/langchain-ai/langgraphjs/tree/main/libs/checkpoint-postgres>
 - **pgvector** for semantic store search, configured from `langgraph.json`'s
   `store.index.{embed, dims, fields}` (see [langgraph-cli-compat.md](./langgraph-cli-compat.md)).
   pgvector is **opt-in**: the base schema needs no extension, so skein runs on a stock managed
@@ -3360,7 +3365,7 @@ This doc covers how skein-js executes runs and how it scales horizontally — mo
 [aegra](https://github.com/aegra/aegra)'s worker + Redis architecture, adapted to Node.
 
 > **Reuse note:** `@skein-js/redis` is the run **queue + pub/sub** — the piece LangGraph OSS
-> does not provide (the open [`@langchain/langgraph-api`](https://www.npmjs.com/package/@langchain/langgraph-api)
+> does not provide (the open [`@langchain/langgraph-api`](https://github.com/langchain-ai/langgraphjs/tree/main/libs/langgraph-api)
 > server runs runs in-process, in-memory). It is _not_ a checkpointer; for Redis-backed
 > checkpoints use `@langchain/langgraph-checkpoint-redis`. See [reuse.md](./reuse.md).
 
@@ -3559,7 +3564,7 @@ and driven by the official `@langchain/langgraph-sdk` client.
 > **Compatibility note:** crons are **not** part of the open
 > [Agent Protocol](https://github.com/langchain-ai/agent-protocol) spec — its `openapi.json` has no
 > cron paths. They are a LangGraph Platform / LangSmith Deployment extension, and a paid-tier one.
-> The OSS [`@langchain/langgraph-api`](https://www.npmjs.com/package/@langchain/langgraph-api) server
+> The OSS [`@langchain/langgraph-api`](https://github.com/langchain-ai/langgraphjs/tree/main/libs/langgraph-api) server
 > registers the routes but every handler throws `500 Not implemented`, and its `GET /info` reports
 > `crons: false`. skein implements them against the LangSmith Deployment OpenAPI spec plus the SDK's
 > TypeScript types — the same oracle the rest of the wire surface uses ([reuse.md](./reuse.md)).
@@ -4202,8 +4207,9 @@ Copy-paste mount snippets for each framework are in
 ## Custom auth
 
 **Problem:** the server is open by default; you want authenticated, per-owner access. skein implements
-LangGraph's custom-auth model — export a `@langchain/langgraph-sdk/auth` `Auth` instance (the same
-class LangGraph Platform uses, so an existing file is drop-in):
+[LangGraph's custom-auth model](https://docs.langchain.com/langsmith/custom-auth) — export a
+`@langchain/langgraph-sdk/auth` `Auth` instance (the same class LangGraph Platform uses, so an
+existing file is drop-in):
 
 ```ts
 // auth.ts
@@ -4256,7 +4262,8 @@ These are present only when an `auth` engine is configured; without it, nothing 
 
 ## Human-in-the-loop (interrupt / resume)
 
-**Problem:** pause a run for approval, then resume it later. This is LangGraph-native — skein reuses the
+**Problem:** pause a run for approval, then resume it later. This is
+[LangGraph-native](https://docs.langchain.com/oss/javascript/langgraph/interrupts) — skein reuses the
 checkpointer so `interrupt()` and resume work unchanged. In the graph:
 
 ```ts
@@ -4278,8 +4285,10 @@ for free through [`useStream`](./react-sdk.md). Endpoint details:
 ## Long-term memory (`getStore()`)
 
 **Problem:** remember a fact about a user across threads/sessions. The long-term store is injected into
-every run as a LangGraph `BaseStore`, so a node reads/writes it the native way — and skein swaps the
-backend (in-memory in `skein dev`, Postgres in production) with no code change:
+every run as a LangGraph
+[`BaseStore`](https://docs.langchain.com/oss/javascript/langgraph/persistence), so a node reads/writes
+it the native way — and skein swaps the backend (in-memory in `skein dev`, Postgres in production)
+with no code change:
 
 ```ts
 import { getStore } from "@langchain/langgraph";
@@ -6120,7 +6129,7 @@ LangChain publishes a large, **MIT-licensed** JavaScript ecosystem under
 [`langchain-ai/langgraphjs`](https://github.com/langchain-ai/langgraphjs). Crucially — and
 unlike the Python side that [aegra](https://github.com/aegra/aegra) had to reimplement from
 scratch — the **JS Agent Protocol dev server itself is open source**
-([`@langchain/langgraph-api`](https://www.npmjs.com/package/@langchain/langgraph-api), MIT).
+([`@langchain/langgraph-api`](https://github.com/langchain-ai/langgraphjs/tree/main/libs/langgraph-api), MIT).
 
 So skein-js is deliberately _thin_. We stand on the OSS runtime, checkpointers, parser,
 schemas, and SDK, and add only the **durable-production, multi-framework, drop-in-CLI**

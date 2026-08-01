@@ -1,7 +1,7 @@
 # `react-usestream` example
 
 The **frontend harness**: a minimal Next.js app that streams from **any** skein-js server using
-[`@langchain/langgraph-sdk/react`](https://www.npmjs.com/package/@langchain/langgraph-sdk)'s
+[`@langchain/langgraph-sdk/react`](https://github.com/langchain-ai/langgraphjs/tree/main/libs/sdk)'s
 `useStream` hook. Point it at a backend, send a message, and watch the reply stream in
 token-by-token in a real browser.
 

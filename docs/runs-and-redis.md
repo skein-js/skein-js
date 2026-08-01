@@ -4,7 +4,7 @@ This doc covers how skein-js executes runs and how it scales horizontally — mo
 [aegra](https://github.com/aegra/aegra)'s worker + Redis architecture, adapted to Node.
 
 > **Reuse note:** `@skein-js/redis` is the run **queue + pub/sub** — the piece LangGraph OSS
-> does not provide (the open [`@langchain/langgraph-api`](https://www.npmjs.com/package/@langchain/langgraph-api)
+> does not provide (the open [`@langchain/langgraph-api`](https://github.com/langchain-ai/langgraphjs/tree/main/libs/langgraph-api)
 > server runs runs in-process, in-memory). It is _not_ a checkpointer; for Redis-backed
 > checkpoints use `@langchain/langgraph-checkpoint-redis`. See [reuse.md](./reuse.md).
 

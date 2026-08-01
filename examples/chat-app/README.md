@@ -101,8 +101,9 @@ recall ranks by semantic similarity.
 
 ### Authentication (optional)
 
-[`src/auth.ts`](./src/auth.ts) is a LangGraph-style [`Auth`](https://langchain-ai.github.io/langgraphjs/)
-handler, referenced from [`langgraph.json`](./langgraph.json)'s `auth` block. skein applies it to
+[`src/auth.ts`](./src/auth.ts) is a LangGraph-style
+[`Auth`](https://docs.langchain.com/langsmith/custom-auth) handler, referenced from
+[`langgraph.json`](./langgraph.json)'s `auth` block. skein applies it to
 every request across the whole Agent Protocol surface — the same custom-auth model as LangGraph
 Platform.
 

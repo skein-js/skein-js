@@ -14,7 +14,7 @@ LangChain publishes a large, **MIT-licensed** JavaScript ecosystem under
 [`langchain-ai/langgraphjs`](https://github.com/langchain-ai/langgraphjs). Crucially — and
 unlike the Python side that [aegra](https://github.com/aegra/aegra) had to reimplement from
 scratch — the **JS Agent Protocol dev server itself is open source**
-([`@langchain/langgraph-api`](https://www.npmjs.com/package/@langchain/langgraph-api), MIT).
+([`@langchain/langgraph-api`](https://github.com/langchain-ai/langgraphjs/tree/main/libs/langgraph-api), MIT).
 
 So skein-js is deliberately _thin_. We stand on the OSS runtime, checkpointers, parser,
 schemas, and SDK, and add only the **durable-production, multi-framework, drop-in-CLI**
