@@ -133,6 +133,14 @@ Also shipped, beyond the original MVP plan:
   kwargs so any instance can apply them, and execution is serialized per thread by a
   `ThreadExecutionGate` (a Postgres session advisory lock). See
   [deploy.md](./deploy.md#scaling-past-one-instance).
+- ✅ **Cron / scheduled runs** — the full LangGraph Platform **Crons** resource (all seven endpoints,
+  stateless and thread-scoped, `enabled` pause/resume, tri-state `end_time`, IANA timezones with DST
+  handling) plus the scheduler that fires them. Schedules live in `SkeinStore`, so they survive a
+  Redis flush and are searchable and sortable; a compare-and-swap claim makes an occurrence fire
+  exactly once across instances with no leader election. The claim and the run row commit together
+  as a transactional outbox, which lifts cron _and_ ordinary background runs to at-least-once
+  delivery. Works on every store/queue combination, including `skein dev` with no Docker. See
+  [crons.md](./crons.md).
 
 ## Planned / coming soon (post-MVP)
 
@@ -141,11 +149,10 @@ These are on the map but not yet built. Want one sooner? Upvote or open an issue
 
 The next block is the LangGraph feature-parity backlog, listed **in priority order** (highest first):
 
-- 🗺️ **Cron / scheduled runs (LangGraph parity).** LangGraph Platform exposes a **Crons** resource
-  (create/list/delete schedules that kick off a run on a thread on a cadence). skein-js does not yet
-  implement it — see [Known gaps](#known-gaps-vs-the-langgraph-cli--platform). Planned: a `crons`
-  resource in [`@skein-js/agent-protocol`](../packages/agent-protocol) backed by a scheduler over the
-  existing run queue (a natural fit for the BullMQ repeatable-jobs feature on the Redis driver).
+- ❌ **Sub-minute schedules** (non-goal). A standard 5-field cron expression cannot express them, and
+  accepting a 6-field one would run a schedule at a different time than its author's crontab says.
+- ❌ **Backfilling missed cron occurrences** (non-goal). A cron that came due during an outage fires
+  once on return and resyncs; it does not replay the backlog. See [crons.md](./crons.md#semantics).
 - 🗺️ **MCP endpoint (LangGraph parity).** LangGraph Server exposes graphs as MCP tools at `/mcp`.
   skein-js has no MCP surface yet. Planned: an `/mcp` handler in the transport-neutral handler table
   that advertises each graph as an MCP tool and bridges tool calls onto runs.
@@ -186,7 +193,7 @@ valuable feedback we can get.
 | Auth + authorization                     | ✅ shipped         | LangGraph `Auth` parity — see below.                                                 |
 | Multitask / double-texting               | ✅ shipped         | `reject` (422) / `enqueue` / `interrupt` / `rollback`.                               |
 | Multi-instance double-texting            | ✅ shipped         | Atomic create guard, cross-instance cancel, and a per-thread execution claim.        |
-| **Cron / scheduled runs**                | 🗺️ planned         | LangGraph Platform's Crons resource; not yet implemented.                            |
+| **Cron / scheduled runs**                | ✅ shipped         | Full Crons resource + scheduler; works on every driver. See [crons.md](./crons.md).  |
 | Stateless + batch run endpoints          | ✅ shipped         | `POST /runs`, `/runs/batch`, `/runs/cancel` (cancelMany).                            |
 | `POST /threads/count` · `/threads/prune` | ✅ shipped         | `delete` and `keep_latest` prune strategies.                                         |
 | Time travel (fork from checkpoint)       | ✅ shipped         | Update state at a checkpoint + fork a run from one; rides the checkpointer.          |

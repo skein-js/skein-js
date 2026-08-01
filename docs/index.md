@@ -199,6 +199,7 @@ machine-readable [`llms.txt`](../llms.txt) / [`llms-full.txt`](../llms-full.txt)
 | [react-sdk.md](./react-sdk.md)                           | `@langchain/langgraph-sdk` + `useStream` compatibility          |
 | [storage.md](./storage.md)                               | `SkeinStore`, in-memory + Postgres, pgvector, checkpointer      |
 | [runs-and-redis.md](./runs-and-redis.md)                 | Run engine, queue, cross-instance streaming                     |
+| [crons.md](./crons.md)                                   | Scheduled runs — the Crons resource and the scheduler           |
 | [errors-and-logging.md](./errors-and-logging.md)         | What a failed run reports, and where — wire, log, `skein dev`   |
 | [observability.md](./observability.md)                   | Tracing + metrics — LangSmith, PostHog, OpenTelemetry, custom   |
 | [deploy.md](./deploy.md)                                 | Deploy anywhere — Cloud Run, Railway, Fly, Render, AWS, K8s     |

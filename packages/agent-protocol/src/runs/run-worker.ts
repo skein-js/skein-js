@@ -151,7 +151,12 @@ export function createRunWorker(ctx: ProtocolContext, options: RunWorkerOptions 
       // the log summary and the telemetry event report one number, not two that nearly agree.
       const queuedAtMs = Date.parse(run.created_at);
       const outcome = await startRunExecution(ctx, run, kwargs, {
-        trigger: "background",
+        // A cron-fired run is a queued run in every mechanical respect, but its latency profile is
+        // not: it waited on a clock, not on a caller, so a scheduled fleet's queue time would
+        // otherwise skew the percentiles operators watch for interactive traffic. Read from the run
+        // row (stamped at fire time) rather than carried through the queue, so a run recovered on
+        // another instance still reports honestly.
+        trigger: run.metadata?.["cron_id"] === undefined ? "background" : "cron",
         ...(Number.isNaN(queuedAtMs) ? {} : { queuedAtMs }),
       });
       status = outcome.status;

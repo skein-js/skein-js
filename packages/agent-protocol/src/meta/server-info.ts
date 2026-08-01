@@ -88,7 +88,7 @@ export function createMetaService(
         context: "js",
         flags: {
           assistants: true,
-          crons: false,
+          crons: true,
           langsmith: langsmithTracingEnabled(env),
         },
       };

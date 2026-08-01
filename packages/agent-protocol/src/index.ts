@@ -60,6 +60,31 @@ export {
   DEFAULT_SHUTDOWN_GRACE_MS,
 } from "./runs/run-worker.js";
 export type { RunWorker, RunWorkerOptions } from "./runs/run-worker.js";
+export {
+  createCronScheduler,
+  DEFAULT_CRON_BATCH_SIZE,
+  DEFAULT_CRON_TICK_MS,
+  DEFAULT_CRON_TICK_TIMEOUT_MS,
+  DEFAULT_UNQUEUED_RUN_GRACE_MS,
+} from "./crons/cron-scheduler.js";
+export type {
+  CronScheduler,
+  CronSchedulerOptions,
+  CronTickSummary,
+} from "./crons/cron-scheduler.js";
+export {
+  advanceCronOccurrence,
+  assertValidCronSchedule,
+  nextCronOccurrence,
+} from "./crons/cron-schedule.js";
+export type { CronOccurrenceQuery } from "./crons/cron-schedule.js";
+export { createCronService } from "./crons/cron-service.js";
+export type {
+  CreateCronInput,
+  CronService,
+  SearchCronsInput,
+  UpdateCronInput,
+} from "./crons/cron-service.js";
 
 // The structured `meta` on the always-on failed-run log line. A console logger can recognize it and
 // render a graph failure prominently; anything else just sees an object.

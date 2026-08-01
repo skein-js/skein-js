@@ -49,6 +49,16 @@ export class RedisRunQueue implements RunQueue {
       JOB_NAME,
       { run_id: run.run_id, thread_id: run.thread_id },
       {
+        // Keyed on the run id, which makes enqueue **idempotent**: BullMQ refuses a second job with
+        // an id already in the queue. That is what lets the cron scheduler's outbox sweep re-enqueue
+        // a run it cannot prove was queued, without risking a double execution. A run is one-shot
+        // and `removeOnComplete` drops it once it finishes, so the id is never reused.
+        //
+        // Prefixed rather than passed bare: BullMQ rejects a custom id that parses as an integer
+        // ("Custom Id cannot be integers"), because those collide with its own auto-increment id
+        // space. skein does not constrain `run_id` format — a caller may supply one on create — so a
+        // bare id would turn a numeric run id into a 500 on enqueue only, long after it was accepted.
+        jobId: `${JOB_NAME}-${run.run_id}`,
         attempts: this.#attempts,
         // Completed runs live in the store, so drop them from Redis. Keep a bounded history of
         // failed jobs (a processor that threw) for diagnosis rather than discarding them silently.

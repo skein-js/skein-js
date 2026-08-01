@@ -12,11 +12,13 @@ import {
   type ProtocolDeps,
   type ProtocolRuntime,
   type RouteBinding,
+  type CronSchedulerOptions,
   type RunWorkerOptions,
 } from "@skein-js/agent-protocol";
 import type { ModuleImporter } from "@skein-js/config";
 import type { CorsOptions } from "cors";
 
+import { resolveCronTickMs } from "./cron-tick.js";
 import { resolveHeapPressureOptions, startHeapPressureMonitor } from "./heap-pressure.js";
 import { resolveRunConcurrency } from "./run-concurrency.js";
 import { resolveRunTimeoutMs } from "./run-timeout.js";
@@ -72,6 +74,17 @@ export interface SkeinRuntimeCommonOptions {
    * longer than this, or the abort step never runs — see docs/deploy.md.
    */
   worker?: RunWorkerOptions;
+  /**
+   * Tuning for the cron scheduler.
+   *
+   * `tickMs` is how often each instance looks for due crons (default `DEFAULT_CRON_TICK_MS`); omit it
+   * and skein reads `SKEIN_CRON_TICK_MS`, with the same explicit-wins-but-still-validated rule.
+   *
+   * `enabled` defaults to whether the crons route group is mounted, so `http.disable_crons` switches
+   * off the schedules as well as the endpoints. Set it explicitly to run one without the other — a
+   * worker-only instance that serves no HTTP, say.
+   */
+  scheduler?: CronSchedulerOptions;
 }
 
 /** Either point at a `langgraph.json` (in-memory runtime) or inject a ready `ProtocolDeps`. */
@@ -213,6 +226,13 @@ export async function resolveProtocolRuntime(
       ...options.worker,
       maxConcurrency: resolveRunConcurrency(options.worker?.maxConcurrency),
       shutdownGraceMs: resolveShutdownGraceMs(options.worker?.shutdownGraceMs),
+    },
+    scheduler: {
+      ...options.scheduler,
+      tickMs: resolveCronTickMs(options.scheduler?.tickMs),
+      // `http.disable_crons` takes the whole resource away, so the scheduler goes with it: leaving
+      // it ticking would keep firing schedules nobody can see, list, or cancel any more.
+      enabled: options.scheduler?.enabled ?? routes.some((route) => route.group === "crons"),
     },
   });
   await runtime.service.assistants.registerGraphAssistants();

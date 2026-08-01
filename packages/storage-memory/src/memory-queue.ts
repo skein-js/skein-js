@@ -21,14 +21,38 @@ export class MemoryRunQueue implements RunQueue {
   readonly #items: QueuedRun[] = [];
   /** Resolvers of consumers parked waiting for the next run. */
   readonly #waiters: Array<() => void> = [];
+  /**
+   * Ids currently *executing* — pulled off {@link #items} but not yet settled.
+   *
+   * Tracked so {@link enqueue} can dedupe against a run in flight, not just one still waiting.
+   * BullMQ's `jobId` covers a job for its whole lifetime (it is removed on completion), and the two
+   * drivers are held to one conformance suite, so this driver has to span the same window: without
+   * it, re-enqueueing a run the consumer had already picked up would execute it a second time,
+   * concurrently with the first.
+   */
+  readonly #active = new Set<string>();
 
   async enqueue(run: QueuedRun): Promise<void> {
+    // Idempotent on `run_id`, matching the Redis driver's `jobId`: a run already queued or executing
+    // is not queued again. That is what lets the cron scheduler's outbox sweep re-enqueue a run it
+    // cannot prove reached the queue — BullMQ dedupes on the durable driver, and this does here.
+    //
+    // A linear scan over the waiting list, deliberately: it holds only runs not yet picked up, and a
+    // lookup index would be a second structure to keep in step with `shift`.
+    if (this.#active.has(run.run_id)) return;
+    if (this.#items.some((queued) => queued.run_id === run.run_id)) return;
     this.#items.push({ ...run });
     this.#waiters.shift()?.(); // wake one parked consumer, if any
   }
 
   consume(process: RunProcessor, options: RunConsumerOptions = {}): RunConsumer {
-    return new MemoryRunConsumer(this.#items, this.#waiters, process, options.concurrency ?? 1);
+    return new MemoryRunConsumer(
+      this.#items,
+      this.#waiters,
+      this.#active,
+      process,
+      options.concurrency ?? 1,
+    );
   }
 }
 
@@ -41,6 +65,7 @@ class MemoryRunConsumer implements RunConsumer {
   constructor(
     private readonly items: QueuedRun[],
     private readonly waiters: Array<() => void>,
+    private readonly active: Set<string>,
     private readonly process: RunProcessor,
     private readonly concurrency: number,
   ) {
@@ -59,9 +84,15 @@ class MemoryRunConsumer implements RunConsumer {
         await new Promise<void>((resolve) => this.waiters.push(resolve)); // park until enqueue/close
         continue;
       }
+      // Marked active *before* the processor starts and released only once it settles, so the whole
+      // in-flight window is covered by `enqueue`'s dedupe — see `MemoryRunQueue.#active`.
+      this.active.add(next.run_id);
       const task = this.process(next)
         .catch(() => undefined) // a failed run is the engine's concern; keep draining
-        .finally(() => this.#inFlight.delete(task));
+        .finally(() => {
+          this.active.delete(next.run_id);
+          this.#inFlight.delete(task);
+        });
       this.#inFlight.add(task);
     }
   }

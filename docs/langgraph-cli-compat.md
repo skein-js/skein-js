@@ -155,6 +155,7 @@ it but is never required.
     "disable_assistants": false,
     "disable_threads": false,
     "disable_runs": false,
+    "disable_crons": false, // skein-only: also stops the scheduler, not just the routes
     "disable_store": false,
     "disable_meta": false, // turns off GET /info; never the /ok health probe
     // `http.app` (custom user routes) is still accepted and ignored

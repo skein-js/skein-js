@@ -186,7 +186,13 @@ export interface RunService {
  * `ownsThread` says whether the server created this run's thread for it, which is the only case where
  * `on_completion` applies — see `RunKwargs.delete_thread_on_completion`.
  */
-function toKwargs(
+/**
+ * Exported so the cron scheduler builds a fired run's payload through the *same* function an HTTP
+ * run-create goes through. A cron replays a stored run body with no request behind it, so a second
+ * spelling of this mapping would drift silently — a run field honoured over HTTP and dropped on a
+ * schedule, with nothing failing to say so.
+ */
+export function toKwargs(
   input: CreateRunInput,
   ownsThread: boolean,
   authUser?: AuthUser,

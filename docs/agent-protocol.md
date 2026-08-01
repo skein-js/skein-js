@@ -15,6 +15,7 @@ for building a frontend on top, see [react-sdk.md](./react-sdk.md).
 
 - [Core resources](#core-resources)
 - [Endpoint inventory](#endpoint-inventory)
+- [Crons (LangGraph Platform extension)](#crons-langgraph-platform-extension)
 - [Request/response conventions](#requestresponse-conventions)
 - [Authentication + authorization](#authentication--authorization)
 - [Conformance strategy](#conformance-strategy)
@@ -33,6 +34,7 @@ instead of hand-writing (or regenerating) a parallel set. See [reuse.md](./reuse
 | **Threads**             | Multi-turn conversation containers with persistent state and history; track status (`idle`, `busy`, `interrupted`, `error`).                                                                                      |
 | **Runs**                | Atomic executions of a graph — stateless (ephemeral), streaming, or background.                                                                                                                                   |
 | **Store**               | Long-term memory organized by namespace + key, with CRUD and (semantic) search. Also injected into graph runs as a LangGraph `BaseStore` — see [storage.md](./storage.md#long-term-memory-in-the-graph-getstore). |
+| **Crons**               | Schedules that fire a run on a cadence. A LangGraph Platform extension, not part of the open spec — see [crons.md](./crons.md).                                                                                   |
 | **Messages**            | First-class primitives aligned with OpenAI/Anthropic formats.                                                                                                                                                     |
 
 ## Endpoint inventory
@@ -198,6 +200,25 @@ parses it to fire `onRunCreated`, which is what `useStream` stores to rejoin a s
 so without it that callback never fires and `reconnectOnMount` cannot work. It is also the only way a
 caller learns the thread id of a stateless `/runs/wait`, whose body is the graph's state.
 
+### Crons (LangGraph Platform extension)
+
+| Method   | Path                              | Notes                                            |
+| -------- | --------------------------------- | ------------------------------------------------ |
+| `POST`   | `/runs/crons`                     | Stateless cron — a fresh thread per fire         |
+| `POST`   | `/threads/{thread_id}/runs/crons` | Thread cron — reuses the named thread            |
+| `POST`   | `/runs/crons/search`              | Filter + sort + page; `x-pagination-total`       |
+| `POST`   | `/runs/crons/count`               | Returns a **bare integer**                       |
+| `GET`    | `/runs/crons/{cron_id}`           |                                                  |
+| `PATCH`  | `/runs/crons/{cron_id}`           | Tri-state `end_time`/`timezone`; metadata merges |
+| `DELETE` | `/runs/crons/{cron_id}`           | **200 with a JSON body**, not 204                |
+
+These are **not** in the open Agent Protocol spec — its `openapi.json` has no cron paths, and the OSS
+`@langchain/langgraph-api` throws `500 Not implemented` on all of them. skein serves them against the
+LangSmith Deployment OpenAPI spec plus the SDK's types. Two response shapes are deliberately unusual
+because the official client requires them: `count` answers a bare integer, and `DELETE` answers 200
+with a body (the SDK skips `response.json()` only for 202 and 204). Full semantics — schedule format,
+catch-up, driver support, the scheduler — are in [crons.md](./crons.md).
+
 ### Meta
 
 | Method | Path    | Notes                                                                |
@@ -281,9 +302,13 @@ Per request the wrapper:
 3. **Dispatches** — through a per-request service carrying the authenticated `user`. When a filter is
    returned, ownership scoping applies to the `threads` family (threads + their runs): a non-owned row
    reads as absent (`404`, never `403`), and the filter's values are stamped onto rows it creates.
-   `assistants` and `store` are **gate-only** — their handlers can deny (`403`), but no ownership filter
-   is applied yet (graph assistants have no owner and must stay runnable; store items carry no metadata
-   to filter on).
+   `crons` are ownership-scoped the same way, and **fall back to the `threads` handler when no
+   `@auth.on.crons` callback is registered** — callbacks match by exact event key, so a deployment
+   that scoped only threads would otherwise serve the cron resource unscoped. Attaching a schedule to
+   a thread is additionally authorized as `threads:create_run`, so a cron cannot be pointed at a
+   thread the caller cannot read. `assistants` and `store` are **gate-only** — their handlers can deny
+   (`403`), but no ownership filter is applied yet (graph assistants have no owner and must stay
+   runnable; store items carry no metadata to filter on).
 
 **Ownership scoping runs in the database.** A thread search under an ownership filter translates the
 filter into a metadata containment clause the driver matches (`metadata @> …` in Postgres, hitting the

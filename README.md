@@ -92,16 +92,16 @@ clients keep working unchanged.
   memory** — everything you need to communicate effectively with an agent, not just get a final
   string. See [Building rich agent UIs](#building-rich-agent-uis).
 
-|                                 | LangGraph Platform                      | aegra            | **skein-js**                                                  |
-| ------------------------------- | --------------------------------------- | ---------------- | ------------------------------------------------------------- |
-| Self-hosted in production       | 💲 Enterprise license only              | ✅ free          | ✅ free                                                       |
-| License                         | Elastic License 2.0 (source-available)  | MIT              | **Apache-2.0**                                                |
-| Cost                            | $39/seat/mo + usage; self-host = custom | free             | **free**                                                      |
-| Language                        | —                                       | Python / FastAPI | **TypeScript / Node**                                         |
-| HTTP framework                  | —                                       | FastAPI          | **Express · Fastify · NestJS · Next.js**                      |
-| Agent Protocol                  | ✅                                      | ✅               | ✅                                                            |
-| Drop-in for the LangGraph _CLI_ | —                                       | partial          | **✅ (`skein dev` / `up` / `build`)**                         |
-| Cron / scheduled runs           | ✅                                      | ✅               | 🗺️ [planned](./docs/roadmap.md#planned--coming-soon-post-mvp) |
+|                                 | LangGraph Platform                      | aegra            | **skein-js**                             |
+| ------------------------------- | --------------------------------------- | ---------------- | ---------------------------------------- |
+| Self-hosted in production       | 💲 Enterprise license only              | ✅ free          | ✅ free                                  |
+| License                         | Elastic License 2.0 (source-available)  | MIT              | **Apache-2.0**                           |
+| Cost                            | $39/seat/mo + usage; self-host = custom | free             | **free**                                 |
+| Language                        | —                                       | Python / FastAPI | **TypeScript / Node**                    |
+| HTTP framework                  | —                                       | FastAPI          | **Express · Fastify · NestJS · Next.js** |
+| Agent Protocol                  | ✅                                      | ✅               | ✅                                       |
+| Drop-in for the LangGraph _CLI_ | —                                       | partial          | **✅ (`skein dev` / `up` / `build`)**    |
+| Cron / scheduled runs           | ✅                                      | ✅               | **✅ ([crons](./docs/crons.md))**        |
 
 ### A note on LangGraph Platform pricing
 
@@ -533,10 +533,11 @@ Optional telemetry sinks — traces and metrics for your runs. Off by default; s
 
 ### Coming soon
 
-Planned (LangGraph Platform parity): **cron / scheduled runs** and an **MCP endpoint** — see the
+Planned (LangGraph Platform parity): an **MCP endpoint** — see the
 [roadmap](./docs/roadmap.md#planned--coming-soon-post-mvp) and
 [known gaps](./docs/roadmap.md#known-gaps-vs-the-langgraph-cli--platform), which also tracks the
-handful of SDK endpoints not yet served. Recently shipped: **time travel** (fork from a checkpoint),
+handful of SDK endpoints not yet served. Recently shipped: **cron / scheduled runs**
+([crons](./docs/crons.md)), **time travel** (fork from a checkpoint),
 the **Fastify, NestJS, and Next.js adapters** (Express was first), **multitask / double-texting**
 (`reject`/`enqueue`/`interrupt`/`rollback`), **run-completion webhooks**, a **true `events` stream
 mode**, **assistants CRUD + versioning**, thread **search** (metadata/status filter + pagination),

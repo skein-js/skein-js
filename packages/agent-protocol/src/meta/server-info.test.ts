@@ -11,14 +11,14 @@ const infoWith = (
 ) => createMetaService(resolveDeps(createFixtureDeps(deps)), env).info();
 
 describe("GET /info", () => {
-  it("reports the JS context, the served resources, and crons as not yet built", async () => {
+  it("reports the JS context and the served resources, including crons", async () => {
     const info = await infoWith();
 
     expect(info.context).toBe("js");
     expect(info.flags.assistants).toBe(true);
-    // Honest rather than flattering: scheduled runs are still on the roadmap, and a client that
-    // feature-detects this must not be told otherwise.
-    expect(info.flags.crons).toBe(false);
+    // Scheduled runs are served: the crons resource plus the scheduler that fires it. A client
+    // feature-detecting this — Studio does — must be told the truth in both directions.
+    expect(info.flags.crons).toBe(true);
   });
 
   it("reports the loaded @langchain/langgraph version", async () => {

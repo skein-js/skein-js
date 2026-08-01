@@ -70,6 +70,26 @@ export function runRunQueueConformance(label: string, makeQueue: RunQueueFactory
       expect(received).toEqual(["1", "2"]);
     });
 
+    // What makes the cron scheduler's outbox sweep safe: it re-enqueues runs it cannot prove
+    // reached the queue, so enqueueing the same run twice must not execute it twice. Both drivers
+    // key on the run id to dedupe — BullMQ via `jobId`, the memory queue by scanning its FIFO.
+    it("does not deliver the same run twice when it is enqueued twice", async () => {
+      const queue = await make();
+      const received: string[] = [];
+      const consumer = queue.consume(async (run) => {
+        received.push(run.run_id);
+      });
+      await queue.enqueue({ run_id: "dupe", thread_id: "t" });
+      await queue.enqueue({ run_id: "dupe", thread_id: "t" });
+      await queue.enqueue({ run_id: "other", thread_id: "t" });
+
+      // Waiting on the *second* id proves the first was not merely slow: it is behind `dupe` in the
+      // queue, so by the time it lands any duplicate delivery would already have happened.
+      await waitFor(() => received.includes("other"));
+      await consumer.close();
+      expect(received).toEqual(["dupe", "other"]);
+    });
+
     it("delivers a run enqueued before the consumer starts", async () => {
       const queue = await make();
       await queue.enqueue({ run_id: "early", thread_id: "t" });
