@@ -1,3 +1,75 @@
+## 0.12.0 (2026-08-02)
+
+### 🚀 Features
+
+- **agent-protocol:** bound runs and webhooks, and get delivery off the thread lock ([7321cdd](https://github.com/skein-js/skein-js/commit/7321cdd))
+- ⚠️  **agent-protocol:** close the LangGraph parity gaps and make double-texting multi-instance ([3f970c5](https://github.com/skein-js/skein-js/commit/3f970c5))
+- **agent-protocol:** serve the last three SDK-reachable routes ([7fa5a3e](https://github.com/skein-js/skein-js/commit/7fa5a3e))
+- **agent-protocol:** serve the crons resource over HTTP ([bd7c957](https://github.com/skein-js/skein-js/commit/bd7c957))
+- **agent-protocol:** fire scheduled runs, and make delivery at-least-once ([79b70f6](https://github.com/skein-js/skein-js/commit/79b70f6))
+- **bench:** add the performance benchmark harness ([ffd779f](https://github.com/skein-js/skein-js/commit/ffd779f))
+- ⚠️  **cli:** require durable drivers for `skein start`, and harden the container ([9b6ef9c](https://github.com/skein-js/skein-js/commit/9b6ef9c))
+- ⚠️  **core:** add a response headers channel and page runs and namespaces ([d6014bb](https://github.com/skein-js/skein-js/commit/d6014bb))
+- ⚠️  **core:** add the crons persistence contract and both driver implementations ([083dc61](https://github.com/skein-js/skein-js/commit/083dc61))
+- ⚠️  **otel:** parent graph spans under the run span, and harden the telemetry lifecycle ([6bd6d3a](https://github.com/skein-js/skein-js/commit/6bd6d3a))
+- ⚠️  **server-fetch:** serve the protocol on Bun and Deno from a native Fetch transport ([c4b31bf](https://github.com/skein-js/skein-js/commit/c4b31bf))
+- ⚠️  **server-kit:** keep dev-only tooling out of the adapter module graph ([4b8a3af](https://github.com/skein-js/skein-js/commit/4b8a3af))
+- **server-kit:** warn when the heap fills up, with enough context to act on ([18681bc](https://github.com/skein-js/skein-js/commit/18681bc))
+- **storage-postgres:** opt-in HNSW index for semantic store search ([713672b](https://github.com/skein-js/skein-js/commit/713672b))
+
+### 🩹 Fixes
+
+- **agent-protocol:** address code-review findings across the parity release ([e4e1dc0](https://github.com/skein-js/skein-js/commit/e4e1dc0))
+- **agent-protocol:** correct the cron outbox sweep, and close a double-execution path ([b5cb822](https://github.com/skein-js/skein-js/commit/b5cb822))
+- **cli:** pin dependency versions from the project, not the workspace root ([e488940](https://github.com/skein-js/skein-js/commit/e488940))
+- **docs:** use stable Testcontainers links ([35aa4dc](https://github.com/skein-js/skein-js/commit/35aa4dc))
+- **sse:** pace SSE writes to the client instead of buffering ([7e63ed8](https://github.com/skein-js/skein-js/commit/7e63ed8))
+- **storage-memory:** bound what the in-memory event bus retains ([d1c5ba9](https://github.com/skein-js/skein-js/commit/d1c5ba9))
+- **storage-postgres:** stop a killed backend from crashing the process ([4d61b00](https://github.com/skein-js/skein-js/commit/4d61b00))
+- **storage-postgres:** avoid pgvector setup deadlocks ([8492bfc](https://github.com/skein-js/skein-js/commit/8492bfc))
+
+### 🔥 Performance
+
+- **agent-protocol:** bound thread history, and make the limit real ([91ac7c6](https://github.com/skein-js/skein-js/commit/91ac7c6))
+- **agent-protocol:** push the auth ownership filter into the driver query ([d8d313f](https://github.com/skein-js/skein-js/commit/d8d313f))
+- **core:** bound every store list and search to a page ([6d39d45](https://github.com/skein-js/skein-js/commit/6d39d45))
+- **redis:** one round trip per frame, one connection per bus ([df31b68](https://github.com/skein-js/skein-js/commit/df31b68))
+- **sse:** cache frame encoding and drop a redundant prototype walk ([cac874d](https://github.com/skein-js/skein-js/commit/cac874d))
+- **storage-postgres:** index the list and search paths ([dfb450d](https://github.com/skein-js/skein-js/commit/dfb450d))
+- **storage-postgres:** bound how long the database may not answer ([be7d550](https://github.com/skein-js/skein-js/commit/be7d550))
+- **storage-postgres:** statement_timeout on by default, and batch the TTL sweep ([8c4add3](https://github.com/skein-js/skein-js/commit/8c4add3))
+
+### ⚠️  Breaking Changes
+
+- **core:** add the crons persistence contract and both driver implementations  ([083dc61](https://github.com/skein-js/skein-js/commit/083dc61))
+  `SkeinStore` now requires a `crons: CronRepo`. Both bundled
+  drivers implement it; a third-party driver must add one. `AuthResource` gains
+  `"crons"` and `RunTrigger` gains `"cron"`, both additive unions that an exhaustive
+  switch over either will need to handle.
+- **agent-protocol:** close the LangGraph parity gaps and make double-texting multi-instance  ([3f970c5](https://github.com/skein-js/skein-js/commit/3f970c5))
+  `RunService.createWait` returns `{ runId, threadId, result }`
+  rather than the values alone, so the transport can set `Content-Location`.
+  `StartedStream` gains `threadId` for the same reason.
+- **otel:** parent graph spans under the run span, and harden the telemetry lifecycle  ([6bd6d3a](https://github.com/skein-js/skein-js/commit/6bd6d3a))
+- **server-fetch:** serve the protocol on Bun and Deno from a native Fetch transport  ([c4b31bf](https://github.com/skein-js/skein-js/commit/c4b31bf))
+- **core:** add a response headers channel and page runs and namespaces  ([d6014bb](https://github.com/skein-js/skein-js/commit/d6014bb))
+- **cli:** require durable drivers for `skein start`, and harden the container  ([9b6ef9c](https://github.com/skein-js/skein-js/commit/9b6ef9c))
+  `skein start --store memory` and `--queue memory` are rejected; both
+  flags now default to the durable drivers. That combination stays supported on the
+  embedded path (`embedPostgresGraphs` with no `REDIS_URI`) and under `skein dev`, where it
+  is documented. Request logging is off by default under `skein start`; `--request-log` or
+  `SKEIN_REQUEST_LOG=1` restores it.
+- **server-kit:** keep dev-only tooling out of the adapter module graph  ([4b8a3af](https://github.com/skein-js/skein-js/commit/4b8a3af))
+  `readLanggraphDevState`, `loadSnapshotIntoStore` and `describeSnapshot`
+  move from `@skein-js/server-kit` (and its `@skein-js/express` re-export) to the
+  `@skein-js/server-kit/dev` subpath. There is deliberately no deprecated alias: a
+  re-export is still a static import, which would undo the split. The `DevStateCounts`
+  type stays on the root barrel — `export type` is erased, so it costs nothing.
+
+### ❤️ Thank You
+
+- Maina Wycliffe
+
 ## Unreleased
 
 ### Behavior changes

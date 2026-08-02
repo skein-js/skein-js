@@ -1,6 +1,6 @@
 {
   "name": "@skein-js/bench",
-  "version": "0.11.3",
+  "version": "0.12.0",
   "description": "Private performance benchmarks for skein-js: streaming memory ceilings, throughput, and boot time.",
   "license": "Apache-2.0",
   "author": "Maina Wycliffe <wmmaina7@gmail.com>",
