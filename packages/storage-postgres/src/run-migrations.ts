@@ -44,6 +44,12 @@ const DEFAULT_LOCK_TIMEOUT_MS = 60_000;
 
 const LOCK_POLL_INTERVAL_MS = 250;
 
+interface SessionAdvisoryLockOptions {
+  key: number;
+  timeoutMs: number;
+  timeoutMessage: string;
+}
+
 /** Options for {@link applySkeinMigrations}. */
 export interface ApplySkeinMigrationsOptions {
   /** Defaults to the compiled-in {@link SKEIN_MIGRATIONS}. Injectable for tests. */
@@ -54,22 +60,27 @@ export interface ApplySkeinMigrationsOptions {
 
 const sleep = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms));
 
-/** Take the migration lock, waiting for a concurrent migration up to `timeoutMs`. */
-async function acquireMigrationLock(client: PoolClient, timeoutMs: number): Promise<void> {
-  const deadline = Date.now() + timeoutMs;
+/**
+ * Take a session advisory lock without leaving a statement blocked in Postgres.
+ *
+ * A blocked `pg_advisory_lock` statement owns a snapshot. That can deadlock with
+ * `CREATE INDEX CONCURRENTLY`: the index build waits for the old snapshot while the blocked statement
+ * waits for the session running the build to release this lock. Short `pg_try_advisory_lock` probes
+ * end their snapshots between attempts, so the index build can finish and release the lock.
+ */
+export async function acquireSessionAdvisoryLock(
+  client: PoolClient,
+  options: SessionAdvisoryLockOptions,
+): Promise<void> {
+  const deadline = Date.now() + options.timeoutMs;
   for (;;) {
     const held = await client.query<{ locked: boolean }>(
       "SELECT pg_try_advisory_lock($1) AS locked",
-      [SKEIN_MIGRATIONS_LOCK],
+      [options.key],
     );
     if (held.rows[0]?.locked === true) return;
     if (Date.now() >= deadline) {
-      throw new Error(
-        `Timed out after ${timeoutMs}ms waiting for the skein migration lock ` +
-          `(pg_advisory_lock key ${SKEIN_MIGRATIONS_LOCK}). Another instance is either still ` +
-          `migrating, or a previous one died holding the lock — check for idle sessions with ` +
-          `\`SELECT * FROM pg_locks WHERE locktype = 'advisory'\`.`,
-      );
+      throw new Error(options.timeoutMessage);
     }
     await sleep(LOCK_POLL_INTERVAL_MS);
   }
@@ -175,7 +186,15 @@ export async function applySkeinMigrations(
     await client.query("SET statement_timeout = 0");
     // Session-level, so it outlives this function unless the connection does not survive it.
     discardClient = true;
-    await acquireMigrationLock(client, lockTimeoutMs);
+    await acquireSessionAdvisoryLock(client, {
+      key: SKEIN_MIGRATIONS_LOCK,
+      timeoutMs: lockTimeoutMs,
+      timeoutMessage:
+        `Timed out after ${lockTimeoutMs}ms waiting for the skein migration lock ` +
+        `(pg_advisory_lock key ${SKEIN_MIGRATIONS_LOCK}). Another instance is either still ` +
+        `migrating, or a previous one died holding the lock — check for idle sessions with ` +
+        `\`SELECT * FROM pg_locks WHERE locktype = 'advisory'\`.`,
+    });
     try {
       await client.query(CREATE_MIGRATIONS_TABLE);
       // Read the ledger only after the lock: whoever waited sees the winner's committed rows and

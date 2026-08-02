@@ -46,7 +46,7 @@ import {
 } from "@skein-js/core";
 import { Pool, type PoolClient } from "pg";
 
-import { applySkeinMigrations } from "./run-migrations.js";
+import { acquireSessionAdvisoryLock, applySkeinMigrations } from "./run-migrations.js";
 
 /** Computes embeddings for a batch of texts — injected so tests use a deterministic fake. */
 export type EmbedFunction = (texts: string[]) => Promise<number[][]>;
@@ -163,6 +163,9 @@ export function createPostgresPool(url: string, options: PostgresPoolOptions = {
  * column) across concurrently-booting instances, so a rolling deploy doesn't race `CREATE EXTENSION`.
  */
 const PGVECTOR_SETUP_LOCK = 0x736b6569; // "skei"
+
+/** Match the migration runner: boot must wait for a peer, but never forever. */
+const PGVECTOR_SETUP_LOCK_TIMEOUT_MS = 60_000;
 
 /** pgvector's own ceiling on a `vector` column's dimensionality. */
 const PGVECTOR_MAX_DIMENSIONS = 16_000;
@@ -724,11 +727,18 @@ export class PostgresSkeinStore implements SkeinStore {
     let locked = false;
     try {
       // Exempt from any configured `statement_timeout`, for the same reason migrations are: the column
-      // rewrite and the concurrent index build below are legitimately slow, a cancelled build leaves an
-      // invalid index, and the blocking lock acquire would otherwise be cancelled while merely waiting
-      // for a peer instance during a rolling deploy.
+      // rewrite and the concurrent index build below are legitimately slow, and a cancelled build leaves
+      // an invalid index. Lock acquisition still has its own wall-clock bound below.
       await client.query("SET statement_timeout = 0");
-      await client.query("SELECT pg_advisory_lock($1)", [PGVECTOR_SETUP_LOCK]);
+      await acquireSessionAdvisoryLock(client, {
+        key: PGVECTOR_SETUP_LOCK,
+        timeoutMs: PGVECTOR_SETUP_LOCK_TIMEOUT_MS,
+        timeoutMessage:
+          `Timed out after ${PGVECTOR_SETUP_LOCK_TIMEOUT_MS}ms waiting for the pgvector setup lock ` +
+          `(pg_advisory_lock key ${PGVECTOR_SETUP_LOCK}). Another instance is either still setting ` +
+          `up pgvector, or a previous one died holding the lock — check for idle sessions with ` +
+          `\`SELECT * FROM pg_locks WHERE locktype = 'advisory'\`.`,
+      });
       locked = true;
 
       // Before the ALTER, not after: pinning a column that has an *invalid* index attached drops and

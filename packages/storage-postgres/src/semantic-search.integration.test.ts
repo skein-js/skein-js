@@ -202,6 +202,68 @@ describe("PostgresSkeinStore semantic search with store.index.hnsw", () => {
     }
   });
 
+  it("does not deadlock a concurrent index build while waiting for the setup lock", async () => {
+    await inspect.query(`DROP INDEX IF EXISTS store_items_embedding_hnsw_idx`);
+    await inspect.query(`ALTER TABLE store_items ALTER COLUMN embedding TYPE vector(3)`);
+
+    // Hold the same session lock #setupPgvector uses, then start another store's migration. The old
+    // blocking pg_advisory_lock call waited here with a snapshot. CREATE INDEX CONCURRENTLY below
+    // then waited for that snapshot, while the snapshot holder waited for this session's advisory
+    // lock: a deterministic deadlock. Polling pg_try_advisory_lock ends each snapshot before retrying.
+    const lockHolder = await inspect.connect();
+    const waiterUrl = new URL(pg.url);
+    const waiterApplicationName = "skein-pgvector-lock-waiter";
+    waiterUrl.searchParams.set("application_name", waiterApplicationName);
+    const waitingStore = await PostgresSkeinStore.connect(waiterUrl.toString(), {
+      index: { dims: 3, fields: ["text"], embed: fakeEmbed, hnsw: true },
+    });
+    const waitForAdvisoryLockAttempt = async (excludedPid?: number): Promise<number> => {
+      const deadline = Date.now() + 5_000;
+      for (;;) {
+        const { rows } = await inspect.query<{ pid: number; query: string }>(
+          `SELECT pid, query FROM pg_stat_activity WHERE application_name = $1`,
+          [waiterApplicationName],
+        );
+        const attempt = rows.find(
+          ({ pid, query }) => pid !== excludedPid && /pg_(?:try_)?advisory_lock/.test(query),
+        );
+        if (attempt !== undefined) return attempt.pid;
+        if (Date.now() >= deadline) throw new Error("store did not attempt an advisory lock");
+        await new Promise((resolve) => setTimeout(resolve, 10));
+      }
+    };
+    let migration: Promise<void> | undefined;
+    try {
+      // Keep both values byte-identical to their production constants. Holding the migration lock
+      // lets us identify that first pool session before releasing it; applySkeinMigrations destroys
+      // the session, so the later pgvector attempt must come from a different backend PID.
+      await lockHolder.query("SELECT pg_advisory_lock($1)", [0x736b6569]);
+      await lockHolder.query("SELECT pg_advisory_lock($1)", [7241865325823964]);
+      migration = waitingStore.migrate();
+      // Attach a rejection handler immediately; the assertion after unlock still observes the result.
+      migration.catch(() => {});
+
+      const migrationBackendPid = await waitForAdvisoryLockAttempt();
+      await lockHolder.query("SELECT pg_advisory_unlock($1)", [7241865325823964]);
+      await waitForAdvisoryLockAttempt(migrationBackendPid);
+
+      await lockHolder.query(
+        `CREATE INDEX CONCURRENTLY store_items_embedding_hnsw_idx
+           ON store_items USING hnsw (embedding vector_cosine_ops)`,
+      );
+    } finally {
+      await lockHolder
+        .query("SELECT pg_advisory_unlock($1)", [7241865325823964])
+        .catch(() => undefined);
+      await lockHolder.query("SELECT pg_advisory_unlock($1)", [0x736b6569]).catch(() => undefined);
+      lockHolder.release();
+      await migration?.catch(() => undefined);
+      await waitingStore.close();
+    }
+
+    await expect(migration).resolves.toBeUndefined();
+  });
+
   it("clears a leftover invalid index instead of rebuilding it inline", async () => {
     // An interrupted concurrent build leaves an invalid index. Pinning a column that has one attached
     // drops and rebuilds it *inline*, holding ACCESS EXCLUSIVE on store_items for the whole build —

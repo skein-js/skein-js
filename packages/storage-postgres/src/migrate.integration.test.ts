@@ -330,7 +330,7 @@ describe("applySkeinMigrations", () => {
 
   it("serializes concurrent migrations instead of failing one of them", async () => {
     // node-pg-migrate used pg_try_advisory_lock and threw "Another migration is already running"
-    // here, which could crash boot during a rolling deploy. The blocking lock makes the loser wait
+    // here, which could crash boot during a rolling deploy. Waiting makes the loser retry the lock
     // and then find nothing to do.
     const url = await createScratchDatabase("migrate_concurrent");
     const first = new Pool({ connectionString: url });
