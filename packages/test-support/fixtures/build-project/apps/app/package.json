@@ -1,0 +1,10 @@
+{
+  "name": "build-project-fixture-app",
+  "version": "0.0.0",
+  "private": true,
+  "type": "module",
+  "comment": "Not a workspace package — nothing here is built, published, or installed by the root pnpm install. `scripts/build-image-smoke.mjs` installs these into this directory before running `skein build`, because the whole point of the fixture is that its graph imports a published package the image installs nowhere else. Exact-pinned so the smoke is deterministic without a lockfile.",
+  "dependencies": {
+    "date-fns": "4.1.0"
+  }
+}

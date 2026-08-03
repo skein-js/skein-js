@@ -7,7 +7,7 @@
 // Published `node_modules` packages stay external (recorded + pinned into the artifact package.json).
 
 import { existsSync, readFileSync } from "node:fs";
-import { mkdir, writeFile } from "node:fs/promises";
+import { mkdir, rm, writeFile } from "node:fs/promises";
 import { createRequire, isBuiltin } from "node:module";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
@@ -18,7 +18,7 @@ import {
   isCustomFunctionPath,
   telemetryRuntimePackages,
 } from "@skein-js/runtime";
-import type { Plugin } from "vite";
+import type { build as viteBuild, Plugin } from "vite";
 
 import { precomputeSchemas } from "./precompute-schemas.js";
 import {
@@ -49,7 +49,7 @@ export interface BuildArtifact {
 }
 
 /** The package name for a bare specifier (`@scope/pkg/sub` → `@scope/pkg`, `pkg/sub` → `pkg`). */
-function packageNameOf(specifier: string): string {
+export function packageNameOf(specifier: string): string {
   const parts = specifier.split("/");
   return specifier.startsWith("@") ? `${parts[0]}/${parts[1]}` : (parts[0] ?? specifier);
 }
@@ -142,27 +142,143 @@ function resolveInstalledVersion(pkg: string, fromDirs: readonly string[]): stri
   );
 }
 
+/** What `vite.build()` resolves to. Derived, not imported: vite re-exports none of rolldown's output types. */
+export type BundleResult = Awaited<ReturnType<typeof viteBuild>>;
+
+/**
+ * Fail the build unless every package the emitted JS still imports is pinned in the artifact's
+ * `package.json`.
+ *
+ * This reads the answer back from the bundler's own output instead of trusting the resolver's
+ * bookkeeping, so the two are independent: a package can only escape both by being invisible to
+ * rolldown *and* to the plugin. It is the same check the image's compatibility probe performs, run on
+ * the host — which is where a missing pin is cheap to fix rather than an opaque `docker build`
+ * failure. Issue #6 shipped precisely because nothing asserted this.
+ */
+export function assertEveryImportIsPinned(
+  bundle: BundleResult,
+  dependencies: Record<string, string>,
+): void {
+  // A watcher has no output to inspect; `skein build` never sets `build.watch`, so this only narrows.
+  const results = (Array.isArray(bundle) ? bundle : [bundle]).filter(
+    (result) => "output" in result,
+  );
+  // Collected across every result before the scan: a chunk may import one emitted in another output.
+  const emittedFiles = new Set(results.flatMap((result) => result.output.map((i) => i.fileName)));
+  const imported = new Set<string>();
+  let chunksInspected = 0;
+
+  for (const result of results) {
+    for (const item of result.output) {
+      if (item.type !== "chunk") continue;
+      chunksInspected += 1;
+      for (const specifier of [...item.imports, ...item.dynamicImports]) {
+        // Sibling chunks appear here alongside externals, as relative paths or emitted filenames.
+        if (specifier.startsWith(".") || specifier.startsWith("\0")) continue;
+        if (path.isAbsolute(specifier) || emittedFiles.has(specifier)) continue;
+        if (isBuiltin(specifier) || specifier.startsWith("node:")) continue;
+        imported.add(packageNameOf(specifier));
+      }
+    }
+  }
+
+  // Fail closed. A check that silently passes because it found nothing to look at is worth less than
+  // no check: that is precisely the state issue #6 shipped in. Every build emits at least one graph
+  // chunk, so zero means the output shape changed underneath us, not that the artifact is clean.
+  if (chunksInspected === 0) {
+    throw new Error(
+      "skein build: the bundler returned no inspectable chunks, so the artifact's dependencies " +
+        "could not be verified. This is a skein bug — please report it with your vite version.",
+    );
+  }
+
+  const missing = [...imported].filter((pkg) => !(pkg in dependencies)).sort();
+  if (missing.length === 0) return;
+
+  throw new Error(
+    `skein build: the bundle imports ${missing.length} package(s) the artifact does not install: ` +
+      `${missing.join(", ")}. The production image would fail to start. Install them in your project, ` +
+      `or list them under "dependencies" in langgraph.json if they are loaded by name at runtime.`,
+  );
+}
+
+/**
+ * Every externalized package, mapped to the directories that imported it. The importer dirs are the
+ * anchors for version resolution: under pnpm's strict layout a package declared on an inlined
+ * workspace lib is invisible from the app, and only a walk-up from the *importing file* finds it.
+ */
+type ExternalImporters = Map<string, Set<string>>;
+
+function recordExternal(
+  externals: ExternalImporters,
+  specifier: string,
+  importer: string | undefined,
+): void {
+  const pkg = packageNameOf(specifier);
+  const importers = externals.get(pkg) ?? new Set<string>();
+  // Only real files anchor a resolution — virtual/synthetic importers (`\0…`) point at nothing.
+  if (importer && !importer.startsWith("\0")) importers.add(path.dirname(importer));
+  externals.set(pkg, importers);
+}
+
+/**
+ * Whether the production runtime could `import` this file as-is. Mirrors vite's own
+ * `canExternalizeFile`: a package whose entry is `.ts`/`.json`/`.wasm`/anything else has to be
+ * compiled in, because leaving it external would emit an import the image cannot load.
+ *
+ * The query/hash is stripped first — a resolver may hand back `…/index.js?foo`, whose raw extension
+ * (`.js?foo`) matches nothing and would silently flip a loadable package to inlined.
+ */
+function isRuntimeLoadable(filePath: string): boolean {
+  const extension = path.extname(filePath.replace(/[?#].*$/, ""));
+  return extension === "" || extension === ".js" || extension === ".mjs" || extension === ".cjs";
+}
+
 /**
  * A rollup/vite resolver that decides bundle-vs-external on the **resolved** id, not the raw
  * specifier — so tsconfig-path aliases (which resolve to source files) get bundled while true
- * `node_modules` packages are externalized and recorded. Ordering matters: this must resolve first,
- * then externalize, or a bare-looking alias would be marked external before it can resolve to source.
+ * `node_modules` packages are externalized and recorded.
+ *
+ * `enforce: "pre"` is load-bearing, not a preference. Vite runs plugins as
+ * `alias → pre → vite core → normal → vite build → post`, and its core resolver answers for every
+ * bare specifier — externalizing published packages, resolving the rest to a file. Rolldown stops at
+ * the first `resolveId` that answers, so from any later position this hook is never called for the
+ * packages it exists to record. That is issue #6: the artifact's `package.json` pinned nothing the
+ * graphs import, and the image's compatibility probe died on `ERR_MODULE_NOT_FOUND`.
+ *
+ * Running first also makes the documented order true: resolve, *then* externalize, so a bare-looking
+ * alias resolves to source instead of being externalized on the strength of its shape.
  */
-function externalizeNodeModules(externals: Set<string>): Plugin {
+function externalizeNodeModules(externals: ExternalImporters): Plugin {
   return {
     name: "skein-externalize-node-modules",
-    enforce: "post",
+    enforce: "pre",
     async resolveId(source, importer, options) {
-      // Virtual modules and already-relative/absolute ids are bundled by the default pipeline.
-      if (source.startsWith("\0") || source.startsWith("/") || source.startsWith(".")) return null;
+      // Virtual modules and already-relative/absolute ids are bundled by the default pipeline. So is
+      // a `#name` subpath import: it is private to the package.json that declares it, so it names no
+      // installable package and would be unresolvable the moment it left that package's own tree.
+      // Running `pre` is what put these in front of this hook at all — vite's resolver used to answer
+      // for them first.
+      if (source.startsWith("\0") || source.startsWith("#")) return null;
+      if (path.isAbsolute(source) || source.startsWith(".")) return null;
       if (isBuiltin(source) || source.startsWith("node:")) return { id: source, external: true };
 
       const resolved = await this.resolve(source, importer, { ...options, skipSelf: true });
-      if (!resolved || resolved.id.includes("node_modules")) {
-        externals.add(packageNameOf(source));
+      // Unresolvable, or vite already externalized it (its answer for most published packages).
+      if (!resolved || resolved.external) {
+        recordExternal(externals, source, importer);
+        return resolved ?? { id: source, external: true };
+      }
+      // A real file inside node_modules. Vite compiles some of these in — it declines to externalize
+      // a package that resolves only through a bare `main` field — but the artifact runs beside an
+      // installed `node_modules`, so keeping the package external is both cheaper and safer: one copy
+      // of every library, and no bundler rewriting of package-relative asset paths.
+      if (resolved.id.includes("node_modules") && isRuntimeLoadable(resolved.id)) {
+        recordExternal(externals, source, importer);
         return { id: source, external: true };
       }
-      // Resolved to a workspace source file (e.g. a tsconfig-path alias) → bundle it.
+      // Workspace source through a tsconfig-path alias, or a package the runtime could not import
+      // as-is (a `.ts` entry) → bundle it.
       return resolved;
     },
   };
@@ -216,8 +332,8 @@ export async function bundleProject(options: BundleProjectOptions): Promise<Buil
 
   // Bundle and precompute schemas concurrently — the bundler produces JS, the schema pass reads the
   // original TS source; independent inputs, so run them together.
-  const externals = new Set<string>();
-  const [, schemas] = await Promise.all([
+  const externals: ExternalImporters = new Map();
+  const [bundle, schemas] = await Promise.all([
     build({
       root: workspaceRoot,
       configFile: false,
@@ -244,52 +360,81 @@ export async function bundleProject(options: BundleProjectOptions): Promise<Buil
     precomputeSchemas(graphs),
   ]);
 
-  // Pin every external + the skein runtime closure to its installed version, resolved from **the
-  // project's** module tree — the source of truth for what dev ran against. Not from `workspaceRoot`:
-  // in a monorepo the dependency is installed next to the project, and a workspace root commonly has
-  // no application dependencies at all (a pnpm workspace hoists nothing by default), so resolving
-  // from there fails for every project that is a package inside a repo. Node's own algorithm walks up
-  // from here, so a hoisted root install is still found.
-  const projectTree = [configDir];
-  // skein's own peers are dependencies of `skein-js`, not of the user's project, so the CLI's tree has
-  // to be searched as well — see `resolveInstalledVersion`.
-  const peerTree = [configDir, path.dirname(fileURLToPath(import.meta.url))];
-  const dependencies: Record<string, string> = {};
-  for (const pkg of externals) dependencies[pkg] = resolveInstalledVersion(pkg, projectTree);
-  dependencies["skein-js"] = skeinVersion;
-  for (const peer of SKEIN_RUNTIME_PEERS) {
-    dependencies[peer] = resolveInstalledVersion(peer, peerTree);
-  }
-  // Runtime deps the bundle can't discover from graph imports, so they must be pinned explicitly:
-  //  • a `provider:model` embed dynamically imports `@langchain/<provider>` (never a code import);
-  //  • a declared `telemetry` provider dynamically imports its `@skein-js/*` adapter;
-  //  • `langgraph.json` `dependencies` — the user's escape hatch for packages loaded by name.
-  // The old full-install image happened to carry these; the slim image must add them or break.
-  const embedPkg = config.store?.index?.embed && providerEmbedPackage(config.store.index.embed);
-  if (embedPkg) dependencies[embedPkg] = resolveInstalledVersion(embedPkg, projectTree);
-  for (const pkg of telemetryRuntimePackages(config.telemetry)) {
-    dependencies[pkg] = resolveInstalledVersion(pkg, projectTree);
-  }
-  for (const dep of config.dependencies ?? []) {
-    // Skip local-path deps (".", "./pkg") — those are the project's own source, already bundled.
-    if (dep.startsWith(".") || dep.startsWith("/")) continue;
-    const pkg = packageNameOf(dep);
-    dependencies[pkg] = resolveInstalledVersion(pkg, projectTree);
+  // From here on a failure is fatal to the artifact, and vite has *already* emptied `outDir` and
+  // written the new chunks — so throwing would leave bundled JS with no manifest beside it, where a
+  // deployable artifact used to be, and `skein start` would report that as a missing config. Clear
+  // the directory instead: a failed build should leave no artifact rather than a broken one.
+  try {
+    return await finishArtifact();
+  } catch (error) {
+    await rm(outDir, { recursive: true, force: true });
+    throw error;
   }
 
-  await mkdir(outDir, { recursive: true });
-  const productionConfig = buildProductionConfig(config, rewrites);
-  await Promise.all([
-    writeFile(
-      path.join(outDir, "langgraph.json"),
-      `${JSON.stringify(productionConfig, null, 2)}\n`,
-    ),
-    writeFile(path.join(outDir, "schemas.json"), `${JSON.stringify(schemas, null, 2)}\n`),
-    writeFile(
-      path.join(outDir, "package.json"),
-      buildArtifactPackageJson(path.basename(configDir), dependencies),
-    ),
-  ]);
+  async function finishArtifact(): Promise<BuildArtifact> {
+    // Pin every external + the skein runtime closure to its installed version, resolved from **the
+    // project's** module tree — the source of truth for what dev ran against. Not from `workspaceRoot`:
+    // in a monorepo the dependency is installed next to the project, and a workspace root commonly has
+    // no application dependencies at all (a pnpm workspace hoists nothing by default), so resolving
+    // from there fails for every project that is a package inside a repo. Node's own algorithm walks up
+    // from here, so a hoisted root install is still found.
+    const projectTree = [configDir];
+    // skein's own peers are dependencies of `skein-js`, not of the user's project, so the CLI's tree has
+    // to be searched as well — see `resolveInstalledVersion`.
+    const peerTree = [configDir, path.dirname(fileURLToPath(import.meta.url))];
+    const dependencies: Record<string, string> = {};
+    // The project answers first, and only what it cannot see falls back to the importers: a package
+    // declared on an inlined workspace lib rather than on the app is invisible from `configDir` under
+    // pnpm's strict layout, and only a walk-up from the importing file finds it.
+    //
+    // Order matters twice over. The artifact's `package.json` is flat, so a package imported at two
+    // different versions can be pinned at only one — and "the version the app declares" is both the
+    // predictable answer and the one a reader can check. Importer dirs are **sorted** rather than left
+    // in insertion order because that order comes from whichever concurrent `resolveId` finished first,
+    // which would let two builds of the same tree pin different versions.
+    for (const [pkg, importerDirs] of externals) {
+      dependencies[pkg] = resolveInstalledVersion(pkg, [
+        ...projectTree,
+        ...[...importerDirs].sort(),
+      ]);
+    }
+    dependencies["skein-js"] = skeinVersion;
+    for (const peer of SKEIN_RUNTIME_PEERS) {
+      dependencies[peer] = resolveInstalledVersion(peer, peerTree);
+    }
+    // Runtime deps the bundle can't discover from graph imports, so they must be pinned explicitly:
+    //  • a `provider:model` embed dynamically imports `@langchain/<provider>` (never a code import);
+    //  • a declared `telemetry` provider dynamically imports its `@skein-js/*` adapter;
+    //  • `langgraph.json` `dependencies` — the user's escape hatch for packages loaded by name.
+    // The old full-install image happened to carry these; the slim image must add them or break.
+    const embedPkg = config.store?.index?.embed && providerEmbedPackage(config.store.index.embed);
+    if (embedPkg) dependencies[embedPkg] = resolveInstalledVersion(embedPkg, projectTree);
+    for (const pkg of telemetryRuntimePackages(config.telemetry)) {
+      dependencies[pkg] = resolveInstalledVersion(pkg, projectTree);
+    }
+    for (const dep of config.dependencies ?? []) {
+      // Skip local-path deps (".", "./pkg") — those are the project's own source, already bundled.
+      if (dep.startsWith(".") || dep.startsWith("/")) continue;
+      const pkg = packageNameOf(dep);
+      dependencies[pkg] = resolveInstalledVersion(pkg, projectTree);
+    }
 
-  return { outDir, graphIds: graphs.ids, externals: dependencies };
+    assertEveryImportIsPinned(bundle, dependencies);
+
+    await mkdir(outDir, { recursive: true });
+    const productionConfig = buildProductionConfig(config, rewrites);
+    await Promise.all([
+      writeFile(
+        path.join(outDir, "langgraph.json"),
+        `${JSON.stringify(productionConfig, null, 2)}\n`,
+      ),
+      writeFile(path.join(outDir, "schemas.json"), `${JSON.stringify(schemas, null, 2)}\n`),
+      writeFile(
+        path.join(outDir, "package.json"),
+        buildArtifactPackageJson(path.basename(configDir), dependencies),
+      ),
+    ]);
+
+    return { outDir, graphIds: graphs.ids, externals: dependencies };
+  }
 }

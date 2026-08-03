@@ -194,3 +194,29 @@ jobs:
         run: >-
           node scripts/runtime-image-smoke.mjs --runtime ${{ matrix.runtime }}
           ${{ matrix['build-only'] }}
+
+  # The job above builds a *committed* artifact, so it never runs the bundler. This one does: a real
+  # `skein build` over a project fixture, then `docker build` on what it produced — the only coverage
+  # of bundle → pinned package.json → install → graph compatibility probe as one chain. Issue #6 lived
+  # in exactly that gap: the artifact pinned none of the packages the bundle imports.
+  #
+  # Node only, and not a matrix: bundling runs on the host under Node whatever runtime the image uses,
+  # so a per-runtime axis here would cost time it cannot differ in.
+  build-image:
+    name: skein build → image
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: pnpm/action-setup@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: ${{ env.NODE_LTS }}
+          cache: pnpm
+
+      - run: pnpm install --frozen-lockfile
+
+      - name: Build
+        run: pnpm exec nx run-many -t build --output-style=stream
+
+      - name: Build smoke
+        run: node scripts/build-image-smoke.mjs

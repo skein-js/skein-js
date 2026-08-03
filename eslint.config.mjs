@@ -20,6 +20,7 @@ export default tseslint.config(
       "**/.nx/**",
       "**/*.config.*",
       "packages/cli/src/bundle/__fixtures__/**", // mini-monorepo fixture shaped for the bundler, not our lint rules
+      "packages/test-support/fixtures/**", // project/artifact fixtures shaped for the image build, same reason
     ],
   },
 

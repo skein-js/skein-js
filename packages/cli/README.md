@@ -58,7 +58,7 @@ LangGraph Studio — any Agent Protocol client works with only a URL change. See
 | ------------------ | ------------------------------------------------------------------- | ------------------------ | ------------------------------------------------------------------------------------------- |
 | `skein dev`        | In-process dev server, hot reload, `.skein/` state, no Docker.      | `langgraph dev`          | see [`skein dev` flags](#skein-dev-flags)                                                   |
 | `skein up`         | Self-hosted stack via Docker Compose (app + Postgres + Redis).      | `langgraph up`           | `-p, --port` (8123) · `--host` (0.0.0.0) · `-n, --npmrc <path>`                             |
-| `skein build`      | Build a deployable Docker image from the config.                    | `langgraph build`        | `-t, --tag` (defaults to the project dir name) · `-n, --npmrc <path>`                       |
+| `skein build`      | Build a deployable Docker image from the config.                    | `langgraph build`        | `-t, --tag` (defaults to the project dir name) · `-n, --npmrc <path>` · `--artifact-only`   |
 | `skein dockerfile` | Emit a standalone Dockerfile (stdout by default).                   | `langgraph dockerfile`   | `-o, --output <path>`                                                                       |
 | `skein start`      | Serve a pre-built `.skein/build` artifact (the image's entrypoint). | —                        | `-p, --port` (8123) · `--host` · `--store` (postgres) · `--queue` (redis) · `--concurrency` |
 
@@ -133,6 +133,14 @@ docker run -p 8123:8123 \
 The image binds `$PORT` when a platform injects one (8123 when nothing does), runs as a non-root
 user, serves a `/ok` health probe, and drains in-flight runs on `SIGTERM`. Step-by-step guides per
 platform, and the knobs that are the same everywhere: [deploy anywhere](../../docs/deploy.md).
+
+The build compiles your graphs — tsconfig `paths` and workspace aliases included — into
+`.skein/build`, and pins every published package they still import at its installed version, so the
+image installs exactly that and nothing else. Packages you load **by name** at runtime are the one
+thing it cannot see; declare those under `dependencies` in `langgraph.json`
+([details](../../docs/bundling.md#what-skein-build-inlines-vs-externalizes)). Add `--artifact-only`
+to write `.skein/build` and its Dockerfile without invoking Docker, for pipelines that build the
+image themselves.
 
 ## When the managed platform may fit you better
 

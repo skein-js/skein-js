@@ -1380,6 +1380,11 @@ runs` where `langgraph dev` prints `Starting 10 workers`. LangGraph really does 
 skein runs one worker whose consumer executes 10 runs at a time. Same throughput, honest wording. `skein up`/`build`/`dockerfile` accept `--tag` (build) and `--output`
 (dockerfile) in addition to `--config`.
 
+**`skein build --artifact-only`** (skein-only) writes `.skein/build` — the bundled graphs, the pinned
+`package.json`, the baked `schemas.json`, and the generated Dockerfile — and stops without invoking
+Docker. Use it when something else builds the image: Kaniko or Cloud Build in CI, a platform that
+builds from a committed Dockerfile, or any machine that has Node but no Docker daemon.
+
 **Private/authenticated npm registries.** When your production dependencies include private scoped
 packages (e.g. `@myorg/*` behind a token), pass an `.npmrc` so the image's dependency install can
 authenticate. `skein build --npmrc <path>` and `skein up --npmrc <path>` mount it as a BuildKit
@@ -1496,6 +1501,9 @@ it but is never required.
     "paths": ["./src/my-telemetry.ts:sink"], // your own TelemetrySink
   },
 
+  // packages your code loads BY NAME at runtime, which no bundler can discover (skein extension)
+  "dependencies": ["@langchain/openai"],
+
   // extra Dockerfile lines appended after the base image
   "dockerfile_lines": [],
 }
@@ -1514,7 +1522,17 @@ it but is never required.
 | `http`                 | `http.cors` maps to the adapter's CORS options; the `disable_*` flags remove that resource's routes before mounting, so it 404s from the host app as under `langgraph dev`. `http.app` is still accepted and ignored. |
 | `auth`                 | `auth.path` loads an `Auth` from `@langchain/langgraph-sdk/auth`; every request is authenticated + authorized; `disable_studio_auth` honored.                                                                         |
 | `telemetry`            | **skein extension.** Builds the telemetry sinks runs report to — see [observability.md](./observability.md). Unknown to `langgraph dev`, which ignores it.                                                            |
+| `dependencies`         | **skein extension on the JS side** (LangGraph's schema has it for Python only). Extra packages `skein build` pins into the artifact — see below.                                                                      |
 | `dockerfile_lines`     | Appended by `skein dockerfile` / `skein build`.                                                                                                                                                                       |
+
+**`dependencies` means something different here.** In LangGraph it is a Python-only field, required
+and used to drive `pip install`; the JS schema has no such field, because `langgraph build` copies
+your project into the image and runs your package manager over it. skein bundles instead, so it
+derives the image's dependency list from what the bundle still imports — and `dependencies` is the
+escape hatch for the packages that list cannot contain: the ones you load **by name at runtime**
+(`import("@langchain/" + provider)`), which never appear in any module graph. Local-path entries
+(`"."`, `"./pkg"`) are accepted and ignored — that source is already bundled. See
+[bundling.md](./bundling.md#what-skein-build-inlines-vs-externalizes).
 
 ## Graph loading (`path:export` notation)
 
@@ -4917,6 +4935,11 @@ it and let your platform build it. Either way:
 - **Installs pinned production dependencies only.** No vite/tsx, no devDependencies, no runtime
   TypeScript transform: `skein build` resolved your tsconfig `paths` and workspace aliases once, on the
   host. Source maps stay on, so stack traces still point at your TypeScript.
+  The pinned set is **derived from the bundle**: every published package your graphs still import
+  after bundling is recorded at the exact version installed on the build host, and `skein build` fails
+  on the host if the two ever disagree. Packages you load **by name at runtime** are the exception a
+  bundler cannot see — declare those under `dependencies` in `langgraph.json`
+  ([what `skein build` bundles](./bundling.md#what-skein-build-inlines-vs-externalizes)).
 - **Caches dependency installs** via a BuildKit cache mount, and accepts an optional `id=npmrc` build
   secret for private scoped packages — `skein build --npmrc <path>`, or
   `docker build --secret id=npmrc,src=$HOME/.npmrc` for the standalone Dockerfile. See
@@ -5938,6 +5961,7 @@ must stay external, and only if you use the `langgraph.json` on-ramp.
 - [Copy-paste configs](#copy-paste-configs)
 - [The "Critical dependency" warning](#the-critical-dependency-warning)
 - [Postgres migrations are compiled in](#postgres-migrations-are-compiled-in)
+- [What `skein build` inlines vs. externalizes](#what-skein-build-inlines-vs-externalizes)
 
 ## skein is ESM-only
 
@@ -6101,6 +6125,54 @@ export default {
 ```
 
 Next.js keeps `pg` on its built-in server-externals list, so this never surfaces there.
+
+## What `skein build` inlines vs. externalizes
+
+The section above is about bundling **skein**. This one is about the bundler skein itself runs:
+`skein build` compiles your graphs (plus auth, custom embed, custom telemetry sinks) into
+`.skein/build`, and the split it makes there is the reason the production image is small and the
+monorepo case works at all.
+
+**Inlined into the artifact** — your own source, including anything reached through a `tsconfig`
+`paths` alias or a workspace link (`@myorg/js`, the Nx/Turborepo/pnpm-workspace pattern). Those files
+exist nowhere a package manager could install them from, so resolving them once on the build host is
+what dissolves the "my Docker build context doesn't contain my monorepo" problem.
+
+**Left external and pinned** — every published `node_modules` package. `skein build` records each one
+at the exact version installed on the build host and writes it into the artifact's `package.json`,
+which the image installs with `npm install --omit=dev`. Externalizing is not a limitation to work
+around; it is load-bearing:
+
+- **One copy of each library.** The image installs `skein-js`, which brings `@langchain/langgraph` and
+  `@langchain/core`, and that runtime is what imports your graph bundle. Inline `@langchain/core` into
+  the graph and there are two copies: `instanceof BaseMessage` starts failing, and config/callbacks
+  propagate through a different `AsyncLocalStorage` than the one the runtime reads.
+- **Native addons can't be inlined.** `pg-native`, `sharp`, `better-sqlite3` and friends are platform
+  binaries; they have to be installed for the image's platform.
+- **Package-relative asset reads survive.** A bundler rewrites `import.meta.url`/`__dirname` to the
+  output location, which breaks packages that load workers, wasm, or data files from beside
+  themselves (pdfjs, `tiktoken`, …) — the same hazard that made skein
+  [compile its own SQL in](#postgres-migrations-are-compiled-in).
+- **Cheaper rebuilds.** `COPY package.json` + install is a cached Docker layer; a graph edit re-ships
+  only the bundle.
+
+The one thing a bundler structurally cannot see is a package imported **by name at runtime** —
+`initChatModel` doing `import("@langchain/" + provider)`, a plugin loaded from config. Those never
+appear in the module graph, so declare them under `dependencies` in `langgraph.json`:
+
+```json
+{
+  "graphs": { "agent": "./src/graph.ts:graph" },
+  "dependencies": ["@langchain/openai"]
+}
+```
+
+(skein pins the packages behind a declared `store.index.embed` provider and a declared `telemetry`
+provider for you — the field is for the ones only your code knows about.)
+
+`skein build` fails on the **host** if the artifact would ship an import it does not install, so a
+missing pin is a build-time error with a package name in it rather than an `ERR_MODULE_NOT_FOUND` from
+inside `docker build`.
 
 ## See also
 

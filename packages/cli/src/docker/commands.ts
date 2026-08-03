@@ -198,6 +198,8 @@ export interface BuildCommandOptions extends RuntimeSelectionOptions {
   tag?: string;
   /** Path to an `.npmrc`, mounted as a BuildKit secret to authenticate private-registry installs. */
   npmrc?: string;
+  /** Stop after writing the artifact + Dockerfile, without invoking Docker. */
+  artifactOnly?: boolean;
 }
 
 /** `skein build` — bundle the project into a self-contained artifact and build the image from it. */
@@ -206,7 +208,9 @@ export async function runBuild(options: BuildCommandOptions): Promise<void> {
   const runtime = resolveRuntimeSelection(context.config, options);
   const npmrcPath = resolveNpmrcSecret(options.npmrc);
   if (npmrcPath === null) return;
-  if (!requireDocker()) return;
+  // `--artifact-only` is for pipelines that build the image with their own tooling (Kaniko, Cloud
+  // Build, a platform that builds from a committed Dockerfile), so it must not require a local Docker.
+  if (!options.artifactOnly && !requireDocker()) return;
 
   let artifactDir: string;
   try {
@@ -214,6 +218,11 @@ export async function runBuild(options: BuildCommandOptions): Promise<void> {
   } catch (error) {
     console.error(`skein: ${describeError(error)}`);
     process.exitCode = 1;
+    return;
+  }
+
+  if (options.artifactOnly) {
+    console.log(`skein: --artifact-only, skipping the image build.`);
     return;
   }
 

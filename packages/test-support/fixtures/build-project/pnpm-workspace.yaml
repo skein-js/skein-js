@@ -1,0 +1,5 @@
+# Stops vite's `searchForWorkspaceRoot` here rather than in the skein repo above. Not a real
+# workspace — nothing installs from it (see README.md).
+packages:
+  - apps/*
+  - libs/*

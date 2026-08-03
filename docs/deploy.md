@@ -88,6 +88,11 @@ it and let your platform build it. Either way:
 - **Installs pinned production dependencies only.** No vite/tsx, no devDependencies, no runtime
   TypeScript transform: `skein build` resolved your tsconfig `paths` and workspace aliases once, on the
   host. Source maps stay on, so stack traces still point at your TypeScript.
+  The pinned set is **derived from the bundle**: every published package your graphs still import
+  after bundling is recorded at the exact version installed on the build host, and `skein build` fails
+  on the host if the two ever disagree. Packages you load **by name at runtime** are the exception a
+  bundler cannot see — declare those under `dependencies` in `langgraph.json`
+  ([what `skein build` bundles](./bundling.md#what-skein-build-inlines-vs-externalizes)).
 - **Caches dependency installs** via a BuildKit cache mount, and accepts an optional `id=npmrc` build
   secret for private scoped packages — `skein build --npmrc <path>`, or
   `docker build --secret id=npmrc,src=$HOME/.npmrc` for the standalone Dockerfile. See

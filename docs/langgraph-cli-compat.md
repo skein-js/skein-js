@@ -59,6 +59,11 @@ runs` where `langgraph dev` prints `Starting 10 workers`. LangGraph really does 
 skein runs one worker whose consumer executes 10 runs at a time. Same throughput, honest wording. `skein up`/`build`/`dockerfile` accept `--tag` (build) and `--output`
 (dockerfile) in addition to `--config`.
 
+**`skein build --artifact-only`** (skein-only) writes `.skein/build` — the bundled graphs, the pinned
+`package.json`, the baked `schemas.json`, and the generated Dockerfile — and stops without invoking
+Docker. Use it when something else builds the image: Kaniko or Cloud Build in CI, a platform that
+builds from a committed Dockerfile, or any machine that has Node but no Docker daemon.
+
 **Private/authenticated npm registries.** When your production dependencies include private scoped
 packages (e.g. `@myorg/*` behind a token), pass an `.npmrc` so the image's dependency install can
 authenticate. `skein build --npmrc <path>` and `skein up --npmrc <path>` mount it as a BuildKit
@@ -175,6 +180,9 @@ it but is never required.
     "paths": ["./src/my-telemetry.ts:sink"], // your own TelemetrySink
   },
 
+  // packages your code loads BY NAME at runtime, which no bundler can discover (skein extension)
+  "dependencies": ["@langchain/openai"],
+
   // extra Dockerfile lines appended after the base image
   "dockerfile_lines": [],
 }
@@ -193,7 +201,17 @@ it but is never required.
 | `http`                 | `http.cors` maps to the adapter's CORS options; the `disable_*` flags remove that resource's routes before mounting, so it 404s from the host app as under `langgraph dev`. `http.app` is still accepted and ignored. |
 | `auth`                 | `auth.path` loads an `Auth` from `@langchain/langgraph-sdk/auth`; every request is authenticated + authorized; `disable_studio_auth` honored.                                                                         |
 | `telemetry`            | **skein extension.** Builds the telemetry sinks runs report to — see [observability.md](./observability.md). Unknown to `langgraph dev`, which ignores it.                                                            |
+| `dependencies`         | **skein extension on the JS side** (LangGraph's schema has it for Python only). Extra packages `skein build` pins into the artifact — see below.                                                                      |
 | `dockerfile_lines`     | Appended by `skein dockerfile` / `skein build`.                                                                                                                                                                       |
+
+**`dependencies` means something different here.** In LangGraph it is a Python-only field, required
+and used to drive `pip install`; the JS schema has no such field, because `langgraph build` copies
+your project into the image and runs your package manager over it. skein bundles instead, so it
+derives the image's dependency list from what the bundle still imports — and `dependencies` is the
+escape hatch for the packages that list cannot contain: the ones you load **by name at runtime**
+(`import("@langchain/" + provider)`), which never appear in any module graph. Local-path entries
+(`"."`, `"./pkg"`) are accepted and ignored — that source is already bundled. See
+[bundling.md](./bundling.md#what-skein-build-inlines-vs-externalizes).
 
 ## Graph loading (`path:export` notation)
 

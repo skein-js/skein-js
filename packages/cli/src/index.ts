@@ -174,6 +174,11 @@ program
     "-n, --npmrc <path>",
     "Path to an .npmrc for authenticating private-registry installs (passed to docker build as a BuildKit secret)",
   )
+  .option(
+    "--artifact-only",
+    "Write .skein/build (artifact + Dockerfile) and stop, without invoking Docker",
+    false,
+  )
   .action((options) => runBuild(options));
 
 program

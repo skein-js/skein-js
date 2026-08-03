@@ -3,5 +3,5 @@
   "graphs": {
     "agent": "./src/graph.ts:graph"
   },
-  "dependencies": [".", "@fixture/pinned"]
+  "dependencies": [".", "@fixture/by-name"]
 }
