@@ -1,3 +1,13 @@
+## 0.13.0 (2026-08-03)
+
+### 🩹 Fixes
+
+- **cli:** pin the packages the bundle actually imports ([#6](https://github.com/skein-js/skein-js/issues/6))
+
+### ❤️ Thank You
+
+- Maina Wycliffe
+
 ## 0.12.0 (2026-08-02)
 
 ### 🚀 Features
