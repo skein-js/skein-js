@@ -1339,16 +1339,23 @@ export class PostgresSkeinStore implements SkeinStore {
       return rows[0] ? rowToThread(rows[0]) : null;
     },
     create: async (input?: ThreadCreate) => {
-      const { rows } = await this.#pool.query<ThreadRow>(
-        `INSERT INTO threads (thread_id, status, metadata)
-         VALUES ($1, $2, $3::jsonb) RETURNING *`,
-        [
-          input?.thread_id ?? randomUUID(),
-          input?.status ?? "idle",
-          JSON.stringify(input?.metadata ?? {}),
-        ],
-      );
-      return rowToThread(rows[0] as ThreadRow);
+      const threadId = input?.thread_id ?? randomUUID();
+      try {
+        const { rows } = await this.#pool.query<ThreadRow>(
+          `INSERT INTO threads (thread_id, status, metadata)
+           VALUES ($1, $2, $3::jsonb) RETURNING *`,
+          [threadId, input?.status ?? "idle", JSON.stringify(input?.metadata ?? {})],
+        );
+        return rowToThread(rows[0] as ThreadRow);
+      } catch (error) {
+        // A duplicate id is a typed 409, matching the memory driver and every other create here —
+        // the service turns it into if_exists handling. Without this the raw `pg` unique violation
+        // escaped as a 500.
+        if (isUniqueViolation(error)) {
+          throw SkeinHttpError.conflict(`Thread "${threadId}" already exists.`);
+        }
+        throw error;
+      }
     },
     update: async (threadId, patch: ThreadUpdate) => {
       const { rows } = await this.#pool.query<ThreadRow>(

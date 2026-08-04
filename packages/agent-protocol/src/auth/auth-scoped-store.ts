@@ -115,10 +115,15 @@ export function createAuthScopedStore(
         return thread && matches(thread.metadata) ? thread : null;
       },
       create: async (input) => {
-        // A caller-supplied `thread_id` must not clobber (memory driver) or collide with (postgres)
-        // a thread owned by someone else. The decorator hides foreign threads on read, so a run's
-        // `ensureThread` (get-then-create) would otherwise re-create a hidden thread under the
-        // caller — a cross-tenant takeover. Reject with the same 404 a hidden thread reads as.
+        // A caller-supplied `thread_id` must not collide with a thread owned by someone else. The
+        // decorator hides foreign threads on read, so a run's `ensureThread` (get-then-create) would
+        // otherwise re-create a hidden thread under the caller — a cross-tenant takeover.
+        //
+        // Still needed now that both drivers reject a duplicate id: the driver's 409 says "this id is
+        // taken", which for a thread the caller cannot see is an existence oracle. Answering the same
+        // 404 a hidden thread already reads as tells them nothing. It also keeps `if_exists:
+        // "do_nothing"` honest — that recovers by re-reading through this decorator, so a foreign
+        // thread is never handed back.
         if (input?.thread_id !== undefined) {
           const existing = await inner.threads.get(input.thread_id);
           if (existing && !matches(existing.metadata)) {

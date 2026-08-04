@@ -381,8 +381,16 @@ export function createProtocolHandlers(service: ProtocolService): ProtocolHandle
       ),
 
     // --- threads ------------------------------------------------------------------------------
-    createThread: async (req) =>
-      json(await service.threads.create(parse(threadCreateSchema, req.body ?? {}))),
+    createThread: async (req) => {
+      const body = parse(threadCreateSchema, req.body ?? {});
+      return json(
+        await service.threads.create({
+          thread_id: body.thread_id,
+          metadata: body.metadata,
+          ifExists: body.if_exists,
+        }),
+      );
+    },
 
     getThread: async (req) =>
       json(await service.threads.get(requireParam(req.params, "thread_id"))),

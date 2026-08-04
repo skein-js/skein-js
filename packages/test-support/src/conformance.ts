@@ -282,6 +282,37 @@ export function runSkeinStoreConformance(label: string, makeStore: SkeinStoreFac
         expect(await store.threads.get("does-not-exist")).toBeNull();
       });
 
+      // Both drivers must answer a duplicate id the same way. Memory silently *overwrote* the thread
+      // (resetting created_at/metadata/status/values/interrupts) while Postgres let a raw `pg` unique
+      // violation escape as a 500 — neither is `if_exists`, and neither matched the other.
+      it("rejects a duplicate thread id as a conflict", async () => {
+        const store = await makeStore();
+        await store.threads.create({ thread_id: "fixed" });
+
+        await expect(store.threads.create({ thread_id: "fixed" })).rejects.toMatchObject({
+          status: 409,
+        });
+      });
+
+      it("leaves the existing thread untouched when a duplicate create is rejected", async () => {
+        const store = await makeStore();
+        await store.threads.create({ thread_id: "fixed", metadata: { keep: "me" } });
+        await store.threads.update("fixed", {
+          status: "interrupted",
+          values: { messages: ["hi"] },
+        });
+
+        await expect(store.threads.create({ thread_id: "fixed" })).rejects.toMatchObject({
+          status: 409,
+        });
+
+        // The clobber this guards against reset every one of these.
+        const after = await store.threads.get("fixed");
+        expect(after?.status).toBe("interrupted");
+        expect(after?.metadata).toMatchObject({ keep: "me" });
+        expect(after?.values).toEqual({ messages: ["hi"] });
+      });
+
       it("updates status, metadata, and values", async () => {
         const store = await makeStore();
         const { thread_id } = await store.threads.create();

@@ -2252,7 +2252,7 @@ version and mirrors its fields, and `POST .../latest` rolls back to any past ver
 
 | Method   | Path                                         | Notes                                         |
 | -------- | -------------------------------------------- | --------------------------------------------- |
-| `POST`   | `/threads`                                   |                                               |
+| `POST`   | `/threads`                                   | Create; `if_exists: "raise" \| "do_nothing"`  |
 | `GET`    | `/threads/{thread_id}`                       |                                               |
 | `POST`   | `/threads/search`                            |                                               |
 | `POST`   | `/threads/count`                             | How many match the filters (no pagination)    |
@@ -2266,6 +2266,18 @@ version and mirrors its fields, and `POST .../latest` rolls back to any past ver
 | `PATCH`  | `/threads/{thread_id}`                       |                                               |
 | `POST`   | `/threads/{thread_id}/copy`                  | Duplicates the thread + its history           |
 | `DELETE` | `/threads/{thread_id}`                       |                                               |
+
+**`if_exists` on thread creation.** `POST /threads` with a `thread_id` you choose defaults to
+`if_exists: "raise"` — a 409 when that id is taken. `"do_nothing"` returns the **existing** thread
+untouched, which makes `client.threads.create({ threadId: stableKey, ifExists: "do_nothing" })` a
+get-or-create: the idiom for addressing a conversation by an external identity (a phone number, an email
+thread, a ticket id) without tracking skein's own ids.
+
+Uniqueness is enforced in the storage driver, not by a read-then-write in the service, so two instances
+racing the same id cannot both win. Before this existed the two drivers disagreed: the memory driver
+silently **overwrote** the thread — resetting its `created_at`, `metadata`, `status`, `values` and
+`interrupts`, so an interrupted thread read as idle — while Postgres surfaced a raw unique violation as a
+500.
 
 **Filtering threads by graph.** `POST /threads/search` matches on a metadata subset. When a run is
 created, skein stamps the run's `graph_id` and `assistant_id` into the thread's metadata (matching

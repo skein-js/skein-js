@@ -32,6 +32,34 @@ describe("thread service", () => {
     expect(patched.metadata).toMatchObject({ a: 2 });
   });
 
+  it("creates honoring if_exists (raise by default, do_nothing returns the existing)", async () => {
+    const service = await serviceWithAssistants();
+
+    const created = await service.threads.create({ thread_id: "custom", metadata: { keep: "me" } });
+    expect(created.thread_id).toBe("custom");
+
+    await expect(service.threads.create({ thread_id: "custom" })).rejects.toMatchObject({
+      status: 409,
+    });
+
+    const again = await service.threads.create({
+      thread_id: "custom",
+      ifExists: "do_nothing",
+      metadata: { ignored: true },
+    });
+    expect(again.thread_id).toBe("custom");
+    // Unchanged — the existing row was returned rather than overwritten. This is the whole point:
+    // the memory driver used to reset metadata/status/values/interrupts here.
+    expect(again.metadata).toMatchObject({ keep: "me" });
+    expect(again.created_at).toBe(created.created_at);
+  });
+
+  it("do_nothing still creates when the thread is absent", async () => {
+    const service = await serviceWithAssistants();
+    const created = await service.threads.create({ thread_id: "fresh", ifExists: "do_nothing" });
+    expect(created.thread_id).toBe("fresh");
+  });
+
   it("404s an unknown thread on get and patch", async () => {
     const service = await serviceWithAssistants();
     await expect(service.threads.get("ghost")).rejects.toMatchObject({ status: 404 });

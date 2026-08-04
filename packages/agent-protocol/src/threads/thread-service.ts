@@ -5,6 +5,7 @@
 
 import type { CompiledGraph } from "@langchain/langgraph";
 import {
+  isSkeinHttpError,
   isTerminalRunStatus,
   SkeinHttpError,
   type Checkpoint,
@@ -27,6 +28,12 @@ import {
 export interface CreateThreadInput {
   thread_id?: string;
   metadata?: Metadata;
+  /**
+   * What to do when `thread_id` is already taken — LangGraph's `if_exists`, defaulting to `raise`
+   * (409). `do_nothing` returns the **existing** thread untouched, which is what makes
+   * `threads.create({ threadId: stableKey, ifExists: "do_nothing" })` a get-or-create.
+   */
+  ifExists?: "raise" | "do_nothing";
 }
 
 export interface PatchThreadInput {
@@ -219,7 +226,28 @@ export function createThreadService(ctx: ProtocolContext): ThreadService {
   };
 
   return {
-    create: (input) => deps.store.threads.create(input as ThreadCreate | undefined),
+    async create(input) {
+      const { ifExists, ...create } = input ?? {};
+      // Atomic if_exists: let the store enforce uniqueness (it throws 409 on a duplicate id) rather
+      // than a racy get-then-create. do_nothing recovers the existing row; raise re-throws the 409.
+      // The recovering read goes back through `deps.store`, so under auth it is the ownership-scoped
+      // one — a thread belonging to another principal still reads as absent rather than being handed
+      // back here.
+      try {
+        return await deps.store.threads.create(create as ThreadCreate);
+      } catch (error) {
+        if (
+          create.thread_id !== undefined &&
+          ifExists === "do_nothing" &&
+          isSkeinHttpError(error) &&
+          error.status === 409
+        ) {
+          const existing = await deps.store.threads.get(create.thread_id);
+          if (existing) return existing;
+        }
+        throw error;
+      }
+    },
 
     get: requireThread,
 

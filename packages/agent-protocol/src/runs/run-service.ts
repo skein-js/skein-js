@@ -3,6 +3,7 @@
 // stream subscribes to the bus while the engine runs inline, background enqueues for a worker.
 
 import {
+  isSkeinHttpError,
   isTerminalRunStatus,
   SkeinHttpError,
   type Assistant,
@@ -281,11 +282,23 @@ export function createRunService(ctx: ProtocolContext): RunService {
     }
   };
 
-  // A stateless run creates (or reuses) its thread; a thread-scoped run's thread must already exist.
+  // Get-or-create by id. The read comes first for the common case, but the create can still lose a
+  // race with a concurrent caller — the driver enforces uniqueness now, so that shows up as a 409
+  // rather than as a silent overwrite. Recover by re-reading: whoever won created the thread this
+  // caller wanted, so the outcome is the same.
   const ensureThread = async (threadId?: string): Promise<Thread> => {
     if (threadId === undefined) return deps.store.threads.create();
     const existing = await deps.store.threads.get(threadId);
-    return existing ?? (await deps.store.threads.create({ thread_id: threadId }));
+    if (existing) return existing;
+    try {
+      return await deps.store.threads.create({ thread_id: threadId });
+    } catch (error) {
+      if (isSkeinHttpError(error) && error.status === 409) {
+        const raced = await deps.store.threads.get(threadId);
+        if (raced) return raced;
+      }
+      throw error;
+    }
   };
 
   // Stop an active run being displaced by an `interrupt`/`rollback` run. A pending (never-started)

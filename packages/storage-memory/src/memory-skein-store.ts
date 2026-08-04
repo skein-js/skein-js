@@ -433,9 +433,16 @@ export class MemorySkeinStore implements SkeinStore {
     count: async (query: ThreadSearchQuery) => this.#matchingThreads(query).length,
     get: async (threadId) => readOne(this.#threads, threadId),
     create: async (input?: ThreadCreate) => {
+      const threadId = input?.thread_id ?? randomUUID();
+      // Reject a duplicate id (matches the Postgres driver): the service turns this 409 into
+      // if_exists handling. Without it a re-used id silently *overwrote* the thread — resetting its
+      // created_at, metadata, status, values and interrupts, so an interrupted thread read as idle.
+      if (this.#threads.has(threadId)) {
+        throw SkeinHttpError.conflict(`Thread "${threadId}" already exists.`);
+      }
       const at = nowIso();
       const thread: Thread = {
-        thread_id: input?.thread_id ?? randomUUID(),
+        thread_id: threadId,
         created_at: at,
         updated_at: at,
         state_updated_at: at,

@@ -178,6 +178,12 @@ export interface ThreadRepo {
    */
   count(query: ThreadSearchQuery): Promise<number>;
   get(threadId: string): Promise<Thread | null>;
+  /**
+   * Create a thread. Throws `SkeinHttpError.conflict` (409) when `thread_id` is already taken — the
+   * service layer turns that into `if_exists` handling, and callers that want get-or-create (the run
+   * service's `ensureThread`) tolerate the 409 and re-read. Enforced in the driver rather than by a
+   * read-then-write in the service, so two instances racing the same id cannot both win.
+   */
   create(input?: ThreadCreate): Promise<Thread>;
   update(threadId: string, patch: ThreadUpdate): Promise<Thread>;
   /** Duplicate a thread's row (new id, fresh timestamps); checkpoint history is copied at the service layer. */

@@ -138,6 +138,8 @@ export const threadCreateSchema = z
   .object({
     thread_id: z.string().min(1).optional(),
     metadata: z.record(z.unknown()).optional(),
+    /** Conflict policy when `thread_id` already exists; defaults to `raise`. */
+    if_exists: z.enum(["raise", "do_nothing"]).optional(),
   })
   .passthrough();
 
