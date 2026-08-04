@@ -25,6 +25,7 @@
 - [The pipeline](#the-pipeline)
 - [Packaging and distribution](#packaging-and-distribution)
 - [Configuration — `skein.events`, not a new file](#configuration--skeinevents-not-a-new-file)
+  - [Which graph runs an event](#which-graph-runs-an-event)
 - [Validation against real providers](#validation-against-real-providers)
 - [Alternatives considered](#alternatives-considered)
 - [Risks and open questions](#risks-and-open-questions)
@@ -185,6 +186,10 @@ export interface InboundEvent {
   idempotencyKey?: string;
   /** Where the answer goes. Opaque to skein; handed back to `deliver` and `onSignal`. */
   replyTo?: ReplyTarget;
+  /**
+   * Optional routing among graphs the deployment opted into via `allowed_assistants`. Omit — the
+   * common case — and the source's configured `assistant` runs. See "Which graph runs an event".
+   */
   assistantId?: string;
   metadata?: Record<string, unknown>;
   /** Policy when the thread already has an active or interrupted run. Default: `"resume"`. */
@@ -482,6 +487,9 @@ Stated now, because "we'll figure out compatibility later" is how plugin ecosyst
 - The `deliver` / `onSignal` reliability split.
 - The reply-resolution order (declared → `messages` convention → nothing), and that an `interrupted`
   run still delivers. Sources are written against both.
+- That a source can only reach graphs the deployment listed in `allowed_assistants`. This is a
+  security boundary, not a convenience — widening it silently would let an installed package route
+  untrusted input into any graph.
 
 **Explicitly provisional** — may change in a minor, and documented as such so nobody builds on them:
 
@@ -557,6 +565,7 @@ POST /events/:source
   → parseEvent()                → ignore? 204 · respond? that response · else continue
   → idempotencyKey              → replay prior response      [durable-delivery Part 1]
   → resolve threadKey           → get-or-create thread        [#7: if_exists / if_not_exists]
+  → resolve assistant           → event's, if allowed; else the source's configured one
   → resume | start | enqueue    → per onExisting
   → enqueue run, ACK 2xx        ← invariant, see below
   ├→ onSignal(…)                → best-effort, from RunEventBus   [existing machinery]
@@ -620,11 +629,22 @@ graphs, `auth.path`, and telemetry `paths`. New surfaces go under `skein.*` from
 
 ```jsonc
 {
-  "graphs": { "agent": "./src/agent.ts:graph" },
+  "graphs": {
+    "support": "./src/support.ts:graph",
+    "triage": "./src/triage.ts:graph",
+  },
   "skein": {
     "events": {
-      "twilio": "@skein-js/events-twilio", // first-party package
-      "billing": "./src/billing-source.ts:source", // your own, path:export
+      // A source binds a provider to a graph. Both keys are required.
+      "twilio": {
+        "path": "@skein-js/events-twilio", // first-party package
+        "assistant": "support", // which graph its events run
+      },
+      "github": {
+        "path": "./src/github-source.ts:source", // your own, path:export
+        "assistant": "triage",
+        "allowed_assistants": ["triage", "support"], // opt in to source-side routing
+      },
     },
   },
 }
@@ -633,6 +653,40 @@ graphs, `auth.path`, and telemetry `paths`. New surfaces go under `skein.*` from
 A separate `skein.json` would solve the forward-collision problem that the reserved namespace
 already solves, at the cost of a second file, a second loader, merge semantics, and a permanent
 "which file does this go in?" question. The namespace wins.
+
+### Which graph runs an event
+
+A registered source with no graph has nothing to run, and `InboundEvent.assistantId` alone cannot
+answer it: **the binding is deployment knowledge, not provider knowledge.** A community Twilio
+adapter has no business knowing you named your graph `support`. So the binding is declared where the
+source is registered, and `assistant` is **required** — a source without one is a boot-time
+configuration error, not a 500 on the first real message.
+
+`assistant` accepts a **UUID or a graph name**, resolving exactly as it does for crons
+([crons.md](../crons.md)) — a graph name resolves to the assistant skein auto-registers for it. Same
+notation, same resolver, nothing new to learn.
+
+**Resolution order** per event:
+
+1. `InboundEvent.assistantId`, when the source returned one **and** it appears in
+   `allowed_assistants`.
+2. Otherwise the source's configured `assistant`.
+
+Source-side routing exists because real integrations need it — one Slack app serving `#support` and
+`#eng` from different graphs, or a GitHub source sending `issues.opened` to triage and
+`pull_request` to review. But it is **opt-in and bounded**: a source may only reach graphs the
+deployment listed in `allowed_assistants`, and an unlisted `assistantId` is rejected and logged
+rather than honoured.
+
+That bound is the point. A source is an npm package you installed; without it, any published source
+could route arbitrary untrusted input into any graph in the deployment. Omitting
+`allowed_assistants` means the source cannot route at all, which is the right default for the
+majority of integrations that only ever need one graph.
+
+**Validated at boot, not at first event.** A missing `assistant`, an `assistant` naming a graph that
+does not exist, or an `allowed_assistants` entry that does not resolve should all fail startup with a
+precise `SkeinConfigError` — the same discipline `loadAuthEngine` already applies to a bad `auth.path`.
+Discovering a typo when the first customer texts is the failure this is designed to avoid.
 
 **But the namespace is not being used consistently today, and that _is_ a live risk.** Two
 skein-only surfaces sit outside it: top-level **`telemetry`** (self-described as "a skein extension —
