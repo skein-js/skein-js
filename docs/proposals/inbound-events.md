@@ -17,6 +17,8 @@
   - [`EventSource`](#eventsource)
   - [`InboundRequest` — and why raw bytes are mandatory](#inboundrequest--and-why-raw-bytes-are-mandatory)
   - [`parseEvent` outcomes](#parseevent-outcomes)
+  - [`RunOutcome` — and who decides what the reply is](#runoutcome--and-who-decides-what-the-reply-is)
+  - [Interrupts — the async human-in-the-loop path](#interrupts--the-async-human-in-the-loop-path)
   - [Run signals — typing, status, progress](#run-signals--typing-status-progress)
   - [Stability commitments](#stability-commitments)
 - [Authentication and authorization](#authentication-and-authorization)
@@ -245,6 +247,169 @@ A tagged union rather than `InboundEvent | null`, for two reasons:
   want an immediate ephemeral response; Twilio TwiML is the same shape. A 204 cannot express any of
   them. Revision 1 had no escape hatch here and would have failed on Slack setup, step one.
 
+### `RunOutcome` — and who decides what the reply is
+
+`parseEvent` maps the provider's payload **in**. Something has to map the answer back **out**, and
+that direction has a coupling problem the inbound direction does not.
+
+**Neither party knows enough on its own.** The source owns provider knowledge — how to call Twilio.
+The **graph** owns state shape — whether the answer lives at `state.messages.at(-1).content`, or
+`state.answer`, or `state.draft`. A source that guesses at state shape stops being reusable across
+graphs, which quietly breaks the plugin premise the whole proposal rests on. This is the same
+coupling carefully avoided on the inbound side, reappearing on the outbound one.
+
+**So the graph declares its reply; the source never guesses.** LangGraph already has the channel for
+this — `StreamWriter` / `stream_mode: "custom"`, the same mechanism behind `RunSignal.custom`:
+
+```ts
+// inside a node — one reserved key, typed by a helper skein exports
+writer(replyWith("Your order ships Tuesday."));
+```
+
+Every source consumes that one shape regardless of state shape. Source stays graph-agnostic, graph
+stays source-agnostic, and no per-deployment mapping config is needed.
+
+```ts
+export interface RunOutcome {
+  runId: string;
+  threadId: string;
+  status: RunStatus;
+  /** What the source should send, resolved by the order below. Absent means "say nothing". */
+  reply?: DeclaredReply;
+  /** Terminal graph state, for sources that need more than `reply`. */
+  values: unknown;
+  /** Present when `status === "interrupted"` — the question posed to the human. */
+  interrupt?: unknown;
+  /** Present when `status === "error"`. Diagnostic; not for end users. */
+  error?: { message: string };
+}
+
+export interface DeclaredReply {
+  text: string;
+  attachments?: readonly { url: string; mimeType?: string }[];
+  metadata?: Record<string, unknown>;
+}
+```
+
+**Resolution order**, applied by the pipeline before `deliver` is called:
+
+1. The graph declared a reply on the custom channel → use it.
+2. Otherwise, state carries a `messages` array → the last AI message's content. This is LangGraph's
+   `MessagesAnnotation` convention, so ordinary chat agents work with **no graph changes at all**.
+3. Otherwise → `reply` is absent, and the source sends nothing.
+
+Making step 2 a fallback rather than the contract is the whole point: the common case costs nothing,
+and a graph with custom state has an escape hatch that does not involve the source knowing anything
+about it.
+
+**Non-success outcomes are where this earns its keep:**
+
+- **`interrupted` must still deliver**, and its question is resolved into `reply` like any other —
+  see [Interrupts](#interrupts--the-async-human-in-the-loop-path). A source never branches on
+  status to render text.
+- **`error` deliberately carries no reply.** Whether an end user is told "something went wrong" is a
+  product decision, and leaking internals to a phone number is the wrong default. The source gets
+  `status` and `error` and decides.
+- **`cancelled`** sends nothing.
+
+**One reply per run, last write wins.** A graph that writes the reply channel twice gets the last
+value, not two messages. Delivering N messages durably is precisely the chunked-streaming problem
+already deferred in [Run signals](#run-signals--typing-status-progress) — a multi-message turn is the
+same feature under a different name, and it should be solved once, later, rather than half-solved
+here.
+
+### Interrupts — the async human-in-the-loop path
+
+An agent that can pause and ask a human a question, over a channel the human answers hours later, is
+the capability this proposal most uniquely enables. It is also the only place the graph↔source
+boundary is crossed **twice** — once rendering the question, once interpreting the answer — so it
+gets the declaration discipline in both directions rather than a guess in either.
+
+The full round trip, with both crossings and the gap in the middle:
+
+```mermaid
+sequenceDiagram
+    autonumber
+    actor User
+    participant Provider as Twilio
+    participant Skein as skein pipeline
+    participant Source as EventSource
+    participant Graph
+
+    Note over User,Graph: Turn 1 — request in, question out
+    User->>Provider: "Refund my order"
+    Provider->>Skein: POST /events/twilio
+    Skein->>Source: verify(request)
+    Source-->>Skein: SourcePrincipal
+    Skein->>Source: parseEvent(request)
+    Source-->>Skein: event, threadKey, input
+    Skein->>Skein: idempotency claim, get-or-create thread
+    Skein-->>Provider: 2xx ACK before the run starts
+    Skein->>Graph: start run
+    Skein->>Source: onSignal(accepted)
+    Source->>Provider: typing indicator on
+    Graph-->>Skein: interrupt(...)
+    Skein->>Source: deliver(outcome, status interrupted)
+    Source->>Provider: send question
+    Provider->>User: "Approve the 40 dollar refund?"
+
+    Note over User,Graph: hours pass — run stays interrupted, nothing held open
+
+    Note over User,Graph: Turn 2 — answer in, reply out
+    User->>Provider: "yes"
+    Provider->>Skein: POST /events/twilio
+    Skein->>Source: verify, parseEvent
+    Skein->>Skein: thread has an interrupted run, so onExisting resume
+    Skein-->>Provider: 2xx ACK
+    Skein->>Graph: Command resume "yes"
+    Graph-->>Skein: replyWith(...)
+    Skein->>Source: deliver(outcome, status success)
+    Source->>Provider: send reply
+    Provider->>User: "Refunded."
+```
+
+Three things the diagram makes concrete that prose does not. The **ACK precedes the run** in both
+turns, so no provider timeout depends on how long the agent thinks. The **gap costs nothing** — an
+interrupted run holds no connection, no subscription and no timer, only a checkpoint. And **turn 2
+is the same path as turn 1** right up to the resume decision, which is why a source needs no notion
+of "this is a follow-up".
+
+**Outbound: rendering the question.** The graph calls `interrupt({ … })` with a payload only it
+understands. Rather than a second mechanism, this extends the same resolution order:
+
+1. The graph declared text via `replyWith` — it works inside an interrupt payload like anywhere else.
+2. Otherwise, the interrupt payload carries a `text` or `question` string → use it.
+3. Otherwise → nothing to send, **and log a warning**.
+
+Step 3 deliberately differs from the success case. A successful run that renders no reply is fine —
+maybe the graph had nothing to say. An **interrupt** that renders no reply strands the conversation
+permanently: the run waits for an answer to a question nobody was asked. Silence there is always a
+bug, so it should be noisy.
+
+**Inbound: interpreting the answer.** The next event on that thread resumes the run with
+`Command({ resume })`. The value passed is **the same `input` the source would have produced for a
+new turn** — no parsing, no coercion.
+
+This is deliberate. The graph author wrote `interrupt()` and is the only party who knows whether the
+node wants `true`, `"approve"`, or free text. Any interpretation by skein or by a provider-specific
+source would be a guess about a graph it has never seen — the same coupling avoided everywhere else
+in this design.
+
+**When the answer isn't an answer.** A user may reply "actually, never mind — what's my balance?"
+That is not an answer to the pending question, and no amount of source-side cleverness can reliably
+tell. So the pipeline still resumes, and the **graph** decides whether to re-ask, pivot, or abandon —
+because the graph is the only party holding the question. Deployments that want a blunter rule keep
+`onExisting` (`"enqueue"` starts fresh instead).
+
+**Staleness.** A thread interrupted three weeks ago probably should not resume because someone texted
+today. A `resume_within` bound would fall back to `onExisting: "enqueue"` past its window. Default
+value is **open**, and it is genuinely product-specific: silently discarding a pending
+human-in-the-loop turn is worse than an odd resume, so the lean is no expiry unless configured.
+
+**Multiple pending interrupts.** LangGraph can surface more than one, and a single inbound message
+cannot unambiguously answer N questions. v1 resumes the first and logs; whether ambiguity should
+instead reject is **open**.
+
 ### Run signals — typing, status, progress
 
 A twenty-second agent turn behind a dead chat window is a bad product. Chat providers all offer some
@@ -315,12 +480,15 @@ Stated now, because "we'll figure out compatibility later" is how plugin ecosyst
 - `EventOutcome` and `RunSignal` as `kind`-discriminated unions (new arms are additive and safe).
 - `InboundRequest.rawBody` and `.url` semantics.
 - The `deliver` / `onSignal` reliability split.
+- The reply-resolution order (declared → `messages` convention → nothing), and that an `interrupted`
+  run still delivers. Sources are written against both.
 
 **Explicitly provisional** — may change in a minor, and documented as such so nobody builds on them:
 
 - The `onExisting` value set (more policies are likely).
 - `ReplyTarget`'s shape; today it is opaque and only round-trips through `deliver` and `onSignal`.
 - `RunSignal.custom`'s payload contract.
+- `DeclaredReply`'s non-`text` fields — `attachments` depends on the deferred blob story.
 - Anything about batching (see [Risks](#risks-and-open-questions)).
 
 **Versioning approach:** plain semver on `@skein-js/events`, with sources declaring a peer
