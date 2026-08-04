@@ -1,7 +1,7 @@
 // End-to-end adapter tests over real HTTP (native `fetch` against an ephemeral server): one per
 // response shape the transport shim produces — JSON, 204, error mapping, and SSE — plus CORS.
 
-import { afterEach, describe, expect, it } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
 
 import { startEchoServer, type RunningServer } from "./__fixtures__/echo-server.js";
 
@@ -276,6 +276,38 @@ describe("@skein-js/express adapter", () => {
       body: "{}",
     });
     expect(ping.status).toBe(200);
+  });
+
+  it("cancels the run on disconnect when asked to", async () => {
+    // The end-to-end proof that this adapter fills `ProtocolRequest.signal`: the policy itself is
+    // covered in agent-protocol, but only a real socket close exercises the wiring.
+    running = await startEchoServer();
+    const { baseUrl } = running;
+
+    const controller = new AbortController();
+    const res = await fetch(`${baseUrl}/runs/stream`, {
+      method: "POST",
+      headers: jsonHeaders,
+      body: JSON.stringify({
+        assistant_id: "echo",
+        input: { messages: [{ role: "user", content: "hi" }] },
+        after_seconds: 1, // still pending when we hang up
+        on_disconnect: "cancel",
+      }),
+      signal: controller.signal,
+    });
+    const runPath = res.headers.get("content-location");
+    expect(runPath).toBeTruthy();
+
+    await res.body?.cancel();
+    controller.abort();
+
+    await vi.waitFor(async () => {
+      const run = (await fetch(`${baseUrl}${runPath}`).then((r) => r.json())) as {
+        status: string;
+      };
+      expect(run.status).toBe("cancelled");
+    });
   });
 
   it("does not emit CORS headers by default (non-permissive)", async () => {

@@ -111,6 +111,11 @@ export function createSkeinPagesHandler(options: SkeinPagesHandlerOptions): Skei
       return;
     }
 
+    // See the Express adapter: drives `on_disconnect`. The Pages Router hands us a Node response, so
+    // the signal is synthesized from its `close` rather than taken from a Web `Request`.
+    const disconnected = new AbortController();
+    res.once("close", () => disconnected.abort(new Error("client disconnected")));
+
     try {
       const request: ProtocolRequest = {
         method: req.method ?? "GET",
@@ -119,6 +124,7 @@ export function createSkeinPagesHandler(options: SkeinPagesHandlerOptions): Skei
         query: toQuery(url),
         body: req.body,
         headers: toSingleValueHeaders(req.headers),
+        signal: disconnected.signal,
       };
       const invoke = resolved.runtime.handlers[match.binding.handler];
       const response = await invoke(

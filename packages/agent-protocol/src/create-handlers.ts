@@ -199,6 +199,19 @@ function booleanQuery(value: string | string[] | undefined): boolean | undefined
   return undefined;
 }
 
+/**
+ * `?cancel_on_disconnect` on the join routes.
+ *
+ * Its own parser rather than {@link booleanQuery} because the SDK sends **`"1"` / `"0"`**, not
+ * `true`/`false` (`params: { cancel_on_disconnect: opts?.cancelOnDisconnect ? "1" : "0" }`). Reading it
+ * with the general helper would see neither spelling and silently answer `undefined` — the flag would
+ * look supported and never fire. Both spellings are accepted, so a hand-rolled caller works too.
+ */
+function cancelOnDisconnectQuery(value: string | string[] | undefined): boolean {
+  const raw = queryValue(value);
+  return raw === "1" || raw === "true";
+}
+
 /** `?xray` is `boolean | number` (a depth bound) — try boolean first, then a positive integer. */
 function xrayQuery(value: string | string[] | undefined): number | boolean | undefined {
   return booleanQuery(value) ?? positiveIntQuery(value);
@@ -508,9 +521,12 @@ export function createProtocolHandlers(service: ProtocolService): ProtocolHandle
     },
 
     // --- runs ---------------------------------------------------------------------------------
+    // `req.signal` is what makes `on_disconnect` work; an adapter that cannot observe disconnects
+    // omits it and the run simply runs to completion (`"continue"`, the default).
     createWaitRun: async (req) => {
       const { runId, threadId, result } = await service.runs.createWait(
         parse(runCreateSchema, req.body) as CreateRunInput,
+        { signal: req.signal },
       );
       return json(result, 200, runLocationHeaders(threadId, runId));
     },
@@ -518,6 +534,7 @@ export function createProtocolHandlers(service: ProtocolService): ProtocolHandle
     createStreamRun: async (req) => {
       const started = await service.runs.createStream(
         parse(runCreateSchema, req.body) as CreateRunInput,
+        { signal: req.signal },
       );
       return sse(started, runLocationHeaders(started.threadId, started.runId));
     },
@@ -562,9 +579,25 @@ export function createProtocolHandlers(service: ProtocolService): ProtocolHandle
       );
     },
 
+    /**
+     * Tail a run already in flight as SSE — `client.runs.joinStream()`.
+     *
+     * `?cancel_on_disconnect` is honoured here (as `@langchain/langgraph-api` does on this route): a
+     * client that hangs up mid-tail settles the run. No disarm on completion, deliberately — the
+     * response closing at the end of a healthy stream fires the same `close` this listens to, and
+     * unhooking on it would race the real disconnect. `cancel` is idempotent on a terminal run, so the
+     * completed case costs one store read and changes nothing.
+     */
     joinRunStream: async (req) => {
       const runId = requireParam(req.params, "run_id");
       const frames = await service.runs.join(runId, afterSeqFrom(req));
+      if (cancelOnDisconnectQuery(req.query["cancel_on_disconnect"]) && req.signal !== undefined) {
+        req.signal.addEventListener(
+          "abort",
+          () => void service.runs.cancel(runId).catch(() => undefined),
+          { once: true },
+        );
+      }
       return sse({ runId, frames });
     },
 
@@ -578,9 +611,11 @@ export function createProtocolHandlers(service: ProtocolService): ProtocolHandle
      * started yet and **waits forever**. The run row has no such expiry, so it — not the bus — decides
      * whether there is anything left to wait for.
      *
-     * `?cancel_on_disconnect` is accepted and ignored: honouring it needs a transport-level disconnect
-     * signal, which a JSON `ProtocolResponse` (unlike the SSE ones) never sees. `@langchain/langgraph-api`
-     * does not read it on this route either.
+     * `?cancel_on_disconnect` is accepted and ignored **here**, unlike on the sibling `.../stream`
+     * route, which honours it. Not for want of a signal any more — `req.signal` reaches this handler
+     * too — but because `@langchain/langgraph-api` does not read it on this route, and inventing a
+     * cancel the reference server does not perform would make a blocking join behave differently
+     * against the two servers the same client talks to.
      */
     joinRun: async (req) => {
       const runId = requireParam(req.params, "run_id");

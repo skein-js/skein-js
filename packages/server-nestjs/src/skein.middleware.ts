@@ -105,9 +105,16 @@ export class SkeinMiddleware implements NestMiddleware {
 
     if (cors) applyNodeCors(req.headers, res, cors);
 
+    // See the Express adapter: drives `on_disconnect` for a client that goes away mid-run.
+    const disconnected = new AbortController();
+    res.once("close", () => disconnected.abort(new Error("client disconnected")));
+
     try {
       const body = await readJsonBody(req);
-      const request = toProtocolRequest(req, url, match.params, body);
+      const request = {
+        ...toProtocolRequest(req, url, match.params, body),
+        signal: disconnected.signal,
+      };
       const invoke = this.resolved.runtime.handlers[match.binding.handler];
       const response = await invoke(
         match.binding.foldThreadIdIntoBody ? copyThreadIdIntoBody(request) : request,

@@ -176,8 +176,9 @@ resumable with `Last-Event-ID`). `.../runs/{run_id}/join` is the blocking form (
 waits for the run to settle and answers the thread's final `values` as plain JSON, or
 `{ "__error__": ... }` for a failed one — the same envelope `POST /runs/wait` uses. Joining a run that has
 _already_ settled returns immediately, including long after its frames have aged out of the event bus,
-because the wait is decided by the run row rather than by the bus. `?cancel_on_disconnect` is accepted and
-ignored: a JSON response has no disconnect signal to hang the behaviour on (neither does LangGraph's).
+because the wait is decided by the run row rather than by the bus. `?cancel_on_disconnect` is honoured on
+the **streaming** form and accepted-but-ignored on the blocking one, matching
+`@langchain/langgraph-api` — see `on_disconnect` under the run endpoints below.
 
 **Cancelling in bulk.** `POST /runs/cancel` takes `{ thread_id?, run_ids?, status? }`, narrowest
 selector first: explicit `run_ids`, else one thread's inflight runs, else **every** inflight run on the
@@ -241,6 +242,25 @@ counts as **inflight**: a second run on that thread under the default `multitask
 refused until the delayed one starts. That is the honest reading — work _is_ scheduled on the thread —
 but it surprises people. And a delayed run is cancellable like any other; `POST .../cancel` settles it
 before it ever runs.
+
+**`on_disconnect` on run creation.** `"cancel"` settles the run when the caller's connection drops;
+`"continue"` lets it finish. Only the inline routes (`/runs/wait`, `/runs/stream`) hold a connection to
+drop, which is why the SDK does not send it on a background create.
+
+**skein defaults to `"continue"`.** A proxy idle timeout or a load-balancer reset is indistinguishable
+from a real hang-up at this layer, so defaulting to cancel would let routine infrastructure kill a
+healthy run. Note `useStream` sends `"cancel"` on every submit unless the stream is resumable — so with
+a browser client, closing the tab now stops the run. That is LangGraph's behaviour, and it is a change:
+skein previously ignored the field and let every such run finish.
+
+The related query flag `?cancel_on_disconnect` is honoured on `GET .../runs/{run_id}/stream`
+(`client.runs.joinStream()`), matching `@langchain/langgraph-api`. It stays **accepted and ignored** on
+the blocking JSON `.../join`, because the reference server does not read it there either — a blocking
+join should not behave differently against the two servers the same client talks to.
+
+Adapters supply the disconnect signal from their own transport (`res` close, or the Web `Request`'s
+`signal`). An adapter that cannot observe disconnects simply omits it, and `"cancel"` degrades to
+`"continue"` rather than failing.
 
 **`Content-Location` on run creation.** Every run-create response (and `POST /threads/{id}/stream`)
 carries `Content-Location: /threads/{thread_id}/runs/{run_id}`. The `@langchain/langgraph-sdk` client

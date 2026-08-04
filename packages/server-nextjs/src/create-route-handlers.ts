@@ -82,6 +82,9 @@ async function toProtocolRequest(
     query: toQuery(url),
     body,
     headers: Object.fromEntries(request.headers),
+    // The Web `Request` aborts this when the client goes away, so `on_disconnect: "cancel"` stops the
+    // run rather than letting it burn tokens for a response nobody will read.
+    signal: request.signal,
   };
 }
 

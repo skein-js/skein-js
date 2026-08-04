@@ -91,8 +91,14 @@ export function createHandlerRouter(
   for (const binding of options.routes ?? skeinRoutes) {
     const invoke = handlers[binding.handler];
     router[binding.method](binding.path, async (req: Request, res: Response) => {
+      // Signals a client that went away, so a run created with `on_disconnect: "cancel"` stops instead
+      // of running to completion for a response nobody will read. Registered before the response is
+      // written, so it precedes the SSE pipe's own `close` listener and the abort is observed before
+      // the frame iterator is torn down.
+      const disconnected = new AbortController();
+      res.once("close", () => disconnected.abort(new Error("client disconnected")));
       try {
-        const request = toProtocolRequest(req);
+        const request = { ...toProtocolRequest(req), signal: disconnected.signal };
         const response = await invoke(
           binding.foldThreadIdIntoBody ? copyThreadIdIntoBody(request) : request,
         );

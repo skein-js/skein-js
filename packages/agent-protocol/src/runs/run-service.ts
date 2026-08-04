@@ -70,6 +70,14 @@ export interface CreateRunInput {
    * starts. That is the honest reading: work *is* scheduled on the thread.
    */
   after_seconds?: number;
+  /**
+   * Cancel the run when the caller's connection drops, rather than letting it finish. Only the inline
+   * modes hold a connection, so it is ignored on a background create.
+   *
+   * Defaults to `"continue"` — see the schema for why skein does not follow `useStream`'s `"cancel"`
+   * into the default.
+   */
+  on_disconnect?: "cancel" | "continue";
 }
 
 /**
@@ -165,9 +173,21 @@ export interface CancelManyResult {
  */
 export type WaitRunResult = DefaultValues | { __error__: RunError };
 
+/**
+ * Transport-level context for a run create — deliberately *not* part of {@link CreateRunInput}, which
+ * is the validated request body and nothing else.
+ */
+export interface RunRequestOptions {
+  /**
+   * Aborts when the caller's connection drops. Drives `on_disconnect`; an adapter that cannot observe
+   * disconnects simply omits it, and `on_disconnect: "cancel"` then behaves as `"continue"`.
+   */
+  signal?: AbortSignal;
+}
+
 export interface RunService {
-  createWait(input: CreateRunInput): Promise<CompletedWaitRun>;
-  createStream(input: CreateRunInput): Promise<StartedStream>;
+  createWait(input: CreateRunInput, options?: RunRequestOptions): Promise<CompletedWaitRun>;
+  createStream(input: CreateRunInput, options?: RunRequestOptions): Promise<StartedStream>;
   createBackground(threadId: string, input: CreateRunInput): Promise<Run>;
   /**
    * Start a background run on a **server-created** thread — `POST /runs`. The stateless sibling of
@@ -487,6 +507,39 @@ export function createRunService(ctx: ProtocolContext): RunService {
    * goes out immediately and the SSE heartbeat keeps the connection alive across the gap; only
    * execution is deferred.
    */
+  /**
+   * Wire `on_disconnect: "cancel"` to the caller's connection, returning a disposer.
+   *
+   * Only the inline modes reach here: a background create has no connection to lose, and the SDK does
+   * not send the field on one. Cancelling is best-effort by nature — the caller is already gone, so
+   * there is nobody left to report a failure to.
+   *
+   * The disposer matters. A Node `res` emits `close` on a *normal* response too, so without unhooking
+   * once the run settles every successful `/runs/wait` would fire a pointless cancel. It would be
+   * harmless (cancel is idempotent on a terminal run) but it would spend a store read per request and
+   * make the logs read as though clients were hanging up constantly.
+   */
+  const cancelOnDisconnect = (
+    runId: string,
+    input: CreateRunInput,
+    signal?: AbortSignal,
+  ): (() => void) => {
+    if (input.on_disconnect !== "cancel" || signal === undefined) return () => undefined;
+    const onAbort = (): void => {
+      void cancelRun(runId).catch((error: unknown) => {
+        deps.logger.warn(`run ${runId}: cancel on client disconnect failed`, error);
+      });
+    };
+    // Already gone by the time the run was created — cancel rather than wait for an event that has
+    // been and gone.
+    if (signal.aborted) {
+      onAbort();
+      return () => undefined;
+    }
+    signal.addEventListener("abort", onAbort, { once: true });
+    return () => signal.removeEventListener("abort", onAbort);
+  };
+
   const holdInlineRun = async (afterSeconds?: number): Promise<void> => {
     if (afterSeconds === undefined || afterSeconds <= 0) return;
     await new Promise<void>((resolve) => {
@@ -626,25 +679,33 @@ export function createRunService(ctx: ProtocolContext): RunService {
   };
 
   return {
-    async createWait(input) {
+    async createWait(input, options) {
       const { run, kwargs } = await prepareRun(input, () =>
         resolveRunThread(input.thread_id, input.if_not_exists),
       );
-      await holdInlineRun(input.after_seconds);
-      const outcome = await runInline(run, kwargs, "wait");
-      // A failed run must not read as an empty success. There are no headers left to turn into a
-      // status (the run already executed), so the failure travels in the body under `__error__` —
-      // the key `@langchain/langgraph-api` uses for exactly this. We match the key but not its
-      // double-encoding bug: the payload here is the `RunError` itself, not a JSON string of one.
-      const result: WaitRunResult =
-        outcome.error !== undefined ? { __error__: outcome.error } : outcome.values;
-      return { runId: run.run_id, threadId: run.thread_id, result };
+      // Armed before the delay, not after: a caller that hangs up *while waiting out* `after_seconds`
+      // has disconnected just as surely as one that hangs up mid-run.
+      const disarm = cancelOnDisconnect(run.run_id, input, options?.signal);
+      try {
+        await holdInlineRun(input.after_seconds);
+        const outcome = await runInline(run, kwargs, "wait");
+        // A failed run must not read as an empty success. There are no headers left to turn into a
+        // status (the run already executed), so the failure travels in the body under `__error__` —
+        // the key `@langchain/langgraph-api` uses for exactly this. We match the key but not its
+        // double-encoding bug: the payload here is the `RunError` itself, not a JSON string of one.
+        const result: WaitRunResult =
+          outcome.error !== undefined ? { __error__: outcome.error } : outcome.values;
+        return { runId: run.run_id, threadId: run.thread_id, result };
+      } finally {
+        disarm();
+      }
     },
 
-    async createStream(input) {
+    async createStream(input, options) {
       const { run, kwargs } = await prepareRun(input, () =>
         resolveRunThread(input.thread_id, input.if_not_exists),
       );
+      const disarm = cancelOnDisconnect(run.run_id, input, options?.signal);
       // Kick off execution; the subscription below replays from seq 0 (frames are buffered), so
       // nothing is lost between starting the run and subscribing. An `after_seconds` delay is awaited
       // *inside* this promise rather than before returning, so the response — and its
@@ -655,7 +716,11 @@ export function createRunService(ctx: ProtocolContext): RunService {
         .catch((error: unknown) => {
           deps.logger.error("stream run failed", error);
           return undefined;
-        });
+        })
+        // Unhook once the run has settled. The transport closes the response after the last frame, and
+        // that close is indistinguishable from a client hanging up — so leaving the listener armed
+        // would fire a cancel on every stream that simply finished.
+        .finally(disarm);
       return {
         runId: run.run_id,
         threadId: run.thread_id,

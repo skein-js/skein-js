@@ -124,8 +124,12 @@ export async function registerSkeinHandlers(
       method: HTTP_METHOD_TO_FASTIFY[binding.method],
       url: binding.path,
       handler: async (req, reply) => {
+        // See the Express adapter: drives `on_disconnect`. Hung off `reply.raw`, not `req.raw` — the
+        // SSE path hijacks the reply and writes to the raw socket, so that is where the close lands.
+        const disconnected = new AbortController();
+        reply.raw.once("close", () => disconnected.abort(new Error("client disconnected")));
         try {
-          const request = toProtocolRequest(req);
+          const request = { ...toProtocolRequest(req), signal: disconnected.signal };
           const response = await invoke(
             binding.foldThreadIdIntoBody ? copyThreadIdIntoBody(request) : request,
           );

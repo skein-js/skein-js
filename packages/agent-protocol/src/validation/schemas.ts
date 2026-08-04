@@ -87,6 +87,18 @@ export const runCreateSchema = z
      * routes an HTTP connection held open to match. A schedule measured in days is a cron.
      */
     after_seconds: z.number().int().nonnegative().max(86_400).optional(),
+    /**
+     * What to do when the client drops the connection mid-run: `cancel` settles the run, `continue`
+     * (the default) lets it finish.
+     *
+     * Only meaningful on the inline routes — `/runs/wait` and `/runs/stream` — which are the only ones
+     * holding a connection to drop. The SDK does not send it on a background create for that reason.
+     *
+     * `continue` is the default deliberately, even though `useStream` sends `cancel`: a proxy idle
+     * timeout or load-balancer reset is indistinguishable from a real disconnect here, and defaulting
+     * to cancel would let one kill a healthy run.
+     */
+    on_disconnect: z.enum(["cancel", "continue"]).optional(),
   })
   .passthrough();
 

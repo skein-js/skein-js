@@ -75,6 +75,13 @@ server. `useStream` opens an SSE connection to `/runs/stream` (or the thread str
 renders `messages` / `values` / `custom` events as they arrive — exactly the frames skein-js
 produces (see [streaming.md](./streaming.md)).
 
+**Closing the tab cancels the run.** `useStream` sends `on_disconnect: "cancel"` on every submit unless
+the stream is resumable, in which case it sends `"continue"`. skein honours that, so navigating away or
+closing the tab settles the in-flight run as `cancelled` rather than letting it finish in the
+background — LangGraph's behaviour, and usually the one you want, since nobody is left to read the
+result. Pass `onDisconnect: "continue"` to `submit()` to keep the run going, or set
+`reconnectOnMount` / a resumable stream so the client can rejoin it instead.
+
 ## Why it works over SSE
 
 `useStream` is an SSE client. Because skein-js serves the Agent Protocol streaming endpoints as
