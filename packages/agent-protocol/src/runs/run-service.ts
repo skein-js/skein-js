@@ -61,6 +61,15 @@ export interface CreateRunInput {
    * stateless run's thread either way.
    */
   if_not_exists?: "create" | "reject";
+  /**
+   * Seconds to wait before the run starts. A background run is held by the queue; an inline
+   * (`wait`/`stream`) run is held by the server with the caller's connection still open.
+   *
+   * The run row exists for the whole delay with status `pending`, so it counts as inflight — a second
+   * run on the same thread under the default `multitask_strategy: "reject"` is refused until it
+   * starts. That is the honest reading: work *is* scheduled on the thread.
+   */
+  after_seconds?: number;
 }
 
 /**
@@ -455,10 +464,35 @@ export function createRunService(ctx: ProtocolContext): RunService {
     return { run, kwargs };
   };
 
-  /** Queue a prepared background run for the worker. Shared by the thread-scoped and stateless forms. */
-  const enqueueBackgroundRun = async (run: Run): Promise<Run> => {
-    await deps.queue.enqueue({ run_id: run.run_id, thread_id: run.thread_id });
+  /**
+   * Queue a prepared background run for the worker. Shared by the thread-scoped and stateless forms.
+   *
+   * `after_seconds` becomes the queue's own delay rather than a timer here: the driver is what
+   * actually holds the run (BullMQ's delayed set on Redis, so it survives a restart), and a delay
+   * kept in this process would be lost the moment the request that created it returned.
+   */
+  const enqueueBackgroundRun = async (run: Run, afterSeconds?: number): Promise<Run> => {
+    await deps.queue.enqueue(
+      { run_id: run.run_id, thread_id: run.thread_id },
+      afterSeconds !== undefined && afterSeconds > 0 ? { delayMs: afterSeconds * 1000 } : undefined,
+    );
     return run;
+  };
+
+  /**
+   * Hold an **inline** run for its `after_seconds` before executing it.
+   *
+   * There is no queue on the `wait`/`stream` path — the caller is holding the connection — so the wait
+   * happens here. The run row and its ids are created *first*, so a stream's `Content-Location` header
+   * goes out immediately and the SSE heartbeat keeps the connection alive across the gap; only
+   * execution is deferred.
+   */
+  const holdInlineRun = async (afterSeconds?: number): Promise<void> => {
+    if (afterSeconds === undefined || afterSeconds <= 0) return;
+    await new Promise<void>((resolve) => {
+      const timer = setTimeout(resolve, afterSeconds * 1000);
+      timer.unref?.();
+    });
   };
 
   /**
@@ -588,7 +622,7 @@ export function createRunService(ctx: ProtocolContext): RunService {
     // is read — `resolveRunThread` ignores it on the undefined-thread branch.
     const { thread_id: _ignored, ...stateless } = input;
     const { run } = await prepareRun(stateless, () => deps.store.threads.create());
-    return enqueueBackgroundRun(run);
+    return enqueueBackgroundRun(run, stateless.after_seconds);
   };
 
   return {
@@ -596,6 +630,7 @@ export function createRunService(ctx: ProtocolContext): RunService {
       const { run, kwargs } = await prepareRun(input, () =>
         resolveRunThread(input.thread_id, input.if_not_exists),
       );
+      await holdInlineRun(input.after_seconds);
       const outcome = await runInline(run, kwargs, "wait");
       // A failed run must not read as an empty success. There are no headers left to turn into a
       // status (the run already executed), so the failure travels in the body under `__error__` —
@@ -611,11 +646,16 @@ export function createRunService(ctx: ProtocolContext): RunService {
         resolveRunThread(input.thread_id, input.if_not_exists),
       );
       // Kick off execution; the subscription below replays from seq 0 (frames are buffered), so
-      // nothing is lost between starting the run and subscribing.
-      const outcome = runInline(run, kwargs, "stream").catch((error: unknown) => {
-        deps.logger.error("stream run failed", error);
-        return undefined;
-      });
+      // nothing is lost between starting the run and subscribing. An `after_seconds` delay is awaited
+      // *inside* this promise rather than before returning, so the response — and its
+      // `Content-Location` — still goes out immediately and the client streams heartbeats until the
+      // run actually starts.
+      const outcome = holdInlineRun(input.after_seconds)
+        .then(() => runInline(run, kwargs, "stream"))
+        .catch((error: unknown) => {
+          deps.logger.error("stream run failed", error);
+          return undefined;
+        });
       return {
         runId: run.run_id,
         threadId: run.thread_id,
@@ -631,7 +671,7 @@ export function createRunService(ctx: ProtocolContext): RunService {
       const { run } = await prepareRun({ ...input, thread_id: threadId }, () =>
         resolveRunThread(threadId, input.if_not_exists),
       );
-      return enqueueBackgroundRun(run);
+      return enqueueBackgroundRun(run, input.after_seconds);
     },
 
     createStatelessBackground: startStatelessBackgroundRun,

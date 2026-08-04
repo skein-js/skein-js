@@ -52,10 +52,19 @@ implementations. `RunQueue` is **processor-driven**: `enqueue(run)` adds a job a
 both drivers. Delivery is **at-least-once** (a crashed processor's run is redelivered); the worker
 makes this safe by skipping any run already terminal in the store.
 
+`enqueue` takes an optional `{ delayMs }` — the run-create
+[`after_seconds`](./agent-protocol.md). The driver holds the run until it comes due, which is why a
+delayed run costs nothing while it waits and cannot be picked up early. Both drivers dedupe a
+re-enqueue of a run that is still waiting out its delay, so the cron scheduler's outbox sweep — which
+re-enqueues anything it cannot prove reached the queue — can never cut a delay short or schedule the
+same run twice. A delayed run is durable exactly as far as its driver is: see below.
+
 ### In-memory (dev)
 
 - Single-process queue + event bus. No external services.
 - Used by `skein dev` so nothing beyond Node is required locally.
+- An `after_seconds` delay is a local timer, so it is lost on restart — like every other run already
+  sitting in this queue, which is in-process too.
 
 ### `@skein-js/redis` (prod)
 
@@ -64,6 +73,8 @@ makes this safe by skipping any run already terminal in the store.
   concurrency out of the box.
 - **Crash recovery** — a stalled job (its worker died mid-run) is moved back to the queue by
   BullMQ's stalled-job check and retried, so runs survive restarts.
+- **Delayed runs** — an `after_seconds` delay is handed to BullMQ's own delayed set, which lives in
+  Redis and promotes the job when it comes due, so a scheduled run outlives the process that created it.
 - **Cross-instance pub/sub** — run stream frames are published to a Redis Stream + channel so a
   client connected to instance B can join a run executing on instance A (see [streaming.md](./streaming.md)).
 - **Cross-instance cancellation** — a `RunAbortChannel` over Redis pub/sub carries the _stop now_ signal

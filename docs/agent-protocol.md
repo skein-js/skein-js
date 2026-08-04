@@ -222,6 +222,26 @@ is the run's to delete.
 The field is inert on `POST /runs` and `/runs/batch`, which strip `thread_id` outright — the server owns
 a stateless run's thread, so nothing can be missing.
 
+**`after_seconds` on run creation.** Holds the run for that many seconds before it starts — the SDK's
+"schedule a future run". Capped at **86400** (a day); anything longer is a [cron](./crons.md).
+
+A **background** run (`POST /runs`, `/runs/batch`, `POST /threads/{id}/runs`) is held by the queue
+itself, so it costs nothing while it waits and, on Redis, survives a process restart — BullMQ keeps it
+in its own delayed set. On the in-memory queue it is a timer, and is lost on restart exactly as every
+other run already sitting in that queue is.
+
+An **inline** run (`/runs/wait`, `/runs/stream`) has no queue to hold it, so the server waits with your
+connection open. A stream still responds immediately — the run row, its `Content-Location`, and the
+SSE heartbeats all come first, and only execution is deferred — but `/runs/wait` sends nothing until
+the run finishes, so a long `after_seconds` there will hit a proxy's idle timeout. Prefer a background
+run for anything more than a few seconds.
+
+Two consequences worth knowing. The run row exists for the whole delay with status `pending`, so it
+counts as **inflight**: a second run on that thread under the default `multitask_strategy: "reject"` is
+refused until the delayed one starts. That is the honest reading — work _is_ scheduled on the thread —
+but it surprises people. And a delayed run is cancellable like any other; `POST .../cancel` settles it
+before it ever runs.
+
 **`Content-Location` on run creation.** Every run-create response (and `POST /threads/{id}/stream`)
 carries `Content-Location: /threads/{thread_id}/runs/{run_id}`. The `@langchain/langgraph-sdk` client
 parses it to fire `onRunCreated`, which is what `useStream` stores to rejoin a stream after a remount —

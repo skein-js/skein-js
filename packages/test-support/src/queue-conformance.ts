@@ -107,6 +107,65 @@ export function runRunQueueConformance(label: string, makeQueue: RunQueueFactory
       await consumer.close();
       expect(received).toEqual(["early"]);
     });
+
+    // `after_seconds`. Real timings rather than fake timers, because half of this suite runs against
+    // BullMQ in a container, whose delayed set is driven by Redis' clock and not by ours.
+    it("holds a delayed run back until its delay elapses", async () => {
+      const queue = await make();
+      const received: string[] = [];
+      const consumer = queue.consume(async (run) => {
+        received.push(run.run_id);
+      });
+
+      await queue.enqueue({ run_id: "later", thread_id: "t" }, { delayMs: 400 });
+      // An undelayed run enqueued *after* it still goes first — the delay is a visibility time, not a
+      // position in the queue.
+      await queue.enqueue({ run_id: "now", thread_id: "t" });
+
+      await waitFor(() => received.includes("now"));
+      expect(received).not.toContain("later");
+
+      await waitFor(() => received.includes("later"), 4000);
+      await consumer.close();
+      expect(received).toEqual(["now", "later"]);
+    });
+
+    it("treats a zero delay as an ordinary enqueue", async () => {
+      const queue = await make();
+      const received: string[] = [];
+      const consumer = queue.consume(async (run) => {
+        received.push(run.run_id);
+      });
+
+      await queue.enqueue({ run_id: "immediate", thread_id: "t" }, { delayMs: 0 });
+
+      await waitFor(() => received.length === 1);
+      await consumer.close();
+      expect(received).toEqual(["immediate"]);
+    });
+
+    // The cron sweep re-enqueues runs it cannot prove reached the queue. A delayed run is exactly the
+    // case that looks lost — `pending`, with nothing running — so a blind re-enqueue must not cut its
+    // delay short or schedule it a second time.
+    it("does not let a re-enqueue cut a pending delay short", async () => {
+      const queue = await make();
+      await queue.enqueue({ run_id: "delayed", thread_id: "t" }, { delayMs: 400 });
+      await queue.enqueue({ run_id: "delayed", thread_id: "t" });
+
+      const received: string[] = [];
+      const consumer = queue.consume(async (run) => {
+        received.push(run.run_id);
+      });
+
+      await new Promise((resolve) => setTimeout(resolve, 150));
+      expect(received).toEqual([]);
+
+      await waitFor(() => received.length === 1, 4000);
+      // Long enough after it came due that a second delivery would have landed.
+      await new Promise((resolve) => setTimeout(resolve, 200));
+      await consumer.close();
+      expect(received).toEqual(["delayed"]);
+    });
   });
 }
 

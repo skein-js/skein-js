@@ -51,13 +51,29 @@ export interface RunConsumer {
   close(force?: boolean): Promise<void>;
 }
 
+/** Per-enqueue options. */
+export interface EnqueueOptions {
+  /**
+   * Hold the run for this long before any consumer may pick it up — the run-create `after_seconds`.
+   *
+   * An option rather than a field on {@link QueuedRun}: that type is the *processor's* payload, the
+   * identity of the work, and when it becomes visible is not part of it. Absent or `0` enqueues
+   * immediately.
+   *
+   * A delayed run is durable exactly as far as the driver is: BullMQ holds it in Redis, so it survives
+   * a process restart, while the in-memory queue holds it in a timer and loses it — the same as every
+   * other run already sitting in that queue.
+   */
+  delayMs?: number;
+}
+
 /**
  * A durable queue of background runs. One producer enqueues; a consumer's processor drains it.
  * The in-memory driver implements this for `skein dev`; `@skein-js/redis` backs it with BullMQ
  * (retries, backoff, stalled-job crash recovery, cross-instance workers).
  */
 export interface RunQueue {
-  enqueue(run: QueuedRun): Promise<void>;
+  enqueue(run: QueuedRun, options?: EnqueueOptions): Promise<void>;
   /** Start draining the queue, running each job through `process`. Returns a handle to stop. */
   consume(process: RunProcessor, options?: RunConsumerOptions): RunConsumer;
 }

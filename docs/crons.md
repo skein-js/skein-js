@@ -11,6 +11,10 @@ and driven by the official `@langchain/langgraph-sdk` client.
 > `crons: false`. skein implements them against the LangSmith Deployment OpenAPI spec plus the SDK's
 > TypeScript types — the same oracle the rest of the wire surface uses ([reuse.md](./reuse.md)).
 
+**A cron is a _cadence_, not a delay.** To run something once, a little later, pass
+[`after_seconds`](./agent-protocol.md) on an ordinary run create — no cron row, nothing to clean up
+afterwards. Reach for a cron when the run should keep happening.
+
 ## Contents
 
 - [Quick start](#quick-start)

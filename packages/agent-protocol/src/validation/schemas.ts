@@ -79,6 +79,14 @@ export const runCreateSchema = z
      * stateless run's thread, so there is never a named thread to be missing.
      */
     if_not_exists: z.enum(["create", "reject"]).optional(),
+    /**
+     * Hold the run this long before starting it — the SDK's "schedule a future run".
+     *
+     * Capped at a day, like every other numeric input here. An unbounded delay is a run row pinning its
+     * thread against `multitask_strategy: "reject"` for as long as it sits there, and on the inline
+     * routes an HTTP connection held open to match. A schedule measured in days is a cron.
+     */
+    after_seconds: z.number().int().nonnegative().max(86_400).optional(),
   })
   .passthrough();
 

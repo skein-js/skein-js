@@ -89,6 +89,7 @@ export type {
 
 // Run queue + streaming pub/sub contract.
 export type {
+  EnqueueOptions,
   QueuedRun,
   RunConsumer,
   RunConsumerOptions,

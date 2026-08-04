@@ -3,6 +3,7 @@
 // to the `@skein-js/core` interfaces, so it is unaware which one it has.
 
 import type {
+  EnqueueOptions,
   QueuedRun,
   RunConsumer,
   RunConsumerOptions,
@@ -31,16 +32,43 @@ export class MemoryRunQueue implements RunQueue {
    * concurrently with the first.
    */
   readonly #active = new Set<string>();
+  /**
+   * Runs waiting out an `after_seconds` delay, by run id — the local stand-in for BullMQ's delayed set.
+   *
+   * Part of the dedupe window for the same reason {@link #active} is: a run held here is already
+   * queued as far as a caller is concerned, so a second `enqueue` (the cron sweep's, say) must not
+   * schedule it twice and run it twice when both timers fire.
+   *
+   * Held in a timer, so a restart loses it — like every other run already sitting in this queue. Use
+   * the Redis driver where a delayed run has to outlive the process.
+   */
+  readonly #delayed = new Map<string, ReturnType<typeof setTimeout>>();
 
-  async enqueue(run: QueuedRun): Promise<void> {
-    // Idempotent on `run_id`, matching the Redis driver's `jobId`: a run already queued or executing
-    // is not queued again. That is what lets the cron scheduler's outbox sweep re-enqueue a run it
-    // cannot prove reached the queue — BullMQ dedupes on the durable driver, and this does here.
+  async enqueue(run: QueuedRun, options: EnqueueOptions = {}): Promise<void> {
+    // Idempotent on `run_id`, matching the Redis driver's `jobId`: a run already queued, delayed, or
+    // executing is not queued again. That is what lets the cron scheduler's outbox sweep re-enqueue a
+    // run it cannot prove reached the queue — BullMQ dedupes on the durable driver, and this does here.
     //
     // A linear scan over the waiting list, deliberately: it holds only runs not yet picked up, and a
     // lookup index would be a second structure to keep in step with `shift`.
     if (this.#active.has(run.run_id)) return;
+    if (this.#delayed.has(run.run_id)) return;
     if (this.#items.some((queued) => queued.run_id === run.run_id)) return;
+
+    const delayMs = options.delayMs ?? 0;
+    if (delayMs > 0) {
+      const timer = setTimeout(() => {
+        this.#delayed.delete(run.run_id);
+        this.#items.push({ ...run });
+        this.#waiters.shift()?.();
+      }, delayMs);
+      // Never hold the process open for a run that has not come due — a pending delay must not be
+      // what keeps `skein dev` (or a test) from exiting.
+      timer.unref?.();
+      this.#delayed.set(run.run_id, timer);
+      return;
+    }
+
     this.#items.push({ ...run });
     this.#waiters.shift()?.(); // wake one parked consumer, if any
   }

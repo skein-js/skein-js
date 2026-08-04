@@ -5,6 +5,7 @@
 // (see docs/runs-and-redis.md).
 
 import type {
+  EnqueueOptions,
   QueuedRun,
   RunConsumer,
   RunConsumerOptions,
@@ -44,11 +45,17 @@ export class RedisRunQueue implements RunQueue {
     this.#queue = new Queue<QueuedRun>(this.#queueName, { connection: { url } });
   }
 
-  async enqueue(run: QueuedRun): Promise<void> {
+  async enqueue(run: QueuedRun, options: EnqueueOptions = {}): Promise<void> {
     await this.#queue.add(
       JOB_NAME,
       { run_id: run.run_id, thread_id: run.thread_id },
       {
+        // `after_seconds`, handed to BullMQ's own delayed set — it holds the job in Redis and promotes
+        // it when due, so the delay survives a process restart rather than living in a local timer.
+        //
+        // Note this composes with `jobId` below: a run already sitting delayed is not re-added, so the
+        // cron sweep's blind re-enqueue cannot cut a delay short or double-schedule it.
+        ...(options.delayMs !== undefined && options.delayMs > 0 ? { delay: options.delayMs } : {}),
         // Keyed on the run id, which makes enqueue **idempotent**: BullMQ refuses a second job with
         // an id already in the queue. That is what lets the cron scheduler's outbox sweep re-enqueue
         // a run it cannot prove was queued, without risking a double execution. A run is one-shot
