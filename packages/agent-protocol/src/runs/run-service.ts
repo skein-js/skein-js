@@ -55,6 +55,12 @@ export interface CreateRunInput {
   on_completion?: "delete" | "keep";
   /** Time travel: fork this run from a prior checkpoint instead of the thread tip (server-validated). */
   checkpoint_id?: string;
+  /**
+   * What to do when the named thread does not exist: `"reject"` (the default, and LangGraph's) 404s,
+   * `"create"` brings it into existence first. Ignored when no thread was named — the server owns a
+   * stateless run's thread either way.
+   */
+  if_not_exists?: "create" | "reject";
 }
 
 /**
@@ -286,8 +292,7 @@ export function createRunService(ctx: ProtocolContext): RunService {
   // race with a concurrent caller — the driver enforces uniqueness now, so that shows up as a 409
   // rather than as a silent overwrite. Recover by re-reading: whoever won created the thread this
   // caller wanted, so the outcome is the same.
-  const ensureThread = async (threadId?: string): Promise<Thread> => {
-    if (threadId === undefined) return deps.store.threads.create();
+  const ensureThread = async (threadId: string): Promise<Thread> => {
     const existing = await deps.store.threads.get(threadId);
     if (existing) return existing;
     try {
@@ -299,6 +304,27 @@ export function createRunService(ctx: ProtocolContext): RunService {
       }
       throw error;
     }
+  };
+
+  /**
+   * Resolve the thread a run executes on — the one thing that differs between the run modes, and
+   * therefore the thing `prepareRun` takes as a parameter.
+   *
+   * A caller who named no thread gets a server-created one (that is what "stateless" means). A caller
+   * who named one gets LangGraph's `if_not_exists`: `reject` by default, so an unknown id is a 404
+   * rather than a silently-created empty thread that the run then executes against with none of the
+   * history the caller expected.
+   *
+   * That default is what makes the three thread-scoped create routes agree. They used to disagree:
+   * `/threads/{id}/runs/wait` and `.../stream` fold the path id into the body and went through a
+   * get-or-create, so they created; `/threads/{id}/runs` required the thread and 404d.
+   */
+  const resolveRunThread = (
+    threadId: string | undefined,
+    ifNotExists: "create" | "reject" = "reject",
+  ): Promise<Thread> => {
+    if (threadId === undefined) return deps.store.threads.create();
+    return ifNotExists === "create" ? ensureThread(threadId) : requireThread(threadId);
   };
 
   // Stop an active run being displaced by an `interrupt`/`rollback` run. A pending (never-started)
@@ -556,6 +582,10 @@ export function createRunService(ctx: ProtocolContext): RunService {
     // `thread_id` is stripped rather than passed through: this is the stateless endpoint, so the thread
     // is the server's to create, and honouring a body-supplied id here would quietly turn `POST /runs`
     // into the thread-scoped endpoint without its 404-on-unknown-thread contract.
+    //
+    // Which also makes `if_not_exists` inert here: with no named thread there is nothing that could be
+    // missing. Left in the input rather than stripped, so the field means the same thing everywhere it
+    // is read — `resolveRunThread` ignores it on the undefined-thread branch.
     const { thread_id: _ignored, ...stateless } = input;
     const { run } = await prepareRun(stateless, () => deps.store.threads.create());
     return enqueueBackgroundRun(run);
@@ -563,7 +593,9 @@ export function createRunService(ctx: ProtocolContext): RunService {
 
   return {
     async createWait(input) {
-      const { run, kwargs } = await prepareRun(input, () => ensureThread(input.thread_id));
+      const { run, kwargs } = await prepareRun(input, () =>
+        resolveRunThread(input.thread_id, input.if_not_exists),
+      );
       const outcome = await runInline(run, kwargs, "wait");
       // A failed run must not read as an empty success. There are no headers left to turn into a
       // status (the run already executed), so the failure travels in the body under `__error__` —
@@ -575,7 +607,9 @@ export function createRunService(ctx: ProtocolContext): RunService {
     },
 
     async createStream(input) {
-      const { run, kwargs } = await prepareRun(input, () => ensureThread(input.thread_id));
+      const { run, kwargs } = await prepareRun(input, () =>
+        resolveRunThread(input.thread_id, input.if_not_exists),
+      );
       // Kick off execution; the subscription below replays from seq 0 (frames are buffered), so
       // nothing is lost between starting the run and subscribing.
       const outcome = runInline(run, kwargs, "stream").catch((error: unknown) => {
@@ -595,7 +629,7 @@ export function createRunService(ctx: ProtocolContext): RunService {
 
     async createBackground(threadId, input) {
       const { run } = await prepareRun({ ...input, thread_id: threadId }, () =>
-        requireThread(threadId),
+        resolveRunThread(threadId, input.if_not_exists),
       );
       return enqueueBackgroundRun(run);
     },

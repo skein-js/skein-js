@@ -68,6 +68,17 @@ export const runCreateSchema = z
     checkpoint_id: z.string().optional(),
     /** Time travel: full checkpoint pointer to fork from (its `checkpoint_id` is what matters). */
     checkpoint: checkpointSchema.optional(),
+    /**
+     * What to do when the named thread does not exist. `reject` (the default, and LangGraph's) 404s;
+     * `create` brings the thread into existence and runs against it.
+     *
+     * The SDK's own doc comment says "if the specified **run** doesn't exist" — an upstream typo. The
+     * field is about the thread; there is no run to speak of before this call creates one.
+     *
+     * Inert on `POST /runs` and `/runs/batch`, which strip `thread_id` outright: the server owns a
+     * stateless run's thread, so there is never a named thread to be missing.
+     */
+    if_not_exists: z.enum(["create", "reject"]).optional(),
   })
   .passthrough();
 

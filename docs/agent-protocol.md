@@ -205,6 +205,23 @@ divergence, so a stateless run stays inspectable and so adding the field did not
 run keeps its thread either way: it has yielded to a human, and its checkpoint is the whole value of the
 turn.
 
+**`if_not_exists` on run creation.** Naming a thread that does not exist is a **404** by default
+(`if_not_exists: "reject"`, matching LangGraph). Pass `"create"` to have the run bring the thread into
+existence instead — the other half of addressing a conversation by an external key, so an inbound event
+can start a run without a round trip to create the thread first.
+
+This is a behaviour change: `POST /threads/{id}/runs/wait` and `.../stream` previously created a missing
+thread silently, while `POST /threads/{id}/runs` 404d. The three routes now agree, and the default is the
+safe one — a mistyped thread id fails loudly rather than running against a fresh empty thread with none
+of the history the caller expected. Pass `if_not_exists: "create"` to restore the old behaviour.
+
+A thread created this way still belongs to the **caller**, not to the run: `on_completion: "delete"`
+never removes it, because the caller named it. Only a thread the server minted (no `thread_id` at all)
+is the run's to delete.
+
+The field is inert on `POST /runs` and `/runs/batch`, which strip `thread_id` outright — the server owns
+a stateless run's thread, so nothing can be missing.
+
 **`Content-Location` on run creation.** Every run-create response (and `POST /threads/{id}/stream`)
 carries `Content-Location: /threads/{thread_id}/runs/{run_id}`. The `@langchain/langgraph-sdk` client
 parses it to fire `onRunCreated`, which is what `useStream` stores to rejoin a stream after a remount —
