@@ -1,3 +1,23 @@
+## 0.13.1 (2026-08-05)
+
+### 🚀 Features
+
+- **runs:** honour if_not_exists, and make the three create routes agree ([#7](https://github.com/skein-js/skein-js/issues/7))
+- **runs:** honour after_seconds by delaying delivery in the queue ([#7](https://github.com/skein-js/skein-js/issues/7))
+- **runs:** honour on_disconnect, cancelling a run when the client hangs up ([#7](https://github.com/skein-js/skein-js/issues/7))
+- **threads:** seed thread state from supersteps on create ([#7](https://github.com/skein-js/skein-js/issues/7))
+- **threads:** expire threads on a TTL, configured via checkpointer.ttl ([#7](https://github.com/skein-js/skein-js/issues/7))
+
+### 🩹 Fixes
+
+- **runtime:** apply checkpointer.ttl on the skein dev path too ([#7](https://github.com/skein-js/skein-js/issues/7))
+- **threads:** reject a duplicate thread_id and honour if_exists ([#7](https://github.com/skein-js/skein-js/issues/7))
+- **threads:** close the gaps code review found in the #7 work ([#7](https://github.com/skein-js/skein-js/issues/7))
+
+### ❤️ Thank You
+
+- Maina Wycliffe
+
 ## 0.13.0 (2026-08-03)
 
 ### 🩹 Fixes

@@ -1,6 +1,6 @@
 {
   "name": "@skein-js/fetch",
-  "version": "0.13.0",
+  "version": "0.13.1",
   "description": "Runtime-neutral Fetch adapter for serving the Skein Agent Protocol on Bun and Deno.",
   "license": "Apache-2.0",
   "author": "Maina Wycliffe <wmmaina7@gmail.com>",

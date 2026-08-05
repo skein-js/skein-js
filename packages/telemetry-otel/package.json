@@ -1,6 +1,6 @@
 {
   "name": "@skein-js/otel",
-  "version": "0.13.0",
+  "version": "0.13.1",
   "description": "OpenTelemetry spans and metrics for skein-js runs — works with any OTLP backend.",
   "license": "Apache-2.0",
   "author": "Maina Wycliffe <wmmaina7@gmail.com>",
