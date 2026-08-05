@@ -1,5 +1,7 @@
 # @skein-js/langsmith
 
+[![npm](https://img.shields.io/npm/v/%40skein-js%2Flangsmith?logo=npm&color=cb3837)](https://www.npmjs.com/package/@skein-js/langsmith)&nbsp;[![downloads](https://img.shields.io/npm/dm/%40skein-js%2Flangsmith?color=blue)](https://www.npmjs.com/package/@skein-js/langsmith)&nbsp;[![license](https://img.shields.io/npm/l/%40skein-js%2Flangsmith?color=green)](../../LICENSE)
+
 > LangSmith tracing for skein-js — run identity and thread grouping on every graph call.
 
 Part of **[skein-js](../../README.md)** — the open-source alternative to LangGraph Platform for TypeScript: a self-hosted [Agent Protocol](https://github.com/langchain-ai/agent-protocol) server for [LangGraph.js](https://github.com/langchain-ai/langgraphjs), and a drop-in replacement for the LangGraph CLI.

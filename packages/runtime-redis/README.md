@@ -1,5 +1,7 @@
 # @skein-js/redis
 
+[![npm](https://img.shields.io/npm/v/%40skein-js%2Fredis?logo=npm&color=cb3837)](https://www.npmjs.com/package/@skein-js/redis)&nbsp;[![downloads](https://img.shields.io/npm/dm/%40skein-js%2Fredis?color=blue)](https://www.npmjs.com/package/@skein-js/redis)&nbsp;[![license](https://img.shields.io/npm/l/%40skein-js%2Fredis?color=green)](../../LICENSE)
+
 > Redis job queue (BullMQ) and cross-instance pub/sub streaming for skein-js.
 
 Part of **[skein-js](../../README.md)** — the open-source alternative to LangGraph Platform for TypeScript: a self-hosted [Agent Protocol](https://github.com/langchain-ai/agent-protocol) server for [LangGraph.js](https://github.com/langchain-ai/langgraphjs), and a drop-in replacement for the LangGraph CLI.
@@ -53,7 +55,10 @@ You normally get these via `skein dev --queue redis` / `skein up` and
 ## API
 
 - **`class RedisRunQueue implements RunQueue`** — `new RedisRunQueue(url, options?)`.
-  `enqueue(run)` · `consume(process, options?)` → `RunConsumer` · `dispose()`.
+  `enqueue(run, options?)` · `consume(process, options?)` → `RunConsumer` · `dispose()`.
+  `options.delayMs` (the run-create `after_seconds`) becomes BullMQ's native `delay`, so the run is
+  held in Redis and outlives the process that scheduled it — the durable half of the memory
+  driver's timer.
   **`RedisRunQueueOptions`** = `{ queueName?, attempts? }` (`queueName` default `"skein-runs"`, must
   not contain `:`; `attempts` default `1`). `consume`'s `options.concurrency` (driver default `1`)
   becomes the BullMQ `Worker`'s concurrency — the run worker always passes an explicit value, so in

@@ -1,5 +1,7 @@
 # skein-js
 
+[![npm](https://img.shields.io/npm/v/skein-js?logo=npm&color=cb3837)](https://www.npmjs.com/package/skein-js)&nbsp;[![downloads](https://img.shields.io/npm/dm/skein-js?color=blue)](https://www.npmjs.com/package/skein-js)&nbsp;[![license](https://img.shields.io/npm/l/skein-js?color=green)](../../LICENSE)
+
 > The `skein` CLI — self-host your LangGraph.js agents as an open-source alternative to LangGraph
 > Platform, with a drop-in replacement for the LangGraph CLI (`dev` / `up` / `build` / `dockerfile`).
 

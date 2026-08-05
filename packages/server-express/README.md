@@ -1,5 +1,7 @@
 # @skein-js/express
 
+[![npm](https://img.shields.io/npm/v/%40skein-js%2Fexpress?logo=npm&color=cb3837)](https://www.npmjs.com/package/@skein-js/express)&nbsp;[![downloads](https://img.shields.io/npm/dm/%40skein-js%2Fexpress?color=blue)](https://www.npmjs.com/package/@skein-js/express)&nbsp;[![license](https://img.shields.io/npm/l/%40skein-js%2Fexpress?color=green)](../../LICENSE)
+
 > Express adapter for skein-js — mount the Agent Protocol on an Express `Router`.
 
 Part of **[skein-js](../../README.md)** — the open-source alternative to LangGraph Platform for TypeScript: a self-hosted [Agent Protocol](https://github.com/langchain-ai/agent-protocol) server for [LangGraph.js](https://github.com/langchain-ai/langgraphjs), and a drop-in replacement for the LangGraph CLI.
@@ -119,6 +121,11 @@ Send `Accept: text/event-stream` to stream the steps instead. See
 - **`loadInMemoryRuntime` / `loadReloadableInMemoryRuntime`** — the in-memory `ProtocolDeps` loaders
   (the reloadable one adds `reloadGraphs` / `snapshotState` / `hydrateState`, powering `skein dev`).
 - Low-level mappers: `toProtocolRequest`, `sendProtocolResponse`, `sendErrorResponse`.
+
+  > `toProtocolRequest` does **not** set `signal`. The shipped router spreads in an `AbortSignal`
+  > tied to the response's `close`, which is what makes `on_disconnect: "cancel"` work — so a
+  > hand-rolled route built from this mapper alone silently never cancels on disconnect. Add
+  > `{ ...toProtocolRequest(req), signal }` if you need it.
 
 ## CORS
 

@@ -1,5 +1,7 @@
 # @skein-js/config
 
+[![npm](https://img.shields.io/npm/v/%40skein-js%2Fconfig?logo=npm&color=cb3837)](https://www.npmjs.com/package/@skein-js/config)&nbsp;[![downloads](https://img.shields.io/npm/dm/%40skein-js%2Fconfig?color=blue)](https://www.npmjs.com/package/@skein-js/config)&nbsp;[![license](https://img.shields.io/npm/l/%40skein-js%2Fconfig?color=green)](../../LICENSE)
+
 > Loads an unchanged `langgraph.json`, validates it, and resolves each `path:export` graph, its schemas, and the optional custom-auth module.
 
 Part of **[skein-js](../../README.md)** — the open-source alternative to LangGraph Platform for TypeScript: a self-hosted [Agent Protocol](https://github.com/langchain-ai/agent-protocol) server for [LangGraph.js](https://github.com/langchain-ai/langgraphjs), and a drop-in replacement for the LangGraph CLI.
@@ -57,7 +59,8 @@ To load TypeScript graphs (e.g. under `skein dev`), pass an `importModule` — a
 - **`GraphRegistry`** — `{ ids, spec(id), load(id), schemas(id) }`.
 - **`parseLanggraphJson(raw): LanggraphJson`** + **`langgraphJsonSchema`** — validate/parse the config
   (passthrough: unknown keys preserved). Validated fields include `graphs`, `node_version`, `env`,
-  `store.index`, `checkpointer`, `http`, `auth`, `dockerfile_lines`, `dependencies`.
+  `store.index`, `store.ttl`, `checkpointer` (including `checkpointer.ttl` — thread expiry),
+  `http`, `auth`, `dockerfile_lines`, `dependencies`.
 - **`parseGraphSpec(spec, baseDir)`** / **`loadGraph(spec, importModule?)`** — the low-level
   `path:export` resolver (`GraphSpec`, `ResolvedGraph`, `CompiledGraphFactory`, `ModuleImporter`).
 - **`parseEnvFile(text)`** / **`resolveEnv(config, configDir)`** — `.env` parsing + env resolution.

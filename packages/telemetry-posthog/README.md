@@ -1,5 +1,7 @@
 # @skein-js/posthog
 
+[![npm](https://img.shields.io/npm/v/%40skein-js%2Fposthog?logo=npm&color=cb3837)](https://www.npmjs.com/package/@skein-js/posthog)&nbsp;[![downloads](https://img.shields.io/npm/dm/%40skein-js%2Fposthog?color=blue)](https://www.npmjs.com/package/@skein-js/posthog)&nbsp;[![license](https://img.shields.io/npm/l/%40skein-js%2Fposthog?color=green)](../../LICENSE)
+
 > PostHog analytics for skein-js — run lifecycle events plus `$ai_generation` LLM analytics.
 
 Part of **[skein-js](../../README.md)** — the open-source alternative to LangGraph Platform for TypeScript: a self-hosted [Agent Protocol](https://github.com/langchain-ai/agent-protocol) server for [LangGraph.js](https://github.com/langchain-ai/langgraphjs), and a drop-in replacement for the LangGraph CLI.

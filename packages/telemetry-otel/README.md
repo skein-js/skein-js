@@ -1,5 +1,7 @@
 # @skein-js/otel
 
+[![npm](https://img.shields.io/npm/v/%40skein-js%2Fotel?logo=npm&color=cb3837)](https://www.npmjs.com/package/@skein-js/otel)&nbsp;[![downloads](https://img.shields.io/npm/dm/%40skein-js%2Fotel?color=blue)](https://www.npmjs.com/package/@skein-js/otel)&nbsp;[![license](https://img.shields.io/npm/l/%40skein-js%2Fotel?color=green)](../../LICENSE)
+
 > OpenTelemetry spans and metrics for skein-js runs — works with any OTLP backend.
 
 Part of **[skein-js](../../README.md)** — the open-source alternative to LangGraph Platform for TypeScript: a self-hosted [Agent Protocol](https://github.com/langchain-ai/agent-protocol) server for [LangGraph.js](https://github.com/langchain-ai/langgraphjs), and a drop-in replacement for the LangGraph CLI.

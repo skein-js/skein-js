@@ -1,5 +1,7 @@
 # @skein-js/storage-memory
 
+[![npm](https://img.shields.io/npm/v/%40skein-js%2Fstorage-memory?logo=npm&color=cb3837)](https://www.npmjs.com/package/@skein-js/storage-memory)&nbsp;[![downloads](https://img.shields.io/npm/dm/%40skein-js%2Fstorage-memory?color=blue)](https://www.npmjs.com/package/@skein-js/storage-memory)&nbsp;[![license](https://img.shields.io/npm/l/%40skein-js%2Fstorage-memory?color=green)](../../LICENSE)
+
 > In-memory `SkeinStore` + run queue + event bus for development and tests.
 
 Part of **[skein-js](../../README.md)** — the open-source alternative to LangGraph Platform for TypeScript: a self-hosted [Agent Protocol](https://github.com/langchain-ai/agent-protocol) server for [LangGraph.js](https://github.com/langchain-ai/langgraphjs), and a drop-in replacement for the LangGraph CLI.
@@ -15,7 +17,9 @@ implement the [`@skein-js/core`](../core) contracts, so the engine uses them unc
   items), with the run-concurrency guard, thread→runs cascade delete, and naive prefix/substring
   store search. Every read and write **deep-clones at the boundary** — like a real serializing
   driver — so callers can't mutate stored rows or corrupt the store through a retained reference.
-- **`MemoryRunQueue`** — a single-process FIFO of background runs.
+- **`MemoryRunQueue`** — a single-process queue of background runs. FIFO for ready work, plus a
+  delayed set for `after_seconds`; idempotent on `run_id`, so a re-enqueue of a run already waiting,
+  delayed, or in flight is a no-op.
 - **`MemoryRunEventBus`** — buffered run-frame pub/sub with replay (`afterSeq`) and live-tail, so a
   client can join a run's stream late or reconnect.
 
@@ -71,10 +75,13 @@ const runtime = createProtocolRuntime({
   methods used by `skein dev`'s persistence:
   - `snapshot(): MemoryStoreSnapshot` — serialize all rows.
   - `hydrate(snapshot: MemoryStoreSnapshot): void` — restore a snapshot (used to survive restarts).
-- **`interface MemoryStoreSnapshot`** — the serialized form (`assistants` / `threads` / `runs` /
-  `runKwargs` / `items` entry arrays).
+- **`interface MemoryStoreSnapshot`** — the serialized form (`assistants` / `assistantVersions` /
+  `threads` / `runs` / `runKwargs` / `items` / `crons` entry arrays). An alias of core's
+  `SkeinStoreSnapshot`.
 - **`class MemoryRunQueue implements RunQueue`** — `new MemoryRunQueue()`.
-  `enqueue(run)` · `consume(process, options?)` (`options.concurrency` default `1`) → a `RunConsumer`
+  `enqueue(run, options?)` (`options.delayMs` holds the run back — the run-create `after_seconds`;
+  kept in an unref'd timer, so a restart loses it, like every other run in this queue) ·
+  `consume(process, options?)` (`options.concurrency` default `1`) → a `RunConsumer`
   with `close(force?)`.
 - **`class MemoryRunEventBus implements RunEventBus`** —
   `new MemoryRunEventBus(options?)`. `publish(runId, frame)` · `close(runId)` ·

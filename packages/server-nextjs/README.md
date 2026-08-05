@@ -1,5 +1,7 @@
 # @skein-js/nextjs
 
+[![npm](https://img.shields.io/npm/v/%40skein-js%2Fnextjs?logo=npm&color=cb3837)](https://www.npmjs.com/package/@skein-js/nextjs)&nbsp;[![downloads](https://img.shields.io/npm/dm/%40skein-js%2Fnextjs?color=blue)](https://www.npmjs.com/package/@skein-js/nextjs)&nbsp;[![license](https://img.shields.io/npm/l/%40skein-js%2Fnextjs?color=green)](../../LICENSE)
+
 > Next.js adapter for skein-js — serve the [Agent Protocol](https://github.com/langchain-ai/agent-protocol) from Next.js API routes.
 
 Part of **[skein-js](../../README.md)** — the open-source alternative to LangGraph Platform for TypeScript: a self-hosted Agent Protocol server for [LangGraph.js](https://github.com/langchain-ai/langgraphjs), and a drop-in replacement for the LangGraph CLI.

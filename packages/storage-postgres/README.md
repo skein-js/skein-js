@@ -1,5 +1,7 @@
 # @skein-js/storage-postgres
 
+[![npm](https://img.shields.io/npm/v/%40skein-js%2Fstorage-postgres?logo=npm&color=cb3837)](https://www.npmjs.com/package/@skein-js/storage-postgres)&nbsp;[![downloads](https://img.shields.io/npm/dm/%40skein-js%2Fstorage-postgres?color=blue)](https://www.npmjs.com/package/@skein-js/storage-postgres)&nbsp;[![license](https://img.shields.io/npm/l/%40skein-js%2Fstorage-postgres?color=green)](../../LICENSE)
+
 > Production Postgres `SkeinStore` driver with **pgvector** semantic search.
 
 Part of **[skein-js](../../README.md)** — the open-source alternative to LangGraph Platform for TypeScript: a self-hosted [Agent Protocol](https://github.com/langchain-ai/agent-protocol) server for [LangGraph.js](https://github.com/langchain-ai/langgraphjs), and a drop-in replacement for the LangGraph CLI.

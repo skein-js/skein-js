@@ -14,4 +14,9 @@ exclude_loopback = true
 exclude = [
   '^https?://(?:[^/]+\.)?example\.(?:com|org|net)(?:/|$)',
   '^https?://[^/]+\.invalid(?:/|$)',
+  # npmjs.com answers 403 to every non-browser client (bot protection), so the package links behind
+  # the README version badges are unverifiable from CI however real they are. The badges themselves
+  # are checked — they resolve against `img.shields.io`, which reads the registry — so a package that
+  # vanished would still show up as a broken badge image rather than pass silently.
+  '^https?://(?:www\.)?npmjs\.com/',
 ]

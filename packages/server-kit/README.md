@@ -1,5 +1,7 @@
 # @skein-js/server-kit
 
+[![npm](https://img.shields.io/npm/v/%40skein-js%2Fserver-kit?logo=npm&color=cb3837)](https://www.npmjs.com/package/@skein-js/server-kit)&nbsp;[![downloads](https://img.shields.io/npm/dm/%40skein-js%2Fserver-kit?color=blue)](https://www.npmjs.com/package/@skein-js/server-kit)&nbsp;[![license](https://img.shields.io/npm/l/%40skein-js%2Fserver-kit?color=green)](../../LICENSE)
+
 > Shared, framework-agnostic building blocks for skein-js HTTP adapters.
 
 Part of **[skein-js](../../README.md)** — the open-source alternative to LangGraph Platform for TypeScript: a self-hosted [Agent Protocol](https://github.com/langchain-ai/agent-protocol) server for [LangGraph.js](https://github.com/langchain-ai/langgraphjs), and a drop-in replacement for the LangGraph CLI.
@@ -107,9 +109,16 @@ Pass `overrides` to swap in production drivers or an auth engine while keeping t
 - **`resolveMaxPageSize(explicit?, env?): number`** — the same chain for the store page bound:
   explicit `maxPageSize` → `SKEIN_MAX_PAGE_SIZE` → `DEFAULT_MAX_PAGE_SIZE` (1000). Every driver applies
   it to list/search, including when the caller asks for no limit.
+- **`resolveStoreTtl(raw?)` / `resolveThreadTtl(raw?)`** — map the `langgraph.json` `store.ttl` and
+  `checkpointer.ttl` blocks (snake_case, minutes) onto the drivers' camelCase `StoreTtlConfig` /
+  `ThreadTtlConfig`; `undefined` when unset, so nothing expires unless asked. Plus the raw input types
+  `RawStoreTtl` / `RawThreadTtl`. They live here rather than in `@skein-js/runtime` because **both**
+  assembly paths need them and neither owns the other — resolving a block in only one is how a TTL
+  came to work under `skein start` and silently do nothing under `skein dev`.
 - **`loadInMemoryRuntime` / `loadReloadableInMemoryRuntime`** — assemble a `ProtocolDeps` from a
-  `langgraph.json` using in-process drivers. The reloadable variant adds `reloadGraphs` /
-  `snapshotState` / `hydrateState` (what powers `skein dev`'s hot reload + cross-restart persistence).
+  `langgraph.json` using in-process drivers, reading both TTL blocks itself. The reloadable variant
+  adds `reloadGraphs` / `snapshotState` / `hydrateState` (what powers `skein dev`'s hot reload +
+  cross-restart persistence).
 - **`readLanggraphDevState` / `loadSnapshotIntoStore` / `describeSnapshot`** — read an existing
   `.langgraph_api/` directory and reconstruct a `DevStateSnapshot`, so adopting skein carries local
   state over losslessly.

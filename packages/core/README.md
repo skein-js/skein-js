@@ -1,5 +1,7 @@
 # @skein-js/core
 
+[![npm](https://img.shields.io/npm/v/%40skein-js%2Fcore?logo=npm&color=cb3837)](https://www.npmjs.com/package/@skein-js/core)&nbsp;[![downloads](https://img.shields.io/npm/dm/%40skein-js%2Fcore?color=blue)](https://www.npmjs.com/package/@skein-js/core)&nbsp;[![license](https://img.shields.io/npm/l/%40skein-js%2Fcore?color=green)](../../LICENSE)
+
 > The shared Agent Protocol **contract** for skein-js — wire types, the `SkeinStore` interface, the queue / bus / auth seams, and the edge error type.
 
 Part of **[skein-js](../../README.md)** — the open-source alternative to LangGraph Platform for TypeScript: a self-hosted [Agent Protocol](https://github.com/langchain-ai/agent-protocol) server for [LangGraph.js](https://github.com/langchain-ai/langgraphjs), and a drop-in replacement for the LangGraph CLI.
@@ -69,16 +71,26 @@ throw SkeinHttpError.notFound(`Thread "${id}" not found.`);
   `AssistantGraph`, `Checkpoint`, `Config`, `DefaultValues`, `GraphSchema`, `Interrupt`, `Item`,
   `Metadata`, `Run`, `SearchItem`, `StreamMode`, `Thread`, `ThreadState`, `ThreadStatus`,
   `ThreadTask`; plus `RunStatus` and `MultitaskStrategy` derived from `Run`.
-- **`interface SkeinStore`** — `{ assistants: AssistantRepo; threads: ThreadRepo; runs: RunRepo; store: StoreRepo }`.
-  Each repo exposes CRUD + list/search; `RunRepo.hasActiveRun(threadId)` is the concurrency guard
-  (`true` while a run is `pending`/`running`). Input types: `AssistantCreate`, `ThreadCreate`,
-  `ThreadUpdate`, `RunCreate`, `RunKwargs`, `StoreSearchQuery`.
+- **`interface SkeinStore`** — `{ assistants: AssistantRepo; threads: ThreadRepo; runs: RunRepo; crons: CronRepo; store: StoreRepo }`,
+  plus the read-only `durable?` and `maxPageSize?` a driver declares about itself. Each repo exposes
+  CRUD + list/search; `RunRepo.hasActiveRun(threadId)` is the concurrency guard (`true` while a run is
+  `pending`/`running`). Input types: `AssistantCreate`, `ThreadCreate`, `ThreadUpdate`, `RunCreate`,
+  `RunKwargs`, `StoreSearchQuery`, `StoreTtlConfig`, `ThreadTtlConfig`.
+
+  Two contract points a driver author must honour. **`ThreadRepo.create` throws
+  `SkeinHttpError.conflict` (409) when `thread_id` is already taken** — enforced atomically in the
+  driver, never by a read-then-write, which is what lets the service turn it into `if_exists` handling
+  and two instances race the same id safely. And **`ThreadRepo.listExpired({ now, limit })`** returns
+  the ids of threads whose TTL has passed — ids, not rows, because the sweeper deletes each through
+  the thread service so an in-flight run is aborted first.
+
 - **`TERMINAL_RUN_STATUSES`** / **`isTerminalRunStatus(status)`** — `success` / `error` / `timeout` /
-  `interrupted` are terminal (a resume arrives as a fresh run).
-- **`interface RunQueue`** — `enqueue(run)` + `consume(process, options?)` → `RunConsumer`.
-  **`interface RunEventBus`** — `publish` / `close` / `subscribe(runId, afterSeq?)`. **`RunFrame`** =
-  `{ seq, event, data }` (monotonic `seq` per run). Plus `QueuedRun`, `RunProcessor`, `RunConsumer`,
-  `RunConsumerOptions`.
+  `interrupted` / `cancelled` are terminal (a resume arrives as a fresh run).
+- **`interface RunQueue`** — `enqueue(run, options?)` + `consume(process, options?)` → `RunConsumer`.
+  **`EnqueueOptions.delayMs`** holds a run back before any consumer may pick it up — the run-create
+  `after_seconds`. **`interface RunEventBus`** — `publish` / `close` / `subscribe(runId, afterSeq?)`.
+  **`RunFrame`** = `{ seq, event, data }` (monotonic `seq` per run). Plus `QueuedRun`, `RunProcessor`,
+  `RunConsumer`, `RunConsumerOptions`, `EnqueueOptions`.
 - **`interface AuthEngine`** — `authenticate(request)` (→ `AuthContext`, throws 401) + `authorize({ resource, action, value, context })` (→ `{ filters?, value }`, throws 403) + `matchesFilters(...)`. Plus `AuthContext`, `AuthUser`, `AuthResource`, `AuthAction`, `AuthFilters`, `AuthFilterValue`.
 - **`class SkeinHttpError`** — `new SkeinHttpError(status, message, options?)` and the static helpers
   `badRequest` (400) / `unauthorized` (401) / `forbidden` (403) / `notFound` (404) / `conflict` (409) /

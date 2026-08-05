@@ -1,5 +1,7 @@
 # @skein-js/nestjs
 
+[![npm](https://img.shields.io/npm/v/%40skein-js%2Fnestjs?logo=npm&color=cb3837)](https://www.npmjs.com/package/@skein-js/nestjs)&nbsp;[![downloads](https://img.shields.io/npm/dm/%40skein-js%2Fnestjs?color=blue)](https://www.npmjs.com/package/@skein-js/nestjs)&nbsp;[![license](https://img.shields.io/npm/l/%40skein-js%2Fnestjs?color=green)](../../LICENSE)
+
 > NestJS adapter for skein-js — serve the [Agent Protocol](https://github.com/langchain-ai/agent-protocol) from a Nest module.
 
 Part of **[skein-js](../../README.md)** — the open-source alternative to LangGraph Platform for TypeScript: a self-hosted Agent Protocol server for [LangGraph.js](https://github.com/langchain-ai/langgraphjs), and a drop-in replacement for the LangGraph CLI.
@@ -169,6 +171,11 @@ produced, tearing the run's subscription down on client disconnect.
   [errors-and-logging.md](../../docs/errors-and-logging.md#logging).
 - Low-level mappers: `toProtocolRequest`, plus `sendNodeResponse` / `sendNodeError` (re-exported from
   [`@skein-js/server-kit`](../server-kit)).
+
+  > `toProtocolRequest` does **not** set `signal`. The shipped router spreads in an `AbortSignal`
+  > tied to the response's `close`, which is what makes `on_disconnect: "cancel"` work — so a
+  > hand-rolled route built from this mapper alone silently never cancels on disconnect. Add
+  > `{ ...toProtocolRequest(req), signal }` if you need it.
 
 ## Learn more
 

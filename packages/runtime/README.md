@@ -1,5 +1,7 @@
 # @skein-js/runtime
 
+[![npm](https://img.shields.io/npm/v/%40skein-js%2Fruntime?logo=npm&color=cb3837)](https://www.npmjs.com/package/@skein-js/runtime)&nbsp;[![downloads](https://img.shields.io/npm/dm/%40skein-js%2Fruntime?color=blue)](https://www.npmjs.com/package/@skein-js/runtime)&nbsp;[![license](https://img.shields.io/npm/l/%40skein-js%2Fruntime?color=green)](../../LICENSE)
+
 > Assembles a production `ProtocolDeps` (memory / Postgres / Redis) from a `langgraph.json`.
 
 Part of **[skein-js](../../README.md)** — the open-source alternative to LangGraph Platform for TypeScript: a self-hosted [Agent Protocol](https://github.com/langchain-ai/agent-protocol) server for [LangGraph.js](https://github.com/langchain-ai/langgraphjs), and a drop-in replacement for the LangGraph CLI.
@@ -76,7 +78,8 @@ await dispose();
 Postgres is required (`POSTGRES_URI` or `postgresUri`). **Redis is optional** — with no `redisUri` /
 `REDIS_URI`, the run queue + event bus fall back to in-memory: state survives a restart, but you're
 limited to a **single instance** (the queue is process-local; streaming isn't fanned across instances).
-Options mirror the low-level knobs: `index` (pgvector), `ttl`, `poolMax`, `sslNoVerify`, and `overrides`
+Options mirror the low-level knobs: `index` (pgvector), `ttl` (store items), `threadTtl` (threads),
+`poolMax`, `sslNoVerify`, and `overrides`
 for non-driver deps (`auth`/`logger`/…). See [docs/embedding.md](../../docs/embedding.md) for the full
 walkthrough.
 
@@ -98,7 +101,9 @@ TypeScript graphs/embedders requires passing an `importModule` (the CLI injects 
 - **`type StoreDriver`** = `"memory" | "postgres"` · **`type QueueDriver`** = `"memory" | "redis"`.
 - **`embedPostgresGraphs(graphs, options?): Promise<EmbeddedPostgresRuntime>`** — durable deps **from
   graphs in code** (Postgres + `PostgresSaver`, Redis when configured). Returns `{ deps, dispose() }`.
-  `options`: `{ postgresUri?, redisUri?, index?, ttl?, poolMax?, sslNoVerify?, overrides? }`.
+  `options`: `{ postgresUri?, redisUri?, index?, ttl?, threadTtl?, poolMax?, sslNoVerify?,
+connectionTimeoutMs?, idleTimeoutMs?, statementTimeoutMs?, maxPageSize?, overrides? }`.
+  `ttl` is store-item expiry; `threadTtl` is thread expiry — the in-code `checkpointer.ttl`.
 - **`interface EmbedPostgresGraphsOptions`** · **`interface EmbeddedPostgresRuntime`** ·
   re-exported **`type EmbeddableGraph`** (from `@skein-js/server-kit`).
 - **`class RuntimeConfigError`** — thrown when a driver's env var or `store.index.embed` can't be
