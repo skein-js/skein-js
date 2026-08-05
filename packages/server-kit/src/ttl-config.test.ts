@@ -13,7 +13,21 @@ import path from "node:path";
 import { describe, expect, it } from "vitest";
 
 import { loadReloadableInMemoryRuntime } from "./in-memory-runtime.js";
-import { resolveThreadTtl } from "./thread-ttl-config.js";
+import { resolveStoreTtl, resolveThreadTtl } from "./ttl-config.js";
+
+describe("resolveStoreTtl", () => {
+  it("maps the store block, including refresh_on_read", () => {
+    expect(resolveStoreTtl({ default_ttl: 30, refresh_on_read: false })).toEqual({
+      defaultTtl: 30,
+      refreshOnRead: false,
+    });
+  });
+
+  it("is undefined when unset", () => {
+    expect(resolveStoreTtl(undefined)).toBeUndefined();
+    expect(resolveStoreTtl({})).toBeUndefined();
+  });
+});
 
 describe("resolveThreadTtl", () => {
   it("maps snake_case minutes onto the driver config", () => {
@@ -81,6 +95,39 @@ describe("the reloadable in-memory runtime (the `skein dev` path)", () => {
         now: new Date().toISOString(),
         limit: 10,
       }),
+    ).toEqual([thread.thread_id]);
+  });
+
+  it("reads store.ttl as well as checkpointer.ttl", async () => {
+    // The dev path used to read neither, then only the thread one. Honouring a config block on
+    // `skein start` and dropping it on `skein dev` is the failure mode this module exists to prevent,
+    // so both are pinned together.
+    const configPath = await project({
+      store: { ttl: { default_ttl: 40 / 60_000 } },
+      checkpointer: { ttl: { default_ttl: 40 / 60_000 } },
+    });
+
+    const runtime = await loadReloadableInMemoryRuntime(configPath);
+    await runtime.deps.store.store.put(["ns"], "k", { v: 1 });
+    await new Promise((resolve) => setTimeout(resolve, 120));
+
+    expect(await runtime.deps.store.store.get(["ns"], "k")).toBeNull();
+  });
+
+  it("re-stamps restored threads so a dev restart does not make them immortal", async () => {
+    // `hydrate` replaces the thread map wholesale. Leaving the expiry map untouched left every
+    // restored thread un-expirable for the life of the process, silently.
+    const configPath = await project({ checkpointer: { ttl: { default_ttl: 40 / 60_000 } } });
+    const first = await loadReloadableInMemoryRuntime(configPath);
+    const thread = await first.deps.store.threads.create();
+    const snapshot = first.snapshotState();
+
+    const restored = await loadReloadableInMemoryRuntime(configPath);
+    restored.hydrateState(snapshot);
+    await new Promise((resolve) => setTimeout(resolve, 120));
+
+    expect(
+      await restored.deps.store.threads.listExpired({ now: new Date().toISOString(), limit: 10 }),
     ).toEqual([thread.thread_id]);
   });
 

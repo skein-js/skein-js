@@ -620,11 +620,17 @@ export function createProtocolHandlers(service: ProtocolService): ProtocolHandle
       const runId = requireParam(req.params, "run_id");
       const frames = await service.runs.join(runId, afterSeqFrom(req));
       if (cancelOnDisconnectQuery(req.query["cancel_on_disconnect"]) && req.signal !== undefined) {
-        req.signal.addEventListener(
-          "abort",
-          () => void service.runs.cancel(runId).catch(() => undefined),
-          { once: true },
-        );
+        // Swallowed rather than logged: this table is built from the service alone and has no logger
+        // to reach for, and the caller it would report to has already hung up. The run-service side of
+        // `on_disconnect` does log, because it has `deps.logger` in scope.
+        const cancelOnAbort = (): void => {
+          void service.runs.cancel(runId).catch(() => undefined);
+        };
+        // The `aborted` check is not belt-and-braces: `join` above awaits, so a client that hangs up
+        // during setup has already fired the event, and `addEventListener` on a settled signal never
+        // fires again — the run would keep going for a caller that is provably gone.
+        if (req.signal.aborted) cancelOnAbort();
+        else req.signal.addEventListener("abort", cancelOnAbort, { once: true });
       }
       return sse({ runId, frames });
     },

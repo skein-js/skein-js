@@ -1938,6 +1938,7 @@ function embedPostgresGraphs(
     redisUri?: string; //    default process.env.REDIS_URI (absent → in-memory queue/bus, single instance)
     index?: StoreIndexConfig; // pgvector semantic search (a resolved embedder)
     ttl?: StoreTtl; //          store-item expiry + background sweep
+    threadTtl?: ThreadTtl; //   thread expiry — the in-code `checkpointer.ttl`
     poolMax?: number; //        default env PG_POOL_MAX
     sslNoVerify?: boolean; //   default env DATABASE_SSL_NO_VERIFY
     connectionTimeoutMs?: number; // default env PG_CONNECTION_TIMEOUT_MS, else 30s (0 = wait forever)
@@ -3361,6 +3362,16 @@ is aborted and its event bus closed first, then its runs and checkpoints go with
 lives beside the cron scheduler rather than with the store-item sweeper — a thread is a container, not
 a row. It collects a bounded batch per tick and re-ticks immediately while the batch stays full, so a
 backlog drains without waiting out the interval.
+
+> **Deleting a thread deletes any cron scheduled on it.** Thread crons cascade with their thread (the
+> same `ON DELETE CASCADE` a manual `DELETE /threads/{id}` triggers), so a **thread-scoped**
+> [cron](./crons.md) on an expiring thread stops firing — silently, since nothing errors. Either pin
+> such threads with `ttl: null` or use a stateless cron, which owns no thread to lose.
+
+The sweeper runs whether or not `checkpointer.ttl` is set, because a per-thread `ttl` can arrive on any
+`POST /threads`; the config block supplies the _default lifetime_ and the cadence, not permission to
+collect. With neither configured nor requested, nothing has an expiry and each sweep is one indexed
+read that finds nothing.
 
 With no `checkpointer.ttl` set, no sweeper runs and threads live until something deletes them.
 

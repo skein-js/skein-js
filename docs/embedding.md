@@ -301,6 +301,7 @@ function embedPostgresGraphs(
     redisUri?: string; //    default process.env.REDIS_URI (absent → in-memory queue/bus, single instance)
     index?: StoreIndexConfig; // pgvector semantic search (a resolved embedder)
     ttl?: StoreTtl; //          store-item expiry + background sweep
+    threadTtl?: ThreadTtl; //   thread expiry — the in-code `checkpointer.ttl`
     poolMax?: number; //        default env PG_POOL_MAX
     sslNoVerify?: boolean; //   default env DATABASE_SSL_NO_VERIFY
     connectionTimeoutMs?: number; // default env PG_CONNECTION_TIMEOUT_MS, else 30s (0 = wait forever)

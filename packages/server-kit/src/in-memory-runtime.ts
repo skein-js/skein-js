@@ -30,7 +30,7 @@ import {
 import { embedInMemoryGraphs } from "./in-memory-deps.js";
 import { resolveMaxPageSize } from "./max-page-size.js";
 import { resolveMemoryBusLimits } from "./memory-bus-limits.js";
-import { resolveThreadTtl } from "./thread-ttl-config.js";
+import { resolveStoreTtl, resolveThreadTtl } from "./ttl-config.js";
 
 /**
  * Bridge a config `GraphRegistry` to the engine's `GraphResolver`. They are structurally identical
@@ -127,12 +127,17 @@ export async function loadReloadableInMemoryRuntime(
   };
 
   // Hold the concrete drivers so their state can be snapshot/restored for cross-restart persistence.
-  // Read from this runtime's own config, like `auth` below — not passed in via `extraDeps`, because
-  // the *store* needs it (to give a new thread its default expiry) and the store is built here.
+  //
+  // Both TTL blocks are read from this runtime's own config, like `auth` below — not passed in via
+  // `extraDeps`, because the *store* is what needs them (a default item/thread lifetime is stamped at
+  // write time) and the store is built here. Reading one and not the other is how `skein dev` came to
+  // honour thread expiry while silently dropping store-item expiry.
   const threadTtl = resolveThreadTtl(first.config.checkpointer?.ttl);
+  const storeTtl = resolveStoreTtl(first.config.store?.ttl);
   const store = new MemorySkeinStore({
     maxPageSize: resolveMaxPageSize(),
     ...(threadTtl ? { threadTtl } : {}),
+    ...(storeTtl ? { ttl: storeTtl } : {}),
   });
   const checkpointer = new MemorySaver();
   const deps: ProtocolDeps = {

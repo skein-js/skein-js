@@ -39,6 +39,9 @@ export async function runDisposers(disposers: Disposer[]): Promise<void> {
 /** Store-item TTL policy — derived from the store's public option so runtime needn't depend on core. */
 export type StoreTtl = NonNullable<PostgresSkeinStoreOptions["ttl"]>;
 
+/** Thread expiry policy, as `PostgresSkeinStore` takes it. */
+export type ThreadTtl = NonNullable<PostgresSkeinStoreOptions["threadTtl"]>;
+
 /** pg connection tuning, shared by the store pool and the checkpointer pool against one URL. */
 export interface PostgresConnectionOptions {
   poolMax?: number;
@@ -156,6 +159,8 @@ export async function connectPostgresStore(args: {
   url: string;
   index?: StoreIndexConfig;
   ttl?: StoreTtl;
+  /** Thread expiry, so an embedded Postgres deployment can enable it too — not just the CLI path. */
+  threadTtl?: ThreadTtl;
   connectionOptions: PostgresConnectionOptions;
   /** The largest page any list/search returns — see `resolveMaxPageSize`. */
   maxPageSize: number;
@@ -163,10 +168,12 @@ export async function connectPostgresStore(args: {
   runConcurrency: number;
   disposers: Disposer[];
 }): Promise<Pick<ProtocolDeps, "store" | "checkpointer" | "threadExecutionGate">> {
-  const { url, index, ttl, connectionOptions, maxPageSize, runConcurrency, disposers } = args;
+  const { url, index, ttl, threadTtl, connectionOptions, maxPageSize, runConcurrency, disposers } =
+    args;
   const store = await PostgresSkeinStore.connect(url, {
     ...(index ? { index } : {}),
     ...(ttl ? { ttl } : {}),
+    ...(threadTtl ? { threadTtl } : {}),
     ...connectionOptions,
     maxPageSize,
   });

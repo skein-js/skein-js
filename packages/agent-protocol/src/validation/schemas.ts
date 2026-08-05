@@ -203,6 +203,17 @@ const superstepSchema = z.object({
 });
 
 /**
+ * Ten years, in minutes — the ceiling on a caller-supplied thread `ttl`.
+ *
+ * Bounded for the same reason `after_seconds` is, and with a sharper failure to prevent: the Postgres
+ * driver turns this into `now() + $n * interval '1 minute'`, so a value like `1e308` raises
+ * `interval out of range`, which is not a unique violation and so escapes as a 500 — while the memory
+ * driver accepts it and stores `Infinity`. An unbounded lifetime is indistinguishable from no TTL
+ * anyway, and that is what `ttl: null` already says.
+ */
+const MAX_THREAD_TTL_MINUTES = 5_256_000;
+
+/**
  * A thread lifetime in minutes — `checkpointer.ttl`'s per-thread override.
  *
  * Both spellings the SDK's type allows: a bare number, or `{ ttl, strategy }` (which is what it
@@ -212,8 +223,11 @@ const superstepSchema = z.object({
  */
 const threadTtlSchema = z
   .union([
-    z.number().positive(),
-    z.object({ ttl: z.number().positive(), strategy: z.literal("delete").optional() }),
+    z.number().positive().max(MAX_THREAD_TTL_MINUTES),
+    z.object({
+      ttl: z.number().positive().max(MAX_THREAD_TTL_MINUTES),
+      strategy: z.literal("delete").optional(),
+    }),
   ])
   .nullable();
 

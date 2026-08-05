@@ -61,8 +61,11 @@ const runtime = createProtocolRuntime({
 
 ## API
 
-- **`class MemorySkeinStore implements SkeinStore`** — `new MemorySkeinStore({ ttl?, maxPageSize? })`.
-  `maxPageSize` (default 1000) bounds every list/search, **including one with no `limit`** — see
+- **`class MemorySkeinStore implements SkeinStore`** —
+  `new MemorySkeinStore({ ttl?, threadTtl?, maxPageSize? })`. `ttl` is store-item expiry and
+  `threadTtl` is thread expiry (`{ defaultTtl?, sweepIntervalMinutes? }`, minutes) — see
+  [docs/storage.md](../../docs/storage.md#thread-ttl). `maxPageSize` (default 1000) bounds every
+  list/search, **including one with no `limit`** — see
   [docs/storage.md](../../docs/storage.md#page-bound-skein_max_page_size). Exposes the four
   repos (`assistants`, `threads`, `runs`, `store`) defined by [`SkeinStore`](../core). Plus two
   methods used by `skein dev`'s persistence:

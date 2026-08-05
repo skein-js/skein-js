@@ -640,18 +640,18 @@ export class PostgresSkeinStore implements SkeinStore {
 
   readonly #maxPageSize: number;
 
-  private constructor(
-    pool: Pool,
-    index?: StoreIndexConfig,
-    ttl?: StoreTtlConfig,
-    maxPageSize?: number,
-    threadTtl?: ThreadTtlConfig,
-  ) {
-    this.#maxPageSize = requireValidMaxPageSize(maxPageSize ?? DEFAULT_MAX_PAGE_SIZE);
+  /**
+   * Takes the whole options bag rather than one parameter per field. Positional parameters put the
+   * order of `index`/`ttl`/`maxPageSize`/`threadTtl` at odds with the interface that declares them,
+   * and every new option lands at the end regardless of where it belongs — a trap that only shows up
+   * at the single call site.
+   */
+  private constructor(pool: Pool, options: PostgresSkeinStoreOptions) {
+    this.#maxPageSize = requireValidMaxPageSize(options.maxPageSize ?? DEFAULT_MAX_PAGE_SIZE);
     this.#pool = pool;
-    this.#index = index;
-    this.#ttl = ttl;
-    this.#threadTtl = threadTtl;
+    this.#index = options.index;
+    this.#ttl = options.ttl;
+    this.#threadTtl = options.threadTtl;
   }
 
   /** The bound this driver applies to an unbounded read — see `SkeinStore.maxPageSize`. */
@@ -699,13 +699,7 @@ export class PostgresSkeinStore implements SkeinStore {
   ): Promise<PostgresSkeinStore> {
     const pool = createPostgresPool(url, options);
     if (options.index?.hnsw) enableIterativeIndexScan(pool);
-    return new PostgresSkeinStore(
-      pool,
-      options.index,
-      options.ttl,
-      options.maxPageSize,
-      options.threadTtl,
-    );
+    return new PostgresSkeinStore(pool, options);
   }
 
   /**

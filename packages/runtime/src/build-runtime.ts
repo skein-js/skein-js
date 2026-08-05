@@ -24,6 +24,7 @@ import type { TelemetrySink } from "@skein-js/core";
 import {
   corsFromHttpConfig,
   loadReloadableInMemoryRuntime,
+  resolveStoreTtl,
   resolveThreadTtl,
   resolveMaxPageSize,
   resolveRunConcurrency,
@@ -180,6 +181,13 @@ export async function buildRuntime(options: BuildRuntimeOptions): Promise<SkeinR
       schemas,
       telemetry.length > 0 ? { telemetry } : undefined,
     );
+    // The store-item sweeper, which the durable branch below also starts. The in-memory store already
+    // expires items lazily on read once it has the config, but without this nothing ever *deletes*
+    // them — a long-lived `skein start` (which takes this path whenever Redis and Postgres are absent)
+    // would grow its heap by every expired item it ever wrote.
+    const devStoreTtl = resolveStoreTtl(runtime.config.store?.ttl);
+    const devDisposers: Disposer[] = [];
+    if (devStoreTtl) startStoreTtlSweeper(runtime.deps.store, devStoreTtl, devDisposers);
     // Filled in place rather than copied, matching how `resolveRuntimeDeps` fills the logger: a
     // reloadable runtime hands out the same deps object it keeps.
     if (serverVersion !== undefined) runtime.deps.serverVersion = serverVersion;
@@ -189,6 +197,7 @@ export async function buildRuntime(options: BuildRuntimeOptions): Promise<SkeinR
       reloadGraphs: () => runtime.reloadGraphs(),
       dispose: async () => {
         await flushTelemetry(telemetry);
+        for (const dispose of devDisposers) await dispose();
       },
       snapshotState: () => runtime.snapshotState(),
       hydrateState: (snapshot) => runtime.hydrateState(snapshot),
@@ -295,23 +304,4 @@ export async function buildRuntime(options: BuildRuntimeOptions): Promise<SkeinR
     await disposeAll();
     throw error;
   }
-}
-
-/**
- * Map the langgraph.json `store.ttl` block (snake_case, minutes) to the driver's camelCase
- * {@link StoreTtlConfig}. Returns undefined when no TTL field is set, so stores default to no expiry.
- */
-function resolveStoreTtl(
-  raw:
-    | { default_ttl?: number; refresh_on_read?: boolean; sweep_interval_minutes?: number }
-    | undefined,
-): { defaultTtl?: number; refreshOnRead?: boolean; sweepIntervalMinutes?: number } | undefined {
-  if (!raw) return undefined;
-  const ttl: { defaultTtl?: number; refreshOnRead?: boolean; sweepIntervalMinutes?: number } = {};
-  if (typeof raw.default_ttl === "number") ttl.defaultTtl = raw.default_ttl;
-  if (typeof raw.refresh_on_read === "boolean") ttl.refreshOnRead = raw.refresh_on_read;
-  if (typeof raw.sweep_interval_minutes === "number") {
-    ttl.sweepIntervalMinutes = raw.sweep_interval_minutes;
-  }
-  return Object.keys(ttl).length > 0 ? ttl : undefined;
 }

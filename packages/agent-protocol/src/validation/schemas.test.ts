@@ -34,6 +34,22 @@ describe("validation", () => {
     expect(parse(threadCreateSchema, {})).toEqual({});
   });
 
+  it("bounds a thread ttl instead of letting it reach the driver", () => {
+    // Unbounded, Postgres evaluates `now() + 1e308 * interval '1 minute'` and raises
+    // `interval out of range` — not a unique violation, so it escapes as a 500 — while the memory
+    // driver accepts it and stores `Infinity`. A 400 at the boundary is the same answer on both.
+    for (const ttl of [1e308, Number.MAX_SAFE_INTEGER, { ttl: 1e308 }]) {
+      expect(() => parse(threadCreateSchema, { ttl })).toThrow(
+        expect.objectContaining({ status: 400 }),
+      );
+    }
+    // `null` still means "pin this thread", and a sane lifetime still passes.
+    expect(parse(threadCreateSchema, { ttl: null })).toEqual({ ttl: null });
+    expect(parse(threadCreateSchema, { ttl: { ttl: 60, strategy: "delete" } })).toMatchObject({
+      ttl: { ttl: 60 },
+    });
+  });
+
   it("requireParam throws a 400 when a path param is missing", () => {
     expect(() => requireParam({}, "thread_id")).toThrow(expect.objectContaining({ status: 400 }));
     expect(requireParam({ thread_id: "t1" }, "thread_id")).toBe("t1");

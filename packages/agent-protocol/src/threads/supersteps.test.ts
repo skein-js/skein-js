@@ -77,6 +77,30 @@ describe("supersteps on thread create", () => {
     });
   });
 
+  it("400s on a graph this server does not serve", async () => {
+    const { service } = await harness();
+
+    await expect(
+      service.threads.create({ metadata: { graph_id: "nope" }, supersteps: seed }),
+    ).rejects.toMatchObject({ status: 400 });
+  });
+
+  it.each([
+    ["no graph_id", {}],
+    ["an unknown graph_id", { graph_id: "nope" }],
+  ])("creates no thread when the seed is rejected for %s", async (_label, metadata) => {
+    // The orphan this guards against is worse than untidy: the caller gets a 4xx, the thread exists
+    // empty, and retrying the corrected request hits `if_exists: "raise"` and 409s — so the id they
+    // chose is permanently unusable. `prepareRun` follows the same rule for `assistant_id`.
+    const { deps, service } = await harness();
+
+    await expect(
+      service.threads.create({ thread_id: "order-42", metadata, supersteps: seed }),
+    ).rejects.toMatchObject({ status: 400 });
+
+    expect(await deps.store.threads.get("order-42")).toBeNull();
+  });
+
   it("creates the thread normally when no supersteps are given", async () => {
     const { service } = await harness();
     const thread = await service.threads.create({ metadata: { graph_id: "echo" } });
@@ -99,5 +123,18 @@ describe("supersteps on thread create", () => {
     expect(again.thread_id).toBe("known");
     const state = await service.threads.getState("known");
     expect(state.values).toMatchObject({ value: "imported" });
+  });
+});
+
+describe("graph resolution for a thread that has never run", () => {
+  it("reads back empty rather than 500ing on an unresolvable graph_id", async () => {
+    // Thread metadata is caller-supplied and unvalidated (`z.record(z.unknown())`), so a bogus
+    // `graph_id` must not turn every state and history read into a 500 out of `deps.graphs.load`.
+    const { service } = await harness();
+    const thread = await service.threads.create({ metadata: { graph_id: "nope" } });
+
+    const state = await service.threads.getState(thread.thread_id);
+    expect(state.values).toEqual({});
+    expect(await service.threads.history(thread.thread_id)).toEqual([]);
   });
 });

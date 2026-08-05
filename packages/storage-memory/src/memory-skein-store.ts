@@ -905,6 +905,13 @@ export class MemorySkeinStore implements SkeinStore {
     // *within* a process, since a claim never outlives the tick that took it.
     this.#cronSeq.clear();
     for (const cronId of this.#crons.keys()) this.#cronSeq.set(cronId, 0);
+    // Thread expiry is re-derived rather than carried: `fill` above replaced `#threads` wholesale, so
+    // leaving the old map would age *new* threads by ids that are gone. Restored threads take the
+    // configured default from now — the snapshot has no `expires_at`, so the alternative is either an
+    // invented deadline or a thread that can never expire. Matches `#itemExpiry` below, which is
+    // cleared for the same reason.
+    this.#threadExpiry.clear();
+    for (const threadId of this.#threads.keys()) this.#setThreadExpiry(threadId, undefined);
     // Credentials are deliberately not in the snapshot — it is written to `.skein/` on disk. So a
     // restored cron keeps its `user_id` but loses the principal behind it, and the scheduler refuses
     // to fire that combination rather than running it unowned (see `fireCron`). On an

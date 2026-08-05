@@ -187,6 +187,16 @@ lives beside the cron scheduler rather than with the store-item sweeper — a th
 a row. It collects a bounded batch per tick and re-ticks immediately while the batch stays full, so a
 backlog drains without waiting out the interval.
 
+> **Deleting a thread deletes any cron scheduled on it.** Thread crons cascade with their thread (the
+> same `ON DELETE CASCADE` a manual `DELETE /threads/{id}` triggers), so a **thread-scoped**
+> [cron](./crons.md) on an expiring thread stops firing — silently, since nothing errors. Either pin
+> such threads with `ttl: null` or use a stateless cron, which owns no thread to lose.
+
+The sweeper runs whether or not `checkpointer.ttl` is set, because a per-thread `ttl` can arrive on any
+`POST /threads`; the config block supplies the _default lifetime_ and the cadence, not permission to
+collect. With neither configured nor requested, nothing has an expiry and each sweep is one indexed
+read that finds nothing.
+
 With no `checkpointer.ttl` set, no sweeper runs and threads live until something deletes them.
 
 > Note this goes **past** LangGraph OSS rather than catching up to it: the open-source

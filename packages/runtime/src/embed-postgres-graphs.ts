@@ -28,6 +28,7 @@ import {
   startStoreTtlSweeper,
   type Disposer,
   type StoreTtl,
+  type ThreadTtl,
 } from "./drivers.js";
 import { RuntimeConfigError } from "./errors.js";
 
@@ -49,6 +50,12 @@ export interface EmbedPostgresGraphsOptions {
   index?: StoreIndexConfig;
   /** Store-item TTL/expiry policy (with a background sweep). Omitted → items never expire. */
   ttl?: StoreTtl;
+  /**
+   * Thread TTL — a default lifetime and sweep cadence for threads, the in-code equivalent of
+   * `checkpointer.ttl`. Omitted → threads take no default expiry, though a per-thread `ttl` on
+   * `POST /threads` is still honoured and still collected.
+   */
+  threadTtl?: ThreadTtl;
   /** Max connections per pool (skein opens two — store + saver). Defaults to env `PG_POOL_MAX`. */
   poolMax?: number;
   /** Disable TLS cert verification (self-signed managed cert). Defaults to env `DATABASE_SSL_NO_VERIFY`. */
@@ -161,6 +168,7 @@ export async function embedPostgresGraphs(
       url: blankToUndefined(options.postgresUri) ?? requireEnv("POSTGRES_URI", "postgres"),
       index: options.index,
       ttl: options.ttl,
+      threadTtl: options.threadTtl,
       connectionOptions,
       // Validates an explicit value the same way the env path validates SKEIN_MAX_PAGE_SIZE.
       maxPageSize: resolveMaxPageSize(options.maxPageSize),
@@ -193,6 +201,9 @@ export async function embedPostgresGraphs(
       queue,
       bus,
       checkpointer,
+      // Carried so the runtime's sweeper picks up the configured cadence; the sweeper itself runs
+      // either way, because a per-thread `ttl` needs collecting with or without a default.
+      ...(options.threadTtl ? { threadTtl: options.threadTtl } : {}),
       ...options.overrides, // spread LAST, mirroring embedInMemoryGraphs
     };
     return { deps, dispose };

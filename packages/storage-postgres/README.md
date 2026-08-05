@@ -73,10 +73,12 @@ In practice you rarely call this yourself — `skein dev --store postgres` / `sk
 - **`store.close(): Promise<void>`** — end the pool. **`store.truncateAll()`** — test helper.
 - Repos `assistants` / `threads` / `runs` / `store` — the [`SkeinStore`](../core) interface, with
   Postgres FK `ON DELETE CASCADE` for thread→runs and pgvector cosine ranking on `store.search`.
-- **`interface PostgresSkeinStoreOptions`** — `{ index?, ttl?, maxPageSize? }` plus the
+- **`interface PostgresSkeinStoreOptions`** — `{ index?, ttl?, threadTtl?, maxPageSize? }` plus the
   `PostgresPoolOptions` connection tuning (`poolMax`, `sslNoVerify`, `connectionTimeoutMs`,
   `idleTimeoutMs`, `statementTimeoutMs`). `maxPageSize` (default 1000) bounds every list/search,
   **including one with no `limit`** — see [docs/storage.md](../../docs/storage.md#page-bound-skein_max_page_size).
+  `ttl` is store-item expiry; `threadTtl` (`{ defaultTtl?, sweepIntervalMinutes? }`, minutes) gives
+  threads a default lifetime — see [docs/storage.md](../../docs/storage.md#thread-ttl).
 - **`interface StoreIndexConfig`** — `{ dims: number; fields?: string[]; embed: EmbedFunction }`
   (`fields` default `["$"]` = embed the whole value as JSON).
 - **`type EmbedFunction`** — `(texts: string[]) => Promise<number[][]>`.

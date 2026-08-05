@@ -195,6 +195,9 @@ export function createThreadService(ctx: ProtocolContext): ThreadService {
   // Build a graph by id with the checkpointer attached, so state reads/writes hit this thread's
   // checkpoints. `resolveConfigurable` is only consulted for a *factory* graph — it is what lets the
   // caller avoid loading a run's kwargs for a graph that would not use them.
+  /** Whether this server serves `graphId` at all — so a caller-supplied id can be rejected cleanly. */
+  const graphsInclude = (graphId: string): boolean => deps.graphs.ids.includes(graphId);
+
   const buildGraph = async (
     graphId: string,
     resolveConfigurable?: () => Promise<Record<string, unknown> | undefined>,
@@ -228,8 +231,15 @@ export function createThreadService(ctx: ProtocolContext): ThreadService {
     // empty: the write would land in the checkpointer with nothing able to open it again. The run is
     // still preferred where there is one, because only it can rebuild a factory graph with the same
     // `configurable` the engine used.
+    //
+    // Tolerant of a bad id, unlike the run path above whose `graph_id` came from an assistant the
+    // server validated. This one is thread *metadata*, which is caller-supplied and unvalidated
+    // (`z.record(z.unknown())`) — so `{"metadata":{"graph_id":"nope"}}` would otherwise turn every
+    // state and history read on that thread into a 500 from `deps.graphs.load`. A thread whose graph
+    // cannot be resolved has no readable state, which is exactly what `undefined` already means here.
     const graphId = thread.metadata?.["graph_id"];
-    return typeof graphId === "string" && graphId.length > 0 ? buildGraph(graphId) : undefined;
+    if (typeof graphId !== "string" || graphId.length === 0) return undefined;
+    return graphsInclude(graphId) ? buildGraph(graphId) : undefined;
   };
 
   // History lives in the checkpointer; read it through the graph of the thread's latest run.
@@ -274,14 +284,34 @@ export function createThreadService(ctx: ProtocolContext): ThreadService {
    * is itself a one-superstep wrapper over it, so this is the same code path skein's time-travel fork
    * already uses, and a multi-update superstep stays *one* tick rather than becoming several.
    */
-  const applySupersteps = async (thread: Thread, supersteps: Superstep[]): Promise<void> => {
-    const graphId = thread.metadata?.["graph_id"];
+  /**
+   * The graph `supersteps` will be written against, resolved from the create body's metadata —
+   * **before** any thread row exists.
+   *
+   * Checked up front for the same reason `prepareRun` resolves a run's assistant before creating its
+   * thread: a failure after the insert leaves an orphan. Here that orphan is worse than untidy — the
+   * caller gets a 4xx, the thread exists empty, and retrying the corrected request hits
+   * `if_exists: "raise"` and 409s, so the id they chose is now unusable.
+   */
+  const requireSuperstepGraph = (metadata: Metadata | undefined): string => {
+    const graphId = metadata?.["graph_id"];
     if (typeof graphId !== "string" || graphId.length === 0) {
       throw SkeinHttpError.badRequest(
-        `Thread "${thread.thread_id}" has no graph_id, so supersteps cannot be applied. ` +
-          `Pass graphId (the SDK folds it into metadata) when creating a thread with supersteps.`,
+        "supersteps need a graph to write against, and a thread being created has no run to infer " +
+          "one from. Pass graphId (the SDK folds it into metadata.graph_id).",
       );
     }
+    if (!graphsInclude(graphId)) {
+      throw SkeinHttpError.badRequest(`Unknown graph "${graphId}" in metadata.graph_id.`);
+    }
+    return graphId;
+  };
+
+  const applySupersteps = async (
+    thread: Thread,
+    graphId: string,
+    supersteps: Superstep[],
+  ): Promise<void> => {
     const graph = await buildGraph(graphId);
     const configurable = { thread_id: thread.thread_id, checkpoint_ns: "" };
     await graph.bulkUpdateState(
@@ -322,6 +352,10 @@ export function createThreadService(ctx: ProtocolContext): ThreadService {
   return {
     async create(input) {
       const { ifExists, supersteps, ...create } = input ?? {};
+      const seeding = supersteps !== undefined && supersteps.length > 0;
+      // Resolved BEFORE the insert, so a bad request cannot leave a thread behind — see
+      // `requireSuperstepGraph`. Same ordering rule the run service follows with `assistant_id`.
+      const superstepGraphId = seeding ? requireSuperstepGraph(create.metadata) : undefined;
       // Atomic if_exists: let the store enforce uniqueness (it throws 409 on a duplicate id) rather
       // than a racy get-then-create. do_nothing recovers the existing row; raise re-throws the 409.
       // The recovering read goes back through `deps.store`, so under auth it is the ownership-scoped
@@ -349,8 +383,8 @@ export function createThreadService(ctx: ProtocolContext): ThreadService {
       // one it made — matching `@langchain/langgraph-api`, which runs its `state.bulk` on whatever
       // `put` returned. Surprising enough to be worth stating: a get-or-create carrying supersteps
       // appends to an existing conversation rather than skipping the write.
-      if (supersteps && supersteps.length > 0) {
-        await applySupersteps(thread, supersteps);
+      if (seeding) {
+        await applySupersteps(thread, superstepGraphId as string, supersteps as Superstep[]);
         // Re-read so the response carries the seeded values/status rather than the pre-write row.
         return (await deps.store.threads.get(thread.thread_id)) ?? thread;
       }

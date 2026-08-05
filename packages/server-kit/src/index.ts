@@ -71,8 +71,8 @@ export { DEFAULT_SHUTDOWN_GRACE_MS } from "@skein-js/agent-protocol";
 // In-memory runtime: assemble a `ProtocolDeps` backed by in-process drivers (the `skein dev` runtime,
 // and every adapter's `{ config }` convenience path).
 export { loadInMemoryRuntime, loadReloadableInMemoryRuntime } from "./in-memory-runtime.js";
-export { resolveThreadTtl } from "./thread-ttl-config.js";
-export type { RawThreadTtl } from "./thread-ttl-config.js";
+export { resolveStoreTtl, resolveThreadTtl } from "./ttl-config.js";
+export type { RawStoreTtl, RawThreadTtl } from "./ttl-config.js";
 export type {
   InMemoryRuntimeConfig,
   ReloadableInMemoryRuntime,

@@ -26,7 +26,11 @@ const DEFAULT_SWEEP_INTERVAL_MINUTES = 60;
 const SWEEP_BATCH_SIZE = 100;
 
 export interface ThreadTtlSweeperDeps {
-  store: { threads: { listExpired(query: { now: string; limit: number }): Promise<string[]> } };
+  store: {
+    threads: { listExpired(query: { now: string; limit: number }): Promise<string[]> };
+    /** The driver's own page bound, which caps a batch below {@link SWEEP_BATCH_SIZE}. */
+    maxPageSize?: number;
+  };
   threads: Pick<ThreadService, "delete">;
   logger: Logger;
   /** Injected so tests can drive time; defaults to the wall clock. */
@@ -56,10 +60,21 @@ export function createThreadTtlSweeper(
   let timer: ReturnType<typeof setTimeout> | undefined;
   let inFlight: Promise<void> | undefined;
 
-  const sweepOnce = async (): Promise<number> => {
+  /**
+   * How many ids one scan can actually return: the batch size, bounded by the driver's own page cap.
+   *
+   * Both, and the smaller wins — the same reasoning as the cron scheduler's `scanLimit`. A deployment
+   * with `SKEIN_MAX_PAGE_SIZE` below the batch size can never fill a batch, so comparing against
+   * `SWEEP_BATCH_SIZE` alone would mean a backlog never looks full and drains one page per *interval*
+   * instead of re-ticking immediately — hours of latency at the default hourly cadence.
+   */
+  const scanLimit = Math.min(SWEEP_BATCH_SIZE, deps.store.maxPageSize ?? SWEEP_BATCH_SIZE);
+
+  /** One scan: what it found, and how much of it was actually collected. */
+  const sweepBatch = async (): Promise<{ listed: number; collected: number }> => {
     const expired = await deps.store.threads.listExpired({
       now: clock().toISOString(),
-      limit: SWEEP_BATCH_SIZE,
+      limit: scanLimit,
     });
     let collected = 0;
     for (const threadId of expired) {
@@ -74,8 +89,10 @@ export function createThreadTtlSweeper(
       }
     }
     if (collected > 0) deps.logger.info(`thread TTL sweep collected ${collected} thread(s).`);
-    return collected;
+    return { listed: expired.length, collected };
   };
+
+  const sweepOnce = async (): Promise<number> => (await sweepBatch()).collected;
 
   /**
    * The loop. Like the cron scheduler's, its single most important property is that it always
@@ -85,12 +102,15 @@ export function createThreadTtlSweeper(
   const loop = async (): Promise<void> => {
     let full = false;
     try {
-      full = (await sweepOnce()) >= SWEEP_BATCH_SIZE;
+      // On what the scan *listed*, not what it collected. A batch where a few deletes threw is still
+      // a full batch — more is due — and treating it as a short one would park the backlog for a
+      // whole interval on account of the failures.
+      full = (await sweepBatch()).listed >= scanLimit;
     } catch (error) {
       deps.logger.error("thread TTL sweep failed; the sweeper continues.", error);
     } finally {
       if (running) {
-        // A full batch means more was due than was collected, so drain immediately rather than
+        // A full batch means more was due than one scan can return, so drain immediately rather than
         // leaving the backlog to trickle out one batch per hour.
         timer = setTimeout(runLoop, full ? 0 : everyMs);
         timer.unref?.();

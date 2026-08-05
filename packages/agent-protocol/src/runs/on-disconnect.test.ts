@@ -56,21 +56,33 @@ describe("on_disconnect", () => {
   it("unhooks once the run settles, so a normal response does not cancel anything", async () => {
     // A Node `res` emits `close` on a healthy response too. Without the disarm every successful
     // `/runs/wait` would fire a cancel — idempotent, but a wasted read on every request.
-    const { service } = await harness();
+    //
+    // Asserted on the **store**, not on a spy over `service.runs.cancel`: the abort handler calls the
+    // closure-local `cancelRun`, and `cancel: cancelRun` on the service object is only an alias — so
+    // spying there replaces a property nothing on this path reads, and the test would pass with the
+    // disarm deleted. `cancelRun`'s first act is to load the run, so a read after the response
+    // settles is the observable that the listener fired.
+    const { deps, service } = await harness();
     const disconnected = new AbortController();
-    const cancel = vi.spyOn(service.runs, "cancel");
 
     const { runId } = await service.runs.createWait(
       { assistant_id: "echo", input: { value: "hi" }, on_disconnect: "cancel" },
       { signal: disconnected.signal },
     );
 
+    let readsAfterSettle = 0;
+    const get = deps.store.runs.get.bind(deps.store.runs);
+    vi.spyOn(deps.store.runs, "get").mockImplementation(async (id: string) => {
+      readsAfterSettle += 1;
+      return get(id);
+    });
+
     // The response has been written; now the transport closes it.
     disconnected.abort();
     await new Promise((resolve) => setTimeout(resolve, 20));
 
-    expect(cancel).not.toHaveBeenCalled();
-    expect(runId).toBeTruthy();
+    expect(readsAfterSettle).toBe(0);
+    expect((await get(runId))?.status).toBe("success");
   });
 
   it("cancels a stream run when the client goes away", async () => {
