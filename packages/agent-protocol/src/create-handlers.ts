@@ -401,6 +401,17 @@ export function createProtocolHandlers(service: ProtocolService): ProtocolHandle
           thread_id: body.thread_id,
           metadata: body.metadata,
           ifExists: body.if_exists,
+          ...(body.supersteps
+            ? {
+                supersteps: body.supersteps.map((superstep) => ({
+                  updates: superstep.updates.map((update) => ({
+                    values: update.values,
+                    command: update.command ?? undefined,
+                    as_node: update.as_node,
+                  })),
+                })),
+              }
+            : {}),
         }),
       );
     },

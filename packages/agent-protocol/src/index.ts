@@ -132,6 +132,8 @@ export type {
   HistoryOptions,
   PatchThreadInput,
   PruneThreadsInput,
+  Superstep,
+  SuperstepUpdate,
   ThreadService,
 } from "./threads/thread-service.js";
 export type {

@@ -164,6 +164,27 @@ export const commandBodySchema = z
   })
   .passthrough();
 
+/**
+ * One superstep of seeded state on thread create — a tick of the graph and the updates it produced.
+ *
+ * `as_node` is **required**, matching `@langchain/langgraph-api`'s schema: a superstep write has to be
+ * attributed to some node, and there is no sensible default. Bounded on both axes for the same reason
+ * `threadPruneSchema` is: each update is a graph-state write to the checkpointer, so an unbounded list
+ * is an unbounded unit of work holding a connection.
+ */
+const superstepSchema = z.object({
+  updates: z
+    .array(
+      z.object({
+        values: z.unknown().nullish(),
+        command: commandSchema.nullish(),
+        as_node: z.string().min(1),
+      }),
+    )
+    .min(1)
+    .max(100),
+});
+
 /** `POST /threads`. */
 export const threadCreateSchema = z
   .object({
@@ -171,6 +192,11 @@ export const threadCreateSchema = z
     metadata: z.record(z.unknown()).optional(),
     /** Conflict policy when `thread_id` already exists; defaults to `raise`. */
     if_exists: z.enum(["raise", "do_nothing"]).optional(),
+    /**
+     * Seed the thread's checkpoint history — importing a conversation rather than replaying it through
+     * the graph. Requires `metadata.graph_id` (the SDK folds its `graphId` argument in there).
+     */
+    supersteps: z.array(superstepSchema).max(100).optional(),
   })
   .passthrough();
 

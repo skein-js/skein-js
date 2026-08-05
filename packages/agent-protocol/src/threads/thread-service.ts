@@ -3,7 +3,7 @@
 // values/status. Deleting a thread first aborts any run still executing on it, so an in-flight run
 // can't write to a thread that's about to disappear.
 
-import type { CompiledGraph } from "@langchain/langgraph";
+import { Command, type CommandParams, type CompiledGraph } from "@langchain/langgraph";
 import {
   isSkeinHttpError,
   isTerminalRunStatus,
@@ -25,6 +25,24 @@ import {
   snapshotToThreadUpdate,
 } from "./thread-mirror.js";
 
+/**
+ * One update inside a superstep: the values a node produced, or a command, attributed to `as_node`.
+ *
+ * `values` and `command` are alternatives — LangGraph carries a command in the same slot as values, so
+ * a command wins when both are given (matching `@langchain/langgraph-api`).
+ */
+export interface SuperstepUpdate {
+  values?: unknown;
+  command?: { resume?: unknown; update?: unknown; goto?: unknown };
+  /** Required: a superstep write has to be attributed to some node. */
+  as_node: string;
+}
+
+/** A superstep — one tick of the graph, applying its updates together. */
+export interface Superstep {
+  updates: SuperstepUpdate[];
+}
+
 export interface CreateThreadInput {
   thread_id?: string;
   metadata?: Metadata;
@@ -34,6 +52,15 @@ export interface CreateThreadInput {
    * `threads.create({ threadId: stableKey, ifExists: "do_nothing" })` a get-or-create.
    */
   ifExists?: "raise" | "do_nothing";
+  /**
+   * Seed the new thread's state by replaying these supersteps into its checkpoint history — how you
+   * import an existing conversation rather than replaying it through the graph.
+   *
+   * Needs a graph to write against, and a brand-new thread has no run to infer one from, so
+   * `metadata.graph_id` must be set (the SDK folds `graphId` into metadata for exactly this). Without
+   * it this is a 400.
+   */
+  supersteps?: Superstep[];
 }
 
 export interface PatchThreadInput {
@@ -158,26 +185,44 @@ export function createThreadService(ctx: ProtocolContext): ThreadService {
   // reads/writes hit this thread's checkpoints (as the engine does). 404s an unknown thread; returns
   // undefined when the thread exists but has no resolvable run/graph yet (never run). The shared load
   // path behind history, state reads, and state updates so all three stay consistent.
-  const loadThreadGraph = async (threadId: string): Promise<CompiledGraph<string> | undefined> => {
-    await requireThread(threadId);
-    const runs = await deps.store.runs.listByThread(threadId);
-    const latest = [...runs].sort((a, b) => b.created_at.localeCompare(a.created_at))[0];
-    if (!latest) return undefined;
-    const assistant = await deps.store.assistants.get(latest.assistant_id);
-    if (!assistant) return undefined;
-
-    const resolved = await deps.graphs.load(assistant.graph_id);
-    // A factory graph must be built with the run's `configurable` — same as the run engine — so a
-    // graph whose shape depends on run config is reconstructed identically for the state read.
-    let graph: CompiledGraph<string>;
-    if (typeof resolved === "function") {
-      const kwargs = await deps.store.runs.getKwargs(latest.run_id);
-      graph = await resolved({ configurable: kwargs?.config?.configurable });
-    } else {
-      graph = resolved;
-    }
+  // Build a graph by id with the checkpointer attached, so state reads/writes hit this thread's
+  // checkpoints. `resolveConfigurable` is only consulted for a *factory* graph — it is what lets the
+  // caller avoid loading a run's kwargs for a graph that would not use them.
+  const buildGraph = async (
+    graphId: string,
+    resolveConfigurable?: () => Promise<Record<string, unknown> | undefined>,
+  ): Promise<CompiledGraph<string>> => {
+    const resolved = await deps.graphs.load(graphId);
+    // A factory graph must be built with the same `configurable` the run engine uses, so a graph whose
+    // shape depends on run config is reconstructed identically here.
+    const graph =
+      typeof resolved === "function"
+        ? await resolved({ configurable: await resolveConfigurable?.() })
+        : resolved;
     (graph as { checkpointer?: unknown }).checkpointer = deps.checkpointer;
     return graph;
+  };
+
+  const loadThreadGraph = async (threadId: string): Promise<CompiledGraph<string> | undefined> => {
+    const thread = await requireThread(threadId);
+    const runs = await deps.store.runs.listByThread(threadId);
+    const latest = [...runs].sort((a, b) => b.created_at.localeCompare(a.created_at))[0];
+    if (latest) {
+      const assistant = await deps.store.assistants.get(latest.assistant_id);
+      if (assistant) {
+        return buildGraph(assistant.graph_id, async () => {
+          const kwargs = await deps.store.runs.getKwargs(latest.run_id);
+          return kwargs?.config?.configurable;
+        });
+      }
+    }
+    // No run to infer the graph from — fall back to the thread's own `graph_id`. A thread seeded by
+    // `supersteps` at creation has state but has never run, and without this its state would read back
+    // empty: the write would land in the checkpointer with nothing able to open it again. The run is
+    // still preferred where there is one, because only it can rebuild a factory graph with the same
+    // `configurable` the engine used.
+    const graphId = thread.metadata?.["graph_id"];
+    return typeof graphId === "string" && graphId.length > 0 ? buildGraph(graphId) : undefined;
   };
 
   // History lives in the checkpointer; read it through the graph of the thread's latest run.
@@ -210,6 +255,48 @@ export function createThreadService(ctx: ProtocolContext): ThreadService {
     return states;
   };
 
+  /**
+   * Seed a freshly created thread's state from `supersteps` — `POST /threads` with a body the SDK's
+   * `threads.create({ supersteps })` sends. Importing a conversation, rather than replaying it.
+   *
+   * The graph comes from `metadata.graph_id`, because a thread this new has no run to infer one from
+   * ({@link loadThreadGraph} returns undefined for it). That is the same source
+   * `@langchain/langgraph-api` reads, and the same 400 when it is missing.
+   *
+   * Writes through LangGraph's own `bulkUpdateState` rather than looping `updateState`: `updateState`
+   * is itself a one-superstep wrapper over it, so this is the same code path skein's time-travel fork
+   * already uses, and a multi-update superstep stays *one* tick rather than becoming several.
+   */
+  const applySupersteps = async (thread: Thread, supersteps: Superstep[]): Promise<void> => {
+    const graphId = thread.metadata?.["graph_id"];
+    if (typeof graphId !== "string" || graphId.length === 0) {
+      throw SkeinHttpError.badRequest(
+        `Thread "${thread.thread_id}" has no graph_id, so supersteps cannot be applied. ` +
+          `Pass graphId (the SDK folds it into metadata) when creating a thread with supersteps.`,
+      );
+    }
+    const graph = await buildGraph(graphId);
+    const configurable = { thread_id: thread.thread_id, checkpoint_ns: "" };
+    await graph.bulkUpdateState(
+      { configurable },
+      supersteps.map((superstep) => ({
+        updates: superstep.updates.map((update) => ({
+          // A command travels in the `values` slot — LangGraph reads a `Command` there and applies it
+          // instead of writing raw values. Same conversion the run engine's `toGraphInput` does.
+          values: update.command ? new Command(update.command as CommandParams) : update.values,
+          asNode: update.as_node,
+        })),
+      })),
+    );
+    // Mirror the seeded state onto the thread row, so a plain `GET /threads/{id}` and `useStream`
+    // reflect it without waiting for a first run — the same mirror `updateState` does after a fork.
+    const snapshot = await graph.getState({ configurable: { thread_id: thread.thread_id } });
+    await deps.store.threads.update(
+      thread.thread_id,
+      snapshotToThreadUpdate(snapshot, runStatusForSnapshot(snapshot)),
+    );
+  };
+
   /** Delete a thread, stopping anything still executing on it first. A local so `prune` can reuse it
    * without reaching through `this` (the service object is routinely destructured). */
   const deleteThread = async (threadId: string): Promise<void> => {
@@ -227,14 +314,15 @@ export function createThreadService(ctx: ProtocolContext): ThreadService {
 
   return {
     async create(input) {
-      const { ifExists, ...create } = input ?? {};
+      const { ifExists, supersteps, ...create } = input ?? {};
       // Atomic if_exists: let the store enforce uniqueness (it throws 409 on a duplicate id) rather
       // than a racy get-then-create. do_nothing recovers the existing row; raise re-throws the 409.
       // The recovering read goes back through `deps.store`, so under auth it is the ownership-scoped
       // one — a thread belonging to another principal still reads as absent rather than being handed
       // back here.
+      let thread: Thread;
       try {
-        return await deps.store.threads.create(create as ThreadCreate);
+        thread = await deps.store.threads.create(create as ThreadCreate);
       } catch (error) {
         if (
           create.thread_id !== undefined &&
@@ -243,10 +331,23 @@ export function createThreadService(ctx: ProtocolContext): ThreadService {
           error.status === 409
         ) {
           const existing = await deps.store.threads.get(create.thread_id);
-          if (existing) return existing;
+          if (!existing) throw error;
+          thread = existing;
+        } else {
+          throw error;
         }
-        throw error;
       }
+
+      // Applied after the create, and applied to a thread `do_nothing` merely *found* as well as to
+      // one it made — matching `@langchain/langgraph-api`, which runs its `state.bulk` on whatever
+      // `put` returned. Surprising enough to be worth stating: a get-or-create carrying supersteps
+      // appends to an existing conversation rather than skipping the write.
+      if (supersteps && supersteps.length > 0) {
+        await applySupersteps(thread, supersteps);
+        // Re-read so the response carries the seeded values/status rather than the pre-write row.
+        return (await deps.store.threads.get(thread.thread_id)) ?? thread;
+      }
+      return thread;
     },
 
     get: requireThread,
