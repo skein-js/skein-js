@@ -99,6 +99,23 @@ export const runCreateSchema = z
      * to cancel would let one kill a healthy run.
      */
     on_disconnect: z.enum(["cancel", "continue"]).optional(),
+    /**
+     * Accepted and **ignored**. Named explicitly rather than swallowed by `.passthrough()` so a reader
+     * can see they were considered — and so the schema-parity guard in `@skein-js/test-support` counts
+     * them as known rather than as newly-missing.
+     *
+     * `stream_subgraphs` / `stream_resumable`: skein streams the root graph's frames and resumability
+     * comes from the event bus + `Last-Event-ID`, not from a per-run flag.
+     * `feedback_keys`: a LangSmith-scoring concern with no skein equivalent.
+     * `checkpoint_during` / `durability`: LangGraph checkpoint-write tuning skein does not expose.
+     * `langsmith_tracer`: the SDK's own tracing passthrough — skein traces via its `TelemetrySink`.
+     */
+    stream_subgraphs: z.boolean().optional(),
+    stream_resumable: z.boolean().optional(),
+    feedback_keys: z.array(z.string()).optional(),
+    checkpoint_during: z.boolean().optional(),
+    durability: z.string().optional(),
+    langsmith_tracer: z.record(z.unknown()).optional(),
   })
   .passthrough();
 
@@ -455,6 +472,14 @@ const cronRunPayloadSchema = z.object({
   durability: z.string().optional(),
   stream_subgraphs: z.boolean().optional(),
   stream_resumable: z.boolean().optional(),
+  /**
+   * Also accepted and ignored, and for a sharper reason than the rest: a cron's `schedule` *is* its
+   * timing, and its thread is resolved by the scheduler when it fires. A delay or a
+   * create-the-thread policy replayed on every occurrence would fight the schedule rather than
+   * refine it.
+   */
+  after_seconds: z.number().int().nonnegative().optional(),
+  if_not_exists: z.enum(["create", "reject"]).optional(),
 });
 
 /**

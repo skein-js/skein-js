@@ -3340,7 +3340,9 @@ so the same `langgraph.json` works under both. Durations in **minutes**:
 
 ```json
 {
-  "checkpointer": { "ttl": { "default_ttl": 43200, "strategy": "delete", "sweep_interval_minutes": 60 } }
+  "checkpointer": {
+    "ttl": { "default_ttl": 43200, "strategy": "delete", "sweep_interval_minutes": 60 }
+  }
 }
 ```
 

@@ -20,7 +20,13 @@
         "server-nextjs:build",
         "server-fetch:build"
       ],
-      "inputs": ["default", "^production", "{workspaceRoot}/packages/*/package.json"]
+      "inputs": [
+        "default",
+        "^production",
+        "{workspaceRoot}/packages/*/package.json",
+        "{workspaceRoot}/packages/agent-protocol/src/validation/schemas.ts",
+        "{workspaceRoot}/pnpm-lock.yaml"
+      ]
     }
   }
 }

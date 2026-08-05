@@ -127,6 +127,23 @@ Also shipped, beyond the original MVP plan:
   (LangGraph serves history on both verbs). Each rides services that already existed. Also: SSE
   streams now emit `: heartbeat` comments in idle gaps, so a long first-token wait survives a proxy's
   idle timeout and the SDK's `stream_idle_reconnect` has something to read.
+- ✅ **SDK request-body parity** — the same diff as the route-table entry above, one level **down**: the
+  route table was complete while the _bodies_ were not. Because every body schema is `.passthrough()`,
+  a field the SDK sent and skein never read validated, reached the service, and was dropped in silence.
+  `if_exists` on `POST /threads` was the sharp end — it clobbered a thread's state on the memory driver
+  and escaped as a 500 on Postgres — and is now enforced atomically in both drivers and pinned by the
+  conformance suite. Also honoured: `if_not_exists` (which made the three thread-scoped run-create
+  routes agree on what an unknown thread means), `after_seconds` (a queue-level delay, so it costs
+  nothing while it waits), `on_disconnect` (which `useStream` sends on **every** submit, so
+  cancel-on-tab-close had never worked), and `supersteps` on thread create. A workspace-level guard in
+  `@skein-js/test-support` now diffs both sides, so the next divergence fails CI instead of shipping.
+  See [agent-protocol.md](./agent-protocol.md).
+- ✅ **Thread TTL** — `checkpointer.ttl` (LangGraph Platform's `langgraph.json` shape) expires threads
+  on a background sweep, with a per-thread `ttl` override and `null` to pin one. Unlike store-item TTL,
+  expiry means "may be collected", not "gone", and the sweeper deletes through the thread service so an
+  expiring thread's in-flight run is aborted and its checkpoints go with it. Past LangGraph OSS rather
+  than catching up to it — `@langchain/langgraph-api` drops `ttl` on the floor. See
+  [storage.md](./storage.md).
 - ✅ **Multi-instance double-texting** — the four per-process seams are gone: the `reject` guard is an
   atomic check-and-insert in the driver (`RunRepo.createIfThreadIdle`), cancellation crosses instances
   over a `RunAbortChannel` (Redis pub/sub), a run's base checkpoint and rollback plan live on its own
@@ -185,9 +202,10 @@ valuable feedback we can get.
 | `dev` / `up` / `build` / `dockerfile`    | ✅ shipped         | Drop-in for the LangGraph CLI, plus skein-only `start` + `import-langgraph`.         |
 | Node 24 production runtime               | ✅ shipped         | Express transport; default production image and fallback.                            |
 | Bun / Deno production runtimes           | ⚠️ preview         | Native Fetch launchers/images ship; full clean-artifact matrices must graduate each. |
-| Assistants / threads / runs / store      | ✅ shipped         | Full Agent Protocol surface; three run modes; SSE streaming.                         |
+| Assistants / threads / runs / store      | ✅ shipped         | Full surface — routes _and_ request bodies, guarded against SDK drift.               |
 | Thread search / copy                     | ✅ shipped         | Metadata/status filter + pagination; copy duplicates history.                        |
 | Store item TTL                           | ✅ shipped         | `store.ttl` (default/refresh-on-read/sweep) + per-put `ttl`.                         |
+| Thread TTL                               | ✅ shipped         | `checkpointer.ttl` + per-thread `ttl`; past LangGraph OSS, which drops it.           |
 | Distinct cancelled run status            | ✅ shipped         | Cancel resolves to `cancelled`, not `error`.                                         |
 | Human-in-the-loop (interrupt/resume)     | ✅ shipped         | Via LangGraph checkpointers.                                                         |
 | Auth + authorization                     | ✅ shipped         | LangGraph `Auth` parity — see below.                                                 |
@@ -222,15 +240,16 @@ Deliberately out of scope for the first stable release (may be revisited later):
 
 ## Verification
 
-| Layer                               | How                                                                                                                                                                                      |
-| ----------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| **Unit**                            | vitest per package; storage drivers against a shared `SkeinStore` conformance suite; run-engine transitions; SSE frame mapping.                                                          |
-| **Conformance / e2e**               | `examples/express-basic` exercised by the real `@langchain/langgraph-sdk` client (`threads.create`, `runs.stream`, `runs.wait`). If the official SDK is happy, the wire format is right. |
-| **Drop-in migration (headline)**    | `examples/migrated-langgraph` with a real `langgraph.json` run via `skein dev` in place of `langgraph dev`, no other change.                                                             |
-| **React `useStream` (headline FE)** | `examples/react-usestream` streams a reply token-by-token from skein-js — pointed at the `examples/gemini-chat` Gemini backend for a live model-backed FE+BE run.                        |
-| **Interop**                         | Agent Chat UI points at the local server; streamed conversation renders.                                                                                                                 |
-| **Browser e2e (flagship)**          | `examples/chat-app` — Playwright drives the shadcn UI end to end, asserting streamed tokens, a rendered thinking block, and a tool-call card (key-gated).                                |
-| **Long-term memory**                | `@skein-js/agent-protocol` run-engine test: a node writes and reads via the injected `getStore()`; `examples/chat-app` recalls a saved fact across threads.                              |
-| **Postgres + Redis**                | Conformance suite re-run against Postgres; cross-instance test — start a run on instance A, join its SSE stream from instance B via Redis.                                               |
+| Layer                               | How                                                                                                                                                                                                 |
+| ----------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| **Unit**                            | vitest per package; storage drivers against a shared `SkeinStore` conformance suite; run-engine transitions; SSE frame mapping.                                                                     |
+| **Conformance / e2e**               | `examples/express-basic` exercised by the real `@langchain/langgraph-sdk` client (`threads.create`, `runs.stream`, `runs.wait`). If the official SDK is happy, the wire format is right.            |
+| **SDK drift guards**                | Workspace-level tests diff skein against the _installed_ SDK: `routes.test.ts` on the route table, `sdk-body-parity.test.ts` on every request body. A field skein neither reads nor names fails CI. |
+| **Drop-in migration (headline)**    | `examples/migrated-langgraph` with a real `langgraph.json` run via `skein dev` in place of `langgraph dev`, no other change.                                                                        |
+| **React `useStream` (headline FE)** | `examples/react-usestream` streams a reply token-by-token from skein-js — pointed at the `examples/gemini-chat` Gemini backend for a live model-backed FE+BE run.                                   |
+| **Interop**                         | Agent Chat UI points at the local server; streamed conversation renders.                                                                                                                            |
+| **Browser e2e (flagship)**          | `examples/chat-app` — Playwright drives the shadcn UI end to end, asserting streamed tokens, a rendered thinking block, and a tool-call card (key-gated).                                           |
+| **Long-term memory**                | `@skein-js/agent-protocol` run-engine test: a node writes and reads via the injected `getStore()`; `examples/chat-app` recalls a saved fact across threads.                                         |
+| **Postgres + Redis**                | Conformance suite re-run against Postgres; cross-instance test — start a run on instance A, join its SSE stream from instance B via Redis.                                                          |
 
 See the top-level [plan](../README.md) and each feature doc for detail.
