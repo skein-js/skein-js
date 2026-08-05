@@ -212,6 +212,20 @@ function cancelOnDisconnectQuery(value: string | string[] | undefined): boolean 
   return raw === "1" || raw === "true";
 }
 
+/**
+ * Normalize a thread `ttl` to minutes.
+ *
+ * The SDK's type allows a bare number but always sends `{ ttl, strategy }`, so both arrive in
+ * practice. `null` is preserved rather than collapsed to `undefined`: it means "pin this thread", which
+ * is a different instruction from "say nothing and take the configured default".
+ */
+function threadTtlMinutes(
+  ttl: number | { ttl: number; strategy?: "delete" } | null | undefined,
+): number | null | undefined {
+  if (ttl === undefined || ttl === null) return ttl;
+  return typeof ttl === "number" ? ttl : ttl.ttl;
+}
+
 /** `?xray` is `boolean | number` (a depth bound) — try boolean first, then a positive integer. */
 function xrayQuery(value: string | string[] | undefined): number | boolean | undefined {
   return booleanQuery(value) ?? positiveIntQuery(value);
@@ -401,6 +415,7 @@ export function createProtocolHandlers(service: ProtocolService): ProtocolHandle
           thread_id: body.thread_id,
           metadata: body.metadata,
           ifExists: body.if_exists,
+          ...(body.ttl !== undefined ? { ttl: threadTtlMinutes(body.ttl) } : {}),
           ...(body.supersteps
             ? {
                 supersteps: body.supersteps.map((superstep) => ({
@@ -460,13 +475,15 @@ export function createProtocolHandlers(service: ProtocolService): ProtocolHandle
     copyThread: async (req) =>
       json(await service.threads.copy(requireParam(req.params, "thread_id"))),
 
-    patchThread: async (req) =>
-      json(
-        await service.threads.patch(
-          requireParam(req.params, "thread_id"),
-          parse(threadPatchSchema, req.body ?? {}),
-        ),
-      ),
+    patchThread: async (req) => {
+      const body = parse(threadPatchSchema, req.body ?? {});
+      return json(
+        await service.threads.patch(requireParam(req.params, "thread_id"), {
+          metadata: body.metadata,
+          ...(body.ttl !== undefined ? { ttl: threadTtlMinutes(body.ttl) } : {}),
+        }),
+      );
+    },
 
     deleteThread: async (req) => {
       await service.threads.delete(requireParam(req.params, "thread_id"));

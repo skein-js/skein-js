@@ -205,6 +205,8 @@ export async function buildRuntime(options: BuildRuntimeOptions): Promise<SkeinR
   try {
     // Store-item TTL from langgraph.json `store.ttl` (snake_case on the wire → camelCase config).
     const storeTtl = resolveStoreTtl(first.config.store?.ttl);
+    // Thread TTL from langgraph.json `checkpointer.ttl` — the same shape LangGraph Platform documents.
+    const threadTtl = resolveThreadTtl(first.config.checkpointer?.ttl);
     // `requireEnv` is evaluated eagerly (before any connect), so a missing POSTGRES_URI still throws
     // before a pool is opened. The Postgres store + saver assembly (shared connection tuning, ordered
     // teardown) lives in `connectPostgresStore` — reused by `embedPostgresGraphs`.
@@ -222,6 +224,7 @@ export async function buildRuntime(options: BuildRuntimeOptions): Promise<SkeinR
             importModule,
           }),
           ttl: storeTtl,
+          ...(threadTtl ? { threadTtl } : {}),
           connectionOptions: postgresConnectionOptions(),
           maxPageSize: resolveMaxPageSize(),
           runConcurrency: resolveRunConcurrency(),
@@ -230,6 +233,7 @@ export async function buildRuntime(options: BuildRuntimeOptions): Promise<SkeinR
       : {
           store: new MemorySkeinStore({
             ...(storeTtl ? { ttl: storeTtl } : {}),
+            ...(threadTtl ? { threadTtl } : {}),
             maxPageSize: resolveMaxPageSize(),
           }),
           checkpointer: new MemorySaver(),
@@ -264,6 +268,8 @@ export async function buildRuntime(options: BuildRuntimeOptions): Promise<SkeinR
       checkpointer,
       ...(abortChannel ? { abortChannel } : {}),
       ...(threadExecutionGate ? { threadExecutionGate } : {}),
+      // Present only when `checkpointer.ttl` is configured, which is what turns the sweeper on.
+      ...(threadTtl ? { threadTtl } : {}),
       ...(serverVersion !== undefined ? { serverVersion } : {}),
       auth: await loadAuthEngine(first.config.auth, {
         configDir: first.configDir,
@@ -294,6 +300,25 @@ export async function buildRuntime(options: BuildRuntimeOptions): Promise<SkeinR
  * Map the langgraph.json `store.ttl` block (snake_case, minutes) to the driver's camelCase
  * {@link StoreTtlConfig}. Returns undefined when no TTL field is set, so stores default to no expiry.
  */
+/**
+ * Map the langgraph.json `checkpointer.ttl` block to the driver's camelCase {@link ThreadTtlConfig}.
+ * Returns undefined when nothing is set, so threads never expire unless asked to.
+ *
+ * `strategy` is read only to be validated by the schema — `"delete"` is the only thing an expired
+ * thread can become, so there is nothing for the drivers to branch on.
+ */
+function resolveThreadTtl(
+  raw: { default_ttl?: number; sweep_interval_minutes?: number } | undefined,
+): { defaultTtl?: number; sweepIntervalMinutes?: number } | undefined {
+  if (!raw) return undefined;
+  const ttl: { defaultTtl?: number; sweepIntervalMinutes?: number } = {};
+  if (typeof raw.default_ttl === "number") ttl.defaultTtl = raw.default_ttl;
+  if (typeof raw.sweep_interval_minutes === "number") {
+    ttl.sweepIntervalMinutes = raw.sweep_interval_minutes;
+  }
+  return Object.keys(ttl).length > 0 ? ttl : undefined;
+}
+
 function resolveStoreTtl(
   raw:
     | { default_ttl?: number; refresh_on_read?: boolean; sweep_interval_minutes?: number }

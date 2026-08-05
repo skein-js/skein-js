@@ -14,6 +14,11 @@ import {
 import type { ProtocolDeps } from "./deps.js";
 import { createRunWorker, type RunWorker, type RunWorkerOptions } from "./runs/run-worker.js";
 import { createProtocolServiceFromContext, type ProtocolService } from "./service.js";
+import {
+  createThreadTtlSweeper,
+  type ThreadTtlSweeper,
+  type ThreadTtlSweeperOptions,
+} from "./threads/thread-ttl-sweeper.js";
 
 /** Options for {@link createProtocolRuntime}. */
 export interface ProtocolRuntimeOptions {
@@ -21,6 +26,11 @@ export interface ProtocolRuntimeOptions {
   worker?: RunWorkerOptions;
   /** Tuning for the cron scheduler (tick interval, batch size, or `enabled: false` to switch it off). */
   scheduler?: CronSchedulerOptions;
+  /**
+   * Thread TTL sweeping (`checkpointer.ttl`). Omitted → no sweeper runs, and threads live forever
+   * however the store was configured. Passing it is what turns thread expiry on.
+   */
+  threadTtl?: ThreadTtlSweeperOptions;
 }
 
 /** The wired engine: the service, the handler table, the background worker, and the cron scheduler. */
@@ -44,6 +54,14 @@ export interface ProtocolRuntime {
    * wants to drive `tickOnce()` itself — on a platform that will not keep a timer alive, say.
    */
   scheduler: CronScheduler;
+  /**
+   * The loop that collects threads whose TTL has expired, or `undefined` when no thread TTL is
+   * configured — unlike the scheduler, there is nothing to drive when the feature is off, and an
+   * always-present sweeper that never sweeps would read as though expiry were enabled.
+   *
+   * Started and stopped alongside the worker, like the scheduler.
+   */
+  threadTtlSweeper?: ThreadTtlSweeper;
 }
 
 /**
@@ -67,6 +85,32 @@ export function createProtocolRuntime(
     : createProtocolHandlers(service);
   const worker = createRunWorker(context, options.worker);
   const scheduler = createCronScheduler(context, options.scheduler);
+  // Only built when thread TTL is configured — see `ProtocolRuntime.threadTtlSweeper`. It deletes
+  // through the *service*, not the store, so an expiring thread's in-flight run is aborted and its
+  // checkpoints go with it.
+  // Options win over deps, matching how `scheduler.enabled` treats `deps.cronsEnabled`: an explicit
+  // option is a decision by whoever built the runtime, where the deps carry what the config said.
+  const threadTtlOptions =
+    options.threadTtl ??
+    (deps.threadTtl
+      ? {
+          ...(deps.threadTtl.sweepIntervalMinutes !== undefined
+            ? { sweepIntervalMinutes: deps.threadTtl.sweepIntervalMinutes }
+            : {}),
+        }
+      : undefined);
+  const threadTtlSweeper = threadTtlOptions
+    ? createThreadTtlSweeper(
+        // `context.deps`, not the raw `deps`: the logger is defaulted there, like every other
+        // background loop's.
+        {
+          store: context.deps.store,
+          threads: service.threads,
+          logger: context.deps.logger,
+        },
+        threadTtlOptions,
+      )
+    : undefined;
 
   // Both the scheduler and the abort-channel subscription hang off the worker's lifecycle rather
   // than off methods of their own. Five adapters plus the CLI already call `worker.start()` and
@@ -88,6 +132,7 @@ export function createProtocolRuntime(
     service,
     handlers,
     scheduler,
+    ...(threadTtlSweeper ? { threadTtlSweeper } : {}),
     worker: {
       get inFlightRunCount() {
         return worker.inFlightRunCount;
@@ -95,9 +140,13 @@ export function createProtocolRuntime(
       start: () => {
         worker.start();
         scheduler.start();
+        threadTtlSweeper?.start();
       },
       stop: async () => {
         await scheduler.stop();
+        // Before the worker drains: a sweep deletes threads, and doing that while runs are still
+        // settling would race the very rows they are writing.
+        await threadTtlSweeper?.stop();
         await worker.stop();
         await subscription?.close();
       },

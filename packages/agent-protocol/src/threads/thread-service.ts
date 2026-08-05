@@ -61,10 +61,17 @@ export interface CreateThreadInput {
    * it this is a 400.
    */
   supersteps?: Superstep[];
+  /**
+   * This thread's lifetime in minutes, overriding the configured `checkpointer.ttl.default_ttl`.
+   * `null` pins the thread so no TTL collects it; omitted takes the configured default.
+   */
+  ttl?: number | null;
 }
 
 export interface PatchThreadInput {
   metadata?: Metadata;
+  /** Change the thread's lifetime (minutes), or `null` to pin it. Omitted leaves the expiry alone. */
+  ttl?: number | null;
 }
 
 export interface HistoryOptions {
@@ -322,7 +329,7 @@ export function createThreadService(ctx: ProtocolContext): ThreadService {
       // back here.
       let thread: Thread;
       try {
-        thread = await deps.store.threads.create(create as ThreadCreate);
+        thread = await deps.store.threads.create(create as unknown as ThreadCreate);
       } catch (error) {
         if (
           create.thread_id !== undefined &&
@@ -399,7 +406,14 @@ export function createThreadService(ctx: ProtocolContext): ThreadService {
 
     async patch(threadId, patch) {
       await requireThread(threadId);
-      return deps.store.threads.update(threadId, { metadata: patch.metadata });
+      // `ttl` is tri-state and must stay that way through this layer: spreading it unconditionally
+      // would turn an omitted `ttl` into `undefined`, which the driver reads as "leave it" — the same
+      // outcome by luck, but a `null` (pin the thread) has to survive, so the key is only set when the
+      // caller actually mentioned it.
+      return deps.store.threads.update(threadId, {
+        metadata: patch.metadata,
+        ...(patch.ttl !== undefined ? { ttl: patch.ttl } : {}),
+      });
     },
 
     async copy(threadId) {

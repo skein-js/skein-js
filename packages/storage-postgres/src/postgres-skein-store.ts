@@ -38,6 +38,7 @@ import {
   type StoreRepo,
   type StoreSearchQuery,
   type StoreTtlConfig,
+  type ThreadTtlConfig,
   type Thread,
   type ThreadCreate,
   type ThreadRepo,
@@ -120,6 +121,10 @@ export interface PostgresSkeinStoreOptions extends PostgresPoolOptions {
   index?: StoreIndexConfig;
   /** Store-item expiry policy (from `langgraph.json` `store.ttl`). Omitted → items never expire. */
   ttl?: StoreTtlConfig;
+  /**
+   * Thread expiry policy (from `langgraph.json` `checkpointer.ttl`). Omitted → threads never expire.
+   */
+  threadTtl?: ThreadTtlConfig;
 }
 
 /**
@@ -631,6 +636,7 @@ export class PostgresSkeinStore implements SkeinStore {
   readonly #pool: Pool;
   readonly #index?: StoreIndexConfig;
   readonly #ttl?: StoreTtlConfig;
+  readonly #threadTtl?: ThreadTtlConfig;
 
   readonly #maxPageSize: number;
 
@@ -639,11 +645,13 @@ export class PostgresSkeinStore implements SkeinStore {
     index?: StoreIndexConfig,
     ttl?: StoreTtlConfig,
     maxPageSize?: number,
+    threadTtl?: ThreadTtlConfig,
   ) {
     this.#maxPageSize = requireValidMaxPageSize(maxPageSize ?? DEFAULT_MAX_PAGE_SIZE);
     this.#pool = pool;
     this.#index = index;
     this.#ttl = ttl;
+    this.#threadTtl = threadTtl;
   }
 
   /** The bound this driver applies to an unbounded read — see `SkeinStore.maxPageSize`. */
@@ -691,7 +699,13 @@ export class PostgresSkeinStore implements SkeinStore {
   ): Promise<PostgresSkeinStore> {
     const pool = createPostgresPool(url, options);
     if (options.index?.hnsw) enableIterativeIndexScan(pool);
-    return new PostgresSkeinStore(pool, options.index, options.ttl, options.maxPageSize);
+    return new PostgresSkeinStore(
+      pool,
+      options.index,
+      options.ttl,
+      options.maxPageSize,
+      options.threadTtl,
+    );
   }
 
   /**
@@ -1340,11 +1354,15 @@ export class PostgresSkeinStore implements SkeinStore {
     },
     create: async (input?: ThreadCreate) => {
       const threadId = input?.thread_id ?? randomUUID();
+      // An absent `ttl` falls back to the configured default, so a create that says nothing still
+      // expires under a configured policy; an explicit `null` pins the thread against any TTL.
+      const ttlMinutes =
+        input?.ttl === undefined ? (this.#threadTtl?.defaultTtl ?? null) : input.ttl;
       try {
         const { rows } = await this.#pool.query<ThreadRow>(
-          `INSERT INTO threads (thread_id, status, metadata)
-           VALUES ($1, $2, $3::jsonb) RETURNING *`,
-          [threadId, input?.status ?? "idle", JSON.stringify(input?.metadata ?? {})],
+          `INSERT INTO threads (thread_id, status, metadata, ttl_minutes, expires_at)
+           VALUES ($1, $2, $3::jsonb, $4, ${expiresAtSql("$4")}) RETURNING *`,
+          [threadId, input?.status ?? "idle", JSON.stringify(input?.metadata ?? {}), ttlMinutes],
         );
         return rowToThread(rows[0] as ThreadRow);
       } catch (error) {
@@ -1365,6 +1383,8 @@ export class PostgresSkeinStore implements SkeinStore {
            values = COALESCE($4::jsonb, values),
            interrupts = COALESCE($5::jsonb, interrupts),
            error = CASE WHEN $6::boolean THEN $7::text ELSE error END,
+           ttl_minutes = CASE WHEN $8::boolean THEN $9::double precision ELSE ttl_minutes END,
+           expires_at = CASE WHEN $8::boolean THEN ${expiresAtSql("$9")} ELSE expires_at END,
            updated_at = now(),
            state_updated_at = CASE WHEN $4::jsonb IS NOT NULL THEN now() ELSE state_updated_at END
          WHERE thread_id = $1 RETURNING *`,
@@ -1378,6 +1398,10 @@ export class PostgresSkeinStore implements SkeinStore {
           // `null` clears it, a string sets it. The boolean says "the patch mentioned error".
           patch.error !== undefined,
           patch.error ?? null,
+          // `ttl` is tri-state for the same reason: absent leaves the expiry alone, `null` pins the
+          // thread, a number restarts its clock from now.
+          patch.ttl !== undefined,
+          patch.ttl ?? null,
         ],
       );
       if (!rows[0]) throw SkeinHttpError.notFound(`Thread "${threadId}" not found.`);
@@ -1387,13 +1411,29 @@ export class PostgresSkeinStore implements SkeinStore {
       // Duplicate the row under a fresh id and timestamps; checkpoint history is copied separately
       // at the service layer via the LangGraph checkpointer.
       const { rows } = await this.#pool.query<ThreadRow>(
-        `INSERT INTO threads (thread_id, status, metadata, values, interrupts, error)
-         SELECT $1, status, metadata, values, interrupts, error FROM threads WHERE thread_id = $2
+        // A copy is a new thread, so it starts its own clock under the configured default rather
+        // than inheriting the original's remaining lifetime.
+        `INSERT INTO threads (thread_id, status, metadata, values, interrupts, error, ttl_minutes, expires_at)
+         SELECT $1, status, metadata, values, interrupts, error, $3, ${expiresAtSql("$3")}
+         FROM threads WHERE thread_id = $2
          RETURNING *`,
-        [randomUUID(), threadId],
+        [randomUUID(), threadId, this.#threadTtl?.defaultTtl ?? null],
       );
       if (!rows[0]) throw SkeinHttpError.notFound(`Thread "${threadId}" not found.`);
       return rowToThread(rows[0]);
+    },
+    listExpired: async ({ now, limit }) => {
+      // Ids only: the sweeper deletes each through the thread service so an in-flight run is aborted
+      // and checkpoints are cleaned up, which this bare row read cannot do. Oldest expiry first, so a
+      // backlog drains in the order it accrued rather than starving the earliest threads.
+      const { rows } = await this.#pool.query<{ thread_id: string }>(
+        `SELECT thread_id FROM threads
+         WHERE expires_at IS NOT NULL AND expires_at <= $1::timestamptz
+         ORDER BY expires_at ASC, thread_id ASC
+         LIMIT $2`,
+        [now, this.#pageLimit(limit)],
+      );
+      return rows.map((row) => row.thread_id);
     },
     delete: async (threadId) => {
       // Runs cascade via the foreign key's ON DELETE CASCADE.

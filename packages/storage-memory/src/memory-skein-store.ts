@@ -41,6 +41,7 @@ import {
   type StoreRepo,
   type StoreSearchQuery,
   type StoreTtlConfig,
+  type ThreadTtlConfig,
   type Thread,
   type ThreadCreate,
   type ThreadRepo,
@@ -158,11 +159,36 @@ export class MemorySkeinStore implements SkeinStore {
   readonly #itemExpiry = new Map<string, { expiresAt: number | null; ttlMinutes: number | null }>();
   readonly #ttl?: StoreTtlConfig;
 
+  /**
+   * Thread expiry, epoch-ms, for threads that have one. Kept beside the row rather than on it — the
+   * wire `Thread` has no expiry field, and inventing one would diverge from the SDK's shape.
+   */
+  readonly #threadExpiry = new Map<string, number>();
+  readonly #threadTtl?: ThreadTtlConfig;
+
   readonly #maxPageSize: number;
 
-  constructor(options?: { ttl?: StoreTtlConfig; maxPageSize?: number }) {
+  constructor(options?: {
+    ttl?: StoreTtlConfig;
+    threadTtl?: ThreadTtlConfig;
+    maxPageSize?: number;
+  }) {
     this.#ttl = options?.ttl;
+    this.#threadTtl = options?.threadTtl;
     this.#maxPageSize = requireValidMaxPageSize(options?.maxPageSize ?? DEFAULT_MAX_PAGE_SIZE);
+  }
+
+  /**
+   * Record (or clear) a thread's expiry. `null` pins the thread; `undefined` falls back to the
+   * configured default, so a create that says nothing still expires under a configured TTL.
+   */
+  #setThreadExpiry(threadId: string, ttlMinutes: number | null | undefined): void {
+    const minutes = ttlMinutes === undefined ? this.#threadTtl?.defaultTtl : ttlMinutes;
+    if (minutes === null || minutes === undefined) {
+      this.#threadExpiry.delete(threadId);
+      return;
+    }
+    this.#threadExpiry.set(threadId, Date.now() + minutes * 60_000);
   }
 
   /** The bound this driver applies to an unbounded read — see `SkeinStore.maxPageSize`. */
@@ -451,6 +477,7 @@ export class MemorySkeinStore implements SkeinStore {
         values: {} as Record<string, unknown>,
         interrupts: {},
       };
+      this.#setThreadExpiry(threadId, input?.ttl);
       return write(this.#threads, thread.thread_id, thread);
     },
     update: async (threadId, patch: ThreadUpdate) => {
@@ -471,6 +498,7 @@ export class MemorySkeinStore implements SkeinStore {
         state_updated_at: patch.values !== undefined ? at : existing.state_updated_at,
         ...(error == null ? {} : { error }),
       };
+      if (patch.ttl !== undefined) this.#setThreadExpiry(threadId, patch.ttl);
       return write(this.#threads, threadId, updated);
     },
     copy: async (threadId) => {
@@ -484,10 +512,22 @@ export class MemorySkeinStore implements SkeinStore {
         updated_at: at,
         state_updated_at: at,
       };
+      // A copy is a new thread, so it starts its own clock under the configured default rather than
+      // inheriting the original's remaining lifetime.
+      this.#setThreadExpiry(copy.thread_id, undefined);
       return write(this.#threads, copy.thread_id, copy);
+    },
+    listExpired: async ({ now, limit }) => {
+      const cutoff = Date.parse(now);
+      return [...this.#threadExpiry]
+        .filter(([threadId, expiresAt]) => expiresAt <= cutoff && this.#threads.has(threadId))
+        .sort(([, a], [, b]) => a - b)
+        .slice(0, Math.min(limit, this.#maxPageSize))
+        .map(([threadId]) => threadId);
     },
     delete: async (threadId) => {
       this.#threads.delete(threadId);
+      this.#threadExpiry.delete(threadId);
       // Cascade: a deleted thread's runs (and their kwargs) go with it.
       for (const [runId, run] of this.#runs) {
         if (run.thread_id === threadId) {

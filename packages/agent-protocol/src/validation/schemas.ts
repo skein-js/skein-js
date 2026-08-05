@@ -185,11 +185,28 @@ const superstepSchema = z.object({
     .max(100),
 });
 
+/**
+ * A thread lifetime in minutes — `checkpointer.ttl`'s per-thread override.
+ *
+ * Both spellings the SDK's type allows: a bare number, or `{ ttl, strategy }` (which is what it
+ * actually sends, normalizing a number into the object form). `null` **pins** the thread so no TTL
+ * collects it, which is why this is `nullable` rather than merely optional — omitted means "use the
+ * configured default", and the two must stay distinguishable.
+ */
+const threadTtlSchema = z
+  .union([
+    z.number().positive(),
+    z.object({ ttl: z.number().positive(), strategy: z.literal("delete").optional() }),
+  ])
+  .nullable();
+
 /** `POST /threads`. */
 export const threadCreateSchema = z
   .object({
     thread_id: z.string().min(1).optional(),
     metadata: z.record(z.unknown()).optional(),
+    /** This thread's lifetime in minutes; `null` pins it against any configured TTL. */
+    ttl: threadTtlSchema.optional(),
     /** Conflict policy when `thread_id` already exists; defaults to `raise`. */
     if_exists: z.enum(["raise", "do_nothing"]).optional(),
     /**
@@ -204,6 +221,8 @@ export const threadCreateSchema = z
 export const threadPatchSchema = z
   .object({
     metadata: z.record(z.unknown()).optional(),
+    /** Change or clear the thread's lifetime. Omitted leaves it; `null` pins the thread. */
+    ttl: threadTtlSchema.optional(),
   })
   .passthrough();
 

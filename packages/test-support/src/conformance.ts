@@ -1435,6 +1435,78 @@ export function runSkeinStoreConformance(label: string, makeStore: SkeinStoreFac
       });
     });
 
+    describe("thread TTL", () => {
+      const tinyTtlMinutes = 40 / 60_000;
+      const wait = (ms: number): Promise<void> => new Promise((resolve) => setTimeout(resolve, ms));
+      const now = (): string => new Date().toISOString();
+
+      it("never expires a thread created without a ttl", async () => {
+        const store = await makeStore();
+        await store.threads.create({ thread_id: "forever" });
+
+        await wait(60);
+        expect(await store.threads.listExpired({ now: now(), limit: 10 })).toEqual([]);
+      });
+
+      it("reports a thread whose ttl has elapsed", async () => {
+        const store = await makeStore();
+        await store.threads.create({ thread_id: "doomed", ttl: tinyTtlMinutes });
+
+        await wait(120);
+        expect(await store.threads.listExpired({ now: now(), limit: 10 })).toEqual(["doomed"]);
+      });
+
+      it("does not report a thread before its ttl elapses", async () => {
+        const store = await makeStore();
+        await store.threads.create({ thread_id: "later", ttl: 60 });
+
+        expect(await store.threads.listExpired({ now: now(), limit: 10 })).toEqual([]);
+      });
+
+      // Expiry means "may be collected", NOT "gone" — unlike a store item. A thread owns runs that may
+      // still be executing, so hiding it on read would make an in-flight run's thread vanish under it.
+      it("still reads an expired thread back, rather than hiding it", async () => {
+        const store = await makeStore();
+        await store.threads.create({ thread_id: "expired", ttl: tinyTtlMinutes });
+
+        await wait(120);
+        expect(await store.threads.get("expired")).not.toBeNull();
+        expect(await store.threads.search({})).toHaveLength(1);
+      });
+
+      it("stops reporting a thread once it is deleted", async () => {
+        const store = await makeStore();
+        await store.threads.create({ thread_id: "doomed", ttl: tinyTtlMinutes });
+
+        await wait(120);
+        await store.threads.delete("doomed");
+        expect(await store.threads.listExpired({ now: now(), limit: 10 })).toEqual([]);
+      });
+
+      it("pins a thread when update clears its ttl, and restarts the clock on a new one", async () => {
+        const store = await makeStore();
+        await store.threads.create({ thread_id: "reprieved", ttl: tinyTtlMinutes });
+
+        await store.threads.update("reprieved", { ttl: null });
+        await wait(120);
+        expect(await store.threads.listExpired({ now: now(), limit: 10 })).toEqual([]);
+
+        await store.threads.update("reprieved", { ttl: tinyTtlMinutes });
+        await wait(120);
+        expect(await store.threads.listExpired({ now: now(), limit: 10 })).toEqual(["reprieved"]);
+      });
+
+      it("bounds the batch it reports", async () => {
+        const store = await makeStore();
+        for (const id of ["a", "b", "c"]) {
+          await store.threads.create({ thread_id: id, ttl: tinyTtlMinutes });
+        }
+
+        await wait(120);
+        expect(await store.threads.listExpired({ now: now(), limit: 2 })).toHaveLength(2);
+      });
+    });
+
     // The server's own metadata scoping, AND-ed with the caller's filter. Both drivers must apply it
     // with the same containment semantics as `metadata`, because the auth ownership filter is pushed
     // into it — a driver that ignored it would return other tenants' rows for the JS filter to catch,

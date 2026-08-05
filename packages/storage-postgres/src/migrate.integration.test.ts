@@ -82,6 +82,7 @@ describe("applySkeinMigrations", () => {
       "0005_performance_indexes",
       "0006_inflight_runs_index",
       "0007_crons",
+      "0008_thread_ttl",
     ]);
 
     expect((await readLedger(pool)).map((row) => row.name)).toEqual([
@@ -92,6 +93,7 @@ describe("applySkeinMigrations", () => {
       "0005_performance_indexes",
       "0006_inflight_runs_index",
       "0007_crons",
+      "0008_thread_ttl",
     ]);
 
     for (const table of ["assistants", "assistant_versions", "threads", "runs", "store_items"]) {
@@ -272,6 +274,7 @@ describe("applySkeinMigrations", () => {
       "0005_performance_indexes",
       "0006_inflight_runs_index",
       "0007_crons",
+      "0008_thread_ttl",
     ]);
 
     const ledger = await readLedger(pool);
@@ -283,6 +286,7 @@ describe("applySkeinMigrations", () => {
       "0005_performance_indexes",
       "0006_inflight_runs_index",
       "0007_crons",
+      "0008_thread_ttl",
     ]);
     // The pre-existing row is untouched, so 0001_init was not re-applied.
     expect(ledger[0]).toEqual(legacyRow);
@@ -356,6 +360,7 @@ describe("applySkeinMigrations", () => {
       "0005_performance_indexes",
       "0006_inflight_runs_index",
       "0007_crons",
+      "0008_thread_ttl",
     ]);
   });
 });

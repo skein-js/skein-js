@@ -65,6 +65,12 @@ export function createAuthScopedStore(
 
   if (resource === "threads") {
     const threads: ThreadRepo = {
+      // `listExpired` is inherited **unfiltered**, for the same reason `listActiveRuns` is below: it is
+      // TTL-sweeper machinery, not a user-facing read, and a filtered version would hide an expired
+      // thread from the very loop that has to collect it. Nothing leaks — this decorator is only ever
+      // built per-request in `authorizing-handlers.ts`, while the sweeper runs off the base context and
+      // never sees a filtered store.
+      listExpired: (query) => inner.threads.listExpired(query),
       // Routed through `search` so the ownership filter is applied by the *driver*: `list` itself takes
       // no filter, and reading a page and filtering it afterwards returns nothing at all to an owner
       // whose threads sit past the page bound. `sortBy: created_at` ascending is `list`'s own ordering.

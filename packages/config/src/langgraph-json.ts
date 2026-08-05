@@ -44,6 +44,27 @@ const storeTtlSchema = z
   .passthrough();
 
 /**
+ * `checkpointer.ttl` — expiry policy for **threads**, matching LangGraph Platform's `langgraph.json`
+ * shape so the same config file works under both. Durations are in minutes, like `store.ttl`.
+ *
+ * `strategy` is accepted for that compatibility and only `"delete"` is meaningful: an expired thread
+ * is removed along with its runs and checkpoints. There is nothing else a thread could expire *into*.
+ *
+ * Note the open-source `@langchain/langgraph-api` ignores thread TTL entirely — it is a Platform-only
+ * feature there — so this is skein going past LangGraph OSS rather than catching up to it.
+ */
+const checkpointerTtlSchema = z
+  .object({
+    /** Default thread lifetime in minutes when a create passes no `ttl`. */
+    default_ttl: z.number().optional(),
+    /** What expiry does. Only `"delete"` is implemented. */
+    strategy: z.literal("delete").optional(),
+    /** How often the background sweeper runs, in minutes (default 60). */
+    sweep_interval_minutes: z.number().optional(),
+  })
+  .passthrough();
+
+/**
  * One telemetry provider: `true` for defaults, `false` to hard-disable (even when its env vars are
  * set), or an options object passed through to the adapter. Passthrough, because each adapter owns
  * its own option names — validating them here would mean this file had to know all three.
@@ -90,8 +111,11 @@ export const langgraphJsonSchema = z
       .object({ index: storeIndexSchema.optional(), ttl: storeTtlSchema.optional() })
       .passthrough()
       .optional(),
-    /** Checkpointer backend; `"default"` == Postgres, absent == in-memory. */
-    checkpointer: z.object({ type: z.string() }).passthrough().optional(),
+    /** Checkpointer backend; `"default"` == Postgres, absent == in-memory. Plus `ttl` — thread expiry. */
+    checkpointer: z
+      .object({ type: z.string().optional(), ttl: checkpointerTtlSchema.optional() })
+      .passthrough()
+      .optional(),
     /**
      * Server customization applied by the framework adapter: `cors`, plus LangGraph's `disable_*`
      * route toggles. Still `.passthrough()`, so a key skein does not implement yet (`http.app`) is

@@ -15,6 +15,7 @@ import {
   type RunQueue,
   type SkeinStore,
   type ThreadExecutionGate,
+  type ThreadTtlConfig,
   type TelemetrySink,
 } from "@skein-js/core";
 
@@ -120,6 +121,14 @@ export interface ProtocolDeps {
    * offer a cron UI whose every call 404s.
    */
   cronsEnabled?: boolean;
+  /**
+   * Thread expiry policy (`langgraph.json` `checkpointer.ttl`). Present → the runtime starts a thread
+   * TTL sweeper; absent → threads live until something deletes them.
+   *
+   * Carried on the deps rather than passed per-adapter for the same reason `cronsEnabled` is: it is
+   * resolved once where the config is read, and every adapter forwards deps without knowing about it.
+   */
+  threadTtl?: ThreadTtlConfig;
   /**
    * When true, a failed run's stack trace travels **to the client**: the `error` SSE frame and the
    * persisted `Run.error` both carry `stack`. Off by default, because a stack names server file

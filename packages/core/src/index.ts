@@ -65,6 +65,7 @@ export type {
   ThreadCreate,
   ThreadRepo,
   ThreadSearchQuery,
+  ThreadTtlConfig,
   ThreadUpdate,
 } from "./store/skein-store.js";
 export {

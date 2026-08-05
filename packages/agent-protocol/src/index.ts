@@ -72,6 +72,8 @@ export type {
   CronSchedulerOptions,
   CronTickSummary,
 } from "./crons/cron-scheduler.js";
+export { createThreadTtlSweeper } from "./threads/thread-ttl-sweeper.js";
+export type { ThreadTtlSweeper, ThreadTtlSweeperOptions } from "./threads/thread-ttl-sweeper.js";
 export {
   advanceCronOccurrence,
   assertValidCronSchedule,

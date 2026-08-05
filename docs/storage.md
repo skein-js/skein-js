@@ -158,6 +158,41 @@ Expiry is enforced two ways: **lazily** (an expired item reads as absent from `g
 `store.ttl` set, items never expire. The sweeper runs in the production runtime (`skein up`/`build`,
 and `skein dev --store postgres`); pure in-memory `skein dev` still enforces expiry lazily on read.
 
+### Thread TTL
+
+Threads can expire too, configured under `checkpointer.ttl` — the shape LangGraph Platform documents,
+so the same `langgraph.json` works under both. Durations in **minutes**:
+
+```json
+{
+  "checkpointer": {
+    "ttl": { "default_ttl": 43200, "strategy": "delete", "sweep_interval_minutes": 60 }
+  }
+}
+```
+
+- `default_ttl` — lifetime applied to a thread created without its own `ttl`. `POST /threads` accepts a
+  per-thread `ttl` (minutes) that overrides it, and an explicit `null` **pins** the thread so no TTL
+  ever collects it. `PATCH /threads/{id}` can change or clear it later; a new value restarts the clock.
+- `strategy` — only `"delete"` is implemented, and it is the only thing a thread could expire into.
+- `sweep_interval_minutes` (default `60`) — how often the sweeper runs.
+
+**Expiry means "may be collected", not "gone"** — the one place this deliberately differs from store
+items. An expired thread still reads normally from `GET /threads/{id}` and search until the sweeper
+takes it. Hiding it early would make a thread with an in-flight run vanish out from under that run.
+
+The sweeper deletes through the **thread service**, not the driver: an expiring thread's in-flight run
+is aborted and its event bus closed first, then its runs and checkpoints go with it. That is why it
+lives beside the cron scheduler rather than with the store-item sweeper — a thread is a container, not
+a row. It collects a bounded batch per tick and re-ticks immediately while the batch stays full, so a
+backlog drains without waiting out the interval.
+
+With no `checkpointer.ttl` set, no sweeper runs and threads live until something deletes them.
+
+> Note this goes **past** LangGraph OSS rather than catching up to it: the open-source
+> `@langchain/langgraph-api` accepts `ttl` on thread create and silently drops it — thread expiry is a
+> LangGraph Platform feature there.
+
 ## Drivers
 
 ### `@skein-js/storage-memory` (dev/tests — and the Redis-less production path)
