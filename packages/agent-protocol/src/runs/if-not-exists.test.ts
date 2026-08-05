@@ -33,9 +33,11 @@ describe("if_not_exists on run create", () => {
     it("on POST /threads/{id}/runs/stream", async () => {
       const { deps, service } = await harness();
 
-      await expect(service.runs.createStream({ ...run, thread_id: "ghost" })).rejects.toMatchObject({
-        status: 404,
-      });
+      await expect(service.runs.createStream({ ...run, thread_id: "ghost" })).rejects.toMatchObject(
+        {
+          status: 404,
+        },
+      );
       expect(await deps.store.threads.get("ghost")).toBeNull();
     });
 
