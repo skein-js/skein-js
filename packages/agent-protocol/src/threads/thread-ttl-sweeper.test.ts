@@ -159,3 +159,38 @@ describe("thread ttl from the wire", () => {
     expect(await sweeper.sweepOnce()).toBe(0);
   });
 });
+
+describe("runtime wiring", () => {
+  it("starts a sweeper when deps carry a thread TTL, and none when they do not", async () => {
+    // The link between `checkpointer.ttl` in langgraph.json and a loop that actually runs. Both
+    // halves matter: an always-present sweeper would read as though expiry were on.
+    const { createProtocolRuntime } = await import("../runtime.js");
+    const base = createFixtureDeps();
+
+    expect(createProtocolRuntime(base).threadTtlSweeper).toBeUndefined();
+    expect(
+      createProtocolRuntime({ ...base, threadTtl: { defaultTtl: 60 } }).threadTtlSweeper,
+    ).toBeDefined();
+  });
+
+  it("sweeps on its own interval once the worker starts", async () => {
+    const store = new MemorySkeinStore({ threadTtl: { defaultTtl: 40 / 60_000 } });
+    const { createProtocolRuntime } = await import("../runtime.js");
+    const runtime = createProtocolRuntime({
+      ...createFixtureDeps(),
+      store,
+      threadTtl: { defaultTtl: 40 / 60_000, sweepIntervalMinutes: 1 / 60_000 },
+    });
+    await runtime.service.assistants.registerGraphAssistants();
+    const thread = await runtime.service.threads.create();
+
+    runtime.worker.start();
+    try {
+      await vi.waitFor(async () => {
+        expect(await store.threads.get(thread.thread_id)).toBeNull();
+      }, 3000);
+    } finally {
+      await runtime.worker.stop();
+    }
+  });
+});

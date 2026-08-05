@@ -30,6 +30,7 @@ import {
 import { embedInMemoryGraphs } from "./in-memory-deps.js";
 import { resolveMaxPageSize } from "./max-page-size.js";
 import { resolveMemoryBusLimits } from "./memory-bus-limits.js";
+import { resolveThreadTtl } from "./thread-ttl-config.js";
 
 /**
  * Bridge a config `GraphRegistry` to the engine's `GraphResolver`. They are structurally identical
@@ -126,7 +127,13 @@ export async function loadReloadableInMemoryRuntime(
   };
 
   // Hold the concrete drivers so their state can be snapshot/restored for cross-restart persistence.
-  const store = new MemorySkeinStore({ maxPageSize: resolveMaxPageSize() });
+  // Read from this runtime's own config, like `auth` below — not passed in via `extraDeps`, because
+  // the *store* needs it (to give a new thread its default expiry) and the store is built here.
+  const threadTtl = resolveThreadTtl(first.config.checkpointer?.ttl);
+  const store = new MemorySkeinStore({
+    maxPageSize: resolveMaxPageSize(),
+    ...(threadTtl ? { threadTtl } : {}),
+  });
   const checkpointer = new MemorySaver();
   const deps: ProtocolDeps = {
     store,
@@ -137,6 +144,8 @@ export async function loadReloadableInMemoryRuntime(
     bus: new MemoryRunEventBus(resolveMemoryBusLimits()),
     checkpointer,
     auth: await loadAuthEngine(first.config.auth, { configDir: first.configDir, importModule }),
+    // Present only when configured — its presence is what starts the thread TTL sweeper.
+    ...(threadTtl ? { threadTtl } : {}),
     ...extraDeps,
   };
 
