@@ -57,7 +57,14 @@ describe("RedisRunEventBus cross-instance", () => {
 
   it("completes (does not hang) when joining a closed run whose frame stream has expired", async () => {
     const prefix = `skein:test:${randomUUID()}`;
-    const bus = new RedisRunEventBus(redis.url, { keyPrefix: prefix, closedCheckIntervalMs: 50 });
+    // The backstop interval is set absurdly high *on purpose*: it makes this a test of the one eager
+    // close-check the subscriber makes before live-tailing, not of the periodic one. If the eager check
+    // regressed, this hangs for ten minutes rather than passing a beat later — which is exactly the
+    // distinction the old `closedCheckIntervalMs: 50` could not draw.
+    const bus = new RedisRunEventBus(redis.url, {
+      keyPrefix: prefix,
+      closedCheckIntervalMs: 600_000,
+    });
     const raw = new Redis(redis.url);
     try {
       await bus.publish("gone", frame(1));
@@ -65,7 +72,7 @@ describe("RedisRunEventBus cross-instance", () => {
       // Simulate the frame stream's TTL lapsing while the durable closed marker survives.
       await raw.del(`${prefix}:runs:stream:gone`);
 
-      // Without the closed marker + periodic check, this would live-tail forever.
+      // Without the closed marker + the eager check, this would live-tail forever.
       const drained = await Promise.race([
         collect(bus.subscribe("gone")).then((frames) => frames.length),
         new Promise<"hung">((resolve) => setTimeout(() => resolve("hung"), 3000)),
@@ -74,6 +81,42 @@ describe("RedisRunEventBus cross-instance", () => {
     } finally {
       await bus.dispose();
       raw.disconnect();
+    }
+  });
+
+  // The load-bearing number for Stage 6: an *idle* subscriber used to issue one EXISTS per second on the
+  // very connection `publish` pipelines through, so 500 idle streams meant 500 commands/s in front of the
+  // frame path. Asserted as an integer command count through the `createClient` seam (the pattern
+  // docs/testing.md prescribes for Redis), never as a timing.
+  it("does not poll while idle — the close check is a backstop, not a heartbeat", async () => {
+    const prefix = `skein:test:${randomUUID()}`;
+    let existsCalls = 0;
+    const bus = new RedisRunEventBus(redis.url, {
+      keyPrefix: prefix,
+      createClient: (url, options) => {
+        const client = new Redis(url, options ?? {});
+        const original = client.exists.bind(client);
+        // Counted on whichever connection issues it; only `#commands` ever does.
+        client.exists = ((...args: Parameters<typeof original>) => {
+          existsCalls += 1;
+          return original(...args);
+        }) as typeof client.exists;
+        return client;
+      },
+    });
+    try {
+      const received = collect(bus.subscribe("idle-run"));
+      // Long enough that a 1s poll would have fired several times over.
+      await new Promise((resolve) => setTimeout(resolve, 2500));
+      // One eager check on join, and nothing since — the subscriber is parked on pub/sub, not a timer.
+      expect(existsCalls).toBe(1);
+
+      await bus.close("idle-run");
+      await received;
+      // Closing is delivered live over pub/sub, so it still costs no additional check.
+      expect(existsCalls).toBe(1);
+    } finally {
+      await bus.dispose();
     }
   });
 

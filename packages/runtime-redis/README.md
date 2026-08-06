@@ -66,6 +66,10 @@ You normally get these via `skein dev --queue redis` / `skein up` and
 - **`class RedisRunEventBus implements RunEventBus`** — `new RedisRunEventBus(url, options?)`.
   `publish(runId, frame)` · `close(runId)` · `subscribe(runId, afterSeq = 0)` · `dispose()`.
   **`RedisRunEventBusOptions`** = `{ keyPrefix?, streamTtlSeconds?, closedMarkerTtlSeconds?, closedCheckIntervalMs? }`
+  — `closedCheckIntervalMs` (default 30s, jittered) is a **backstop**, not a heartbeat: a run's close is
+  delivered live over pub/sub, and a subscriber joining after the run finished detects it with one eager
+  check. The interval only bounds the stall when a terminal `PUBLISH` is lost to a connection drop, which
+  a reconnect also pokes every subscriber to recheck.
   (defaults `"skein"`, `3600`, `86400`, `1000`).
 
 > `close(runId)` ends one run's stream; `dispose()` tears down the whole driver's connections.

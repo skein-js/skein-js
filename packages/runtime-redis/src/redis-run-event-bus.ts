@@ -25,8 +25,14 @@ export interface RedisRunEventBusOptions {
    */
   closedMarkerTtlSeconds?: number;
   /**
-   * How often a live-tailing subscriber re-checks whether the run has closed, in case the terminal
-   * pub/sub message was missed (e.g. it joined after the run closed). Default 1000ms.
+   * Backstop interval (ms) for a live-tailing subscriber re-checking whether its run has closed.
+   *
+   * Not the primary mechanism: `close()` publishes a terminal message on the run's channel, a
+   * subscriber attaches before it snapshots the stream, and the close marker also lives *in* the
+   * stream — so a normal close is observed immediately, and a run that closed before the subscriber
+   * arrived is caught by the one eager check it makes before live-tailing. What remains is a `PUBLISH`
+   * lost to a pub/sub connection drop, which the `ready` handler also pokes. This interval only bounds
+   * the stall if all of that fails. Default 30000ms, jittered ±50%.
    */
   closedCheckIntervalMs?: number;
   /**
@@ -46,7 +52,29 @@ export interface RedisRunEventBusOptions {
 
 const DEFAULT_STREAM_TTL_SECONDS = 3600;
 const DEFAULT_CLOSED_MARKER_TTL_SECONDS = 86_400;
-const DEFAULT_CLOSED_CHECK_INTERVAL_MS = 1000;
+/**
+ * 30s, not 1s.
+ *
+ * At 1s every *idle* subscriber armed a timer and issued an `EXISTS` every second — on `#commands`, the
+ * same connection `publish` pipelines through, so 500 idle streams put 500 commands/s of head-of-line
+ * contention in front of the frame path. It cost frame latency, not just CPU.
+ *
+ * What made that interval look necessary was the belief that a close could be missed in the window
+ * between subscribing and snapshotting the stream. It cannot: `#attach` awaits `SUBSCRIBE` *before*
+ * `#replayFrom` reads, and `close()` pipelines the stream's `XADD` before the `SET` of the marker — so a
+ * close either arrives live or is already in the replay. The genuinely uncovered case is a `PUBLISH`
+ * lost while the shared pub/sub connection reconnects, and that is what the `ready` poke and this
+ * backstop are for.
+ */
+const DEFAULT_CLOSED_CHECK_INTERVAL_MS = 30_000;
+/**
+ * Jitter applied to each wait, as a fraction of the interval (±50%).
+ *
+ * Without it, subscribers that attached in one burst — which is what a fan-out of SSE clients is — stay
+ * in phase and fire their checks together, turning a steady trickle of `EXISTS` into a periodic
+ * thundering herd on the connection that also carries every `publish`.
+ */
+const CLOSED_CHECK_JITTER = 0.5;
 const DEFAULT_STREAM_MAX_LEN = 10_000;
 const DEFAULT_SUBSCRIBER_BUFFER_FRAMES = 512;
 /**
@@ -128,6 +156,19 @@ class MessageMailbox {
     return this.#buffer.shift();
   }
 
+  /**
+   * Wake the reader without delivering a message, so it re-runs its close check now.
+   *
+   * Used when the shared pub/sub connection reconnects: a `PUBLISH` issued while it was down reached
+   * nobody and will never be re-sent, so every subscriber on it has to re-examine whether its run
+   * finished. Without this the only recovery is the backstop interval, which is what lets that interval
+   * be 30s instead of 1s.
+   */
+  poke(): void {
+    this.#wake?.();
+    this.#wake = undefined;
+  }
+
   /** Resolves once at least one message has arrived (or the mailbox overflowed). */
   waitForMessage(): Promise<void> {
     if (this.#buffer.length > 0 || this.#overflowed) return Promise.resolve();
@@ -192,6 +233,19 @@ export class RedisRunEventBus implements RunEventBus {
   }
 
   /**
+   * The backstop interval with ±{@link CLOSED_CHECK_JITTER} applied, so subscribers that attached
+   * together do not check together. Floored at 1ms: a test configuring a very small interval must still
+   * get a real timer rather than a `setTimeout(0)` busy loop.
+   */
+  #nextClosedCheckDelayMs(): number {
+    const spread = this.#closedCheckIntervalMs * CLOSED_CHECK_JITTER;
+    return Math.max(
+      1,
+      Math.round(this.#closedCheckIntervalMs - spread + Math.random() * spread * 2),
+    );
+  }
+
+  /**
    * Publish a frame: one pipelined round trip instead of three sequential ones.
    *
    * This sits inside the graph's own iteration — the run engine awaits it per chunk — so at token
@@ -252,6 +306,15 @@ export class RedisRunEventBus implements RunEventBus {
       // Parsed once for every subscriber on the channel rather than once each.
       const message = JSON.parse(payload) as ChannelMessage;
       for (const mailbox of mailboxes) mailbox.push(message);
+    });
+    // A `PUBLISH` issued while this connection was down reached nobody, and pub/sub has no redelivery —
+    // so on every reconnect (ioredis re-`SUBSCRIBE`s automatically, but the gap's messages are gone)
+    // wake every subscriber to re-run its close check immediately. Without this the only recovery is the
+    // backstop interval, and it is what makes a 30s backstop acceptable instead of a 1s poll.
+    connection.on("ready", () => {
+      for (const mailboxes of this.#mailboxesByChannel.values()) {
+        for (const mailbox of mailboxes) mailbox.poke();
+      }
     });
     this.#pubsub = connection;
     return connection;
@@ -359,9 +422,24 @@ export class RedisRunEventBus implements RunEventBus {
       yield* this.#replayFrom(runId, "-", afterSeq, outcome);
       if (outcome.sawClose) return; // run already finished; replay is complete
 
-      // Live-tail. A message already queued is taken without arming anything; only an idle wait needs
-      // the periodic close check, which covers a terminal message that was missed (a run that closed
-      // between our subscribe and our snapshot) or a stream that has since expired.
+      // One eager check before live-tailing, which settles the "already finished" case *deterministically*
+      // rather than leaving it to a timer.
+      //
+      // The reasoning is worth keeping, because it is what justifies the 30s backstop below. Reaching
+      // here means the replay saw no close entry. If the marker nevertheless exists, then `close()`'s
+      // `SET` landed — and since it pipelines the stream `XADD` *before* that `SET`, the `XADD` landed
+      // too. So the entry was written and is no longer in the stream: the stream expired. That is a
+      // terminal state we can conclude right now, in one round trip, instead of discovering it a second
+      // (or thirty) later.
+      if ((await this.#commands.exists(this.#closedKey(runId))) === 1) {
+        yield* this.#replayFrom(runId, exclusiveFrom(outcome.lastId), afterSeq, outcome);
+        return;
+      }
+
+      // Live-tail. A message already queued is taken without arming anything; only an idle wait arms the
+      // backstop check, which now covers just one case — a terminal `PUBLISH` lost while the shared
+      // pub/sub connection was reconnecting (the `ready` handler pokes every mailbox for the same
+      // reason, so this is the second line of defence, not the first).
       for (;;) {
         const buffered = mailbox.takeBuffered();
         if (buffered) {
@@ -382,7 +460,7 @@ export class RedisRunEventBus implements RunEventBus {
 
         let timer: ReturnType<typeof setTimeout> | undefined;
         const tick = new Promise<typeof CHECK_TICK>((resolve) => {
-          timer = setTimeout(() => resolve(CHECK_TICK), this.#closedCheckIntervalMs);
+          timer = setTimeout(() => resolve(CHECK_TICK), this.#nextClosedCheckDelayMs());
         });
         const result = await Promise.race([mailbox.waitForMessage(), tick]);
         if (timer) clearTimeout(timer);
