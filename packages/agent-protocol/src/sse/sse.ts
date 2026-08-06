@@ -76,6 +76,17 @@ const IDLE_TICK = Symbol("idle-tick");
  * The in-flight `next()` is deliberately held across idle turns. An async iterator rejects a second
  * `next()` while the first is unsettled, and abandoning the promise would drop the frame it later
  * yields — so the losing side of the race is kept, not re-issued.
+ *
+ * **The per-frame `setTimeout` here is not the cost, and hoisting it is slower — measured, twice.** It
+ * looks like the obvious optimisation (a timer armed and disarmed for every frame, ~6,900/s per stream
+ * at benchmarked throughput), so: 902 ns/frame as written, 1,031 with `Timeout.refresh()`, 1,055 with a
+ * long-lived timer plus a `lastActivity` deadline, 1,055 with one shared process-wide ticker. The cost is
+ * `Promise.race` and the generator hop, not the timer, and every alternative adds bookkeeping on top of
+ * the same race. Reusing one long-lived `idle` promise is actively worse: each race leaves a reaction
+ * record on it, so a bounded per-frame allocation becomes an unbounded per-stream one. The only design
+ * that would win moves heartbeats into the transports — duplicating a timer and its teardown across six
+ * adapters, and taking them out of this unit-testable `AsyncIterable` — to save ~570 ns/frame, about 0.4%
+ * of one core at 6,900 frames/s. Don't, without new numbers.
  */
 async function* withIdleTicks(
   frames: AsyncIterable<RunFrame>,

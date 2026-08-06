@@ -28,28 +28,32 @@ with sane defaults and documented sizing math.
 
 ## Shipped
 
-| Commit    | Phase   | What changed                                    |
-| --------- | ------- | ----------------------------------------------- |
-| `ffd779f` | P0      | `packages/bench` harness + baseline             |
-| `7e63ed8` | P1      | SSE backpressure in all three Node transports   |
-| `d1c5ba9` | P3      | In-memory event bus bounded                     |
-| `df31b68` | P4      | Redis bus: one round trip/frame, one connection |
-| `cac874d` | P2      | Frame-encode cache + replacer fix               |
-| `dfb450d` | P5a     | Postgres indexes for list/search paths          |
-| `713672b` | P5b     | Opt-in HNSW index                               |
-| `be7d550` | P6a     | Postgres pool timeouts                          |
-| `6d39d45` | P6b     | Page bound on every list/search                 |
-| `91ac7c6` | P6b-bis | Thread-history bound (body-read + real limit)   |
-| `d8d313f` | P6c     | Ownership filter pushed into the driver query   |
-| `8c4add3` | P7      | `statement_timeout` on by default (30s)         |
-| `4b8a3af` | P8      | Adapter module graph: dev-only tooling removed  |
-| `9b6ef9c` | P9      | `skein start` durable-only; container hardening |
-| `18681bc` | P9b     | Runtime heap-pressure monitor                   |
-| `7321cdd` | P10     | Run + webhook timeouts; webhook out of the lock |
-| shipped   | P11     | `docs/performance.md` + doc-set updates         |
-| active    | P12+    | Node/Bun/Deno production and profiling program  |
-| active    | P12m    | First three-runtime measurements + three fixes  |
-| active    | P12ci   | Runtime + image matrices in CI; Node 24 LTS     |
+| Commit    | Phase   | What changed                                           |
+| --------- | ------- | ------------------------------------------------------ |
+| `ffd779f` | P0      | `packages/bench` harness + baseline                    |
+| `7e63ed8` | P1      | SSE backpressure in all three Node transports          |
+| `d1c5ba9` | P3      | In-memory event bus bounded                            |
+| `df31b68` | P4      | Redis bus: one round trip/frame, one connection        |
+| `cac874d` | P2      | Frame-encode cache + replacer fix                      |
+| `dfb450d` | P5a     | Postgres indexes for list/search paths                 |
+| `713672b` | P5b     | Opt-in HNSW index                                      |
+| `be7d550` | P6a     | Postgres pool timeouts                                 |
+| `6d39d45` | P6b     | Page bound on every list/search                        |
+| `91ac7c6` | P6b-bis | Thread-history bound (body-read + real limit)          |
+| `d8d313f` | P6c     | Ownership filter pushed into the driver query          |
+| `8c4add3` | P7      | `statement_timeout` on by default (30s)                |
+| `4b8a3af` | P8      | Adapter module graph: dev-only tooling removed         |
+| `9b6ef9c` | P9      | `skein start` durable-only; container hardening        |
+| `18681bc` | P9b     | Runtime heap-pressure monitor                          |
+| `7321cdd` | P10     | Run + webhook timeouts; webhook out of the lock        |
+| shipped   | P11     | `docs/performance.md` + doc-set updates                |
+| active    | P12+    | Node/Bun/Deno production and profiling program         |
+| active    | P12m    | First three-runtime measurements + three fixes         |
+| active    | P12ci   | Runtime + image matrices in CI; Node 24 LTS            |
+| pending   | P13     | Memory driver: run reads clone the page, not the table |
+| pending   | P14     | `runs.latestForThread` — one row, not a run history    |
+| pending   | P15     | Narrow Postgres projections; drop redundant index      |
+| pending   | P16     | Redis close check: eager + 30s jittered backstop       |
 
 ### Measured
 
@@ -142,8 +146,9 @@ SQL** — `auth-scoped-store.ts` reads the thread's runs, filters by ownership, 
 the same "bounding the response is not bounding the work" trap 6b documented, and the next thing to fix
 here (the `enforcedMetadata` pushdown 6c established for threads).
 
-Still unbounded, all pre-existing and reachable unauthenticated: `runs.listByThread` as called
-_internally_ by `loadThreadGraph` on every state read (the HTTP path is bounded now, that one is not),
+Still unbounded, all pre-existing and reachable unauthenticated: ~~`runs.listByThread` as called
+_internally_ by `loadThreadGraph` on every state read (the HTTP path is bounded now, that one is not)~~
+— **fixed in P14, which replaced that read with `runs.latestForThread`** —
 non-semantic store search **with** a `query` string and no `store.index` configured, and `offset` itself
 (uncapped, and a deep offset still walks the index — 137 ms measured at `OFFSET 299000`). The bound is
 on **row count, not bytes**: 1000 thread rows each carrying a multi-MB `values` blob is still a very
@@ -588,6 +593,167 @@ plus npm `overrides` for every `@skein-js/*` package, or a prerelease publish.
 
 ---
 
+## P13–P16 — the second pass (2026-08-06)
+
+A fresh audit of what P0–P12 did **not** reach. Six candidates were identified by reading the hot paths
+and then **sized with microbenchmarks against `dist` before any design work** — which killed one, demoted
+another, and promoted a footnote to the top of the list. That reordering is the whole value of the
+sequence below, so the numbers come first.
+
+| Candidate                                    | Measured                                                                           | Outcome                        |
+| -------------------------------------------- | ---------------------------------------------------------------------------------- | ------------------------------ |
+| Memory driver cloned every run on two reads  | `listByThread` **12,364 µs → 311 µs**; at 20k runs **48,983 → 1,426 µs**           | **P13** — biggest effect found |
+| `loadThreadGraph` read a whole run history   | same stall, on **every** thread state read                                         | **P14** — was not on the list  |
+| Postgres `SELECT *` pulled `kwargs` / `auth` | structural: `RunRow`/`CronRow` already omit them, only the SQL was wide            | **P15**                        |
+| Redis idle `EXISTS` poll, 1/s/subscriber     | on the **same connection `publish` uses** — frame latency, not just CPU            | **P16**                        |
+| Per-request auth service + handler rebuild   | **437 ns / 9,279 B** per authenticated request                                     | deferred — see below           |
+| `withIdleTicks` per-frame timer              | today **902 ns/frame**; hoisted **1,055**; `refresh()` **1,031**; ticker **1,055** | **dropped — all fixes slower** |
+
+### P13 — the memory driver cloned the whole run table to serve one thread
+
+`listByThread` and `listActiveRuns` called `readAll`, which `structuredClone`d **every run row in the
+process** and only then filtered. Cost was `~2.4 µs × runs in the store`, synchronously, on the event
+loop — a **49 ms stall at 20k runs**, on the default driver behind `skein dev`, every `examples/*`, and
+every embedded mount without `deps`.
+
+P6b had already established the fix (`clonePage`: filter/sort over stored references, clone only the page)
+and fixed the _search_ paths with it. These two were missed, and they are the ones the thread state path
+uses. `readAll` is now **deleted** rather than left unused — it was the footgun, and nothing should be
+able to reach for it again.
+
+Worth keeping:
+
+- **`limit === undefined` means "every matching run", not "the first page".** `listByThread` is one of the
+  two reads the page bound deliberately exempts, and `loadThreadGraph` depended on that. The natural
+  `clonePage(matched, offset, this.#pageLimit(limit))` silently truncates it at 1000. The regression test
+  uses `maxPageSize: 2` and four runs rather than a thousand rows, so it fails instantly instead of needing
+  a large fixture — and it does fail when reverted (checked).
+- **Do not "fix" the iteration order in the same commit.** Neither site sorts (Map insertion order) while
+  Postgres sorts `created_at, run_id`. That divergence is pre-existing, and changing it here would quietly
+  change which run `loadThreadGraph` and `joinStream` select on a driver whose rows tie at the millisecond.
+
+### P14 — `runs.latestForThread`
+
+Three sites read a thread's **entire** run history and sorted it in JS to use the newest row:
+`loadThreadGraph` (reached by every state, history, and state-update request — `useStream` hits it on every
+mount), `latestRunAssistant`, and `joinStream`. On Postgres that is every run row of the thread _including
+`kwargs`_ to read one `assistant_id`. This is the read this file listed under "still unbounded".
+
+New `RunRepo.latestForThread` — `ORDER BY created_at DESC, run_id DESC LIMIT 1`, a backward scan of
+`runs_thread_id_created_at_idx` (0005), pinned by an `EXPLAIN` test. `latestRunAssistant` now reads
+`assistant_id` off the **thread's own metadata** first (`stampGraphOnThread` writes it on every run
+creation), so the common path costs no run read at all.
+
+**`joinStream` was converted too, and the security review reverted it.** Two of the three sites resolve
+_graph identity_; the third hands a **run** back to the caller, and that difference decides which reads it
+may use. It keeps its `listByThread`. Losing the win there costs nothing — it is one read per join, not
+per state read, and the read is bounded by the thread's own run count.
+
+Worth keeping:
+
+- **The metadata shortcut's fallback is mandatory, not defensive.** `stampGraphOnThread` swallows its own
+  failure by design (a stamp must never strand a run) and threads predating it carry no `assistant_id`.
+  Removing the fallback still passes every other test — the case is only reachable by clearing the stamp,
+  which is what the new test does.
+- **`latestForThread` and `listActiveRuns` are inherited unfiltered by the auth-scoped store, and a
+  selection must not be built on them.** Filtering them would _break_ legitimate cases (a thread whose
+  latest run came from a cron would resolve to no graph and read back empty; a filtered concurrency guard
+  would let two runs interleave checkpoint writes). But `joinStream` selecting through them was wrong.
+- **The interesting part is _why_ it was wrong, because the first answer was the wrong one.** The review
+  called it a leak — a caller streaming a run they cannot `GET /runs/{id}`. It is not: `runs.join`
+  re-reads through the filtered `runs.get` and 404s, so the gate holds wherever the selection came from.
+  The real defect is the **inverse**: an unfiltered selection picks a run the gate then refuses, so a
+  caller holding a perfectly joinable run of their own gets a 404 because another principal's run on the
+  same thread happened to be newer. **A selection built on a read looser than the gate that follows it
+  does not leak — it denies.** That is the generalisable lesson, and it took reproducing the "leak" to
+  find it: the first regression test passed against the vulnerable code, because the downstream gate was
+  doing the work the test thought it was measuring. **A security test that passes for a reason you have
+  not identified is not evidence.**
+- **A new `RunRepo` method is a breaking change for any third-party driver.** It goes in the conformance
+  suite in the same commit, and ties are asserted as a _within-driver determinism_ property rather than
+  cross-driver parity — the 6b lesson about microsecond storage versus millisecond exposure.
+
+### P15 — narrow projections, and one redundant index
+
+`RunRow` and `CronRow` already declared the narrow shape; only the SQL was wide. `SELECT *`/`RETURNING *`
+were hauling `runs.kwargs` (a run's whole input payload) on five queries — one of which returns up to
+`maxPageSize` rows — and `crons.auth` (a caller's stored credentials) on six. Both have dedicated readers
+already (`getKwargs`, `getAuth`). Every jsonb column also costs an implicit `JSON.parse` per row, since no
+custom `pg` type parser is registered, so an unread column is paid for twice.
+
+Migration `0009` drops `assistant_versions_assistant_id_idx`: a strict prefix of the PK
+`(assistant_id, version)`, which serves `listVersions`'s `WHERE … ORDER BY version DESC` _better_ (the
+narrow index left a sort). Same shape and same fix as 0005 dropping `runs_thread_id_idx`.
+
+Worth keeping:
+
+- **The guard has to be the complement, not the projection.** A dropped column is invisible in the diff
+  _and_ in the types — the mappers cast with `as Run` — so it reads back as `undefined` rather than failing
+  to compile. `projection.integration.test.ts` reads `information_schema.columns` and asserts
+  `table − projection === the documented omissions`. That fails when a migration adds a column and the
+  projection is not updated, which is how this actually breaks.
+- **`CRON_COLUMNS` must include `occurrence_seq` even though `rowToCron` never reads it.** `listDue` maps
+  the same rows through `rowToOccurrenceSeq` for the scheduler's compare-and-swap claim. A projection
+  derived from `rowToCron` alone compiles, passes every cron CRUD test, and silently breaks cron firing.
+- Reverting one column from `RUN_COLUMNS` fails the guard **and** two conformance cases — the layering is
+  deliberate, and was verified rather than assumed.
+
+### P16 — the Redis close check was a heartbeat pretending to be a backstop
+
+A live-tailing subscriber armed a timer and issued an `EXISTS` **every second while idle**, on `#commands`
+— the same connection every `publish` pipelines through. 500 idle streams meant 500 commands/s of
+head-of-line contention in front of the frame path, so it cost frame latency, not merely CPU.
+
+The 1s interval was justified by a window that **does not exist**. `#attach` awaits `SUBSCRIBE` _before_
+`#replayFrom` snapshots, and `close()` pipelines the stream `XADD` _before_ the marker `SET` — so a close
+either arrives live or is already in the replay. And the "stream expired" case is decidable in one round
+trip: if the replay saw no close but the marker exists, the `SET` landed, therefore the `XADD` landed,
+therefore the stream lost it. So: **one eager check before live-tailing**, then a 30s backstop with ±50%
+jitter.
+
+Worth keeping:
+
+- **There is a third window, and it is the only one the periodic check uniquely covers**: a terminal
+  `PUBLISH` lost while the shared pub/sub connection reconnects. Pub/sub has no redelivery and nothing else
+  re-sends it. That is why the interval can be lengthened but not removed — and why the connection's
+  `ready` event now pokes every mailbox, which is what makes 30s acceptable rather than a 30× worse stall.
+- **Jitter is not optional at this interval.** 500 subscribers that attached in one burst — which is what an
+  SSE fan-out is — stay in phase and fire together, trading a steady trickle for a periodic thundering herd
+  on the publish connection. That is not obviously an improvement over the 1s poll.
+- **A test with `closedCheckIntervalMs: 50` cannot tell the eager check from the periodic one.** The
+  expired-stream case now runs with the interval at `600_000`, so it passes only if the eager check works.
+  The companion asserts an integer command count (one `EXISTS` on join, none while idle) through the
+  `createClient` seam, per this file's own Redis assertion pattern. Both fail when the eager check is
+  reverted.
+
+### Deferred, with the measurement that demoted it
+
+**The per-request auth rebuild** (`authorizing-handlers.ts:83-94`) rebuilds all 7 sub-services and ~50
+handler closures per authenticated request and indexes one. It reads like the headline CPU win on any
+production deployment. It is **437 ns and 9,279 B** — about 1% of a request. A throughput rig could not
+resolve it: the `/info` control arm, byte-identical across auth configs, moved 14,099 → 13,214 → 11,206
+rps between arms, so a 20% spread on identical code swamps a 1% effect.
+
+It still earns a phase, but as **allocation and retention**, not CPU: a streaming run executes inside
+closures of the per-request `createRunService`, so the promise chain pins the whole per-request service
+graph for the run's duration — ~4.6 MB across 500 concurrent authenticated streams. Recommended fix is a
+lazy service (memoising getters), explicitly **not** a cache keyed on the principal: `AuthUser` is an open
+record, so a key on `identity` is not a key on the principal, and a wrong key is a cross-tenant identity
+substitution reaching `configurable.langgraph_auth_user`. That is a security bug wearing a perf costume.
+
+Doing it needs the benchmark harness extended first — `packages/bench` measures per-**frame** streaming
+metrics only, and the metric that would make this visible is `gcScavenges` per 100k requests, not wall
+clock.
+
+**`withIdleTicks`'s per-frame `setTimeout`** is dropped outright. It looks obviously wasteful (~6,900
+timer pairs/sec at measured throughput) and every candidate replacement measured **slower**: 902 ns/frame
+today, 1,031 with `Timeout.refresh()`, 1,055 with a hoisted timer + deadline, 1,055 with a shared process
+ticker. The timer is not the cost; `Promise.race` plus the generator hop is. Reusing one long-lived `idle`
+promise also accumulates a reaction record per frame for the stream's life — trading a bounded per-frame
+allocation for an unbounded per-stream one, the exact class P3/P4 existed to remove. **A comment now
+records that this was measured**, because an unmeasured "this looks expensive" invites the next person to
+make it slower.
+
 ## Working notes
 
 Things learned the hard way. Each cost real time.
@@ -685,3 +851,11 @@ entry under a **Behavior changes** heading:
   postgres/redis. Node 24 LTS base image. Request logging off by default under
   `start` (`--request-log` / `SKEIN_REQUEST_LOG` to restore). HEALTHCHECK every 60s, not 30s.
 - **P10** — slow webhook targets now fail instead of hanging a thread lock.
+- **P14** — `SkeinStore` gains `runs.latestForThread`. **Breaking for any third-party driver**, which must
+  implement it; both bundled drivers and the conformance suite already do. No endpoint behaviour changes —
+  `GET /threads/{id}/stream` keeps selecting through the ownership-filtered `listByThread` (see P14).
+- **P16** — a terminal pub/sub message lost to a Redis connection drop is now noticed in ≤30s rather than
+  ≤1s (`closedCheckIntervalMs` default 1000 → 30000, jittered ±50%). Mitigated on both sides: a subscriber
+  makes one eager close-check before live-tailing, and a pub/sub reconnect pokes every subscriber to
+  recheck immediately — so the 30s bound applies only when both of those miss. No env knob maps to this
+  option, so `docs/performance.md`'s table is unaffected.
