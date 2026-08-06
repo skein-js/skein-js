@@ -103,6 +103,68 @@ jobs:
       - name: Integration tests
         run: pnpm exec nx run-many -t test-integration --output-style=stream
 
+  # Runs `packages/bench` for its **bounds**, never for its numbers.
+  #
+  # Same principle as `runtime-matrix` below: co-tenancy on a shared runner moves timings, not pass/fail.
+  # So this gates only on integer facts about structures the harness probes — the per-stream SSE buffer
+  # ceiling, the bus's retained-run and per-run frame caps, and that backpressure delayed frames rather
+  # than dropping them (`harness/invariants.ts`, which names the phase behind each). Throughput and p99
+  # are *reported* to the step summary and never asserted; the real performance measurement still belongs
+  # on a machine nobody else is using (docs/profiling.md).
+  #
+  # This exists because P0–P16 shipped a series of bounds with nothing standing guard over them: a
+  # regression in any of them showed up in no test, only in a number a human had to remember to look at.
+  perf-bounds:
+    name: perf bounds (bench)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: pnpm/action-setup@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: ${{ env.NODE_LTS }}
+          cache: pnpm
+
+      - run: pnpm install --frozen-lockfile
+
+      - uses: actions/cache@v4
+        with:
+          path: .nx/cache
+          key: nx-${{ runner.os }}-${{ hashFiles('pnpm-lock.yaml') }}-${{ github.sha }}
+          restore-keys: |
+            nx-${{ runner.os }}-${{ hashFiles('pnpm-lock.yaml') }}-
+            nx-${{ runner.os }}-
+
+      # The memory driver only: it needs no containers, and every bound gated here belongs to the
+      # in-process bus or the SSE write path. `nx bench` depends on `build`, so this measures this
+      # commit's `dist` rather than a stale one — the trap PERF-WORKSTREAM.md's working notes record.
+      # `pipefail` so `tee` cannot mask a failed bound — without it the pipeline reports tee's exit code
+      # and a regression passes CI silently.
+      - name: Bench (fails if a bound no longer holds)
+        run: |
+          set -o pipefail
+          pnpm exec nx bench bench --output-style=stream -- --driver memory | tee bench.log
+
+      # Published whether or not the bounds held, so a failure arrives with its numbers attached.
+      - name: Publish measurements
+        if: always()
+        run: |
+          {
+            echo '### Performance bounds'
+            echo
+            echo 'Gated on bounds only — throughput and p99 are reported, never asserted.'
+            echo
+            sed -n '/^| scenario /,/^$/p' bench.log 2>/dev/null || echo '_no table produced_'
+          } >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Upload report
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: bench-results
+          path: packages/bench/results/latest.json
+          if-no-files-found: warn
+
   # The correctness half of the Bun/Deno graduation matrix (PERF-WORKSTREAM.md, P12). Correctness is
   # what a shared runner can decide: co-tenancy moves timings, not pass/fail. The performance half
   # deliberately lives nowhere near CI — see docs/profiling.md for where it belongs and why.

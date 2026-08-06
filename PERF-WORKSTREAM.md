@@ -54,6 +54,7 @@ with sane defaults and documented sizing math.
 | pending   | P14     | `runs.latestForThread` — one row, not a run history    |
 | pending   | P15     | Narrow Postgres projections; drop redundant index      |
 | pending   | P16     | Redis close check: eager + 30s jittered backstop       |
+| pending   | P17     | Bench asserts its bounds; CI `perf-bounds` job         |
 
 ### Measured
 
@@ -753,6 +754,39 @@ promise also accumulates a reaction record per frame for the stream's life — t
 allocation for an unbounded per-stream one, the exact class P3/P4 existed to remove. **A comment now
 records that this was measured**, because an unmeasured "this looks expensive" invites the next person to
 make it slower.
+
+### P17 — the bounds now guard themselves, in CI
+
+Seventeen phases shipped a series of bounds with **nothing standing guard over any of them**. The
+benchmark reported the numbers; whether a bound still held was a thing a human had to remember to look
+at. `nx bench bench` only failed if it crashed.
+
+`harness/invariants.ts` now checks four bounds and the run exits non-zero listing any that no longer
+hold, each named for the phase behind it: per-stream SSE buffered bytes (P1), tracked bus channels and
+buffered frames per channel (P3), and frames delivered vs produced. A new `perf-bounds` CI job runs it on
+the in-memory driver, publishes the table to the step summary, and uploads the report — **gating on the
+bounds and asserting no number**, for the reason `runtime-matrix` already gives: co-tenancy moves timings,
+not pass/fail.
+
+Worth keeping:
+
+- **A threshold must be derived from the failure it catches, not from the current reading.** The
+  per-stream SSE ceiling is 256 KB: measured ~67 KB healthy, ~1.26 MB before P1. A bound tracking the
+  healthy value fails on noise; one an order of magnitude clear of the regression does not.
+- **An absent probe must skip its bound, never read as `0`.** Drivers omit what they cannot measure
+  (`BenchServer.probes`), so treating a missing key as zero passes every bound trivially on any driver
+  lacking that probe — a green gate proving nothing, which is worse than no gate.
+- **`long-run` has to opt out of the delivery bound.** It exceeds the per-run frame cap deliberately, so
+  eviction ends its streams early: 980 frames delivered of 120,000 produced. Asserting complete delivery
+  there fails on _correct_ code. That is why the flag is per-scenario data with the rationale attached,
+  rather than a rule inferred in the checker.
+- **`set -o pipefail` before `| tee`.** Without it the step reports tee's exit code and a failed bound
+  passes CI silently — the exact class of "the gate was never connected to anything" this phase exists to
+  fix.
+- **Verified by breaking each bound and watching it go red**, which is also how the check on the
+  `--scenario` flag was found: it _replaces_ rather than accumulates (`args.scenarios = [value]`), so
+  `--scenario a --scenario b` runs only `b`. The first negative check appeared to show the SSE bound not
+  firing; it had simply never run that scenario.
 
 ## Working notes
 

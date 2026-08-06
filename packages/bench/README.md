@@ -18,6 +18,32 @@ nx bench bench -- --help
 The target passes `--expose-gc`. Without it the settled-memory figures degrade to an upper bound
 rather than a measurement, and the harness says so rather than reporting them as if they were exact.
 
+## It exits non-zero when a bound no longer holds
+
+The run ends in either `all bounds hold.` or a list of violations naming the phase each belongs to. The
+checks live in [`src/harness/invariants.ts`](src/harness/invariants.ts) and are the reason CI can run
+this at all:
+
+| Bound                       | What it proves                                                              |
+| --------------------------- | --------------------------------------------------------------------------- |
+| SSE buffered bytes / stream | The write path still honours backpressure (P1) rather than holding a stream |
+| Tracked bus channels        | Finished runs are still evicted (P3), not retained one channel per run      |
+| Buffered frames / channel   | A run's frames are still trimmed at the per-run cap (P3)                    |
+| Frames delivered ≥ produced | Backpressure still _delays_ frames rather than dropping them                |
+
+**Only bounds are gated; no number is.** Throughput, p99, and RSS are reported and never asserted —
+runner co-tenancy moves them by tens of percent, so a threshold on them either catches nothing or fails
+on a busy machine. That is also why the thresholds that do exist are derived from the _failure_ they
+catch, with an order of magnitude of headroom, rather than tuned to the current reading: a bound tracking
+the healthy value is a bound that fails on noise.
+
+`long-run` opts out of the delivery bound (`expectsCompleteDelivery: false`). It deliberately exceeds the
+bus's per-run cap, so eviction ending its streams early is the behaviour under test — asserting complete
+delivery there would fail on _correct_ code.
+
+Verify a change to any of this by breaking it deliberately and watching the run go red. A bound that has
+never been seen to fail is not known to be connected to anything.
+
 ## What it measures
 
 | Metric                | Why it is here                                                                                                                        |
@@ -62,6 +88,11 @@ them, so nothing is ever forced to queue and a broken server again looks clean. 
 
 Add an entry to `SCENARIOS` in [`src/scenarios/scenario.ts`](src/scenarios/scenario.ts). It is data,
 not code — the runner, drivers, and report pick it up automatically.
+
+`expectsCompleteDelivery` is the one field that needs a decision rather than a number: `true` unless the
+scenario deliberately exceeds a bound that ends streams early, as `long-run` does. Getting it wrong in
+the lax direction costs you the delivery gate on that scenario silently, which is the failure mode the
+bounds exist to prevent.
 
 Keep the workload deterministic: no model calls, no network, fixed frame sizes and counts. Two runs of
 the same scenario must allocate identically, or a diff against a stored baseline means nothing.

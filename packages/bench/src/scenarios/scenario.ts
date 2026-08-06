@@ -15,6 +15,15 @@ export interface Scenario {
   graphFramesPerSecond: number;
   /** Client consumption rate; `0` means "read as fast as they arrive". */
   clientFramesPerSecond: number;
+  /**
+   * Whether every frame the graph produced must reach its client (`checkInvariants`' delivery bound).
+   *
+   * True for any scenario that stays inside the bus's per-run cap: backpressure delays frames, it never
+   * discards them, so a short delivery there is a real defect. False only for a scenario that
+   * deliberately exceeds the cap — eviction ends the subscriber's stream by design, and a bound
+   * asserting otherwise would fail on correct behaviour.
+   */
+  expectsCompleteDelivery: boolean;
 }
 
 const DEFAULT_FRAMES = 500;
@@ -35,6 +44,7 @@ export const SCENARIOS: readonly Scenario[] = [
     frameBytes: DEFAULT_FRAME_BYTES,
     graphFramesPerSecond: 0,
     clientFramesPerSecond: 0,
+    expectsCompleteDelivery: true,
   },
   {
     name: "slow-client",
@@ -49,6 +59,8 @@ export const SCENARIOS: readonly Scenario[] = [
     frameBytes: 4096,
     graphFramesPerSecond: 500,
     clientFramesPerSecond: 25,
+    // The point of the scenario: a client 20x slower than the graph must still receive every frame.
+    expectsCompleteDelivery: true,
   },
   {
     name: "idle-retention",
@@ -58,6 +70,7 @@ export const SCENARIOS: readonly Scenario[] = [
     frameBytes: DEFAULT_FRAME_BYTES,
     graphFramesPerSecond: 0,
     clientFramesPerSecond: 0,
+    expectsCompleteDelivery: true,
   },
   {
     name: "long-run",
@@ -71,6 +84,9 @@ export const SCENARIOS: readonly Scenario[] = [
     frameBytes: DEFAULT_FRAME_BYTES,
     graphFramesPerSecond: 0,
     clientFramesPerSecond: 0,
+    // Exceeds the per-run frame cap on purpose, so eviction ends these streams early. Truncation IS
+    // the behaviour under test here; the bus caps below are what must still hold.
+    expectsCompleteDelivery: false,
   },
 ];
 

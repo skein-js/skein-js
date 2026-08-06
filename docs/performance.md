@@ -229,5 +229,13 @@ plateau, not climb — that plateau is the whole point of the bounds above.
 
 Alongside it, the counters are deterministic and make a regression provable rather than plausible:
 buffered frames, Redis commands per frame, socket `writableLength`, iterator pulls, connections opened.
-Those are integers with no timing in them, which is why they can gate CI where throughput and latency
+Those are integers with no timing in them, which is why they **do** gate CI where throughput and latency
 cannot. See [testing.md](./testing.md) for how the same idea is applied in the unit tests.
+
+The run therefore ends in `all bounds hold.` or a non-zero exit listing what no longer does — the
+per-stream SSE buffer ceiling, the bus's retained-run and per-run frame caps, and that backpressure
+delayed frames rather than dropping them. CI's `perf bounds (bench)` job runs exactly this on the
+in-memory driver and publishes the numbers to the run summary without asserting any of them. So if you
+are reading this page because a bound above stopped holding for you, that job is what should have caught
+it first; if it was green, the shape you hit is one the scenarios do not cover, and it is worth adding
+one (see [`packages/bench/README.md`](../packages/bench/README.md)).

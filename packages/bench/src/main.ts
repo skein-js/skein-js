@@ -8,6 +8,11 @@ import { BenchArgsError, parseBenchArgs } from "./cli-args.js";
 import { memoryDriver } from "./drivers/memory-driver.js";
 import { postgresRedisDriver } from "./drivers/postgres-redis-driver.js";
 import {
+  checkInvariants,
+  formatViolations,
+  type InvariantViolation,
+} from "./harness/invariants.js";
+import {
   describeEnvironment,
   formatMarkdownTable,
   formatResult,
@@ -28,6 +33,7 @@ async function main(): Promise<void> {
   }
 
   const results: ScenarioResult[] = [];
+  const violations: InvariantViolation[] = [];
   for (const name of args.scenarios) {
     const base = findScenario(name);
     // `parseBenchArgs` validates names, so this is unreachable — but returning early beats a
@@ -42,6 +48,9 @@ async function main(): Promise<void> {
       runConcurrency: args.runConcurrency,
     });
     results.push(result);
+    // Collected rather than thrown, so one regressed bound does not hide the remaining scenarios'
+    // numbers — the report is most useful precisely when something has failed.
+    violations.push(...checkInvariants(scenario, result));
     console.log(`\n${formatResult(result)}`);
   }
 
@@ -51,6 +60,16 @@ async function main(): Promise<void> {
 
   console.log(`\n${formatMarkdownTable(results)}`);
   console.log(`\nreport written to ${outputPath}`);
+
+  if (violations.length > 0) {
+    console.error(
+      `\n${violations.length} bound(s) no longer hold — see PERF-WORKSTREAM.md for the phase each belongs to:\n` +
+        `${formatViolations(violations)}\n`,
+    );
+    process.exitCode = 1;
+    return;
+  }
+  console.log("\nall bounds hold.");
 }
 
 main().catch((error: unknown) => {
