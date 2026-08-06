@@ -79,11 +79,6 @@ function readOne<T>(map: Map<string, T>, id: string): T | null {
   return found ? clone(found) : null;
 }
 
-/** Read every row, each deep-cloned. */
-function readAll<T>(map: Map<string, T>): T[] {
-  return [...map.values()].map((row) => clone(row));
-}
-
 /**
  * A page of already-filtered/sorted rows, deep-cloned on the way out.
  *
@@ -552,14 +547,37 @@ export class MemorySkeinStore implements SkeinStore {
     listByThread: async (threadId, query) => {
       // The status filter is applied *before* paging, so `limit`/`offset` page the filtered set —
       // see `RunListQuery.status`.
-      const matches = readAll(this.#runs).filter(
-        (run) =>
-          run.thread_id === threadId &&
-          (query?.status === undefined || run.status === query.status),
-      );
-      const offset = query?.offset ?? 0;
-      const end = query?.limit === undefined ? undefined : offset + query.limit;
-      return matches.slice(offset, end);
+      //
+      // Filtered over the *stored* references and cloned by the page (`clonePage`) rather than cloning
+      // the table and slicing after: this is called with no limit on the thread state path, and cloning
+      // every run in the process to return one thread's cost ~2.4µs per stored run — 41ms of
+      // synchronous event loop at 20k runs, on the default dev/embedded driver.
+      const matched: Run[] = [];
+      for (const run of this.#runs.values()) {
+        if (run.thread_id !== threadId) continue;
+        if (query?.status !== undefined && run.status !== query.status) continue;
+        matched.push(run);
+      }
+      // Deliberately unbounded when the caller gives no limit (`runs.listByThread` is one of the two
+      // reads the page bound exempts), so the fallback limit is "the rest of the matches".
+      return clonePage(matched, query?.offset ?? 0, query?.limit ?? matched.length);
+    },
+    // One pass over the stored references keeping the max, then a single clone — the whole reason this
+    // is a driver method (see `RunRepo.latestForThread`). `created_at` descending, tie-broken on
+    // `run_id` descending, matching the Postgres driver's ORDER BY.
+    latestForThread: async (threadId) => {
+      let latest: Run | undefined;
+      for (const run of this.#runs.values()) {
+        if (run.thread_id !== threadId) continue;
+        if (
+          latest === undefined ||
+          run.created_at > latest.created_at ||
+          (run.created_at === latest.created_at && run.run_id > latest.run_id)
+        ) {
+          latest = run;
+        }
+      }
+      return latest ? clone(latest) : null;
     },
     create: async (input: RunCreate) => {
       const at = nowIso();
@@ -628,14 +646,18 @@ export class MemorySkeinStore implements SkeinStore {
     // `threadId` omitted sweeps every thread (see the `RunRepo.listActiveRuns` contract). Bounded like
     // every other unbounded read, so a server with a very large backlog can't be made to materialize
     // all of it in one call.
-    listActiveRuns: async (threadId) =>
-      readAll(this.#runs)
-        .filter(
-          (run) =>
-            (threadId === undefined || run.thread_id === threadId) &&
-            !isTerminalRunStatus(run.status),
-        )
-        .slice(0, this.#pageLimit(undefined)),
+    listActiveRuns: async (threadId) => {
+      // Stored references filtered, then cloned by the page — see `listByThread`. This one is on the
+      // cancel and cron-sweep paths, where cloning first meant copying every run in the process to
+      // return the handful that are still inflight.
+      const matched: Run[] = [];
+      for (const run of this.#runs.values()) {
+        if (threadId !== undefined && run.thread_id !== threadId) continue;
+        if (isTerminalRunStatus(run.status)) continue;
+        matched.push(run);
+      }
+      return clonePage(matched, 0, this.#pageLimit(undefined));
+    },
   };
 
   /**

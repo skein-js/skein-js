@@ -36,6 +36,54 @@ async function scopedRuns() {
 }
 
 describe("createAuthScopedStore", () => {
+  // Which run reads are ownership-filtered and which are deliberately not is a boundary, and a perf pass
+  // already crossed it once (`joinStream` was moved off the filtered `listByThread` onto `listActiveRuns`
+  // + `latestForThread`). These pin the boundary from both sides so the next such move is deliberate.
+  // Note what the filtered side is and is not for: `runs.get` is the gate every run hand-back funnels
+  // through, so the exemptions below cannot leak a run — they can only make a *selection* disagree with
+  // that gate. See `thread-stream-service.test.ts` for the behaviour that falls out of getting it wrong.
+  describe("run reads on a thread the caller owns, carrying a run they do not own", () => {
+    /** An owned thread whose only run belongs to someone else — the shape an upgrade can leave behind. */
+    async function threadWithForeignRun() {
+      const inner = new MemorySkeinStore();
+      const scoped = createAuthScopedStore(inner, ownerEngine, { owner: "alice" }, "threads");
+      const thread = await inner.threads.create({ metadata: { owner: "alice" } });
+      // Created on the *inner* store, so it carries no `owner: alice` stamp.
+      const foreign = await inner.runs.create({
+        thread_id: thread.thread_id,
+        assistant_id: "a",
+        metadata: { owner: "bob" },
+      });
+      return { inner, scoped, thread, foreign };
+    }
+
+    it("hides it from listByThread — the read joinStream must select through", async () => {
+      const { scoped, thread } = await threadWithForeignRun();
+
+      expect(await scoped.runs.listByThread(thread.thread_id)).toEqual([]);
+    });
+
+    it("hides it from runs.get, so streaming it would contradict reading it", async () => {
+      const { scoped, foreign } = await threadWithForeignRun();
+
+      expect(await scoped.runs.get(foreign.run_id)).toBeNull();
+    });
+
+    // The other side of the boundary, asserted so the exemptions are not "fixed" into filters later:
+    // both exist to serve the server, not the caller. `listActiveRuns` is the per-thread concurrency
+    // guard — filtering it would hide another principal's inflight run and let two runs interleave
+    // checkpoint writes on one thread. `latestForThread` resolves graph identity, and filtering it would
+    // make every state read on a thread whose latest run came from a cron come back empty.
+    it("still exposes it to listActiveRuns and latestForThread, which are server machinery", async () => {
+      const { scoped, thread, foreign } = await threadWithForeignRun();
+
+      expect((await scoped.runs.listActiveRuns(thread.thread_id)).map((run) => run.run_id)).toEqual(
+        [foreign.run_id],
+      );
+      expect((await scoped.runs.latestForThread(thread.thread_id))?.run_id).toBe(foreign.run_id);
+    });
+  });
+
   it("forwards a run's failure reason through setStatus", async () => {
     const { inner, scoped, run } = await scopedRuns();
     const failure = {

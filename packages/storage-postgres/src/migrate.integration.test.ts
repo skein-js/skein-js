@@ -83,6 +83,7 @@ describe("applySkeinMigrations", () => {
       "0006_inflight_runs_index",
       "0007_crons",
       "0008_thread_ttl",
+      "0009_drop_redundant_version_index",
     ]);
 
     expect((await readLedger(pool)).map((row) => row.name)).toEqual([
@@ -94,6 +95,7 @@ describe("applySkeinMigrations", () => {
       "0006_inflight_runs_index",
       "0007_crons",
       "0008_thread_ttl",
+      "0009_drop_redundant_version_index",
     ]);
 
     for (const table of ["assistants", "assistant_versions", "threads", "runs", "store_items"]) {
@@ -148,6 +150,9 @@ describe("applySkeinMigrations", () => {
     );
     // Superseded by the composite whose leading column is the same; a redundant index costs writes.
     expect(indexes).not.toContain("runs_thread_id_idx");
+    // Same shape, dropped by 0009: redundant with the `(assistant_id, version)` primary key, which
+    // also supplies `listVersions`'s `ORDER BY version DESC` that the narrow index left to a sort.
+    expect(indexes).not.toContain("assistant_versions_assistant_id_idx");
   });
 
   it("leaves no invalid index behind", async () => {
@@ -179,6 +184,31 @@ describe("applySkeinMigrations", () => {
     );
     const plan = rows.map((row) => row["QUERY PLAN"]).join("\n");
     expect(plan).toContain("threads_created_at_thread_id_idx");
+  });
+
+  it("reads a thread's latest run from the index without scanning its history", async () => {
+    // `runs.latestForThread` exists so the thread state path stops reading a thread's whole run history
+    // to use its newest row. That is only true if the plan walks `runs_thread_id_created_at_idx`
+    // backwards and stops — a Seq Scan, or a sort over every run of the thread, would defeat the point.
+    const pool = await connectScratch("migrate_latest_run_index_used");
+    await applySkeinMigrations(pool);
+    await pool.query(`INSERT INTO threads (thread_id) VALUES ('t-1'), ('t-2')`);
+    for (let index = 0; index < 2000; index += 1) {
+      await pool.query(
+        `INSERT INTO runs (run_id, thread_id, assistant_id, created_at)
+           VALUES ($1, $2, 'a', now() - ($3 || ' seconds')::interval)`,
+        [`r-${index}`, index % 2 === 0 ? "t-1" : "t-2", index],
+      );
+    }
+    await pool.query("ANALYZE runs");
+
+    const { rows } = await pool.query<{ "QUERY PLAN": string }>(
+      `EXPLAIN SELECT * FROM runs WHERE thread_id = $1 ORDER BY created_at DESC, run_id DESC LIMIT 1`,
+      ["t-1"],
+    );
+    const plan = rows.map((row) => row["QUERY PLAN"]).join("\n");
+    expect(plan).toContain("runs_thread_id_created_at_idx");
+    expect(plan).not.toContain("Seq Scan");
   });
 
   it("can answer an ownership-scoped search from the metadata GIN index", async () => {
@@ -275,6 +305,7 @@ describe("applySkeinMigrations", () => {
       "0006_inflight_runs_index",
       "0007_crons",
       "0008_thread_ttl",
+      "0009_drop_redundant_version_index",
     ]);
 
     const ledger = await readLedger(pool);
@@ -287,6 +318,7 @@ describe("applySkeinMigrations", () => {
       "0006_inflight_runs_index",
       "0007_crons",
       "0008_thread_ttl",
+      "0009_drop_redundant_version_index",
     ]);
     // The pre-existing row is untouched, so 0001_init was not re-applied.
     expect(ledger[0]).toEqual(legacyRow);
@@ -361,6 +393,7 @@ describe("applySkeinMigrations", () => {
       "0006_inflight_runs_index",
       "0007_crons",
       "0008_thread_ttl",
+      "0009_drop_redundant_version_index",
     ]);
   });
 });

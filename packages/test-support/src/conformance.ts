@@ -541,6 +541,56 @@ export function runSkeinStoreConformance(label: string, makeStore: SkeinStoreFac
         expect(await store.runs.listByThread(thread_id, { offset: 1, limit: 1 })).toEqual([all[1]]);
       });
 
+      // Timestamps forced apart for the same reason as the page-bound ordering cases below: a *tie*
+      // is not assertable across drivers (Postgres stores `created_at` at microsecond resolution and
+      // exposes it at millisecond resolution), so parity is pinned on strictly ordered rows and the
+      // tie-break is checked as a within-driver determinism property instead.
+      it("reads the thread's newest run, ordered the same on every driver", async () => {
+        const store = await makeStore();
+        const thread_id = await seedThread(store);
+        const created = [];
+        for (let index = 0; index < 3; index += 1) {
+          created.push(await store.runs.create({ thread_id, assistant_id: "a" }));
+          await new Promise((resolve) => setTimeout(resolve, 2));
+        }
+        const newest = [...created].sort((a, b) => b.created_at.localeCompare(a.created_at))[0];
+
+        expect((await store.runs.latestForThread(thread_id))?.run_id).toBe(newest?.run_id);
+      });
+
+      it("returns no latest run for a thread that has never run", async () => {
+        const store = await makeStore();
+        const thread_id = await seedThread(store);
+
+        expect(await store.runs.latestForThread(thread_id)).toBeNull();
+      });
+
+      it("scopes the latest run to its own thread", async () => {
+        const store = await makeStore();
+        const first = await seedThread(store);
+        const mine = await store.runs.create({ thread_id: first, assistant_id: "a" });
+        await new Promise((resolve) => setTimeout(resolve, 2));
+        // A newer run on a *different* thread must not win.
+        const second = await seedThread(store);
+        await store.runs.create({ thread_id: second, assistant_id: "a" });
+
+        expect((await store.runs.latestForThread(first))?.run_id).toBe(mine.run_id);
+      });
+
+      // Which row wins a `created_at` tie is arbitrary, but it must not vary between two calls — that
+      // is what the `run_id` tiebreaker is for. Asserted as a property, not against a fixed id.
+      it("picks the same latest run on repeat calls when created_at ties", async () => {
+        const store = await makeStore();
+        const thread_id = await seedThread(store);
+        for (let index = 0; index < 5; index += 1) {
+          await store.runs.create({ thread_id, assistant_id: "a" });
+        }
+
+        const first = await store.runs.latestForThread(thread_id);
+        expect(first).not.toBeNull();
+        expect((await store.runs.latestForThread(thread_id))?.run_id).toBe(first?.run_id);
+      });
+
       it("filters runs by status, before paging", async () => {
         const store = await makeStore();
         const thread_id = await seedThread(store);
@@ -1720,6 +1770,27 @@ export function runSkeinStoreConformance(label: string, makeStore: SkeinStoreFac
 
         const again = await store.threads.get(thread_id);
         expect((again?.metadata as { pinned?: boolean }).pinned).toBe(true);
+      });
+
+      // The two run list paths filter over *stored* references and clone only the page they return, so
+      // the clone is the single thing standing between a caller and the driver's own state. Asserted
+      // through both, because they are separate reads.
+      it("isolates stored runs from objects returned by the list paths", async () => {
+        const store = await makeStore();
+        const { thread_id } = await store.threads.create();
+        const { run_id } = await store.runs.create({
+          thread_id,
+          assistant_id: "agent",
+          metadata: { attempt: 1 },
+        });
+
+        const [listed] = await store.runs.listByThread(thread_id);
+        (listed?.metadata as { attempt?: number }).attempt = 99;
+        const [active] = await store.runs.listActiveRuns(thread_id);
+        (active?.metadata as { attempt?: number }).attempt = 98;
+
+        const again = await store.runs.get(run_id);
+        expect((again?.metadata as { attempt?: number }).attempt).toBe(1);
       });
 
       it("isolates stored store-item values from a returned object", async () => {

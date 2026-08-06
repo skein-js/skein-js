@@ -215,8 +215,10 @@ export function createThreadService(ctx: ProtocolContext): ThreadService {
 
   const loadThreadGraph = async (threadId: string): Promise<CompiledGraph<string> | undefined> => {
     const thread = await requireThread(threadId);
-    const runs = await deps.store.runs.listByThread(threadId);
-    const latest = [...runs].sort((a, b) => b.created_at.localeCompare(a.created_at))[0];
+    // One row, not the thread's whole run history: this runs on every state, history, and state-update
+    // request, and sorting a full `listByThread` in here meant a driver returned every run of the thread
+    // (with its `kwargs` on Postgres) so that one `assistant_id` could be read off the newest.
+    const latest = await deps.store.runs.latestForThread(threadId);
     if (latest) {
       const assistant = await deps.store.assistants.get(latest.assistant_id);
       if (assistant) {

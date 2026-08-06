@@ -111,6 +111,23 @@ runSkeinStoreConformance("postgres", async () => {
 This is what guarantees the in-memory dev driver and the production Postgres driver are
 truly interchangeable.
 
+**Adding a `SkeinStore` method means adding conformance cases in the same commit.** Without them the two
+drivers drift on exactly the details nothing else checks — ordering, tie-breaking, and what an omitted
+`limit` means. Two rules the suite already encodes and a new method must follow:
+
+- **Ties are a within-driver determinism contract, not cross-driver parity.** Postgres stores `created_at`
+  at microsecond resolution and exposes it at millisecond resolution, so rows that look tied to a test are
+  strictly ordered in the database. Force timestamps apart to assert _which_ row, and assert tie-breaking
+  as a property instead — that two calls agree, not that they agree with a fixed id.
+- **Assert what an absent `limit` means, in whichever direction the contract says.** Both are real:
+  `runs.listByThread()` returns every match, `runs.listActiveRuns()` returns one bounded page. A store
+  constructed with a deliberately tiny `maxPageSize` (2) tests both in four rows rather than a thousand.
+
+A driver-specific invariant that is _not_ behavioral — a schema shape, an index, a query plan — belongs in
+that driver's own integration test rather than the shared suite. See
+`storage-postgres/src/projection.integration.test.ts` for the catalog-difference pattern, which is how a
+column added to a migration but not to a query projection gets caught.
+
 ## End-to-end / protocol conformance
 
 Beyond storage, the [`examples/express-basic`](../examples/express-basic) server is driven by

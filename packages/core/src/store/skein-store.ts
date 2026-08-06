@@ -427,6 +427,21 @@ export interface RunRepo {
    * say so rather than report a truncated sweep as a complete one.
    */
   listActiveRuns(threadId?: string): Promise<Run[]>;
+  /**
+   * The thread's most recently created run, or `null` for a thread that has never run.
+   *
+   * A driver method rather than a `listByThread(...)` the caller sorts, because the callers want *one*
+   * row and the read is on the thread state path — `loadThreadGraph` resolves a thread's graph from its
+   * latest run on every state, history, and state-update request. Reading the whole run history to use
+   * its newest row means a driver returns every run of the thread (with its `kwargs` on Postgres) to
+   * serve one, and it is the shape that kept `listByThread` on the "still unbounded" list.
+   *
+   * "Most recent" is `created_at` descending, **tie-broken on `run_id` descending** — the same
+   * determinism contract {@link listByThread}'s ordering has, and it matters here because `created_at`
+   * ties at millisecond resolution on a thread whose runs were created in one burst. Which row wins a
+   * tie is arbitrary but must not vary between two calls on one driver.
+   */
+  latestForThread(threadId: string): Promise<Run | null>;
 }
 
 /**

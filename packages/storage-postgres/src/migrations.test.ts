@@ -69,6 +69,7 @@ describe("SKEIN_MIGRATIONS", () => {
       "0006_inflight_runs_index",
       "0007_crons",
       "0008_thread_ttl",
+      "0009_drop_redundant_version_index",
     ]);
   });
 

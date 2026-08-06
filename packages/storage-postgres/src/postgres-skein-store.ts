@@ -340,6 +340,37 @@ interface CronRow {
   updated_at: Date;
 }
 
+/**
+ * Explicit projections, one per row type above — `SELECT *`/`RETURNING *` would also fetch the columns
+ * those types deliberately omit.
+ *
+ * This is not micro-optimisation. `runs.kwargs` is a run's whole opaque input payload and `crons.auth`
+ * is a caller's stored credentials; both were being read on every list, including `listActiveRuns`,
+ * which returns up to `maxPageSize` rows. Every jsonb column also costs an implicit `JSON.parse` per
+ * row on the way out (no custom `pg` type parser is registered), so a column nobody reads is paid for
+ * twice — over the wire and in the heap.
+ *
+ * Each constant must list **every** field of its row interface, and the omissions are asserted against
+ * the live catalog in `projection.integration.test.ts` — a column added to the table and not to the
+ * projection reads back as `undefined` through a mapper that casts, which neither TypeScript nor an
+ * ordinary test would notice. Exported for that test only; `src/index.ts` is an explicit allowlist, so
+ * these stay package-internal.
+ */
+export const RUN_COLUMNS =
+  "run_id, thread_id, assistant_id, status, metadata, multitask_strategy, error, created_at, updated_at";
+
+/**
+ * `occurrence_seq` is load-bearing here even though `rowToCron` never reads it: `listDue` maps the same
+ * rows through `rowToOccurrenceSeq` for the scheduler's compare-and-swap claim. A projection derived
+ * from `rowToCron` alone compiles, passes every cron CRUD test, and silently breaks cron firing.
+ */
+export const CRON_COLUMNS =
+  "cron_id, assistant_id, thread_id, schedule, timezone, end_time, next_run_date, enabled, occurrence_seq, on_run_completed, payload, metadata, user_id, created_at, updated_at";
+
+/** `"values"` is quoted because unquoted `values` is a SQL keyword in a select list. */
+export const THREAD_COLUMNS =
+  'thread_id, status, metadata, "values", interrupts, error, created_at, updated_at, state_updated_at';
+
 function rowToAssistant(row: AssistantRow): Assistant {
   return {
     assistant_id: row.assistant_id,
@@ -378,7 +409,7 @@ async function insertRun(
 ): Promise<Run> {
   const { rows } = await executor.query<RunRow>(
     `INSERT INTO runs (run_id, thread_id, assistant_id, status, metadata, multitask_strategy, kwargs)
-     VALUES ($1, $2, $3, $4, $5::jsonb, $6, $7::jsonb) RETURNING *`,
+     VALUES ($1, $2, $3, $4, $5::jsonb, $6, $7::jsonb) RETURNING ${RUN_COLUMNS}`,
     [
       input.run_id ?? randomUUID(),
       input.thread_id,
@@ -402,7 +433,7 @@ async function insertCron(
     `INSERT INTO crons (cron_id, assistant_id, thread_id, schedule, timezone, end_time,
                         next_run_date, enabled, on_run_completed, payload, metadata, user_id, auth)
      VALUES ($1, $2, $3, $4, $5, $6::timestamptz, $7::timestamptz, $8, $9, $10::jsonb, $11::jsonb, $12, $13::jsonb)
-     RETURNING *`,
+     RETURNING ${CRON_COLUMNS}`,
     [
       cronId,
       input.assistant_id,
@@ -448,7 +479,7 @@ async function claimCronOccurrence(
             occurrence_seq = occurrence_seq + 1,
             updated_at = now()
       WHERE cron_id = $1 AND occurrence_seq = $2 AND enabled
-      RETURNING *`,
+      RETURNING ${CRON_COLUMNS}`,
     [cronId, claim.expectedSeq, claim.nextRunDate],
   );
   return rows[0] ? rowToCron(rows[0]) : null;
@@ -1304,7 +1335,7 @@ export class PostgresSkeinStore implements SkeinStore {
   readonly threads: ThreadRepo = {
     list: async () => {
       const { rows } = await this.#pool.query<ThreadRow>(
-        "SELECT * FROM threads ORDER BY created_at, thread_id LIMIT $1",
+        `SELECT ${THREAD_COLUMNS} FROM threads ORDER BY created_at, thread_id LIMIT $1`,
         [this.#pageLimit(undefined)],
       );
       return rows.map(rowToThread);
@@ -1324,7 +1355,7 @@ export class PostgresSkeinStore implements SkeinStore {
       // ties (equal timestamps/status) — without it Postgres row order is undefined across queries and
       // a page could drop or duplicate a row.
       const { rows } = await this.#pool.query<ThreadRow>(
-        `SELECT * FROM threads ${where} ORDER BY ${sortBy} ${direction}, thread_id ${direction} OFFSET ${offsetParam} ${limitClause}`,
+        `SELECT ${THREAD_COLUMNS} FROM threads ${where} ORDER BY ${sortBy} ${direction}, thread_id ${direction} OFFSET ${offsetParam} ${limitClause}`,
         params,
       );
       return rows.map(rowToThread);
@@ -1341,7 +1372,7 @@ export class PostgresSkeinStore implements SkeinStore {
     },
     get: async (threadId) => {
       const { rows } = await this.#pool.query<ThreadRow>(
-        "SELECT * FROM threads WHERE thread_id = $1",
+        `SELECT ${THREAD_COLUMNS} FROM threads WHERE thread_id = $1`,
         [threadId],
       );
       return rows[0] ? rowToThread(rows[0]) : null;
@@ -1355,7 +1386,7 @@ export class PostgresSkeinStore implements SkeinStore {
       try {
         const { rows } = await this.#pool.query<ThreadRow>(
           `INSERT INTO threads (thread_id, status, metadata, ttl_minutes, expires_at)
-           VALUES ($1, $2, $3::jsonb, $4, ${expiresAtSql("$4")}) RETURNING *`,
+           VALUES ($1, $2, $3::jsonb, $4, ${expiresAtSql("$4")}) RETURNING ${THREAD_COLUMNS}`,
           [threadId, input?.status ?? "idle", JSON.stringify(input?.metadata ?? {}), ttlMinutes],
         );
         return rowToThread(rows[0] as ThreadRow);
@@ -1381,7 +1412,7 @@ export class PostgresSkeinStore implements SkeinStore {
            expires_at = CASE WHEN $8::boolean THEN ${expiresAtSql("$9")} ELSE expires_at END,
            updated_at = now(),
            state_updated_at = CASE WHEN $4::jsonb IS NOT NULL THEN now() ELSE state_updated_at END
-         WHERE thread_id = $1 RETURNING *`,
+         WHERE thread_id = $1 RETURNING ${THREAD_COLUMNS}`,
         [
           threadId,
           patch.metadata === undefined ? null : JSON.stringify(patch.metadata),
@@ -1410,7 +1441,7 @@ export class PostgresSkeinStore implements SkeinStore {
         `INSERT INTO threads (thread_id, status, metadata, values, interrupts, error, ttl_minutes, expires_at)
          SELECT $1, status, metadata, values, interrupts, error, $3, ${expiresAtSql("$3")}
          FROM threads WHERE thread_id = $2
-         RETURNING *`,
+         RETURNING ${THREAD_COLUMNS}`,
         [randomUUID(), threadId, this.#threadTtl?.defaultTtl ?? null],
       );
       if (!rows[0]) throw SkeinHttpError.notFound(`Thread "${threadId}" not found.`);
@@ -1437,9 +1468,21 @@ export class PostgresSkeinStore implements SkeinStore {
 
   readonly runs: RunRepo = {
     get: async (runId) => {
-      const { rows } = await this.#pool.query<RunRow>("SELECT * FROM runs WHERE run_id = $1", [
-        runId,
-      ]);
+      const { rows } = await this.#pool.query<RunRow>(
+        `SELECT ${RUN_COLUMNS} FROM runs WHERE run_id = $1`,
+        [runId],
+      );
+      return rows[0] ? rowToRun(rows[0]) : null;
+    },
+    // A backward scan of `runs_thread_id_created_at_idx` (migration 0005) stopping at the first row,
+    // rather than returning every run of the thread for the caller to sort — see
+    // `RunRepo.latestForThread`. `run_id DESC` is the tie-break the contract promises; it costs nothing
+    // here because the index's leading `thread_id` is already pinned by the WHERE.
+    latestForThread: async (threadId) => {
+      const { rows } = await this.#pool.query<RunRow>(
+        `SELECT ${RUN_COLUMNS} FROM runs WHERE thread_id = $1 ORDER BY created_at DESC, run_id DESC LIMIT 1`,
+        [threadId],
+      );
       return rows[0] ? rowToRun(rows[0]) : null;
     },
     listByThread: async (threadId, query) => {
@@ -1459,7 +1502,7 @@ export class PostgresSkeinStore implements SkeinStore {
         paginationSql = ` OFFSET ${offsetParam} LIMIT $${params.length}`;
       }
       const { rows } = await this.#pool.query<RunRow>(
-        `SELECT * FROM runs WHERE thread_id = $1${statusSql} ORDER BY created_at, run_id${paginationSql}`,
+        `SELECT ${RUN_COLUMNS} FROM runs WHERE thread_id = $1${statusSql} ORDER BY created_at, run_id${paginationSql}`,
         params,
       );
       return rows.map(rowToRun);
@@ -1502,7 +1545,7 @@ export class PostgresSkeinStore implements SkeinStore {
       // always describes its current status. Status and error move in the same single write; see
       // the `RunRepo.setStatus` contract for why they must not be split.
       const { rows } = await this.#pool.query<RunRow>(
-        "UPDATE runs SET status = $2, error = $3::jsonb, updated_at = now() WHERE run_id = $1 RETURNING *",
+        `UPDATE runs SET status = $2, error = $3::jsonb, updated_at = now() WHERE run_id = $1 RETURNING ${RUN_COLUMNS}`,
         [runId, status, error === undefined ? null : JSON.stringify(error)],
       );
       if (!rows[0]) throw SkeinHttpError.notFound(`Run "${runId}" not found.`);
@@ -1556,7 +1599,7 @@ export class PostgresSkeinStore implements SkeinStore {
       }
       params.push(this.#pageLimit(undefined));
       const { rows } = await this.#pool.query<RunRow>(
-        `SELECT * FROM runs WHERE status IN (${INFLIGHT_STATUS_SQL})${threadSql} ` +
+        `SELECT ${RUN_COLUMNS} FROM runs WHERE status IN (${INFLIGHT_STATUS_SQL})${threadSql} ` +
           `ORDER BY created_at, run_id LIMIT $${params.length}`,
         params,
       );
@@ -1566,9 +1609,10 @@ export class PostgresSkeinStore implements SkeinStore {
 
   readonly crons: CronRepo = {
     get: async (cronId) => {
-      const { rows } = await this.#pool.query<CronRow>("SELECT * FROM crons WHERE cron_id = $1", [
-        cronId,
-      ]);
+      const { rows } = await this.#pool.query<CronRow>(
+        `SELECT ${CRON_COLUMNS} FROM crons WHERE cron_id = $1`,
+        [cronId],
+      );
       return rows[0] ? rowToCron(rows[0]) : null;
     },
     search: async (query) => {
@@ -1594,7 +1638,7 @@ export class PostgresSkeinStore implements SkeinStore {
       // Postgres defaults nulls first on DESC — which would put every dormant cron at the top of
       // "soonest next run". The memory driver sorts nulls last unconditionally to match.
       const { rows } = await this.#pool.query<CronRow>(
-        `SELECT * FROM crons ${where} ORDER BY ${sortBy} ${direction} NULLS LAST, cron_id ${direction} ` +
+        `SELECT ${CRON_COLUMNS} FROM crons ${where} ORDER BY ${sortBy} ${direction} NULLS LAST, cron_id ${direction} ` +
           `OFFSET ${offsetParam} LIMIT $${params.length}`,
         params,
       );
@@ -1643,7 +1687,7 @@ export class PostgresSkeinStore implements SkeinStore {
            occurrence_seq = occurrence_seq + 1,
            updated_at = now()
          WHERE cron_id = $1
-         RETURNING *`,
+         RETURNING ${CRON_COLUMNS}`,
         [
           cronId,
           patch.schedule ?? null,
@@ -1671,7 +1715,7 @@ export class PostgresSkeinStore implements SkeinStore {
     // index's write cost — the same trap migration 0006 documents for inflight runs.
     listDue: async (query) => {
       const { rows } = await this.#pool.query<CronRow>(
-        `SELECT * FROM crons
+        `SELECT ${CRON_COLUMNS} FROM crons
           WHERE enabled AND next_run_date IS NOT NULL AND next_run_date <= $1::timestamptz
           ORDER BY next_run_date ASC, cron_id ASC
           LIMIT $2`,

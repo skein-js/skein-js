@@ -3269,8 +3269,16 @@ state, so an unbounded `POST /threads/search` on a large deployment materializes
 | `limit` omitted, or a `list()` call     | the first `SKEIN_MAX_PAGE_SIZE` rows (default 1000)         |
 | `assistants.count()`, `threads.count()` | **not** bounded — they answer "how many match" in total     |
 | `runs.listByThread()`                   | **not** bounded — run rows carry no graph state             |
+| `runs.latestForThread()`                | one row by construction — the thread state path uses this   |
 | `runs.listActiveRuns()` (all threads)   | bounded — the whole-server sweep behind `POST /runs/cancel` |
 | `POST /threads/{id}/history`            | 100 checkpoints by default, 1000 max — a separate bound     |
+
+`runs.latestForThread()` exists because the unbounded `listByThread()` above used to be read on **every**
+thread state, history, and state-update request: resolving which graph a thread belongs to means reading
+its most recent run's `assistant_id`, and that was done by fetching the thread's entire run history and
+sorting it. A driver must return the newest run by `created_at` descending, tie-broken on `run_id`
+descending — the tie-break is a within-driver determinism contract (`created_at` ties at millisecond
+resolution), not a cross-driver one.
 
 Sizing guidance is in [performance.md](./performance.md#sizing). Set `SKEIN_MAX_PAGE_SIZE` to change the
 driver bound (`maxPageSize` on the store constructor and on

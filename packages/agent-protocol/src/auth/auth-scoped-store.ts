@@ -191,6 +191,23 @@ export function createAuthScopedStore(
       // execute on one thread and interleave their checkpoint writes. Nothing leaks — the thread itself
       // is ownership-gated, so a caller cannot reach the guard for a thread it does not own, and
       // `POST /runs/cancel` re-authorizes every run it sweeps through the filtered `get`.
+      //
+      // `latestForThread` is inherited unfiltered, but for a narrower reason, and the boundary matters.
+      //
+      // It resolves *graph identity*, not run content: its only two callers are `loadThreadGraph` (which
+      // graph is this thread's state stored under) and `latestRunAssistant` (which assistant should a
+      // resume run as). Both sit behind a `requireThread`, which `threads.get` above ownership-filters,
+      // and neither returns the run to the caller. Filtering it would break a legitimate case instead:
+      // a thread whose latest run was started by another principal — a cron, or a second member of the
+      // same org — would resolve to *no* graph, and every state and history read on that thread would
+      // come back empty.
+      //
+      // **So it must not be used to choose a run to hand back.** Not because that would leak — `runs.join`
+      // re-reads through the filtered `get` above and refuses a run the caller does not own — but because
+      // the selection would then disagree with the gate: `joinStream` would pick a run the join rejects
+      // and 404 a caller who had a perfectly joinable run of their own. It therefore selects through the
+      // filtered `listByThread`. A perf pass moved it to these unfiltered reads; the test in
+      // `thread-stream-service.test.ts` pins the behaviour, and the cases below pin this boundary.
       create: (input) => inner.runs.create({ ...input, metadata: stamp(input.metadata) }),
       // Stamped the same way as `create`, so a run created through the `reject` guard is owned by its
       // caller too. The guard's inflight check is deliberately NOT ownership-filtered — see the note on

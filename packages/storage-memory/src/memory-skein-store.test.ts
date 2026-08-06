@@ -68,6 +68,34 @@ describe("collection pagination", () => {
     expect(page).toHaveLength(2);
   });
 
+  // `listByThread` is one of the two reads the page bound deliberately exempts, and it is called with
+  // no limit on the thread state path. Pinned with a tiny `maxPageSize` rather than 1000+ runs: the
+  // regression is applying `#pageLimit(undefined)` as the fallback limit, which a small bound catches
+  // instantly and a default-sized store would need a thousand rows to notice.
+  it("returns every matching run when given no limit, past the page bound", async () => {
+    const store = new MemorySkeinStore({ maxPageSize: 2 });
+    const thread = await store.threads.create();
+    for (let index = 0; index < 4; index += 1) {
+      await store.runs.create({ thread_id: thread.thread_id, assistant_id: "agent" });
+    }
+
+    expect(await store.runs.listByThread(thread.thread_id)).toHaveLength(4);
+    // An offset with no limit still means "the rest", not "one bounded page from here".
+    expect(await store.runs.listByThread(thread.thread_id, { offset: 1 })).toHaveLength(3);
+  });
+
+  // The other direction, so the two exemptions can't drift into each other: `listActiveRuns` *is*
+  // bounded (it sweeps every thread when given no id).
+  it("bounds listActiveRuns at the page size", async () => {
+    const store = new MemorySkeinStore({ maxPageSize: 2 });
+    const thread = await store.threads.create();
+    for (let index = 0; index < 4; index += 1) {
+      await store.runs.create({ thread_id: thread.thread_id, assistant_id: "agent" });
+    }
+
+    expect(await store.runs.listActiveRuns()).toHaveLength(2);
+  });
+
   it("pages distinct namespaces", async () => {
     const store = new MemorySkeinStore();
     await store.store.put(["users", "1"], "a", { value: 1 });
