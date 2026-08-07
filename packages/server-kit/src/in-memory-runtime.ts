@@ -27,6 +27,7 @@ import {
   snapshotCheckpointer,
   type DevStateSnapshot,
 } from "./dev-persistence.js";
+import { resolveIdempotency } from "./idempotency-config.js";
 import { embedInMemoryGraphs } from "./in-memory-deps.js";
 import { resolveMaxPageSize } from "./max-page-size.js";
 import { resolveMemoryBusLimits } from "./memory-bus-limits.js";
@@ -134,6 +135,10 @@ export async function loadReloadableInMemoryRuntime(
   // honour thread expiry while silently dropping store-item expiry.
   const threadTtl = resolveThreadTtl(first.config.checkpointer?.ttl);
   const storeTtl = resolveStoreTtl(first.config.store?.ttl);
+  // Read here for the same reason as the TTL blocks above, though not for the same consumer: the
+  // engine reads it, not the store. It has to be resolved on this path anyway, or `skein.idempotency`
+  // would tune retention under `skein start` and be silently ignored under `skein dev`.
+  const idempotency = resolveIdempotency(first.config.skein?.idempotency);
   const store = new MemorySkeinStore({
     maxPageSize: resolveMaxPageSize(),
     ...(threadTtl ? { threadTtl } : {}),
@@ -151,6 +156,8 @@ export async function loadReloadableInMemoryRuntime(
     auth: await loadAuthEngine(first.config.auth, { configDir: first.configDir, importModule }),
     // Present only when configured — its presence is what starts the thread TTL sweeper.
     ...(threadTtl ? { threadTtl } : {}),
+    // Unlike `threadTtl`, absence here means *defaults*, not *off*: the header is honoured either way.
+    ...(idempotency ? { idempotency } : {}),
     ...extraDeps,
   };
 

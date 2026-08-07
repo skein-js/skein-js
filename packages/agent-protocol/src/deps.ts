@@ -19,6 +19,8 @@ import {
   type TelemetrySink,
 } from "@skein-js/core";
 
+import type { IdempotencyConfig } from "./idempotency/idempotency-config.js";
+
 /** A factory export: called (optionally with per-run config) to produce a compiled graph. */
 export type CompiledGraphFactory = (config: {
   configurable?: Record<string, unknown>;
@@ -142,6 +144,17 @@ export interface ProtocolDeps {
   exposeErrorStacks?: boolean;
   /** Optional per-run wall-clock timeout in ms. When set, a run exceeding it becomes `"timeout"`. */
   runTimeoutMs?: number;
+  /**
+   * Retention for `Idempotency-Key` records (`langgraph.json` `skein.idempotency`).
+   *
+   * Tuning only — absent means the defaults, **not** that the header is ignored. Honouring a key is
+   * not an opt-in: a caller who sends one has been promised their retry will not start a second run,
+   * and a server that quietly ignored it would break exactly the guarantee the header is for.
+   *
+   * Carried on the deps rather than passed per-adapter for the same reason `threadTtl` is: resolved
+   * once where the config is read, and every adapter forwards deps without knowing about it.
+   */
+  idempotency?: IdempotencyConfig;
   /**
    * Delivers run-completion webhooks (the run's `webhook` field). Defaults to a `globalThis.fetch`
    * POST with a JSON body; inject to customize transport/retries or to capture deliveries in tests.

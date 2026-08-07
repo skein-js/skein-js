@@ -1485,6 +1485,189 @@ export function runSkeinStoreConformance(label: string, makeStore: SkeinStoreFac
       });
     });
 
+    describe("idempotency", () => {
+      const wait = (ms: number): Promise<void> => new Promise((resolve) => setTimeout(resolve, ms));
+      const inMs = (ms: number): string => new Date(Date.now() + ms).toISOString();
+      const aClaim = (
+        overrides?: Partial<Parameters<SkeinStore["idempotency"]["claim"]>[0]>,
+      ): Parameters<SkeinStore["idempotency"]["claim"]>[0] => ({
+        key: "k-1",
+        scope: "POST /threads/t/runs alice",
+        fingerprint: "fp-1",
+        claim_id: "c-1",
+        now: inMs(0),
+        expires_at: inMs(60_000),
+        ...overrides,
+      });
+
+      it("claims an unseen key and reports the claim as won", async () => {
+        const store = await makeStore();
+        const result = await store.idempotency.claim(aClaim());
+
+        expect(result.claimed).toBe(true);
+        expect(result.record.status).toBe("in_flight");
+        expect(result.record.claim_id).toBe("c-1");
+        expect(result.record.fingerprint).toBe("fp-1");
+        expect(result.record.response).toBeUndefined();
+      });
+
+      it("reports the incumbent when the key is already held", async () => {
+        const store = await makeStore();
+        await store.idempotency.claim(aClaim());
+        const second = await store.idempotency.claim(aClaim({ claim_id: "c-2" }));
+
+        expect(second.claimed).toBe(false);
+        // The incumbent's token, not the loser's — this is how a caller tells a replay from a win.
+        expect(second.record.claim_id).toBe("c-1");
+      });
+
+      it("admits exactly one of many concurrent claims", async () => {
+        // The race the method exists to close, and the storage-layer half of "a retried inbound
+        // request never produces a duplicate run". Fired without awaiting in between, so the driver —
+        // not the caller's ordering — is what decides. A check-then-write pair passes this in one
+        // process and fails across two; a driver that lets the uniqueness constraint arbitrate passes
+        // both.
+        const store = await makeStore();
+
+        const results = await Promise.all(
+          Array.from({ length: 5 }, (_, i) =>
+            store.idempotency.claim(aClaim({ claim_id: `c${i}` })),
+          ),
+        );
+
+        expect(results.filter((r) => r.claimed)).toHaveLength(1);
+        // And every loser was told about the same winner.
+        const winner = results.find((r) => r.claimed)?.record.claim_id;
+        for (const loser of results.filter((r) => !r.claimed)) {
+          expect(loser.record.claim_id).toBe(winner);
+        }
+      });
+
+      it("scopes keys, so the same key under two scopes does not collide", async () => {
+        // Without this, one tenant guessing another's key replays a response naming a run and thread
+        // they cannot otherwise see.
+        const store = await makeStore();
+        await store.idempotency.claim(aClaim({ scope: "POST /runs alice" }));
+        const other = await store.idempotency.claim(aClaim({ scope: "POST /runs bob" }));
+
+        expect(other.claimed).toBe(true);
+      });
+
+      it("records a response, and reads it back verbatim including headers", async () => {
+        const store = await makeStore();
+        await store.idempotency.claim(aClaim());
+        await store.idempotency.record("POST /threads/t/runs alice", "k-1", "c-1", {
+          status: 200,
+          body: { run_id: "r-1" },
+          headers: { "content-location": "/threads/t/runs/r-1" },
+          run_id: "r-1",
+          expires_at: inMs(86_400_000),
+        });
+
+        const record = await store.idempotency.get("POST /threads/t/runs alice", "k-1");
+        expect(record?.status).toBe("done");
+        expect(record?.response).toEqual({
+          status: 200,
+          body: { run_id: "r-1" },
+          headers: { "content-location": "/threads/t/runs/r-1" },
+        });
+        expect(record?.run_id).toBe("r-1");
+      });
+
+      it("ignores a record from a stale claim, so a takeover keeps its own answer", async () => {
+        const store = await makeStore();
+        await store.idempotency.claim(aClaim());
+
+        await store.idempotency.record("POST /threads/t/runs alice", "k-1", "stale", {
+          status: 200,
+          body: { run_id: "wrong" },
+          expires_at: inMs(86_400_000),
+        });
+
+        const record = await store.idempotency.get("POST /threads/t/runs alice", "k-1");
+        expect(record?.status).toBe("in_flight");
+        expect(record?.response).toBeUndefined();
+      });
+
+      it("releases a claim so the next attempt executes for real", async () => {
+        const store = await makeStore();
+        await store.idempotency.claim(aClaim());
+        await store.idempotency.release("POST /threads/t/runs alice", "k-1", "c-1");
+
+        expect(await store.idempotency.get("POST /threads/t/runs alice", "k-1")).toBeNull();
+        expect((await store.idempotency.claim(aClaim({ claim_id: "c-2" }))).claimed).toBe(true);
+      });
+
+      it("ignores a release from a stale claim", async () => {
+        const store = await makeStore();
+        await store.idempotency.claim(aClaim());
+        await store.idempotency.release("POST /threads/t/runs alice", "k-1", "stale");
+
+        expect(await store.idempotency.get("POST /threads/t/runs alice", "k-1")).not.toBeNull();
+      });
+
+      it("takes over an expired claim, resetting the dead claim's recording", async () => {
+        // A claimant that died mid-request must free its key without the sweeper having run —
+        // correctness never waits on a background loop.
+        const store = await makeStore();
+        await store.idempotency.claim(aClaim({ expires_at: inMs(40) }));
+        await store.idempotency.record("POST /threads/t/runs alice", "k-1", "c-1", {
+          status: 200,
+          body: { run_id: "stale" },
+          expires_at: inMs(40),
+        });
+
+        await wait(120);
+        const taken = await store.idempotency.claim(
+          aClaim({ claim_id: "c-2", fingerprint: "fp-2" }),
+        );
+
+        expect(taken.claimed).toBe(true);
+        expect(taken.record.claim_id).toBe("c-2");
+        expect(taken.record.fingerprint).toBe("fp-2");
+        // The dead claim's response must not survive to be replayed against the new fingerprint.
+        expect(taken.record.status).toBe("in_flight");
+        expect(taken.record.response).toBeUndefined();
+      });
+
+      it("decides expiry against the caller's clock, not the driver's", async () => {
+        // Both sides of the comparison must come from the same place: the incumbent's `expires_at`
+        // was written by an application instance, so `now` has to be one too. A driver that
+        // substituted its own clock would let a pod running behind the database take over claims that
+        // have not actually expired — starting the duplicate run this resource exists to prevent.
+        const store = await makeStore();
+        await store.idempotency.claim(aClaim({ expires_at: inMs(60_000) }));
+
+        // A `now` far in the future expires the incumbent even though wall-clock time has not moved.
+        const future = await store.idempotency.claim(
+          aClaim({ claim_id: "c-2", now: inMs(3_600_000) }),
+        );
+        expect(future.claimed).toBe(true);
+        expect(future.record.claim_id).toBe("c-2");
+
+        // And a `now` in the past does not, even against a short expiry.
+        await store.idempotency.claim(
+          aClaim({ key: "k-2", claim_id: "c-3", expires_at: inMs(50) }),
+        );
+        const past = await store.idempotency.claim(
+          aClaim({ key: "k-2", claim_id: "c-4", now: inMs(-3_600_000) }),
+        );
+        expect(past.claimed).toBe(false);
+        expect(past.record.claim_id).toBe("c-3");
+      });
+
+      it("sweeps expired records and is idempotent afterwards", async () => {
+        const store = await makeStore();
+        await store.idempotency.claim(aClaim({ key: "gone", expires_at: inMs(40) }));
+        await store.idempotency.claim(aClaim({ key: "kept", claim_id: "c-2" }));
+
+        await wait(120);
+        expect(await store.idempotency.sweepExpired()).toBe(1);
+        expect(await store.idempotency.sweepExpired()).toBe(0);
+        expect(await store.idempotency.get("POST /threads/t/runs alice", "kept")).not.toBeNull();
+      });
+    });
+
     describe("thread TTL", () => {
       const tinyTtlMinutes = 40 / 60_000;
       const wait = (ms: number): Promise<void> => new Promise((resolve) => setTimeout(resolve, ms));

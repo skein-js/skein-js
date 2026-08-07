@@ -44,8 +44,14 @@ interface SkeinStore {
   // and — for a failed run — why (see errors-and-logging.md)
   runs: RunRepo;
 
+  // schedules that fire runs on a cadence, plus the compare-and-swap claim the scheduler uses
+  crons: CronRepo;
+
   // long-term memory: namespace/key items with optional semantic search
   store: StoreRepo;
+
+  // recorded responses for `Idempotency-Key`, so a provider's retry replays instead of re-running
+  idempotency: IdempotencyRepo;
 }
 ```
 

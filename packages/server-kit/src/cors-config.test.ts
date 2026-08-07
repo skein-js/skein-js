@@ -34,7 +34,7 @@ describe("toCorsOptions (LangGraph http.cors → cors options)", () => {
 
     expect(options.origin).toEqual(["http://localhost:3000"]);
     expect(options.methods).toEqual(["GET", "POST"]);
-    expect(options.allowedHeaders).toEqual(["authorization"]);
+    expect(options.allowedHeaders).toEqual(["authorization", "idempotency-key"]);
     expect(options.credentials).toBe(true);
     expect(options.maxAge).toBe(600);
   });
@@ -44,6 +44,30 @@ describe("toCorsOptions (LangGraph http.cors → cors options)", () => {
     expect(options.exposedHeaders).toEqual(
       expect.arrayContaining(["content-location", "x-pagination-total", "x-custom"]),
     );
+  });
+
+  it("exposes idempotent-replay, so a browser client can tell a replay from a fresh create", () => {
+    expect(toCorsOptions({}).exposedHeaders).toEqual(expect.arrayContaining(["idempotent-replay"]));
+  });
+
+  it("allows idempotency-key through an explicit allow_headers list", () => {
+    // `allow_headers` replaces the default (which reflects whatever the browser asked for), so a
+    // deployment setting its own list would otherwise block the header at the preflight — a CORS
+    // error client-side with nothing logged on the server.
+    expect(toCorsOptions({ allow_headers: ["authorization"] }).allowedHeaders).toContain(
+      "idempotency-key",
+    );
+  });
+
+  it("does not duplicate idempotency-key when allow_headers already spells it", () => {
+    const options = toCorsOptions({ allow_headers: ["Idempotency-Key", "authorization"] });
+    expect(options.allowedHeaders).toEqual(["Idempotency-Key", "authorization"]);
+  });
+
+  it("leaves allowedHeaders unset when no allow_headers is configured", () => {
+    // Absent means the cors middleware reflects the request's own headers, which already admits
+    // `Idempotency-Key`. Setting a list here would *narrow* the default, not widen it.
+    expect(toCorsOptions({}).allowedHeaders).toBeUndefined();
   });
 
   it('treats a configured ["*"] as allow-all', () => {

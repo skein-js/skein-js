@@ -44,19 +44,22 @@ in).
 
 | Proposal                                     | Status        | Summary                                                                                             |
 | -------------------------------------------- | ------------- | --------------------------------------------------------------------------------------------------- |
-| [durable-delivery.md](./durable-delivery.md) | Planned       | Idempotent run creation + durable, signed, retried run-completion delivery                          |
+| [durable-delivery.md](./durable-delivery.md) | Partly landed | Idempotent run creation **shipped**; durable, signed, retried run-completion delivery still planned |
 | [inbound-events.md](./inbound-events.md)     | Draft (rev 2) | A generic, optional inbound event pipeline — plugin interface plus three capped first-party sources |
 
-**The two statuses differ in kind, not just maturity.** `durable-delivery` is **planned** — it closes
-a gap that already exists and already bites, and the open questions are about _how_, not _whether_.
-Today a run's completion notification can be lost with no record and no retry, and nothing stops a
-retried request creating a duplicate run; that is a defect in the server whether or not anything is
-ever built on top of it. `inbound-events` is a genuine **draft** — a design bet that phase 1 is
-explicitly allowed to kill.
+**The two statuses differ in kind, not just maturity.** `durable-delivery` closed a gap that already
+existed and already bit, and its open questions were about _how_, not _whether_. Its **phase 1
+(idempotent run creation) has shipped** — see
+[agent-protocol.md](../agent-protocol.md#idempotent-run-creation-idempotency-key). What remains is the
+outbound half: today a run's completion notification can still be lost with no record and no retry,
+which is a defect in the server whether or not anything is ever built on top of it. `inbound-events`
+is a genuine **draft** — a design bet that phase 1 is explicitly allowed to kill.
 
-Both depend on [#7](https://github.com/skein-js/skein-js/issues/7), a parity bug where SDK
-thread/run options (`if_exists`, `if_not_exists`, `after_seconds`) are silently ignored — the
-primitives an external service needs to address a conversation it did not create.
+Both depended on [#7](https://github.com/skein-js/skein-js/issues/7), a parity bug where SDK
+thread/run options (`if_exists`, `if_not_exists`, `after_seconds`) were silently ignored — the
+primitives an external service needs to address a conversation it did not create. **That shipped in
+0.13.1**, which is also why `Idempotency-Key` is runs-only: `if_exists` already makes thread creation
+idempotent by construction.
 
 Read `durable-delivery` first. It is independently valuable and independently shippable, and it is
 the honest baseline `inbound-events` has to beat.

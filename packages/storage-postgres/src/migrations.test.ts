@@ -70,6 +70,7 @@ describe("SKEIN_MIGRATIONS", () => {
       "0007_crons",
       "0008_thread_ttl",
       "0009_drop_redundant_version_index",
+      "0010_idempotency",
     ]);
   });
 

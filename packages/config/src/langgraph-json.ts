@@ -85,6 +85,30 @@ const telemetrySchema = z
 /** The validated `telemetry` block. */
 export type TelemetryConfig = z.infer<typeof telemetrySchema>;
 
+/**
+ * `skein.idempotency` — retention for `Idempotency-Key` records.
+ *
+ * A skein original, so it lives under the reserved `skein` namespace rather than at the top level:
+ * a top-level key would collide if LangGraph ever claimed the same name, and there would be no good
+ * way to resolve it.
+ *
+ * Tuning only. Omitting the block does **not** disable the header — a caller who sends one has been
+ * promised their retry will not start a second run, and honouring that is not a deployment opinion.
+ */
+const idempotencySchema = z
+  .object({
+    /** How long a recorded response stays replayable, in hours (default 24). */
+    retention_hours: z.number().optional(),
+    /** How long an unfinished claim blocks a retry, in minutes (default 15). */
+    in_flight_minutes: z.number().optional(),
+    /** How often the background sweeper reclaims expired records, in minutes (default 60). */
+    sweep_interval_minutes: z.number().optional(),
+  })
+  .passthrough();
+
+/** The validated `skein.idempotency` block. */
+export type IdempotencyJsonConfig = z.infer<typeof idempotencySchema>;
+
 const runtimeSchema = z
   .object({
     /** Native runtime used by the built production artifact. */
@@ -103,7 +127,13 @@ export const langgraphJsonSchema = z
     /** JS/Node runtime pin (used by `skein build` / `dockerfile`). */
     node_version: z.string().optional(),
     /** Skein production settings. Unknown keys remain forward-compatible. */
-    skein: z.object({ runtime: runtimeSchema.optional() }).passthrough().optional(),
+    skein: z
+      .object({
+        runtime: runtimeSchema.optional(),
+        idempotency: idempotencySchema.optional(),
+      })
+      .passthrough()
+      .optional(),
     /** `.env` path or an inline map, loaded into `process.env` at boot. */
     env: z.union([z.string(), z.record(z.string())]).optional(),
     /** Long-term memory store config. */

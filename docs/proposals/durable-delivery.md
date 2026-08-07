@@ -1,9 +1,29 @@
 # Proposal — Durable delivery: idempotent runs, reliable callbacks
 
-> **Status:** Planned — closes an existing gap, so the open questions are about _how_, not _whether_
-> · **Depends on:** nothing · **Unblocks:** [inbound-events.md](./inbound-events.md)
+> **Status:** Part 1 (idempotent run creation) **shipped**; Part 2 (durable outbound delivery)
+> planned · **Depends on:** nothing · **Unblocks:** [inbound-events.md](./inbound-events.md)
 >
-> A design proposal, not shipped behaviour. See [proposals/README.md](./README.md).
+> Part 1 is documented in
+> [agent-protocol.md](../agent-protocol.md#idempotent-run-creation-idempotency-key) and
+> [langgraph-cli-compat.md](../langgraph-cli-compat.md#idempotency-skeinidempotency) — read those for
+> behaviour. The rest of this file is still a design proposal. See
+> [proposals/README.md](./README.md).
+>
+> **What implementing Part 1 changed about Part 2's design.** Four assumptions below did not survive
+> contact with the code, and are corrected in place where they appear:
+>
+> 1. **The cron outbox mechanism is not reusable.** `#withTransaction` is private to
+>    `PostgresSkeinStore`, and `SkeinStore` exposes no transaction seam — its only cross-repo atomic
+>    operation is `claimAndCreateRun`, hardcoded to (cron, run). Part 2 therefore needs a new combined
+>    driver method on `RunRepo`, shaped like `claimAndCreateRun`, that writes the terminal status and
+>    inserts the delivery together. That is the largest single item in Part 2 and this proposal costed
+>    it at zero.
+> 2. **`finalizeRun` is a read-check-write.** Its terminal guard has to move _into_ that new driver
+>    method, or the delivery insert races a concurrent cancel.
+> 3. **"Re-render the payload at send time" is unimplementable, not merely a semantic trade-off** —
+>    see [Risks](#risks-and-open-questions).
+> 4. **`"${SKEIN_WEBHOOK_SECRET}"` does not work as written** — see
+>    [Configuration](#configuration).
 
 ## Contents
 
@@ -127,11 +147,31 @@ provider's retry schedule, short enough that the table doesn't grow without boun
 (`pending` / `delivering` / `delivered` / `dead`), attempt count, `next_attempt_at`, last error.
 
 **The one thing that makes it durable:** enqueue the delivery **in the same transaction that writes
-the run's terminal status**. That is the transactional-outbox pattern already built for crons —
-`docs/roadmap.md` describes the cron claim and run row committing together, which "lifts cron _and_
-ordinary background runs to at-least-once delivery." The same mechanism, pointed at notifications.
-Without this, a crash between "run succeeded" and "delivery enqueued" loses the notification and we
-have rebuilt today's bug with more code.
+the run's terminal status**. Without this, a crash between "run succeeded" and "delivery enqueued"
+loses the notification and we have rebuilt today's bug with more code.
+
+> **Correction — the mechanism is not already built.** Revision 1 claimed this was "the
+> transactional-outbox pattern already built for crons," reusable as-is. The _pattern_ is proven, but
+> nothing about it is shared:
+>
+> - `#withTransaction` is **private** to `PostgresSkeinStore` (six internal call sites, never on the
+>   interface), and `SkeinStore` exposes no transaction seam at all.
+> - Its only cross-repo atomic operation is `CronRepo.claimAndCreateRun`, hardcoded to (cron, run).
+> - The terminal write is a bare single-statement `RunRepo.setStatus`, called from `finalizeRun` —
+>   which is itself a read-check-write, so its terminal guard has to move into whatever replaces it or
+>   the delivery insert races a concurrent cancel.
+>
+> So Part 2 begins with a **new combined driver method on `RunRepo`** — shaped exactly like
+> `claimAndCreateRun`, conditional on the run not already being terminal, writing status and delivery
+> together — implemented in both drivers and pinned by the conformance suite. A generic
+> `withTransaction` on `SkeinStore` was considered and rejected: it is a heavy contract to ask every
+> driver (including third-party) to honour, and hard to specify identically across memory and
+> Postgres.
+>
+> Note also that the cancel paths (`cancelActiveRun`, `cancelRun`) have to move to the same method in
+> the same commit. Today the engine fires a webhook even when it _loses_ to a cancel; with a
+> strictly-conditional insert, that delivery must come from the winner, and between the two changes
+> there is a window where a cancel that beats the engine notifies nobody.
 
 **A delivery worker drains it** with exponential backoff and jitter, a capped attempt count, then
 `dead`. It runs wherever the run worker runs; no new process.
@@ -171,8 +211,9 @@ Off-by-default in the sense that omitting it preserves today's semantics:
 {
   "skein": {
     "webhooks": {
-      "secret": "${SKEIN_WEBHOOK_SECRET}", // literal; also accepts an array during rotation
-      "retries": { "max_attempts": 8, "initial_delay_ms": 1000, "max_delay_ms": 3600000 },
+      // NOT "${SKEIN_WEBHOOK_SECRET}" — see the correction below.
+      "secret": "dev-only-literal", // also accepts an array during rotation
+      "retries": { "max_attempts": 12, "initial_delay_ms": 1000, "max_delay_ms": 3600000 },
       "allowed_hosts": ["hooks.example.com"], // SSRF guard; see Risks
     },
   },
@@ -181,6 +222,29 @@ Off-by-default in the sense that omitting it preserves today's semantics:
 
 Keys are `snake_case`, matching every other block in `langgraph.json` (`default_ttl`,
 `disable_studio_auth`, `dockerfile_lines`) rather than the camelCase this proposal used in revision 1.
+The shipped `skein.idempotency` block follows exactly this shape, so it is now a worked precedent
+rather than a plan.
+
+> **Correction — `"${SKEIN_WEBHOOK_SECRET}"` does not work.** skein does not expand `${VAR}` inside
+> `langgraph.json`: `resolve-env.ts` only reads the `env` block into `process.env`. Written as
+> revision 1 had it, the secret would be the literal 25-character string `${SKEIN_WEBHOOK_SECRET}` —
+> a working-looking, wrong secret, and the worst possible failure for a signing key.
+>
+> **Resolution, with no new expander:** precedence is `secrets.path` → literal `secret` →
+> `SKEIN_WEBHOOK_SECRET` environment variable (comma-separated for rotation), resolved in
+> `@skein-js/server-kit` next to `ttl-config.ts`. A literal `secret` warns once at startup, because a
+> secret in `langgraph.json` is a secret committed to the repository. This matches every other skein
+> knob (`SKEIN_WEBHOOK_TIMEOUT_MS`, `SKEIN_MAX_PAGE_SIZE`, `POSTGRES_URI`).
+>
+> Related: the comment at `packages/config/src/langgraph-json.ts` claiming this loader "supports env
+> substitution" is inaccurate and should be corrected in the same change.
+>
+> **Correction — the retry defaults do not comfortably meet success criterion 1.** `max_attempts: 8`
+> with `initial_delay_ms: 1000` gives 1+2+4+…+64 ≈ **127 seconds** of total retry horizon: it clears
+> the 60-second outage test with about 2× margin and nothing else, and `max_delay_ms: 3600000` is
+> unreachable (it would first bind at attempt 13). The sample above is corrected to `12`
+> (≈68 minutes). Whatever the default, the docs must show the **sum**, not just the knobs — an
+> operator cannot evaluate "8 attempts" without doing that arithmetic themselves.
 
 Also available in code through the existing `ProtocolDeps` seam, matching how telemetry and
 `webhookDispatcher` already work.
@@ -295,8 +359,23 @@ already understood; inventing a variant costs every receiver a bespoke verifier 
 ## Risks and open questions
 
 - **Payload storage growth.** A settled run's state can be large, and we would be storing a copy per
-  delivery. Options: store a run reference and re-render at send time (cheaper, but the payload then
-  reflects state at send rather than at completion — a semantic change), or cap and truncate. **Open.**
+  delivery — the payload spreads the whole `Run` row _plus_ `values`, the full final graph state.
+  **Resolved: store it, capped and truncated, cleared on success, swept on a retention.**
+
+  Re-rendering from a run reference at send time is not merely a semantic trade-off, it is
+  **unimplementable** for the case that matters most: `deleteThreadIfRunOwnedIt` removes a stateless
+  run's server-created thread immediately after delivery, and in Postgres that cascades the run row
+  away. A retry an hour later would have neither a run row nor a checkpoint to render from — and
+  stateless `POST /runs` is exactly the "an external service drives skein and gets the answer back"
+  case this proposal exists for. Re-rendering would make the flagship path the one that cannot retry.
+
+  So: cap at `max_payload_bytes` (default 256 KiB), replacing `values` with a truncation marker
+  _inside_ the signed body so a receiver cannot be misled about it; clear `payload` on
+  `markDelivered`, which makes steady-state storage (in-flight deliveries × cap) rather than (all
+  deliveries ever × cap); and sweep terminal rows on a `retain_until`, keeping `dead` payloads so
+  replay can actually resend. Worst case is then computable and belongs in the docs:
+  `max_attempts × concurrent_runs × max_payload_bytes`.
+
 - **SSRF gets sharper.** The existing docs already suggest an allowlist when accepting untrusted
   `webhook` URLs; with aggressive retries, an attacker-supplied URL becomes a more effective
   amplifier. The allowlist should probably become the default posture rather than an opt-in.
@@ -306,10 +385,19 @@ already understood; inventing a variant costs every receiver a bespoke verifier 
   signal (deliveries still verifying against an outgoing key), since without one there is no way to
   know when a rotation is safe to complete.
 - **Retrying into a non-idempotent receiver** turns our reliability improvement into their duplicate
-  bug. `X-Skein-Delivery-Id` is the answer, and it needs to be impossible to miss in the docs.
+  bug. `X-Skein-Delivery-Id` is the answer, and it needs to be impossible to miss in the docs. Note
+  the caveat the shipped Part 1 adds: a receiver that is itself a skein instance can feed our
+  delivery id into its own `Idempotency-Key` on the **background and wait** creates, but not the
+  streaming ones, which reject the header with a 422.
 - **Does `Idempotency-Key` belong on `POST /threads` at all**, given issue #7 adds `if_exists`?
-  Arguably `if_exists: "do_nothing"` already makes thread creation idempotent by construction, and
-  adding both is two mechanisms for one job. **Open — lean toward runs-only.**
+  **Resolved: no — runs-only.** `if_exists` shipped in 0.13.1, enforced atomically in both drivers
+  and pinned by the conformance suite, so thread creation is already idempotent by construction and
+  adding a second mechanism would be two ways to do one job.
+- **A streaming create cannot be made idempotent**, which revision 1 did not account for: a
+  `ProtocolResponse` of kind `sse` carries an `AsyncIterable`, not a body, so there is nothing to
+  record and consuming it to make one would break the stream. **Resolved: 422 on the streaming
+  creates**, rather than accepting the header and silently ignoring it — which would leave a caller
+  believing their retries are deduplicated while every one starts another run.
 
 ## Success criteria
 
@@ -317,20 +405,25 @@ Concrete, testable, and the acceptance bar for the work:
 
 1. An integration test kills the receiver for 60 seconds mid-suite; **every** notification still
    arrives, in order of eventual delivery, none marked `dead`.
-2. Replaying an identical run-create POST 50 times concurrently across two instances yields
-   **exactly one** run and 50 identical responses.
+2. ✅ **Met.** Replaying an identical run-create POST 50 times concurrently across two instances
+   yields **exactly one** run and 50 identical responses —
+   `packages/runtime/src/idempotency.integration.test.ts`, two separate assemblies over one Postgres.
 3. A receiver can reject a forged callback and a replayed callback using only the documented
    headers and the shared secret — demonstrated in the example, not just described.
 4. Every scenario above passes on `storage-memory` + in-memory queue with no Docker, and on
-   Postgres + Redis.
-5. A new row in the [roadmap](../roadmap.md) comparison table that LangGraph Platform cannot match.
+   Postgres + Redis. ✅ for Part 1: the idempotency conformance block runs on both drivers.
+5. ✅ **Met** for Part 1 — the roadmap now carries an **Idempotent run creation** row, marked as
+   having no LangGraph Platform equivalent.
 
 ## Phasing
 
-1. **Idempotent run creation** — store resource, atomic claim, replay, conformance tests. Independently
-   shippable and independently valuable.
-2. **Delivery outbox + worker + retries** — the durability core.
+1. ✅ **Idempotent run creation** — store resource, atomic claim, replay, conformance tests.
+   **Shipped.** Independently shippable and independently valuable, as predicted.
+2. **Delivery outbox + worker + retries** — the durability core. Now known to begin with a new
+   combined driver method on `RunRepo` (see the correction under
+   [Part 2](#part-2--durable-outbound-delivery)); that is the largest item and revision 1 costed it
+   at zero.
 3. **Signing + delivery headers** — the receiver-side story.
 4. **Admin/replay endpoints + docs** — operability.
 
-Steps 1 and 2 are the ones [inbound-events.md](./inbound-events.md) depends on.
+Steps 1 and 2 are the ones [inbound-events.md](./inbound-events.md) depends on; step 1 is done.

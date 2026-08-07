@@ -74,6 +74,15 @@ export type {
 } from "./crons/cron-scheduler.js";
 export { createThreadTtlSweeper } from "./threads/thread-ttl-sweeper.js";
 export type { ThreadTtlSweeper, ThreadTtlSweeperOptions } from "./threads/thread-ttl-sweeper.js";
+export { createIdempotencySweeper } from "./idempotency/idempotency-sweeper.js";
+export type {
+  IdempotencySweeper,
+  IdempotencySweeperOptions,
+} from "./idempotency/idempotency-sweeper.js";
+export { createIdempotentHandlers } from "./idempotency/idempotent-handlers.js";
+export type { IdempotencyOptions } from "./idempotency/idempotent-handlers.js";
+export type { IdempotencyConfig } from "./idempotency/idempotency-config.js";
+export { idempotencyScope, requestFingerprint } from "./idempotency/fingerprint.js";
 export {
   advanceCronOccurrence,
   assertValidCronSchedule,

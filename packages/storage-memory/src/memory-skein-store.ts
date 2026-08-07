@@ -27,6 +27,9 @@ import {
   type CronRepo,
   type CronSearchQuery,
   type CronUpdate,
+  type IdempotencyClaim,
+  type IdempotencyRecord,
+  type IdempotencyRepo,
   type Item,
   type Run,
   type RunCreate,
@@ -131,6 +134,15 @@ function versionKey(assistantId: string, version: number): string {
   return JSON.stringify([assistantId, version]);
 }
 
+/**
+ * Serialize a (scope, key) pair to a collision-free Map key. `JSON.stringify` rather than a join for
+ * the same reason as {@link itemKey}: a scope carries a request path and a principal id, and either
+ * may contain whatever separator we picked.
+ */
+function idempotencyKey(scope: string, key: string): string {
+  return JSON.stringify([scope, key]);
+}
+
 /** In-process SkeinStore for development and tests. */
 export class MemorySkeinStore implements SkeinStore {
   readonly #assistants = new Map<string, Assistant>();
@@ -153,6 +165,9 @@ export class MemorySkeinStore implements SkeinStore {
   // `expiresAt` is epoch-ms (null = never expires), `ttlMinutes` is what a refresh-on-read extends by.
   readonly #itemExpiry = new Map<string, { expiresAt: number | null; ttlMinutes: number | null }>();
   readonly #ttl?: StoreTtlConfig;
+  // Recorded `Idempotency-Key` responses, keyed by `idempotencyKey(scope, key)`. Deliberately absent
+  // from `snapshot()`/`hydrate()` — see the note on `SkeinStoreSnapshot`.
+  readonly #idempotency = new Map<string, IdempotencyRecord>();
 
   /**
    * Thread expiry, epoch-ms, for threads that have one. Kept beside the row rather than on it — the
@@ -882,6 +897,73 @@ export class MemorySkeinStore implements SkeinStore {
         if (this.#isExpired(id)) {
           this.#items.delete(id);
           this.#itemExpiry.delete(id);
+          removed += 1;
+        }
+      }
+      return removed;
+    },
+  };
+
+  readonly idempotency: IdempotencyRepo = {
+    // Atomic here for free, and deliberately written to stay that way: the read, the expiry check and
+    // the write all run to completion in a single event-loop turn, so two concurrent claims on one key
+    // cannot interleave. Adding an `await` anywhere above the `write` would silently reopen the race
+    // this method exists to close — and the conformance suite's concurrent-claim case is what notices.
+    claim: async (claim: IdempotencyClaim) => {
+      const id = idempotencyKey(claim.scope, claim.key);
+      const existing = this.#idempotency.get(id);
+      // An expired incumbent is taken over rather than reported, so a claimant that died mid-request
+      // frees its key without waiting on the sweeper. The takeover resets `response`/`run_id`: the
+      // dead claim's recording must never be replayed against this claim's fingerprint.
+      if (existing && Date.parse(existing.expires_at) > Date.parse(claim.now)) {
+        return { claimed: false, record: clone(existing) };
+      }
+      const at = nowIso();
+      const record = write(this.#idempotency, id, {
+        key: claim.key,
+        scope: claim.scope,
+        fingerprint: claim.fingerprint,
+        claim_id: claim.claim_id,
+        status: "in_flight",
+        created_at: existing?.created_at ?? at,
+        updated_at: at,
+        expires_at: claim.expires_at,
+      });
+      return { claimed: true, record };
+    },
+    record: async (scope, key, claimId, recorded) => {
+      const id = idempotencyKey(scope, key);
+      const existing = this.#idempotency.get(id);
+      // Conditional on the claim token, and a no-op rather than a throw when it no longer matches:
+      // the claim expired and someone else owns the key, and writing here would answer *their* caller
+      // with this request's response.
+      if (!existing || existing.claim_id !== claimId) return;
+      write(this.#idempotency, id, {
+        ...existing,
+        status: "done",
+        response: {
+          status: recorded.status,
+          body: recorded.body,
+          ...(recorded.headers ? { headers: recorded.headers } : {}),
+        },
+        ...(recorded.run_id !== undefined ? { run_id: recorded.run_id } : {}),
+        updated_at: nowIso(),
+        expires_at: recorded.expires_at,
+      });
+    },
+    release: async (scope, key, claimId) => {
+      const id = idempotencyKey(scope, key);
+      const existing = this.#idempotency.get(id);
+      if (!existing || existing.claim_id !== claimId) return;
+      this.#idempotency.delete(id);
+    },
+    get: async (scope, key) => readOne(this.#idempotency, idempotencyKey(scope, key)),
+    sweepExpired: async () => {
+      const now = Date.now();
+      let removed = 0;
+      for (const [id, record] of [...this.#idempotency.entries()]) {
+        if (Date.parse(record.expires_at) <= now) {
+          this.#idempotency.delete(id);
           removed += 1;
         }
       }

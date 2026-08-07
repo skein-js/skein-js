@@ -17,6 +17,7 @@ for building a frontend on top, see [react-sdk.md](./react-sdk.md).
 - [Endpoint inventory](#endpoint-inventory)
 - [Crons (LangGraph Platform extension)](#crons-langgraph-platform-extension)
 - [Request/response conventions](#requestresponse-conventions)
+- [Idempotent run creation (`Idempotency-Key`)](#idempotent-run-creation-idempotency-key)
 - [Authentication + authorization](#authentication--authorization)
 - [Conformance strategy](#conformance-strategy)
 - [References](#references)
@@ -365,6 +366,61 @@ does by default.
 - A failed run also carries `error` — a skein extension over the SDK's `Run`, which records only
   _that_ a run failed. See [errors-and-logging.md](./errors-and-logging.md).
 - Schemas use JSON Schema for interoperability.
+
+## Idempotent run creation (`Idempotency-Key`)
+
+A skein extension — LangGraph Platform has no equivalent. Send an `Idempotency-Key` header on a run
+create and a retry of that request returns the **original response** instead of starting a second
+run.
+
+This exists because every webhook provider retries: Twilio on timeout or 5xx, Stripe, GitHub, Slack,
+SendGrid. Without it, a retried delivery means a second reply to the end user or two agents acting on
+one event — and the failure is silent. The only other defence is a dedup table re-implemented inside
+every caller's application.
+
+**Supported on** `POST /threads/{thread_id}/runs`, `POST /threads/{thread_id}/runs/wait`,
+`POST /runs`, `POST /runs/wait`, and `POST /runs/batch`. Omitting the header is exactly today's
+behaviour, so this is purely additive.
+
+**Not supported on the streaming creates** (`POST /runs/stream`,
+`POST /threads/{thread_id}/runs/stream`, `POST /threads/{thread_id}/stream`,
+`POST /threads/{thread_id}/commands`), which answer with a live SSE stream: there is no body to
+record, and consuming the stream to make one would break it for the caller who asked. Sending the
+header there is a **422** rather than being ignored — a silently-dropped key would leave you
+believing your retries are deduplicated while every one starts another run.
+
+| Case                                             | Response                                                       |
+| ------------------------------------------------ | -------------------------------------------------------------- |
+| Key unseen                                       | Executes normally; the response is recorded                    |
+| Key seen, same request, original done            | The recorded response verbatim, plus `Idempotent-Replay: true` |
+| Key seen, same request, original still in flight | `409` — retry shortly (the connection is not held)             |
+| Key seen, **different** request body             | `422` — same key, different request is a caller bug            |
+
+`Content-Location` is replayed with the rest of the response, so the SDK's `onRunCreated` still fires
+and `useStream`'s `reconnectOnMount` still works on a retry.
+
+A few properties worth knowing:
+
+- **The claim is atomic across instances.** The record is inserted first and the store's uniqueness
+  constraint arbitrates, so two provider retries landing on two pods milliseconds apart still produce
+  exactly one run. Held to that by the shared `SkeinStore` conformance suite, on every driver.
+- **Keys are scoped per principal** when auth is configured, so one caller cannot replay another's
+  response by guessing their key.
+- **Failures are never recorded.** A create that throws or answers non-2xx releases its key, so the
+  next retry really runs — pinning a transient 503 for the retention would make a momentary outage
+  permanent for that key.
+- **At-least-once, not exactly-once.** The guarantee is that a retry of the _same_ request does not
+  create a second run. Choose keys that are stable across retries (the upstream provider's message id
+  is usually right).
+- **A recorded response outlives the run it describes.** Replay only works if the answer is kept, so
+  the recorded body — which for `POST /runs/wait` is the graph's final state — survives
+  `DELETE /threads/{thread_id}` and `on_completion: "delete"`, until its retention expires. That is
+  inherent to the feature rather than an oversight, but it matters if you treat a thread deletion as
+  erasure: lower `retention_hours` for those deployments, or leave the header off the endpoints whose
+  responses you do not want retained.
+
+Retention is tunable under `skein.idempotency` in `langgraph.json` — see
+[langgraph-cli-compat.md](./langgraph-cli-compat.md#idempotency-skeinidempotency).
 
 ## Authentication + authorization
 

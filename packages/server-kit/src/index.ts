@@ -73,6 +73,8 @@ export { DEFAULT_SHUTDOWN_GRACE_MS } from "@skein-js/agent-protocol";
 export { loadInMemoryRuntime, loadReloadableInMemoryRuntime } from "./in-memory-runtime.js";
 export { resolveStoreTtl, resolveThreadTtl } from "./ttl-config.js";
 export type { RawStoreTtl, RawThreadTtl } from "./ttl-config.js";
+export { resolveIdempotency } from "./idempotency-config.js";
+export type { RawIdempotency } from "./idempotency-config.js";
 export type {
   InMemoryRuntimeConfig,
   ReloadableInMemoryRuntime,

@@ -22,7 +22,11 @@ import {
   type CronRepo,
   type CronSearchQuery,
   type CronUpdate,
+  type IdempotencyRecord,
+  type IdempotencyRepo,
+  type IdempotencyStatus,
   type Item,
+  type RecordedResponse,
   type Run,
   type RunCreate,
   type RunError,
@@ -318,6 +322,19 @@ interface ItemRow {
   value: Record<string, unknown>;
   created_at: Date;
   updated_at: Date;
+}
+
+interface IdempotencyRow {
+  scope: string;
+  key: string;
+  fingerprint: string;
+  claim_id: string;
+  status: IdempotencyStatus;
+  response: RecordedResponse | null;
+  run_id: string | null;
+  created_at: Date;
+  updated_at: Date;
+  expires_at: Date;
 }
 
 interface CronRow {
@@ -654,6 +671,33 @@ function rowToItem(row: ItemRow, score?: number): SearchItem {
   return score === undefined ? item : { ...item, score };
 }
 
+function rowToIdempotencyRecord(row: IdempotencyRow): IdempotencyRecord {
+  return {
+    key: row.key,
+    scope: row.scope,
+    fingerprint: row.fingerprint,
+    claim_id: row.claim_id,
+    status: row.status,
+    ...(row.response !== null ? { response: row.response } : {}),
+    ...(row.run_id !== null ? { run_id: row.run_id } : {}),
+    created_at: toIsoString(row.created_at),
+    updated_at: toIsoString(row.updated_at),
+    expires_at: toIsoString(row.expires_at),
+  };
+}
+
+/** Every column of `idempotency_records`, in the order {@link IdempotencyRow} declares them. */
+const IDEMPOTENCY_COLUMNS =
+  "scope, key, fingerprint, claim_id, status, response, run_id, created_at, updated_at, expires_at";
+
+/**
+ * How many times a claim re-runs when its incumbent vanishes between the insert and the read.
+ *
+ * Two would do — each repeat needs its own concurrent delete landing inside a sub-millisecond
+ * window. Three is the cheap margin; more would be pretending the loop is load-bearing.
+ */
+const IDEMPOTENCY_CLAIM_ATTEMPTS = 3;
+
 /** SQL predicate: the store item is not past its TTL (or has none). */
 const NOT_EXPIRED = "(expires_at IS NULL OR expires_at > now())";
 
@@ -907,7 +951,8 @@ export class PostgresSkeinStore implements SkeinStore {
   /** Empty every resource table. For tests that need a clean schema without re-migrating. */
   async truncateAll(): Promise<void> {
     await this.#pool.query(
-      "TRUNCATE assistants, assistant_versions, threads, runs, crons, store_items CASCADE",
+      "TRUNCATE assistants, assistant_versions, threads, runs, crons, store_items, " +
+        "idempotency_records CASCADE",
     );
   }
 
@@ -1852,6 +1897,121 @@ export class PostgresSkeinStore implements SkeinStore {
               WHERE expires_at IS NOT NULL AND expires_at <= now()
               LIMIT ${SWEEP_BATCH_ROWS}
            )`,
+        );
+        const deleted = rowCount ?? 0;
+        swept += deleted;
+        if (deleted < SWEEP_BATCH_ROWS) return swept;
+      }
+    },
+  };
+
+  readonly idempotency: IdempotencyRepo = {
+    claim: async (claim) => {
+      // Insert-first, arbitrated by the (scope, key) primary key — never read-then-write. Two
+      // provider retries landing on two instances within milliseconds both reach this statement, and
+      // Postgres decides; a read-then-write pair has a window, and that window is the burst.
+      //
+      // The `DO UPDATE … WHERE expires_at <= now()` is the takeover: a claimant that died mid-request
+      // frees its key here rather than waiting on the sweeper. It resets `response`/`run_id` because
+      // the dead claim's recording must never be replayed against this claim's fingerprint. When the
+      // incumbent is still live the WHERE excludes it, the statement returns ZERO rows, and that is
+      // the loser signal — followed by a plain read to report who won.
+      //
+      // The loop covers one narrow interleaving: the incumbent is live at the INSERT but released or
+      // swept before the follow-up read, leaving nobody holding the key and nothing to report. The
+      // next pass then inserts cleanly. Bounded rather than recursive because each pass needs its own
+      // concurrent delete to repeat, and a livelock here would be a hung request rather than a slow
+      // one.
+      for (let attempt = 0; attempt < IDEMPOTENCY_CLAIM_ATTEMPTS; attempt += 1) {
+        const { rows } = await this.#pool.query<IdempotencyRow>(
+          `INSERT INTO idempotency_records
+             (scope, key, fingerprint, claim_id, status, expires_at)
+           VALUES ($1, $2, $3, $4, 'in_flight', $5::timestamptz)
+           ON CONFLICT (scope, key) DO UPDATE
+              SET fingerprint = EXCLUDED.fingerprint,
+                  claim_id    = EXCLUDED.claim_id,
+                  status      = 'in_flight',
+                  response    = NULL,
+                  run_id      = NULL,
+                  expires_at  = EXCLUDED.expires_at,
+                  updated_at  = now()
+            WHERE idempotency_records.expires_at <= $6::timestamptz
+           RETURNING ${IDEMPOTENCY_COLUMNS}`,
+          [
+            claim.scope,
+            claim.key,
+            claim.fingerprint,
+            claim.claim_id,
+            claim.expires_at,
+            // The caller's clock, not `now()` — see `IdempotencyClaim.now`. Both sides of this
+            // comparison have to come from the same place, and the incumbent's `expires_at` was
+            // written by an application instance.
+            claim.now,
+          ],
+        );
+        const won = rows[0];
+        if (won) return { claimed: true, record: rowToIdempotencyRecord(won) };
+        const { rows: incumbent } = await this.#pool.query<IdempotencyRow>(
+          `SELECT ${IDEMPOTENCY_COLUMNS} FROM idempotency_records WHERE scope = $1 AND key = $2`,
+          [claim.scope, claim.key],
+        );
+        const held = incumbent[0];
+        if (held) return { claimed: false, record: rowToIdempotencyRecord(held) };
+      }
+      throw new Error(
+        `Could not claim idempotency key after ${IDEMPOTENCY_CLAIM_ATTEMPTS} attempts — ` +
+          "the record was repeatedly removed between the claim and the read.",
+      );
+    },
+    record: async (scope, key, claimId, recorded) => {
+      // Conditional on the claim token: if it no longer matches, the claim expired and another
+      // request owns the key, and writing here would answer *their* caller with this response.
+      await this.#pool.query(
+        `UPDATE idempotency_records
+            SET status = 'done', response = $4::jsonb, run_id = $5,
+                expires_at = $6::timestamptz, updated_at = now()
+          WHERE scope = $1 AND key = $2 AND claim_id = $3`,
+        [
+          scope,
+          key,
+          claimId,
+          JSON.stringify({
+            status: recorded.status,
+            body: recorded.body,
+            ...(recorded.headers ? { headers: recorded.headers } : {}),
+          }),
+          recorded.run_id ?? null,
+          recorded.expires_at,
+        ],
+      );
+    },
+    release: async (scope, key, claimId) => {
+      await this.#pool.query(
+        "DELETE FROM idempotency_records WHERE scope = $1 AND key = $2 AND claim_id = $3",
+        [scope, key, claimId],
+      );
+    },
+    get: async (scope, key) => {
+      const { rows } = await this.#pool.query<IdempotencyRow>(
+        `SELECT ${IDEMPOTENCY_COLUMNS} FROM idempotency_records WHERE scope = $1 AND key = $2`,
+        [scope, key],
+      );
+      const row = rows[0];
+      return row ? rowToIdempotencyRecord(row) : null;
+    },
+    sweepExpired: async () => {
+      // Batched by `ctid`, exactly as the store-item sweep is and for the same reason: one unbounded
+      // DELETE against a backlog larger than `statement_timeout` can never succeed again once it has
+      // fallen behind.
+      let swept = 0;
+      for (;;) {
+        const { rowCount } = await this.#pool.query(
+          `DELETE FROM idempotency_records
+            WHERE ctid IN (
+              SELECT ctid FROM idempotency_records
+               WHERE expires_at <= now()
+               LIMIT ${SWEEP_BATCH_ROWS}
+            )`,
         );
         const deleted = rowCount ?? 0;
         swept += deleted;

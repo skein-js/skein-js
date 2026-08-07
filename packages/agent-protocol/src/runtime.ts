@@ -3,6 +3,7 @@
 // worker both touch the same cancellation registry, so cancelling a background run actually aborts
 // it, and the scheduler creates runs through the same store the worker drains.
 
+import { resolveAuthContext } from "./auth/authenticate-request.js";
 import { createAuthorizingHandlers } from "./auth/authorizing-handlers.js";
 import { createContext } from "./context.js";
 import { createProtocolHandlers, type ProtocolHandlers } from "./create-handlers.js";
@@ -12,6 +13,12 @@ import {
   type CronSchedulerOptions,
 } from "./crons/cron-scheduler.js";
 import type { ProtocolDeps } from "./deps.js";
+import {
+  createIdempotencySweeper,
+  type IdempotencySweeper,
+  type IdempotencySweeperOptions,
+} from "./idempotency/idempotency-sweeper.js";
+import { createIdempotentHandlers } from "./idempotency/idempotent-handlers.js";
 import { createRunWorker, type RunWorker, type RunWorkerOptions } from "./runs/run-worker.js";
 import { createProtocolServiceFromContext, type ProtocolService } from "./service.js";
 import {
@@ -31,6 +38,11 @@ export interface ProtocolRuntimeOptions {
    * collecting whether or not the server sets a default — so this only tunes how often, not whether.
    */
   threadTtl?: ThreadTtlSweeperOptions;
+  /**
+   * Cadence for the idempotency-record sweep. Like the thread sweep, this tunes how often, not
+   * whether — a caller can send `Idempotency-Key` whatever the server configured.
+   */
+  idempotencySweep?: IdempotencySweeperOptions;
 }
 
 /** The wired engine: the service, the handler table, the background worker, and the cron scheduler. */
@@ -63,6 +75,14 @@ export interface ProtocolRuntime {
    * itself.
    */
   threadTtlSweeper: ThreadTtlSweeper;
+  /**
+   * The loop that reclaims idempotency records past their retention.
+   *
+   * Always present for the same reason as {@link ProtocolRuntime.threadTtlSweeper}. Unlike the
+   * others, nothing depends on it running: a claim takes over an expired record itself, so a server
+   * whose sweeper never ticked is carrying dead rows, not answering wrongly.
+   */
+  idempotencySweeper: IdempotencySweeper;
 }
 
 /**
@@ -81,9 +101,30 @@ export function createProtocolRuntime(
   const service = createProtocolServiceFromContext(context);
   // When an auth engine is injected, every request is authenticated + authorized through one
   // transport-neutral seam; without it, the handler table is unchanged (unauthenticated, as before).
-  const handlers = deps.auth
+  const authorized = deps.auth
     ? createAuthorizingHandlers(context, deps.auth)
     : createProtocolHandlers(service);
+  // Idempotency wraps the authorizing table from **outside**, because a key's scope has to include
+  // the principal — without it, one tenant guessing another's key would be handed that tenant's
+  // recorded response. The cost is one extra `authenticate` on requests that actually carry a key
+  // (a request without the header pays a single header lookup and dispatches straight through), and
+  // it is correct by construction on the way in: a claim taken before a 401 is released when the
+  // inner table throws, so an unauthenticated caller cannot pin a key.
+  //
+  // It reads the *base* store deliberately, not the per-request auth-scoped one: the scope string
+  // already carries the principal, so a second ownership filter would only be able to disagree.
+  const authEngine = deps.auth;
+  const handlers = createIdempotentHandlers(authorized, {
+    store: context.deps.store,
+    clock: context.deps.clock,
+    logger: context.deps.logger,
+    ...(deps.idempotency ?? {}),
+    ...(authEngine
+      ? {
+          principalFor: async (req) => (await resolveAuthContext(authEngine, req))?.user.identity,
+        }
+      : {}),
+  });
   const worker = createRunWorker(context, options.worker);
   const scheduler = createCronScheduler(context, options.scheduler);
   // Always built, NOT gated on `checkpointer.ttl` being configured. A per-thread `ttl` on
@@ -103,6 +144,16 @@ export function createProtocolRuntime(
     options.threadTtl ??
       (deps.threadTtl?.sweepIntervalMinutes !== undefined
         ? { sweepIntervalMinutes: deps.threadTtl.sweepIntervalMinutes }
+        : {}),
+  );
+  // Always built, for the same reason the thread sweeper is: a caller can send `Idempotency-Key`
+  // whether or not the server configured a retention, and the records it writes have to be
+  // collected. Cheap when unused — one `DELETE` matching nothing, on an unref'd hourly timer.
+  const idempotencySweeper = createIdempotencySweeper(
+    { store: context.deps.store, logger: context.deps.logger },
+    options.idempotencySweep ??
+      (deps.idempotency?.sweepIntervalMinutes !== undefined
+        ? { sweepIntervalMinutes: deps.idempotency.sweepIntervalMinutes }
         : {}),
   );
 
@@ -127,6 +178,7 @@ export function createProtocolRuntime(
     handlers,
     scheduler,
     threadTtlSweeper,
+    idempotencySweeper,
     worker: {
       get inFlightRunCount() {
         return worker.inFlightRunCount;
@@ -135,12 +187,16 @@ export function createProtocolRuntime(
         worker.start();
         scheduler.start();
         threadTtlSweeper.start();
+        idempotencySweeper.start();
       },
       stop: async () => {
         await scheduler.stop();
         // Before the worker drains: a sweep deletes threads, and doing that while runs are still
         // settling would race the very rows they are writing.
         await threadTtlSweeper.stop();
+        // Nothing depends on ordering here — an idempotency record references no other row — but it
+        // stops with the other sweepers so a torn-down store never has a loop still writing into it.
+        await idempotencySweeper.stop();
         await worker.stop();
         await subscription?.close();
       },

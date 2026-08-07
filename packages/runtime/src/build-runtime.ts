@@ -24,6 +24,7 @@ import type { TelemetrySink } from "@skein-js/core";
 import {
   corsFromHttpConfig,
   loadReloadableInMemoryRuntime,
+  resolveIdempotency,
   resolveStoreTtl,
   resolveThreadTtl,
   resolveMaxPageSize,
@@ -217,6 +218,10 @@ export async function buildRuntime(options: BuildRuntimeOptions): Promise<SkeinR
     const storeTtl = resolveStoreTtl(first.config.store?.ttl);
     // Thread TTL from langgraph.json `checkpointer.ttl` — the same shape LangGraph Platform documents.
     const threadTtl = resolveThreadTtl(first.config.checkpointer?.ttl);
+    // Idempotency retention from langgraph.json `skein.idempotency`. The memory branch above gets
+    // this through `loadReloadableInMemoryRuntime`, which reads the same block from its own config —
+    // both paths, or the knob would work under `skein start` and do nothing under `skein dev`.
+    const idempotency = resolveIdempotency(first.config.skein?.idempotency);
     // `requireEnv` is evaluated eagerly (before any connect), so a missing POSTGRES_URI still throws
     // before a pool is opened. The Postgres store + saver assembly (shared connection tuning, ordered
     // teardown) lives in `connectPostgresStore` — reused by `embedPostgresGraphs`.
@@ -280,6 +285,8 @@ export async function buildRuntime(options: BuildRuntimeOptions): Promise<SkeinR
       ...(threadExecutionGate ? { threadExecutionGate } : {}),
       // Present only when `checkpointer.ttl` is configured, which is what turns the sweeper on.
       ...(threadTtl ? { threadTtl } : {}),
+      // Unlike `threadTtl`, absence is *defaults*, not *off* — `Idempotency-Key` is honoured either way.
+      ...(idempotency ? { idempotency } : {}),
       ...(serverVersion !== undefined ? { serverVersion } : {}),
       auth: await loadAuthEngine(first.config.auth, {
         configDir: first.configDir,

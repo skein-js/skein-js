@@ -84,6 +84,7 @@ describe("applySkeinMigrations", () => {
       "0007_crons",
       "0008_thread_ttl",
       "0009_drop_redundant_version_index",
+      "0010_idempotency",
     ]);
 
     expect((await readLedger(pool)).map((row) => row.name)).toEqual([
@@ -96,9 +97,17 @@ describe("applySkeinMigrations", () => {
       "0007_crons",
       "0008_thread_ttl",
       "0009_drop_redundant_version_index",
+      "0010_idempotency",
     ]);
 
-    for (const table of ["assistants", "assistant_versions", "threads", "runs", "store_items"]) {
+    for (const table of [
+      "assistants",
+      "assistant_versions",
+      "threads",
+      "runs",
+      "store_items",
+      "idempotency_records",
+    ]) {
       expect(await tableExists(pool, table), `${table} should exist`).toBe(true);
     }
 
@@ -306,6 +315,7 @@ describe("applySkeinMigrations", () => {
       "0007_crons",
       "0008_thread_ttl",
       "0009_drop_redundant_version_index",
+      "0010_idempotency",
     ]);
 
     const ledger = await readLedger(pool);
@@ -319,6 +329,7 @@ describe("applySkeinMigrations", () => {
       "0007_crons",
       "0008_thread_ttl",
       "0009_drop_redundant_version_index",
+      "0010_idempotency",
     ]);
     // The pre-existing row is untouched, so 0001_init was not re-applied.
     expect(ledger[0]).toEqual(legacyRow);
@@ -394,6 +405,7 @@ describe("applySkeinMigrations", () => {
       "0007_crons",
       "0008_thread_ttl",
       "0009_drop_redundant_version_index",
+      "0010_idempotency",
     ]);
   });
 });

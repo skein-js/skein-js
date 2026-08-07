@@ -155,9 +155,20 @@ Also shipped, beyond the original MVP plan:
   handling) plus the scheduler that fires them. Schedules live in `SkeinStore`, so they survive a
   Redis flush and are searchable and sortable; a compare-and-swap claim makes an occurrence fire
   exactly once across instances with no leader election. The claim and the run row commit together
-  as a transactional outbox, which lifts cron _and_ ordinary background runs to at-least-once
-  delivery. Works on every store/queue combination, including `skein dev` with no Docker. See
+  as a transactional outbox, and the scheduler's sweep re-enqueues any cron run that was committed
+  but never queued — so **cron** delivery is at-least-once. (Ordinary background runs are not swept:
+  a bare `pending` run cannot be told apart from an inline `wait`/`stream` run waiting on the thread
+  lock, and widening the sweep needs a durable "this run belongs to the queue" marker written at
+  create time.) Works on every store/queue combination, including `skein dev` with no Docker. See
   [crons.md](./crons.md).
+- ✅ **Idempotent run creation** — an `Idempotency-Key` header on the run creates, so a retry from
+  Twilio, Stripe, GitHub or Slack replays the original response instead of starting a second run.
+  The claim is an insert arbitrated by the store's uniqueness constraint, so 50 concurrent retries
+  across two instances still produce exactly one run; keys are scoped per principal, failures are
+  never recorded, and the streaming creates reject the header rather than ignoring it. **LangGraph
+  Platform has no equivalent.** Works on every store/queue combination, including `skein dev` with
+  no Docker. See
+  [agent-protocol.md](./agent-protocol.md#idempotent-run-creation-idempotency-key).
 
 ## Planned / coming soon (post-MVP)
 
@@ -218,6 +229,7 @@ valuable feedback we can get.
 | Assistants CRUD + versioning             | ✅ shipped         | Create/update/delete + version history/rollback; graph/subgraphs.                    |
 | **MCP endpoint (`/mcp`)**                | 🗺️ planned         | LangGraph exposes graphs as MCP tools; not yet implemented.                          |
 | Run-completion webhooks                  | ✅ shipped         | `webhook` URL POSTed the settled run on completion.                                  |
+| **Idempotent run creation**              | ✅ shipped         | `Idempotency-Key` on the creates; **LangGraph Platform has no equivalent**.          |
 | True `events` stream mode                | ✅ shipped         | Real `streamEvents` (v2); full token/tool/step granularity.                          |
 | Fastify / NestJS adapters                | ✅ shipped         | Plugin / `SkeinModule`; standalone + embedded examples.                              |
 | Next.js API-route adapter                | ✅ shipped         | App Router + Pages Router; same-origin, `useStream` UI example.                      |

@@ -10,6 +10,7 @@ mirror the same command surface.
 - [Under the hood: what skein-js changes (transparently)](#under-the-hood-what-skein-js-changes-transparently)
 - [`langgraph.json` — fields we honor](#langgraphjson--fields-we-honor)
 - [Graph loading (`path:export` notation)](#graph-loading-pathexport-notation)
+- [Idempotency (`skein.idempotency`)](#idempotency-skeinidempotency)
 - [Authentication + authorization (`auth`)](#authentication--authorization-auth)
 - [`dev` vs `up`](#dev-vs-up)
 - [Migrating an existing `langgraph dev` state](#migrating-an-existing-langgraph-dev-state)
@@ -141,6 +142,9 @@ it but is never required.
   // Native production runtime (skein extension). Omit for Node.
   "skein": {
     "runtime": { "name": "bun", "version": "1.3.14" },
+    // Retention for `Idempotency-Key` records (skein extension; see below). Tuning only —
+    // omitting the block does NOT disable the header.
+    "idempotency": { "retention_hours": 24, "in_flight_minutes": 15 },
   },
 
   // .env path OR inline map
@@ -195,6 +199,7 @@ it but is never required.
 | `graphs`               | [`@skein-js/config`](./storage.md) resolves each `path:export`, loading a compiled graph or `makeGraph` factory. Drives `/agents` introspection + run execution.                                                      |
 | `node_version`         | Used by `skein build` / `skein dockerfile` base image selection. Defaults to Node 24 LTS when omitted; an explicit value is honoured verbatim, including an older one.                                                |
 | `skein.runtime`        | Native production server and pinned official image: `node`, `bun`, or `deno`. Bun/Deno use `@skein-js/fetch` with `Bun.serve`/`Deno.serve`, never Express compatibility.                                              |
+| `skein.idempotency`    | Retention for `Idempotency-Key` records. Tuning only — the header is honoured either way. See [below](#idempotency-skeinidempotency).                                                                                 |
 | `env`                  | Loaded into `process.env` at boot (dev) / baked into the image (build).                                                                                                                                               |
 | `store`                | `store.index.{embed,dims,fields,hnsw}` configures pgvector semantic search on the Postgres driver; `hnsw: true` opts into the approximate index — see [storage.md](./storage.md).                                     |
 | `checkpointer`         | `"default"` → `PostgresSaver`; dev falls back to an in-memory `MemorySaver`.                                                                                                                                          |
@@ -224,6 +229,44 @@ escape hatch for the packages that list cannot contain: the ones you load **by n
 
 This is the same contract LangGraph.js users already write against, so **no code changes
 are required** to move a project onto skein-js.
+
+## Idempotency (`skein.idempotency`)
+
+A skein extension with no LangGraph counterpart, so it lives under the reserved `skein` namespace
+rather than at the top level — a top-level key would collide if LangGraph ever claimed the same name.
+
+```jsonc
+{
+  "skein": {
+    "idempotency": {
+      "retention_hours": 24, // how long a recorded response stays replayable
+      "in_flight_minutes": 15, // how long an unfinished create blocks a retry
+      "sweep_interval_minutes": 60, // how often expired records are reclaimed
+    },
+  },
+}
+```
+
+**This block is tuning, not an on/off switch.** Omitting it does not disable `Idempotency-Key`: a
+caller who sends one has been promised their retry will not start a second run, and honouring that is
+not a deployment opinion. The defaults are the values shown above.
+
+What each one is for:
+
+- `retention_hours` — the dedup window. Long enough to cover any provider's retry schedule, short
+  enough that the table doesn't grow without bound. Raise it if you integrate a provider that retries
+  over days.
+- `in_flight_minutes` — how long a create that hasn't finished holds its key before a retry may take
+  it over. Keep it above your slowest `POST /runs/wait`, or a retry could be admitted alongside the
+  original; keep it well under `retention_hours`, or an instance killed mid-request leaves its keys
+  409-ing until the retention expires.
+- `sweep_interval_minutes` — cadence of the background reclaim. Purely housekeeping: an expired
+  record is taken over by the next claim whether or not the sweeper has run, so this affects disk,
+  never correctness.
+
+Honoured identically on every driver combination, including `skein dev` with no Docker. See
+[agent-protocol.md](./agent-protocol.md#idempotent-run-creation-idempotency-key) for the request
+semantics and the replay table.
 
 ## Authentication + authorization (`auth`)
 

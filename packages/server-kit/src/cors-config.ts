@@ -23,8 +23,19 @@ export interface LanggraphCorsConfig {
   max_age?: number;
 }
 
-// LangGraph always exposes these two response headers; mirror that so clients read them cross-origin.
-const ALWAYS_EXPOSED_HEADERS = ["content-location", "x-pagination-total"];
+// LangGraph always exposes the first two response headers; mirror that so clients read them
+// cross-origin. `idempotent-replay` is skein's own, and belongs here for the same reason: a browser
+// client that cannot read it has no way to tell a replay from a fresh create, which is precisely the
+// question the header exists to answer.
+const ALWAYS_EXPOSED_HEADERS = ["content-location", "x-pagination-total", "idempotent-replay"];
+
+// Request headers the protocol itself defines, merged into an explicit `allow_headers` list.
+//
+// `allow_headers` replaces the default (which reflects whatever the browser asked for), so a
+// deployment that sets it to its own list silently blocks these at the preflight — and the failure is
+// a CORS error on the browser side with nothing logged on the server. Exposing `idempotent-replay` in
+// the response while refusing `idempotency-key` in the request would be exactly half a feature.
+const ALWAYS_ALLOWED_HEADERS = ["idempotency-key"];
 
 /** Translate a LangGraph `http.cors` config into `cors` middleware options. */
 export function toCorsOptions(config: LanggraphCorsConfig): CorsOptions {
@@ -51,7 +62,14 @@ export function toCorsOptions(config: LanggraphCorsConfig): CorsOptions {
   }
 
   if (config.allow_methods !== undefined) options.methods = config.allow_methods;
-  if (config.allow_headers !== undefined) options.allowedHeaders = config.allow_headers;
+  if (config.allow_headers !== undefined) {
+    // Case-insensitively, since a config may well spell it `Idempotency-Key`.
+    const configured = new Set(config.allow_headers.map((header) => header.toLowerCase()));
+    options.allowedHeaders = [
+      ...config.allow_headers,
+      ...ALWAYS_ALLOWED_HEADERS.filter((header) => !configured.has(header)),
+    ];
+  }
   if (config.allow_credentials !== undefined) options.credentials = config.allow_credentials;
   if (config.max_age !== undefined) options.maxAge = config.max_age;
 

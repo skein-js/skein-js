@@ -1358,6 +1358,7 @@ mirror the same command surface.
 - [Under the hood: what skein-js changes (transparently)](#under-the-hood-what-skein-js-changes-transparently)
 - [`langgraph.json` — fields we honor](#langgraphjson--fields-we-honor)
 - [Graph loading (`path:export` notation)](#graph-loading-pathexport-notation)
+- [Idempotency (`skein.idempotency`)](#idempotency-skeinidempotency)
 - [Authentication + authorization (`auth`)](#authentication--authorization-auth)
 - [`dev` vs `up`](#dev-vs-up)
 - [Migrating an existing `langgraph dev` state](#migrating-an-existing-langgraph-dev-state)
@@ -1489,6 +1490,9 @@ it but is never required.
   // Native production runtime (skein extension). Omit for Node.
   "skein": {
     "runtime": { "name": "bun", "version": "1.3.14" },
+    // Retention for `Idempotency-Key` records (skein extension; see below). Tuning only —
+    // omitting the block does NOT disable the header.
+    "idempotency": { "retention_hours": 24, "in_flight_minutes": 15 },
   },
 
   // .env path OR inline map
@@ -1543,6 +1547,7 @@ it but is never required.
 | `graphs`               | [`@skein-js/config`](./storage.md) resolves each `path:export`, loading a compiled graph or `makeGraph` factory. Drives `/agents` introspection + run execution.                                                      |
 | `node_version`         | Used by `skein build` / `skein dockerfile` base image selection. Defaults to Node 24 LTS when omitted; an explicit value is honoured verbatim, including an older one.                                                |
 | `skein.runtime`        | Native production server and pinned official image: `node`, `bun`, or `deno`. Bun/Deno use `@skein-js/fetch` with `Bun.serve`/`Deno.serve`, never Express compatibility.                                              |
+| `skein.idempotency`    | Retention for `Idempotency-Key` records. Tuning only — the header is honoured either way. See [below](#idempotency-skeinidempotency).                                                                                 |
 | `env`                  | Loaded into `process.env` at boot (dev) / baked into the image (build).                                                                                                                                               |
 | `store`                | `store.index.{embed,dims,fields,hnsw}` configures pgvector semantic search on the Postgres driver; `hnsw: true` opts into the approximate index — see [storage.md](./storage.md).                                     |
 | `checkpointer`         | `"default"` → `PostgresSaver`; dev falls back to an in-memory `MemorySaver`.                                                                                                                                          |
@@ -1572,6 +1577,44 @@ escape hatch for the packages that list cannot contain: the ones you load **by n
 
 This is the same contract LangGraph.js users already write against, so **no code changes
 are required** to move a project onto skein-js.
+
+## Idempotency (`skein.idempotency`)
+
+A skein extension with no LangGraph counterpart, so it lives under the reserved `skein` namespace
+rather than at the top level — a top-level key would collide if LangGraph ever claimed the same name.
+
+```jsonc
+{
+  "skein": {
+    "idempotency": {
+      "retention_hours": 24, // how long a recorded response stays replayable
+      "in_flight_minutes": 15, // how long an unfinished create blocks a retry
+      "sweep_interval_minutes": 60, // how often expired records are reclaimed
+    },
+  },
+}
+```
+
+**This block is tuning, not an on/off switch.** Omitting it does not disable `Idempotency-Key`: a
+caller who sends one has been promised their retry will not start a second run, and honouring that is
+not a deployment opinion. The defaults are the values shown above.
+
+What each one is for:
+
+- `retention_hours` — the dedup window. Long enough to cover any provider's retry schedule, short
+  enough that the table doesn't grow without bound. Raise it if you integrate a provider that retries
+  over days.
+- `in_flight_minutes` — how long a create that hasn't finished holds its key before a retry may take
+  it over. Keep it above your slowest `POST /runs/wait`, or a retry could be admitted alongside the
+  original; keep it well under `retention_hours`, or an instance killed mid-request leaves its keys
+  409-ing until the retention expires.
+- `sweep_interval_minutes` — cadence of the background reclaim. Purely housekeeping: an expired
+  record is taken over by the next claim whether or not the sweeper has run, so this affects disk,
+  never correctness.
+
+Honoured identically on every driver combination, including `skein dev` with no Docker. See
+[agent-protocol.md](./agent-protocol.md#idempotent-run-creation-idempotency-key) for the request
+semantics and the replay table.
 
 ## Authentication + authorization (`auth`)
 
@@ -2227,6 +2270,7 @@ for building a frontend on top, see [react-sdk.md](./react-sdk.md).
 - [Endpoint inventory](#endpoint-inventory)
 - [Crons (LangGraph Platform extension)](#crons-langgraph-platform-extension)
 - [Request/response conventions](#requestresponse-conventions)
+- [Idempotent run creation (`Idempotency-Key`)](#idempotent-run-creation-idempotency-key)
 - [Authentication + authorization](#authentication--authorization)
 - [Conformance strategy](#conformance-strategy)
 - [References](#references)
@@ -2575,6 +2619,61 @@ does by default.
 - A failed run also carries `error` — a skein extension over the SDK's `Run`, which records only
   _that_ a run failed. See [errors-and-logging.md](./errors-and-logging.md).
 - Schemas use JSON Schema for interoperability.
+
+## Idempotent run creation (`Idempotency-Key`)
+
+A skein extension — LangGraph Platform has no equivalent. Send an `Idempotency-Key` header on a run
+create and a retry of that request returns the **original response** instead of starting a second
+run.
+
+This exists because every webhook provider retries: Twilio on timeout or 5xx, Stripe, GitHub, Slack,
+SendGrid. Without it, a retried delivery means a second reply to the end user or two agents acting on
+one event — and the failure is silent. The only other defence is a dedup table re-implemented inside
+every caller's application.
+
+**Supported on** `POST /threads/{thread_id}/runs`, `POST /threads/{thread_id}/runs/wait`,
+`POST /runs`, `POST /runs/wait`, and `POST /runs/batch`. Omitting the header is exactly today's
+behaviour, so this is purely additive.
+
+**Not supported on the streaming creates** (`POST /runs/stream`,
+`POST /threads/{thread_id}/runs/stream`, `POST /threads/{thread_id}/stream`,
+`POST /threads/{thread_id}/commands`), which answer with a live SSE stream: there is no body to
+record, and consuming the stream to make one would break it for the caller who asked. Sending the
+header there is a **422** rather than being ignored — a silently-dropped key would leave you
+believing your retries are deduplicated while every one starts another run.
+
+| Case                                             | Response                                                       |
+| ------------------------------------------------ | -------------------------------------------------------------- |
+| Key unseen                                       | Executes normally; the response is recorded                    |
+| Key seen, same request, original done            | The recorded response verbatim, plus `Idempotent-Replay: true` |
+| Key seen, same request, original still in flight | `409` — retry shortly (the connection is not held)             |
+| Key seen, **different** request body             | `422` — same key, different request is a caller bug            |
+
+`Content-Location` is replayed with the rest of the response, so the SDK's `onRunCreated` still fires
+and `useStream`'s `reconnectOnMount` still works on a retry.
+
+A few properties worth knowing:
+
+- **The claim is atomic across instances.** The record is inserted first and the store's uniqueness
+  constraint arbitrates, so two provider retries landing on two pods milliseconds apart still produce
+  exactly one run. Held to that by the shared `SkeinStore` conformance suite, on every driver.
+- **Keys are scoped per principal** when auth is configured, so one caller cannot replay another's
+  response by guessing their key.
+- **Failures are never recorded.** A create that throws or answers non-2xx releases its key, so the
+  next retry really runs — pinning a transient 503 for the retention would make a momentary outage
+  permanent for that key.
+- **At-least-once, not exactly-once.** The guarantee is that a retry of the _same_ request does not
+  create a second run. Choose keys that are stable across retries (the upstream provider's message id
+  is usually right).
+- **A recorded response outlives the run it describes.** Replay only works if the answer is kept, so
+  the recorded body — which for `POST /runs/wait` is the graph's final state — survives
+  `DELETE /threads/{thread_id}` and `on_completion: "delete"`, until its retention expires. That is
+  inherent to the feature rather than an oversight, but it matters if you treat a thread deletion as
+  erasure: lower `retention_hours` for those deployments, or leave the header off the endpoints whose
+  responses you do not want retained.
+
+Retention is tunable under `skein.idempotency` in `langgraph.json` — see
+[langgraph-cli-compat.md](./langgraph-cli-compat.md#idempotency-skeinidempotency).
 
 ## Authentication + authorization
 
@@ -3247,8 +3346,14 @@ interface SkeinStore {
   // and — for a failed run — why (see errors-and-logging.md)
   runs: RunRepo;
 
+  // schedules that fire runs on a cadence, plus the compare-and-swap claim the scheduler uses
+  crons: CronRepo;
+
   // long-term memory: namespace/key items with optional semantic search
   store: StoreRepo;
+
+  // recorded responses for `Idempotency-Key`, so a provider's retry replays instead of re-running
+  idempotency: IdempotencyRepo;
 }
 ```
 
