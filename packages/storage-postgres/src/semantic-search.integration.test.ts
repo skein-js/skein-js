@@ -56,6 +56,29 @@ describe("PostgresSkeinStore semantic search (pgvector)", () => {
     const hits = await store.store.search({ query: "cat", prefix: ["docs", "pets"], limit: 5 });
     expect(hits.map((h) => h.key)).toEqual(["a"]);
   });
+
+  it("matches a wildcard namespace prefix under semantic ranking", async () => {
+    await store.truncateAll();
+    await store.store.put(["docs", "pets", "v1"], "a", { text: "a fluffy cat" });
+    await store.store.put(["other", "pets", "v1"], "b", { text: "a small kitten" });
+
+    const hits = await store.store.search({ query: "cat", prefix: ["docs", "*", "v1"] });
+    expect(hits.map((h) => h.key)).toEqual(["a"]);
+  });
+
+  it("narrows by filter before ranking, so the page is the top-n of the filtered set", async () => {
+    // The conformance suite runs this driver with no `store.index`, so it never reaches the pgvector
+    // branch. Without this case the filter could be missing from that branch entirely and stay green.
+    await store.truncateAll();
+    await store.store.put(["docs"], "a", { text: "a fluffy cat", shelf: 1 });
+    await store.store.put(["docs"], "b", { text: "a small kitten", shelf: 2 });
+    await store.store.put(["docs"], "c", { text: "a fast car", shelf: 1 });
+
+    // "b" is the nearest to the query but is filtered out, so a driver that ranked-then-filtered
+    // would return only "c" here — or nothing, had it also applied the limit first.
+    const hits = await store.store.search({ query: "kitten", filter: { shelf: 1 }, limit: 1 });
+    expect(hits.map((h) => h.key)).toEqual(["a"]);
+  });
 });
 
 describe("PostgresSkeinStore semantic search with store.index.hnsw", () => {

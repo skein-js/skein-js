@@ -525,9 +525,6 @@ importers:
       '@langchain/langgraph':
         specifier: ^1.4.0
         version: 1.4.7(@langchain/core@1.2.2(@opentelemetry/api@1.9.1)(ws@8.21.0))(react-dom@19.2.6(react@19.2.6))(react@19.2.6)(zod@3.25.76)
-      '@langchain/langgraph-sdk':
-        specifier: ^1.9.0
-        version: 1.9.25(@langchain/core@1.2.2(@opentelemetry/api@1.9.1)(ws@8.21.0))(react-dom@19.2.6(react@19.2.6))(react@19.2.6)
       '@skein-js/core':
         specifier: workspace:*
         version: link:../core
@@ -538,6 +535,9 @@ importers:
         specifier: ^3.25.76
         version: 3.25.76
     devDependencies:
+      '@langchain/langgraph-sdk':
+        specifier: ^1.9.0
+        version: 1.9.25(@langchain/core@1.2.2(@opentelemetry/api@1.9.1)(ws@8.21.0))(react-dom@19.2.6(react@19.2.6))(react@19.2.6)
       '@skein-js/storage-memory':
         specifier: workspace:*
         version: link:../storage-memory
@@ -3936,6 +3936,7 @@ packages:
   cron-parser@4.9.0:
     resolution: {integrity: sha512-p0SaNjrHOnQeR8/VnfGbmg9te2kfyYSQ7Sc/j/6DtPL3JQvKxmjO9TSjNFpujqV3vEYYBvNNvXSxzyksBWAx1Q==}
     engines: {node: '>=12.0.0'}
+    deprecated: v4 is no longer maintained, upgrade to v5
 
   croner@10.0.1:
     resolution: {integrity: sha512-ixNtAJndqh173VQ4KodSdJEI6nuioBWI0V1ITNKhZZsO0pEMoDxz539T4FTTbSZ/xIOSuDnzxLVRqBVSvPNE2g==}

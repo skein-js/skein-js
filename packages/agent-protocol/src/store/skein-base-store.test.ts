@@ -69,4 +69,77 @@ describe("SkeinBaseStore", () => {
     await store.batch([{ namespace: ["k"], key: "one", value: null }]);
     expect(await store.get(["k"], "one")).toBeNull();
   });
+
+  it("narrows a wildcard namespace prefix instead of returning everything", async () => {
+    const store = newStore();
+    await store.put(["users", "1"], "a", { v: 1 });
+    await store.put(["users", "2"], "b", { v: 2 });
+    await store.put(["orgs", "acme"], "c", { v: 3 });
+
+    // A wildcard used to be dropped, leaving the repo with no prefix — so this returned `["orgs"]`
+    // too, leaking namespace names across tenants.
+    expect(await store.listNamespaces({ prefix: ["users", "*"] })).toEqual([
+      ["users", "1"],
+      ["users", "2"],
+    ]);
+  });
+
+  it("carries suffix and maxDepth to the repo", async () => {
+    const store = newStore();
+    await store.put(["users", "1", "facts"], "a", { v: 1 });
+    await store.put(["users", "2", "notes"], "b", { v: 2 });
+
+    expect(await store.listNamespaces({ suffix: ["facts"] })).toEqual([["users", "1", "facts"]]);
+    expect(await store.listNamespaces({ maxDepth: 1 })).toEqual([["users"]]);
+  });
+
+  it("narrows a search by filter", async () => {
+    const store = newStore();
+    await store.put(["docs"], "a", { shelf: 1 });
+    await store.put(["docs"], "b", { shelf: 2 });
+
+    const hits = await store.search(["docs"], { filter: { shelf: { $gt: 1 } } });
+    expect(hits.map((hit) => hit.key)).toEqual(["b"]);
+  });
+
+  // This path has no schema in front of it — a graph node's filter reaches the driver directly. On
+  // Postgres an unchecked operand is a *crash* (`invalid input syntax for type numeric`), i.e. a 500
+  // from inside a run, so it is validated here against the same rules the HTTP boundary applies.
+  it("refuses a malformed filter rather than passing it to the driver", async () => {
+    const store = newStore();
+
+    for (const filter of [
+      { shelf: { $gt: "1" } },
+      { shelf: { $in: "abc" } },
+      { shelf: { $gtt: 1 } },
+      { tags: ["work"] },
+    ]) {
+      await expect(store.search(["docs"], { filter })).rejects.toMatchObject({ status: 400 });
+    }
+  });
+
+  it("bounds listNamespaces at 100 by default, matching BaseStore", async () => {
+    const store = new SkeinBaseStore(new MemorySkeinStore({ maxPageSize: 2 }).store);
+    await store.put(["a"], "1", {});
+    await store.put(["b"], "2", {});
+    await store.put(["c"], "3", {});
+
+    // The driver's own bound still applies; the point is that an absent limit is a page, not a scan.
+    expect(await store.listNamespaces()).toHaveLength(2);
+  });
+
+  it("honours limit, offset and maxDepth on a batch listNamespaces operation", async () => {
+    const store = newStore();
+    await store.put(["users", "1"], "a", {});
+    await store.put(["users", "2"], "b", {});
+    await store.put(["users", "3"], "c", {});
+
+    // `limit`/`offset` are required fields on `ListNamespacesOperation` and were dropped outright, so
+    // a graph's `store.listNamespaces({ limit: 10 })` read every namespace in the store.
+    const [page] = (await store.batch([
+      { matchConditions: [{ matchType: "prefix", path: ["users"] }], limit: 1, offset: 1 },
+    ])) as unknown as [string[][]];
+
+    expect(page).toEqual([["users", "2"]]);
+  });
 });

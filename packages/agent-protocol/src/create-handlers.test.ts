@@ -502,3 +502,186 @@ describe("getThreadStateAtCheckpointFromBody", () => {
     expect(response.status).toBe(200);
   });
 });
+
+// The store endpoints had no handler test at all, which is how three separate defects survived: a
+// `filter` that validated and was then dropped, `suffix`/`max_depth` that were never even declared,
+// and a response shape the official SDK client cannot read.
+describe("store handlers", () => {
+  /** The JSON body of a response, narrowed off the `ProtocolResponse` union. */
+  const bodyOf = (response: ProtocolResponse): unknown => {
+    if (response.kind !== "json") throw new Error(`expected a json response, got ${response.kind}`);
+    return response.body;
+  };
+
+  const seed = async (handlers: ReturnType<typeof createProtocolHandlers>) => {
+    for (const [namespace, key, value] of [
+      [["users", "1", "facts"], "a", { topic: "coffee", score: 5 }],
+      [["users", "2", "facts"], "b", { topic: "tea", score: 2 }],
+      [["orgs", "acme"], "c", { topic: "billing", score: 9 }],
+    ] as const) {
+      await handlers.putStoreItem({ ...request(), body: { namespace, key, value } });
+    }
+  };
+
+  it("wraps search results in { items }, the way the SDK reads them", async () => {
+    const { handlers } = await fixtureHandlers();
+    await seed(handlers);
+
+    const response = await handlers.searchStoreItems({ ...request(), body: {} });
+
+    // A bare array made `client.store.searchItems()` throw on `.items.map`.
+    expect(bodyOf(response)).toMatchObject({ items: expect.any(Array) });
+    expect((bodyOf(response) as { items: unknown[] }).items).toHaveLength(3);
+  });
+
+  it("wraps namespaces in { namespaces }", async () => {
+    const { handlers } = await fixtureHandlers();
+    await seed(handlers);
+
+    const response = await handlers.listStoreNamespaces({ ...request(), body: {} });
+
+    // A bare array here failed *silently*: `result.namespaces` was simply undefined.
+    expect(bodyOf(response)).toEqual({
+      namespaces: [
+        ["orgs", "acme"],
+        ["users", "1", "facts"],
+        ["users", "2", "facts"],
+      ],
+    });
+  });
+
+  it("emits store item timestamps as created_at/updated_at", async () => {
+    const { handlers } = await fixtureHandlers();
+    await seed(handlers);
+
+    const put = await handlers.putStoreItem({
+      ...request(),
+      body: { namespace: ["users", "1"], key: "profile", value: { name: "Ada" } },
+    });
+    const got = await handlers.getStoreItem({
+      ...request(),
+      query: { namespace: "users.1", key: "profile" },
+    });
+
+    // The SDK maps `created_at → createdAt` on read, so camelCase on the wire meant every item came
+    // back through the official client with undefined timestamps.
+    for (const body of [bodyOf(put), bodyOf(got)]) {
+      expect(body).toMatchObject({
+        created_at: expect.any(String),
+        updated_at: expect.any(String),
+      });
+      expect(body).not.toHaveProperty("createdAt");
+    }
+  });
+
+  it("narrows a search by filter", async () => {
+    const { handlers } = await fixtureHandlers();
+    await seed(handlers);
+
+    const response = await handlers.searchStoreItems({
+      ...request(),
+      body: { filter: { score: { $gt: 3 } } },
+    });
+
+    const items = (bodyOf(response) as { items: { key: string }[] }).items;
+    expect(items.map((item) => item.key).sort()).toEqual(["a", "c"]);
+  });
+
+  it("honours suffix and max_depth on listNamespaces", async () => {
+    const { handlers } = await fixtureHandlers();
+    await seed(handlers);
+
+    const suffixed = await handlers.listStoreNamespaces({
+      ...request(),
+      body: { suffix: ["facts"] },
+    });
+    expect(bodyOf(suffixed)).toEqual({
+      namespaces: [
+        ["users", "1", "facts"],
+        ["users", "2", "facts"],
+      ],
+    });
+
+    const shallow = await handlers.listStoreNamespaces({ ...request(), body: { max_depth: 1 } });
+    expect(bodyOf(shallow)).toEqual({ namespaces: [["orgs"], ["users"]] });
+  });
+
+  it("narrows a wildcard namespace prefix instead of returning every namespace", async () => {
+    const { handlers } = await fixtureHandlers();
+    await seed(handlers);
+
+    const response = await handlers.listStoreNamespaces({
+      ...request(),
+      body: { prefix: ["users", "*"] },
+    });
+
+    expect(bodyOf(response)).toEqual({
+      namespaces: [
+        ["users", "1", "facts"],
+        ["users", "2", "facts"],
+      ],
+    });
+  });
+
+  it("refuses an unknown filter operator rather than silently widening the search", async () => {
+    const { handlers } = await fixtureHandlers();
+
+    // A typo'd `$gte` would otherwise parse as a bag stating no conditions — matching everything.
+    await expect(
+      handlers.searchStoreItems({ ...request(), body: { filter: { score: { $gtt: 3 } } } }),
+    ).rejects.toMatchObject({ status: 400 });
+  });
+
+  it("refuses a non-scalar filter value rather than silently matching nothing", async () => {
+    const { handlers } = await fixtureHandlers();
+
+    await expect(
+      handlers.searchStoreItems({ ...request(), body: { filter: { tags: ["a"] } } }),
+    ).rejects.toMatchObject({ status: 400 });
+  });
+
+  it("refuses an ordering operand Postgres could not cast", async () => {
+    const { handlers } = await fixtureHandlers();
+
+    // `'abc'::numeric` throws, so an unchecked operand here is a 500 rather than an empty result.
+    await expect(
+      handlers.searchStoreItems({ ...request(), body: { filter: { score: { $gt: "3" } } } }),
+    ).rejects.toMatchObject({ status: 400 });
+  });
+
+  it("bounds max_depth, which binds into an int4 array subscript", async () => {
+    const { handlers } = await fixtureHandlers();
+
+    // Unbounded, this overflows Postgres' subscript type and 500s where it should 400.
+    await expect(
+      handlers.listStoreNamespaces({ ...request(), body: { max_depth: Number.MAX_SAFE_INTEGER } }),
+    ).rejects.toMatchObject({ status: 400 });
+  });
+
+  it("accepts and ignores refresh_ttl, which the SDK always sends", async () => {
+    const { handlers } = await fixtureHandlers();
+    await seed(handlers);
+
+    const response = await handlers.searchStoreItems({
+      ...request(),
+      body: { refresh_ttl: true },
+    });
+
+    expect(response.status).toBe(200);
+  });
+
+  it("defaults the namespace page when the body names no limit", async () => {
+    const { service } = await fixtureHandlers();
+    const seen: unknown[] = [];
+    const listNamespaces = service.store.listNamespaces.bind(service.store);
+    service.store.listNamespaces = async (query) => {
+      seen.push(query);
+      return listNamespaces(query);
+    };
+
+    await createProtocolHandlers(service).listStoreNamespaces({ ...request(), body: {} });
+
+    // Unbounded before: this endpoint used to return every namespace in the store.
+    expect(seen).toEqual([{ limit: 100 }]);
+  });
+});

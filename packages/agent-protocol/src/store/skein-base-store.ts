@@ -18,7 +18,17 @@ import {
   type PutOperation,
   type SearchOperation,
 } from "@langchain/langgraph";
-import type { Item, SearchItem, StoreRepo, StoreSearchQuery } from "@skein-js/core";
+import {
+  isValidNamespaceDepth,
+  MAX_NAMESPACE_DEPTH,
+  parseStoreItemFilter,
+  SkeinHttpError,
+  type Item,
+  type SearchItem,
+  type StoreNamespaceQuery,
+  type StoreRepo,
+  type StoreSearchQuery,
+} from "@skein-js/core";
 
 // `@langchain/langgraph` re-exports `Item` but not `SearchItem`; it's structurally an item + score.
 type LangGraphSearchItem = LangGraphItem & { score?: number };
@@ -40,16 +50,25 @@ function toLangGraphSearchItem(item: SearchItem): LangGraphSearchItem {
   return item.score === undefined ? base : { ...base, score: item.score };
 }
 
-/** The prefix a `listNamespaces` batch op restricts to, if it carries a single "prefix" condition. */
-function prefixFromListOperation(operation: ListNamespacesOperation): string[] | undefined {
-  const prefixCondition = operation.matchConditions?.find(
-    (condition) => condition.matchType === "prefix",
-  );
-  if (!prefixCondition) return undefined;
-  // A concrete prefix only; wildcards (`*`) aren't expressible against `StoreRepo.listNamespaces`.
-  return prefixCondition.path.every((segment) => segment !== "*")
-    ? (prefixCondition.path as string[])
-    : undefined;
+/**
+ * The query a `listNamespaces` batch op describes.
+ *
+ * `matchConditions` is a list upstream, but `BaseStore.listNamespaces` pushes at most one `prefix` and
+ * one `suffix`, so a flat pair loses nothing on the public path; a hand-built `batch()` carrying two
+ * conditions of the same type is last-wins, the only shape that cannot round-trip.
+ *
+ * `limit` and `offset` are carried through rather than dropped. They are *required* fields on
+ * `ListNamespacesOperation`, and dropping them left a graph's `store.listNamespaces({ limit: 10 })`
+ * reading every namespace in the store.
+ */
+function namespaceQueryFromListOperation(operation: ListNamespacesOperation): StoreNamespaceQuery {
+  const query: StoreNamespaceQuery = { limit: operation.limit, offset: operation.offset };
+  for (const condition of operation.matchConditions ?? []) {
+    if (condition.matchType === "prefix") query.prefix = condition.path as string[];
+    if (condition.matchType === "suffix") query.suffix = condition.path as string[];
+  }
+  if (operation.maxDepth !== undefined) query.maxDepth = operation.maxDepth;
+  return query;
 }
 
 /**
@@ -57,9 +76,10 @@ function prefixFromListOperation(operation: ListNamespacesOperation): string[] |
  * driver, pgvector semantic search in Postgres — comes from the underlying repo; this class only
  * adapts the method shapes.
  *
- * Not adapted (the repo has no equivalent, matching the HTTP surface): `search`'s `filter`, the
- * per-`put` `index` override (indexing is configured once via `langgraph.json`'s `store.index`), and
- * `listNamespaces`' `suffix`/`maxDepth`. These are accepted and ignored rather than throwing.
+ * Not adapted: the per-`put` `index` override, because indexing is configured once via
+ * `langgraph.json`'s `store.index` rather than per item. It is accepted and ignored rather than
+ * throwing. Everything else — `search`'s `filter`, `listNamespaces`' `suffix`/`maxDepth`/wildcards —
+ * reaches the repo.
  */
 export class SkeinBaseStore extends BaseStore {
   constructor(private readonly repo: StoreRepo) {
@@ -93,21 +113,27 @@ export class SkeinBaseStore extends BaseStore {
     const query: StoreSearchQuery = { prefix: namespacePrefix, limit: options?.limit ?? 10 };
     if (options?.query !== undefined) query.query = options.query;
     if (options?.offset !== undefined) query.offset = options.offset;
+    // Validated, not cast. This path has no schema in front of it — a graph node's `filter` reaches
+    // the driver directly, where a bad operand is a *crash* rather than a wrong answer (Postgres
+    // raises `invalid input syntax for type numeric` on a string bound to `$gt`, surfacing as a 500
+    // from inside the run). Same rules the HTTP boundary applies, from the same definition.
+    if (options?.filter !== undefined) query.filter = parseStoreItemFilter(options.filter);
     const items = await this.repo.search(query);
     return items.map(toLangGraphSearchItem);
   }
 
-  override async listNamespaces(options?: {
-    prefix?: string[];
-    suffix?: string[];
-    maxDepth?: number;
-    limit?: number;
-    offset?: number;
-  }): Promise<string[][]> {
-    return this.repo.listNamespaces(options?.prefix, {
-      limit: options?.limit,
-      offset: options?.offset,
-    });
+  override async listNamespaces(options?: StoreNamespaceQuery): Promise<string[][]> {
+    // `maxDepth` is bounded for the same reason the HTTP schema bounds it: it binds into an array
+    // subscript, and Postgres subscripts are `int4`, so an unchecked value overflows and surfaces as
+    // a 500 from inside a run. This path has no schema in front of it.
+    if (options?.maxDepth !== undefined && !isValidNamespaceDepth(options.maxDepth)) {
+      throw SkeinHttpError.badRequest(
+        `maxDepth must be an integer between 1 and ${MAX_NAMESPACE_DEPTH} (got ${options.maxDepth}).`,
+      );
+    }
+    // `BaseStore.listNamespaces` defaults to 100 before dispatching to batch; the convenience methods
+    // are overridden here, so the default is applied here too — same reasoning as `search`'s 10.
+    return this.repo.listNamespaces({ ...options, limit: options?.limit ?? 100 });
   }
 
   // BaseStore's only abstract method. The convenience methods above are overridden to hit the repo
@@ -122,8 +148,8 @@ export class SkeinBaseStore extends BaseStore {
   ): Promise<LangGraphItem | null | LangGraphSearchItem[] | string[][] | void> {
     if ("namespacePrefix" in operation) {
       const search = operation as SearchOperation;
-      // `search()` reads only query/limit/offset (filter is intentionally unsupported), so the
-      // SearchOperation can be passed straight through as the options bag.
+      // `SearchOperation` is structurally the options bag `search()` reads — query, filter, limit,
+      // offset — so it passes straight through.
       return this.search(search.namespacePrefix, search);
     }
     if ("value" in operation) {
@@ -137,6 +163,6 @@ export class SkeinBaseStore extends BaseStore {
       const get = operation as GetOperation;
       return this.get(get.namespace, get.key);
     }
-    return this.listNamespaces({ prefix: prefixFromListOperation(operation) });
+    return this.listNamespaces(namespaceQueryFromListOperation(operation));
   }
 }

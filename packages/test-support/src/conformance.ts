@@ -1,4 +1,4 @@
-import type { SkeinStore, Thread } from "@skein-js/core";
+import type { SkeinStore, StoreItemFilter, Thread } from "@skein-js/core";
 import { describe, expect, it } from "vitest";
 
 /** Driver-agnostic knobs the conformance suite needs to set on the store it is handed. */
@@ -1433,7 +1433,7 @@ export function runSkeinStoreConformance(label: string, makeStore: SkeinStoreFac
 
         const all = await store.store.listNamespaces();
         expect(all).toHaveLength(2);
-        const users = await store.store.listNamespaces(["users"]);
+        const users = await store.store.listNamespaces({ prefix: ["users"] });
         expect(users).toEqual([["users", "1"]]);
       });
 
@@ -1444,8 +1444,24 @@ export function runSkeinStoreConformance(label: string, makeStore: SkeinStoreFac
         await store.store.put(["users", "3"], "c", {});
 
         await expect(
-          store.store.listNamespaces(["users"], { offset: 1, limit: 1 }),
+          store.store.listNamespaces({ prefix: ["users"], offset: 1, limit: 1 }),
         ).resolves.toEqual([["users", "2"]]);
+      });
+
+      it("pages distinct namespaces from an offset with no limit", async () => {
+        const store = await makeStore();
+        await store.store.put(["users", "1"], "a", {});
+        await store.store.put(["users", "2"], "b", {});
+        await store.store.put(["users", "3"], "c", {});
+
+        // Postgres used to ignore `offset` unless a `limit` came with it, silently answering from
+        // row 0 — so an offset-only page repeated the first page forever.
+        await expect(store.store.listNamespaces({ prefix: ["users"], offset: 1 })).resolves.toEqual(
+          [
+            ["users", "2"],
+            ["users", "3"],
+          ],
+        );
       });
 
       it("does not collide namespaces whose segments contain a separator", async () => {
@@ -1454,6 +1470,257 @@ export function runSkeinStoreConformance(label: string, makeStore: SkeinStoreFac
         await store.store.put(["a/b"], "k2", {});
         // Distinct namespaces `["a","b"]` and `["a/b"]` must both be listed, not merged.
         expect(await store.store.listNamespaces()).toHaveLength(2);
+      });
+    });
+
+    // Namespace matching is `"*"`-aware, positional, and identical on every driver — the semantics
+    // LangGraph's `doesMatch` defines. A wildcard used to be dropped on the floor and read as "no
+    // prefix", so `["users","*"]` returned every namespace in the store: an over-return of names
+    // across tenants, not merely a missing feature.
+    //
+    // Segments are ASCII lowercase throughout: ordering is "ascending, element-wise", but the
+    // per-segment collation is the driver's (Postgres orders `text[]` under the database collation,
+    // the memory driver under UTF-16 code units), and those agree only away from the exotic cases.
+    describe("store namespace traversal", () => {
+      const seedNamespaces = async (store: SkeinStore): Promise<void> => {
+        await store.store.put(["users", "alice"], "a", {});
+        await store.store.put(["users", "bob"], "b", {});
+        await store.store.put(["users", "alice", "memories"], "c", {});
+        await store.store.put(["orgs", "acme"], "d", {});
+      };
+
+      it("narrows on a wildcard prefix instead of widening", async () => {
+        const store = await makeStore();
+        await seedNamespaces(store);
+
+        // A wildcard prefix selects a subtree: it matches deeper namespaces too, because the path
+        // being shorter than the namespace is not a mismatch.
+        await expect(store.store.listNamespaces({ prefix: ["users", "*"] })).resolves.toEqual([
+          ["users", "alice"],
+          ["users", "alice", "memories"],
+          ["users", "bob"],
+        ]);
+      });
+
+      it("matches a wildcard in a non-terminal position", async () => {
+        const store = await makeStore();
+        await seedNamespaces(store);
+
+        await expect(store.store.listNamespaces({ prefix: ["*", "alice"] })).resolves.toEqual([
+          ["users", "alice"],
+          ["users", "alice", "memories"],
+        ]);
+      });
+
+      it("never matches a path longer than the namespace", async () => {
+        const store = await makeStore();
+        await store.store.put(["users"], "a", {});
+
+        await expect(store.store.listNamespaces({ prefix: ["users", "*"] })).resolves.toEqual([]);
+      });
+
+      it("matches a stored literal asterisk segment with a wildcard", async () => {
+        const store = await makeStore();
+        await store.store.put(["users", "*"], "a", {});
+
+        // Upstream cannot tell a literal `*` from the wildcard, and neither may we.
+        await expect(store.store.listNamespaces({ prefix: ["users", "*"] })).resolves.toEqual([
+          ["users", "*"],
+        ]);
+      });
+
+      it("matches a suffix, anchored at the last segment", async () => {
+        const store = await makeStore();
+        await seedNamespaces(store);
+
+        await expect(store.store.listNamespaces({ suffix: ["memories"] })).resolves.toEqual([
+          ["users", "alice", "memories"],
+        ]);
+        await expect(store.store.listNamespaces({ suffix: ["*", "memories"] })).resolves.toEqual([
+          ["users", "alice", "memories"],
+        ]);
+      });
+
+      it("ANDs a prefix and a suffix", async () => {
+        const store = await makeStore();
+        await seedNamespaces(store);
+
+        await expect(
+          store.store.listNamespaces({ prefix: ["users"], suffix: ["alice"] }),
+        ).resolves.toEqual([["users", "alice"]]);
+        await expect(
+          store.store.listNamespaces({ prefix: ["orgs"], suffix: ["alice"] }),
+        ).resolves.toEqual([]);
+      });
+
+      it("truncates and de-duplicates at maxDepth", async () => {
+        const store = await makeStore();
+        await seedNamespaces(store);
+
+        await expect(store.store.listNamespaces({ maxDepth: 1 })).resolves.toEqual([
+          ["orgs"],
+          ["users"],
+        ]);
+      });
+
+      it("pages the truncated set, not the raw one", async () => {
+        const store = await makeStore();
+        await seedNamespaces(store);
+
+        // Truncation happens before paging: `{ maxDepth: 1, limit: 1 }` is one *root*, not the root
+        // of the first namespace.
+        await expect(
+          store.store.listNamespaces({ maxDepth: 1, offset: 1, limit: 1 }),
+        ).resolves.toEqual([["users"]]);
+      });
+
+      it("returns namespaces in ascending element-wise order", async () => {
+        const store = await makeStore();
+        await store.store.put(["users", "bob"], "b", {});
+        await store.store.put(["users"], "root", {});
+        await store.store.put(["users", "alice"], "a", {});
+
+        await expect(store.store.listNamespaces({ prefix: ["users"] })).resolves.toEqual([
+          ["users"],
+          ["users", "alice"],
+          ["users", "bob"],
+        ]);
+      });
+    });
+
+    // Value filtering, on the TOP-LEVEL keys of an item's `value`. The operator set is LangGraph's;
+    // the rules below are ours, because upstream's engine is private and its `Number()` coercion is
+    // not reproducible in SQL. Both drivers implement exactly these, which is the point of pinning
+    // them here rather than in either driver's own suite.
+    describe("store search filter", () => {
+      const seedItems = async (store: SkeinStore): Promise<void> => {
+        await store.store.put(["ns"], "a", { topic: "coffee", score: 5 });
+        await store.store.put(["ns"], "b", { topic: "tea", score: 2 });
+        await store.store.put(["ns"], "c", { topic: "cocoa", score: 9, deleted: null });
+      };
+
+      const keysOf = async (store: SkeinStore, filter: StoreItemFilter): Promise<string[]> =>
+        (await store.store.search({ filter })).map((item) => item.key).sort();
+
+      it("compares a bare scalar for equality", async () => {
+        const store = await makeStore();
+        await seedItems(store);
+
+        await expect(keysOf(store, { topic: "coffee" })).resolves.toEqual(["a"]);
+      });
+
+      it("supports $eq, $ne, $in and $nin", async () => {
+        const store = await makeStore();
+        await seedItems(store);
+
+        await expect(keysOf(store, { topic: { $eq: "tea" } })).resolves.toEqual(["b"]);
+        await expect(keysOf(store, { topic: { $ne: "tea" } })).resolves.toEqual(["a", "c"]);
+        await expect(keysOf(store, { topic: { $in: ["tea", "cocoa"] } })).resolves.toEqual([
+          "b",
+          "c",
+        ]);
+        await expect(keysOf(store, { topic: { $nin: ["tea", "cocoa"] } })).resolves.toEqual(["a"]);
+      });
+
+      it("orders numbers", async () => {
+        const store = await makeStore();
+        await seedItems(store);
+
+        await expect(keysOf(store, { score: { $gt: 2 } })).resolves.toEqual(["a", "c"]);
+        await expect(keysOf(store, { score: { $gte: 5 } })).resolves.toEqual(["a", "c"]);
+        await expect(keysOf(store, { score: { $lt: 5 } })).resolves.toEqual(["b"]);
+        await expect(keysOf(store, { score: { $lte: 5 } })).resolves.toEqual(["a", "b"]);
+      });
+
+      it("excludes a non-number from every ordering operator", async () => {
+        const store = await makeStore();
+        await store.store.put(["ns"], "numeric", { score: 5 });
+        await store.store.put(["ns"], "stringy", { score: "5" });
+        await store.store.put(["ns"], "boolish", { score: true });
+        await store.store.put(["ns"], "nullish", { score: null });
+
+        // The one deliberate divergence from LangGraph, which coerces both sides with `Number()`.
+        // Postgres cannot: `'abc'::numeric` throws where `Number("abc")` yields NaN.
+        await expect(keysOf(store, { score: { $gte: 0 } })).resolves.toEqual(["numeric"]);
+      });
+
+      it("ANDs across keys and across operators on one key", async () => {
+        const store = await makeStore();
+        await seedItems(store);
+
+        await expect(keysOf(store, { topic: "coffee", score: 5 })).resolves.toEqual(["a"]);
+        await expect(keysOf(store, { topic: "coffee", score: 2 })).resolves.toEqual([]);
+        await expect(keysOf(store, { score: { $gte: 2, $lt: 9 } })).resolves.toEqual(["a", "b"]);
+      });
+
+      it("treats an absent key the way JS treats undefined", async () => {
+        const store = await makeStore();
+        await seedItems(store);
+
+        // Only "c" carries `deleted`, so the other two are absent for every condition on it.
+        await expect(keysOf(store, { deleted: { $ne: "gone" } })).resolves.toEqual(["a", "b", "c"]);
+        await expect(keysOf(store, { deleted: { $eq: "gone" } })).resolves.toEqual([]);
+        await expect(keysOf(store, { missing: { $gt: 0 } })).resolves.toEqual([]);
+      });
+
+      it("distinguishes a present null from an absent key", async () => {
+        const store = await makeStore();
+        await seedItems(store);
+
+        await expect(keysOf(store, { deleted: null })).resolves.toEqual(["c"]);
+        await expect(keysOf(store, { deleted: { $nin: [null] } })).resolves.toEqual(["a", "b"]);
+      });
+
+      it("matches everything on an empty operator bag", async () => {
+        const store = await makeStore();
+        await seedItems(store);
+
+        await expect(keysOf(store, { score: {} })).resolves.toEqual(["a", "b", "c"]);
+      });
+
+      // Both entry points refuse the two shapes below, but a driver is also reachable directly (an
+      // embedder holding a `SkeinStore`), and there the drivers must still agree. Postgres compares
+      // jsonb, which is deep-equal and would match an object the memory driver's `===` never can;
+      // and an operand that is present-but-undefined must not vanish from the SQL, which would drop
+      // the key's only predicate and match *everything*.
+      it("never matches a non-scalar filter value, on either driver", async () => {
+        const store = await makeStore();
+        await store.store.put(["ns"], "a", { tags: ["work"] });
+
+        await expect(keysOf(store, { tags: ["work"] } as StoreItemFilter)).resolves.toEqual([]);
+      });
+
+      it("never matches an ordering operand that is present but undefined", async () => {
+        const store = await makeStore();
+        await seedItems(store);
+
+        await expect(
+          keysOf(store, { score: { $gte: undefined } } as StoreItemFilter),
+        ).resolves.toEqual([]);
+      });
+
+      it("pages the filtered set, not the filtered page", async () => {
+        const store = await makeStore();
+        await store.store.put(["users", "1"], "a", { keep: true });
+        await store.store.put(["users", "2"], "skip", { keep: false });
+        await store.store.put(["users", "3"], "b", { keep: true });
+
+        // A driver that pages first and filters afterwards returns a short page here.
+        const hits = await store.store.search({
+          prefix: ["users"],
+          filter: { keep: true },
+          limit: 2,
+        });
+        expect(hits.map((item) => item.key).sort()).toEqual(["a", "b"]);
+      });
+
+      it("combines a filter with a text query", async () => {
+        const store = await makeStore();
+        await store.store.put(["ns"], "a", { text: "hello world", keep: true });
+        await store.store.put(["ns"], "b", { text: "hello there", keep: false });
+
+        const hits = await store.store.search({ query: "hello", filter: { keep: true } });
+        expect(hits.map((item) => item.key)).toEqual(["a"]);
       });
     });
 

@@ -102,8 +102,8 @@ describe("collection pagination", () => {
     await store.store.put(["users", "2"], "b", { value: 2 });
     await store.store.put(["users", "3"], "c", { value: 3 });
 
-    await expect(store.store.listNamespaces(["users"], { offset: 1, limit: 1 })).resolves.toEqual([
-      ["users", "2"],
-    ]);
+    await expect(
+      store.store.listNamespaces({ prefix: ["users"], offset: 1, limit: 1 }),
+    ).resolves.toEqual([["users", "2"]]);
   });
 });

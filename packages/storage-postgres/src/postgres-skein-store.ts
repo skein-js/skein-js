@@ -35,7 +35,11 @@ import {
   type RunStatus,
   type SearchItem,
   DEFAULT_MAX_PAGE_SIZE,
+  hasNamespaceWildcard,
+  isStoreFilterOperators,
   requireValidMaxPageSize,
+  STORE_FILTER_OPERATORS,
+  type StoreItemFilter,
   type SkeinStore,
   type SkeinStoreSnapshot,
   type StorePutOptions,
@@ -707,6 +711,155 @@ const NOT_EXPIRED = "(expires_at IS NULL OR expires_at > now())";
 const expiresAtSql = (ttlParam: string): string =>
   `CASE WHEN ${ttlParam}::double precision IS NULL THEN NULL ` +
   `ELSE now() + ${ttlParam}::double precision * interval '1 minute' END`;
+
+/**
+ * SQL matching `store_items.namespace` against one positional path, `"*"` matching exactly one
+ * segment. Pushes the `matchesNamespacePrefix`/`Suffix` rules down so the page bound applies to the
+ * matched set, rather than to a full-table read sliced afterwards.
+ *
+ * The path is bound as a single `text[]` parameter and the only literal is our own `'*'`, so nothing
+ * here is string-built from caller data.
+ *
+ * Without a wildcard this stays the slice equality it has always been. Neither form can use an index
+ * — `store_items`' only relevant one is the `(namespace, key)` primary key, and Postgres will not
+ * derive a range scan from a slice expression — so the split is for plan simplicity on the
+ * overwhelmingly common concrete-path case, not for index use.
+ */
+function namespacePathSql(
+  path: readonly string[],
+  anchor: "prefix" | "suffix",
+  params: unknown[],
+): string {
+  params.push(path);
+  const bound = `$${params.length}::text[]`;
+
+  if (!hasNamespaceWildcard(path)) {
+    return anchor === "prefix"
+      ? `namespace[1:cardinality(${bound})] = ${bound}`
+      : `cardinality(${bound}) <= cardinality(namespace)
+         AND namespace[cardinality(namespace) - cardinality(${bound}) + 1:cardinality(namespace)] = ${bound}`;
+  }
+
+  // `IS DISTINCT FROM` rather than `<>`: an out-of-range subscript yields NULL, which would otherwise
+  // make the whole predicate NULL instead of "does not match".
+  const segment =
+    anchor === "prefix"
+      ? "namespace[i]"
+      : `namespace[cardinality(namespace) - cardinality(${bound}) + i]`;
+
+  return `cardinality(${bound}) <= cardinality(namespace) AND NOT EXISTS (
+            SELECT 1 FROM generate_subscripts(${bound}, 1) AS i
+             WHERE (${bound})[i] <> '*' AND ${segment} IS DISTINCT FROM (${bound})[i])`;
+}
+
+/**
+ * Ordering comparison for a store filter. Numbers only, both sides — see `matchesItemFilter`.
+ *
+ * `CASE`, not `jsonb_typeof(...) = 'number' AND (...)::numeric > ...`: Postgres does not promise
+ * left-to-right `AND` evaluation, so a guard written as a conjunct can be reordered behind the cast
+ * and `'abc'::numeric` throws. `CASE` does promise its unchosen branches are not evaluated.
+ */
+const numericCompareSql = (at: string, op: string, bound: string): string =>
+  `CASE WHEN jsonb_typeof(${at}) = 'number' THEN (${at})::text::numeric ${op} ${bound}::numeric ` +
+  `ELSE false END`;
+
+/**
+ * Membership of the item's JSON value in a bound JSON array. Used by `$in` and (negated) `$nin`.
+ *
+ * The column alias is explicit — `AS operand(candidate)`, not `AS candidate`. A bare `AS candidate`
+ * names the *table*, so the unqualified reference resolves to the whole composite row and compares
+ * unequal to every jsonb without erroring: `$in` would silently match nothing and `$nin` everything.
+ *
+ * `jsonb_array_elements` yields a JSON `null` as `'null'::jsonb`, never as SQL NULL, so `$nin: [null]`
+ * excludes an item whose key is present-and-null while keeping one where the key is absent.
+ */
+const jsonbMemberSql = (at: string, bound: string): string =>
+  `EXISTS (SELECT 1 FROM jsonb_array_elements(${bound}::jsonb) AS operand(candidate)
+            WHERE operand.candidate IS NOT DISTINCT FROM ${at})`;
+
+/**
+ * WHERE fragments for a store filter, over the TOP-LEVEL keys of `value`. Keys and operators are
+ * both ANDed, which is why this returns a list rather than one string.
+ *
+ * Pushed into SQL rather than filtered in JS so `OFFSET`/`LIMIT` applies to the *matched* set. The
+ * text-query path a few lines below documents what the alternative costs: an unbounded read.
+ *
+ * Absent-key behaviour falls out of the encoding rather than needing a special case: `value -> $key`
+ * is SQL NULL when the key is missing, so `IS NOT DISTINCT FROM` reads as "no match" for `$eq` and
+ * `IS DISTINCT FROM` reads as "match" for `$ne` — exactly what `undefined === x` / `undefined !== x`
+ * do in JS. A stored JSON `null` is `'null'::jsonb`, distinct from SQL NULL, so present-null and
+ * absent stay distinguishable.
+ */
+function itemFilterSql(filter: StoreItemFilter, params: unknown[]): string[] {
+  const predicates: string[] = [];
+
+  for (const [key, condition] of Object.entries(filter)) {
+    if (!isStoreFilterOperators(condition)) {
+      // Deep-equal jsonb would match an object or array here where JS `===` never can, so a
+      // non-scalar is pinned to "never matches" instead of being left to diverge from the memory
+      // driver. Both entry points refuse this shape; a direct `StoreRepo` caller has neither gate in
+      // front of it, and a driver disagreement is the worse failure.
+      if (condition !== null && typeof condition === "object") {
+        predicates.push("false");
+        continue;
+      }
+      params.push(key, JSON.stringify(condition));
+      predicates.push(
+        `value -> $${params.length - 1}::text IS NOT DISTINCT FROM $${params.length}::jsonb`,
+      );
+      continue;
+    }
+
+    // Enumerated from the shared operator list, so the set that validates at the HTTP boundary and
+    // the set that reaches SQL cannot drift apart. Keyed on *presence*, not on `!== undefined`: an
+    // explicitly-undefined operand would otherwise vanish, and a key whose only operand vanished
+    // would emit no predicate at all — matching everything, where the memory driver matches nothing.
+    const operators = STORE_FILTER_OPERATORS.filter((operator) => operator in condition);
+    // An empty bag states no conditions, so it matches everything — exactly as `[].every(...)` does
+    // in the memory driver. Bind the key only once something will reference it: an orphaned
+    // parameter makes Postgres reject the whole statement as untypeable.
+    if (operators.length === 0) continue;
+
+    params.push(key);
+    // `::text` is explicit because `jsonb -> ?` is overloaded on `text` (object key) and `int`
+    // (array index); an untyped bind parameter leaves Postgres to pick, and the two mean different
+    // things.
+    const at = `value -> $${params.length}::text`;
+
+    for (const operator of operators) {
+      params.push(JSON.stringify(condition[operator]));
+      const bound = `$${params.length}`;
+
+      switch (operator) {
+        case "$eq":
+          predicates.push(`${at} IS NOT DISTINCT FROM ${bound}::jsonb`);
+          break;
+        case "$ne":
+          predicates.push(`${at} IS DISTINCT FROM ${bound}::jsonb`);
+          break;
+        case "$gt":
+          predicates.push(numericCompareSql(at, ">", bound));
+          break;
+        case "$gte":
+          predicates.push(numericCompareSql(at, ">=", bound));
+          break;
+        case "$lt":
+          predicates.push(numericCompareSql(at, "<", bound));
+          break;
+        case "$lte":
+          predicates.push(numericCompareSql(at, "<=", bound));
+          break;
+        case "$in":
+          predicates.push(jsonbMemberSql(at, bound));
+          break;
+        case "$nin":
+          predicates.push(`NOT ${jsonbMemberSql(at, bound)}`);
+          break;
+      }
+    }
+  }
+  return predicates;
+}
 
 /** Postgres `SkeinStore`. Construct with {@link PostgresSkeinStore.connect}, run {@link migrate}. */
 export class PostgresSkeinStore implements SkeinStore {
@@ -1865,19 +2018,33 @@ export class PostgresSkeinStore implements SkeinStore {
       ]);
     },
     search: async (query: StoreSearchQuery) => this.#search(query),
-    listNamespaces: async (prefix, pagination) => {
-      const usePrefix = prefix !== undefined && prefix.length > 0;
-      const clause = usePrefix
-        ? `WHERE namespace[1:cardinality($1::text[])] = $1::text[] AND ${NOT_EXPIRED}`
-        : `WHERE ${NOT_EXPIRED}`;
-      const params: unknown[] = usePrefix ? [prefix] : [];
-      let paginationSql = "";
-      if (pagination?.limit !== undefined) {
-        params.push(pagination.offset ?? 0, pagination.limit);
-        paginationSql = ` OFFSET $${params.length - 1} LIMIT $${params.length}`;
+    listNamespaces: async (query) => {
+      const params: unknown[] = [];
+      const conditions = [NOT_EXPIRED];
+      if (query?.prefix?.length) conditions.push(namespacePathSql(query.prefix, "prefix", params));
+      if (query?.suffix?.length) conditions.push(namespacePathSql(query.suffix, "suffix", params));
+
+      // `maxDepth` is a projection, not a post-filter: DISTINCT dedupes the *truncated* form, which is
+      // the truncate-then-dedupe-then-sort-then-slice order the memory driver and LangGraph both use.
+      let projection = "namespace";
+      if (query?.maxDepth !== undefined) {
+        params.push(query.maxDepth);
+        projection = `namespace[1:$${params.length}]`;
       }
+
+      // Always paged. `offset` used to be ignored unless a `limit` came with it, so an offset-only
+      // page silently answered from row 0 — and an absent limit read every namespace in the table,
+      // the one list path that escaped the shared page bound.
+      params.push(query?.offset ?? 0);
+      const offsetParam = `$${params.length}`;
+      params.push(this.#pageLimit(query?.limit));
+
+      // The projection is repeated in ORDER BY because SELECT DISTINCT requires every ordering
+      // expression to appear in the select list.
       const { rows } = await this.#pool.query<{ namespace: string[] }>(
-        `SELECT DISTINCT namespace FROM store_items ${clause} ORDER BY namespace${paginationSql}`,
+        `SELECT DISTINCT ${projection} AS namespace FROM store_items
+          WHERE ${conditions.join(" AND ")}
+          ORDER BY ${projection} OFFSET ${offsetParam} LIMIT $${params.length}`,
         params,
       );
       return rows.map((row) => row.namespace);
@@ -2073,9 +2240,12 @@ export class PostgresSkeinStore implements SkeinStore {
       const params: unknown[] = [queryVector];
       let where = `embedding IS NOT NULL AND ${NOT_EXPIRED}`;
       if (usePrefix) {
-        params.push(query.prefix);
-        where += ` AND namespace[1:cardinality($${params.length}::text[])] = $${params.length}::text[]`;
+        where += ` AND ${namespacePathSql(query.prefix as string[], "prefix", params)}`;
       }
+      // Narrows the candidate set *before* the cosine ordering, so the page is the top-n of the
+      // filtered rows rather than the filtered subset of the top-n.
+      for (const predicate of itemFilterSql(query.filter ?? {}, params))
+        where += ` AND ${predicate}`;
       params.push(query.offset ?? 0);
       const offsetParam = `$${params.length}`;
       // Always bounded: an absent limit means the first page, not the whole table.
@@ -2090,10 +2260,13 @@ export class PostgresSkeinStore implements SkeinStore {
       return rows.map((row) => rowToItem(row, row.score));
     }
 
-    const params: unknown[] = usePrefix ? [query.prefix] : [];
-    const clause = usePrefix
-      ? `WHERE namespace[1:cardinality($1::text[])] = $1::text[] AND ${NOT_EXPIRED}`
-      : `WHERE ${NOT_EXPIRED}`;
+    const params: unknown[] = [];
+    const conditions = [NOT_EXPIRED];
+    if (usePrefix) {
+      conditions.push(namespacePathSql(query.prefix as string[], "prefix", params));
+    }
+    conditions.push(...itemFilterSql(query.filter ?? {}, params));
+    const clause = `WHERE ${conditions.join(" AND ")}`;
 
     // Without a text query the rows SQL returns are exactly the rows we return, so paginate in the
     // database. This is the common shape — a plain namespace listing — and it used to read the whole

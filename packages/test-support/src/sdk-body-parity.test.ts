@@ -70,8 +70,11 @@ function sdkBodyKeys(source: string, methodSignature: string): string[] {
   if (methodAt === -1) {
     throw new Error(`method not found in the installed SDK: ${methodSignature}`);
   }
-  // Both spellings the client uses: `const json = {` (assigned, then passed) and an inline `json: {`.
-  const candidates = [/const json = \{/g, /\bjson: \{/g]
+  // Every spelling the client uses: `const json = {` and `const payload = {` (assigned, then passed
+  // as `json:`), and an inline `json: {`. The store methods use `payload`, and missing that spelling
+  // is not a loud failure in the wrong direction — `sdkBodyKeys` throws rather than reporting an
+  // empty body, so a fourth spelling shows up as a red test rather than a vacuous pass.
+  const candidates = [/const json = \{/g, /const payload = \{/g, /\bjson: \{/g]
     .map((pattern) => {
       pattern.lastIndex = methodAt;
       return pattern.exec(source)?.index;
@@ -103,6 +106,9 @@ const RUN_CREATE_METHODS = [
   "async wait(threadId, assistantId, payload)",
 ];
 
+const STORE_SEARCH_METHOD = "async searchItems(namespacePrefix, options)";
+const STORE_NAMESPACES_METHOD = "async listNamespaces(options)";
+
 describe("SDK request-body parity", () => {
   // Self-guarding. Every assertion below is a "nothing is missing" check, which passes vacuously if
   // either extractor quietly stops finding anything. Pin the shapes so a broken parse fails loudly.
@@ -114,6 +120,12 @@ describe("SDK request-body parity", () => {
     expect(sdkBodyKeys(sdkClient("threads"), "async create(payload)")).toContain("if_exists");
     expect(skeinSchemaKeys(skeinSchemas(), "runCreateSchema").length).toBeGreaterThan(15);
     expect(skeinSchemaKeys(skeinSchemas(), "threadCreateSchema")).toContain("if_exists");
+    // The store methods were the gap this file was blind to: `filter` and `max_depth` reached the
+    // server, validated, and were dropped — for `filter`, the whole point of the request.
+    expect(sdkBodyKeys(sdkClient("store"), STORE_SEARCH_METHOD)).toContain("filter");
+    expect(sdkBodyKeys(sdkClient("store"), STORE_NAMESPACES_METHOD)).toContain("max_depth");
+    expect(skeinSchemaKeys(skeinSchemas(), "storeSearchSchema")).toContain("filter");
+    expect(skeinSchemaKeys(skeinSchemas(), "listNamespacesSchema")).toContain("max_depth");
   });
 
   it.each(RUN_CREATE_METHODS)("names every field runs.%s sends", (method) => {
@@ -133,6 +145,20 @@ describe("SDK request-body parity", () => {
   it("names every field threads.update sends", () => {
     const sent = sdkBodyKeys(sdkClient("threads"), "async update(threadId, payload)");
     const named = skeinSchemaKeys(skeinSchemas(), "threadPatchSchema");
+
+    expect(sent.filter((key) => !named.includes(key)).sort()).toEqual([]);
+  });
+
+  it("names every field store.searchItems sends", () => {
+    const sent = sdkBodyKeys(sdkClient("store"), STORE_SEARCH_METHOD);
+    const named = skeinSchemaKeys(skeinSchemas(), "storeSearchSchema");
+
+    expect(sent.filter((key) => !named.includes(key)).sort()).toEqual([]);
+  });
+
+  it("names every field store.listNamespaces sends", () => {
+    const sent = sdkBodyKeys(sdkClient("store"), STORE_NAMESPACES_METHOD);
+    const named = skeinSchemaKeys(skeinSchemas(), "listNamespacesSchema");
 
     expect(sent.filter((key) => !named.includes(key)).sort()).toEqual([]);
   });

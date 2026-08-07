@@ -4,8 +4,8 @@
 import {
   SkeinHttpError,
   type Item,
-  type Pagination,
   type SearchItem,
+  type StoreNamespaceQuery,
   type StorePutOptions,
   type StoreSearchQuery,
 } from "@skein-js/core";
@@ -22,7 +22,7 @@ export interface StoreService {
   get(namespace: string[], key: string): Promise<Item>;
   delete(namespace: string[], key: string): Promise<void>;
   search(query: StoreSearchQuery): Promise<SearchItem[]>;
-  listNamespaces(prefix?: string[], pagination?: Pagination): Promise<string[][]>;
+  listNamespaces(query?: StoreNamespaceQuery): Promise<string[][]>;
 }
 
 export function createStoreService(deps: ResolvedDeps): StoreService {
@@ -43,6 +43,6 @@ export function createStoreService(deps: ResolvedDeps): StoreService {
 
     search: (query) => deps.store.store.search(query),
 
-    listNamespaces: (prefix, pagination) => deps.store.store.listNamespaces(prefix, pagination),
+    listNamespaces: (query) => deps.store.store.listNamespaces(query),
   };
 }

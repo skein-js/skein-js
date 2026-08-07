@@ -53,6 +53,7 @@
     "@langchain/langgraph-sdk": "^1.9.0"
   },
   "devDependencies": {
+    "@langchain/langgraph-sdk": "^1.9.0",
     "@skein-js/storage-memory": "workspace:*"
   },
   "publishConfig": {

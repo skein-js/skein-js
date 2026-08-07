@@ -15,7 +15,7 @@ describe("store service", () => {
     const hits = await service.search({ prefix: ["users"] });
     expect(hits).toHaveLength(1);
 
-    expect(await service.listNamespaces(["users"])).toEqual([["users", "1"]]);
+    expect(await service.listNamespaces({ prefix: ["users"] })).toEqual([["users", "1"]]);
 
     await service.delete(["users", "1"], "profile");
     await expect(service.get(["users", "1"], "profile")).rejects.toMatchObject({ status: 404 });

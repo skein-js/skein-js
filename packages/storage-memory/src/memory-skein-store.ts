@@ -8,11 +8,16 @@
 import { randomUUID } from "node:crypto";
 
 import {
+  compareNamespaces,
   DEFAULT_MAX_PAGE_SIZE,
   requireValidMaxPageSize,
   isMetadataSubset,
   isTerminalRunStatus,
+  matchesItemFilter,
+  matchesNamespacePrefix,
+  matchesNamespaceQuery,
   SkeinHttpError,
+  truncateNamespaceDepth,
   type Assistant,
   type AssistantCreate,
   type AssistantRepo,
@@ -117,11 +122,16 @@ function write<T>(map: Map<string, T>, id: string, row: T): T {
   return clone(stored);
 }
 
-/** True if `namespace` starts with every segment of `prefix` (empty/absent prefix matches all). */
+/**
+ * True if `namespace` is under `prefix` (empty/absent prefix matches all).
+ *
+ * `matchesNamespacePrefix` rather than a local segment loop, so `search`'s `prefix` and
+ * `listNamespaces`' honour the same wildcard rule — they used to disagree, with `"*"` matching
+ * nothing here and *everything* through the `BaseStore` bridge.
+ */
 function hasPrefix(namespace: string[], prefix?: string[]): boolean {
   if (!prefix || prefix.length === 0) return true;
-  if (prefix.length > namespace.length) return false;
-  return prefix.every((segment, i) => namespace[i] === segment);
+  return matchesNamespacePrefix(namespace, prefix);
 }
 
 /** Serialize a (namespace, key) pair to a collision-free Map key. */
@@ -866,6 +876,7 @@ export class MemorySkeinStore implements SkeinStore {
         .filter(([id]) => !this.#isExpired(id))
         .map(([, item]) => item)
         .filter((item) => hasPrefix(item.namespace, query.prefix))
+        .filter((item) => matchesItemFilter(item.value, query.filter))
         .filter((item) =>
           needle ? JSON.stringify(item.value).toLowerCase().includes(needle) : true,
         );
@@ -876,20 +887,27 @@ export class MemorySkeinStore implements SkeinStore {
       if (needle) for (const item of page) item.score = 1;
       return page;
     },
-    listNamespaces: async (prefix, pagination) => {
+    listNamespaces: async (query) => {
       // Key by JSON.stringify (not join) so distinct namespaces whose segments contain the
       // separator can't collide.
       const seen = new Map<string, string[]>();
       for (const [id, item] of this.#items.entries()) {
         if (this.#isExpired(id)) continue;
-        if (hasPrefix(item.namespace, prefix)) {
+        if (matchesNamespaceQuery(item.namespace, query)) {
           seen.set(JSON.stringify(item.namespace), item.namespace);
         }
       }
-      const namespaces = [...seen.values()].map((namespace) => [...namespace]);
-      const offset = pagination?.offset ?? 0;
-      const end = pagination?.limit === undefined ? undefined : offset + pagination.limit;
-      return namespaces.slice(offset, end);
+      let namespaces = [...seen.values()].map((namespace) => [...namespace]);
+      // Truncate before sorting and paging, so `{ maxDepth: 1, limit: 10 }` pages ten roots rather
+      // than the roots of the first ten namespaces.
+      if (query?.maxDepth !== undefined) {
+        namespaces = truncateNamespaceDepth(namespaces, query.maxDepth);
+      }
+      namespaces.sort(compareNamespaces);
+      // Always bounded, like every other list path: an absent limit means the first page, not every
+      // namespace in the store.
+      const offset = query?.offset ?? 0;
+      return namespaces.slice(offset, offset + this.#pageLimit(query?.limit));
     },
     sweepExpired: async () => {
       let removed = 0;

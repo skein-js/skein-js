@@ -3,6 +3,7 @@
 // package stays lean. Schemas are permissive where the protocol is (unknown `input`/`context`,
 // pass-through extras) and strict where correctness depends on it (`assistant_id`, store keys).
 
+import { MAX_NAMESPACE_DEPTH, storeItemFilterProblem } from "@skein-js/core";
 import { z } from "zod";
 
 const commandSchema = z
@@ -437,20 +438,58 @@ export const threadHistorySchema = z
   })
   .optional();
 
+/**
+ * A store search `filter`.
+ *
+ * The rules live in `@skein-js/core`'s `storeItemFilterProblem` rather than in Zod here, because this
+ * is not the only entry point: a graph node reaching the store through `getStore()` never passes a
+ * schema, and two hand-kept copies of "what is a valid filter" would drift silently — the conformance
+ * suite only ever sees filters that already passed one of the gates. Zod stays the *mechanism* at the
+ * HTTP boundary; core owns the contract.
+ *
+ * What it refuses, and why each would otherwise be silent: an unknown `$`-operator (a typo'd `$gte`
+ * states no condition, so it matches *everything*), a non-scalar value (`===` against an object is
+ * always false, so it matches *nothing*), and a non-numeric ordering operand (which Postgres cannot
+ * cast — `'abc'::numeric` throws where `Number("abc")` merely yields `NaN`).
+ */
+const storeFilterSchema = z.record(z.unknown()).superRefine((value, ctx) => {
+  const problem = storeItemFilterProblem(value);
+  if (problem) ctx.addIssue({ code: z.ZodIssueCode.custom, message: problem });
+});
+
 /** `POST /store/items/search`. `limit` is capped so a client can't request an unbounded page. */
 export const storeSearchSchema = z
   .object({
     namespace_prefix: z.array(z.string()).optional(),
     query: z.string().optional(),
+    /** Narrows on the TOP-LEVEL keys of an item's `value`, not nested JSON paths — LangGraph's rule. */
+    filter: storeFilterSchema.optional(),
     limit: z.number().int().positive().max(1000).optional(),
     offset: z.number().int().nonnegative().optional(),
+    /**
+     * Accepted and ignored: refresh-on-read is configured once via `langgraph.json`'s
+     * `store.ttl.refresh_on_read`, not per request. Named rather than merely passed through so
+     * `sdk-body-parity.test.ts` can see that the SDK sends it.
+     */
+    refresh_ttl: z.boolean().nullable().optional(),
   })
   .passthrough();
 
 /** `POST /store/namespaces`. */
 export const listNamespacesSchema = z
   .object({
+    /** Anchored at the first segment. `"*"` matches exactly one segment, positionally. */
     prefix: z.array(z.string()).optional(),
+    /** Anchored at the last segment, same wildcard rule. ANDed with `prefix`. */
+    suffix: z.array(z.string()).optional(),
+    /**
+     * Truncate each matched namespace to this many segments, then de-duplicate.
+     *
+     * Capped like every other numeric input here, even though truncation can only ever shorten the
+     * result: the value is bound into an array subscript, and Postgres subscripts are `int4` — an
+     * unbounded one overflows and 500s where it should 400. No real namespace is 1000 deep.
+     */
+    max_depth: z.number().int().positive().max(MAX_NAMESPACE_DEPTH).optional(),
     limit: z.number().int().positive().max(1000).optional(),
     offset: z.number().int().nonnegative().optional(),
   })

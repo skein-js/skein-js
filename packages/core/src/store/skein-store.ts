@@ -28,6 +28,9 @@ import type {
   ThreadStatus,
 } from "../wire/wire.js";
 
+import type { StoreItemFilter } from "./item-filter.js";
+import type { StoreNamespaceQuery } from "./namespace-match.js";
+
 // --- assistants ---------------------------------------------------------------------------
 
 /** Fields accepted when registering an assistant (from a langgraph.json graph or the API). */
@@ -531,6 +534,13 @@ export interface StoreSearchQuery {
   prefix?: string[];
   /** Natural-language query for semantic search (naive scan in the memory driver). */
   query?: string;
+  /**
+   * Narrow by the **top-level** keys of each item's `value`. Keys are ANDed.
+   *
+   * Applied before paging, so a page is a page of *matches*. See {@link matchesItemFilter} for the
+   * operator set and the one place it departs from LangGraph.
+   */
+  filter?: StoreItemFilter;
   limit?: number;
   offset?: number;
 }
@@ -565,7 +575,14 @@ export interface StoreRepo {
   ): Promise<Item>;
   delete(namespace: string[], key: string): Promise<void>;
   search(query: StoreSearchQuery): Promise<SearchItem[]>;
-  listNamespaces(prefix?: string[], pagination?: Pagination): Promise<string[][]>;
+  /**
+   * Distinct namespaces, matched and paged per {@link StoreNamespaceQuery}.
+   *
+   * Takes a query object rather than `(prefix, pagination)` because the positional form could not
+   * express a wildcard, a suffix or a depth — and "could not express" is how `["users", "*"]` came to
+   * be read as *no prefix at all* and return every namespace in the store.
+   */
+  listNamespaces(query?: StoreNamespaceQuery): Promise<string[][]>;
   /** Delete every expired item; returns how many were removed. No-op when TTL is unconfigured. */
   sweepExpired(): Promise<number>;
 }

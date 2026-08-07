@@ -83,6 +83,35 @@ export {
   TERMINAL_RUN_STATUSES,
 } from "./store/skein-store.js";
 
+// Store traversal semantics. Shared rather than per-driver: the memory driver runs these directly
+// and the Postgres driver mirrors them in SQL, so both the operator set and the matching rules have
+// to have exactly one definition. The conformance suite holds the drivers to them.
+export type {
+  StoreFilterCondition,
+  StoreFilterOperators,
+  StoreFilterScalar,
+  StoreItemFilter,
+} from "./store/item-filter.js";
+export {
+  isStoreFilterOperators,
+  matchesItemFilter,
+  parseStoreItemFilter,
+  STORE_FILTER_OPERATORS,
+  storeItemFilterProblem,
+} from "./store/item-filter.js";
+export type { StoreNamespaceQuery } from "./store/namespace-match.js";
+export {
+  compareNamespaces,
+  hasNamespaceWildcard,
+  isValidNamespaceDepth,
+  MAX_NAMESPACE_DEPTH,
+  matchesNamespacePrefix,
+  matchesNamespaceQuery,
+  matchesNamespaceSuffix,
+  NAMESPACE_WILDCARD,
+  truncateNamespaceDepth,
+} from "./store/namespace-match.js";
+
 // Cross-instance per-thread execution serialization contract.
 export type { ThreadExecutionGate, ThreadExecutionLease } from "./queue/thread-execution-gate.js";
 

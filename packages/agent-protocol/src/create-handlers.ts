@@ -10,6 +10,8 @@ import {
   SkeinHttpError,
   type RunFrame,
   type RunStatus,
+  type SearchItem,
+  type StoreItemFilter,
 } from "@skein-js/core";
 
 import type { CancelRunOptions, CreateRunInput } from "./runs/run-service.js";
@@ -145,6 +147,24 @@ const json = (body: unknown, status = 200, headers?: Record<string, string>): Pr
   headers,
 });
 const empty = (status = 204): ProtocolResponse => ({ kind: "empty", status });
+
+/**
+ * A store item on the wire: `created_at`/`updated_at`, not the domain type's camelCase.
+ *
+ * The SDK's store client maps `created_at → createdAt` when it reads a response
+ * (`getItem`, `searchItems`), so emitting camelCase made it overwrite the real values with
+ * `undefined` — every item came back through the official client with no timestamps at all. Snake
+ * case is also what every other resource here emits, so this brings the store into line rather than
+ * making it the exception.
+ *
+ * Note that `@skein-js/core`'s `Item` is re-exported straight from the SDK's own `schema.d.ts`, which
+ * declares camelCase; upstream is internally inconsistent between that type and its client's
+ * transform. The client is the wire authority, so `Item` stays the domain type and converts here.
+ */
+function storeItemBody(item: SearchItem): Record<string, unknown> {
+  const { createdAt, updatedAt, ...rest } = item;
+  return { ...rest, created_at: createdAt, updated_at: updatedAt };
+}
 
 /** A single query value: the first entry if repeated, else the string, else undefined. */
 function queryValue(value: string | string[] | undefined): string | undefined {
@@ -780,13 +800,17 @@ export function createProtocolHandlers(service: ProtocolService): ProtocolHandle
     // --- store --------------------------------------------------------------------------------
     putStoreItem: async (req) => {
       const body = parse(storePutSchema, req.body);
-      return json(await service.store.put(body.namespace, body.key, body.value, { ttl: body.ttl }));
+      return json(
+        storeItemBody(
+          await service.store.put(body.namespace, body.key, body.value, { ttl: body.ttl }),
+        ),
+      );
     },
 
     getStoreItem: async (req) => {
       const namespace = namespaceFromQuery(req.query["namespace"]);
       const key = queryValue(req.query["key"]) ?? "";
-      return json(await service.store.get(namespace, key));
+      return json(storeItemBody(await service.store.get(namespace, key)));
     },
 
     deleteStoreItem: async (req) => {
@@ -798,24 +822,26 @@ export function createProtocolHandlers(service: ProtocolService): ProtocolHandle
 
     searchStoreItems: async (req) => {
       const body = parse(storeSearchSchema, req.body ?? {});
-      return json(
-        await service.store.search({
-          prefix: body.namespace_prefix,
-          query: body.query,
-          limit: body.limit,
-          offset: body.offset,
-        }),
-      );
+      const items = await service.store.search({
+        prefix: body.namespace_prefix,
+        query: body.query,
+        filter: body.filter as StoreItemFilter | undefined,
+        limit: body.limit,
+        offset: body.offset,
+      });
+      return json({ items: items.map(storeItemBody) });
     },
 
     listStoreNamespaces: async (req) => {
       const body = parse(listNamespacesSchema, req.body ?? {});
-      return json(
-        await service.store.listNamespaces(body.prefix, {
-          limit: body.limit ?? DEFAULT_COLLECTION_PAGE_SIZE,
-          ...(body.offset !== undefined ? { offset: body.offset } : {}),
-        }),
-      );
+      const namespaces = await service.store.listNamespaces({
+        ...(body.prefix !== undefined ? { prefix: body.prefix } : {}),
+        ...(body.suffix !== undefined ? { suffix: body.suffix } : {}),
+        ...(body.max_depth !== undefined ? { maxDepth: body.max_depth } : {}),
+        limit: body.limit ?? DEFAULT_COLLECTION_PAGE_SIZE,
+        ...(body.offset !== undefined ? { offset: body.offset } : {}),
+      });
+      return json({ namespaces });
     },
   };
 }
