@@ -97,12 +97,18 @@ export type TelemetryConfig = z.infer<typeof telemetrySchema>;
  */
 const idempotencySchema = z
   .object({
+    // All three are `.positive()`, not bare numbers. Zero would pass a bare `z.number()` and then
+    // survive the `?? default` fallback (`??` only falls through on nullish), so `retention_hours: 0`
+    // would write every record already expired and silently stop every replay — turning a block whose
+    // own documentation says it "is tuning, not an on/off switch" into exactly that off switch.
+    // `in_flight_minutes: 0` is worse: a concurrent retry takes over a live claim at once and starts
+    // the second run. `sweep_interval_minutes: 0` makes the sweeper a `setTimeout(…, 0)` busy loop.
     /** How long a recorded response stays replayable, in hours (default 24). */
-    retention_hours: z.number().optional(),
+    retention_hours: z.number().positive().optional(),
     /** How long an unfinished claim blocks a retry, in minutes (default 15). */
-    in_flight_minutes: z.number().optional(),
+    in_flight_minutes: z.number().positive().optional(),
     /** How often the background sweeper reclaims expired records, in minutes (default 60). */
-    sweep_interval_minutes: z.number().optional(),
+    sweep_interval_minutes: z.number().positive().optional(),
   })
   .passthrough();
 

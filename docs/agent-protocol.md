@@ -393,8 +393,13 @@ believing your retries are deduplicated while every one starts another run.
 | ------------------------------------------------ | -------------------------------------------------------------- |
 | Key unseen                                       | Executes normally; the response is recorded                    |
 | Key seen, same request, original done            | The recorded response verbatim, plus `Idempotent-Replay: true` |
-| Key seen, same request, original still in flight | `409` — retry shortly (the connection is not held)             |
-| Key seen, **different** request body             | `422` — same key, different request is a caller bug            |
+| Key seen, same request, original still in flight | `409` `idempotency_key_in_flight` — retry shortly              |
+| Key seen, **different** request body             | `422` `idempotency_key_reused` — a caller bug; do not retry    |
+| Key over 255 chars, or not printable ASCII       | `422` `invalid_idempotency_key`                                |
+
+The `code` carries the meaning on the 422s: these routes already answer 422 for a _transient_ reason
+(`thread_busy`, under the `reject` multitask strategy), and the two demand opposite client behaviour.
+Keys follow Stripe's 255-character limit.
 
 `Content-Location` is replayed with the rest of the response, so the SDK's `onRunCreated` still fires
 and `useStream`'s `reconnectOnMount` still works on a retry.
@@ -406,17 +411,22 @@ A few properties worth knowing:
   exactly one run. Held to that by the shared `SkeinStore` conformance suite, on every driver.
 - **Keys are scoped per principal** when auth is configured, so one caller cannot replay another's
   response by guessing their key.
+- **A replay is re-authorized.** It answers from the record without reaching the handler table, so
+  the route's `@auth.on.*` check runs again first — and when it returns ownership filters, the
+  recorded thread is re-read through the scoped store. Revoking a caller's access stops their replays
+  at once rather than at the end of the retention window.
 - **Failures are never recorded.** A create that throws or answers non-2xx releases its key, so the
   next retry really runs — pinning a transient 503 for the retention would make a momentary outage
   permanent for that key.
 - **At-least-once, not exactly-once.** The guarantee is that a retry of the _same_ request does not
   create a second run. Choose keys that are stable across retries (the upstream provider's message id
   is usually right).
-- **Deleting a thread erases its recorded responses.** A recorded response has to outlive its run for
-  a replay to mean anything, and for `POST /runs/wait` that response _is_ the graph's final state — so
-  `DELETE /threads/{thread_id}` takes the matching records with it, as does an assistant delete and
-  thread-TTL expiry. Erasure means erasure; a retry afterwards executes again rather than replaying,
-  and on a deleted thread that is a 404.
+- **Deleting a thread or a run erases its recorded responses.** A recorded response has to outlive
+  its run for a replay to mean anything, and for `POST /runs/wait` that response _is_ the graph's
+  final state — so `DELETE /threads/{thread_id}` takes the matching records with it, as do
+  `DELETE /threads/{thread_id}/runs/{run_id}`, an assistant delete, and thread-TTL expiry. Erasure
+  means erasure; a retry afterwards executes again rather than replaying, and on a deleted thread
+  that is a 404.
 
   The one deletion that does **not** erase is a stateless run tidying up its own server-created thread
   (`on_completion: "delete"`). That thread is an implementation detail of `POST /runs`, disposed of on

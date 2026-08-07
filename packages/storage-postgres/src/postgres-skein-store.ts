@@ -1933,8 +1933,13 @@ export class PostgresSkeinStore implements SkeinStore {
               SET fingerprint = EXCLUDED.fingerprint,
                   claim_id    = EXCLUDED.claim_id,
                   status      = 'in_flight',
+                  -- Every field the dead claim recorded is cleared, thread_id included. Leaving it
+                  -- would attach the previous claim's thread to this live one, so deleting that
+                  -- thread would erase a claim still in flight — whose record() would then match no
+                  -- row, silently drop the response, and let the next retry start a second run.
                   response    = NULL,
                   run_id      = NULL,
+                  thread_id   = NULL,
                   expires_at  = EXCLUDED.expires_at,
                   updated_at  = now()
             WHERE idempotency_records.expires_at <= $6::timestamptz
@@ -2009,19 +2014,30 @@ export class PostgresSkeinStore implements SkeinStore {
       );
       return rowCount ?? 0;
     },
-    sweepExpired: async () => {
+    deleteByRun: async (runId) => {
+      const { rowCount } = await this.#pool.query(
+        "DELETE FROM idempotency_records WHERE run_id = $1",
+        [runId],
+      );
+      return rowCount ?? 0;
+    },
+    sweepExpired: async (now) => {
       // Batched by `ctid`, exactly as the store-item sweep is and for the same reason: one unbounded
       // DELETE against a backlog larger than `statement_timeout` can never succeed again once it has
       // fallen behind.
+      //
+      // Against the caller's `now`, not the database's — see the contract. A database clock running
+      // ahead of the application's would delete rows `claim` still treats as replayable.
       let swept = 0;
       for (;;) {
         const { rowCount } = await this.#pool.query(
           `DELETE FROM idempotency_records
             WHERE ctid IN (
               SELECT ctid FROM idempotency_records
-               WHERE expires_at <= now()
+               WHERE expires_at <= $1::timestamptz
                LIMIT ${SWEEP_BATCH_ROWS}
             )`,
+          [now],
         );
         const deleted = rowCount ?? 0;
         swept += deleted;

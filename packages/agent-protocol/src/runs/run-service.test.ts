@@ -246,4 +246,36 @@ describe("run service", () => {
     const replay = await collect(await service.runs.join(runId, 0));
     expect(replay.length).toBeGreaterThan(0);
   });
+
+  it("delete erases the run's recorded idempotency response", async () => {
+    // The run-level counterpart of the thread erasure. A recorded response outlives its run by design
+    // so a retry can replay it, and for `POST /runs/wait` that response *is* the graph's final state
+    // — so deleting the run has to take it, or the whole output survives in a table no API surfaces.
+    const deps = createFixtureDeps();
+    const { service } = await serviceWithAssistants(deps);
+    const thread = await service.threads.create();
+    const run = await service.runs.createBackground(thread.thread_id, {
+      assistant_id: "echo",
+      input: {},
+    });
+    await deps.store.idempotency.claim({
+      key: "k-1",
+      scope: "POST /runs alice",
+      fingerprint: "fp",
+      claim_id: "c-1",
+      now: new Date().toISOString(),
+      expires_at: new Date(Date.now() + 60_000).toISOString(),
+    });
+    await deps.store.idempotency.record("POST /runs alice", "k-1", "c-1", {
+      status: 200,
+      body: { values: { messages: ["secret"] } },
+      run_id: run.run_id,
+      thread_id: thread.thread_id,
+      expires_at: new Date(Date.now() + 86_400_000).toISOString(),
+    });
+
+    await service.runs.delete(run.run_id);
+
+    expect(await deps.store.idempotency.get("POST /runs alice", "k-1")).toBeNull();
+  });
 });

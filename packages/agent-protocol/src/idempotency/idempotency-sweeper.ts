@@ -17,6 +17,8 @@ const DEFAULT_SWEEP_INTERVAL_MINUTES = 60;
 export interface IdempotencySweeperDeps {
   store: Pick<SkeinStore, "idempotency">;
   logger: Logger;
+  /** Injected so tests can drive time; defaults to the wall clock. Matches the thread TTL sweeper. */
+  clock?: () => Date;
 }
 
 export interface IdempotencySweeperOptions {
@@ -35,6 +37,7 @@ export function createIdempotencySweeper(
   deps: IdempotencySweeperDeps,
   options: IdempotencySweeperOptions = {},
 ): IdempotencySweeper {
+  const clock = deps.clock ?? ((): Date => new Date());
   const everyMs = (options.sweepIntervalMinutes ?? DEFAULT_SWEEP_INTERVAL_MINUTES) * 60_000;
 
   let running = false;
@@ -42,7 +45,9 @@ export function createIdempotencySweeper(
   let inFlight: Promise<void> | undefined;
 
   const sweepOnce = async (): Promise<number> => {
-    const removed = await deps.store.idempotency.sweepExpired();
+    // The application's clock decides expiry, matching `IdempotencyRepo.claim` — a driver sweeping on
+    // its own clock could delete records a claim still treats as replayable.
+    const removed = await deps.store.idempotency.sweepExpired(clock().toISOString());
     if (removed > 0) deps.logger.info(`idempotency sweep removed ${removed} record(s).`);
     return removed;
   };

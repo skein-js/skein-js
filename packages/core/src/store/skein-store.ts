@@ -999,12 +999,25 @@ export interface IdempotencyRepo {
    */
   deleteByThread(threadId: string): Promise<number>;
   /**
-   * Delete every record past `expires_at`; returns how many were removed.
+   * Delete the record holding `runId`'s recorded response; returns how many were removed.
    *
-   * Space reclamation only — {@link claim} already takes over an expired row, so a deployment whose
-   * sweeper never ran is slower, not wrong. Mirrors {@link StoreRepo.sweepExpired}.
+   * The narrower counterpart to {@link deleteByThread}, for `DELETE /threads/{id}/runs/{run_id}`.
+   * Without it, erasing a single run leaves its output — for `POST /runs/wait`, the graph's final
+   * state — behind in this table, which is the same hole deleting a whole thread would have.
    */
-  sweepExpired(): Promise<number>;
+  deleteByRun(runId: string): Promise<number>;
+  /**
+   * Delete every record whose `expires_at` is at or before `now`; returns how many were removed.
+   *
+   * Takes `now` for the same reason {@link claim} does, and it is not merely cosmetic here: the
+   * driver's own clock running ahead of the application's would delete records that {@link claim}
+   * still considers replayable, so a retry inside the advertised window would find nothing and start
+   * a second run. One clock decides expiry, and it is the caller's.
+   *
+   * Otherwise space reclamation only — {@link claim} takes over an expired row itself, so a
+   * deployment whose sweeper never ran is slower, not wrong.
+   */
+  sweepExpired(now: string): Promise<number>;
 }
 
 // --- the store ----------------------------------------------------------------------------

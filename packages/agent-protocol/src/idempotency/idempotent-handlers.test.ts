@@ -265,6 +265,68 @@ describe("createIdempotentHandlers", () => {
     ).toBeUndefined();
   });
 
+  it("rejects an over-long key with 422 instead of letting the driver 500", async () => {
+    // The key is half a composite btree primary key; Postgres refuses an index tuple over ~2704
+    // bytes, and that raw driver error is not a SkeinHttpError, so it would reach the client as a 500
+    // that repeats identically on every retry.
+    const { handlers, calls } = harness();
+
+    await expect(
+      handlers.createBackgroundRun(request({ headers: { "idempotency-key": "k".repeat(256) } })),
+    ).rejects.toMatchObject({ status: 422, code: "invalid_idempotency_key" });
+    expect(calls.createBackgroundRun).toBe(0);
+  });
+
+  it("rejects a key carrying control characters, which could forge a log line", async () => {
+    const { handlers } = harness();
+
+    await expect(
+      handlers.createBackgroundRun(
+        request({ headers: { "idempotency-key": "k\n2026-01-01 ERROR forged" } }),
+      ),
+    ).rejects.toMatchObject({ status: 422, code: "invalid_idempotency_key" });
+  });
+
+  it("codes the two conflict statuses, which are otherwise ambiguous on the wire", async () => {
+    // This route already answers 422 for a transient reason (`thread_busy` under the reject multitask
+    // strategy). A client cannot tell "stop retrying" from "retry" without a code.
+    const { handlers } = harness();
+    await handlers.createBackgroundRun(request());
+
+    await expect(
+      handlers.createBackgroundRun(request({ body: { assistant_id: "different" } })),
+    ).rejects.toMatchObject({ status: 422, code: "idempotency_key_reused" });
+  });
+
+  it("re-authorizes a replay, so revoked access stops replaying immediately", async () => {
+    // A replay answers from the record and never reaches the authorizing table, so without this the
+    // authorization taken when the key was claimed would stand for the whole retention window.
+    let revoked = false;
+    const { handlers } = harness({
+      overrides: {
+        authorizeReplay: async () => {
+          if (revoked) throw SkeinHttpError.notFound('Thread "t-1" not found.');
+        },
+      },
+    });
+
+    await handlers.createBackgroundRun(request());
+    // Still allowed: the replay works while access holds.
+    expect((await handlers.createBackgroundRun(request())).status).toBe(200);
+
+    revoked = true;
+    await expect(handlers.createBackgroundRun(request())).rejects.toMatchObject({ status: 404 });
+  });
+
+  it("does not re-authorize the original create, which the inner table already guards", async () => {
+    const authorizeReplay = vi.fn(async () => {});
+    const { handlers } = harness({ overrides: { authorizeReplay } });
+
+    await handlers.createBackgroundRun(request());
+
+    expect(authorizeReplay).not.toHaveBeenCalled();
+  });
+
   it("rejects the header on a streaming create with 422 rather than ignoring it", async () => {
     // An SSE response is an AsyncIterable — there is no body to record. Silently dropping the header
     // would leave a caller believing their retries are deduplicated while every one starts a run.

@@ -64,6 +64,12 @@ describe("toCorsOptions (LangGraph http.cors → cors options)", () => {
     expect(options.allowedHeaders).toEqual(["Idempotency-Key", "authorization"]);
   });
 
+  it("leaves an explicitly empty allow_headers empty", () => {
+    // `allow_headers: []` is a deliberate "permit no custom request headers" posture. Widening it
+    // would advertise a header the operator excluded on purpose.
+    expect(toCorsOptions({ allow_headers: [] }).allowedHeaders).toEqual([]);
+  });
+
   it("leaves allowedHeaders unset when no allow_headers is configured", () => {
     // Absent means the cors middleware reflects the request's own headers, which already admits
     // `Idempotency-Key`. Setting a list here would *narrow* the default, not widen it.

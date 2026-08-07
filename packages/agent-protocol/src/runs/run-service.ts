@@ -802,6 +802,22 @@ export function createRunService(ctx: ProtocolContext): RunService {
       control.abort(runId, "cancel");
       ctx.rollbackPlans.delete(runId); // a deleted run won't execute, so its plan must not linger
       await deps.store.runs.delete(runId);
+      // Erasure reaches the run's recorded idempotency response too — the run-level counterpart of
+      // what `ThreadService.delete` does. A recorded response outlives its run by design so a retry
+      // can replay it, and for `POST /runs/wait` that response *is* the graph's final state; without
+      // this, deleting the run would leave its whole output behind in a table no API surfaces.
+      //
+      // Best-effort for the same reason as the thread path: the run is already gone, and failing now
+      // would report a completed deletion as broken. A leftover record still expires on its own.
+      try {
+        await deps.store.idempotency.deleteByRun(runId);
+      } catch (error) {
+        deps.logger.warn(
+          `run ${runId}: deleted, but its idempotency record could not be erased; ` +
+            "it will expire on its own retention",
+          error,
+        );
+      }
     },
 
     async join(runId, afterSeq = 0) {

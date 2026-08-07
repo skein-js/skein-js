@@ -10,6 +10,8 @@
 // **outside** it: the scope needs the authenticated principal, so authentication has to have
 // happened first. See `principalFor` for what that costs.
 
+import { randomUUID } from "node:crypto";
+
 import { SkeinHttpError, type SkeinStore } from "@skein-js/core";
 
 import type {
@@ -72,12 +74,51 @@ export interface IdempotencyOptions extends Pick<
    * user callback the docs already treat as per-request work.
    */
   principalFor?: (req: ProtocolRequest) => Promise<string | undefined>;
+  /**
+   * Re-runs the route's authorization before a recorded response is replayed, throwing 401/403 the
+   * way the authorizing handler table would. Absent on a server with no auth, where there is nothing
+   * to re-check.
+   *
+   * Necessary because a replay never reaches the inner table: it answers from the record, so without
+   * this the authorization decision made when the key was first claimed would stand unchallenged for
+   * the whole retention window. `recordedThreadId` lets the check confirm the caller can still see
+   * the thread the response describes, not merely that the route is still open to them.
+   *
+   * Injected rather than resolved here so this module stays independent of `AuthEngine` and the route
+   * authz table, exactly as {@link principalFor} does.
+   */
+  authorizeReplay?: (
+    req: ProtocolRequest,
+    handlerName: keyof ProtocolHandlers,
+    recordedThreadId?: string,
+  ) => Promise<void>;
   /** Claim token generator. Injected so tests get stable ids. */
   newClaimId?: () => string;
 }
 
 const DEFAULT_RETENTION_HOURS = 24;
 const DEFAULT_IN_FLIGHT_MINUTES = 15;
+
+/**
+ * Longest accepted `Idempotency-Key`, matching Stripe's own cap so a caller reusing their key scheme
+ * does not have to think about ours.
+ *
+ * A bound is required, not tidiness: the key is half a composite btree primary key, and Postgres
+ * refuses an index tuple over ~2704 bytes. Without this a 4 KB header — well inside Node's 16 KB
+ * default — surfaces as a raw driver error, which is not a `SkeinHttpError` and so reaches the client
+ * as a 500 that repeats identically on every retry. The memory driver would accept the same key and
+ * hold it for the full retention.
+ */
+const MAX_KEY_LENGTH = 255;
+
+/**
+ * Printable ASCII, no control characters.
+ *
+ * The key is echoed back in the 409/422 messages and written to the log on a storage failure, so a
+ * key carrying newlines could forge log lines. Restricting the charset closes that at the boundary
+ * rather than escaping it at each of the four places the value is used.
+ */
+const VALID_KEY = /^[\x20-\x7E]+$/;
 
 /**
  * Wrap `handlers` so the creates honour `Idempotency-Key`. Every other route is passed through
@@ -89,7 +130,10 @@ export function createIdempotentHandlers(
 ): ProtocolHandlers {
   const retentionMs = (options.retentionHours ?? DEFAULT_RETENTION_HOURS) * 3_600_000;
   const inFlightMs = (options.inFlightMinutes ?? DEFAULT_IN_FLIGHT_MINUTES) * 60_000;
-  const newClaimId = options.newClaimId ?? (() => crypto.randomUUID());
+  // `node:crypto`, not the `crypto` global: that global is only exposed by default from Node 19, and
+  // `langgraph.json` honours a pinned `node_version` verbatim including an older one. Every other id
+  // in the repo is generated the same way.
+  const newClaimId = options.newClaimId ?? randomUUID;
 
   const wrapped = { ...handlers };
   for (const name of UNSUPPORTED_STREAM_CREATES) {
@@ -99,6 +143,12 @@ export function createIdempotentHandlers(
     wrapped[name] = async (req) => {
       const key = req.headers["idempotency-key"];
       if (key === undefined || key === "") return handlers[name](req);
+      if (key.length > MAX_KEY_LENGTH || !VALID_KEY.test(key)) {
+        throw SkeinHttpError.unprocessable(
+          `Idempotency-Key must be at most ${MAX_KEY_LENGTH} printable ASCII characters.`,
+          { code: "invalid_idempotency_key" },
+        );
+      }
 
       const scope = idempotencyScope(req, await options.principalFor?.(req));
       const fingerprint = requestFingerprint(req);
@@ -118,8 +168,12 @@ export function createIdempotentHandlers(
         // Same key, different request. A caller bug worth surfacing rather than answering with
         // someone else's response — and the one case where staying silent would be actively wrong.
         if (record.fingerprint !== fingerprint) {
+          // Coded, because this route already answers 422 for a transient reason (`thread_busy`
+          // under the `reject` multitask strategy) and the two demand opposite client behaviour:
+          // this one is permanent and must not be retried, that one should be.
           throw SkeinHttpError.unprocessable(
             `Idempotency-Key "${key}" was already used for a different request body.`,
+            { code: "idempotency_key_reused" },
           );
         }
         // The original is still running. 409 rather than blocking on it: holding the connection
@@ -127,9 +181,14 @@ export function createIdempotentHandlers(
         if (record.status !== "done" || !record.response) {
           throw SkeinHttpError.conflict(
             `Idempotency-Key "${key}" is still in flight. Retry shortly.`,
-            { details: { retry_after_seconds: 1 } },
+            { code: "idempotency_key_in_flight", details: { retry_after_seconds: 1 } },
           );
         }
+        // Authorization is re-checked before the recorded body goes back out. Without this, a replay
+        // would answer from the record without ever reaching the authorizing table, so a principal
+        // whose access was revoked after the original create would keep receiving the run's output —
+        // which for `POST /runs/wait` is the whole conversation — for the rest of the retention.
+        await options.authorizeReplay?.(req, name, record.thread_id);
         const replayed = record.response;
         return {
           kind: "json",
@@ -155,13 +214,15 @@ export function createIdempotentHandlers(
         return response;
       }
 
+      const runId = runIdOf(response.body);
+      const threadId = threadIdOf(response);
       try {
         await options.store.idempotency.record(scope, key, claimId, {
           status: response.status,
           body: response.body,
           ...(response.headers ? { headers: response.headers } : {}),
-          ...(runIdOf(response.body) !== undefined ? { run_id: runIdOf(response.body) } : {}),
-          ...(threadIdOf(response) !== undefined ? { thread_id: threadIdOf(response) } : {}),
+          ...(runId !== undefined ? { run_id: runId } : {}),
+          ...(threadId !== undefined ? { thread_id: threadId } : {}),
           expires_at: new Date(options.clock().getTime() + retentionMs).toISOString(),
         });
       } catch (error) {

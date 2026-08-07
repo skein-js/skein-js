@@ -3,8 +3,12 @@
 // worker both touch the same cancellation registry, so cancelling a background run actually aborts
 // it, and the scheduler creates runs through the same store the worker drains.
 
+import { SkeinHttpError } from "@skein-js/core";
+
+import { createAuthScopedStore } from "./auth/auth-scoped-store.js";
 import { resolveAuthContext } from "./auth/authenticate-request.js";
 import { createAuthorizingHandlers } from "./auth/authorizing-handlers.js";
+import { authValue, ROUTE_AUTHZ } from "./auth/route-authz.js";
 import { createContext } from "./context.js";
 import { createProtocolHandlers, type ProtocolHandlers } from "./create-handlers.js";
 import {
@@ -122,6 +126,48 @@ export function createProtocolRuntime(
     ...(authEngine
       ? {
           principalFor: async (req) => (await resolveAuthContext(authEngine, req))?.user.identity,
+          // A replay answers from the record and never reaches the authorizing table, so without this
+          // the authorization taken when the key was claimed would stand for the whole retention
+          // window — handing a principal whose access was revoked the run's output, which for
+          // `POST /runs/wait` is the entire conversation, for up to a day after revocation.
+          //
+          // Runs the same two checks the inner table would: the route's `authorize`, and — when that
+          // came back with ownership filters — that the recorded thread is still visible through the
+          // scoped store. The gate alone is not enough, because losing access to a thread usually
+          // means losing the thread, not losing the route.
+          authorizeReplay: async (req, handlerName, recordedThreadId) => {
+            const authContext = await resolveAuthContext(authEngine, req);
+            const route = ROUTE_AUTHZ[handlerName];
+            const value = authValue(req);
+            const primary = await authEngine.authorize({
+              resource: route.resource,
+              action: route.action,
+              value,
+              context: authContext,
+            });
+            const fallback =
+              !primary.filters && route.fallbackResource
+                ? await authEngine.authorize({
+                    resource: route.fallbackResource,
+                    action: route.fallbackAction ?? route.action,
+                    value,
+                    context: authContext,
+                  })
+                : undefined;
+            const filters = primary.filters ?? fallback?.filters;
+            if (!filters || recordedThreadId === undefined) return;
+            const scoped = createAuthScopedStore(
+              context.deps.store,
+              authEngine,
+              filters,
+              route.resource,
+            );
+            // Absent reads as "not yours" here exactly as it does everywhere else, so a revoked
+            // caller gets the same 404 a fresh request would rather than a distinguishing 403.
+            if (!(await scoped.threads.get(recordedThreadId))) {
+              throw SkeinHttpError.notFound(`Thread "${recordedThreadId}" not found.`);
+            }
+          },
         }
       : {}),
   });

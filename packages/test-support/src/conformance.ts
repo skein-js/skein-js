@@ -1614,6 +1614,8 @@ export function runSkeinStoreConformance(label: string, makeStore: SkeinStoreFac
         await store.idempotency.record("POST /threads/t/runs alice", "k-1", "c-1", {
           status: 200,
           body: { run_id: "stale" },
+          run_id: "r-stale",
+          thread_id: "t-stale",
           expires_at: inMs(40),
         });
 
@@ -1628,6 +1630,28 @@ export function runSkeinStoreConformance(label: string, makeStore: SkeinStoreFac
         // The dead claim's response must not survive to be replayed against the new fingerprint.
         expect(taken.record.status).toBe("in_flight");
         expect(taken.record.response).toBeUndefined();
+        // Nor may its ids. A `thread_id` left behind would attach the dead claim's thread to this
+        // live one, so deleting that thread would erase a claim still in flight — whose `record`
+        // would then match no row, drop the response silently, and let the next retry start a second
+        // run. Asserting the reset is what stops the two drivers diverging here.
+        expect(taken.record.run_id).toBeUndefined();
+        expect(taken.record.thread_id).toBeUndefined();
+      });
+
+      it("erases a run's record, for a run deleted without its thread", async () => {
+        const store = await makeStore();
+        await store.idempotency.claim(aClaim());
+        await store.idempotency.record("POST /threads/t/runs alice", "k-1", "c-1", {
+          status: 200,
+          body: { values: { messages: ["secret"] } },
+          run_id: "r-1",
+          thread_id: "t-1",
+          expires_at: inMs(86_400_000),
+        });
+
+        expect(await store.idempotency.deleteByRun("r-1")).toBe(1);
+        expect(await store.idempotency.get("POST /threads/t/runs alice", "k-1")).toBeNull();
+        expect(await store.idempotency.deleteByRun("never-existed")).toBe(0);
       });
 
       it("erases a thread's records, leaving other threads and unrecorded claims alone", async () => {
@@ -1664,6 +1688,19 @@ export function runSkeinStoreConformance(label: string, makeStore: SkeinStoreFac
         expect(await store.idempotency.deleteByThread("never-existed")).toBe(0);
       });
 
+      it("sweeps against the caller's clock too, not the driver's", async () => {
+        // The same rule `claim` follows, and not cosmetic: a driver clock running ahead of the
+        // application's would delete records `claim` still treats as replayable, so a retry inside
+        // the advertised window would find nothing and start a second run.
+        const store = await makeStore();
+        await store.idempotency.claim(aClaim({ expires_at: inMs(60_000) }));
+
+        // A `now` in the past spares a record the driver's own clock would keep either way…
+        expect(await store.idempotency.sweepExpired(inMs(-3_600_000))).toBe(0);
+        // …and a `now` in the future reaps one it would not.
+        expect(await store.idempotency.sweepExpired(inMs(3_600_000))).toBe(1);
+      });
+
       it("decides expiry against the caller's clock, not the driver's", async () => {
         // Both sides of the comparison must come from the same place: the incumbent's `expires_at`
         // was written by an application instance, so `now` has to be one too. A driver that
@@ -1696,8 +1733,8 @@ export function runSkeinStoreConformance(label: string, makeStore: SkeinStoreFac
         await store.idempotency.claim(aClaim({ key: "kept", claim_id: "c-2" }));
 
         await wait(120);
-        expect(await store.idempotency.sweepExpired()).toBe(1);
-        expect(await store.idempotency.sweepExpired()).toBe(0);
+        expect(await store.idempotency.sweepExpired(inMs(0))).toBe(1);
+        expect(await store.idempotency.sweepExpired(inMs(0))).toBe(0);
         expect(await store.idempotency.get("POST /threads/t/runs alice", "kept")).not.toBeNull();
       });
     });

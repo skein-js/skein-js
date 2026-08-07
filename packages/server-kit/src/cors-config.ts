@@ -63,12 +63,19 @@ export function toCorsOptions(config: LanggraphCorsConfig): CorsOptions {
 
   if (config.allow_methods !== undefined) options.methods = config.allow_methods;
   if (config.allow_headers !== undefined) {
-    // Case-insensitively, since a config may well spell it `Idempotency-Key`.
+    // An explicitly empty list is left empty. `allow_headers: []` is a deliberate "permit no custom
+    // request headers" posture, and widening it would hand back a header the operator excluded on
+    // purpose — the opposite of what merging is for on a list that names some.
+    //
+    // Case-insensitive against what is there, since a config may well spell it `Idempotency-Key`.
     const configured = new Set(config.allow_headers.map((header) => header.toLowerCase()));
-    options.allowedHeaders = [
-      ...config.allow_headers,
-      ...ALWAYS_ALLOWED_HEADERS.filter((header) => !configured.has(header)),
-    ];
+    options.allowedHeaders =
+      config.allow_headers.length === 0
+        ? []
+        : [
+            ...config.allow_headers,
+            ...ALWAYS_ALLOWED_HEADERS.filter((header) => !configured.has(header)),
+          ];
   }
   if (config.allow_credentials !== undefined) options.credentials = config.allow_credentials;
   if (config.max_age !== undefined) options.maxAge = config.max_age;

@@ -392,6 +392,12 @@ CREATE INDEX idempotency_records_expires_at_idx ON idempotency_records (expires_
 CREATE INDEX idempotency_records_thread_idx
   ON idempotency_records (thread_id)
   WHERE thread_id IS NOT NULL;
+
+-- The same erasure at run granularity — \`DELETE /threads/{id}/runs/{run_id}\`. Partial for the same
+-- reason: only a recorded response carries a run id.
+CREATE INDEX idempotency_records_run_idx
+  ON idempotency_records (run_id)
+  WHERE run_id IS NOT NULL;
 `;
 
 /** Every migration, oldest first. Order is the contract — never reorder or rename. */

@@ -969,11 +969,21 @@ export class MemorySkeinStore implements SkeinStore {
       }
       return removed;
     },
-    sweepExpired: async () => {
-      const now = Date.now();
+    deleteByRun: async (runId) => {
       let removed = 0;
       for (const [id, record] of [...this.#idempotency.entries()]) {
-        if (Date.parse(record.expires_at) <= now) {
+        if (record.run_id === runId) {
+          this.#idempotency.delete(id);
+          removed += 1;
+        }
+      }
+      return removed;
+    },
+    sweepExpired: async (now) => {
+      const cutoff = Date.parse(now);
+      let removed = 0;
+      for (const [id, record] of [...this.#idempotency.entries()]) {
+        if (Date.parse(record.expires_at) <= cutoff) {
           this.#idempotency.delete(id);
           removed += 1;
         }
