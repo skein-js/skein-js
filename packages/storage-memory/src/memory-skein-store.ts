@@ -947,6 +947,7 @@ export class MemorySkeinStore implements SkeinStore {
           ...(recorded.headers ? { headers: recorded.headers } : {}),
         },
         ...(recorded.run_id !== undefined ? { run_id: recorded.run_id } : {}),
+        ...(recorded.thread_id !== undefined ? { thread_id: recorded.thread_id } : {}),
         updated_at: nowIso(),
         expires_at: recorded.expires_at,
       });
@@ -958,6 +959,16 @@ export class MemorySkeinStore implements SkeinStore {
       this.#idempotency.delete(id);
     },
     get: async (scope, key) => readOne(this.#idempotency, idempotencyKey(scope, key)),
+    deleteByThread: async (threadId) => {
+      let removed = 0;
+      for (const [id, record] of [...this.#idempotency.entries()]) {
+        if (record.thread_id === threadId) {
+          this.#idempotency.delete(id);
+          removed += 1;
+        }
+      }
+      return removed;
+    },
     sweepExpired: async () => {
       const now = Date.now();
       let removed = 0;

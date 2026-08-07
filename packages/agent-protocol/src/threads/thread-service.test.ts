@@ -133,6 +133,39 @@ describe("thread service", () => {
     expect(await deps.store.runs.get(run.run_id)).toBeNull();
   });
 
+  it("erases the thread's idempotency records, which hold its recorded run output", async () => {
+    // A recorded response outlives its run by design — that is what makes a replay possible — and for
+    // `POST /runs/wait` the response *is* the graph's final state. Deleting a thread has to take it,
+    // or a full copy of the conversation survives in a table no API surfaces.
+    const deps = createFixtureDeps();
+    const service = await serviceWithAssistants(deps);
+    const thread = await service.threads.create();
+    const other = await service.threads.create();
+    const record = async (key: string, threadId: string): Promise<void> => {
+      await deps.store.idempotency.claim({
+        key,
+        scope: "POST /runs alice",
+        fingerprint: "fp",
+        claim_id: `c-${key}`,
+        now: new Date().toISOString(),
+        expires_at: new Date(Date.now() + 60_000).toISOString(),
+      });
+      await deps.store.idempotency.record("POST /runs alice", key, `c-${key}`, {
+        status: 200,
+        body: { values: { messages: ["secret"] } },
+        thread_id: threadId,
+        expires_at: new Date(Date.now() + 86_400_000).toISOString(),
+      });
+    };
+    await record("doomed", thread.thread_id);
+    await record("spared", other.thread_id);
+
+    await service.threads.delete(thread.thread_id);
+
+    expect(await deps.store.idempotency.get("POST /runs alice", "doomed")).toBeNull();
+    expect(await deps.store.idempotency.get("POST /runs alice", "spared")).not.toBeNull();
+  });
+
   it("returns state history after a run", async () => {
     const service = await serviceWithAssistants();
     const thread = await service.threads.create();

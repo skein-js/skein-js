@@ -191,6 +191,39 @@ describe("on_completion", () => {
     expect(await deps.store.threads.get(threadId)).toBeNull();
   });
 
+  it("does NOT erase idempotency records when it tidies up its own thread", async () => {
+    // The counterpart to the thread service's erasure. This cleanup deletes a thread the *server*
+    // created and disposes of on every stateless run — it is not a caller asking for erasure. Routing
+    // it through the same scrub (or hanging the scrub off a foreign key) would destroy the record
+    // microseconds after writing it, breaking idempotency for precisely the "external service drives
+    // skein and retries" case the header exists for. This is why `deleteThreadIfRunOwnedIt` calls the
+    // store directly rather than the service.
+    const { deps, service } = await harness();
+    await deps.store.idempotency.claim({
+      key: "k-1",
+      scope: "POST /runs alice",
+      fingerprint: "fp",
+      claim_id: "c-1",
+      now: new Date().toISOString(),
+      expires_at: new Date(Date.now() + 60_000).toISOString(),
+    });
+
+    const { threadId } = await service.runs.createWait({
+      assistant_id: "echo",
+      input: { value: "hi" },
+      on_completion: "delete",
+    });
+    await deps.store.idempotency.record("POST /runs alice", "k-1", "c-1", {
+      status: 200,
+      body: { values: { value: "hi" } },
+      thread_id: threadId,
+      expires_at: new Date(Date.now() + 86_400_000).toISOString(),
+    });
+
+    expect(await deps.store.threads.get(threadId)).toBeNull();
+    expect(await deps.store.idempotency.get("POST /runs alice", "k-1")).not.toBeNull();
+  });
+
   it("keeps the thread by default", async () => {
     // skein's default differs from LangGraph's `delete` on purpose: a stateless run stays inspectable,
     // and adding the field must not change what /runs/wait already did.

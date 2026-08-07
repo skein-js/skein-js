@@ -332,6 +332,7 @@ interface IdempotencyRow {
   status: IdempotencyStatus;
   response: RecordedResponse | null;
   run_id: string | null;
+  thread_id: string | null;
   created_at: Date;
   updated_at: Date;
   expires_at: Date;
@@ -680,6 +681,7 @@ function rowToIdempotencyRecord(row: IdempotencyRow): IdempotencyRecord {
     status: row.status,
     ...(row.response !== null ? { response: row.response } : {}),
     ...(row.run_id !== null ? { run_id: row.run_id } : {}),
+    ...(row.thread_id !== null ? { thread_id: row.thread_id } : {}),
     created_at: toIsoString(row.created_at),
     updated_at: toIsoString(row.updated_at),
     expires_at: toIsoString(row.expires_at),
@@ -688,7 +690,7 @@ function rowToIdempotencyRecord(row: IdempotencyRow): IdempotencyRecord {
 
 /** Every column of `idempotency_records`, in the order {@link IdempotencyRow} declares them. */
 const IDEMPOTENCY_COLUMNS =
-  "scope, key, fingerprint, claim_id, status, response, run_id, created_at, updated_at, expires_at";
+  "scope, key, fingerprint, claim_id, status, response, run_id, thread_id, created_at, updated_at, expires_at";
 
 /**
  * How many times a claim re-runs when its incumbent vanishes between the insert and the read.
@@ -1968,8 +1970,8 @@ export class PostgresSkeinStore implements SkeinStore {
       // request owns the key, and writing here would answer *their* caller with this response.
       await this.#pool.query(
         `UPDATE idempotency_records
-            SET status = 'done', response = $4::jsonb, run_id = $5,
-                expires_at = $6::timestamptz, updated_at = now()
+            SET status = 'done', response = $4::jsonb, run_id = $5, thread_id = $6,
+                expires_at = $7::timestamptz, updated_at = now()
           WHERE scope = $1 AND key = $2 AND claim_id = $3`,
         [
           scope,
@@ -1981,6 +1983,7 @@ export class PostgresSkeinStore implements SkeinStore {
             ...(recorded.headers ? { headers: recorded.headers } : {}),
           }),
           recorded.run_id ?? null,
+          recorded.thread_id ?? null,
           recorded.expires_at,
         ],
       );
@@ -1998,6 +2001,13 @@ export class PostgresSkeinStore implements SkeinStore {
       );
       const row = rows[0];
       return row ? rowToIdempotencyRecord(row) : null;
+    },
+    deleteByThread: async (threadId) => {
+      const { rowCount } = await this.#pool.query(
+        "DELETE FROM idempotency_records WHERE thread_id = $1",
+        [threadId],
+      );
+      return rowCount ?? 0;
     },
     sweepExpired: async () => {
       // Batched by `ctid`, exactly as the store-item sweep is and for the same reason: one unbounded

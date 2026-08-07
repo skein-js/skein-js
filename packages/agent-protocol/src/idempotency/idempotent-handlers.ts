@@ -161,6 +161,7 @@ export function createIdempotentHandlers(
           body: response.body,
           ...(response.headers ? { headers: response.headers } : {}),
           ...(runIdOf(response.body) !== undefined ? { run_id: runIdOf(response.body) } : {}),
+          ...(threadIdOf(response) !== undefined ? { thread_id: threadIdOf(response) } : {}),
           expires_at: new Date(options.clock().getTime() + retentionMs).toISOString(),
         });
       } catch (error) {
@@ -221,4 +222,21 @@ function runIdOf(body: unknown): string | undefined {
   if (typeof body !== "object" || body === null) return undefined;
   const runId = (body as { run_id?: unknown }).run_id;
   return typeof runId === "string" ? runId : undefined;
+}
+
+/**
+ * The thread this response belongs to, so deleting that thread erases this record with it.
+ *
+ * Read from `Content-Location` rather than the body, because that is the one place every single-run
+ * create names its thread: `POST /runs/wait` answers with the graph's final state — the very payload
+ * this is here to make erasable — and that body has no `thread_id` in it. The header is built by
+ * `runLocationHeaders` from server-owned ids, so it is not caller-influenced.
+ *
+ * `POST /runs/batch` has no `Content-Location` (its runs may span threads) and gets `undefined`. That
+ * is the honest answer rather than a gap: a batch body is a list of run rows, not conversation
+ * content, so there is nothing thread-shaped in it to erase.
+ */
+function threadIdOf(response: ProtocolResponse): string | undefined {
+  const location = response.headers?.["content-location"];
+  return /^\/threads\/([^/]+)\/runs\//.exec(location ?? "")?.[1];
 }

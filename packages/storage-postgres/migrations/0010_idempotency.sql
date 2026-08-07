@@ -28,10 +28,14 @@ CREATE TABLE idempotency_records (
   -- the body — `content-location` is what the SDK reads to fire `onRunCreated`, and a replay that
   -- drops it leaves `useStream` unable to rejoin after a remount.
   response    jsonb,
-  -- Deliberately NO foreign key. A replay has to keep working after its run is gone: a stateless
-  -- run's server-created thread is deleted on completion and would cascade this record away with it,
-  -- which is exactly the retry window this table exists to cover.
+  -- Deliberately NO foreign key on either id. A replay has to keep working after its run is gone: a
+  -- stateless run's server-created thread is deleted on completion and would cascade this record away
+  -- microseconds after writing it, breaking idempotency for exactly the retry window this table
+  -- exists to cover. Erasure that *should* reach these rows goes through the service layer instead
+  -- (see `IdempotencyRepo.deleteByThread`), which can tell a user deleting a thread apart from the
+  -- server tidying up an ephemeral one.
   run_id      text,
+  thread_id   text,
   created_at  timestamptz NOT NULL DEFAULT now(),
   updated_at  timestamptz NOT NULL DEFAULT now(),
   -- When this record stops being replayable. Written short at claim time (the in-flight window) and
@@ -48,7 +52,15 @@ CREATE TABLE idempotency_records (
 -- every row here has an expiry, so a predicate would exclude nothing and only cost planning.
 CREATE INDEX idempotency_records_expires_at_idx ON idempotency_records (expires_at);
 
+-- Deleting a thread erases the records that carry its conversation state. Partial, because only a
+-- recorded (`done`) single-thread response ever sets `thread_id` — an in-flight claim has nothing to
+-- erase yet, and a batch response spans threads.
+CREATE INDEX idempotency_records_thread_idx
+  ON idempotency_records (thread_id)
+  WHERE thread_id IS NOT NULL;
+
 -- Down Migration
 
+DROP INDEX IF EXISTS idempotency_records_thread_idx;
 DROP INDEX IF EXISTS idempotency_records_expires_at_idx;
 DROP TABLE IF EXISTS idempotency_records;

@@ -349,6 +349,29 @@ export function createThreadService(ctx: ProtocolContext): ThreadService {
       }
     }
     await deps.store.threads.delete(threadId);
+    // Erasure has to reach the idempotency records too. A recorded response outlives its run by
+    // design — that is what makes a replay possible — and for `POST /runs/wait` that response *is*
+    // the graph's final state. Without this, deleting a thread would leave a full copy of the
+    // conversation in a table no API surfaces, for the whole retention window.
+    //
+    // Here rather than on a foreign key, and here rather than in the driver's `threads.delete`: the
+    // cascade would also fire for a stateless run's own ephemeral thread, which is deleted the
+    // instant that run completes (`on_completion: "delete"` — see `deleteThreadIfRunOwnedIt`, which
+    // calls the *store* directly for exactly this reason). That would destroy the record microseconds
+    // after writing it and break idempotency for the "external service drives skein and retries" case
+    // the header exists for. Which deletions count as erasure is this layer's call, and this is it.
+    //
+    // Best-effort: the thread is already gone, and failing the delete now would report a completed
+    // erasure as broken. A leftover record still expires on its own retention.
+    try {
+      await deps.store.idempotency.deleteByThread(threadId);
+    } catch (error) {
+      deps.logger.warn(
+        `thread ${threadId}: deleted, but its idempotency records could not be erased; ` +
+          "they will expire on their own retention",
+        error,
+      );
+    }
   };
 
   return {

@@ -35,7 +35,7 @@ function harness(
     overrides?: Partial<IdempotencyOptions>;
   } = {},
 ) {
-  const calls = { createBackgroundRun: 0, createStreamRun: 0 };
+  const calls = { createBackgroundRun: 0, createStreamRun: 0, createRunBatch: 0 };
   const respond =
     options.respond ??
     (async (): Promise<ProtocolResponse> => ({
@@ -48,6 +48,10 @@ function harness(
   const inner = {
     createBackgroundRun: async (req: ProtocolRequest) => {
       calls.createBackgroundRun += 1;
+      return respond(req);
+    },
+    createRunBatch: async (req: ProtocolRequest) => {
+      calls.createRunBatch += 1;
       return respond(req);
     },
     createStreamRun: async () => {
@@ -228,6 +232,37 @@ describe("createIdempotentHandlers", () => {
       body: { run_id: (bob as { body: { run_id: string } }).body.run_id },
     });
     expect(seen).toEqual(["alice", "bob"]);
+  });
+
+  it("records the thread from Content-Location, so a thread delete can erase it", async () => {
+    // Read from the header rather than the body, because `POST /runs/wait` answers with the graph's
+    // final state — the very payload this makes erasable — and that body names no thread.
+    const { handlers, store } = harness({
+      respond: async () => ({
+        kind: "json",
+        status: 200,
+        body: { values: { messages: ["secret"] } },
+        headers: { "content-location": "/threads/t-1/runs/r-1" },
+      }),
+    });
+
+    await handlers.createBackgroundRun(request());
+
+    const record = await store.idempotency.get("POST /threads/t-1/runs ", "k-1");
+    expect(record?.thread_id).toBe("t-1");
+    expect(await store.idempotency.deleteByThread("t-1")).toBe(1);
+  });
+
+  it("leaves thread_id unset on a batch, which has no single thread to erase", async () => {
+    const { handlers, store } = harness({
+      respond: async () => ({ kind: "json", status: 200, body: [{ run_id: "r-1" }] }),
+    });
+
+    await handlers.createRunBatch(request());
+
+    expect(
+      (await store.idempotency.get("POST /threads/t-1/runs ", "k-1"))?.thread_id,
+    ).toBeUndefined();
   });
 
   it("rejects the header on a streaming create with 422 rather than ignoring it", async () => {

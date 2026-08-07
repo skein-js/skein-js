@@ -1630,6 +1630,40 @@ export function runSkeinStoreConformance(label: string, makeStore: SkeinStoreFac
         expect(taken.record.response).toBeUndefined();
       });
 
+      it("erases a thread's records, leaving other threads and unrecorded claims alone", async () => {
+        // A recorded response outlives its run by design, and for `POST /runs/wait` that response is
+        // the graph's final state — so deleting a thread has to take it with it, or a full copy of
+        // the conversation survives in a table no API surfaces.
+        const store = await makeStore();
+        const record = async (key: string, threadId: string): Promise<void> => {
+          await store.idempotency.claim(aClaim({ key, claim_id: `c-${key}` }));
+          await store.idempotency.record("POST /threads/t/runs alice", key, `c-${key}`, {
+            status: 200,
+            body: { run_id: `r-${key}` },
+            run_id: `r-${key}`,
+            thread_id: threadId,
+            expires_at: inMs(86_400_000),
+          });
+        };
+        await record("doomed", "t-1");
+        await record("spared", "t-2");
+        // An in-flight claim has no thread yet — it must survive, or a delete would strand a caller
+        // whose request is still running against a different thread.
+        await store.idempotency.claim(aClaim({ key: "inflight", claim_id: "c-inflight" }));
+
+        expect(await store.idempotency.deleteByThread("t-1")).toBe(1);
+        expect(await store.idempotency.get("POST /threads/t/runs alice", "doomed")).toBeNull();
+        expect(await store.idempotency.get("POST /threads/t/runs alice", "spared")).not.toBeNull();
+        expect(
+          await store.idempotency.get("POST /threads/t/runs alice", "inflight"),
+        ).not.toBeNull();
+      });
+
+      it("reports zero when a thread has no records, and is idempotent", async () => {
+        const store = await makeStore();
+        expect(await store.idempotency.deleteByThread("never-existed")).toBe(0);
+      });
+
       it("decides expiry against the caller's clock, not the driver's", async () => {
         // Both sides of the comparison must come from the same place: the incumbent's `expires_at`
         // was written by an application instance, so `now` has to be one too. A driver that

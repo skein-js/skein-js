@@ -868,6 +868,14 @@ export interface IdempotencyRecord {
   response?: RecordedResponse;
   /** The run this key created, for correlating a replay with the run it refers to. */
   run_id?: string;
+  /**
+   * The thread the recorded run belongs to, so deleting that thread can take this record with it.
+   *
+   * Present whenever the response named exactly one thread — which is every single-run create.
+   * `POST /runs/batch` leaves it absent: its runs may span threads, and its body is a list of run
+   * rows rather than conversation content, so there is nothing thread-shaped to erase.
+   */
+  thread_id?: string;
   created_at: string;
   updated_at: string;
   /**
@@ -924,6 +932,7 @@ export interface RecordedResponseInput extends RecordedResponse {
   /** Extends the record's `expires_at` from the short in-flight window to the full retention. */
   expires_at: string;
   run_id?: string;
+  thread_id?: string;
 }
 
 /**
@@ -973,6 +982,22 @@ export interface IdempotencyRepo {
    */
   release(scope: string, key: string, claimId: string): Promise<void>;
   get(scope: string, key: string): Promise<IdempotencyRecord | null>;
+  /**
+   * Delete every record whose recorded run belonged to `threadId`; returns how many were removed.
+   *
+   * **This is erasure, not housekeeping.** A recorded response has to outlive its run for a replay to
+   * mean anything, and for `POST /runs/wait` that response *is* the graph's final state — so without
+   * this, deleting a thread would leave a full copy of the conversation in a table no API surfaces,
+   * for the whole retention window. Anyone who reads `DELETE /threads/{thread_id}` as "erase this"
+   * would be wrong, and nothing would say so.
+   *
+   * Deliberately **not** driven by a foreign key. The cascade would also fire for a stateless run's
+   * server-created thread, which is deleted the moment that run completes (`on_completion: "delete"`)
+   * — destroying the record microseconds after writing it and breaking idempotency for exactly the
+   * "an external service drives skein and retries" case the header exists for. Which deletions count
+   * as erasure is a decision for the service layer, and it makes it by calling this.
+   */
+  deleteByThread(threadId: string): Promise<number>;
   /**
    * Delete every record past `expires_at`; returns how many were removed.
    *

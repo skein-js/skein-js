@@ -2665,12 +2665,20 @@ A few properties worth knowing:
 - **At-least-once, not exactly-once.** The guarantee is that a retry of the _same_ request does not
   create a second run. Choose keys that are stable across retries (the upstream provider's message id
   is usually right).
-- **A recorded response outlives the run it describes.** Replay only works if the answer is kept, so
-  the recorded body — which for `POST /runs/wait` is the graph's final state — survives
-  `DELETE /threads/{thread_id}` and `on_completion: "delete"`, until its retention expires. That is
-  inherent to the feature rather than an oversight, but it matters if you treat a thread deletion as
-  erasure: lower `retention_hours` for those deployments, or leave the header off the endpoints whose
-  responses you do not want retained.
+- **Deleting a thread erases its recorded responses.** A recorded response has to outlive its run for
+  a replay to mean anything, and for `POST /runs/wait` that response _is_ the graph's final state — so
+  `DELETE /threads/{thread_id}` takes the matching records with it, as does an assistant delete and
+  thread-TTL expiry. Erasure means erasure; a retry afterwards executes again rather than replaying,
+  and on a deleted thread that is a 404.
+
+  The one deletion that does **not** erase is a stateless run tidying up its own server-created thread
+  (`on_completion: "delete"`). That thread is an implementation detail of `POST /runs`, disposed of on
+  every such run — scrubbing there would destroy the record moments after writing it and break
+  retries for exactly the case the header exists for. Those records expire on `retention_hours` like
+  any other. Lower it if you want that window shorter.
+
+  `POST /runs/batch` records carry no thread: their runs may span several, and the body is a list of
+  run rows rather than conversation content.
 
 Retention is tunable under `skein.idempotency` in `langgraph.json` — see
 [langgraph-cli-compat.md](./langgraph-cli-compat.md#idempotency-skeinidempotency).
