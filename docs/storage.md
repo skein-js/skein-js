@@ -151,6 +151,58 @@ a graph that calls `getStore()` runs unchanged on skein. The bridge is `SkeinBas
 checkpointer is. Semantic `search` uses pgvector on the Postgres driver and a naive scan on memory —
 both come from the same `StoreRepo`, so behavior matches.
 
+### Filtering and namespace traversal
+
+Two ways to narrow a store read: by **content** (`search`'s `filter`) and by **namespace shape**
+(`listNamespaces`' `prefix`/`suffix`/`maxDepth`). Both are honoured over HTTP and through
+`getStore()`, and both are pinned for every driver by the shared conformance suite.
+
+```ts
+await store.search(["users", userId], { filter: { topic: "coffee", score: { $gte: 3 } } });
+await store.listNamespaces({ prefix: ["users", "*"], suffix: ["facts"], maxDepth: 3 });
+```
+
+**`filter`** applies to the **top-level** keys of an item's `value`, never a nested JSON path — `"a.b"`
+is the literal key `"a.b"`. Keys are ANDed, as are multiple operators on one key. The operators are
+LangGraph's — `$eq`, `$ne`, `$gt`, `$gte`, `$lt`, `$lte`, `$in`, `$nin` — and a bare scalar means
+equality. It is applied **before** paging, so a page is a page of matches.
+
+| Case                            | Behaviour                                                                                            |
+| ------------------------------- | ---------------------------------------------------------------------------------------------------- |
+| Ordering (`$gt`/`$gte`/…)       | **Numbers only** on both sides. A string, boolean, `null`, object, array or absent key never matches |
+| Key absent from `value`         | `$ne` and `$nin` match; `$eq`, a bare scalar, `$in` and every ordering operator do not               |
+| Present JSON `null`             | Distinguishable from absent — `{ deleted: null }` means "present and null"                           |
+| Empty operator bag `{}`         | States no conditions, so it matches everything                                                       |
+| Unknown `$op`, non-scalar value | **400** at the boundary, not a silent narrowing                                                      |
+
+The ordering rule is a **deliberate departure from LangGraph**, which coerces both sides with
+`Number()` — so upstream treats `"5" > 3` as true. That is not reproducible in Postgres, where
+`'abc'::numeric` throws rather than yielding `NaN`, and reproducing it faithfully would also make
+`true > 0`, `null >= 0` and `"" <= 5` all true. One rule both drivers implement beats two that agree
+by accident; the divergence is limited to numeric strings. (LangGraph's engine is internal — no export,
+no `.d.ts` — so skein reimplements it in `matchesItemFilter`, and the conformance suite pins _skein's_
+behaviour. It cannot detect upstream drift.)
+
+**Namespace matching** is positional. `"*"` stands for exactly one segment, `prefix` anchors at the
+first and `suffix` at the last, and a path longer than the namespace never matches. A path _shorter_
+than the namespace still matches, which is what makes `prefix` select a subtree: `["users","*"]`
+matches `["users","1"]` and `["users","1","memories"]` alike. `maxDepth` truncates each match to that
+many segments and de-duplicates, before sorting and paging — so `{ maxDepth: 1, limit: 10 }` is ten
+_roots_, not the roots of the first ten namespaces.
+
+Namespaces come back in ascending, element-wise order, shorter first on a shared prefix. Per-segment
+ordering follows the **driver's** collation: Postgres orders `text[]` under the database collation,
+the memory driver under UTF-16 code units. These agree for ordinary segments and can differ on exotic
+ones (`"a-b"` vs `"ab"` under `en_US.UTF-8`). Forcing agreement is not available — `COLLATE "C"` cannot
+apply to `text[]`, and flattening to a string reintroduces the separator collision the suite pins
+against — so the contract is the element-wise order, not a byte-exact one.
+
+> **Driver authors:** `StoreRepo.listNamespaces` takes a single `StoreNamespaceQuery`
+> (`{ prefix, suffix, maxDepth, limit, offset }`) rather than the old `(prefix, pagination)` pair,
+> which could not express a wildcard, a suffix or a depth. `listNamespaces(["users"])` becomes
+> `listNamespaces({ prefix: ["users"] })`. Like every other list path, it now applies the driver's
+> page bound when the caller names no `limit`.
+
 ### Store item TTL
 
 Store items can expire, matching LangGraph's store TTL. Configure it in `langgraph.json` under

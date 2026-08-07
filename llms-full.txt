@@ -2575,13 +2575,33 @@ server `langgraph dev` would have answered. It exposes only versions and which r
 
 ### Store (long-term memory)
 
-| Method   | Path                  | Notes                           |
-| -------- | --------------------- | ------------------------------- |
-| `PUT`    | `/store/items`        | Upsert an item (optional `ttl`) |
-| `GET`    | `/store/items`        | Fetch by namespace + key        |
-| `DELETE` | `/store/items`        |                                 |
-| `POST`   | `/store/items/search` | pgvector semantic search        |
-| `POST`   | `/store/namespaces`   | List namespaces (paginated)     |
+| Method   | Path                  | Notes                                          |
+| -------- | --------------------- | ---------------------------------------------- |
+| `PUT`    | `/store/items`        | Upsert an item (optional `ttl`)                |
+| `GET`    | `/store/items`        | Fetch by namespace + key                       |
+| `DELETE` | `/store/items`        |                                                |
+| `POST`   | `/store/items/search` | pgvector semantic search, `filter` → `{items}` |
+| `POST`   | `/store/namespaces`   | Prefix/suffix/depth → `{namespaces}`           |
+
+**Response shapes.** Search returns `{ "items": [...] }` and namespaces `{ "namespaces": [...] }` —
+the envelopes the SDK's `store.searchItems` / `store.listNamespaces` read. Store items carry
+`created_at`/`updated_at`, like every other resource here. All three were wrong until 0.14: bare
+arrays and camelCase timestamps, which made `searchItems()` throw on `.items.map`, `listNamespaces()`
+return `undefined`, and every item arrive through the official client with no timestamps.
+
+**`filter` on search** narrows by the **top-level** keys of an item's `value` — `"a.b"` is the literal
+key `"a.b"`, not a path into a nested object. Keys are ANDed, and so are multiple operators on one key.
+The operator set is LangGraph's: `$eq`, `$ne`, `$gt`, `$gte`, `$lt`, `$lte`, `$in`, `$nin`; a bare
+scalar means equality. Filtering happens before paging, so a page is a page of matches. An unknown
+operator or a non-scalar filter value is a **400**, not a silent narrowing — see
+[storage.md](./storage.md) for the full semantics, including the one place skein's ordering operators
+deliberately differ from LangGraph's.
+
+**Namespace matching** takes `prefix` and `suffix` (ANDed) and `max_depth`. `"*"` matches exactly one
+segment, positionally — so `["users","*"]` selects the `users` subtree, matching `["users","1"]` and
+`["users","1","memories"]` alike. Before 0.14 a wildcard was dropped and read as _no prefix_, so that
+same request returned **every namespace in the store**. `max_depth` truncates each match and
+de-duplicates, before paging.
 
 **Pagination on these two.** `GET /threads/{thread_id}/runs` takes `?limit`/`?offset` and
 `POST /store/namespaces` takes `limit`/`offset` in the body; both default to a **100**-row page, the
@@ -2589,7 +2609,8 @@ same default the SDK sends for `store.listNamespaces`. A query `limit` above 100
 rejected, matching every other query-string limit here. Truncation is not signalled on the response
 (only assistant search carries `x-pagination-total`), so page until you receive fewer rows than you
 asked for. `status` on `runs.list` **is** honoured, filtered in the driver so it pages the filtered set;
-`select` on `runs.list` and `suffix`/`max_depth` on `listNamespaces` are still accepted and **ignored**.
+`select` on `runs.list` and `refresh_ttl` on `store.searchItems` are still accepted and **ignored**
+(refresh-on-read is a deployment setting, `store.ttl.refresh_on_read`, not a per-request one).
 
 ### Thread streaming (SSE)
 
@@ -3470,6 +3491,58 @@ a graph that calls `getStore()` runs unchanged on skein. The bridge is `SkeinBas
 [`@skein-js/agent-protocol`](../packages/agent-protocol), attached in the run engine the same way the
 checkpointer is. Semantic `search` uses pgvector on the Postgres driver and a naive scan on memory —
 both come from the same `StoreRepo`, so behavior matches.
+
+### Filtering and namespace traversal
+
+Two ways to narrow a store read: by **content** (`search`'s `filter`) and by **namespace shape**
+(`listNamespaces`' `prefix`/`suffix`/`maxDepth`). Both are honoured over HTTP and through
+`getStore()`, and both are pinned for every driver by the shared conformance suite.
+
+```ts
+await store.search(["users", userId], { filter: { topic: "coffee", score: { $gte: 3 } } });
+await store.listNamespaces({ prefix: ["users", "*"], suffix: ["facts"], maxDepth: 3 });
+```
+
+**`filter`** applies to the **top-level** keys of an item's `value`, never a nested JSON path — `"a.b"`
+is the literal key `"a.b"`. Keys are ANDed, as are multiple operators on one key. The operators are
+LangGraph's — `$eq`, `$ne`, `$gt`, `$gte`, `$lt`, `$lte`, `$in`, `$nin` — and a bare scalar means
+equality. It is applied **before** paging, so a page is a page of matches.
+
+| Case                            | Behaviour                                                                                            |
+| ------------------------------- | ---------------------------------------------------------------------------------------------------- |
+| Ordering (`$gt`/`$gte`/…)       | **Numbers only** on both sides. A string, boolean, `null`, object, array or absent key never matches |
+| Key absent from `value`         | `$ne` and `$nin` match; `$eq`, a bare scalar, `$in` and every ordering operator do not               |
+| Present JSON `null`             | Distinguishable from absent — `{ deleted: null }` means "present and null"                           |
+| Empty operator bag `{}`         | States no conditions, so it matches everything                                                       |
+| Unknown `$op`, non-scalar value | **400** at the boundary, not a silent narrowing                                                      |
+
+The ordering rule is a **deliberate departure from LangGraph**, which coerces both sides with
+`Number()` — so upstream treats `"5" > 3` as true. That is not reproducible in Postgres, where
+`'abc'::numeric` throws rather than yielding `NaN`, and reproducing it faithfully would also make
+`true > 0`, `null >= 0` and `"" <= 5` all true. One rule both drivers implement beats two that agree
+by accident; the divergence is limited to numeric strings. (LangGraph's engine is internal — no export,
+no `.d.ts` — so skein reimplements it in `matchesItemFilter`, and the conformance suite pins _skein's_
+behaviour. It cannot detect upstream drift.)
+
+**Namespace matching** is positional. `"*"` stands for exactly one segment, `prefix` anchors at the
+first and `suffix` at the last, and a path longer than the namespace never matches. A path _shorter_
+than the namespace still matches, which is what makes `prefix` select a subtree: `["users","*"]`
+matches `["users","1"]` and `["users","1","memories"]` alike. `maxDepth` truncates each match to that
+many segments and de-duplicates, before sorting and paging — so `{ maxDepth: 1, limit: 10 }` is ten
+_roots_, not the roots of the first ten namespaces.
+
+Namespaces come back in ascending, element-wise order, shorter first on a shared prefix. Per-segment
+ordering follows the **driver's** collation: Postgres orders `text[]` under the database collation,
+the memory driver under UTF-16 code units. These agree for ordinary segments and can differ on exotic
+ones (`"a-b"` vs `"ab"` under `en_US.UTF-8`). Forcing agreement is not available — `COLLATE "C"` cannot
+apply to `text[]`, and flattening to a string reintroduces the separator collision the suite pins
+against — so the contract is the element-wise order, not a byte-exact one.
+
+> **Driver authors:** `StoreRepo.listNamespaces` takes a single `StoreNamespaceQuery`
+> (`{ prefix, suffix, maxDepth, limit, offset }`) rather than the old `(prefix, pagination)` pair,
+> which could not express a wildcard, a suffix or a depth. `listNamespaces(["users"])` becomes
+> `listNamespaces({ prefix: ["users"] })`. Like every other list path, it now applies the driver's
+> page bound when the caller names no `limit`.
 
 ### Store item TTL
 
@@ -5820,7 +5893,15 @@ serialized it into a single response string.
 - `GET /threads/{thread_id}/runs` and `POST /store/namespaces` page too, defaulting to **100** rows
   (`limit`/`offset`; a query `limit` above 1000 is clamped, not rejected). Both previously returned
   every row. 100 matches what the LangGraph SDK sends for `store.listNamespaces`, so an SDK caller sees
-  no change.
+  no change. `POST /store/namespaces` also applies the driver's `SKEIN_MAX_PAGE_SIZE` bound now — it was
+  the one list path that escaped it, and an `offset` with no `limit` used to be ignored outright on
+  Postgres, silently answering from row 0.
+- A **wildcard** namespace prefix or a `suffix` cannot use the slice-equality form and is matched
+  per-position instead. Neither form is index-backed: `store_items`' only relevant index is its
+  `(namespace, key)` primary key, and Postgres will not derive a range scan from a slice expression, so
+  both were already sequential scans. `filter` is pushed into the `WHERE` clause on both search paths
+  (including the pgvector one), so the page is the top-_n_ of the **matched** set rather than the
+  matched subset of a page.
 - Assistant search reports the unpaginated match count in `x-pagination-total`. Other collections do
   not: a total costs a second query, and for those it would be a count over exactly the rows the bound
   exists to avoid touching. Page them until they return fewer rows than you asked for.

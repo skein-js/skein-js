@@ -184,7 +184,15 @@ serialized it into a single response string.
 - `GET /threads/{thread_id}/runs` and `POST /store/namespaces` page too, defaulting to **100** rows
   (`limit`/`offset`; a query `limit` above 1000 is clamped, not rejected). Both previously returned
   every row. 100 matches what the LangGraph SDK sends for `store.listNamespaces`, so an SDK caller sees
-  no change.
+  no change. `POST /store/namespaces` also applies the driver's `SKEIN_MAX_PAGE_SIZE` bound now — it was
+  the one list path that escaped it, and an `offset` with no `limit` used to be ignored outright on
+  Postgres, silently answering from row 0.
+- A **wildcard** namespace prefix or a `suffix` cannot use the slice-equality form and is matched
+  per-position instead. Neither form is index-backed: `store_items`' only relevant index is its
+  `(namespace, key)` primary key, and Postgres will not derive a range scan from a slice expression, so
+  both were already sequential scans. `filter` is pushed into the `WHERE` clause on both search paths
+  (including the pgvector one), so the page is the top-_n_ of the **matched** set rather than the
+  matched subset of a page.
 - Assistant search reports the unpaginated match count in `x-pagination-total`. Other collections do
   not: a total costs a second query, and for those it would be a count over exactly the rows the bound
   exists to avoid touching. Page them until they return fewer rows than you asked for.

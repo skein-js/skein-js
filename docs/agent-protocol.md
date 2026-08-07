@@ -322,13 +322,33 @@ server `langgraph dev` would have answered. It exposes only versions and which r
 
 ### Store (long-term memory)
 
-| Method   | Path                  | Notes                           |
-| -------- | --------------------- | ------------------------------- |
-| `PUT`    | `/store/items`        | Upsert an item (optional `ttl`) |
-| `GET`    | `/store/items`        | Fetch by namespace + key        |
-| `DELETE` | `/store/items`        |                                 |
-| `POST`   | `/store/items/search` | pgvector semantic search        |
-| `POST`   | `/store/namespaces`   | List namespaces (paginated)     |
+| Method   | Path                  | Notes                                          |
+| -------- | --------------------- | ---------------------------------------------- |
+| `PUT`    | `/store/items`        | Upsert an item (optional `ttl`)                |
+| `GET`    | `/store/items`        | Fetch by namespace + key                       |
+| `DELETE` | `/store/items`        |                                                |
+| `POST`   | `/store/items/search` | pgvector semantic search, `filter` → `{items}` |
+| `POST`   | `/store/namespaces`   | Prefix/suffix/depth → `{namespaces}`           |
+
+**Response shapes.** Search returns `{ "items": [...] }` and namespaces `{ "namespaces": [...] }` —
+the envelopes the SDK's `store.searchItems` / `store.listNamespaces` read. Store items carry
+`created_at`/`updated_at`, like every other resource here. All three were wrong until 0.14: bare
+arrays and camelCase timestamps, which made `searchItems()` throw on `.items.map`, `listNamespaces()`
+return `undefined`, and every item arrive through the official client with no timestamps.
+
+**`filter` on search** narrows by the **top-level** keys of an item's `value` — `"a.b"` is the literal
+key `"a.b"`, not a path into a nested object. Keys are ANDed, and so are multiple operators on one key.
+The operator set is LangGraph's: `$eq`, `$ne`, `$gt`, `$gte`, `$lt`, `$lte`, `$in`, `$nin`; a bare
+scalar means equality. Filtering happens before paging, so a page is a page of matches. An unknown
+operator or a non-scalar filter value is a **400**, not a silent narrowing — see
+[storage.md](./storage.md) for the full semantics, including the one place skein's ordering operators
+deliberately differ from LangGraph's.
+
+**Namespace matching** takes `prefix` and `suffix` (ANDed) and `max_depth`. `"*"` matches exactly one
+segment, positionally — so `["users","*"]` selects the `users` subtree, matching `["users","1"]` and
+`["users","1","memories"]` alike. Before 0.14 a wildcard was dropped and read as _no prefix_, so that
+same request returned **every namespace in the store**. `max_depth` truncates each match and
+de-duplicates, before paging.
 
 **Pagination on these two.** `GET /threads/{thread_id}/runs` takes `?limit`/`?offset` and
 `POST /store/namespaces` takes `limit`/`offset` in the body; both default to a **100**-row page, the
@@ -336,7 +356,8 @@ same default the SDK sends for `store.listNamespaces`. A query `limit` above 100
 rejected, matching every other query-string limit here. Truncation is not signalled on the response
 (only assistant search carries `x-pagination-total`), so page until you receive fewer rows than you
 asked for. `status` on `runs.list` **is** honoured, filtered in the driver so it pages the filtered set;
-`select` on `runs.list` and `suffix`/`max_depth` on `listNamespaces` are still accepted and **ignored**.
+`select` on `runs.list` and `refresh_ttl` on `store.searchItems` are still accepted and **ignored**
+(refresh-on-read is a deployment setting, `store.ttl.refresh_on_read`, not a per-request one).
 
 ### Thread streaming (SSE)
 
