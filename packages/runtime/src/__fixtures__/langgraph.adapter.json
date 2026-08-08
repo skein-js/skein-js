@@ -1,0 +1,8 @@
+{
+  "graphs": {
+    "echo": "./echo.ts:graph"
+  },
+  "store": {
+    "adapter": "./store-adapter.ts:store"
+  }
+}

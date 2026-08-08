@@ -8,6 +8,7 @@
 // the graph-map/resolver normalization is shared with `embedInMemoryGraphs` via server-kit. See
 // docs/embedding.md.
 
+import { withStoreItems } from "@skein-js/agent-protocol";
 import type { GraphResolver, ProtocolDeps } from "@skein-js/agent-protocol";
 import {
   normalizeEmbeddableGraphs,
@@ -175,7 +176,15 @@ export async function embedPostgresGraphs(
       runConcurrency: resolveRunConcurrency(),
       disposers,
     });
-    if (options.ttl) startStoreTtlSweeper(store, options.ttl, disposers);
+    // Pointed at whichever store the items actually live in. `overrides.storeItems` is a bring-your-own
+    // long-term store (docs/storage.md), and aimed at the driver's own repo the sweeper would tidy an
+    // empty table forever while the adapted one grew — the same mistake `buildRuntime` avoids.
+    if (options.ttl) {
+      const swept = options.overrides?.storeItems
+        ? withStoreItems(store, options.overrides.storeItems)
+        : store;
+      startStoreTtlSweeper(swept, options.ttl, disposers);
+    }
 
     // Redis is optional; a blank URI counts as absent. When it is, warn — a silent downgrade to a
     // process-local queue is a footgun for a helper people reach for to deploy (see the redisUri doc).

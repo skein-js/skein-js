@@ -25,6 +25,7 @@ skein-js separates two kinds of persistence, and it is important not to conflate
 - [Page bound (`SKEIN_MAX_PAGE_SIZE`)](#page-bound-skein_max_page_size)
 - [Server-enforced metadata](#server-enforced-metadata-enforcedmetadata)
 - [Drivers](#drivers)
+- [Bringing your own store](#bringing-your-own-store-storeadapter)
 - [Checkpointer selection](#checkpointer-selection)
 - [Why the split matters](#why-the-split-matters)
 
@@ -389,6 +390,70 @@ import { PostgresSaver } from "@langchain/langgraph-checkpoint-postgres";
 const checkpointer = PostgresSaver.fromConnString(process.env.POSTGRES_URI!);
 await checkpointer.setup(); // idempotent migrations for checkpoint tables
 ```
+
+### Bringing your own store (`store.adapter`)
+
+Long-term memory is the one repo you can swap without implementing the other five. Point
+`store.adapter` at a `"path:export"` and skein uses it for `/store/*` **and** for the `getStore()` handed
+to every graph run; assistants, threads, runs, crons and idempotency keep using the configured driver.
+
+```jsonc
+{ "store": { "adapter": "./src/my-store.ts:store" } }
+```
+
+```ts
+// src/my-store.ts — LangChain's own JS long-term-memory guide builds on this exact class.
+import { PostgresStore } from "@langchain/langgraph-checkpoint-postgres/store";
+
+export const store = PostgresStore.fromConnString(process.env.POSTGRES_URI!);
+await store.setup(); // top-level await: `store.adapter` imports a *ready* store
+```
+
+The export may be **either** a LangGraph
+[`BaseStore`](https://docs.langchain.com/oss/javascript/langgraph/persistence) — `PostgresStore`,
+`InMemoryStore`, your own — or a skein `StoreRepo`. They are told apart structurally (`BaseStore` has
+`batch`), and a mis-shaped export fails at **startup** naming the missing method, rather than at the first
+request that reaches it. Prefer `BaseStore`: it is the wider ecosystem, and `PostgresStore` brings pgvector
+with HNSW _and_ IVFFlat plus a `"text" | "vector" | "hybrid" | "auto"` search mode — hybrid search being a
+capability skein's own driver does not have.
+
+**What the adapter does, and why it costs a little.** skein's filter operators, positional namespace
+matching, ordering and page bound are **re-applied in JS** rather than handed to the adapted store. That
+is not tidiness — forwarding would be wrong. `InMemoryStore`'s `search` matches namespace prefixes as a
+raw _string_ (`["users"]` also matching `["users2", …]`), ignores `query` entirely without a vector index,
+and coerces filter operands with `Number()` — the one rule skein deliberately rejected because Postgres
+cannot reproduce it. So the adapted store is asked for a candidate set, and for its vector ranking when it
+has one; skein applies the contract on top. The price is over-fetching: more source rows are read than
+returned, and paging happens after re-filtering. The
+[shared conformance suite](./testing.md) runs against `fromBaseStore(new InMemoryStore())` and against a
+real `PostgresStore`, which is how "serves the same contract" is a fact rather than a claim.
+
+Four things worth knowing before you switch:
+
+|                                      |                                                                                                                                                                                                                                                                                                                                                                                                                                                           |
+| ------------------------------------ | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| **`put` does a read-back**           | `StoreRepo.put` returns the stored item; `BaseStore.put` returns `void`. So the adapter writes then reads, costing a round trip — and it is **racy**: a concurrent write to the same key returns the other writer's item.                                                                                                                                                                                                                                 |
+| **TTL is partly expressible**        | `store.ttl.default_ttl` works — the adapter stamps it onto every write. But `refresh_on_read` cannot be expressed through `BaseStore.get`, and it **defaults to enabled**, so `store.ttl` is refused unless you set `refresh_on_read: false` and accept write-based expiry. A store with no `sweepExpiredItems()` (`InMemoryStore`) refuses `store.ttl` outright; `PostgresStore` has it. A silently ignored retention policy is worse than a boot error. |
+| **A prefix-less search fans out**    | Some stores reject an empty namespace prefix (`PostgresStore` does), so `search({})` enumerates namespaces and searches each. Scores are re-sorted globally afterwards, so semantic ranking still holds — but give a prefix when you can.                                                                                                                                                                                                                 |
+| **The store may have its own rules** | `PostgresStore` rejects namespace labels containing `.`, `%`, `_` or `\`, and a root label of `"langgraph"`. Items written under such a namespace by another driver are not reachable through it.                                                                                                                                                                                                                                                         |
+
+**Your store owns its items.** skein loads _into_ an adapter but never reads back out of it, and the
+asymmetry is deliberate — your store's durability is yours to configure, not skein's to shadow. So
+`skein import-langgraph`, a restored `.skein/dev-state.json`, and the one-time `langgraph dev` auto-import
+all replay their items through the adapter, landing where the server will read them. But the dev-state
+_snapshot_ covers the driver's resources only — assistants, threads, runs, crons — so an adapted
+`InMemoryStore` loses its items when `skein dev` restarts (it is in-memory and skein is not backing it up
+for you), while an adapted `PostgresStore` keeps them because it always did.
+
+**`store.index` is refused alongside an adapter.** It configures pgvector on the store the adapter
+replaces, so it could only ever have no effect on search. Configure the index on your own store instead —
+`PostgresStore` and `InMemoryStore` both take one in their constructor.
+
+In code (no `langgraph.json`), the same seam is `ProtocolDeps.storeItems` — wrap a `BaseStore` with
+`fromBaseStore` first. Pass it as its own field rather than composing `{ ...store, store: mine }`: the
+bundled drivers expose `maxPageSize` and `durable` as class **getters** over **private** fields, so a
+spread silently loses them and a prototype clone throws on read. `withStoreItems` is the supported way to
+do it by hand.
 
 ## Checkpointer selection
 

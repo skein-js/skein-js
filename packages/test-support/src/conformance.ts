@@ -11,6 +11,25 @@ export interface ConformanceStoreOptions {
 }
 
 /**
+ * What a driver can and cannot do, for the handful of cases where "cannot" is a *contract* rather than a
+ * gap. Default: everything, so a bundled driver declares nothing.
+ *
+ * Deliberately tiny, and it must stay that way. A capability flag is an invitation to excuse a driver
+ * from a rule instead of implementing it, which would hollow out the point of a shared suite — so a flag
+ * only earns its place when the alternative behaviour is itself asserted. `expiry` is the one case:
+ * TTL cannot be expressed through a LangGraph `BaseStore`, so `fromBaseStore` **refuses** a per-item
+ * `ttl` rather than accepting and discarding one, and the suite pins that refusal.
+ */
+export interface ConformanceCapabilities {
+  /**
+   * The driver can expire items. When false, the suite asserts a per-item `ttl` is **rejected** and that
+   * `sweepExpired()` answers zero — a silently ignored retention policy being the outcome neither a
+   * driver nor an adapter may produce.
+   */
+  expiry?: boolean;
+}
+
+/**
  * Produces a fresh, empty {@link SkeinStore}. Called once per test so cases never share state.
  * `options` is passed through to the driver's constructor.
  */
@@ -26,7 +45,12 @@ export type SkeinStoreFactory = (
  * @example
  * runSkeinStoreConformance("memory", () => new MemorySkeinStore());
  */
-export function runSkeinStoreConformance(label: string, makeStore: SkeinStoreFactory): void {
+export function runSkeinStoreConformance(
+  label: string,
+  makeStore: SkeinStoreFactory,
+  capabilities?: ConformanceCapabilities,
+): void {
+  const canExpire = capabilities?.expiry ?? true;
   describe(`SkeinStore conformance — ${label}`, () => {
     describe("assistants", () => {
       it("creates an assistant, defaulting name to the graph id and version to 1", async () => {
@@ -1737,17 +1761,32 @@ export function runSkeinStoreConformance(label: string, makeStore: SkeinStoreFac
         expect(await store.store.get(["ns"], "keep")).not.toBeNull();
       });
 
-      it("expires a per-put TTL item: reads null and the sweeper removes it", async () => {
-        const store = await makeStore();
-        await store.store.put(["ns"], "gone", { v: 1 }, { ttl: tinyTtlMinutes });
+      it.runIf(canExpire)(
+        "expires a per-put TTL item: reads null and the sweeper removes it",
+        async () => {
+          const store = await makeStore();
+          await store.store.put(["ns"], "gone", { v: 1 }, { ttl: tinyTtlMinutes });
 
-        await wait(120);
-        // Lazy expiry: an expired item reads as absent even before the sweep runs.
+          await wait(120);
+          // Lazy expiry: an expired item reads as absent even before the sweep runs.
+          expect(await store.store.get(["ns"], "gone")).toBeNull();
+          // And it is no longer surfaced by search or namespace listing.
+          expect(await store.store.search({ prefix: ["ns"] })).toHaveLength(0);
+          // The sweeper physically deletes remaining expired rows (idempotent afterwards).
+          await store.store.sweepExpired();
+          expect(await store.store.sweepExpired()).toBe(0);
+        },
+      );
+
+      // The alternative behaviour, asserted rather than skipped. A driver that cannot expire items must
+      // *refuse* a `ttl` — accepting one and discarding it would leave a caller believing a retention
+      // policy is in force, which is the one outcome worse than not supporting TTL at all.
+      it.runIf(!canExpire)("rejects a per-put TTL it cannot honour", async () => {
+        const store = await makeStore();
+
+        await expect(store.store.put(["ns"], "gone", { v: 1 }, { ttl: 5 })).rejects.toThrow(/ttl/i);
+        // And nothing is silently half-written by the refusal.
         expect(await store.store.get(["ns"], "gone")).toBeNull();
-        // And it is no longer surfaced by search or namespace listing.
-        expect(await store.store.search({ prefix: ["ns"] })).toHaveLength(0);
-        // The sweeper physically deletes remaining expired rows (idempotent afterwards).
-        await store.store.sweepExpired();
         expect(await store.store.sweepExpired()).toBe(0);
       });
     });

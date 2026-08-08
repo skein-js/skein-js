@@ -89,7 +89,18 @@ export async function runImportLanggraph(options: ImportLanggraphOptions): Promi
       queue: "memory",
     });
     try {
+      // Bulk-loaded through the driver, which is what `restore()` is: it writes ids and timestamps
+      // verbatim, and only a driver can do that.
       await loadSnapshotIntoStore(snapshot, runtime.deps.store, runtime.deps.checkpointer);
+      // But a `store.adapter` deployment reads its long-term memory somewhere else entirely, so the
+      // items `restore()` just wrote into the driver's own table would be unreachable. Replay them
+      // through the adapter — the only path that has one — so the memories actually arrive. Item
+      // timestamps are the store's to set on write, so unlike threads and runs there is nothing lost.
+      if (runtime.deps.storeItems) {
+        for (const [, item] of snapshot.store.items) {
+          await runtime.deps.storeItems.put(item.namespace, item.key, item.value);
+        }
+      }
     } finally {
       await runtime.dispose();
     }

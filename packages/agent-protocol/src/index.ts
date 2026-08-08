@@ -7,14 +7,14 @@ export { createProtocolRuntime } from "./runtime.js";
 export type { ProtocolRuntime, ProtocolRuntimeOptions } from "./runtime.js";
 
 // The framework-agnostic service (embed directly), and the advanced shared-context building blocks.
-export {
-  createProtocolServiceFromContext,
-  buildProtocolService,
-  createProtocolService,
-} from "./service.js";
-export type { ProtocolService } from "./service.js";
 export { createContext } from "./context.js";
 export type { ProtocolContext } from "./context.js";
+export {
+  buildProtocolService,
+  createProtocolService,
+  createProtocolServiceFromContext,
+} from "./service.js";
+export type { ProtocolService } from "./service.js";
 
 // The transport-neutral HTTP handler table an adapter mounts.
 export { createProtocolHandlers } from "./create-handlers.js";
@@ -28,12 +28,12 @@ export type {
 // The transport-neutral route table + body-fold helper every framework adapter maps onto its router,
 // plus a `matchSkeinRoute` matcher for adapters that dispatch from a catch-all (NestJS, Next.js).
 export {
-  skeinRoutes,
   copyThreadIdIntoBody,
+  createRouteMatcher,
   filterSkeinRoutes,
   foldThreadId,
   matchSkeinRoute,
-  createRouteMatcher,
+  skeinRoutes,
 } from "./http/routes.js";
 export type {
   DisabledRouteGroups,
@@ -48,18 +48,17 @@ export type {
 // for non-chat workloads that don't need threads/assistants/runs. See docs/serving-a-single-graph.md.
 export {
   createGraphInvokeHandler,
-  graphInvokeRoutes,
   DEFAULT_INVOKE_PREFIX,
+  graphInvokeRoutes,
 } from "./invoke/graph-invoke.js";
-export type { GraphInvokeOptions, GraphInvokeHandlerName } from "./invoke/graph-invoke.js";
+export type { GraphInvokeHandlerName, GraphInvokeOptions } from "./invoke/graph-invoke.js";
 
-// The background run worker.
 export {
-  createRunWorker,
-  DEFAULT_RUN_CONCURRENCY,
-  DEFAULT_SHUTDOWN_GRACE_MS,
-} from "./runs/run-worker.js";
-export type { RunWorker, RunWorkerOptions } from "./runs/run-worker.js";
+  advanceCronOccurrence,
+  assertValidCronSchedule,
+  nextCronOccurrence,
+} from "./crons/cron-schedule.js";
+export type { CronOccurrenceQuery } from "./crons/cron-schedule.js";
 export {
   createCronScheduler,
   DEFAULT_CRON_BATCH_SIZE,
@@ -72,23 +71,6 @@ export type {
   CronSchedulerOptions,
   CronTickSummary,
 } from "./crons/cron-scheduler.js";
-export { createThreadTtlSweeper } from "./threads/thread-ttl-sweeper.js";
-export type { ThreadTtlSweeper, ThreadTtlSweeperOptions } from "./threads/thread-ttl-sweeper.js";
-export { createIdempotencySweeper } from "./idempotency/idempotency-sweeper.js";
-export type {
-  IdempotencySweeper,
-  IdempotencySweeperOptions,
-} from "./idempotency/idempotency-sweeper.js";
-export { createIdempotentHandlers } from "./idempotency/idempotent-handlers.js";
-export type { IdempotencyOptions } from "./idempotency/idempotent-handlers.js";
-export type { IdempotencyConfig } from "./idempotency/idempotency-config.js";
-export { idempotencyScope, requestFingerprint } from "./idempotency/fingerprint.js";
-export {
-  advanceCronOccurrence,
-  assertValidCronSchedule,
-  nextCronOccurrence,
-} from "./crons/cron-schedule.js";
-export type { CronOccurrenceQuery } from "./crons/cron-schedule.js";
 export { createCronService } from "./crons/cron-service.js";
 export type {
   CreateCronInput,
@@ -96,6 +78,24 @@ export type {
   SearchCronsInput,
   UpdateCronInput,
 } from "./crons/cron-service.js";
+export { idempotencyScope, requestFingerprint } from "./idempotency/fingerprint.js";
+export type { IdempotencyConfig } from "./idempotency/idempotency-config.js";
+export { createIdempotencySweeper } from "./idempotency/idempotency-sweeper.js";
+export type {
+  IdempotencySweeper,
+  IdempotencySweeperOptions,
+} from "./idempotency/idempotency-sweeper.js";
+export { createIdempotentHandlers } from "./idempotency/idempotent-handlers.js";
+export type { IdempotencyOptions } from "./idempotency/idempotent-handlers.js";
+// The background run worker.
+export {
+  createRunWorker,
+  DEFAULT_RUN_CONCURRENCY,
+  DEFAULT_SHUTDOWN_GRACE_MS,
+} from "./runs/run-worker.js";
+export type { RunWorker, RunWorkerOptions } from "./runs/run-worker.js";
+export { createThreadTtlSweeper } from "./threads/thread-ttl-sweeper.js";
+export type { ThreadTtlSweeper, ThreadTtlSweeperOptions } from "./threads/thread-ttl-sweeper.js";
 
 // The structured `meta` on the always-on failed-run log line. A console logger can recognize it and
 // render a graph failure prominently; anything else just sees an object.
@@ -132,12 +132,36 @@ export type {
   DrawGraphOptions,
   SubgraphsOptions,
 } from "./assistants/assistant-service.js";
-export type { StoreService } from "./store/store-service.js";
 export type { MetaService, ServerInfo } from "./meta/server-info.js";
+export type { StoreService } from "./store/store-service.js";
 
-// The LangGraph `BaseStore` bridge over a skein `StoreRepo`, injected into every graph run so nodes
-// reach long-term memory via `getStore()`. Exported for direct use in tests and embeddings.
+export type {
+  CancelManyQuery,
+  CancelManyResult,
+  CancelRunOptions,
+  CompletedWaitRun,
+  CreateRunInput,
+  RunService,
+  StartedStream,
+  WaitRunResult,
+} from "./runs/run-service.js";
+// The two store bridges, which are exact inverses of each other:
+//
+// `SkeinBaseStore` wraps a skein `StoreRepo` as a LangGraph `BaseStore`, and the run engine attaches one
+// to every graph run so nodes reach long-term memory via `getStore()`.
+//
+// `fromBaseStore` goes the other way — a LangGraph `BaseStore` (`PostgresStore`, `InMemoryStore`, your
+// own) serving skein's `/store/*` surface. It re-imposes skein's filter/namespace/paging semantics in JS
+// rather than forwarding them; read its header for why forwarding would be unsafe. Pair it with
+// `withStoreItems` (or `ProtocolDeps.storeItems`, which calls it) to substitute only the memory repo.
+export {
+  defaultAdapterScanLimit,
+  fromBaseStore,
+  supportsStoreTtl,
+  type FromBaseStoreOptions,
+} from "./store/from-base-store.js";
 export { SkeinBaseStore } from "./store/skein-base-store.js";
+export { withStoreItems } from "./store/with-store-items.js";
 export type {
   CreateThreadInput,
   HistoryOptions,
@@ -152,16 +176,6 @@ export type {
   ThreadStreamInput,
   ThreadStreamService,
 } from "./threads/thread-stream-service.js";
-export type {
-  CancelManyQuery,
-  CancelManyResult,
-  CancelRunOptions,
-  CompletedWaitRun,
-  CreateRunInput,
-  RunService,
-  StartedStream,
-  WaitRunResult,
-} from "./runs/run-service.js";
 
 // SSE helpers, for adapters that write the event stream themselves.
 export {
@@ -171,8 +185,8 @@ export {
   parseAfterSeq,
   SSE_HEADERS,
   SSE_HEARTBEAT,
-  type SseOptions,
   toSseEvents,
+  type SseOptions,
 } from "./sse/sse.js";
 // Every adapter's SSE write loop uses this: without it a slow client is served out of the server's
 // memory, unbounded and per connection. See docs/streaming.md.

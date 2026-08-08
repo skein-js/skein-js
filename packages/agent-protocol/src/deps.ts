@@ -14,12 +14,14 @@ import {
   type RunEventBus,
   type RunQueue,
   type SkeinStore,
+  type StoreRepo,
   type ThreadExecutionGate,
   type ThreadTtlConfig,
   type TelemetrySink,
 } from "@skein-js/core";
 
 import type { IdempotencyConfig } from "./idempotency/idempotency-config.js";
+import { withStoreItems } from "./store/with-store-items.js";
 
 /** A factory export: called (optionally with per-run config) to produce a compiled graph. */
 export type CompiledGraphFactory = (config: {
@@ -77,6 +79,21 @@ export interface ProtocolDeps {
    * reach long-term cross-thread memory via `getStore()`.
    */
   store: SkeinStore;
+  /**
+   * Replaces **only** {@link store}'s long-term-memory repo — bring-your-own store, from
+   * `langgraph.json`'s `store.adapter` or injected directly. Everything else (assistants, threads,
+   * runs, crons, idempotency) keeps using {@link store}.
+   *
+   * A separate field rather than asking callers to compose, because `{ ...postgresStore, store: mine }`
+   * is a trap: `maxPageSize` and `durable` are class getters on both bundled drivers, and object spread
+   * copies own enumerable properties only, so both silently become `undefined` — invisibly, since both
+   * are optional on the interface. `resolveDeps` performs the substitution through `withStoreItems`, so
+   * the bounds survive by construction rather than by every caller remembering.
+   *
+   * Accepts a `StoreRepo`. To use a LangGraph `BaseStore` (`PostgresStore`, `InMemoryStore`, …), wrap
+   * it with `fromBaseStore` first.
+   */
+  storeItems?: StoreRepo;
   /** Resolves graph ids to runnable graphs and their schemas. */
   graphs: GraphResolver;
   /** Hands background runs to a worker. */
@@ -332,6 +349,11 @@ export function resolveDeps(deps: ProtocolDeps): ResolvedDeps {
         : [deps.telemetry];
   return {
     ...deps,
+    // A bring-your-own store repo is folded into `store` here, so every reader downstream — the
+    // services, the auth decorator, the `SkeinBaseStore` handed to graph runs — sees one `SkeinStore`
+    // and none of them needs to know an adapter is in play. `withStoreItems` carries the prototype
+    // getters the spread would otherwise drop.
+    store: deps.storeItems ? withStoreItems(deps.store, deps.storeItems) : deps.store,
     clock: deps.clock ?? (() => new Date()),
     logger,
     webhookDispatcher: deps.webhookDispatcher ?? fetchWebhookDispatcher,

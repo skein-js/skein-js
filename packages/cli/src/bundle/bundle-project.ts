@@ -317,6 +317,14 @@ export async function bundleProject(options: BundleProjectOptions): Promise<Buil
     input["embed"] = spec.sourceFile;
     rewrites.embed = `./embed.js:${spec.exportSymbol}`;
   }
+  // A bring-your-own store (`store.adapter`) is the same shape as auth and the custom embedder: a
+  // `path:export` spec pointing at the user's own module. Bundled and repointed for the same reason —
+  // and it matters more here than most, because the adapter is what the whole `/store/*` surface runs on.
+  if (config.store?.adapter) {
+    const spec = parseGraphSpec(config.store.adapter, configDir);
+    input["store-adapter"] = spec.sourceFile;
+    rewrites.storeAdapter = `./store-adapter.js:${spec.exportSymbol}`;
+  }
   // Custom telemetry sinks are `path:export` specs like auth/embed, so they need the same treatment:
   // bundled into the artifact and repointed at the emitted JS. Without this the production config
   // would still name a `.ts` file that isn't in the image, and the container would fail to boot.

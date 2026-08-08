@@ -49,6 +49,25 @@ describe("buildProductionConfig", () => {
     });
   });
 
+  it("rewrites store.adapter, so a built image does not name a .ts file it does not contain", () => {
+    // Left unrewritten, the production config still points at `./src/my-store.ts` and the server fails at
+    // boot with "failed to import module" — on the module the entire `/store/*` surface runs on.
+    const withAdapter: LanggraphJson = {
+      ...base,
+      store: { adapter: "./src/my-store.ts:store", ttl: { default_ttl: 60 } },
+    };
+
+    const config = buildProductionConfig(withAdapter, {
+      graphs: base.graphs,
+      storeAdapter: "./store-adapter.js:store",
+    });
+
+    expect(config.store).toEqual({
+      adapter: "./store-adapter.js:store",
+      ttl: { default_ttl: 60 },
+    });
+  });
+
   it("drops a string (file-path) env but keeps an inline env map", () => {
     const fileEnv = buildProductionConfig({ ...base, env: ".env" }, { graphs: base.graphs });
     expect(fileEnv.env).toBeUndefined();

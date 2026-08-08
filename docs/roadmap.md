@@ -186,6 +186,17 @@ Also shipped, beyond the original MVP plan:
   [console.md](./console.md), and [`examples/triage-agent`](../examples/triage-agent) for the workload
   it was built to show.
 
+- ✅ **Bring your own long-term store (`store.adapter`).** Long-term memory is the one repo you can swap
+  without implementing the other five: point `store.adapter` at a `"path:export"` exporting a LangGraph
+  `BaseStore` or a skein `StoreRepo`, and it serves `/store/*` **and** the `getStore()` handed to every
+  graph run, while assistants/threads/runs/crons/idempotency stay on the configured driver. This closes a
+  drop-in gap — LangChain's own JS long-term-memory guide builds on `PostgresStore` from
+  `@langchain/langgraph-checkpoint-postgres/store`, which skein previously could not accept — and reaches
+  its hybrid `text | vector` search for free. The adapter **re-imposes** skein's filter, namespace and
+  paging semantics rather than forwarding them, because upstream's differ in ways that are unsafe rather
+  than merely different; the shared conformance suite runs against an adapted `InMemoryStore` and a real
+  `PostgresStore` to prove it. See [storage.md](./storage.md#bringing-your-own-store-storeadapter).
+
 ## Planned / coming soon (post-MVP)
 
 These are on the map but not yet built. Want one sooner? Upvote or open an issue —

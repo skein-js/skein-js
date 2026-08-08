@@ -144,7 +144,19 @@ export const langgraphJsonSchema = z
     env: z.union([z.string(), z.record(z.string())]).optional(),
     /** Long-term memory store config. */
     store: z
-      .object({ index: storeIndexSchema.optional(), ttl: storeTtlSchema.optional() })
+      .object({
+        index: storeIndexSchema.optional(),
+        ttl: storeTtlSchema.optional(),
+        /**
+         * `"./path:export"` of a bring-your-own long-term-memory store — a skein `StoreRepo` or a
+         * LangGraph `BaseStore` (`PostgresStore`, `InMemoryStore`, your own). A skein extension, not a
+         * LangGraph key, but it belongs under `store` because that is what it replaces.
+         *
+         * Only the memory repo is substituted; assistants, threads, runs, crons and idempotency keep
+         * using the configured driver.
+         */
+        adapter: z.string().min(1).optional(),
+      })
       .passthrough()
       .optional(),
     /** Checkpointer backend; `"default"` == Postgres, absent == in-memory. Plus `ttl` — thread expiry. */

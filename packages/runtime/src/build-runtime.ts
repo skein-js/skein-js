@@ -11,6 +11,7 @@ import { readFile } from "node:fs/promises";
 import path from "node:path";
 
 import { MemorySaver } from "@langchain/langgraph";
+import { withStoreItems } from "@skein-js/agent-protocol";
 import type { GraphResolver, GraphSchemas, ProtocolDeps } from "@skein-js/agent-protocol";
 import {
   loadAuthEngine,
@@ -47,6 +48,7 @@ import {
 } from "./drivers.js";
 import { RuntimeConfigError } from "./errors.js";
 import { resolveEmbed } from "./resolve-embed.js";
+import { resolveStoreAdapter } from "./resolve-store-adapter.js";
 import { resolveTelemetry } from "./resolve-telemetry.js";
 
 /** Where protocol resources (assistants/threads/runs/store) and checkpoints are persisted. */
@@ -91,8 +93,13 @@ export interface SkeinRuntime {
   dispose(): Promise<void>;
   /** Present only in all-memory mode — durable stores keep their own state. */
   snapshotState?(): DevStateSnapshot;
-  /** Present only in all-memory mode. */
-  hydrateState?(snapshot: DevStateSnapshot): void;
+  /**
+   * Present only in all-memory mode.
+   *
+   * Async because a configured `store.adapter` owns the long-term items: they are replayed through it
+   * one `put` at a time, since only a driver can bulk-`restore()` and the adapter is not one. Await it.
+   */
+  hydrateState?(snapshot: DevStateSnapshot): Promise<void>;
 }
 
 /**
@@ -188,7 +195,40 @@ export async function buildRuntime(options: BuildRuntimeOptions): Promise<SkeinR
     // would grow its heap by every expired item it ever wrote.
     const devStoreTtl = resolveStoreTtl(runtime.config.store?.ttl);
     const devDisposers: Disposer[] = [];
-    if (devStoreTtl) startStoreTtlSweeper(runtime.deps.store, devStoreTtl, devDisposers);
+    // `store.adapter` has to be honoured on this path too — it is the one `skein dev` takes, so reading
+    // it only in the durable branch below would mean the key silently did nothing exactly where a user
+    // first tries it. Filled in place for the same reason `serverVersion` is: a reloadable runtime hands
+    // out the deps object it keeps, and `resolveDeps` folds `storeItems` into `store` downstream.
+    // Guarded, because `resolveStoreAdapter` registers the adapted store's teardown *before* it can
+    // refuse a config — so a refusal must still release whatever the store opened on import, and drain
+    // the telemetry sinks resolved above. The durable branch below gets this from its own try/catch.
+    let devStoreItems;
+    try {
+      devStoreItems = runtime.config.store?.adapter
+        ? await resolveStoreAdapter(runtime.config.store.adapter, {
+            configDir,
+            importModule,
+            maxPageSize: resolveMaxPageSize(),
+            ttl: devStoreTtl,
+            indexConfigured: runtime.config.store?.index?.embed !== undefined,
+            disposers: devDisposers,
+          })
+        : undefined;
+    } catch (error) {
+      await flushTelemetry(telemetry);
+      for (const dispose of devDisposers) await dispose();
+      throw error;
+    }
+    if (devStoreItems) runtime.deps.storeItems = devStoreItems;
+    // Sweep the store the items actually live in. Pointed at the driver's own repo, a `store.ttl` +
+    // `store.adapter` deployment would sweep an empty store forever while the adapted one grew.
+    if (devStoreTtl) {
+      startStoreTtlSweeper(
+        devStoreItems ? withStoreItems(runtime.deps.store, devStoreItems) : runtime.deps.store,
+        devStoreTtl,
+        devDisposers,
+      );
+    }
     // Filled in place rather than copied, matching how `resolveRuntimeDeps` fills the logger: a
     // reloadable runtime hands out the same deps object it keeps.
     if (serverVersion !== undefined) runtime.deps.serverVersion = serverVersion;
@@ -201,7 +241,18 @@ export async function buildRuntime(options: BuildRuntimeOptions): Promise<SkeinR
         for (const dispose of devDisposers) await dispose();
       },
       snapshotState: () => runtime.snapshotState(),
-      hydrateState: (snapshot) => runtime.hydrateState(snapshot),
+      hydrateState: async (snapshot) => {
+        runtime.hydrateState(snapshot);
+        // The driver just took the whole snapshot, including its store items — but with an adapter those
+        // items are unreachable there, because every reader goes through `storeItems`. Replay them so a
+        // restored `.skein/dev-state.json` (or a one-time `langgraph dev` import) actually surfaces.
+        // Timestamps are the store's to set on write, so unlike threads and runs nothing is lost.
+        if (devStoreItems) {
+          for (const [, item] of snapshot.store.items) {
+            await devStoreItems.put(item.namespace, item.key, item.value);
+          }
+        }
+      },
     };
   }
 
@@ -254,8 +305,35 @@ export async function buildRuntime(options: BuildRuntimeOptions): Promise<SkeinR
           checkpointer: new MemorySaver(),
         };
 
+    // Bring-your-own long-term-memory store (`store.adapter`). Only the memory repo is replaced —
+    // assistants, threads, runs, crons and idempotency keep using the driver above — and the
+    // substitution happens in `resolveDeps` via `withStoreItems`, so the driver's `maxPageSize` and
+    // `durable` survive the composition rather than being dropped by an object spread.
+    const storeItems = first.config.store?.adapter
+      ? await resolveStoreAdapter(first.config.store.adapter, {
+          configDir: first.configDir,
+          importModule,
+          maxPageSize: resolveMaxPageSize(),
+          ttl: storeTtl,
+          // Refused rather than silently ignored: `store.index` configures the repo the adapter replaces.
+          indexConfigured: first.config.store?.index?.embed !== undefined,
+          // So an adapted `PostgresStore` releases its pool on shutdown like every other resource here.
+          disposers,
+        })
+      : undefined;
+
     // When TTL is configured, sweep expired store items on a background interval (memory or postgres).
-    if (storeTtl) startStoreTtlSweeper(skeinStore, storeTtl, disposers);
+    // An adapter that cannot expire items has already failed startup above, so if we reach here with
+    // both, the adapted store really can sweep — but the sweeper is pointed at `skeinStore`, whose own
+    // `store` repo is the driver's. Point it at the adapter when one is configured, or a `store.ttl`
+    // deployment would sweep the wrong store and never expire the rows that actually carry a TTL.
+    if (storeTtl) {
+      startStoreTtlSweeper(
+        storeItems ? withStoreItems(skeinStore, storeItems) : skeinStore,
+        storeTtl,
+        disposers,
+      );
+    }
 
     // `abortChannel` comes with the Redis queue, for the same reason: it is what carries a cancel to
     // the instance executing the run, and in-memory means there is only this one.
@@ -277,6 +355,7 @@ export async function buildRuntime(options: BuildRuntimeOptions): Promise<SkeinR
 
     const deps: ProtocolDeps = {
       store: skeinStore,
+      ...(storeItems ? { storeItems } : {}),
       graphs: resolver,
       queue: runQueue,
       bus,

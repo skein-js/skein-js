@@ -28,6 +28,10 @@ export {
   embedRuntimePackage,
   type ResolveEmbedOptions,
 } from "./resolve-embed.js";
+// Bring-your-own long-term-memory store: `langgraph.json`'s `store.adapter` resolved to the `StoreRepo`
+// that `ProtocolDeps.storeItems` takes. Accepts a skein `StoreRepo` or a LangGraph `BaseStore`
+// (`PostgresStore`, `InMemoryStore`, …). See docs/storage.md.
+export { resolveStoreAdapter, type ResolveStoreAdapterOptions } from "./resolve-store-adapter.js";
 // Telemetry resolution: the `langgraph.json` `telemetry` block plus environment auto-detection into
 // the sinks the engine reports to. `telemetryRuntimePackages` tells `skein build` which optional
 // adapter packages to pin into the image, since they're dynamically imported and so invisible to the

@@ -118,7 +118,7 @@ export async function runDev(options: DevCommandOptions): Promise<void> {
   }
   if (canPersist && existsSync(stateFile)) {
     try {
-      runtime.hydrateState?.(JSON.parse(readFileSync(stateFile, "utf8")) as DevStateSnapshot);
+      await runtime.hydrateState?.(JSON.parse(readFileSync(stateFile, "utf8")) as DevStateSnapshot);
       console.log("skein: restored dev state.");
     } catch (error) {
       devLogger.warn("could not restore dev state", error);
@@ -130,7 +130,7 @@ export async function runDev(options: DevCommandOptions): Promise<void> {
     try {
       const imported = await readLanggraphDevState(path.join(configDir, LANGGRAPH_DIR));
       if (imported) {
-        runtime.hydrateState?.(imported);
+        await runtime.hydrateState?.(imported);
         const counts = describeSnapshot(imported);
         console.log(
           `skein: imported dev state from ${LANGGRAPH_DIR}/ ` +
