@@ -217,6 +217,31 @@ describe("resolveStoreAdapter", () => {
     expect(stopped).toBe(true);
   });
 
+  it("registers teardown before the store.index refusal too, not just the ttl one", async () => {
+    // The index check used to run first, so `store.adapter` + `store.index` threw with nothing registered
+    // and an imported `PostgresStore`'s pool was leaked. Every refusal has to come after registration.
+    let stopped = false;
+    class Closing extends InMemoryStore {
+      override async stop(): Promise<void> {
+        stopped = true;
+      }
+    }
+    const disposers: (() => Promise<unknown>)[] = [];
+
+    await expect(
+      resolveStoreAdapter("./my-store.ts:store", {
+        configDir: "/app",
+        importModule: serving({ store: new Closing() }),
+        disposers,
+        indexConfigured: true,
+      }),
+    ).rejects.toThrow(/no effect on search/);
+
+    expect(disposers).toHaveLength(1);
+    await disposers[0]?.();
+    expect(stopped).toBe(true);
+  });
+
   it("registers the adapted store's stop() for teardown, so a pool is not leaked", async () => {
     let stopped = false;
     class Closing extends InMemoryStore {

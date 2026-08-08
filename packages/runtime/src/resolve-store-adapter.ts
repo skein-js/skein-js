@@ -224,12 +224,12 @@ export async function resolveStoreAdapter(
     );
   }
 
-  assertIndexNotConfigured(adapter, options.indexConfigured);
-
   if (isBaseStore(exported)) {
     // Registered *before* any refusal below can throw: a store that opened a pool on import must still be
-    // torn down when the config it was imported for turns out to be unusable.
+    // torn down when the config it was imported for turns out to be unusable. `store.index` is checked
+    // after this for the same reason — it used to run first and leak the pool on a refused boot.
     registerStoreShutdown(exported, options.disposers);
+    assertIndexNotConfigured(adapter, options.indexConfigured);
     assertTtlHonourable(adapter, exported, options.ttl);
     // `BaseStore` declares `start()` for initialization. Called here so a store needing it fails at boot
     // with this error rather than at whichever request first touches an uninitialized connection —
@@ -260,6 +260,7 @@ export async function resolveStoreAdapter(
         `(no \`batch\` method) nor a complete skein \`StoreRepo\` (no \`${missing}\` method).`,
     );
   }
+  assertIndexNotConfigured(adapter, options.indexConfigured);
   assertStoreRepoTtlNotConfigured(adapter, options.ttl);
   return exported as StoreRepo;
 }

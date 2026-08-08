@@ -1,10 +1,45 @@
 # Proposal — Agent memory primitives
 
-> **Status:** Draft — the primitives are the bet; the background-write mechanism is the part only a
-> server can offer. **Phase 1 (traversal plumbing) is shipped**; phases 2–4 remain proposed ·
-> **Depends on:** nothing · **Unblocks:** nothing (it is a leaf)
+> **Status:** **Resolved.** The infrastructure shipped; the primitives deliberately did not · **Depends
+> on:** nothing · **Unblocks:** nothing (it is a leaf)
 >
-> A design proposal, not shipped behaviour. See [proposals/README.md](./README.md).
+> Kept as history, and because two of its central claims turned out to be wrong in ways worth recording.
+> The shipped behaviour lives in [storage.md](../storage.md) and [memory.md](../memory.md); what remains
+> here is the argument, including the parts of it that did not survive contact.
+>
+> **What shipped**
+>
+> | Phase                                                              | Outcome                                                                           |
+> | ------------------------------------------------------------------ | --------------------------------------------------------------------------------- |
+> | 1 — traversal plumbing (`filter`, `suffix`/`max_depth`, wildcards) | ✅ Shipped, plus the SDK response-shape bug found while fixing it                 |
+> | 4 — store adapter (`store.adapter` + `fromBaseStore`)              | ✅ Shipped — see [storage.md](../storage.md#bringing-your-own-store-storeadapter) |
+> | per-owner store scoping (a risk in this doc, not a phase)          | ❌ **Built and removed.** The handler owns it — see the note below                |
+> | 2 — memory shapes                                                  | ❌ **Not built as a package.** Shipped as a recipe: [memory.md](../memory.md)     |
+> | 3 — background extraction                                          | ⏸ **Deferred**, with reasoning below                                              |
+>
+> **Two claims here are wrong, and the second one badly**
+>
+> 1. _"Background extraction is the part only a server can offer."_ False against a user of skein's own
+>    API. Delayed runs are store rows, pending runs are cancellable, and an embedder can call
+>    `runs.createStatelessBackground` directly — so a debounced, durable extractor is buildable today with
+>    no new surface (the pattern is in [memory.md](../memory.md#writing-memories-in-the-background)). What a
+>    server-side trigger would add is config-instead-of-code, the correct hook point, a self-trigger guard
+>    and telemetry. Ergonomics over an existing capability, which is why it is deferred rather than built.
+>    The one genuine capability gap: a graph node cannot know its own run _settled_, so error and
+>    cancellation paths are unreachable from inside the graph.
+> 2. _"`filter` on `value` and a `StoreRepo` seam make scoping tractable."_ The design sketched here for
+>    Part 3 would have shipped a **cross-tenant read**. LangGraph's `InMemoryStore` matches namespace
+>    prefixes as a raw _string_ (`namespace.join(":").startsWith(prefix.join(":"))`), so a scope root of
+>    `["@u","alice"]` also matches `["@u","alice2", …]`. A forwarding adapter plus namespace scoping is a
+>    leak. `fromBaseStore` therefore **re-imposes** skein's semantics in JS rather than forwarding them —
+>    which is also why a bare `InMemoryStore` can pass the shared conformance suite at all.
+>
+> **Why the primitives became a recipe.** Memory is agent behaviour, not durable persistence, and a user
+> can build the shapes in ~100 lines over the `getStore()` skein already injects. LangChain has since
+> closed the short-term half of this upstream — `summarizationMiddleware` and `contextEditingMiddleware`
+> exist in the `langchain` v1 package — **as middleware**, which is framework code running inside the
+> user's graph. That is where the long-term half will arrive too, and it is not a server's job. There is
+> still no JS `langmem`, so the gap named below is real; it is simply not skein's to fill.
 
 ## Contents
 
@@ -355,13 +390,37 @@ matches `["users","123"]`). Adapting inward loses less than adapting outward.
 
 1. ✅ **Traversal plumbing** — `filter`, `suffix`/`max_depth`, the wildcard over-return (plus the SDK
    response shape, found while fixing them). Parity work, independently valuable, and a prerequisite
-   for anything calling itself traversable. **Shipped**, ahead of the rest of this proposal being
-   agreed — it fixed a silently dropped request field and a cross-tenant over-return of namespace
-   names, neither of which was contingent on the primitives landing.
-2. **Memory shapes** — profile and collection over the existing store.
-3. **Background extraction** — the run-settled trigger and the self-trigger guard.
-4. **Store adapter** — injection seam plus `fromBaseStore`.
+   for anything calling itself traversable. **Shipped** ahead of the rest being agreed — it fixed a
+   silently dropped request field and a cross-tenant over-return of namespace names.
+2. ❌ **Memory shapes** — **not built.** Shipped as [memory.md](../memory.md) plus content-addressed
+   dedup in `examples/chat-app`. See the status block at the top for why.
+3. ⏸ **Background extraction** — **deferred.** Buildable today with existing API; a server-side trigger
+   is ergonomics over that, and if it lands it should be a _general_ lifecycle trigger rather than a
+   memory feature, since "when a run settles, start this run" also serves evals and post-processing.
+4. ✅ **Store adapter** — injection seam plus `fromBaseStore`. **Shipped**, and it landed second rather
+   than last: LangChain's own JS guide tells users to build on `PostgresStore`, which skein could not
+   accept, making this a drop-in gap rather than an extensibility nicety. Step 1's `StoreNamespaceQuery`
+   did make it easier, as predicted — it lines up with `BaseStore.listNamespaces`' own options bag.
 
-Steps 2–4 remain proposals. Note that step 4's `fromBaseStore` adapter is now a little easier: the
-`StoreNamespaceQuery` step 1 introduced lines up with `BaseStore.listNamespaces`' own options bag,
-where the old positional signature did not.
+Also attempted, from the [risks](#risks-and-open-questions) section rather than the phasing: **per-owner
+store scoping** (`store.scope`), which prepended an opaque per-owner namespace root. It was built, reviewed
+hard, and **removed** — and why is the most useful thing in this document.
+
+The root has to come from _somewhere_, and every source was wrong. Derived from the route's ownership
+filters, it depended on which door the caller came through: a `/store/items` request scoped by the `store`
+handler's answer while a run created through a `threads` route scoped by the `threads` handler's, so
+divergent handlers filed a graph's memory under one root and the same owner's own read under another.
+Derived instead from a dedicated `store` authorize, it became route-independent but changed _authorization
+semantics_ as a side effect — the store handler fired on `POST /threads`, and a hard-coded action meant a
+handler denying `search` began denying everything. Two attempts, two real defects, in opposite directions.
+
+The premise was the problem. **Scoping is policy, and policy belongs to the deployment.** Whether a root is
+per-user, per-tenant or a shared team subtree, and how an identity encodes into a namespace label, are
+things a deployment knows and skein does not — the `$contains` refusal was an early signal of exactly that,
+a setting discovering it could not express what a handler expresses trivially. LangGraph gets this right by
+leaving it in the handler, so the mechanism skein keeps is the one LangGraph documents — honouring a
+handler's `value.namespace` rewrite — and the setting is gone.
+
+What that leaves open, stated rather than papered over: `getStore()` inside a graph has no request and no
+principal, so no handler can guard it. A graph builds its own namespace from
+`configurable.langgraph_auth_user_id`, which is server-injected and unspoofable, and that is the seam.

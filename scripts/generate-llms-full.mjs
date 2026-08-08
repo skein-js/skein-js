@@ -27,6 +27,7 @@ const DOCS = [
   "docs/errors-and-logging.md",
   "docs/react-sdk.md",
   "docs/storage.md",
+  "docs/memory.md",
   "docs/runs-and-redis.md",
   "docs/crons.md",
   "docs/console.md",

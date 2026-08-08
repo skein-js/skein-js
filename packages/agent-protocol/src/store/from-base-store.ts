@@ -35,6 +35,7 @@ import {
   matchesNamespaceQuery,
   NAMESPACE_WILDCARD,
   requireValidMaxPageSize,
+  SkeinHttpError,
   truncateNamespaceDepth,
   type Item,
   type SearchItem,
@@ -278,7 +279,9 @@ export function fromBaseStore(store: BaseStore, options?: FromBaseStoreOptions):
 
     put: async (namespace, key, value, putOptions?: StorePutOptions) => {
       if (putOptions?.ttl !== undefined && !ttlSupported) {
-        throw new Error(
+        // A 400, not a bare `Error`: the caller asked for something this deployment cannot do, and a 500
+        // would read as "skein broke" rather than "drop the `ttl` or use a store that can expire items".
+        throw SkeinHttpError.badRequest(
           "The configured store adapter cannot expire items, so a per-item `ttl` would be silently " +
             "discarded. Use a store exposing `sweepExpiredItems()` (e.g. `PostgresStore`), or omit `ttl`.",
         );

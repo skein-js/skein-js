@@ -14,7 +14,12 @@ import { createProtocolServiceFromContext } from "../service.js";
 
 import { createAuthScopedStore } from "./auth-scoped-store.js";
 import { resolveAuthContext } from "./authenticate-request.js";
-import { authValue, ROUTE_AUTHZ } from "./route-authz.js";
+import {
+  authValue,
+  rewrittenStoreNamespace,
+  ROUTE_AUTHZ,
+  withStoreNamespace,
+} from "./route-authz.js";
 
 /**
  * Build a handler table that authenticates and authorizes every request before dispatch. Studio
@@ -47,12 +52,43 @@ export function createAuthorizingHandlers(
       // The handler name is passed so store routes get their `namespace` normalized to the shape the
       // SDK declares, server-derived rather than taken from the body — see `authValue`.
       const value = authValue(req, name);
+      // A **copy**, captured before the handler runs, so a rewrite can be told from the server's own
+      // reading. Aliasing the array instead made an *in-place* rewrite (`value.namespace[0] = identity`)
+      // invisible — and worse, inconsistently so: for `put`/`search` the array is the body's own, so the
+      // mutation took effect anyway, while for `get`/`delete` it is a fresh array parsed from the query and
+      // the rewrite silently did nothing. Scoping that works on three routes and fails on two is the worst
+      // of the available outcomes.
+      const namespaceValue = value["namespace"];
+      const derivedNamespace = Array.isArray(namespaceValue)
+        ? [...(namespaceValue as string[])]
+        : undefined;
       const primary = await engine.authorize({
         resource: route.resource,
         action: route.action,
         value,
         context: authContext,
       });
+
+      // LangGraph documents store authorization as *rewriting* `value.namespace` rather than returning
+      // ownership filters — the store is the one resource whose scoping is namespace-shaped, so a metadata
+      // filter has nothing to match on. The engine hands the handler the same `value` object it returns, so
+      // a mutation is visible; honoured here rather than discarded, which is what a ported LangGraph auth
+      // module expects and what previously scoped nothing while looking like it did.
+      //
+      // Only the route's *own* resource is consulted: the `threads` fallback below exists to inherit
+      // ownership filters, and a thread handler has no business redirecting a store namespace.
+      //
+      // **Read before the fallback runs, and that ordering is load-bearing.** Both `authorize` calls are
+      // handed the *same* `value` object, so a fallback handler's mutation would otherwise be picked up
+      // here too — turning the fallback into a namespace-rewrite channel for handlers that never opted
+      // into being one. Moving the fallback above this line would reintroduce that.
+      const scopedRequest =
+        route.resource === "store"
+          ? (() => {
+              const rewritten = rewrittenStoreNamespace(primary.value, derivedNamespace);
+              return rewritten ? withStoreNamespace(req, name, rewritten) : req;
+            })()
+          : req;
 
       // No filters from the primary resource means one of two things the engine cannot tell apart:
       // the caller's handler allowed this outright, or *there is no handler for this resource at
@@ -76,12 +112,13 @@ export function createAuthorizingHandlers(
       const filters = primary.filters ?? fallback?.filters;
 
       // Fast path: nothing request-specific to inject — reuse the shared, once-built handler table.
-      if (!filters && !authContext) return baseHandlers[name](req);
+      if (!filters && !authContext) return baseHandlers[name](scopedRequest);
 
       // Otherwise dispatch through a per-request context carrying the authenticated caller (so the run
       // service stamps it onto the run → `configurable.langgraph_auth_user`) and, when the handler
       // returned ownership filters, the auth-scoped store. The shared cancellation registry and thread
       // locks are inherited so background-run cancellation still works.
+
       const requestContext: ProtocolContext = {
         ...context,
         authUser: authContext?.user,
@@ -93,7 +130,9 @@ export function createAuthorizingHandlers(
             }
           : context.deps,
       };
-      return createProtocolHandlers(createProtocolServiceFromContext(requestContext))[name](req);
+      return createProtocolHandlers(createProtocolServiceFromContext(requestContext))[name](
+        scopedRequest,
+      );
     };
   }
   return wrapped;

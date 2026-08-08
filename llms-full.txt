@@ -866,32 +866,33 @@ New here? [getting-started.md](./getting-started.md) is the guided path. Buildin
 (especially as an AI agent)? [using-skein.md](./using-skein.md) is the terse cheat-sheet, and the
 machine-readable [`llms.txt`](../llms.txt) / [`llms-full.txt`](../llms-full.txt) index the whole set.
 
-| Doc                                                      | Covers                                                          |
-| -------------------------------------------------------- | --------------------------------------------------------------- |
-| [getting-started.md](./getting-started.md)               | Guided walkthrough — zero to a running server, then prod        |
-| [using-skein.md](./using-skein.md)                       | Consumer/agent cheat-sheet — install, the seam, mount, call     |
-| [recipes.md](./recipes.md)                               | Auth, HITL, memory, CORS, background runs, webhooks, deploy     |
-| [langgraph-cli-compat.md](./langgraph-cli-compat.md)     | `langgraph.json` fields + CLI commands                          |
-| [embedding.md](./embedding.md)                           | The in-code on-ramp — embed a graph, no `langgraph.json`        |
-| [serving-a-single-graph.md](./serving-a-single-graph.md) | The non-chat surface — a graph as a plain HTTP endpoint         |
-| [agent-protocol.md](./agent-protocol.md)                 | The REST + streaming endpoints skein-js implements              |
-| [building-an-adapter.md](./building-an-adapter.md)       | How to put skein-js on any HTTP framework (custom adapter)      |
-| [streaming.md](./streaming.md)                           | LangGraph stream modes → Agent Protocol SSE                     |
-| [react-sdk.md](./react-sdk.md)                           | `@langchain/langgraph-sdk` + `useStream` compatibility          |
-| [storage.md](./storage.md)                               | `SkeinStore`, in-memory + Postgres, pgvector, checkpointer      |
-| [runs-and-redis.md](./runs-and-redis.md)                 | Run engine, queue, cross-instance streaming                     |
-| [crons.md](./crons.md)                                   | Scheduled runs — the Crons resource and the scheduler           |
-| [console.md](./console.md)                               | The skein console — a web UI served by the server itself        |
-| [errors-and-logging.md](./errors-and-logging.md)         | What a failed run reports, and where — wire, log, `skein dev`   |
-| [observability.md](./observability.md)                   | Tracing + metrics — LangSmith, PostHog, OpenTelemetry, custom   |
-| [deploy.md](./deploy.md)                                 | Deploy anywhere — Cloud Run, Railway, Fly, Render, AWS, K8s     |
-| [performance.md](./performance.md)                       | Sizing, every tuning knob, backpressure + drops, triage         |
-| [profiling.md](./profiling.md)                           | Learn measurement/profiling; Node, Bun, Deno hands-on recipes   |
-| [bundling.md](./bundling.md)                             | Bundling skein yourself — ESM, `require()`, what to externalize |
-| [reuse.md](./reuse.md)                                   | _(design)_ What we reuse from LangGraph OSS vs. rebuild         |
-| [code-practices.md](./code-practices.md)                 | _(contributor)_ Readability, functional style, conventions      |
-| [testing.md](./testing.md)                               | _(contributor)_ Unit + Testcontainers + conformance suite       |
-| [roadmap.md](./roadmap.md)                               | Milestones and post-MVP non-goals                               |
+| Doc                                                      | Covers                                                           |
+| -------------------------------------------------------- | ---------------------------------------------------------------- |
+| [getting-started.md](./getting-started.md)               | Guided walkthrough — zero to a running server, then prod         |
+| [using-skein.md](./using-skein.md)                       | Consumer/agent cheat-sheet — install, the seam, mount, call      |
+| [recipes.md](./recipes.md)                               | Auth, HITL, memory, CORS, background runs, webhooks, deploy      |
+| [langgraph-cli-compat.md](./langgraph-cli-compat.md)     | `langgraph.json` fields + CLI commands                           |
+| [embedding.md](./embedding.md)                           | The in-code on-ramp — embed a graph, no `langgraph.json`         |
+| [serving-a-single-graph.md](./serving-a-single-graph.md) | The non-chat surface — a graph as a plain HTTP endpoint          |
+| [agent-protocol.md](./agent-protocol.md)                 | The REST + streaming endpoints skein-js implements               |
+| [building-an-adapter.md](./building-an-adapter.md)       | How to put skein-js on any HTTP framework (custom adapter)       |
+| [streaming.md](./streaming.md)                           | LangGraph stream modes → Agent Protocol SSE                      |
+| [react-sdk.md](./react-sdk.md)                           | `@langchain/langgraph-sdk` + `useStream` compatibility           |
+| [storage.md](./storage.md)                               | `SkeinStore`, in-memory + Postgres, pgvector, checkpointer       |
+| [memory.md](./memory.md)                                 | Agent memory patterns — shapes, dedup, recall, background writes |
+| [runs-and-redis.md](./runs-and-redis.md)                 | Run engine, queue, cross-instance streaming                      |
+| [crons.md](./crons.md)                                   | Scheduled runs — the Crons resource and the scheduler            |
+| [console.md](./console.md)                               | The skein console — a web UI served by the server itself         |
+| [errors-and-logging.md](./errors-and-logging.md)         | What a failed run reports, and where — wire, log, `skein dev`    |
+| [observability.md](./observability.md)                   | Tracing + metrics — LangSmith, PostHog, OpenTelemetry, custom    |
+| [deploy.md](./deploy.md)                                 | Deploy anywhere — Cloud Run, Railway, Fly, Render, AWS, K8s      |
+| [performance.md](./performance.md)                       | Sizing, every tuning knob, backpressure + drops, triage          |
+| [profiling.md](./profiling.md)                           | Learn measurement/profiling; Node, Bun, Deno hands-on recipes    |
+| [bundling.md](./bundling.md)                             | Bundling skein yourself — ESM, `require()`, what to externalize  |
+| [reuse.md](./reuse.md)                                   | _(design)_ What we reuse from LangGraph OSS vs. rebuild          |
+| [code-practices.md](./code-practices.md)                 | _(contributor)_ Readability, functional style, conventions       |
+| [testing.md](./testing.md)                               | _(contributor)_ Unit + Testcontainers + conformance suite        |
+| [roadmap.md](./roadmap.md)                               | Milestones and post-MVP non-goals                                |
 
 Want to contribute? See [CONTRIBUTING.md](../CONTRIBUTING.md) and [AGENTS.md](../AGENTS.md).
 
@@ -2750,17 +2751,38 @@ Per request the wrapper:
    `@auth.on.crons` callback is registered** — callbacks match by exact event key, so a deployment
    that scoped only threads would otherwise serve the cron resource unscoped. Attaching a schedule to
    a thread is additionally authorized as `threads:create_run`, so a cron cannot be pointed at a
-   thread the caller cannot read. `assistants` and `store` are **gate-only** — their handlers can deny
-   (`403`), but no ownership filter is applied yet (graph assistants have no owner and must stay
-   runnable; store items carry no metadata to filter on).
+   thread the caller cannot read. `assistants` stays **gate-only** — its handler can deny (`403`), but no
+   ownership filter is applied. Graph assistants are auto-registered with no owner and must stay runnable
+   for every caller; a store item carries no metadata to filter on at all, so store scoping is expressed
+   through the **namespace** instead — see the block below.
 
-> **The store is not tenant-scoped. If you serve more than one tenant, you must scope it yourself.**
+> **An `@auth.on.store` handler can rewrite the namespace, which is LangGraph's own idiom.** Store
+> authorization is the one case where returning a metadata filter cannot work — a store item has no
+> metadata — so LangGraph documents _mutating_ `value.namespace` instead, and skein honours that:
 >
-> Because `store` is gate-only, nothing narrows a store read. The namespace is a request parameter, so
-> an authenticated caller can send `{"namespace_prefix": ["memories"]}` — or omit the prefix entirely —
+> ```ts
+> auth.on("store", ({ user, value }) => {
+>   // Reroute the caller into their own root, whatever they asked for.
+>   value.namespace = [user.identity, ...(value.namespace ?? []).slice(1)];
+> });
+> ```
+>
+> The rewritten namespace is what the endpoint operates on, for all five store routes — including a
+> `GET`/`DELETE` that addressed the item with query params, since the body namespace takes precedence, and
+> including an in-place mutation (`value.namespace[0] = …`). A rewrite that is not a `string[]` is a **500**
+> (`code: "store_namespace_rewrite_invalid"`) rather than a silent fall-through to the caller's own
+> namespace, because a handler that meant to scope and got the shape wrong is the exact failure this
+> prevents.
+>
+> **skein adds no scoping mechanism of its own, deliberately.** Who owns what, and how a namespace encodes
+> it, is the policy that varies most between deployments — a per-user root, a tenant prefix, a shared team
+> subtree — and your handler is the one place that can express all of them. So skein does what
+> `@langchain/langgraph-api` does: fire the event, honour the namespace, and stay out of the way.
+>
+> **With no store handler registered, nothing narrows a store read.** The namespace is a request parameter,
+> so an authenticated caller can send `{"namespace_prefix": ["memories"]}` — or omit the prefix entirely —
 > and read **every** tenant's items; `POST /store/namespaces` likewise returns every tenant's namespace
-> names. Per-owner store scoping is on the [roadmap](./roadmap.md); until it lands, the deny handler
-> below is the control.
+> names. If you prefer validating to rewriting, the deny handler below is the shape.
 >
 > ```ts
 > /**
@@ -2853,7 +2875,8 @@ Route → resource/action (runs authorize through their owning thread — there 
 **Reuse & limits.** The `Auth` contract and the `$eq`/`$contains` filter semantics come from
 `@langchain/*`; skein adds only the instance-scoped dispatch (see [reuse.md](./reuse.md)). Ownership
 scoping is pushed into the driver query (above), with the in-process check kept as the enforcement point.
-Per-owner scoping of `assistants`/`store` is still on the [roadmap](./roadmap.md).
+`assistants` and `store` remain gate-only: store scoping is expressed through the namespace your
+`@auth.on.store` handler decides on, which is where that policy belongs.
 
 `POST /runs/cancel` sweeps broadly but authorizes narrowly: every run it touches goes back through the
 ownership-filtered `get`, so a non-owned run reads as absent and is skipped. The per-thread concurrency
@@ -3612,19 +3635,22 @@ against — so the contract is the element-wise order, not a byte-exact one.
 > `listNamespaces({ prefix: ["users"] })`. Like every other list path, it now applies the driver's
 > page bound when the caller names no `limit`.
 
-#### None of this is a tenant boundary
+#### Multi-tenancy is yours to define
 
 `prefix`, `suffix` and `filter` are _request parameters_, not access control. An omitted prefix matches
 every namespace and a short one matches every namespace beneath it, so a caller who can reach
 `POST /store/items/search` can read every item in the store — no wildcard required.
 
-With [auth](./agent-protocol.md#authentication--authorization) enabled the `store` resource is **gated
-but not filtered**: an `@auth.on.store` handler can deny a request, but nothing narrows what a permitted
-one returns. If you serve more than one tenant, that handler is the control, and it must _require_ a
-namespace rooted at the principal rather than filter the response. It also cannot reach `getStore()`
-inside a graph — no request, no principal. The pattern and its limits are in
-[agent-protocol.md](./agent-protocol.md#authentication--authorization); per-owner store scoping is on the
-[roadmap](./roadmap.md).
+**skein deliberately offers no store-scoping mechanism of its own.** Who owns what, and how a namespace
+encodes it, is exactly the policy a deployment should hold — and it is the part that varies most between
+them. So skein does what `@langchain/langgraph-api` does: fire the `@auth.on.store` event, and serve the
+namespace the request (or your handler) decided on.
+
+What that gives you is complete control, in one place. LangGraph's idiom for store authorization is that
+the handler **rewrites** `value.namespace`, and skein honours that — see
+[agent-protocol.md](./agent-protocol.md#authentication--authorization) for the pattern, the payload your
+handler receives, and the two limits worth knowing (it covers the HTTP surface, not `getStore()` inside a
+graph; and an identity containing `.` needs encoding).
 
 ### Store item TTL
 
@@ -3885,6 +3911,234 @@ Keeping protocol resources (`SkeinStore`) separate from LangGraph checkpoints me
 - Postgres parity is proven by running the **same conformance suite** against both drivers.
 - Checkpoint format stays 100% LangGraph-native, so thread history/history endpoints and
   interrupt/resume behave exactly as LangGraph expects.
+
+
+---
+
+<!-- source: docs/memory.md -->
+
+# Agent memory
+
+**What this gives you:** the patterns for giving an agent memory on skein, and the traps that are not
+obvious until they bite. There is no `@skein-js/memory` package to install — memory is something you build
+in your graph out of pieces that already exist, and this page is the map of which pieces, and why.
+
+That is a deliberate choice. Memory is _agent behaviour_, and skein's job is durable persistence, the
+queue, the adapters and the CLI. Everything below is ~100 lines in your own graph, portable to LangGraph
+Platform because it uses `getStore()` and nothing skein-specific. Where skein does contribute — durable
+storage, per-owner scoping, semantic search, schedules — it is called out.
+
+## Contents
+
+- [What you already have](#what-you-already-have)
+- [Short-term memory is already solved](#short-term-memory-is-already-solved)
+- [Long-term memory: profile and collection](#long-term-memory-profile-and-collection)
+- [The dedup trap](#the-dedup-trap)
+- [Recall](#recall)
+- [Multi-tenant memory](#multi-tenant-memory)
+- [Writing memories in the background](#writing-memories-in-the-background)
+
+## What you already have
+
+| Need                            | Use                                                              | From                                                                         |
+| ------------------------------- | ---------------------------------------------------------------- | ---------------------------------------------------------------------------- |
+| Durable thread state            | the checkpointer — `PostgresSaver` in prod, `MemorySaver` in dev | skein wires it ([storage.md](./storage.md))                                  |
+| Trimming a long conversation    | `trimMessages`, `filterMessages`, `RemoveMessage`                | `@langchain/core`                                                            |
+| Summarizing a long conversation | `summarizationMiddleware`, `contextEditingMiddleware`            | the `langchain` v1 package                                                   |
+| Cross-thread memory store       | `getStore()` — namespace/key items, vector search                | skein injects it into every run                                              |
+| Semantic search over memories   | `store.index` (pgvector, HNSW optional)                          | skein ([storage.md](./storage.md#drivers))                                   |
+| Per-owner isolation             | an `@auth.on.store` handler that roots the namespace             | you ([agent-protocol.md](./agent-protocol.md#authentication--authorization)) |
+| Scheduled background extraction | a cron firing an extractor graph                                 | skein ([crons.md](./crons.md))                                               |
+| Memory _shapes_, tools, dedup   | this page                                                        | you, in ~100 lines                                                           |
+
+## Short-term memory is already solved
+
+Worth stating plainly, because "durable short-term memory" sounds like a gap and is not one.
+
+**Durability** is the checkpointer. `PostgresSaver` persists a thread's state and history, so a
+conversation survives restarts and resumes from an interrupt; thread TTL collects the ones that go stale.
+skein selects it for you — nothing to build.
+
+**Context management** — keeping a long thread inside the model's window — is upstream too:
+
+```ts
+import { createAgent, summarizationMiddleware } from "langchain";
+
+const agent = createAgent({
+  llm,
+  tools,
+  middleware: [summarizationMiddleware({ model: llm, trigger: { tokens: 4000 }, keep: 20 })],
+});
+```
+
+Do **not** write your own trimming loop. If you keep a running summary yourself, keep it in **graph
+state** rather than the store: state is checkpointed, thread-scoped, and rolls back with the checkpoint,
+none of which is true of a store item.
+
+## Long-term memory: profile and collection
+
+Cross-thread memory is `getStore()` — namespace/key JSON documents, the same store LangGraph Platform
+auto-provides. Two shapes cover almost everything, and the choice is really "one document or many":
+
+**Profile** — one continuously-updated document. Good for stable facts with one current value: timezone,
+tone, home airport. Read it whole, merge a patch, write it back.
+
+**Collection** — many documents accumulated over time. Good for open-ended facts: "prefers morning
+meetings", "allergic to shellfish". Append, and retrieve by relevance rather than reading all of them.
+
+```ts
+const NAMESPACE = (userId: string) => [userId, "memories"] as const;
+
+// Profile: read-modify-write one document.
+async function mergeProfile(store: BaseStore, userId: string, patch: Record<string, unknown>) {
+  const current = (await store.get([userId], "profile"))?.value ?? {};
+  await store.put([userId], "profile", { ...current, ...patch });
+}
+```
+
+**Pick one merge rule and write it down.** The rule matters less than having one; without it the profile
+becomes unpredictable, which is the failure LangChain's own memory guide warns about. A rule that works:
+_shallow, patch wins, arrays unioned, `null` deletes, nested objects replaced._ Replace rather than
+deep-merge — deep merge makes deletion inexpressible.
+
+Two things to know:
+
+- **There is no compare-and-swap.** `BaseStore` has none, so read-modify-write is last-writer-wins. On
+  skein, runs on one thread are serialized by the execution lock, so concurrent merges only arise across
+  threads for the same user. Do not build an optimistic-retry counter — without CAS it does not close the
+  race and implies a guarantee that is not there.
+- **Keep collection fields top-level and scalar.** `search`'s `filter` reads the _top-level_ keys of an
+  item's `value` and takes scalars, so `{ content, kind, createdAt }` filters and `{ meta: { kind } }`
+  does not. `tags: string[]` is storable but not filterable (`$in` asks the opposite question). Full
+  operator semantics in [storage.md](./storage.md#filtering-and-namespace-traversal).
+
+## The dedup trap
+
+**The most important paragraph on this page.** Without dedup, an agent that saves a memory each turn
+accumulates the same fact dozens of times and recall degrades into noise. The obvious fix — semantic
+search for a near-duplicate before writing — **inverts** on most substrates:
+
+| Substrate                                              | `score` on a text search |
+| ------------------------------------------------------ | ------------------------ |
+| `@skein-js/storage-memory` (dev)                       | **`1` for every hit**    |
+| `@skein-js/storage-postgres` **without** `store.index` | **`1` for every hit**    |
+| `@skein-js/storage-postgres` **with** `store.index`    | real cosine similarity   |
+| LangGraph `InMemoryStore` without an index             | no `score` field at all  |
+
+So `score >= 0.9 means duplicate` classifies _everything_ as a duplicate on two of three substrates, and
+your agent **silently stops recording memories**. It will not error. You will notice weeks later.
+
+Two rules:
+
+**1. Dedup on content, not similarity.** A content-addressed key makes exact dedup free, with no read at
+all — saving the same sentence twice upserts one row instead of appending a second:
+
+```ts
+async function memoryKey(content: string): Promise<string> {
+  const normalized = content.trim().toLowerCase().replace(/\s+/g, " ");
+  const digest = await crypto.subtle.digest("SHA-256", new TextEncoder().encode(normalized));
+  return `mem-${[...new Uint8Array(digest).slice(0, 8)].map((b) => b.toString(16).padStart(2, "0")).join("")}`;
+}
+```
+
+Use `globalThis.crypto.subtle`, not `node:crypto` — it is present on Node ≥20, Bun, Deno and workers, so
+the same graph still runs on an edge runtime.
+
+**2. Treat semantic dedup as opt-in, requiring `store.index`.** And check the scores are meaningful before
+trusting them — at least one candidate scoring **strictly below 1** — falling back to exact dedup
+otherwise. State the safe direction out loud: **dedup errs toward writing.** A duplicate is recoverable;
+a dropped memory is not.
+
+One more, on cost: on Postgres _without_ `store.index`, a `query` search is an unbounded full-table read
+filtered in JS. Semantic dedup on every write there reads the whole `store_items` table each time.
+
+## Recall
+
+Retrieval is `store.search` with the namespace and filter already right:
+
+```ts
+const relevant = await store.search([userId, "memories"], { query: latestUserMessage, limit: 5 });
+```
+
+**When to recall is your graph's decision, and skein has no opinion.** Two patterns, both fine:
+
+- **Auto-inject** — fetch relevant memories before each model call and fold them into the system message.
+  Personalization does not depend on the model remembering to ask. This is what
+  [`examples/chat-app`](../examples/chat-app) does.
+- **A recall tool** — the model calls `search_memory` when it decides it needs to. Fewer tokens per turn,
+  but it only works when the model chooses well.
+
+If you expose memory as a **tool**, bind the namespace server-side and give the model no namespace
+parameter at all:
+
+```ts
+// The model may choose *which collection*, from an enum — never which namespace.
+const userId = config.configurable?.langgraph_auth_user_id; // never model output
+```
+
+That is the pattern people get wrong: a namespace the model can name is a namespace the model can escape.
+
+## Multi-tenant memory
+
+Memory is per-user by definition, so this matters more here than anywhere else in skein.
+
+`prefix`, `suffix` and `filter` are **request parameters, not access control**. An omitted prefix matches
+every namespace. The control is an **`@auth.on.store` handler** that rewrites `value.namespace` to root the
+caller — LangGraph's own idiom, and skein honours it. See
+[agent-protocol.md](./agent-protocol.md#authentication--authorization).
+
+It covers the HTTP surface. **`getStore()` inside a graph has no request and no principal**, so nothing
+guards it for you — build its namespace from `config.configurable.langgraph_auth_user_id` (server-injected
+and unspoofable), never from model output, and use the same encoding your handler uses.
+
+Build the namespace from `config.configurable.langgraph_auth_user_id`, never from model output, and encode
+it: an identity containing `.` splits into two namespace segments on `GET /store/items`, and `PostgresStore`
+rejects `.`, `%`, `_` and `\` in a label outright.
+
+## Writing memories in the background
+
+Extracting memories inline costs the user's turn a model call. Two ways to move it off the hot path, both
+working today with no new skein surface:
+
+**A cron.** Point a [schedule](./crons.md) at an extractor graph — an ordinary graph you write, with your
+model and your prompt — and it runs on a cadence, durably, across restarts and instances:
+
+```jsonc
+{ "graphs": { "agent": "./src/agent.ts:graph", "extract-memories": "./src/extract.ts:graph" } }
+```
+
+**A debounced follow-up run.** Closer to real-time: when a turn finishes, create a _stateless background
+run_ of the extractor with `after_seconds`, and cancel this thread's pending one first so extraction fires
+once when the conversation pauses rather than once per turn. `after_seconds` is backed by the queue, so a
+pending extraction is a **row in the store** and survives the process that scheduled it — which is the part
+an in-process scheduler (Python `langmem`'s `ReflectionExecutor`, say) cannot give you without a server
+behind it.
+
+```ts
+// Cancel the pending extractor for this thread, then schedule a fresh one.
+const inflight = await client.runs.list(threadId);
+for (const run of inflight.filter((r) => r.metadata?.extractor && r.status === "pending")) {
+  await client.runs.cancel(threadId, run.run_id);
+}
+await client.runs.create(null, "extract-memories", {
+  afterSeconds: 30,
+  input: { thread_id: threadId },
+  metadata: { extractor: true },
+});
+```
+
+The one thing neither expresses: a graph node cannot know its own run _settled_, so "extract only from
+successful runs, reliably even on error and cancellation paths" is not reachable from inside the graph. A
+server-side settled-run trigger would cover it; it is
+[deferred](./roadmap.md), because everything above works without it and the gap is narrow.
+
+## See also
+
+- [storage.md](./storage.md) — the store itself: drivers, `getStore()`, filters, TTL, scoping, BYO store
+- [crons.md](./crons.md) — schedules, for the cron extraction pattern
+- [`examples/chat-app`](../examples/chat-app) — a working research assistant with memory and recall
+- [LangChain's memory guide](https://docs.langchain.com/oss/javascript/concepts/memory) — the
+  profile/collection framing this page builds on
 
 
 ---

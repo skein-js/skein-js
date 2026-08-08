@@ -204,19 +204,22 @@ against — so the contract is the element-wise order, not a byte-exact one.
 > `listNamespaces({ prefix: ["users"] })`. Like every other list path, it now applies the driver's
 > page bound when the caller names no `limit`.
 
-#### None of this is a tenant boundary
+#### Multi-tenancy is yours to define
 
 `prefix`, `suffix` and `filter` are _request parameters_, not access control. An omitted prefix matches
 every namespace and a short one matches every namespace beneath it, so a caller who can reach
 `POST /store/items/search` can read every item in the store — no wildcard required.
 
-With [auth](./agent-protocol.md#authentication--authorization) enabled the `store` resource is **gated
-but not filtered**: an `@auth.on.store` handler can deny a request, but nothing narrows what a permitted
-one returns. If you serve more than one tenant, that handler is the control, and it must _require_ a
-namespace rooted at the principal rather than filter the response. It also cannot reach `getStore()`
-inside a graph — no request, no principal. The pattern and its limits are in
-[agent-protocol.md](./agent-protocol.md#authentication--authorization); per-owner store scoping is on the
-[roadmap](./roadmap.md).
+**skein deliberately offers no store-scoping mechanism of its own.** Who owns what, and how a namespace
+encodes it, is exactly the policy a deployment should hold — and it is the part that varies most between
+them. So skein does what `@langchain/langgraph-api` does: fire the `@auth.on.store` event, and serve the
+namespace the request (or your handler) decided on.
+
+What that gives you is complete control, in one place. LangGraph's idiom for store authorization is that
+the handler **rewrites** `value.namespace`, and skein honours that — see
+[agent-protocol.md](./agent-protocol.md#authentication--authorization) for the pattern, the payload your
+handler receives, and the two limits worth knowing (it covers the HTTP surface, not `getStore()` inside a
+graph; and an identity containing `.` needs encoding).
 
 ### Store item TTL
 

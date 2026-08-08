@@ -492,17 +492,38 @@ Per request the wrapper:
    `@auth.on.crons` callback is registered** — callbacks match by exact event key, so a deployment
    that scoped only threads would otherwise serve the cron resource unscoped. Attaching a schedule to
    a thread is additionally authorized as `threads:create_run`, so a cron cannot be pointed at a
-   thread the caller cannot read. `assistants` and `store` are **gate-only** — their handlers can deny
-   (`403`), but no ownership filter is applied yet (graph assistants have no owner and must stay
-   runnable; store items carry no metadata to filter on).
+   thread the caller cannot read. `assistants` stays **gate-only** — its handler can deny (`403`), but no
+   ownership filter is applied. Graph assistants are auto-registered with no owner and must stay runnable
+   for every caller; a store item carries no metadata to filter on at all, so store scoping is expressed
+   through the **namespace** instead — see the block below.
 
-> **The store is not tenant-scoped. If you serve more than one tenant, you must scope it yourself.**
+> **An `@auth.on.store` handler can rewrite the namespace, which is LangGraph's own idiom.** Store
+> authorization is the one case where returning a metadata filter cannot work — a store item has no
+> metadata — so LangGraph documents _mutating_ `value.namespace` instead, and skein honours that:
 >
-> Because `store` is gate-only, nothing narrows a store read. The namespace is a request parameter, so
-> an authenticated caller can send `{"namespace_prefix": ["memories"]}` — or omit the prefix entirely —
+> ```ts
+> auth.on("store", ({ user, value }) => {
+>   // Reroute the caller into their own root, whatever they asked for.
+>   value.namespace = [user.identity, ...(value.namespace ?? []).slice(1)];
+> });
+> ```
+>
+> The rewritten namespace is what the endpoint operates on, for all five store routes — including a
+> `GET`/`DELETE` that addressed the item with query params, since the body namespace takes precedence, and
+> including an in-place mutation (`value.namespace[0] = …`). A rewrite that is not a `string[]` is a **500**
+> (`code: "store_namespace_rewrite_invalid"`) rather than a silent fall-through to the caller's own
+> namespace, because a handler that meant to scope and got the shape wrong is the exact failure this
+> prevents.
+>
+> **skein adds no scoping mechanism of its own, deliberately.** Who owns what, and how a namespace encodes
+> it, is the policy that varies most between deployments — a per-user root, a tenant prefix, a shared team
+> subtree — and your handler is the one place that can express all of them. So skein does what
+> `@langchain/langgraph-api` does: fire the event, honour the namespace, and stay out of the way.
+>
+> **With no store handler registered, nothing narrows a store read.** The namespace is a request parameter,
+> so an authenticated caller can send `{"namespace_prefix": ["memories"]}` — or omit the prefix entirely —
 > and read **every** tenant's items; `POST /store/namespaces` likewise returns every tenant's namespace
-> names. Per-owner store scoping is on the [roadmap](./roadmap.md); until it lands, the deny handler
-> below is the control.
+> names. If you prefer validating to rewriting, the deny handler below is the shape.
 >
 > ```ts
 > /**
@@ -595,7 +616,8 @@ Route → resource/action (runs authorize through their owning thread — there 
 **Reuse & limits.** The `Auth` contract and the `$eq`/`$contains` filter semantics come from
 `@langchain/*`; skein adds only the instance-scoped dispatch (see [reuse.md](./reuse.md)). Ownership
 scoping is pushed into the driver query (above), with the in-process check kept as the enforcement point.
-Per-owner scoping of `assistants`/`store` is still on the [roadmap](./roadmap.md).
+`assistants` and `store` remain gate-only: store scoping is expressed through the namespace your
+`@auth.on.store` handler decides on, which is where that policy belongs.
 
 `POST /runs/cancel` sweeps broadly but authorizes narrowly: every run it touches goes back through the
 ownership-filtered `get`, so a non-owned run reads as absent and is skipped. The per-thread concurrency

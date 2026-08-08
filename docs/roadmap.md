@@ -72,10 +72,18 @@ Also shipped, beyond the original MVP plan:
   block loading a `@langchain/langgraph-sdk/auth` `Auth` instance; transport-neutral, so every adapter
   inherits it. Per-request authenticate (`401`) + authorize per resource/action (`403`) with ownership
   filters, pushed into the driver query rather than applied to a full read. See
-  [agent-protocol.md](./agent-protocol.md#authentication--authorization). _Follow-up:_ per-owner scoping
-  for `assistants` / `store`. **`store` is the one that bites:** it is gated but not filtered, so a
-  multi-tenant deployment must scope namespaces in its own `@auth.on.store` handler — and no handler can
-  cover `getStore()` inside a graph, which is why the filter has to land here rather than in user code.
+  [agent-protocol.md](./agent-protocol.md#authentication--authorization).
+
+- ✅ **Store authorization is the deployment's to define (LangGraph parity).** A store item carries no
+  metadata, so an ownership filter has nothing to match on — LangGraph's idiom is that the `@auth.on.store`
+  handler **rewrites** `value.namespace` to root the caller, and skein now honours that on all five store
+  routes (including an in-place mutation, and a `GET`/`DELETE` addressed by query params). skein
+  deliberately adds **no** scoping mechanism of its own: who owns what, and how a namespace encodes it, is
+  the policy that varies most between deployments, and the handler is the one place that can express all of
+  them. A `store.scope` setting was built and then removed for exactly that reason — see
+  [the proposal](./proposals/long-term-memory.md). `assistants` stays gate-only. See
+  [agent-protocol.md](./agent-protocol.md#authentication--authorization).
+
 - ✅ **Assistants CRUD + versioning (LangGraph parity)** — the full SDK surface beyond the
   auto-registered one-per-graph assistant: `POST/PATCH/DELETE`, `search`/`count`, immutable version
   history with rollback, and graph/subgraph introspection. See

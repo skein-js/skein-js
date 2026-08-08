@@ -93,14 +93,39 @@ export function memoryNamespace(userId: string): string[] {
   return ["memories", userId];
 }
 
-/** Persist a durable fact about the user. `key` lets a caller make writes deterministic in tests. */
+/**
+ * A content-addressed key for a memory, so saving the same fact twice **upserts** instead of appending.
+ *
+ * Dedup on content rather than on similarity, deliberately. The tempting alternative — semantic search for
+ * a near-duplicate before writing — inverts on most substrates: both the in-memory driver and Postgres
+ * *without* `store.index` return `score: 1` for every text hit, so a "score >= 0.9 means duplicate" rule
+ * classifies everything as a duplicate and the agent silently stops recording anything. See
+ * docs/memory.md#the-dedup-trap.
+ *
+ * `globalThis.crypto.subtle` rather than `node:crypto`, so the same graph still runs on an edge runtime.
+ */
+export async function memoryKey(content: string): Promise<string> {
+  const normalized = content.trim().toLowerCase().replace(/\s+/g, " ");
+  const digest = await crypto.subtle.digest("SHA-256", new TextEncoder().encode(normalized));
+  const hex = [...new Uint8Array(digest).slice(0, 8)]
+    .map((byte) => byte.toString(16).padStart(2, "0"))
+    .join("");
+  return `mem-${hex}`;
+}
+
+/**
+ * Persist a durable fact about the user.
+ *
+ * `key` is optional: omitted, it is derived from `content`, which is what makes repeated saves idempotent.
+ * Callers pass one explicitly only to make a write deterministic in a test.
+ */
 export async function saveMemory(
   store: BaseStore,
   userId: string,
   content: string,
-  key: string,
+  key?: string,
 ): Promise<void> {
-  await store.put(memoryNamespace(userId), key, { content });
+  await store.put(memoryNamespace(userId), key ?? (await memoryKey(content)), { content });
 }
 
 /** Recall the user's most relevant memories for a query (semantic search on the Postgres driver). */
@@ -140,9 +165,9 @@ function requireStore(): BaseStore {
 
 export const saveMemoryTool = tool(
   async ({ content }: { content: string }, config: LangGraphRunnableConfig) => {
-    // A monotonic-enough key per write; two facts saved in the same turn still get distinct keys.
-    const key = `mem-${Date.now()}-${Math.round(Math.random() * 1e6)}`;
-    await saveMemory(requireStore(), userIdFrom(config), content, key);
+    // No explicit key: `saveMemory` derives one from the content, so the model saving the same fact
+    // across turns updates one row instead of accumulating near-identical copies that drown out recall.
+    await saveMemory(requireStore(), userIdFrom(config), content);
     return `Saved memory: "${content}"`;
   },
   {
