@@ -79,7 +79,17 @@ export default defineConfig({
 
     const description =
       pageData.frontmatter.description ?? describePage(readFileSync(source, "utf8"));
-    const title = pageData.title ? `${pageData.title} | skein-js` : "skein-js";
+    // index.md's H1 is already "skein-js — Overview", so the default " | skein-js" suffix renders
+    // "skein-js — Overview | skein-js". Suppress it wherever the heading already names the project —
+    // the <title> is the single most valuable string on the page for search.
+    const selfTitled = pageData.title?.includes("skein-js") ?? false;
+    if (selfTitled) pageData.titleTemplate = false;
+
+    const title = !pageData.title
+      ? "skein-js"
+      : selfTitled
+        ? pageData.title
+        : `${pageData.title} | skein-js`;
 
     pageData.frontmatter.head ??= [];
     pageData.frontmatter.head.push(

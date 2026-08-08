@@ -9,7 +9,7 @@
 
 # skein-js
 
-[![npm](https://img.shields.io/npm/v/skein-js?logo=npm&color=cb3837&label=skein-js)](https://www.npmjs.com/package/skein-js)&nbsp;[![downloads](https://img.shields.io/npm/dm/skein-js?color=blue)](https://www.npmjs.com/package/skein-js)&nbsp;[![license](https://img.shields.io/npm/l/skein-js?color=green)](./LICENSE)&nbsp;[![CI](https://github.com/skein-js/skein-js/actions/workflows/ci.yml/badge.svg)](https://github.com/skein-js/skein-js/actions/workflows/ci.yml)
+[![npm](https://img.shields.io/npm/v/skein-js?logo=npm&color=cb3837&label=skein-js)](https://www.npmjs.com/package/skein-js)&nbsp;[![downloads](https://img.shields.io/npm/dm/skein-js?color=blue)](https://www.npmjs.com/package/skein-js)&nbsp;[![license](https://img.shields.io/npm/l/skein-js?color=green)](./LICENSE)&nbsp;[![CI](https://github.com/skein-js/skein-js/actions/workflows/ci.yml/badge.svg)](https://github.com/skein-js/skein-js/actions/workflows/ci.yml)&nbsp;[![docs](https://img.shields.io/badge/docs-skein--js.github.io-3b82f6)](https://skein-js.github.io/skein-js/)
 
 **The open-source alternative to LangGraph Platform (now LangSmith Deployment) — for TypeScript.**
 
@@ -633,28 +633,18 @@ Run them with `pnpm test` (fast unit + conformance, no Docker) and `pnpm test:in
 
 ## Documentation
 
-Full design and how-to guides live in [`docs/`](./docs):
+📖 **[skein-js.github.io/skein-js](https://skein-js.github.io/skein-js/)** — the full docs, searchable.
 
-- [Getting started](./docs/getting-started.md) — the guided path from zero to a running server, then prod
-- [Using skein-js](./docs/using-skein.md) — the terse consumer/agent cheat-sheet (`{ config } | { deps }`)
-- [Recipes](./docs/recipes.md) — auth, human-in-the-loop, long-term memory, CORS, background runs, deploy
-- [Overview & vision](./docs/index.md)
-- [LangGraph CLI compatibility](./docs/langgraph-cli-compat.md) — commands + the `langgraph.json` fields
-- [Embedding a graph you already have](./docs/embedding.md) — the in-code on-ramp (no `langgraph.json`)
-- [Serving a graph as a plain endpoint](./docs/serving-a-single-graph.md) — the non-chat surface (`POST /invoke/:graph_id`)
-- [Agent Protocol surface](./docs/agent-protocol.md) — the endpoints skein-js serves
-- [Building your own adapter](./docs/building-an-adapter.md) — put skein-js on any HTTP framework
-- [Streaming (SSE)](./docs/streaming.md) — stream modes, thinking, reconnect/replay
-- [React SDK / `useStream`](./docs/react-sdk.md) — building the frontend
-- [Storage](./docs/storage.md) — persistence, long-term memory, pgvector
-- [Runs & Redis](./docs/runs-and-redis.md) — the run engine and scaling to multiple instances
-- [Errors & logging](./docs/errors-and-logging.md) — what a failed run reports, and where
-- [Observability](./docs/observability.md) — tracing + metrics: LangSmith, PostHog, OpenTelemetry
-- [Deploy anywhere](./docs/deploy.md) — Cloud Run, Railway, Fly.io, Render, AWS, Kubernetes, VPS
-- [Performance & memory](./docs/performance.md) — sizing, every knob, backpressure, triage
-- [Profiling](./docs/profiling.md) — learn latency, memory, CPU, and compare Node/Bun/Deno correctly
-- [Reuse-first architecture](./docs/reuse.md) — what we reuse vs. rebuild _(design)_
-- [Roadmap](./docs/roadmap.md)
+Start here:
+
+- [Getting started](https://skein-js.github.io/skein-js/getting-started) — the guided path from zero to a running server, then prod
+- [LangGraph CLI compatibility](https://skein-js.github.io/skein-js/langgraph-cli-compat) — commands + every `langgraph.json` field
+- [Agent Protocol surface](https://skein-js.github.io/skein-js/agent-protocol) — the endpoints skein-js serves
+- [Recipes](https://skein-js.github.io/skein-js/recipes) — auth, human-in-the-loop, long-term memory, CORS, background runs
+- [Deploy anywhere](https://skein-js.github.io/skein-js/deploy) — Cloud Run, Railway, Fly.io, Render, AWS, Kubernetes, VPS
+
+The source markdown lives in [`docs/`](./docs); the site's sidebar is the complete index. This list is
+deliberately short — it used to mirror the whole set and had already drifted out of date.
 
 **For AI agents & tools:** [`llms.txt`](./llms.txt) is a curated, machine-readable index of these docs
 (per the [llmstxt.org](https://llmstxt.org) convention); [`llms-full.txt`](./llms-full.txt) is the same

@@ -10,9 +10,9 @@ import { bold, cyan, dim, green } from "./colors.js";
 /**
  * Where the `Docs` line points. Deliberately *not* a `${base}/docs` route: unlike LangGraph Server,
  * skein serves no OpenAPI/Swagger page, so printing a local `/docs` URL would 404 on the first thing
- * a new user clicks. Point at the real docs until an `/docs` endpoint exists.
+ * a new user clicks. Point at the published docs site until an `/docs` endpoint exists.
  */
-const DOCS_URL = "https://github.com/skein-js/skein-js/tree/main/docs";
+const DOCS_URL = "https://skein-js.github.io/skein-js/";
 
 /** What the banner needs to describe the running dev server. */
 export interface BannerInfo {
