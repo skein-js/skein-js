@@ -196,7 +196,7 @@ machine-readable [`llms.txt`](https://github.com/skein-js/skein-js/blob/main/llm
 | [agent-protocol.md](./agent-protocol.md)                 | The REST + streaming endpoints skein-js implements               |
 | [building-an-adapter.md](./building-an-adapter.md)       | How to put skein-js on any HTTP framework (custom adapter)       |
 | [streaming.md](./streaming.md)                           | LangGraph stream modes → Agent Protocol SSE                      |
-| [react-sdk.md](./react-sdk.md)                           | `@langchain/langgraph-sdk` + `useStream` compatibility           |
+| [react-sdk.md](./react-sdk.md)                           | Frontend SDKs — `useStream` plus Vue, Svelte and Angular         |
 | [storage.md](./storage.md)                               | `SkeinStore`, in-memory + Postgres, pgvector, checkpointer       |
 | [memory.md](./memory.md)                                 | Agent memory patterns — shapes, dedup, recall, background writes |
 | [runs-and-redis.md](./runs-and-redis.md)                 | Run engine, queue, cross-instance streaming                      |

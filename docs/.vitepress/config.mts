@@ -155,7 +155,7 @@ export default defineConfig({
         items: [
           { text: "Agent Protocol", link: "/agent-protocol" },
           { text: "Streaming", link: "/streaming" },
-          { text: "React SDK & useStream", link: "/react-sdk" },
+          { text: "Frontend SDKs & useStream", link: "/react-sdk" },
           { text: "Building an adapter", link: "/building-an-adapter" },
         ],
       },

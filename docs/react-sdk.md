@@ -1,8 +1,9 @@
-# React SDK / `useStream` compatibility
+# Frontend SDKs / `useStream` compatibility
 
 A core promise of skein-js: **your existing frontend code keeps working by changing only the
 API URL.** That includes the React streaming hook, which is the most common way LangGraph
-apps render agent output.
+apps render agent output — and the Vue, Svelte and Angular bindings, which wrap the same SDK
+and therefore work the same way ([see below](#not-just-react--vue-svelte-and-angular)).
 
 **What this gives you:** point
 [`useStream`](https://reference.langchain.com/javascript/langchain-langgraph-sdk/react/useStream) at a
@@ -31,6 +32,7 @@ streaming.
 ## Contents
 
 - [The clients skein-js must satisfy](#the-clients-skein-js-must-satisfy)
+- [Not just React — Vue, Svelte and Angular](#not-just-react--vue-svelte-and-angular)
 - [`useStream` against skein-js](#usestream-against-skein-js)
 - [Why it works over SSE](#why-it-works-over-sse)
 - [Verification harness](#verification-harness)
@@ -38,12 +40,43 @@ streaming.
 
 ## The clients skein-js must satisfy
 
-| Client           | Package                          | How it talks to skein-js                                         |
-| ---------------- | -------------------------------- | ---------------------------------------------------------------- |
-| Vanilla JS SDK   | `@langchain/langgraph-sdk`       | `client.threads.*`, `client.runs.stream()`, `client.runs.wait()` |
-| **React hook**   | `@langchain/langgraph-sdk/react` | **`useStream({ apiUrl, assistantId })`** over SSE                |
-| Agent Chat UI    | (built on `useStream`)           | Same SSE path                                                    |
-| LangGraph Studio | —                                | Agent Protocol HTTP                                              |
+| Client                 | Package                           | How it talks to skein-js                                         |
+| ---------------------- | --------------------------------- | ---------------------------------------------------------------- |
+| Vanilla JS SDK         | `@langchain/langgraph-sdk`        | `client.threads.*`, `client.runs.stream()`, `client.runs.wait()` |
+| **React hook**         | `@langchain/langgraph-sdk/react`  | **`useStream({ apiUrl, assistantId })`** over SSE                |
+| Vue / Svelte / Angular | `@langchain/{vue,svelte,angular}` | Same SSE path — see below                                        |
+| Agent Chat UI          | (built on `useStream`)            | Same SSE path                                                    |
+| LangGraph Studio       | —                                 | Agent Protocol HTTP                                              |
+
+## Not just React — Vue, Svelte and Angular
+
+**Nothing in skein-js is React-specific.** LangChain publishes first-party bindings for four
+frameworks, and each one is a thin wrapper over the _same_ `@langchain/langgraph-sdk` — all four
+declare an identical pinned dependency on it. They therefore issue identical Agent Protocol requests
+and read identical SSE frames, so every one of them works against a skein-js server by pointing its
+`apiUrl` at it, exactly as `useStream` does.
+
+| Framework | Package                                                                                        | Entry points                                    | Peer range    |
+| --------- | ---------------------------------------------------------------------------------------------- | ----------------------------------------------- | ------------- |
+| React     | [`@langchain/react`](https://github.com/langchain-ai/langgraphjs/tree/main/libs/sdk-react)     | `useStream`, `StreamProvider`                   | React 18 · 19 |
+| Vue       | [`@langchain/vue`](https://github.com/langchain-ai/langgraphjs/tree/main/libs/sdk-vue)         | `useStream`, `provideStream`, `LangChainPlugin` | Vue 3         |
+| Svelte    | [`@langchain/svelte`](https://github.com/langchain-ai/langgraphjs/tree/main/libs/sdk-svelte)   | `provideStream`, `getStream`                    | Svelte 5      |
+| Angular   | [`@langchain/angular`](https://github.com/langchain-ai/langgraphjs/tree/main/libs/sdk-angular) | `injectStream`, the `inject*` family            | Angular 18–21 |
+
+Each follows its own idiom — a React hook, a Vue composable, Svelte context, Angular DI — over one
+shared streaming core, so everything on this page transfers unchanged: submit a turn, read messages
+off the returned stream, render a pending `interrupt`, resume with a `command`.
+
+**Mind the package names.** These are `@langchain/<framework>` packages, _not_ subpaths of the SDK —
+`@langchain/langgraph-sdk/vue` does not resolve, and the SDK's own README links to them by monorepo
+path, which is easy to misread as a subpath. `@langchain/langgraph-sdk/react` still exists and is what
+the example below uses; the dedicated packages are the newer home and the only place the non-React
+bindings live.
+
+skein-js ships no Vue, Svelte or Angular example, and the runtime matrix in
+[`ci.yml`](https://github.com/skein-js/skein-js/blob/main/.github/workflows/ci.yml) does not exercise
+them. The compatibility is structural — same SDK, same wire — rather than separately tested, and
+`useStream` is what the [verification harness](#verification-harness) covers.
 
 ## `useStream` against skein-js
 
@@ -102,3 +135,7 @@ a real browser. See [roadmap.md](./roadmap.md#verification).
 - `useStream` API reference — <https://reference.langchain.com/javascript/langchain-langgraph-sdk/react/useStream>
 - LangGraph streaming — <https://docs.langchain.com/oss/javascript/langgraph/streaming>
 - Agent Chat UI — <https://github.com/langchain-ai/agent-chat-ui>
+- React bindings — <https://github.com/langchain-ai/langgraphjs/tree/main/libs/sdk-react>
+- Vue bindings — <https://github.com/langchain-ai/langgraphjs/tree/main/libs/sdk-vue>
+- Svelte bindings — <https://github.com/langchain-ai/langgraphjs/tree/main/libs/sdk-svelte>
+- Angular bindings — <https://github.com/langchain-ai/langgraphjs/tree/main/libs/sdk-angular>
