@@ -2,6 +2,7 @@ import { skeinRoutes } from "@skein-js/agent-protocol";
 import { describe, expect, it } from "vitest";
 
 import {
+  consoleMountFromHttpConfig,
   corsFromHttpConfig,
   disabledRoutesFromHttpConfig,
   routesFromHttpConfig,
@@ -133,5 +134,50 @@ describe("disabledRoutesFromHttpConfig / routesFromHttpConfig", () => {
     const withoutStore = routesFromHttpConfig({ disable_store: true });
     expect(withoutStore.length).toBeLessThan(skeinRoutes.length);
     expect(withoutStore.some((binding) => binding.group === "store")).toBe(false);
+  });
+});
+
+describe("consoleMountFromHttpConfig", () => {
+  it("is off unless the config asks for it", () => {
+    expect(consoleMountFromHttpConfig(undefined)).toBeUndefined();
+    expect(consoleMountFromHttpConfig({})).toBeUndefined();
+    expect(consoleMountFromHttpConfig({ cors: { allow_origins: ["*"] } })).toBeUndefined();
+  });
+
+  it("mounts at /console for literal true", () => {
+    expect(consoleMountFromHttpConfig({ console: true })).toBe("/console");
+  });
+
+  it("takes a string as the mount path, normalized", () => {
+    expect(consoleMountFromHttpConfig({ console: "/admin/console" })).toBe("/admin/console");
+    expect(consoleMountFromHttpConfig({ console: "admin" })).toBe("/admin");
+    expect(consoleMountFromHttpConfig({ console: "/admin/" })).toBe("/admin");
+  });
+
+  it("never reads a disabling value as enabling", () => {
+    // The console can read and delete every thread, memory and schedule on the server. The sharp case
+    // is a *string* "false": unlike the disable_* flags, a string here is legitimate (it names a mount
+    // path), so without special handling `"${SKEIN_CONSOLE}"` resolving to "false" would serve the
+    // console at /false — switching on the thing the config meant to switch off.
+    expect(consoleMountFromHttpConfig({ console: false })).toBeUndefined();
+    expect(consoleMountFromHttpConfig({ console: "false" })).toBeUndefined();
+    expect(consoleMountFromHttpConfig({ console: "FALSE" })).toBeUndefined();
+    expect(consoleMountFromHttpConfig({ console: "0" })).toBeUndefined();
+    expect(consoleMountFromHttpConfig({ console: "off" })).toBeUndefined();
+    expect(consoleMountFromHttpConfig({ console: 0 })).toBeUndefined();
+    expect(consoleMountFromHttpConfig({ console: 1 })).toBeUndefined();
+    expect(consoleMountFromHttpConfig({ console: null })).toBeUndefined();
+  });
+
+  it("reads the string spellings of true as the default mount", () => {
+    expect(consoleMountFromHttpConfig({ console: "true" })).toBe("/console");
+    expect(consoleMountFromHttpConfig({ console: "1" })).toBe("/console");
+    expect(consoleMountFromHttpConfig({ console: "on" })).toBe("/console");
+  });
+
+  it("refuses to mount at the root, which would shadow the protocol", () => {
+    expect(consoleMountFromHttpConfig({ console: "/" })).toBeUndefined();
+    expect(consoleMountFromHttpConfig({ console: "" })).toBeUndefined();
+    expect(consoleMountFromHttpConfig({ console: "   " })).toBeUndefined();
   });
 });

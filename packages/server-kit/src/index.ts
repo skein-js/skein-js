@@ -113,6 +113,7 @@ export type { DevStateCounts } from "./langgraph-import.js";
 export { routeMatcherFor } from "./route-matcher-cache.js";
 export {
   corsFromHttpConfig,
+  consoleMountFromHttpConfig,
   disabledRoutesFromHttpConfig,
   routesFromHttpConfig,
   toCorsOptions,

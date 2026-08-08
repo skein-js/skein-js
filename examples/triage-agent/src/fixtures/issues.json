@@ -1,0 +1,50 @@
+[
+  {
+    "number": 411,
+    "title": "Crash on startup: Cannot read properties of undefined (reading 'graphs')",
+    "body": "After upgrading to 0.13 the server exits immediately.\n\nStack:\n```\nTypeError: Cannot read properties of undefined (reading 'graphs')\n    at resolveProtocolRuntime\n```\nDowngrading to 0.12 fixes it. Production is down.",
+    "html_url": "https://example.invalid/issues/411",
+    "user": { "login": "ada" },
+    "labels": ["bug"]
+  },
+  {
+    "number": 412,
+    "title": "Add support for streaming tool call arguments",
+    "body": "It would be great if the SSE stream emitted partial tool-call arguments so we can show them building up in our UI, the way the token stream works today.",
+    "html_url": "https://example.invalid/issues/412",
+    "user": { "login": "grace" },
+    "labels": ["enhancement"]
+  },
+  {
+    "number": 413,
+    "title": "How do I run two instances behind a load balancer?",
+    "body": "We want to run three replicas. Do runs get picked up twice? Is Redis required or optional? Sorry if this is documented somewhere I missed.",
+    "html_url": "https://example.invalid/issues/413",
+    "user": { "login": "linus" },
+    "labels": []
+  },
+  {
+    "number": 414,
+    "title": "Docs: `http.console` is not mentioned in the langgraph.json reference",
+    "body": "The console docs mention the flag but the CLI compatibility page's field table does not list it, so I only found it by reading the source.",
+    "html_url": "https://example.invalid/issues/414",
+    "user": { "login": "barbara" },
+    "labels": ["documentation"]
+  },
+  {
+    "number": 415,
+    "title": "🔥🔥 BUY CHEAP FOLLOWERS NOW visit my site 🔥🔥",
+    "body": "Best prices guaranteed!!! click here http://spam.invalid",
+    "html_url": "https://example.invalid/issues/415",
+    "user": { "login": "throwaway9912" },
+    "labels": []
+  },
+  {
+    "number": 416,
+    "title": "Intermittent 500 on POST /threads under load",
+    "body": "Roughly 1 in 200 requests returns a 500 when we push 50 rps. No stack in the response body. Happens on both Postgres and memory stores.",
+    "html_url": "https://example.invalid/issues/416",
+    "user": { "login": "ada" },
+    "labels": ["bug", "needs-triage"]
+  }
+]

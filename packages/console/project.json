@@ -1,0 +1,45 @@
+{
+  "$schema": "../../node_modules/nx/schemas/project-schema.json",
+  "name": "console",
+  "sourceRoot": "packages/console/src",
+  "projectType": "library",
+  "targets": {
+    "build": {
+      "executor": "nx:run-commands",
+      "dependsOn": ["^build", "generate-assets"],
+      "inputs": ["production", "^production", { "dependentTasksOutputFiles": "**/*" }],
+      "options": {
+        "command": "tsup src/index.ts --format esm --dts --clean",
+        "cwd": "packages/console"
+      }
+    },
+    "typecheck": {
+      "executor": "nx:run-commands",
+      "dependsOn": ["^build", "generate-assets"],
+      "inputs": ["default", "^production", { "dependentTasksOutputFiles": "**/*" }],
+      "options": {
+        "command": "tsc --noEmit",
+        "cwd": "packages/console"
+      }
+    },
+    "test": {
+      "dependsOn": ["^build", "generate-assets"],
+      "inputs": ["default", "^production", { "dependentTasksOutputFiles": "**/*" }]
+    },
+    "generate-assets": {
+      "executor": "nx:run-commands",
+      "dependsOn": [{ "projects": ["console-ui"], "target": "build" }],
+      "inputs": [
+        "{projectRoot}/ui/dist/**/*",
+        "{projectRoot}/scripts/generate-assets.mjs",
+        { "dependentTasksOutputFiles": "**/*" }
+      ],
+      "outputs": ["{projectRoot}/src/assets.generated.ts"],
+      "cache": true,
+      "options": {
+        "command": "node scripts/generate-assets.mjs",
+        "cwd": "packages/console"
+      }
+    }
+  }
+}

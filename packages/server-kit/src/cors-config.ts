@@ -128,3 +128,35 @@ export function disabledRoutesFromHttpConfig(http: unknown): DisabledRouteGroups
 export function routesFromHttpConfig(http: unknown): readonly RouteBinding[] {
   return filterSkeinRoutes(skeinRoutes, disabledRoutesFromHttpConfig(http));
 }
+
+/**
+ * Where the console should be mounted per a langgraph.json `http.console` block, or `undefined` for
+ * "do not serve it".
+ *
+ * Deliberately opt-in, and deliberately strict about what counts as opting in. The console can read
+ * and delete every thread, every stored memory, and every schedule on the server; a config that meant
+ * to disable it — a `"false"` left by env substitution, a `0`, a typo — must never be read as
+ * enabling it. `skein dev` does not go through here at all: it serves the console by default, because
+ * a local dev server is exactly where you want one.
+ */
+export function consoleMountFromHttpConfig(http: unknown): string | undefined {
+  if (typeof http !== "object" || http === null) return undefined;
+  const value = (http as Record<string, unknown>)["console"];
+  if (value === true) return DEFAULT_CONSOLE_MOUNT;
+  if (typeof value !== "string") return undefined;
+
+  const trimmed = value.trim();
+  // Booleans that survived env substitution as strings. Without this, `"${SKEIN_CONSOLE}"` resolving
+  // to `"false"` would be read as a *path* and mount the console at `/false` — serving the thing the
+  // config was trying to switch off. The disable_* flags dodge this by only honouring literal `true`;
+  // here the string form is legitimate (it is how you choose a path), so the words are handled.
+  if (/^(false|0|off|no)$/i.test(trimmed)) return undefined;
+  if (/^(true|1|on|yes)$/i.test(trimmed)) return DEFAULT_CONSOLE_MOUNT;
+
+  // An empty string is a mistake, and "/" would shadow the whole protocol.
+  if (trimmed === "" || trimmed === "/") return undefined;
+  const withLeadingSlash = trimmed.startsWith("/") ? trimmed : `/${trimmed}`;
+  return withLeadingSlash.replace(/\/+$/, "");
+}
+
+const DEFAULT_CONSOLE_MOUNT = "/console";

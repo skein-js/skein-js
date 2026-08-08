@@ -1,0 +1,22 @@
+{
+  "name": "@skein-js/example-triage-agent",
+  "version": "0.0.0",
+  "private": true,
+  "description": "A cron-driven triage agent: sweeps a queue of issues on a schedule, classifies each on its own thread, remembers conventions in the store, and interrupts for approval on anything that needs a human. Runs offline with no API key. The workload the skein console was built to show.",
+  "type": "module",
+  "scripts": {
+    "dev": "skein dev --port 2024",
+    "seed": "node --experimental-strip-types scripts/seed-cron.ts"
+  },
+  "dependencies": {
+    "@langchain/core": "^1.2.0",
+    "@langchain/google-genai": "^2.2.0",
+    "@langchain/langgraph": "^1.4.0",
+    "@langchain/langgraph-sdk": "^1.9.0",
+    "zod": "^3.25.32"
+  },
+  "devDependencies": {
+    "skein-js": "workspace:*",
+    "typescript": "^5.7.2"
+  }
+}

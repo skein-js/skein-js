@@ -1,0 +1,29 @@
+{
+  "compilerOptions": {
+    "jsx": "react-jsx",
+    "allowJs": false,
+    "esModuleInterop": false,
+    "allowSyntheticDefaultImports": true,
+    "strict": true,
+    // The workspace base targets Node libraries only (`["ES2023"]`) because every other project is
+    // server-side. This is the one browser project, so it adds the DOM.
+    "lib": ["ES2023", "DOM", "DOM.Iterable"],
+    "types": ["vite/client", "vitest"],
+    // Repo-root-relative, because `baseUrl` is inherited from tsconfig.base.json (which sets it to the
+    // workspace root) — a `./src/*` here would resolve against the root, not this directory.
+    "paths": {
+      "@/*": ["packages/console/ui/src/*"]
+    }
+  },
+  "files": [],
+  "include": [],
+  "references": [
+    {
+      "path": "./tsconfig.app.json"
+    },
+    {
+      "path": "./tsconfig.spec.json"
+    }
+  ],
+  "extends": "../../../tsconfig.base.json"
+}

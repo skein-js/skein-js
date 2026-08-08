@@ -29,19 +29,27 @@ export interface BannerInfo {
    * does spawn N loops; we don't).
    */
   runConcurrency: number;
+  /**
+   * Where the console is mounted (`/console`), when it is being served. Printed as a URL because a
+   * console nobody can find is a console nobody uses — this line is how most people will discover it.
+   */
+  consoleMountPath?: string;
 }
 
 /** Print the startup banner. Decorative header + URLs go straight to stdout; the status lines use
  * `logger` so they match the `info:` styling of the request/run logs that follow. */
 export function printBanner(info: BannerInfo, logger: Logger): void {
-  const { host, port, graphIds, authPath, runConcurrency } = info;
+  const { host, port, graphIds, authPath, runConcurrency, consoleMountPath } = info;
   const base = `http://${host}:${port}`;
 
   console.log();
   console.log(`${bold(green("skein"))} ${dim("· Agent Protocol dev server")}`);
   console.log();
-  console.log(`${dim("API ")}  ${cyan(base)}`);
-  console.log(`${dim("Docs")}  ${cyan(DOCS_URL)}`);
+  console.log(`${dim("API    ")}  ${cyan(base)}`);
+  if (consoleMountPath) {
+    console.log(`${dim("Console")}  ${cyan(`${base}${consoleMountPath}/`)}`);
+  }
+  console.log(`${dim("Docs   ")}  ${cyan(DOCS_URL)}`);
   console.log();
 
   for (const id of graphIds) logger.info(`Registering graph with id '${id}'`);

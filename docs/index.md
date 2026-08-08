@@ -200,6 +200,7 @@ machine-readable [`llms.txt`](../llms.txt) / [`llms-full.txt`](../llms-full.txt)
 | [storage.md](./storage.md)                               | `SkeinStore`, in-memory + Postgres, pgvector, checkpointer      |
 | [runs-and-redis.md](./runs-and-redis.md)                 | Run engine, queue, cross-instance streaming                     |
 | [crons.md](./crons.md)                                   | Scheduled runs — the Crons resource and the scheduler           |
+| [console.md](./console.md)                               | The skein console — a web UI served by the server itself        |
 | [errors-and-logging.md](./errors-and-logging.md)         | What a failed run reports, and where — wire, log, `skein dev`   |
 | [observability.md](./observability.md)                   | Tracing + metrics — LangSmith, PostHog, OpenTelemetry, custom   |
 | [deploy.md](./deploy.md)                                 | Deploy anywhere — Cloud Run, Railway, Fly, Render, AWS, K8s     |

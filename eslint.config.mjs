@@ -68,6 +68,9 @@ export default tseslint.config(
   },
 
   // Frameworks that REQUIRE default exports (Next.js pages/layouts/route configs, config files).
+  // (The console SPA needs the same exemption, but it owns a per-project config — see
+  // packages/console/ui/eslint.config.mjs — where `files` patterns resolve relative to *that*
+  // directory, so listing it here would silently never match.)
   {
     files: [
       "examples/react-usestream/**/*.{ts,tsx}",

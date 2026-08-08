@@ -20,12 +20,14 @@ import {
   detectRuntimeCapabilities,
   describeError,
   describePoolPressure,
+  consoleMountFromHttpConfig,
   resolveRunConcurrency,
   resolveShutdownGraceMs,
 } from "@skein-js/server-kit";
 
 import { printBanner } from "./banner.js";
 import { skeinCliVersion } from "./cli-version.js";
+import { mountConsole } from "./console-mount.js";
 import { createDevLogger } from "./dev-logger.js";
 import { applyProjectEnv } from "./project-env.js";
 import { resolveRequestLog } from "./request-log.js";
@@ -99,6 +101,10 @@ export async function runStart(options: StartCommandOptions): Promise<void> {
   let schemas: Record<string, GraphSchemas>;
   let configDir: string;
   let authPath: string | undefined;
+  // Read here so the console mount can be resolved after the server is built (see below); the
+  // loaded config itself is scoped to the try-block that validates it.
+  let httpConfig: unknown;
+  let consoleMountPath: string | undefined;
   let runConcurrency: number;
   let shutdownGraceMs: number;
   let selectedRuntime: SkeinRuntimeName;
@@ -117,6 +123,7 @@ export async function runStart(options: StartCommandOptions): Promise<void> {
     }
     configDir = loaded.configDir;
     authPath = loaded.config.auth?.path;
+    httpConfig = loaded.config.http;
     // Apply an inline `env` map baked into the production config (a file `env` was dropped at build).
     await applyProjectEnv(loaded.config, configDir);
     // Flag → LangGraph-compat alias → SKEIN_RUN_CONCURRENCY → N_JOBS_PER_WORKER → default. Inside this
@@ -187,6 +194,12 @@ export async function runStart(options: StartCommandOptions): Promise<void> {
         ...sharedOptions,
         requestLog,
       });
+      // Opt-in only, unlike `skein dev`. The console can read and delete every thread, memory and
+      // schedule on this server, so a deployed instance serves it exactly when its config says to.
+      consoleMountPath = consoleMountFromHttpConfig(httpConfig);
+      if (consoleMountPath !== undefined) {
+        mountConsole(expressServer.app, { mountPath: consoleMountPath });
+      }
       server = expressServer;
       await expressServer.listen(port, host);
     } else {
@@ -194,6 +207,15 @@ export async function runStart(options: StartCommandOptions): Promise<void> {
         logger.warn?.(
           `skein: --request-log / SKEIN_REQUEST_LOG is ignored on ${selectedRuntime}: the native ` +
             `Fetch transport has no request-logging middleware. Failed runs are still reported.`,
+        );
+      }
+      // Say so rather than silently ignoring it: `http.console` is a deliberate act, and a config that
+      // asks for a console and gets none is exactly the kind of thing that is noticed months later.
+      if (consoleMountFromHttpConfig(httpConfig) !== undefined) {
+        logger.warn?.(
+          `skein: http.console is ignored on ${selectedRuntime}: the console is mounted by the ` +
+            `Express transport only. Use the node runtime, or mount it yourself with ` +
+            `resolveConsoleRequest from @skein-js/console (docs/console.md).`,
         );
       }
       const { createSkeinFetchServer, startBunServer, startDenoServer } =
@@ -241,7 +263,17 @@ export async function runStart(options: StartCommandOptions): Promise<void> {
     return;
   }
 
-  printBanner({ host, port, graphIds: runtime.deps.graphs.ids, authPath, runConcurrency }, logger);
+  printBanner(
+    {
+      host,
+      port,
+      graphIds: runtime.deps.graphs.ids,
+      authPath,
+      runConcurrency,
+      ...(consoleMountPath ? { consoleMountPath } : {}),
+    },
+    logger,
+  );
 
   // Two sizing mistakes that are already true before any traffic arrives, and that otherwise only show
   // up as symptoms much later: an unexplained restart (OOM kill), and requests queuing on the pool.

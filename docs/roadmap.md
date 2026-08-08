@@ -170,6 +170,20 @@ Also shipped, beyond the original MVP plan:
   no Docker. See
   [agent-protocol.md](./agent-protocol.md#idempotent-run-creation-idempotency-key).
 
+- ✅ **The skein console** — a web UI for a running server, served by the server itself at `/console`:
+  a **playground** (pick a graph, chat with it or send raw JSON input, watch it stream), assistants,
+  threads, live run tails, interrupt approve/resume, time travel (fork a checkpoint and run from it),
+  the store browser, and crons. It is a pure **client** — no new endpoints, no server-side
+  state — built on the Agent Protocol surface through the real `@langchain/langgraph-sdk`, which makes
+  it continuous pressure on that surface rather than a parallel API. On by default under `skein dev`,
+  off unless `http.console` says otherwise everywhere else, since it is full API power over threads,
+  store and crons. Ships as [`@skein-js/console`](../packages/console) with **no runtime
+  dependencies**: the SPA is compiled into the bundle as string constants, the same trick
+  `storage-postgres` uses for its SQL, so the package stays bundleable (see [bundling.md](./bundling.md)).
+  Unlike LangGraph Studio it needs no account, no CORS, no tunnel and no internet. See
+  [console.md](./console.md), and [`examples/triage-agent`](../examples/triage-agent) for the workload
+  it was built to show.
+
 ## Planned / coming soon (post-MVP)
 
 These are on the map but not yet built. Want one sooner? Upvote or open an issue —
@@ -195,6 +209,28 @@ The remaining backlog is skein-js's own adapter/tooling roadmap:
   correctness — the execution claim makes the ordering safe either way. The fix is a `partitionKey` on
   `QueuedRun` plus driver-level per-key gating, so the queue never hands out two runs for the same
   thread at once and no slot is spent waiting.
+
+- 🗺️ **`GET /assistants/{id}/schemas` does not match the SDK's response shape.** The
+  `@langchain/langgraph-sdk` types it as `{ graph_id, input_schema, output_schema, state_schema,
+config_schema }`; skein answers with a map of graph symbol → `{ state, input, output, config }`. The
+  route works and the data is all there, but every field a typed SDK consumer reads is `undefined`.
+  Found by the console, which needs the input schema to decide whether a graph takes `messages` (see
+  `packages/console/ui/src/graph-schema.ts`, which reads both shapes). Fixing it is a response-shape
+  change, so it wants a conformance test against the SDK type rather than a quick edit — the existing
+  drift guards cover routes and _request_ bodies, not response bodies.
+
+- 🗺️ **No way to describe a graph.** `langgraph.json`'s `graphs` is a flat `id → "path:export"` map, so
+  the one-per-graph assistant skein auto-registers has a `name` and no `description` — the field exists
+  on the assistants API but nothing ever fills it. The console shows a description wherever one is
+  present (set via `PATCH /assistants/{id}`), which makes the gap visible rather than filling it.
+  Closing it means either an object form for `graphs` (`{"triage": {"path": "…", "description": "…"}}`,
+  which `langgraph dev` would have to keep loading) or a parallel block — a config decision, not a
+  patch.
+
+- 🗺️ **`POST /runs/search` — cross-thread run search.** Runs can only be listed per thread
+  (`GET /threads/{id}/runs`), so a "recent activity across the server" view has to search threads and
+  fan out over the top N. Found by building the console against the protocol, which is what that
+  exercise is for. Threads and crons both have `search`/`count`; runs do not.
 
 - 🗺️ **Custom-adapter example.** The [Building your own adapter](./building-an-adapter.md) guide
   exists; we still want a runnable `examples/custom-adapter` (a dependency-free Node `http` — or Hono
@@ -237,6 +273,7 @@ valuable feedback we can get.
 | `http.disable_*` route flags             | ✅ shipped         | `disable_assistants`/`threads`/`runs`/`store`/`meta`; `/ok` is never disabled.                                                  |
 | `GET /info` capability handshake         | ✅ shipped         | Version + `flags`; `/ok` stays outside the table so no flag can break the probe.                                                |
 | Blocking run join · state-at-checkpoint  | ✅ shipped         | `runs.join()`, `threads.getState()` with an object checkpoint, `/stream/events`.                                                |
+| **Console / Studio equivalent**          | ✅ shipped         | [`@skein-js/console`](../packages/console) at `/console`; self-hosted, not a hosted web app. See [console.md](./console.md).    |
 | Generative UI (`/ui/{agent}`)            | 🗺️ planned         | `LoadExternalComponent`; needs a `ui` config block, a bundler, and asset serving.                                               |
 | `/docs` OpenAPI page                     | 🗺️ planned         | LangGraph Server serves one; `skein dev` links the published docs instead.                                                      |
 | WebSocket streaming transport            | ❌ non-goal (v1)   | SSE covers the client UX; does not affect the React SDK.                                                                        |

@@ -29,6 +29,7 @@ const DOCS = [
   "docs/storage.md",
   "docs/runs-and-redis.md",
   "docs/crons.md",
+  "docs/console.md",
   "docs/observability.md",
   "docs/recipes.md",
   "docs/building-an-adapter.md",

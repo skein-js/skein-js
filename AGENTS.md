@@ -131,12 +131,15 @@ Prerequisites: the git remote must point at `skein-js/skein-js` (Nx derives the 
 | `@skein-js/storage-memory`                                                          | In-memory `SkeinStore` + queue (dev/tests)                                                                                                          |
 | `@skein-js/storage-postgres`                                                        | Postgres `SkeinStore` + pgvector; reuses `PostgresSaver`                                                                                            |
 | `@skein-js/redis`                                                                   | Run **queue** + cross-instance pub/sub (not a checkpointer)                                                                                         |
+| `@skein-js/console`                                                                 | The skein console — a web UI (assistants/threads/runs/store/crons/time travel) compiled into the package and served by the server at `/console`     |
 | `@skein-js/langsmith` · `@skein-js/posthog` · `@skein-js/otel`                      | Telemetry sinks — LangSmith tracing, PostHog analytics, OpenTelemetry spans/metrics                                                                 |
 | `@skein-js/runtime`                                                                 | Assembles production `ProtocolDeps` (memory/Postgres/Redis) — `buildRuntime` from `langgraph.json` (CLI), `embedPostgresGraphs` from graphs in code |
 | `skein-js` (CLI)                                                                    | Drop-in `dev` / `up` / `build` / `dockerfile`                                                                                                       |
 | `@skein-js/test-support`                                                            | _(private)_ Testcontainers helpers + `SkeinStore` conformance suite                                                                                 |
 
 Examples live in `examples/`: `chat-app` (flagship — research assistant + Next.js/shadcn UI),
+`triage-agent` (the console's workload — cron sweep, a durable run per item, idempotent re-sweeps,
+conditional HITL approval, store memory; runs offline with no API key),
 `migrated-langgraph` (drop-in proof), `gemini-chat` (model-backed e2e), `express-basic`
 (zero-setup), `react-usestream` (`useStream` harness). Each non-Express adapter ships a **standalone**
 example (a dedicated graph server) and an **embedded** one (graphs mounted alongside the app's own

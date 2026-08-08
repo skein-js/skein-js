@@ -1,0 +1,73 @@
+{
+  "name": "@skein-js/console",
+  "version": "0.13.1",
+  "description": "The skein console — a self-hosted web UI for a skein-js server: assistants, threads, live runs, interrupts, time travel, store, and crons.",
+  "license": "Apache-2.0",
+  "author": "Maina Wycliffe <wmmaina7@gmail.com>",
+  "homepage": "https://github.com/skein-js/skein-js/tree/main/packages/console#readme",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/skein-js/skein-js.git",
+    "directory": "packages/console"
+  },
+  "bugs": {
+    "url": "https://github.com/skein-js/skein-js/issues"
+  },
+  "keywords": [
+    "typescript",
+    "langgraph",
+    "agent-protocol",
+    "console",
+    "studio",
+    "ui",
+    "self-hosted",
+    "ai-agents"
+  ],
+  "type": "module",
+  "main": "./dist/index.js",
+  "module": "./dist/index.js",
+  "types": "./dist/index.d.ts",
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "import": "./dist/index.js",
+      "default": "./dist/index.js"
+    }
+  },
+  "files": [
+    "dist",
+    "LICENSE",
+    "README.md"
+  ],
+  "sideEffects": false,
+  "engines": {
+    "node": ">=20"
+  },
+  "//": "Everything the console needs is a *dev* dependency: `ui/` is compiled to static files by `nx build console-ui`, and scripts/generate-assets.mjs turns those files into a JS module. So the published package ships compiled strings and has no runtime dependencies at all — nothing here reaches a consumer's node_modules.",
+  "devDependencies": {
+    "@langchain/langgraph-sdk": "^1.9.0",
+    "@radix-ui/react-dropdown-menu": "^2.1.4",
+    "@radix-ui/react-slot": "^1.1.1",
+    "@testing-library/dom": "10.4.0",
+    "@testing-library/react": "16.3.0",
+    "@types/react": "^19.0.0",
+    "@types/react-dom": "^19.0.0",
+    "@vitejs/plugin-react": "^6.0.0",
+    "autoprefixer": "^10.4.20",
+    "class-variance-authority": "^0.7.1",
+    "clsx": "^2.1.1",
+    "eslint-plugin-jsx-a11y": "6.10.1",
+    "eslint-plugin-react": "^7.35.0",
+    "eslint-plugin-react-hooks": "5.0.0",
+    "jsdom": "^27.1.0",
+    "lucide-react": "^0.469.0",
+    "postcss": "^8.4.49",
+    "react": "^19.0.0",
+    "react-dom": "^19.0.0",
+    "tailwind-merge": "^2.6.0",
+    "tailwindcss": "^3.4.17"
+  },
+  "publishConfig": {
+    "access": "public"
+  }
+}

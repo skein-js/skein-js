@@ -177,6 +177,17 @@ export const langgraphJsonSchema = z
         disable_store: z.unknown().optional(),
         /** Turns off `GET /info`. skein's `/ok` health probe is unaffected — see meta/server-info.ts. */
         disable_meta: z.unknown().optional(),
+        /**
+         * Serve the skein console (`@skein-js/console`) — a skein extension, so a config carrying it
+         * still loads under `langgraph dev`.
+         *
+         * **Off unless this says otherwise.** `skein dev` serves the console by default because a dev
+         * server is where you want it; a deployed server does not, because the console is full API
+         * power over threads, store and crons. Set `true` to serve it at `/console`, or a string to
+         * choose the path (`"/admin/console"`). Same `unknown` typing as the `disable_*` flags, for
+         * the same reason: an env-substituted `"false"` must not read as enabled.
+         */
+        console: z.unknown().optional(),
       })
       .passthrough()
       .optional(),

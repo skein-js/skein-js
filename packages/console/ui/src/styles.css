@@ -1,0 +1,101 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+/* Design tokens, tuned toward Vercel's dashboard: true black/white grounds, hairline borders, one
+   accent, and colour reserved almost entirely for status. The restraint is the point — an operations
+   console is read, not admired, and every saturated pixel that is not telling you something is noise
+   competing with the one that is.
+
+   No web font is bundled. Geist would be the literal answer and costs ~80 kB of woff2 against a
+   package that ships inside the CLI; the system stack with tightened tracking gets most of the way
+   there for nothing. See the size budget in packages/console/src/assets.test.ts. */
+@layer base {
+  :root {
+    --background: 0 0% 100%;
+    --foreground: 0 0% 4%;
+    --card: 0 0% 100%;
+    --card-foreground: 0 0% 4%;
+    --primary: 0 0% 4%;
+    --primary-foreground: 0 0% 100%;
+    --secondary: 0 0% 96%;
+    --secondary-foreground: 0 0% 4%;
+    --muted: 0 0% 98%;
+    --muted-foreground: 0 0% 40%;
+    --accent: 0 0% 96%;
+    --accent-foreground: 0 0% 4%;
+    --destructive: 358 75% 59%;
+    --destructive-foreground: 0 0% 100%;
+    /* Hairlines. Vercel's whole surface separation is one 1px line at very low contrast. */
+    --border: 0 0% 92%;
+    --input: 0 0% 92%;
+    --ring: 0 0% 4%;
+    --radius: 0.5rem;
+
+    /* Status. Four meanings, four hues, nothing else gets colour. */
+    --status-running: 212 100% 47%;
+    --status-success: 131 41% 46%;
+    --status-error: 358 75% 59%;
+    --status-interrupted: 38 92% 50%;
+  }
+
+  .dark {
+    --background: 0 0% 0%;
+    --foreground: 0 0% 93%;
+    --card: 0 0% 4%;
+    --card-foreground: 0 0% 93%;
+    --primary: 0 0% 93%;
+    --primary-foreground: 0 0% 4%;
+    --secondary: 0 0% 11%;
+    --secondary-foreground: 0 0% 93%;
+    --muted: 0 0% 8%;
+    --muted-foreground: 0 0% 63%;
+    --accent: 0 0% 11%;
+    --accent-foreground: 0 0% 93%;
+    --destructive: 358 75% 59%;
+    --destructive-foreground: 0 0% 100%;
+    --border: 0 0% 15%;
+    --input: 0 0% 15%;
+    --ring: 0 0% 83%;
+
+    --status-running: 212 100% 60%;
+    --status-success: 131 41% 56%;
+    --status-error: 358 100% 70%;
+    --status-interrupted: 38 92% 58%;
+  }
+}
+
+@layer base {
+  * {
+    border-color: hsl(var(--border));
+  }
+
+  html {
+    -webkit-font-smoothing: antialiased;
+    -moz-osx-font-smoothing: grayscale;
+  }
+
+  body {
+    background-color: hsl(var(--background));
+    color: hsl(var(--foreground));
+    /* Tight tracking is most of what reads as "Geist" without shipping Geist. */
+    letter-spacing: -0.011em;
+  }
+
+  /* Headings tighten further, the way display type does in Vercel's dashboard. */
+  h1,
+  h2,
+  h3 {
+    letter-spacing: -0.02em;
+  }
+}
+
+@layer components {
+  /* The status dot: a 6px circle with a soft ring, in place of a filled pill. It carries the same
+     information in a fraction of the visual weight, which matters in a table of fifty runs. */
+  .status-dot {
+    @apply inline-block h-1.5 w-1.5 shrink-0 rounded-full;
+    box-shadow: 0 0 0 3px hsl(var(--dot-color) / 0.15);
+    background-color: hsl(var(--dot-color));
+  }
+}

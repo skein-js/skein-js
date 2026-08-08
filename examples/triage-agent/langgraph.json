@@ -1,0 +1,12 @@
+{
+  "node_version": "24",
+  "graphs": {
+    "assistant": "./src/assistant-graph.ts:graph",
+    "triage": "./src/triage-graph.ts:graph",
+    "sweep": "./src/sweep-graph.ts:graph"
+  },
+  "env": ".env",
+  "http": {
+    "console": true
+  }
+}

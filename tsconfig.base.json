@@ -29,7 +29,8 @@
       "@skein-js/posthog": ["packages/telemetry-posthog/src/index.ts"],
       "@skein-js/otel": ["packages/telemetry-otel/src/index.ts"],
       "@skein-js/bench": ["packages/bench/src/index.ts"],
-      "@skein-js/fetch": ["packages/server-fetch/src/index.ts"]
+      "@skein-js/fetch": ["packages/server-fetch/src/index.ts"],
+      "@skein-js/console": ["packages/console/src/index.ts"]
     }
   },
   "exclude": ["node_modules", "dist"]

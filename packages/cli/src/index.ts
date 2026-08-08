@@ -85,6 +85,10 @@ program
     "Alias for --concurrency (LangGraph CLI compatibility)",
     parseConcurrency,
   )
+  // Served by default: a dev server is exactly where you want to see your threads and runs, and a
+  // console you have to opt into is one most people never find. `skein start` is the reverse — there
+  // it takes an `http.console` block in langgraph.json. See docs/console.md.
+  .option("--no-console", "Don't serve the skein console at /console")
   .option("-v, --verbose", "Log per-run activity: start/finish, tool calls, and interrupts")
   // On by default here, off by default under `start` — see `request-log.ts`. No commander
   // default so an unset flag stays `undefined` and the env var gets a look in.

@@ -24,6 +24,7 @@ import { describeSnapshot, readLanggraphDevState } from "@skein-js/server-kit/de
 
 import { printBanner } from "./banner.js";
 import { skeinCliVersion } from "./cli-version.js";
+import { mountConsole } from "./console-mount.js";
 import { createDevLogger } from "./dev-logger.js";
 import { devStateFile, LANGGRAPH_DIR, STATE_DIR, writeDevStateFile } from "./dev-state.js";
 import { applyProjectEnv } from "./project-env.js";
@@ -59,6 +60,8 @@ export interface DevCommandOptions {
   runTimeout?: number;
   /** `--request-log` / `--no-request-log`: a line per HTTP request. Unset → env → on for `dev`. */
   requestLog?: boolean;
+  /** `false` when `--no-console` was passed. The console is served by default under `dev`. */
+  console?: boolean;
 }
 
 /** Wait this long after the last change event before reloading, so a burst of saves is one reload. */
@@ -149,6 +152,7 @@ export async function runDev(options: DevCommandOptions): Promise<void> {
   runtime.deps.exposeErrorStacks = true;
 
   let server: SkeinExpressServer;
+  let consoleMountPath: string | undefined;
   try {
     server = await createExpressServer({
       deps: runtime.deps,
@@ -158,6 +162,13 @@ export async function runDev(options: DevCommandOptions): Promise<void> {
       requestLog: resolveRequestLog(options.requestLog, true),
       worker: { maxConcurrency: runConcurrency, shutdownGraceMs },
     });
+    // On by default in `dev` — a local dev server is exactly where you want to see your threads and
+    // runs, and asking for a flag first means most people never find it. `skein start` is the
+    // opposite: the console is full API power over threads, store and crons, so a production server
+    // serves it only when its config says to. See docs/console.md.
+    if (options.console !== false) {
+      consoleMountPath = mountConsole(server.app).mountPath;
+    }
     await server.listen(port, host);
   } catch (error) {
     // `skeinRouter` starts the run worker before `listen`; without these closes a bind failure
@@ -174,6 +185,7 @@ export async function runDev(options: DevCommandOptions): Promise<void> {
       graphIds: runtime.deps.graphs.ids,
       authPath: config.auth?.path,
       runConcurrency,
+      ...(consoleMountPath ? { consoleMountPath } : {}),
     },
     devLogger,
   );

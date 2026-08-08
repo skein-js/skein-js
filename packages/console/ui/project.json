@@ -1,0 +1,17 @@
+{
+  "name": "console-ui",
+  "$schema": "../../../node_modules/nx/schemas/project-schema.json",
+  "sourceRoot": "packages/console/ui/src",
+  "projectType": "application",
+  "tags": [],
+  "// targets": "build / serve / preview / test are inferred by @nx/vite from vite.config.mts; lint by @nx/eslint. `nx serve console-ui` is the HMR dev loop; `nx build console-ui` produces the static bundle @skein-js/console compiles in.",
+  "targets": {
+    "typecheck": {
+      "executor": "nx:run-commands",
+      "options": {
+        "command": "tsc --noEmit -p tsconfig.app.json",
+        "cwd": "packages/console/ui"
+      }
+    }
+  }
+}
