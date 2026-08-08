@@ -229,8 +229,17 @@ async function main() {
   await client.store.putItem(["runtime", runtime], "key", { value: 1 });
   const item = await client.store.getItem(["runtime", runtime], "key");
   check("an item round-trips", item?.value?.value === 1);
-  const namespaces = await client.store.listNamespaces({ prefix: ["runtime"], limit: 10 });
-  check("namespaces list under a prefix", namespaces.length >= 1, JSON.stringify(namespaces));
+  // `listNamespaces` answers `{ namespaces }`, not a bare array — unlike `runs.list` and
+  // `threads.getHistory` above, which do. Reading `.length` off the response object made this
+  // `undefined >= 1`, so the check failed on every runtime while the server was answering correctly.
+  const { namespaces } = await client.store.listNamespaces({ prefix: ["runtime"], limit: 10 });
+  check(
+    "namespaces list under a prefix",
+    // Assert the namespace we just wrote comes back, not merely that *something* did: a prefix filter
+    // that ignored its prefix and returned the whole store would pass a `length >= 1` check.
+    namespaces.some((namespace) => namespace[0] === "runtime" && namespace[1] === runtime),
+    JSON.stringify(namespaces),
+  );
 
   console.log("history");
   const history = await client.threads.getHistory(thread.thread_id, { limit: 5 });
