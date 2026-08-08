@@ -1,0 +1,71 @@
+name: Docs
+
+on:
+  push:
+    branches: [main]
+    # The site is built from docs/ alone — skip the deploy for pushes that can't change it.
+    paths:
+      - "docs/**"
+      - ".github/workflows/docs.yml"
+      - "package.json"
+      - "pnpm-lock.yaml"
+  workflow_dispatch:
+
+# One deploy at a time, and never cancel one mid-flight: a half-published Pages artifact is worse
+# than a slightly stale site.
+concurrency:
+  group: pages
+  cancel-in-progress: false
+
+permissions:
+  contents: read
+  pages: write
+  id-token: write
+
+env:
+  NODE_LTS: 24
+
+jobs:
+  deploy:
+    name: build · deploy to Pages
+    runs-on: ubuntu-latest
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          # `lastUpdated` in the VitePress config reads git history for each page's timestamp,
+          # which a shallow clone doesn't have.
+          fetch-depth: 0
+
+      # pnpm before setup-node, so setup-node's pnpm store cache has a package manager to key on.
+      # The version comes from package.json's `packageManager` field.
+      - uses: pnpm/action-setup@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: ${{ env.NODE_LTS }}
+          cache: pnpm
+
+      - run: pnpm install --frozen-lockfile
+
+      - uses: actions/cache@v4
+        with:
+          path: .nx/cache
+          key: nx-${{ runner.os }}-${{ hashFiles('pnpm-lock.yaml') }}-${{ github.sha }}
+          restore-keys: |
+            nx-${{ runner.os }}-${{ hashFiles('pnpm-lock.yaml') }}-
+            nx-${{ runner.os }}-
+
+      - uses: actions/configure-pages@v5
+
+      # Fails the build on dead internal links — the gate that keeps docs/ self-consistent.
+      - name: Build site
+        run: pnpm docs:build
+
+      - uses: actions/upload-pages-artifact@v3
+        with:
+          path: docs/.vitepress/dist
+
+      - id: deployment
+        uses: actions/deploy-pages@v4

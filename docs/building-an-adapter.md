@@ -1,8 +1,8 @@
 # Building your own adapter
 
-skein-js ships adapters for [Express](../packages/server-express),
-[Fastify](../packages/server-fastify), [NestJS](../packages/server-nestjs), and
-[Next.js](../packages/server-nextjs) (App + Pages Router). If your stack isn't one of those — a raw
+skein-js ships adapters for [Express](https://github.com/skein-js/skein-js/tree/main/packages/server-express),
+[Fastify](https://github.com/skein-js/skein-js/tree/main/packages/server-fastify), [NestJS](https://github.com/skein-js/skein-js/tree/main/packages/server-nestjs), and
+[Next.js](https://github.com/skein-js/skein-js/tree/main/packages/server-nextjs) (App + Pages Router). If your stack isn't one of those — a raw
 Node `http` server, [Hono](https://hono.dev), Koa, an existing app on some other framework — you can
 write your own adapter in a few dozen lines. This guide shows how; the four shipped adapters are all
 built exactly this way.
@@ -22,11 +22,11 @@ built exactly this way.
 
 ## Why this is easy
 
-All of skein-js's protocol logic lives in [`@skein-js/agent-protocol`](../packages/agent-protocol)
+All of skein-js's protocol logic lives in [`@skein-js/agent-protocol`](https://github.com/skein-js/skein-js/tree/main/packages/agent-protocol)
 behind a **transport-neutral handler table**. An adapter adds _no protocol logic_ — it only does
 shape translation: turn your framework's request into a normalized `ProtocolRequest`, call the right
 handler, and write the returned `ProtocolResponse` back out. The shipped
-[Express adapter](../packages/server-express) is exactly this and nothing more; yours will mirror it.
+[Express adapter](https://github.com/skein-js/skein-js/tree/main/packages/server-express) is exactly this and nothing more; yours will mirror it.
 
 ```text
 your framework request ──▶ ProtocolRequest ──▶ handler ──▶ ProtocolResponse ──▶ your framework response
@@ -72,7 +72,7 @@ pull-driven SSE body, and a bounded request read — without a framework's conve
 
 Build a `ProtocolRuntime` from a `ProtocolDeps` (the injected storage/queue/graph bundle). The
 easiest way to get production `deps` from a `langgraph.json` is
-[`@skein-js/runtime`](../packages/runtime)'s `buildRuntime`:
+[`@skein-js/runtime`](https://github.com/skein-js/skein-js/tree/main/packages/runtime)'s `buildRuntime`:
 
 ```ts
 import { createProtocolRuntime } from "@skein-js/agent-protocol";
@@ -91,7 +91,7 @@ runtime.worker.start(); // start the background run worker
 ```
 
 > You can also construct `deps` by hand (your own `SkeinStore`, `RunQueue`, `RunEventBus`, and a
-> `GraphResolver`) — see [`@skein-js/core`](../packages/core) for the interfaces and
+> `GraphResolver`) — see [`@skein-js/core`](https://github.com/skein-js/skein-js/tree/main/packages/core) for the interfaces and
 > [storage.md](./storage.md) / [runs-and-redis.md](./runs-and-redis.md) for the drivers.
 
 ## Step 2 — the route table
@@ -248,7 +248,7 @@ function sendError(error, res, logger) {
   [run concurrency](./runs-and-redis.md#run-concurrency).
 - **CORS** — browser clients (Agent Chat UI, React `useStream`) run on a different origin than your
   server, so you must send `Access-Control-Allow-*` headers (and answer preflight `OPTIONS`) on every
-  route, including the SSE streams. [`@skein-js/server-kit`](../packages/server-kit) exports
+  route, including the SSE streams. [`@skein-js/server-kit`](https://github.com/skein-js/skein-js/tree/main/packages/server-kit) exports
   `corsFromHttpConfig` / `toCorsOptions` (the shared, framework-agnostic home; also re-exported from
   `@skein-js/express`) to derive `cors`-style options from the `langgraph.json` `http.cors` block; on
   another framework, apply the equivalent middleware.
@@ -266,7 +266,7 @@ function sendError(error, res, logger) {
   sendError(error, res, logger);
   ```
 
-> **Shortcut:** [`@skein-js/server-kit`](../packages/server-kit)'s `resolveProtocolRuntime(options)`
+> **Shortcut:** [`@skein-js/server-kit`](https://github.com/skein-js/skein-js/tree/main/packages/server-kit)'s `resolveProtocolRuntime(options)`
 > does Steps 1 + the worker lifecycle in one call — resolve `{ config } | { deps }` into a running
 > runtime (assistants seeded, worker started) plus any CORS from the config and the resolved logger.
 > It's what the Express, Fastify, NestJS, and Next.js adapters all use.
@@ -372,11 +372,11 @@ produced by the same handler table the Express adapter uses.
 - [ ] CORS applied for browser clients; `worker.stop()` on shutdown.
 - [ ] Verified with the real `@langchain/langgraph-sdk` client (see [testing.md](./testing.md)).
 
-Reference implementation: [`@skein-js/express`](../packages/server-express) —
-[`routes.ts`](../packages/server-express/src/routes.ts),
-[`to-protocol-request.ts`](../packages/server-express/src/to-protocol-request.ts),
-[`send-protocol-response.ts`](../packages/server-express/src/send-protocol-response.ts),
-[`error-response.ts`](../packages/server-express/src/error-response.ts).
+Reference implementation: [`@skein-js/express`](https://github.com/skein-js/skein-js/tree/main/packages/server-express) —
+[`routes.ts`](https://github.com/skein-js/skein-js/blob/main/packages/server-express/src/routes.ts),
+[`to-protocol-request.ts`](https://github.com/skein-js/skein-js/blob/main/packages/server-express/src/to-protocol-request.ts),
+[`send-protocol-response.ts`](https://github.com/skein-js/skein-js/blob/main/packages/server-express/src/send-protocol-response.ts),
+[`error-response.ts`](https://github.com/skein-js/skein-js/blob/main/packages/server-express/src/error-response.ts).
 
 Built an adapter for a framework we don't ship? We'd love a PR — see
-[CONTRIBUTING.md](../CONTRIBUTING.md).
+[CONTRIBUTING.md](https://github.com/skein-js/skein-js/blob/main/CONTRIBUTING.md).

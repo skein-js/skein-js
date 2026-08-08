@@ -200,7 +200,7 @@ it.
 
 Under the **`skein.*` namespace** in `langgraph.json` — not a top-level key, and not a separate
 `skein.json`. skein already reserves `skein` for its own settings
-([`langgraph-json.ts`](../../packages/config/src/langgraph-json.ts)), and putting a skein-original
+([`langgraph-json.ts`](https://github.com/skein-js/skein-js/blob/main/packages/config/src/langgraph-json.ts)), and putting a skein-original
 surface at the top level is a forward-collision risk if LangGraph later claims the same name. See
 [inbound-events.md](./inbound-events.md#configuration--skeinevents-not-a-new-file) for the full
 reasoning, which applies identically here.
@@ -276,7 +276,7 @@ discipline, same user-facing-vs-internal split. Not a new mechanism:
 }
 ```
 
-Point-for-point with [`loadAuthEngine`](../../packages/config/src/auth-engine.ts), which is the
+Point-for-point with [`loadAuthEngine`](https://github.com/skein-js/skein-js/blob/main/packages/config/src/auth-engine.ts), which is the
 reference implementation to copy rather than paraphrase:
 
 | `auth`                                                     | `webhooks.secrets`                                         |

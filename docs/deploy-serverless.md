@@ -60,7 +60,7 @@ Vercel (Next.js UI, useStream)  ──►  skein container on Cloud Run / Fly / 
                                         └── Redis     (queue + stream fan-out)
 ```
 
-This is what [`examples/nextjs-app`](../examples/nextjs-app) is shaped like, and it keeps the
+This is what [`examples/nextjs-app`](https://github.com/skein-js/skein-js/tree/main/examples/nextjs-app) is shaped like, and it keeps the
 `useStream` developer experience while letting background runs, webhooks and long-running work
 behave. See [react-sdk.md](./react-sdk.md) for the client side.
 

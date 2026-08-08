@@ -844,27 +844,27 @@ Available on every adapter — see [serving-a-single-graph.md](./serving-a-singl
 
 ## Examples
 
-Runnable projects under [`examples/`](../examples) — each proves a slice of the promise:
+Runnable projects under [`examples/`](https://github.com/skein-js/skein-js/tree/main/examples) — each proves a slice of the promise:
 
-| Example                                                | What it shows                                                                                                                    |
-| ------------------------------------------------------ | -------------------------------------------------------------------------------------------------------------------------------- |
-| [`chat-app`](../examples/chat-app)                     | **Flagship** — Gemini research assistant (thinking + web search + long-term memory) with a Next.js + shadcn/ui UI and full tests |
-| [`migrated-langgraph`](../examples/migrated-langgraph) | The drop-in proof — a stock LangGraph project under `skein dev`, hot reload + persistence                                        |
-| [`gemini-chat`](../examples/gemini-chat)               | Model-backed end-to-end — a Gemini ReAct agent streamed into a browser                                                           |
-| [`express-basic`](../examples/express-basic)           | Zero-setup `echo` + a Claude `agent` graph in one config                                                                         |
-| [`embed-graph`](../examples/embed-graph)               | In-code embedding — serve a graph you already have with **no `langgraph.json`** (`embedInMemoryGraphs` + `{ deps }`)             |
-| [`invoke-endpoint`](../examples/invoke-endpoint)       | The **non-chat** surface — graphs as plain `POST /invoke/:graph_id` endpoints, body-in / final-state-out                         |
-| `fastify-basic` / `fastify-app`                        | Fastify — standalone graph server, and the protocol embedded under `/agent` alongside a REST API                                 |
-| `nestjs-basic` / `nestjs-app`                          | NestJS — standalone graph server, and `SkeinModule` alongside the app's own controller                                           |
-| `nextjs-basic` / `nextjs-app`                          | Next.js — headless Pages Router API, and a full-stack App Router app serving the protocol same-origin behind a `useStream` UI    |
-| [`react-usestream`](../examples/react-usestream)       | Minimal `useStream` SSE-compatibility harness                                                                                    |
+| Example                                                                                            | What it shows                                                                                                                    |
+| -------------------------------------------------------------------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------- |
+| [`chat-app`](https://github.com/skein-js/skein-js/tree/main/examples/chat-app)                     | **Flagship** — Gemini research assistant (thinking + web search + long-term memory) with a Next.js + shadcn/ui UI and full tests |
+| [`migrated-langgraph`](https://github.com/skein-js/skein-js/tree/main/examples/migrated-langgraph) | The drop-in proof — a stock LangGraph project under `skein dev`, hot reload + persistence                                        |
+| [`gemini-chat`](https://github.com/skein-js/skein-js/tree/main/examples/gemini-chat)               | Model-backed end-to-end — a Gemini ReAct agent streamed into a browser                                                           |
+| [`express-basic`](https://github.com/skein-js/skein-js/tree/main/examples/express-basic)           | Zero-setup `echo` + a Claude `agent` graph in one config                                                                         |
+| [`embed-graph`](https://github.com/skein-js/skein-js/tree/main/examples/embed-graph)               | In-code embedding — serve a graph you already have with **no `langgraph.json`** (`embedInMemoryGraphs` + `{ deps }`)             |
+| [`invoke-endpoint`](https://github.com/skein-js/skein-js/tree/main/examples/invoke-endpoint)       | The **non-chat** surface — graphs as plain `POST /invoke/:graph_id` endpoints, body-in / final-state-out                         |
+| `fastify-basic` / `fastify-app`                                                                    | Fastify — standalone graph server, and the protocol embedded under `/agent` alongside a REST API                                 |
+| `nestjs-basic` / `nestjs-app`                                                                      | NestJS — standalone graph server, and `SkeinModule` alongside the app's own controller                                           |
+| `nextjs-basic` / `nextjs-app`                                                                      | Next.js — headless Pages Router API, and a full-stack App Router app serving the protocol same-origin behind a `useStream` UI    |
+| [`react-usestream`](https://github.com/skein-js/skein-js/tree/main/examples/react-usestream)       | Minimal `useStream` SSE-compatibility harness                                                                                    |
 
 ## Documentation map
 
 Start with the user-facing guides; the design docs at the bottom explain how skein-js is built.
 New here? [getting-started.md](./getting-started.md) is the guided path. Building an app _with_ skein
 (especially as an AI agent)? [using-skein.md](./using-skein.md) is the terse cheat-sheet, and the
-machine-readable [`llms.txt`](../llms.txt) / [`llms-full.txt`](../llms-full.txt) index the whole set.
+machine-readable [`llms.txt`](https://github.com/skein-js/skein-js/blob/main/llms.txt) / [`llms-full.txt`](https://github.com/skein-js/skein-js/blob/main/llms-full.txt) index the whole set.
 
 | Doc                                                      | Covers                                                           |
 | -------------------------------------------------------- | ---------------------------------------------------------------- |
@@ -894,7 +894,7 @@ machine-readable [`llms.txt`](../llms.txt) / [`llms-full.txt`](../llms-full.txt)
 | [testing.md](./testing.md)                               | _(contributor)_ Unit + Testcontainers + conformance suite        |
 | [roadmap.md](./roadmap.md)                               | Milestones and post-MVP non-goals                                |
 
-Want to contribute? See [CONTRIBUTING.md](../CONTRIBUTING.md) and [AGENTS.md](../AGENTS.md).
+Want to contribute? See [CONTRIBUTING.md](https://github.com/skein-js/skein-js/blob/main/CONTRIBUTING.md) and [AGENTS.md](https://github.com/skein-js/skein-js/blob/main/AGENTS.md).
 
 ## References
 
@@ -932,7 +932,7 @@ graph, then to production. If you already have a `langgraph.json` and just want 
 - A **[LangGraph.js graph](https://docs.langchain.com/oss/javascript/langgraph/graph-api)** — a
   `CompiledStateGraph` from `@langchain/langgraph`. Any graph works; a
   keyless "echo" graph is the fastest way to see the server before wiring a model. The runnable
-  [`express-basic`](../examples/express-basic) and [`embed-graph`](../examples/embed-graph) examples
+  [`express-basic`](https://github.com/skein-js/skein-js/tree/main/examples/express-basic) and [`embed-graph`](https://github.com/skein-js/skein-js/tree/main/examples/embed-graph) examples
   ship one.
 
 ## Path A — I have a `langgraph.json` (drop-in)
@@ -1036,7 +1036,7 @@ function Chat() {
 
 A browser on a different origin needs CORS enabled — see the
 [CORS recipe](./recipes.md#cors--browser-clients). For a same-origin full-stack app (no CORS), the
-[`nextjs-app`](../examples/nextjs-app) example serves the protocol and the UI from one Next.js app.
+[`nextjs-app`](https://github.com/skein-js/skein-js/tree/main/examples/nextjs-app) example serves the protocol and the UI from one Next.js app.
 See [react-sdk.md](./react-sdk.md).
 
 ## Go to production
@@ -1071,7 +1071,7 @@ to containerize. Redis is optional for a single instance but required to run mor
 
 - [Recipes](./recipes.md) — auth, human-in-the-loop, long-term memory, CORS, background runs, deploy.
 - [Using skein-js](./using-skein.md) — the terse consumer/agent cheat-sheet.
-- [Examples](../examples) — a runnable project per framework and pattern.
+- [Examples](https://github.com/skein-js/skein-js/tree/main/examples) — a runnable project per framework and pattern.
 - [Overview & architecture](./index.md) · [Agent Protocol surface](./agent-protocol.md)
 
 
@@ -1084,7 +1084,7 @@ to containerize. Redis is optional for a single instance but required to run mor
 A dense, task-oriented cheat-sheet for **consuming** skein-js — pick a framework, stand up an Agent
 Protocol server around your LangGraph.js graph, and call it. Written to be skim-friendly for humans
 _and_ for AI coding agents building on skein. (Working _on_ skein itself? See
-[AGENTS.md](../AGENTS.md).)
+[AGENTS.md](https://github.com/skein-js/skein-js/blob/main/AGENTS.md).)
 
 ## Contents
 
@@ -1185,16 +1185,16 @@ export const { GET, POST, PUT, PATCH, DELETE, OPTIONS } = createSkeinRouteHandle
 Each adapter has a **standalone** entry (a dedicated graph server) and an **embed-alongside-your-app**
 entry, each with a runnable example:
 
-| Framework | Package             | Standalone (dedicated server)           | Embed in an existing app                                                    | Examples                                                                           |
-| --------- | ------------------- | --------------------------------------- | --------------------------------------------------------------------------- | ---------------------------------------------------------------------------------- |
-| Express   | `@skein-js/express` | `createExpressServer`                   | `skeinRouter` (mount the `Router`)                                          | [express-basic](../examples/express-basic), [embed-graph](../examples/embed-graph) |
-| Fastify   | `@skein-js/fastify` | `createFastifyServer`                   | `skeinPlugin` (`register` under a `prefix`)                                 | [fastify-basic](../examples/fastify-basic), [fastify-app](../examples/fastify-app) |
-| NestJS    | `@skein-js/nestjs`  | `createNestServer`                      | `SkeinModule.forRoot` (import it)                                           | [nestjs-basic](../examples/nestjs-basic), [nestjs-app](../examples/nestjs-app)     |
-| Next.js   | `@skein-js/nextjs`  | — (the route handlers _are_ the server) | `createSkeinRouteHandlers` (App Router) · `createSkeinPagesHandler` (Pages) | [nextjs-app](../examples/nextjs-app), [nextjs-basic](../examples/nextjs-basic)     |
+| Framework | Package             | Standalone (dedicated server)           | Embed in an existing app                                                    | Examples                                                                                                                                                                   |
+| --------- | ------------------- | --------------------------------------- | --------------------------------------------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Express   | `@skein-js/express` | `createExpressServer`                   | `skeinRouter` (mount the `Router`)                                          | [express-basic](https://github.com/skein-js/skein-js/tree/main/examples/express-basic), [embed-graph](https://github.com/skein-js/skein-js/tree/main/examples/embed-graph) |
+| Fastify   | `@skein-js/fastify` | `createFastifyServer`                   | `skeinPlugin` (`register` under a `prefix`)                                 | [fastify-basic](https://github.com/skein-js/skein-js/tree/main/examples/fastify-basic), [fastify-app](https://github.com/skein-js/skein-js/tree/main/examples/fastify-app) |
+| NestJS    | `@skein-js/nestjs`  | `createNestServer`                      | `SkeinModule.forRoot` (import it)                                           | [nestjs-basic](https://github.com/skein-js/skein-js/tree/main/examples/nestjs-basic), [nestjs-app](https://github.com/skein-js/skein-js/tree/main/examples/nestjs-app)     |
+| Next.js   | `@skein-js/nextjs`  | — (the route handlers _are_ the server) | `createSkeinRouteHandlers` (App Router) · `createSkeinPagesHandler` (Pages) | [nextjs-app](https://github.com/skein-js/skein-js/tree/main/examples/nextjs-app), [nextjs-basic](https://github.com/skein-js/skein-js/tree/main/examples/nextjs-basic)     |
 
-[`embed-graph`](../examples/embed-graph) is the framework-agnostic **in-code** pattern
+[`embed-graph`](https://github.com/skein-js/skein-js/tree/main/examples/embed-graph) is the framework-agnostic **in-code** pattern
 (`embedInMemoryGraphs` + `{ deps }`, no `langgraph.json`) shown on the Express adapter; the same `deps`
-works with any adapter above. [`react-usestream`](../examples/react-usestream) is a browser frontend
+works with any adapter above. [`react-usestream`](https://github.com/skein-js/skein-js/tree/main/examples/react-usestream) is a browser frontend
 for any of them. See [Expand your setup](#expand-your-setup) to grow from here.
 
 ### Where to point your client when embedding
@@ -1770,12 +1770,12 @@ await client.runs.wait(thread.thread_id, "agent", {
 });
 ```
 
-`embedInMemoryGraphs` ([`@skein-js/server-kit`](../packages/server-kit)) turns a **graph map** into a
+`embedInMemoryGraphs` ([`@skein-js/server-kit`](https://github.com/skein-js/skein-js/tree/main/packages/server-kit)) turns a **graph map** into a
 `ProtocolDeps` backed by in-process drivers — the store, run queue, event bus, and checkpointer. No
 config file, and nothing to import from a storage package. `{ deps }` is the seam **every** adapter
 accepts, so the same `deps` mounts on Express, Fastify, NestJS, or Next.js unchanged.
 
-Runnable version: [`examples/embed-graph`](../examples/embed-graph).
+Runnable version: [`examples/embed-graph`](https://github.com/skein-js/skein-js/tree/main/examples/embed-graph).
 
 > **⚠️ Auth is off by default.** `embedInMemoryGraphs` sets no `auth`, so the server it produces
 > **authenticates nothing** — every request is allowed (the same default as a `langgraph.json` with no
@@ -1824,7 +1824,7 @@ export const { GET, POST, PUT, PATCH, DELETE, OPTIONS } = createSkeinRouteHandle
 ```
 
 The Next.js App Router case is the lightest full-stack story — an 11-line `route.ts` serving the
-protocol same-origin behind a `useStream` UI. See [`examples/nextjs-app`](../examples/nextjs-app).
+protocol same-origin behind a `useStream` UI. See [`examples/nextjs-app`](https://github.com/skein-js/skein-js/tree/main/examples/nextjs-app).
 
 ## Bring your own drivers, auth, logger
 
@@ -1870,7 +1870,7 @@ process.on("SIGTERM", () => dispose().finally(() => process.exit(0)));
 > exposes `/threads`, `/runs`, and `/store` — and running your graph (spending model tokens) — to
 > anyone. Pass an `auth` engine via `overrides` before you go public (see below).
 
-It lives in [`@skein-js/runtime`](../packages/runtime), not `@skein-js/server-kit` — a persistent helper
+It lives in [`@skein-js/runtime`](https://github.com/skein-js/skein-js/tree/main/packages/runtime), not `@skein-js/server-kit` — a persistent helper
 pulls in the Postgres/Redis drivers that `server-kit` deliberately avoids. Pass explicit
 `postgresUri` / `redisUri` (and `index` for pgvector, `ttl`, `poolMax`, `sslNoVerify`) instead of env
 vars if you prefer, and `overrides` for `auth` / `logger` / etc. — see the [API reference](#api-reference):
@@ -1956,7 +1956,7 @@ const deps = embedInMemoryGraphs(
 );
 ```
 
-If you _do_ have a `langgraph.json`, [`@skein-js/runtime`](../packages/runtime)'s
+If you _do_ have a `langgraph.json`, [`@skein-js/runtime`](https://github.com/skein-js/skein-js/tree/main/packages/runtime)'s
 `buildRuntime({ configPath, store: "postgres", queue: "redis" })` assembles all of these for you —
 `embedPostgresGraphs` is the same assembly for graphs you hold in code.
 
@@ -1979,7 +1979,7 @@ views. If you need full static schemas, use the [`{ config }` path](./langgraph-
 
 ## API reference
 
-From [`@skein-js/server-kit`](../packages/server-kit):
+From [`@skein-js/server-kit`](https://github.com/skein-js/skein-js/tree/main/packages/server-kit):
 
 ```ts
 // Build a ProtocolDeps around in-process drivers. Pass a graph map OR a ready GraphResolver.
@@ -2003,7 +2003,7 @@ type EmbeddableGraph = CompiledGraph<any> | ((config: { configurable?: Record<st
 `normalizeEmbeddableGraphs(graphs)` accepts either a graph map or a ready `GraphResolver` and returns a
 `GraphResolver` — the same normalization both embed helpers apply.
 
-From [`@skein-js/runtime`](../packages/runtime) (the durable path — see
+From [`@skein-js/runtime`](https://github.com/skein-js/skein-js/tree/main/packages/runtime) (the durable path — see
 [Going to production](#going-to-production)):
 
 ```ts
@@ -2038,7 +2038,7 @@ shutdown.
 - [agent-protocol.md](./agent-protocol.md) — the endpoints you get either way
 - [building-an-adapter.md](./building-an-adapter.md) — putting the engine on any HTTP framework
 - [storage.md](./storage.md) · [runs-and-redis.md](./runs-and-redis.md) — swapping in production drivers
-- [`examples/embed-graph`](../examples/embed-graph) · [`examples/nextjs-app`](../examples/nextjs-app)
+- [`examples/embed-graph`](https://github.com/skein-js/skein-js/tree/main/examples/embed-graph) · [`examples/nextjs-app`](https://github.com/skein-js/skein-js/tree/main/examples/nextjs-app)
 
 
 ---
@@ -2103,7 +2103,7 @@ curl -sX POST localhost:2024/invoke/triage \
 # {"text":"Refund charge failed — urgent!","category":"billing","priority":"P1"}
 ```
 
-Runnable version: [`examples/invoke-endpoint`](../examples/invoke-endpoint).
+Runnable version: [`examples/invoke-endpoint`](https://github.com/skein-js/skein-js/tree/main/examples/invoke-endpoint).
 
 ## The contract
 
@@ -2214,7 +2214,7 @@ budget the run engine applies — so a disconnected or hung call doesn't keep bu
 
 ## API reference
 
-From [`@skein-js/agent-protocol`](../packages/agent-protocol) (the shared handler every adapter wraps):
+From [`@skein-js/agent-protocol`](https://github.com/skein-js/skein-js/tree/main/packages/agent-protocol) (the shared handler every adapter wraps):
 
 ```ts
 // A ProtocolHandler for `POST <prefix>/:graph_id`. Resolves the graph, injects the store, invokes.
@@ -2240,7 +2240,7 @@ Per adapter — each takes `SkeinRuntimeOptions` (`{ config } | { deps }`, plus 
 | NestJS  | `SkeinInvokeModule.forRoot(options)`      | `prefix`             |
 | Next.js | `createSkeinInvokeRouteHandlers(options)` | `basePath`           |
 
-From [`@skein-js/server-kit`](../packages/server-kit):
+From [`@skein-js/server-kit`](https://github.com/skein-js/skein-js/tree/main/packages/server-kit):
 
 ```ts
 // Resolve `{ config } | { deps }` to just the deps — no assistants seeded, no run worker started.
@@ -2252,7 +2252,7 @@ function resolveRuntimeDeps(options: SkeinRuntimeOptions): Promise<{ deps: Proto
 - [embedding.md](./embedding.md) — bringing a graph in code (`{ deps }`), the on-ramp this builds on
 - [agent-protocol.md](./agent-protocol.md) — the full surface, and when you want it instead
 - [streaming.md](./streaming.md) — how skein maps run frames onto SSE
-- [`examples/invoke-endpoint`](../examples/invoke-endpoint) · [`examples/embed-graph`](../examples/embed-graph)
+- [`examples/invoke-endpoint`](https://github.com/skein-js/skein-js/tree/main/examples/invoke-endpoint) · [`examples/embed-graph`](https://github.com/skein-js/skein-js/tree/main/examples/embed-graph)
 
 
 ---
@@ -2302,7 +2302,7 @@ instead of hand-writing (or regenerating) a parallel set. See [reuse.md](./reuse
 ## Endpoint inventory
 
 Every endpoint below is implemented (✅). The route table in
-[`packages/agent-protocol/src/http/routes.ts`](../packages/agent-protocol/src/http/routes.ts) is the
+[`packages/agent-protocol/src/http/routes.ts`](https://github.com/skein-js/skein-js/blob/main/packages/agent-protocol/src/http/routes.ts) is the
 source of truth — paths mirror the `@langchain/langgraph-sdk` client, so runs are addressed
 thread-scoped (`/threads/{thread_id}/runs/{run_id}`).
 
@@ -2922,8 +2922,8 @@ Streaming is what makes an agent UI feel alive: tokens appear as the model write
 they happen, and a paused run's **interrupt** surfaces for approval. skein-js delivers all of it over
 one transport — **Server-Sent Events (SSE)** — so the standard clients ([`useStream`](./react-sdk.md),
 the vanilla SDK, Agent Chat UI) render a rich conversation against a skein-js server with only a URL
-change. The flagship [`chat-app`](../examples/chat-app) example wires the full experience end to end;
-[`react-usestream`](../examples/react-usestream) is the minimal harness.
+change. The flagship [`chat-app`](https://github.com/skein-js/skein-js/tree/main/examples/chat-app) example wires the full experience end to end;
+[`react-usestream`](https://github.com/skein-js/skein-js/tree/main/examples/react-usestream) is the minimal harness.
 
 Under the hood, skein-js maps LangGraph.js **stream modes** onto Agent Protocol SSE. This one
 transport powers the `/runs/stream` endpoint, joining an in-flight run (`/runs/{id}/stream`), and
@@ -2993,7 +2993,7 @@ That matters because the alternative is unbounded. A client on a bad connection 
 data, a buffering reverse proxy — that reads more slowly than the graph writes would otherwise be
 served entirely out of the server's memory, one full copy of the stream per connection.
 
-Measured in [`packages/bench`](../packages/bench) on the `slow-client` scenario (clients reading at
+Measured in [`packages/bench`](https://github.com/skein-js/skein-js/tree/main/packages/bench) on the `slow-client` scenario (clients reading at
 ~25 fps against a 500 fps graph, ~2 MB per stream):
 
 | Concurrent slow streams | Unflushed server-side buffer | Per streaming connection |
@@ -3344,8 +3344,8 @@ skein-js server and you get the whole rich chat UX for free — live token strea
 **thinking**, structured **tool-result cards**, and **human-in-the-loop** interrupt/resume — with no
 custom SDK and no bespoke wire format. You send a turn with `thread.submit(...)`, read live state off
 `thread.messages`, and when a graph node pauses with `interrupt()` you render an approval card off
-`thread.interrupt` and resume with a `command`. The flagship [`chat-app`](../examples/chat-app)
-example builds all of this; [`react-usestream`](../examples/react-usestream) is the minimal
+`thread.interrupt` and resume with a `command`. The flagship [`chat-app`](https://github.com/skein-js/skein-js/tree/main/examples/chat-app)
+example builds all of this; [`react-usestream`](https://github.com/skein-js/skein-js/tree/main/examples/react-usestream) is the minimal
 copy-paste starting point.
 
 ```tsx
@@ -3425,7 +3425,7 @@ does not affect the React SDK.
 
 ## Verification harness
 
-[`examples/react-usestream`](../examples/react-usestream) is a minimal Next.js app wired to
+[`examples/react-usestream`](https://github.com/skein-js/skein-js/tree/main/examples/react-usestream) is a minimal Next.js app wired to
 `useStream` and pointed at a placeholder skein-js URL. Once the server lands, it is the
 front-end signal that the SSE wiring satisfies the React SDK — token-by-token streaming in
 a real browser. See [roadmap.md](./roadmap.md#verification).
@@ -3450,7 +3450,7 @@ a graph node you get a LangGraph-native store — `getStore()` — for cross-thr
 seats") backed by **pgvector semantic search** in production. It's the same store LangGraph Platform
 auto-provides, so a graph that calls `getStore()` runs unchanged on skein-js. The best part: you write
 your graph once and skein-js swaps the backend for you — **in-memory in `skein dev`, Postgres +
-pgvector in production** — no code change. The flagship [`chat-app`](../examples/chat-app) example uses
+pgvector in production** — no code change. The flagship [`chat-app`](https://github.com/skein-js/skein-js/tree/main/examples/chat-app) example uses
 this to remember a user across sessions.
 
 skein-js separates two kinds of persistence, and it is important not to conflate them:
@@ -3592,7 +3592,7 @@ async function remember(state) {
 
 This is what makes skein a faithful drop-in: LangGraph Platform auto-provides a store to graphs, so
 a graph that calls `getStore()` runs unchanged on skein. The bridge is `SkeinBaseStore` in
-[`@skein-js/agent-protocol`](../packages/agent-protocol), attached in the run engine the same way the
+[`@skein-js/agent-protocol`](https://github.com/skein-js/skein-js/tree/main/packages/agent-protocol), attached in the run engine the same way the
 checkpointer is. Semantic `search` uses pgvector on the Postgres driver and a naive scan on memory —
 both come from the same `StoreRepo`, so behavior matches.
 
@@ -3912,7 +3912,7 @@ do it by hand.
 | `"default"`                     | `PostgresSaver` (Postgres)         |
 | `"custom"`                      | user-supplied checkpointer (later) |
 
-You rarely wire these drivers by hand. [`@skein-js/runtime`](../packages/runtime) assembles the
+You rarely wire these drivers by hand. [`@skein-js/runtime`](https://github.com/skein-js/skein-js/tree/main/packages/runtime) assembles the
 `PostgresSkeinStore` + `PostgresSaver` + Redis queue/bus (and their `dispose()`) for you, two ways:
 **`buildRuntime`** from a `langgraph.json` (the `skein dev`/`skein up` path), and
 **`embedPostgresGraphs`** from a graph you hold in code (the durable sibling of `embedInMemoryGraphs` —
@@ -4080,7 +4080,7 @@ const relevant = await store.search([userId, "memories"], { query: latestUserMes
 
 - **Auto-inject** — fetch relevant memories before each model call and fold them into the system message.
   Personalization does not depend on the model remembering to ask. This is what
-  [`examples/chat-app`](../examples/chat-app) does.
+  [`examples/chat-app`](https://github.com/skein-js/skein-js/tree/main/examples/chat-app) does.
 - **A recall tool** — the model calls `search_memory` when it decides it needs to. Fewer tokens per turn,
   but it only works when the model chooses well.
 
@@ -4150,7 +4150,7 @@ server-side settled-run trigger would cover it; it is
 
 - [storage.md](./storage.md) — the store itself: drivers, `getStore()`, filters, TTL, scoping, BYO store
 - [crons.md](./crons.md) — schedules, for the cron extraction pattern
-- [`examples/chat-app`](../examples/chat-app) — a working research assistant with memory and recall
+- [`examples/chat-app`](https://github.com/skein-js/skein-js/tree/main/examples/chat-app) — a working research assistant with memory and recall
 - [LangChain's memory guide](https://docs.langchain.com/oss/javascript/concepts/memory) — the
   profile/collection framing this page builds on
 
@@ -4646,7 +4646,7 @@ missing something, and we would rather feel that here than paper over it with a 
 gap found exactly this way: there is no cross-thread run search — runs list per thread — so "recent
 activity" fans out over threads. See [roadmap](./roadmap.md).)
 
-It ships as [`@skein-js/console`](../packages/console): the compiled UI plus a resolver, with **no
+It ships as [`@skein-js/console`](https://github.com/skein-js/skein-js/tree/main/packages/console): the compiled UI plus a resolver, with **no
 runtime dependencies**.
 
 ## Running it
@@ -4910,7 +4910,7 @@ LangChain's tracer reads them from.
 | `tags`             | `skein`, `graph:<id>`, `trigger:<how>`, `assistant:<id>`                    |
 | run name           | the graph id                                                                |
 
-Full options in the [package README](../packages/telemetry-langsmith/README.md).
+Full options in the [package README](https://github.com/skein-js/skein-js/blob/main/packages/telemetry-langsmith/README.md).
 
 ## PostHog
 
@@ -4934,7 +4934,7 @@ than reported as zero — a missing number is more honest than a wrong one.
 Runs are attributed to the authenticated user's identity, falling back to the thread id so anonymous
 traffic groups per conversation instead of collapsing into one distinct id. Override with
 `distinctId`. Turn the LLM layer off with `captureGenerations: false`. See the
-[package README](../packages/telemetry-posthog/README.md).
+[package README](https://github.com/skein-js/skein-js/blob/main/packages/telemetry-posthog/README.md).
 
 ## OpenTelemetry
 
@@ -5153,12 +5153,12 @@ serves the identical protocol and takes the same `{ config } | { deps }` seam �
 you already run. Each ships a **standalone** entry (a dedicated server) and an **embedded** entry
 (mount alongside your app's own routes), with a runnable example for both:
 
-| Framework | Package             | Standalone            | Embedded                                                             | Examples                                                                           |
-| --------- | ------------------- | --------------------- | -------------------------------------------------------------------- | ---------------------------------------------------------------------------------- |
-| Express   | `@skein-js/express` | `createExpressServer` | `skeinRouter`                                                        | [express-basic](../examples/express-basic), [embed-graph](../examples/embed-graph) |
-| Fastify   | `@skein-js/fastify` | `createFastifyServer` | `skeinPlugin`                                                        | [fastify-basic](../examples/fastify-basic), [fastify-app](../examples/fastify-app) |
-| NestJS    | `@skein-js/nestjs`  | `createNestServer`    | `SkeinModule.forRoot`                                                | [nestjs-basic](../examples/nestjs-basic), [nestjs-app](../examples/nestjs-app)     |
-| Next.js   | `@skein-js/nextjs`  | route handlers        | `createSkeinRouteHandlers` (App) · `createSkeinPagesHandler` (Pages) | [nextjs-app](../examples/nextjs-app), [nextjs-basic](../examples/nextjs-basic)     |
+| Framework | Package             | Standalone            | Embedded                                                             | Examples                                                                                                                                                                   |
+| --------- | ------------------- | --------------------- | -------------------------------------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Express   | `@skein-js/express` | `createExpressServer` | `skeinRouter`                                                        | [express-basic](https://github.com/skein-js/skein-js/tree/main/examples/express-basic), [embed-graph](https://github.com/skein-js/skein-js/tree/main/examples/embed-graph) |
+| Fastify   | `@skein-js/fastify` | `createFastifyServer` | `skeinPlugin`                                                        | [fastify-basic](https://github.com/skein-js/skein-js/tree/main/examples/fastify-basic), [fastify-app](https://github.com/skein-js/skein-js/tree/main/examples/fastify-app) |
+| NestJS    | `@skein-js/nestjs`  | `createNestServer`    | `SkeinModule.forRoot`                                                | [nestjs-basic](https://github.com/skein-js/skein-js/tree/main/examples/nestjs-basic), [nestjs-app](https://github.com/skein-js/skein-js/tree/main/examples/nestjs-app)     |
+| Next.js   | `@skein-js/nextjs`  | route handlers        | `createSkeinRouteHandlers` (App) · `createSkeinPagesHandler` (Pages) | [nextjs-app](https://github.com/skein-js/skein-js/tree/main/examples/nextjs-app), [nextjs-basic](https://github.com/skein-js/skein-js/tree/main/examples/nextjs-basic)     |
 
 **How to expand from any of them:**
 
@@ -5275,7 +5275,7 @@ async function remember(state, config) {
 
 The same items are reachable over the `/store/items` HTTP endpoints. See
 [storage.md](./storage.md#long-term-memory-in-the-graph-getstore); the flagship
-[`chat-app`](../examples/chat-app) uses this to remember a user across sessions.
+[`chat-app`](https://github.com/skein-js/skein-js/tree/main/examples/chat-app) uses this to remember a user across sessions.
 
 ## Semantic memory search (pgvector)
 
@@ -5312,8 +5312,8 @@ is set. `store.ttl` (minutes) expires items with a background sweep. See
 
 Or in code, pass the `cors` option to any adapter (`CorsOptions`, `true` for permissive dev, `false` to
 force off). **Same-origin needs nothing** — serve the protocol and the UI from one app, like
-[`nextjs-app`](../examples/nextjs-app). See the
-[Express adapter CORS notes](../packages/server-express/README.md#cors).
+[`nextjs-app`](https://github.com/skein-js/skein-js/tree/main/examples/nextjs-app). See the
+[Express adapter CORS notes](https://github.com/skein-js/skein-js/blob/main/packages/server-express/README.md#cors).
 
 ## Background runs, join & cancel
 
@@ -5412,9 +5412,9 @@ See also [embedding.md](./embedding.md#going-to-production) and
 
 # Building your own adapter
 
-skein-js ships adapters for [Express](../packages/server-express),
-[Fastify](../packages/server-fastify), [NestJS](../packages/server-nestjs), and
-[Next.js](../packages/server-nextjs) (App + Pages Router). If your stack isn't one of those — a raw
+skein-js ships adapters for [Express](https://github.com/skein-js/skein-js/tree/main/packages/server-express),
+[Fastify](https://github.com/skein-js/skein-js/tree/main/packages/server-fastify), [NestJS](https://github.com/skein-js/skein-js/tree/main/packages/server-nestjs), and
+[Next.js](https://github.com/skein-js/skein-js/tree/main/packages/server-nextjs) (App + Pages Router). If your stack isn't one of those — a raw
 Node `http` server, [Hono](https://hono.dev), Koa, an existing app on some other framework — you can
 write your own adapter in a few dozen lines. This guide shows how; the four shipped adapters are all
 built exactly this way.
@@ -5434,11 +5434,11 @@ built exactly this way.
 
 ## Why this is easy
 
-All of skein-js's protocol logic lives in [`@skein-js/agent-protocol`](../packages/agent-protocol)
+All of skein-js's protocol logic lives in [`@skein-js/agent-protocol`](https://github.com/skein-js/skein-js/tree/main/packages/agent-protocol)
 behind a **transport-neutral handler table**. An adapter adds _no protocol logic_ — it only does
 shape translation: turn your framework's request into a normalized `ProtocolRequest`, call the right
 handler, and write the returned `ProtocolResponse` back out. The shipped
-[Express adapter](../packages/server-express) is exactly this and nothing more; yours will mirror it.
+[Express adapter](https://github.com/skein-js/skein-js/tree/main/packages/server-express) is exactly this and nothing more; yours will mirror it.
 
 ```text
 your framework request ──▶ ProtocolRequest ──▶ handler ──▶ ProtocolResponse ──▶ your framework response
@@ -5484,7 +5484,7 @@ pull-driven SSE body, and a bounded request read — without a framework's conve
 
 Build a `ProtocolRuntime` from a `ProtocolDeps` (the injected storage/queue/graph bundle). The
 easiest way to get production `deps` from a `langgraph.json` is
-[`@skein-js/runtime`](../packages/runtime)'s `buildRuntime`:
+[`@skein-js/runtime`](https://github.com/skein-js/skein-js/tree/main/packages/runtime)'s `buildRuntime`:
 
 ```ts
 import { createProtocolRuntime } from "@skein-js/agent-protocol";
@@ -5503,7 +5503,7 @@ runtime.worker.start(); // start the background run worker
 ```
 
 > You can also construct `deps` by hand (your own `SkeinStore`, `RunQueue`, `RunEventBus`, and a
-> `GraphResolver`) — see [`@skein-js/core`](../packages/core) for the interfaces and
+> `GraphResolver`) — see [`@skein-js/core`](https://github.com/skein-js/skein-js/tree/main/packages/core) for the interfaces and
 > [storage.md](./storage.md) / [runs-and-redis.md](./runs-and-redis.md) for the drivers.
 
 ## Step 2 — the route table
@@ -5660,7 +5660,7 @@ function sendError(error, res, logger) {
   [run concurrency](./runs-and-redis.md#run-concurrency).
 - **CORS** — browser clients (Agent Chat UI, React `useStream`) run on a different origin than your
   server, so you must send `Access-Control-Allow-*` headers (and answer preflight `OPTIONS`) on every
-  route, including the SSE streams. [`@skein-js/server-kit`](../packages/server-kit) exports
+  route, including the SSE streams. [`@skein-js/server-kit`](https://github.com/skein-js/skein-js/tree/main/packages/server-kit) exports
   `corsFromHttpConfig` / `toCorsOptions` (the shared, framework-agnostic home; also re-exported from
   `@skein-js/express`) to derive `cors`-style options from the `langgraph.json` `http.cors` block; on
   another framework, apply the equivalent middleware.
@@ -5678,7 +5678,7 @@ function sendError(error, res, logger) {
   sendError(error, res, logger);
   ```
 
-> **Shortcut:** [`@skein-js/server-kit`](../packages/server-kit)'s `resolveProtocolRuntime(options)`
+> **Shortcut:** [`@skein-js/server-kit`](https://github.com/skein-js/skein-js/tree/main/packages/server-kit)'s `resolveProtocolRuntime(options)`
 > does Steps 1 + the worker lifecycle in one call — resolve `{ config } | { deps }` into a running
 > runtime (assistants seeded, worker started) plus any CORS from the config and the resolved logger.
 > It's what the Express, Fastify, NestJS, and Next.js adapters all use.
@@ -5784,14 +5784,14 @@ produced by the same handler table the Express adapter uses.
 - [ ] CORS applied for browser clients; `worker.stop()` on shutdown.
 - [ ] Verified with the real `@langchain/langgraph-sdk` client (see [testing.md](./testing.md)).
 
-Reference implementation: [`@skein-js/express`](../packages/server-express) —
-[`routes.ts`](../packages/server-express/src/routes.ts),
-[`to-protocol-request.ts`](../packages/server-express/src/to-protocol-request.ts),
-[`send-protocol-response.ts`](../packages/server-express/src/send-protocol-response.ts),
-[`error-response.ts`](../packages/server-express/src/error-response.ts).
+Reference implementation: [`@skein-js/express`](https://github.com/skein-js/skein-js/tree/main/packages/server-express) —
+[`routes.ts`](https://github.com/skein-js/skein-js/blob/main/packages/server-express/src/routes.ts),
+[`to-protocol-request.ts`](https://github.com/skein-js/skein-js/blob/main/packages/server-express/src/to-protocol-request.ts),
+[`send-protocol-response.ts`](https://github.com/skein-js/skein-js/blob/main/packages/server-express/src/send-protocol-response.ts),
+[`error-response.ts`](https://github.com/skein-js/skein-js/blob/main/packages/server-express/src/error-response.ts).
 
 Built an adapter for a framework we don't ship? We'd love a PR — see
-[CONTRIBUTING.md](../CONTRIBUTING.md).
+[CONTRIBUTING.md](https://github.com/skein-js/skein-js/blob/main/CONTRIBUTING.md).
 
 
 ---
@@ -6525,7 +6525,7 @@ delayed frames rather than dropping them. CI's `perf bounds (bench)` job runs ex
 in-memory driver and publishes the numbers to the run summary without asserting any of them. So if you
 are reading this page because a bound above stopped holding for you, that job is what should have caught
 it first; if it was green, the shape you hit is one the scenarios do not cover, and it is worth adding
-one (see [`packages/bench/README.md`](../packages/bench/README.md)).
+one (see [`packages/bench/README.md`](https://github.com/skein-js/skein-js/blob/main/packages/bench/README.md)).
 
 
 ---
@@ -7158,8 +7158,8 @@ inside `docker build`.
 
 > **Contributor / design doc.** This explains the reuse-first architecture that shapes skein-js — what
 > it reuses from `@langchain/*` versus what it rebuilds. If you just want to _use_ skein-js, start with
-> the [README](../README.md) and [docs index](./index.md). To contribute, see
-> [CONTRIBUTING.md](../CONTRIBUTING.md) and [AGENTS.md](../AGENTS.md).
+> the [README](https://github.com/skein-js/skein-js/blob/main/README.md) and [docs index](./index.md). To contribute, see
+> [CONTRIBUTING.md](https://github.com/skein-js/skein-js/blob/main/CONTRIBUTING.md) and [AGENTS.md](https://github.com/skein-js/skein-js/blob/main/AGENTS.md).
 
 <!-- -->
 

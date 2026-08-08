@@ -56,7 +56,7 @@ curl -sX POST localhost:2024/invoke/triage \
 # {"text":"Refund charge failed — urgent!","category":"billing","priority":"P1"}
 ```
 
-Runnable version: [`examples/invoke-endpoint`](../examples/invoke-endpoint).
+Runnable version: [`examples/invoke-endpoint`](https://github.com/skein-js/skein-js/tree/main/examples/invoke-endpoint).
 
 ## The contract
 
@@ -167,7 +167,7 @@ budget the run engine applies — so a disconnected or hung call doesn't keep bu
 
 ## API reference
 
-From [`@skein-js/agent-protocol`](../packages/agent-protocol) (the shared handler every adapter wraps):
+From [`@skein-js/agent-protocol`](https://github.com/skein-js/skein-js/tree/main/packages/agent-protocol) (the shared handler every adapter wraps):
 
 ```ts
 // A ProtocolHandler for `POST <prefix>/:graph_id`. Resolves the graph, injects the store, invokes.
@@ -193,7 +193,7 @@ Per adapter — each takes `SkeinRuntimeOptions` (`{ config } | { deps }`, plus 
 | NestJS  | `SkeinInvokeModule.forRoot(options)`      | `prefix`             |
 | Next.js | `createSkeinInvokeRouteHandlers(options)` | `basePath`           |
 
-From [`@skein-js/server-kit`](../packages/server-kit):
+From [`@skein-js/server-kit`](https://github.com/skein-js/skein-js/tree/main/packages/server-kit):
 
 ```ts
 // Resolve `{ config } | { deps }` to just the deps — no assistants seeded, no run worker started.
@@ -205,4 +205,4 @@ function resolveRuntimeDeps(options: SkeinRuntimeOptions): Promise<{ deps: Proto
 - [embedding.md](./embedding.md) — bringing a graph in code (`{ deps }`), the on-ramp this builds on
 - [agent-protocol.md](./agent-protocol.md) — the full surface, and when you want it instead
 - [streaming.md](./streaming.md) — how skein maps run frames onto SSE
-- [`examples/invoke-endpoint`](../examples/invoke-endpoint) · [`examples/embed-graph`](../examples/embed-graph)
+- [`examples/invoke-endpoint`](https://github.com/skein-js/skein-js/tree/main/examples/invoke-endpoint) · [`examples/embed-graph`](https://github.com/skein-js/skein-js/tree/main/examples/embed-graph)

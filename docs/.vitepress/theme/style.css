@@ -1,0 +1,114 @@
+/* The docs site palette, ported from the console's design tokens in
+   packages/console/ui/src/styles.css so the docs, the console at /console, and examples/chat-app
+   read as one product. Those tokens are plain CSS custom properties in HSL, and VitePress toggles
+   the same `.dark` class on <html> that Tailwind's `darkMode: ["class"]` does — so the values carry
+   over unchanged even though one side is React and this side is Vue.
+
+   Two deliberate divergences from the console:
+
+   1. Links use the console's `--status-running` blue rather than `--primary` (near-black). An
+      operations console reserves colour for status because it is scanned; a docs site is read, and
+      a few hundred inline links that look exactly like body text are unfindable. The blue is
+      already in the system, so this borrows the accent rather than inventing one.
+   2. Solid buttons stay near-black (`--primary`), which is what makes the surface read as it does.
+
+   No web font, same as the console: the system stack with tightened tracking gets most of the way
+   to Geist for nothing. */
+
+:root {
+  /* Grounds and text — console --background / --muted / --foreground / --muted-foreground. */
+  --vp-c-bg: hsl(0 0% 100%);
+  --vp-c-bg-alt: hsl(0 0% 98%);
+  --vp-c-bg-soft: hsl(0 0% 96%);
+  --vp-c-bg-elv: hsl(0 0% 100%);
+
+  --vp-c-text-1: hsl(0 0% 4%);
+  --vp-c-text-2: hsl(0 0% 40%);
+  --vp-c-text-3: hsl(0 0% 55%);
+
+  /* Hairlines. The console's whole surface separation is one 1px line at very low contrast. */
+  --vp-c-divider: hsl(0 0% 92%);
+  --vp-c-border: hsl(0 0% 92%);
+  --vp-c-gutter: hsl(0 0% 92%);
+
+  /* Accent — console --status-running. */
+  --vp-c-brand-1: hsl(212 100% 42%);
+  --vp-c-brand-2: hsl(212 100% 47%);
+  --vp-c-brand-3: hsl(212 100% 47%);
+  --vp-c-brand-soft: hsl(212 100% 47% / 0.12);
+
+  /* Custom blocks reuse the console's four status hues. */
+  --vp-c-tip-1: var(--vp-c-brand-1);
+  --vp-c-tip-soft: var(--vp-c-brand-soft);
+  --vp-c-warning-1: hsl(38 92% 38%);
+  --vp-c-warning-soft: hsl(38 92% 50% / 0.14);
+  --vp-c-danger-1: hsl(358 75% 50%);
+  --vp-c-danger-soft: hsl(358 75% 59% / 0.14);
+
+  /* Solid buttons stay monochrome — console --primary / --primary-foreground. */
+  --vp-button-brand-bg: hsl(0 0% 4%);
+  --vp-button-brand-text: hsl(0 0% 100%);
+  --vp-button-brand-border: transparent;
+  --vp-button-brand-hover-bg: hsl(0 0% 20%);
+  --vp-button-brand-hover-text: hsl(0 0% 100%);
+  --vp-button-brand-hover-border: transparent;
+  --vp-button-brand-active-bg: hsl(0 0% 4%);
+
+  --vp-c-default-soft: hsl(0 0% 96%);
+  --vp-code-block-bg: hsl(0 0% 98%);
+
+  /* Tailwind's default sans/mono stacks — the console sets no fontFamily override, so it renders
+     with exactly these. Matching them is what keeps the two surfaces looking related. */
+  --vp-font-family-base:
+    ui-sans-serif, system-ui, -apple-system, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
+  --vp-font-family-mono:
+    ui-monospace, SFMono-Regular, "SF Mono", Menlo, Consolas, "Liberation Mono", monospace;
+}
+
+.dark {
+  --vp-c-bg: hsl(0 0% 0%);
+  --vp-c-bg-alt: hsl(0 0% 4%);
+  --vp-c-bg-soft: hsl(0 0% 8%);
+  --vp-c-bg-elv: hsl(0 0% 4%);
+
+  --vp-c-text-1: hsl(0 0% 93%);
+  --vp-c-text-2: hsl(0 0% 63%);
+  --vp-c-text-3: hsl(0 0% 45%);
+
+  --vp-c-divider: hsl(0 0% 15%);
+  --vp-c-border: hsl(0 0% 15%);
+  --vp-c-gutter: hsl(0 0% 15%);
+
+  --vp-c-brand-1: hsl(212 100% 65%);
+  --vp-c-brand-2: hsl(212 100% 60%);
+  --vp-c-brand-3: hsl(212 100% 60%);
+  --vp-c-brand-soft: hsl(212 100% 60% / 0.16);
+
+  --vp-c-tip-1: var(--vp-c-brand-1);
+  --vp-c-tip-soft: var(--vp-c-brand-soft);
+  --vp-c-warning-1: hsl(38 92% 58%);
+  --vp-c-warning-soft: hsl(38 92% 58% / 0.16);
+  --vp-c-danger-1: hsl(358 100% 70%);
+  --vp-c-danger-soft: hsl(358 100% 70% / 0.16);
+
+  /* Inverted in dark, exactly as the console inverts --primary. */
+  --vp-button-brand-bg: hsl(0 0% 93%);
+  --vp-button-brand-text: hsl(0 0% 4%);
+  --vp-button-brand-hover-bg: hsl(0 0% 100%);
+  --vp-button-brand-hover-text: hsl(0 0% 4%);
+  --vp-button-brand-active-bg: hsl(0 0% 93%);
+
+  --vp-c-default-soft: hsl(0 0% 11%);
+  --vp-code-block-bg: hsl(0 0% 4%);
+}
+
+/* Tight tracking is most of what reads as "Geist" without shipping Geist. */
+body {
+  letter-spacing: -0.011em;
+}
+
+h1,
+h2,
+h3 {
+  letter-spacing: -0.02em;
+}

@@ -54,7 +54,7 @@ POSTGRES_URI = ${{ Postgres.DATABASE_URL }}
 REDIS_URI    = ${{ Redis.REDIS_URL }}
 ```
 
-The left-hand names are skein's; the `${{ … }}` references on the right are Railway's own provided
+The left-hand names are skein's; the <code v-pre>${{ … }}</code> references on the right are Railway's own provided
 variables — keep those as Railway names them.
 
 Prefer the **private** URLs (`*.railway.internal`): private networking is plaintext, so no TLS

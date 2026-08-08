@@ -3,7 +3,7 @@
 A dense, task-oriented cheat-sheet for **consuming** skein-js — pick a framework, stand up an Agent
 Protocol server around your LangGraph.js graph, and call it. Written to be skim-friendly for humans
 _and_ for AI coding agents building on skein. (Working _on_ skein itself? See
-[AGENTS.md](../AGENTS.md).)
+[AGENTS.md](https://github.com/skein-js/skein-js/blob/main/AGENTS.md).)
 
 ## Contents
 
@@ -104,16 +104,16 @@ export const { GET, POST, PUT, PATCH, DELETE, OPTIONS } = createSkeinRouteHandle
 Each adapter has a **standalone** entry (a dedicated graph server) and an **embed-alongside-your-app**
 entry, each with a runnable example:
 
-| Framework | Package             | Standalone (dedicated server)           | Embed in an existing app                                                    | Examples                                                                           |
-| --------- | ------------------- | --------------------------------------- | --------------------------------------------------------------------------- | ---------------------------------------------------------------------------------- |
-| Express   | `@skein-js/express` | `createExpressServer`                   | `skeinRouter` (mount the `Router`)                                          | [express-basic](../examples/express-basic), [embed-graph](../examples/embed-graph) |
-| Fastify   | `@skein-js/fastify` | `createFastifyServer`                   | `skeinPlugin` (`register` under a `prefix`)                                 | [fastify-basic](../examples/fastify-basic), [fastify-app](../examples/fastify-app) |
-| NestJS    | `@skein-js/nestjs`  | `createNestServer`                      | `SkeinModule.forRoot` (import it)                                           | [nestjs-basic](../examples/nestjs-basic), [nestjs-app](../examples/nestjs-app)     |
-| Next.js   | `@skein-js/nextjs`  | — (the route handlers _are_ the server) | `createSkeinRouteHandlers` (App Router) · `createSkeinPagesHandler` (Pages) | [nextjs-app](../examples/nextjs-app), [nextjs-basic](../examples/nextjs-basic)     |
+| Framework | Package             | Standalone (dedicated server)           | Embed in an existing app                                                    | Examples                                                                                                                                                                   |
+| --------- | ------------------- | --------------------------------------- | --------------------------------------------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Express   | `@skein-js/express` | `createExpressServer`                   | `skeinRouter` (mount the `Router`)                                          | [express-basic](https://github.com/skein-js/skein-js/tree/main/examples/express-basic), [embed-graph](https://github.com/skein-js/skein-js/tree/main/examples/embed-graph) |
+| Fastify   | `@skein-js/fastify` | `createFastifyServer`                   | `skeinPlugin` (`register` under a `prefix`)                                 | [fastify-basic](https://github.com/skein-js/skein-js/tree/main/examples/fastify-basic), [fastify-app](https://github.com/skein-js/skein-js/tree/main/examples/fastify-app) |
+| NestJS    | `@skein-js/nestjs`  | `createNestServer`                      | `SkeinModule.forRoot` (import it)                                           | [nestjs-basic](https://github.com/skein-js/skein-js/tree/main/examples/nestjs-basic), [nestjs-app](https://github.com/skein-js/skein-js/tree/main/examples/nestjs-app)     |
+| Next.js   | `@skein-js/nextjs`  | — (the route handlers _are_ the server) | `createSkeinRouteHandlers` (App Router) · `createSkeinPagesHandler` (Pages) | [nextjs-app](https://github.com/skein-js/skein-js/tree/main/examples/nextjs-app), [nextjs-basic](https://github.com/skein-js/skein-js/tree/main/examples/nextjs-basic)     |
 
-[`embed-graph`](../examples/embed-graph) is the framework-agnostic **in-code** pattern
+[`embed-graph`](https://github.com/skein-js/skein-js/tree/main/examples/embed-graph) is the framework-agnostic **in-code** pattern
 (`embedInMemoryGraphs` + `{ deps }`, no `langgraph.json`) shown on the Express adapter; the same `deps`
-works with any adapter above. [`react-usestream`](../examples/react-usestream) is a browser frontend
+works with any adapter above. [`react-usestream`](https://github.com/skein-js/skein-js/tree/main/examples/react-usestream) is a browser frontend
 for any of them. See [Expand your setup](#expand-your-setup) to grow from here.
 
 ### Where to point your client when embedding

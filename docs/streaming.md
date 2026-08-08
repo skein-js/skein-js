@@ -5,8 +5,8 @@ Streaming is what makes an agent UI feel alive: tokens appear as the model write
 they happen, and a paused run's **interrupt** surfaces for approval. skein-js delivers all of it over
 one transport — **Server-Sent Events (SSE)** — so the standard clients ([`useStream`](./react-sdk.md),
 the vanilla SDK, Agent Chat UI) render a rich conversation against a skein-js server with only a URL
-change. The flagship [`chat-app`](../examples/chat-app) example wires the full experience end to end;
-[`react-usestream`](../examples/react-usestream) is the minimal harness.
+change. The flagship [`chat-app`](https://github.com/skein-js/skein-js/tree/main/examples/chat-app) example wires the full experience end to end;
+[`react-usestream`](https://github.com/skein-js/skein-js/tree/main/examples/react-usestream) is the minimal harness.
 
 Under the hood, skein-js maps LangGraph.js **stream modes** onto Agent Protocol SSE. This one
 transport powers the `/runs/stream` endpoint, joining an in-flight run (`/runs/{id}/stream`), and
@@ -76,7 +76,7 @@ That matters because the alternative is unbounded. A client on a bad connection 
 data, a buffering reverse proxy — that reads more slowly than the graph writes would otherwise be
 served entirely out of the server's memory, one full copy of the stream per connection.
 
-Measured in [`packages/bench`](../packages/bench) on the `slow-client` scenario (clients reading at
+Measured in [`packages/bench`](https://github.com/skein-js/skein-js/tree/main/packages/bench) on the `slow-client` scenario (clients reading at
 ~25 fps against a 500 fps graph, ~2 MB per stream):
 
 | Concurrent slow streams | Unflushed server-side buffer | Per streaming connection |

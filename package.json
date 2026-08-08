@@ -28,6 +28,9 @@
     "format": "nx format:write --all",
     "format:check": "nx format:check --all",
     "docs:llms": "node scripts/generate-llms-full.mjs",
+    "docs:dev": "nx dev docs",
+    "docs:build": "nx build docs",
+    "docs:preview": "nx preview docs",
     "migrations:generate": "nx run storage-postgres:generate-migrations",
     "affected": "nx affected -t lint test typecheck build",
     "release": "nx release --skip-publish",
@@ -55,6 +58,7 @@
     "typescript": "^5.7.2",
     "typescript-eslint": "^8.18.1",
     "vite": "8.1.4",
+    "vitepress": "^1.6.4",
     "vitest": "4.1.9"
   }
 }

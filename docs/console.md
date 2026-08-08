@@ -24,7 +24,7 @@ missing something, and we would rather feel that here than paper over it with a 
 gap found exactly this way: there is no cross-thread run search — runs list per thread — so "recent
 activity" fans out over threads. See [roadmap](./roadmap.md).)
 
-It ships as [`@skein-js/console`](../packages/console): the compiled UI plus a resolver, with **no
+It ships as [`@skein-js/console`](https://github.com/skein-js/skein-js/tree/main/packages/console): the compiled UI plus a resolver, with **no
 runtime dependencies**.
 
 ## Running it

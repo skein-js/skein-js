@@ -1,8 +1,8 @@
 # Testing
 
 > **Contributor guide.** This describes the testing strategy for working _in_ skein-js. If you just
-> want to _use_ skein-js, start with the [README](../README.md) and [docs index](./index.md). To
-> contribute, see [CONTRIBUTING.md](../CONTRIBUTING.md) and [AGENTS.md](../AGENTS.md).
+> want to _use_ skein-js, start with the [README](https://github.com/skein-js/skein-js/blob/main/README.md) and [docs index](./index.md). To
+> contribute, see [CONTRIBUTING.md](https://github.com/skein-js/skein-js/blob/main/CONTRIBUTING.md) and [AGENTS.md](https://github.com/skein-js/skein-js/blob/main/AGENTS.md).
 
 <!-- -->
 
@@ -130,16 +130,16 @@ column added to a migration but not to a query projection gets caught.
 
 ## End-to-end / protocol conformance
 
-Beyond storage, the [`examples/express-basic`](../examples/express-basic) server is driven by
+Beyond storage, the [`examples/express-basic`](https://github.com/skein-js/skein-js/tree/main/examples/express-basic) server is driven by
 the **real `@langchain/langgraph-sdk` client** as the wire-format oracle: if
 `client.threads.create()`, `client.runs.stream()`, and `client.runs.wait()` behave, the
-protocol is right. The [`examples/react-usestream`](../examples/react-usestream) app is the
+protocol is right. The [`examples/react-usestream`](https://github.com/skein-js/skein-js/tree/main/examples/react-usestream) app is the
 front-end signal for the SSE/`useStream` path. See the [roadmap verification table](./roadmap.md#verification).
 
 ## Testing memory and performance work
 
 Memory fixes are easy to "prove" and hard to test. The rule here is: **never assert on
-`process.memoryUsage()` in Vitest.** It belongs in [`packages/bench`](../packages/bench) as a reported
+`process.memoryUsage()` in Vitest.** It belongs in [`packages/bench`](https://github.com/skein-js/skein-js/tree/main/packages/bench) as a reported
 number, never as a pass/fail gate — it depends on what else the machine is doing, on GC timing, and on
 the worker pool. `WeakRef`/`FinalizationRegistry` are rejected for the same reason: they need
 `--expose-gc` and are non-deterministic under Vitest.

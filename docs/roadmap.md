@@ -1,7 +1,7 @@
 # Roadmap
 
 > Project milestones and post-MVP non-goals — fine for anyone to read. For the product overview see the
-> [README](../README.md) and [docs index](./index.md).
+> [README](https://github.com/skein-js/skein-js/blob/main/README.md) and [docs index](./index.md).
 
 ## Contents
 
@@ -48,7 +48,7 @@ multi-framework adapter set all work end to end.
 8. ✅ **`@skein-js/redis`** — Redis queue + worker + cross-instance pub/sub streaming.
 9. ✅ **Storage-postgres + pgvector** — `SkeinStore` over `pg` + `PostgresSaver`; semantic
    store search; migrations.
-10. ✅ **CLI — `up` / `build` / `dockerfile` / `start`** — [`@skein-js/runtime`](../packages/runtime)
+10. ✅ **CLI — `up` / `build` / `dockerfile` / `start`** — [`@skein-js/runtime`](https://github.com/skein-js/skein-js/tree/main/packages/runtime)
     assembles the production `ProtocolDeps` (Postgres store, `PostgresSaver`, and a Redis queue/bus)
     behind the same `{ deps }` seam, so `skein dev` and the image boot the same engine. `skein build`/`up`
     bundle graphs into a slim, pre-built image run by `skein start` (no runtime TS transform), and
@@ -57,7 +57,7 @@ multi-framework adapter set all work end to end.
     [langgraph-cli-compat.md](./langgraph-cli-compat.md).
 
 11. ✅ **Fastify + NestJS + Next.js adapters** — thin transport shims over the shared `skeinRoutes`
-    handler table, with the framework-agnostic pieces in [`@skein-js/server-kit`](../packages/server-kit).
+    handler table, with the framework-agnostic pieces in [`@skein-js/server-kit`](https://github.com/skein-js/skein-js/tree/main/packages/server-kit).
     Standalone (`create*Server`) and embedded (`skeinPlugin` / `SkeinModule.forRoot` / route handlers)
     modes, each with a runnable example. The MVP adapter set is complete.
 
@@ -67,7 +67,7 @@ Also shipped, beyond the original MVP plan:
   with **no `langgraph.json` and no CLI**: `embedInMemoryGraphs(graphs, overrides?)` builds an
   in-memory `ProtocolDeps` for any adapter's `{ deps }` seam, and `embedPostgresGraphs(...)` does the
   same backed by durable Postgres + Redis. See [embedding.md](./embedding.md) and
-  [`examples/embed-graph`](../examples/embed-graph).
+  [`examples/embed-graph`](https://github.com/skein-js/skein-js/tree/main/examples/embed-graph).
 - ✅ **Authentication + authorization (LangGraph parity)** — custom auth via a `langgraph.json` `auth`
   block loading a `@langchain/langgraph-sdk/auth` `Auth` instance; transport-neutral, so every adapter
   inherits it. Per-request authenticate (`401`) + authorize per resource/action (`403`) with ownership
@@ -105,9 +105,9 @@ Also shipped, beyond the original MVP plan:
   server-side, so a client can't redirect a run to an arbitrary checkpoint through config. See
   [agent-protocol.md](./agent-protocol.md).
 - ✅ **Observability — tracing + metrics** — an injectable `TelemetrySink` on `ProtocolDeps`, driven
-  from the one run-execution path, with three adapters: [`@skein-js/langsmith`](../packages/telemetry-langsmith)
-  (run identity + LangSmith Threads grouping), [`@skein-js/posthog`](../packages/telemetry-posthog)
-  (run lifecycle + `$ai_generation` LLM analytics), and [`@skein-js/otel`](../packages/telemetry-otel)
+  from the one run-execution path, with three adapters: [`@skein-js/langsmith`](https://github.com/skein-js/skein-js/tree/main/packages/telemetry-langsmith)
+  (run identity + LangSmith Threads grouping), [`@skein-js/posthog`](https://github.com/skein-js/skein-js/tree/main/packages/telemetry-posthog)
+  (run lifecycle + `$ai_generation` LLM analytics), and [`@skein-js/otel`](https://github.com/skein-js/skein-js/tree/main/packages/telemetry-otel)
   (spans + metrics against the OTel **API only**, so Datadog/Grafana/Honeycomb/Jaeger/Sentry work
   unchanged). Configured in code, via a `langgraph.json` `telemetry` block, or auto-detected from the
   environment; off by default and free when off, and a sink can never fail or slow a run. See
@@ -187,11 +187,11 @@ Also shipped, beyond the original MVP plan:
   state — built on the Agent Protocol surface through the real `@langchain/langgraph-sdk`, which makes
   it continuous pressure on that surface rather than a parallel API. On by default under `skein dev`,
   off unless `http.console` says otherwise everywhere else, since it is full API power over threads,
-  store and crons. Ships as [`@skein-js/console`](../packages/console) with **no runtime
+  store and crons. Ships as [`@skein-js/console`](https://github.com/skein-js/skein-js/tree/main/packages/console) with **no runtime
   dependencies**: the SPA is compiled into the bundle as string constants, the same trick
   `storage-postgres` uses for its SQL, so the package stays bundleable (see [bundling.md](./bundling.md)).
   Unlike LangGraph Studio it needs no account, no CORS, no tunnel and no internet. See
-  [console.md](./console.md), and [`examples/triage-agent`](../examples/triage-agent) for the workload
+  [console.md](./console.md), and [`examples/triage-agent`](https://github.com/skein-js/skein-js/tree/main/examples/triage-agent) for the workload
   it was built to show.
 
 - ✅ **Bring your own long-term store (`store.adapter`).** Long-term memory is the one repo you can swap
@@ -265,41 +265,41 @@ it's worth being explicit about what isn't covered yet. If you hit one of these 
 [file an issue](https://github.com/skein-js/skein-js/issues); compatibility reports are the most
 valuable feedback we can get.
 
-| Capability                               | Status in skein-js | Notes                                                                                                                           |
-| ---------------------------------------- | ------------------ | ------------------------------------------------------------------------------------------------------------------------------- |
-| `dev` / `up` / `build` / `dockerfile`    | ✅ shipped         | Drop-in for the LangGraph CLI, plus skein-only `start` + `import-langgraph`.                                                    |
-| Node 24 production runtime               | ✅ shipped         | Express transport; default production image and fallback.                                                                       |
-| Bun / Deno production runtimes           | ⚠️ preview         | Native Fetch launchers/images ship; full clean-artifact matrices must graduate each.                                            |
-| Assistants / threads / runs / store      | ✅ shipped         | Full surface — routes _and_ request bodies, guarded against SDK drift.                                                          |
-| Thread search / copy                     | ✅ shipped         | Metadata/status filter + pagination; copy duplicates history.                                                                   |
-| Store item TTL                           | ✅ shipped         | `store.ttl` (default/refresh-on-read/sweep) + per-put `ttl`.                                                                    |
-| Store filter / namespace traversal       | ✅ shipped         | `filter` on search; `suffix`/`max_depth`/`"*"` on namespaces. See [storage.md](./storage.md#filtering-and-namespace-traversal). |
-| Thread TTL                               | ✅ shipped         | `checkpointer.ttl` + per-thread `ttl`; past LangGraph OSS, which drops it.                                                      |
-| Distinct cancelled run status            | ✅ shipped         | Cancel resolves to `cancelled`, not `error`.                                                                                    |
-| Human-in-the-loop (interrupt/resume)     | ✅ shipped         | Via LangGraph checkpointers.                                                                                                    |
-| Auth + authorization                     | ✅ shipped         | LangGraph `Auth` parity — see below.                                                                                            |
-| Multitask / double-texting               | ✅ shipped         | `reject` (422) / `enqueue` / `interrupt` / `rollback`.                                                                          |
-| Multi-instance double-texting            | ✅ shipped         | Atomic create guard, cross-instance cancel, and a per-thread execution claim.                                                   |
-| **Cron / scheduled runs**                | ✅ shipped         | Full Crons resource + scheduler; works on every driver. See [crons.md](./crons.md).                                             |
-| Stateless + batch run endpoints          | ✅ shipped         | `POST /runs`, `/runs/batch`, `/runs/cancel` (cancelMany).                                                                       |
-| `POST /threads/count` · `/threads/prune` | ✅ shipped         | `delete` and `keep_latest` prune strategies.                                                                                    |
-| Time travel (fork from checkpoint)       | ✅ shipped         | Update state at a checkpoint + fork a run from one; rides the checkpointer.                                                     |
-| Assistants CRUD + versioning             | ✅ shipped         | Create/update/delete + version history/rollback; graph/subgraphs.                                                               |
-| **MCP endpoint (`/mcp`)**                | 🗺️ planned         | LangGraph exposes graphs as MCP tools; not yet implemented.                                                                     |
-| Run-completion webhooks                  | ✅ shipped         | `webhook` URL POSTed the settled run on completion.                                                                             |
-| **Idempotent run creation**              | ✅ shipped         | `Idempotency-Key` on the creates; **LangGraph Platform has no equivalent**.                                                     |
-| True `events` stream mode                | ✅ shipped         | Real `streamEvents` (v2); full token/tool/step granularity.                                                                     |
-| Fastify / NestJS adapters                | ✅ shipped         | Plugin / `SkeinModule`; standalone + embedded examples.                                                                         |
-| Next.js API-route adapter                | ✅ shipped         | App Router + Pages Router; same-origin, `useStream` UI example.                                                                 |
-| `http.disable_*` route flags             | ✅ shipped         | `disable_assistants`/`threads`/`runs`/`store`/`meta`; `/ok` is never disabled.                                                  |
-| `GET /info` capability handshake         | ✅ shipped         | Version + `flags`; `/ok` stays outside the table so no flag can break the probe.                                                |
-| Blocking run join · state-at-checkpoint  | ✅ shipped         | `runs.join()`, `threads.getState()` with an object checkpoint, `/stream/events`.                                                |
-| **Console / Studio equivalent**          | ✅ shipped         | [`@skein-js/console`](../packages/console) at `/console`; self-hosted, not a hosted web app. See [console.md](./console.md).    |
-| Generative UI (`/ui/{agent}`)            | 🗺️ planned         | `LoadExternalComponent`; needs a `ui` config block, a bundler, and asset serving.                                               |
-| `/docs` OpenAPI page                     | 🗺️ planned         | LangGraph Server serves one; `skein dev` links the published docs instead.                                                      |
-| WebSocket streaming transport            | ❌ non-goal (v1)   | SSE covers the client UX; does not affect the React SDK.                                                                        |
-| `deploy` to a hosted platform            | ❌ non-goal        | skein-js is self-hosted by design.                                                                                              |
-| OpenTelemetry / tracing observability    | ✅ shipped         | `TelemetrySink` seam + LangSmith, PostHog, and OTel adapters.                                                                   |
+| Capability                               | Status in skein-js | Notes                                                                                                                                                                    |
+| ---------------------------------------- | ------------------ | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| `dev` / `up` / `build` / `dockerfile`    | ✅ shipped         | Drop-in for the LangGraph CLI, plus skein-only `start` + `import-langgraph`.                                                                                             |
+| Node 24 production runtime               | ✅ shipped         | Express transport; default production image and fallback.                                                                                                                |
+| Bun / Deno production runtimes           | ⚠️ preview         | Native Fetch launchers/images ship; full clean-artifact matrices must graduate each.                                                                                     |
+| Assistants / threads / runs / store      | ✅ shipped         | Full surface — routes _and_ request bodies, guarded against SDK drift.                                                                                                   |
+| Thread search / copy                     | ✅ shipped         | Metadata/status filter + pagination; copy duplicates history.                                                                                                            |
+| Store item TTL                           | ✅ shipped         | `store.ttl` (default/refresh-on-read/sweep) + per-put `ttl`.                                                                                                             |
+| Store filter / namespace traversal       | ✅ shipped         | `filter` on search; `suffix`/`max_depth`/`"*"` on namespaces. See [storage.md](./storage.md#filtering-and-namespace-traversal).                                          |
+| Thread TTL                               | ✅ shipped         | `checkpointer.ttl` + per-thread `ttl`; past LangGraph OSS, which drops it.                                                                                               |
+| Distinct cancelled run status            | ✅ shipped         | Cancel resolves to `cancelled`, not `error`.                                                                                                                             |
+| Human-in-the-loop (interrupt/resume)     | ✅ shipped         | Via LangGraph checkpointers.                                                                                                                                             |
+| Auth + authorization                     | ✅ shipped         | LangGraph `Auth` parity — see below.                                                                                                                                     |
+| Multitask / double-texting               | ✅ shipped         | `reject` (422) / `enqueue` / `interrupt` / `rollback`.                                                                                                                   |
+| Multi-instance double-texting            | ✅ shipped         | Atomic create guard, cross-instance cancel, and a per-thread execution claim.                                                                                            |
+| **Cron / scheduled runs**                | ✅ shipped         | Full Crons resource + scheduler; works on every driver. See [crons.md](./crons.md).                                                                                      |
+| Stateless + batch run endpoints          | ✅ shipped         | `POST /runs`, `/runs/batch`, `/runs/cancel` (cancelMany).                                                                                                                |
+| `POST /threads/count` · `/threads/prune` | ✅ shipped         | `delete` and `keep_latest` prune strategies.                                                                                                                             |
+| Time travel (fork from checkpoint)       | ✅ shipped         | Update state at a checkpoint + fork a run from one; rides the checkpointer.                                                                                              |
+| Assistants CRUD + versioning             | ✅ shipped         | Create/update/delete + version history/rollback; graph/subgraphs.                                                                                                        |
+| **MCP endpoint (`/mcp`)**                | 🗺️ planned         | LangGraph exposes graphs as MCP tools; not yet implemented.                                                                                                              |
+| Run-completion webhooks                  | ✅ shipped         | `webhook` URL POSTed the settled run on completion.                                                                                                                      |
+| **Idempotent run creation**              | ✅ shipped         | `Idempotency-Key` on the creates; **LangGraph Platform has no equivalent**.                                                                                              |
+| True `events` stream mode                | ✅ shipped         | Real `streamEvents` (v2); full token/tool/step granularity.                                                                                                              |
+| Fastify / NestJS adapters                | ✅ shipped         | Plugin / `SkeinModule`; standalone + embedded examples.                                                                                                                  |
+| Next.js API-route adapter                | ✅ shipped         | App Router + Pages Router; same-origin, `useStream` UI example.                                                                                                          |
+| `http.disable_*` route flags             | ✅ shipped         | `disable_assistants`/`threads`/`runs`/`store`/`meta`; `/ok` is never disabled.                                                                                           |
+| `GET /info` capability handshake         | ✅ shipped         | Version + `flags`; `/ok` stays outside the table so no flag can break the probe.                                                                                         |
+| Blocking run join · state-at-checkpoint  | ✅ shipped         | `runs.join()`, `threads.getState()` with an object checkpoint, `/stream/events`.                                                                                         |
+| **Console / Studio equivalent**          | ✅ shipped         | [`@skein-js/console`](https://github.com/skein-js/skein-js/tree/main/packages/console) at `/console`; self-hosted, not a hosted web app. See [console.md](./console.md). |
+| Generative UI (`/ui/{agent}`)            | 🗺️ planned         | `LoadExternalComponent`; needs a `ui` config block, a bundler, and asset serving.                                                                                        |
+| `/docs` OpenAPI page                     | 🗺️ planned         | LangGraph Server serves one; `skein dev` links the published docs instead.                                                                                               |
+| WebSocket streaming transport            | ❌ non-goal (v1)   | SSE covers the client UX; does not affect the React SDK.                                                                                                                 |
+| `deploy` to a hosted platform            | ❌ non-goal        | skein-js is self-hosted by design.                                                                                                                                       |
+| OpenTelemetry / tracing observability    | ✅ shipped         | `TelemetrySink` seam + LangSmith, PostHog, and OTel adapters.                                                                                                            |
 
 ## Non-goals for v1
 
@@ -323,4 +323,4 @@ Deliberately out of scope for the first stable release (may be revisited later):
 | **Long-term memory**                | `@skein-js/agent-protocol` run-engine test: a node writes and reads via the injected `getStore()`; `examples/chat-app` recalls a saved fact across threads.                                         |
 | **Postgres + Redis**                | Conformance suite re-run against Postgres; cross-instance test — start a run on instance A, join its SSE stream from instance B via Redis.                                                          |
 
-See the top-level [plan](../README.md) and each feature doc for detail.
+See the top-level [plan](https://github.com/skein-js/skein-js/blob/main/README.md) and each feature doc for detail.

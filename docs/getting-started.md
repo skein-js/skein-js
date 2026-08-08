@@ -22,7 +22,7 @@ graph, then to production. If you already have a `langgraph.json` and just want 
 - A **[LangGraph.js graph](https://docs.langchain.com/oss/javascript/langgraph/graph-api)** — a
   `CompiledStateGraph` from `@langchain/langgraph`. Any graph works; a
   keyless "echo" graph is the fastest way to see the server before wiring a model. The runnable
-  [`express-basic`](../examples/express-basic) and [`embed-graph`](../examples/embed-graph) examples
+  [`express-basic`](https://github.com/skein-js/skein-js/tree/main/examples/express-basic) and [`embed-graph`](https://github.com/skein-js/skein-js/tree/main/examples/embed-graph) examples
   ship one.
 
 ## Path A — I have a `langgraph.json` (drop-in)
@@ -126,7 +126,7 @@ function Chat() {
 
 A browser on a different origin needs CORS enabled — see the
 [CORS recipe](./recipes.md#cors--browser-clients). For a same-origin full-stack app (no CORS), the
-[`nextjs-app`](../examples/nextjs-app) example serves the protocol and the UI from one Next.js app.
+[`nextjs-app`](https://github.com/skein-js/skein-js/tree/main/examples/nextjs-app) example serves the protocol and the UI from one Next.js app.
 See [react-sdk.md](./react-sdk.md).
 
 ## Go to production
@@ -161,5 +161,5 @@ to containerize. Redis is optional for a single instance but required to run mor
 
 - [Recipes](./recipes.md) — auth, human-in-the-loop, long-term memory, CORS, background runs, deploy.
 - [Using skein-js](./using-skein.md) — the terse consumer/agent cheat-sheet.
-- [Examples](../examples) — a runnable project per framework and pattern.
+- [Examples](https://github.com/skein-js/skein-js/tree/main/examples) — a runnable project per framework and pattern.
 - [Overview & architecture](./index.md) · [Agent Protocol surface](./agent-protocol.md)

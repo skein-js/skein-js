@@ -69,7 +69,7 @@ the honest baseline `inbound-events` has to beat.
 
 These are **not user documentation**. They describe intent, not behaviour — nothing here is shipped
 until it appears in [`docs/roadmap.md`](../roadmap.md) as done, and none of these files are part of
-the [`llms-full.txt`](../../llms-full.txt) bundle (that list is curated in
+the [`llms-full.txt`](https://github.com/skein-js/skein-js/blob/main/llms-full.txt) bundle (that list is curated in
 `scripts/generate-llms-full.mjs` and covers user-facing docs only). When a proposal ships, the
 durable explanation moves into a real doc and the proposal becomes history.
 

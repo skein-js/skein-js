@@ -10,8 +10,8 @@ skein-js server and you get the whole rich chat UX for free — live token strea
 **thinking**, structured **tool-result cards**, and **human-in-the-loop** interrupt/resume — with no
 custom SDK and no bespoke wire format. You send a turn with `thread.submit(...)`, read live state off
 `thread.messages`, and when a graph node pauses with `interrupt()` you render an approval card off
-`thread.interrupt` and resume with a `command`. The flagship [`chat-app`](../examples/chat-app)
-example builds all of this; [`react-usestream`](../examples/react-usestream) is the minimal
+`thread.interrupt` and resume with a `command`. The flagship [`chat-app`](https://github.com/skein-js/skein-js/tree/main/examples/chat-app)
+example builds all of this; [`react-usestream`](https://github.com/skein-js/skein-js/tree/main/examples/react-usestream) is the minimal
 copy-paste starting point.
 
 ```tsx
@@ -91,7 +91,7 @@ does not affect the React SDK.
 
 ## Verification harness
 
-[`examples/react-usestream`](../examples/react-usestream) is a minimal Next.js app wired to
+[`examples/react-usestream`](https://github.com/skein-js/skein-js/tree/main/examples/react-usestream) is a minimal Next.js app wired to
 `useStream` and pointed at a placeholder skein-js URL. Once the server lands, it is the
 front-end signal that the SSE wiring satisfies the React SDK — token-by-token streaming in
 a real browser. See [roadmap.md](./roadmap.md#verification).

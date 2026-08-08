@@ -136,7 +136,7 @@ than implied.
 
 1. **Every provider-specific decision is a source's, every correctness-critical decision is ours.**
    A source cannot opt out of dedup, ordering, or durable delivery — those are the value.
-2. **Verb-first names, no abbreviations**, per [AGENTS.md](../../AGENTS.md). Hence `parseEvent`, not
+2. **Verb-first names, no abbreviations**, per [AGENTS.md](https://github.com/skein-js/skein-js/blob/main/AGENTS.md). Hence `parseEvent`, not
    `toEvent`; `idempotencyKey`, not `dedupeKey` — the latter also names the mechanism it feeds.
 3. **Additive-only evolution.** Every variant type is a discriminated union so a new outcome is a
    new arm, not a signature change. Optional fields may be added; required fields may not.
@@ -442,7 +442,7 @@ export interface SignalSubscription {
 ```
 
 **This is a projection, not new machinery.** skein already fans a run's output out to readers over
-[`RunEventBus`](../../packages/core/src/queue/queue.ts) — cross-instance capable via Redis pub/sub —
+[`RunEventBus`](https://github.com/skein-js/skein-js/blob/main/packages/core/src/queue/queue.ts) — cross-instance capable via Redis pub/sub —
 already drives `stream_mode: "events"` through LangGraph's `streamEvents` v2, and already emits
 periodic SSE heartbeat comments in idle gaps. `RunSignal` is a coarse, stable projection of that
 bus; it does not add storage, and it preserves the architectural test below.
@@ -508,10 +508,10 @@ not have yet, and it can be added compatibly later if the ecosystem grows enough
 The riskiest question in revision 1, and it now has a concrete answer.
 
 **The trap.** Twilio presents `X-Twilio-Signature`, not a bearer token.
-[`resolveAuthContext`](../../packages/agent-protocol/src/auth/authenticate-request.ts) invokes the
+[`resolveAuthContext`](https://github.com/skein-js/skein-js/blob/main/packages/agent-protocol/src/auth/authenticate-request.ts) invokes the
 user's `authenticate` handler, which expects a JWT or API key, and will **401 every inbound
 webhook**. The obvious workaround — exempting these routes the way `getServerInfo` is exempted in
-[`createAuthorizingHandlers`](../../packages/agent-protocol/src/auth/authorizing-handlers.ts) — is
+[`createAuthorizingHandlers`](https://github.com/skein-js/skein-js/blob/main/packages/agent-protocol/src/auth/authorizing-handlers.ts) — is
 far worse. That exemption is justified because `/info` exposes no thread, run, or store content.
 Event routes **create runs**. An exempt route is an unauthenticated run-creation endpoint that
 bypasses the entire `Auth` block.
@@ -544,7 +544,7 @@ request. **No bypass anywhere.**
   without authenticating. On an event route that is one forged header away from free run creation.
   Event routes authenticate **only** through `verify()`.
 - **Authorization reuses the crons precedent exactly.** The `fallbackResource` reasoning in
-  [`route-authz.ts`](../../packages/agent-protocol/src/auth/route-authz.ts) — that crons scope to
+  [`route-authz.ts`](https://github.com/skein-js/skein-js/blob/main/packages/agent-protocol/src/auth/route-authz.ts) — that crons scope to
   `threads` because "a schedule creates runs on a thread, so an unscoped cron resource would let any
   authenticated caller enumerate every tenant's schedules" — describes an event source precisely. It
   authorizes as `{ resource: "threads", action: "create_run" }`, as every run route already does.
@@ -577,7 +577,7 @@ within 3 seconds or it retries and shows the user an error; Twilio times out com
 runs already give us this, but it must be pinned by a test rather than left incidental. Note this is
 also _why_ run signals are needed at all — the ack is early, so progress has to arrive out of band.
 
-Registered in [`skeinRoutes`](../../packages/agent-protocol/src/http/routes.ts) with a new
+Registered in [`skeinRoutes`](https://github.com/skein-js/skein-js/blob/main/packages/agent-protocol/src/http/routes.ts) with a new
 `RouteGroup: "events"`, so `http.disable_events` works like every other group — and the route is
 **absent from the table entirely** unless a source is configured, which is stronger than
 disable-able.
@@ -623,7 +623,7 @@ and bot echoes without anyone reviewing it by hand.
 ## Configuration — `skein.events`, not a new file
 
 **Decision: no `skein.json`.** skein already reserves a namespace inside `langgraph.json`
-([`langgraph-json.ts`](../../packages/config/src/langgraph-json.ts): _"Skein production settings.
+([`langgraph-json.ts`](https://github.com/skein-js/skein-js/blob/main/packages/config/src/langgraph-json.ts): _"Skein production settings.
 Unknown keys remain forward-compatible."_), and `path:export` loading is proven three times over —
 graphs, `auth.path`, and telemetry `paths`. New surfaces go under `skein.*` from day one:
 

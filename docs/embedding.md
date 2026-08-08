@@ -55,12 +55,12 @@ await client.runs.wait(thread.thread_id, "agent", {
 });
 ```
 
-`embedInMemoryGraphs` ([`@skein-js/server-kit`](../packages/server-kit)) turns a **graph map** into a
+`embedInMemoryGraphs` ([`@skein-js/server-kit`](https://github.com/skein-js/skein-js/tree/main/packages/server-kit)) turns a **graph map** into a
 `ProtocolDeps` backed by in-process drivers — the store, run queue, event bus, and checkpointer. No
 config file, and nothing to import from a storage package. `{ deps }` is the seam **every** adapter
 accepts, so the same `deps` mounts on Express, Fastify, NestJS, or Next.js unchanged.
 
-Runnable version: [`examples/embed-graph`](../examples/embed-graph).
+Runnable version: [`examples/embed-graph`](https://github.com/skein-js/skein-js/tree/main/examples/embed-graph).
 
 > **⚠️ Auth is off by default.** `embedInMemoryGraphs` sets no `auth`, so the server it produces
 > **authenticates nothing** — every request is allowed (the same default as a `langgraph.json` with no
@@ -109,7 +109,7 @@ export const { GET, POST, PUT, PATCH, DELETE, OPTIONS } = createSkeinRouteHandle
 ```
 
 The Next.js App Router case is the lightest full-stack story — an 11-line `route.ts` serving the
-protocol same-origin behind a `useStream` UI. See [`examples/nextjs-app`](../examples/nextjs-app).
+protocol same-origin behind a `useStream` UI. See [`examples/nextjs-app`](https://github.com/skein-js/skein-js/tree/main/examples/nextjs-app).
 
 ## Bring your own drivers, auth, logger
 
@@ -155,7 +155,7 @@ process.on("SIGTERM", () => dispose().finally(() => process.exit(0)));
 > exposes `/threads`, `/runs`, and `/store` — and running your graph (spending model tokens) — to
 > anyone. Pass an `auth` engine via `overrides` before you go public (see below).
 
-It lives in [`@skein-js/runtime`](../packages/runtime), not `@skein-js/server-kit` — a persistent helper
+It lives in [`@skein-js/runtime`](https://github.com/skein-js/skein-js/tree/main/packages/runtime), not `@skein-js/server-kit` — a persistent helper
 pulls in the Postgres/Redis drivers that `server-kit` deliberately avoids. Pass explicit
 `postgresUri` / `redisUri` (and `index` for pgvector, `ttl`, `poolMax`, `sslNoVerify`) instead of env
 vars if you prefer, and `overrides` for `auth` / `logger` / etc. — see the [API reference](#api-reference):
@@ -241,7 +241,7 @@ const deps = embedInMemoryGraphs(
 );
 ```
 
-If you _do_ have a `langgraph.json`, [`@skein-js/runtime`](../packages/runtime)'s
+If you _do_ have a `langgraph.json`, [`@skein-js/runtime`](https://github.com/skein-js/skein-js/tree/main/packages/runtime)'s
 `buildRuntime({ configPath, store: "postgres", queue: "redis" })` assembles all of these for you —
 `embedPostgresGraphs` is the same assembly for graphs you hold in code.
 
@@ -264,7 +264,7 @@ views. If you need full static schemas, use the [`{ config }` path](./langgraph-
 
 ## API reference
 
-From [`@skein-js/server-kit`](../packages/server-kit):
+From [`@skein-js/server-kit`](https://github.com/skein-js/skein-js/tree/main/packages/server-kit):
 
 ```ts
 // Build a ProtocolDeps around in-process drivers. Pass a graph map OR a ready GraphResolver.
@@ -288,7 +288,7 @@ type EmbeddableGraph = CompiledGraph<any> | ((config: { configurable?: Record<st
 `normalizeEmbeddableGraphs(graphs)` accepts either a graph map or a ready `GraphResolver` and returns a
 `GraphResolver` — the same normalization both embed helpers apply.
 
-From [`@skein-js/runtime`](../packages/runtime) (the durable path — see
+From [`@skein-js/runtime`](https://github.com/skein-js/skein-js/tree/main/packages/runtime) (the durable path — see
 [Going to production](#going-to-production)):
 
 ```ts
@@ -323,4 +323,4 @@ shutdown.
 - [agent-protocol.md](./agent-protocol.md) — the endpoints you get either way
 - [building-an-adapter.md](./building-an-adapter.md) — putting the engine on any HTTP framework
 - [storage.md](./storage.md) · [runs-and-redis.md](./runs-and-redis.md) — swapping in production drivers
-- [`examples/embed-graph`](../examples/embed-graph) · [`examples/nextjs-app`](../examples/nextjs-app)
+- [`examples/embed-graph`](https://github.com/skein-js/skein-js/tree/main/examples/embed-graph) · [`examples/nextjs-app`](https://github.com/skein-js/skein-js/tree/main/examples/nextjs-app)

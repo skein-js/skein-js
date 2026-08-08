@@ -2,8 +2,8 @@
 
 > **Contributor / design doc.** This explains the reuse-first architecture that shapes skein-js — what
 > it reuses from `@langchain/*` versus what it rebuilds. If you just want to _use_ skein-js, start with
-> the [README](../README.md) and [docs index](./index.md). To contribute, see
-> [CONTRIBUTING.md](../CONTRIBUTING.md) and [AGENTS.md](../AGENTS.md).
+> the [README](https://github.com/skein-js/skein-js/blob/main/README.md) and [docs index](./index.md). To contribute, see
+> [CONTRIBUTING.md](https://github.com/skein-js/skein-js/blob/main/CONTRIBUTING.md) and [AGENTS.md](https://github.com/skein-js/skein-js/blob/main/AGENTS.md).
 
 <!-- -->
 

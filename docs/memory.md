@@ -146,7 +146,7 @@ const relevant = await store.search([userId, "memories"], { query: latestUserMes
 
 - **Auto-inject** — fetch relevant memories before each model call and fold them into the system message.
   Personalization does not depend on the model remembering to ask. This is what
-  [`examples/chat-app`](../examples/chat-app) does.
+  [`examples/chat-app`](https://github.com/skein-js/skein-js/tree/main/examples/chat-app) does.
 - **A recall tool** — the model calls `search_memory` when it decides it needs to. Fewer tokens per turn,
   but it only works when the model chooses well.
 
@@ -216,6 +216,6 @@ server-side settled-run trigger would cover it; it is
 
 - [storage.md](./storage.md) — the store itself: drivers, `getStore()`, filters, TTL, scoping, BYO store
 - [crons.md](./crons.md) — schedules, for the cron extraction pattern
-- [`examples/chat-app`](../examples/chat-app) — a working research assistant with memory and recall
+- [`examples/chat-app`](https://github.com/skein-js/skein-js/tree/main/examples/chat-app) — a working research assistant with memory and recall
 - [LangChain's memory guide](https://docs.langchain.com/oss/javascript/concepts/memory) — the
   profile/collection framing this page builds on

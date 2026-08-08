@@ -26,12 +26,12 @@ serves the identical protocol and takes the same `{ config } | { deps }` seam �
 you already run. Each ships a **standalone** entry (a dedicated server) and an **embedded** entry
 (mount alongside your app's own routes), with a runnable example for both:
 
-| Framework | Package             | Standalone            | Embedded                                                             | Examples                                                                           |
-| --------- | ------------------- | --------------------- | -------------------------------------------------------------------- | ---------------------------------------------------------------------------------- |
-| Express   | `@skein-js/express` | `createExpressServer` | `skeinRouter`                                                        | [express-basic](../examples/express-basic), [embed-graph](../examples/embed-graph) |
-| Fastify   | `@skein-js/fastify` | `createFastifyServer` | `skeinPlugin`                                                        | [fastify-basic](../examples/fastify-basic), [fastify-app](../examples/fastify-app) |
-| NestJS    | `@skein-js/nestjs`  | `createNestServer`    | `SkeinModule.forRoot`                                                | [nestjs-basic](../examples/nestjs-basic), [nestjs-app](../examples/nestjs-app)     |
-| Next.js   | `@skein-js/nextjs`  | route handlers        | `createSkeinRouteHandlers` (App) · `createSkeinPagesHandler` (Pages) | [nextjs-app](../examples/nextjs-app), [nextjs-basic](../examples/nextjs-basic)     |
+| Framework | Package             | Standalone            | Embedded                                                             | Examples                                                                                                                                                                   |
+| --------- | ------------------- | --------------------- | -------------------------------------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Express   | `@skein-js/express` | `createExpressServer` | `skeinRouter`                                                        | [express-basic](https://github.com/skein-js/skein-js/tree/main/examples/express-basic), [embed-graph](https://github.com/skein-js/skein-js/tree/main/examples/embed-graph) |
+| Fastify   | `@skein-js/fastify` | `createFastifyServer` | `skeinPlugin`                                                        | [fastify-basic](https://github.com/skein-js/skein-js/tree/main/examples/fastify-basic), [fastify-app](https://github.com/skein-js/skein-js/tree/main/examples/fastify-app) |
+| NestJS    | `@skein-js/nestjs`  | `createNestServer`    | `SkeinModule.forRoot`                                                | [nestjs-basic](https://github.com/skein-js/skein-js/tree/main/examples/nestjs-basic), [nestjs-app](https://github.com/skein-js/skein-js/tree/main/examples/nestjs-app)     |
+| Next.js   | `@skein-js/nextjs`  | route handlers        | `createSkeinRouteHandlers` (App) · `createSkeinPagesHandler` (Pages) | [nextjs-app](https://github.com/skein-js/skein-js/tree/main/examples/nextjs-app), [nextjs-basic](https://github.com/skein-js/skein-js/tree/main/examples/nextjs-basic)     |
 
 **How to expand from any of them:**
 
@@ -148,7 +148,7 @@ async function remember(state, config) {
 
 The same items are reachable over the `/store/items` HTTP endpoints. See
 [storage.md](./storage.md#long-term-memory-in-the-graph-getstore); the flagship
-[`chat-app`](../examples/chat-app) uses this to remember a user across sessions.
+[`chat-app`](https://github.com/skein-js/skein-js/tree/main/examples/chat-app) uses this to remember a user across sessions.
 
 ## Semantic memory search (pgvector)
 
@@ -185,8 +185,8 @@ is set. `store.ttl` (minutes) expires items with a background sweep. See
 
 Or in code, pass the `cors` option to any adapter (`CorsOptions`, `true` for permissive dev, `false` to
 force off). **Same-origin needs nothing** — serve the protocol and the UI from one app, like
-[`nextjs-app`](../examples/nextjs-app). See the
-[Express adapter CORS notes](../packages/server-express/README.md#cors).
+[`nextjs-app`](https://github.com/skein-js/skein-js/tree/main/examples/nextjs-app). See the
+[Express adapter CORS notes](https://github.com/skein-js/skein-js/blob/main/packages/server-express/README.md#cors).
 
 ## Background runs, join & cancel
 

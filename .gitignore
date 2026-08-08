@@ -31,6 +31,9 @@ pnpm-debug.log*
 # documentation link checker
 .lycheecache
 
+# vitepress (docs/.vitepress/dist is already covered by `dist/` above)
+docs/.vitepress/cache
+
 # os / editor
 .DS_Store
 .idea/

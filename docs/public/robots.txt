@@ -1,0 +1,4 @@
+User-agent: *
+Allow: /
+
+Sitemap: https://skein-js.github.io/skein-js/sitemap.xml

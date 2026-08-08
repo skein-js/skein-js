@@ -132,7 +132,7 @@ LangChain's tracer reads them from.
 | `tags`             | `skein`, `graph:<id>`, `trigger:<how>`, `assistant:<id>`                    |
 | run name           | the graph id                                                                |
 
-Full options in the [package README](../packages/telemetry-langsmith/README.md).
+Full options in the [package README](https://github.com/skein-js/skein-js/blob/main/packages/telemetry-langsmith/README.md).
 
 ## PostHog
 
@@ -156,7 +156,7 @@ than reported as zero — a missing number is more honest than a wrong one.
 Runs are attributed to the authenticated user's identity, falling back to the thread id so anonymous
 traffic groups per conversation instead of collapsing into one distinct id. Override with
 `distinctId`. Turn the LLM layer off with `captureGenerations: false`. See the
-[package README](../packages/telemetry-posthog/README.md).
+[package README](https://github.com/skein-js/skein-js/blob/main/packages/telemetry-posthog/README.md).
 
 ## OpenTelemetry
 

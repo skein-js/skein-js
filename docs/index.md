@@ -163,27 +163,27 @@ Available on every adapter — see [serving-a-single-graph.md](./serving-a-singl
 
 ## Examples
 
-Runnable projects under [`examples/`](../examples) — each proves a slice of the promise:
+Runnable projects under [`examples/`](https://github.com/skein-js/skein-js/tree/main/examples) — each proves a slice of the promise:
 
-| Example                                                | What it shows                                                                                                                    |
-| ------------------------------------------------------ | -------------------------------------------------------------------------------------------------------------------------------- |
-| [`chat-app`](../examples/chat-app)                     | **Flagship** — Gemini research assistant (thinking + web search + long-term memory) with a Next.js + shadcn/ui UI and full tests |
-| [`migrated-langgraph`](../examples/migrated-langgraph) | The drop-in proof — a stock LangGraph project under `skein dev`, hot reload + persistence                                        |
-| [`gemini-chat`](../examples/gemini-chat)               | Model-backed end-to-end — a Gemini ReAct agent streamed into a browser                                                           |
-| [`express-basic`](../examples/express-basic)           | Zero-setup `echo` + a Claude `agent` graph in one config                                                                         |
-| [`embed-graph`](../examples/embed-graph)               | In-code embedding — serve a graph you already have with **no `langgraph.json`** (`embedInMemoryGraphs` + `{ deps }`)             |
-| [`invoke-endpoint`](../examples/invoke-endpoint)       | The **non-chat** surface — graphs as plain `POST /invoke/:graph_id` endpoints, body-in / final-state-out                         |
-| `fastify-basic` / `fastify-app`                        | Fastify — standalone graph server, and the protocol embedded under `/agent` alongside a REST API                                 |
-| `nestjs-basic` / `nestjs-app`                          | NestJS — standalone graph server, and `SkeinModule` alongside the app's own controller                                           |
-| `nextjs-basic` / `nextjs-app`                          | Next.js — headless Pages Router API, and a full-stack App Router app serving the protocol same-origin behind a `useStream` UI    |
-| [`react-usestream`](../examples/react-usestream)       | Minimal `useStream` SSE-compatibility harness                                                                                    |
+| Example                                                                                            | What it shows                                                                                                                    |
+| -------------------------------------------------------------------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------- |
+| [`chat-app`](https://github.com/skein-js/skein-js/tree/main/examples/chat-app)                     | **Flagship** — Gemini research assistant (thinking + web search + long-term memory) with a Next.js + shadcn/ui UI and full tests |
+| [`migrated-langgraph`](https://github.com/skein-js/skein-js/tree/main/examples/migrated-langgraph) | The drop-in proof — a stock LangGraph project under `skein dev`, hot reload + persistence                                        |
+| [`gemini-chat`](https://github.com/skein-js/skein-js/tree/main/examples/gemini-chat)               | Model-backed end-to-end — a Gemini ReAct agent streamed into a browser                                                           |
+| [`express-basic`](https://github.com/skein-js/skein-js/tree/main/examples/express-basic)           | Zero-setup `echo` + a Claude `agent` graph in one config                                                                         |
+| [`embed-graph`](https://github.com/skein-js/skein-js/tree/main/examples/embed-graph)               | In-code embedding — serve a graph you already have with **no `langgraph.json`** (`embedInMemoryGraphs` + `{ deps }`)             |
+| [`invoke-endpoint`](https://github.com/skein-js/skein-js/tree/main/examples/invoke-endpoint)       | The **non-chat** surface — graphs as plain `POST /invoke/:graph_id` endpoints, body-in / final-state-out                         |
+| `fastify-basic` / `fastify-app`                                                                    | Fastify — standalone graph server, and the protocol embedded under `/agent` alongside a REST API                                 |
+| `nestjs-basic` / `nestjs-app`                                                                      | NestJS — standalone graph server, and `SkeinModule` alongside the app's own controller                                           |
+| `nextjs-basic` / `nextjs-app`                                                                      | Next.js — headless Pages Router API, and a full-stack App Router app serving the protocol same-origin behind a `useStream` UI    |
+| [`react-usestream`](https://github.com/skein-js/skein-js/tree/main/examples/react-usestream)       | Minimal `useStream` SSE-compatibility harness                                                                                    |
 
 ## Documentation map
 
 Start with the user-facing guides; the design docs at the bottom explain how skein-js is built.
 New here? [getting-started.md](./getting-started.md) is the guided path. Building an app _with_ skein
 (especially as an AI agent)? [using-skein.md](./using-skein.md) is the terse cheat-sheet, and the
-machine-readable [`llms.txt`](../llms.txt) / [`llms-full.txt`](../llms-full.txt) index the whole set.
+machine-readable [`llms.txt`](https://github.com/skein-js/skein-js/blob/main/llms.txt) / [`llms-full.txt`](https://github.com/skein-js/skein-js/blob/main/llms-full.txt) index the whole set.
 
 | Doc                                                      | Covers                                                           |
 | -------------------------------------------------------- | ---------------------------------------------------------------- |
@@ -213,7 +213,7 @@ machine-readable [`llms.txt`](../llms.txt) / [`llms-full.txt`](../llms-full.txt)
 | [testing.md](./testing.md)                               | _(contributor)_ Unit + Testcontainers + conformance suite        |
 | [roadmap.md](./roadmap.md)                               | Milestones and post-MVP non-goals                                |
 
-Want to contribute? See [CONTRIBUTING.md](../CONTRIBUTING.md) and [AGENTS.md](../AGENTS.md).
+Want to contribute? See [CONTRIBUTING.md](https://github.com/skein-js/skein-js/blob/main/CONTRIBUTING.md) and [AGENTS.md](https://github.com/skein-js/skein-js/blob/main/AGENTS.md).
 
 ## References
 

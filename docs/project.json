@@ -1,0 +1,24 @@
+{
+  "name": "docs",
+  "$schema": "../node_modules/nx/schemas/project-schema.json",
+  "projectType": "application",
+  "tags": [],
+  "// targets": "Hand-written rather than plugin-inferred: an Nx inference plugin exists to synthesize targets across many projects of the same shape, and there is exactly one docs site. Caching comes from `cache: true` + inputs/outputs, not from inference, so nothing is lost. Same pattern as packages/console/ui.",
+  "targets": {
+    "build": {
+      "executor": "nx:run-commands",
+      "options": { "command": "vitepress build docs" },
+      "inputs": ["{projectRoot}/**/*", "sharedGlobals"],
+      "outputs": ["{workspaceRoot}/docs/.vitepress/dist"],
+      "cache": true
+    },
+    "dev": {
+      "executor": "nx:run-commands",
+      "options": { "command": "vitepress dev docs" }
+    },
+    "preview": {
+      "executor": "nx:run-commands",
+      "options": { "command": "vitepress preview docs" }
+    }
+  }
+}

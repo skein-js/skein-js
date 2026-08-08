@@ -263,12 +263,12 @@ existing LangGraph store you would have to implement assistants, threads, runs, 
 too. Composing around it (`{ ...postgresStore, store: mine }`) is booby-trapped: `maxPageSize` and
 `durable` are class getters, and object spread copies own enumerable properties only, so both
 silently become `undefined` — the trap
-[`auth-scoped-store.ts`](../../packages/agent-protocol/src/auth/auth-scoped-store.ts) already
+[`auth-scoped-store.ts`](https://github.com/skein-js/skein-js/blob/main/packages/agent-protocol/src/auth/auth-scoped-store.ts) already
 documents and works around by carrying `maxPageSize` explicitly.
 
 So: make `store` independently injectable, following the telemetry pattern (a `ProtocolDeps` field
 plus a `path:export` config key, loaded with the same `parseGraphSpec` + injectable `importModule` +
-distinct `SkeinConfigError` discipline [`loadAuthEngine`](../../packages/config/src/auth-engine.ts)
+distinct `SkeinConfigError` discipline [`loadAuthEngine`](https://github.com/skein-js/skein-js/blob/main/packages/config/src/auth-engine.ts)
 established and `resolveTelemetry` already copied — this would be the fourth use). Accept **either** a
 `StoreRepo` or a LangGraph `BaseStore`, discriminating structurally on `"batch" in exported`, and
 adapt the latter with `fromBaseStore` — the inverse of the `SkeinBaseStore` bridge we already have.

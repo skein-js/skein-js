@@ -41,7 +41,7 @@ instead of hand-writing (or regenerating) a parallel set. See [reuse.md](./reuse
 ## Endpoint inventory
 
 Every endpoint below is implemented (✅). The route table in
-[`packages/agent-protocol/src/http/routes.ts`](../packages/agent-protocol/src/http/routes.ts) is the
+[`packages/agent-protocol/src/http/routes.ts`](https://github.com/skein-js/skein-js/blob/main/packages/agent-protocol/src/http/routes.ts) is the
 source of truth — paths mirror the `@langchain/langgraph-sdk` client, so runs are addressed
 thread-scoped (`/threads/{thread_id}/runs/{run_id}`).
 

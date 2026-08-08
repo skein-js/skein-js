@@ -246,4 +246,4 @@ delayed frames rather than dropping them. CI's `perf bounds (bench)` job runs ex
 in-memory driver and publishes the numbers to the run summary without asserting any of them. So if you
 are reading this page because a bound above stopped holding for you, that job is what should have caught
 it first; if it was green, the shape you hit is one the scenarios do not cover, and it is worth adding
-one (see [`packages/bench/README.md`](../packages/bench/README.md)).
+one (see [`packages/bench/README.md`](https://github.com/skein-js/skein-js/blob/main/packages/bench/README.md)).

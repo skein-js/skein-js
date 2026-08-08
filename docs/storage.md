@@ -6,7 +6,7 @@ a graph node you get a LangGraph-native store — `getStore()` — for cross-thr
 seats") backed by **pgvector semantic search** in production. It's the same store LangGraph Platform
 auto-provides, so a graph that calls `getStore()` runs unchanged on skein-js. The best part: you write
 your graph once and skein-js swaps the backend for you — **in-memory in `skein dev`, Postgres +
-pgvector in production** — no code change. The flagship [`chat-app`](../examples/chat-app) example uses
+pgvector in production** — no code change. The flagship [`chat-app`](https://github.com/skein-js/skein-js/tree/main/examples/chat-app) example uses
 this to remember a user across sessions.
 
 skein-js separates two kinds of persistence, and it is important not to conflate them:
@@ -148,7 +148,7 @@ async function remember(state) {
 
 This is what makes skein a faithful drop-in: LangGraph Platform auto-provides a store to graphs, so
 a graph that calls `getStore()` runs unchanged on skein. The bridge is `SkeinBaseStore` in
-[`@skein-js/agent-protocol`](../packages/agent-protocol), attached in the run engine the same way the
+[`@skein-js/agent-protocol`](https://github.com/skein-js/skein-js/tree/main/packages/agent-protocol), attached in the run engine the same way the
 checkpointer is. Semantic `search` uses pgvector on the Postgres driver and a naive scan on memory —
 both come from the same `StoreRepo`, so behavior matches.
 
@@ -468,7 +468,7 @@ do it by hand.
 | `"default"`                     | `PostgresSaver` (Postgres)         |
 | `"custom"`                      | user-supplied checkpointer (later) |
 
-You rarely wire these drivers by hand. [`@skein-js/runtime`](../packages/runtime) assembles the
+You rarely wire these drivers by hand. [`@skein-js/runtime`](https://github.com/skein-js/skein-js/tree/main/packages/runtime) assembles the
 `PostgresSkeinStore` + `PostgresSaver` + Redis queue/bus (and their `dispose()`) for you, two ways:
 **`buildRuntime`** from a `langgraph.json` (the `skein dev`/`skein up` path), and
 **`embedPostgresGraphs`** from a graph you hold in code (the durable sibling of `embedInMemoryGraphs` —
