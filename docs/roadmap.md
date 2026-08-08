@@ -80,8 +80,10 @@ Also shipped, beyond the original MVP plan:
   routes (including an in-place mutation, and a `GET`/`DELETE` addressed by query params). skein
   deliberately adds **no** scoping mechanism of its own: who owns what, and how a namespace encodes it, is
   the policy that varies most between deployments, and the handler is the one place that can express all of
-  them. A `store.scope` setting was built and then removed for exactly that reason — see
-  [the proposal](./proposals/long-term-memory.md). `assistants` stays gate-only. See
+  them. A `store.scope` setting was built and then removed for exactly that reason: the forwarding
+  adapter it needed would have shipped a cross-tenant read, which
+  [`from-base-store.ts`](https://github.com/skein-js/skein-js/blob/main/packages/agent-protocol/src/store/from-base-store.ts)
+  now documents and its conformance suite pins. `assistants` stays gate-only. See
   [agent-protocol.md](./agent-protocol.md#authentication--authorization).
 
 - ✅ **Assistants CRUD + versioning (LangGraph parity)** — the full SDK surface beyond the
@@ -222,6 +224,20 @@ The next block is the LangGraph feature-parity backlog, listed **in priority ord
 
 The remaining backlog is skein-js's own adapter/tooling roadmap:
 
+- 🗺️ **Inbound events — agents behind WhatsApp, Slack, and anything else.** The one big bet on this
+  list, and the reason the one below it matters. An optional pipeline plus an `EventSource` plugin
+  interface, so putting an agent behind a provider is one small file rather than six pieces of
+  plumbing everybody re-solves — signature verification, dedup, thread mapping, resume-vs-start,
+  progress signalling, durable reply. Generic over events rather than chat messages, so a GitHub
+  webhook or an inbound email fits the same interface. Design in
+  [proposals/inbound-events.md](./proposals/inbound-events.md); its first phase is deliberately
+  allowed to kill it.
+- 🗺️ **Durable outbound delivery.** Run-completion webhooks are fire-once and best-effort today: a
+  receiver that is redeploying for ten seconds loses the notification permanently, the run still
+  reports `success`, and nothing records the loss. Planned: a delivery outbox written in the same
+  transaction as the run's terminal status, a retrying worker, Stripe-format signing, and a replay
+  endpoint. A defect in its own right, and the prerequisite for inbound events. Design in
+  [proposals/durable-delivery.md](./proposals/durable-delivery.md).
 - 🗺️ **Per-thread partitioned dispatch.** Background runs are executed up to
   [run concurrency](./runs-and-redis.md#run-concurrency) at a time, and a run waiting on a busy
   thread's execution claim still holds a slot — so a burst of `multitask_strategy: "enqueue"` runs on

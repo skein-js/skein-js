@@ -220,7 +220,6 @@ export default defineConfig({
           { text: "Overview", link: "/proposals/" },
           { text: "Inbound events", link: "/proposals/inbound-events" },
           { text: "Durable delivery", link: "/proposals/durable-delivery" },
-          { text: "Long-term memory", link: "/proposals/long-term-memory" },
         ],
       },
     ],

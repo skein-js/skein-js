@@ -42,28 +42,27 @@ Together they form one round trip that needs no browser: **durable-delivery** ma
 trustworthy (the answer gets back), **inbound-events** makes the inbound leg cheap (the event gets
 in).
 
-| Proposal                                     | Status        | Summary                                                                                                                                              |
-| -------------------------------------------- | ------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------- |
-| [durable-delivery.md](./durable-delivery.md) | Partly landed | Idempotent run creation **shipped**; durable, signed, retried run-completion delivery still planned                                                  |
-| [inbound-events.md](./inbound-events.md)     | Draft (rev 2) | A generic, optional inbound event pipeline — plugin interface plus three capped first-party sources                                                  |
-| [long-term-memory.md](./long-term-memory.md) | Resolved      | Traversal and BYO store shipped; scoping stayed the deployment's; the shapes became a recipe ([memory.md](../memory.md)) and the trigger is deferred |
+| Proposal                                     | Summary                                                                                           |
+| -------------------------------------------- | ------------------------------------------------------------------------------------------------- |
+| [inbound-events.md](./inbound-events.md)     | **The goal.** An optional inbound pipeline plus a plugin interface, so a source is one small file |
+| [durable-delivery.md](./durable-delivery.md) | **The prerequisite.** Durable, signed, retried run-completion delivery — the answer gets back     |
 
-**The two statuses differ in kind, not just maturity.** `durable-delivery` closed a gap that already
-existed and already bit, and its open questions were about _how_, not _whether_. Its **phase 1
-(idempotent run creation) has shipped** — see
-[agent-protocol.md](../agent-protocol.md#idempotent-run-creation-idempotency-key). What remains is the
-outbound half: today a run's completion notification can still be lost with no record and no retry,
-which is a defect in the server whether or not anything is ever built on top of it. `inbound-events`
-is a genuine **draft** — a design bet that phase 1 is explicitly allowed to kill.
+**Read `durable-delivery` first**, but understand which one is the point. Inbound events is the
+capability worth having; durable delivery is what makes it correct rather than merely possible, and it
+is independently valuable — today a run's completion notification can be lost with no record and no
+retry, which is a defect in the server whether or not anything is built on top of it.
 
-Both depended on [#7](https://github.com/skein-js/skein-js/issues/7), a parity bug where SDK
-thread/run options (`if_exists`, `if_not_exists`, `after_seconds`) were silently ignored — the
-primitives an external service needs to address a conversation it did not create. **That shipped in
-0.13.1**, which is also why `Idempotency-Key` is runs-only: `if_exists` already makes thread creation
-idempotent by construction.
+Two things these used to depend on have since shipped, which is why the round trip is now buildable
+at all. **Idempotent run creation** (`Idempotency-Key`) landed in 0.14 as this proposal's first phase
+— see [agent-protocol.md](../agent-protocol.md#idempotent-run-creation-idempotency-key). And
+[#7](https://github.com/skein-js/skein-js/issues/7), where SDK thread/run options (`if_exists`,
+`if_not_exists`, `after_seconds`) were silently ignored, shipped in 0.13.1 — those are the primitives
+an external service needs to address a conversation it did not create, and `if_exists` making thread
+creation idempotent by construction is why `Idempotency-Key` ended up runs-only.
 
-Read `durable-delivery` first. It is independently valuable and independently shippable, and it is
-the honest baseline `inbound-events` has to beat.
+`inbound-events` remains a genuine **bet**, and its phase 1 is explicitly allowed to kill it: write
+the WhatsApp example against raw primitives with no pipeline at all, and if it comes out short, ship
+only the helpers and stop.
 
 ## How to read these
 
