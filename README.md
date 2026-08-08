@@ -438,9 +438,10 @@ pnpm skein dev
 
 ### `@skein-js/agent-protocol` — the engine ⭐
 
-The framework-agnostic heart: a complete implementation of the **Agent Protocol** for LangGraph.js —
+The transport-agnostic heart: a complete implementation of the **Agent Protocol** for LangGraph.js —
 run engine, HTTP handler table, and SSE streaming, driven entirely by injected dependencies. Build
-your own server on it, on any framework, with any storage/queue.
+your own server on it, on any **HTTP** framework, with any storage/queue. (The graph runtime is not a
+seam: `@langchain/langgraph` is a peer dependency and `ProtocolDeps` resolves a `CompiledGraph`.)
 
 ```bash
 pnpm add @skein-js/agent-protocol @skein-js/core

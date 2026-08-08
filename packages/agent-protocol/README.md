@@ -2,7 +2,7 @@
 
 [![npm](https://img.shields.io/npm/v/%40skein-js%2Fagent-protocol?logo=npm&color=cb3837)](https://www.npmjs.com/package/@skein-js/agent-protocol)&nbsp;[![downloads](https://img.shields.io/npm/dm/%40skein-js%2Fagent-protocol?color=blue)](https://www.npmjs.com/package/@skein-js/agent-protocol)&nbsp;[![license](https://img.shields.io/npm/l/%40skein-js%2Fagent-protocol?color=green)](../../LICENSE)
 
-> The framework-agnostic Agent Protocol **engine** — run engine, handler table, and SSE mapping. The heart of skein-js.
+> The HTTP-framework-agnostic Agent Protocol **engine** for LangGraph.js — run engine, handler table, and SSE mapping. The heart of skein-js.
 
 Part of **[skein-js](../../README.md)** — the open-source alternative to LangGraph Platform for TypeScript: a self-hosted [Agent Protocol](https://github.com/langchain-ai/agent-protocol) server for [LangGraph.js](https://github.com/langchain-ai/langgraphjs), and a drop-in replacement for the LangGraph CLI.
 
