@@ -446,7 +446,9 @@ asymmetry is deliberate — your store's durability is yours to configure, not s
 all replay their items through the adapter, landing where the server will read them. But the dev-state
 _snapshot_ covers the driver's resources only — assistants, threads, runs, crons — so an adapted
 `InMemoryStore` loses its items when `skein dev` restarts (it is in-memory and skein is not backing it up
-for you), while an adapted `PostgresStore` keeps them because it always did.
+for you), while an adapted `PostgresStore` keeps them because it always did. `skein dev` prints that
+asymmetry at startup rather than leaving you to find it by losing items: writing whatever store you brought
+into `.skein/dev-state.json` every couple of seconds is not something to do to somebody's database.
 
 **`store.index` is refused alongside an adapter.** It configures pgvector on the store the adapter
 replaces, so it could only ever have no effect on search. Configure the index on your own store instead —

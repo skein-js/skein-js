@@ -1505,6 +1505,8 @@ it but is never required.
   // long-term memory store; semantic search config drives our pgvector index
   "store": {
     "index": { "embed": "openai:text-embedding-3-small", "dims": 1536, "fields": ["$"] },
+    // your own LangGraph BaseStore instead of skein's driver (skein extension)
+    "adapter": "./src/my-store.ts:store",
   },
 
   // checkpointer backend; "default" == Postgres (via PostgresSaver)
@@ -1548,20 +1550,20 @@ it but is never required.
 
 ### How each field maps into skein-js
 
-| `langgraph.json` field | skein-js wiring                                                                                                                                                                                                                                                                                                                                              |
-| ---------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
-| `graphs`               | [`@skein-js/config`](./storage.md) resolves each `path:export`, loading a compiled graph or `makeGraph` factory. Drives `/agents` introspection + run execution.                                                                                                                                                                                             |
-| `node_version`         | Used by `skein build` / `skein dockerfile` base image selection. Defaults to Node 24 LTS when omitted; an explicit value is honoured verbatim, including an older one.                                                                                                                                                                                       |
-| `skein.runtime`        | Native production server and pinned official image: `node`, `bun`, or `deno`. Bun/Deno use `@skein-js/fetch` with `Bun.serve`/`Deno.serve`, never Express compatibility.                                                                                                                                                                                     |
-| `skein.idempotency`    | Retention for `Idempotency-Key` records. Tuning only — the header is honoured either way. See [below](#idempotency-skeinidempotency).                                                                                                                                                                                                                        |
-| `env`                  | Loaded into `process.env` at boot (dev) / baked into the image (build).                                                                                                                                                                                                                                                                                      |
-| `store`                | `store.index.{embed,dims,fields,hnsw}` configures pgvector semantic search on the Postgres driver; `hnsw: true` opts into the approximate index — see [storage.md](./storage.md).                                                                                                                                                                            |
-| `checkpointer`         | `"default"` → `PostgresSaver`; dev falls back to an in-memory `MemorySaver`.                                                                                                                                                                                                                                                                                 |
-| `http`                 | `http.cors` maps to the adapter's CORS options; the `disable_*` flags remove that resource's routes before mounting, so it 404s from the host app as under `langgraph dev`. `http.console` is skein-only — it serves the [console](./console.md) at `/console` (off unless set; `skein dev` serves it regardless). `http.app` is still accepted and ignored. |
-| `auth`                 | `auth.path` loads an `Auth` from `@langchain/langgraph-sdk/auth`; every request is authenticated + authorized; `disable_studio_auth` honored.                                                                                                                                                                                                                |
-| `telemetry`            | **skein extension.** Builds the telemetry sinks runs report to — see [observability.md](./observability.md). Unknown to `langgraph dev`, which ignores it.                                                                                                                                                                                                   |
-| `dependencies`         | **skein extension on the JS side** (LangGraph's schema has it for Python only). Extra packages `skein build` pins into the artifact — see below.                                                                                                                                                                                                             |
-| `dockerfile_lines`     | Appended by `skein dockerfile` / `skein build`.                                                                                                                                                                                                                                                                                                              |
+| `langgraph.json` field | skein-js wiring                                                                                                                                                                                                                                                                                                                                                                                                                                    |
+| ---------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `graphs`               | [`@skein-js/config`](./storage.md) resolves each `path:export`, loading a compiled graph or `makeGraph` factory. Drives `/agents` introspection + run execution.                                                                                                                                                                                                                                                                                   |
+| `node_version`         | Used by `skein build` / `skein dockerfile` base image selection. Defaults to Node 24 LTS when omitted; an explicit value is honoured verbatim, including an older one.                                                                                                                                                                                                                                                                             |
+| `skein.runtime`        | Native production server and pinned official image: `node`, `bun`, or `deno`. Bun/Deno use `@skein-js/fetch` with `Bun.serve`/`Deno.serve`, never Express compatibility.                                                                                                                                                                                                                                                                           |
+| `skein.idempotency`    | Retention for `Idempotency-Key` records. Tuning only — the header is honoured either way. See [below](#idempotency-skeinidempotency).                                                                                                                                                                                                                                                                                                              |
+| `env`                  | Loaded into `process.env` at boot (dev) / baked into the image (build).                                                                                                                                                                                                                                                                                                                                                                            |
+| `store`                | `store.index.{embed,dims,fields,hnsw}` configures pgvector semantic search on the Postgres driver (`hnsw: true` opts into the approximate index); `store.ttl.{default_ttl,refresh_on_read,sweep_interval_minutes}` expires items. `store.adapter` is a **skein extension** — `path:export` to your own LangGraph `BaseStore` (e.g. `PostgresStore`, `MongoDBStore`), which then serves the whole `/store` surface. See [storage.md](./storage.md). |
+| `checkpointer`         | `"default"` → `PostgresSaver`; dev falls back to an in-memory `MemorySaver`.                                                                                                                                                                                                                                                                                                                                                                       |
+| `http`                 | `http.cors` maps to the adapter's CORS options; the `disable_*` flags remove that resource's routes before mounting, so it 404s from the host app as under `langgraph dev`. `http.console` is skein-only — it serves the [console](./console.md) at `/console` (off unless set; `skein dev` serves it regardless). `http.app` is still accepted and ignored.                                                                                       |
+| `auth`                 | `auth.path` loads an `Auth` from `@langchain/langgraph-sdk/auth`; every request is authenticated + authorized; `disable_studio_auth` honored.                                                                                                                                                                                                                                                                                                      |
+| `telemetry`            | **skein extension.** Builds the telemetry sinks runs report to — see [observability.md](./observability.md). Unknown to `langgraph dev`, which ignores it.                                                                                                                                                                                                                                                                                         |
+| `dependencies`         | **skein extension on the JS side** (LangGraph's schema has it for Python only). Extra packages `skein build` pins into the artifact — see below.                                                                                                                                                                                                                                                                                                   |
+| `dockerfile_lines`     | Appended by `skein dockerfile` / `skein build`.                                                                                                                                                                                                                                                                                                                                                                                                    |
 
 **`dependencies` means something different here.** In LangGraph it is a Python-only field, required
 and used to drive `pip install`; the JS schema has no such field, because `langgraph build` copies
@@ -2774,6 +2776,17 @@ Per request the wrapper:
 > namespace, because a handler that meant to scope and got the shape wrong is the exact failure this
 > prevents.
 >
+> **`value.key` is honoured the same way** on the three item routes (`put`, `get`, `delete`), so a handler
+> can prefix a key instead of — or as well as — rooting the namespace. `store:search` and
+> `store:list_namespaces` address no single item, so assigning `value.key` there is a **500**
+> (`code: "store_key_rewrite_invalid"`): there is nowhere for it to land, and dropping it silently is the
+> same failure as dropping a namespace rewrite. Scope those two with `value.namespace`.
+>
+> Both rewrites are read from the `value` object skein hands your handler. If you supply your own
+> `AuthEngine` through `ProtocolDeps` rather than an `auth.path`, its `authorize` must return **that same
+> object** as `value` for a rewrite to be observable — an engine that returns something else is treated as
+> having rewritten nothing, exactly as before rewrites were honoured at all.
+>
 > **skein adds no scoping mechanism of its own, deliberately.** Who owns what, and how a namespace encodes
 > it, is the policy that varies most between deployments — a per-user root, a tenant prefix, a shared team
 > subtree — and your handler is the one place that can express all of them. So skein does what
@@ -3877,7 +3890,9 @@ asymmetry is deliberate — your store's durability is yours to configure, not s
 all replay their items through the adapter, landing where the server will read them. But the dev-state
 _snapshot_ covers the driver's resources only — assistants, threads, runs, crons — so an adapted
 `InMemoryStore` loses its items when `skein dev` restarts (it is in-memory and skein is not backing it up
-for you), while an adapted `PostgresStore` keeps them because it always did.
+for you), while an adapted `PostgresStore` keeps them because it always did. `skein dev` prints that
+asymmetry at startup rather than leaving you to find it by losing items: writing whatever store you brought
+into `.skein/dev-state.json` every couple of seconds is not something to do to somebody's database.
 
 **`store.index` is refused alongside an adapter.** It configures pgvector on the store the adapter
 replaces, so it could only ever have no effect on search. Configure the index on your own store instead —
@@ -3926,7 +3941,8 @@ in your graph out of pieces that already exist, and this page is the map of whic
 That is a deliberate choice. Memory is _agent behaviour_, and skein's job is durable persistence, the
 queue, the adapters and the CLI. Everything below is ~100 lines in your own graph, portable to LangGraph
 Platform because it uses `getStore()` and nothing skein-specific. Where skein does contribute — durable
-storage, per-owner scoping, semantic search, schedules — it is called out.
+storage, semantic search, schedules — it is called out. Per-owner isolation is **not** on that list: it is a
+policy your `@auth.on.store` handler decides, and [Multi-tenant memory](#multi-tenant-memory) is how.
 
 ## Contents
 
@@ -4088,12 +4104,10 @@ caller — LangGraph's own idiom, and skein honours it. See
 [agent-protocol.md](./agent-protocol.md#authentication--authorization).
 
 It covers the HTTP surface. **`getStore()` inside a graph has no request and no principal**, so nothing
-guards it for you — build its namespace from `config.configurable.langgraph_auth_user_id` (server-injected
-and unspoofable), never from model output, and use the same encoding your handler uses.
-
-Build the namespace from `config.configurable.langgraph_auth_user_id`, never from model output, and encode
-it: an identity containing `.` splits into two namespace segments on `GET /store/items`, and `PostgresStore`
-rejects `.`, `%`, `_` and `\` in a label outright.
+guards it for you. Build its namespace from `config.configurable.langgraph_auth_user_id` (server-injected and
+unspoofable), never from model output, use the same encoding your handler uses — and encode it: an identity
+containing `.` splits into two namespace segments on `GET /store/items`, and `PostgresStore` rejects `.`,
+`%`, `_` and `\` in a label outright.
 
 ## Writing memories in the background
 

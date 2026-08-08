@@ -116,6 +116,16 @@ export async function runDev(options: DevCommandOptions): Promise<void> {
       `skein: state persists in ${options.store}/${options.queue}; skipping .skein snapshot.`,
     );
   }
+  // `store.adapter` replaces the long-term store with the user's own, so its items are not in the memory
+  // driver's snapshot and cannot be — dumping somebody's Postgres into `.skein/` every two seconds is not a
+  // thing to do quietly. Said out loud, because the shape a user reaches for first is an `InMemoryStore`,
+  // whose items then vanish on restart with nothing to explain why.
+  if (canPersist && config.store?.adapter) {
+    console.log(
+      "skein: store.adapter owns long-term items; they are outside the .skein snapshot " +
+        "(use a durable store to keep them across restarts).",
+    );
+  }
   if (canPersist && existsSync(stateFile)) {
     try {
       await runtime.hydrateState?.(JSON.parse(readFileSync(stateFile, "utf8")) as DevStateSnapshot);

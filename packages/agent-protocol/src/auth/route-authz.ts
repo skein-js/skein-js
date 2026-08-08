@@ -21,10 +21,16 @@ export interface RouteAuthz {
    * `.on("threads", …)` has no callback for a resource named anything else, and `authorize` answers
    * "no filters" — which the dispatcher reads as "nothing to scope", not as "deny".
    *
-   * For `assistants` and `store` that is the documented gate-only behaviour and is harmless: neither
-   * can write into another tenant's data. `crons` is the first resource for which it is *not* — a
-   * schedule creates runs on a thread, so an unscoped cron resource would let any authenticated
-   * caller enumerate every tenant's schedules and attach one to a thread they cannot even read.
+   * For `assistants` and `store` that is the documented gate-only behaviour, and it is **not** benign
+   * for the store: an authenticated caller with no `@auth.on.store` handler reads and writes every
+   * namespace. It is deliberate nonetheless — a store item carries no metadata for an inherited filter
+   * to match, so the only thing a fallback could do here is hand a thread handler a store-shaped
+   * payload it never agreed to validate. Scoping the store is the deployment's own `@auth.on.store`
+   * handler, which can *rewrite* the namespace (see {@link rewrittenStoreTarget}); that is both what
+   * LangGraph documents and strictly more expressive than an inherited filter. `crons` is the resource
+   * for which gate-only is not just unscoped but unsafe in a way a fallback *can* fix — a schedule
+   * creates runs on a thread, so an unscoped cron resource would let any authenticated caller enumerate
+   * every tenant's schedules and attach one to a thread they cannot even read.
    *
    * So crons fall back to `threads`, which is also the honest description of what they are: runs,
    * scheduled.
@@ -264,13 +270,22 @@ export function synthesizeRequest(req: ProtocolRequest): Request {
   });
 }
 
-/** The request-body field each store route reads its namespace from. */
-const STORE_NAMESPACE_FIELD: Partial<Record<keyof ProtocolHandlers, string>> = {
-  putStoreItem: "namespace",
-  getStoreItem: "namespace",
-  deleteStoreItem: "namespace",
-  searchStoreItems: "namespace_prefix",
-  listStoreNamespaces: "prefix",
+/**
+ * The request-body fields each store route reads its target from — the inverse of
+ * {@link storeNamespace}, and the reason a rewrite can be written back at all.
+ *
+ * `key` is absent on the two search routes because they address no single item; a handler that assigns
+ * `value.key` there is asking for something the endpoint has nowhere to put, which
+ * {@link rewrittenStoreTarget} refuses rather than dropping.
+ */
+const STORE_TARGET_FIELDS: Partial<
+  Record<keyof ProtocolHandlers, { namespace: string; key?: string }>
+> = {
+  putStoreItem: { namespace: "namespace", key: "key" },
+  getStoreItem: { namespace: "namespace", key: "key" },
+  deleteStoreItem: { namespace: "namespace", key: "key" },
+  searchStoreItems: { namespace: "namespace_prefix" },
+  listStoreNamespaces: { namespace: "prefix" },
 };
 
 /** Two namespace paths are the same path. */
@@ -282,48 +297,100 @@ function sameNamespace(
   return a.length === b.length && a.every((segment, index) => segment === b[index]);
 }
 
+/** The item a store route addresses, as an `@auth.on.store` handler redirected it. */
+export interface StoreTargetRewrite {
+  namespace?: string[];
+  key?: string;
+}
+
 /**
- * `req` with its store namespace replaced by `namespace` — the LangGraph Platform idiom, where an
- * `@auth.on.store` handler **rewrites** the namespace to scope a caller rather than returning a filter.
+ * `req` with its store target replaced by `rewrite` — the LangGraph Platform idiom, where an
+ * `@auth.on.store` handler **rewrites** what the caller addressed to scope them, rather than returning a
+ * filter.
  *
- * Written into the *body* field the endpoint reads, whatever the caller used: `storeItemTarget` prefers a
- * body namespace over the query, so a `GET /store/items?namespace=…` is rewritten by adding one. The
- * original body is preserved around it, so `key` and the item `value` survive.
+ * Written into the *body* fields the endpoint reads, whatever the caller used: `storeItemTarget` prefers a
+ * body namespace over the query, so a `GET /store/items?namespace=…` is rewritten by adding one. It reads
+ * namespace and key independently, so rewriting one leaves the other's source alone. The rest of the body
+ * is preserved, so the item `value` survives.
  *
  * Trusted by construction: the mutation comes from the deployment's own auth module, which is the code
  * whose job is deciding what this caller may address.
  */
-export function withStoreNamespace(
+export function withStoreTarget(
   req: ProtocolRequest,
   handler: keyof ProtocolHandlers,
-  namespace: string[],
+  rewrite: StoreTargetRewrite,
 ): ProtocolRequest {
-  const field = STORE_NAMESPACE_FIELD[handler];
-  if (!field) return req;
+  const fields = STORE_TARGET_FIELDS[handler];
+  if (!fields) return req;
   const body = typeof req.body === "object" && req.body !== null ? req.body : {};
-  return { ...req, body: { ...body, [field]: namespace } };
+  const rewritten: Record<string, unknown> = { ...body };
+  if (rewrite.namespace) rewritten[fields.namespace] = rewrite.namespace;
+  if (rewrite.key !== undefined && fields.key) rewritten[fields.key] = rewrite.key;
+  return { ...req, body: rewritten };
 }
 
 /**
- * The namespace an `@auth.on.store` handler rewrote, or `undefined` if it left it alone.
+ * How an `@auth.on.store` handler redirected the request, or `undefined` if it left it alone.
  *
- * LangGraph documents store authorization as *mutating* `value.namespace` rather than returning ownership
- * filters — the store is the one resource whose scoping is namespace-shaped, so a metadata filter has
- * nothing to match on. skein's engine hands the handler the same `value` object it returns, so a mutation
- * is visible here; before this it was silently discarded, and a ported handler scoped nothing while
- * looking like it did.
+ * LangGraph documents store authorization as *mutating* `value` rather than returning ownership filters —
+ * the store is the one resource whose scoping is namespace-shaped, so a metadata filter has nothing to
+ * match on. skein's engine hands the handler the same `value` object it returns, so a mutation is visible
+ * here; before this it was silently discarded, and a ported handler scoped nothing while looking like it
+ * did. Both fields the server derives are honoured, `namespace` and `key`, because dropping either is the
+ * same failure one field over.
  *
- * A rewrite that is not a `string[]` throws rather than falling through to the caller's own namespace: a
+ * A rewrite that is not the right *shape* throws rather than falling through to the caller's own target: a
  * handler that meant to scope and got the shape wrong must not end up scoping nothing.
+ *
+ * **A rewrite is only read off the object skein handed in (`returned === handed`), and that guard is
+ * load-bearing twice over.** The interface types `authorize`'s reply as `{ filters?, value: unknown }` and
+ * promises nothing about *which* object comes back — skein's own engine echoes the one it was given, but an
+ * embedder implementing `AuthEngine` themselves may return a fresh object, or a defensive copy, or the
+ * filters. Without the guard:
+ *
+ * 1. A reply carrying no `namespace` reads as "the handler deleted it", which 500-ed every `/store/*`
+ *    request on a deployment that never rewrote anything.
+ * 2. Worse, a reply that is a *copy of the raw request body* reintroduces the decoy bypass `authValue`
+ *    exists to close: the store schemas are `.passthrough()`, so a caller can put a `namespace` on a
+ *    `search` request, and reading it back off a body copy would redirect `namespace_prefix` to a namespace
+ *    the **caller** chose while the handler was shown the one the server derived.
+ *
+ * So a reply that is not the object we handed in carries no observable rewrite — exactly the behaviour
+ * before rewrites were honoured at all, and never worse than it.
  */
-export function rewrittenStoreNamespace(
-  value: unknown,
-  before: readonly string[] | undefined,
+export function rewrittenStoreTarget(input: {
+  handler: keyof ProtocolHandlers;
+  /** The `value` object handed to `authorize` — the identity a rewrite has to be visible through. */
+  handed: Record<string, unknown>;
+  /** `authorize`'s reply `value`; the same object as `handed` for skein's own engine. */
+  returned: unknown;
+  /**
+   * The server's own reading, snapshotted *before* the handler ran. The namespace is compared by value
+   * because an in-place `value.namespace[0] = …` mutates the very array we would otherwise compare with;
+   * `key` stays `unknown` because on the search routes it is whatever the caller's passthrough body
+   * carried, and a caller must not be able to provoke the shape refusal below.
+   */
+  before: { namespace: string[] | undefined; key: unknown };
+}): StoreTargetRewrite | undefined {
+  const { handler, handed, returned, before } = input;
+  if (returned !== handed) return undefined;
+
+  const namespace = rewrittenNamespaceField(handed["namespace"], before.namespace);
+  const key = rewrittenKeyField(
+    handed["key"],
+    before.key,
+    STORE_TARGET_FIELDS[handler]?.key !== undefined,
+  );
+  if (!namespace && key === undefined) return undefined;
+  return { ...(namespace ? { namespace } : {}), ...(key !== undefined ? { key } : {}) };
+}
+
+/** The rewritten namespace, or `undefined` when untouched; throws on a shape the endpoint cannot use. */
+function rewrittenNamespaceField(
+  after: unknown,
+  before: string[] | undefined,
 ): string[] | undefined {
-  // `AuthEngine.authorize` types its returned value as `unknown` — it is whatever the handler was handed
-  // and may have mutated, so nothing stronger is honest.
-  if (typeof value !== "object" || value === null) return undefined;
-  const after = (value as Record<string, unknown>)["namespace"];
   if (Array.isArray(after) && after.every((segment) => typeof segment === "string")) {
     return sameNamespace(after as string[], before) ? undefined : (after as string[]);
   }
@@ -334,5 +401,38 @@ export function rewrittenStoreNamespace(
       `strings (got ${after === undefined ? "undefined" : typeof after}). Assign a \`string[]\` to scope ` +
       `the caller — e.g. \`value.namespace = [user.identity, ...value.namespace.slice(1)]\`.`,
     { code: "store_namespace_rewrite_invalid" },
+  );
+}
+
+/**
+ * The rewritten key, or `undefined` when untouched. Only ever called for the object skein handed the
+ * handler, so any difference from `before` is a mutation this server can attribute to it.
+ *
+ * `addressable` is false on the two search routes, which name no single item. A handler assigning a key
+ * there is refused rather than ignored: there is no field for it to land in, so honouring it is impossible
+ * and dropping it silently is the exact failure this function exists to prevent.
+ */
+function rewrittenKeyField(
+  after: unknown,
+  before: unknown,
+  addressable: boolean,
+): string | undefined {
+  if (after === before) return undefined;
+  if (!addressable) {
+    throw new SkeinHttpError(
+      500,
+      `An \`@auth.on.store\` handler rewrote \`value.key\` on a route that addresses no single item ` +
+        `(\`store:search\` / \`store:list_namespaces\`), so there is nothing to redirect. Scope those ` +
+        `actions with \`value.namespace\` instead.`,
+      { code: "store_key_rewrite_invalid" },
+    );
+  }
+  if (typeof after === "string") return after;
+  throw new SkeinHttpError(
+    500,
+    `An \`@auth.on.store\` handler rewrote \`value.key\` to something that is not a string (got ` +
+      `${after === undefined ? "undefined" : typeof after}). Assign a \`string\` to redirect which item ` +
+      `the caller addresses, or leave \`value.key\` alone.`,
+    { code: "store_key_rewrite_invalid" },
   );
 }

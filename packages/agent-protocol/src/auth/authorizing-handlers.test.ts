@@ -16,6 +16,8 @@ import { createFixtureDeps } from "../__fixtures__/deps.js";
 import type { ProtocolRequest } from "../create-handlers.js";
 import { createProtocolRuntime, type ProtocolRuntime } from "../runtime.js";
 
+import { ROUTE_AUTHZ } from "./route-authz.js";
+
 interface FakeEngineOptions {
   studioAuthDisabled?: boolean;
   deny?: (resource: string, action: string) => boolean;
@@ -389,9 +391,11 @@ describe("authorizing handlers", () => {
 // and an omitted prefix returns everything. Refusing wildcards would therefore be capability loss with
 // no security benefit, which is why there is no such guard.
 //
-// Per-owner store scoping is the real fix (docs/roadmap.md). When it lands these expectations must
-// invert — that is the point of writing them down.
-describe("store reads are not tenant-scoped (documented gap)", () => {
+// The fix is a deployment's own `@auth.on.store` handler, which can deny outright or rewrite the namespace
+// it is handed — see the `@auth.on.store rewriting value` block below. skein ships no scoping mechanism of
+// its own, because who owns which namespace is a policy only the deployment knows. So these expectations
+// describe a deployment that registered *no* store handler, and they stay as they are.
+describe("store reads are not tenant-scoped without a store handler", () => {
   const seed = async (target: ProtocolRuntime): Promise<void> => {
     for (const owner of ["alice", "bob"]) {
       await target.handlers.putStoreItem(
@@ -455,11 +459,12 @@ describe("store reads are not tenant-scoped (documented gap)", () => {
   });
 });
 
-// LangGraph documents store authorization as *rewriting* `value.namespace` rather than returning ownership
-// filters — the store is the one resource whose scoping is namespace-shaped, so a metadata filter has
-// nothing to match on. skein honours that mutation, which is what a ported LangGraph auth module expects.
-// Before this it was discarded: the handler ran, scoped nothing, and looked like it had.
-describe("@auth.on.store rewriting value.namespace", () => {
+// LangGraph documents store authorization as *rewriting* `value` rather than returning ownership filters —
+// the store is the one resource whose scoping is namespace-shaped, so a metadata filter has nothing to match
+// on. skein honours that mutation on both fields it derives (`namespace` and `key`), which is what a ported
+// LangGraph auth module expects. Before this it was discarded: the handler ran, scoped nothing, and looked
+// like it had.
+describe("@auth.on.store rewriting value", () => {
   /** An engine whose store handler rewrites the namespace's first segment to the caller, as the docs show. */
   const rewriting = (
     mutate: (value: Record<string, unknown>, identity: string) => void,
@@ -592,21 +597,74 @@ describe("@auth.on.store rewriting value.namespace", () => {
     );
   });
 
-  it("ignores a namespace the `threads` fallback handler touched", async () => {
-    // Both `authorize` calls get the same `value` object, so the rewrite has to be read *before* the
-    // fallback runs — otherwise the fallback becomes a namespace-rewrite channel for a thread handler that
-    // never opted into being one. This pins that ordering.
+  it("honours a rewritten `value.key`, which redirects which item is addressed", async () => {
+    // The same idiom one field over. Dropping a key rewrite would be the identical failure — a handler
+    // that scoped by key prefix, ran, and looked like it had.
+    const runtime = createProtocolRuntime(
+      createFixtureDeps({
+        auth: rewriting((value, identity) => {
+          value["key"] = `${identity}:${String(value["key"])}`;
+        }),
+      }),
+    );
+
+    await runtime.handlers.putStoreItem(
+      asUser("alice", {
+        method: "PUT",
+        body: { namespace: ["shared"], key: "note", value: { text: "alice" } },
+      }),
+    );
+
+    expect((await runtime.service.store.get(["shared"], "alice:note")).value).toEqual({
+      text: "alice",
+    });
+    await expect(runtime.service.store.get(["shared"], "note")).rejects.toThrow();
+  });
+
+  it("refuses a `value.key` rewrite on a route that addresses no single item", async () => {
+    // `store:search` has no key to redirect, so the endpoint has nowhere to put one. Refusing says that;
+    // ignoring it would be the silent drop this whole feature exists to prevent.
+    const runtime = createProtocolRuntime(
+      createFixtureDeps({
+        auth: rewriting((value) => {
+          value["key"] = "note";
+        }),
+      }),
+    );
+
+    await expect(
+      runtime.handlers.searchStoreItems(
+        asUser("alice", { method: "POST", body: { namespace_prefix: ["shared"] } }),
+      ),
+    ).rejects.toSatisfy(
+      (error: unknown) => isSkeinHttpError(error) && error.code === "store_key_rewrite_invalid",
+    );
+  });
+
+  it("does not mistake a caller's own body `key` for a rewrite on a search route", async () => {
+    // The store schemas are `.passthrough()`, so a stray `key` in a search body reaches `value` untouched.
+    // Reading that as a handler mutation would let any caller provoke the 500 above.
+    const runtime = createProtocolRuntime(createFixtureDeps({ auth: rewriting(() => undefined) }));
+    await runtime.service.store.put(["shared"], "note", { text: "shared" });
+
+    const response = await runtime.handlers.searchStoreItems(
+      asUser("alice", { method: "POST", body: { namespace_prefix: ["shared"], key: 42 } }),
+    );
+
+    const { items } = (response as { body: { items: { value: { text: string } }[] } }).body;
+    expect(items.map((item) => item.value.text)).toEqual(["shared"]);
+  });
+
+  it("serves a custom AuthEngine that does not hand back the object it was given", async () => {
+    // `AuthEngine.authorize` promises only `{ filters?, value: unknown }` — an embedder's own engine may
+    // return a fresh object, and skein's own is the only one that echoes. Reading a missing `namespace` off
+    // such a reply as "the handler deleted it" 500-ed every `/store/*` request on a deployment that never
+    // rewrote anything.
     const runtime = createProtocolRuntime(
       createFixtureDeps({
         auth: {
           ...fakeEngine(),
-          authorize: async ({ resource, value, context }) => {
-            // No store handler at all, so a store route falls back to `threads` — which rewrites.
-            if (resource === "threads" && context) {
-              (value as Record<string, unknown>)["namespace"] = ["hijacked"];
-            }
-            return { filters: undefined, value };
-          },
+          authorize: async () => ({ filters: undefined, value: { unrelated: true } }),
         },
       }),
     );
@@ -614,13 +672,65 @@ describe("@auth.on.store rewriting value.namespace", () => {
     await runtime.handlers.putStoreItem(
       asUser("alice", {
         method: "PUT",
-        body: { namespace: ["asked"], key: "note", value: { text: "x" } },
+        body: { namespace: ["shared"], key: "note", value: { text: "as asked" } },
       }),
     );
 
-    // Written where the caller asked, not where the thread handler tried to send it.
-    expect((await runtime.service.store.get(["asked"], "note")).value).toEqual({ text: "x" });
-    await expect(runtime.service.store.get(["hijacked"], "note")).rejects.toThrow();
+    expect((await runtime.service.store.get(["shared"], "note")).value).toEqual({
+      text: "as asked",
+    });
+  });
+
+  it("does not read a rewrite off an engine that hands back a copy of the request body", async () => {
+    // The narrow-but-real reason the identity guard covers `namespace` too, not just `key`. The store
+    // schemas are `.passthrough()`, so alice can plant a decoy `namespace` on a *search* — the field the
+    // endpoint ignores in favour of `namespace_prefix`. An engine returning a defensive copy of the raw body
+    // would surface that decoy as if the handler had chosen it, redirecting the search to a namespace the
+    // caller picked while the handler was shown the one the server derived. That is the very bypass
+    // `authValue` closes, arriving through the back door.
+    const runtime = createProtocolRuntime(
+      createFixtureDeps({
+        auth: {
+          ...fakeEngine(),
+          authorize: async ({ value }) => ({
+            filters: undefined,
+            value: { ...(value as Record<string, unknown>) },
+          }),
+        },
+      }),
+    );
+    await runtime.service.store.put(["alice"], "a", { text: "alice" });
+    await runtime.service.store.put(["bob"], "b", { text: "bob" });
+
+    const response = await runtime.handlers.searchStoreItems(
+      asUser("alice", {
+        method: "POST",
+        body: { namespace_prefix: ["alice"], namespace: ["bob"] },
+      }),
+    );
+
+    // Served from the prefix the caller actually sent, not from the decoy.
+    const { items } = (response as { body: { items: { value: { text: string } }[] } }).body;
+    expect(items.map((item) => item.value.text)).toEqual(["alice"]);
+  });
+
+  it("gives store routes no `fallbackResource`, so no second handler can rewrite through them", () => {
+    // Both `authorize` calls are handed the *same* `value` object, so a fallback handler's mutation would be
+    // read as the store handler's — turning the fallback into a namespace-rewrite channel for a resource
+    // that never opted into being one. `createAuthorizingHandlers` reads the rewrite before the fallback
+    // runs for that reason; this pins the invariant that makes the situation unreachable today, so adding a
+    // store fallback later trips here rather than silently gaining the channel.
+    const storeRoutes = Object.entries(ROUTE_AUTHZ).filter(
+      ([, route]) => route.resource === "store",
+    );
+
+    expect(storeRoutes.length).toBeGreaterThan(0);
+    for (const [name, route] of storeRoutes) {
+      expect(
+        route.fallbackResource,
+        `${name} must not inherit a fallback resource`,
+      ).toBeUndefined();
+    }
   });
 });
 

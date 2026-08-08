@@ -91,7 +91,18 @@ export interface SkeinRuntime {
   reloadGraphs(): Promise<void>;
   /** Tear down whichever concrete Postgres/Redis resources were created (no-op for all-memory). */
   dispose(): Promise<void>;
-  /** Present only in all-memory mode — durable stores keep their own state. */
+  /**
+   * Present only in all-memory mode — durable stores keep their own state.
+   *
+   * **A configured `store.adapter` is excluded from the snapshot, and deliberately.** The snapshot is the
+   * memory driver's own rows, and with an adapter nothing writes long-term items there: every reader and
+   * writer goes through `deps.storeItems`. Enumerating the adapter instead would mean serializing whatever
+   * store the user brought — quite possibly a live Postgres — into `.skein/dev-state.json` on every
+   * autosave, which is the wrong thing to do to somebody's database. So the adapter owns its own durability,
+   * exactly as the Postgres driver does, and `skein dev` says so at startup rather than leaving a user to
+   * discover it by losing an in-memory adapter's items across a restart. {@link hydrateState} still replays
+   * *into* an adapter, because an import is an explicit one-time act rather than a periodic dump.
+   */
   snapshotState?(): DevStateSnapshot;
   /**
    * Present only in all-memory mode.

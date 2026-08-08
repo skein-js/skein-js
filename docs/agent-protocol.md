@@ -515,6 +515,17 @@ Per request the wrapper:
 > namespace, because a handler that meant to scope and got the shape wrong is the exact failure this
 > prevents.
 >
+> **`value.key` is honoured the same way** on the three item routes (`put`, `get`, `delete`), so a handler
+> can prefix a key instead of — or as well as — rooting the namespace. `store:search` and
+> `store:list_namespaces` address no single item, so assigning `value.key` there is a **500**
+> (`code: "store_key_rewrite_invalid"`): there is nowhere for it to land, and dropping it silently is the
+> same failure as dropping a namespace rewrite. Scope those two with `value.namespace`.
+>
+> Both rewrites are read from the `value` object skein hands your handler. If you supply your own
+> `AuthEngine` through `ProtocolDeps` rather than an `auth.path`, its `authorize` must return **that same
+> object** as `value` for a rewrite to be observable — an engine that returns something else is treated as
+> having rewritten nothing, exactly as before rewrites were honoured at all.
+>
 > **skein adds no scoping mechanism of its own, deliberately.** Who owns what, and how a namespace encodes
 > it, is the policy that varies most between deployments — a per-user root, a tenant prefix, a shared team
 > subtree — and your handler is the one place that can express all of them. So skein does what

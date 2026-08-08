@@ -14,12 +14,7 @@ import { createProtocolServiceFromContext } from "../service.js";
 
 import { createAuthScopedStore } from "./auth-scoped-store.js";
 import { resolveAuthContext } from "./authenticate-request.js";
-import {
-  authValue,
-  rewrittenStoreNamespace,
-  ROUTE_AUTHZ,
-  withStoreNamespace,
-} from "./route-authz.js";
+import { authValue, rewrittenStoreTarget, ROUTE_AUTHZ, withStoreTarget } from "./route-authz.js";
 
 /**
  * Build a handler table that authenticates and authorizes every request before dispatch. Studio
@@ -52,16 +47,17 @@ export function createAuthorizingHandlers(
       // The handler name is passed so store routes get their `namespace` normalized to the shape the
       // SDK declares, server-derived rather than taken from the body — see `authValue`.
       const value = authValue(req, name);
-      // A **copy**, captured before the handler runs, so a rewrite can be told from the server's own
-      // reading. Aliasing the array instead made an *in-place* rewrite (`value.namespace[0] = identity`)
-      // invisible — and worse, inconsistently so: for `put`/`search` the array is the body's own, so the
-      // mutation took effect anyway, while for `get`/`delete` it is a fresh array parsed from the query and
-      // the rewrite silently did nothing. Scoping that works on three routes and fails on two is the worst
-      // of the available outcomes.
+      // The server's own reading, captured before the handler runs, so a rewrite can be told from it. The
+      // namespace is **copied**: aliasing the array made an *in-place* rewrite
+      // (`value.namespace[0] = identity`) invisible — and worse, inconsistently so, since for
+      // `put`/`search` the array is the body's own and the mutation took effect anyway, while for
+      // `get`/`delete` it is a fresh array parsed from the query and the rewrite silently did nothing.
+      // Scoping that works on three routes and fails on two is the worst of the available outcomes.
       const namespaceValue = value["namespace"];
-      const derivedNamespace = Array.isArray(namespaceValue)
-        ? [...(namespaceValue as string[])]
-        : undefined;
+      const targetBefore = {
+        namespace: Array.isArray(namespaceValue) ? [...(namespaceValue as string[])] : undefined,
+        key: value["key"],
+      };
       const primary = await engine.authorize({
         resource: route.resource,
         action: route.action,
@@ -69,24 +65,30 @@ export function createAuthorizingHandlers(
         context: authContext,
       });
 
-      // LangGraph documents store authorization as *rewriting* `value.namespace` rather than returning
-      // ownership filters — the store is the one resource whose scoping is namespace-shaped, so a metadata
-      // filter has nothing to match on. The engine hands the handler the same `value` object it returns, so
-      // a mutation is visible; honoured here rather than discarded, which is what a ported LangGraph auth
-      // module expects and what previously scoped nothing while looking like it did.
+      // LangGraph documents store authorization as *rewriting* `value` rather than returning ownership
+      // filters — the store is the one resource whose scoping is namespace-shaped, so a metadata filter has
+      // nothing to match on. The engine hands the handler the same `value` object it returns, so a mutation
+      // is visible; honoured here rather than discarded, which is what a ported LangGraph auth module
+      // expects and what previously scoped nothing while looking like it did.
       //
-      // Only the route's *own* resource is consulted: the `threads` fallback below exists to inherit
-      // ownership filters, and a thread handler has no business redirecting a store namespace.
+      // Only the route's *own* resource is consulted: the fallback below exists to inherit ownership
+      // filters, and a handler for another resource has no business redirecting a store namespace.
       //
-      // **Read before the fallback runs, and that ordering is load-bearing.** Both `authorize` calls are
-      // handed the *same* `value` object, so a fallback handler's mutation would otherwise be picked up
-      // here too — turning the fallback into a namespace-rewrite channel for handlers that never opted
-      // into being one. Moving the fallback above this line would reintroduce that.
+      // **Read before the fallback runs.** Both `authorize` calls are handed the *same* `value` object, so
+      // a fallback handler's mutation would otherwise be picked up here too — turning the fallback into a
+      // namespace-rewrite channel for handlers that never opted into being one. Store routes declare no
+      // `fallbackResource` today (pinned in `authorizing-handlers.test.ts`), so this ordering is what keeps
+      // adding one later from quietly becoming that channel.
       const scopedRequest =
         route.resource === "store"
           ? (() => {
-              const rewritten = rewrittenStoreNamespace(primary.value, derivedNamespace);
-              return rewritten ? withStoreNamespace(req, name, rewritten) : req;
+              const rewritten = rewrittenStoreTarget({
+                handler: name,
+                handed: value,
+                returned: primary.value,
+                before: targetBefore,
+              });
+              return rewritten ? withStoreTarget(req, name, rewritten) : req;
             })()
           : req;
 

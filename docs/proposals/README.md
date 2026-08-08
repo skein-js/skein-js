@@ -42,11 +42,11 @@ Together they form one round trip that needs no browser: **durable-delivery** ma
 trustworthy (the answer gets back), **inbound-events** makes the inbound leg cheap (the event gets
 in).
 
-| Proposal                                     | Status        | Summary                                                                                                                                |
-| -------------------------------------------- | ------------- | -------------------------------------------------------------------------------------------------------------------------------------- |
-| [durable-delivery.md](./durable-delivery.md) | Partly landed | Idempotent run creation **shipped**; durable, signed, retried run-completion delivery still planned                                    |
-| [inbound-events.md](./inbound-events.md)     | Draft (rev 2) | A generic, optional inbound event pipeline — plugin interface plus three capped first-party sources                                    |
-| [long-term-memory.md](./long-term-memory.md) | Resolved      | Traversal, BYO store and per-owner scoping shipped; the shapes became a recipe ([memory.md](../memory.md)) and the trigger is deferred |
+| Proposal                                     | Status        | Summary                                                                                                                                              |
+| -------------------------------------------- | ------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------- |
+| [durable-delivery.md](./durable-delivery.md) | Partly landed | Idempotent run creation **shipped**; durable, signed, retried run-completion delivery still planned                                                  |
+| [inbound-events.md](./inbound-events.md)     | Draft (rev 2) | A generic, optional inbound event pipeline — plugin interface plus three capped first-party sources                                                  |
+| [long-term-memory.md](./long-term-memory.md) | Resolved      | Traversal and BYO store shipped; scoping stayed the deployment's; the shapes became a recipe ([memory.md](../memory.md)) and the trigger is deferred |
 
 **The two statuses differ in kind, not just maturity.** `durable-delivery` closed a gap that already
 existed and already bit, and its open questions were about _how_, not _whether_. Its **phase 1

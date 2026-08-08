@@ -9,8 +9,9 @@
 //
 //   - `search`'s prefix is a raw **string** prefix (`namespace.startsWith(prefix.join(":"))`), where
 //     skein's is segment-wise. So a prefix of `["users"]` there also matches `["users2", …]`, and a
-//     prefix of `["@u","alice"]` also matches `["@u","alice2", …]`. Once per-owner store scoping lands
-//     and derives a namespace root from the principal, that difference is a cross-tenant read.
+//     prefix of `["@u","alice"]` also matches `["@u","alice2", …]`. For a deployment whose
+//     `@auth.on.store` handler roots the namespace at the principal, that difference is a cross-tenant
+//     read — the scoping is sound and the store it sits on top of leaks past it.
 //     (Confusingly, the same class's `listNamespaces` *is* segment-wise and wildcard-aware. The two
 //     disagree with each other upstream.)
 //   - `search` **silently ignores `query`** when no index is configured, where skein's drivers fall

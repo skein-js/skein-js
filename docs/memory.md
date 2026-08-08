@@ -7,7 +7,8 @@ in your graph out of pieces that already exist, and this page is the map of whic
 That is a deliberate choice. Memory is _agent behaviour_, and skein's job is durable persistence, the
 queue, the adapters and the CLI. Everything below is ~100 lines in your own graph, portable to LangGraph
 Platform because it uses `getStore()` and nothing skein-specific. Where skein does contribute — durable
-storage, per-owner scoping, semantic search, schedules — it is called out.
+storage, semantic search, schedules — it is called out. Per-owner isolation is **not** on that list: it is a
+policy your `@auth.on.store` handler decides, and [Multi-tenant memory](#multi-tenant-memory) is how.
 
 ## Contents
 
@@ -169,12 +170,10 @@ caller — LangGraph's own idiom, and skein honours it. See
 [agent-protocol.md](./agent-protocol.md#authentication--authorization).
 
 It covers the HTTP surface. **`getStore()` inside a graph has no request and no principal**, so nothing
-guards it for you — build its namespace from `config.configurable.langgraph_auth_user_id` (server-injected
-and unspoofable), never from model output, and use the same encoding your handler uses.
-
-Build the namespace from `config.configurable.langgraph_auth_user_id`, never from model output, and encode
-it: an identity containing `.` splits into two namespace segments on `GET /store/items`, and `PostgresStore`
-rejects `.`, `%`, `_` and `\` in a label outright.
+guards it for you. Build its namespace from `config.configurable.langgraph_auth_user_id` (server-injected and
+unspoofable), never from model output, use the same encoding your handler uses — and encode it: an identity
+containing `.` splits into two namespace segments on `GET /store/items`, and `PostgresStore` rejects `.`,
+`%`, `_` and `\` in a label outright.
 
 ## Writing memories in the background
 
