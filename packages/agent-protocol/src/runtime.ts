@@ -138,7 +138,10 @@ export function createProtocolRuntime(
           authorizeReplay: async (req, handlerName, recordedThreadId) => {
             const authContext = await resolveAuthContext(authEngine, req);
             const route = ROUTE_AUTHZ[handlerName];
-            const value = authValue(req);
+            // Same normalization as the live path. No store route is recordable today, so this is
+            // consistency rather than a fix — but a payload that differs between first call and replay
+            // is exactly the divergence `authValue` exists to prevent.
+            const value = authValue(req, handlerName);
             const primary = await authEngine.authorize({
               resource: route.resource,
               action: route.action,

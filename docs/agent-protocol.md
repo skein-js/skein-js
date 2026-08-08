@@ -325,10 +325,15 @@ server `langgraph dev` would have answered. It exposes only versions and which r
 | Method   | Path                  | Notes                                          |
 | -------- | --------------------- | ---------------------------------------------- |
 | `PUT`    | `/store/items`        | Upsert an item (optional `ttl`)                |
-| `GET`    | `/store/items`        | Fetch by namespace + key                       |
-| `DELETE` | `/store/items`        |                                                |
+| `GET`    | `/store/items`        | Fetch by `?namespace=a.b&key=…`                |
+| `DELETE` | `/store/items`        | `{ namespace, key }` in the body, or the query |
 | `POST`   | `/store/items/search` | pgvector semantic search, `filter` → `{items}` |
 | `POST`   | `/store/namespaces`   | Prefix/suffix/depth → `{namespaces}`           |
+
+**`DELETE` takes a body.** The SDK's two single-item methods use different transports on the same path:
+`store.getItem` sends `?namespace=a.b&key=…`, while `store.deleteItem` sends a JSON body with
+`namespace` already an array. skein accepts **either** on both, body first. Reading only the query made
+every SDK `deleteItem` a silent no-op — empty namespace, empty key, nothing deleted, `204`.
 
 **Response shapes.** Search returns `{ "items": [...] }` and namespaces `{ "namespaces": [...] }` —
 the envelopes the SDK's `store.searchItems` / `store.listNamespaces` read. Store items carry
@@ -490,6 +495,63 @@ Per request the wrapper:
    thread the caller cannot read. `assistants` and `store` are **gate-only** — their handlers can deny
    (`403`), but no ownership filter is applied yet (graph assistants have no owner and must stay
    runnable; store items carry no metadata to filter on).
+
+> **The store is not tenant-scoped. If you serve more than one tenant, you must scope it yourself.**
+>
+> Because `store` is gate-only, nothing narrows a store read. The namespace is a request parameter, so
+> an authenticated caller can send `{"namespace_prefix": ["memories"]}` — or omit the prefix entirely —
+> and read **every** tenant's items; `POST /store/namespaces` likewise returns every tenant's namespace
+> names. Per-owner store scoping is on the [roadmap](./roadmap.md); until it lands, the deny handler
+> below is the control.
+>
+> ```ts
+> /**
+>  * A namespace label is one segment, so it must contain neither `.` (the query separator) nor `*`
+>  * (the positional wildcard, which would match every tenant's first segment).
+>  * `encodeURIComponent` escapes neither, so do it explicitly.
+>  */
+> const tenantLabel = (identity: string) =>
+>   encodeURIComponent(identity).replace(/\./g, "%2E").replace(/\*/g, "%2A");
+>
+> auth.on("store", ({ user, value }) => {
+>   // `value.namespace` is the namespace this request will actually operate on, server-derived.
+>   // It is absent when the request names none — which on search means "every namespace".
+>   const namespace = value.namespace;
+>   if (!namespace?.length || namespace[0] !== tenantLabel(user.identity)) {
+>     throw new HTTPException(403, { message: "Out of scope." });
+>   }
+> });
+> ```
+>
+> **Require a namespace; don't merely reject suspicious ones.** A deny handler can only refuse a whole
+> request, never filter what comes back — so the check above insists on a namespace rooted at the
+> principal. Rejecting only the shapes that _look_ dangerous fails: an absent `namespace_prefix` reads
+> every tenant, and a `"*"` wildcard matches a strict **subset** of what the shorter literal prefix
+> already returns, so blocking wildcards buys nothing.
+>
+> **Encode the identity — don't use it raw.** `GET /store/items` takes its namespace as a dot-joined
+> query string, so a label containing a `.` splits into two segments: identity `alice@corp.com` writes
+> to `["alice@corp.com", …]` over `PUT` (a JSON array) but reads back as `["alice@corp", "com", …]`, and
+> the check then fails. Emails and OIDC subjects hit this constantly. Note `encodeURIComponent` does
+> **not** escape `.`, which is why the helper above escapes it explicitly — and the SDK's own client
+> rejects a label containing a literal `.` before it sends, so a dot-free label is required either way.
+> Use the same function wherever you build the namespace, including inside your graph.
+>
+> **Migration note.** Before this normalization, `value.namespace` on `GET`/`DELETE /store/items` was
+> the raw dot-joined **string** from the query. It is now `string[]` on every store action, matching the
+> SDK's declared types. A handler doing string operations on it (`value.namespace.startsWith(…)`, or a
+> `===` against a joined identity) needs updating — it will now throw or deny.
+>
+> **`value.namespace` is server-derived, and that is what makes it trustworthy.** skein sets it after
+> merging the body, from the field the endpoint will really use (`namespace_prefix` on search, `prefix`
+> on namespaces, body-or-query on `GET`/`DELETE`). Store bodies are `passthrough`, so otherwise a
+> caller could send a decoy `namespace` that satisfied the handler while the endpoint searched from an
+> absent `namespace_prefix`. It also means a handler written against LangGraph Platform's published
+> `Auth` types — which declare `namespace` on every store action — works here unchanged.
+>
+> **A handler cannot cover `getStore()` inside a graph.** That is not an HTTP request and has no
+> principal, so a graph node reaches the whole store regardless. Build the namespace from
+> `config.configurable.langgraph_auth_user_id`, never from model output.
 
 **Ownership scoping runs in the database.** A thread search under an ownership filter translates the
 filter into a metadata containment clause the driver matches (`metadata @> …` in Postgres, hitting the

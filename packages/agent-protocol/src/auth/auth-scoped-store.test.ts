@@ -149,6 +149,24 @@ describe("createAuthScopedStore", () => {
     expect(found[0]?.metadata?.["owner"]).toBe("alice");
   });
 
+  // Both drivers expose `maxPageSize` and `durable` as class **getters**. Object spread copies own
+  // enumerable properties only, so a prototype accessor is dropped silently — and because both fields
+  // are optional, the type checker cannot see it. `maxPageSize` reading as `undefined` would quietly
+  // disable `cancelMany`'s truncation reporting; `durable` has no per-request reader yet, and is pinned
+  // here so it cannot acquire one and be wrong.
+  it("carries maxPageSize and durable through every branch, despite them being prototype getters", () => {
+    const inner = new MemorySkeinStore({ maxPageSize: 7 });
+    // The trap itself: neither is an own property, so `{ ...inner }` alone would lose both.
+    expect(Object.hasOwn(inner, "maxPageSize")).toBe(false);
+    expect(Object.hasOwn(inner, "durable")).toBe(false);
+
+    for (const resource of ["threads", "crons", "store", "assistants"] as const) {
+      const scoped = createAuthScopedStore(inner, ownerEngine, { owner: "alice" }, resource);
+      expect(scoped.maxPageSize, resource).toBe(7);
+      expect(scoped.durable, resource).toBe(false);
+    }
+  });
+
   // The scoped `list` has to go through `search` for the same reason: it takes no filter of its own, so
   // filtering its page afterwards hides rows past the page bound.
   it("scopes list to the caller's own threads, past the page bound", async () => {

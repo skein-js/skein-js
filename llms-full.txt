@@ -277,13 +277,12 @@ skein build -t my-agent --runtime bun       # native Bun image (Deno is also ava
 skein dockerfile -o Dockerfile              # emit a standalone Dockerfile
 ```
 
-| Command     | What it does                                                              | LangGraph CLI equivalent |
-| ----------- | ------------------------------------------------------------------------- | ------------------------ |
-| `skein dev` | In-process dev server: vite-loaded TS graphs, hot reload, `.skein/` state | `langgraph dev`          |
-
-| `skein up` | Production Docker Compose stack (app + Postgres + Redis) | `langgraph up` |
-| `skein build` | Build a deployable Docker image | `langgraph build` |
-| `skein dockerfile` | Emit a standalone Dockerfile | `langgraph dockerfile` |
+| Command            | What it does                                                              | LangGraph CLI equivalent |
+| ------------------ | ------------------------------------------------------------------------- | ------------------------ |
+| `skein dev`        | In-process dev server: vite-loaded TS graphs, hot reload, `.skein/` state | `langgraph dev`          |
+| `skein up`         | Production Docker Compose stack (app + Postgres + Redis)                  | `langgraph up`           |
+| `skein build`      | Build a deployable Docker image                                           | `langgraph build`        |
+| `skein dockerfile` | Emit a standalone Dockerfile                                              | `langgraph dockerfile`   |
 
 Useful `skein dev` flags: `-p, --port` (default 2024), `--host`, `--store memory|postgres`,
 `--queue memory|redis`, `--concurrency` (background runs at once, default 10 — also
@@ -2584,10 +2583,15 @@ server `langgraph dev` would have answered. It exposes only versions and which r
 | Method   | Path                  | Notes                                          |
 | -------- | --------------------- | ---------------------------------------------- |
 | `PUT`    | `/store/items`        | Upsert an item (optional `ttl`)                |
-| `GET`    | `/store/items`        | Fetch by namespace + key                       |
-| `DELETE` | `/store/items`        |                                                |
+| `GET`    | `/store/items`        | Fetch by `?namespace=a.b&key=…`                |
+| `DELETE` | `/store/items`        | `{ namespace, key }` in the body, or the query |
 | `POST`   | `/store/items/search` | pgvector semantic search, `filter` → `{items}` |
 | `POST`   | `/store/namespaces`   | Prefix/suffix/depth → `{namespaces}`           |
+
+**`DELETE` takes a body.** The SDK's two single-item methods use different transports on the same path:
+`store.getItem` sends `?namespace=a.b&key=…`, while `store.deleteItem` sends a JSON body with
+`namespace` already an array. skein accepts **either** on both, body first. Reading only the query made
+every SDK `deleteItem` a silent no-op — empty namespace, empty key, nothing deleted, `204`.
 
 **Response shapes.** Search returns `{ "items": [...] }` and namespaces `{ "namespaces": [...] }` —
 the envelopes the SDK's `store.searchItems` / `store.listNamespaces` read. Store items carry
@@ -2749,6 +2753,63 @@ Per request the wrapper:
    thread the caller cannot read. `assistants` and `store` are **gate-only** — their handlers can deny
    (`403`), but no ownership filter is applied yet (graph assistants have no owner and must stay
    runnable; store items carry no metadata to filter on).
+
+> **The store is not tenant-scoped. If you serve more than one tenant, you must scope it yourself.**
+>
+> Because `store` is gate-only, nothing narrows a store read. The namespace is a request parameter, so
+> an authenticated caller can send `{"namespace_prefix": ["memories"]}` — or omit the prefix entirely —
+> and read **every** tenant's items; `POST /store/namespaces` likewise returns every tenant's namespace
+> names. Per-owner store scoping is on the [roadmap](./roadmap.md); until it lands, the deny handler
+> below is the control.
+>
+> ```ts
+> /**
+>  * A namespace label is one segment, so it must contain neither `.` (the query separator) nor `*`
+>  * (the positional wildcard, which would match every tenant's first segment).
+>  * `encodeURIComponent` escapes neither, so do it explicitly.
+>  */
+> const tenantLabel = (identity: string) =>
+>   encodeURIComponent(identity).replace(/\./g, "%2E").replace(/\*/g, "%2A");
+>
+> auth.on("store", ({ user, value }) => {
+>   // `value.namespace` is the namespace this request will actually operate on, server-derived.
+>   // It is absent when the request names none — which on search means "every namespace".
+>   const namespace = value.namespace;
+>   if (!namespace?.length || namespace[0] !== tenantLabel(user.identity)) {
+>     throw new HTTPException(403, { message: "Out of scope." });
+>   }
+> });
+> ```
+>
+> **Require a namespace; don't merely reject suspicious ones.** A deny handler can only refuse a whole
+> request, never filter what comes back — so the check above insists on a namespace rooted at the
+> principal. Rejecting only the shapes that _look_ dangerous fails: an absent `namespace_prefix` reads
+> every tenant, and a `"*"` wildcard matches a strict **subset** of what the shorter literal prefix
+> already returns, so blocking wildcards buys nothing.
+>
+> **Encode the identity — don't use it raw.** `GET /store/items` takes its namespace as a dot-joined
+> query string, so a label containing a `.` splits into two segments: identity `alice@corp.com` writes
+> to `["alice@corp.com", …]` over `PUT` (a JSON array) but reads back as `["alice@corp", "com", …]`, and
+> the check then fails. Emails and OIDC subjects hit this constantly. Note `encodeURIComponent` does
+> **not** escape `.`, which is why the helper above escapes it explicitly — and the SDK's own client
+> rejects a label containing a literal `.` before it sends, so a dot-free label is required either way.
+> Use the same function wherever you build the namespace, including inside your graph.
+>
+> **Migration note.** Before this normalization, `value.namespace` on `GET`/`DELETE /store/items` was
+> the raw dot-joined **string** from the query. It is now `string[]` on every store action, matching the
+> SDK's declared types. A handler doing string operations on it (`value.namespace.startsWith(…)`, or a
+> `===` against a joined identity) needs updating — it will now throw or deny.
+>
+> **`value.namespace` is server-derived, and that is what makes it trustworthy.** skein sets it after
+> merging the body, from the field the endpoint will really use (`namespace_prefix` on search, `prefix`
+> on namespaces, body-or-query on `GET`/`DELETE`). Store bodies are `passthrough`, so otherwise a
+> caller could send a decoy `namespace` that satisfied the handler while the endpoint searched from an
+> absent `namespace_prefix`. It also means a handler written against LangGraph Platform's published
+> `Auth` types — which declare `namespace` on every store action — works here unchanged.
+>
+> **A handler cannot cover `getStore()` inside a graph.** That is not an HTTP request and has no
+> principal, so a graph node reaches the whole store regardless. Build the namespace from
+> `config.configurable.langgraph_auth_user_id`, never from model output.
 
 **Ownership scoping runs in the database.** A thread search under an ownership filter translates the
 filter into a metadata containment clause the driver matches (`metadata @> …` in Postgres, hitting the
@@ -3550,6 +3611,20 @@ against — so the contract is the element-wise order, not a byte-exact one.
 > `listNamespaces({ prefix: ["users"] })`. Like every other list path, it now applies the driver's
 > page bound when the caller names no `limit`.
 
+#### None of this is a tenant boundary
+
+`prefix`, `suffix` and `filter` are _request parameters_, not access control. An omitted prefix matches
+every namespace and a short one matches every namespace beneath it, so a caller who can reach
+`POST /store/items/search` can read every item in the store — no wildcard required.
+
+With [auth](./agent-protocol.md#authentication--authorization) enabled the `store` resource is **gated
+but not filtered**: an `@auth.on.store` handler can deny a request, but nothing narrows what a permitted
+one returns. If you serve more than one tenant, that handler is the control, and it must _require_ a
+namespace rooted at the principal rather than filter the response. It also cannot reach `getStore()`
+inside a graph — no request, no principal. The pattern and its limits are in
+[agent-protocol.md](./agent-protocol.md#authentication--authorization); per-owner store scoping is on the
+[roadmap](./roadmap.md).
+
 ### Store item TTL
 
 Store items can expire, matching LangGraph's store TTL. Configure it in `langgraph.json` under
@@ -4289,9 +4364,9 @@ Two things worth knowing before you enable it on a public host:
 | View            | What it is for                                                                                                                                                                              |
 | --------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | **Playground**  | Pick a graph and run it: a chat transcript for graphs with a `messages` channel, a JSON editor for everything else. Streams live, and surfaces interrupts inline. This is the landing page. |
-| **Overview**    | **Waiting for you** (threads parked on `interrupt()`, linking straight to the filtered list), counts, recent threads, and the `GET /info` capability handshake. |
+| **Overview**    | **Waiting for you** (threads parked on `interrupt()`, linking straight to the filtered list), counts, recent threads, and the `GET /info` capability handshake.                             |
 | **Assistants**  | Every registered graph, its schemas, its graph shape, its version history.                                                                                                                  |
-| **Threads**     | Filter by status (`#/threads?status=interrupted` is a shareable link); per thread: state, runs, checkpoints, and pending interrupts.                                                                                                              |
+| **Threads**     | Filter by status (`#/threads?status=interrupted` is a shareable link); per thread: state, runs, checkpoints, and pending interrupts.                                                        |
 | **Runs**        | Live SSE tail, cancel, rollback, delete. Works on finished runs too — the server replays what it persisted.                                                                                 |
 | **Interrupts**  | The "Waiting for you" panel: approve, reject, or resume with any JSON value.                                                                                                                |
 | **Time travel** | Open a past checkpoint, edit its state, fork it, and run forward from the fork.                                                                                                             |

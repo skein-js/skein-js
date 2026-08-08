@@ -73,7 +73,9 @@ Also shipped, beyond the original MVP plan:
   inherits it. Per-request authenticate (`401`) + authorize per resource/action (`403`) with ownership
   filters, pushed into the driver query rather than applied to a full read. See
   [agent-protocol.md](./agent-protocol.md#authentication--authorization). _Follow-up:_ per-owner scoping
-  for `assistants` / `store`.
+  for `assistants` / `store`. **`store` is the one that bites:** it is gated but not filtered, so a
+  multi-tenant deployment must scope namespaces in its own `@auth.on.store` handler — and no handler can
+  cover `getStore()` inside a graph, which is why the filter has to land here rather than in user code.
 - ✅ **Assistants CRUD + versioning (LangGraph parity)** — the full SDK surface beyond the
   auto-registered one-per-graph assistant: `POST/PATCH/DELETE`, `search`/`count`, immutable version
   history with rollback, and graph/subgraph introspection. See

@@ -191,10 +191,11 @@ export function createGraphInvokeHandler(
       await deps.auth.authorize({
         resource: "threads",
         action: "create_run",
-        // `authValue` spreads the body last, and on this surface the body is arbitrary caller-supplied
-        // graph input — so a body key named `graph_id` would shadow the path param and let a policy
-        // authorize a different graph than the one that actually runs. Re-stamp the server-derived id
-        // last so the value a policy judges is always the graph we execute.
+        // On this surface the body is arbitrary caller-supplied graph input, so a body key named
+        // `graph_id` must not decide which graph a policy judges. `authValue` now spreads `req.params`
+        // last, which already covers the mounted-route case — but `graphId` here is resolved by the
+        // handler rather than taken verbatim from a param, so re-stamp it explicitly: the value a policy
+        // judges must be the graph we actually execute, not one derived a second way.
         value: { ...authValue(req), graph_id: graphId },
         context: authContext,
       });

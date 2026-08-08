@@ -381,3 +381,261 @@ describe("authorizing handlers", () => {
     expect((readBack as { body: { thread_id: string } }).body.thread_id).toBe(thread.thread_id);
   });
 });
+
+// A characterization test, not an endorsement: the `store` resource is gate-only, so an authenticated
+// caller reads every tenant's items. Pinned in code because the shape of the exposure is easy to
+// mis-describe — it is *not* about namespace wildcards. A wildcard matches one segment positionally, so
+// `["memories","*"]` is a strict *subset* of what the shorter literal `["memories"]` already returns,
+// and an omitted prefix returns everything. Refusing wildcards would therefore be capability loss with
+// no security benefit, which is why there is no such guard.
+//
+// Per-owner store scoping is the real fix (docs/roadmap.md). When it lands these expectations must
+// invert — that is the point of writing them down.
+describe("store reads are not tenant-scoped (documented gap)", () => {
+  const seed = async (target: ProtocolRuntime): Promise<void> => {
+    for (const owner of ["alice", "bob"]) {
+      await target.handlers.putStoreItem(
+        asUser(owner, {
+          method: "PUT",
+          body: { namespace: ["memories", owner], key: "note", value: { text: `${owner}-secret` } },
+        }),
+      );
+    }
+  };
+
+  const textsFor = async (target: ProtocolRuntime, body: unknown): Promise<string[]> => {
+    const response = await target.handlers.searchStoreItems(
+      asUser("alice", { method: "POST", body }),
+    );
+    const { items } = (response as { body: { items: { value: { text: string } }[] } }).body;
+    return items.map((item) => item.value.text).sort();
+  };
+
+  it("lets one tenant read another's items by literal prefix, by wildcard, or by no prefix at all", async () => {
+    const runtime = createProtocolRuntime(createFixtureDeps({ auth: fakeEngine() }));
+    await seed(runtime);
+
+    const both = ["alice-secret", "bob-secret"];
+    expect(await textsFor(runtime, { namespace_prefix: ["memories"] })).toEqual(both);
+    expect(await textsFor(runtime, { namespace_prefix: ["memories", "*"] })).toEqual(both);
+    expect(await textsFor(runtime, {})).toEqual(both);
+
+    // A full-depth literal prefix does narrow — which is why an `@auth.on.store` handler has to
+    // *require* one rather than merely reject the shapes that look dangerous.
+    expect(await textsFor(runtime, { namespace_prefix: ["memories", "alice"] })).toEqual([
+      "alice-secret",
+    ]);
+  });
+
+  it("returns every tenant's namespace names from listNamespaces", async () => {
+    const runtime = createProtocolRuntime(createFixtureDeps({ auth: fakeEngine() }));
+    await seed(runtime);
+
+    const response = await runtime.handlers.listStoreNamespaces(
+      asUser("alice", { method: "POST", body: {} }),
+    );
+    const { namespaces } = (response as { body: { namespaces: string[][] } }).body;
+
+    expect(namespaces).toEqual([
+      ["memories", "alice"],
+      ["memories", "bob"],
+    ]);
+  });
+
+  it("still lets an `@auth.on.store` handler deny, which is the available control", async () => {
+    // The handler sees the namespace because `authValue` merges query + params + body. This is the
+    // pattern docs/agent-protocol.md tells multi-tenant deployments to use.
+    const gated = createProtocolRuntime(
+      createFixtureDeps({ auth: fakeEngine({ deny: (resource) => resource === "store" }) }),
+    );
+    await expectStatus(
+      gated.handlers.searchStoreItems(asUser("alice", { method: "POST", body: {} })),
+      403,
+    );
+  });
+});
+
+// An authorization decision is only as good as the payload it reads, and every request schema here is
+// `.passthrough()` — so the fields naming the resource must be the *server's* reading, not the caller's.
+// Two instances, one shape: store routes get `namespace`/`key` normalized to what the endpoint will
+// actually use (also the shape `@langchain/langgraph-sdk/auth` declares, so a handler ported from
+// LangGraph Platform works unchanged), and path params win over a same-named body field.
+describe("auth payload is server-derived, not caller-supplied", () => {
+  /** The handler docs/agent-protocol.md prescribes: require a namespace rooted at the principal. */
+  const scopedByNamespace = (): AuthEngine => ({
+    ...fakeEngine(),
+    authorize: async ({ resource, value, context }) => {
+      if (resource === "store" && context) {
+        const namespace = (value as { namespace?: unknown }).namespace;
+        const rooted =
+          Array.isArray(namespace) &&
+          namespace.length > 0 &&
+          namespace[0] === context.user.identity;
+        if (!rooted) throw SkeinHttpError.forbidden("Out of scope.");
+      }
+      return { filters: undefined, value };
+    },
+  });
+
+  let runtime: ProtocolRuntime;
+
+  beforeEach(async () => {
+    runtime = createProtocolRuntime(createFixtureDeps({ auth: scopedByNamespace() }));
+    // Seeded through the store service directly: the point here is the authz payload, and going via
+    // `putStoreItem` as bob would be refused by the very handler under test.
+    for (const owner of ["alice", "bob"]) {
+      await runtime.service.store.put([owner, "memories"], "note", { text: `${owner}-secret` });
+    }
+  });
+
+  it("closes the decoy bypass: a body `namespace` cannot stand in for the field search uses", async () => {
+    // Before normalization this returned every tenant's items — the handler was satisfied by
+    // `namespace: ["alice"]` while the endpoint searched from an absent `namespace_prefix`.
+    await expectStatus(
+      runtime.handlers.searchStoreItems(
+        asUser("alice", { method: "POST", body: { namespace: ["alice"] } }),
+      ),
+      403,
+    );
+    await expectStatus(
+      runtime.handlers.searchStoreItems(
+        asUser("alice", { method: "POST", body: { namespace: "alice" } }),
+      ),
+      403,
+    );
+  });
+
+  it("refuses a search that names no namespace, which would read every tenant", async () => {
+    await expectStatus(
+      runtime.handlers.searchStoreItems(asUser("alice", { method: "POST", body: {} })),
+      403,
+    );
+    await expectStatus(
+      runtime.handlers.listStoreNamespaces(asUser("alice", { method: "POST", body: {} })),
+      403,
+    );
+  });
+
+  it("admits a search scoped to the caller's own root, and only their items come back", async () => {
+    const response = await runtime.handlers.searchStoreItems(
+      asUser("alice", { method: "POST", body: { namespace_prefix: ["alice"] } }),
+    );
+    const { items } = (response as { body: { items: { value: { text: string } }[] } }).body;
+    expect(items.map((item) => item.value.text)).toEqual(["alice-secret"]);
+  });
+
+  it("refuses another tenant's root on every store route", async () => {
+    const bobsNamespace = { namespace: "bob.memories", key: "note" };
+    await expectStatus(
+      runtime.handlers.getStoreItem(asUser("alice", { query: bobsNamespace })),
+      403,
+    );
+    await expectStatus(
+      runtime.handlers.deleteStoreItem(asUser("alice", { method: "DELETE", query: bobsNamespace })),
+      403,
+    );
+    // The SDK's own delete shape — a JSON body — must authorize identically, or the body path is a way
+    // around the handler that guards the query path.
+    await expectStatus(
+      runtime.handlers.deleteStoreItem(
+        asUser("alice", {
+          method: "DELETE",
+          body: { namespace: ["bob", "memories"], key: "note" },
+        }),
+      ),
+      403,
+    );
+    await expectStatus(
+      runtime.handlers.putStoreItem(
+        asUser("alice", {
+          method: "PUT",
+          body: { namespace: ["bob", "memories"], key: "note", value: { text: "overwritten" } },
+        }),
+      ),
+      403,
+    );
+    await expectStatus(
+      runtime.handlers.searchStoreItems(
+        asUser("alice", { method: "POST", body: { namespace_prefix: ["bob"] } }),
+      ),
+      403,
+    );
+    await expectStatus(
+      runtime.handlers.listStoreNamespaces(
+        asUser("alice", { method: "POST", body: { prefix: ["bob"] } }),
+      ),
+      403,
+    );
+  });
+
+  it("does not let a body field shadow a path param, which pointed authz at the wrong thread", async () => {
+    // The request bodies are `.passthrough()`, so a caller could send `{"thread_id": "mine"}` to
+    // `POST /threads/{victim}/runs`: authz saw the attacker's thread while the handler — which reads
+    // `requireParam(req.params, "thread_id")` — ran on the victim's. A handler returning ownership
+    // filters was still covered by the scoped store, but a check-only handler was not covered at all.
+    let seen: unknown;
+    const capturing: AuthEngine = {
+      ...fakeEngine(),
+      authorize: async ({ value }) => {
+        seen = (value as { thread_id?: unknown }).thread_id;
+        return { filters: undefined, value };
+      },
+    };
+    const captured = createProtocolRuntime(createFixtureDeps({ auth: capturing }));
+
+    await expectStatus(
+      captured.handlers.getRun(
+        asUser("alice", {
+          params: { thread_id: "victim-thread", run_id: "r1" },
+          body: { thread_id: "attacker-owned" },
+        }),
+      ),
+      404,
+    );
+
+    expect(seen).toBe("victim-thread");
+  });
+
+  it("stamps `key` from the same read as `namespace`, so both name the item the endpoint uses", async () => {
+    // Same class as the namespace bug: authorizing one key while the endpoint deletes another.
+    let seen: { namespace?: unknown; key?: unknown } = {};
+    const capturing: AuthEngine = {
+      ...fakeEngine(),
+      authorize: async ({ resource, value }) => {
+        if (resource === "store") seen = value as { namespace?: unknown; key?: unknown };
+        return { filters: undefined, value };
+      },
+    };
+    const captured = createProtocolRuntime(createFixtureDeps({ auth: capturing }));
+
+    await captured.handlers.deleteStoreItem(
+      asUser("alice", {
+        method: "DELETE",
+        body: { namespace: ["alice", "memories"], key: "note" },
+      }),
+    );
+
+    expect(seen).toMatchObject({ namespace: ["alice", "memories"], key: "note" });
+  });
+
+  it("hands the query routes an array, as the SDK declares — not the dot-joined wire string", async () => {
+    // `value.namespace.join(".")` in a ported handler would throw a TypeError on a string, surfacing
+    // as a 500 from inside authorize on every `GET /store/items`.
+    let seen: unknown;
+    const capturing: AuthEngine = {
+      ...fakeEngine(),
+      authorize: async ({ resource, value }) => {
+        if (resource === "store") seen = (value as { namespace?: unknown }).namespace;
+        return { filters: undefined, value };
+      },
+    };
+    const captured = createProtocolRuntime(createFixtureDeps({ auth: capturing }));
+    await captured.service.store.put(["alice", "memories"], "note", { text: "alice-secret" });
+
+    await captured.handlers.getStoreItem(
+      asUser("alice", { query: { namespace: "alice.memories", key: "note" } }),
+    );
+
+    expect(seen).toEqual(["alice", "memories"]);
+  });
+});

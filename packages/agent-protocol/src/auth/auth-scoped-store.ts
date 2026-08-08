@@ -232,12 +232,13 @@ export function createAuthScopedStore(
       },
     };
 
-    // `maxPageSize` is carried explicitly. Both drivers expose it as a class **getter**, and object
-    // spread copies own enumerable properties only — a prototype accessor is silently dropped, so the
-    // spread alone would hand back a store whose bound reads as `undefined`. That is invisible at the
-    // type level (the field is optional) and would quietly disable `cancelMany`'s truncation reporting
-    // on exactly the auth-enabled deployments where it matters.
-    return { ...inner, threads, runs, maxPageSize: inner.maxPageSize };
+    // `maxPageSize` and `durable` are carried explicitly. Both drivers expose both as class
+    // **getters**, and object spread copies own enumerable properties only — a prototype accessor is
+    // silently dropped, so the spread alone would hand back a store whose bound reads as `undefined`.
+    // That is invisible at the type level (both fields are optional) and would quietly disable
+    // `cancelMany`'s truncation reporting on exactly the auth-enabled deployments where it matters.
+    // `durable` has no reader on a per-request store today, but it is the same trap one caller away.
+    return { ...inner, threads, runs, maxPageSize: inner.maxPageSize, durable: inner.durable };
   }
 
   if (resource === "crons") {
@@ -307,8 +308,9 @@ export function createAuthScopedStore(
       },
     };
 
-    // `maxPageSize` carried explicitly for the same prototype-getter reason as the threads branch.
-    return { ...inner, crons, threads, maxPageSize: inner.maxPageSize };
+    // `maxPageSize` and `durable` carried explicitly for the same prototype-getter reason as the
+    // threads branch.
+    return { ...inner, crons, threads, maxPageSize: inner.maxPageSize, durable: inner.durable };
   }
 
   // `assistants` and `store` are gate-only in Depth 1: the `@auth.on.*` handler still runs (it can
@@ -316,5 +318,18 @@ export function createAuthScopedStore(
   // graphs with no owner metadata, so filtering them would hide the shared/system assistants every
   // caller needs to run; store items carry no metadata to filter on. Per-owner scoping of these two
   // resources is a Depth-2 follow-up (see docs/roadmap.md).
+  //
+  // Be clear about what that means for `store`, because it is easy to mis-scope the risk: reads are
+  // not narrowed *at all*. A namespace prefix is a request parameter, so `{ namespace_prefix:
+  // ["memories"] }` — or an omitted prefix — reads every tenant's items, and `listNamespaces` returns
+  // every tenant's namespace names. Wildcards are not the exposure and refusing them would not be a
+  // control: a shorter literal prefix already reads a superset of what any wildcard matches.
+  //
+  // So a multi-tenant deployment MUST register an `@auth.on.store` handler that checks the namespace
+  // against the principal. `authValue` hands it a server-derived `namespace` — the path the endpoint
+  // will actually operate on, normalized to `string[]` on every store action — so the check cannot be
+  // fooled by a decoy field in the body. Documented in
+  // docs/agent-protocol.md#authentication--authorization. Note a handler cannot cover `getStore()`
+  // inside a graph — no request, no handler — which is why the real fix is the ownership filter here.
   return inner;
 }

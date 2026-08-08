@@ -5,6 +5,7 @@
 
 import type { AuthAction, AuthResource } from "@skein-js/core";
 
+import { storeItemTarget } from "../create-handlers.js";
 import type { ProtocolHandlers, ProtocolRequest } from "../create-handlers.js";
 
 /** The resource + action a route authorizes against. */
@@ -131,10 +132,103 @@ export const ROUTE_AUTHZ: Record<keyof ProtocolHandlers, RouteAuthz> = {
   listStoreNamespaces: { resource: "store", action: "list_namespaces" },
 };
 
-/** The payload passed to an `@auth.on.*` handler — the request's identifiers merged with its body. */
-export function authValue(req: ProtocolRequest): Record<string, unknown> {
+/** `value` if it is an array of strings, else `undefined` — a malformed path must not read as a path. */
+function stringArray(value: unknown): string[] | undefined {
+  if (!Array.isArray(value)) return undefined;
+  return value.every((segment) => typeof segment === "string") ? (value as string[]) : undefined;
+}
+
+/**
+ * The namespace a store route will actually operate on, or `undefined` for any other route.
+ *
+ * Wrapped in an object so "a store route naming no namespace" (`{ path: undefined }`) is distinguishable
+ * from "not a store route at all" (`undefined`). The distinction matters: on the two search routes an
+ * absent path means *every* namespace, which is precisely the request a scoping handler has to refuse.
+ *
+ * Parsed the same way the handler parses it — `namespaceFromQuery` for the query routes, the same field
+ * the handler reads for the body routes. That agreement is the whole point; two spellings of "which
+ * namespace is this" is what let an authorized field diverge from the used one.
+ */
+function storeNamespace(
+  handler: keyof ProtocolHandlers,
+  req: ProtocolRequest,
+  body: Record<string, unknown>,
+): { path: string[] | undefined; key?: string } | undefined {
+  // Gated on the *resource*, not on the switch below, so a store route added later without a case here
+  // gets `{ path: undefined }` — fail closed — instead of falling through to the caller's own body
+  // `namespace`, which is precisely the decoy bypass this function exists to close. Nothing in the type
+  // system would force a new case, so the default must not be the permissive branch.
+  if (ROUTE_AUTHZ[handler].resource !== "store") return undefined;
+  switch (handler) {
+    case "putStoreItem":
+      return { path: stringArray(body["namespace"]), key: stringOrUndefined(body["key"]) };
+    case "getStoreItem":
+    case "deleteStoreItem": {
+      // Body-or-query, via the same helper the handler uses — `deleteItem` sends a body, `getItem` a
+      // query string, and authorizing the wrong one is a bypass rather than a mismatch. `key` comes from
+      // the same read for the same reason: it selects the item, so authorizing a different one is the
+      // same class of bug as authorizing a different namespace.
+      const target = storeItemTarget(req);
+      return { path: target.namespace, key: target.key };
+    }
+    case "searchStoreItems":
+      return { path: stringArray(body["namespace_prefix"]) };
+    case "listStoreNamespaces":
+      return { path: stringArray(body["prefix"]) };
+    default:
+      return { path: undefined };
+  }
+}
+
+/** `value` when it is a string, else `undefined` — so a non-string `key` never reads as one. */
+function stringOrUndefined(value: unknown): string | undefined {
+  return typeof value === "string" ? value : undefined;
+}
+
+/**
+ * The payload passed to an `@auth.on.*` handler — the request's identifiers merged with its body.
+ *
+ * **Store routes get their `namespace` normalized, and the normalization is server-owned.** Two reasons,
+ * both of which made a hand-written scoping handler wrong before:
+ *
+ * 1. **Parity.** `@langchain/langgraph-sdk/auth` declares `namespace: string[]` for every store action
+ *    — including `store:search` and `store:list_namespaces`, where skein's *wire* fields are
+ *    `namespace_prefix` and `prefix`. A handler written against those published types read `undefined`
+ *    and either allowed every cross-tenant search or refused every legitimate one. On the query routes
+ *    the wire form is a dot-joined string where the SDK declares an array, so `namespace.join(".")`
+ *    threw inside authorize.
+ * 2. **Soundness.** Both store body schemas are `.passthrough()`, so the raw body reached a handler with
+ *    whatever extra fields the caller invented. A handler checking `value.namespace` could be satisfied
+ *    by a decoy `namespace` on a search request that the endpoint then serves from `namespace_prefix` —
+ *    authorizing one field and using another. Assigning `namespace` **after** the body spread makes the
+ *    server's reading authoritative, so a decoy is simply overwritten.
+ *
+ * The raw wire fields are left in place beside it; only `namespace` and `key` are guaranteed to be what
+ * the endpoint uses.
+ *
+ * **`req.params` is spread last, and that ordering is load-bearing.** A path param names the resource
+ * the handler will actually operate on — every handler reads it via `requireParam(req.params, …)`. With
+ * the body spread last, a `POST /threads/{victim}/runs` carrying `{"thread_id": "attacker-owned"}`
+ * authorized the *attacker's* thread while the run executed on the victim's, because the schemas are
+ * `.passthrough()` and the body won. A deployment whose `@auth.on.threads` handler returns ownership
+ * filters was still protected by the scoped store, but a check-only handler — one that inspects `value`
+ * and returns nothing — had authorization pointed at the wrong resource entirely. Same shape as the
+ * store `namespace` decoy, and the same fix: the server's reading wins.
+ */
+export function authValue(
+  req: ProtocolRequest,
+  handler?: keyof ProtocolHandlers,
+): Record<string, unknown> {
   const body = typeof req.body === "object" && req.body !== null ? req.body : {};
-  return { ...req.query, ...req.params, ...body };
+  const merged: Record<string, unknown> = { ...req.query, ...body, ...req.params };
+  const target = handler
+    ? storeNamespace(handler, req, body as Record<string, unknown>)
+    : undefined;
+  if (target) {
+    merged["namespace"] = target.path;
+    if ("key" in target) merged["key"] = target.key;
+  }
+  return merged;
 }
 
 /**

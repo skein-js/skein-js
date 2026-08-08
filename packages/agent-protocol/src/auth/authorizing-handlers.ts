@@ -44,7 +44,9 @@ export function createAuthorizingHandlers(
     const route = ROUTE_AUTHZ[name];
     wrapped[name] = async (req) => {
       const authContext: AuthContext | undefined = await resolveAuthContext(engine, req);
-      const value = authValue(req);
+      // The handler name is passed so store routes get their `namespace` normalized to the shape the
+      // SDK declares, server-derived rather than taken from the body — see `authValue`.
+      const value = authValue(req, name);
       const primary = await engine.authorize({
         resource: route.resource,
         action: route.action,

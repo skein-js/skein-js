@@ -3,7 +3,7 @@
 // instead meant a real client's limit was silently dropped and the endpoint drained the thread's whole
 // checkpoint history — so these assert on the request shape, not just on the response length.
 
-import { SkeinHttpError, type RunEventBus } from "@skein-js/core";
+import { isSkeinHttpError, SkeinHttpError, type RunEventBus } from "@skein-js/core";
 import { describe, expect, it } from "vitest";
 
 import { createFixtureDeps, createFixtureResolver } from "./__fixtures__/deps.js";
@@ -548,6 +548,102 @@ describe("store handlers", () => {
         ["users", "2", "facts"],
       ],
     });
+  });
+
+  // The SDK's two single-item methods disagree about transport on the same path: `getItem` sends
+  // `?namespace=a.b&key=…`, `deleteItem` sends a JSON body with `namespace` already an array. Reading
+  // only the query made every SDK delete a silent no-op — and silent is the problem, since `deleteItem`
+  // returns void, so nothing surfaced.
+  it("deletes from a JSON body, the way the SDK's deleteItem sends it", async () => {
+    const { handlers } = await fixtureHandlers();
+    await seed(handlers);
+
+    const response = await handlers.deleteStoreItem({
+      ...request(),
+      method: "DELETE",
+      body: { namespace: ["users", "1", "facts"], key: "a" },
+    });
+
+    expect(response.kind).toBe("empty");
+    const remaining = await handlers.searchStoreItems({ ...request(), body: {} });
+    expect((bodyOf(remaining) as { items: unknown[] }).items).toHaveLength(2);
+  });
+
+  it("still deletes from query params, which is what a hand-rolled caller sends", async () => {
+    const { handlers } = await fixtureHandlers();
+    await seed(handlers);
+
+    await handlers.deleteStoreItem({
+      ...request(),
+      method: "DELETE",
+      query: { namespace: "users.1.facts", key: "a" },
+    });
+
+    const remaining = await handlers.searchStoreItems({ ...request(), body: {} });
+    expect((bodyOf(remaining) as { items: unknown[] }).items).toHaveLength(2);
+  });
+
+  it("accepts a dot-joined namespace in the body, so the two transports name the same namespace", async () => {
+    // Accepting only an array here would fall through to an absent query param — an empty namespace,
+    // deleting nothing, answering 204: the same silent no-op, one shape further along.
+    const { handlers } = await fixtureHandlers();
+    await seed(handlers);
+
+    await handlers.deleteStoreItem({
+      ...request(),
+      method: "DELETE",
+      body: { namespace: "users.1.facts", key: "a" },
+    });
+
+    const remaining = await handlers.searchStoreItems({ ...request(), body: {} });
+    expect((bodyOf(remaining) as { items: unknown[] }).items).toHaveLength(2);
+  });
+
+  it("refuses a malformed namespace with a 400 instead of deleting nothing and answering 204", async () => {
+    // Two failures in one: `["users", 1, "facts"]` must not be filtered down to `["users","facts"]` (a
+    // namespace the caller never named), and it must not read as absent and then quietly delete nothing.
+    // A numeric segment is easy to hit with a numeric user id, and `deleteItem` returns void, so a 204
+    // surfaces nothing at all. `putStoreItem` already 400s on the same input via Zod.
+    const { handlers } = await fixtureHandlers();
+    await seed(handlers);
+
+    await expect(
+      handlers.deleteStoreItem({
+        ...request(),
+        method: "DELETE",
+        body: { namespace: ["users", 1, "facts"], key: "a" },
+      }),
+    ).rejects.toSatisfy((error: unknown) => isSkeinHttpError(error) && error.status === 400);
+
+    const remaining = await handlers.searchStoreItems({ ...request(), body: {} });
+    expect((bodyOf(remaining) as { items: unknown[] }).items).toHaveLength(3);
+  });
+
+  it("refuses a store read or delete that names no namespace at all", async () => {
+    // Nothing can be written at the root (`storePutSchema` requires a segment), so a request naming it
+    // is unsatisfiable rather than empty.
+    const { handlers } = await fixtureHandlers();
+
+    for (const call of [
+      handlers.getStoreItem({ ...request(), query: { key: "a" } }),
+      handlers.deleteStoreItem({ ...request(), method: "DELETE", query: { key: "a" } }),
+    ]) {
+      await expect(call).rejects.toSatisfy(
+        (error: unknown) => isSkeinHttpError(error) && error.status === 400,
+      );
+    }
+  });
+
+  it("reads a get from a body namespace too, so both single-item routes accept both shapes", async () => {
+    const { handlers } = await fixtureHandlers();
+    await seed(handlers);
+
+    const response = await handlers.getStoreItem({
+      ...request(),
+      body: { namespace: ["orgs", "acme"], key: "c" },
+    });
+
+    expect(bodyOf(response)).toMatchObject({ key: "c", value: { topic: "billing" } });
   });
 
   it("emits store item timestamps as created_at/updated_at", async () => {

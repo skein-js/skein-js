@@ -189,6 +189,76 @@ const MAX_QUERY_INT = 1000;
  */
 const DEFAULT_COLLECTION_PAGE_SIZE = 100;
 
+/**
+ * The namespace a `/store/items` request addresses: a JSON body array, a repeated query param, or one
+ * dot-joined query string.
+ *
+ * All three because the SDK uses two different shapes on the same path — `getItem` sends
+ * `?namespace=a.b` (and refuses a label containing `.` client-side, which is why joining on it is safe
+ * for *its* callers), while `deleteItem` sends a JSON body with `namespace` already an array. Reading
+ * only the query made every SDK `deleteItem` a silent no-op: no namespace, no key, `204`.
+ *
+ * Exported because the auth payload must parse it **exactly** as the handler does — see `authValue`.
+ * A second copy is how "the namespace the handler authorized" and "the namespace the handler used"
+ * drift apart, which is a scoping bypass rather than a cosmetic inconsistency.
+ */
+export function storeItemTarget(req: {
+  query: Record<string, string | string[] | undefined>;
+  body?: unknown;
+}): { namespace: string[]; key: string } {
+  const body = typeof req.body === "object" && req.body !== null ? (req.body as StoreItemBody) : {};
+  const namespace = namespacePath(body.namespace) ?? namespaceFromQuery(req.query["namespace"]);
+  const key = typeof body.key === "string" ? body.key : (queryValue(req.query["key"]) ?? "");
+  return { namespace, key };
+}
+
+interface StoreItemBody {
+  namespace?: unknown;
+  key?: unknown;
+}
+
+/**
+ * {@link storeItemTarget}, or a 400 when the request does not usably name an item.
+ *
+ * `PUT /store/items` validates its namespace through Zod (`min(1)`, all strings), so a write is refused
+ * outright — but `GET`/`DELETE` parse by hand and used to answer `204`/`404` for input a write would
+ * have rejected. A `deleteItem([orgId, 42], "note")` — a numeric segment, which a numeric user id makes
+ * easy to hit — parsed to no namespace at all, deleted nothing, and answered `204`. `deleteItem` returns
+ * void, so absolutely nothing surfaced. Refusing is the only outcome a caller can act on.
+ *
+ * An empty namespace is included in that: `storePutSchema` requires at least one segment, so nothing can
+ * ever be written at the root and a request naming it cannot be satisfied.
+ */
+function requireStoreItemTarget(req: ProtocolRequest): { namespace: string[]; key: string } {
+  const target = storeItemTarget(req);
+  if (target.namespace.length === 0) {
+    throw SkeinHttpError.badRequest(
+      "A store item request must name a namespace: an array of strings in the body, or a " +
+        "dot-separated `namespace` query parameter.",
+    );
+  }
+  if (target.key.length === 0) {
+    throw SkeinHttpError.badRequest("A store item request must name a `key`.");
+  }
+  return target;
+}
+
+/**
+ * A body `namespace` as segments, or `undefined` when the body names none usably.
+ *
+ * A malformed array (any non-string segment) reads as **absent** rather than being filtered down to its
+ * string segments: the filtered form would silently address a *different* namespace than the caller
+ * wrote, which is exactly the quiet-wrong-answer failure this path exists to avoid. A string is
+ * accepted and split like the query form, so the same input names the same namespace on both
+ * transports — otherwise a body `"a.b"` would fall through to an absent query param and delete nothing,
+ * reintroducing the silent no-op.
+ */
+function namespacePath(value: unknown): string[] | undefined {
+  if (typeof value === "string") return namespaceFromQuery(value);
+  if (!Array.isArray(value)) return undefined;
+  return value.every((segment) => typeof segment === "string") ? (value as string[]) : undefined;
+}
+
 /** Parse a namespace query param: repeated values, or a single dot-separated string. */
 function namespaceFromQuery(value: string | string[] | undefined): string[] {
   if (Array.isArray(value)) return value;
@@ -808,14 +878,15 @@ export function createProtocolHandlers(service: ProtocolService): ProtocolHandle
     },
 
     getStoreItem: async (req) => {
-      const namespace = namespaceFromQuery(req.query["namespace"]);
-      const key = queryValue(req.query["key"]) ?? "";
+      const { namespace, key } = requireStoreItemTarget(req);
       return json(storeItemBody(await service.store.get(namespace, key)));
     },
 
+    // Body first, then query: the SDK's `deleteItem` sends a JSON body (`{ namespace, key }`, namespace
+    // already an array) where its `getItem` sends query params. Reading only the query made every SDK
+    // delete a silent no-op — an empty namespace and key, deleting nothing, answering 204.
     deleteStoreItem: async (req) => {
-      const namespace = namespaceFromQuery(req.query["namespace"]);
-      const key = queryValue(req.query["key"]) ?? "";
+      const { namespace, key } = requireStoreItemTarget(req);
       await service.store.delete(namespace, key);
       return empty();
     },
