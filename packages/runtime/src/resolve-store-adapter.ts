@@ -10,11 +10,12 @@
 // from `@skein-js/agent-protocol`, which `config` does not depend on. `resolve-embed.ts` is the closest
 // precedent for the same reason.
 
-import { fromBaseStore, supportsStoreTtl } from "@skein-js/agent-protocol";
-import type { StoreRepo, StoreTtlConfig } from "@skein-js/core";
-import { parseGraphSpec, type ModuleImporter } from "@skein-js/config";
-import type { BaseStore } from "@langchain/langgraph";
 import { pathToFileURL } from "node:url";
+
+import type { BaseStore } from "@langchain/langgraph";
+import { fromBaseStore, supportsStoreTtl } from "@skein-js/agent-protocol";
+import { parseGraphSpec, type ModuleImporter } from "@skein-js/config";
+import type { StoreRepo, StoreTtlConfig } from "@skein-js/core";
 
 import type { Disposer } from "./drivers.js";
 import { RuntimeConfigError } from "./errors.js";
