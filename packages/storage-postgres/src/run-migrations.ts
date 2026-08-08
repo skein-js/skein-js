@@ -44,6 +44,22 @@ const DEFAULT_LOCK_TIMEOUT_MS = 60_000;
 
 const LOCK_POLL_INTERVAL_MS = 250;
 
+/**
+ * The lock guarding the **checkpointer's** schema — `PostgresSaver.setup()` in
+ * `@langchain/langgraph-checkpoint-postgres`, which reads `checkpoint_migrations` and then inserts
+ * the pending versions with no exclusion of its own. Two instances booting at once against a
+ * database with pending migrations both read the same version and both insert, and the loser dies
+ * with `duplicate key value violates unique constraint "checkpoint_migrations_pkey"` — during a
+ * first deploy or an upgrade that bumps that package's schema, which is exactly when a rolling
+ * deploy is starting several replicas at once.
+ *
+ * A *different* key from {@link SKEIN_MIGRATIONS_LOCK}: the two schemas are independent, so
+ * serializing them against each other would make every boot wait on a migration it does not depend
+ * on for no exclusion benefit. Adjacent value, deliberately, so the two stay visibly related and
+ * nobody reuses one.
+ */
+export const CHECKPOINTER_MIGRATIONS_LOCK = 7241865325823965;
+
 interface SessionAdvisoryLockOptions {
   key: number;
   timeoutMs: number;
@@ -83,6 +99,67 @@ export async function acquireSessionAdvisoryLock(
       throw new Error(options.timeoutMessage);
     }
     await sleep(LOCK_POLL_INTERVAL_MS);
+  }
+}
+
+/** Options for {@link withSessionAdvisoryLock}. */
+export interface WithSessionAdvisoryLockOptions {
+  /** The `pg_advisory_lock` key to hold. */
+  key: number;
+  /** Names the lock in the timeout error, e.g. `"checkpointer migration"`. */
+  lockName: string;
+  /** How long to wait for a peer holding it. Defaults to 60s. */
+  timeoutMs?: number;
+}
+
+/**
+ * Run `work` while holding a session advisory lock, so only one instance runs it at a time.
+ *
+ * For guarding a migration skein does not own — {@link applySkeinMigrations} inlines the same
+ * discipline because it also needs the locked client to apply the SQL, whereas `work` here does its
+ * own thing and only needs the exclusion.
+ *
+ * The lock lives on its own connection for the whole call, because a session advisory lock is
+ * scoped to a session rather than a transaction. `work` may use the same pool — but the pool must
+ * therefore be able to hand out a *second* connection, or it deadlocks against itself. Callers size
+ * it accordingly.
+ */
+export async function withSessionAdvisoryLock<T>(
+  pool: Pool,
+  options: WithSessionAdvisoryLockOptions,
+  work: () => Promise<T>,
+): Promise<T> {
+  const { key, lockName, timeoutMs = DEFAULT_LOCK_TIMEOUT_MS } = options;
+  const client = await pool.connect();
+  try {
+    // Exempt from any configured `statement_timeout`, for the reason migrations are: a cancelled
+    // lock wait would kill an instance that is merely waiting for a peer during a rolling deploy.
+    await client.query("SET statement_timeout = 0");
+    await acquireSessionAdvisoryLock(client, {
+      key,
+      timeoutMs,
+      timeoutMessage:
+        `Timed out after ${timeoutMs}ms waiting for the ${lockName} lock ` +
+        `(pg_advisory_lock key ${key}). Another instance is either still holding it, or a previous ` +
+        `one died with it — check for idle sessions with ` +
+        `\`SELECT * FROM pg_locks WHERE locktype = 'advisory'\`.`,
+    });
+    try {
+      return await work();
+    } finally {
+      // Best-effort, and not what actually guarantees release: the client is destroyed below either
+      // way, and ending the session is what frees a session-scoped lock. Unlocking first just stops
+      // peers polling immediately rather than when the socket closes.
+      try {
+        await client.query("SELECT pg_advisory_unlock($1)", [key]);
+      } catch {
+        // The destroy below covers it.
+      }
+    }
+  } finally {
+    // Always destroyed, never returned: this connection may hold the lock and definitely carries the
+    // `SET statement_timeout = 0` above, which would silently exempt whatever query reused it.
+    client.release(true);
   }
 }
 

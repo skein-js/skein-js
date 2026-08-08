@@ -11,3 +11,8 @@ export {
   type StoreIndexConfig,
 } from "./postgres-skein-store.js";
 export { createPostgresThreadExecutionGate, threadLockKey } from "./thread-execution-gate.js";
+export {
+  CHECKPOINTER_MIGRATIONS_LOCK,
+  withSessionAdvisoryLock,
+  type WithSessionAdvisoryLockOptions,
+} from "./run-migrations.js";

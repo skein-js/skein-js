@@ -5932,6 +5932,15 @@ module. All of that finishes _before_ the server starts listening. Migrations ta
 lock, so several instances booting at once during a rolling deploy is safe — the ones that don't win
 the lock **wait**, then find nothing to apply.
 
+That covers **both** schemas, on two separate lock keys: skein's own, and LangGraph's checkpoint
+tables. The second one is skein's lock around someone else's migration —
+`PostgresSaver.setup()` in `@langchain/langgraph-checkpoint-postgres` reads its version ledger and
+then creates types and inserts rows with no exclusion of its own, so concurrent boots against a
+database with pending migrations collide on `checkpoint_migrations_pkey` or `pg_type`. Separate keys
+because the two schemas are independent: sharing one would make every boot wait on a migration it
+does not depend on. It only bites when migrations are genuinely pending — a first deploy, or an
+upgrade that bumps that package's schema — which is exactly when replicas start together.
+
 > **Building on Apple Silicon?** `skein build` doesn't pass `--platform`, so you'll get an arm64 image
 > that most hosts reject. Export `DOCKER_DEFAULT_PLATFORM=linux/amd64` before building.
 

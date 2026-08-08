@@ -15,9 +15,11 @@ import {
   type RedisRunEventBusOptions,
 } from "@skein-js/redis";
 import {
+  CHECKPOINTER_MIGRATIONS_LOCK,
   createPostgresPool,
   createPostgresThreadExecutionGate,
   PostgresSkeinStore,
+  withSessionAdvisoryLock,
   type PostgresSkeinStoreOptions,
   type StoreIndexConfig,
 } from "@skein-js/storage-postgres";
@@ -185,9 +187,26 @@ export async function connectPostgresStore(args: {
   // migration is a boot *loop*, not a slow boot. It takes its client from whatever pool it is given, so
   // the only way to exempt it is to give it one with no timeout, then query through the tuned pool.
   // (`store.migrate()` and the pgvector setup lift the timeout on their own clients instead.)
-  const setupPool = createPostgresPool(url, { ...connectionOptions, statementTimeoutMs: 0 });
+  //
+  // Advisory-locked for the same reason `store.migrate()` above is, and it is not: `setup()` reads
+  // `checkpoint_migrations` and then inserts the pending versions with no exclusion of its own, so two
+  // instances booting together against a database with pending migrations both read the same version,
+  // both insert, and the loser dies on `checkpoint_migrations_pkey`. Guarding only skein's own schema
+  // made the rolling-deploy promise in docs/deploy.md hold for half the boot path.
+  //
+  // `poolMax: 2` because the lock holds one connection for the whole call while `setup()` takes
+  // another from the same pool — a configured `poolMax: 1` would deadlock against itself.
+  const setupPool = createPostgresPool(url, {
+    ...connectionOptions,
+    statementTimeoutMs: 0,
+    poolMax: 2,
+  });
   try {
-    await new PostgresSaver(setupPool).setup();
+    await withSessionAdvisoryLock(
+      setupPool,
+      { key: CHECKPOINTER_MIGRATIONS_LOCK, lockName: "checkpointer migration" },
+      () => new PostgresSaver(setupPool).setup(),
+    );
   } finally {
     await setupPool.end();
   }
