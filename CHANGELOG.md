@@ -1,3 +1,28 @@
+## 0.15.0 (2026-08-09)
+
+### 🚀 Features
+
+- ⚠️  **agent-protocol:** serve the Agent Protocol with any agent runtime ([e902baa](https://github.com/skein-js/skein-js/commit/e902baa))
+
+### ⚠️  Breaking Changes
+
+- **agent-protocol:** serve the Agent Protocol with any agent runtime  ([e902baa](https://github.com/skein-js/skein-js/commit/e902baa))
+  `SkeinBaseStore` moves from `@skein-js/agent-protocol` to
+  `@skein-js/langgraph`. It cannot be re-exported for compatibility — a re-export
+  is a static import and would undo the split. Update the import path;
+  `fromBaseStore` (the inverse) stays where it is, because its `BaseStore` import
+  is type-only.
+  BREAKING CHANGE: a hand-assembled `ProtocolDeps` running LangGraph graphs must
+  now wrap its resolver with `langGraphResolver()` and set `storeBridge`,
+  `ephemeralCheckpointer` and `cloneCheckpoint`. Every documented on-ramp
+  (`skein dev`/`start`, `buildRuntime`, `embedInMemoryGraphs`,
+  `embedPostgresGraphs`) does this for you and is unaffected. Without the wrap,
+  human-in-the-loop resume silently no-ops — see docs/embedding.md.
+
+### ❤️ Thank You
+
+- Maina Wycliffe
+
 ## 0.14.1 (2026-08-09)
 
 ### 🚀 Features
