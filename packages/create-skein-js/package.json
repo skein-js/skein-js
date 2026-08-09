@@ -1,0 +1,60 @@
+{
+  "name": "create-skein-js",
+  "version": "0.14.0",
+  "description": "Scaffold a skein-js project — a self-hosted Agent Protocol server for your LangGraph.js agents.",
+  "license": "Apache-2.0",
+  "author": "Maina Wycliffe <wmmaina7@gmail.com>",
+  "homepage": "https://github.com/skein-js/skein-js/tree/main/packages/create-skein-js#readme",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/skein-js/skein-js.git",
+    "directory": "packages/create-skein-js"
+  },
+  "bugs": {
+    "url": "https://github.com/skein-js/skein-js/issues"
+  },
+  "keywords": [
+    "create",
+    "scaffold",
+    "starter",
+    "template",
+    "typescript",
+    "langgraph",
+    "langgraph-js",
+    "agent-protocol",
+    "ai-agents"
+  ],
+  "type": "module",
+  "main": "./dist/index.js",
+  "module": "./dist/index.js",
+  "types": "./dist/index.d.ts",
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "import": "./dist/index.js"
+    }
+  },
+  "bin": {
+    "create-skein-js": "./dist/index.js"
+  },
+  "files": [
+    "dist",
+    "LICENSE",
+    "README.md"
+  ],
+  "sideEffects": false,
+  "engines": {
+    "node": ">=20"
+  },
+  "dependencies": {
+    "@commander-js/extra-typings": "~13.1.0",
+    "commander": "~13.1.0",
+    "ejs": "^6.0.1"
+  },
+  "devDependencies": {
+    "@types/ejs": "^3.1.5"
+  },
+  "publishConfig": {
+    "access": "public"
+  }
+}

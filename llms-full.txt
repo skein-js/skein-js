@@ -139,8 +139,23 @@ _LangSmith Deployment pricing/licensing as of August 2026 — see [langchain.com
 
 ## Quick start
 
-A skein-js project is just three pieces: a **graph**, a **`langgraph.json`**, and the **`skein`
-CLI**. Nothing in your graph code is skein-specific.
+```bash
+npm create skein-js@latest my-agent
+cd my-agent
+npm run dev
+```
+
+That's it — an agent server on <http://localhost:2024>, with the console at
+<http://localhost:2024/console>. No API key, no database, no Docker: the graph it scaffolds runs on
+nothing but Node. Add a model when you want one (`--provider anthropic|openai|google`).
+
+[**Your first agent**](./docs/your-first-agent.md) walks from here to deployed and teaches the
+LangGraph you need along the way. [Scaffolding reference](./docs/scaffolding.md) covers every flag.
+
+### Or wire it up by hand
+
+There is no magic to undo later — a skein-js project is just a **graph**, a **`langgraph.json`**, and
+the **`skein` CLI**. Nothing in your graph code is skein-specific.
 
 **1. Install the CLI** into your project:
 
@@ -414,6 +429,7 @@ version badges below always move in lockstep.
 | Package                                                     | What it's for                                                              | Version                                                                                                                                                      | Downloads                                                                                                                                         |
 | ----------------------------------------------------------- | -------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------ | ------------------------------------------------------------------------------------------------------------------------------------------------- |
 | [`skein-js`](./packages/cli)                                | The drop-in CLI — `dev` / `up` / `build` / `dockerfile` / `start`          | [![npm](https://img.shields.io/npm/v/skein-js?logo=npm&color=cb3837&label=)](https://www.npmjs.com/package/skein-js)                                         | [![dm](https://img.shields.io/npm/dm/skein-js?color=blue&label=)](https://www.npmjs.com/package/skein-js)                                         |
+| [`create-skein-js`](./packages/create-skein-js)             | Scaffold a project — `npm create skein-js@latest`                          | [![npm](https://img.shields.io/npm/v/create-skein-js?logo=npm&color=cb3837&label=)](https://www.npmjs.com/package/create-skein-js)                           | [![dm](https://img.shields.io/npm/dm/create-skein-js?color=blue&label=)](https://www.npmjs.com/package/create-skein-js)                           |
 | [`@skein-js/agent-protocol`](./packages/agent-protocol)     | ⭐ The engine — run engine, handler table, SSE. Framework-agnostic         | [![npm](https://img.shields.io/npm/v/%40skein-js%2Fagent-protocol?logo=npm&color=cb3837&label=)](https://www.npmjs.com/package/@skein-js/agent-protocol)     | [![dm](https://img.shields.io/npm/dm/%40skein-js%2Fagent-protocol?color=blue&label=)](https://www.npmjs.com/package/@skein-js/agent-protocol)     |
 | [`@skein-js/core`](./packages/core)                         | The shared contract — wire types, `SkeinStore` / queue / bus / auth seams  | [![npm](https://img.shields.io/npm/v/%40skein-js%2Fcore?logo=npm&color=cb3837&label=)](https://www.npmjs.com/package/@skein-js/core)                         | [![dm](https://img.shields.io/npm/dm/%40skein-js%2Fcore?color=blue&label=)](https://www.npmjs.com/package/@skein-js/core)                         |
 | [`@skein-js/config`](./packages/config)                     | `langgraph.json` parser + graph loader                                     | [![npm](https://img.shields.io/npm/v/%40skein-js%2Fconfig?logo=npm&color=cb3837&label=)](https://www.npmjs.com/package/@skein-js/config)                     | [![dm](https://img.shields.io/npm/dm/%40skein-js%2Fconfig?color=blue&label=)](https://www.npmjs.com/package/@skein-js/config)                     |
@@ -444,6 +460,17 @@ pnpm skein dev
 ```
 
 → [`packages/cli`](./packages/cli)
+
+### `create-skein-js` — the scaffolder
+
+Writes a working project — `langgraph.json`, a keyless graph, a test, and the whole
+`dev` → `build` → `start` lifecycle. You never install it; you run it once.
+
+```bash
+npm create skein-js@latest my-agent
+```
+
+→ [`packages/create-skein-js`](./packages/create-skein-js) · [scaffolding docs](./docs/scaffolding.md)
 
 ### `@skein-js/agent-protocol` — the engine ⭐
 
@@ -758,6 +785,20 @@ multi-framework, drop-in-CLI layer that OSS lacks. The package-by-package ledger
 versus rebuilt lives in
 [reuse.md](https://github.com/skein-js/skein-js/blob/main/docs/reuse.md).
 
+## Starting from scratch
+
+No graph, no `langgraph.json`, no LangGraph experience — one command writes a working project:
+
+```bash
+npm create skein-js@latest my-agent
+cd my-agent && npm run dev        # → http://localhost:2024, console at /console
+```
+
+It scaffolds a keyless graph you can edit, a test, and the whole `dev` → `build` → `start` lifecycle.
+Nothing it emits needs an API key or a database.
+[**Your first agent**](./your-first-agent.md) takes it from there to deployed and teaches the
+LangGraph you need on the way; [scaffolding.md](./scaffolding.md) is the reference.
+
 ## The drop-in promise
 
 If you're coming from the LangGraph CLI, migration is **zero-effort**:
@@ -773,9 +814,8 @@ skein-js by changing only a URL.
 
 ### The other on-ramp: embed a graph you already have
 
-Never used the LangGraph CLI or Platform? There's nothing to migrate _from_ — but you can still get the
-same server. If you already have a compiled graph in your own app, bring it **in code** — no
-`langgraph.json`, no CLI:
+If you already have a compiled graph in your own app, bring it **in code** — no `langgraph.json`, no
+CLI:
 
 ```ts
 import { createExpressServer } from "@skein-js/express";
@@ -856,12 +896,15 @@ Runnable projects under [`examples/`](https://github.com/skein-js/skein-js/tree/
 ## Documentation map
 
 Start with the user-facing guides; the design docs at the bottom explain how skein-js is built.
-New here? [getting-started.md](./getting-started.md) is the guided path. Building an app _with_ skein
+Brand new, with nothing built yet? [your-first-agent.md](./your-first-agent.md) starts from an empty
+directory. Already have a graph? [getting-started.md](./getting-started.md) is the guided path. Building an app _with_ skein
 (especially as an AI agent)? [using-skein.md](./using-skein.md) is the terse cheat-sheet, and the
 machine-readable [`llms.txt`](https://github.com/skein-js/skein-js/blob/main/llms.txt) / [`llms-full.txt`](https://github.com/skein-js/skein-js/blob/main/llms-full.txt) index the whole set.
 
 | Doc                                                      | Covers                                                           |
 | -------------------------------------------------------- | ---------------------------------------------------------------- |
+| [your-first-agent.md](./your-first-agent.md)             | From an empty directory to deployed — no LangGraph assumed       |
+| [scaffolding.md](./scaffolding.md)                       | `npm create skein-js` — every flag, and doing it by hand         |
 | [getting-started.md](./getting-started.md)               | Guided walkthrough — zero to a running server, then prod         |
 | [using-skein.md](./using-skein.md)                       | Consumer/agent cheat-sheet — install, the seam, mount, call      |
 | [recipes.md](./recipes/)                                 | Auth, HITL, memory, CORS, background runs, webhooks, deploy      |
@@ -897,26 +940,322 @@ machine-readable [`llms.txt`](https://github.com/skein-js/skein-js/blob/main/llm
 
 ---
 
+<!-- source: docs/your-first-agent.md -->
+
+# Your first agent
+
+From an empty directory to a deployed agent server. No LangGraph experience assumed — the parts of
+it you need are explained here, where you need them.
+
+If you already have a LangGraph.js graph or a `langgraph.json`, you want
+[getting-started.md](./getting-started.md) instead: there is nothing to scaffold, and adopting skein
+is a one-line change.
+
+**Prerequisites:** Node ≥ 20 and a package manager. That's all — nothing in this guide needs an API
+key until you decide you want one, and nothing needs Docker until the last section.
+
+## 1. Create the project
+
+```bash
+npm create skein-js@latest my-agent
+```
+
+`pnpm create skein-js my-agent` and `yarn create skein-js my-agent` do the same thing. Keep the
+`@latest`: without it, npm's cache can hand you an old copy of the scaffolder.
+
+It asks two questions — where to put the project, and which model provider you want. **Pick "None"
+for now.** You can add a model in a minute, and starting without one means nothing can go wrong
+before you have seen the thing work.
+
+Then:
+
+```bash
+cd my-agent
+npm run dev
+```
+
+You now have an agent server on `http://localhost:2024`.
+
+## 2. Look at it before you read any code
+
+Open `http://localhost:2024/console`.
+
+That's the **skein console**, served by your own process — no account, no hosted service, no tunnel.
+Create a thread, send "hello", and watch the run execute. You will get `echo: hello` back, because
+the graph you just created echoes its input.
+
+This is worth doing before anything else: everything below is about changing what happens between
+your message and that reply, and it helps to have seen the loop close.
+
+## 3. What you actually got
+
+Eleven files. The three that matter:
+
+**`src/echo-graph.ts`** — your agent. We'll come back to it.
+
+**`langgraph.json`** — how skein finds your graphs:
+
+```json
+{
+  "node_version": "24",
+  "graphs": { "echo": "./src/echo-graph.ts:graph" },
+  "env": ".env"
+}
+```
+
+`"./src/echo-graph.ts:graph"` means _the export named `graph` in that file_. The key — `echo` — is
+what clients ask for by name. This is the same file format the LangGraph CLI reads, which is why
+skein is a drop-in for it.
+
+**`package.json`** — four commands that are the whole lifecycle:
+
+|                        |                                                              |
+| ---------------------- | ------------------------------------------------------------ |
+| `npm run dev`          | what you're running: hot reload, in-memory state, zero setup |
+| `npm run dev:services` | Postgres + Redis in Docker, needed by `start`                |
+| `npm run build`        | compile your graphs to plain JavaScript in `.skein/`         |
+| `npm start`            | serve that build — this is what production runs              |
+
+The rest: `.env` and `.env.example` (identical, entirely commented out — nothing in them is required
+yet), `compose.dev.yaml` (the services for `start`), `tsconfig.json`, a test, and a README.
+
+## 4. Understanding the graph
+
+Here is the whole agent:
+
+```ts
+import { AIMessage, type BaseMessage } from "@langchain/core/messages";
+import { MessagesAnnotation, StateGraph } from "@langchain/langgraph";
+
+function echo(state: typeof MessagesAnnotation.State): { messages: BaseMessage[] } {
+  const last = state.messages.at(-1);
+  const text = typeof last?.content === "string" ? last.content : "";
+  return { messages: [new AIMessage(`echo: ${text}`)] };
+}
+
+export const graph = new StateGraph(MessagesAnnotation)
+  .addNode("echo", echo)
+  .addEdge("__start__", "echo")
+  .addEdge("echo", "__end__")
+  .compile();
+```
+
+Four ideas, and they are the only LangGraph concepts you need to get started:
+
+**State** is the data flowing through your agent. `MessagesAnnotation` is a ready-made state that
+holds a list of chat messages and knows to _append_ new ones rather than replace the list. Most
+conversational agents want exactly this.
+
+**A node** is a function. It receives the current state and returns only the part that changed — here,
+one new message. It is a plain function: you can call it, test it, and step through it in a debugger.
+
+**Edges** say what runs next. `__start__` and `__end__` are the built-in entry and exit points, so
+this graph is "start → echo → done." Real agents branch here — that is where the "graph" part earns
+its name.
+
+**`.compile()`** turns the definition into something runnable. What it returns is what skein serves.
+
+Try it: change `echo:` to `you said:` in `src/echo-graph.ts` and save. The server hot-reloads and
+**keeps your existing threads** — send another message in the console and you will see the new reply
+in the same conversation.
+
+## 5. Give it a real model
+
+Now swap the echo for an LLM. Install a provider:
+
+```bash
+npm install @langchain/anthropic
+```
+
+Create `src/agent-graph.ts`:
+
+```ts
+import { ChatAnthropic } from "@langchain/anthropic";
+import { createReactAgent } from "@langchain/langgraph/prebuilt";
+
+const model = new ChatAnthropic({ model: "claude-sonnet-4-5", temperature: 0 });
+
+export const graph = createReactAgent({ llm: model, tools: [] });
+```
+
+`createReactAgent` is LangGraph's prebuilt agent loop: call the model, and if it asks for a tool,
+run the tool and call the model again. You did not have to build that loop.
+
+Register it in `langgraph.json`:
+
+```json
+{
+  "graphs": {
+    "echo": "./src/echo-graph.ts:graph",
+    "agent": "./src/agent-graph.ts:graph"
+  }
+}
+```
+
+Then give it a key — `.env` is already there, with every line commented out:
+
+```bash
+# in .env, set ANTHROPIC_API_KEY= — from https://console.anthropic.com/settings/keys
+```
+
+Restart, pick `agent` in the console, and you are talking to a real model. Tokens stream as they are
+generated.
+
+> Prefer to skip this assembly? `npm create skein-js@latest my-agent --provider anthropic` scaffolds
+> all of it, plus a working tool, in one step.
+
+## 6. Give it a tool
+
+An agent that can only talk is a chatbot. Tools are what make it an agent:
+
+```ts
+import { tool } from "@langchain/core/tools";
+import { z } from "zod";
+
+const getWeather = tool(
+  async ({ city }: { city: string }) => {
+    const geo = await fetch(
+      `https://geocoding-api.open-meteo.com/v1/search?name=${encodeURIComponent(city)}&count=1`,
+    ).then((response) => response.json());
+    const place = geo.results?.[0];
+    if (!place) return `I couldn't find ${city}.`;
+
+    const forecast = await fetch(
+      `https://api.open-meteo.com/v1/forecast?latitude=${place.latitude}` +
+        `&longitude=${place.longitude}&current=temperature_2m`,
+    ).then((response) => response.json());
+    return `It's ${forecast.current.temperature_2m}°C in ${place.name}.`;
+  },
+  {
+    name: "get_weather",
+    description: "Get the current weather for a city.",
+    schema: z.object({ city: z.string().describe("City name, e.g. 'Nairobi'") }),
+  },
+);
+```
+
+Pass it in — `createReactAgent({ llm: model, tools: [getWeather] })` — and ask "what's the weather in
+Nairobi?". The console shows the model deciding to call the tool, the result coming back, and the
+final answer. (Open-Meteo needs no API key of its own.)
+
+The `description` and `schema` are how the model knows when to use it. Write them for a reader who
+has no other context, because that is exactly the model's situation.
+
+## 7. Talk to it from your own code
+
+The server speaks the standard Agent Protocol, so the official SDK works — there is no skein client:
+
+```ts
+import { Client } from "@langchain/langgraph-sdk";
+
+const client = new Client({ apiUrl: "http://localhost:2024" });
+const thread = await client.threads.create();
+
+for await (const event of client.runs.stream(thread.thread_id, "agent", {
+  input: { messages: [{ role: "user", content: "what's the weather in Nairobi?" }] },
+})) {
+  console.log(event.event, event.data);
+}
+```
+
+For a UI, the `useStream` React hook talks to the same server with only a URL change — see
+[react-sdk.md](./react-sdk.md). Vue, Svelte and Angular work too; so do
+[Agent Chat UI](https://github.com/langchain-ai/agent-chat-ui) and LangGraph Studio.
+
+## 8. Remember things between conversations
+
+Threads persist a conversation. A **store** persists across conversations — what a user told you last
+week. Any node can reach it:
+
+```ts
+import { getStore } from "@langchain/langgraph";
+
+async function remember(state: typeof MessagesAnnotation.State) {
+  const store = getStore();
+  await store.put(["users", "alice"], "prefers", { units: "celsius" });
+  const saved = await store.get(["users", "alice"], "prefers");
+  // …use saved.value in your prompt
+}
+```
+
+In `dev` this is in-memory. In production it is Postgres, with vector search for semantic recall —
+and your node code does not change. See [storage.md](./storage.md) and [memory.md](./memory.md).
+
+## 9. Ship it
+
+`dev` is not the production path. Production is `build` + `start`:
+
+```bash
+npm run dev:services    # Postgres + Redis via Docker
+# uncomment POSTGRES_URI and REDIS_URI in .env
+npm run build           # graphs → plain JavaScript in .skein/build
+npm start
+```
+
+`build` compiles your TypeScript graphs ahead of time; `start` serves that output with no TypeScript
+toolchain in the loop. It is exactly what the production container runs.
+
+`start` requires Postgres and Redis on purpose. That is what makes runs survive a restart, lets a
+human approve an interrupt an hour later, and lets you run more than one instance.
+
+For a container, `npx skein up` brings up the whole stack, and `npx skein build` produces an image.
+Then pick a host: [Cloud Run](./deploy-cloud-run.md), [Fly](./deploy-fly.md),
+[Railway](./deploy-railway.md), [Render](./deploy-render.md), [AWS](./deploy-aws.md),
+[Kubernetes](./deploy-kubernetes.md), or [a plain VPS](./deploy-vps.md). Full guide:
+[deploy.md](./deploy.md).
+
+## Where to next
+
+- [Recipes](./recipes/) — auth, human-in-the-loop, background runs, CORS
+- [The console](./console.md) — what else that UI does: time travel, interrupt approvals, crons
+- [Agent Protocol](./agent-protocol.md) — every endpoint your server exposes
+- [Scaffolding reference](./scaffolding.md) — every flag, and the Nx generators
+- [LangGraph.js docs](https://docs.langchain.com/oss/javascript/langgraph/overview) — for graphs more
+  interesting than a straight line: branching, subgraphs, custom state
+
+
+---
+
 <!-- source: docs/getting-started.md -->
 
 # Getting started
 
-A guided, end-to-end path from nothing to a running Agent Protocol server around your LangGraph.js
-graph, then to production. If you already have a `langgraph.json` and just want the drop-in, skip to
-[Path A](#path-a--i-have-a-langgraphjson-drop-in). If you have a compiled graph in code, take
-[Path B](#path-b--i-have-a-graph-in-code-embed). For a terse reference instead of a walkthrough, see
+A guided, end-to-end path to a running Agent Protocol server, then to production. Pick the path that
+matches what you have right now:
+
+- **Nothing yet** → [Path A](#path-a--starting-from-scratch): one command scaffolds a working project.
+- **A `langgraph.json`** → [Path B](#path-b--i-have-a-langgraphjson-drop-in): a one-line drop-in.
+- **A compiled graph in code** → [Path C](#path-c--i-have-a-graph-in-code-embed): wrap it in `deps`.
+
+All three produce the **identical** server. For a terse reference instead of a walkthrough, see
 [using-skein.md](./using-skein.md).
 
 ## Prerequisites
 
 - **Node ≥ 20** and a package manager (`pnpm`/`npm`).
-- A **[LangGraph.js graph](https://docs.langchain.com/oss/javascript/langgraph/graph-api)** — a
-  `CompiledStateGraph` from `@langchain/langgraph`. Any graph works; a
-  keyless "echo" graph is the fastest way to see the server before wiring a model. The runnable
-  [`express-basic`](https://github.com/skein-js/skein-js/tree/main/examples/express-basic) and [`embed-graph`](https://github.com/skein-js/skein-js/tree/main/examples/embed-graph) examples
-  ship one.
+- For Paths B and C, a
+  **[LangGraph.js graph](https://docs.langchain.com/oss/javascript/langgraph/graph-api)** — a
+  `CompiledStateGraph` from `@langchain/langgraph`. Path A writes one for you.
 
-## Path A — I have a `langgraph.json` (drop-in)
+## Path A — Starting from scratch
+
+No graph, no config, no LangGraph experience. One command:
+
+```bash
+npm create skein-js@latest my-agent
+cd my-agent
+npm run dev            # → http://localhost:2024, console at /console
+```
+
+You get a `langgraph.json`, a keyless echo graph you can edit, a test, and the whole
+`dev` → `build` → `start` lifecycle wired up. Nothing needs an API key or a database to run.
+
+[**Your first agent**](./your-first-agent.md) walks through it end to end — what each generated file
+does, the four LangGraph concepts you need, adding a model and a tool, then deploying.
+[scaffolding.md](./scaffolding.md) is the flag-by-flag reference, and covers doing it by hand if you
+would rather not run a scaffolder.
+
+## Path B — I have a `langgraph.json` (drop-in)
 
 If you already run `langgraph dev`, this is a one-line change. Keep your `langgraph.json` exactly as
 it is:
@@ -946,7 +1285,7 @@ Prefer to mount it inside your own Express/Fastify/Nest/Next app instead of the 
 at the same config — `{ config: "./langgraph.json" }` — using the snippets in
 [Mount it on your framework](./using-skein.md#mount-it-on-your-framework).
 
-## Path B — I have a graph in code (embed)
+## Path C — I have a graph in code (embed)
 
 No `langgraph.json`, no CLI — bring the compiled graph you already hold and wrap it into a
 `ProtocolDeps` with `embedInMemoryGraphs`, then hand `{ deps }` to any adapter:
@@ -967,7 +1306,7 @@ pnpm add @skein-js/express @skein-js/server-kit @langchain/langgraph
 npx tsx server.ts              # or your usual TS runner
 ```
 
-Both paths produce the **identical** Agent Protocol server. See [embedding.md](./embedding.md) for the
+All three paths produce the **identical** Agent Protocol server. See [embedding.md](./embedding.md) for the
 graph-map/factory semantics and how `overrides` swaps in production drivers.
 
 ## Talk to your server
@@ -1050,10 +1389,234 @@ to containerize. Redis is optional for a single instance but required to run mor
 
 ## Where to next
 
+- [Your first agent](./your-first-agent.md) — the from-zero walkthrough, if you took Path A.
 - [Recipes](./recipes/) — auth, human-in-the-loop, long-term memory, CORS, background runs, deploy.
 - [Using skein-js](./using-skein.md) — the terse consumer/agent cheat-sheet.
 - [Examples](https://github.com/skein-js/skein-js/tree/main/examples) — a runnable project per framework and pattern.
 - [Overview & architecture](./index.md) · [Agent Protocol surface](./agent-protocol.md)
+
+
+---
+
+<!-- source: docs/scaffolding.md -->
+
+# Scaffolding a project
+
+`create-skein-js` generates a working skein-js project from an empty directory. It is the fastest
+path from nothing to a running agent server, and it is optional — everything it emits is a file you
+could write yourself, and the last section shows you exactly that.
+
+For a guided walkthrough rather than a reference, start with
+[your first agent](./your-first-agent.md).
+
+## Quick start
+
+```bash
+npm create skein-js@latest my-agent
+```
+
+```bash
+pnpm create skein-js my-agent
+yarn create skein-js my-agent
+npx create-skein-js my-agent
+```
+
+**Keep the `@latest`.** Without it, npm's npx cache — and `pnpm dlx`'s 24-hour cache — can serve a
+stale copy of the scaffolder.
+
+## What it generates
+
+```text
+my-agent/
+├── langgraph.json          Points skein at your graphs; the LangGraph CLI's format
+├── package.json            The skein CLI lifecycle as scripts
+├── tsconfig.json           Strict, ESM, bundler resolution
+├── vitest.config.ts
+├── compose.dev.yaml        Postgres + Redis — what `start` needs
+├── .env.example            Every value optional for `dev`
+├── .env                    A copy of it, gitignored — never overwritten if one already exists
+├── .gitignore
+├── README.md               Explains each of these files
+└── src/
+    ├── echo-graph.ts       Runs with no API key, no network
+    ├── echo-graph.test.ts  So `npm test` is green on the first commit
+    └── agent-graph.ts      Only with --provider: a ReAct agent with a working tool
+```
+
+The scripts are the whole skein CLI lifecycle:
+
+| Script         | Command                                    | What it does                                                |
+| -------------- | ------------------------------------------ | ----------------------------------------------------------- |
+| `dev`          | `skein dev --port 2024`                    | In-memory drivers, hot reload, state persisted to `.skein/` |
+| `dev:services` | `docker compose -f compose.dev.yaml up -d` | Postgres + Redis for `start`                                |
+| `build`        | `skein build --artifact-only`              | Graphs → plain JavaScript in `.skein/build`                 |
+| `start`        | `skein start`                              | Serve that build — the production entrypoint                |
+| `typecheck`    | `tsc --noEmit`                             |                                                             |
+| `test`         | `vitest run`                               |                                                             |
+
+Two deliberate choices worth knowing:
+
+- **`dev` never needs a credential or a service.** The `echo` graph is always present and always
+  first in `graphs`, so the very first request works with an empty `.env`.
+- **`compose.dev.yaml` is always generated**, not hidden behind a flag. `skein start` is durable-only
+  — it defaults to `--store postgres --queue redis` and fails without `POSTGRES_URI`/`REDIS_URI` — so
+  a project shipping a `start` script has to ship the services it needs, or that script is a trap.
+
+## Options
+
+```text
+create-skein-js [directory]
+
+  -m, --provider <name>   none | google | anthropic | openai   (default: prompted, else none)
+      --pm <name>         npm | pnpm | yarn | bun              (default: detected)
+      --no-install        Skip installing dependencies
+      --no-git            Skip initializing a git repository
+  -y, --yes               Accept every default; never prompt
+  -f, --force             Scaffold into a directory that is not empty
+  -v, --version
+  -h, --help
+```
+
+**Passing flags through npm** needs a `--` separator. `pnpm create` and `npx` do not:
+
+```bash
+npm create skein-js@latest my-agent -- --provider anthropic
+pnpm create skein-js my-agent --provider anthropic
+```
+
+### `--provider`
+
+|                    | Package added             | `.env.example` gains | Emits `agent-graph.ts`? |
+| ------------------ | ------------------------- | -------------------- | ----------------------- |
+| `none` _(default)_ | —                         | —                    | no                      |
+| `google`           | `@langchain/google-genai` | `GOOGLE_API_KEY`     | yes                     |
+| `anthropic`        | `@langchain/anthropic`    | `ANTHROPIC_API_KEY`  | yes                     |
+| `openai`           | `@langchain/openai`       | `OPENAI_API_KEY`     | yes                     |
+
+With a provider you also get a ReAct agent wired to a live weather tool that needs no key of its own,
+so the agent is genuinely runnable the moment you add your model key.
+
+### Behaviour you can rely on
+
+- **It never hangs unattended.** Prompts appear only when both streams are a TTY, `--yes` was not
+  passed, and `CI` is unset. Otherwise it takes the flag, then the default — safe inside a Dockerfile
+  or a CI job.
+- **A failed install is not fatal.** Your files are already written; the closing output just adds
+  `install` back to the steps.
+- **Scaffolding into a fresh clone works.** A directory holding only `.git`, `LICENSE`, editor
+  folders or `.DS_Store` counts as empty, so "create an empty repo, clone it, scaffold into it" needs
+  no `--force`.
+- **git is skipped inside an existing work tree**, so it never nests a repository in yours.
+- **The version is pinned to a matching runtime.** Because every `packages/*` shares one version,
+  `create-skein-js@x.y.z` pins `skein-js@^x.y.z` — the scaffolder and the runtime it scaffolds are
+  always the same release.
+
+## Nx and other monorepos
+
+Scaffold into whatever directory you want — the generated project is self-contained, so it works
+inside a workspace as-is:
+
+```bash
+npm create skein-js@latest apps/my-agent
+```
+
+There is deliberately **no skein Nx plugin**. A generator collection would be permanent public API
+tracking Nx's release cadence, and it would buy you one file you can write once and own yourself.
+Here is that file — `apps/my-agent/project.json`:
+
+```json
+{
+  "name": "my-agent",
+  "projectType": "application",
+  "targets": {
+    "dev": {
+      "executor": "nx:run-commands",
+      "cache": false,
+      "options": { "command": "skein dev --port 2024", "cwd": "apps/my-agent" }
+    },
+    "build": {
+      "executor": "nx:run-commands",
+      "options": { "command": "skein build --artifact-only", "cwd": "apps/my-agent" }
+    },
+    "start": {
+      "executor": "nx:run-commands",
+      "cache": false,
+      "options": { "command": "skein start", "cwd": "apps/my-agent" }
+    },
+    "typecheck": {
+      "executor": "nx:run-commands",
+      "options": { "command": "tsc --noEmit", "cwd": "apps/my-agent" }
+    }
+  }
+}
+```
+
+`dev` and `start` are marked `"cache": false` because a long-running server has no meaningful cached
+result. Explicit targets work on every Nx version, with no plugin to install and nothing to migrate.
+
+To share the workspace's TypeScript settings, replace the generated `tsconfig.json` with one that
+extends your base:
+
+```json
+{
+  "extends": "../../tsconfig.base.json",
+  "compilerOptions": { "noEmit": true, "types": ["node"] },
+  "include": ["src/**/*.ts"]
+}
+```
+
+The same approach works for Turborepo, pnpm workspaces, or plain npm workspaces — the project is
+just a package with a `langgraph.json` in it.
+
+## If you don't want the scaffolder
+
+Nothing here is load-bearing. Two alternatives:
+
+**Copy a runnable example.** The [`examples/`](https://github.com/skein-js/skein-js/tree/main/examples)
+directory has one project per framework and pattern:
+
+```bash
+npx degit skein-js/skein-js/examples/express-basic my-agent
+```
+
+Note that this copies from `main`, which tracks unreleased work: the examples depend on
+`workspace:*` versions that only resolve inside the monorepo, so you will need to replace those with
+real version ranges. The scaffolder exists partly to avoid exactly that.
+
+**Write the three files yourself.** A skein project is a graph, a `langgraph.json`, and the CLI:
+
+```bash
+npm install -D skein-js
+npm install @langchain/core @langchain/langgraph
+```
+
+```ts
+// src/graph.ts
+import { AIMessage } from "@langchain/core/messages";
+import { MessagesAnnotation, StateGraph } from "@langchain/langgraph";
+
+export const graph = new StateGraph(MessagesAnnotation)
+  .addNode("echo", (state) => ({
+    messages: [new AIMessage(`echo: ${state.messages.at(-1)?.content}`)],
+  }))
+  .addEdge("__start__", "echo")
+  .addEdge("echo", "__end__")
+  .compile();
+```
+
+```json
+// langgraph.json
+{ "node_version": "24", "graphs": { "agent": "./src/graph.ts:graph" }, "env": ".env" }
+```
+
+Add `"type": "module"` to your `package.json`, then `npx skein dev`. That is the entire contract —
+see [langgraph-cli-compat.md](./langgraph-cli-compat.md) for every field it accepts.
+
+## See also
+
+- [Your first agent](./your-first-agent.md) — the guided version of all of this
+- [Getting started](./getting-started.md) — the paths for when you already have a graph
+- [LangGraph CLI compatibility](./langgraph-cli-compat.md) — every `langgraph.json` field
 
 
 ---
@@ -1085,7 +1648,11 @@ Redis for production, or an in-code graph map). **Same server either way** — o
 
 ## Install
 
-Pick your framework adapter; `@langchain/langgraph` is always a peer dependency (bring your graph).
+Starting from nothing? `npm create skein-js@latest my-agent` writes the project for you and you can
+skip this section.
+
+Otherwise pick your framework adapter; `@langchain/langgraph` is always a peer dependency (bring your
+graph).
 
 ```bash
 pnpm add @skein-js/express  @langchain/langgraph        # Express
@@ -1097,9 +1664,19 @@ pnpm add @skein-js/nextjs   @langchain/langgraph        # Next.js
 For production drivers add `@skein-js/runtime` (assembles Postgres/Redis). Prefer the CLI on-ramp?
 `pnpm add -D skein-js` and run `skein dev` — a drop-in for `langgraph dev`.
 
-## Two on-ramps
+## Three on-ramps
 
-**A — You have a `langgraph.json`** (or use the LangGraph CLI today). Change one script and keep the
+**A — You have nothing yet.** Scaffold a working project — a `langgraph.json`, a keyless graph, a
+test, and the `dev`/`build`/`start` lifecycle:
+
+```bash
+npm create skein-js@latest my-agent
+```
+
+See [scaffolding.md](./scaffolding.md), or [your-first-agent.md](./your-first-agent.md) for the
+walkthrough.
+
+**B — You have a `langgraph.json`** (or use the LangGraph CLI today). Change one script and keep the
 config unchanged:
 
 ```diff
@@ -1110,7 +1687,7 @@ config unchanged:
 Or point an adapter at the config: `{ config: "./langgraph.json" }`. See
 [langgraph-cli-compat.md](./langgraph-cli-compat.md).
 
-**B — You have a compiled graph in code** (no config, no CLI). Wrap it into `deps` and pass `{ deps }`:
+**C — You have a compiled graph in code** (no config, no CLI). Wrap it into `deps` and pass `{ deps }`:
 
 ```ts
 import { createExpressServer } from "@skein-js/express";

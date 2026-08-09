@@ -157,7 +157,9 @@ export default defineConfig({
         text: "Getting started",
         items: [
           { text: "Overview", link: "/" },
+          { text: "Your first agent", link: "/your-first-agent" },
           { text: "Getting started", link: "/getting-started" },
+          { text: "Scaffolding a project", link: "/scaffolding" },
           { text: "Using skein-js", link: "/using-skein" },
         ],
       },

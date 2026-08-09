@@ -270,3 +270,26 @@ jobs:
 
       - name: Build smoke
         run: node scripts/build-image-smoke.mjs
+
+  # The on-ramp is a promise to strangers ("one command gets you a running agent"), and it can rot
+  # without anything in this repo changing — a released dependency moves and the starter no longer
+  # resolves or no longer typechecks. Unit tests assert what the scaffolder *returns*; only this
+  # proves the result actually installs and serves a run.
+  scaffold-smoke:
+    name: npm create skein-js → running server
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: pnpm/action-setup@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: ${{ env.NODE_LTS }}
+          cache: pnpm
+
+      - run: pnpm install --frozen-lockfile
+
+      - name: Build the scaffolder
+        run: pnpm exec nx build create-skein-js --output-style=stream
+
+      - name: Scaffold, install, and serve a run
+        run: node scripts/scaffold-smoke.mjs

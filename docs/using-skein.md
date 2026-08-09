@@ -23,7 +23,11 @@ Redis for production, or an in-code graph map). **Same server either way** — o
 
 ## Install
 
-Pick your framework adapter; `@langchain/langgraph` is always a peer dependency (bring your graph).
+Starting from nothing? `npm create skein-js@latest my-agent` writes the project for you and you can
+skip this section.
+
+Otherwise pick your framework adapter; `@langchain/langgraph` is always a peer dependency (bring your
+graph).
 
 ```bash
 pnpm add @skein-js/express  @langchain/langgraph        # Express
@@ -35,9 +39,19 @@ pnpm add @skein-js/nextjs   @langchain/langgraph        # Next.js
 For production drivers add `@skein-js/runtime` (assembles Postgres/Redis). Prefer the CLI on-ramp?
 `pnpm add -D skein-js` and run `skein dev` — a drop-in for `langgraph dev`.
 
-## Two on-ramps
+## Three on-ramps
 
-**A — You have a `langgraph.json`** (or use the LangGraph CLI today). Change one script and keep the
+**A — You have nothing yet.** Scaffold a working project — a `langgraph.json`, a keyless graph, a
+test, and the `dev`/`build`/`start` lifecycle:
+
+```bash
+npm create skein-js@latest my-agent
+```
+
+See [scaffolding.md](./scaffolding.md), or [your-first-agent.md](./your-first-agent.md) for the
+walkthrough.
+
+**B — You have a `langgraph.json`** (or use the LangGraph CLI today). Change one script and keep the
 config unchanged:
 
 ```diff
@@ -48,7 +62,7 @@ config unchanged:
 Or point an adapter at the config: `{ config: "./langgraph.json" }`. See
 [langgraph-cli-compat.md](./langgraph-cli-compat.md).
 
-**B — You have a compiled graph in code** (no config, no CLI). Wrap it into `deps` and pass `{ deps }`:
+**C — You have a compiled graph in code** (no config, no CLI). Wrap it into `deps` and pass `{ deps }`:
 
 ```ts
 import { createExpressServer } from "@skein-js/express";

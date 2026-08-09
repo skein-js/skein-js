@@ -1,0 +1,40 @@
+# Local services for `skein start`, which is durable-only. Start them with:
+#   docker compose -f compose.dev.yaml up -d
+# `skein dev` does not need them — it runs on in-memory drivers.
+
+services:
+  postgres:
+    # pgvector, not plain postgres: skein's store uses it for semantic search over long-term memory.
+    image: pgvector/pgvector:pg16
+    environment:
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: postgres
+      POSTGRES_DB: skein
+    # Bound to loopback, not 0.0.0.0. A bare "5432:5432" publishes on every interface, which puts a
+    # superuser-credentialed Postgres on whatever network the machine is attached to — and on Linux
+    # Docker's DNAT rules are traversed before the filter chain, so a `ufw deny 5432` does not save
+    # you. Nothing is lost: .env connects over localhost, and `skein start` runs on the host.
+    ports:
+      - "127.0.0.1:5432:5432"
+    volumes:
+      - postgres-data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U postgres -d skein"]
+      interval: 5s
+      timeout: 5s
+      retries: 20
+
+  redis:
+    image: redis:7-alpine
+    # Loopback for the same reason as Postgres above: this Redis has no password, and `protected-mode`
+    # does not refuse peers arriving through Docker's NAT.
+    ports:
+      - "127.0.0.1:6379:6379"
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 5s
+      retries: 20
+
+volumes:
+  postgres-data:

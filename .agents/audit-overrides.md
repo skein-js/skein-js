@@ -24,4 +24,8 @@ is an internal record.
 
 ## Entries
 
-_None yet._
+## 2026-08-09 — First-party greenfield scaffolding and onboarding
+
+- **B3** — `create-skein` and `@skein-js/nx` are permanent convenience APIs whose underlying workflows users can already assemble from existing Skein primitives.
+
+**Reason (user's words):** Yeah, it's [ossible but not intuitive - we didnot intend to stop plugins like this, we intended features that belong downstream, this belongs upstream

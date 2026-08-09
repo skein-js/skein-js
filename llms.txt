@@ -8,7 +8,9 @@ Upstream references: [LangGraph.js overview](https://docs.langchain.com/oss/java
 
 ## Getting started
 
-- [Getting started](https://github.com/skein-js/skein-js/blob/main/docs/getting-started.md): Guided walkthrough from zero to a running server, then to production (both on-ramps).
+- [Your first agent](https://github.com/skein-js/skein-js/blob/main/docs/your-first-agent.md): From an empty directory to a deployed agent, assuming no LangGraph experience — scaffold, the four LangGraph concepts, add a model and a tool, ship.
+- [Getting started](https://github.com/skein-js/skein-js/blob/main/docs/getting-started.md): Guided walkthrough from zero to a running server, then to production (all three on-ramps).
+- [Scaffolding a project](https://github.com/skein-js/skein-js/blob/main/docs/scaffolding.md): `npm create skein-js@latest` — what it generates, every flag, monorepo use, and how to write the same files by hand.
 - [Using skein-js](https://github.com/skein-js/skein-js/blob/main/docs/using-skein.md): Terse consumer/agent cheat-sheet — install, the `{ config } | { deps }` seam, mount on each framework, call it.
 - [Recipes](https://github.com/skein-js/skein-js/blob/main/docs/recipes/index.md): Task snippets — custom auth, human-in-the-loop, long-term memory, CORS, background runs, webhooks, deploy.
 - [Overview & architecture](https://github.com/skein-js/skein-js/blob/main/docs/index.md): The problem skein solves, what the Agent Protocol is, and how skein is built.
@@ -54,6 +56,7 @@ Upstream references: [LangGraph.js overview](https://docs.langchain.com/oss/java
 - [@skein-js/storage-postgres](https://github.com/skein-js/skein-js/tree/main/packages/storage-postgres#readme): Postgres `SkeinStore` + pgvector; reuses `PostgresSaver`.
 - [@skein-js/redis](https://github.com/skein-js/skein-js/tree/main/packages/runtime-redis#readme): Redis run queue + cross-instance pub/sub streaming.
 - [skein-js (CLI)](https://github.com/skein-js/skein-js/tree/main/packages/cli#readme): The drop-in CLI — `dev` / `up` / `build` / `dockerfile` / `import-langgraph`.
+- [create-skein-js](https://github.com/skein-js/skein-js/tree/main/packages/create-skein-js#readme): The scaffolder — `npm create skein-js@latest my-agent`. Run once, never installed.
 
 ## Examples
 

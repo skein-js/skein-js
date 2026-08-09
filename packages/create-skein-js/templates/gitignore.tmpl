@@ -1,0 +1,14 @@
+node_modules/
+dist/
+
+# Local secrets — .env.example is the checked-in template.
+.env
+.env.*
+!.env.example
+
+# skein's dev state and build artifacts: threads and runs persisted across `skein dev` restarts,
+# plus the bundled output of `skein build` that `skein start` runs. Regenerated, never committed.
+.skein/
+
+*.log
+.DS_Store

@@ -20,11 +20,15 @@ import { describe, expect, it } from "vitest";
 const packagesDir = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "../..");
 
 /**
- * `skein-js` is a CLI, not a library: it has no exports and its entry runs a command on import. It
- * is published, but the library export contract below deliberately does not apply — see
+ * Applications, not libraries: they have no exports and their entry runs a command on import. Both
+ * are published, but the library export contract below deliberately does not apply — see
  * docs/bundling.md ("never bundle the CLI").
+ *
+ * `skein-js` is the CLI. `create-skein-js` is the scaffolder: importing it would parse argv and
+ * write a project into the current directory, which is precisely what a `require` condition must not
+ * make reachable from a bundler's module graph.
  */
-const BIN_ONLY_PACKAGES = new Set(["skein-js"]);
+const BIN_ONLY_PACKAGES = new Set(["skein-js", "create-skein-js"]);
 
 interface WorkspacePackage {
   readonly directory: string;
@@ -51,7 +55,7 @@ const libraryPackages = publishablePackages.filter(
 describe("publishable package manifests", () => {
   it("finds every publishable package", () => {
     // Guards the discovery itself: a broken glob would silently make every case below vacuous.
-    expect(publishablePackages.length).toBe(18);
+    expect(publishablePackages.length).toBe(19);
     expect(libraryPackages.length).toBe(17);
   });
 

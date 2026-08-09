@@ -130,8 +130,23 @@ _LangSmith Deployment pricing/licensing as of August 2026 — see [langchain.com
 
 ## Quick start
 
-A skein-js project is just three pieces: a **graph**, a **`langgraph.json`**, and the **`skein`
-CLI**. Nothing in your graph code is skein-specific.
+```bash
+npm create skein-js@latest my-agent
+cd my-agent
+npm run dev
+```
+
+That's it — an agent server on <http://localhost:2024>, with the console at
+<http://localhost:2024/console>. No API key, no database, no Docker: the graph it scaffolds runs on
+nothing but Node. Add a model when you want one (`--provider anthropic|openai|google`).
+
+[**Your first agent**](./docs/your-first-agent.md) walks from here to deployed and teaches the
+LangGraph you need along the way. [Scaffolding reference](./docs/scaffolding.md) covers every flag.
+
+### Or wire it up by hand
+
+There is no magic to undo later — a skein-js project is just a **graph**, a **`langgraph.json`**, and
+the **`skein` CLI**. Nothing in your graph code is skein-specific.
 
 **1. Install the CLI** into your project:
 
@@ -405,6 +420,7 @@ version badges below always move in lockstep.
 | Package                                                     | What it's for                                                              | Version                                                                                                                                                      | Downloads                                                                                                                                         |
 | ----------------------------------------------------------- | -------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------ | ------------------------------------------------------------------------------------------------------------------------------------------------- |
 | [`skein-js`](./packages/cli)                                | The drop-in CLI — `dev` / `up` / `build` / `dockerfile` / `start`          | [![npm](https://img.shields.io/npm/v/skein-js?logo=npm&color=cb3837&label=)](https://www.npmjs.com/package/skein-js)                                         | [![dm](https://img.shields.io/npm/dm/skein-js?color=blue&label=)](https://www.npmjs.com/package/skein-js)                                         |
+| [`create-skein-js`](./packages/create-skein-js)             | Scaffold a project — `npm create skein-js@latest`                          | [![npm](https://img.shields.io/npm/v/create-skein-js?logo=npm&color=cb3837&label=)](https://www.npmjs.com/package/create-skein-js)                           | [![dm](https://img.shields.io/npm/dm/create-skein-js?color=blue&label=)](https://www.npmjs.com/package/create-skein-js)                           |
 | [`@skein-js/agent-protocol`](./packages/agent-protocol)     | ⭐ The engine — run engine, handler table, SSE. Framework-agnostic         | [![npm](https://img.shields.io/npm/v/%40skein-js%2Fagent-protocol?logo=npm&color=cb3837&label=)](https://www.npmjs.com/package/@skein-js/agent-protocol)     | [![dm](https://img.shields.io/npm/dm/%40skein-js%2Fagent-protocol?color=blue&label=)](https://www.npmjs.com/package/@skein-js/agent-protocol)     |
 | [`@skein-js/core`](./packages/core)                         | The shared contract — wire types, `SkeinStore` / queue / bus / auth seams  | [![npm](https://img.shields.io/npm/v/%40skein-js%2Fcore?logo=npm&color=cb3837&label=)](https://www.npmjs.com/package/@skein-js/core)                         | [![dm](https://img.shields.io/npm/dm/%40skein-js%2Fcore?color=blue&label=)](https://www.npmjs.com/package/@skein-js/core)                         |
 | [`@skein-js/config`](./packages/config)                     | `langgraph.json` parser + graph loader                                     | [![npm](https://img.shields.io/npm/v/%40skein-js%2Fconfig?logo=npm&color=cb3837&label=)](https://www.npmjs.com/package/@skein-js/config)                     | [![dm](https://img.shields.io/npm/dm/%40skein-js%2Fconfig?color=blue&label=)](https://www.npmjs.com/package/@skein-js/config)                     |
@@ -435,6 +451,17 @@ pnpm skein dev
 ```
 
 → [`packages/cli`](./packages/cli)
+
+### `create-skein-js` — the scaffolder
+
+Writes a working project — `langgraph.json`, a keyless graph, a test, and the whole
+`dev` → `build` → `start` lifecycle. You never install it; you run it once.
+
+```bash
+npm create skein-js@latest my-agent
+```
+
+→ [`packages/create-skein-js`](./packages/create-skein-js) · [scaffolding docs](./docs/scaffolding.md)
 
 ### `@skein-js/agent-protocol` — the engine ⭐
 

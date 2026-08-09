@@ -17,7 +17,9 @@ const repoRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), ".."
 const DOCS = [
   "README.md",
   "docs/index.md",
+  "docs/your-first-agent.md",
   "docs/getting-started.md",
+  "docs/scaffolding.md",
   "docs/using-skein.md",
   "docs/langgraph-cli-compat.md",
   "docs/embedding.md",

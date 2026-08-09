@@ -1,21 +1,41 @@
 # Getting started
 
-A guided, end-to-end path from nothing to a running Agent Protocol server around your LangGraph.js
-graph, then to production. If you already have a `langgraph.json` and just want the drop-in, skip to
-[Path A](#path-a--i-have-a-langgraphjson-drop-in). If you have a compiled graph in code, take
-[Path B](#path-b--i-have-a-graph-in-code-embed). For a terse reference instead of a walkthrough, see
+A guided, end-to-end path to a running Agent Protocol server, then to production. Pick the path that
+matches what you have right now:
+
+- **Nothing yet** → [Path A](#path-a--starting-from-scratch): one command scaffolds a working project.
+- **A `langgraph.json`** → [Path B](#path-b--i-have-a-langgraphjson-drop-in): a one-line drop-in.
+- **A compiled graph in code** → [Path C](#path-c--i-have-a-graph-in-code-embed): wrap it in `deps`.
+
+All three produce the **identical** server. For a terse reference instead of a walkthrough, see
 [using-skein.md](./using-skein.md).
 
 ## Prerequisites
 
 - **Node ≥ 20** and a package manager (`pnpm`/`npm`).
-- A **[LangGraph.js graph](https://docs.langchain.com/oss/javascript/langgraph/graph-api)** — a
-  `CompiledStateGraph` from `@langchain/langgraph`. Any graph works; a
-  keyless "echo" graph is the fastest way to see the server before wiring a model. The runnable
-  [`express-basic`](https://github.com/skein-js/skein-js/tree/main/examples/express-basic) and [`embed-graph`](https://github.com/skein-js/skein-js/tree/main/examples/embed-graph) examples
-  ship one.
+- For Paths B and C, a
+  **[LangGraph.js graph](https://docs.langchain.com/oss/javascript/langgraph/graph-api)** — a
+  `CompiledStateGraph` from `@langchain/langgraph`. Path A writes one for you.
 
-## Path A — I have a `langgraph.json` (drop-in)
+## Path A — Starting from scratch
+
+No graph, no config, no LangGraph experience. One command:
+
+```bash
+npm create skein-js@latest my-agent
+cd my-agent
+npm run dev            # → http://localhost:2024, console at /console
+```
+
+You get a `langgraph.json`, a keyless echo graph you can edit, a test, and the whole
+`dev` → `build` → `start` lifecycle wired up. Nothing needs an API key or a database to run.
+
+[**Your first agent**](./your-first-agent.md) walks through it end to end — what each generated file
+does, the four LangGraph concepts you need, adding a model and a tool, then deploying.
+[scaffolding.md](./scaffolding.md) is the flag-by-flag reference, and covers doing it by hand if you
+would rather not run a scaffolder.
+
+## Path B — I have a `langgraph.json` (drop-in)
 
 If you already run `langgraph dev`, this is a one-line change. Keep your `langgraph.json` exactly as
 it is:
@@ -45,7 +65,7 @@ Prefer to mount it inside your own Express/Fastify/Nest/Next app instead of the 
 at the same config — `{ config: "./langgraph.json" }` — using the snippets in
 [Mount it on your framework](./using-skein.md#mount-it-on-your-framework).
 
-## Path B — I have a graph in code (embed)
+## Path C — I have a graph in code (embed)
 
 No `langgraph.json`, no CLI — bring the compiled graph you already hold and wrap it into a
 `ProtocolDeps` with `embedInMemoryGraphs`, then hand `{ deps }` to any adapter:
@@ -66,7 +86,7 @@ pnpm add @skein-js/express @skein-js/server-kit @langchain/langgraph
 npx tsx server.ts              # or your usual TS runner
 ```
 
-Both paths produce the **identical** Agent Protocol server. See [embedding.md](./embedding.md) for the
+All three paths produce the **identical** Agent Protocol server. See [embedding.md](./embedding.md) for the
 graph-map/factory semantics and how `overrides` swaps in production drivers.
 
 ## Talk to your server
@@ -149,6 +169,7 @@ to containerize. Redis is optional for a single instance but required to run mor
 
 ## Where to next
 
+- [Your first agent](./your-first-agent.md) — the from-zero walkthrough, if you took Path A.
 - [Recipes](./recipes/) — auth, human-in-the-loop, long-term memory, CORS, background runs, deploy.
 - [Using skein-js](./using-skein.md) — the terse consumer/agent cheat-sheet.
 - [Examples](https://github.com/skein-js/skein-js/tree/main/examples) — a runnable project per framework and pattern.

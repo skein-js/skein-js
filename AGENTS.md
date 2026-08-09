@@ -140,6 +140,7 @@ Prerequisites: the git remote must point at `skein-js/skein-js` (Nx derives the 
 | `@skein-js/langsmith` · `@skein-js/posthog` · `@skein-js/otel`                      | Telemetry sinks — LangSmith tracing, PostHog analytics, OpenTelemetry spans/metrics                                                                 |
 | `@skein-js/runtime`                                                                 | Assembles production `ProtocolDeps` (memory/Postgres/Redis) — `buildRuntime` from `langgraph.json` (CLI), `embedPostgresGraphs` from graphs in code |
 | `skein-js` (CLI)                                                                    | Drop-in `dev` / `up` / `build` / `dockerfile`                                                                                                       |
+| `create-skein-js`                                                                   | `npm create skein-js@latest` — scaffolds a project. Templates are real files under `templates/*.tmpl`, compiled into `src/templates.generated.ts`   |
 | `@skein-js/test-support`                                                            | _(private)_ Testcontainers helpers + `SkeinStore` conformance suite                                                                                 |
 
 Examples live in `examples/`: `chat-app` (flagship — research assistant + Next.js/shadcn UI),

@@ -1,0 +1,43 @@
+{
+  "$schema": "../../node_modules/nx/schemas/project-schema.json",
+  "name": "create-skein-js",
+  "sourceRoot": "packages/create-skein-js/src",
+  "projectType": "library",
+  "targets": {
+    "build": {
+      "executor": "nx:run-commands",
+      "dependsOn": ["generate-templates"],
+      "options": {
+        "command": "tsup src/index.ts --format esm --dts --clean",
+        "cwd": "packages/create-skein-js"
+      }
+    },
+    "typecheck": {
+      "executor": "nx:run-commands",
+      "options": {
+        "command": "tsc --noEmit",
+        "cwd": "packages/create-skein-js"
+      }
+    },
+    "generate-templates": {
+      "executor": "nx:run-commands",
+      "inputs": [
+        "{projectRoot}/templates/**/*.tmpl",
+        "{projectRoot}/scripts/generate-templates.mjs"
+      ],
+      "outputs": ["{projectRoot}/src/templates.generated.ts"],
+      "options": {
+        "command": "node scripts/generate-templates.mjs",
+        "cwd": "packages/create-skein-js"
+      }
+    },
+    "test": {
+      "inputs": [
+        "default",
+        "^default",
+        "{workspaceRoot}/examples/express-basic/package.json",
+        "{workspaceRoot}/package.json"
+      ]
+    }
+  }
+}

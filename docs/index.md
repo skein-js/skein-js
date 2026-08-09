@@ -80,6 +80,20 @@ multi-framework, drop-in-CLI layer that OSS lacks. The package-by-package ledger
 versus rebuilt lives in
 [reuse.md](https://github.com/skein-js/skein-js/blob/main/docs/reuse.md).
 
+## Starting from scratch
+
+No graph, no `langgraph.json`, no LangGraph experience — one command writes a working project:
+
+```bash
+npm create skein-js@latest my-agent
+cd my-agent && npm run dev        # → http://localhost:2024, console at /console
+```
+
+It scaffolds a keyless graph you can edit, a test, and the whole `dev` → `build` → `start` lifecycle.
+Nothing it emits needs an API key or a database.
+[**Your first agent**](./your-first-agent.md) takes it from there to deployed and teaches the
+LangGraph you need on the way; [scaffolding.md](./scaffolding.md) is the reference.
+
 ## The drop-in promise
 
 If you're coming from the LangGraph CLI, migration is **zero-effort**:
@@ -95,9 +109,8 @@ skein-js by changing only a URL.
 
 ### The other on-ramp: embed a graph you already have
 
-Never used the LangGraph CLI or Platform? There's nothing to migrate _from_ — but you can still get the
-same server. If you already have a compiled graph in your own app, bring it **in code** — no
-`langgraph.json`, no CLI:
+If you already have a compiled graph in your own app, bring it **in code** — no `langgraph.json`, no
+CLI:
 
 ```ts
 import { createExpressServer } from "@skein-js/express";
@@ -178,12 +191,15 @@ Runnable projects under [`examples/`](https://github.com/skein-js/skein-js/tree/
 ## Documentation map
 
 Start with the user-facing guides; the design docs at the bottom explain how skein-js is built.
-New here? [getting-started.md](./getting-started.md) is the guided path. Building an app _with_ skein
+Brand new, with nothing built yet? [your-first-agent.md](./your-first-agent.md) starts from an empty
+directory. Already have a graph? [getting-started.md](./getting-started.md) is the guided path. Building an app _with_ skein
 (especially as an AI agent)? [using-skein.md](./using-skein.md) is the terse cheat-sheet, and the
 machine-readable [`llms.txt`](https://github.com/skein-js/skein-js/blob/main/llms.txt) / [`llms-full.txt`](https://github.com/skein-js/skein-js/blob/main/llms-full.txt) index the whole set.
 
 | Doc                                                      | Covers                                                           |
 | -------------------------------------------------------- | ---------------------------------------------------------------- |
+| [your-first-agent.md](./your-first-agent.md)             | From an empty directory to deployed — no LangGraph assumed       |
+| [scaffolding.md](./scaffolding.md)                       | `npm create skein-js` — every flag, and doing it by hand         |
 | [getting-started.md](./getting-started.md)               | Guided walkthrough — zero to a running server, then prod         |
 | [using-skein.md](./using-skein.md)                       | Consumer/agent cheat-sheet — install, the seam, mount, call      |
 | [recipes.md](./recipes/)                                 | Auth, HITL, memory, CORS, background runs, webhooks, deploy      |

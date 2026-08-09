@@ -1,0 +1,82 @@
+# <%= projectName %>
+
+An [Agent Protocol](https://github.com/langchain-ai/agent-protocol) server for your
+[LangGraph.js](https://docs.langchain.com/oss/javascript/langgraph/overview) agents, built with
+[skein-js](https://skein-js.github.io/skein-js/).
+
+## Develop
+
+```bash
+<%= runDev %>
+```
+
+- <http://localhost:2024> — the Agent Protocol API
+- <http://localhost:2024/console> — the console: threads, live runs, interrupt approvals, time travel
+
+In-memory drivers, nothing to install or start. Edit a graph and save — the server hot-reloads and
+keeps your threads. Stop and restart it and your state is restored from `.skein/`.
+
+## What's in here
+
+- **`src/echo-graph.ts`** — a LangGraph.js graph that echoes your message back. No API key, no
+  network. This is the one to edit first.
+<%_ if (hasProvider) { _%>
+- **`src/agent-graph.ts`** — a ReAct agent with a live weather tool. Needs a model key.
+<%_ } _%>
+- **`langgraph.json`** — points skein at your graphs. The same format the LangGraph CLI reads.
+- **`.env.example`** — copy to `.env`. Nothing in it is needed for `dev`.
+- **`compose.dev.yaml`** — Postgres and Redis, which `start` needs.
+- **`tsconfig.json`** — strict TypeScript, ESM.
+
+<%_ if (hasProvider) { _%>
+## Add your model key
+
+The `echo` graph runs with no credentials. The `agent` graph needs `<%= apiKeyEnvVar %>`:
+
+`.env` is already here, with every line commented out. Uncomment one:
+
+```bash
+# <%= apiKeyEnvVar %>=your-key-here     ← get one at <%= providerConsoleUrl %>
+```
+
+<%_ } _%>
+## Talk to it
+
+Any Agent Protocol client works — there is no skein-specific SDK:
+
+```ts
+import { Client } from "@langchain/langgraph-sdk";
+
+const client = new Client({ apiUrl: "http://localhost:2024" });
+const thread = await client.threads.create();
+const answer = await client.runs.wait(thread.thread_id, "echo", {
+  input: { messages: [{ role: "user", content: "hello" }] },
+});
+```
+
+The same server backs the `useStream` React hook — point it at the URL and you have a streaming chat
+UI. See [Frontend SDKs](https://skein-js.github.io/skein-js/react-sdk).
+
+## Ship it
+
+`skein build` bundles your graphs to plain JavaScript in `.skein/build`; `skein start` serves that
+bundle with no TypeScript toolchain in the loop. That pair is exactly what the production image runs.
+
+```bash
+<%= runServices %>   # Postgres + Redis
+# then uncomment POSTGRES_URI and REDIS_URI in .env
+<%= runBuild %>
+<%= runStart %>
+```
+
+`skein start` is durable-only: it expects `POSTGRES_URI` and `REDIS_URI`, because that is what makes
+runs survive a restart and lets you run more than one instance. For a container instead,
+`npx skein up` brings up the whole stack, and `npx skein build` (without `--artifact-only`) produces
+the image.
+
+## Next steps
+
+- [Your first agent](https://skein-js.github.io/skein-js/your-first-agent) — from here to deployed
+- [Agent Protocol surface](https://skein-js.github.io/skein-js/agent-protocol) — every endpoint
+- [Storage](https://skein-js.github.io/skein-js/storage) — long-term memory and checkpoints
+- [Deploy](https://skein-js.github.io/skein-js/deploy) — Cloud Run, Fly, Railway, AWS, Kubernetes, a VPS
