@@ -20,9 +20,15 @@ it is maintenance surface for as long as the project exists. The question is not
 idea?" but **"are we sure enough to keep it forever?"**
 
 **The second question is whose problem it is.** skein's value is plumbing users cannot write
-themselves. For anything else, the library's job is to make sure the primitives exist and then get
-out of the way — a primitive is smaller permanent surface than a feature, and it fits deployments
-whose requirements we will never see. Both standards are empirical, not invented: a `store.scope`
+themselves **and the first-party onboarding/integration surface that lets them adopt that plumbing
+correctly**. An official CLI command, project scaffold, framework generator, or maintained starter
+is upstream when it only composes skein's published contracts, teaches secure supported defaults,
+and gives the project an upgrade path; the fact that a user could reproduce those files manually
+does not make it downstream. Application behavior, business rules, identity policy, and
+deployment-specific choices remain the user's problem. For those, the library's job is to make sure
+the primitives exist and then get out of the way — a primitive is smaller permanent surface than a
+feature, and it fits deployments whose requirements we will never see. Both standards are
+empirical, not invented: a `store.scope`
 setting was built and deleted because a handler expresses every policy a setting expresses one of,
 and a plan claimed background extraction was server-only when `after_seconds` plus run-cancel already
 made it user-buildable. **The burden is on the plan** — an auditor that agrees with it still hands in
@@ -95,9 +101,12 @@ assertion.
 
 Every capability gets both, and the second is the one that produces the actual deliverable:
 
-1. **Whose problem is this — the library's or the user's?** The library's only if it is plumbing a
-   user cannot write themselves: durable persistence, the queue, the adapters, the protocol, the CLI.
-   Anything a deployment could assemble inside its own graph or handler is the user's.
+1. **Whose problem is this — the library's or the user's?** The library's when it is plumbing a
+   user cannot write themselves (durable persistence, the queue, adapters, the protocol), or an
+   official onboarding/integration surface that composes those contracts without owning the
+   application's behavior (the CLI, scaffolds, framework generators, maintained starters).
+   Anything a deployment assembles inside its own graph or handler to express domain behavior,
+   identity policy, permissions, routing, or deployment-specific choices is the user's.
 2. **If it is the user's — can they actually solve it today?** Do the primitives exist? Then the
    answer is not "no". It is either "yes, and here is the recipe" or **"no, and here is the one
    primitive that's missing"** — and that primitive, scoped as narrowly as it can be, is what the
@@ -109,15 +118,15 @@ construction task has a verifiable output, and because the line where it stops *
 primitive. Cite `packages/agent-protocol/src/runs/after-seconds.test.ts` in the brief: it is the file
 that would have falsified the "server-only" claim.
 
-| Column            |                                                                                                                                                                         |
-| ----------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| Capability        | verbatim from the inventory                                                                                                                                             |
-| Whose problem     | library · user                                                                                                                                                          |
-| Solvable today    | yes · no · partly                                                                                                                                                       |
-| With what         | the real exports, endpoints or config that do it                                                                                                                        |
-| Missing primitive | the narrowest thing that would close the gap, or —                                                                                                                      |
-| Verified by       | `file:line`, or a test that demonstrates it                                                                                                                             |
-| Verdict           | `already possible` (ship a recipe, not code) · `needs a primitive` (build the named primitive) · `library's own` (build it) · `ergonomics` (say so plainly, then defer) |
+| Column            |                                                                                                                                                                                                                                                            |
+| ----------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Capability        | verbatim from the inventory                                                                                                                                                                                                                                |
+| Whose problem     | library · user                                                                                                                                                                                                                                             |
+| Solvable today    | yes · no · partly                                                                                                                                                                                                                                          |
+| With what         | the real exports, endpoints or config that do it                                                                                                                                                                                                           |
+| Missing primitive | the narrowest thing that would close the gap, or —                                                                                                                                                                                                         |
+| Verified by       | `file:line`, or a test that demonstrates it                                                                                                                                                                                                                |
+| Verdict           | `already possible` (ship a recipe, not code) · `needs a primitive` (build the named primitive) · `library's own` (build it) · `upstream ergonomics` (official onboarding/integration; build it) · `downstream ergonomics` (application convenience; defer) |
 
 ### The surface ledger (D)
 
@@ -165,19 +174,19 @@ the confidence is **verified, not inferred** (inferred caps at advisory); and it
 edit** — if an auditor cannot say what change removes the finding, it does not understand it well
 enough to block on it.
 
-|     | Blocks when                                                                                                                                                                                          |
-| --- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| B1  | A capability is already solvable with the shipped public API and the plan does not say so — the deliverable was a recipe                                                                             |
-| B2  | **The plan builds a feature where a primitive would do** — the table says the problem is the user's and names the missing primitive, and the plan builds past it. The clearing edit is the primitive |
-| B3  | A capability is framed as capability but the table shows it is ergonomics                                                                                                                            |
-| B4  | Reinvention of a `@langchain/*` export, or of one skein already ships                                                                                                                                |
-| B5  | Policy in the server — a config key or hardcoded default decides ownership, permission, identity→storage mapping, or routing authority where a handler could express it                              |
-| B6  | A load-bearing premise is false                                                                                                                                                                      |
-| B7  | **Unjustified public surface** — an export, config key, route or wire field the ledger shows could be internal, narrower, or deferred                                                                |
-| B8  | **Irreversible by construction** — a required method on an interface third parties implement, or an incompatible change to an existing public type, with no additive or optional path                |
-| B9  | **Shape unproven** — a plugin seam, interface or extension point advertised with one implementation and no second consumer, example, or issue proving the shape                                      |
-| B10 | Missing non-goals or kill condition, on a plan proposing new public surface                                                                                                                          |
-| B11 | An uncosted parity obligation — a store resource without both drivers and conformance, or HTTP behaviour without all five adapters                                                                   |
+|     | Blocks when                                                                                                                                                                                                                                                                                                                                                                          |
+| --- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| B1  | A capability is already solvable with the shipped public API and the plan does not say so — the deliverable was a recipe                                                                                                                                                                                                                                                             |
+| B2  | **The plan builds a feature where a primitive would do** — the table says the problem is the user's and names the missing primitive, and the plan builds past it. The clearing edit is the primitive                                                                                                                                                                                 |
+| B3  | A capability is framed as library capability but the table shows it is **downstream ergonomics**. Official scaffolds, generators, CLI workflows, and maintained starters are not blocked merely because users could assemble their output manually; to qualify as upstream they must compose existing skein contracts and must not decide application behavior or deployment policy. |
+| B4  | Reinvention of a `@langchain/*` export, or of one skein already ships                                                                                                                                                                                                                                                                                                                |
+| B5  | Policy in the server — a config key or hardcoded default decides ownership, permission, identity→storage mapping, or routing authority where a handler could express it                                                                                                                                                                                                              |
+| B6  | A load-bearing premise is false                                                                                                                                                                                                                                                                                                                                                      |
+| B7  | **Unjustified public surface** — an export, config key, route or wire field the ledger shows could be internal, narrower, or deferred                                                                                                                                                                                                                                                |
+| B8  | **Irreversible by construction** — a required method on an interface third parties implement, or an incompatible change to an existing public type, with no additive or optional path                                                                                                                                                                                                |
+| B9  | **Shape unproven** — a plugin seam, interface or extension point advertised with one implementation and no second consumer, example, or issue proving the shape                                                                                                                                                                                                                      |
+| B10 | Missing non-goals or kill condition, on a plan proposing new public surface                                                                                                                                                                                                                                                                                                          |
+| B11 | An uncosted parity obligation — a store resource without both drivers and conformance, or HTTP behaviour without all five adapters                                                                                                                                                                                                                                                   |
 
 Everything else is advisory, explicitly including phase ordering, doc placement, "this feels large",
 and any performance claim not anchored to `packages/bench`. Naming is advisory _unless_ the name
