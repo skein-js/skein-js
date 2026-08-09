@@ -23,7 +23,7 @@ describe("renderTemplate", () => {
       apiKeyEnvVar: "OPENAI_API_KEY",
       providerConsoleUrl: "https://example.com/keys?a=1&b=2",
       modelEnvVar: "OPENAI_MODEL",
-      defaultModel: "gpt-4.1-mini",
+      defaultModel: "gpt-5.6-terra",
     });
 
     expect(rendered).toContain("https://example.com/keys?a=1&b=2");

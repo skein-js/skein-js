@@ -1073,7 +1073,7 @@ Create `src/agent-graph.ts`:
 import { ChatAnthropic } from "@langchain/anthropic";
 import { createReactAgent } from "@langchain/langgraph/prebuilt";
 
-const model = new ChatAnthropic({ model: "claude-sonnet-4-5", temperature: 0 });
+const model = new ChatAnthropic({ model: "claude-sonnet-5", temperature: 0 });
 
 export const graph = createReactAgent({ llm: model, tools: [] });
 ```

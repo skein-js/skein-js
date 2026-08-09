@@ -45,6 +45,11 @@ export interface ProviderDetails {
   readonly defaultModel: string;
 }
 
+// Default models are the current mid-tier model from each provider — the one their own docs
+// recommend for agents that call tools, which is exactly what the scaffolded agent graph does.
+// Verified against each provider's live model list on 2026-08-09; a stale ID here means every
+// scaffolded agent 404s on its first real request, so re-check these when bumping a provider
+// package rather than assuming the string still resolves.
 export const PROVIDER_DETAILS: Record<Exclude<ModelProvider, "none">, ProviderDetails> = {
   google: {
     packageName: "@langchain/google-genai",
@@ -53,7 +58,7 @@ export const PROVIDER_DETAILS: Record<Exclude<ModelProvider, "none">, ProviderDe
     apiKeyEnvVar: "GOOGLE_API_KEY",
     consoleUrl: "https://aistudio.google.com/apikey",
     modelEnvVar: "GOOGLE_MODEL",
-    defaultModel: "gemini-2.5-flash",
+    defaultModel: "gemini-3.6-flash",
   },
   anthropic: {
     packageName: "@langchain/anthropic",
@@ -62,7 +67,7 @@ export const PROVIDER_DETAILS: Record<Exclude<ModelProvider, "none">, ProviderDe
     apiKeyEnvVar: "ANTHROPIC_API_KEY",
     consoleUrl: "https://console.anthropic.com/settings/keys",
     modelEnvVar: "ANTHROPIC_MODEL",
-    defaultModel: "claude-sonnet-4-5",
+    defaultModel: "claude-sonnet-5",
   },
   openai: {
     packageName: "@langchain/openai",
@@ -71,6 +76,6 @@ export const PROVIDER_DETAILS: Record<Exclude<ModelProvider, "none">, ProviderDe
     apiKeyEnvVar: "OPENAI_API_KEY",
     consoleUrl: "https://platform.openai.com/api-keys",
     modelEnvVar: "OPENAI_MODEL",
-    defaultModel: "gpt-4.1-mini",
+    defaultModel: "gpt-5.6-terra",
   },
 };
