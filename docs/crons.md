@@ -9,7 +9,7 @@ and driven by the official `@langchain/langgraph-sdk` client.
 > The OSS [`@langchain/langgraph-api`](https://github.com/langchain-ai/langgraphjs/tree/main/libs/langgraph-api) server
 > registers the routes but every handler throws `500 Not implemented`, and its `GET /info` reports
 > `crons: false`. skein implements them against the LangSmith Deployment OpenAPI spec plus the SDK's
-> TypeScript types — the same oracle the rest of the wire surface uses ([reuse.md](./reuse.md)).
+> TypeScript types — the same oracle the rest of the wire surface uses ([reuse.md](https://github.com/skein-js/skein-js/blob/main/docs/reuse.md)).
 
 **A cron is a _cadence_, not a delay.** To run something once, a little later, pass
 [`after_seconds`](./agent-protocol.md) on an ordinary run create — no cron row, nothing to clean up

@@ -115,6 +115,11 @@ export default defineConfig({
   // what makes GitHub render it when you open the folder — while the site serves it at /proposals/.
   rewrites: { "proposals/README.md": "proposals/index.md" },
 
+  // The site is for getting up and running with skein, not for working on skein. These three are
+  // contributor docs about the internals — they stay in the repo (AGENTS.md sends contributors
+  // straight to them) and every in-site reference to them is an absolute GitHub link.
+  srcExclude: ["reuse.md", "code-practices.md", "testing.md"],
+
   // Note: the ```caddyfile fence in deploy-vps.md makes Shiki print "language not loaded, falling
   // back to txt" on each render pass. That is the correct outcome — GitHub's linguist highlights
   // Caddyfile and Shiki has no grammar for it, so the fence stays as-is and the site renders it as
@@ -208,9 +213,11 @@ export default defineConfig({
         collapsed: true,
         items: [
           { text: "Roadmap", link: "/roadmap" },
-          { text: "What we reuse", link: "/reuse" },
-          { text: "Code practices", link: "/code-practices" },
-          { text: "Testing", link: "/testing" },
+          { text: "Changelog", link: "https://github.com/skein-js/skein-js/releases" },
+          {
+            text: "Contributing",
+            link: "https://github.com/skein-js/skein-js/blob/main/CONTRIBUTING.md",
+          },
         ],
       },
       {

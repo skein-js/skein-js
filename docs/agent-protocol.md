@@ -25,7 +25,7 @@ for building a frontend on top, see [react-sdk.md](./react-sdk.md).
 **We reuse rather than redefine the wire types.** The `@langchain/langgraph-sdk` package
 already publishes TypeScript types for Thread / Run / Assistant / Store items, and
 `@langchain/langgraph-api` publishes the server-side Zod schemas — skein-js builds on those
-instead of hand-writing (or regenerating) a parallel set. See [reuse.md](./reuse.md).
+instead of hand-writing (or regenerating) a parallel set. See [reuse.md](https://github.com/skein-js/skein-js/blob/main/docs/reuse.md).
 
 ## Core resources
 
@@ -625,7 +625,7 @@ Route → resource/action (runs authorize through their owning thread — there 
 | `PUT/GET/DELETE /store/items`, `/store/items/search`, `/store/namespaces`                                                                                                     | `store:{put,get,delete,search,list_namespaces}` |
 
 **Reuse & limits.** The `Auth` contract and the `$eq`/`$contains` filter semantics come from
-`@langchain/*`; skein adds only the instance-scoped dispatch (see [reuse.md](./reuse.md)). Ownership
+`@langchain/*`; skein adds only the instance-scoped dispatch (see [reuse.md](https://github.com/skein-js/skein-js/blob/main/docs/reuse.md)). Ownership
 scoping is pushed into the driver query (above), with the in-process check kept as the enforcement point.
 `assistants` and `store` remain gate-only: store scoping is expressed through the namespace your
 `@auth.on.store` handler decides on, which is where that policy belongs.

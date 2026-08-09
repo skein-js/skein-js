@@ -238,7 +238,7 @@ plateau, not climb — that plateau is the whole point of the bounds above.
 Alongside it, the counters are deterministic and make a regression provable rather than plausible:
 buffered frames, Redis commands per frame, socket `writableLength`, iterator pulls, connections opened.
 Those are integers with no timing in them, which is why they **do** gate CI where throughput and latency
-cannot. See [testing.md](./testing.md) for how the same idea is applied in the unit tests.
+cannot. See [testing.md](https://github.com/skein-js/skein-js/blob/main/docs/testing.md) for how the same idea is applied in the unit tests.
 
 The run therefore ends in `all bounds hold.` or a non-zero exit listing what no longer does — the
 per-stream SSE buffer ceiling, the bus's retained-run and per-run frame caps, and that backpressure

@@ -370,7 +370,7 @@ produced by the same handler table the Express adapter uses.
 - [ ] SSE responses stream frames unmodified, set `SSE_HEADERS`, and tear down on client close.
 - [ ] `SkeinHttpError` mapped to its status; everything else → `500`; no status changes mid-stream.
 - [ ] CORS applied for browser clients; `worker.stop()` on shutdown.
-- [ ] Verified with the real `@langchain/langgraph-sdk` client (see [testing.md](./testing.md)).
+- [ ] Verified with the real `@langchain/langgraph-sdk` client (see [testing.md](https://github.com/skein-js/skein-js/blob/main/docs/testing.md)).
 
 Reference implementation: [`@skein-js/express`](https://github.com/skein-js/skein-js/tree/main/packages/server-express) —
 [`routes.ts`](https://github.com/skein-js/skein-js/blob/main/packages/server-express/src/routes.ts),

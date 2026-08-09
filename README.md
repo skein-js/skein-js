@@ -638,6 +638,12 @@ Start here:
 The source markdown lives in [`docs/`](./docs); the site's sidebar is the complete index. This list is
 deliberately short — it used to mirror the whole set and had already drifted out of date.
 
+**What changed and when:** [CHANGELOG.md](./CHANGELOG.md), or the
+[releases](https://github.com/skein-js/skein-js/releases). **Working on skein-js rather than with
+it?** [CONTRIBUTING.md](./CONTRIBUTING.md) and [AGENTS.md](./AGENTS.md) — the internals docs
+([reuse](./docs/reuse.md), [code practices](./docs/code-practices.md), [testing](./docs/testing.md))
+live in the repo rather than on the docs site.
+
 **For AI agents & tools:** [`llms.txt`](./llms.txt) is a curated, machine-readable index of these docs
 (per the [llmstxt.org](https://llmstxt.org) convention); [`llms-full.txt`](./llms-full.txt) is the same
 set concatenated for wholesale ingestion. Regenerate the latter with `pnpm docs:llms`.

@@ -14,7 +14,7 @@ skein-js separates two kinds of persistence, and it is important not to conflate
 1. **Graph checkpoints** — LangGraph's own state/history for a thread (this is what powers
    **interrupt/resume** and history). **Reused, never reimplemented:** delegated to an existing
    LangGraph checkpointer (`MemorySaver` in dev, `PostgresSaver` in prod;
-   `@langchain/langgraph-checkpoint-redis` and `-sqlite` are also available). See [reuse.md](./reuse.md).
+   `@langchain/langgraph-checkpoint-redis` and `-sqlite` are also available). See [reuse.md](https://github.com/skein-js/skein-js/blob/main/docs/reuse.md).
 2. **Protocol resources** — assistants, thread metadata/status, run rows, and long-term
    store items. These are the gap OSS keeps _in memory_, so skein-js owns them behind a single
    `SkeinStore` interface with durable drivers.
@@ -428,7 +428,7 @@ and coerces filter operands with `Number()` — the one rule skein deliberately 
 cannot reproduce it. So the adapted store is asked for a candidate set, and for its vector ranking when it
 has one; skein applies the contract on top. The price is over-fetching: more source rows are read than
 returned, and paging happens after re-filtering. The
-[shared conformance suite](./testing.md) runs against `fromBaseStore(new InMemoryStore())` and against a
+[shared conformance suite](https://github.com/skein-js/skein-js/blob/main/docs/testing.md) runs against `fromBaseStore(new InMemoryStore())` and against a
 real `PostgresStore`, which is how "serves the same contract" is a fact rather than a claim.
 
 Four things worth knowing before you switch:

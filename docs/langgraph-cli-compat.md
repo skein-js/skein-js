@@ -98,7 +98,7 @@ open, self-hostable set of building blocks. None of this requires a change on yo
 
 **Same graph code, same config, same wire protocol.** skein-js reuses the LangGraph runtime,
 checkpointers, the `langgraph.json` parser/schemas, and the SDK/types from the open
-`@langchain/*` packages (see [reuse.md](./reuse.md)). It only rebuilds the durable-production,
+`@langchain/*` packages (see [reuse.md](https://github.com/skein-js/skein-js/blob/main/docs/reuse.md)). It only rebuilds the durable-production,
 multi-framework, drop-in-CLI layer that isn't open — so your project moves over untouched.
 
 **What we implement, and the tools we use:**

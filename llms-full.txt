@@ -647,6 +647,12 @@ Start here:
 The source markdown lives in [`docs/`](./docs); the site's sidebar is the complete index. This list is
 deliberately short — it used to mirror the whole set and had already drifted out of date.
 
+**What changed and when:** [CHANGELOG.md](./CHANGELOG.md), or the
+[releases](https://github.com/skein-js/skein-js/releases). **Working on skein-js rather than with
+it?** [CONTRIBUTING.md](./CONTRIBUTING.md) and [AGENTS.md](./AGENTS.md) — the internals docs
+([reuse](./docs/reuse.md), [code practices](./docs/code-practices.md), [testing](./docs/testing.md))
+live in the repo rather than on the docs site.
+
 **For AI agents & tools:** [`llms.txt`](./llms.txt) is a curated, machine-readable index of these docs
 (per the [llmstxt.org](https://llmstxt.org) convention); [`llms-full.txt`](./llms-full.txt) is the same
 set concatenated for wholesale ingestion. Regenerate the latter with `pnpm docs:llms`.
@@ -677,6 +683,14 @@ TypeScript** — a framework-agnostic library that implements LangChain's
 [**Agent Protocol**](https://github.com/langchain-ai/agent-protocol) on top of
 [**LangGraph.js**](https://docs.langchain.com/oss/javascript/langgraph/overview), so you can self-host your agents on
 your own infrastructure. It also ships a CLI that is a **drop-in replacement for the LangGraph CLI**.
+
+> **Built around LangGraph OSS, not a reimplementation of it.** Its runtime executes your graphs, its
+> checkpointers persist them, its parser reads your `langgraph.json`, and the wire types come straight
+> from `@langchain/langgraph-sdk`. skein-js rebuilds only what OSS lacks: durable production storage
+> and queueing, the framework adapters, and the drop-in CLI.
+>
+> That is why compatibility holds. The SDK's own types are the contract, so `useStream` and every
+> LangGraph client work against skein **by construction** — not through a layer someone maintains.
 
 ## Contents
 
@@ -751,9 +765,9 @@ Unlike aegra — which had to reimplement the server in Python because the Pytho
 MIT** ([`@langchain/langgraph-api`](https://github.com/langchain-ai/langgraphjs/tree/main/libs/langgraph-api)).
 So skein-js is deliberately thin: it **reuses as much LangGraph OSS as possible** (runtime,
 checkpointers, parser, schemas, SDK/types) and rebuilds only the durable-production,
-multi-framework, drop-in-CLI layer that OSS lacks. See [reuse.md](./reuse.md).
-
-> **Guiding principles:** [Reuse first](./reuse.md) · [Simple, readable, functional code](./code-practices.md).
+multi-framework, drop-in-CLI layer that OSS lacks. The package-by-package ledger of what is reused
+versus rebuilt lives in
+[reuse.md](https://github.com/skein-js/skein-js/blob/main/docs/reuse.md).
 
 ## The drop-in promise
 
@@ -880,12 +894,9 @@ machine-readable [`llms.txt`](https://github.com/skein-js/skein-js/blob/main/llm
 | [performance.md](./performance.md)                       | Sizing, every tuning knob, backpressure + drops, triage          |
 | [profiling.md](./profiling.md)                           | Learn measurement/profiling; Node, Bun, Deno hands-on recipes    |
 | [bundling.md](./bundling.md)                             | Bundling skein yourself — ESM, `require()`, what to externalize  |
-| [reuse.md](./reuse.md)                                   | _(design)_ What we reuse from LangGraph OSS vs. rebuild          |
-| [code-practices.md](./code-practices.md)                 | _(contributor)_ Readability, functional style, conventions       |
-| [testing.md](./testing.md)                               | _(contributor)_ Unit + Testcontainers + conformance suite        |
 | [roadmap.md](./roadmap.md)                               | Milestones and post-MVP non-goals                                |
 
-Want to contribute? See [CONTRIBUTING.md](https://github.com/skein-js/skein-js/blob/main/CONTRIBUTING.md) and [AGENTS.md](https://github.com/skein-js/skein-js/blob/main/AGENTS.md).
+**Working on skein-js rather than with it?** The contributor docs live in the repo, not on this site: [CONTRIBUTING.md](https://github.com/skein-js/skein-js/blob/main/CONTRIBUTING.md), [AGENTS.md](https://github.com/skein-js/skein-js/blob/main/AGENTS.md), [reuse.md](https://github.com/skein-js/skein-js/blob/main/docs/reuse.md) (what we reuse vs. rebuild), [code-practices.md](https://github.com/skein-js/skein-js/blob/main/docs/code-practices.md) and [testing.md](https://github.com/skein-js/skein-js/blob/main/docs/testing.md).
 
 ## References
 
@@ -1441,7 +1452,7 @@ open, self-hostable set of building blocks. None of this requires a change on yo
 
 **Same graph code, same config, same wire protocol.** skein-js reuses the LangGraph runtime,
 checkpointers, the `langgraph.json` parser/schemas, and the SDK/types from the open
-`@langchain/*` packages (see [reuse.md](./reuse.md)). It only rebuilds the durable-production,
+`@langchain/*` packages (see [reuse.md](https://github.com/skein-js/skein-js/blob/main/docs/reuse.md)). It only rebuilds the durable-production,
 multi-framework, drop-in-CLI layer that isn't open — so your project moves over untouched.
 
 **What we implement, and the tools we use:**
@@ -2277,7 +2288,7 @@ for building a frontend on top, see [react-sdk.md](./react-sdk.md).
 **We reuse rather than redefine the wire types.** The `@langchain/langgraph-sdk` package
 already publishes TypeScript types for Thread / Run / Assistant / Store items, and
 `@langchain/langgraph-api` publishes the server-side Zod schemas — skein-js builds on those
-instead of hand-writing (or regenerating) a parallel set. See [reuse.md](./reuse.md).
+instead of hand-writing (or regenerating) a parallel set. See [reuse.md](https://github.com/skein-js/skein-js/blob/main/docs/reuse.md).
 
 ## Core resources
 
@@ -2877,7 +2888,7 @@ Route → resource/action (runs authorize through their owning thread — there 
 | `PUT/GET/DELETE /store/items`, `/store/items/search`, `/store/namespaces`                                                                                                     | `store:{put,get,delete,search,list_namespaces}` |
 
 **Reuse & limits.** The `Auth` contract and the `$eq`/`$contains` filter semantics come from
-`@langchain/*`; skein adds only the instance-scoped dispatch (see [reuse.md](./reuse.md)). Ownership
+`@langchain/*`; skein adds only the instance-scoped dispatch (see [reuse.md](https://github.com/skein-js/skein-js/blob/main/docs/reuse.md)). Ownership
 scoping is pushed into the driver query (above), with the in-process check kept as the enforcement point.
 `assistants` and `store` remain gate-only: store scoping is expressed through the namespace your
 `@auth.on.store` handler decides on, which is where that policy belongs.
@@ -3486,7 +3497,7 @@ skein-js separates two kinds of persistence, and it is important not to conflate
 1. **Graph checkpoints** — LangGraph's own state/history for a thread (this is what powers
    **interrupt/resume** and history). **Reused, never reimplemented:** delegated to an existing
    LangGraph checkpointer (`MemorySaver` in dev, `PostgresSaver` in prod;
-   `@langchain/langgraph-checkpoint-redis` and `-sqlite` are also available). See [reuse.md](./reuse.md).
+   `@langchain/langgraph-checkpoint-redis` and `-sqlite` are also available). See [reuse.md](https://github.com/skein-js/skein-js/blob/main/docs/reuse.md).
 2. **Protocol resources** — assistants, thread metadata/status, run rows, and long-term
    store items. These are the gap OSS keeps _in memory_, so skein-js owns them behind a single
    `SkeinStore` interface with durable drivers.
@@ -3900,7 +3911,7 @@ and coerces filter operands with `Number()` — the one rule skein deliberately 
 cannot reproduce it. So the adapted store is asked for a candidate set, and for its vector ranking when it
 has one; skein applies the contract on top. The price is over-fetching: more source rows are read than
 returned, and paging happens after re-filtering. The
-[shared conformance suite](./testing.md) runs against `fromBaseStore(new InMemoryStore())` and against a
+[shared conformance suite](https://github.com/skein-js/skein-js/blob/main/docs/testing.md) runs against `fromBaseStore(new InMemoryStore())` and against a
 real `PostgresStore`, which is how "serves the same contract" is a fact rather than a claim.
 
 Four things worth knowing before you switch:
@@ -4195,7 +4206,7 @@ This doc covers how skein-js executes runs and how it scales horizontally — mo
 > **Reuse note:** `@skein-js/redis` is the run **queue + pub/sub** — the piece LangGraph OSS
 > does not provide (the open [`@langchain/langgraph-api`](https://github.com/langchain-ai/langgraphjs/tree/main/libs/langgraph-api)
 > server runs runs in-process, in-memory). It is _not_ a checkpointer; for Redis-backed
-> checkpoints use `@langchain/langgraph-checkpoint-redis`. See [reuse.md](./reuse.md).
+> checkpoints use `@langchain/langgraph-checkpoint-redis`. See [reuse.md](https://github.com/skein-js/skein-js/blob/main/docs/reuse.md).
 
 ## Contents
 
@@ -4406,7 +4417,7 @@ and driven by the official `@langchain/langgraph-sdk` client.
 > The OSS [`@langchain/langgraph-api`](https://github.com/langchain-ai/langgraphjs/tree/main/libs/langgraph-api) server
 > registers the routes but every handler throws `500 Not implemented`, and its `GET /info` reports
 > `crons: false`. skein implements them against the LangSmith Deployment OpenAPI spec plus the SDK's
-> TypeScript types — the same oracle the rest of the wire surface uses ([reuse.md](./reuse.md)).
+> TypeScript types — the same oracle the rest of the wire surface uses ([reuse.md](https://github.com/skein-js/skein-js/blob/main/docs/reuse.md)).
 
 **A cron is a _cadence_, not a delay.** To run something once, a little later, pass
 [`after_seconds`](./agent-protocol.md) on an ordinary run create — no cron row, nothing to clean up
@@ -5810,7 +5821,7 @@ produced by the same handler table the Express adapter uses.
 - [ ] SSE responses stream frames unmodified, set `SSE_HEADERS`, and tear down on client close.
 - [ ] `SkeinHttpError` mapped to its status; everything else → `500`; no status changes mid-stream.
 - [ ] CORS applied for browser clients; `worker.stop()` on shutdown.
-- [ ] Verified with the real `@langchain/langgraph-sdk` client (see [testing.md](./testing.md)).
+- [ ] Verified with the real `@langchain/langgraph-sdk` client (see [testing.md](https://github.com/skein-js/skein-js/blob/main/docs/testing.md)).
 
 Reference implementation: [`@skein-js/express`](https://github.com/skein-js/skein-js/tree/main/packages/server-express) —
 [`routes.ts`](https://github.com/skein-js/skein-js/blob/main/packages/server-express/src/routes.ts),
@@ -6554,7 +6565,7 @@ plateau, not climb — that plateau is the whole point of the bounds above.
 Alongside it, the counters are deterministic and make a regression provable rather than plausible:
 buffered frames, Redis commands per frame, socket `writableLength`, iterator pulls, connections opened.
 Those are integers with no timing in them, which is why they **do** gate CI where throughput and latency
-cannot. See [testing.md](./testing.md) for how the same idea is applied in the unit tests.
+cannot. See [testing.md](https://github.com/skein-js/skein-js/blob/main/docs/testing.md) for how the same idea is applied in the unit tests.
 
 The run therefore ends in `all bounds hold.` or a non-zero exit listing what no longer does — the
 per-stream SSE buffer ceiling, the bus's retained-run and per-run frame caps, and that backpressure

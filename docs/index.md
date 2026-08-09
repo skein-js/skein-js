@@ -6,6 +6,14 @@ TypeScript** — a framework-agnostic library that implements LangChain's
 [**LangGraph.js**](https://docs.langchain.com/oss/javascript/langgraph/overview), so you can self-host your agents on
 your own infrastructure. It also ships a CLI that is a **drop-in replacement for the LangGraph CLI**.
 
+> **Built around LangGraph OSS, not a reimplementation of it.** Its runtime executes your graphs, its
+> checkpointers persist them, its parser reads your `langgraph.json`, and the wire types come straight
+> from `@langchain/langgraph-sdk`. skein-js rebuilds only what OSS lacks: durable production storage
+> and queueing, the framework adapters, and the drop-in CLI.
+>
+> That is why compatibility holds. The SDK's own types are the contract, so `useStream` and every
+> LangGraph client work against skein **by construction** — not through a layer someone maintains.
+
 ## Contents
 
 - [The problem](#the-problem)
@@ -79,9 +87,9 @@ Unlike aegra — which had to reimplement the server in Python because the Pytho
 MIT** ([`@langchain/langgraph-api`](https://github.com/langchain-ai/langgraphjs/tree/main/libs/langgraph-api)).
 So skein-js is deliberately thin: it **reuses as much LangGraph OSS as possible** (runtime,
 checkpointers, parser, schemas, SDK/types) and rebuilds only the durable-production,
-multi-framework, drop-in-CLI layer that OSS lacks. See [reuse.md](./reuse.md).
-
-> **Guiding principles:** [Reuse first](./reuse.md) · [Simple, readable, functional code](./code-practices.md).
+multi-framework, drop-in-CLI layer that OSS lacks. The package-by-package ledger of what is reused
+versus rebuilt lives in
+[reuse.md](https://github.com/skein-js/skein-js/blob/main/docs/reuse.md).
 
 ## The drop-in promise
 
@@ -208,12 +216,9 @@ machine-readable [`llms.txt`](https://github.com/skein-js/skein-js/blob/main/llm
 | [performance.md](./performance.md)                       | Sizing, every tuning knob, backpressure + drops, triage          |
 | [profiling.md](./profiling.md)                           | Learn measurement/profiling; Node, Bun, Deno hands-on recipes    |
 | [bundling.md](./bundling.md)                             | Bundling skein yourself — ESM, `require()`, what to externalize  |
-| [reuse.md](./reuse.md)                                   | _(design)_ What we reuse from LangGraph OSS vs. rebuild          |
-| [code-practices.md](./code-practices.md)                 | _(contributor)_ Readability, functional style, conventions       |
-| [testing.md](./testing.md)                               | _(contributor)_ Unit + Testcontainers + conformance suite        |
 | [roadmap.md](./roadmap.md)                               | Milestones and post-MVP non-goals                                |
 
-Want to contribute? See [CONTRIBUTING.md](https://github.com/skein-js/skein-js/blob/main/CONTRIBUTING.md) and [AGENTS.md](https://github.com/skein-js/skein-js/blob/main/AGENTS.md).
+**Working on skein-js rather than with it?** The contributor docs live in the repo, not on this site: [CONTRIBUTING.md](https://github.com/skein-js/skein-js/blob/main/CONTRIBUTING.md), [AGENTS.md](https://github.com/skein-js/skein-js/blob/main/AGENTS.md), [reuse.md](https://github.com/skein-js/skein-js/blob/main/docs/reuse.md) (what we reuse vs. rebuild), [code-practices.md](https://github.com/skein-js/skein-js/blob/main/docs/code-practices.md) and [testing.md](https://github.com/skein-js/skein-js/blob/main/docs/testing.md).
 
 ## References
 
