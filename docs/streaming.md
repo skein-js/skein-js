@@ -14,13 +14,6 @@ thread-scoped streaming (`/threads/{id}/stream`).
 
 Reference: LangGraph streaming — <https://docs.langchain.com/oss/javascript/langgraph/streaming>
 
-## Contents
-
-- [LangGraph.js stream modes](#langgraphjs-stream-modes)
-- [Mapping to Agent Protocol SSE](#mapping-to-agent-protocol-sse)
-- [Joining and cross-instance fan-out](#joining-and-cross-instance-fan-out)
-- [Why SSE is enough (no WebSocket in v1)](#why-sse-is-enough-no-websocket-in-v1)
-
 ## LangGraph.js stream modes
 
 A `CompiledStateGraph.stream(input, { streamMode })` can emit any combination of:

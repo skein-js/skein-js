@@ -7,16 +7,6 @@ chosen so an ordinary deployment never loses a frame or truncates a page, which 
 chosen to fit a small container. If you run on 256–512Mi, read [Sizing](#sizing) — a handful of knobs do
 almost all the work.
 
-## Contents
-
-- [What actually uses memory](#what-actually-uses-memory)
-- [Sizing](#sizing)
-- [Every knob](#every-knob)
-- [Streaming: backpressure, drops, and recovery](#streaming-backpressure-drops-and-recovery)
-- [Query bounds](#query-bounds)
-- [Triage: symptom → knob](#triage-symptom--knob)
-- [Measuring it yourself](#measuring-it-yourself)
-
 ## What actually uses memory
 
 Four things, in the order they matter:
@@ -182,9 +172,9 @@ serialized it into a single response string.
   page — and separately from `SKEIN_MAX_PAGE_SIZE`, since history comes from the checkpointer rather
   than the store.
 - `GET /threads/{thread_id}/runs` and `POST /store/namespaces` page too, defaulting to **100** rows
-  (`limit`/`offset`; a query `limit` above 1000 is clamped, not rejected). Both previously returned
-  every row. 100 matches what the LangGraph SDK sends for `store.listNamespaces`, so an SDK caller sees
-  no change. `POST /store/namespaces` also applies the driver's `SKEIN_MAX_PAGE_SIZE` bound now — it was
+  (`limit`/`offset`; a query `limit` above 1000 is clamped, not rejected). 100 matches what the
+  LangGraph SDK sends for `store.listNamespaces`. `POST /store/namespaces` also applies the driver's
+  `SKEIN_MAX_PAGE_SIZE` bound — it was
   the one list path that escaped it, and an `offset` with no `limit` used to be ignored outright on
   Postgres, silently answering from row 0.
 - A **wildcard** namespace prefix or a `suffix` cannot use the slice-equality form and is matched

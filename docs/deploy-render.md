@@ -7,15 +7,6 @@ and two environment variables.
 Everything platform-agnostic — environment variables, pool sizing, probes, scaling caveats — is in
 [deploy.md](./deploy.md).
 
-## Contents
-
-- [Before you start](#before-you-start)
-- [1. Commit the Dockerfile](#1-commit-the-dockerfile)
-- [2. Provision Postgres + Key Value](#2-provision-postgres--key-value)
-- [3. Deploy the web service](#3-deploy-the-web-service)
-- [4. Verify](#4-verify)
-- [Render caveats](#render-caveats)
-
 ## Before you start
 
 A Render account and a Git repo. Render builds remotely, so no local Docker is needed.

@@ -8,15 +8,6 @@ setting wrong and inline runs work perfectly while background runs mysteriously 
 Everything platform-agnostic — environment variables, pool sizing, probes, scaling caveats — is in
 [deploy.md](./deploy.md).
 
-## Contents
-
-- [Before you start](#before-you-start)
-- [1. Build and push the image](#1-build-and-push-the-image)
-- [2. Provision Postgres + Redis](#2-provision-postgres--redis)
-- [3. Deploy](#3-deploy)
-- [4. Verify](#4-verify)
-- [Cloud Run caveats](#cloud-run-caveats)
-
 ## Before you start
 
 You need the `gcloud` CLI authenticated, a project with billing enabled, and Docker. Enable the APIs

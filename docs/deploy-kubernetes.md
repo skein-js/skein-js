@@ -6,15 +6,6 @@ probes. Nothing about it needs an operator or a CRD.
 Everything platform-agnostic — environment variables, pool sizing, probes, scaling caveats — is in
 [deploy.md](./deploy.md).
 
-## Contents
-
-- [Before you start](#before-you-start)
-- [1. Push the image](#1-push-the-image)
-- [2. Manifests](#2-manifests)
-- [3. Ingress and streaming](#3-ingress-and-streaming)
-- [4. Verify](#4-verify)
-- [Kubernetes caveats](#kubernetes-caveats)
-
 ## Before you start
 
 A cluster, a registry your nodes can pull from, and a Postgres and Redis they can reach — managed

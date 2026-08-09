@@ -14,17 +14,6 @@ your own infrastructure. It also ships a CLI that is a **drop-in replacement for
 > That is why compatibility holds. The SDK's own types are the contract, so `useStream` and every
 > LangGraph client work against skein **by construction** — not through a layer someone maintains.
 
-## Contents
-
-- [The problem](#the-problem)
-- [What is the Agent Protocol?](#what-is-the-agent-protocol)
-- [The solution](#the-solution)
-- [The drop-in promise](#the-drop-in-promise)
-- [Architecture at a glance](#architecture-at-a-glance)
-- [Examples](#examples)
-- [Documentation map](#documentation-map)
-- [References](#references)
-
 ## The problem
 
 You've built an agent as a LangGraph.js graph. On its own, a graph is a function you call
@@ -197,7 +186,7 @@ machine-readable [`llms.txt`](https://github.com/skein-js/skein-js/blob/main/llm
 | -------------------------------------------------------- | ---------------------------------------------------------------- |
 | [getting-started.md](./getting-started.md)               | Guided walkthrough — zero to a running server, then prod         |
 | [using-skein.md](./using-skein.md)                       | Consumer/agent cheat-sheet — install, the seam, mount, call      |
-| [recipes.md](./recipes.md)                               | Auth, HITL, memory, CORS, background runs, webhooks, deploy      |
+| [recipes.md](./recipes/)                                 | Auth, HITL, memory, CORS, background runs, webhooks, deploy      |
 | [langgraph-cli-compat.md](./langgraph-cli-compat.md)     | `langgraph.json` fields + CLI commands                           |
 | [embedding.md](./embedding.md)                           | The in-code on-ramp — embed a graph, no `langgraph.json`         |
 | [serving-a-single-graph.md](./serving-a-single-graph.md) | The non-chat surface — a graph as a plain HTTP endpoint          |

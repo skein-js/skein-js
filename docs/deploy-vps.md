@@ -6,15 +6,6 @@ no control plane, no per-seat pricing — which is the whole reason skein ships 
 Everything platform-agnostic — environment variables, pool sizing, probes, scaling caveats — is in
 [deploy.md](./deploy.md).
 
-## Contents
-
-- [The quickest version](#the-quickest-version)
-- [A real deployment with Compose](#a-real-deployment-with-compose)
-- [Run it as a service](#run-it-as-a-service)
-- [TLS and streaming](#tls-and-streaming)
-- [Verify](#verify)
-- [Operating it](#operating-it)
-
 ## The quickest version
 
 If you already have a Postgres and a Redis:

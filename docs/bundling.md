@@ -8,15 +8,6 @@ unusual config — and skein is inside its module graph.
 The short version: **skein is ESM-only, and everything except the CLI bundles cleanly.** Two packages
 must stay external, and only if you use the `langgraph.json` on-ramp.
 
-## Contents
-
-- [skein is ESM-only](#skein-is-esm-only)
-- [What must stay external](#what-must-stay-external)
-- [Copy-paste configs](#copy-paste-configs)
-- [The "Critical dependency" warning](#the-critical-dependency-warning)
-- [Postgres migrations are compiled in](#postgres-migrations-are-compiled-in)
-- [What `skein build` inlines vs. externalizes](#what-skein-build-inlines-vs-externalizes)
-
 ## skein is ESM-only
 
 Every `@skein-js/*` package is `"type": "module"` and ships a single ESM entry. There is no CommonJS

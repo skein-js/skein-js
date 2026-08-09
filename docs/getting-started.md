@@ -6,16 +6,6 @@ graph, then to production. If you already have a `langgraph.json` and just want 
 [Path B](#path-b--i-have-a-graph-in-code-embed). For a terse reference instead of a walkthrough, see
 [using-skein.md](./using-skein.md).
 
-## Contents
-
-- [Prerequisites](#prerequisites)
-- [Path A — I have a `langgraph.json` (drop-in)](#path-a--i-have-a-langgraphjson-drop-in)
-- [Path B — I have a graph in code (embed)](#path-b--i-have-a-graph-in-code-embed)
-- [Talk to your server](#talk-to-your-server)
-- [Add a web UI](#add-a-web-ui)
-- [Go to production](#go-to-production)
-- [Where to next](#where-to-next)
-
 ## Prerequisites
 
 - **Node ≥ 20** and a package manager (`pnpm`/`npm`).
@@ -125,7 +115,7 @@ function Chat() {
 ```
 
 A browser on a different origin needs CORS enabled — see the
-[CORS recipe](./recipes.md#cors--browser-clients). For a same-origin full-stack app (no CORS), the
+[CORS recipe](./recipes/serving.md#cors-for-a-browser-client). For a same-origin full-stack app (no CORS), the
 [`nextjs-app`](https://github.com/skein-js/skein-js/tree/main/examples/nextjs-app) example serves the protocol and the UI from one Next.js app.
 See [react-sdk.md](./react-sdk.md).
 
@@ -159,7 +149,7 @@ to containerize. Redis is optional for a single instance but required to run mor
 
 ## Where to next
 
-- [Recipes](./recipes.md) — auth, human-in-the-loop, long-term memory, CORS, background runs, deploy.
+- [Recipes](./recipes/) — auth, human-in-the-loop, long-term memory, CORS, background runs, deploy.
 - [Using skein-js](./using-skein.md) — the terse consumer/agent cheat-sheet.
 - [Examples](https://github.com/skein-js/skein-js/tree/main/examples) — a runnable project per framework and pattern.
 - [Overview & architecture](./index.md) · [Agent Protocol surface](./agent-protocol.md)

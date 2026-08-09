@@ -120,6 +120,12 @@ export default defineConfig({
   // straight to them) and every in-site reference to them is an absolute GitHub link.
   srcExclude: ["reuse.md", "code-practices.md", "testing.md"],
 
+  // Those three are excluded but still exist on disk, so a *relative* link to one from a page that IS
+  // on the site resolves to nothing and hard-fails the build — which then blocks the Pages deploy.
+  // In-site references to them use absolute GitHub URLs; this keeps a stray relative one from taking
+  // the deploy down, since the link still works for anyone reading the file on GitHub.
+  ignoreDeadLinks: [/^(\.\/)?(reuse|code-practices|testing)(\.md)?(#.*)?$/],
+
   // Note: the ```caddyfile fence in deploy-vps.md makes Shiki print "language not loaded, falling
   // back to txt" on each render pass. That is the correct outcome — GitHub's linguist highlights
   // Caddyfile and Shiki has no grammar for it, so the fence stays as-is and the site renders it as
@@ -153,7 +159,16 @@ export default defineConfig({
           { text: "Overview", link: "/" },
           { text: "Getting started", link: "/getting-started" },
           { text: "Using skein-js", link: "/using-skein" },
-          { text: "Recipes", link: "/recipes" },
+        ],
+      },
+      {
+        text: "Recipes",
+        items: [
+          { text: "Overview", link: "/recipes/" },
+          { text: "Serving", link: "/recipes/serving" },
+          { text: "Running agents", link: "/recipes/running-agents" },
+          { text: "Memory", link: "/recipes/memory" },
+          { text: "Production", link: "/recipes/production" },
         ],
       },
       {

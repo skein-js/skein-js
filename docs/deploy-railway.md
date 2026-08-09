@@ -7,16 +7,6 @@ project, so a skein deployment is three services and two environment variables. 
 Everything platform-agnostic — environment variables, pool sizing, probes, scaling caveats — is in
 [deploy.md](./deploy.md).
 
-## Contents
-
-- [1. Provision Postgres](#1-provision-postgres)
-- [2. Provision Redis](#2-provision-redis)
-- [3. Deploy the app service](#3-deploy-the-app-service)
-- [4. Wire the env vars](#4-wire-the-env-vars)
-- [5. Set the health check](#5-set-the-health-check)
-- [6. Verify](#6-verify)
-- [Tuning & caveats](#tuning--caveats)
-
 ## 1. Provision Postgres
 
 Railway's default Postgres works as-is — skein's base schema needs no extensions.

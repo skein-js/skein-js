@@ -6,18 +6,6 @@
 > adopted the LangGraph Platform's project shape — no `langgraph.json`, no CLI. Bring the compiled
 > graph in code and get the same Agent Protocol server in a few lines.
 
-## Contents
-
-- [Two on-ramps](#two-on-ramps)
-- [The whole thing](#the-whole-thing)
-- [The graph map](#the-graph-map)
-- [Standalone or embedded](#standalone-or-embedded)
-- [Bring your own drivers, auth, logger](#bring-your-own-drivers-auth-logger)
-- [Going to production](#going-to-production)
-- [The one trade-off: schemas](#the-one-trade-off-schemas)
-- [API reference](#api-reference)
-- [See also](#see-also)
-
 ## Two on-ramps
 
 |                      | Drop-in CLI (`{ config }`)                            | In-code embedding (`{ deps }`)                                  |
@@ -174,50 +162,13 @@ const { deps, dispose } = await embedPostgresGraphs(
 > run queue is process-local and streaming isn't fanned across instances, so you **can't run more than
 > one instance**. Set a Redis URL to scale horizontally.
 
-**Sizing the in-memory bus.** On that Redis-less path the event bus holds run frames in the process,
-so it is bounded by two knobs rather than by a Redis TTL. Both are read from the environment, so they
-reach an embedded host without a code change:
-
-| Variable                              | Default | What it bounds                                                |
-| ------------------------------------- | ------- | ------------------------------------------------------------- |
-| `SKEIN_MEMORY_BUS_MAX_FRAMES_PER_RUN` | 10000   | Frames one run may buffer. A hard maximum, not a target.      |
-| `SKEIN_MEMORY_BUS_MAX_RETAINED_RUNS`  | 50      | Finished runs whose frames stay replayable for a late `join`. |
-
-Worst case is roughly `MAX_FRAMES_PER_RUN × (concurrent runs + MAX_RETAINED_RUNS)`. Frames hold
-references to the graph's own chunks, so under `stream_mode: "values"` each is a copy of the whole
-state — size these against what your graph emits, not just against the counts.
-
-Every other knob, and worked sizing for both deployment shapes, is in
-[performance.md](./performance.md).
-
-**Take that formula seriously rather than trusting the defaults.** At 10000 × 50 the ceiling is half a
-million retained frames, which even at 512 bytes each is hundreds of MB. The defaults are chosen so an
-ordinary run never loses a frame, not so the worst case fits a small container: on 256–512Mi set
-something like 2000 / 20, and at 1–4Gi still check the product against what one run of _your_ graph
-actually emits.
-
-Set the frame cap well above what a normal run emits: it is the point at which a client that has
-stopped keeping up begins losing frames, not a level to sit at.
-
-> **This is one place the two buses genuinely differ.** `@skein-js/redis` bounds a run's stream by a
-> one-hour key TTL and does not trim it, so on Redis a subscriber that falls a long way behind still
-> gets every frame. Nothing in-process can express "an hour of frames" as a memory bound, so the
-> memory bus bounds by count instead and a far-behind subscriber eventually loses the oldest. If that
-> matters for your workload, that is a reason to configure Redis rather than to raise the cap.
-
-Three consequences worth knowing:
-
-- A subscriber **already attached** that falls further behind than `MAX_FRAMES_PER_RUN` has its stream
-  ended rather than being handed a silent gap. It has received frames, so its `Last-Event-ID` has
-  advanced and reconnecting makes progress.
-- A client **reconnecting** to a position that has already been trimmed resumes from the oldest frame
-  still buffered, skipping what is gone. Ending the stream instead would be a reconnect loop, since
-  the client would keep asking for the same unavailable position. Under `stream_mode: "values"` this
-  self-heals — the next frame is a complete state; under token streaming it is a visible gap.
-- A `join` to a run that finished **within the last 24 hours** completes immediately with whatever is
-  still retained, rather than waiting on a run that will never publish again. The window matches
-  `@skein-js/redis`'s closed marker. It is swept lazily, when other runs close, so an idle process may
-  answer such a join for longer than 24 hours — later than the contract promises, never earlier.
+**Sizing the in-memory bus.** On the Redis-less path the event bus holds run frames in the process,
+bounded by `SKEIN_MEMORY_BUS_MAX_FRAMES_PER_RUN` (10000) and `SKEIN_MEMORY_BUS_MAX_RETAINED_RUNS` (50)
+rather than by a Redis TTL. The worst case is roughly `MAX_FRAMES_PER_RUN × (concurrent runs +
+MAX_RETAINED_RUNS)` — half a million frames at the defaults, which is hundreds of MB. Both are read from
+the environment, so they reach an embedded host without a code change. Size them against what your graph
+actually emits, and note that a far-behind subscriber loses the oldest frames here where Redis would
+still have them: [performance.md](./performance.md) has the sizing table and the triage symptoms.
 
 Prefer to assemble the drivers yourself (e.g. a Postgres store with an in-memory queue, or your own
 pool)? Pass them through `embedInMemoryGraphs`' `overrides`:

@@ -29,15 +29,6 @@ Long-term memory is the one piece that lives on the server, not in the hook: a g
 `getStore()` and skein-js persists it (see [storage.md](./storage.md)). The frontend just keeps
 streaming.
 
-## Contents
-
-- [The clients skein-js must satisfy](#the-clients-skein-js-must-satisfy)
-- [Not just React — Vue, Svelte and Angular](#not-just-react--vue-svelte-and-angular)
-- [`useStream` against skein-js](#usestream-against-skein-js)
-- [Why it works over SSE](#why-it-works-over-sse)
-- [Verification harness](#verification-harness)
-- [References](#references)
-
 ## The clients skein-js must satisfy
 
 | Client                 | Package                           | How it talks to skein-js                                         |
@@ -127,7 +118,7 @@ does not affect the React SDK.
 [`examples/react-usestream`](https://github.com/skein-js/skein-js/tree/main/examples/react-usestream) is a minimal Next.js app wired to
 `useStream` and pointed at a placeholder skein-js URL. Once the server lands, it is the
 front-end signal that the SSE wiring satisfies the React SDK — token-by-token streaming in
-a real browser. See [roadmap.md](./roadmap.md#verification).
+a real browser. See [testing.md](https://github.com/skein-js/skein-js/blob/main/docs/testing.md).
 
 ## References
 

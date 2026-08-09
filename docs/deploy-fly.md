@@ -6,15 +6,6 @@ builds straight from a `Dockerfile` in your repo, so the skein image needs no re
 Everything platform-agnostic — environment variables, pool sizing, probes, scaling caveats — is in
 [deploy.md](./deploy.md).
 
-## Contents
-
-- [Before you start](#before-you-start)
-- [1. Commit the Dockerfile](#1-commit-the-dockerfile)
-- [2. Provision Postgres + Redis](#2-provision-postgres--redis)
-- [3. Configure and deploy](#3-configure-and-deploy)
-- [4. Verify](#4-verify)
-- [Fly caveats](#fly-caveats)
-
 ## Before you start
 
 Install `flyctl` and log in (`fly auth login`). Fly builds remotely by default, so you don't need

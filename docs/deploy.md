@@ -31,17 +31,6 @@ build so the dependency can be replaced or isolated before deployment.
 This page is everything that is true on **every** platform. The per-platform guides are just the
 dashboard and CLI steps on top of it.
 
-## Contents
-
-- [Pick a platform](#pick-a-platform)
-- [What the image already does for you](#what-the-image-already-does-for-you)
-- [What every deployment needs](#what-every-deployment-needs)
-- [Sizing & tuning](#sizing--tuning)
-- [Scaling past one instance](#scaling-past-one-instance)
-- [Streaming through proxies (SSE)](#streaming-through-proxies-sse)
-- [Verify a deployment](#verify-a-deployment)
-- [Environment variables](#environment-variables)
-
 ## Pick a platform
 
 | Platform                                       | Deploy from                     | Postgres + Redis                       | Background runs                                      | Scales to zero                          | Stop-signal window                  |

@@ -33,7 +33,7 @@ and an open alternative to the second.
 | Multitask / double-texting                 | ✅     | All four strategies, correct across instances                                                                                |
 | Stateless + batch runs, thread count/prune | ✅     | `POST /runs`, `/runs/batch`, `/runs/cancel`                                                                                  |
 | Auth + authorization                       | ✅     | LangGraph `Auth` parity, ownership filters in the driver query. [Details](./agent-protocol.md#authentication--authorization) |
-| Run-completion webhooks                    | ✅     | Best-effort. [Details](./recipes.md#run-completion-webhooks)                                                                 |
+| Run-completion webhooks                    | ✅     | Best-effort. [Details](./recipes/production.md#get-notified-when-a-run-finishes)                                             |
 | `http.disable_*` flags · `GET /info`       | ✅     | `/ok` stays outside the table, so no flag can break the probe                                                                |
 | **Idempotent run creation**                | ✅     | **No LangGraph Platform equivalent.** [Details](./agent-protocol.md#idempotent-run-creation-idempotency-key)                 |
 | MCP endpoint (`/mcp`)                      | 🗺️     | LangGraph exposes graphs as MCP tools; not yet built                                                                         |

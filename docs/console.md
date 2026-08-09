@@ -3,16 +3,6 @@
 > A web UI for a running skein server: assistants, threads, live runs, interrupts, time travel, the
 > store, and crons. Served by the server itself, at `/console`.
 
-## Contents
-
-- [What it is](#what-it-is)
-- [Running it](#running-it)
-- [Turning it on in production](#turning-it-on-in-production)
-- [What it shows](#what-it-shows)
-- [Mounting it yourself](#mounting-it-yourself)
-- [How it is built](#how-it-is-built)
-- [Why not a hosted UI](#why-not-a-hosted-ui)
-
 ## What it is
 
 The console is a **client**. It adds no endpoints and stores nothing of its own: every screen is built

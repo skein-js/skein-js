@@ -134,7 +134,7 @@ Beyond storage, the [`examples/express-basic`](https://github.com/skein-js/skein
 the **real `@langchain/langgraph-sdk` client** as the wire-format oracle: if
 `client.threads.create()`, `client.runs.stream()`, and `client.runs.wait()` behave, the
 protocol is right. The [`examples/react-usestream`](https://github.com/skein-js/skein-js/tree/main/examples/react-usestream) app is the
-front-end signal for the SSE/`useStream` path. See the [roadmap verification table](./roadmap.md#verification).
+front-end signal for the SSE/`useStream` path.
 
 ## Testing memory and performance work
 

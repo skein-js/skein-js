@@ -6,17 +6,6 @@ spans in OpenTelemetry, product analytics in PostHog — and how to write a sink
 For **logs** and what happens when a graph throws, see
 [errors-and-logging.md](./errors-and-logging.md). This doc is about the other two surfaces.
 
-## Contents
-
-- [Three surfaces](#three-surfaces)
-- [Turning it on](#turning-it-on)
-- [LangSmith](#langsmith)
-- [PostHog](#posthog)
-- [OpenTelemetry](#opentelemetry)
-- [Other backends](#other-backends)
-- [Writing your own sink](#writing-your-own-sink)
-- [Cost and safety](#cost-and-safety)
-
 ## Three surfaces
 
 skein reports what a run did in three places, deliberately carrying different amounts of detail:
@@ -255,26 +244,12 @@ export const sink: TelemetrySink = {
 
 ### Your existing logger
 
-A sink is the right seam for feeding **run lifecycle events** into your logs. If you only want skein's
-own reports — failed runs, webhook failures — that is `ProtocolDeps.logger`, and under NestJS and
-Fastify it is already wired to the host's logger by default. See
+For skein's **own** reports — failed runs, webhook failures — the seam is `ProtocolDeps.logger`, already
+wired to the host's logger under NestJS and Fastify. See
 [errors-and-logging.md](./errors-and-logging.md#logging).
 
-If you already ship structured logs somewhere, a sink is a ten-line bridge:
-
-```ts
-export const sink: TelemetrySink = {
-  name: "logger",
-  onRunEvent: (event) =>
-    logger.info(event.type, {
-      ...event.context,
-      ...(event.type === "run.finished" && {
-        status: event.status,
-        duration_ms: event.durationMs,
-      }),
-    }),
-};
-```
+For **run lifecycle events** in your structured logs, a sink is a ten-line bridge over `onRunEvent`,
+the same hook the Sentry example uses.
 
 ## Writing your own sink
 

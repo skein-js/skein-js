@@ -563,8 +563,8 @@ Optional telemetry sinks — traces and metrics for your runs. Off by default; s
 ### Coming soon
 
 Planned (LangGraph Platform parity): an **MCP endpoint** — see the
-[roadmap](./docs/roadmap.md#planned--coming-soon-post-mvp) and
-[known gaps](./docs/roadmap.md#known-gaps-vs-the-langgraph-cli--platform), which also tracks the
+[roadmap](./docs/roadmap.md#planned) and
+[what's supported](./docs/roadmap.md#whats-supported), which also tracks the
 handful of SDK endpoints not yet served. Recently shipped: **cron / scheduled runs**
 ([crons](./docs/crons.md)), **time travel** (fork from a checkpoint),
 the **Fastify, NestJS, and Next.js adapters** (Express was first), **multitask / double-texting**
@@ -621,7 +621,7 @@ examples above _are_ the integration/e2e suite:
   **cross-instance** test starts a run on instance A and joins its SSE stream from instance B via Redis.
 
 Run them with `pnpm test` (fast unit + conformance, no Docker) and `pnpm test:integration`
-(Testcontainers — needs Docker). See the full [verification matrix](./docs/roadmap.md#verification).
+(Testcontainers — needs Docker). See [testing.md](./docs/testing.md).
 
 ## Documentation
 

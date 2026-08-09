@@ -5,18 +5,6 @@
 > LangGraph work isn't chat: a classifier, an extractor, an enrichment step another service calls. For
 > those, this page describes a smaller surface — **one graph, one endpoint, called like a function**.
 
-## Contents
-
-- [Which surface do I want?](#which-surface-do-i-want)
-- [The whole thing](#the-whole-thing)
-- [The contract](#the-contract)
-- [Streaming](#streaming)
-- [On every adapter](#on-every-adapter)
-- [Auth](#auth)
-- [What it deliberately doesn't do](#what-it-deliberately-doesnt-do)
-- [API reference](#api-reference)
-- [See also](#see-also)
-
 ## Which surface do I want?
 
 |                    | Full Agent Protocol                                            | Single-graph invoke                          |

@@ -572,8 +572,8 @@ Optional telemetry sinks — traces and metrics for your runs. Off by default; s
 ### Coming soon
 
 Planned (LangGraph Platform parity): an **MCP endpoint** — see the
-[roadmap](./docs/roadmap.md#planned--coming-soon-post-mvp) and
-[known gaps](./docs/roadmap.md#known-gaps-vs-the-langgraph-cli--platform), which also tracks the
+[roadmap](./docs/roadmap.md#planned) and
+[what's supported](./docs/roadmap.md#whats-supported), which also tracks the
 handful of SDK endpoints not yet served. Recently shipped: **cron / scheduled runs**
 ([crons](./docs/crons.md)), **time travel** (fork from a checkpoint),
 the **Fastify, NestJS, and Next.js adapters** (Express was first), **multitask / double-texting**
@@ -630,7 +630,7 @@ examples above _are_ the integration/e2e suite:
   **cross-instance** test starts a run on instance A and joins its SSE stream from instance B via Redis.
 
 Run them with `pnpm test` (fast unit + conformance, no Docker) and `pnpm test:integration`
-(Testcontainers — needs Docker). See the full [verification matrix](./docs/roadmap.md#verification).
+(Testcontainers — needs Docker). See [testing.md](./docs/testing.md).
 
 ## Documentation
 
@@ -691,17 +691,6 @@ your own infrastructure. It also ships a CLI that is a **drop-in replacement for
 >
 > That is why compatibility holds. The SDK's own types are the contract, so `useStream` and every
 > LangGraph client work against skein **by construction** — not through a layer someone maintains.
-
-## Contents
-
-- [The problem](#the-problem)
-- [What is the Agent Protocol?](#what-is-the-agent-protocol)
-- [The solution](#the-solution)
-- [The drop-in promise](#the-drop-in-promise)
-- [Architecture at a glance](#architecture-at-a-glance)
-- [Examples](#examples)
-- [Documentation map](#documentation-map)
-- [References](#references)
 
 ## The problem
 
@@ -875,7 +864,7 @@ machine-readable [`llms.txt`](https://github.com/skein-js/skein-js/blob/main/llm
 | -------------------------------------------------------- | ---------------------------------------------------------------- |
 | [getting-started.md](./getting-started.md)               | Guided walkthrough — zero to a running server, then prod         |
 | [using-skein.md](./using-skein.md)                       | Consumer/agent cheat-sheet — install, the seam, mount, call      |
-| [recipes.md](./recipes.md)                               | Auth, HITL, memory, CORS, background runs, webhooks, deploy      |
+| [recipes.md](./recipes/)                                 | Auth, HITL, memory, CORS, background runs, webhooks, deploy      |
 | [langgraph-cli-compat.md](./langgraph-cli-compat.md)     | `langgraph.json` fields + CLI commands                           |
 | [embedding.md](./embedding.md)                           | The in-code on-ramp — embed a graph, no `langgraph.json`         |
 | [serving-a-single-graph.md](./serving-a-single-graph.md) | The non-chat surface — a graph as a plain HTTP endpoint          |
@@ -917,16 +906,6 @@ graph, then to production. If you already have a `langgraph.json` and just want 
 [Path A](#path-a--i-have-a-langgraphjson-drop-in). If you have a compiled graph in code, take
 [Path B](#path-b--i-have-a-graph-in-code-embed). For a terse reference instead of a walkthrough, see
 [using-skein.md](./using-skein.md).
-
-## Contents
-
-- [Prerequisites](#prerequisites)
-- [Path A — I have a `langgraph.json` (drop-in)](#path-a--i-have-a-langgraphjson-drop-in)
-- [Path B — I have a graph in code (embed)](#path-b--i-have-a-graph-in-code-embed)
-- [Talk to your server](#talk-to-your-server)
-- [Add a web UI](#add-a-web-ui)
-- [Go to production](#go-to-production)
-- [Where to next](#where-to-next)
 
 ## Prerequisites
 
@@ -1037,7 +1016,7 @@ function Chat() {
 ```
 
 A browser on a different origin needs CORS enabled — see the
-[CORS recipe](./recipes.md#cors--browser-clients). For a same-origin full-stack app (no CORS), the
+[CORS recipe](./recipes/serving.md#cors-for-a-browser-client). For a same-origin full-stack app (no CORS), the
 [`nextjs-app`](https://github.com/skein-js/skein-js/tree/main/examples/nextjs-app) example serves the protocol and the UI from one Next.js app.
 See [react-sdk.md](./react-sdk.md).
 
@@ -1071,7 +1050,7 @@ to containerize. Redis is optional for a single instance but required to run mor
 
 ## Where to next
 
-- [Recipes](./recipes.md) — auth, human-in-the-loop, long-term memory, CORS, background runs, deploy.
+- [Recipes](./recipes/) — auth, human-in-the-loop, long-term memory, CORS, background runs, deploy.
 - [Using skein-js](./using-skein.md) — the terse consumer/agent cheat-sheet.
 - [Examples](https://github.com/skein-js/skein-js/tree/main/examples) — a runnable project per framework and pattern.
 - [Overview & architecture](./index.md) · [Agent Protocol surface](./agent-protocol.md)
@@ -1087,20 +1066,6 @@ A dense, task-oriented cheat-sheet for **consuming** skein-js — pick a framewo
 Protocol server around your LangGraph.js graph, and call it. Written to be skim-friendly for humans
 _and_ for AI coding agents building on skein. (Working _on_ skein itself? See
 [AGENTS.md](https://github.com/skein-js/skein-js/blob/main/AGENTS.md).)
-
-## Contents
-
-- [The one thing to know: the `{ config } | { deps }` seam](#the-one-thing-to-know-the--config----deps--seam)
-- [Install](#install)
-- [Two on-ramps](#two-on-ramps)
-- [Mount it on your framework](#mount-it-on-your-framework)
-- [Go to production (Postgres + Redis)](#go-to-production-postgres--redis)
-- [Call the server](#call-the-server)
-- [Endpoint surface](#endpoint-surface)
-- [Package → import map](#package--import-map)
-- [Expand your setup](#expand-your-setup)
-- [Gotchas](#gotchas)
-- [Go deeper](#go-deeper)
 
 ## The one thing to know: the `{ config } | { deps }` seam
 
@@ -1313,7 +1278,7 @@ Grow from the minimal server without rewrites — each step changes one thing:
   default — tune it with `skein dev --concurrency 4`, `SKEIN_RUN_CONCURRENCY=4`, or
   `worker: { maxConcurrency: 4 }` on any adapter. See
   [run concurrency](./runs-and-redis.md#run-concurrency).
-- **Add auth, memory, HITL, webhooks.** These are drop-in — see the [recipes](./recipes.md) (custom
+- **Add auth, memory, HITL, webhooks.** These are drop-in — see the [recipes](./recipes/) (custom
   auth, `getStore()` long-term memory, interrupt/resume, run-completion webhooks).
 - **A framework we don't ship.** The adapters are thin shims over one transport-neutral handler table
   (`createProtocolRuntime` + `skeinRoutes`); put skein on any Node HTTP framework by writing ~40 lines
@@ -1323,7 +1288,7 @@ Grow from the minimal server without rewrites — each step changes one thing:
 
 - **Auth is off by default.** No `auth` block / no `auth` dep → the server is fully open, exactly like
   `langgraph dev`. Turn it on with a `@langchain/langgraph-sdk/auth` `Auth` instance — see
-  [recipes.md](./recipes.md#custom-auth).
+  [recipes.md](./recipes/production.md#custom-auth).
 - **CORS is off by default.** Browser clients on another origin need `http.cors` in `langgraph.json`
   (or the `cors` option). Same-origin (e.g. Next.js) needs nothing.
 - **A long-lived Node process** is required for the background run worker and in-memory drivers — fine
@@ -1343,7 +1308,7 @@ Grow from the minimal server without rewrites — each step changes one thing:
 ## Go deeper
 
 - [Getting started](./getting-started.md) — the guided, end-to-end walkthrough.
-- [Recipes](./recipes.md) — auth, human-in-the-loop, long-term memory, CORS, background runs, deploy.
+- [Recipes](./recipes/) — auth, human-in-the-loop, long-term memory, CORS, background runs, deploy.
 - [Overview & architecture](./index.md) · [Agent Protocol surface](./agent-protocol.md) ·
   [Embedding](./embedding.md) · [Building a custom adapter](./building-an-adapter.md)
 
@@ -1357,17 +1322,6 @@ Grow from the minimal server without rewrites — each step changes one thing:
 The `skein` CLI is a **drop-in replacement for the LangGraph CLI** — the migration path onto
 skein-js for anyone already using it. That means two things: read the same `langgraph.json`, and
 mirror the same command surface.
-
-## Contents
-
-- [Command mapping](#command-mapping)
-- [Under the hood: what skein-js changes (transparently)](#under-the-hood-what-skein-js-changes-transparently)
-- [`langgraph.json` — fields we honor](#langgraphjson--fields-we-honor)
-- [Graph loading (`path:export` notation)](#graph-loading-pathexport-notation)
-- [Idempotency (`skein.idempotency`)](#idempotency-skeinidempotency)
-- [Authentication + authorization (`auth`)](#authentication--authorization-auth)
-- [`dev` vs `up`](#dev-vs-up)
-- [Migrating an existing `langgraph dev` state](#migrating-an-existing-langgraph-dev-state)
 
 ## Command mapping
 
@@ -1723,18 +1677,6 @@ an imported run still fires its completion webhook.
 > adopted the LangGraph Platform's project shape — no `langgraph.json`, no CLI. Bring the compiled
 > graph in code and get the same Agent Protocol server in a few lines.
 
-## Contents
-
-- [Two on-ramps](#two-on-ramps)
-- [The whole thing](#the-whole-thing)
-- [The graph map](#the-graph-map)
-- [Standalone or embedded](#standalone-or-embedded)
-- [Bring your own drivers, auth, logger](#bring-your-own-drivers-auth-logger)
-- [Going to production](#going-to-production)
-- [The one trade-off: schemas](#the-one-trade-off-schemas)
-- [API reference](#api-reference)
-- [See also](#see-also)
-
 ## Two on-ramps
 
 |                      | Drop-in CLI (`{ config }`)                            | In-code embedding (`{ deps }`)                                  |
@@ -1891,50 +1833,13 @@ const { deps, dispose } = await embedPostgresGraphs(
 > run queue is process-local and streaming isn't fanned across instances, so you **can't run more than
 > one instance**. Set a Redis URL to scale horizontally.
 
-**Sizing the in-memory bus.** On that Redis-less path the event bus holds run frames in the process,
-so it is bounded by two knobs rather than by a Redis TTL. Both are read from the environment, so they
-reach an embedded host without a code change:
-
-| Variable                              | Default | What it bounds                                                |
-| ------------------------------------- | ------- | ------------------------------------------------------------- |
-| `SKEIN_MEMORY_BUS_MAX_FRAMES_PER_RUN` | 10000   | Frames one run may buffer. A hard maximum, not a target.      |
-| `SKEIN_MEMORY_BUS_MAX_RETAINED_RUNS`  | 50      | Finished runs whose frames stay replayable for a late `join`. |
-
-Worst case is roughly `MAX_FRAMES_PER_RUN × (concurrent runs + MAX_RETAINED_RUNS)`. Frames hold
-references to the graph's own chunks, so under `stream_mode: "values"` each is a copy of the whole
-state — size these against what your graph emits, not just against the counts.
-
-Every other knob, and worked sizing for both deployment shapes, is in
-[performance.md](./performance.md).
-
-**Take that formula seriously rather than trusting the defaults.** At 10000 × 50 the ceiling is half a
-million retained frames, which even at 512 bytes each is hundreds of MB. The defaults are chosen so an
-ordinary run never loses a frame, not so the worst case fits a small container: on 256–512Mi set
-something like 2000 / 20, and at 1–4Gi still check the product against what one run of _your_ graph
-actually emits.
-
-Set the frame cap well above what a normal run emits: it is the point at which a client that has
-stopped keeping up begins losing frames, not a level to sit at.
-
-> **This is one place the two buses genuinely differ.** `@skein-js/redis` bounds a run's stream by a
-> one-hour key TTL and does not trim it, so on Redis a subscriber that falls a long way behind still
-> gets every frame. Nothing in-process can express "an hour of frames" as a memory bound, so the
-> memory bus bounds by count instead and a far-behind subscriber eventually loses the oldest. If that
-> matters for your workload, that is a reason to configure Redis rather than to raise the cap.
-
-Three consequences worth knowing:
-
-- A subscriber **already attached** that falls further behind than `MAX_FRAMES_PER_RUN` has its stream
-  ended rather than being handed a silent gap. It has received frames, so its `Last-Event-ID` has
-  advanced and reconnecting makes progress.
-- A client **reconnecting** to a position that has already been trimmed resumes from the oldest frame
-  still buffered, skipping what is gone. Ending the stream instead would be a reconnect loop, since
-  the client would keep asking for the same unavailable position. Under `stream_mode: "values"` this
-  self-heals — the next frame is a complete state; under token streaming it is a visible gap.
-- A `join` to a run that finished **within the last 24 hours** completes immediately with whatever is
-  still retained, rather than waiting on a run that will never publish again. The window matches
-  `@skein-js/redis`'s closed marker. It is swept lazily, when other runs close, so an idle process may
-  answer such a join for longer than 24 hours — later than the contract promises, never earlier.
+**Sizing the in-memory bus.** On the Redis-less path the event bus holds run frames in the process,
+bounded by `SKEIN_MEMORY_BUS_MAX_FRAMES_PER_RUN` (10000) and `SKEIN_MEMORY_BUS_MAX_RETAINED_RUNS` (50)
+rather than by a Redis TTL. The worst case is roughly `MAX_FRAMES_PER_RUN × (concurrent runs +
+MAX_RETAINED_RUNS)` — half a million frames at the defaults, which is hundreds of MB. Both are read from
+the environment, so they reach an embedded host without a code change. Size them against what your graph
+actually emits, and note that a far-behind subscriber loses the oldest frames here where Redis would
+still have them: [performance.md](./performance.md) has the sizing table and the triage symptoms.
 
 Prefer to assemble the drivers yourself (e.g. a Postgres store with an in-memory queue, or your own
 pool)? Pass them through `embedInMemoryGraphs`' `overrides`:
@@ -2053,18 +1958,6 @@ shutdown.
 > assistants, runs, streaming, history, human-in-the-loop. That's what a **chat** app needs. Plenty of
 > LangGraph work isn't chat: a classifier, an extractor, an enrichment step another service calls. For
 > those, this page describes a smaller surface — **one graph, one endpoint, called like a function**.
-
-## Contents
-
-- [Which surface do I want?](#which-surface-do-i-want)
-- [The whole thing](#the-whole-thing)
-- [The contract](#the-contract)
-- [Streaming](#streaming)
-- [On every adapter](#on-every-adapter)
-- [Auth](#auth)
-- [What it deliberately doesn't do](#what-it-deliberately-doesnt-do)
-- [API reference](#api-reference)
-- [See also](#see-also)
 
 ## Which surface do I want?
 
@@ -2274,22 +2167,6 @@ almost never call these endpoints by hand — the SDK does — but this page is 
 available and what ships in the MVP. For the streaming wire format, see [streaming.md](./streaming.md);
 for building a frontend on top, see [react-sdk.md](./react-sdk.md).
 
-## Contents
-
-- [Core resources](#core-resources)
-- [Endpoint inventory](#endpoint-inventory)
-- [Crons (LangGraph Platform extension)](#crons-langgraph-platform-extension)
-- [Request/response conventions](#requestresponse-conventions)
-- [Idempotent run creation (`Idempotency-Key`)](#idempotent-run-creation-idempotency-key)
-- [Authentication + authorization](#authentication--authorization)
-- [Conformance strategy](#conformance-strategy)
-- [References](#references)
-
-**We reuse rather than redefine the wire types.** The `@langchain/langgraph-sdk` package
-already publishes TypeScript types for Thread / Run / Assistant / Store items, and
-`@langchain/langgraph-api` publishes the server-side Zod schemas — skein-js builds on those
-instead of hand-writing (or regenerating) a parallel set. See [reuse.md](https://github.com/skein-js/skein-js/blob/main/docs/reuse.md).
-
 ## Core resources
 
 | Resource                | Description                                                                                                                                                                                                       |
@@ -2356,9 +2233,7 @@ get-or-create: the idiom for addressing a conversation by an external identity (
 thread, a ticket id) without tracking skein's own ids.
 
 Uniqueness is enforced in the storage driver, not by a read-then-write in the service, so two instances
-racing the same id cannot both win. Before this existed the two drivers disagreed: the memory driver
-silently **overwrote** the thread — resetting its `created_at`, `metadata`, `status`, `values` and
-`interrupts`, so an interrupted thread read as idle — while Postgres surfaced a raw unique violation as a 500.
+racing the same id cannot both win.
 
 **Seeding a thread with `supersteps`.** `POST /threads` accepts a `supersteps` array — updates written
 straight into the thread's checkpoint history, so you can **import** an existing conversation rather
@@ -2399,8 +2274,8 @@ server-owned, so a `thread_id` in `before.configurable` is dropped rather than h
 A `?limit=` query param is still accepted for hand-rolled callers, but it is _clamped_ to 1000 rather
 than rejected (a query string has no schema to 400 from). The body wins if both are present.
 
-`useStream` sends `limit: 10`, which skein previously **dropped** — it now returns 10 checkpoints instead
-of every one, matching LangGraph Platform. The rendered transcript is unaffected (the newest checkpoint's
+`useStream` sends `limit: 10`, so 10 checkpoints come back rather than every one, matching LangGraph
+Platform. The rendered transcript is unaffected (the newest checkpoint's
 `values` carry the whole message list); what shrinks is how far back the branch/edit tree reaches. Raise
 it by passing your own `limit` if you need deeper history.
 
@@ -2473,8 +2348,8 @@ The per-thread concurrency guard the sweep reads through is **not** ownership-sc
 inflight run on a thread whoever started it — so a total would tell an authenticated caller how much work
 every other principal has in flight.
 
-**`?action` and `?wait` on a cancel.** Both are sent by every `client.runs.cancel(...)` and were
-previously ignored. `action=interrupt` (the default) settles the run `cancelled` and keeps whatever it
+**`?action` and `?wait` on a cancel.** Both are sent by every `client.runs.cancel(...)`.
+`action=interrupt` (the default) settles the run `cancelled` and keeps whatever it
 wrote; `action=rollback` additionally discards its checkpoint writes and deletes the run row, so the turn
 reads as never having happened. `wait=1` returns only once the run has actually stopped executing rather
 than as soon as it is marked.
@@ -2491,9 +2366,7 @@ turn.
 existence instead — the other half of addressing a conversation by an external key, so an inbound event
 can start a run without a round trip to create the thread first.
 
-This is a behaviour change: `POST /threads/{id}/runs/wait` and `.../stream` previously created a missing
-thread silently, while `POST /threads/{id}/runs` 404d. The three routes now agree, and the default is the
-safe one — a mistyped thread id fails loudly rather than running against a fresh empty thread with none
+All three thread-scoped run routes agree, and the default is the safe one — a mistyped thread id fails loudly rather than running against a fresh empty thread with none
 of the history the caller expected. Pass `if_not_exists: "create"` to restore the old behaviour.
 
 A thread created this way still belongs to the **caller**, not to the run: `on_completion: "delete"`
@@ -2530,8 +2403,7 @@ drop, which is why the SDK does not send it on a background create.
 **skein defaults to `"continue"`.** A proxy idle timeout or a load-balancer reset is indistinguishable
 from a real hang-up at this layer, so defaulting to cancel would let routine infrastructure kill a
 healthy run. Note `useStream` sends `"cancel"` on every submit unless the stream is resumable — so with
-a browser client, closing the tab now stops the run. That is LangGraph's behaviour, and it is a change:
-skein previously ignored the field and let every such run finish.
+a browser client, closing the tab stops the run. That is LangGraph's behaviour.
 
 The related query flag `?cancel_on_disconnect` is honoured on `GET .../runs/{run_id}/stream`
 (`client.runs.joinStream()`), matching `@langchain/langgraph-api`. It stays **accepted and ignored** on
@@ -2600,9 +2472,7 @@ every SDK `deleteItem` a silent no-op — empty namespace, empty key, nothing de
 
 **Response shapes.** Search returns `{ "items": [...] }` and namespaces `{ "namespaces": [...] }` —
 the envelopes the SDK's `store.searchItems` / `store.listNamespaces` read. Store items carry
-`created_at`/`updated_at`, like every other resource here. All three were wrong until 0.14: bare
-arrays and camelCase timestamps, which made `searchItems()` throw on `.items.map`, `listNamespaces()`
-return `undefined`, and every item arrive through the official client with no timestamps.
+`created_at`/`updated_at`, like every other resource here.
 
 **`filter` on search** narrows by the **top-level** keys of an item's `value` — `"a.b"` is the literal
 key `"a.b"`, not a path into a nested object. Keys are ANDed, and so are multiple operators on one key.
@@ -2731,146 +2601,95 @@ Retention is tunable under `skein.idempotency` in `langgraph.json` — see
 
 ## Authentication + authorization
 
-Auth follows LangGraph's
-[custom-auth model](https://docs.langchain.com/langsmith/custom-auth) and is **transport-neutral**: it
-lives in `@skein-js/agent-protocol`, wrapping the handler table every adapter mounts, so Express,
-Fastify, NestJS, and Next.js inherit it identically. It's active only when an `Auth` engine is
-configured — a `langgraph.json` `auth` block (see
-[langgraph-cli-compat.md](./langgraph-cli-compat.md#authentication--authorization-auth)) or an injected
-`auth` dep; otherwise the server is unauthenticated.
+Auth follows LangGraph's [custom-auth model](https://docs.langchain.com/langsmith/custom-auth) and is
+**transport-neutral** — it wraps the handler table, so every adapter inherits it identically. Active
+only when an `Auth` engine is configured (a `langgraph.json` `auth` block or an injected `auth` dep);
+otherwise the server is unauthenticated.
 
-Per request the wrapper:
+Per request:
 
-1. **Authenticates** — synthesizes a WHATWG `Request` (method, URL, headers) and runs the user's
-   `authenticate` handler → an `AuthContext` (`{ user, scopes }`), or `401` if it throws. Studio
-   traffic (`x-auth-scheme: langsmith`) is admitted without authenticating unless
-   `disable_studio_auth` is set.
-2. **Authorizes** — looks up the route's resource + action, runs the matching `@auth.on.*` handler
-   (priority: `resource:action` → `resource` → `*:action` → `*`) → `403` on `false`, else ownership
-   **filters**.
-3. **Dispatches** — through a per-request service carrying the authenticated `user`. When a filter is
-   returned, ownership scoping applies to the `threads` family (threads + their runs): a non-owned row
-   reads as absent (`404`, never `403`), and the filter's values are stamped onto rows it creates.
-   `crons` are ownership-scoped the same way, and **fall back to the `threads` handler when no
-   `@auth.on.crons` callback is registered** — callbacks match by exact event key, so a deployment
-   that scoped only threads would otherwise serve the cron resource unscoped. Attaching a schedule to
-   a thread is additionally authorized as `threads:create_run`, so a cron cannot be pointed at a
-   thread the caller cannot read. `assistants` stays **gate-only** — its handler can deny (`403`), but no
-   ownership filter is applied. Graph assistants are auto-registered with no owner and must stay runnable
-   for every caller; a store item carries no metadata to filter on at all, so store scoping is expressed
-   through the **namespace** instead — see the block below.
+1. **Authenticate** — run the user's `authenticate` handler → an `AuthContext`, or `401`. Studio
+   traffic (`x-auth-scheme: langsmith`) is admitted without authenticating unless `disable_studio_auth`
+   is set.
+2. **Authorize** — run the matching `@auth.on.*` handler (priority `resource:action` → `resource` →
+   `*:action` → `*`) → `403` on `false`, else an ownership **filter**.
+3. **Dispatch** — with the authenticated `user`. Ownership scoping applies to the `threads` family
+   (threads + their runs): a non-owned row reads as absent (`404`, never `403`), and the filter's values
+   are stamped onto rows it creates. `crons` scope the same way and **fall back to the `threads`
+   handler when no `@auth.on.crons` callback is registered**, since callbacks match by exact event key
+   and a deployment that scoped only threads would otherwise serve crons unscoped. `assistants` is
+   **gate-only** — a handler can deny, but no filter applies, because auto-registered graph assistants
+   have no owner and must stay runnable. Store scoping works through the namespace instead:
 
-> **An `@auth.on.store` handler can rewrite the namespace, which is LangGraph's own idiom.** Store
-> authorization is the one case where returning a metadata filter cannot work — a store item has no
-> metadata — so LangGraph documents _mutating_ `value.namespace` instead, and skein honours that:
->
-> ```ts
-> auth.on("store", ({ user, value }) => {
->   // Reroute the caller into their own root, whatever they asked for.
->   value.namespace = [user.identity, ...(value.namespace ?? []).slice(1)];
-> });
-> ```
->
-> The rewritten namespace is what the endpoint operates on, for all five store routes — including a
-> `GET`/`DELETE` that addressed the item with query params, since the body namespace takes precedence, and
-> including an in-place mutation (`value.namespace[0] = …`). A rewrite that is not a `string[]` is a **500**
-> (`code: "store_namespace_rewrite_invalid"`) rather than a silent fall-through to the caller's own
-> namespace, because a handler that meant to scope and got the shape wrong is the exact failure this
-> prevents.
->
-> **`value.key` is honoured the same way** on the three item routes (`put`, `get`, `delete`), so a handler
-> can prefix a key instead of — or as well as — rooting the namespace. `store:search` and
-> `store:list_namespaces` address no single item, so assigning `value.key` there is a **500**
-> (`code: "store_key_rewrite_invalid"`): there is nowhere for it to land, and dropping it silently is the
-> same failure as dropping a namespace rewrite. Scope those two with `value.namespace`.
->
-> Both rewrites are read from the `value` object skein hands your handler. If you supply your own
-> `AuthEngine` through `ProtocolDeps` rather than an `auth.path`, its `authorize` must return **that same
-> object** as `value` for a rewrite to be observable — an engine that returns something else is treated as
-> having rewritten nothing, exactly as before rewrites were honoured at all.
->
-> **skein adds no scoping mechanism of its own, deliberately.** Who owns what, and how a namespace encodes
-> it, is the policy that varies most between deployments — a per-user root, a tenant prefix, a shared team
-> subtree — and your handler is the one place that can express all of them. So skein does what
-> `@langchain/langgraph-api` does: fire the event, honour the namespace, and stay out of the way.
->
-> **With no store handler registered, nothing narrows a store read.** The namespace is a request parameter,
-> so an authenticated caller can send `{"namespace_prefix": ["memories"]}` — or omit the prefix entirely —
-> and read **every** tenant's items; `POST /store/namespaces` likewise returns every tenant's namespace
-> names. If you prefer validating to rewriting, the deny handler below is the shape.
->
-> ```ts
-> /**
->  * A namespace label is one segment, so it must contain neither `.` (the query separator) nor `*`
->  * (the positional wildcard, which would match every tenant's first segment).
->  * `encodeURIComponent` escapes neither, so do it explicitly.
->  */
-> const tenantLabel = (identity: string) =>
->   encodeURIComponent(identity).replace(/\./g, "%2E").replace(/\*/g, "%2A");
->
-> auth.on("store", ({ user, value }) => {
->   // `value.namespace` is the namespace this request will actually operate on, server-derived.
->   // It is absent when the request names none — which on search means "every namespace".
->   const namespace = value.namespace;
->   if (!namespace?.length || namespace[0] !== tenantLabel(user.identity)) {
->     throw new HTTPException(403, { message: "Out of scope." });
->   }
-> });
-> ```
->
-> **Require a namespace; don't merely reject suspicious ones.** A deny handler can only refuse a whole
-> request, never filter what comes back — so the check above insists on a namespace rooted at the
-> principal. Rejecting only the shapes that _look_ dangerous fails: an absent `namespace_prefix` reads
-> every tenant, and a `"*"` wildcard matches a strict **subset** of what the shorter literal prefix
-> already returns, so blocking wildcards buys nothing.
->
-> **Encode the identity — don't use it raw.** `GET /store/items` takes its namespace as a dot-joined
-> query string, so a label containing a `.` splits into two segments: identity `alice@corp.com` writes
-> to `["alice@corp.com", …]` over `PUT` (a JSON array) but reads back as `["alice@corp", "com", …]`, and
-> the check then fails. Emails and OIDC subjects hit this constantly. Note `encodeURIComponent` does
-> **not** escape `.`, which is why the helper above escapes it explicitly — and the SDK's own client
-> rejects a label containing a literal `.` before it sends, so a dot-free label is required either way.
-> Use the same function wherever you build the namespace, including inside your graph.
->
-> **Migration note.** Before this normalization, `value.namespace` on `GET`/`DELETE /store/items` was
-> the raw dot-joined **string** from the query. It is now `string[]` on every store action, matching the
-> SDK's declared types. A handler doing string operations on it (`value.namespace.startsWith(…)`, or a
-> `===` against a joined identity) needs updating — it will now throw or deny.
->
-> **`value.namespace` is server-derived, and that is what makes it trustworthy.** skein sets it after
-> merging the body, from the field the endpoint will really use (`namespace_prefix` on search, `prefix`
-> on namespaces, body-or-query on `GET`/`DELETE`). Store bodies are `passthrough`, so otherwise a
-> caller could send a decoy `namespace` that satisfied the handler while the endpoint searched from an
-> absent `namespace_prefix`. It also means a handler written against LangGraph Platform's published
-> `Auth` types — which declare `namespace` on every store action — works here unchanged.
->
-> **A handler cannot cover `getStore()` inside a graph.** That is not an HTTP request and has no
-> principal, so a graph node reaches the whole store regardless. Build the namespace from
-> `config.configurable.langgraph_auth_user_id`, never from model output.
+### Scoping the store
 
-**Ownership scoping runs in the database.** A thread search under an ownership filter translates the
-filter into a metadata containment clause the driver matches (`metadata @> …` in Postgres, hitting the
-`threads_metadata_idx` GIN index), so a request reads only the caller's own rows and `limit`/`offset` page
-them directly. It used to read every matching thread — each carrying its full mirrored graph state — and
-filter in JS.
+A store item carries no metadata, so an ownership filter has nothing to match on. LangGraph's idiom is
+to **rewrite** `value.namespace`, and skein honours it on all five store routes:
 
-The in-process `matchesFilters` check still runs over whatever comes back, and is what actually enforces
-ownership: the translation deliberately errs **broad**, leaving out any clause it cannot express exactly
-(`{ $eq: "" }` and `{}` constrain nothing, matching the engine), because a clause that were too strict
-would silently hide rows a caller owns. `$contains` becomes array containment, which is the same check.
+```ts
+auth.on("store", ({ user, value }) => {
+  value.namespace = [user.identity, ...(value.namespace ?? []).slice(1)];
+});
+```
 
-For every filter shape `AuthFilterValue` declares the two agree exactly, so paging an ownership-scoped
-search behaves like an unscoped one. A **custom** `AuthEngine` whose `matchesFilters` is stricter than its
-own filters is the exception: the in-process check then drops rows the query returned, so pages come back
-short and `offset` counts query-matched rather than owned rows. Keep the two consistent, or page by
-`offset` until a request returns nothing at all rather than stopping at the first short page.
+In-place mutation counts (`value.namespace[0] = …`), and the body namespace wins over query params on
+`GET`/`DELETE`. `value.key` is honoured the same way on `put`/`get`/`delete`. A rewrite that is not a
+`string[]` is a **500** (`store_namespace_rewrite_invalid`), not a silent fall-through — a handler that
+meant to scope and got the shape wrong is exactly the failure this prevents. Assigning `value.key` on
+`search` or `list_namespaces` is likewise a 500 (`store_key_rewrite_invalid`): there is nowhere for it
+to land. If you supply your own `AuthEngine`, its `authorize` must return the **same** `value` object
+for a rewrite to be observable.
 
-**Principal in the run config.** The authenticated caller is injected into the graph's `configurable`,
-matching LangGraph Platform, so nodes and tools read `config.configurable.langgraph_auth_user` (the
-full user), `langgraph_auth_user_id` (its `identity`), and `langgraph_auth_permissions` (its scopes).
-These three keys are server-owned and reserved — a client can't spoof them via its own `configurable` —
-and are persisted on the run, so a background run resumed on another instance injects the same
-principal. With no `auth` configured, no keys are added (identical to `langgraph dev`).
+> **With no store handler registered, nothing narrows a store read.** The namespace is a request
+> parameter, so any authenticated caller can send `{"namespace_prefix": ["memories"]}` — or omit the
+> prefix entirely — and read **every** tenant's items. `POST /store/namespaces` likewise returns every
+> tenant's namespace names.
+
+Three traps if you validate rather than rewrite:
+
+```ts
+// A namespace label is one segment: it must contain neither `.` (the query separator) nor `*` (the
+// positional wildcard). encodeURIComponent escapes neither, so do it explicitly.
+const tenantLabel = (identity: string) =>
+  encodeURIComponent(identity).replace(/\./g, "%2E").replace(/\*/g, "%2A");
+
+auth.on("store", ({ user, value }) => {
+  const namespace = value.namespace; // server-derived; absent means "every namespace" on search
+  if (!namespace?.length || namespace[0] !== tenantLabel(user.identity)) {
+    throw new HTTPException(403, { message: "Out of scope." });
+  }
+});
+```
+
+- **Require a namespace; don't just reject suspicious ones.** A deny handler can refuse a request but
+  never filter the result. An absent prefix reads every tenant, and a `"*"` wildcard matches a strict
+  **subset** of what the shorter literal prefix already returns — so blocking wildcards buys nothing.
+- **Encode the identity.** `GET /store/items` takes a dot-joined query string, so `alice@corp.com`
+  writes to `["alice@corp.com", …]` but reads back as `["alice@corp", "com", …]`. Emails and OIDC
+  subjects hit this constantly.
+- **A handler cannot cover `getStore()` inside a graph** — that is not an HTTP request and has no
+  principal. Build the namespace from `config.configurable.langgraph_auth_user_id`, never from model
+  output.
+
+`value.namespace` is **server-derived** — set after merging the body, from the field the endpoint will
+really use. Store bodies are `passthrough`, so otherwise a caller could send a decoy `namespace` that
+satisfied the handler while the endpoint searched from an absent `namespace_prefix`.
+
+### Where scoping runs
+
+**In the database.** An ownership-filtered thread search becomes a metadata containment clause
+(`metadata @> …` in Postgres, hitting `threads_metadata_idx`), so `limit`/`offset` page owned rows
+directly rather than reading everything and filtering in JS.
+
+The in-process `matchesFilters` check still runs and is what actually enforces ownership. The
+translation errs **broad**, omitting any clause it cannot express exactly, because a too-strict clause
+would silently hide rows a caller owns. A **custom** `AuthEngine` whose `matchesFilters` is stricter
+than its own filters is the exception — pages then come back short; keep the two consistent.
+
+**Principal in the run config.** Nodes read `config.configurable.langgraph_auth_user`,
+`langgraph_auth_user_id` and `langgraph_auth_permissions`. Server-owned and reserved, so a client
+cannot spoof them, and persisted on the run so a background run resumed elsewhere injects the same
+principal. With no `auth` configured, no keys are added.
 
 Route → resource/action (runs authorize through their owning thread — there is no `runs` resource):
 
@@ -2887,25 +2706,11 @@ Route → resource/action (runs authorize through their owning thread — there 
 | `GET /info`                                                                                                                                                                   | _(unauthenticated — see the Meta section)_      |
 | `PUT/GET/DELETE /store/items`, `/store/items/search`, `/store/namespaces`                                                                                                     | `store:{put,get,delete,search,list_namespaces}` |
 
-**Reuse & limits.** The `Auth` contract and the `$eq`/`$contains` filter semantics come from
-`@langchain/*`; skein adds only the instance-scoped dispatch (see [reuse.md](https://github.com/skein-js/skein-js/blob/main/docs/reuse.md)). Ownership
-scoping is pushed into the driver query (above), with the in-process check kept as the enforcement point.
-`assistants` and `store` remain gate-only: store scoping is expressed through the namespace your
-`@auth.on.store` handler decides on, which is where that policy belongs.
-
-`POST /runs/cancel` sweeps broadly but authorizes narrowly: every run it touches goes back through the
+`POST /runs/cancel` sweeps broadly but authorizes narrowly — every run goes back through the
 ownership-filtered `get`, so a non-owned run reads as absent and is skipped. The per-thread concurrency
-guard (`hasActiveRun` / `listActiveRuns`) is deliberately _not_ ownership-filtered — it must see every
-inflight run on a thread whoever started it, or two runs could execute at once and interleave their
-checkpoint writes. Nothing leaks: the thread itself is ownership-gated, so the guard is unreachable for a
-thread the caller does not own.
-
-## Conformance strategy
-
-The official [`@langchain/langgraph-sdk`](./react-sdk.md) client is our **conformance
-oracle**: if `client.threads.create()`, `client.runs.stream()`, and `client.runs.wait()`
-are happy against a skein-js server, the wire format is correct. See
-[roadmap.md](./roadmap.md#verification) for the full verification plan.
+guard is deliberately **not** ownership-filtered: it must see every in-flight run on a thread whoever
+started it, or two could execute at once and interleave checkpoint writes. Nothing leaks, since the
+thread itself is gated.
 
 ## References
 
@@ -2932,13 +2737,6 @@ transport powers the `/runs/stream` endpoint, joining an in-flight run (`/runs/{
 thread-scoped streaming (`/threads/{id}/stream`).
 
 Reference: LangGraph streaming — <https://docs.langchain.com/oss/javascript/langgraph/streaming>
-
-## Contents
-
-- [LangGraph.js stream modes](#langgraphjs-stream-modes)
-- [Mapping to Agent Protocol SSE](#mapping-to-agent-protocol-sse)
-- [Joining and cross-instance fan-out](#joining-and-cross-instance-fan-out)
-- [Why SSE is enough (no WebSocket in v1)](#why-sse-is-enough-no-websocket-in-v1)
 
 ## LangGraph.js stream modes
 
@@ -3365,15 +3163,6 @@ Long-term memory is the one piece that lives on the server, not in the hook: a g
 `getStore()` and skein-js persists it (see [storage.md](./storage.md)). The frontend just keeps
 streaming.
 
-## Contents
-
-- [The clients skein-js must satisfy](#the-clients-skein-js-must-satisfy)
-- [Not just React — Vue, Svelte and Angular](#not-just-react--vue-svelte-and-angular)
-- [`useStream` against skein-js](#usestream-against-skein-js)
-- [Why it works over SSE](#why-it-works-over-sse)
-- [Verification harness](#verification-harness)
-- [References](#references)
-
 ## The clients skein-js must satisfy
 
 | Client                 | Package                           | How it talks to skein-js                                         |
@@ -3463,7 +3252,7 @@ does not affect the React SDK.
 [`examples/react-usestream`](https://github.com/skein-js/skein-js/tree/main/examples/react-usestream) is a minimal Next.js app wired to
 `useStream` and pointed at a placeholder skein-js URL. Once the server lands, it is the
 front-end signal that the SSE wiring satisfies the React SDK — token-by-token streaming in
-a real browser. See [roadmap.md](./roadmap.md#verification).
+a real browser. See [testing.md](https://github.com/skein-js/skein-js/blob/main/docs/testing.md).
 
 ## References
 
@@ -3501,16 +3290,6 @@ skein-js separates two kinds of persistence, and it is important not to conflate
 2. **Protocol resources** — assistants, thread metadata/status, run rows, and long-term
    store items. These are the gap OSS keeps _in memory_, so skein-js owns them behind a single
    `SkeinStore` interface with durable drivers.
-
-## Contents
-
-- [`SkeinStore` interface](#skeinstore-interface)
-- [Page bound (`SKEIN_MAX_PAGE_SIZE`)](#page-bound-skein_max_page_size)
-- [Server-enforced metadata](#server-enforced-metadata-enforcedmetadata)
-- [Drivers](#drivers)
-- [Bringing your own store](#bringing-your-own-store-storeadapter)
-- [Checkpointer selection](#checkpointer-selection)
-- [Why the split matters](#why-the-split-matters)
 
 ## `SkeinStore` interface
 
@@ -3659,13 +3438,10 @@ equality. It is applied **before** paging, so a page is a page of matches.
 | Empty operator bag `{}`         | States no conditions, so it matches everything                                                       |
 | Unknown `$op`, non-scalar value | **400** at the boundary, not a silent narrowing                                                      |
 
-The ordering rule is a **deliberate departure from LangGraph**, which coerces both sides with
-`Number()` — so upstream treats `"5" > 3` as true. That is not reproducible in Postgres, where
-`'abc'::numeric` throws rather than yielding `NaN`, and reproducing it faithfully would also make
-`true > 0`, `null >= 0` and `"" <= 5` all true. One rule both drivers implement beats two that agree
-by accident; the divergence is limited to numeric strings. (LangGraph's engine is internal — no export,
-no `.d.ts` — so skein reimplements it in `matchesItemFilter`, and the conformance suite pins _skein's_
-behaviour. It cannot detect upstream drift.)
+The numbers-only ordering rule is a **deliberate departure from LangGraph**, which coerces both sides
+with `Number()` and so treats `"5" > 3` as true. Postgres cannot reproduce that (`'abc'::numeric`
+throws), and faithful reproduction would also make `true > 0` and `null >= 0` true. The divergence is
+limited to numeric strings.
 
 **Namespace matching** is positional. `"*"` stands for exactly one segment, `prefix` anchors at the
 first and `suffix` at the last, and a path longer than the namespace never matches. A path _shorter_
@@ -3675,11 +3451,9 @@ many segments and de-duplicates, before sorting and paging — so `{ maxDepth: 1
 _roots_, not the roots of the first ten namespaces.
 
 Namespaces come back in ascending, element-wise order, shorter first on a shared prefix. Per-segment
-ordering follows the **driver's** collation: Postgres orders `text[]` under the database collation,
-the memory driver under UTF-16 code units. These agree for ordinary segments and can differ on exotic
-ones (`"a-b"` vs `"ab"` under `en_US.UTF-8`). Forcing agreement is not available — `COLLATE "C"` cannot
-apply to `text[]`, and flattening to a string reintroduces the separator collision the suite pins
-against — so the contract is the element-wise order, not a byte-exact one.
+ordering follows the **driver's** collation (Postgres's database collation; UTF-16 code units in
+memory), which agree for ordinary segments and can differ on exotic ones like `"a-b"` vs `"ab"`. The
+contract is the element-wise order, not a byte-exact one.
 
 > **Driver authors:** `StoreRepo.listNamespaces` takes a single `StoreNamespaceQuery`
 > (`{ prefix, suffix, maxDepth, limit, offset }`) rather than the old `(prefix, pagination)` pair,
@@ -3689,20 +3463,14 @@ against — so the contract is the element-wise order, not a byte-exact one.
 
 #### Multi-tenancy is yours to define
 
-`prefix`, `suffix` and `filter` are _request parameters_, not access control. An omitted prefix matches
-every namespace and a short one matches every namespace beneath it, so a caller who can reach
-`POST /store/items/search` can read every item in the store — no wildcard required.
+> `prefix`, `suffix` and `filter` are _request parameters_, not access control. An omitted prefix
+> matches every namespace, so **any caller who can reach `POST /store/items/search` can read every item
+> in the store** — no wildcard required.
 
-**skein deliberately offers no store-scoping mechanism of its own.** Who owns what, and how a namespace
-encodes it, is exactly the policy a deployment should hold — and it is the part that varies most between
-them. So skein does what `@langchain/langgraph-api` does: fire the `@auth.on.store` event, and serve the
-namespace the request (or your handler) decided on.
-
-What that gives you is complete control, in one place. LangGraph's idiom for store authorization is that
-the handler **rewrites** `value.namespace`, and skein honours that — see
-[agent-protocol.md](./agent-protocol.md#authentication--authorization) for the pattern, the payload your
-handler receives, and the two limits worth knowing (it covers the HTTP surface, not `getStore()` inside a
-graph; and an identity containing `.` needs encoding).
+skein offers no store-scoping mechanism of its own, deliberately: who owns what, and how a namespace
+encodes it, is the policy that varies most between deployments. Scope it with an `@auth.on.store`
+handler that rewrites `value.namespace` — the pattern, and its two limits, are in
+[agent-protocol.md](./agent-protocol.md#scoping-the-store).
 
 ### Store item TTL
 
@@ -3903,16 +3671,13 @@ request that reaches it. Prefer `BaseStore`: it is the wider ecosystem, and `Pos
 with HNSW _and_ IVFFlat plus a `"text" | "vector" | "hybrid" | "auto"` search mode — hybrid search being a
 capability skein's own driver does not have.
 
-**What the adapter does, and why it costs a little.** skein's filter operators, positional namespace
-matching, ordering and page bound are **re-applied in JS** rather than handed to the adapted store. That
-is not tidiness — forwarding would be wrong. `InMemoryStore`'s `search` matches namespace prefixes as a
-raw _string_ (`["users"]` also matching `["users2", …]`), ignores `query` entirely without a vector index,
-and coerces filter operands with `Number()` — the one rule skein deliberately rejected because Postgres
-cannot reproduce it. So the adapted store is asked for a candidate set, and for its vector ranking when it
-has one; skein applies the contract on top. The price is over-fetching: more source rows are read than
-returned, and paging happens after re-filtering. The
-[shared conformance suite](https://github.com/skein-js/skein-js/blob/main/docs/testing.md) runs against `fromBaseStore(new InMemoryStore())` and against a
-real `PostgresStore`, which is how "serves the same contract" is a fact rather than a claim.
+**skein re-applies its own semantics rather than forwarding them**, because forwarding would be wrong:
+`InMemoryStore`'s `search` matches namespace prefixes as a raw _string_ (so `["users"]` also matches
+`["users2", …]` — a cross-tenant read the moment a prefix is derived from a principal), ignores `query`
+without a vector index, and coerces filter operands with `Number()`. So the adapted store supplies a
+candidate set and its vector ranking; skein applies filtering, ordering and paging on top. The price is
+over-fetching. The shared conformance suite runs against both an adapted `InMemoryStore` and a real
+`PostgresStore`.
 
 Four things worth knowing before you switch:
 
@@ -3923,15 +3688,12 @@ Four things worth knowing before you switch:
 | **A prefix-less search fans out**    | Some stores reject an empty namespace prefix (`PostgresStore` does), so `search({})` enumerates namespaces and searches each. Scores are re-sorted globally afterwards, so semantic ranking still holds — but give a prefix when you can.                                                                                                                                                                                                                 |
 | **The store may have its own rules** | `PostgresStore` rejects namespace labels containing `.`, `%`, `_` or `\`, and a root label of `"langgraph"`. Items written under such a namespace by another driver are not reachable through it.                                                                                                                                                                                                                                                         |
 
-**Your store owns its items.** skein loads _into_ an adapter but never reads back out of it, and the
-asymmetry is deliberate — your store's durability is yours to configure, not skein's to shadow. So
-`skein import-langgraph`, a restored `.skein/dev-state.json`, and the one-time `langgraph dev` auto-import
-all replay their items through the adapter, landing where the server will read them. But the dev-state
-_snapshot_ covers the driver's resources only — assistants, threads, runs, crons — so an adapted
-`InMemoryStore` loses its items when `skein dev` restarts (it is in-memory and skein is not backing it up
-for you), while an adapted `PostgresStore` keeps them because it always did. `skein dev` prints that
-asymmetry at startup rather than leaving you to find it by losing items: writing whatever store you brought
-into `.skein/dev-state.json` every couple of seconds is not something to do to somebody's database.
+**Your store owns its items.** skein imports _into_ an adapter — `skein import-langgraph`, a restored
+`.skein/dev-state.json`, the one-time `langgraph dev` auto-import — but never snapshots back out of it,
+because writing whatever store you brought into `.skein/dev-state.json` every few seconds is not something
+to do to somebody's database. So an adapted `InMemoryStore` loses its items across a `skein dev` restart
+while a `PostgresStore` keeps them. `skein dev` prints this at startup rather than letting you find it by
+losing items.
 
 **`store.index` is refused alongside an adapter.** It configures pgvector on the store the adapter
 replaces, so it could only ever have no effect on search. Configure the index on your own store instead —
@@ -3957,14 +3719,9 @@ You rarely wire these drivers by hand. [`@skein-js/runtime`](https://github.com/
 **`embedPostgresGraphs`** from a graph you hold in code (the durable sibling of `embedInMemoryGraphs` —
 see [embedding.md](./embedding.md#going-to-production)).
 
-## Why the split matters
-
-Keeping protocol resources (`SkeinStore`) separate from LangGraph checkpoints means:
-
-- We can offer an in-memory dev experience with no database.
-- Postgres parity is proven by running the **same conformance suite** against both drivers.
-- Checkpoint format stays 100% LangGraph-native, so thread history/history endpoints and
-  interrupt/resume behave exactly as LangGraph expects.
+Protocol resources (`SkeinStore`) stay separate from LangGraph checkpoints, which is what allows an
+in-memory dev experience with no database while the checkpoint format stays 100% LangGraph-native — so
+history endpoints and interrupt/resume behave exactly as LangGraph expects.
 
 
 ---
@@ -3982,16 +3739,6 @@ queue, the adapters and the CLI. Everything below is ~100 lines in your own grap
 Platform because it uses `getStore()` and nothing skein-specific. Where skein does contribute — durable
 storage, semantic search, schedules — it is called out. Per-owner isolation is **not** on that list: it is a
 policy your `@auth.on.store` handler decides, and [Multi-tenant memory](#multi-tenant-memory) is how.
-
-## Contents
-
-- [What you already have](#what-you-already-have)
-- [Short-term memory is already solved](#short-term-memory-is-already-solved)
-- [Long-term memory: profile and collection](#long-term-memory-profile-and-collection)
-- [The dedup trap](#the-dedup-trap)
-- [Recall](#recall)
-- [Multi-tenant memory](#multi-tenant-memory)
-- [Writing memories in the background](#writing-memories-in-the-background)
 
 ## What you already have
 
@@ -4208,14 +3955,6 @@ This doc covers how skein-js executes runs and how it scales horizontally — mo
 > server runs runs in-process, in-memory). It is _not_ a checkpointer; for Redis-backed
 > checkpoints use `@langchain/langgraph-checkpoint-redis`. See [reuse.md](https://github.com/skein-js/skein-js/blob/main/docs/reuse.md).
 
-## Contents
-
-- [Run modes](#run-modes)
-- [Run engine](#run-engine)
-- [Queue drivers](#queue-drivers)
-- [Run concurrency](#run-concurrency)
-- [Deployment topology (`skein up`)](#deployment-topology-skein-up)
-
 ## Run modes
 
 The [Agent Protocol](./agent-protocol.md) defines three ways to execute a graph:
@@ -4394,7 +4133,7 @@ per-thread execution claim, held for the whole run.
 
 `skein up` brings this stack up via Docker Compose. Horizontal scaling is verified by
 starting a run on instance A and joining its SSE stream from instance B through Redis (see
-[roadmap.md](./roadmap.md#verification)).
+[testing.md](https://github.com/skein-js/skein-js/blob/main/docs/testing.md)).
 
 To run the same topology on a hosted platform, the generated image is PaaS-friendly (binds the
 injected `$PORT`, non-root, `/ok` health probe, graceful `SIGTERM`) — see
@@ -4422,18 +4161,6 @@ and driven by the official `@langchain/langgraph-sdk` client.
 **A cron is a _cadence_, not a delay.** To run something once, a little later, pass
 [`after_seconds`](./agent-protocol.md) on an ordinary run create — no cron row, nothing to clean up
 afterwards. Reach for a cron when the run should keep happening.
-
-## Contents
-
-- [Quick start](#quick-start)
-- [Stateless vs thread crons](#stateless-vs-thread-crons)
-- [Schedule format](#schedule-format)
-- [Endpoints](#endpoints)
-- [Semantics](#semantics)
-- [Driver requirements](#driver-requirements)
-- [How it works](#how-it-works)
-- [Operating a scheduler](#operating-a-scheduler)
-- [Authentication](#authentication)
 
 ## Quick start
 
@@ -4664,16 +4391,6 @@ See [agent-protocol.md](./agent-protocol.md#authentication--authorization) for t
 > A web UI for a running skein server: assistants, threads, live runs, interrupts, time travel, the
 > store, and crons. Served by the server itself, at `/console`.
 
-## Contents
-
-- [What it is](#what-it-is)
-- [Running it](#running-it)
-- [Turning it on in production](#turning-it-on-in-production)
-- [What it shows](#what-it-shows)
-- [Mounting it yourself](#mounting-it-yourself)
-- [How it is built](#how-it-is-built)
-- [Why not a hosted UI](#why-not-a-hosted-ui)
-
 ## What it is
 
 The console is a **client**. It adds no endpoints and stores nothing of its own: every screen is built
@@ -4822,17 +4539,6 @@ spans in OpenTelemetry, product analytics in PostHog — and how to write a sink
 
 For **logs** and what happens when a graph throws, see
 [errors-and-logging.md](./errors-and-logging.md). This doc is about the other two surfaces.
-
-## Contents
-
-- [Three surfaces](#three-surfaces)
-- [Turning it on](#turning-it-on)
-- [LangSmith](#langsmith)
-- [PostHog](#posthog)
-- [OpenTelemetry](#opentelemetry)
-- [Other backends](#other-backends)
-- [Writing your own sink](#writing-your-own-sink)
-- [Cost and safety](#cost-and-safety)
 
 ## Three surfaces
 
@@ -5072,26 +4778,12 @@ export const sink: TelemetrySink = {
 
 ### Your existing logger
 
-A sink is the right seam for feeding **run lifecycle events** into your logs. If you only want skein's
-own reports — failed runs, webhook failures — that is `ProtocolDeps.logger`, and under NestJS and
-Fastify it is already wired to the host's logger by default. See
+For skein's **own** reports — failed runs, webhook failures — the seam is `ProtocolDeps.logger`, already
+wired to the host's logger under NestJS and Fastify. See
 [errors-and-logging.md](./errors-and-logging.md#logging).
 
-If you already ship structured logs somewhere, a sink is a ten-line bridge:
-
-```ts
-export const sink: TelemetrySink = {
-  name: "logger",
-  onRunEvent: (event) =>
-    logger.info(event.type, {
-      ...event.context,
-      ...(event.type === "run.finished" && {
-        status: event.status,
-        duration_ms: event.durationMs,
-      }),
-    }),
-};
-```
+For **run lifecycle events** in your structured logs, a sink is a ten-line bridge over `onRunEvent`,
+the same hook the Sentry example uses.
 
 ## Writing your own sink
 
@@ -5162,35 +4854,59 @@ configuration.
 
 ---
 
-<!-- source: docs/recipes.md -->
+<!-- source: docs/recipes/index.md -->
 
 # Recipes
 
-Task-oriented snippets for the things people build on skein-js after the
-[getting-started](./getting-started.md) walkthrough. Each recipe is a problem, the smallest code that
-solves it, and links to the deeper doc. For a terse API reference, see
-[using-skein.md](./using-skein.md).
+Task-oriented pages: a problem, the smallest code that solves it, and a runnable example to copy from.
+Every example named here is in the repo and exercised by CI. For a terse API reference see
+[using-skein.md](../using-skein.md).
 
-## Contents
+## Read working code first
 
-- [Choose & expand a framework adapter](#choose--expand-a-framework-adapter)
-- [Custom auth](#custom-auth)
-- [Read the caller inside a graph](#read-the-caller-inside-a-graph)
-- [Human-in-the-loop (interrupt / resume)](#human-in-the-loop-interrupt--resume)
-- [Long-term memory (`getStore()`)](#long-term-memory-getstore)
-- [Semantic memory search (pgvector)](#semantic-memory-search-pgvector)
-- [CORS & browser clients](#cors--browser-clients)
-- [Background runs, join & cancel](#background-runs-join--cancel)
-- [Run-completion webhooks](#run-completion-webhooks)
-- [Bound a runaway run](#bound-a-runaway-run)
-- [Deploy](#deploy)
+[`triage-agent`](https://github.com/skein-js/skein-js/tree/main/examples/triage-agent) covers crons,
+background runs, idempotency, human-in-the-loop, long-term memory and time travel in **one graph** — and
+runs with **no API key and no network** (bundled fixtures, deterministic fallback classifier).
 
-## Choose & expand a framework adapter
+```bash
+pnpm --filter @skein-js/example-triage-agent dev    # console at http://127.0.0.1:2024/console/
+pnpm --filter @skein-js/example-triage-agent seed   # register the schedule + sweep once
+```
 
-**Problem:** which adapter (and which example) do you start from, and how do you grow it? Every adapter
-serves the identical protocol and takes the same `{ config } | { deps }` seam — pick by the framework
-you already run. Each ships a **standalone** entry (a dedicated server) and an **embedded** entry
-(mount alongside your app's own routes), with a runnable example for both:
+## The recipes
+
+| Page                                  | Covers                                                                 |
+| ------------------------------------- | ---------------------------------------------------------------------- |
+| [Serving](./serving.md)               | Pick an adapter, serve a graph as a plain endpoint, CORS for a browser |
+| [Running agents](./running-agents.md) | Background runs, crons, idempotency, human-in-the-loop, run timeouts   |
+| [Memory](./memory.md)                 | `getStore()`, semantic search, and the dedup trap                      |
+| [Production](./production.md)         | Auth, run-completion webhooks, durable storage and deploying           |
+
+## Which example shows what
+
+| Example                                                                                            | Shows                                                           |
+| -------------------------------------------------------------------------------------------------- | --------------------------------------------------------------- |
+| [`triage-agent`](https://github.com/skein-js/skein-js/tree/main/examples/triage-agent)             | Crons, background runs, idempotency, HITL, memory, time travel  |
+| [`chat-app`](https://github.com/skein-js/skein-js/tree/main/examples/chat-app)                     | Full-stack chat: streaming, thinking, tool cards, HITL, memory  |
+| [`invoke-endpoint`](https://github.com/skein-js/skein-js/tree/main/examples/invoke-endpoint)       | Non-chat graphs as plain HTTP endpoints                         |
+| [`embed-graph`](https://github.com/skein-js/skein-js/tree/main/examples/embed-graph)               | A graph you already have, served with no `langgraph.json`       |
+| [`migrated-langgraph`](https://github.com/skein-js/skein-js/tree/main/examples/migrated-langgraph) | The drop-in proof — a stock LangGraph project under `skein dev` |
+| [`react-usestream`](https://github.com/skein-js/skein-js/tree/main/examples/react-usestream)       | A minimal `useStream` frontend against any skein server         |
+
+
+---
+
+<!-- source: docs/recipes/serving.md -->
+
+# Serving
+
+Getting the protocol in front of clients: which adapter, the non-chat surface, and browser access.
+
+## Pick a framework adapter
+
+Every adapter serves the identical protocol and takes the same `{ config } | { deps }` seam — pick the
+framework you already run. Each has a **standalone** entry (a dedicated server) and an **embedded** one
+(mount beside your existing routes).
 
 | Framework | Package             | Standalone            | Embedded                                                             | Examples                                                                                                                                                                   |
 | --------- | ------------------- | --------------------- | -------------------------------------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
@@ -5199,106 +4915,159 @@ you already run. Each ships a **standalone** entry (a dedicated server) and an *
 | NestJS    | `@skein-js/nestjs`  | `createNestServer`    | `SkeinModule.forRoot`                                                | [nestjs-basic](https://github.com/skein-js/skein-js/tree/main/examples/nestjs-basic), [nestjs-app](https://github.com/skein-js/skein-js/tree/main/examples/nestjs-app)     |
 | Next.js   | `@skein-js/nextjs`  | route handlers        | `createSkeinRouteHandlers` (App) · `createSkeinPagesHandler` (Pages) | [nextjs-app](https://github.com/skein-js/skein-js/tree/main/examples/nextjs-app), [nextjs-basic](https://github.com/skein-js/skein-js/tree/main/examples/nextjs-basic)     |
 
-**How to expand from any of them:**
+Bun and Deno use [`@skein-js/fetch`](../deploy.md), selected with `skein build --runtime`. For a
+framework skein doesn't ship, the adapters are ~40-line shims over one handler table — see
+[building-an-adapter.md](../building-an-adapter.md). Mount snippets:
+[using-skein.md](../using-skein.md#mount-it-on-your-framework).
 
-- **Add a graph** — extend the graph map (`embedInMemoryGraphs({ echo, agent })`) or `langgraph.json`'s
-  `graphs`; each new graph is another assistant.
-- **Standalone → embedded** — switch the standalone `create*Server` for your framework's embed entry
-  (the table's Embedded column) to serve the protocol beside your existing routes, under a prefix.
-- **Go durable / multi-instance** — replace the in-memory deps with `embedPostgresGraphs(...)` or
-  `buildRuntime({ store: "postgres", queue: "redis" })` (see [Deploy](#deploy)).
-- **A framework skein doesn't ship** — the adapters are ~40-line shims over one transport-neutral
-  handler table (`createProtocolRuntime` + `skeinRoutes`); write your own with
-  [building-an-adapter.md](./building-an-adapter.md).
+## Serve a graph as a plain endpoint
 
-Copy-paste mount snippets for each framework are in
-[using-skein.md](./using-skein.md#mount-it-on-your-framework).
-
-## Custom auth
-
-**Problem:** the server is open by default; you want authenticated, per-owner access. skein implements
-[LangGraph's custom-auth model](https://docs.langchain.com/langsmith/custom-auth) — export a
-`@langchain/langgraph-sdk/auth` `Auth` instance (the same class LangGraph Platform uses, so an
-existing file is drop-in):
+For a classifier, extractor, or a workflow another service calls — no threads, no runs. The request body
+**is** the graph input; the response **is** its final state.
 
 ```ts
-// auth.ts
-import { Auth, HTTPException } from "@langchain/langgraph-sdk/auth";
-
-export const auth = new Auth()
-  .authenticate(async (request) => {
-    const token = request.headers.get("authorization")?.replace(/^Bearer /, "");
-    const user = token ? await verify(token) : undefined;
-    if (!user) throw new HTTPException(401, { message: "Unauthorized" });
-    return { identity: user.id, permissions: user.scopes };
-  })
-  .on("threads", ({ user }) => ({ owner: user.identity })); // scope threads (+ their runs) by owner
+const { router } = await skeinInvokeRouter({ deps: embedInMemoryGraphs({ triage }) });
+app.use(router);
+// curl -X POST localhost:2024/invoke/triage -d '{"text":"…"}'
 ```
 
-Wire it in one of two ways:
+Working version:
+[`invoke-endpoint`](https://github.com/skein-js/skein-js/tree/main/examples/invoke-endpoint) — two
+non-chat graphs, no model, no API key. Details:
+[serving-a-single-graph.md](../serving-a-single-graph.md).
+
+## CORS for a browser client
+
+CORS is **off by default**. Same-origin needs nothing — see
+[`nextjs-app`](https://github.com/skein-js/skein-js/tree/main/examples/nextjs-app), which serves the
+protocol and the UI from one app.
 
 ```jsonc
-// langgraph.json (CLI / { config } path)
-{ "graphs": { "agent": "./agent.ts:graph" }, "auth": { "path": "./auth.ts:auth" } }
+// langgraph.json — matches the LangGraph CLI
+{ "http": { "cors": { "allow_origins": ["http://localhost:3000"] } } }
 ```
+
+Or pass `cors` to any adapter (`true` for permissive dev, `false` to force off). Cross-origin example:
+[`react-usestream`](https://github.com/skein-js/skein-js/tree/main/examples/react-usestream).
+
+
+---
+
+<!-- source: docs/recipes/running-agents.md -->
+
+# Running agents
+
+Getting work started, keeping it from duplicating, pausing it for a human, and bounding it.
+
+## Background runs, join and cancel
+
+Kick off a long run, return immediately, stream it from anywhere.
 
 ```ts
-// in code ({ deps } path) — pass it as an override
-embedInMemoryGraphs({ agent: graph }, { overrides: { auth } });
-// or embedPostgresGraphs({ agent: graph }, { overrides: { auth } });
+const run = await client.runs.create(threadId, "agent", { input }); // returns immediately
+for await (const ev of client.runs.joinStream(threadId, run.run_id)) console.log(ev);
+await client.runs.cancel(threadId, run.run_id);
 ```
 
-A returned filter both hides other owners' rows on reads and stamps ownership onto new rows. See
-[langgraph-cli-compat.md](./langgraph-cli-compat.md#authentication--authorization-auth) and the full
-request lifecycle + route→permission map in
-[agent-protocol.md](./agent-protocol.md#authentication--authorization).
+Cross-instance join needs the Redis queue + bus ([runs-and-redis.md](../runs-and-redis.md)). Concurrent
+runs on **one** thread follow `multitask_strategy`; how many run at once across **different** threads is
+[run concurrency](../runs-and-redis.md#run-concurrency) (default 10).
 
-## Read the caller inside a graph
+Working version: [`triage-agent`](https://github.com/skein-js/skein-js/tree/main/examples/triage-agent)
+— one background run per issue, each on its own thread.
 
-**Problem:** a node or tool needs to know who's calling. skein injects the authenticated principal into
-the run config, exactly as LangGraph Platform does — three server-owned, unspoofable keys:
+## Scheduled runs (crons)
+
+Fire a graph on a schedule. Schedules live in the store, so they survive restarts and fire exactly once
+across instances — no leader election.
 
 ```ts
-async function node(state, config) {
-  const user = config.configurable.langgraph_auth_user; // full user object (custom fields included)
-  const userId = config.configurable.langgraph_auth_user_id; // the caller's identity
-  const scopes = config.configurable.langgraph_auth_permissions; // their scopes
-  // …
-}
+await client.crons.create("agent", { schedule: "*/5 * * * *", input: { source: "queue" } });
 ```
 
-These are present only when an `auth` engine is configured; without it, nothing is added (identical to
-`langgraph dev`). Details in [agent-protocol.md](./agent-protocol.md#authentication--authorization).
+Cron delivery is **at-least-once**: an occurrence committed but never queued is re-enqueued by the
+scheduler's sweep. Working version:
+[`triage-agent`](https://github.com/skein-js/skein-js/tree/main/examples/triage-agent) — a sweep that
+dispatches one run per issue. Details: [crons.md](../crons.md).
+
+## Don't create the same run twice
+
+A retrying caller — Twilio, Stripe, GitHub, or your own sweep — should not start a second run. Send an
+`Idempotency-Key` and the original response replays.
+
+```ts
+// `runs.create` has no `headers` option — a `headers` key in the payload is silently dropped and you
+// get a brand-new run every retry. A per-key client is the only way to send it.
+const client = new Client({ apiUrl, defaultHeaders: { "Idempotency-Key": issue.id } });
+await client.runs.create(threadId, "agent", { input });
+```
+
+The claim is an insert arbitrated by a uniqueness constraint, so 50 concurrent retries across two
+instances still produce exactly one run. Keys are scoped per principal, failures are never recorded, and
+the **streaming** creates reject the header rather than ignoring it — an SSE response has no body to
+replay. **LangGraph Platform has no equivalent.**
+
+Working version: [`triage-agent`](https://github.com/skein-js/skein-js/tree/main/examples/triage-agent)
+— re-sweeping creates nothing. Details:
+[agent-protocol.md](../agent-protocol.md#idempotent-run-creation-idempotency-key).
 
 ## Human-in-the-loop (interrupt / resume)
 
-**Problem:** pause a run for approval, then resume it later. This is
-[LangGraph-native](https://docs.langchain.com/oss/javascript/langgraph/interrupts) — skein reuses the
-checkpointer so `interrupt()` and resume work unchanged. In the graph:
+Pause for approval, resume later — possibly hours later, from a different client. An interrupted run
+holds no connection and no timer, only a checkpoint.
 
 ```ts
 import { interrupt } from "@langchain/langgraph";
 
 async function approve(state) {
   const decision = interrupt({ question: "Send this email?", draft: state.draft });
-  return decision === "yes" ? { sent: true } : { sent: false };
+  return { sent: decision === "yes" };
 }
 ```
 
-The run pauses (the thread's status becomes `interrupted`) and the interrupt surfaces in the stream.
-Resume by sending a command to the thread — `POST /threads/{thread_id}/commands` (the SDK's run-with-
-command / `useStream` submit carries the resume value). The frontend gets the interrupt and the resume
-for free through [`useStream`](./react-sdk.md). Endpoint details:
-[agent-protocol.md](./agent-protocol.md#thread-streaming-sse); streaming shape:
-[streaming.md](./streaming.md).
+The thread's status becomes `interrupted` and the interrupt surfaces in the stream; resume by submitting
+a `command`. [`useStream`](../react-sdk.md) renders and resumes it for free.
+
+Working versions:
+[`triage-agent`](https://github.com/skein-js/skein-js/tree/main/examples/triage-agent) (reached by a
+conditional edge) and [`chat-app`](https://github.com/skein-js/skein-js/tree/main/examples/chat-app)
+(approval card in the UI).
+
+## Bound a runaway run
+
+A graph that hangs — a model call with no timeout of its own, a node that loops — holds a worker slot
+until the process restarts. Set `--run-timeout <ms>` or `SKEIN_RUN_TIMEOUT_MS`; the run aborts and
+settles as `timeout`.
+
+**Off by default, deliberately.** A legitimate research or multi-step tool run takes minutes, so a
+default would turn slow-but-working into killed — the exact failure the timeout exists to prevent. Pick a
+number from your own graphs' worst honest case.
+
+## Re-run a turn a different way
+
+Fork from any past checkpoint and run from there, leaving the original branch intact — useful for
+retrying a decision with different input, or debugging what a node saw.
+
+```ts
+await client.runs.create(threadId, "agent", { input, checkpointId });
+```
+
+The fork target is server-validated, so a client cannot redirect a run to an arbitrary checkpoint through
+config. Visible in the [console](../console.md); details: [agent-protocol.md](../agent-protocol.md).
+
+
+---
+
+<!-- source: docs/recipes/memory.md -->
+
+# Memory
+
+Remembering things across threads and sessions.
 
 ## Long-term memory (`getStore()`)
 
-**Problem:** remember a fact about a user across threads/sessions. The long-term store is injected into
-every run as a LangGraph
-[`BaseStore`](https://docs.langchain.com/oss/javascript/langgraph/persistence), so a node reads/writes
-it the native way — and skein swaps the backend (in-memory in `skein dev`, Postgres in production)
-with no code change:
+The store is injected into every run as a LangGraph `BaseStore`, so a node reads and writes it the native
+way — and the backend swaps (in-memory under `skein dev`, Postgres in production) with no code change.
 
 ```ts
 import { getStore } from "@langchain/langgraph";
@@ -5312,115 +5081,117 @@ async function remember(state, config) {
 }
 ```
 
-The same items are reachable over the `/store/items` HTTP endpoints. See
-[storage.md](./storage.md#long-term-memory-in-the-graph-getstore); the flagship
-[`chat-app`](https://github.com/skein-js/skein-js/tree/main/examples/chat-app) uses this to remember a user across sessions.
+The same items are reachable over the `/store/items` HTTP endpoints.
 
-## Semantic memory search (pgvector)
+Working versions: [`chat-app`](https://github.com/skein-js/skein-js/tree/main/examples/chat-app) (recalls
+a user across sessions) and
+[`triage-agent`](https://github.com/skein-js/skein-js/tree/main/examples/triage-agent) (reads your
+conventions back into the prompt).
 
-**Problem:** `store.search({ query })` should rank by meaning, not substring. On the Postgres driver,
-configure an embedder in `langgraph.json`; search then uses pgvector (memory falls back to a naive
-scan, so behavior matches in dev):
+> [!WARNING]
+> **Read this before writing a dedup rule**
+>
+> Both `storage-memory` and Postgres **without** `store.index` return `score: 1` for every text hit — so
+> the obvious "score >= 0.9 means duplicate" rule classifies everything as a duplicate and the agent
+> **silently stops recording memories**. It does not error. [memory.md](../memory.md) covers this and the
+> other shapes that bite.
 
-```jsonc
-// langgraph.json
-{
-  "store": {
-    "index": { "embed": "openai:text-embedding-3-small", "dims": 1536, "fields": ["$"] },
-    "ttl": { "default_ttl": 1440, "refresh_on_read": true, "sweep_interval_minutes": 60 },
-  },
-}
-```
+## Rank by meaning, not substring
 
-`embed` accepts a `provider:model` string or a custom-function path; `dims` is required when `embed`
-is set. `store.ttl` (minutes) expires items with a background sweep. See
-[storage.md](./storage.md#store-item-ttl).
-
-## CORS & browser clients
-
-**Problem:** a browser app on another origin (Agent Chat UI, a `useStream` frontend) is blocked. CORS is
-**off by default**. Turn it on with the config block (matches the LangGraph CLI):
+On Postgres, configure an embedder and `store.search({ query })` uses pgvector. In-memory falls back to a
+naive scan, so dev behaviour matches.
 
 ```jsonc
 // langgraph.json
 {
-  "graphs": { "agent": "./agent.ts:graph" },
-  "http": { "cors": { "allow_origins": ["http://localhost:3000"] } },
+  "store": { "index": { "embed": "openai:text-embedding-3-small", "dims": 1536, "fields": ["$"] } },
 }
 ```
 
-Or in code, pass the `cors` option to any adapter (`CorsOptions`, `true` for permissive dev, `false` to
-force off). **Same-origin needs nothing** — serve the protocol and the UI from one app, like
-[`nextjs-app`](https://github.com/skein-js/skein-js/tree/main/examples/nextjs-app). See the
-[Express adapter CORS notes](https://github.com/skein-js/skein-js/blob/main/packages/server-express/README.md#cors).
+`embed` takes a `provider:model` string or a function path; `dims` is required with it.
 
-## Background runs, join & cancel
+## Expire what you don't need
 
-**Problem:** kick off a long run, return immediately, and stream it from elsewhere. Create a
-thread-scoped background run, then join its stream (a client on any instance can join when Redis is
-configured) or cancel it:
+`store.ttl` (minutes) expires items on a background sweep, with `refresh_on_read` to keep active ones
+alive. Threads have their own `checkpointer.ttl`. Both in [storage.md](../storage.md#store-item-ttl).
+
+## Bring your own store
+
+Long-term memory is the one repo you can swap without implementing the other five — point `store.adapter`
+at a LangGraph `BaseStore` (including `PostgresStore`, which brings hybrid text+vector search skein's own
+driver lacks) or a skein `StoreRepo`. Details:
+[storage.md](../storage.md#bringing-your-own-store-storeadapter).
+
+
+---
+
+<!-- source: docs/recipes/production.md -->
+
+# Production
+
+Locking it down, being told when work finishes, and running it durably.
+
+## Custom auth
+
+The server is open by default. skein implements
+[LangGraph's custom-auth model](https://docs.langchain.com/langsmith/custom-auth), so an existing `Auth`
+file is drop-in.
 
 ```ts
-import { Client } from "@langchain/langgraph-sdk";
-const client = new Client({ apiUrl: "http://localhost:2024" });
-const input = { messages: [{ role: "user", content: "research skein-js" }] };
+// auth.ts
+import { Auth, HTTPException } from "@langchain/langgraph-sdk/auth";
 
-const run = await client.runs.create(threadId, "agent", { input }); // returns immediately
-for await (const ev of client.runs.joinStream(threadId, run.run_id)) console.log(ev); // join later
-await client.runs.cancel(threadId, run.run_id); // POST /runs/{id}/cancel
+export const auth = new Auth()
+  .authenticate(async (request) => {
+    const token = request.headers.get("authorization")?.replace(/^Bearer /, "");
+    const user = token ? await verify(token) : undefined;
+    if (!user) throw new HTTPException(401, { message: "Unauthorized" });
+    return { identity: user.id, permissions: user.scopes };
+  })
+  .on("threads", ({ user }) => ({ owner: user.identity })); // scopes threads and their runs
 ```
 
-Cross-instance join and fan-out need the Redis queue + event bus — see
-[runs-and-redis.md](./runs-and-redis.md) and [streaming.md](./streaming.md). Concurrent runs on one
-thread follow a `multitask_strategy` (Agent Protocol parity); how many background runs execute at
-once across _different_ threads is [run concurrency](./runs-and-redis.md#run-concurrency)
-(`--concurrency`, default 10).
+Wire it with `"auth": { "path": "./auth.ts:auth" }` in `langgraph.json`, or in code as
+`embedInMemoryGraphs(graphs, { auth })` — note the second argument **is** the overrides bag here, while
+`embedPostgresGraphs` nests them under `overrides`. A returned filter both hides other owners' rows
+and stamps ownership onto new ones.
 
-## Run-completion webhooks
+**Inside a graph**, the principal arrives on the run config as
+`config.configurable.langgraph_auth_user`, `…_user_id` and `…_permissions` — server-owned and
+unspoofable, present only when auth is configured.
 
-**Problem:** be notified when a background run finishes without polling. Pass a `webhook` URL on run
-creation; skein POSTs the settled run (its final `values`, or an `error`) to that URL from the run
-engine's terminal path:
+> [!WARNING]
+> **The store is not scoped by an ownership filter**
+>
+> A store item carries no metadata to filter on, so **an authenticated caller can read every tenant's
+> items** unless an `@auth.on.store` handler narrows it. Scope it by rewriting `value.namespace` — the
+> pattern and its traps are in [agent-protocol.md](../agent-protocol.md#scoping-the-store).
+
+Full route → permission map:
+[agent-protocol.md](../agent-protocol.md#authentication--authorization).
+
+## Get notified when a run finishes
+
+Pass a `webhook` URL on run creation; skein POSTs the settled run to it.
 
 ```ts
-const input = { messages: [{ role: "user", content: "research skein-js" }] };
 await client.runs.create(threadId, "agent", { input, webhook: "https://example.com/hooks/run" });
 ```
 
-The default dispatcher restricts the scheme to `http(s)`. A server that accepts untrusted clients
-should inject a `webhookDispatcher` (via `overrides`) that allowlists the target host — the default
-stays permissive because internal targets are legitimate in a self-hosted setup. See
-[roadmap.md](./roadmap.md).
+**It is best-effort and unsigned.** A failed delivery is logged, never retried, and never fails the run —
+treat it as a notification and the API as the source of truth. Each POST is aborted after
+`SKEIN_WEBHOOK_TIMEOUT_MS` (default 5s), sized against the 8s shutdown budget so a slow receiver can't
+get you killed mid-POST. Delivery happens after the thread's execution lock is released, so a slow target
+no longer blocks other runs on that thread — which also means two webhooks for one thread are not
+guaranteed to arrive in run order.
 
-**Delivery is bounded and does not hold the thread.** Each POST is aborted after
-`SKEIN_WEBHOOK_TIMEOUT_MS` (default 5s), so an unresponsive receiver can't hold a run open indefinitely.
-The default is sized against the shutdown budget: `skein start` force-exits 8s after SIGTERM
-(`SKEIN_SHUTDOWN_GRACE_MS` + 3s), so a longer webhook timeout would mean being killed mid-POST rather
-than abandoning it cleanly. Raise both together if your receiver is slower.
+A server accepting untrusted clients should inject a `webhookDispatcher` that allowlists the host.
+Durable, signed, retried delivery is [proposed](../proposals/durable-delivery.md).
 
-Delivery happens _after_ the thread's execution lock is released, so a slow target no longer makes every
-other run on that thread queue behind it. It is still awaited before the run's execution promise
-resolves, so a shutdown drain waits for it — though the run row itself is already terminal by then, as it
-always has been. One consequence of that hoist: webhooks for two runs on the same thread are no longer
-guaranteed to arrive in run order, since a slow one no longer blocks the next.
+## Go durable and scale out
 
-A failed delivery is logged and never fails the run; there is no retry, so treat the webhook as a
-notification and the API as the source of truth.
-
-## Bound a runaway run
-
-**Problem:** a graph hangs — a model call with no timeout of its own, a node that loops — and holds a
-worker slot until the process restarts. Set a ceiling with `--run-timeout <ms>` or
-`SKEIN_RUN_TIMEOUT_MS`; the run is aborted and settles as `timeout`.
-
-It is **off by default**, deliberately. A legitimate agent run takes minutes, and a research or
-multi-step tool graph can take much longer — a default would turn slow-but-working into killed, which is
-the failure the timeout exists to prevent. Pick a number from your own graphs' worst honest case.
-
-## Deploy
-
-**Problem:** ship it durably and scale out. Back skein with Postgres (state + checkpoints) and Redis
-(queue + cross-instance streaming); nothing about your server code changes, only how `deps` is built:
+Back skein with Postgres (state + checkpoints) and Redis (queue + cross-instance streaming). Your server
+code doesn't change — only how `deps` is built.
 
 ```ts
 import { buildRuntime } from "@skein-js/runtime";
@@ -5432,17 +5203,27 @@ const rt = await buildRuntime({
 // pass rt.deps to any adapter's { deps }; call rt.dispose() on shutdown
 ```
 
-Or containerize with the CLI: `skein build` produces a deployable image (app + your graphs), `skein up`
-brings up app + Postgres + Redis via Compose, and `skein dev --store postgres --queue redis` runs the
-durable stack locally. Redis is optional for a single instance but **required to run more than one**.
+Or use the CLI: `skein build` produces a deployable image, `skein up` brings up app + Postgres + Redis via
+Compose, and `skein dev --store postgres --queue redis` runs the durable stack locally. Redis is optional
+for one instance and **required for more than one**.
 
-That image runs anywhere you can run a container — **[deploy.md](./deploy.md)** covers what every
-platform needs, with step-by-step guides for
-[Cloud Run](./deploy-cloud-run.md), [Railway](./deploy-railway.md), [Fly.io](./deploy-fly.md),
-[Render](./deploy-render.md), [AWS](./deploy-aws.md), [Kubernetes](./deploy-kubernetes.md),
-[a plain VPS](./deploy-vps.md), and [what doesn't work on serverless](./deploy-serverless.md).
-See also [embedding.md](./embedding.md#going-to-production) and
-[runs-and-redis.md](./runs-and-redis.md).
+## Deploy it
+
+That image runs anywhere you can run a container. [deploy.md](../deploy.md) covers what every platform
+needs — Postgres, Redis, the port, the `/ok` probe, pool sizing, SIGTERM draining, SSE through proxies —
+with guides for [Cloud Run](../deploy-cloud-run.md), [Railway](../deploy-railway.md),
+[Fly.io](../deploy-fly.md), [Render](../deploy-render.md), [AWS](../deploy-aws.md),
+[Kubernetes](../deploy-kubernetes.md), [a VPS](../deploy-vps.md), and
+[what doesn't work on serverless](../deploy-serverless.md).
+
+## Watch it run
+
+The [console](../console.md) at `/console` shows threads, live run tails, interrupt approvals, time
+travel, the store browser and crons — served by your own server, no account and no tunnel. It is **off by
+default** in production; opt in with `{"http": {"console": true}}`.
+
+For tracing and metrics, [observability.md](../observability.md) covers the `TelemetrySink` seam and the
+LangSmith, PostHog and OpenTelemetry adapters.
 
 
 ---
@@ -5457,19 +5238,6 @@ skein-js ships adapters for [Express](https://github.com/skein-js/skein-js/tree/
 Node `http` server, [Hono](https://hono.dev), Koa, an existing app on some other framework — you can
 write your own adapter in a few dozen lines. This guide shows how; the four shipped adapters are all
 built exactly this way.
-
-## Contents
-
-- [Why this is easy](#why-this-is-easy)
-- [The contract](#the-contract)
-- [Step 1 — assemble a runtime](#step-1--assemble-a-runtime)
-- [Step 2 — the route table](#step-2--the-route-table)
-- [Step 3 — map your request onto `ProtocolRequest`](#step-3--map-your-request-onto-protocolrequest)
-- [Step 4 — serialize the `ProtocolResponse`](#step-4--serialize-the-protocolresponse)
-- [Step 5 — handle errors](#step-5--handle-errors)
-- [Step 6 — worker lifecycle & CORS](#step-6--worker-lifecycle--cors)
-- [A complete minimal adapter](#a-complete-minimal-adapter)
-- [Checklist](#checklist)
 
 ## Why this is easy
 
@@ -5628,32 +5396,7 @@ Switch on `response.kind`:
   ends in `\n\n`). When the client disconnects, call the iterator's `return()` so the run's frame
   subscription is torn down.
 
-```ts
-import { SSE_HEADERS } from "@skein-js/agent-protocol";
-import { serializeWireJson } from "@skein-js/core";
-
-async function send(response, res) {
-  if (response.kind === "json") {
-    res.writeHead(response.status, { "content-type": "application/json" });
-    res.end(serializeWireJson(response.body));
-    return;
-  }
-  if (response.kind === "empty") {
-    res.writeHead(response.status).end();
-    return;
-  }
-  // sse
-  res.writeHead(response.status, SSE_HEADERS);
-  const iterator = response.events[Symbol.asyncIterator]();
-  res.on("close", () => void iterator.return?.(undefined)); // release the frame source on hangup
-  for (;;) {
-    const next = await iterator.next();
-    if (next.done) break;
-    res.write(next.value);
-  }
-  if (!res.writableEnded) res.end();
-}
-```
+The [complete adapter](#a-complete-minimal-adapter) below shows this switch assembled.
 
 ## Step 5 — handle errors
 
@@ -5661,32 +5404,8 @@ Handlers throw `SkeinHttpError` for client-visible faults (it carries the intend
 `message`, and optional `code`/`details`). Anything else is an unexpected `500`. Once SSE headers are
 flushed you can no longer set a status — just end the stream.
 
-```ts
-import { isSkeinHttpError } from "@skein-js/core";
-
-function sendError(error, res, logger) {
-  if (res.headersSent) {
-    if (!isSkeinHttpError(error)) logger?.error("Error after headers sent.", error);
-    if (!res.writableEnded) res.end();
-    return;
-  }
-  if (isSkeinHttpError(error)) {
-    res.writeHead(error.status, { "content-type": "application/json" });
-    res.end(
-      JSON.stringify({
-        status: error.status,
-        message: error.message,
-        ...(error.code !== undefined ? { code: error.code } : {}),
-        ...(error.details !== undefined ? { details: error.details } : {}),
-      }),
-    );
-    return;
-  }
-  logger?.error("Unhandled error.", error);
-  res.writeHead(500, { "content-type": "application/json" });
-  res.end(JSON.stringify({ status: 500, message: "Internal Server Error" }));
-}
-```
+`SkeinHttpError` carries `code` and `details` alongside `status`/`message`; forward them when
+present. Log anything that is _not_ a `SkeinHttpError` — that is a bug, not a client fault.
 
 ## Step 6 — worker lifecycle & CORS
 
@@ -5714,7 +5433,7 @@ function sendError(error, res, logger) {
   ```ts
   const { runtime, cors, logger } = await resolveProtocolRuntime(options, myFrameworkLogger);
   // …later, in your error path:
-  sendError(error, res, logger);
+  sendError(error, res, logger); // the try/catch shape shown in the complete adapter below
   ```
 
 > **Shortcut:** [`@skein-js/server-kit`](https://github.com/skein-js/skein-js/tree/main/packages/server-kit)'s `resolveProtocolRuntime(options)`
@@ -5869,17 +5588,6 @@ build so the dependency can be replaced or isolated before deployment.
 
 This page is everything that is true on **every** platform. The per-platform guides are just the
 dashboard and CLI steps on top of it.
-
-## Contents
-
-- [Pick a platform](#pick-a-platform)
-- [What the image already does for you](#what-the-image-already-does-for-you)
-- [What every deployment needs](#what-every-deployment-needs)
-- [Sizing & tuning](#sizing--tuning)
-- [Scaling past one instance](#scaling-past-one-instance)
-- [Streaming through proxies (SSE)](#streaming-through-proxies-sse)
-- [Verify a deployment](#verify-a-deployment)
-- [Environment variables](#environment-variables)
 
 ## Pick a platform
 
@@ -6334,16 +6042,6 @@ chosen so an ordinary deployment never loses a frame or truncates a page, which 
 chosen to fit a small container. If you run on 256–512Mi, read [Sizing](#sizing) — a handful of knobs do
 almost all the work.
 
-## Contents
-
-- [What actually uses memory](#what-actually-uses-memory)
-- [Sizing](#sizing)
-- [Every knob](#every-knob)
-- [Streaming: backpressure, drops, and recovery](#streaming-backpressure-drops-and-recovery)
-- [Query bounds](#query-bounds)
-- [Triage: symptom → knob](#triage-symptom--knob)
-- [Measuring it yourself](#measuring-it-yourself)
-
 ## What actually uses memory
 
 Four things, in the order they matter:
@@ -6509,9 +6207,9 @@ serialized it into a single response string.
   page — and separately from `SKEIN_MAX_PAGE_SIZE`, since history comes from the checkpointer rather
   than the store.
 - `GET /threads/{thread_id}/runs` and `POST /store/namespaces` page too, defaulting to **100** rows
-  (`limit`/`offset`; a query `limit` above 1000 is clamped, not rejected). Both previously returned
-  every row. 100 matches what the LangGraph SDK sends for `store.listNamespaces`, so an SDK caller sees
-  no change. `POST /store/namespaces` also applies the driver's `SKEIN_MAX_PAGE_SIZE` bound now — it was
+  (`limit`/`offset`; a query `limit` above 1000 is clamped, not rejected). 100 matches what the
+  LangGraph SDK sends for `store.listNamespaces`. `POST /store/namespaces` also applies the driver's
+  `SKEIN_MAX_PAGE_SIZE` bound — it was
   the one list path that escaped it, and an `offset` with no `limit` used to be ignored outright on
   Postgres, silently answering from row 0.
 - A **wildcard** namespace prefix or a `suffix` cannot use the slice-equality form and is matched
@@ -6805,15 +6503,6 @@ setting wrong and inline runs work perfectly while background runs mysteriously 
 Everything platform-agnostic — environment variables, pool sizing, probes, scaling caveats — is in
 [deploy.md](./deploy.md).
 
-## Contents
-
-- [Before you start](#before-you-start)
-- [1. Build and push the image](#1-build-and-push-the-image)
-- [2. Provision Postgres + Redis](#2-provision-postgres--redis)
-- [3. Deploy](#3-deploy)
-- [4. Verify](#4-verify)
-- [Cloud Run caveats](#cloud-run-caveats)
-
 ## Before you start
 
 You need the `gcloud` CLI authenticated, a project with billing enabled, and Docker. Enable the APIs
@@ -6970,15 +6659,6 @@ unusual config — and skein is inside its module graph.
 
 The short version: **skein is ESM-only, and everything except the CLI bundles cleanly.** Two packages
 must stay external, and only if you use the `langgraph.json` on-ramp.
-
-## Contents
-
-- [skein is ESM-only](#skein-is-esm-only)
-- [What must stay external](#what-must-stay-external)
-- [Copy-paste configs](#copy-paste-configs)
-- [The "Critical dependency" warning](#the-critical-dependency-warning)
-- [Postgres migrations are compiled in](#postgres-migrations-are-compiled-in)
-- [What `skein build` inlines vs. externalizes](#what-skein-build-inlines-vs-externalizes)
 
 ## skein is ESM-only
 

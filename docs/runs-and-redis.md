@@ -8,14 +8,6 @@ This doc covers how skein-js executes runs and how it scales horizontally — mo
 > server runs runs in-process, in-memory). It is _not_ a checkpointer; for Redis-backed
 > checkpoints use `@langchain/langgraph-checkpoint-redis`. See [reuse.md](https://github.com/skein-js/skein-js/blob/main/docs/reuse.md).
 
-## Contents
-
-- [Run modes](#run-modes)
-- [Run engine](#run-engine)
-- [Queue drivers](#queue-drivers)
-- [Run concurrency](#run-concurrency)
-- [Deployment topology (`skein up`)](#deployment-topology-skein-up)
-
 ## Run modes
 
 The [Agent Protocol](./agent-protocol.md) defines three ways to execute a graph:
@@ -194,7 +186,7 @@ per-thread execution claim, held for the whole run.
 
 `skein up` brings this stack up via Docker Compose. Horizontal scaling is verified by
 starting a run on instance A and joining its SSE stream from instance B through Redis (see
-[roadmap.md](./roadmap.md#verification)).
+[testing.md](https://github.com/skein-js/skein-js/blob/main/docs/testing.md)).
 
 To run the same topology on a hosted platform, the generated image is PaaS-friendly (binds the
 injected `$PORT`, non-root, `/ok` health probe, graceful `SIGTERM`) — see

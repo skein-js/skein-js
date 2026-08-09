@@ -10,7 +10,7 @@ Upstream references: [LangGraph.js overview](https://docs.langchain.com/oss/java
 
 - [Getting started](https://github.com/skein-js/skein-js/blob/main/docs/getting-started.md): Guided walkthrough from zero to a running server, then to production (both on-ramps).
 - [Using skein-js](https://github.com/skein-js/skein-js/blob/main/docs/using-skein.md): Terse consumer/agent cheat-sheet — install, the `{ config } | { deps }` seam, mount on each framework, call it.
-- [Recipes](https://github.com/skein-js/skein-js/blob/main/docs/recipes.md): Task snippets — custom auth, human-in-the-loop, long-term memory, CORS, background runs, webhooks, deploy.
+- [Recipes](https://github.com/skein-js/skein-js/blob/main/docs/recipes/index.md): Task snippets — custom auth, human-in-the-loop, long-term memory, CORS, background runs, webhooks, deploy.
 - [Overview & architecture](https://github.com/skein-js/skein-js/blob/main/docs/index.md): The problem skein solves, what the Agent Protocol is, and how skein is built.
 - [README](https://github.com/skein-js/skein-js/blob/main/README.md): The project landing page — principles, quick start, package tour.
 

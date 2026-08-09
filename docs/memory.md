@@ -10,16 +10,6 @@ Platform because it uses `getStore()` and nothing skein-specific. Where skein do
 storage, semantic search, schedules — it is called out. Per-owner isolation is **not** on that list: it is a
 policy your `@auth.on.store` handler decides, and [Multi-tenant memory](#multi-tenant-memory) is how.
 
-## Contents
-
-- [What you already have](#what-you-already-have)
-- [Short-term memory is already solved](#short-term-memory-is-already-solved)
-- [Long-term memory: profile and collection](#long-term-memory-profile-and-collection)
-- [The dedup trap](#the-dedup-trap)
-- [Recall](#recall)
-- [Multi-tenant memory](#multi-tenant-memory)
-- [Writing memories in the background](#writing-memories-in-the-background)
-
 ## What you already have
 
 | Need                            | Use                                                              | From                                                                         |

@@ -19,16 +19,6 @@ skein-js separates two kinds of persistence, and it is important not to conflate
    store items. These are the gap OSS keeps _in memory_, so skein-js owns them behind a single
    `SkeinStore` interface with durable drivers.
 
-## Contents
-
-- [`SkeinStore` interface](#skeinstore-interface)
-- [Page bound (`SKEIN_MAX_PAGE_SIZE`)](#page-bound-skein_max_page_size)
-- [Server-enforced metadata](#server-enforced-metadata-enforcedmetadata)
-- [Drivers](#drivers)
-- [Bringing your own store](#bringing-your-own-store-storeadapter)
-- [Checkpointer selection](#checkpointer-selection)
-- [Why the split matters](#why-the-split-matters)
-
 ## `SkeinStore` interface
 
 A single interface, implemented by each driver, covering the protocol resources:
@@ -176,13 +166,10 @@ equality. It is applied **before** paging, so a page is a page of matches.
 | Empty operator bag `{}`         | States no conditions, so it matches everything                                                       |
 | Unknown `$op`, non-scalar value | **400** at the boundary, not a silent narrowing                                                      |
 
-The ordering rule is a **deliberate departure from LangGraph**, which coerces both sides with
-`Number()` — so upstream treats `"5" > 3` as true. That is not reproducible in Postgres, where
-`'abc'::numeric` throws rather than yielding `NaN`, and reproducing it faithfully would also make
-`true > 0`, `null >= 0` and `"" <= 5` all true. One rule both drivers implement beats two that agree
-by accident; the divergence is limited to numeric strings. (LangGraph's engine is internal — no export,
-no `.d.ts` — so skein reimplements it in `matchesItemFilter`, and the conformance suite pins _skein's_
-behaviour. It cannot detect upstream drift.)
+The numbers-only ordering rule is a **deliberate departure from LangGraph**, which coerces both sides
+with `Number()` and so treats `"5" > 3` as true. Postgres cannot reproduce that (`'abc'::numeric`
+throws), and faithful reproduction would also make `true > 0` and `null >= 0` true. The divergence is
+limited to numeric strings.
 
 **Namespace matching** is positional. `"*"` stands for exactly one segment, `prefix` anchors at the
 first and `suffix` at the last, and a path longer than the namespace never matches. A path _shorter_
@@ -192,11 +179,9 @@ many segments and de-duplicates, before sorting and paging — so `{ maxDepth: 1
 _roots_, not the roots of the first ten namespaces.
 
 Namespaces come back in ascending, element-wise order, shorter first on a shared prefix. Per-segment
-ordering follows the **driver's** collation: Postgres orders `text[]` under the database collation,
-the memory driver under UTF-16 code units. These agree for ordinary segments and can differ on exotic
-ones (`"a-b"` vs `"ab"` under `en_US.UTF-8`). Forcing agreement is not available — `COLLATE "C"` cannot
-apply to `text[]`, and flattening to a string reintroduces the separator collision the suite pins
-against — so the contract is the element-wise order, not a byte-exact one.
+ordering follows the **driver's** collation (Postgres's database collation; UTF-16 code units in
+memory), which agree for ordinary segments and can differ on exotic ones like `"a-b"` vs `"ab"`. The
+contract is the element-wise order, not a byte-exact one.
 
 > **Driver authors:** `StoreRepo.listNamespaces` takes a single `StoreNamespaceQuery`
 > (`{ prefix, suffix, maxDepth, limit, offset }`) rather than the old `(prefix, pagination)` pair,
@@ -206,20 +191,14 @@ against — so the contract is the element-wise order, not a byte-exact one.
 
 #### Multi-tenancy is yours to define
 
-`prefix`, `suffix` and `filter` are _request parameters_, not access control. An omitted prefix matches
-every namespace and a short one matches every namespace beneath it, so a caller who can reach
-`POST /store/items/search` can read every item in the store — no wildcard required.
+> `prefix`, `suffix` and `filter` are _request parameters_, not access control. An omitted prefix
+> matches every namespace, so **any caller who can reach `POST /store/items/search` can read every item
+> in the store** — no wildcard required.
 
-**skein deliberately offers no store-scoping mechanism of its own.** Who owns what, and how a namespace
-encodes it, is exactly the policy a deployment should hold — and it is the part that varies most between
-them. So skein does what `@langchain/langgraph-api` does: fire the `@auth.on.store` event, and serve the
-namespace the request (or your handler) decided on.
-
-What that gives you is complete control, in one place. LangGraph's idiom for store authorization is that
-the handler **rewrites** `value.namespace`, and skein honours that — see
-[agent-protocol.md](./agent-protocol.md#authentication--authorization) for the pattern, the payload your
-handler receives, and the two limits worth knowing (it covers the HTTP surface, not `getStore()` inside a
-graph; and an identity containing `.` needs encoding).
+skein offers no store-scoping mechanism of its own, deliberately: who owns what, and how a namespace
+encodes it, is the policy that varies most between deployments. Scope it with an `@auth.on.store`
+handler that rewrites `value.namespace` — the pattern, and its two limits, are in
+[agent-protocol.md](./agent-protocol.md#scoping-the-store).
 
 ### Store item TTL
 
@@ -420,16 +399,13 @@ request that reaches it. Prefer `BaseStore`: it is the wider ecosystem, and `Pos
 with HNSW _and_ IVFFlat plus a `"text" | "vector" | "hybrid" | "auto"` search mode — hybrid search being a
 capability skein's own driver does not have.
 
-**What the adapter does, and why it costs a little.** skein's filter operators, positional namespace
-matching, ordering and page bound are **re-applied in JS** rather than handed to the adapted store. That
-is not tidiness — forwarding would be wrong. `InMemoryStore`'s `search` matches namespace prefixes as a
-raw _string_ (`["users"]` also matching `["users2", …]`), ignores `query` entirely without a vector index,
-and coerces filter operands with `Number()` — the one rule skein deliberately rejected because Postgres
-cannot reproduce it. So the adapted store is asked for a candidate set, and for its vector ranking when it
-has one; skein applies the contract on top. The price is over-fetching: more source rows are read than
-returned, and paging happens after re-filtering. The
-[shared conformance suite](https://github.com/skein-js/skein-js/blob/main/docs/testing.md) runs against `fromBaseStore(new InMemoryStore())` and against a
-real `PostgresStore`, which is how "serves the same contract" is a fact rather than a claim.
+**skein re-applies its own semantics rather than forwarding them**, because forwarding would be wrong:
+`InMemoryStore`'s `search` matches namespace prefixes as a raw _string_ (so `["users"]` also matches
+`["users2", …]` — a cross-tenant read the moment a prefix is derived from a principal), ignores `query`
+without a vector index, and coerces filter operands with `Number()`. So the adapted store supplies a
+candidate set and its vector ranking; skein applies filtering, ordering and paging on top. The price is
+over-fetching. The shared conformance suite runs against both an adapted `InMemoryStore` and a real
+`PostgresStore`.
 
 Four things worth knowing before you switch:
 
@@ -440,15 +416,12 @@ Four things worth knowing before you switch:
 | **A prefix-less search fans out**    | Some stores reject an empty namespace prefix (`PostgresStore` does), so `search({})` enumerates namespaces and searches each. Scores are re-sorted globally afterwards, so semantic ranking still holds — but give a prefix when you can.                                                                                                                                                                                                                 |
 | **The store may have its own rules** | `PostgresStore` rejects namespace labels containing `.`, `%`, `_` or `\`, and a root label of `"langgraph"`. Items written under such a namespace by another driver are not reachable through it.                                                                                                                                                                                                                                                         |
 
-**Your store owns its items.** skein loads _into_ an adapter but never reads back out of it, and the
-asymmetry is deliberate — your store's durability is yours to configure, not skein's to shadow. So
-`skein import-langgraph`, a restored `.skein/dev-state.json`, and the one-time `langgraph dev` auto-import
-all replay their items through the adapter, landing where the server will read them. But the dev-state
-_snapshot_ covers the driver's resources only — assistants, threads, runs, crons — so an adapted
-`InMemoryStore` loses its items when `skein dev` restarts (it is in-memory and skein is not backing it up
-for you), while an adapted `PostgresStore` keeps them because it always did. `skein dev` prints that
-asymmetry at startup rather than leaving you to find it by losing items: writing whatever store you brought
-into `.skein/dev-state.json` every couple of seconds is not something to do to somebody's database.
+**Your store owns its items.** skein imports _into_ an adapter — `skein import-langgraph`, a restored
+`.skein/dev-state.json`, the one-time `langgraph dev` auto-import — but never snapshots back out of it,
+because writing whatever store you brought into `.skein/dev-state.json` every few seconds is not something
+to do to somebody's database. So an adapted `InMemoryStore` loses its items across a `skein dev` restart
+while a `PostgresStore` keeps them. `skein dev` prints this at startup rather than letting you find it by
+losing items.
 
 **`store.index` is refused alongside an adapter.** It configures pgvector on the store the adapter
 replaces, so it could only ever have no effect on search. Configure the index on your own store instead —
@@ -474,11 +447,6 @@ You rarely wire these drivers by hand. [`@skein-js/runtime`](https://github.com/
 **`embedPostgresGraphs`** from a graph you hold in code (the durable sibling of `embedInMemoryGraphs` —
 see [embedding.md](./embedding.md#going-to-production)).
 
-## Why the split matters
-
-Keeping protocol resources (`SkeinStore`) separate from LangGraph checkpoints means:
-
-- We can offer an in-memory dev experience with no database.
-- Postgres parity is proven by running the **same conformance suite** against both drivers.
-- Checkpoint format stays 100% LangGraph-native, so thread history/history endpoints and
-  interrupt/resume behave exactly as LangGraph expects.
+Protocol resources (`SkeinStore`) stay separate from LangGraph checkpoints, which is what allows an
+in-memory dev experience with no database while the checkpoint format stays 100% LangGraph-native — so
+history endpoints and interrupt/resume behave exactly as LangGraph expects.

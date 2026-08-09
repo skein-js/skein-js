@@ -7,13 +7,6 @@ long stop timeout, real background-run behavior, and fits teams already running 
 Both share the same registry, database, and secret plumbing. Everything platform-agnostic —
 environment variables, pool sizing, probes, scaling caveats — is in [deploy.md](./deploy.md).
 
-## Contents
-
-- [Shared setup](#shared-setup)
-- [App Runner](#app-runner)
-- [ECS Fargate](#ecs-fargate)
-- [Verify](#verify)
-
 ## Shared setup
 
 ### 1. Push the image to ECR

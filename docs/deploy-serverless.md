@@ -7,13 +7,6 @@ background runs there.** If you want the full Agent Protocol, deploy the contain
 This page exists because "deploy LangGraph on Vercel" is a reasonable thing to try, and the failure
 mode is quiet — everything looks fine until a background run never finishes.
 
-## Contents
-
-- [Why background runs can't work](#why-background-runs-cant-work)
-- [What does work](#what-does-work)
-- [The shape that actually works](#the-shape-that-actually-works)
-- [If you deploy the Next.js adapter to Vercel anyway](#if-you-deploy-the-nextjs-adapter-to-vercel-anyway)
-
 ## Why background runs can't work
 
 `POST /threads/{id}/runs` enqueues a run and responds immediately. A background worker picks it

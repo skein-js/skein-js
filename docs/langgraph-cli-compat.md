@@ -4,17 +4,6 @@ The `skein` CLI is a **drop-in replacement for the LangGraph CLI** — the migra
 skein-js for anyone already using it. That means two things: read the same `langgraph.json`, and
 mirror the same command surface.
 
-## Contents
-
-- [Command mapping](#command-mapping)
-- [Under the hood: what skein-js changes (transparently)](#under-the-hood-what-skein-js-changes-transparently)
-- [`langgraph.json` — fields we honor](#langgraphjson--fields-we-honor)
-- [Graph loading (`path:export` notation)](#graph-loading-pathexport-notation)
-- [Idempotency (`skein.idempotency`)](#idempotency-skeinidempotency)
-- [Authentication + authorization (`auth`)](#authentication--authorization-auth)
-- [`dev` vs `up`](#dev-vs-up)
-- [Migrating an existing `langgraph dev` state](#migrating-an-existing-langgraph-dev-state)
-
 ## Command mapping
 
 | LangGraph CLI          | skein-js           | Behavior                                                       |

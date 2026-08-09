@@ -11,22 +11,6 @@ almost never call these endpoints by hand — the SDK does — but this page is 
 available and what ships in the MVP. For the streaming wire format, see [streaming.md](./streaming.md);
 for building a frontend on top, see [react-sdk.md](./react-sdk.md).
 
-## Contents
-
-- [Core resources](#core-resources)
-- [Endpoint inventory](#endpoint-inventory)
-- [Crons (LangGraph Platform extension)](#crons-langgraph-platform-extension)
-- [Request/response conventions](#requestresponse-conventions)
-- [Idempotent run creation (`Idempotency-Key`)](#idempotent-run-creation-idempotency-key)
-- [Authentication + authorization](#authentication--authorization)
-- [Conformance strategy](#conformance-strategy)
-- [References](#references)
-
-**We reuse rather than redefine the wire types.** The `@langchain/langgraph-sdk` package
-already publishes TypeScript types for Thread / Run / Assistant / Store items, and
-`@langchain/langgraph-api` publishes the server-side Zod schemas — skein-js builds on those
-instead of hand-writing (or regenerating) a parallel set. See [reuse.md](https://github.com/skein-js/skein-js/blob/main/docs/reuse.md).
-
 ## Core resources
 
 | Resource                | Description                                                                                                                                                                                                       |
@@ -93,9 +77,7 @@ get-or-create: the idiom for addressing a conversation by an external identity (
 thread, a ticket id) without tracking skein's own ids.
 
 Uniqueness is enforced in the storage driver, not by a read-then-write in the service, so two instances
-racing the same id cannot both win. Before this existed the two drivers disagreed: the memory driver
-silently **overwrote** the thread — resetting its `created_at`, `metadata`, `status`, `values` and
-`interrupts`, so an interrupted thread read as idle — while Postgres surfaced a raw unique violation as a 500.
+racing the same id cannot both win.
 
 **Seeding a thread with `supersteps`.** `POST /threads` accepts a `supersteps` array — updates written
 straight into the thread's checkpoint history, so you can **import** an existing conversation rather
@@ -136,8 +118,8 @@ server-owned, so a `thread_id` in `before.configurable` is dropped rather than h
 A `?limit=` query param is still accepted for hand-rolled callers, but it is _clamped_ to 1000 rather
 than rejected (a query string has no schema to 400 from). The body wins if both are present.
 
-`useStream` sends `limit: 10`, which skein previously **dropped** — it now returns 10 checkpoints instead
-of every one, matching LangGraph Platform. The rendered transcript is unaffected (the newest checkpoint's
+`useStream` sends `limit: 10`, so 10 checkpoints come back rather than every one, matching LangGraph
+Platform. The rendered transcript is unaffected (the newest checkpoint's
 `values` carry the whole message list); what shrinks is how far back the branch/edit tree reaches. Raise
 it by passing your own `limit` if you need deeper history.
 
@@ -210,8 +192,8 @@ The per-thread concurrency guard the sweep reads through is **not** ownership-sc
 inflight run on a thread whoever started it — so a total would tell an authenticated caller how much work
 every other principal has in flight.
 
-**`?action` and `?wait` on a cancel.** Both are sent by every `client.runs.cancel(...)` and were
-previously ignored. `action=interrupt` (the default) settles the run `cancelled` and keeps whatever it
+**`?action` and `?wait` on a cancel.** Both are sent by every `client.runs.cancel(...)`.
+`action=interrupt` (the default) settles the run `cancelled` and keeps whatever it
 wrote; `action=rollback` additionally discards its checkpoint writes and deletes the run row, so the turn
 reads as never having happened. `wait=1` returns only once the run has actually stopped executing rather
 than as soon as it is marked.
@@ -228,9 +210,7 @@ turn.
 existence instead — the other half of addressing a conversation by an external key, so an inbound event
 can start a run without a round trip to create the thread first.
 
-This is a behaviour change: `POST /threads/{id}/runs/wait` and `.../stream` previously created a missing
-thread silently, while `POST /threads/{id}/runs` 404d. The three routes now agree, and the default is the
-safe one — a mistyped thread id fails loudly rather than running against a fresh empty thread with none
+All three thread-scoped run routes agree, and the default is the safe one — a mistyped thread id fails loudly rather than running against a fresh empty thread with none
 of the history the caller expected. Pass `if_not_exists: "create"` to restore the old behaviour.
 
 A thread created this way still belongs to the **caller**, not to the run: `on_completion: "delete"`
@@ -267,8 +247,7 @@ drop, which is why the SDK does not send it on a background create.
 **skein defaults to `"continue"`.** A proxy idle timeout or a load-balancer reset is indistinguishable
 from a real hang-up at this layer, so defaulting to cancel would let routine infrastructure kill a
 healthy run. Note `useStream` sends `"cancel"` on every submit unless the stream is resumable — so with
-a browser client, closing the tab now stops the run. That is LangGraph's behaviour, and it is a change:
-skein previously ignored the field and let every such run finish.
+a browser client, closing the tab stops the run. That is LangGraph's behaviour.
 
 The related query flag `?cancel_on_disconnect` is honoured on `GET .../runs/{run_id}/stream`
 (`client.runs.joinStream()`), matching `@langchain/langgraph-api`. It stays **accepted and ignored** on
@@ -337,9 +316,7 @@ every SDK `deleteItem` a silent no-op — empty namespace, empty key, nothing de
 
 **Response shapes.** Search returns `{ "items": [...] }` and namespaces `{ "namespaces": [...] }` —
 the envelopes the SDK's `store.searchItems` / `store.listNamespaces` read. Store items carry
-`created_at`/`updated_at`, like every other resource here. All three were wrong until 0.14: bare
-arrays and camelCase timestamps, which made `searchItems()` throw on `.items.map`, `listNamespaces()`
-return `undefined`, and every item arrive through the official client with no timestamps.
+`created_at`/`updated_at`, like every other resource here.
 
 **`filter` on search** narrows by the **top-level** keys of an item's `value` — `"a.b"` is the literal
 key `"a.b"`, not a path into a nested object. Keys are ANDed, and so are multiple operators on one key.
@@ -468,146 +445,95 @@ Retention is tunable under `skein.idempotency` in `langgraph.json` — see
 
 ## Authentication + authorization
 
-Auth follows LangGraph's
-[custom-auth model](https://docs.langchain.com/langsmith/custom-auth) and is **transport-neutral**: it
-lives in `@skein-js/agent-protocol`, wrapping the handler table every adapter mounts, so Express,
-Fastify, NestJS, and Next.js inherit it identically. It's active only when an `Auth` engine is
-configured — a `langgraph.json` `auth` block (see
-[langgraph-cli-compat.md](./langgraph-cli-compat.md#authentication--authorization-auth)) or an injected
-`auth` dep; otherwise the server is unauthenticated.
+Auth follows LangGraph's [custom-auth model](https://docs.langchain.com/langsmith/custom-auth) and is
+**transport-neutral** — it wraps the handler table, so every adapter inherits it identically. Active
+only when an `Auth` engine is configured (a `langgraph.json` `auth` block or an injected `auth` dep);
+otherwise the server is unauthenticated.
 
-Per request the wrapper:
+Per request:
 
-1. **Authenticates** — synthesizes a WHATWG `Request` (method, URL, headers) and runs the user's
-   `authenticate` handler → an `AuthContext` (`{ user, scopes }`), or `401` if it throws. Studio
-   traffic (`x-auth-scheme: langsmith`) is admitted without authenticating unless
-   `disable_studio_auth` is set.
-2. **Authorizes** — looks up the route's resource + action, runs the matching `@auth.on.*` handler
-   (priority: `resource:action` → `resource` → `*:action` → `*`) → `403` on `false`, else ownership
-   **filters**.
-3. **Dispatches** — through a per-request service carrying the authenticated `user`. When a filter is
-   returned, ownership scoping applies to the `threads` family (threads + their runs): a non-owned row
-   reads as absent (`404`, never `403`), and the filter's values are stamped onto rows it creates.
-   `crons` are ownership-scoped the same way, and **fall back to the `threads` handler when no
-   `@auth.on.crons` callback is registered** — callbacks match by exact event key, so a deployment
-   that scoped only threads would otherwise serve the cron resource unscoped. Attaching a schedule to
-   a thread is additionally authorized as `threads:create_run`, so a cron cannot be pointed at a
-   thread the caller cannot read. `assistants` stays **gate-only** — its handler can deny (`403`), but no
-   ownership filter is applied. Graph assistants are auto-registered with no owner and must stay runnable
-   for every caller; a store item carries no metadata to filter on at all, so store scoping is expressed
-   through the **namespace** instead — see the block below.
+1. **Authenticate** — run the user's `authenticate` handler → an `AuthContext`, or `401`. Studio
+   traffic (`x-auth-scheme: langsmith`) is admitted without authenticating unless `disable_studio_auth`
+   is set.
+2. **Authorize** — run the matching `@auth.on.*` handler (priority `resource:action` → `resource` →
+   `*:action` → `*`) → `403` on `false`, else an ownership **filter**.
+3. **Dispatch** — with the authenticated `user`. Ownership scoping applies to the `threads` family
+   (threads + their runs): a non-owned row reads as absent (`404`, never `403`), and the filter's values
+   are stamped onto rows it creates. `crons` scope the same way and **fall back to the `threads`
+   handler when no `@auth.on.crons` callback is registered**, since callbacks match by exact event key
+   and a deployment that scoped only threads would otherwise serve crons unscoped. `assistants` is
+   **gate-only** — a handler can deny, but no filter applies, because auto-registered graph assistants
+   have no owner and must stay runnable. Store scoping works through the namespace instead:
 
-> **An `@auth.on.store` handler can rewrite the namespace, which is LangGraph's own idiom.** Store
-> authorization is the one case where returning a metadata filter cannot work — a store item has no
-> metadata — so LangGraph documents _mutating_ `value.namespace` instead, and skein honours that:
->
-> ```ts
-> auth.on("store", ({ user, value }) => {
->   // Reroute the caller into their own root, whatever they asked for.
->   value.namespace = [user.identity, ...(value.namespace ?? []).slice(1)];
-> });
-> ```
->
-> The rewritten namespace is what the endpoint operates on, for all five store routes — including a
-> `GET`/`DELETE` that addressed the item with query params, since the body namespace takes precedence, and
-> including an in-place mutation (`value.namespace[0] = …`). A rewrite that is not a `string[]` is a **500**
-> (`code: "store_namespace_rewrite_invalid"`) rather than a silent fall-through to the caller's own
-> namespace, because a handler that meant to scope and got the shape wrong is the exact failure this
-> prevents.
->
-> **`value.key` is honoured the same way** on the three item routes (`put`, `get`, `delete`), so a handler
-> can prefix a key instead of — or as well as — rooting the namespace. `store:search` and
-> `store:list_namespaces` address no single item, so assigning `value.key` there is a **500**
-> (`code: "store_key_rewrite_invalid"`): there is nowhere for it to land, and dropping it silently is the
-> same failure as dropping a namespace rewrite. Scope those two with `value.namespace`.
->
-> Both rewrites are read from the `value` object skein hands your handler. If you supply your own
-> `AuthEngine` through `ProtocolDeps` rather than an `auth.path`, its `authorize` must return **that same
-> object** as `value` for a rewrite to be observable — an engine that returns something else is treated as
-> having rewritten nothing, exactly as before rewrites were honoured at all.
->
-> **skein adds no scoping mechanism of its own, deliberately.** Who owns what, and how a namespace encodes
-> it, is the policy that varies most between deployments — a per-user root, a tenant prefix, a shared team
-> subtree — and your handler is the one place that can express all of them. So skein does what
-> `@langchain/langgraph-api` does: fire the event, honour the namespace, and stay out of the way.
->
-> **With no store handler registered, nothing narrows a store read.** The namespace is a request parameter,
-> so an authenticated caller can send `{"namespace_prefix": ["memories"]}` — or omit the prefix entirely —
-> and read **every** tenant's items; `POST /store/namespaces` likewise returns every tenant's namespace
-> names. If you prefer validating to rewriting, the deny handler below is the shape.
->
-> ```ts
-> /**
->  * A namespace label is one segment, so it must contain neither `.` (the query separator) nor `*`
->  * (the positional wildcard, which would match every tenant's first segment).
->  * `encodeURIComponent` escapes neither, so do it explicitly.
->  */
-> const tenantLabel = (identity: string) =>
->   encodeURIComponent(identity).replace(/\./g, "%2E").replace(/\*/g, "%2A");
->
-> auth.on("store", ({ user, value }) => {
->   // `value.namespace` is the namespace this request will actually operate on, server-derived.
->   // It is absent when the request names none — which on search means "every namespace".
->   const namespace = value.namespace;
->   if (!namespace?.length || namespace[0] !== tenantLabel(user.identity)) {
->     throw new HTTPException(403, { message: "Out of scope." });
->   }
-> });
-> ```
->
-> **Require a namespace; don't merely reject suspicious ones.** A deny handler can only refuse a whole
-> request, never filter what comes back — so the check above insists on a namespace rooted at the
-> principal. Rejecting only the shapes that _look_ dangerous fails: an absent `namespace_prefix` reads
-> every tenant, and a `"*"` wildcard matches a strict **subset** of what the shorter literal prefix
-> already returns, so blocking wildcards buys nothing.
->
-> **Encode the identity — don't use it raw.** `GET /store/items` takes its namespace as a dot-joined
-> query string, so a label containing a `.` splits into two segments: identity `alice@corp.com` writes
-> to `["alice@corp.com", …]` over `PUT` (a JSON array) but reads back as `["alice@corp", "com", …]`, and
-> the check then fails. Emails and OIDC subjects hit this constantly. Note `encodeURIComponent` does
-> **not** escape `.`, which is why the helper above escapes it explicitly — and the SDK's own client
-> rejects a label containing a literal `.` before it sends, so a dot-free label is required either way.
-> Use the same function wherever you build the namespace, including inside your graph.
->
-> **Migration note.** Before this normalization, `value.namespace` on `GET`/`DELETE /store/items` was
-> the raw dot-joined **string** from the query. It is now `string[]` on every store action, matching the
-> SDK's declared types. A handler doing string operations on it (`value.namespace.startsWith(…)`, or a
-> `===` against a joined identity) needs updating — it will now throw or deny.
->
-> **`value.namespace` is server-derived, and that is what makes it trustworthy.** skein sets it after
-> merging the body, from the field the endpoint will really use (`namespace_prefix` on search, `prefix`
-> on namespaces, body-or-query on `GET`/`DELETE`). Store bodies are `passthrough`, so otherwise a
-> caller could send a decoy `namespace` that satisfied the handler while the endpoint searched from an
-> absent `namespace_prefix`. It also means a handler written against LangGraph Platform's published
-> `Auth` types — which declare `namespace` on every store action — works here unchanged.
->
-> **A handler cannot cover `getStore()` inside a graph.** That is not an HTTP request and has no
-> principal, so a graph node reaches the whole store regardless. Build the namespace from
-> `config.configurable.langgraph_auth_user_id`, never from model output.
+### Scoping the store
 
-**Ownership scoping runs in the database.** A thread search under an ownership filter translates the
-filter into a metadata containment clause the driver matches (`metadata @> …` in Postgres, hitting the
-`threads_metadata_idx` GIN index), so a request reads only the caller's own rows and `limit`/`offset` page
-them directly. It used to read every matching thread — each carrying its full mirrored graph state — and
-filter in JS.
+A store item carries no metadata, so an ownership filter has nothing to match on. LangGraph's idiom is
+to **rewrite** `value.namespace`, and skein honours it on all five store routes:
 
-The in-process `matchesFilters` check still runs over whatever comes back, and is what actually enforces
-ownership: the translation deliberately errs **broad**, leaving out any clause it cannot express exactly
-(`{ $eq: "" }` and `{}` constrain nothing, matching the engine), because a clause that were too strict
-would silently hide rows a caller owns. `$contains` becomes array containment, which is the same check.
+```ts
+auth.on("store", ({ user, value }) => {
+  value.namespace = [user.identity, ...(value.namespace ?? []).slice(1)];
+});
+```
 
-For every filter shape `AuthFilterValue` declares the two agree exactly, so paging an ownership-scoped
-search behaves like an unscoped one. A **custom** `AuthEngine` whose `matchesFilters` is stricter than its
-own filters is the exception: the in-process check then drops rows the query returned, so pages come back
-short and `offset` counts query-matched rather than owned rows. Keep the two consistent, or page by
-`offset` until a request returns nothing at all rather than stopping at the first short page.
+In-place mutation counts (`value.namespace[0] = …`), and the body namespace wins over query params on
+`GET`/`DELETE`. `value.key` is honoured the same way on `put`/`get`/`delete`. A rewrite that is not a
+`string[]` is a **500** (`store_namespace_rewrite_invalid`), not a silent fall-through — a handler that
+meant to scope and got the shape wrong is exactly the failure this prevents. Assigning `value.key` on
+`search` or `list_namespaces` is likewise a 500 (`store_key_rewrite_invalid`): there is nowhere for it
+to land. If you supply your own `AuthEngine`, its `authorize` must return the **same** `value` object
+for a rewrite to be observable.
 
-**Principal in the run config.** The authenticated caller is injected into the graph's `configurable`,
-matching LangGraph Platform, so nodes and tools read `config.configurable.langgraph_auth_user` (the
-full user), `langgraph_auth_user_id` (its `identity`), and `langgraph_auth_permissions` (its scopes).
-These three keys are server-owned and reserved — a client can't spoof them via its own `configurable` —
-and are persisted on the run, so a background run resumed on another instance injects the same
-principal. With no `auth` configured, no keys are added (identical to `langgraph dev`).
+> **With no store handler registered, nothing narrows a store read.** The namespace is a request
+> parameter, so any authenticated caller can send `{"namespace_prefix": ["memories"]}` — or omit the
+> prefix entirely — and read **every** tenant's items. `POST /store/namespaces` likewise returns every
+> tenant's namespace names.
+
+Three traps if you validate rather than rewrite:
+
+```ts
+// A namespace label is one segment: it must contain neither `.` (the query separator) nor `*` (the
+// positional wildcard). encodeURIComponent escapes neither, so do it explicitly.
+const tenantLabel = (identity: string) =>
+  encodeURIComponent(identity).replace(/\./g, "%2E").replace(/\*/g, "%2A");
+
+auth.on("store", ({ user, value }) => {
+  const namespace = value.namespace; // server-derived; absent means "every namespace" on search
+  if (!namespace?.length || namespace[0] !== tenantLabel(user.identity)) {
+    throw new HTTPException(403, { message: "Out of scope." });
+  }
+});
+```
+
+- **Require a namespace; don't just reject suspicious ones.** A deny handler can refuse a request but
+  never filter the result. An absent prefix reads every tenant, and a `"*"` wildcard matches a strict
+  **subset** of what the shorter literal prefix already returns — so blocking wildcards buys nothing.
+- **Encode the identity.** `GET /store/items` takes a dot-joined query string, so `alice@corp.com`
+  writes to `["alice@corp.com", …]` but reads back as `["alice@corp", "com", …]`. Emails and OIDC
+  subjects hit this constantly.
+- **A handler cannot cover `getStore()` inside a graph** — that is not an HTTP request and has no
+  principal. Build the namespace from `config.configurable.langgraph_auth_user_id`, never from model
+  output.
+
+`value.namespace` is **server-derived** — set after merging the body, from the field the endpoint will
+really use. Store bodies are `passthrough`, so otherwise a caller could send a decoy `namespace` that
+satisfied the handler while the endpoint searched from an absent `namespace_prefix`.
+
+### Where scoping runs
+
+**In the database.** An ownership-filtered thread search becomes a metadata containment clause
+(`metadata @> …` in Postgres, hitting `threads_metadata_idx`), so `limit`/`offset` page owned rows
+directly rather than reading everything and filtering in JS.
+
+The in-process `matchesFilters` check still runs and is what actually enforces ownership. The
+translation errs **broad**, omitting any clause it cannot express exactly, because a too-strict clause
+would silently hide rows a caller owns. A **custom** `AuthEngine` whose `matchesFilters` is stricter
+than its own filters is the exception — pages then come back short; keep the two consistent.
+
+**Principal in the run config.** Nodes read `config.configurable.langgraph_auth_user`,
+`langgraph_auth_user_id` and `langgraph_auth_permissions`. Server-owned and reserved, so a client
+cannot spoof them, and persisted on the run so a background run resumed elsewhere injects the same
+principal. With no `auth` configured, no keys are added.
 
 Route → resource/action (runs authorize through their owning thread — there is no `runs` resource):
 
@@ -624,25 +550,11 @@ Route → resource/action (runs authorize through their owning thread — there 
 | `GET /info`                                                                                                                                                                   | _(unauthenticated — see the Meta section)_      |
 | `PUT/GET/DELETE /store/items`, `/store/items/search`, `/store/namespaces`                                                                                                     | `store:{put,get,delete,search,list_namespaces}` |
 
-**Reuse & limits.** The `Auth` contract and the `$eq`/`$contains` filter semantics come from
-`@langchain/*`; skein adds only the instance-scoped dispatch (see [reuse.md](https://github.com/skein-js/skein-js/blob/main/docs/reuse.md)). Ownership
-scoping is pushed into the driver query (above), with the in-process check kept as the enforcement point.
-`assistants` and `store` remain gate-only: store scoping is expressed through the namespace your
-`@auth.on.store` handler decides on, which is where that policy belongs.
-
-`POST /runs/cancel` sweeps broadly but authorizes narrowly: every run it touches goes back through the
+`POST /runs/cancel` sweeps broadly but authorizes narrowly — every run goes back through the
 ownership-filtered `get`, so a non-owned run reads as absent and is skipped. The per-thread concurrency
-guard (`hasActiveRun` / `listActiveRuns`) is deliberately _not_ ownership-filtered — it must see every
-inflight run on a thread whoever started it, or two runs could execute at once and interleave their
-checkpoint writes. Nothing leaks: the thread itself is ownership-gated, so the guard is unreachable for a
-thread the caller does not own.
-
-## Conformance strategy
-
-The official [`@langchain/langgraph-sdk`](./react-sdk.md) client is our **conformance
-oracle**: if `client.threads.create()`, `client.runs.stream()`, and `client.runs.wait()`
-are happy against a skein-js server, the wire format is correct. See
-[roadmap.md](./roadmap.md#verification) for the full verification plan.
+guard is deliberately **not** ownership-filtered: it must see every in-flight run on a thread whoever
+started it, or two could execute at once and interleave checkpoint writes. Nothing leaks, since the
+thread itself is gated.
 
 ## References
 

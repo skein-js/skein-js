@@ -15,18 +15,6 @@ and driven by the official `@langchain/langgraph-sdk` client.
 [`after_seconds`](./agent-protocol.md) on an ordinary run create — no cron row, nothing to clean up
 afterwards. Reach for a cron when the run should keep happening.
 
-## Contents
-
-- [Quick start](#quick-start)
-- [Stateless vs thread crons](#stateless-vs-thread-crons)
-- [Schedule format](#schedule-format)
-- [Endpoints](#endpoints)
-- [Semantics](#semantics)
-- [Driver requirements](#driver-requirements)
-- [How it works](#how-it-works)
-- [Operating a scheduler](#operating-a-scheduler)
-- [Authentication](#authentication)
-
 ## Quick start
 
 ```ts

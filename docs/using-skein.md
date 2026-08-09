@@ -5,20 +5,6 @@ Protocol server around your LangGraph.js graph, and call it. Written to be skim-
 _and_ for AI coding agents building on skein. (Working _on_ skein itself? See
 [AGENTS.md](https://github.com/skein-js/skein-js/blob/main/AGENTS.md).)
 
-## Contents
-
-- [The one thing to know: the `{ config } | { deps }` seam](#the-one-thing-to-know-the--config----deps--seam)
-- [Install](#install)
-- [Two on-ramps](#two-on-ramps)
-- [Mount it on your framework](#mount-it-on-your-framework)
-- [Go to production (Postgres + Redis)](#go-to-production-postgres--redis)
-- [Call the server](#call-the-server)
-- [Endpoint surface](#endpoint-surface)
-- [Package → import map](#package--import-map)
-- [Expand your setup](#expand-your-setup)
-- [Gotchas](#gotchas)
-- [Go deeper](#go-deeper)
-
 ## The one thing to know: the `{ config } | { deps }` seam
 
 Every framework adapter takes the **same options bag** (`SkeinRuntimeOptions`). You choose one of two
@@ -230,7 +216,7 @@ Grow from the minimal server without rewrites — each step changes one thing:
   default — tune it with `skein dev --concurrency 4`, `SKEIN_RUN_CONCURRENCY=4`, or
   `worker: { maxConcurrency: 4 }` on any adapter. See
   [run concurrency](./runs-and-redis.md#run-concurrency).
-- **Add auth, memory, HITL, webhooks.** These are drop-in — see the [recipes](./recipes.md) (custom
+- **Add auth, memory, HITL, webhooks.** These are drop-in — see the [recipes](./recipes/) (custom
   auth, `getStore()` long-term memory, interrupt/resume, run-completion webhooks).
 - **A framework we don't ship.** The adapters are thin shims over one transport-neutral handler table
   (`createProtocolRuntime` + `skeinRoutes`); put skein on any Node HTTP framework by writing ~40 lines
@@ -240,7 +226,7 @@ Grow from the minimal server without rewrites — each step changes one thing:
 
 - **Auth is off by default.** No `auth` block / no `auth` dep → the server is fully open, exactly like
   `langgraph dev`. Turn it on with a `@langchain/langgraph-sdk/auth` `Auth` instance — see
-  [recipes.md](./recipes.md#custom-auth).
+  [recipes.md](./recipes/production.md#custom-auth).
 - **CORS is off by default.** Browser clients on another origin need `http.cors` in `langgraph.json`
   (or the `cors` option). Same-origin (e.g. Next.js) needs nothing.
 - **A long-lived Node process** is required for the background run worker and in-memory drivers — fine
@@ -260,6 +246,6 @@ Grow from the minimal server without rewrites — each step changes one thing:
 ## Go deeper
 
 - [Getting started](./getting-started.md) — the guided, end-to-end walkthrough.
-- [Recipes](./recipes.md) — auth, human-in-the-loop, long-term memory, CORS, background runs, deploy.
+- [Recipes](./recipes/) — auth, human-in-the-loop, long-term memory, CORS, background runs, deploy.
 - [Overview & architecture](./index.md) · [Agent Protocol surface](./agent-protocol.md) ·
   [Embedding](./embedding.md) · [Building a custom adapter](./building-an-adapter.md)

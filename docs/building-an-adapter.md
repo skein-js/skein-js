@@ -7,19 +7,6 @@ Node `http` server, [Hono](https://hono.dev), Koa, an existing app on some other
 write your own adapter in a few dozen lines. This guide shows how; the four shipped adapters are all
 built exactly this way.
 
-## Contents
-
-- [Why this is easy](#why-this-is-easy)
-- [The contract](#the-contract)
-- [Step 1 — assemble a runtime](#step-1--assemble-a-runtime)
-- [Step 2 — the route table](#step-2--the-route-table)
-- [Step 3 — map your request onto `ProtocolRequest`](#step-3--map-your-request-onto-protocolrequest)
-- [Step 4 — serialize the `ProtocolResponse`](#step-4--serialize-the-protocolresponse)
-- [Step 5 — handle errors](#step-5--handle-errors)
-- [Step 6 — worker lifecycle & CORS](#step-6--worker-lifecycle--cors)
-- [A complete minimal adapter](#a-complete-minimal-adapter)
-- [Checklist](#checklist)
-
 ## Why this is easy
 
 All of skein-js's protocol logic lives in [`@skein-js/agent-protocol`](https://github.com/skein-js/skein-js/tree/main/packages/agent-protocol)
@@ -177,32 +164,7 @@ Switch on `response.kind`:
   ends in `\n\n`). When the client disconnects, call the iterator's `return()` so the run's frame
   subscription is torn down.
 
-```ts
-import { SSE_HEADERS } from "@skein-js/agent-protocol";
-import { serializeWireJson } from "@skein-js/core";
-
-async function send(response, res) {
-  if (response.kind === "json") {
-    res.writeHead(response.status, { "content-type": "application/json" });
-    res.end(serializeWireJson(response.body));
-    return;
-  }
-  if (response.kind === "empty") {
-    res.writeHead(response.status).end();
-    return;
-  }
-  // sse
-  res.writeHead(response.status, SSE_HEADERS);
-  const iterator = response.events[Symbol.asyncIterator]();
-  res.on("close", () => void iterator.return?.(undefined)); // release the frame source on hangup
-  for (;;) {
-    const next = await iterator.next();
-    if (next.done) break;
-    res.write(next.value);
-  }
-  if (!res.writableEnded) res.end();
-}
-```
+The [complete adapter](#a-complete-minimal-adapter) below shows this switch assembled.
 
 ## Step 5 — handle errors
 
@@ -210,32 +172,8 @@ Handlers throw `SkeinHttpError` for client-visible faults (it carries the intend
 `message`, and optional `code`/`details`). Anything else is an unexpected `500`. Once SSE headers are
 flushed you can no longer set a status — just end the stream.
 
-```ts
-import { isSkeinHttpError } from "@skein-js/core";
-
-function sendError(error, res, logger) {
-  if (res.headersSent) {
-    if (!isSkeinHttpError(error)) logger?.error("Error after headers sent.", error);
-    if (!res.writableEnded) res.end();
-    return;
-  }
-  if (isSkeinHttpError(error)) {
-    res.writeHead(error.status, { "content-type": "application/json" });
-    res.end(
-      JSON.stringify({
-        status: error.status,
-        message: error.message,
-        ...(error.code !== undefined ? { code: error.code } : {}),
-        ...(error.details !== undefined ? { details: error.details } : {}),
-      }),
-    );
-    return;
-  }
-  logger?.error("Unhandled error.", error);
-  res.writeHead(500, { "content-type": "application/json" });
-  res.end(JSON.stringify({ status: 500, message: "Internal Server Error" }));
-}
-```
+`SkeinHttpError` carries `code` and `details` alongside `status`/`message`; forward them when
+present. Log anything that is _not_ a `SkeinHttpError` — that is a bug, not a client fault.
 
 ## Step 6 — worker lifecycle & CORS
 
@@ -263,7 +201,7 @@ function sendError(error, res, logger) {
   ```ts
   const { runtime, cors, logger } = await resolveProtocolRuntime(options, myFrameworkLogger);
   // …later, in your error path:
-  sendError(error, res, logger);
+  sendError(error, res, logger); // the try/catch shape shown in the complete adapter below
   ```
 
 > **Shortcut:** [`@skein-js/server-kit`](https://github.com/skein-js/skein-js/tree/main/packages/server-kit)'s `resolveProtocolRuntime(options)`
