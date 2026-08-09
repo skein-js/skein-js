@@ -1,6 +1,6 @@
 # Deploy anywhere
 
-**Deploy your LangGraph.js graphs anywhere you can run a container.** skein has no `skein deploy` and
+**Deploy your LangGraph.js graphs anywhere you can run a container — or just Node.** skein has no `skein deploy` and
 no control plane — that's the point ([roadmap.md](./roadmap.md) lists it as an explicit non-goal).
 What it ships instead is an ordinary OCI image: `skein build` bundles your TypeScript graphs to plain
 JS and produces a Docker image that needs a Postgres, a Redis, and two environment variables. Nothing
@@ -105,6 +105,45 @@ upgrade that bumps that package's schema — which is exactly when replicas star
 
 > **Building on Apple Silicon?** `skein build` doesn't pass `--platform`, so you'll get an arm64 image
 > that most hosts reject. Export `DOCKER_DEFAULT_PLATFORM=linux/amd64` before building.
+
+## Without Docker
+
+A container is the default, not a requirement. `skein build --artifact-only` stops before invoking
+Docker and writes `.skein/build` — your graphs bundled to plain JS, a rewritten `langgraph.json`, the
+baked `schemas.json`, and a `package.json` whose dependencies are **exact-pinned**, so the install is
+deterministic without a lockfile. Ship that directory to a machine with Node and run it:
+
+```bash
+skein build --artifact-only          # on any machine with Node; no Docker daemon needed
+rsync -a .skein/build/ server:/srv/skein/
+
+# on the server
+cd /srv/skein && npm install --omit=dev
+export POSTGRES_URI=postgres://… REDIS_URI=redis://…
+npx skein start                      # or: node node_modules/skein-js/dist/index.js start
+```
+
+`skein start` serves the artifact and is the same entrypoint the image uses — the container's `CMD` is
+literally `node /app/node_modules/skein-js/dist/index.js start --store postgres --queue redis --host
+0.0.0.0`. `skein-js` is pinned into the artifact's own dependencies, so the install above puts the CLI
+on the box with it.
+
+Four differences from the containerised path:
+
+- **It binds `127.0.0.1` by default**, where the image passes `--host 0.0.0.0`. That default is right
+  behind a reverse proxy on the same machine and wrong if something else must reach it directly — the
+  image overrides it because a container is already isolated.
+- **`--store postgres --queue redis` are the defaults**, so a bare `skein start` reaches for both and
+  fails with an actionable error if `POSTGRES_URI` / `REDIS_URI` are missing. There is no in-memory
+  production mode.
+- **The port is 8123**, not `dev`'s 2024, and `PORT` from the environment wins over the default.
+- **Bun and Deno need `--runtime`.** The artifact records which runtime it was built for and refuses
+  to start under a different one. Node needs no flag.
+
+Everything else on this page still applies — migrations run on boot, `/ok` is the probe, `SIGTERM`
+drains in-flight runs. What you give up is the pinned base image and the process supervision the
+platform would have done, which on a VM is a
+[systemd unit](./deploy-vps.md#run-it-without-docker).
 
 ## What every deployment needs
 

@@ -21,10 +21,12 @@ Production commands (`up`, `build`, `dockerfile`, and the generated `start`) als
 `--runtime node|bun|deno` and `--runtime-version`. Precedence is CLI flag, then
 `skein.runtime` in config, then Node 24 LTS. Legacy `node_version` remains the Node version fallback.
 
-**skein-only:** `skein start` serves a pre-built `.skein/build` artifact (the production image's
-entrypoint) — plain compiled JS, no vite, no reload. You rarely run it by hand; `skein build`/`up`
-produce the artifact and the generated Dockerfile invokes it. The LangGraph CLI has no equivalent
-(it transforms TypeScript at runtime inside the image).
+**skein-only:** `skein start` serves a pre-built `.skein/build` artifact — plain compiled JS, no vite,
+no reload. It is the production image's entrypoint, and it is also how you run skein **without a
+container**: `skein build --artifact-only` writes the artifact on any machine with Node, and
+`skein start` serves it from a systemd unit or any process manager. See
+[Without Docker](./deploy.md#without-docker). The LangGraph CLI has no equivalent — it transforms
+TypeScript at runtime inside the image.
 
 **skein-only dev flags** (beyond the LangGraph CLI) — run `skein dev` against production-shaped
 storage without Docker:

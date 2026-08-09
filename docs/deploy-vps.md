@@ -115,6 +115,55 @@ WantedBy=multi-user.target
 sudo systemctl enable --now skein
 ```
 
+## Run it without Docker
+
+If the box has Node and you would rather not run a daemon, skip the image entirely — see
+[Without Docker](./deploy.md#without-docker) for what `skein build --artifact-only` produces and how
+`skein start` differs from the container entrypoint. Postgres and Redis still have to come from
+somewhere: managed services, or packages on the same box.
+
+```bash
+# build anywhere with Node, ship the artifact
+skein build --artifact-only
+rsync -a .skein/build/ server:/srv/skein/
+
+# on the server
+cd /srv/skein && npm install --omit=dev
+```
+
+```ini
+# /etc/systemd/system/skein.service
+[Unit]
+Description=skein agent server
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+User=skein
+WorkingDirectory=/srv/skein
+EnvironmentFile=/srv/skein/.env
+ExecStart=/usr/bin/node /srv/skein/node_modules/skein-js/dist/index.js start
+Restart=always
+RestartSec=2
+# SIGTERM drains in-flight runs before exiting; give it more than SKEIN_SHUTDOWN_GRACE_MS so systemd
+# doesn't SIGKILL a run mid-flight. `skein start` force-exits 3s after that grace window regardless.
+KillSignal=SIGTERM
+TimeoutStopSec=30
+
+[Install]
+WantedBy=multi-user.target
+```
+
+```bash
+sudo systemctl enable --now skein
+journalctl -u skein -f
+```
+
+`skein start` binds `127.0.0.1:8123` by default, which is what you want with Caddy or nginx in front
+on the same host. Deploying a new version is `rsync` + `npm install --omit=dev` +
+`systemctl restart skein` — migrations run on boot, so there is no separate step.
+
 ## TLS and streaming
 
 Terminate TLS in front and **turn response buffering off**, or SSE streams will appear to hang until
