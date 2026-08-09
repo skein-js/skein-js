@@ -1,6 +1,6 @@
 {
   "name": "create-skein-js",
-  "version": "0.14.0",
+  "version": "0.14.1",
   "description": "Scaffold a skein-js project — a self-hosted Agent Protocol server for your LangGraph.js agents.",
   "license": "Apache-2.0",
   "author": "Maina Wycliffe <wmmaina7@gmail.com>",

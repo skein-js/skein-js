@@ -1,3 +1,17 @@
+## 0.14.1 (2026-08-09)
+
+### 🚀 Features
+
+- **create-skein-js:** scaffold a project with one command ([480e095](https://github.com/skein-js/skein-js/commit/480e095))
+
+### 🩹 Fixes
+
+- **create-skein-js:** pin current model IDs for all three providers ([3056ebf](https://github.com/skein-js/skein-js/commit/3056ebf))
+
+### ❤️ Thank You
+
+- Maina Wycliffe
+
 ## 0.14.0 (2026-08-09)
 
 ### 🚀 Features
