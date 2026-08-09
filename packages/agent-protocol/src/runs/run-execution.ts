@@ -63,6 +63,7 @@ export async function startRunExecution(
                 deps.checkpointer,
                 threadId,
                 plan.revertToCheckpoint.baseCheckpointId,
+                deps.cloneCheckpoint,
               );
             } catch (error) {
               // `error`, not `warn`: the run continues on state that should have been reverted, so the

@@ -571,7 +571,12 @@ export function createRunService(ctx: ProtocolContext): RunService {
   ): Promise<void> => {
     try {
       await withThreadExecution(ctx.executionLocks, deps.threadExecutionGate, run.thread_id, () =>
-        rollbackThreadCheckpointsTo(deps.checkpointer, run.thread_id, baseCheckpointId),
+        rollbackThreadCheckpointsTo(
+          deps.checkpointer,
+          run.thread_id,
+          baseCheckpointId,
+          deps.cloneCheckpoint,
+        ),
       );
       // The row goes last, so a failed revert above leaves the run visible and its writes explained
       // rather than a deleted run and an unexplained thread.

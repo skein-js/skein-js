@@ -9,6 +9,7 @@ import {
   MessagesAnnotation,
   StateGraph,
 } from "@langchain/langgraph";
+import { cloneLangGraphCheckpoint, langGraphResolver, SkeinBaseStore } from "@skein-js/langgraph";
 import type { GraphResolver, GraphSchemas, ProtocolDeps } from "@skein-js/agent-protocol";
 import type { AuthEngine } from "@skein-js/core";
 import type { CorsOptions } from "@skein-js/server-kit";
@@ -44,10 +45,17 @@ export function createEchoResolver(): GraphResolver {
 export function createEchoDeps(auth?: AuthEngine): ProtocolDeps {
   return {
     store: new MemorySkeinStore(),
-    graphs: createEchoResolver(),
+    graphs: langGraphResolver(createEchoResolver()),
     queue: new MemoryRunQueue(),
     bus: new MemoryRunEventBus(),
     checkpointer: new MemorySaver(),
+    // The LangGraph binding: wraps the resolver so the engine's command envelope becomes a `Command`
+    // (HITL resume), bridges long-term memory in for `getStore()`, supplies the throwaway saver
+    // `/invoke` needs, and clones checkpoints for thread copy/prune/rollback. Hand-assembled deps must
+    // wire these — `buildRuntime` and `embedInMemoryGraphs` do it for you.
+    storeBridge: (repo) => new SkeinBaseStore(repo),
+    ephemeralCheckpointer: () => new MemorySaver(),
+    cloneCheckpoint: cloneLangGraphCheckpoint,
     auth,
   };
 }

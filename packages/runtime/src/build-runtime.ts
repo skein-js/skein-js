@@ -11,6 +11,7 @@ import { readFile } from "node:fs/promises";
 import path from "node:path";
 
 import { MemorySaver } from "@langchain/langgraph";
+import { cloneLangGraphCheckpoint, langGraphResolver, SkeinBaseStore } from "@skein-js/langgraph";
 import { withStoreItems } from "@skein-js/agent-protocol";
 import type { GraphResolver, GraphSchemas, ProtocolDeps } from "@skein-js/agent-protocol";
 import {
@@ -367,10 +368,16 @@ export async function buildRuntime(options: BuildRuntimeOptions): Promise<SkeinR
     const deps: ProtocolDeps = {
       store: skeinStore,
       ...(storeItems ? { storeItems } : {}),
-      graphs: resolver,
+      // From `langgraph.json`, so always LangGraph graphs — see `langGraphResolver`.
+      graphs: langGraphResolver(resolver),
       queue: runQueue,
       bus,
       checkpointer,
+      storeBridge: (repo) => new SkeinBaseStore(repo),
+      // Throwaway saver for `POST /invoke/:graph_id` — see `ProtocolDeps.ephemeralCheckpointer`.
+      ephemeralCheckpointer: () => new MemorySaver(),
+      // Clones a checkpoint before it is re-put under another thread id — see `ProtocolDeps.cloneCheckpoint`.
+      cloneCheckpoint: cloneLangGraphCheckpoint,
       ...(abortChannel ? { abortChannel } : {}),
       ...(threadExecutionGate ? { threadExecutionGate } : {}),
       // Present only when `checkpointer.ttl` is configured, which is what turns the sweeper on.

@@ -11,16 +11,17 @@
 //      never be a way around the gate the protocol routes enforce. Same resource+action as a run.
 //   2. The long-term store, bridged in as a `BaseStore` so nodes still reach `getStore()`.
 //
-// Each call is independent: a throwaway per-call checkpointer under a fresh thread id keeps graphs
-// that require a checkpointer working while persisting nothing. That saver is attached to a per-call
-// clone of the compiled graph (see `resolveCompiledGraph`) — the resolver memoizes one instance for
-// every caller, so attaching it directly would hand this call's throwaway saver to a concurrent
-// protocol run. Runs are also bounded by `deps.runTimeoutMs` and the caller's disconnect signal.
+// Each call is independent: a throwaway per-call checkpointer (`deps.ephemeralCheckpointer`) under a
+// fresh thread id keeps graphs that require a checkpointer working while persisting nothing. That
+// saver is attached to a per-call clone of the compiled graph (see `resolveCompiledGraph`) — the
+// resolver memoizes one instance for every caller, so attaching it directly would hand this call's
+// throwaway saver to a concurrent protocol run. Building it is the binding's job, not this package's:
+// `new MemorySaver()` is a value import of a graph runtime. Runs are also bounded by
+// `deps.runTimeoutMs` and the caller's disconnect signal.
 // See docs/serving-a-single-graph.md.
 
 import { randomUUID } from "node:crypto";
 
-import { MemorySaver, type CompiledGraph } from "@langchain/langgraph";
 import {
   SkeinHttpError,
   toRunError,
@@ -36,6 +37,7 @@ import { resolveAuthContext } from "../auth/authenticate-request.js";
 import { authValue } from "../auth/route-authz.js";
 import type { ProtocolHandler, ProtocolRequest, ProtocolResponse } from "../create-handlers.js";
 import { resolveDeps, type ProtocolDeps } from "../deps.js";
+import { requireAgentCapability } from "../graphs/agent-graph.js";
 import { resolveCompiledGraph } from "../graphs/resolve-compiled-graph.js";
 import type { RouteBinding } from "../http/routes.js";
 import { toError } from "../runs/run-failure.js";
@@ -51,9 +53,6 @@ import { parse, requireParam } from "../validation/parse.js";
 
 /** The default path prefix the invoke endpoint mounts under. */
 export const DEFAULT_INVOKE_PREFIX = "/invoke";
-
-type InvokeOptions = Parameters<CompiledGraph<string>["invoke"]>[1];
-type StreamOptions = Parameters<CompiledGraph<string>["stream"]>[1];
 
 /** Options for {@link createGraphInvokeHandler}. */
 export interface GraphInvokeOptions {
@@ -211,8 +210,8 @@ export function createGraphInvokeHandler(
     const factoryConfigurable = withAuthUser({}, authContext?.user, authContext?.scopes);
     const graph = await resolveCompiledGraph(deps.graphs, graphId, {
       configurable: Object.keys(factoryConfigurable).length > 0 ? factoryConfigurable : undefined,
-      checkpointer: new MemorySaver(),
-      store: deps.store.store,
+      checkpointer: deps.ephemeralCheckpointer?.(),
+      store: deps.storeBridge?.(deps.store.store),
     });
 
     const threadId = randomUUID();
@@ -251,12 +250,14 @@ export function createGraphInvokeHandler(
         emitRunEvent(deps, { type: "run.started", context: telemetryContext, startedAt });
       }
       try {
+        // `invoke` is optional on `AgentGraph`; this surface is defined in terms of it, so an agent
+        // without one gets a handled 422 rather than an unhandled TypeError.
         const output = await withRunTelemetryContext(deps, telemetryContext, () =>
-          graph.invoke(input, {
+          requireAgentCapability(graph, "invoke").invoke(input, {
             configurable,
             signal,
             ...trace,
-          } as InvokeOptions),
+          }),
         );
         if (telemetryContext) {
           const endedAt = deps.clock();
@@ -314,13 +315,13 @@ export function createGraphInvokeHandler(
       let cause: Error | undefined;
       let wireError: ReturnType<typeof toRunError> | undefined;
       try {
-        const stream = await withRunTelemetryContext(deps, telemetryContext, () =>
+        const stream = await withRunTelemetryContext(deps, telemetryContext, async () =>
           graph.stream(input, {
             configurable,
             streamMode,
             signal,
             ...trace,
-          } as StreamOptions),
+          }),
         );
         const iterator = stream[Symbol.asyncIterator]();
         for (;;) {

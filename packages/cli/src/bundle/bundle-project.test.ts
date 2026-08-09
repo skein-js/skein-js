@@ -3,6 +3,7 @@ import { isBuiltin } from "node:module";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 
+import { requireAgentCapability } from "@skein-js/agent-protocol";
 import { buildRuntime } from "@skein-js/runtime";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 
@@ -199,7 +200,10 @@ describe("bundleProject", () => {
     });
     try {
       const resolved = await runtime.deps.graphs.load("agent");
-      const graph = typeof resolved === "function" ? await resolved({}) : resolved;
+      const loaded = typeof resolved === "function" ? await resolved({}) : resolved;
+      // `invoke` is optional on `AgentGraph` (a non-LangGraph agent need not implement it); a bundled
+      // LangGraph graph always has it, so narrow rather than assert.
+      const graph = requireAgentCapability(loaded, "invoke");
       const result = (await graph.invoke({ messages: [{ role: "user", content: "hi" }] })) as {
         messages: Array<{ content: unknown }>;
       };

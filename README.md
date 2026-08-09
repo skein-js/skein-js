@@ -424,6 +424,7 @@ version badges below always move in lockstep.
 | [`@skein-js/agent-protocol`](./packages/agent-protocol)     | ⭐ The engine — run engine, handler table, SSE. Framework-agnostic         | [![npm](https://img.shields.io/npm/v/%40skein-js%2Fagent-protocol?logo=npm&color=cb3837&label=)](https://www.npmjs.com/package/@skein-js/agent-protocol)     | [![dm](https://img.shields.io/npm/dm/%40skein-js%2Fagent-protocol?color=blue&label=)](https://www.npmjs.com/package/@skein-js/agent-protocol)     |
 | [`@skein-js/core`](./packages/core)                         | The shared contract — wire types, `SkeinStore` / queue / bus / auth seams  | [![npm](https://img.shields.io/npm/v/%40skein-js%2Fcore?logo=npm&color=cb3837&label=)](https://www.npmjs.com/package/@skein-js/core)                         | [![dm](https://img.shields.io/npm/dm/%40skein-js%2Fcore?color=blue&label=)](https://www.npmjs.com/package/@skein-js/core)                         |
 | [`@skein-js/config`](./packages/config)                     | `langgraph.json` parser + graph loader                                     | [![npm](https://img.shields.io/npm/v/%40skein-js%2Fconfig?logo=npm&color=cb3837&label=)](https://www.npmjs.com/package/@skein-js/config)                     | [![dm](https://img.shields.io/npm/dm/%40skein-js%2Fconfig?color=blue&label=)](https://www.npmjs.com/package/@skein-js/config)                     |
+| [`@skein-js/langgraph`](./packages/langgraph)               | LangGraph.js binding — a compiled graph as an `AgentGraph`                 | [![npm](https://img.shields.io/npm/v/%40skein-js%2Flanggraph?logo=npm&color=cb3837&label=)](https://www.npmjs.com/package/@skein-js/langgraph)               | [![dm](https://img.shields.io/npm/dm/%40skein-js%2Flanggraph?color=blue&label=)](https://www.npmjs.com/package/@skein-js/langgraph)               |
 | [`@skein-js/runtime`](./packages/runtime)                   | Assembles production `ProtocolDeps` (memory / Postgres / Redis)            | [![npm](https://img.shields.io/npm/v/%40skein-js%2Fruntime?logo=npm&color=cb3837&label=)](https://www.npmjs.com/package/@skein-js/runtime)                   | [![dm](https://img.shields.io/npm/dm/%40skein-js%2Fruntime?color=blue&label=)](https://www.npmjs.com/package/@skein-js/runtime)                   |
 | [`@skein-js/server-kit`](./packages/server-kit)             | Shared adapter building blocks (in-memory runtime, CORS, dev-state import) | [![npm](https://img.shields.io/npm/v/%40skein-js%2Fserver-kit?logo=npm&color=cb3837&label=)](https://www.npmjs.com/package/@skein-js/server-kit)             | [![dm](https://img.shields.io/npm/dm/%40skein-js%2Fserver-kit?color=blue&label=)](https://www.npmjs.com/package/@skein-js/server-kit)             |
 | [`@skein-js/fetch`](./packages/server-fetch)                | Web Fetch transport — `Bun.serve` / `Deno.serve`                           | [![npm](https://img.shields.io/npm/v/%40skein-js%2Ffetch?logo=npm&color=cb3837&label=)](https://www.npmjs.com/package/@skein-js/fetch)                       | [![dm](https://img.shields.io/npm/dm/%40skein-js%2Ffetch?color=blue&label=)](https://www.npmjs.com/package/@skein-js/fetch)                       |
@@ -465,10 +466,12 @@ npm create skein-js@latest my-agent
 
 ### `@skein-js/agent-protocol` — the engine ⭐
 
-The transport-agnostic heart: a complete implementation of the **Agent Protocol** for LangGraph.js —
-run engine, HTTP handler table, and SSE streaming, driven entirely by injected dependencies. Build
-your own server on it, on any **HTTP** framework, with any storage/queue. (The graph runtime is not a
-seam: `@langchain/langgraph` is a peer dependency and `ProtocolDeps` resolves a `CompiledGraph`.)
+The transport-agnostic heart: a complete implementation of the **Agent Protocol** — run engine, HTTP
+handler table, and SSE streaming, driven entirely by injected dependencies. Build your own server on
+it, on any HTTP framework, with any storage/queue — and with any agent runtime: `npm i
+@skein-js/agent-protocol` pulls **no graph runtime**, and the engine drives an `AgentGraph`
+(`stream` + `getState`, everything else optional). Bring LangGraph.js with
+[`@skein-js/langgraph`](./packages/langgraph), or [implement `AgentGraph` yourself](./docs/building-a-runner.md).
 
 ```bash
 pnpm add @skein-js/agent-protocol @skein-js/core

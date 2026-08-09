@@ -114,6 +114,31 @@ export type {
   WebhookDispatcher,
 } from "./deps.js";
 
+// The agent surface, named structurally so serving the protocol with a non-LangGraph runtime needs no
+// cast. `CompiledGraph` satisfies `AgentGraph`, so this widens `ResolvedGraph` without breaking any
+// existing resolver. `requireAgentCapability` turns a missing optional method into a handled 422
+// instead of the unhandled TypeError (a bare 500) it used to be.
+export { requireAgentCapability } from "./graphs/agent-graph.js";
+// The resume/update/goto envelope, carried to the agent opaquely. A binding translates it into its
+// runtime's own command type — `@skein-js/langgraph` builds a LangGraph `Command` from it — which is
+// what keeps `new Command(...)` (a *runtime* import) out of this package.
+export { agentCommand, agentCommandPayload, isAgentCommand } from "./graphs/agent-command.js";
+export type { AgentCommand, AgentCommandParams } from "./graphs/agent-command.js";
+export type {
+  ThreadCheckpointer,
+  ThreadCheckpointListOptions,
+  ThreadCheckpointRecord,
+  ThreadCheckpointTuple,
+} from "./graphs/thread-checkpointer.js";
+export type {
+  AgentCheckpointRef,
+  AgentGraph,
+  AgentGraphCapability,
+  AgentGraphFactory,
+  AgentStateSnapshot,
+  AgentStateTask,
+} from "./graphs/agent-graph.js";
+
 // The telemetry contract, re-exported from @skein-js/core so a sink author needs only this package.
 export type {
   RunFinishedEvent,
@@ -160,7 +185,6 @@ export {
   supportsStoreTtl,
   type FromBaseStoreOptions,
 } from "./store/from-base-store.js";
-export { SkeinBaseStore } from "./store/skein-base-store.js";
 export { withStoreItems } from "./store/with-store-items.js";
 export type {
   CreateThreadInput,

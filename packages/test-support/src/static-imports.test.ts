@@ -163,7 +163,48 @@ describe("adapter static import graph", () => {
       builtPackages,
     );
 
-    // Reached only by walking express → server-kit → agent-protocol.
+    // Reached only by walking express → server-kit → @skein-js/langgraph. (It used to arrive via
+    // agent-protocol; that edge is gone — see the assertion below, which is the point of the split.)
     expect([...reached]).toContain("@langchain/langgraph");
+  });
+
+  // The claim that makes `@skein-js/agent-protocol` adoptable on its own: serving the Agent Protocol
+  // does not require a graph runtime. Every LangGraph value import lives in `@skein-js/langgraph`
+  // instead, reached through injected functions (`storeBridge`, `ephemeralCheckpointer`,
+  // `cloneCheckpoint`) and the `AgentGraph` the resolver hands back.
+  //
+  // Asserted on the built entry, because that is what a consumer installs — type-only imports erase,
+  // and a `.d.ts` reference does not pull a runtime. If this fails, someone reintroduced a value
+  // import and `npm i @skein-js/agent-protocol` silently started requiring LangGraph again.
+  it("@skein-js/agent-protocol does not statically reach a graph runtime", () => {
+    const entry = builtPackages.get("@skein-js/agent-protocol");
+    expect(entry).toBeTruthy();
+    const reached = [...reachableSpecifiers(entry as string, builtPackages)];
+
+    const runtimePackages = ["@langchain/langgraph", "@langchain/langgraph-checkpoint"];
+    const leaked = runtimePackages.filter((forbidden) =>
+      reached.some((specifier) => specifier === forbidden || specifier.startsWith(`${forbidden}/`)),
+    );
+    expect(leaked).toEqual([]);
+  });
+
+  // The *type* graph, which the runtime walk above cannot see. A `import type { … } from
+  // "@langchain/langgraph"` erases from the emitted JS but still lands in the generated `.d.ts`, so a
+  // consumer who installs only `@skein-js/agent-protocol` would fail to typecheck against an engine
+  // that no longer loads a graph runtime. That gap existed and was invisible: the runtime assertion
+  // above passed while `dist/index.d.ts` still imported `CompiledGraph`, `BaseCheckpointSaver` and
+  // `BaseStore`. Hence a second, separate check.
+  it("@skein-js/agent-protocol's public types do not require a graph runtime", () => {
+    const entry = builtPackages.get("@skein-js/agent-protocol");
+    expect(entry).toBeTruthy();
+    const declaration = (entry as string).replace(/\.js$/, ".d.ts");
+    expect(existsSync(declaration)).toBe(true);
+
+    // Same matcher the runtime walk uses, so both checks agree on what an import is.
+    const imported = staticSpecifiers(declaration);
+
+    expect(imported.filter((specifier) => specifier.startsWith("@langchain/langgraph"))).toEqual(
+      [],
+    );
   });
 });

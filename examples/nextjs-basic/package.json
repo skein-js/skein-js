@@ -9,10 +9,11 @@
     "start": "next start -p 2024"
   },
   "dependencies": {
-    "@langchain/google-genai": "^2.2.0",
     "@langchain/core": "^1.2.0",
+    "@langchain/google-genai": "^2.2.0",
     "@langchain/langgraph": "^1.4.0",
     "@skein-js/agent-protocol": "workspace:*",
+    "@skein-js/langgraph": "workspace:*",
     "@skein-js/nextjs": "workspace:*",
     "@skein-js/storage-memory": "workspace:*",
     "next": "^15.1.3",

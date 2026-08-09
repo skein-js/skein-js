@@ -7,6 +7,7 @@
 // the Redis queue + Postgres store (see @skein-js/runtime's `buildRuntime`).
 
 import { MemorySaver } from "@langchain/langgraph";
+import { cloneLangGraphCheckpoint, langGraphResolver, SkeinBaseStore } from "@skein-js/langgraph";
 import type { GraphResolver, GraphSchemas, ProtocolDeps } from "@skein-js/agent-protocol";
 import { MemoryRunEventBus, MemoryRunQueue, MemorySkeinStore } from "@skein-js/storage-memory";
 
@@ -31,8 +32,16 @@ const resolver: GraphResolver = {
 
 export const deps: ProtocolDeps = {
   store: new MemorySkeinStore(),
-  graphs: resolver,
+  // Wrapped with the LangGraph binding: the engine hands agents a command envelope, and this is what
+  // turns it back into a `Command` so HITL resume works. Without it a resume silently no-ops.
+  graphs: langGraphResolver(resolver),
   queue: new MemoryRunQueue(),
   bus: new MemoryRunEventBus(),
   checkpointer: new MemorySaver(),
+  // Bridges long-term memory in so nodes reach it via `getStore()`.
+  storeBridge: (repo) => new SkeinBaseStore(repo),
+  // The throwaway saver `POST /invoke/:graph_id` runs against, so nothing persists.
+  ephemeralCheckpointer: () => new MemorySaver(),
+  // Clones a checkpoint when it is re-put under a new thread id (copy / prune / rollback).
+  cloneCheckpoint: cloneLangGraphCheckpoint,
 };

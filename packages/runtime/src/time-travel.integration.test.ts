@@ -3,7 +3,7 @@
 // `PostgresSaver` checkpointer and the Postgres `SkeinStore` (so the fork target survives a fresh
 // `getKwargs` load, the crash-recovery path). Proves the feature is not MemorySaver-specific.
 
-import { Annotation, type CompiledGraph, StateGraph } from "@langchain/langgraph";
+import { Annotation, type CompiledGraph, MemorySaver, StateGraph } from "@langchain/langgraph";
 import {
   createContext,
   createProtocolServiceFromContext,
@@ -11,6 +11,7 @@ import {
   type GraphSchemas,
   type ProtocolDeps,
 } from "@skein-js/agent-protocol";
+import { cloneLangGraphCheckpoint, langGraphResolver, SkeinBaseStore } from "@skein-js/langgraph";
 import { resolveMaxPageSize, resolveRunConcurrency } from "@skein-js/server-kit";
 import { MemoryRunEventBus, MemoryRunQueue } from "@skein-js/storage-memory";
 import { startPostgres, type StartedResource } from "@skein-js/test-support";
@@ -59,7 +60,13 @@ async function serviceOnPostgres() {
   const deps: ProtocolDeps = {
     store,
     checkpointer,
-    graphs: echoResolver,
+    // Wired exactly as `buildRuntime` does. Without these the suite would exercise the *defaults* —
+    // an unbound resolver and the identity `cloneCheckpoint` — so copy/prune/rollback, which this is
+    // the only integration coverage for, would never touch `cloneLangGraphCheckpoint`.
+    graphs: langGraphResolver(echoResolver),
+    cloneCheckpoint: cloneLangGraphCheckpoint,
+    storeBridge: (repo) => new SkeinBaseStore(repo),
+    ephemeralCheckpointer: () => new MemorySaver(),
     queue: new MemoryRunQueue(),
     bus: new MemoryRunEventBus(),
   };

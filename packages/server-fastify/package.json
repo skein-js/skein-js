@@ -59,6 +59,7 @@
     "@fastify/cors": "^10.0.1",
     "@langchain/core": "^1.2.0",
     "@langchain/langgraph": "^1.4.0",
+    "@skein-js/langgraph": "workspace:*",
     "@skein-js/storage-memory": "workspace:*",
     "fastify": "^5.2.0"
   },

@@ -162,6 +162,10 @@ Available on every adapter — see [serving-a-single-graph.md](./serving-a-singl
              │  json loader) │ postgres+pgv  │ sub          │
              └───────────────┴───────────────┴─────────────┘
                                     │
+                       AgentGraph (stream + getState)
+                                    │
+                          @skein-js/langgraph
+                                    │
                           LangGraph.js compiled graphs
 ```
 
@@ -170,6 +174,10 @@ Available on every adapter — see [serving-a-single-graph.md](./serving-a-singl
 - **`@skein-js/agent-protocol`** holds the protocol logic once, against _normalized_ request/response
   types, driven entirely by injected dependencies. Framework adapters are thin shims, and the
   package is publishable on its own. See each doc below for detail.
+- **`@skein-js/langgraph`** is the LangGraph.js binding. The engine drives an **`AgentGraph`** —
+  `stream` and `getState` required, everything else optional — so `@skein-js/agent-protocol` installs
+  with no graph runtime, and a non-LangGraph agent can serve the protocol by implementing that type.
+  Every on-ramp wires the binding for you.
 
 ## Examples
 
@@ -196,32 +204,33 @@ directory. Already have a graph? [getting-started.md](./getting-started.md) is t
 (especially as an AI agent)? [using-skein.md](./using-skein.md) is the terse cheat-sheet, and the
 machine-readable [`llms.txt`](https://github.com/skein-js/skein-js/blob/main/llms.txt) / [`llms-full.txt`](https://github.com/skein-js/skein-js/blob/main/llms-full.txt) index the whole set.
 
-| Doc                                                      | Covers                                                           |
-| -------------------------------------------------------- | ---------------------------------------------------------------- |
-| [your-first-agent.md](./your-first-agent.md)             | From an empty directory to deployed — no LangGraph assumed       |
-| [scaffolding.md](./scaffolding.md)                       | `npm create skein-js` — every flag, and doing it by hand         |
-| [getting-started.md](./getting-started.md)               | Guided walkthrough — zero to a running server, then prod         |
-| [using-skein.md](./using-skein.md)                       | Consumer/agent cheat-sheet — install, the seam, mount, call      |
-| [recipes.md](./recipes/)                                 | Auth, HITL, memory, CORS, background runs, webhooks, deploy      |
-| [langgraph-cli-compat.md](./langgraph-cli-compat.md)     | `langgraph.json` fields + CLI commands                           |
-| [embedding.md](./embedding.md)                           | The in-code on-ramp — embed a graph, no `langgraph.json`         |
-| [serving-a-single-graph.md](./serving-a-single-graph.md) | The non-chat surface — a graph as a plain HTTP endpoint          |
-| [agent-protocol.md](./agent-protocol.md)                 | The REST + streaming endpoints skein-js implements               |
-| [building-an-adapter.md](./building-an-adapter.md)       | How to put skein-js on any HTTP framework (custom adapter)       |
-| [streaming.md](./streaming.md)                           | LangGraph stream modes → Agent Protocol SSE                      |
-| [react-sdk.md](./react-sdk.md)                           | Frontend SDKs — `useStream` plus Vue, Svelte and Angular         |
-| [storage.md](./storage.md)                               | `SkeinStore`, in-memory + Postgres, pgvector, checkpointer       |
-| [memory.md](./memory.md)                                 | Agent memory patterns — shapes, dedup, recall, background writes |
-| [runs-and-redis.md](./runs-and-redis.md)                 | Run engine, queue, cross-instance streaming                      |
-| [crons.md](./crons.md)                                   | Scheduled runs — the Crons resource and the scheduler            |
-| [console.md](./console.md)                               | The skein console — a web UI served by the server itself         |
-| [errors-and-logging.md](./errors-and-logging.md)         | What a failed run reports, and where — wire, log, `skein dev`    |
-| [observability.md](./observability.md)                   | Tracing + metrics — LangSmith, PostHog, OpenTelemetry, custom    |
-| [deploy.md](./deploy.md)                                 | Deploy anywhere — Cloud Run, Railway, Fly, Render, AWS, K8s      |
-| [performance.md](./performance.md)                       | Sizing, every tuning knob, backpressure + drops, triage          |
-| [profiling.md](./profiling.md)                           | Learn measurement/profiling; Node, Bun, Deno hands-on recipes    |
-| [bundling.md](./bundling.md)                             | Bundling skein yourself — ESM, `require()`, what to externalize  |
-| [roadmap.md](./roadmap.md)                               | Milestones and post-MVP non-goals                                |
+| Doc                                                      | Covers                                                                 |
+| -------------------------------------------------------- | ---------------------------------------------------------------------- |
+| [your-first-agent.md](./your-first-agent.md)             | From an empty directory to deployed — no LangGraph assumed             |
+| [scaffolding.md](./scaffolding.md)                       | `npm create skein-js` — every flag, and doing it by hand               |
+| [getting-started.md](./getting-started.md)               | Guided walkthrough — zero to a running server, then prod               |
+| [using-skein.md](./using-skein.md)                       | Consumer/agent cheat-sheet — install, the seam, mount, call            |
+| [recipes.md](./recipes/)                                 | Auth, HITL, memory, CORS, background runs, webhooks, deploy            |
+| [langgraph-cli-compat.md](./langgraph-cli-compat.md)     | `langgraph.json` fields + CLI commands                                 |
+| [embedding.md](./embedding.md)                           | The in-code on-ramp — embed a graph, no `langgraph.json`               |
+| [serving-a-single-graph.md](./serving-a-single-graph.md) | The non-chat surface — a graph as a plain HTTP endpoint                |
+| [agent-protocol.md](./agent-protocol.md)                 | The REST + streaming endpoints skein-js implements                     |
+| [building-an-adapter.md](./building-an-adapter.md)       | How to put skein-js on any HTTP framework (custom adapter)             |
+| [building-a-runner.md](./building-a-runner.md)           | Serving the Agent Protocol with your own agent (the `AgentGraph` seam) |
+| [streaming.md](./streaming.md)                           | LangGraph stream modes → Agent Protocol SSE                            |
+| [react-sdk.md](./react-sdk.md)                           | Frontend SDKs — `useStream` plus Vue, Svelte and Angular               |
+| [storage.md](./storage.md)                               | `SkeinStore`, in-memory + Postgres, pgvector, checkpointer             |
+| [memory.md](./memory.md)                                 | Agent memory patterns — shapes, dedup, recall, background writes       |
+| [runs-and-redis.md](./runs-and-redis.md)                 | Run engine, queue, cross-instance streaming                            |
+| [crons.md](./crons.md)                                   | Scheduled runs — the Crons resource and the scheduler                  |
+| [console.md](./console.md)                               | The skein console — a web UI served by the server itself               |
+| [errors-and-logging.md](./errors-and-logging.md)         | What a failed run reports, and where — wire, log, `skein dev`          |
+| [observability.md](./observability.md)                   | Tracing + metrics — LangSmith, PostHog, OpenTelemetry, custom          |
+| [deploy.md](./deploy.md)                                 | Deploy anywhere — Cloud Run, Railway, Fly, Render, AWS, K8s            |
+| [performance.md](./performance.md)                       | Sizing, every tuning knob, backpressure + drops, triage                |
+| [profiling.md](./profiling.md)                           | Learn measurement/profiling; Node, Bun, Deno hands-on recipes          |
+| [bundling.md](./bundling.md)                             | Bundling skein yourself — ESM, `require()`, what to externalize        |
+| [roadmap.md](./roadmap.md)                               | Milestones and post-MVP non-goals                                      |
 
 **Working on skein-js rather than with it?** The contributor docs live in the repo, not on this site: [CONTRIBUTING.md](https://github.com/skein-js/skein-js/blob/main/CONTRIBUTING.md), [AGENTS.md](https://github.com/skein-js/skein-js/blob/main/AGENTS.md), [reuse.md](https://github.com/skein-js/skein-js/blob/main/docs/reuse.md) (what we reuse vs. rebuild), [code-practices.md](https://github.com/skein-js/skein-js/blob/main/docs/code-practices.md) and [testing.md](https://github.com/skein-js/skein-js/blob/main/docs/testing.md).
 

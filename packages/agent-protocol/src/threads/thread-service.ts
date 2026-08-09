@@ -3,7 +3,6 @@
 // values/status. Deleting a thread first aborts any run still executing on it, so an in-flight run
 // can't write to a thread that's about to disappear.
 
-import { Command, type CommandParams, type CompiledGraph } from "@langchain/langgraph";
 import {
   isSkeinHttpError,
   isTerminalRunStatus,
@@ -17,6 +16,8 @@ import {
 } from "@skein-js/core";
 
 import type { ProtocolContext } from "../context.js";
+import { agentCommand } from "../graphs/agent-command.js";
+import { requireAgentCapability, type AgentGraph } from "../graphs/agent-graph.js";
 
 import { copyCheckpointHistory, pruneThreadCheckpointsToLatest } from "./checkpoint-history.js";
 import {
@@ -201,7 +202,7 @@ export function createThreadService(ctx: ProtocolContext): ThreadService {
   const buildGraph = async (
     graphId: string,
     resolveConfigurable?: () => Promise<Record<string, unknown> | undefined>,
-  ): Promise<CompiledGraph<string>> => {
+  ): Promise<AgentGraph> => {
     const resolved = await deps.graphs.load(graphId);
     // A factory graph must be built with the same `configurable` the run engine uses, so a graph whose
     // shape depends on run config is reconstructed identically here.
@@ -213,7 +214,7 @@ export function createThreadService(ctx: ProtocolContext): ThreadService {
     return graph;
   };
 
-  const loadThreadGraph = async (threadId: string): Promise<CompiledGraph<string> | undefined> => {
+  const loadThreadGraph = async (threadId: string): Promise<AgentGraph | undefined> => {
     const thread = await requireThread(threadId);
     // One row, not the thread's whole run history: this runs on every state, history, and state-update
     // request, and sorting a full `listByThread` in here meant a driver returned every run of the thread
@@ -249,8 +250,12 @@ export function createThreadService(ctx: ProtocolContext): ThreadService {
   const readHistory = async (
     threadId: string,
     options?: HistoryOptions,
+    // Accepts an already-resolved graph so `getState` does not resolve the thread twice:
+    // `loadThreadGraph` reads the thread row, its newest run, and that run's assistant, and doing it
+    // once per `GET /threads/{id}/state` was one round trip; doing it twice was two.
+    preloaded?: AgentGraph,
   ): Promise<ThreadState[]> => {
-    const graph = await loadThreadGraph(threadId);
+    const graph = preloaded ?? (await loadThreadGraph(threadId));
     if (!graph) return [];
 
     const states: ThreadState[] = [];
@@ -260,7 +265,7 @@ export function createThreadService(ctx: ProtocolContext): ThreadService {
     // checkpoint row — including its `channel_values` — before yielding the first snapshot. Breaking out
     // of the loop afterwards therefore saves nothing at all: the heap has already taken the whole
     // history. The `break` stays as a backstop for a checkpointer that ignores the option.
-    for await (const snapshot of graph.getStateHistory(
+    for await (const snapshot of requireAgentCapability(graph, "getStateHistory").getStateHistory(
       { configurable: { thread_id: threadId } },
       {
         limit,
@@ -316,13 +321,14 @@ export function createThreadService(ctx: ProtocolContext): ThreadService {
   ): Promise<void> => {
     const graph = await buildGraph(graphId);
     const configurable = { thread_id: thread.thread_id, checkpoint_ns: "" };
-    await graph.bulkUpdateState(
+    await requireAgentCapability(graph, "bulkUpdateState").bulkUpdateState(
       { configurable },
       supersteps.map((superstep) => ({
         updates: superstep.updates.map((update) => ({
-          // A command travels in the `values` slot — LangGraph reads a `Command` there and applies it
-          // instead of writing raw values. Same conversion the run engine's `toGraphInput` does.
-          values: update.command ? new Command(update.command as CommandParams) : update.values,
+          // A command travels in the `values` slot — a runtime reads it there and applies it instead
+          // of writing raw values. Carried as an envelope, exactly as the run engine's `toGraphInput`
+          // does; the binding translates it (`@skein-js/langgraph`'s `langGraphAgent`).
+          values: update.command ? agentCommand(update.command) : update.values,
           asNode: update.as_node,
         })),
       })),
@@ -450,7 +456,8 @@ export function createThreadService(ctx: ProtocolContext): ThreadService {
           busyThreadIds.push(threadId);
           continue;
         }
-        if (await pruneThreadCheckpointsToLatest(deps.checkpointer, threadId)) prunedCount += 1;
+        if (await pruneThreadCheckpointsToLatest(deps.checkpointer, threadId, deps.cloneCheckpoint))
+          prunedCount += 1;
       }
       if (busyThreadIds.length > 0) {
         // Logged rather than silent: the count already tells the caller these were not pruned, but an
@@ -478,7 +485,12 @@ export function createThreadService(ctx: ProtocolContext): ThreadService {
     async copy(threadId) {
       await requireThread(threadId);
       const copy = await deps.store.threads.copy(threadId);
-      await copyCheckpointHistory(deps.checkpointer, threadId, copy.thread_id);
+      await copyCheckpointHistory(
+        deps.checkpointer,
+        threadId,
+        copy.thread_id,
+        deps.cloneCheckpoint,
+      );
       // Re-create the source's *terminal* runs under the copy (new ids, same assistant/kwargs/status).
       // skein resolves a thread's graph from its latest run, so without these the copied checkpoints
       // would be unreadable via getState/history — and the copy couldn't be resumed or continued. We
@@ -511,8 +523,19 @@ export function createThreadService(ctx: ProtocolContext): ThreadService {
     history: readHistory,
 
     async getState(threadId) {
-      const [current] = await readHistory(threadId, { limit: 1 });
-      return current ?? emptyThreadState(threadId);
+      // History is the richer source (it carries the checkpoint pointer and parent link), so use it
+      // when the agent has it. But `getState` is a *required* capability and `getStateHistory` is
+      // not, so an agent that implements only the required tier must still be able to serve this
+      // endpoint — reading history unconditionally would 422 it, which would make the required tier
+      // insufficient for `GET /threads/{id}/state` and contradict what `AgentGraph` promises.
+      const graph = await loadThreadGraph(threadId);
+      if (!graph) return emptyThreadState(threadId);
+      if (graph.getStateHistory) {
+        const [current] = await readHistory(threadId, { limit: 1 }, graph);
+        return current ?? emptyThreadState(threadId);
+      }
+      const snapshot = await graph.getState({ configurable: { thread_id: threadId } });
+      return snapshotToThreadState(snapshot);
     },
 
     async getStateAt(threadId, checkpointId, checkpointNs = "") {
@@ -552,7 +575,11 @@ export function createThreadService(ctx: ProtocolContext): ThreadService {
         ...(input.checkpoint_id !== undefined ? { checkpoint_id: input.checkpoint_id } : {}),
         thread_id: threadId,
       };
-      const nextConfig = await graph.updateState({ configurable }, input.values, input.as_node);
+      const nextConfig = await requireAgentCapability(graph, "updateState").updateState(
+        { configurable },
+        input.values,
+        input.as_node,
+      );
       // Mirror the fork tip (values + interrupts/status) onto the thread row so a plain
       // `GET /threads/{id}` and `useStream` reflect the branch, as LangGraph does post-update.
       const snapshot = await graph.getState({ configurable: { thread_id: threadId } });

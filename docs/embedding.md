@@ -234,10 +234,40 @@ type EmbeddableGraph = CompiledGraph<any> | ((config: { configurable?: Record<st
 > `embedInMemoryGraphs` was previously named `createInMemoryDeps`. The old name is still exported as a
 > deprecated alias, so existing imports keep working — prefer `embedInMemoryGraphs` in new code.
 
-`graphMapToResolver` is useful on its own when you want the resolver but your **own** `ProtocolDeps`
-(e.g. Postgres/Redis drivers): `buildRuntime`-style deps with `graphs: graphMapToResolver({ agent })`.
+`graphMapToResolver` is useful on its own when you want the resolver but your **own** `ProtocolDeps`.
 `normalizeEmbeddableGraphs(graphs)` accepts either a graph map or a ready `GraphResolver` and returns a
 `GraphResolver` — the same normalization both embed helpers apply.
+
+### Assembling `ProtocolDeps` by hand
+
+The engine drives an **`AgentGraph`** (`stream` + `getState` required, the rest optional), so
+`@skein-js/agent-protocol` installs with no graph runtime. Running **LangGraph.js** graphs therefore
+needs the binding wired in — four fields the embed helpers set for you, and which a hand-assembled
+`ProtocolDeps` must set itself:
+
+```ts
+import { cloneLangGraphCheckpoint, langGraphResolver, SkeinBaseStore } from "@skein-js/langgraph";
+import { MemorySaver } from "@langchain/langgraph";
+
+const deps: ProtocolDeps = {
+  store,
+  queue,
+  bus,
+  checkpointer,
+  // Translates the engine's command envelope into a LangGraph `Command`.
+  // Without it, human-in-the-loop resume silently no-ops.
+  graphs: langGraphResolver(graphMapToResolver({ agent })),
+  // Bridges long-term memory in, so nodes reach it via `getStore()`.
+  storeBridge: (repo) => new SkeinBaseStore(repo),
+  // The throwaway saver `POST /invoke/:graph_id` runs against, so nothing persists.
+  ephemeralCheckpointer: () => new MemorySaver(),
+  // Clones a checkpoint when it is re-put under a new thread id (copy / prune / rollback).
+  cloneCheckpoint: cloneLangGraphCheckpoint,
+};
+```
+
+`langGraphResolver` is safe to apply to any resolver: it binds LangGraph compiled graphs and returns
+anything else untouched, so a resolver fronting your own `AgentGraph` still receives the envelope.
 
 From [`@skein-js/runtime`](https://github.com/skein-js/skein-js/tree/main/packages/runtime) (the durable path — see
 [Going to production](#going-to-production)):

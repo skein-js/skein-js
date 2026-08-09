@@ -8,6 +8,8 @@
 // the graph-map/resolver normalization is shared with `embedInMemoryGraphs` via server-kit. See
 // docs/embedding.md.
 
+import { MemorySaver } from "@langchain/langgraph";
+import { cloneLangGraphCheckpoint, SkeinBaseStore } from "@skein-js/langgraph";
 import { withStoreItems } from "@skein-js/agent-protocol";
 import type { GraphResolver, ProtocolDeps } from "@skein-js/agent-protocol";
 import {
@@ -210,6 +212,11 @@ export async function embedPostgresGraphs(
       queue,
       bus,
       checkpointer,
+      storeBridge: (repo) => new SkeinBaseStore(repo),
+      // Throwaway saver for `POST /invoke/:graph_id` — see `ProtocolDeps.ephemeralCheckpointer`.
+      ephemeralCheckpointer: () => new MemorySaver(),
+      // Clones a checkpoint before it is re-put under another thread id — see `ProtocolDeps.cloneCheckpoint`.
+      cloneCheckpoint: cloneLangGraphCheckpoint,
       // Carried so the runtime's sweeper picks up the configured cadence; the sweeper itself runs
       // either way, because a per-thread `ttl` needs collecting with or without a default.
       ...(options.threadTtl ? { threadTtl: options.threadTtl } : {}),

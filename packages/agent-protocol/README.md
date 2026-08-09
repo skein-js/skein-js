@@ -2,7 +2,7 @@
 
 [![npm](https://img.shields.io/npm/v/%40skein-js%2Fagent-protocol?logo=npm&color=cb3837)](https://www.npmjs.com/package/@skein-js/agent-protocol)&nbsp;[![downloads](https://img.shields.io/npm/dm/%40skein-js%2Fagent-protocol?color=blue)](https://www.npmjs.com/package/@skein-js/agent-protocol)&nbsp;[![license](https://img.shields.io/npm/l/%40skein-js%2Fagent-protocol?color=green)](../../LICENSE)
 
-> The HTTP-framework-agnostic Agent Protocol **engine** for LangGraph.js — run engine, handler table, and SSE mapping. The heart of skein-js.
+> The framework- and runtime-agnostic Agent Protocol **engine** — run engine, handler table, and SSE mapping. The heart of skein-js. Installs with **no graph runtime**; bring LangGraph.js with [`@skein-js/langgraph`](../langgraph), or implement `AgentGraph` yourself.
 
 Part of **[skein-js](../../README.md)** — the open-source alternative to LangGraph Platform for TypeScript: a self-hosted [Agent Protocol](https://github.com/langchain-ai/agent-protocol) server for [LangGraph.js](https://github.com/langchain-ai/langgraphjs), and a drop-in replacement for the LangGraph CLI.
 
@@ -39,11 +39,13 @@ client.
 pnpm add @skein-js/agent-protocol @skein-js/core
 ```
 
-`@langchain/langgraph` and `@langchain/langgraph-sdk` are peer dependencies — install them too if
-your project doesn't already depend on them:
+`@langchain/langgraph-sdk` is a peer dependency — its types are the wire contract. `@langchain/langgraph`
+is an **optional** peer: this package installs no graph runtime, so add it only if you are running
+LangGraph.js graphs (via [`@skein-js/langgraph`](../langgraph)). To serve the protocol with your own
+agent, see [Serving the Agent Protocol with your own agent](../../docs/building-a-runner.md):
 
 ```bash
-pnpm add @langchain/langgraph @langchain/langgraph-sdk
+pnpm add @langchain/langgraph-sdk
 ```
 
 ## Usage
@@ -56,7 +58,7 @@ const runtime = createProtocolRuntime({
   graphs, // a GraphResolver — ids + load(id) + schemas(id) (e.g. @skein-js/config's registry)
   queue, // a RunQueue for background runs
   bus, // a RunEventBus for streaming fan-out
-  checkpointer, // a LangGraph BaseCheckpointSaver (MemorySaver in dev)
+  checkpointer, // a ThreadCheckpointer — LangGraph's MemorySaver/PostgresSaver satisfies it
   // optional: auth, logger, clock, logRunActivity, exposeErrorStacks, runTimeoutMs
 });
 
@@ -134,8 +136,8 @@ Graph **state, history, and interrupt/resume are 100% LangGraph-native** via the
   `ThreadTtlSweeperOptions`). Both are wired for you by `createProtocolRuntime`.
 - **Thread seeding:** `Superstep` / `SuperstepUpdate` — the `supersteps` a `POST /threads` body may
   carry to import a conversation into a new thread's checkpoint history.
-- **`SkeinBaseStore`** — bridges a `StoreRepo` into a LangGraph `BaseStore`, so graph nodes reach
-  long-term memory via `getStore()`. The engine attaches one to every run.
+- **`SkeinBaseStore`** moved to [`@skein-js/langgraph`](../langgraph) — it `extends BaseStore`, a value
+  import of the graph runtime this package no longer loads. `fromBaseStore` (the inverse) stays here.
 - **SSE helpers** (for adapters writing the stream themselves): `SSE_HEADERS`, `encodeFrame`,
   `encodeTerminal`, `toSseEvents`, `parseAfterSeq`.
 

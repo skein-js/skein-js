@@ -27,7 +27,6 @@
 // applied after re-filtering. That is the trade Postgres already makes and documents on its no-index
 // text path, so it is a known shape rather than a new one.
 
-import type { BaseStore, Item as LangGraphItem } from "@langchain/langgraph";
 import {
   compareNamespaces,
   DEFAULT_MAX_PAGE_SIZE,
@@ -91,13 +90,52 @@ export interface FromBaseStoreOptions {
   defaultTtl?: number;
 }
 
+/**
+ * The `BaseStore` surface this adapter actually calls, named structurally.
+ *
+ * Not `import type { BaseStore } from "@langchain/langgraph"`: a type-only import still lands in this
+ * package's generated `.d.ts`, so consumers had to install a graph runtime to typecheck against an
+ * engine that no longer loads one. A real `BaseStore` satisfies this, and so does anything else with
+ * the same five methods — which is the honest contract, since nothing here does an `instanceof`.
+ */
+export interface BaseStoreLike {
+  get(namespace: string[], key: string): Promise<StoredItem | null>;
+  put(namespace: string[], key: string, value: Record<string, unknown>): Promise<void>;
+  delete(namespace: string[], key: string): Promise<void>;
+  search(
+    prefix: string[],
+    options?: { limit?: number; offset?: number; filter?: Record<string, unknown>; query?: string },
+  ): Promise<StoredSearchItem[]>;
+  listNamespaces(options?: {
+    limit?: number;
+    offset?: number;
+    prefix?: string[];
+    suffix?: string[];
+    maxDepth?: number;
+  }): Promise<string[][]>;
+}
+
+/** An item as a runtime store returns it — timestamps as `Date`, unlike the wire's ISO strings. */
+export interface StoredItem {
+  namespace: string[];
+  key: string;
+  value: Record<string, unknown>;
+  createdAt: Date;
+  updatedAt: Date;
+}
+
+/** A search hit: an item plus an optional relevance score. */
+export interface StoredSearchItem extends StoredItem {
+  score?: number;
+}
+
 /** A `BaseStore` that also exposes TTL sweeping — how `PostgresStore` declares the capability. */
 interface SweepingStore {
   sweepExpiredItems(): Promise<number>;
 }
 
 /** True when the adapted store can expire items, so `ttl` is honourable rather than silently dropped. */
-export function supportsStoreTtl(store: BaseStore): boolean {
+export function supportsStoreTtl(store: BaseStoreLike): boolean {
   return typeof (store as Partial<SweepingStore>).sweepExpiredItems === "function";
 }
 
@@ -123,7 +161,7 @@ type TtlAwarePut = (
  * this a caller — or a graph node — mutating what it read would silently rewrite the store. Cloning here
  * rather than trusting the source is the same principle as re-imposing the filter.
  */
-function toWireItem(item: LangGraphItem): Item {
+function toWireItem(item: StoredItem): Item {
   return {
     namespace: [...item.namespace],
     key: item.key,
@@ -134,7 +172,7 @@ function toWireItem(item: LangGraphItem): Item {
 }
 
 /** The wire `SearchItem`, carrying the source's relevance score through when it produced one. */
-function toWireSearchItem(item: LangGraphItem & { score?: number }): SearchItem {
+function toWireSearchItem(item: StoredItem & { score?: number }): SearchItem {
   const base = toWireItem(item);
   return item.score === undefined ? base : { ...base, score: item.score };
 }
@@ -175,7 +213,7 @@ function matchesTextQuery(item: Item, needle: string): boolean {
  *   rather than accepting and discarding one — a silently ignored retention policy is worse than an
  *   error, and `store.ttl` in config is refused at startup for the same reason.
  */
-export function fromBaseStore(store: BaseStore, options?: FromBaseStoreOptions): StoreRepo {
+export function fromBaseStore(store: BaseStoreLike, options?: FromBaseStoreOptions): StoreRepo {
   const maxPageSize = requireValidMaxPageSize(options?.maxPageSize ?? DEFAULT_MAX_PAGE_SIZE);
   const scanLimit = options?.scanLimit ?? defaultAdapterScanLimit(maxPageSize);
   const ttlSupported = supportsStoreTtl(store);

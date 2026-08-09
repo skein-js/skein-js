@@ -25,13 +25,20 @@ describe("graphMapToResolver", () => {
     expect(resolver.ids).toEqual(["echo", "agent"]);
   });
 
+  // `graphMapToResolver` stays a pure normalizer — no runtime binding. Binding happens in
+  // `normalizeEmbeddableGraphs`, so it applies to a caller-supplied resolver too (see below).
   it("loads the exact mapped graph (compiled graph or factory, uninvoked)", async () => {
     const echo = buildGraph();
-    const agent = () => buildGraph(); // a CompiledGraphFactory — returned as-is, not called
+    let factoryCalls = 0;
+    const agent = () => {
+      factoryCalls += 1;
+      return buildGraph();
+    };
     const resolver = graphMapToResolver({ echo, agent });
 
     expect(await resolver.load("echo")).toBe(echo);
     expect(await resolver.load("agent")).toBe(agent);
+    expect(factoryCalls).toBe(0);
   });
 
   it("throws a helpful error for an unknown id", async () => {
@@ -46,16 +53,47 @@ describe("graphMapToResolver", () => {
 });
 
 describe("normalizeEmbeddableGraphs", () => {
+  it("memoizes the binding, so load() stays identity-stable across calls", async () => {
+    const resolver = normalizeEmbeddableGraphs({ echo: buildGraph() });
+    expect(await resolver.load("echo")).toBe(await resolver.load("echo"));
+  });
+
   it("turns a graph map into a resolver keyed by the map keys", async () => {
     const echo = buildGraph();
     const resolver = normalizeEmbeddableGraphs({ echo });
     expect(resolver.ids).toEqual(["echo"]);
-    expect(await resolver.load("echo")).toBe(echo);
+    expect(Object.getPrototypeOf((await resolver.load("echo")) as object)).toBe(echo);
   });
 
-  it("passes a ready GraphResolver through untouched", () => {
-    const resolver: GraphResolver = graphMapToResolver({ custom: buildGraph() });
-    expect(normalizeEmbeddableGraphs(resolver)).toBe(resolver);
+  // A caller-supplied resolver is bound too. It used to be passed through untouched, which silently
+  // broke HITL resume on `embedInMemoryGraphs(myResolver)`: the engine's command envelope reached a
+  // real LangGraph graph untranslated, and the resume became a no-op with no error anywhere.
+  it("binds a caller-supplied resolver's LangGraph graphs too", async () => {
+    const graph = buildGraph();
+    const resolver: GraphResolver = {
+      ids: ["custom"],
+      load: async () => graph,
+      schemas: async (id) => ({ [id]: { graph_id: id } }) as never,
+    };
+
+    const normalized = normalizeEmbeddableGraphs(resolver);
+    expect(Object.getPrototypeOf((await normalized.load("custom")) as object)).toBe(graph);
+  });
+
+  // ...but only the LangGraph ones. A hand-written `AgentGraph` must receive the envelope untouched;
+  // handing it a `Command` would give it a class it cannot read.
+  it("leaves a non-LangGraph AgentGraph alone", async () => {
+    const agent = {
+      stream: () => (async function* () {})(),
+      getState: async () => ({ values: {}, next: [], tasks: [] }),
+    };
+    const resolver: GraphResolver = {
+      ids: ["plain"],
+      load: async () => agent,
+      schemas: async (id) => ({ [id]: { graph_id: id } }) as never,
+    };
+
+    expect(await normalizeEmbeddableGraphs(resolver).load("plain")).toBe(agent);
   });
 
   it('treats a graph keyed "ids" as a map, not a resolver (the discriminator holds)', async () => {
@@ -64,7 +102,7 @@ describe("normalizeEmbeddableGraphs", () => {
     const graph = buildGraph();
     const resolver = normalizeEmbeddableGraphs({ ids: graph });
     expect(resolver.ids).toEqual(["ids"]);
-    expect(await resolver.load("ids")).toBe(graph);
+    expect(Object.getPrototypeOf((await resolver.load("ids")) as object)).toBe(graph);
   });
 });
 
@@ -79,13 +117,13 @@ describe("embedInMemoryGraphs", () => {
     expect(deps.graphs.ids).toEqual(["echo"]);
   });
 
-  it("passes a ready GraphResolver through untouched", async () => {
+  it("accepts a ready GraphResolver, binding its graphs like a map's", async () => {
     const graph = buildGraph();
     const resolver: GraphResolver = graphMapToResolver({ custom: graph });
     const deps = embedInMemoryGraphs(resolver);
 
-    expect(deps.graphs).toBe(resolver);
-    expect(await deps.graphs.load("custom")).toBe(graph);
+    expect(deps.graphs.ids).toEqual(["custom"]);
+    expect(Object.getPrototypeOf((await deps.graphs.load("custom")) as object)).toBe(graph);
   });
 
   it("applies overrides — replacing a driver and adding auth, keeping other defaults", () => {

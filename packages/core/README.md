@@ -45,7 +45,7 @@ them. Everything downstream imports it:
 pnpm add @skein-js/core
 ```
 
-Peer dependencies (install once in your project): `@langchain/langgraph` and
+Peer dependency (install once in your project):
 `@langchain/langgraph-sdk`. `core` bundles nothing itself.
 
 ## Usage

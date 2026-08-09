@@ -433,6 +433,7 @@ version badges below always move in lockstep.
 | [`@skein-js/agent-protocol`](./packages/agent-protocol)     | ⭐ The engine — run engine, handler table, SSE. Framework-agnostic         | [![npm](https://img.shields.io/npm/v/%40skein-js%2Fagent-protocol?logo=npm&color=cb3837&label=)](https://www.npmjs.com/package/@skein-js/agent-protocol)     | [![dm](https://img.shields.io/npm/dm/%40skein-js%2Fagent-protocol?color=blue&label=)](https://www.npmjs.com/package/@skein-js/agent-protocol)     |
 | [`@skein-js/core`](./packages/core)                         | The shared contract — wire types, `SkeinStore` / queue / bus / auth seams  | [![npm](https://img.shields.io/npm/v/%40skein-js%2Fcore?logo=npm&color=cb3837&label=)](https://www.npmjs.com/package/@skein-js/core)                         | [![dm](https://img.shields.io/npm/dm/%40skein-js%2Fcore?color=blue&label=)](https://www.npmjs.com/package/@skein-js/core)                         |
 | [`@skein-js/config`](./packages/config)                     | `langgraph.json` parser + graph loader                                     | [![npm](https://img.shields.io/npm/v/%40skein-js%2Fconfig?logo=npm&color=cb3837&label=)](https://www.npmjs.com/package/@skein-js/config)                     | [![dm](https://img.shields.io/npm/dm/%40skein-js%2Fconfig?color=blue&label=)](https://www.npmjs.com/package/@skein-js/config)                     |
+| [`@skein-js/langgraph`](./packages/langgraph)               | LangGraph.js binding — a compiled graph as an `AgentGraph`                 | [![npm](https://img.shields.io/npm/v/%40skein-js%2Flanggraph?logo=npm&color=cb3837&label=)](https://www.npmjs.com/package/@skein-js/langgraph)               | [![dm](https://img.shields.io/npm/dm/%40skein-js%2Flanggraph?color=blue&label=)](https://www.npmjs.com/package/@skein-js/langgraph)               |
 | [`@skein-js/runtime`](./packages/runtime)                   | Assembles production `ProtocolDeps` (memory / Postgres / Redis)            | [![npm](https://img.shields.io/npm/v/%40skein-js%2Fruntime?logo=npm&color=cb3837&label=)](https://www.npmjs.com/package/@skein-js/runtime)                   | [![dm](https://img.shields.io/npm/dm/%40skein-js%2Fruntime?color=blue&label=)](https://www.npmjs.com/package/@skein-js/runtime)                   |
 | [`@skein-js/server-kit`](./packages/server-kit)             | Shared adapter building blocks (in-memory runtime, CORS, dev-state import) | [![npm](https://img.shields.io/npm/v/%40skein-js%2Fserver-kit?logo=npm&color=cb3837&label=)](https://www.npmjs.com/package/@skein-js/server-kit)             | [![dm](https://img.shields.io/npm/dm/%40skein-js%2Fserver-kit?color=blue&label=)](https://www.npmjs.com/package/@skein-js/server-kit)             |
 | [`@skein-js/fetch`](./packages/server-fetch)                | Web Fetch transport — `Bun.serve` / `Deno.serve`                           | [![npm](https://img.shields.io/npm/v/%40skein-js%2Ffetch?logo=npm&color=cb3837&label=)](https://www.npmjs.com/package/@skein-js/fetch)                       | [![dm](https://img.shields.io/npm/dm/%40skein-js%2Ffetch?color=blue&label=)](https://www.npmjs.com/package/@skein-js/fetch)                       |
@@ -474,10 +475,12 @@ npm create skein-js@latest my-agent
 
 ### `@skein-js/agent-protocol` — the engine ⭐
 
-The transport-agnostic heart: a complete implementation of the **Agent Protocol** for LangGraph.js —
-run engine, HTTP handler table, and SSE streaming, driven entirely by injected dependencies. Build
-your own server on it, on any **HTTP** framework, with any storage/queue. (The graph runtime is not a
-seam: `@langchain/langgraph` is a peer dependency and `ProtocolDeps` resolves a `CompiledGraph`.)
+The transport-agnostic heart: a complete implementation of the **Agent Protocol** — run engine, HTTP
+handler table, and SSE streaming, driven entirely by injected dependencies. Build your own server on
+it, on any HTTP framework, with any storage/queue — and with any agent runtime: `npm i
+@skein-js/agent-protocol` pulls **no graph runtime**, and the engine drives an `AgentGraph`
+(`stream` + `getState`, everything else optional). Bring LangGraph.js with
+[`@skein-js/langgraph`](./packages/langgraph), or [implement `AgentGraph` yourself](./docs/building-a-runner.md).
 
 ```bash
 pnpm add @skein-js/agent-protocol @skein-js/core
@@ -867,6 +870,10 @@ Available on every adapter — see [serving-a-single-graph.md](./serving-a-singl
              │  json loader) │ postgres+pgv  │ sub          │
              └───────────────┴───────────────┴─────────────┘
                                     │
+                       AgentGraph (stream + getState)
+                                    │
+                          @skein-js/langgraph
+                                    │
                           LangGraph.js compiled graphs
 ```
 
@@ -875,6 +882,10 @@ Available on every adapter — see [serving-a-single-graph.md](./serving-a-singl
 - **`@skein-js/agent-protocol`** holds the protocol logic once, against _normalized_ request/response
   types, driven entirely by injected dependencies. Framework adapters are thin shims, and the
   package is publishable on its own. See each doc below for detail.
+- **`@skein-js/langgraph`** is the LangGraph.js binding. The engine drives an **`AgentGraph`** —
+  `stream` and `getState` required, everything else optional — so `@skein-js/agent-protocol` installs
+  with no graph runtime, and a non-LangGraph agent can serve the protocol by implementing that type.
+  Every on-ramp wires the binding for you.
 
 ## Examples
 
@@ -901,32 +912,33 @@ directory. Already have a graph? [getting-started.md](./getting-started.md) is t
 (especially as an AI agent)? [using-skein.md](./using-skein.md) is the terse cheat-sheet, and the
 machine-readable [`llms.txt`](https://github.com/skein-js/skein-js/blob/main/llms.txt) / [`llms-full.txt`](https://github.com/skein-js/skein-js/blob/main/llms-full.txt) index the whole set.
 
-| Doc                                                      | Covers                                                           |
-| -------------------------------------------------------- | ---------------------------------------------------------------- |
-| [your-first-agent.md](./your-first-agent.md)             | From an empty directory to deployed — no LangGraph assumed       |
-| [scaffolding.md](./scaffolding.md)                       | `npm create skein-js` — every flag, and doing it by hand         |
-| [getting-started.md](./getting-started.md)               | Guided walkthrough — zero to a running server, then prod         |
-| [using-skein.md](./using-skein.md)                       | Consumer/agent cheat-sheet — install, the seam, mount, call      |
-| [recipes.md](./recipes/)                                 | Auth, HITL, memory, CORS, background runs, webhooks, deploy      |
-| [langgraph-cli-compat.md](./langgraph-cli-compat.md)     | `langgraph.json` fields + CLI commands                           |
-| [embedding.md](./embedding.md)                           | The in-code on-ramp — embed a graph, no `langgraph.json`         |
-| [serving-a-single-graph.md](./serving-a-single-graph.md) | The non-chat surface — a graph as a plain HTTP endpoint          |
-| [agent-protocol.md](./agent-protocol.md)                 | The REST + streaming endpoints skein-js implements               |
-| [building-an-adapter.md](./building-an-adapter.md)       | How to put skein-js on any HTTP framework (custom adapter)       |
-| [streaming.md](./streaming.md)                           | LangGraph stream modes → Agent Protocol SSE                      |
-| [react-sdk.md](./react-sdk.md)                           | Frontend SDKs — `useStream` plus Vue, Svelte and Angular         |
-| [storage.md](./storage.md)                               | `SkeinStore`, in-memory + Postgres, pgvector, checkpointer       |
-| [memory.md](./memory.md)                                 | Agent memory patterns — shapes, dedup, recall, background writes |
-| [runs-and-redis.md](./runs-and-redis.md)                 | Run engine, queue, cross-instance streaming                      |
-| [crons.md](./crons.md)                                   | Scheduled runs — the Crons resource and the scheduler            |
-| [console.md](./console.md)                               | The skein console — a web UI served by the server itself         |
-| [errors-and-logging.md](./errors-and-logging.md)         | What a failed run reports, and where — wire, log, `skein dev`    |
-| [observability.md](./observability.md)                   | Tracing + metrics — LangSmith, PostHog, OpenTelemetry, custom    |
-| [deploy.md](./deploy.md)                                 | Deploy anywhere — Cloud Run, Railway, Fly, Render, AWS, K8s      |
-| [performance.md](./performance.md)                       | Sizing, every tuning knob, backpressure + drops, triage          |
-| [profiling.md](./profiling.md)                           | Learn measurement/profiling; Node, Bun, Deno hands-on recipes    |
-| [bundling.md](./bundling.md)                             | Bundling skein yourself — ESM, `require()`, what to externalize  |
-| [roadmap.md](./roadmap.md)                               | Milestones and post-MVP non-goals                                |
+| Doc                                                      | Covers                                                                 |
+| -------------------------------------------------------- | ---------------------------------------------------------------------- |
+| [your-first-agent.md](./your-first-agent.md)             | From an empty directory to deployed — no LangGraph assumed             |
+| [scaffolding.md](./scaffolding.md)                       | `npm create skein-js` — every flag, and doing it by hand               |
+| [getting-started.md](./getting-started.md)               | Guided walkthrough — zero to a running server, then prod               |
+| [using-skein.md](./using-skein.md)                       | Consumer/agent cheat-sheet — install, the seam, mount, call            |
+| [recipes.md](./recipes/)                                 | Auth, HITL, memory, CORS, background runs, webhooks, deploy            |
+| [langgraph-cli-compat.md](./langgraph-cli-compat.md)     | `langgraph.json` fields + CLI commands                                 |
+| [embedding.md](./embedding.md)                           | The in-code on-ramp — embed a graph, no `langgraph.json`               |
+| [serving-a-single-graph.md](./serving-a-single-graph.md) | The non-chat surface — a graph as a plain HTTP endpoint                |
+| [agent-protocol.md](./agent-protocol.md)                 | The REST + streaming endpoints skein-js implements                     |
+| [building-an-adapter.md](./building-an-adapter.md)       | How to put skein-js on any HTTP framework (custom adapter)             |
+| [building-a-runner.md](./building-a-runner.md)           | Serving the Agent Protocol with your own agent (the `AgentGraph` seam) |
+| [streaming.md](./streaming.md)                           | LangGraph stream modes → Agent Protocol SSE                            |
+| [react-sdk.md](./react-sdk.md)                           | Frontend SDKs — `useStream` plus Vue, Svelte and Angular               |
+| [storage.md](./storage.md)                               | `SkeinStore`, in-memory + Postgres, pgvector, checkpointer             |
+| [memory.md](./memory.md)                                 | Agent memory patterns — shapes, dedup, recall, background writes       |
+| [runs-and-redis.md](./runs-and-redis.md)                 | Run engine, queue, cross-instance streaming                            |
+| [crons.md](./crons.md)                                   | Scheduled runs — the Crons resource and the scheduler                  |
+| [console.md](./console.md)                               | The skein console — a web UI served by the server itself               |
+| [errors-and-logging.md](./errors-and-logging.md)         | What a failed run reports, and where — wire, log, `skein dev`          |
+| [observability.md](./observability.md)                   | Tracing + metrics — LangSmith, PostHog, OpenTelemetry, custom          |
+| [deploy.md](./deploy.md)                                 | Deploy anywhere — Cloud Run, Railway, Fly, Render, AWS, K8s            |
+| [performance.md](./performance.md)                       | Sizing, every tuning knob, backpressure + drops, triage                |
+| [profiling.md](./profiling.md)                           | Learn measurement/profiling; Node, Bun, Deno hands-on recipes          |
+| [bundling.md](./bundling.md)                             | Bundling skein yourself — ESM, `require()`, what to externalize        |
+| [roadmap.md](./roadmap.md)                               | Milestones and post-MVP non-goals                                      |
 
 **Working on skein-js rather than with it?** The contributor docs live in the repo, not on this site: [CONTRIBUTING.md](https://github.com/skein-js/skein-js/blob/main/CONTRIBUTING.md), [AGENTS.md](https://github.com/skein-js/skein-js/blob/main/AGENTS.md), [reuse.md](https://github.com/skein-js/skein-js/blob/main/docs/reuse.md) (what we reuse vs. rebuild), [code-practices.md](https://github.com/skein-js/skein-js/blob/main/docs/code-practices.md) and [testing.md](https://github.com/skein-js/skein-js/blob/main/docs/testing.md).
 
@@ -2484,10 +2496,40 @@ type EmbeddableGraph = CompiledGraph<any> | ((config: { configurable?: Record<st
 > `embedInMemoryGraphs` was previously named `createInMemoryDeps`. The old name is still exported as a
 > deprecated alias, so existing imports keep working — prefer `embedInMemoryGraphs` in new code.
 
-`graphMapToResolver` is useful on its own when you want the resolver but your **own** `ProtocolDeps`
-(e.g. Postgres/Redis drivers): `buildRuntime`-style deps with `graphs: graphMapToResolver({ agent })`.
+`graphMapToResolver` is useful on its own when you want the resolver but your **own** `ProtocolDeps`.
 `normalizeEmbeddableGraphs(graphs)` accepts either a graph map or a ready `GraphResolver` and returns a
 `GraphResolver` — the same normalization both embed helpers apply.
+
+### Assembling `ProtocolDeps` by hand
+
+The engine drives an **`AgentGraph`** (`stream` + `getState` required, the rest optional), so
+`@skein-js/agent-protocol` installs with no graph runtime. Running **LangGraph.js** graphs therefore
+needs the binding wired in — four fields the embed helpers set for you, and which a hand-assembled
+`ProtocolDeps` must set itself:
+
+```ts
+import { cloneLangGraphCheckpoint, langGraphResolver, SkeinBaseStore } from "@skein-js/langgraph";
+import { MemorySaver } from "@langchain/langgraph";
+
+const deps: ProtocolDeps = {
+  store,
+  queue,
+  bus,
+  checkpointer,
+  // Translates the engine's command envelope into a LangGraph `Command`.
+  // Without it, human-in-the-loop resume silently no-ops.
+  graphs: langGraphResolver(graphMapToResolver({ agent })),
+  // Bridges long-term memory in, so nodes reach it via `getStore()`.
+  storeBridge: (repo) => new SkeinBaseStore(repo),
+  // The throwaway saver `POST /invoke/:graph_id` runs against, so nothing persists.
+  ephemeralCheckpointer: () => new MemorySaver(),
+  // Clones a checkpoint when it is re-put under a new thread id (copy / prune / rollback).
+  cloneCheckpoint: cloneLangGraphCheckpoint,
+};
+```
+
+`langGraphResolver` is safe to apply to any resolver: it binds LangGraph compiled graphs and returns
+anything else untouched, so a resolver fronting your own `AgentGraph` still receives the envelope.
 
 From [`@skein-js/runtime`](https://github.com/skein-js/skein-js/tree/main/packages/runtime) (the durable path — see
 [Going to production](#going-to-production)):
@@ -6133,6 +6175,215 @@ Built an adapter for a framework we don't ship? We'd love a PR — see
 
 ---
 
+<!-- source: docs/building-a-runner.md -->
+
+# Serving the Agent Protocol with your own agent
+
+skein-js is built for [LangGraph.js](https://github.com/langchain-ai/langgraphjs), but the protocol
+engine is not. `@skein-js/agent-protocol` installs with **no graph runtime** — no
+`@langchain/langgraph`, no `@langchain/langgraph-checkpoint`, in the emitted JavaScript _or_ the
+generated type declarations. Both are asserted in CI by
+[`static-imports.test.ts`](https://github.com/skein-js/skein-js/blob/main/packages/test-support/src/static-imports.test.ts),
+as two separate checks, because they fail independently.
+
+So if you have an agent of your own — an AI SDK loop, a Mastra workflow, a hand-rolled tool loop —
+you can serve the Agent Protocol with it, and every LangGraph client
+([`useStream`](./react-sdk.md), Agent Chat UI, LangGraph Studio) works against it unchanged.
+
+This page is the runtime seam. [Building your own adapter](./building-an-adapter.md) is the transport
+seam — one page per seam.
+
+## What you implement
+
+The engine drives an **`AgentGraph`**. Two methods are required; the rest are optional, and the split
+is empirical rather than designed — it is what a measured, working server actually needed.
+
+```ts
+interface AgentGraph {
+  // REQUIRED — run the agent, yielding one chunk per step.
+  stream(
+    input: unknown,
+    options?: unknown,
+  ): Promise<AsyncIterable<unknown>> | AsyncIterable<unknown>;
+
+  // REQUIRED — the thread's authoritative state after a run.
+  getState(config: { configurable?: Record<string, unknown> }): Promise<AgentStateSnapshot>;
+
+  // Optional. Each maps to endpoints; see the capability table below.
+  getStateHistory?(config, options?): AsyncIterable<AgentStateSnapshot>;
+  updateState?(config, values, asNode?): Promise<{ configurable?: Record<string, unknown> }>;
+  bulkUpdateState?(config, supersteps): Promise<{ configurable?: Record<string, unknown> }>;
+  streamEvents?(input, options?): AsyncIterable<unknown>;
+  invoke?(input, options?): Promise<unknown>;
+  getGraphAsync?(options?): Promise<{ toJSON(): unknown }>;
+  getSubgraphsAsync?(namespace?, recurse?): AsyncIterable<[string, unknown]>;
+}
+```
+
+A LangGraph `CompiledGraph` satisfies this by construction — that is what keeps the type additive.
+
+### Streaming: the one trick worth knowing
+
+`stream` yields whatever you like, but a **`[mode, data]` tuple** is unwrapped into that stream mode.
+`StreamMode` is a plain string union from `@skein-js/core`; nothing LangGraph participates. So a
+plain async generator produces correct SSE:
+
+```ts
+async *stream(input, options) {
+  const threadId = String(options?.configurable?.thread_id ?? "");
+  for await (const step of myAgent(input)) {
+    yield ["values", step];   // -> event: values
+  }
+}
+```
+
+Anything that is _not_ such a tuple is published as an `updates` payload.
+
+### State: seven fields
+
+`getState` returns an `AgentStateSnapshot`. skein projects it onto the wire `ThreadState`, and reads
+exactly these:
+
+| Field          | Meaning                                                                                        |
+| -------------- | ---------------------------------------------------------------------------------------------- |
+| `values`       | current state — what `GET /threads/{id}` mirrors                                               |
+| `next`         | nodes still to run. **Non-empty ⇒ the run is reported `interrupted`**                          |
+| `tasks`        | `{ id, name, error?, interrupts, result? }` — carries pending interrupts and per-node failures |
+| `config`       | its `configurable` carries the checkpoint coordinates                                          |
+| `parentConfig` | the parent snapshot's config, if any                                                           |
+| `metadata`     | passed through untouched                                                                       |
+| `createdAt`    | ISO timestamp                                                                                  |
+
+Only `values`, `next` and `tasks` are required. `{ values: state, next: [], tasks: [] }` is a valid
+snapshot for an agent that does not pause.
+
+## Capabilities: what an absent method does
+
+An optional method you do not implement is a **handled 422**, not a crash:
+
+```json
+{
+  "status": 422,
+  "message": "This agent does not implement \"updateState\", which this endpoint requires.",
+  "code": "agent_capability_missing",
+  "details": { "capability": "updateState" }
+}
+```
+
+| Method              | Endpoints it serves                      |
+| ------------------- | ---------------------------------------- |
+| `getStateHistory`   | `GET`/`POST /threads/{id}/history`       |
+| `updateState`       | `POST /threads/{id}/state` (time travel) |
+| `bulkUpdateState`   | `POST /threads` carrying `supersteps`    |
+| `streamEvents`      | the `events` stream mode                 |
+| `invoke`            | `POST /invoke/{graph_id}`                |
+| `getGraphAsync`     | `GET /assistants/{id}/graph`             |
+| `getSubgraphsAsync` | `GET /assistants/{id}/subgraphs`         |
+
+**Why 422 and not 501.** `@langchain/langgraph-sdk`'s `AsyncCaller` retries any status outside
+`STATUS_NO_RETRY = [400,401,402,403,404,405,406,407,408,409,422]`. A 501 would cost the official
+client five requests and exponential backoff to learn a fact that cannot change on retry. 422 is in
+that list, and "the request cannot be processed as sent" is honest: the route exists, the body is
+fine, this agent cannot serve it.
+
+`GET /threads/{id}/state` is deliberately **not** in that table: it falls back to `getState` when
+`getStateHistory` is absent, so the required tier alone serves it.
+
+## A complete server
+
+No `langgraph.json`, no CLI, no `@langchain/*` in your file:
+
+```ts
+import type { AgentGraph, AgentStateSnapshot } from "@skein-js/agent-protocol";
+import { createExpressServer } from "@skein-js/express";
+import { embedInMemoryGraphs } from "@skein-js/server-kit";
+
+const stateByThread = new Map<string, unknown>();
+const threadId = (c?: { configurable?: Record<string, unknown> }) =>
+  String(c?.configurable?.["thread_id"] ?? "");
+
+const agent: AgentGraph = {
+  stream(input, options) {
+    const id = threadId(options as { configurable?: Record<string, unknown> });
+    return (async function* () {
+      const reply = { messages: [{ role: "ai", content: "hello" }] };
+      stateByThread.set(id, reply);
+      yield ["values", reply];
+    })();
+  },
+  async getState(config): Promise<AgentStateSnapshot> {
+    return { values: stateByThread.get(threadId(config)) ?? {}, next: [], tasks: [] };
+  },
+};
+
+// Pass a `GraphResolver` — not a graph map. A map's values are LangGraph compiled graphs by type.
+const deps = embedInMemoryGraphs({
+  ids: ["chat"],
+  load: async () => agent,
+  schemas: async (id) => ({ [id]: { graph_id: id } }) as never,
+});
+
+await (await createExpressServer({ deps })).listen(2024);
+```
+
+That serves `POST /threads`, `GET /threads/{id}`, `POST /runs/wait`, `POST /runs/stream` (SSE with
+replay), `GET /threads/{id}/state`, `GET /info`, plus auth, `Idempotency-Key`, crons, the store, and
+multitask strategies — none of which you implement.
+
+`storeBridge`, `ephemeralCheckpointer` and `cloneCheckpoint` on `ProtocolDeps` are all **optional**
+and runtime-specific; omit them. `checkpointer` is a structural `ThreadCheckpointer` (five methods:
+`getTuple`, `list`, `put`, `putWrites`, `deleteThread`) — supply a stub if your agent keeps its own
+state, or a real one if you want thread copy / prune / rollback.
+
+## Interrupts and resume
+
+`POST /runs` with a `command` body resumes an interrupted run. The engine does **not** construct a
+runtime's command type — that would be a runtime import. It hands your agent a branded envelope:
+
+```ts
+import { isAgentCommand, agentCommandPayload } from "@skein-js/agent-protocol";
+
+stream(input, options) {
+  if (isAgentCommand(input)) {
+    const { resume, update, goto } = agentCommandPayload(input);
+    // …resume your agent with `resume`
+  }
+}
+```
+
+Use `agentCommandPayload` rather than reading fields off the envelope: the wire schema passes unknown
+fields through, and the payload is the complete, unbranded object.
+
+To report a pause, return a snapshot with non-empty `next` (or tasks carrying `interrupts`).
+
+## What you cannot change
+
+- **The wire types.** They are `@langchain/langgraph-sdk`'s, deliberately — that is why every
+  LangGraph client works against skein by construction. See [reuse](./reuse.md).
+- **The run lifecycle** — statuses, multitask strategies, the SSE frame envelope.
+- **The auth model** — see [the Agent Protocol reference](./agent-protocol.md). Auth is the
+  deployment's concern, not the agent's; a runner never sees it.
+
+## Known limits
+
+- **`events` mode is effectively LangChain-only.** Its demux keys on `on_chain_stream`, root
+  `run_id`, and `langsmith:hidden` tags. Your agent may yield `mode: "events"` chunks, but their
+  payload is your contract with your own clients — `useStream` will not render them as token events.
+- **`useStream` hydration** calls `GET /threads/{id}/state`. Implement `getState` well (it is
+  required anyway) or hydration is empty.
+- **Time travel** needs `updateState` + `getStateHistory`. Without them, `checkpoint_id` on a run is
+  ignored rather than honoured.
+
+## The reference implementation
+
+[`@skein-js/langgraph`](https://github.com/skein-js/skein-js/tree/main/packages/langgraph) is one
+implementation of this seam, and it imports only `@skein-js/agent-protocol`'s public entry point —
+no privileged access. If it ever needs an internal, the internal is missing from the public API.
+Reading it is the fastest way to see what a complete binding looks like.
+
+
+---
+
 <!-- source: docs/deploy.md -->
 
 # Deploy anywhere
@@ -7524,20 +7775,20 @@ layer that OSS does not provide.
 
 ## What skein-js reuses (dependencies, all MIT)
 
-| Concern                       | LangGraph OSS package                        | How skein-js uses it                                                                                                                                                                                                                                                                                                    |
-| ----------------------------- | -------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| Graph runtime                 | `@langchain/langgraph`                       | Run graphs via `CompiledStateGraph.invoke` / `.stream`; interrupts + resume for human-in-the-loop. Never reimplemented.                                                                                                                                                                                                 |
-| Checkpoint base + dev saver   | `@langchain/langgraph-checkpoint`            | `BaseCheckpointSaver`, `MemorySaver` for dev.                                                                                                                                                                                                                                                                           |
-| Postgres checkpoints          | `@langchain/langgraph-checkpoint-postgres`   | `PostgresSaver` for graph state in prod. Its `./store` `PostgresStore` is also usable as a drop-in long-term-memory store via `store.adapter` — see [storage.md](./storage.md#bringing-your-own-store-storeadapter) — which brings hybrid `text \| vector` search skein's own driver lacks.                             |
-| Long-term store interface     | `@langchain/langgraph-checkpoint`            | `BaseStore` in both directions: `SkeinBaseStore` exposes skein's store to graphs as one, and `fromBaseStore` accepts anyone's as skein's store. `InMemoryStore` is the conformance target for that adapter.                                                                                                             |
-| Redis checkpoints             | `@langchain/langgraph-checkpoint-redis`      | Optional Redis-backed checkpointer. (Note: distinct from `@skein-js/redis`, which is the run **queue**.)                                                                                                                                                                                                                |
-| SQLite checkpoints            | `@langchain/langgraph-checkpoint-sqlite`     | Optional file-backed dev checkpointer.                                                                                                                                                                                                                                                                                  |
-| Checkpointer conformance      | `@langchain/langgraph-checkpoint-validation` | Reused as-is in our test suite to validate any checkpointer wiring.                                                                                                                                                                                                                                                     |
-| **Agent Protocol dev server** | **`@langchain/langgraph-api`** (MIT)         | Reuse its public exports: `./schema` (the `langgraph.json` parser), `./auth`'s pure `isAuthMatching` (so our ownership-filter `$eq`/`$contains` semantics match), `./experimental/embed` (store-search embeddings). Its Zod schemas + in-memory handler logic (MIT) are the reference we adapt for the durable drivers. |
-| CLI + config semantics        | `@langchain/langgraph-cli`                   | Reference for `langgraph.json` fields and `dev/up/build/dockerfile` behavior we mirror.                                                                                                                                                                                                                                 |
-| Wire types + JS client        | `@langchain/langgraph-sdk`                   | **Reuse the SDK's TypeScript types** for Thread/Run/Assistant/etc. as our wire contract instead of regenerating; also our conformance oracle.                                                                                                                                                                           |
-| React streaming               | `@langchain/langgraph-sdk/react`             | `useStream` — a target client we satisfy, not something we build. (`sdk-vue`, `sdk-svelte`, `sdk-angular` exist too.)                                                                                                                                                                                                   |
-| Chat UI                       | `langgraph-ui` / Agent Chat UI               | Interop target for smoke tests.                                                                                                                                                                                                                                                                                         |
+| Concern                       | LangGraph OSS package                        | How skein-js uses it                                                                                                                                                                                                                                                                                                                |
+| ----------------------------- | -------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Graph runtime                 | `@langchain/langgraph`                       | Run graphs via `CompiledStateGraph.invoke` / `.stream`; interrupts + resume for human-in-the-loop. Never reimplemented. Reached through `@skein-js/langgraph`, which is the only package that imports it at runtime.                                                                                                                |
+| Checkpoint base + dev saver   | `@langchain/langgraph-checkpoint`            | `BaseCheckpointSaver`, `MemorySaver` for dev.                                                                                                                                                                                                                                                                                       |
+| Postgres checkpoints          | `@langchain/langgraph-checkpoint-postgres`   | `PostgresSaver` for graph state in prod. Its `./store` `PostgresStore` is also usable as a drop-in long-term-memory store via `store.adapter` — see [storage.md](./storage.md#bringing-your-own-store-storeadapter) — which brings hybrid `text \| vector` search skein's own driver lacks.                                         |
+| Long-term store interface     | `@langchain/langgraph-checkpoint`            | `BaseStore` in both directions: `SkeinBaseStore` (in `@skein-js/langgraph`, because it _extends_ `BaseStore`) exposes skein's store to graphs as one, and `fromBaseStore` (in `@skein-js/agent-protocol`, whose import is type-only) accepts anyone's as skein's store. `InMemoryStore` is the conformance target for that adapter. |
+| Redis checkpoints             | `@langchain/langgraph-checkpoint-redis`      | Optional Redis-backed checkpointer. (Note: distinct from `@skein-js/redis`, which is the run **queue**.)                                                                                                                                                                                                                            |
+| SQLite checkpoints            | `@langchain/langgraph-checkpoint-sqlite`     | Optional file-backed dev checkpointer.                                                                                                                                                                                                                                                                                              |
+| Checkpointer conformance      | `@langchain/langgraph-checkpoint-validation` | Reused as-is in our test suite to validate any checkpointer wiring.                                                                                                                                                                                                                                                                 |
+| **Agent Protocol dev server** | **`@langchain/langgraph-api`** (MIT)         | Reuse its public exports: `./schema` (the `langgraph.json` parser), `./auth`'s pure `isAuthMatching` (so our ownership-filter `$eq`/`$contains` semantics match), `./experimental/embed` (store-search embeddings). Its Zod schemas + in-memory handler logic (MIT) are the reference we adapt for the durable drivers.             |
+| CLI + config semantics        | `@langchain/langgraph-cli`                   | Reference for `langgraph.json` fields and `dev/up/build/dockerfile` behavior we mirror.                                                                                                                                                                                                                                             |
+| Wire types + JS client        | `@langchain/langgraph-sdk`                   | **Reuse the SDK's TypeScript types** for Thread/Run/Assistant/etc. as our wire contract instead of regenerating; also our conformance oracle.                                                                                                                                                                                       |
+| React streaming               | `@langchain/langgraph-sdk/react`             | `useStream` — a target client we satisfy, not something we build. (`sdk-vue`, `sdk-svelte`, `sdk-angular` exist too.)                                                                                                                                                                                                               |
+| Chat UI                       | `langgraph-ui` / Agent Chat UI               | Interop target for smoke tests.                                                                                                                                                                                                                                                                                                     |
 
 **Rule of thumb:** if a `@langchain/*` package already does it, we depend on it (as a
 `peerDependency` where the consumer should own the version). We do not fork or vendor it.

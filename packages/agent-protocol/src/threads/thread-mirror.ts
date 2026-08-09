@@ -1,10 +1,13 @@
-// Pure derivation of a thread row update from a LangGraph state snapshot. After a run, the graph's
+// Pure derivation of a thread row update from an agent's state snapshot. After a run, the agent's
 // authoritative state (values + pending interrupts) is mirrored onto the thread row so a plain
 // `GET /threads/{id}` reflects the latest turn without touching the checkpointer. Mirrors what
 // `@langchain/langgraph-api` does on `Threads.setStatus`: interrupts are keyed by task id, and a
-// non-empty `next` means the graph paused for a human (interrupted).
+// non-empty `next` means the agent paused for a human (interrupted).
+//
+// Typed against {@link AgentStateSnapshot} rather than LangGraph's `StateSnapshot`: this file is the
+// projection onto the wire, and every field it reads is one the structural type already names. A
+// `StateSnapshot` is assignable to it, so LangGraph keeps flowing through unchanged.
 
-import type { StateSnapshot } from "@langchain/langgraph";
 import type {
   Checkpoint,
   DefaultValues,
@@ -16,37 +19,37 @@ import type {
   ThreadUpdate,
 } from "@skein-js/core";
 
+import type { AgentStateSnapshot, AgentStateTask } from "../graphs/agent-graph.js";
 import { threadStatusForRun } from "../runs/run-status.js";
 
-/** True if the graph paused with work still to do — i.e. it hit an interrupt and awaits resume. */
-export function isInterruptedSnapshot(snapshot: StateSnapshot): boolean {
+/** True if the agent paused with work still to do — i.e. it hit an interrupt and awaits resume. */
+export function isInterruptedSnapshot(snapshot: AgentStateSnapshot): boolean {
   return snapshot.next.length > 0;
 }
 
 /**
  * Pending interrupts keyed by the task that raised them, matching the wire `Thread.interrupts`
- * shape. LangGraph's runtime `Interrupt` (`{ id?, value? }`) is structurally carried through as the
- * wire type — clients read `value` (and `id`); the extra `when` the SDK type names is not populated
- * by the platform either.
+ * shape. A runtime `Interrupt` (`{ id?, value? }`) is carried through as the wire type — clients read
+ * `value` (and `id`); the extra `when` the SDK type names is not populated by the platform either.
  */
-export function collectInterrupts(snapshot: StateSnapshot): Record<string, Interrupt[]> {
+export function collectInterrupts(snapshot: AgentStateSnapshot): Record<string, Interrupt[]> {
   const byTask: Record<string, Interrupt[]> = {};
   for (const task of snapshot.tasks) {
     if (task.interrupts && task.interrupts.length > 0) {
-      byTask[task.id] = task.interrupts as unknown as Interrupt[];
+      byTask[task.id] = [...task.interrupts];
     }
   }
   return byTask;
 }
 
 /** The terminal run status implied by a completed stream: `interrupted` if it paused, else success. */
-export function runStatusForSnapshot(snapshot: StateSnapshot): RunStatus {
+export function runStatusForSnapshot(snapshot: AgentStateSnapshot): RunStatus {
   return isInterruptedSnapshot(snapshot) ? "interrupted" : "success";
 }
 
 /** Build the thread patch that mirrors a snapshot for a run that ended in `runStatus`. */
 export function snapshotToThreadUpdate(
-  snapshot: StateSnapshot,
+  snapshot: AgentStateSnapshot,
   runStatus: RunStatus,
 ): ThreadUpdate {
   return {
@@ -57,7 +60,7 @@ export function snapshotToThreadUpdate(
 }
 
 /** The checkpoint coordinates carried in a snapshot's `configurable`, or null if not checkpointed. */
-function toCheckpoint(config: StateSnapshot["config"] | undefined): Checkpoint | null {
+function toCheckpoint(config: AgentStateSnapshot["config"] | undefined): Checkpoint | null {
   const configurable = config?.configurable;
   if (!configurable) return null;
   const threadId = configurable["thread_id"];
@@ -89,20 +92,20 @@ function toTaskError(error: unknown): string | null {
   }
 }
 
-function toThreadTask(task: StateSnapshot["tasks"][number]): ThreadTask {
+function toThreadTask(task: AgentStateTask): ThreadTask {
   return {
     id: task.id,
     name: task.name,
     result: task.result,
     error: toTaskError(task.error),
-    interrupts: (task.interrupts ?? []) as unknown as Interrupt[],
+    interrupts: [...(task.interrupts ?? [])],
     checkpoint: null,
     state: null,
   };
 }
 
-/** Map a LangGraph state snapshot to the wire {@link ThreadState} used by `/threads/{id}/history`. */
-export function snapshotToThreadState(snapshot: StateSnapshot): ThreadState {
+/** Map an agent state snapshot to the wire {@link ThreadState} used by `/threads/{id}/history`. */
+export function snapshotToThreadState(snapshot: AgentStateSnapshot): ThreadState {
   return {
     values: snapshot.values as DefaultValues,
     next: [...snapshot.next],

@@ -1,7 +1,7 @@
 // Hermetic unit tests for the research agent's building blocks — no model, no API key, no network.
 // The live-model behavior (thinking, tool orchestration) is covered by server.test.ts under a key.
 
-import { SkeinBaseStore } from "@skein-js/agent-protocol";
+import { SkeinBaseStore } from "@skein-js/langgraph";
 import { MemorySkeinStore } from "@skein-js/storage-memory";
 import { describe, expect, it } from "vitest";
 

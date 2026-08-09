@@ -40,6 +40,7 @@ const DOCS = [
   "docs/recipes/memory.md",
   "docs/recipes/production.md",
   "docs/building-an-adapter.md",
+  "docs/building-a-runner.md",
   "docs/deploy.md",
   "docs/performance.md",
   "docs/profiling.md",

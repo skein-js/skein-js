@@ -135,6 +135,9 @@ importers:
       '@skein-js/agent-protocol':
         specifier: workspace:*
         version: link:../../packages/agent-protocol
+      '@skein-js/langgraph':
+        specifier: workspace:*
+        version: link:../../packages/langgraph
       '@skein-js/storage-memory':
         specifier: workspace:*
         version: link:../../packages/storage-memory
@@ -478,6 +481,9 @@ importers:
       '@skein-js/agent-protocol':
         specifier: workspace:*
         version: link:../../packages/agent-protocol
+      '@skein-js/langgraph':
+        specifier: workspace:*
+        version: link:../../packages/langgraph
       '@skein-js/nextjs':
         specifier: workspace:*
         version: link:../../packages/server-nextjs
@@ -747,9 +753,6 @@ importers:
 
   packages/core:
     dependencies:
-      '@langchain/langgraph':
-        specifier: ^1.4.0
-        version: 1.4.7(@langchain/core@1.2.2(@opentelemetry/api@1.9.1)(ws@8.21.0))(react-dom@19.2.6(react@19.2.6))(react@19.2.6)(vue@3.5.41(typescript@5.9.3))(zod@3.25.76)
       '@langchain/langgraph-sdk':
         specifier: ^1.9.0
         version: 1.9.25(@langchain/core@1.2.2(@opentelemetry/api@1.9.1)(ws@8.21.0))(react-dom@19.2.6(react@19.2.6))(react@19.2.6)(vue@3.5.41(typescript@5.9.3))
@@ -770,6 +773,22 @@ importers:
         specifier: ^3.1.5
         version: 3.1.5
 
+  packages/langgraph:
+    dependencies:
+      '@langchain/langgraph':
+        specifier: ^1.4.0
+        version: 1.4.7(@langchain/core@1.2.2(@opentelemetry/api@1.9.1)(ws@8.21.0))(react-dom@19.2.6(react@19.2.6))(react@19.2.6)(vue@3.5.41(typescript@5.9.3))(zod@3.25.76)
+      '@skein-js/agent-protocol':
+        specifier: workspace:*
+        version: link:../agent-protocol
+      '@skein-js/core':
+        specifier: workspace:*
+        version: link:../core
+    devDependencies:
+      '@skein-js/storage-memory':
+        specifier: workspace:*
+        version: link:../storage-memory
+
   packages/runtime:
     dependencies:
       '@skein-js/agent-protocol':
@@ -778,6 +797,9 @@ importers:
       '@skein-js/config':
         specifier: workspace:*
         version: link:../config
+      '@skein-js/langgraph':
+        specifier: workspace:*
+        version: link:../langgraph
       '@skein-js/redis':
         specifier: workspace:*
         version: link:../runtime-redis
@@ -859,6 +881,9 @@ importers:
       '@langchain/langgraph':
         specifier: ^1.4.0
         version: 1.4.7(@langchain/core@1.2.2(@opentelemetry/api@1.9.1)(ws@8.21.0))(react-dom@19.2.6(react@19.2.6))(react@19.2.6)(vue@3.5.41(typescript@5.9.3))(zod@3.25.76)
+      '@skein-js/langgraph':
+        specifier: workspace:*
+        version: link:../langgraph
       '@skein-js/storage-memory':
         specifier: workspace:*
         version: link:../storage-memory
@@ -893,6 +918,9 @@ importers:
       '@langchain/langgraph':
         specifier: ^1.4.0
         version: 1.4.7(@langchain/core@1.2.2(@opentelemetry/api@1.9.1)(ws@8.21.0))(react-dom@19.2.6(react@19.2.6))(react@19.2.6)(vue@3.5.41(typescript@5.9.3))(zod@3.25.76)
+      '@skein-js/langgraph':
+        specifier: workspace:*
+        version: link:../langgraph
       '@skein-js/storage-memory':
         specifier: workspace:*
         version: link:../storage-memory
@@ -927,6 +955,9 @@ importers:
       '@skein-js/core':
         specifier: workspace:*
         version: link:../core
+      '@skein-js/langgraph':
+        specifier: workspace:*
+        version: link:../langgraph
       '@skein-js/storage-memory':
         specifier: workspace:*
         version: link:../storage-memory
@@ -977,6 +1008,9 @@ importers:
       '@nestjs/platform-express':
         specifier: ^11.0.0
         version: 11.1.28(@nestjs/common@11.1.24(reflect-metadata@0.2.2)(rxjs@7.8.2))(@nestjs/core@11.1.24)
+      '@skein-js/langgraph':
+        specifier: workspace:*
+        version: link:../langgraph
       '@skein-js/storage-memory':
         specifier: workspace:*
         version: link:../storage-memory
@@ -1008,6 +1042,9 @@ importers:
       '@langchain/langgraph':
         specifier: ^1.4.0
         version: 1.4.7(@langchain/core@1.2.2(@opentelemetry/api@1.9.1)(ws@8.21.0))(react-dom@19.2.6(react@19.2.6))(react@19.2.6)(vue@3.5.41(typescript@5.9.3))(zod@3.25.76)
+      '@skein-js/langgraph':
+        specifier: workspace:*
+        version: link:../langgraph
       '@skein-js/storage-memory':
         specifier: workspace:*
         version: link:../storage-memory

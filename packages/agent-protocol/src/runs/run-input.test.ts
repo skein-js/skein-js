@@ -1,4 +1,6 @@
 import { isCommand } from "@langchain/langgraph";
+
+import { isAgentCommand } from "../graphs/agent-command.js";
 import { describe, expect, it } from "vitest";
 
 import {
@@ -32,9 +34,15 @@ describe("normalizeModes", () => {
 });
 
 describe("toGraphInput", () => {
-  it("builds a Command when the run carries one", () => {
+  // The engine emits a branded *envelope*, not a runtime's command type — building a LangGraph
+  // `Command` here would be a value import of `@langchain/langgraph`, which is what keeps a graph
+  // runtime out of this package's install. `@skein-js/langgraph` translates it.
+  it("carries a command as an envelope the binding can translate", () => {
     const input = toGraphInput({ command: { resume: "yes" } });
-    expect(isCommand(input)).toBe(true);
+    expect(isAgentCommand(input)).toBe(true);
+    expect(input).toMatchObject({ resume: "yes" });
+    // Emphatically NOT a LangGraph Command.
+    expect(isCommand(input)).toBe(false);
   });
 
   it("passes input through, defaulting to null", () => {

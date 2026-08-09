@@ -1,9 +1,9 @@
-// Best-effort extraction of run activity — tool calls, tool results, and interrupts — from LangGraph
+// Best-effort extraction of run activity — tool calls, tool results, and interrupts — from an agent's
 // stream chunks and state snapshots, for the dev server's `--verbose` logging. It must NEVER throw
 // (logging can't be allowed to perturb a run) and it stays conservative: it reports only what it can
 // positively identify, since chunk shapes differ by stream mode.
 
-import type { StateSnapshot } from "@langchain/langgraph";
+import type { AgentStateSnapshot } from "../graphs/agent-graph.js";
 
 /** A tool invocation or result seen in the stream: the tool name and, when present, its call id. */
 export interface ToolActivity {
@@ -90,13 +90,13 @@ export function extractToolActivity(data: unknown): {
  * The error object itself never names the node: LangGraph's `PregelRunner` rethrows a node's error
  * verbatim, and its own `NodeError` (which does carry `.node`) is only ever handed to a per-node
  * `errorHandler`, never thrown out of the graph. What the runner *does* do is record an `__error__`
- * write against the failing task, which surfaces on `StateSnapshot.tasks[].error` next to the task's
+ * write against the failing task, which surfaces on `AgentStateSnapshot.tasks[].error` next to the task's
  * name — so the snapshot taken after the failure is the one reliable source.
  *
  * Best-effort, and honest about it: returns `[]` when the graph failed before any task ran, and
  * names the *parent* node when the failure happened inside a subgraph. Never throws.
  */
-export function describeFailingNodes(snapshot: StateSnapshot): string[] {
+export function describeFailingNodes(snapshot: AgentStateSnapshot): string[] {
   const names: string[] = [];
   try {
     for (const task of snapshot.tasks ?? []) {
@@ -110,7 +110,7 @@ export function describeFailingNodes(snapshot: StateSnapshot): string[] {
 }
 
 /** The interrupt prompts a paused snapshot is waiting on, as short strings (best-effort). */
-export function describeInterrupts(snapshot: StateSnapshot): string[] {
+export function describeInterrupts(snapshot: AgentStateSnapshot): string[] {
   const prompts: string[] = [];
   try {
     for (const task of snapshot.tasks ?? []) {

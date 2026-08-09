@@ -189,6 +189,7 @@ export default defineConfig({
           { text: "Streaming", link: "/streaming" },
           { text: "Frontend SDKs & useStream", link: "/react-sdk" },
           { text: "Building an adapter", link: "/building-an-adapter" },
+          { text: "Building a runner", link: "/building-a-runner" },
         ],
       },
       {

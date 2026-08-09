@@ -10,7 +10,6 @@
 //      So whichever of {engine finishes, cancel/timeout fires} lands first wins; the other no-ops.
 // The `finally` block always closes the bus, so every subscriber's stream terminates.
 
-import type { CompiledGraph, StateSnapshot } from "@langchain/langgraph";
 import {
   isTerminalRunStatus,
   runError,
@@ -29,6 +28,11 @@ import {
 } from "@skein-js/core";
 
 import { isNoopLogger, type ResolvedDeps } from "../deps.js";
+import {
+  requireAgentCapability,
+  type AgentGraph,
+  type AgentStateSnapshot,
+} from "../graphs/agent-graph.js";
 import { resolveCompiledGraph } from "../graphs/resolve-compiled-graph.js";
 import {
   chunkToFrameBody,
@@ -114,9 +118,6 @@ export interface RunOutcome {
   error?: RunError;
 }
 
-type StreamOptions = Parameters<CompiledGraph<string>["stream"]>[1];
-type StreamEventsOptions = Parameters<CompiledGraph<string>["streamEvents"]>[1];
-
 /**
  * Resolve an assistant's graph for this run. Delegates to the shared resolver (which attaches the
  * checkpointer and long-term store); the run-specific part is exposing the authenticated caller to a
@@ -127,11 +128,11 @@ async function resolveGraph(
   deps: ResolvedDeps,
   graphId: string,
   kwargs: RunKwargs,
-): Promise<CompiledGraph<string>> {
+): Promise<AgentGraph> {
   return resolveCompiledGraph(deps.graphs, graphId, {
     configurable: toFactoryConfigurable(kwargs),
     checkpointer: deps.checkpointer,
-    store: deps.store.store,
+    store: deps.storeBridge?.(deps.store.store),
   });
 }
 
@@ -209,7 +210,7 @@ async function mirrorThreadError(
  * simply yields nothing. Reporting must never turn one failure into two.
  */
 async function readFailingNodes(
-  graph: CompiledGraph<string> | undefined,
+  graph: AgentGraph | undefined,
   threadId: string,
 ): Promise<string[]> {
   if (!graph) return [];
@@ -237,7 +238,7 @@ export async function executeRun(deps: ResolvedDeps, exec: RunExecution): Promis
   let outcome: RunOutcome = { status: "error", values: {} as DefaultValues };
   let webhookErrorMessage: string | undefined;
   // Hoisted out of the `try` so the catch can take a post-mortem snapshot to name the failing node.
-  let graph: CompiledGraph<string> | undefined;
+  let graph: AgentGraph | undefined;
   // Telemetry, all hoisted so the `finally` can close the span the `try` opened. The context needs
   // the assistant's graph id, so it only exists once the assistant has loaded — and `run.finished`
   // is gated on it, so the two events are always emitted as a pair. A run that fails its
@@ -349,11 +350,16 @@ export async function executeRun(deps: ResolvedDeps, exec: RunExecution): Promis
         // `on_chain_stream` chunks become mode frames, everything else becomes an `events` frame.
         // `runId` tags the root run so the demux can tell this run's stream chunks from a subgraph's.
         const graphModes = toGraphStreamModes(kwargs.stream_mode);
-        const eventStream = activeGraph.streamEvents(input, {
-          ...options,
-          version: "v2",
-          runId,
-        } as unknown as StreamEventsOptions) as unknown as AsyncIterable<GraphStreamEvent>;
+        // `events` mode needs `streamEvents`; an agent without it gets a handled 422 rather
+        // than an unhandled TypeError. LangGraph always implements it.
+        const eventStream = requireAgentCapability(activeGraph, "streamEvents").streamEvents(
+          input,
+          {
+            ...options,
+            version: "v2",
+            runId,
+          },
+        ) as AsyncIterable<GraphStreamEvent>;
         for await (const event of eventStream) {
           const body = streamEventToFrameBody(event, runId, graphModes);
           if (!body) continue;
@@ -362,7 +368,7 @@ export async function executeRun(deps: ResolvedDeps, exec: RunExecution): Promis
           if (deps.logRunActivity) logToolActivity(body.data);
         }
       } else {
-        const stream = await activeGraph.stream(input, options as unknown as StreamOptions);
+        const stream = await activeGraph.stream(input, options);
         for await (const chunk of stream) {
           seq += 1;
           const body = chunkToFrameBody(chunk);
@@ -392,7 +398,7 @@ export async function executeRun(deps: ResolvedDeps, exec: RunExecution): Promis
     }
 
     // Classify from the authoritative snapshot, not the stream: paused -> interrupted, else success.
-    const snapshot: StateSnapshot = await activeGraph.getState({
+    const snapshot: AgentStateSnapshot = await activeGraph.getState({
       configurable: { thread_id: threadId },
     });
     const computed = runStatusForSnapshot(snapshot);

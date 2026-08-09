@@ -1,0 +1,57 @@
+{
+  "name": "@skein-js/langgraph",
+  "version": "0.14.1",
+  "description": "The LangGraph.js binding for @skein-js/agent-protocol — wraps a compiled graph as an AgentGraph.",
+  "license": "Apache-2.0",
+  "author": "Maina Wycliffe <wmmaina7@gmail.com>",
+  "homepage": "https://github.com/skein-js/skein-js/tree/main/packages/langgraph#readme",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/skein-js/skein-js.git",
+    "directory": "packages/langgraph"
+  },
+  "bugs": {
+    "url": "https://github.com/skein-js/skein-js/issues"
+  },
+  "keywords": [
+    "typescript",
+    "langgraph",
+    "agent-protocol",
+    "agents",
+    "llm",
+    "ai"
+  ],
+  "type": "module",
+  "main": "./dist/index.js",
+  "module": "./dist/index.js",
+  "types": "./dist/index.d.ts",
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "import": "./dist/index.js",
+      "default": "./dist/index.js"
+    }
+  },
+  "files": [
+    "dist",
+    "LICENSE",
+    "README.md"
+  ],
+  "sideEffects": false,
+  "engines": {
+    "node": ">=20"
+  },
+  "dependencies": {
+    "@skein-js/agent-protocol": "workspace:*",
+    "@skein-js/core": "workspace:*"
+  },
+  "peerDependencies": {
+    "@langchain/langgraph": "^1.4.0"
+  },
+  "publishConfig": {
+    "access": "public"
+  },
+  "devDependencies": {
+    "@skein-js/storage-memory": "workspace:*"
+  }
+}

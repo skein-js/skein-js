@@ -30,7 +30,8 @@
       "@skein-js/otel": ["packages/telemetry-otel/src/index.ts"],
       "@skein-js/bench": ["packages/bench/src/index.ts"],
       "@skein-js/fetch": ["packages/server-fetch/src/index.ts"],
-      "@skein-js/console": ["packages/console/src/index.ts"]
+      "@skein-js/console": ["packages/console/src/index.ts"],
+      "@skein-js/langgraph": ["packages/langgraph/src/index.ts"]
     }
   },
   "exclude": ["node_modules", "dist"]

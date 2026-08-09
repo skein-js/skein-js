@@ -4,7 +4,6 @@
 // `GraphRegistry` structurally satisfies `GraphResolver`, but we depend on the minimal interface so
 // this package never has to know `@skein-js/config` exists.
 
-import type { BaseCheckpointSaver, CompiledGraph } from "@langchain/langgraph";
 import {
   anySinkWantsRunEvents,
   combineTelemetrySinks,
@@ -20,16 +19,30 @@ import {
   type TelemetrySink,
 } from "@skein-js/core";
 
+import type { AgentGraph, AgentGraphFactory } from "./graphs/agent-graph.js";
+import type { ThreadCheckpointer } from "./graphs/thread-checkpointer.js";
 import type { IdempotencyConfig } from "./idempotency/idempotency-config.js";
 import { withStoreItems } from "./store/with-store-items.js";
 
-/** A factory export: called (optionally with per-run config) to produce a compiled graph. */
-export type CompiledGraphFactory = (config: {
-  configurable?: Record<string, unknown>;
-}) => CompiledGraph<string> | Promise<CompiledGraph<string>>;
+/**
+ * A factory export: called (optionally with per-run config) to produce a graph.
+ *
+ * @deprecated Renamed to {@link AgentGraphFactory} — the engine drives an `AgentGraph`, which a
+ * LangGraph `CompiledGraph` satisfies structurally. Kept as an alias; slated for removal in a future
+ * major.
+ */
+export type CompiledGraphFactory = AgentGraphFactory;
 
-/** A resolved graph: either a compiled graph or a factory that produces one per config. */
-export type ResolvedGraph = CompiledGraph<string> | CompiledGraphFactory;
+/**
+ * A resolved agent: a compiled graph, a plain {@link AgentGraph}, or a factory producing either.
+ *
+ * `AgentGraph` is the structural name for what skein actually calls. A LangGraph `CompiledGraph`
+ * satisfies it by construction (asserted in `graphs/agent-graph.test.ts`), so this covers the old
+ * `CompiledGraph<string> | CompiledGraphFactory` union without naming either — which is what keeps
+ * `@langchain/langgraph` out of this package's generated `.d.ts`, not just out of its runtime graph.
+ * Every existing `GraphResolver`, including `@skein-js/config`'s `GraphRegistry`, keeps compiling.
+ */
+export type ResolvedGraph = AgentGraph | AgentGraphFactory;
 
 /** JSON schemas extracted from a graph (and any subgraphs), keyed by subgraph namespace. */
 export type GraphSchemas = Record<string, GraphSchema>;
@@ -112,8 +125,46 @@ export interface ProtocolDeps {
    * `@skein-js/storage-postgres` provides `createPostgresThreadExecutionGate`.
    */
   threadExecutionGate?: ThreadExecutionGate;
-  /** LangGraph checkpointer — owns graph state, history, and interrupt/resume. */
-  checkpointer: BaseCheckpointSaver;
+  /**
+   * Owns graph state, history, and interrupt/resume.
+   *
+   * Typed structurally ({@link ThreadCheckpointer}) rather than as LangGraph's `BaseCheckpointSaver`,
+   * which is an abstract class no hand-written stand-in can satisfy without a cast. A real
+   * `BaseCheckpointSaver` still satisfies it, so this is additive.
+   */
+  checkpointer: ThreadCheckpointer;
+  /**
+   * Bridges the long-term-memory repo into whatever store type the agent runtime expects, so nodes
+   * reach cross-thread memory the runtime-native way (LangGraph: `getStore()`).
+   *
+   * A **function**, not an interface, and injected rather than imported: building a LangGraph
+   * `BaseStore` means `class SkeinBaseStore extends BaseStore`, a *value* import of
+   * `@langchain/langgraph` — which is precisely what would put a graph runtime back into this
+   * package's install. `@skein-js/langgraph` supplies one; every on-ramp wires it. Absent means no
+   * store is attached, which is correct for a runtime that has no such concept.
+   *
+   * Called per run with the effective repo, so a `storeItems` override is honoured.
+   */
+  storeBridge?: (store: StoreRepo) => unknown;
+  /**
+   * Builds a **throwaway** checkpointer for one `POST /invoke/{graph_id}` call, so a graph that needs
+   * one runs while nothing persists.
+   *
+   * Cannot reuse {@link checkpointer}: that one is durable, and the invoke surface's whole contract is
+   * that a call leaves no thread behind. Injected for the same reason as {@link storeBridge} — the
+   * only in-tree implementation is `new MemorySaver()`, a value import of `@langchain/langgraph`.
+   * Absent means no checkpointer is attached, which is correct for an agent that needs none.
+   */
+  ephemeralCheckpointer?: () => unknown;
+  /**
+   * Clones a checkpoint before it is re-put under another thread id (`POST /threads/{id}/copy`,
+   * `keep_latest` prune, `rollback`).
+   *
+   * Injected for the same reason as {@link storeBridge}: LangGraph's `copyCheckpoint` is a *value*
+   * import, and it was the last one keeping a graph runtime in this package's install. Absent means
+   * the checkpoint is re-put as-is, which is correct whenever `put` does not retain what it is given.
+   */
+  cloneCheckpoint?: (checkpoint: unknown) => unknown;
   /**
    * skein's own version, reported by `GET /info`. Absent when the host does not know or does not care.
    *

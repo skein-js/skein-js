@@ -8,7 +8,6 @@
 // itself lives in the store (both drivers, one conformance suite); this service stays thin — it adds
 // `if_exists`, the `delete_threads` cascade, and compiling a graph for introspection.
 
-import type { CompiledGraph } from "@langchain/langgraph";
 import {
   type AuthFilters,
   isSkeinHttpError,
@@ -26,6 +25,7 @@ import {
 import { authFiltersToMetadataSubset } from "../auth/auth-filters-to-metadata.js";
 import type { ProtocolContext } from "../context.js";
 import type { GraphSchemas } from "../deps.js";
+import { requireAgentCapability, type AgentGraph } from "../graphs/agent-graph.js";
 import { collectPages } from "../store/collect-pages.js";
 import type { ThreadService } from "../threads/thread-service.js";
 
@@ -163,7 +163,7 @@ export function createAssistantService(
 
   // Compile the assistant's graph for introspection (draw/subgraphs). A factory export is built with
   // the assistant's own `configurable`, exactly as the run engine does, so its shape matches a run's.
-  const compileGraph = async (assistant: Assistant): Promise<CompiledGraph<string>> => {
+  const compileGraph = async (assistant: Assistant): Promise<AgentGraph> => {
     const resolved = await deps.graphs.load(assistant.graph_id);
     return typeof resolved === "function"
       ? await resolved(factoryConfigurable(assistant.config))
@@ -261,17 +261,17 @@ export function createAssistantService(
 
     async drawGraph(assistantId, options) {
       const assistant = await requireAssistant(assistantId);
-      const graph = await compileGraph(assistant);
+      const graph = requireAgentCapability(await compileGraph(assistant), "getGraphAsync");
       const drawable = await graph.getGraphAsync({
         ...(assistant.config ?? {}),
         xray: options?.xray,
-      } as Parameters<CompiledGraph<string>["getGraphAsync"]>[0]);
+      });
       return drawable.toJSON() as AssistantGraph;
     },
 
     async subgraphs(assistantId, options) {
       const assistant = await requireAssistant(assistantId);
-      const graph = await compileGraph(assistant);
+      const graph = requireAgentCapability(await compileGraph(assistant), "getSubgraphsAsync");
       const schemas = await deps.graphs.schemas(assistant.graph_id);
       // Schemas are keyed by the root graph id (no `|`) and `${rootGraphId}|${namespace}` per
       // subgraph — mirror @langchain/langgraph-api's lookup. Iterating the compiled graph's actual

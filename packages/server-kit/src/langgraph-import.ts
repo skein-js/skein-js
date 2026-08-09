@@ -20,12 +20,8 @@
 import { readFile } from "node:fs/promises";
 import path from "node:path";
 
-import {
-  MemorySaver,
-  type BaseCheckpointSaver,
-  type CheckpointMetadata,
-  type CheckpointTuple,
-} from "@langchain/langgraph";
+import { MemorySaver, type CheckpointMetadata, type CheckpointTuple } from "@langchain/langgraph";
+import type { ThreadCheckpointer } from "@skein-js/agent-protocol";
 import {
   isTerminalRunStatus,
   type Assistant,
@@ -397,10 +393,12 @@ function supportsRestore(store: SkeinStore): store is SkeinStore & BulkRestorabl
 }
 
 /** Copy every checkpoint tuple from `snapshot` into `target` via the public checkpointer API,
- * so it works against any `BaseCheckpointSaver` (e.g. `PostgresSaver`), not just a `MemorySaver`. */
+ * so it works against any checkpointer (e.g. `PostgresSaver`), not just a `MemorySaver`. Typed as
+ * `ThreadCheckpointer` — the structural surface `ProtocolDeps.checkpointer` now carries — so the CLI
+ * can hand `runtime.deps.checkpointer` straight in without a cast. */
 async function copyCheckpoints(
   snapshot: CheckpointerSnapshot,
-  target: BaseCheckpointSaver,
+  target: ThreadCheckpointer,
 ): Promise<void> {
   const source = new MemorySaver();
   hydrateCheckpointer(source, snapshot);
@@ -449,7 +447,7 @@ async function copyCheckpoints(
 export async function loadSnapshotIntoStore(
   snapshot: DevStateSnapshot,
   store: SkeinStore,
-  checkpointer: BaseCheckpointSaver,
+  checkpointer: ThreadCheckpointer,
 ): Promise<void> {
   if (!supportsRestore(store)) {
     throw new Error(

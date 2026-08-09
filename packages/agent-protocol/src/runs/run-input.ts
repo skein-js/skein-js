@@ -1,9 +1,10 @@
-// Translate a stored `RunKwargs` into the two things LangGraph needs: the graph *input* (a value,
-// or a `Command` when resuming) and the *call options* (thread-scoped config, stream modes, abort
+// Translate a stored `RunKwargs` into the two things an agent needs: the *input* (a value, or a
+// command envelope when resuming) and the *call options* (thread-scoped config, stream modes, abort
 // signal). Kept separate from the engine so the mapping is easy to test on its own.
 
-import { Command, type CommandParams } from "@langchain/langgraph";
 import type { AuthUser, RunKwargs, StreamMode } from "@skein-js/core";
+
+import { agentCommand } from "../graphs/agent-command.js";
 
 /** SDK stream modes mapped to the graph's stream vocabulary. */
 function toGraphMode(mode: StreamMode): StreamMode {
@@ -38,13 +39,16 @@ export function toGraphStreamModes(mode?: StreamMode | StreamMode[]): StreamMode
   return normalizeModes(mode).filter((m) => m !== "events");
 }
 
-/** The graph input for this run: a `Command` when resuming/commanding, else the raw input (or null). */
+/**
+ * The input for this run: a command **envelope** when resuming/commanding, else the raw input (or
+ * null).
+ *
+ * The envelope is carried, not interpreted. Constructing a runtime's own command type (LangGraph's
+ * `Command`) here would be a value import of that runtime — see `graphs/agent-command.ts`. The
+ * binding translates it: `@skein-js/langgraph`'s `langGraphAgent`.
+ */
 export function toGraphInput(kwargs: RunKwargs): unknown {
-  if (kwargs.command) {
-    // The protocol's command is a looser shape than LangGraph's `CommandParams`; the runtime
-    // accepts the same fields, so we hand it through as the constructor params.
-    return new Command(kwargs.command as CommandParams);
-  }
+  if (kwargs.command) return agentCommand(kwargs.command);
   return kwargs.input ?? null;
 }
 

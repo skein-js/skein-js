@@ -13,6 +13,7 @@ import type {
   ProtocolDeps,
   ResolvedGraph,
 } from "@skein-js/agent-protocol";
+import { cloneLangGraphCheckpoint, langGraphResolver, SkeinBaseStore } from "@skein-js/langgraph";
 import { MemoryRunEventBus, MemoryRunQueue, MemorySkeinStore } from "@skein-js/storage-memory";
 
 import { resolveMaxPageSize } from "./max-page-size.js";
@@ -56,7 +57,12 @@ function isGraphResolver(
 export function normalizeEmbeddableGraphs(
   graphs: GraphResolver | Record<string, EmbeddableGraph>,
 ): GraphResolver {
-  return isGraphResolver(graphs) ? graphs : graphMapToResolver(graphs);
+  // Both branches are wrapped. A caller-supplied resolver used to be passed through untouched, on the
+  // theory that it might front a non-LangGraph agent — but that silently broke HITL resume for the
+  // documented `embedInMemoryGraphs(myResolver)` / `embedPostgresGraphs(myResolver)` on-ramps: the
+  // command envelope reached a real graph untranslated and the resume became a no-op with no error.
+  // `langGraphResolver` now decides per graph (`isLangGraphCompiled`), so wrapping is safe for both.
+  return langGraphResolver(isGraphResolver(graphs) ? graphs : graphMapToResolver(graphs));
 }
 
 /**
@@ -121,6 +127,13 @@ export function embedInMemoryGraphs(
     // the driver set a long-lived single-process deployment actually runs on.
     bus: new MemoryRunEventBus(resolveMemoryBusLimits()),
     checkpointer: new MemorySaver(),
+    // Bridges long-term memory into a LangGraph `BaseStore` so nodes reach it via `getStore()`. A
+    // function on deps rather than an import inside the engine — see `ProtocolDeps.storeBridge`.
+    storeBridge: (store) => new SkeinBaseStore(store),
+    // Throwaway saver for `POST /invoke/:graph_id` — see `ProtocolDeps.ephemeralCheckpointer`.
+    ephemeralCheckpointer: () => new MemorySaver(),
+    // Clones a checkpoint before it is re-put under another thread id — see `ProtocolDeps.cloneCheckpoint`.
+    cloneCheckpoint: cloneLangGraphCheckpoint,
     ...overrides,
   };
 }

@@ -18,6 +18,7 @@ import {
   type LanggraphJson,
   type ModuleImporter,
 } from "@skein-js/config";
+import { langGraphResolver } from "@skein-js/langgraph";
 import { MemoryRunEventBus, MemoryRunQueue, MemorySkeinStore } from "@skein-js/storage-memory";
 import type { CorsOptions } from "cors";
 
@@ -69,7 +70,7 @@ export async function loadInMemoryRuntime(
     importModule,
     staticSchemas,
   });
-  const deps = embedInMemoryGraphs(toGraphResolver(graphs));
+  const deps = embedInMemoryGraphs(langGraphResolver(toGraphResolver(graphs)));
   deps.auth = await loadAuthEngine(config.auth, { configDir, importModule });
   return {
     deps,
@@ -121,11 +122,13 @@ export async function loadReloadableInMemoryRuntime(
   let current: GraphRegistry = first.graphs;
 
   // The resolver delegates to `current` on every call, so swapping it below reroutes future loads.
-  const graphs: GraphResolver = {
+  // Wrapped, because these graphs come from `langgraph.json` and are therefore LangGraph graphs: the
+  // engine emits a command envelope and the binding is what turns it back into a `Command`.
+  const graphs: GraphResolver = langGraphResolver({
     ids: first.graphs.ids,
     load: (graphId) => current.load(graphId),
     schemas: async (graphId) => (await current.schemas(graphId)) as unknown as GraphSchemas,
-  };
+  });
 
   // Hold the concrete drivers so their state can be snapshot/restored for cross-restart persistence.
   //

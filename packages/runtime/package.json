@@ -44,6 +44,7 @@
   "dependencies": {
     "@skein-js/agent-protocol": "workspace:*",
     "@skein-js/config": "workspace:*",
+    "@skein-js/langgraph": "workspace:*",
     "@skein-js/redis": "workspace:*",
     "@skein-js/server-kit": "workspace:*",
     "@skein-js/storage-memory": "workspace:*",

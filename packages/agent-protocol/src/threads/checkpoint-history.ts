@@ -4,21 +4,29 @@
 // "rollback"`). Both keep to the `BaseCheckpointSaver` surface (`list`/`put`/`putWrites`/
 // `deleteThread`); skein keys checkpoints by `thread_id` only (namespace `""`).
 
-import {
-  copyCheckpoint,
-  type BaseCheckpointSaver,
-  type CheckpointMetadata,
-  type CheckpointTuple,
-} from "@langchain/langgraph";
+import type { ThreadCheckpointer, ThreadCheckpointTuple } from "../graphs/thread-checkpointer.js";
+
+/**
+ * Clone a checkpoint before re-putting it under another thread id.
+ *
+ * Injected (`ProtocolDeps.cloneCheckpoint`) rather than imported: LangGraph's `copyCheckpoint` is a
+ * *value* import, and it was the last one keeping a graph runtime in this package's install. The
+ * fallback is identity — correct whenever a checkpointer's `put` does not retain the object it is
+ * given, and the only behaviour available to a runtime that ships no cloner.
+ */
+export type CloneCheckpoint = (checkpoint: unknown) => unknown;
+
+const passThrough: CloneCheckpoint = (checkpoint) => checkpoint;
 
 /**
  * Write `tuples` (oldest-first) under `targetId`. Each checkpoint is re-put with its parent link, and
  * its pending writes are re-applied grouped by task — the same shape LangGraph persisted them in.
  */
 async function replayCheckpoints(
-  checkpointer: BaseCheckpointSaver,
+  checkpointer: ThreadCheckpointer,
   targetId: string,
-  tuples: CheckpointTuple[],
+  tuples: ThreadCheckpointTuple[],
+  cloneCheckpoint: CloneCheckpoint,
 ): Promise<void> {
   for (const tuple of tuples) {
     const ns = (tuple.config.configurable?.checkpoint_ns as string | undefined) ?? "";
@@ -28,8 +36,8 @@ async function replayCheckpoints(
     };
     await checkpointer.put(
       putConfig,
-      copyCheckpoint(tuple.checkpoint),
-      tuple.metadata ?? ({} as CheckpointMetadata),
+      cloneCheckpoint(tuple.checkpoint) as typeof tuple.checkpoint,
+      tuple.metadata ?? {},
       tuple.checkpoint.channel_versions,
     );
     if (tuple.pendingWrites && tuple.pendingWrites.length > 0) {
@@ -61,11 +69,11 @@ async function replayCheckpoints(
  * loop afterwards saves nothing.
  */
 async function listCheckpoints(
-  checkpointer: BaseCheckpointSaver,
+  checkpointer: ThreadCheckpointer,
   threadId: string,
   limit?: number,
-): Promise<CheckpointTuple[]> {
-  const tuples: CheckpointTuple[] = [];
+): Promise<ThreadCheckpointTuple[]> {
+  const tuples: ThreadCheckpointTuple[] = [];
   for await (const tuple of checkpointer.list(
     { configurable: { thread_id: threadId } },
     limit === undefined ? undefined : { limit },
@@ -82,12 +90,13 @@ async function listCheckpoints(
  * so each checkpoint's parent already exists when it lands.
  */
 export async function copyCheckpointHistory(
-  checkpointer: BaseCheckpointSaver,
+  checkpointer: ThreadCheckpointer,
   sourceId: string,
   targetId: string,
+  cloneCheckpoint: CloneCheckpoint = passThrough,
 ): Promise<void> {
   const tuples = await listCheckpoints(checkpointer, sourceId);
-  await replayCheckpoints(checkpointer, targetId, tuples.reverse());
+  await replayCheckpoints(checkpointer, targetId, tuples.reverse(), cloneCheckpoint);
 }
 
 /**
@@ -105,8 +114,9 @@ export async function copyCheckpointHistory(
  * the delete-and-replay anyway would risk its only checkpoint for no gain.
  */
 export async function pruneThreadCheckpointsToLatest(
-  checkpointer: BaseCheckpointSaver,
+  checkpointer: ThreadCheckpointer,
   threadId: string,
+  cloneCheckpoint: CloneCheckpoint = passThrough,
 ): Promise<boolean> {
   // Two tuples, not the whole history: all this needs is the keeper plus the answer to "is there more
   // than one?". Draining the history would re-introduce the unbounded read `rollbackThreadCheckpointsTo`
@@ -126,10 +136,10 @@ export async function pruneThreadCheckpointsToLatest(
   // **zero** checkpoints: its current state gone, not just its history, on a bulk endpoint that can be
   // pointed at a thousand threads. The insurance copy is removed on the way out.
   const scratchThreadId = `${threadId}::skein-prune`;
-  await replayCheckpoints(checkpointer, scratchThreadId, [rootedLatest]);
+  await replayCheckpoints(checkpointer, scratchThreadId, [rootedLatest], cloneCheckpoint);
   try {
     await checkpointer.deleteThread(threadId);
-    await replayCheckpoints(checkpointer, threadId, [rootedLatest]);
+    await replayCheckpoints(checkpointer, threadId, [rootedLatest], cloneCheckpoint);
   } catch (error) {
     // The scratch copy is deliberately left behind here: it is the only remaining copy of the state, and
     // the id is derived from the thread's own so an operator can find it. Recover with
@@ -157,9 +167,10 @@ export async function pruneThreadCheckpointsToLatest(
  * pruned), we leave the history untouched rather than risk destroying valid state.
  */
 export async function rollbackThreadCheckpointsTo(
-  checkpointer: BaseCheckpointSaver,
+  checkpointer: ThreadCheckpointer,
   threadId: string,
   baseCheckpointId: string | undefined,
+  cloneCheckpoint: CloneCheckpoint = passThrough,
 ): Promise<void> {
   if (baseCheckpointId === undefined) {
     await checkpointer.deleteThread(threadId);
@@ -171,7 +182,7 @@ export async function rollbackThreadCheckpointsTo(
   if (!byId.has(baseCheckpointId)) return; // base already gone — don't touch valid history
 
   // Walk parent links from the base to the root: the checkpoints that predate the displaced run.
-  const keep: CheckpointTuple[] = [];
+  const keep: ThreadCheckpointTuple[] = [];
   let cursor: string | undefined = baseCheckpointId;
   const seen = new Set<string>();
   while (cursor !== undefined && byId.has(cursor) && !seen.has(cursor)) {
@@ -182,5 +193,5 @@ export async function rollbackThreadCheckpointsTo(
   }
 
   await checkpointer.deleteThread(threadId);
-  await replayCheckpoints(checkpointer, threadId, keep.reverse());
+  await replayCheckpoints(checkpointer, threadId, keep.reverse(), cloneCheckpoint);
 }

@@ -49,6 +49,7 @@
     "@skein-js/agent-protocol": "workspace:*",
     "@skein-js/config": "workspace:*",
     "@skein-js/core": "workspace:*",
+    "@skein-js/langgraph": "workspace:*",
     "@skein-js/storage-memory": "workspace:*",
     "cors": "^2.8.5",
     "superjson": "^2.2.6",
