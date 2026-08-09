@@ -1,9 +1,26 @@
 name: CI
 
+# Everything here builds or exercises code, so a markdown-only change can't affect any of it. Those
+# changes are covered by docs-check.yml instead, which runs on every push and holds the checks that a
+# docs edit *can* break: Prettier, the VitePress build, and the link check.
+#
+# `paths-ignore` skips the run only when *every* changed file matches, so a commit touching code and
+# docs together still runs in full. `workflow_call` takes no filter, so release.yml's gate is unaffected.
+# The two lists are duplicated because GitHub Actions does not support YAML anchors — keep them in sync.
 on:
   push:
     branches: [main]
+    paths-ignore:
+      - "**.md"
+      - "llms.txt"
+      - "llms-full.txt"
+      - "LICENSE"
   pull_request:
+    paths-ignore:
+      - "**.md"
+      - "llms.txt"
+      - "llms-full.txt"
+      - "LICENSE"
   # Callable by release.yml so a publish runs these exact checks on the released commit.
   workflow_call:
 
@@ -48,35 +65,6 @@ jobs:
 
       - name: Lint, typecheck, test, build
         run: pnpm exec nx run-many -t lint typecheck test build --output-style=stream
-
-  docs-links:
-    name: docs links
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v4
-
-      - name: Restore link-check cache
-        uses: actions/cache@v4
-        with:
-          path: .lycheecache
-          key: lychee-${{ runner.os }}-${{ hashFiles('lychee.toml', 'README.md', 'llms.txt', 'docs/**/*.md', 'packages/*/README.md', 'examples/*/README.md') }}
-          restore-keys: |
-            lychee-${{ runner.os }}-
-
-      - name: Check documentation links
-        uses: lycheeverse/lychee-action@v2
-        with:
-          args: >-
-            --root-dir ${{ github.workspace }}
-            --config lychee.toml
-            --no-progress
-            README.md
-            llms.txt
-            'docs/**/*.md'
-            'packages/*/README.md'
-            'examples/*/README.md'
-          fail: true
-          token: ${{ secrets.GITHUB_TOKEN }}
 
   integration:
     name: integration tests (Testcontainers)

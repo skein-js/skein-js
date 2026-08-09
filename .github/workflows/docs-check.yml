@@ -1,0 +1,83 @@
+name: Docs check
+
+# The cheap half of CI, and the half a markdown-only change can actually break: Prettier (it formats
+# `.md` too), the VitePress build, and the link check. No path filter on purpose — this runs on every
+# push and PR, including code-only ones, because moving a package directory breaks relative links in
+# docs that no markdown edit would reveal.
+#
+# Its counterpart ci.yml skips markdown-only changes entirely; between the two, every change is
+# covered exactly once and nothing expensive runs for a typo fix.
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+concurrency:
+  group: docs-check-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+env:
+  NODE_LTS: 24
+
+jobs:
+  format-and-build:
+    name: prettier · docs build
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: pnpm/action-setup@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: ${{ env.NODE_LTS }}
+          cache: pnpm
+
+      - run: pnpm install --frozen-lockfile
+
+      - uses: actions/cache@v4
+        with:
+          path: .nx/cache
+          key: nx-${{ runner.os }}-${{ hashFiles('pnpm-lock.yaml') }}-${{ github.sha }}
+          restore-keys: |
+            nx-${{ runner.os }}-${{ hashFiles('pnpm-lock.yaml') }}-
+            nx-${{ runner.os }}-
+
+      # Prettier covers the whole workspace, markdown included, so this is the formatting gate for a
+      # docs-only change — ci.yml never sees one.
+      - name: Prettier
+        run: pnpm format:check
+
+      # `docs` is an Nx project, so a broken link target or config change fails here rather than at
+      # deploy time (docs.yml only runs on push to main).
+      - name: Build the docs site
+        run: pnpm exec nx build docs --output-style=stream
+
+  links:
+    name: docs links
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Restore link-check cache
+        uses: actions/cache@v4
+        with:
+          path: .lycheecache
+          key: lychee-${{ runner.os }}-${{ hashFiles('lychee.toml', 'README.md', 'llms.txt', 'docs/**/*.md', 'packages/*/README.md', 'examples/*/README.md') }}
+          restore-keys: |
+            lychee-${{ runner.os }}-
+
+      - name: Check documentation links
+        uses: lycheeverse/lychee-action@v2
+        with:
+          args: >-
+            --root-dir ${{ github.workspace }}
+            --config lychee.toml
+            --no-progress
+            README.md
+            llms.txt
+            'docs/**/*.md'
+            'packages/*/README.md'
+            'examples/*/README.md'
+          fail: true
+          token: ${{ secrets.GITHUB_TOKEN }}
