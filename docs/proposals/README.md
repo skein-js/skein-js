@@ -74,3 +74,8 @@ durable explanation moves into a real doc and the proposal becomes history.
 
 Each carries its own **non-goals** and **open questions** sections. Those are the load-bearing parts:
 a proposal that only argues for itself is a pitch, not a design.
+
+Contributors working in this repo can run that argument mechanically: `/audit-plan` audits a proposal
+against the shipped API before any of it is built, asking of each capability whether it is the
+library's problem or the user's, whether the primitives to solve it already exist, and what permanent
+public surface it would commit us to.

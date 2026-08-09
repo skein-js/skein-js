@@ -22,7 +22,12 @@ Think "[aegra](https://github.com/aegra/aegra) for TypeScript."
 ## Golden rules
 
 1. **Reuse first.** Before writing anything, check whether a `@langchain/*` package already
-   does it ([docs/reuse.md](./docs/reuse.md)). The best code is the code we don't write.
+   does it ([docs/reuse.md](./docs/reuse.md)), and whether a user could already solve it over the
+   API we ship — if they nearly can, build the missing primitive, not the feature. The best code is
+   the code we don't write, and published API is the code we can never unwrite: we rename by alias +
+   `@deprecated` and never by removal, and a break majors every package at once.
+   [`/audit-plan`](.agents/skills/audit-plan/SKILL.md) runs that check over a plan or proposal
+   before any of it is built.
 2. **Pragmatic functional style.** Pure core, dependencies injected; thin classes only for
    stateful resources (pools/clients). Immutable by default. Validate at boundaries with Zod;
    throw typed errors at the edges.
@@ -39,7 +44,7 @@ Think "[aegra](https://github.com/aegra/aegra) for TypeScript."
    and when you touch a user-facing doc, regenerate the LLM bundle with `pnpm docs:llms` (rebuilds
    [`llms-full.txt`](llms-full.txt) from the curated list in `scripts/generate-llms-full.mjs`; the
    hand-written index is [`llms.txt`](llms.txt)).
-   [`/commit`](.claude/skills/commit/SKILL.md) does the full local run + docs check for you. Only
+   [`/commit`](.agents/skills/commit/SKILL.md) does the full local run + docs check for you. Only
    bypass the hook (`git commit --no-verify`) in a genuine pinch, and go green before you push. Same
    bar as [Definition of done](#definition-of-done).
 
