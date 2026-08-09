@@ -1,6 +1,6 @@
 {
   "name": "@skein-js/posthog",
-  "version": "0.13.1",
+  "version": "0.14.0",
   "description": "PostHog analytics for skein-js — run lifecycle events plus $ai_generation LLM analytics.",
   "license": "Apache-2.0",
   "author": "Maina Wycliffe <wmmaina7@gmail.com>",

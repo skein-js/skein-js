@@ -1,6 +1,6 @@
 {
   "name": "@skein-js/console",
-  "version": "0.13.1",
+  "version": "0.14.0",
   "description": "The skein console — a self-hosted web UI for a skein-js server: assistants, threads, live runs, interrupts, time travel, store, and crons.",
   "license": "Apache-2.0",
   "author": "Maina Wycliffe <wmmaina7@gmail.com>",

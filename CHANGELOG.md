@@ -1,3 +1,54 @@
+## 0.14.0 (2026-08-09)
+
+### 🚀 Features
+
+- **agent-protocol:** make run creation idempotent via Idempotency-Key ([4685dc1](https://github.com/skein-js/skein-js/commit/4685dc1))
+- **agent-protocol:** erase idempotency records when their thread is deleted ([23f152a](https://github.com/skein-js/skein-js/commit/23f152a))
+- **agent-protocol:** honour an `@auth.on.store` namespace rewrite, and document memory ([be1d273](https://github.com/skein-js/skein-js/commit/be1d273))
+- **console:** add the skein console, served by the server at /console ([132a65e](https://github.com/skein-js/skein-js/commit/132a65e))
+- ⚠️  **core:** filter store search, and traverse namespaces by prefix, suffix and depth ([58b1b5f](https://github.com/skein-js/skein-js/commit/58b1b5f))
+- **runtime:** bring your own long-term store via `store.adapter` ([1ff89dd](https://github.com/skein-js/skein-js/commit/1ff89dd))
+
+### 🩹 Fixes
+
+- **agent-protocol:** close the gaps code review found in the idempotency work ([25e5039](https://github.com/skein-js/skein-js/commit/25e5039))
+- ⚠️  **agent-protocol:** derive the auth payload's resource fields server-side ([ef635af](https://github.com/skein-js/skein-js/commit/ef635af))
+- **agent-protocol:** close the review findings on the store namespace rewrite ([0d03b66](https://github.com/skein-js/skein-js/commit/0d03b66))
+- **runtime:** advisory-lock the checkpointer's schema setup ([0097ebf](https://github.com/skein-js/skein-js/commit/0097ebf))
+- **test-support:** read listNamespaces' response shape in the conformance run ([aef7948](https://github.com/skein-js/skein-js/commit/aef7948))
+
+### 🔥 Performance
+
+- **runtime-redis:** make the run close-check a backstop, not a heartbeat ([13eb228](https://github.com/skein-js/skein-js/commit/13eb228))
+- **store:** stop reading whole run histories on the state path ([6395981](https://github.com/skein-js/skein-js/commit/6395981))
+
+### ⚠️  Breaking Changes
+
+- **agent-protocol:** derive the auth payload's resource fields server-side  ([ef635af](https://github.com/skein-js/skein-js/commit/ef635af))
+  `value.namespace` in an `@auth.on.store` handler is now
+  `string[]` on every store action, matching the SDK's declared types. It was the
+  raw dot-joined query string on `GET`/`DELETE /store/items`, so a handler doing
+  string operations on it (`value.namespace.startsWith(…)`, or `===` against a
+  joined identity) needs updating.
+  BREAKING CHANGE: `GET`/`DELETE /store/items` answer `400` instead of `404`/`204`
+  when the request names no namespace or no key, or names a namespace containing a
+  non-string segment.
+- **core:** filter store search, and traverse namespaces by prefix, suffix and depth  ([58b1b5f](https://github.com/skein-js/skein-js/commit/58b1b5f))
+  `StoreRepo.listNamespaces` takes a single `StoreNamespaceQuery`
+  (`{ prefix, suffix, maxDepth, limit, offset }`) instead of `(prefix,
+  pagination)`, which could not express a wildcard, a suffix or a depth —
+  `listNamespaces(["users"])` becomes `listNamespaces({ prefix: ["users"] })`. It
+  now also applies the driver page bound when no limit is given.
+  BREAKING CHANGE: `POST /store/items/search` returns `{ items }` and
+  `POST /store/namespaces` returns `{ namespaces }` instead of bare arrays, and
+  store items carry `created_at`/`updated_at` instead of `createdAt`/`updatedAt`.
+  This is what the LangGraph SDK already expected; the previous shapes could not
+  be consumed by it.
+
+### ❤️ Thank You
+
+- Maina Wycliffe
+
 ## 0.13.1 (2026-08-05)
 
 ### 🚀 Features
