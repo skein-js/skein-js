@@ -20,6 +20,7 @@ import {
   type TelemetrySink,
 } from "@skein-js/core";
 
+import { SIGNATURE_HEADER } from "./crypto/sign-delivery.js";
 import type { WebhookDeliveryConfig } from "./deliveries/delivery-config.js";
 import type { AgentGraph, AgentGraphFactory } from "./graphs/agent-graph.js";
 import type { ThreadCheckpointer } from "./graphs/thread-checkpointer.js";
@@ -101,6 +102,14 @@ export interface DeliveryAttempt {
    * dispatcher needing an update.
    */
   headers: Record<string, string>;
+  /**
+   * The exact bytes the signature covers.
+   *
+   * Present so a custom dispatcher sends **this** rather than re-serializing `payload`: key order and
+   * number formatting are not guaranteed to round-trip through `JSON.stringify`, so a re-serialized
+   * body produces a different digest and every signature check on the receiving end fails.
+   */
+  body: string;
 }
 
 /**
@@ -111,10 +120,15 @@ export interface DeliveryAttempt {
  * arrived — so it is retried, and the receiver sees it twice. Dedup on this id and that is a non-event;
  * ignore it and skein's reliability improvement becomes the receiver's duplicate-processing bug.
  */
-export function deliveryHeaders(deliveryId: string, attempt: number): Record<string, string> {
+export function deliveryHeaders(
+  deliveryId: string,
+  attempt: number,
+  signature?: string,
+): Record<string, string> {
   return {
     "x-skein-delivery-id": deliveryId,
     "x-skein-attempt": String(attempt),
+    ...(signature ? { [SIGNATURE_HEADER]: signature } : {}),
   };
 }
 
@@ -414,7 +428,9 @@ const fetchWebhookDispatcher: WebhookDispatcher = async (url, payload, attempt) 
     response = await send(url, {
       method: "POST",
       headers: { "content-type": "application/json", ...attempt?.headers },
-      body: JSON.stringify(payload),
+      // The signed bytes when there are any, so the digest the receiver computes matches the one we
+      // signed. Re-serializing `payload` here would break every signature.
+      body: attempt?.body ?? JSON.stringify(payload),
       // `AbortSignal.timeout` rather than a manual controller + `setTimeout`: it needs no clearing, so
       // it cannot keep the event loop alive past a delivery that finished early.
       ...(signal ? { signal } : {}),

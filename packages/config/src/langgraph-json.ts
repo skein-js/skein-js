@@ -151,6 +151,16 @@ const webhooksSchema = z
       })
       .passthrough()
       .optional(),
+    /**
+     * Signing key(s) for outbound callbacks. A string, or a list during a rotation (the first signs).
+     *
+     * **`"${SKEIN_WEBHOOK_SECRET}"` will not work.** skein does not expand `${VAR}` anywhere in
+     * `langgraph.json` — see the note on `http.disable_*` — so writing it that way signs every
+     * callback with the literal 23-character string, which is the worst possible failure mode for a
+     * key. Prefer the `SKEIN_WEBHOOK_SECRET` environment variable; a literal here is a secret
+     * committed to the repository, and skein warns about it once at startup.
+     */
+    secret: z.union([z.string().trim().min(1), z.array(z.string().trim().min(1))]).optional(),
     /** Cap on a stored delivery body, in bytes (default 262144). Over it, `values` is truncated. */
     max_payload_bytes: z.number().positive().optional(),
     /** How long a settled delivery is kept before the sweep reclaims it, in hours (default 24). */

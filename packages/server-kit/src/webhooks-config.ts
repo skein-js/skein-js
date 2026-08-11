@@ -14,9 +14,35 @@ export interface RawWebhooks {
     max_attempts?: number;
     initial_delay_ms?: number;
   };
+  secret?: string | string[];
   max_payload_bytes?: number;
   retain_hours?: number;
   allowed_hosts?: string[];
+}
+
+/**
+ * The environment variable holding the signing key(s), comma-separated during a rotation.
+ *
+ * The preferred source, and the only one that is not committed to the repository. It wins over a
+ * literal `secret` in `langgraph.json`, so a deployment can override a checked-in placeholder without
+ * editing the file.
+ */
+export const WEBHOOK_SECRET_ENV = "SKEIN_WEBHOOK_SECRET";
+
+/**
+ * Signing keys, in the order they should be tried — env first, then the config block.
+ *
+ * Returns an empty list when nothing is configured, which means unsigned callbacks: today's
+ * behaviour, and not something to fail a boot over.
+ */
+function resolveSecrets(raw: RawWebhooks, env: Record<string, string | undefined>): string[] {
+  const fromEnv = (env[WEBHOOK_SECRET_ENV] ?? "")
+    .split(",")
+    .map((secret) => secret.trim())
+    .filter((secret) => secret.length > 0);
+  if (fromEnv.length > 0) return fromEnv;
+  const configured = typeof raw.secret === "string" ? [raw.secret] : (raw.secret ?? []);
+  return configured.map((secret) => secret.trim()).filter((secret) => secret.length > 0);
 }
 
 /**
@@ -26,9 +52,28 @@ export interface RawWebhooks {
  * that carries a `webhook` owes a callback whether or not a policy was configured. There is no
  * setting that stops skein trying — only `retries.max_attempts: 1`, which asks it to try once.
  */
-export function resolveWebhooks(raw: RawWebhooks | undefined): WebhookDeliveryConfig | undefined {
-  if (!raw) return undefined;
+export function resolveWebhooks(
+  raw: RawWebhooks | undefined,
+  options: { env?: Record<string, string | undefined>; warn?: (message: string) => void } = {},
+): WebhookDeliveryConfig | undefined {
+  const env = options.env ?? process.env;
+  // The env var alone is enough to turn signing on, so this runs even with no block at all.
+  const secrets = resolveSecrets(raw ?? {}, env);
+  if (!raw && secrets.length === 0) return undefined;
   const config: WebhookDeliveryConfig = {};
+  if (secrets.length > 0) {
+    config.secrets = secrets;
+    // Warned about, not refused: it does work, and refusing would break a deployment mid-upgrade. But
+    // a signing key in `langgraph.json` is a signing key in version control, which is the one thing a
+    // signature is supposed to make impossible for an attacker to hold.
+    if (!env[WEBHOOK_SECRET_ENV] && raw?.secret !== undefined) {
+      options.warn?.(
+        `skein: a webhook signing key is set in langgraph.json, which puts it in version control. ` +
+          `Set ${WEBHOOK_SECRET_ENV} instead — it takes precedence over this value.`,
+      );
+    }
+  }
+  if (!raw) return config;
 
   const retries: NonNullable<WebhookDeliveryConfig["retries"]> = {};
   if (typeof raw.retries?.max_attempts === "number") retries.maxAttempts = raw.retries.max_attempts;

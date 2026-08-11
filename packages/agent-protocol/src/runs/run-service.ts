@@ -10,6 +10,8 @@ import {
   type AuthUser,
   type Config,
   type DefaultValues,
+  type Delivery,
+  type DeliveryListQuery,
   type Metadata,
   type MultitaskStrategy,
   type Run,
@@ -212,6 +214,22 @@ export interface RunService {
   join(runId: string, afterSeq?: number): Promise<AsyncIterable<RunFrame>>;
   /** The terminal status of a run for the SSE terminal event, or null if the run is gone. */
   finalStatus(runId: string): Promise<RunStatus | null>;
+  /**
+   * A run's outbound callbacks, newest first — what was owed, what was tried, and why it failed.
+   *
+   * Run-scoped rather than a server-wide list, and that is the whole design: a run is already an
+   * ownership-scoped resource, so this needs no new authorization concept, no new route group, and no
+   * decision about who may see another tenant's deliveries. A global list can be added later without
+   * breaking this; a route group, once shipped, could never be withdrawn.
+   */
+  listDeliveries(runId: string, query?: DeliveryListQuery): Promise<Delivery[]>;
+  /**
+   * Make a delivery due again — the operator's replay, after fixing whatever was refusing it.
+   *
+   * 404s an unknown delivery, and 409s one whose payload was cleared on delivery: there is nothing
+   * left to resend, and answering 200 would report a replay that cannot happen.
+   */
+  replayDelivery(runId: string, deliveryId: string): Promise<Delivery>;
 }
 
 /**
@@ -836,5 +854,55 @@ export function createRunService(ctx: ProtocolContext): RunService {
       const run = await deps.store.runs.get(runId);
       return run?.status ?? null;
     },
+
+    async listDeliveries(runId, query) {
+      // The run is read first, and that read is what enforces ownership: an auth-scoped store filters
+      // it, so a caller who cannot see the run gets a 404 here rather than a list of its callbacks.
+      await requireRun(runId);
+      // A driver with no outbox has recorded no deliveries, so an empty list is the honest answer —
+      // not an error, and not a new HTTP status invented for one storage driver's absence.
+      return deps.store.deliveries?.listByRun(runId, query) ?? [];
+    },
+
+    async replayDelivery(runId, deliveryId) {
+      await requireRun(runId);
+      const deliveries = deps.store.deliveries;
+      const existing = await deliveries?.get(deliveryId);
+      // Checked against the run in the path, so a delivery id cannot be used to reach a callback
+      // belonging to a run the caller has no access to.
+      if (!existing || existing.run_id !== runId) {
+        throw SkeinHttpError.notFound(`Delivery "${deliveryId}" not found for run "${runId}".`);
+      }
+      const replayed = await deliveries?.retryNow(deliveryId, deps.clock().toISOString());
+      if (!replayed) {
+        throw SkeinHttpError.conflict(
+          `Delivery "${deliveryId}" was already delivered, so its payload is gone and there is ` +
+            "nothing left to resend.",
+        );
+      }
+      // Handed straight to the queue where there is one, so a replay is immediate rather than waiting
+      // for the recovery sweep to notice it.
+      if (deps.deliveryQueue) {
+        try {
+          await deps.deliveryQueue.schedule({ delivery_id: deliveryId });
+        } catch (error) {
+          // Reported, not thrown: the row is already `pending`, so the sweep will pick it up. Failing
+          // the request would tell an operator the replay did not happen when it merely will not be
+          // immediate.
+          deps.logger.warn(
+            `delivery ${deliveryId}: replayed, but could not be queued; the sweep will pick it up`,
+            error,
+          );
+        }
+      }
+      return replayed;
+    },
   };
+
+  /** The run, or a 404 — and, under auth, the ownership check for everything below it. */
+  async function requireRun(runId: string): Promise<Run> {
+    const run = await deps.store.runs.get(runId);
+    if (!run) throw SkeinHttpError.notFound(`Run "${runId}" not found.`);
+    return run;
+  }
 }

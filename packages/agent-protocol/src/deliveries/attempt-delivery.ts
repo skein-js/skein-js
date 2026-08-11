@@ -7,7 +7,7 @@
 
 import type { Delivery, DeliveryAttemptResult, DeliveryQueue, SkeinStore } from "@skein-js/core";
 
-import { deliveryHeaders, type Logger, type WebhookDispatcher } from "../deps.js";
+import type { Logger, WebhookDispatcher } from "../deps.js";
 
 import { isFinalAttempt, nextAttemptDelayMs } from "./backoff.js";
 import {
@@ -15,7 +15,7 @@ import {
   remainingQueueAttempts,
   type WebhookDeliveryConfig,
 } from "./delivery-config.js";
-import { toDeliveryBody } from "./delivery-payload.js";
+import { toDeliveryRequest } from "./delivery-request.js";
 import { disallowedHost } from "./delivery-target.js";
 
 export interface AttemptDeliveryDeps {
@@ -84,17 +84,19 @@ export async function attemptDelivery(
     return record({ outcome: "dead", error: disallowed });
   }
 
-  const sentAt = deps.clock().toISOString();
+  const sentAt = deps.clock();
+  const request = toDeliveryRequest({
+    delivery,
+    attempt: delivery.attempt,
+    sentAt,
+    ...(deps.webhooks?.secrets ? { secrets: deps.webhooks.secrets } : {}),
+  });
   // The POST is caught on its own, NOT in a try that also wraps the record below. Wrapping both
   // would misread a database blip *after* a successful POST as a failed delivery — scheduling a
   // retry, and so a second POST, for a callback the receiver already has.
   let dispatchFailure: { cause: unknown } | undefined;
   try {
-    await deps.webhookDispatcher(delivery.url, toDeliveryBody(delivery, sentAt), {
-      deliveryId: delivery.delivery_id,
-      attempt: delivery.attempt,
-      headers: deliveryHeaders(delivery.delivery_id, delivery.attempt),
-    });
+    await deps.webhookDispatcher(delivery.url, request.payload, request.attempt);
   } catch (cause) {
     dispatchFailure = { cause };
   }

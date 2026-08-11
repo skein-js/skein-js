@@ -249,6 +249,16 @@ export function createProtocolRuntime(
   // symptom is a callback that silently stops being retried, which is precisely what this feature
   // exists to make impossible. Same posture, and the same reason, as the cron scheduler's warning
   // about a non-durable store.
+  // The sharpest footgun in the whole feature. A caller who injected a `webhookDispatcher` before
+  // signing existed keeps a working dispatcher — it just ignores the third argument, so every
+  // callback goes out unsigned while the config says otherwise. Nothing fails; receivers simply
+  // reject everything, or worse, accept everything because verification was never wired up.
+  if (deps.webhooks?.secrets?.length && deps.webhookDispatcher) {
+    context.deps.logger.warn(
+      "a webhook signing key is configured alongside a custom `webhookDispatcher`: signatures are " +
+        "only sent if that dispatcher forwards `attempt.headers` and sends `attempt.body` verbatim.",
+    );
+  }
   if (deps.store.durable === true && deps.deliveryQueue?.durable !== true) {
     context.deps.logger.warn(
       "run-completion callbacks are scheduled in memory: a retry still waiting when this process " +

@@ -8,11 +8,11 @@
 
 import type { DeliveryAttemptContext, SkeinStore } from "@skein-js/core";
 
-import { deliveryHeaders, type Logger, type WebhookDispatcher } from "../deps.js";
+import type { Logger, WebhookDispatcher } from "../deps.js";
 
 import { nextAttemptDelayMs } from "./backoff.js";
 import { QUEUE_SWEEP_MARGIN_MS, type WebhookDeliveryConfig } from "./delivery-config.js";
-import { toDeliveryBody } from "./delivery-payload.js";
+import { toDeliveryRequest } from "./delivery-request.js";
 import { disallowedHost } from "./delivery-target.js";
 
 export interface DeliveryProcessorDeps {
@@ -59,15 +59,13 @@ export async function processDelivery(
   }
 
   try {
-    await deps.webhookDispatcher(
-      delivery.url,
-      toDeliveryBody(delivery, deps.clock().toISOString()),
-      {
-        deliveryId: delivery.delivery_id,
-        attempt,
-        headers: deliveryHeaders(delivery.delivery_id, attempt),
-      },
-    );
+    const request = toDeliveryRequest({
+      delivery,
+      attempt,
+      sentAt: deps.clock(),
+      ...(deps.webhooks?.secrets ? { secrets: deps.webhooks.secrets } : {}),
+    });
+    await deps.webhookDispatcher(delivery.url, request.payload, request.attempt);
   } catch (error) {
     const message = error instanceof Error ? error.message : String(error);
     if (context.isFinalAttempt) {

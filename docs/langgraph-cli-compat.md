@@ -281,6 +281,8 @@ shape is unchanged** — this configures delivery, not the body.
         "max_attempts": 12, // attempts before a callback is dead, counting the inline first one
         "initial_delay_ms": 1000, // the first retry's delay; the rest double from it
       },
+      // The signing key. Prefer SKEIN_WEBHOOK_SECRET, which wins over this — see below.
+      "secret": "whsec_…",
       "max_payload_bytes": 262144, // cap on the stored body; over it, `values` is truncated
       "retain_hours": 24, // how long a settled delivery is kept before it is reclaimed
       "allowed_hosts": ["hooks.example.com"], // absent = no restriction (today's behaviour)
@@ -307,6 +309,12 @@ What each one is for:
   signed body; everything a receiver needs to fetch the state itself survives.
 - `retain_hours` — how long a delivered or dead row is kept. Disk only; nothing is incorrect if the
   sweep never runs.
+- `secret` — the signing key, or a list during a rotation (the first signs). **Prefer the
+  `SKEIN_WEBHOOK_SECRET` environment variable**, which takes precedence: a key here is a key in
+  version control, and skein warns about it once at startup. Note that skein does **not** expand
+  `${VAR}` anywhere in `langgraph.json`, so `"secret": "${SKEIN_WEBHOOK_SECRET}"` would sign every
+  callback with that literal 23-character string. Absent on both → callbacks are unsigned, which is
+  today's behaviour.
 - `allowed_hosts` — an exact-hostname allowlist. Set it if you accept run creates from untrusted
   callers: `webhook` is a caller-supplied URL, so it is a server-side request to a target they chose,
   and retrying it turns a one-shot SSRF probe into a repeated one. **Off by default**, because turning

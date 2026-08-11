@@ -216,6 +216,22 @@ export const skeinRoutes: readonly RouteBinding[] = [
     handler: "joinRun",
     group: "runs",
   },
+  // Before `/:run_id`, so `/deliveries` is not swallowed as a run id by a router that matches in
+  // declaration order. Both sit in the `runs` group deliberately: a run is already an
+  // ownership-scoped resource, so its deliveries need no group of their own — and a `RouteGroup`,
+  // once shipped, is a member of a closed union that can never be withdrawn.
+  {
+    method: "get",
+    path: "/threads/:thread_id/runs/:run_id/deliveries",
+    handler: "listRunDeliveries",
+    group: "runs",
+  },
+  {
+    method: "post",
+    path: "/threads/:thread_id/runs/:run_id/deliveries/:delivery_id/replay",
+    handler: "replayRunDelivery",
+    group: "runs",
+  },
   { method: "get", path: "/threads/:thread_id/runs/:run_id", handler: "getRun", group: "runs" },
   {
     method: "delete",
