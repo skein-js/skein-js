@@ -31,6 +31,7 @@ import {
 import { attemptDelivery } from "../deliveries/attempt-delivery.js";
 import { DEFAULT_RETAIN_HOURS, deliveryLeaseMs } from "../deliveries/delivery-config.js";
 import { buildDeliveryPayload } from "../deliveries/delivery-payload.js";
+import { redactWebhookUrl } from "../deliveries/delivery-target.js";
 import { isNoopLogger, webhookTimeoutMs, type ResolvedDeps } from "../deps.js";
 import {
   requireAgentCapability,
@@ -681,7 +682,10 @@ export async function executeRun(deps: ResolvedDeps, exec: RunExecution): Promis
       try {
         await resolved.webhookDispatcher(url, payload);
       } catch (error) {
-        resolved.logger.warn(`run ${runId}: webhook delivery to ${url} failed`, error);
+        resolved.logger.warn(
+          `run ${runId}: webhook delivery to ${redactWebhookUrl(url)} failed`,
+          error,
+        );
       }
     };
   }

@@ -2188,6 +2188,7 @@ shape is unchanged** — this configures delivery, not the body.
       "max_payload_bytes": 262144, // cap on the stored body; over it, `values` is truncated
       "retain_hours": 24, // how long a settled delivery is kept before it is reclaimed
       "allowed_hosts": ["hooks.example.com"], // absent = no restriction (today's behaviour)
+      "require_https": true, // refuse plaintext callbacks; absent permits them
     },
   },
 }
@@ -2217,6 +2218,10 @@ What each one is for:
   `${VAR}` anywhere in `langgraph.json`, so `"secret": "${SKEIN_WEBHOOK_SECRET}"` would sign every
   callback with that literal 23-character string. Absent on both → callbacks are unsigned, which is
   today's behaviour.
+- `require_https` — refuse a callback whose URL is not `https:`. Off by default, because an internal
+  receiver on a trusted network is legitimate and turning it on for everyone would break those
+  deployments on upgrade. Turn it on whenever callbacks leave your network: the body carries the run's
+  final state, and retries mean it crosses the wire up to `max_attempts` times rather than once.
 - `allowed_hosts` — an exact-hostname allowlist. Set it if you accept run creates from untrusted
   callers: `webhook` is a caller-supplied URL, so it is a server-side request to a target they chose,
   and retrying it turns a one-shot SSRF probe into a repeated one. **Off by default**, because turning
@@ -5962,6 +5967,29 @@ send. Read the state from the run.
 Replay makes a delivery due again immediately, and 409s one that already succeeded (its payload was
 cleared on delivery, so there is nothing left to resend). Both sit under the `runs` route group, so
 `http.disable_runs` and your existing `@auth.on.threads` handler already cover them.
+
+### What this stores, and for how long
+
+A retry has to have something to send, so **the callback body is stored** — including the run's final
+`values`. That is a new at-rest copy of whatever your graph produced, in the `deliveries` table, and
+it is worth classifying deliberately if that state carries personal or regulated data:
+
+- **On success it is cleared immediately**, so steady-state storage is in-flight deliveries, not every
+  delivery ever made.
+- **A `dead` delivery keeps it** for `retain_hours` (default 24) — that is what makes replay possible,
+  and it means a callback that never landed leaves the run's final state on disk for a day.
+- **It is not encrypted by skein.** Use your database's encryption at rest; the column is ordinary
+  `jsonb`.
+- **Deleting a thread or run does not currently erase its deliveries** — unlike idempotency records,
+  which are erased explicitly. Lower `retain_hours` if that matters to you.
+
+Set `require_https: true` if callbacks leave your network. Plaintext is permitted by default (an
+internal receiver is a legitimate use), but retries mean the body crosses the wire up to
+`max_attempts` times rather than once, so `http://` here is a dozen exposures rather than one.
+
+skein **redacts the webhook URL's path in logs**, keeping only the scheme and host: for Slack, Discord
+and Teams the path _is_ the credential, and a failing delivery would otherwise write it into your log
+sink on every attempt.
 
 Payloads are capped at `max_payload_bytes` (default 256 KiB) because the body is stored for retries.
 Over the cap, `values` is replaced by a truncation marker **inside the body** — so a receiver is told

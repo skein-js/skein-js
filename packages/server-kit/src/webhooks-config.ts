@@ -18,6 +18,7 @@ export interface RawWebhooks {
   max_payload_bytes?: number;
   retain_hours?: number;
   allowed_hosts?: string[];
+  require_https?: boolean;
 }
 
 /**
@@ -89,6 +90,7 @@ export function resolveWebhooks(
   if (Array.isArray(raw.allowed_hosts) && raw.allowed_hosts.length > 0) {
     config.allowedHosts = [...raw.allowed_hosts];
   }
+  if (typeof raw.require_https === "boolean") config.requireHttps = raw.require_https;
 
   return Object.keys(config).length > 0 ? config : undefined;
 }

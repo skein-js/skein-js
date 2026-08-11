@@ -16,7 +16,7 @@ import {
   type WebhookDeliveryConfig,
 } from "./delivery-config.js";
 import { toDeliveryRequest } from "./delivery-request.js";
-import { disallowedHost } from "./delivery-target.js";
+import { disallowedHost, insecureTransport, redactWebhookUrl } from "./delivery-target.js";
 
 export interface AttemptDeliveryDeps {
   store: Pick<SkeinStore, "deliveries">;
@@ -75,7 +75,9 @@ export async function attemptDelivery(
     }
   };
 
-  const disallowed = disallowedHost(delivery.url, deps.webhooks?.allowedHosts);
+  const disallowed =
+    disallowedHost(delivery.url, deps.webhooks?.allowedHosts) ??
+    insecureTransport(delivery.url, deps.webhooks?.requireHttps);
   if (disallowed) {
     // Dead on the spot rather than retried: no number of attempts makes a disallowed host allowed,
     // and recording it is what keeps this visible in the delivery list instead of being a callback
@@ -109,12 +111,12 @@ export async function attemptDelivery(
     // Logged at error, unlike a retry: this is the last word on a callback nobody received, and it
     // is the line an operator greps for before reaching for the replay endpoint.
     deps.logger.error(
-      `delivery ${delivery.delivery_id} to ${delivery.url} is dead after ${delivery.attempt} attempt(s)`,
+      `delivery ${delivery.delivery_id} to ${redactWebhookUrl(delivery.url)} is dead after ${delivery.attempt} attempt(s)`,
       dispatchFailure?.cause,
     );
   } else if (dispatchFailure) {
     deps.logger.warn(
-      `delivery ${delivery.delivery_id} to ${delivery.url} failed (attempt ${delivery.attempt}); retrying`,
+      `delivery ${delivery.delivery_id} to ${redactWebhookUrl(delivery.url)} failed (attempt ${delivery.attempt}); retrying`,
       dispatchFailure.cause,
     );
   }

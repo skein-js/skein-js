@@ -13,7 +13,7 @@ import type { Logger, WebhookDispatcher } from "../deps.js";
 import { nextAttemptDelayMs } from "./backoff.js";
 import { QUEUE_SWEEP_MARGIN_MS, type WebhookDeliveryConfig } from "./delivery-config.js";
 import { toDeliveryRequest } from "./delivery-request.js";
-import { disallowedHost } from "./delivery-target.js";
+import { disallowedHost, insecureTransport, redactWebhookUrl } from "./delivery-target.js";
 
 export interface DeliveryProcessorDeps {
   store: Pick<SkeinStore, "deliveries">;
@@ -51,7 +51,9 @@ export async function processDelivery(
   // survives the queue re-creating a job for this delivery. See `DeliveryAttemptContext`.
   const attempt = delivery.attempt + 1;
 
-  const disallowed = disallowedHost(delivery.url, deps.webhooks?.allowedHosts);
+  const disallowed =
+    disallowedHost(delivery.url, deps.webhooks?.allowedHosts) ??
+    insecureTransport(delivery.url, deps.webhooks?.requireHttps);
   if (disallowed) {
     deps.logger.warn(`delivery ${delivery.delivery_id}: ${disallowed}`);
     await deliveries.recordAttempt(delivery.delivery_id, { outcome: "dead", error: disallowed });
@@ -70,7 +72,7 @@ export async function processDelivery(
     const message = error instanceof Error ? error.message : String(error);
     if (context.isFinalAttempt) {
       deps.logger.error(
-        `delivery ${delivery.delivery_id} to ${delivery.url} is dead after ${attempt} attempt(s)`,
+        `delivery ${delivery.delivery_id} to ${redactWebhookUrl(delivery.url)} is dead after ${attempt} attempt(s)`,
         error,
       );
       await deliveries.recordAttempt(delivery.delivery_id, {
@@ -84,7 +86,7 @@ export async function processDelivery(
       return;
     }
     deps.logger.warn(
-      `delivery ${delivery.delivery_id} to ${delivery.url} failed (attempt ${attempt}); retrying`,
+      `delivery ${delivery.delivery_id} to ${redactWebhookUrl(delivery.url)} failed (attempt ${attempt}); retrying`,
       error,
     );
     // The row records *that* it failed and why. When it is due again is the queue's call, so this is
