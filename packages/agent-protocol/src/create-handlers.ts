@@ -5,6 +5,7 @@
 // terminal event read from the run's final status).
 
 import {
+  type DeliveryStatus,
   isTerminalRunStatus,
   RUN_STATUSES,
   SkeinHttpError,
@@ -113,6 +114,10 @@ export interface ProtocolHandlers {
   createStatelessRun: ProtocolHandler;
   createRunBatch: ProtocolHandler;
   getRun: ProtocolHandler;
+  /** A run's outbound callbacks — what was owed, what was tried, and why it failed. */
+  listRunDeliveries: ProtocolHandler;
+  /** Make one due again, after fixing whatever was refusing it. */
+  replayRunDelivery: ProtocolHandler;
   listThreadRuns: ProtocolHandler;
   joinRunStream: ProtocolHandler;
   joinRun: ProtocolHandler;
@@ -330,6 +335,17 @@ function runStatusQuery(value: string | string[] | undefined): RunStatus | undef
   const raw = queryValue(value);
   return raw !== undefined && (RUN_STATUSES as readonly string[]).includes(raw)
     ? (raw as RunStatus)
+    : undefined;
+}
+
+/**
+ * A `?status=` delivery filter, or `undefined` for anything unrecognized — clamping rather than
+ * rejecting, exactly as `runStatusQuery` does for the same reason.
+ */
+function deliveryStatusQuery(raw: unknown): DeliveryStatus | undefined {
+  const statuses: readonly DeliveryStatus[] = ["pending", "delivering", "delivered", "dead"];
+  return typeof raw === "string" && (statuses as readonly string[]).includes(raw)
+    ? (raw as DeliveryStatus)
     : undefined;
 }
 
@@ -680,6 +696,37 @@ export function createProtocolHandlers(service: ProtocolService): ProtocolHandle
       ),
 
     getRun: async (req) => json(await service.runs.get(requireParam(req.params, "run_id"))),
+
+    listRunDeliveries: async (req) => {
+      // `positiveIntQuery` rather than a schema, matching every other paginated GET in this table:
+      // they clamp an absurd `?limit=` rather than 400ing on it.
+      const limit = positiveIntQuery(req.query["limit"]);
+      const offset = positiveIntQuery(req.query["offset"]);
+      const status = deliveryStatusQuery(req.query["status"]);
+      const deliveries = await service.runs.listDeliveries(requireParam(req.params, "run_id"), {
+        ...(limit !== undefined ? { limit } : {}),
+        ...(offset !== undefined ? { offset } : {}),
+        ...(status !== undefined ? { status } : {}),
+      });
+      // `payload` is stripped and replaced by its size. It is up to 256 KiB of the run's final state
+      // per row, and this is a *list* — returning it would make an operator's "what failed?" request
+      // the heaviest response the server can produce, for a field they did not ask for. `GET` on the
+      // run itself is where the state lives.
+      return json({
+        deliveries: deliveries.map(({ payload, ...rest }) => ({
+          ...rest,
+          payload_bytes: payload === null ? 0 : JSON.stringify(payload).length,
+        })),
+      });
+    },
+
+    replayRunDelivery: async (req) =>
+      json(
+        await service.runs.replayDelivery(
+          requireParam(req.params, "run_id"),
+          requireParam(req.params, "delivery_id"),
+        ),
+      ),
 
     listThreadRuns: async (req) => {
       // `positiveIntQuery`, not a Zod schema: this is a GET, and every other query-string limit in this

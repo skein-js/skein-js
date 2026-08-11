@@ -24,22 +24,22 @@ and an open alternative to the second.
 
 **Protocol surface**
 
-| Capability                                 | Status | Notes                                                                                                                        |
-| ------------------------------------------ | ------ | ---------------------------------------------------------------------------------------------------------------------------- |
-| Assistants / threads / runs / store        | ✅     | Routes _and_ request bodies, guarded against SDK drift                                                                       |
-| Assistants CRUD + versioning               | ✅     | Version history and rollback; graph/subgraph introspection                                                                   |
-| Streaming, incl. true `events` mode        | ✅     | Real `streamEvents` v2. [Details](./streaming.md)                                                                            |
-| Human-in-the-loop (interrupt / resume)     | ✅     | Via LangGraph checkpointers                                                                                                  |
-| Time travel — fork from a checkpoint       | ✅     | Read, update and run from any prior checkpoint                                                                               |
-| Multitask / double-texting                 | ✅     | All four strategies, correct across instances                                                                                |
-| Stateless + batch runs, thread count/prune | ✅     | `POST /runs`, `/runs/batch`, `/runs/cancel`                                                                                  |
-| Auth + authorization                       | ✅     | LangGraph `Auth` parity, ownership filters in the driver query. [Details](./agent-protocol.md#authentication--authorization) |
-| Run-completion webhooks                    | ✅     | Best-effort. [Details](./recipes/production.md#get-notified-when-a-run-finishes)                                             |
-| `http.disable_*` flags · `GET /info`       | ✅     | `/ok` stays outside the table, so no flag can break the probe                                                                |
-| **Idempotent run creation**                | ✅     | **No LangGraph Platform equivalent.** [Details](./agent-protocol.md#idempotent-run-creation-idempotency-key)                 |
-| MCP endpoint (`/mcp`)                      | 🗺️     | LangGraph exposes graphs as MCP tools; not yet built                                                                         |
-| Generative UI (`/ui/{agent}`)              | 🗺️     | Needs a `ui` config block, a bundler and asset serving                                                                       |
-| `/docs` OpenAPI page                       | 🗺️     | LangGraph serves one; `skein dev` links the published docs instead                                                           |
+| Capability                                 | Status | Notes                                                                                                                               |
+| ------------------------------------------ | ------ | ----------------------------------------------------------------------------------------------------------------------------------- |
+| Assistants / threads / runs / store        | ✅     | Routes _and_ request bodies, guarded against SDK drift                                                                              |
+| Assistants CRUD + versioning               | ✅     | Version history and rollback; graph/subgraph introspection                                                                          |
+| Streaming, incl. true `events` mode        | ✅     | Real `streamEvents` v2. [Details](./streaming.md)                                                                                   |
+| Human-in-the-loop (interrupt / resume)     | ✅     | Via LangGraph checkpointers                                                                                                         |
+| Time travel — fork from a checkpoint       | ✅     | Read, update and run from any prior checkpoint                                                                                      |
+| Multitask / double-texting                 | ✅     | All four strategies, correct across instances                                                                                       |
+| Stateless + batch runs, thread count/prune | ✅     | `POST /runs`, `/runs/batch`, `/runs/cancel`                                                                                         |
+| Auth + authorization                       | ✅     | LangGraph `Auth` parity, ownership filters in the driver query. [Details](./agent-protocol.md#authentication--authorization)        |
+| Run-completion webhooks                    | ✅     | **Durable, signed, retried.** No LangGraph Platform equivalent. [Details](./recipes/production.md#get-notified-when-a-run-finishes) |
+| `http.disable_*` flags · `GET /info`       | ✅     | `/ok` stays outside the table, so no flag can break the probe                                                                       |
+| **Idempotent run creation**                | ✅     | **No LangGraph Platform equivalent.** [Details](./agent-protocol.md#idempotent-run-creation-idempotency-key)                        |
+| MCP endpoint (`/mcp`)                      | 🗺️     | LangGraph exposes graphs as MCP tools; not yet built                                                                                |
+| Generative UI (`/ui/{agent}`)              | 🗺️     | Needs a `ui` config block, a bundler and asset serving                                                                              |
+| `/docs` OpenAPI page                       | 🗺️     | LangGraph serves one; `skein dev` links the published docs instead                                                                  |
 
 **Storage, scale and operations**
 
@@ -60,10 +60,7 @@ and an open alternative to the second.
   plus an `EventSource` plugin interface, so putting an agent behind a provider is one small file
   instead of six pieces of plumbing everyone re-solves. Generic over events, so a GitHub webhook fits
   the same interface. [Design](./proposals/inbound-events.md).
-- 🗺️ **Durable outbound delivery.** Completion webhooks are fire-once today: a receiver redeploying
-  for ten seconds loses the notification permanently and the run still reports `success`. Planned: a
-  delivery outbox committed with the run's terminal status, retries, signing, replay.
-  [Design](./proposals/durable-delivery.md).
+
 - 🗺️ **MCP endpoint**, **generative UI**, **`/docs` OpenAPI page** — the LangGraph parity backlog
   above, in priority order.
 - 🗺️ **Per-thread partitioned dispatch.** A run waiting on a busy thread's execution claim still

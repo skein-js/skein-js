@@ -1,14 +1,38 @@
 # Proposal — Durable outbound delivery
 
-> **Status:** Planned · **Depends on:** nothing · **Unblocks:**
-> [inbound-events.md](./inbound-events.md)
+> **Status: SHIPPED** · **Unblocks:** [inbound-events.md](./inbound-events.md)
 >
-> A design proposal, not shipped behaviour. See [proposals/README.md](./README.md).
+> **This is history, not documentation.** The behaviour lives in
+> [recipes/production.md](../recipes/production.md#get-notified-when-a-run-finishes) and
+> [langgraph-cli-compat.md](../langgraph-cli-compat.md#webhooks-skeinwebhooks) — read those to _use_
+> it. This file is kept for the argument, because what was rejected turned out to be more useful than
+> what was built.
 >
-> Idempotent run creation was Part 1 of this proposal and **shipped in 0.14** — it is documented in
-> [agent-protocol.md](../agent-protocol.md#idempotent-run-creation-idempotency-key) and
-> [langgraph-cli-compat.md](../langgraph-cli-compat.md#idempotency-skeinidempotency), and the design
-> notes for it are gone from this file. What follows is the outbound half.
+> Idempotent run creation was Part 1 and shipped in 0.14
+> ([details](../agent-protocol.md#idempotent-run-creation-idempotency-key)). The outbound half below
+> shipped after it, with four changes worth recording:
+>
+> - **The "why" was wrong.** This file argues from "webhooks are best-effort and unsigned", but
+>   `webhookDispatcher` was already injectable — an embedder could roll retries, signing, allowlists
+>   and dead-lettering themselves. Two things survived that scrutiny: `buildRuntime` has no override
+>   seam at all, so every CLI deployment can inject _nothing_; and nobody, in any persona, can close
+>   the crash window between the terminal status write and the first line of a caller's dispatcher,
+>   because it opens before caller code runs. That, not "retries are nice", is what justified the work.
+> - **The conditional delivery insert was rejected.** Making it conditional on winning the finalize
+>   would have forced the cancel paths to enqueue deliveries too, and admitted a window where a cancel
+>   that beats the engine notifies nobody. The insert is unconditional inside a conditional finalize,
+>   so the cancel paths are untouched and today's semantics are preserved exactly. A `run_status`
+>   column carries whichever status actually committed.
+> - **`secrets.path` was cut**, along with the global `GET /webhook-deliveries` and its new
+>   `RouteGroup`. An embedder already has a more expressive hook than the proposed `WebhookSecrets`
+>   interface, and a route group is a member of a closed union that can never be withdrawn. The
+>   delivery routes are run-scoped instead; a global list stays purely additive.
+> - **Retries are BullMQ's, not ours.** The proposal assumed a worker we would write. On Redis the
+>   whole schedule — delayed jobs, exponential backoff with jitter, stalled-job recovery — is
+>   BullMQ's, because in-memory is a development driver and a design constrained by what it can do
+>   under-serves every real deployment. Our polling loop remains, as the development path and as the
+>   recovery sweep for the one gap a queue cannot cover: a crash between the outbox COMMIT and the
+>   enqueue, since a Redis `add()` cannot join a Postgres transaction.
 
 ## Problem
 

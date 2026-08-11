@@ -38,21 +38,23 @@ inboxes. They are not the audience for a hosted chat widget.
 
 ## The proposals
 
-Together they form one round trip that needs no browser: **durable-delivery** makes the outbound leg
+Together they formed one round trip that needs no browser: **durable-delivery** made the outbound leg
 trustworthy (the answer gets back), **inbound-events** makes the inbound leg cheap (the event gets
-in).
+in). The outbound half has since shipped, so only one proposal is still a proposal.
 
 | Proposal                                     | Summary                                                                                           |
 | -------------------------------------------- | ------------------------------------------------------------------------------------------------- |
 | [inbound-events.md](./inbound-events.md)     | **The goal.** An optional inbound pipeline plus a plugin interface, so a source is one small file |
-| [durable-delivery.md](./durable-delivery.md) | **The prerequisite.** Durable, signed, retried run-completion delivery — the answer gets back     |
+| [durable-delivery.md](./durable-delivery.md) | **Shipped in 0.16 — history now.** Durable, signed, retried run-completion delivery               |
 
-**Read `durable-delivery` first**, but understand which one is the point. Inbound events is the
-capability worth having; durable delivery is what makes it correct rather than merely possible, and it
-is independently valuable — today a run's completion notification can be lost with no record and no
-retry, which is a defect in the server whether or not anything is built on top of it.
+**`durable-delivery` is done.** It is kept for the argument rather than the plan — what was rejected
+and why is more useful than what was built. The behaviour lives in
+[recipes/production.md](../recipes/production.md#get-notified-when-a-run-finishes) and
+[langgraph-cli-compat.md](../langgraph-cli-compat.md#webhooks-skeinwebhooks); the delivery outbox
+means a run's completion notification can no longer be lost with no record and no retry, which was a
+defect in the server whether or not anything was built on top of it.
 
-Two things these used to depend on have since shipped, which is why the round trip is now buildable
+Three things these used to depend on have since shipped, which is why the round trip is now buildable
 at all. **Idempotent run creation** (`Idempotency-Key`) landed in 0.14 as this proposal's first phase
 — see [agent-protocol.md](../agent-protocol.md#idempotent-run-creation-idempotency-key). And
 [#7](https://github.com/skein-js/skein-js/issues/7), where SDK thread/run options (`if_exists`,

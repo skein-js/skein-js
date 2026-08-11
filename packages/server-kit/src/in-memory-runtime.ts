@@ -145,7 +145,9 @@ export async function loadReloadableInMemoryRuntime(
   const idempotency = resolveIdempotency(first.config.skein?.idempotency);
   // Same story for `skein.webhooks`: resolved here as well as in `buildRuntime`'s durable branch, or
   // a retry policy would work under `skein start` and silently do nothing under `skein dev`.
-  const webhooks = resolveWebhooks(first.config.skein?.webhooks);
+  const webhooks = resolveWebhooks(first.config.skein?.webhooks, {
+    warn: (message) => console.warn(message),
+  });
   const store = new MemorySkeinStore({
     maxPageSize: resolveMaxPageSize(),
     ...(threadTtl ? { threadTtl } : {}),

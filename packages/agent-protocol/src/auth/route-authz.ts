@@ -88,6 +88,11 @@ export const ROUTE_AUTHZ: Record<keyof ProtocolHandlers, RouteAuthz> = {
   createStatelessRun: { resource: "threads", action: "create_run" },
   createRunBatch: { resource: "threads", action: "create_run" },
   getRun: { resource: "threads", action: "read" },
+  // `threads`, not a resource of their own: both handlers read the run first, so the existing
+  // ownership filter 404s a non-owner before any delivery is touched. A replay changes what the
+  // server will do, so it is an `update` rather than a `read`.
+  listRunDeliveries: { resource: "threads", action: "read" },
+  replayRunDelivery: { resource: "threads", action: "update" },
   listThreadRuns: { resource: "threads", action: "read" },
   joinRunStream: { resource: "threads", action: "read" },
   joinRun: { resource: "threads", action: "read" },

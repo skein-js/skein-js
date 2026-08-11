@@ -52,6 +52,19 @@ export interface WebhookDeliveryConfig {
    * skipped, so it is visible in the delivery list instead of being a callback that never arrives.
    */
   allowedHosts?: readonly string[];
+  /**
+   * The keys callbacks are signed with. Signing is off when this is empty.
+   *
+   * A **list**, because rotation has to be possible without dropping deliveries. Signing uses the
+   * first; a receiver is told to accept any it has been given. Rotate by prepending the new key,
+   * waiting out the receivers, then removing the old one — remove it first and every callback is
+   * refused until the last receiver has caught up.
+   *
+   * Never read from `langgraph.json`'s own `secret` field alone: see `resolveWebhooks`, and note that
+   * skein does not expand `${VAR}` in that file, so `"secret": "${SKEIN_WEBHOOK_SECRET}"` would sign
+   * with the literal 25-character string — the worst possible outcome for a signing key.
+   */
+  secrets?: readonly string[];
 }
 
 export const DEFAULT_MAX_ATTEMPTS = 12;

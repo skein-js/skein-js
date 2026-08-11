@@ -289,7 +289,9 @@ export async function buildRuntime(options: BuildRuntimeOptions): Promise<SkeinR
     // Delivery policy from langgraph.json `skein.webhooks`. Absence is *defaults*, not fire-once —
     // a run carrying a `webhook` owes a callback either way. The memory branch above resolves this
     // itself, for the reason that comment gives.
-    const webhooks = resolveWebhooks(first.config.skein?.webhooks);
+    const webhooks = resolveWebhooks(first.config.skein?.webhooks, {
+      warn: (message) => console.warn(message),
+    });
     // `requireEnv` is evaluated eagerly (before any connect), so a missing POSTGRES_URI still throws
     // before a pool is opened. The Postgres store + saver assembly (shared connection tuning, ordered
     // teardown) lives in `connectPostgresStore` — reused by `embedPostgresGraphs`.
