@@ -210,6 +210,127 @@ describe("webhook delivery and the thread lock", () => {
   });
 });
 
+// The outbox: on a driver with a `deliveries` repo, the callback is recorded in the *same write* as
+// the run's terminal status, and the POST above is merely the first attempt at a row that already
+// exists. That is the whole difference between "we tried to tell you" and "we will tell you".
+describe("the run-completion outbox", () => {
+  it("records the delivery alongside the run's terminal status", async () => {
+    const dispatch = vi.fn<WebhookDispatcher>().mockResolvedValue(undefined);
+    const { deps, run, control, kwargs } = await seed({ webhookDispatcher: dispatch }, "echo", {
+      input: { value: "hi" },
+      webhook: "https://example.test/hook",
+    });
+
+    await executeRun(deps, { run, kwargs, control });
+
+    const [delivery] = await deps.store.deliveries!.listByRun(run.run_id);
+    expect(delivery).toMatchObject({
+      run_id: run.run_id,
+      thread_id: run.thread_id,
+      url: "https://example.test/hook",
+      run_status: "success",
+      // Delivered on the inline attempt, so the payload is already cleared.
+      status: "delivered",
+      payload: null,
+    });
+  });
+
+  it("keeps a failed delivery for the worker instead of losing it", async () => {
+    // Today this is where a notification disappears: the POST fails, the failure is logged, and
+    // nothing remembers a callback was owed.
+    const dispatch = vi.fn<WebhookDispatcher>().mockRejectedValue(new Error("receiver is down"));
+    const { deps, run, control, kwargs } = await seed({ webhookDispatcher: dispatch }, "echo", {
+      input: { value: "hi" },
+      webhook: "https://example.test/hook",
+    });
+
+    const outcome = await executeRun(deps, { run, kwargs, control });
+
+    expect(outcome.status).toBe("success");
+    const [delivery] = await deps.store.deliveries!.listByRun(run.run_id);
+    expect(delivery).toMatchObject({ status: "pending", last_error: "receiver is down" });
+    // The payload survives, because a retry has to have something to send.
+    expect(delivery?.payload).toMatchObject({ run_id: run.run_id });
+  });
+
+  // The race the whole `run_status` column exists for. A cancel lands while the graph is finishing;
+  // it owns the run's status, so the callback has to report *its* verdict — a receiver that reads the
+  // run back a millisecond later must not find it saying something else.
+  it("stamps the delivery with the winner's status when a cancel beat the engine", async () => {
+    const dispatch = vi.fn<WebhookDispatcher>().mockResolvedValue(undefined);
+    const { deps, run, control, kwargs } = await seed({ webhookDispatcher: dispatch }, "echo", {
+      input: { value: "hi" },
+      webhook: "https://example.test/hook",
+    });
+    // Stand in for `cancelRun`, which writes the terminal status with a bare `setStatus` and
+    // deliberately races the engine: the moment the run goes `running`, the cancel lands on top.
+    // Hooked on that write rather than left to timing, so the race is the same on every run of this
+    // suite.
+    const setStatus = deps.store.runs.setStatus.bind(deps.store.runs);
+    vi.spyOn(deps.store.runs, "setStatus").mockImplementation(async (runId, status, error) => {
+      const written = await setStatus(runId, status, error);
+      if (status === "running") await setStatus(runId, "cancelled");
+      return written;
+    });
+
+    await executeRun(deps, { run, kwargs, control });
+
+    const [delivery] = await deps.store.deliveries!.listByRun(run.run_id);
+    expect(delivery?.run_status).toBe("cancelled");
+    expect((await deps.store.runs.get(run.run_id))?.status).toBe("cancelled");
+    // And the body the receiver got agrees with the row, rather than with what the engine intended.
+    expect(dispatch.mock.calls[0]![1]).toMatchObject({ status: "cancelled" });
+  });
+
+  it("records nothing for a run that carries no webhook", async () => {
+    const { deps, run, control, kwargs } = await seed({}, "echo", { input: { value: "hi" } });
+
+    await executeRun(deps, { run, kwargs, control });
+
+    expect(await deps.store.deliveries!.listByRun(run.run_id)).toEqual([]);
+  });
+
+  it("falls back to one best-effort POST on a store with no deliveries repo", async () => {
+    // A third-party driver that has not adopted the outbox keeps working, with today's semantics.
+    const dispatch = vi.fn<WebhookDispatcher>().mockResolvedValue(undefined);
+    const { deps, run, control, kwargs } = await seed({ webhookDispatcher: dispatch }, "echo", {
+      input: { value: "hi" },
+      webhook: "https://example.test/hook",
+    });
+    const withoutOutbox = {
+      ...deps,
+      store: Object.assign(Object.create(Object.getPrototypeOf(deps.store) as object), deps.store, {
+        deliveries: undefined,
+        runs: { ...deps.store.runs, finalizeWithDelivery: undefined },
+      }),
+    } as typeof deps;
+
+    const outcome = await executeRun(withoutOutbox, { run, kwargs, control });
+
+    expect(outcome.status).toBe("success");
+    expect(dispatch).toHaveBeenCalledTimes(1);
+    expect(dispatch.mock.calls[0]![1]).toMatchObject({ status: "success", values: {} });
+    expect(await deps.store.deliveries!.listByRun(run.run_id)).toEqual([]);
+  });
+
+  it("truncates an oversized payload inside the body, and says so on the row", async () => {
+    const dispatch = vi.fn<WebhookDispatcher>().mockRejectedValue(new Error("down"));
+    const { deps, run, control, kwargs } = await seed(
+      { webhookDispatcher: dispatch, webhooks: { maxPayloadBytes: 200 } },
+      "echo",
+      { input: { value: "x".repeat(1_000) }, webhook: "https://example.test/hook" },
+    );
+
+    await executeRun(deps, { run, kwargs, control });
+
+    const [delivery] = await deps.store.deliveries!.listByRun(run.run_id);
+    expect(delivery?.payload_truncated).toBe(true);
+    expect((delivery?.payload as { values: unknown }).values).toMatchObject({
+      $skein_truncated: true,
+    });
+  });
+});
+
 // The default dispatcher's timeout. Untested, this is the fragile part of the change: the friendly
 // message depends on undici surfacing `AbortSignal.timeout`'s reason as a `TimeoutError`, and if a
 // future runtime wraps it differently the degradation is silent — a raw DOMException in a warn line.

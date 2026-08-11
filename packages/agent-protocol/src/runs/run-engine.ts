@@ -16,6 +16,7 @@ import {
   SkeinHttpError,
   toRunError,
   type DefaultValues,
+  type Delivery,
   type Metadata,
   type Run,
   type RunError,
@@ -27,6 +28,9 @@ import {
   type ThreadUpdate,
 } from "@skein-js/core";
 
+import { attemptDelivery } from "../deliveries/attempt-delivery.js";
+import { DEFAULT_RETAIN_HOURS, DELIVERY_LEASE_MS } from "../deliveries/delivery-config.js";
+import { buildDeliveryPayload } from "../deliveries/delivery-payload.js";
 import { isNoopLogger, type ResolvedDeps } from "../deps.js";
 import {
   requireAgentCapability,
@@ -275,6 +279,71 @@ export async function executeRun(deps: ResolvedDeps, exec: RunExecution): Promis
     );
   };
 
+  // The delivery this run's terminal status was committed alongside, when there was one to commit.
+  // Read by the `finally`, which attempts it once the run has settled.
+  let recordedDelivery: Delivery | undefined;
+
+  /**
+   * Finalize the run — and, when it owes a callback, record that callback in the *same* write.
+   *
+   * This is `finalizeRun` plus the outbox, and it replaces it at every terminal site. The two halves
+   * commit together or not at all, which is the whole point: a crash between "the run succeeded" and
+   * "someone was told" is exactly the window a webhook cannot survive today, and it sits before any
+   * injected dispatcher runs, so no caller can close it for themselves.
+   *
+   * Returns the *effective* status, exactly as `finalizeRun` does — which for a run a cancel already
+   * won is the cancel's, not the one we asked for. It reads that back off the delivery rather than
+   * recomputing it, so the row and the callback can never disagree about how the run ended.
+   */
+  const settleRun = async (
+    status: RunStatus,
+    settled: { values: DefaultValues; error?: RunError },
+  ): Promise<RunStatus> => {
+    const recordDelivery = deps.store.runs.finalizeWithDelivery;
+    // No webhook, no outbox in this driver, or a run that never executed: the pre-outbox path, which
+    // for the last case means no callback at all — matching today, where `started` gates the fire.
+    if (!started || kwargs.webhook === undefined || !deps.store.deliveries || !recordDelivery) {
+      return finalizeRun(deps, runId, status, settled.error);
+    }
+    const endedAt = deps.clock();
+    const { payload, truncated, bytes } = buildDeliveryPayload({
+      run,
+      values: settled.values,
+      runStartedAt: new Date(startedAt).toISOString(),
+      runEndedAt: endedAt.toISOString(),
+      ...(settled.error ? { error: settled.error.message } : {}),
+      ...(deps.webhooks?.maxPayloadBytes !== undefined
+        ? { maxPayloadBytes: deps.webhooks.maxPayloadBytes }
+        : {}),
+    });
+    if (truncated) {
+      // Warned on every truncation, not once per process: a receiver silently losing `values` is a
+      // shape change it cannot detect from the outside, and one log line at boot would not connect
+      // it to the run it happened to.
+      deps.logger.warn(
+        `run ${runId}: webhook payload was ${bytes} bytes; \`values\` replaced by a truncation marker`,
+      );
+    }
+    const { delivery } = await recordDelivery.call(deps.store.runs, runId, {
+      status,
+      ...(settled.error ? { error: settled.error } : {}),
+      delivery: {
+        thread_id: threadId,
+        url: kwargs.webhook,
+        payload,
+        payload_truncated: truncated,
+        // Born claimed for the inline attempt below; if this process dies before recording its
+        // outcome, the lease expires and a worker takes it over.
+        next_attempt_at: new Date(endedAt.getTime() + DELIVERY_LEASE_MS).toISOString(),
+        expires_at: new Date(
+          endedAt.getTime() + (deps.webhooks?.retainHours ?? DEFAULT_RETAIN_HOURS) * 3_600_000,
+        ).toISOString(),
+      },
+    });
+    recordedDelivery = delivery;
+    return delivery.run_status;
+  };
+
   // Arm the optional wall-clock timeout; it aborts this run's signal with reason "timeout".
   const timer =
     deps.runTimeoutMs !== undefined
@@ -384,7 +453,10 @@ export async function executeRun(deps: ResolvedDeps, exec: RunExecution): Promis
     if (control.signal.aborted) {
       const abortStatus = abortedStatus(control.reason.current);
       const timedOut = abortStatus === "timeout" ? RUN_TIMEOUT_ERROR : undefined;
-      const finalStatus = await finalizeRun(deps, runId, abortStatus, timedOut);
+      const finalStatus = await settleRun(abortStatus, {
+        values: {} as DefaultValues,
+        ...(timedOut ? { error: timedOut } : {}),
+      });
       if (finalStatus === "timeout")
         await mirrorThreadError(deps, threadId, RUN_TIMEOUT_ERROR.message);
       else await mirrorThreadStatus(deps, threadId, "idle");
@@ -402,7 +474,7 @@ export async function executeRun(deps: ResolvedDeps, exec: RunExecution): Promis
       configurable: { thread_id: threadId },
     });
     const computed = runStatusForSnapshot(snapshot);
-    const finalStatus = await finalizeRun(deps, runId, computed);
+    const finalStatus = await settleRun(computed, { values: snapshot.values as DefaultValues });
     if (finalStatus === computed) {
       await mirrorThread(deps, threadId, snapshotToThreadUpdate(snapshot, finalStatus));
     } else {
@@ -420,7 +492,10 @@ export async function executeRun(deps: ResolvedDeps, exec: RunExecution): Promis
   } catch (error) {
     const reason = control.reason.current;
     if (reason === "timeout") {
-      const finalStatus = await finalizeRun(deps, runId, "timeout", RUN_TIMEOUT_ERROR);
+      const finalStatus = await settleRun("timeout", {
+        values: {} as DefaultValues,
+        error: RUN_TIMEOUT_ERROR,
+      });
       if (finalStatus === "timeout")
         await mirrorThreadError(deps, threadId, RUN_TIMEOUT_ERROR.message);
       logFinished(finalStatus);
@@ -435,7 +510,7 @@ export async function executeRun(deps: ResolvedDeps, exec: RunExecution): Promis
     ) {
       // Displaced (interrupt/rollback) or explicitly cancelled: terminal in its own right, and the
       // thread is free again (idle). `interrupt` keeps its checkpoints; a `rollback` run drops them.
-      const finalStatus = await finalizeRun(deps, runId, abortedStatus(reason));
+      const finalStatus = await settleRun(abortedStatus(reason), { values: {} as DefaultValues });
       await mirrorThreadStatus(deps, threadId, "idle");
       logFinished(finalStatus);
       outcome = { status: finalStatus, values: {} as DefaultValues };
@@ -446,7 +521,7 @@ export async function executeRun(deps: ResolvedDeps, exec: RunExecution): Promis
     const wireError = toRunError(error, { includeStack: deps.exposeErrorStacks === true });
     seq += 1;
     await deps.bus.publish(runId, { seq, event: "error", data: wireError });
-    const finalStatus = await finalizeRun(deps, runId, "error", wireError);
+    const finalStatus = await settleRun("error", { values: {} as DefaultValues, error: wireError });
     if (finalStatus === "error") await mirrorThreadError(deps, threadId, wireError.message);
     // ALWAYS logged, ungated by `logRunActivity`: a run that fails silently is the whole problem
     // this reporting exists to solve. The report carries the original Error, so a console logger can
@@ -506,33 +581,76 @@ export async function executeRun(deps: ResolvedDeps, exec: RunExecution): Promis
     }
     // Always close the bus so every subscriber's iterator completes and emits the terminal event.
     await deps.bus.close(runId);
-    // Run-completion webhook: fire once, best-effort, only for a run that actually executed. A
-    // delivery failure is logged, never propagated — it must not fail or delay the run.
-    if (started && kwargs.webhook !== undefined) {
-      const sentAt = deps.clock().toISOString();
-      const payload = {
-        ...run,
-        status: outcome.status,
-        values: outcome.values,
-        run_started_at: new Date(startedAt).toISOString(),
-        run_ended_at: sentAt,
-        webhook_sent_at: sentAt,
-        ...(webhookErrorMessage !== undefined ? { error: webhookErrorMessage } : {}),
-      };
-      const url = kwargs.webhook;
-      const deliver = async (): Promise<void> => {
-        try {
-          await deps.webhookDispatcher(url, payload);
-        } catch (error) {
-          deps.logger.warn(`run ${runId}: webhook delivery to ${url} failed`, error);
-        }
-      };
+    // Run-completion webhook: the first attempt, made inline so a healthy receiver still hears within
+    // milliseconds rather than at the next worker tick. A failure is logged and recorded, never
+    // propagated — it must not fail or delay the run.
+    //
+    // Two shapes, and which one runs depends on the driver rather than on configuration. With an
+    // outbox, `settleRun` already committed the delivery alongside the run's status, so all that is
+    // left is to attempt it; if this process dies first, its lease expires and a worker takes over.
+    // Without one, this is the pre-outbox path verbatim: one POST, logged on failure, gone if it
+    // fails.
+    const deliver = deliverRecorded(deps, recordedDelivery) ?? deliverOnce(deps, exec, outcome);
+    if (deliver) {
       // Handed to the caller rather than awaited here, when the caller asks for it. This `finally` runs
       // inside the thread's execution lock, so awaiting a hung target here blocks every other run on
-      // the thread — and holds `payload`, which carries the run's whole final state, alive for as long
-      // as it hangs. See `startRunExecution`.
+      // the thread — and holds the payload, which carries the run's whole final state, alive for as
+      // long as it hangs. See `startRunExecution`.
       if (exec.deferWebhook) exec.deferWebhook(deliver);
       else await deliver();
     }
+  }
+
+  /** The outbox path: attempt the delivery the finalize transaction already committed. */
+  function deliverRecorded(
+    resolved: ResolvedDeps,
+    delivery: Delivery | undefined,
+  ): (() => Promise<void>) | undefined {
+    if (!delivery) return undefined;
+    return async () => {
+      await attemptDelivery(
+        {
+          store: resolved.store,
+          webhookDispatcher: resolved.webhookDispatcher,
+          logger: resolved.logger,
+          clock: resolved.clock,
+          ...(resolved.webhooks ? { webhooks: resolved.webhooks } : {}),
+          // Present in a Redis deployment: the retry after this inline attempt is BullMQ's job,
+          // not a poller's.
+          ...(resolved.deliveryQueue ? { deliveryQueue: resolved.deliveryQueue } : {}),
+        },
+        delivery,
+      );
+    };
+  }
+
+  /**
+   * The pre-outbox path, for a store with no `deliveries` repo — a third-party driver, or one
+   * deliberately left on today's semantics. One POST, swallowed on failure, never retried.
+   */
+  function deliverOnce(
+    resolved: ResolvedDeps,
+    execution: RunExecution,
+    settled: RunOutcome,
+  ): (() => Promise<void>) | undefined {
+    if (!started || execution.kwargs.webhook === undefined) return undefined;
+    const url = execution.kwargs.webhook;
+    const sentAt = resolved.clock().toISOString();
+    const payload = {
+      ...execution.run,
+      status: settled.status,
+      values: settled.values,
+      run_started_at: new Date(startedAt).toISOString(),
+      run_ended_at: sentAt,
+      webhook_sent_at: sentAt,
+      ...(webhookErrorMessage !== undefined ? { error: webhookErrorMessage } : {}),
+    };
+    return async () => {
+      try {
+        await resolved.webhookDispatcher(url, payload);
+      } catch (error) {
+        resolved.logger.warn(`run ${runId}: webhook delivery to ${url} failed`, error);
+      }
+    };
   }
 }

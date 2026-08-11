@@ -11,7 +11,6 @@ import { readFile } from "node:fs/promises";
 import path from "node:path";
 
 import { MemorySaver } from "@langchain/langgraph";
-import { cloneLangGraphCheckpoint, langGraphResolver, SkeinBaseStore } from "@skein-js/langgraph";
 import { withStoreItems } from "@skein-js/agent-protocol";
 import type { GraphResolver, GraphSchemas, ProtocolDeps } from "@skein-js/agent-protocol";
 import {
@@ -23,10 +22,12 @@ import {
 } from "@skein-js/config";
 import type { GraphSchemas as ConfigGraphSchemas } from "@skein-js/config";
 import type { TelemetrySink } from "@skein-js/core";
+import { cloneLangGraphCheckpoint, langGraphResolver, SkeinBaseStore } from "@skein-js/langgraph";
 import {
   corsFromHttpConfig,
   loadReloadableInMemoryRuntime,
   resolveIdempotency,
+  resolveWebhooks,
   resolveStoreTtl,
   resolveThreadTtl,
   resolveMaxPageSize,
@@ -285,6 +286,10 @@ export async function buildRuntime(options: BuildRuntimeOptions): Promise<SkeinR
     // this through `loadReloadableInMemoryRuntime`, which reads the same block from its own config —
     // both paths, or the knob would work under `skein start` and do nothing under `skein dev`.
     const idempotency = resolveIdempotency(first.config.skein?.idempotency);
+    // Delivery policy from langgraph.json `skein.webhooks`. Absence is *defaults*, not fire-once —
+    // a run carrying a `webhook` owes a callback either way. The memory branch above resolves this
+    // itself, for the reason that comment gives.
+    const webhooks = resolveWebhooks(first.config.skein?.webhooks);
     // `requireEnv` is evaluated eagerly (before any connect), so a missing POSTGRES_URI still throws
     // before a pool is opened. The Postgres store + saver assembly (shared connection tuning, ordered
     // teardown) lives in `connectPostgresStore` — reused by `embedPostgresGraphs`.
@@ -353,9 +358,20 @@ export async function buildRuntime(options: BuildRuntimeOptions): Promise<SkeinR
       queue: runQueue,
       bus,
       abortChannel,
+      deliveryQueue,
     } = queue === "redis"
-      ? connectRedisQueue({ url: requireEnv("REDIS_URI", "redis"), disposers })
-      : { queue: new MemoryRunQueue(), bus: new MemoryRunEventBus(resolveMemoryBusLimits()) };
+      ? connectRedisQueue({
+          url: requireEnv("REDIS_URI", "redis"),
+          disposers,
+          ...(webhooks ? { webhooks } : {}),
+        })
+      : {
+          queue: new MemoryRunQueue(),
+          bus: new MemoryRunEventBus(resolveMemoryBusLimits()),
+          // No delivery queue on the memory path: the delivery worker polls the outbox instead. That
+          // is the development shape — correct, but the schedule dies with the process.
+          deliveryQueue: undefined,
+        };
 
     // Telemetry sinks from the `telemetry` block plus environment auto-detection. Left off the deps
     // entirely when nothing is configured, so the engine's `telemetryEnabled` guards stay false.
@@ -384,6 +400,10 @@ export async function buildRuntime(options: BuildRuntimeOptions): Promise<SkeinR
       ...(threadTtl ? { threadTtl } : {}),
       // Unlike `threadTtl`, absence is *defaults*, not *off* — `Idempotency-Key` is honoured either way.
       ...(idempotency ? { idempotency } : {}),
+      ...(webhooks ? { webhooks } : {}),
+      // Present only with Redis. Without it the delivery worker polls the outbox instead — correct,
+      // but the schedule dies with the process, which is why `createProtocolRuntime` warns.
+      ...(deliveryQueue ? { deliveryQueue } : {}),
       ...(serverVersion !== undefined ? { serverVersion } : {}),
       auth: await loadAuthEngine(first.config.auth, {
         configDir: first.configDir,

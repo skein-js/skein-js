@@ -4,6 +4,7 @@
 // it, and the scheduler creates runs through the same store the worker drains.
 
 import { SkeinHttpError } from "@skein-js/core";
+import type { DeliveryConsumer } from "@skein-js/core";
 
 import { createAuthScopedStore } from "./auth/auth-scoped-store.js";
 import { resolveAuthContext } from "./auth/authenticate-request.js";
@@ -16,6 +17,12 @@ import {
   type CronScheduler,
   type CronSchedulerOptions,
 } from "./crons/cron-scheduler.js";
+import { processDelivery } from "./deliveries/delivery-processor.js";
+import {
+  createDeliveryWorker,
+  type DeliveryWorker,
+  type DeliveryWorkerOptions,
+} from "./deliveries/delivery-worker.js";
 import type { ProtocolDeps } from "./deps.js";
 import {
   createIdempotencySweeper,
@@ -47,6 +54,12 @@ export interface ProtocolRuntimeOptions {
    * whether — a caller can send `Idempotency-Key` whatever the server configured.
    */
   idempotencySweep?: IdempotencySweeperOptions;
+  /**
+   * Tuning for the outbound delivery worker (poll cadence, batch size). Like the sweeps above, this
+   * is how often and how much, not whether: a run that carries a `webhook` owes a callback whatever
+   * the server configured.
+   */
+  deliveryWorker?: DeliveryWorkerOptions;
 }
 
 /** The wired engine: the service, the handler table, the background worker, and the cron scheduler. */
@@ -87,6 +100,15 @@ export interface ProtocolRuntime {
    * whose sweeper never ticked is carrying dead rows, not answering wrongly.
    */
   idempotencySweeper: IdempotencySweeper;
+  /**
+   * The loop that retries outbound run-completion callbacks, and takes over the ones whose process
+   * died mid-POST.
+   *
+   * Always present, like the sweepers — and a no-op on a store with no `deliveries` repo, where the
+   * engine falls back to a single best-effort POST. Started and stopped alongside the worker; exposed
+   * for a host that wants to drive `tickOnce()` itself.
+   */
+  deliveryWorker: DeliveryWorker;
 }
 
 /**
@@ -206,6 +228,56 @@ export function createProtocolRuntime(
         : {}),
   );
 
+  // Always built, for the same reason the sweepers are: a run carrying a `webhook` owes a callback
+  // whether or not the server configured a retry policy, and the delivery the engine records has to
+  // be drained by something. Cheap when unused — one indexed read matching nothing per tick, on an
+  // unref'd timer — and a complete no-op on a driver with no `deliveries` repo.
+  const deliveryWorker = createDeliveryWorker(
+    {
+      store: context.deps.store,
+      webhookDispatcher: context.deps.webhookDispatcher,
+      logger: context.deps.logger,
+      clock: context.deps.clock,
+      ...(deps.webhooks ? { webhooks: deps.webhooks } : {}),
+      ...(deps.deliveryQueue ? { deliveryQueue: deps.deliveryQueue } : {}),
+    },
+    options.deliveryWorker ?? {},
+  );
+
+  // Said once at startup, not discovered later. A deployment whose *store* survives a restart but
+  // whose delivery *schedule* does not will lose every in-flight retry on each deploy — and the
+  // symptom is a callback that silently stops being retried, which is precisely what this feature
+  // exists to make impossible. Same posture, and the same reason, as the cron scheduler's warning
+  // about a non-durable store.
+  if (deps.store.durable === true && deps.deliveryQueue?.durable !== true) {
+    context.deps.logger.warn(
+      "run-completion callbacks are scheduled in memory: a retry still waiting when this process " +
+        "exits is lost. Configure Redis (REDIS_URI) so BullMQ owns the retry schedule.",
+    );
+  }
+
+  // The queue's consumer, when there is a queue. This is what actually retries a callback in
+  // production; `deliveryWorker` above is only the sweep that recovers jobs a crash lost.
+  //
+  // Opened in `start()`, NOT here. Consuming from construction would mean merely *building* a runtime
+  // starts pulling other instances' work — so a process that assembled one to inspect its handler
+  // table, or a test that never started it, would quietly take deliveries and, on teardown, abandon
+  // them. Everything else here hangs off `worker.start()`/`worker.stop()`; so does this.
+  let deliveryConsumer: DeliveryConsumer | undefined;
+  const consumeDeliveries = (): DeliveryConsumer | undefined =>
+    deps.deliveryQueue?.consume((attempt) =>
+      processDelivery(
+        {
+          store: context.deps.store,
+          webhookDispatcher: context.deps.webhookDispatcher,
+          logger: context.deps.logger,
+          clock: context.deps.clock,
+          ...(deps.webhooks ? { webhooks: deps.webhooks } : {}),
+        },
+        attempt,
+      ),
+    );
+
   // Both the scheduler and the abort-channel subscription hang off the worker's lifecycle rather
   // than off methods of their own. Five adapters plus the CLI already call `worker.start()` and
   // `worker.stop()`, and none of them will learn a second pair — so a host that forgets cannot leave
@@ -228,6 +300,7 @@ export function createProtocolRuntime(
     scheduler,
     threadTtlSweeper,
     idempotencySweeper,
+    deliveryWorker,
     worker: {
       get inFlightRunCount() {
         return worker.inFlightRunCount;
@@ -237,6 +310,8 @@ export function createProtocolRuntime(
         scheduler.start();
         threadTtlSweeper.start();
         idempotencySweeper.start();
+        deliveryWorker.start();
+        deliveryConsumer ??= consumeDeliveries();
       },
       stop: async () => {
         await scheduler.stop();
@@ -247,6 +322,15 @@ export function createProtocolRuntime(
         // stops with the other sweepers so a torn-down store never has a loop still writing into it.
         await idempotencySweeper.stop();
         await worker.stop();
+        // AFTER the worker, deliberately: draining runs are still recording deliveries, and stopping
+        // the delivery worker first would leave that last batch sitting until the next process boots.
+        // Its own `stop()` waits out an in-flight POST, so this cannot cut one off mid-flight.
+        await deliveryWorker.stop();
+        // After the sweep, and after the run worker: a draining run may still be recording a delivery
+        // and handing it over, and closing the consumer first would leave that last callback sitting
+        // until another instance picks it up.
+        await deliveryConsumer?.close();
+        deliveryConsumer = undefined;
         await subscription?.close();
       },
     },

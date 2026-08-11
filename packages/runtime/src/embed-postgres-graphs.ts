@@ -9,9 +9,9 @@
 // docs/embedding.md.
 
 import { MemorySaver } from "@langchain/langgraph";
-import { cloneLangGraphCheckpoint, SkeinBaseStore } from "@skein-js/langgraph";
 import { withStoreItems } from "@skein-js/agent-protocol";
 import type { GraphResolver, ProtocolDeps } from "@skein-js/agent-protocol";
+import { cloneLangGraphCheckpoint, SkeinBaseStore } from "@skein-js/langgraph";
 import {
   normalizeEmbeddableGraphs,
   resolveMaxPageSize,
@@ -84,8 +84,13 @@ export interface EmbedPostgresGraphsOptions {
   maxPageSize?: number;
   /**
    * Replace or add any NON-driver dep — `auth`, `logger`, `clock`, `logRunActivity`, `runTimeoutMs`,
-   * `webhookDispatcher`. The drivers (`store`/`queue`/`bus`/`checkpointer`) and `graphs` are owned by
-   * this helper and excluded, so a stray override can't void the durable wiring or the graph source.
+   * `webhookDispatcher`, `webhooks`. The drivers (`store`/`queue`/`bus`/`checkpointer`) and `graphs`
+   * are owned by this helper and excluded, so a stray override can't void the durable wiring or the
+   * graph source.
+   *
+   * This helper reads no `langgraph.json`, so `webhooks` (the delivery retry policy) arrives here
+   * rather than from a config block. Outbound callbacks are durable either way: that comes from the
+   * Postgres store's `deliveries` repo, which this helper always wires.
    */
   overrides?: Omit<Partial<ProtocolDeps>, "graphs" | "store" | "queue" | "bus" | "checkpointer">;
 }
@@ -202,9 +207,20 @@ export async function embedPostgresGraphs(
     // No Redis means the in-memory bus in production. Bound it from the environment rather than
     // leaving it at the constructor defaults — this is the path a Postgres-only deployment runs on,
     // and it is the one that has to survive weeks of uptime.
-    const { queue, bus } = redisUrl
-      ? connectRedisQueue({ url: redisUrl, disposers })
-      : { queue: new MemoryRunQueue(), bus: new MemoryRunEventBus(resolveMemoryBusLimits()) };
+    const { queue, bus, deliveryQueue } = redisUrl
+      ? connectRedisQueue({
+          url: redisUrl,
+          disposers,
+          ...(options.overrides?.webhooks ? { webhooks: options.overrides.webhooks } : {}),
+        })
+      : {
+          queue: new MemoryRunQueue(),
+          bus: new MemoryRunEventBus(resolveMemoryBusLimits()),
+          // Without Redis there is nowhere durable to hold a retry, so the delivery worker polls the
+          // outbox instead. Callbacks are still never *lost* — the row is written in the run's
+          // transaction — but a retry still waiting when the process exits does not survive it.
+          deliveryQueue: undefined,
+        };
 
     const deps: ProtocolDeps = {
       store,
@@ -220,6 +236,7 @@ export async function embedPostgresGraphs(
       // Carried so the runtime's sweeper picks up the configured cadence; the sweeper itself runs
       // either way, because a per-thread `ttl` needs collecting with or without a default.
       ...(options.threadTtl ? { threadTtl: options.threadTtl } : {}),
+      ...(deliveryQueue ? { deliveryQueue } : {}),
       ...options.overrides, // spread LAST, mirroring embedInMemoryGraphs
     };
     return { deps, dispose };

@@ -7,10 +7,11 @@
 // See build-runtime.ts and embed-postgres-graphs.ts.
 
 import { PostgresSaver } from "@langchain/langgraph-checkpoint-postgres";
-import type { ProtocolDeps } from "@skein-js/agent-protocol";
+import type { ProtocolDeps, WebhookDeliveryConfig } from "@skein-js/agent-protocol";
 import {
   RedisRunAbortChannel,
   RedisRunEventBus,
+  RedisDeliveryQueue,
   RedisRunQueue,
   type RedisRunEventBusOptions,
 } from "@skein-js/redis";
@@ -287,10 +288,22 @@ export function redisEventBusOptions(): RedisRunEventBusOptions {
 export function connectRedisQueue(args: {
   url: string;
   disposers: Disposer[];
-}): Pick<ProtocolDeps, "queue" | "bus" | "abortChannel"> {
+  /** The retry policy, so the queue's own backoff is sized from `skein.webhooks` rather than guessed. */
+  webhooks?: WebhookDeliveryConfig;
+}): Pick<ProtocolDeps, "queue" | "bus" | "abortChannel" | "deliveryQueue"> {
   const { url, disposers } = args;
   const queue = new RedisRunQueue(url);
   disposers.push(() => queue.dispose());
+  // Comes along with Redis rather than behind a flag, for the same reason the abort channel does:
+  // Redis is what makes a deployment production-shaped, and a production deployment whose webhook
+  // retries live in a process timer loses them on every deploy. With this, the retry schedule is
+  // BullMQ's — delayed jobs, exponential backoff with jitter, stalled-job recovery.
+  const deliveryQueue = new RedisDeliveryQueue(url, {
+    ...(args.webhooks?.retries?.initialDelayMs !== undefined
+      ? { initialDelayMs: args.webhooks.retries.initialDelayMs }
+      : {}),
+  });
+  disposers.push(() => deliveryQueue.dispose());
   const bus = new RedisRunEventBus(url, redisEventBusOptions());
   disposers.push(() => bus.dispose());
   const abortChannel = new RedisRunAbortChannel(url, {
@@ -299,7 +312,7 @@ export function connectRedisQueue(args: {
     onError: (error) => console.warn("skein: run abort channel error", error),
   });
   disposers.push(() => abortChannel.dispose());
-  return { queue, bus, abortChannel };
+  return { queue, bus, abortChannel, deliveryQueue };
 }
 
 /**

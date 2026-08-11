@@ -49,15 +49,48 @@ Pass a `webhook` URL on run creation; skein POSTs the settled run to it.
 await client.runs.create(threadId, "agent", { input, webhook: "https://example.com/hooks/run" });
 ```
 
-**It is best-effort and unsigned.** A failed delivery is logged, never retried, and never fails the run —
-treat it as a notification and the API as the source of truth. Each POST is aborted after
-`SKEIN_WEBHOOK_TIMEOUT_MS` (default 5s), sized against the 8s shutdown budget so a slow receiver can't
-get you killed mid-POST. Delivery happens after the thread's execution lock is released, so a slow target
-no longer blocks other runs on that thread — which also means two webhooks for one thread are not
-guaranteed to arrive in run order.
+**The callback is recorded in the same transaction as the run's terminal status**, so a crash between
+"the run finished" and "someone was told" cannot lose it. That is the guarantee, and it comes from the
+store — not from the retry policy, and not from anything you configure. skein attempts the first
+delivery inline, so a healthy receiver hears within milliseconds; a failure is recorded and retried.
 
-A server accepting untrusted clients should inject a `webhookDispatcher` that allowlists the host.
-Durable, signed, retried delivery is [proposed](../proposals/durable-delivery.md).
+**It is at-least-once, not exactly-once.** A retry can duplicate a callback your receiver already
+processed — after a network timeout that actually succeeded, say. Every attempt carries the same
+`X-Skein-Delivery-Id`; dedupe on it. The API remains the source of truth for run state.
+
+Each POST is aborted after `SKEIN_WEBHOOK_TIMEOUT_MS` (default 5s), sized against the 8s shutdown
+budget so a slow receiver can't get you killed mid-POST. Delivery happens after the thread's execution
+lock is released, so a slow target never blocks other runs on that thread — which also means two
+callbacks for one thread are not guaranteed to arrive in run order.
+
+### Retries are BullMQ's when you run Redis
+
+Where the retry schedule lives depends on the queue driver, and this is the one place it matters:
+
+|                        | Retry schedule                                                               | Survives a restart?                                                                                                     |
+| ---------------------- | ---------------------------------------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------- |
+| **Postgres + Redis**   | BullMQ — delayed jobs, exponential backoff with jitter, stalled-job recovery | **Yes.** A retry still waiting is in Redis                                                                              |
+| **Postgres, no Redis** | skein polls the outbox for rows that are due                                 | No. A retry still waiting is lost on exit; the _delivery_ is not — the row is still there and the next boot picks it up |
+| **Memory (dev)**       | Same poll, in-process                                                        | No, and neither is the delivery — nothing here is durable                                                               |
+
+So: **run Redis in production.** skein warns at startup when your store is durable but your delivery
+schedule is not. Want to exercise the real thing locally? `skein dev --queue redis` — the same BullMQ
+path, against a local Redis.
+
+Tune the policy under [`skein.webhooks`](../langgraph-cli-compat.md#webhooks-skeinwebhooks). The
+default is 12 attempts over roughly 34 minutes, which rides out a rolling deploy with room to spare.
+Read that as a **time horizon, not a count**: dropping to 6 attempts is ~31 seconds, which does not
+survive one redeploy.
+
+A server accepting untrusted clients should set `skein.webhooks.allowed_hosts`: `webhook` is a
+caller-supplied URL, so it is a server-side request to a target they chose, and retrying it turns a
+one-shot SSRF probe into a repeated one. It is off by default so upgrading cannot start dropping your
+own callbacks.
+
+Payloads are capped at `max_payload_bytes` (default 256 KiB) because the body is stored for retries.
+Over the cap, `values` is replaced by a truncation marker **inside the body** — so a receiver is told
+it is looking at a truncated state rather than left to infer it. Raise the cap, or read the state back
+from the API using the `run_id` in the callback.
 
 ## Go durable and scale out
 

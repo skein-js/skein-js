@@ -33,6 +33,7 @@ import { embedInMemoryGraphs } from "./in-memory-deps.js";
 import { resolveMaxPageSize } from "./max-page-size.js";
 import { resolveMemoryBusLimits } from "./memory-bus-limits.js";
 import { resolveStoreTtl, resolveThreadTtl } from "./ttl-config.js";
+import { resolveWebhooks } from "./webhooks-config.js";
 
 /**
  * Bridge a config `GraphRegistry` to the engine's `GraphResolver`. They are structurally identical
@@ -142,6 +143,9 @@ export async function loadReloadableInMemoryRuntime(
   // engine reads it, not the store. It has to be resolved on this path anyway, or `skein.idempotency`
   // would tune retention under `skein start` and be silently ignored under `skein dev`.
   const idempotency = resolveIdempotency(first.config.skein?.idempotency);
+  // Same story for `skein.webhooks`: resolved here as well as in `buildRuntime`'s durable branch, or
+  // a retry policy would work under `skein start` and silently do nothing under `skein dev`.
+  const webhooks = resolveWebhooks(first.config.skein?.webhooks);
   const store = new MemorySkeinStore({
     maxPageSize: resolveMaxPageSize(),
     ...(threadTtl ? { threadTtl } : {}),
@@ -161,6 +165,7 @@ export async function loadReloadableInMemoryRuntime(
     ...(threadTtl ? { threadTtl } : {}),
     // Unlike `threadTtl`, absence here means *defaults*, not *off*: the header is honoured either way.
     ...(idempotency ? { idempotency } : {}),
+    ...(webhooks ? { webhooks } : {}),
     ...extraDeps,
   };
 

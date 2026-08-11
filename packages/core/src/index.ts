@@ -134,6 +134,17 @@ export type {
   RunAbortSubscription,
 } from "./queue/run-abort-channel.js";
 
+// Outbound delivery scheduling contract — where a run-completion callback waits between attempts.
+export type {
+  DeliveryAttemptContext,
+  DeliveryConsumer,
+  DeliveryConsumerOptions,
+  DeliveryProcessor,
+  DeliveryQueue,
+  QueuedDelivery,
+  ScheduleDeliveryOptions,
+} from "./queue/delivery-queue.js";
+
 // Run queue + streaming pub/sub contract.
 export type {
   EnqueueOptions,
