@@ -72,7 +72,7 @@ export interface WebhookDeliveryConfig {
    *
    * Never read from `langgraph.json`'s own `secret` field alone: see `resolveWebhooks`, and note that
    * skein does not expand `${VAR}` in that file, so `"secret": "${SKEIN_WEBHOOK_SECRET}"` would sign
-   * with the literal 25-character string — the worst possible outcome for a signing key.
+   * with the literal 23-character string — the worst possible outcome for a signing key.
    */
   secrets?: readonly string[];
 }

@@ -210,11 +210,18 @@ machine-readable [`llms.txt`](https://github.com/skein-js/skein-js/blob/main/llm
 | [scaffolding.md](./scaffolding.md)                       | `npm create skein-js` — every flag, and doing it by hand               |
 | [getting-started.md](./getting-started.md)               | Guided walkthrough — zero to a running server, then prod               |
 | [using-skein.md](./using-skein.md)                       | Consumer/agent cheat-sheet — install, the seam, mount, call            |
+| [features.md](./features.md)                             | **Can skein do X?** — every capability in one page, each linking out   |
 | [recipes.md](./recipes/)                                 | Auth, HITL, memory, CORS, background runs, webhooks, deploy            |
 | [langgraph-cli-compat.md](./langgraph-cli-compat.md)     | `langgraph.json` fields + CLI commands                                 |
 | [embedding.md](./embedding.md)                           | The in-code on-ramp — embed a graph, no `langgraph.json`               |
 | [serving-a-single-graph.md](./serving-a-single-graph.md) | The non-chat surface — a graph as a plain HTTP endpoint                |
 | [agent-protocol.md](./agent-protocol.md)                 | The REST + streaming endpoints skein-js implements                     |
+| [runs.md](./runs.md)                                     | Run modes, multitask/double-texting, cancel, timeouts                  |
+| [background-jobs.md](./background-jobs.md)               | Fire-and-forget jobs — enqueue, hear the result, don't run it twice    |
+| [threads.md](./threads.md)                               | Conversations that persist — state, history, time travel, TTL          |
+| [human-in-the-loop.md](./human-in-the-loop.md)           | Pause for a person and resume later, from anywhere                     |
+| [assistants.md](./assistants.md)                         | Versioned graph configuration — ship a change, roll it back            |
+| [webhooks.md](./webhooks.md)                             | Run-completion callbacks — durable, signed, retried, replayable        |
 | [building-an-adapter.md](./building-an-adapter.md)       | How to put skein-js on any HTTP framework (custom adapter)             |
 | [building-a-runner.md](./building-a-runner.md)           | Serving the Agent Protocol with your own agent (the `AgentGraph` seam) |
 | [streaming.md](./streaming.md)                           | LangGraph stream modes → Agent Protocol SSE                            |

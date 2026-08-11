@@ -334,7 +334,7 @@ and your delivery schedule is not. To exercise the production path locally, `ske
 
 Whether a callback is **durable** does not depend on any of this: the delivery is recorded in the same
 transaction as the run's terminal status, so it cannot be lost even with no queue at all. See
-[recipes/production.md](./recipes/production.md#get-notified-when-a-run-finishes).
+[webhooks.md](./webhooks.md).
 
 ## Authentication + authorization (`auth`)
 

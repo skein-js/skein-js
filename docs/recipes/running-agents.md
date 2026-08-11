@@ -17,7 +17,8 @@ runs on **one** thread follow `multitask_strategy`; how many run at once across 
 [run concurrency](../runs-and-redis.md#run-concurrency) (default 10).
 
 Working version: [`triage-agent`](https://github.com/skein-js/skein-js/tree/main/examples/triage-agent)
-— one background run per issue, each on its own thread.
+— one background run per issue, each on its own thread. Details: [runs.md](../runs.md); for
+fire-and-forget work with no conversation to keep, [background-jobs.md](../background-jobs.md).
 
 ## Scheduled runs (crons)
 
@@ -74,7 +75,7 @@ a `command`. [`useStream`](../react-sdk.md) renders and resumes it for free.
 Working versions:
 [`triage-agent`](https://github.com/skein-js/skein-js/tree/main/examples/triage-agent) (reached by a
 conditional edge) and [`chat-app`](https://github.com/skein-js/skein-js/tree/main/examples/chat-app)
-(approval card in the UI).
+(approval card in the UI). Details: [human-in-the-loop.md](../human-in-the-loop.md).
 
 ## Bound a runaway run
 
@@ -96,4 +97,5 @@ await client.runs.create(threadId, "agent", { input, checkpointId });
 ```
 
 The fork target is server-validated, so a client cannot redirect a run to an arbitrary checkpoint through
-config. Visible in the [console](../console.md); details: [agent-protocol.md](../agent-protocol.md).
+config. Visible in the [console](../console.md); details:
+[threads.md](../threads.md#time-travel-re-run-a-turn-a-different-way).

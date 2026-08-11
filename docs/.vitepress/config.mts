@@ -17,7 +17,7 @@ const REPO = "https://github.com/skein-js/skein-js";
  * A page's meta description, taken from its first real paragraph.
  *
  * Frontmatter would be the conventional place, but every doc here is also read as raw Markdown on
- * GitHub and 25 of them are concatenated into llms-full.txt by scripts/generate-llms-full.mjs —
+ * GitHub and most of them are concatenated into llms-full.txt by scripts/generate-llms-full.mjs —
  * which is a plain readFile+concat, so YAML preambles would leak straight into the bundle. Deriving
  * the description at build time keeps the source files as they are and cannot drift from them.
  */
@@ -138,6 +138,7 @@ export default defineConfig({
 
     nav: [
       { text: "Guide", link: "/getting-started" },
+      { text: "Features", link: "/features" },
       { text: "Protocol", link: "/agent-protocol" },
       { text: "Deploy", link: "/deploy" },
       { text: "Roadmap", link: "/roadmap" },
@@ -164,6 +165,22 @@ export default defineConfig({
         ],
       },
       {
+        text: "Features",
+        items: [
+          { text: "Overview", link: "/features" },
+          { text: "Assistants", link: "/assistants" },
+          { text: "Threads & time travel", link: "/threads" },
+          { text: "Runs & multitask", link: "/runs" },
+          { text: "Streaming", link: "/streaming" },
+          { text: "Human-in-the-loop", link: "/human-in-the-loop" },
+          { text: "Background jobs", link: "/background-jobs" },
+          { text: "Crons", link: "/crons" },
+          { text: "Webhooks & delivery", link: "/webhooks" },
+          { text: "Long-term memory", link: "/memory" },
+          { text: "The console", link: "/console" },
+        ],
+      },
+      {
         text: "Recipes",
         items: [
           { text: "Overview", link: "/recipes/" },
@@ -179,26 +196,22 @@ export default defineConfig({
           { text: "LangGraph CLI compatibility", link: "/langgraph-cli-compat" },
           { text: "Embedding in your server", link: "/embedding" },
           { text: "Serving a single graph", link: "/serving-a-single-graph" },
-          { text: "The console", link: "/console" },
         ],
       },
       {
-        text: "Protocol & streaming",
+        text: "Protocol & extending",
         items: [
           { text: "Agent Protocol", link: "/agent-protocol" },
-          { text: "Streaming", link: "/streaming" },
           { text: "Frontend SDKs & useStream", link: "/react-sdk" },
           { text: "Building an adapter", link: "/building-an-adapter" },
           { text: "Building a runner", link: "/building-a-runner" },
         ],
       },
       {
-        text: "Storage & runs",
+        text: "Storage & scale",
         items: [
           { text: "Storage", link: "/storage" },
-          { text: "Memory", link: "/memory" },
           { text: "Runs & Redis", link: "/runs-and-redis" },
-          { text: "Crons", link: "/crons" },
         ],
       },
       {

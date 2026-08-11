@@ -170,6 +170,24 @@ Each of these creates its own thread. `on_completion` decides what happens to it
 | `DELETE` | `/threads/{thread_id}/runs/{run_id}`               | Delete a run                      |
 | `GET`    | `/runs/{run_id}/stream` (join)                     | Join by run id (thread-agnostic)  |
 
+**Run-completion deliveries.** A run created with a `webhook` records its callback in an outbox, so
+the attempts are inspectable and a failed one can be re-sent:
+
+| Method | Path                                                                 | Notes                                  |
+| ------ | -------------------------------------------------------------------- | -------------------------------------- |
+| `GET`  | `/threads/{thread_id}/runs/{run_id}/deliveries`                      | `?status=` · `?limit=` · `?offset=`    |
+| `POST` | `/threads/{thread_id}/runs/{run_id}/deliveries/{delivery_id}/replay` | Makes a delivery due again immediately |
+
+The list strips the stored `payload` — up to 256 KiB of the run's final state per row — and reports a
+boolean `replayable` in its place; read the state from the run. Replay `409`s on a delivery that
+already succeeded (its payload was cleared on success, so there is nothing left to send) and `404`s on
+a delivery id that does not belong to the run in the path.
+
+Both sit in the **`runs` route group** deliberately: a run is already an ownership-scoped resource, so
+`http.disable_runs` and an existing `@auth.on.threads` handler cover them with no new switch and no new
+`RouteGroup` — which, once shipped, could never be withdrawn. Delivery semantics, signing and
+retention are in [webhooks.md](./webhooks.md).
+
 **Joining a run: two shapes.** `.../runs/{run_id}/stream` tails a run as SSE (`client.runs.joinStream()`,
 resumable with `Last-Event-ID`). `.../runs/{run_id}/join` is the blocking form (`client.runs.join()`): it
 waits for the run to settle and answers the thread's final `values` as plain JSON, or

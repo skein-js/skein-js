@@ -1,7 +1,7 @@
 # Proposal — Inbound events: agents behind WhatsApp, Slack, and anything else
 
 > **Status:** Planned · **Depends on:** nothing — durable outbound delivery, its one
-> prerequisite, [has shipped](../recipes/production.md#get-notified-when-a-run-finishes)
+> prerequisite, [has shipped](../webhooks.md)
 >
 > A design proposal, not shipped behaviour. See [proposals/README.md](./README.md).
 

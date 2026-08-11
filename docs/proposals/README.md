@@ -51,7 +51,7 @@ remains.
 A run's completion notification could be lost with no record and no retry — a defect in the server
 whether or not anything was built on top of it. It now survives a receiver outage, a redeploy and a
 crash, and receivers can authenticate it. Read
-[recipes/production.md](../recipes/production.md#get-notified-when-a-run-finishes) and
+[webhooks.md](../webhooks.md) and
 [langgraph-cli-compat.md](../langgraph-cli-compat.md#webhooks-skeinwebhooks) to use it.
 
 The proposal itself is gone from this directory, because this directory is for work that is not yet

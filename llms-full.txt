@@ -912,11 +912,18 @@ machine-readable [`llms.txt`](https://github.com/skein-js/skein-js/blob/main/llm
 | [scaffolding.md](./scaffolding.md)                       | `npm create skein-js` — every flag, and doing it by hand               |
 | [getting-started.md](./getting-started.md)               | Guided walkthrough — zero to a running server, then prod               |
 | [using-skein.md](./using-skein.md)                       | Consumer/agent cheat-sheet — install, the seam, mount, call            |
+| [features.md](./features.md)                             | **Can skein do X?** — every capability in one page, each linking out   |
 | [recipes.md](./recipes/)                                 | Auth, HITL, memory, CORS, background runs, webhooks, deploy            |
 | [langgraph-cli-compat.md](./langgraph-cli-compat.md)     | `langgraph.json` fields + CLI commands                                 |
 | [embedding.md](./embedding.md)                           | The in-code on-ramp — embed a graph, no `langgraph.json`               |
 | [serving-a-single-graph.md](./serving-a-single-graph.md) | The non-chat surface — a graph as a plain HTTP endpoint                |
 | [agent-protocol.md](./agent-protocol.md)                 | The REST + streaming endpoints skein-js implements                     |
+| [runs.md](./runs.md)                                     | Run modes, multitask/double-texting, cancel, timeouts                  |
+| [background-jobs.md](./background-jobs.md)               | Fire-and-forget jobs — enqueue, hear the result, don't run it twice    |
+| [threads.md](./threads.md)                               | Conversations that persist — state, history, time travel, TTL          |
+| [human-in-the-loop.md](./human-in-the-loop.md)           | Pause for a person and resume later, from anywhere                     |
+| [assistants.md](./assistants.md)                         | Versioned graph configuration — ship a change, roll it back            |
+| [webhooks.md](./webhooks.md)                             | Run-completion callbacks — durable, signed, retried, replayable        |
 | [building-an-adapter.md](./building-an-adapter.md)       | How to put skein-js on any HTTP framework (custom adapter)             |
 | [building-a-runner.md](./building-a-runner.md)           | Serving the Agent Protocol with your own agent (the `AgentGraph` seam) |
 | [streaming.md](./streaming.md)                           | LangGraph stream modes → Agent Protocol SSE                            |
@@ -2236,7 +2243,7 @@ and your delivery schedule is not. To exercise the production path locally, `ske
 
 Whether a callback is **durable** does not depend on any of this: the delivery is recorded in the same
 transaction as the run's terminal status, so it cannot be lost even with no queue at all. See
-[recipes/production.md](./recipes/production.md#get-notified-when-a-run-finishes).
+[webhooks.md](./webhooks.md).
 
 ## Authentication + authorization (`auth`)
 
@@ -3014,6 +3021,24 @@ Each of these creates its own thread. `on_completion` decides what happens to it
 | `DELETE` | `/threads/{thread_id}/runs/{run_id}`               | Delete a run                      |
 | `GET`    | `/runs/{run_id}/stream` (join)                     | Join by run id (thread-agnostic)  |
 
+**Run-completion deliveries.** A run created with a `webhook` records its callback in an outbox, so
+the attempts are inspectable and a failed one can be re-sent:
+
+| Method | Path                                                                 | Notes                                  |
+| ------ | -------------------------------------------------------------------- | -------------------------------------- |
+| `GET`  | `/threads/{thread_id}/runs/{run_id}/deliveries`                      | `?status=` · `?limit=` · `?offset=`    |
+| `POST` | `/threads/{thread_id}/runs/{run_id}/deliveries/{delivery_id}/replay` | Makes a delivery due again immediately |
+
+The list strips the stored `payload` — up to 256 KiB of the run's final state per row — and reports a
+boolean `replayable` in its place; read the state from the run. Replay `409`s on a delivery that
+already succeeded (its payload was cleared on success, so there is nothing left to send) and `404`s on
+a delivery id that does not belong to the run in the path.
+
+Both sit in the **`runs` route group** deliberately: a run is already an ownership-scoped resource, so
+`http.disable_runs` and an existing `@auth.on.threads` handler cover them with no new switch and no new
+`RouteGroup` — which, once shipped, could never be withdrawn. Delivery semantics, signing and
+retention are in [webhooks.md](./webhooks.md).
+
 **Joining a run: two shapes.** `.../runs/{run_id}/stream` tails a run as SSE (`client.runs.joinStream()`,
 resumable with `Last-Event-ID`). `.../runs/{run_id}/join` is the blocking form (`client.runs.join()`): it
 waits for the run to settle and answers the thread's final `values` as plain JSON, or
@@ -3404,6 +3429,1086 @@ thread itself is gated.
 
 - Agent Protocol repo + OpenAPI — <https://github.com/langchain-ai/agent-protocol>
 - aegra's Agent Protocol implementation (Python prior art) — <https://github.com/aegra/aegra>
+
+
+---
+
+<!-- source: docs/features.md -->
+
+# Features
+
+What skein-js can do, in one page. Find the row that matches what you're trying to build, then follow
+the link. ✅ ships today · ⚠️ preview · 🗺️ planned.
+
+Comparing against LangGraph Platform specifically? [roadmap.md](./roadmap.md) has the same ground
+organised by parity instead.
+
+## Run agents
+
+| Capability                                                                              | Status | What it gets you                                                                   |
+| --------------------------------------------------------------------------------------- | ------ | ---------------------------------------------------------------------------------- |
+| [Background jobs](./background-jobs.md)                                                 | ✅     | Fire-and-forget work: hand skein a job, get an id back, hear the result by webhook |
+| [Background runs](./runs.md)                                                            | ✅     | Return immediately, let the graph keep working, join the stream later              |
+| [Wait / stream runs](./runs.md)                                                         | ✅     | Hold the connection for the answer, or stream tokens as they're produced           |
+| [Stateless & batch runs](./runs.md)                                                     | ✅     | One-shot calls with no conversation to keep; up to 100 runs per request            |
+| [Multitask / double-texting](./runs.md#multitask-what-happens-to-the-run-already-going) | ✅     | Decide what a second message does to the run already going — all four strategies   |
+| [Cancel & rollback](./runs.md#cancelling)                                               | ✅     | Stop a run, keeping its writes or discarding them                                  |
+| [Run timeouts](./runs.md#bound-a-runaway-run)                                           | ✅     | Bound a graph that hangs, instead of losing a worker slot                          |
+| [Idempotent run creation](./agent-protocol.md#idempotent-run-creation-idempotency-key)  | ✅     | A retrying caller can't start the same run twice. No LangGraph Platform equivalent |
+| [Cron schedules](./crons.md)                                                            | ✅     | Fire a graph on a schedule, exactly once across instances, no leader election      |
+| [A graph as a plain endpoint](./serving-a-single-graph.md)                              | ✅     | `POST /invoke/:graph_id` — body in, final state out, no threads or runs            |
+
+## Hold a conversation
+
+| Capability                                                            | Status | What it gets you                                                                      |
+| --------------------------------------------------------------------- | ------ | ------------------------------------------------------------------------------------- |
+| [Threads](./threads.md)                                               | ✅     | Conversations that persist, addressable by your own key (a ticket id, a phone number) |
+| [Streaming (SSE)](./streaming.md)                                     | ✅     | Tokens, tool calls and reasoning as they happen — including a true `events` mode      |
+| [Reconnect & join](./streaming.md)                                    | ✅     | Resume a dropped stream, or tail the same run from a second client                    |
+| [Human-in-the-loop](./human-in-the-loop.md)                           | ✅     | Pause for approval and resume hours later, from anywhere                              |
+| [Time travel](./threads.md#time-travel-re-run-a-turn-a-different-way) | ✅     | Fork from any past checkpoint and run forward — "edit and resubmit"                   |
+| [Thread state & history](./threads.md#read-the-state)                 | ✅     | Read, patch, page, copy or prune a conversation's state                               |
+| [Thread TTL](./storage.md#thread-ttl)                                 | ✅     | Expire conversations automatically. LangGraph OSS ignores `ttl`; skein doesn't        |
+| [Assistants & versioning](./assistants.md)                            | ✅     | Ship a prompt change without redeploying, and roll it back in one call                |
+| [`useStream` and friends](./react-sdk.md)                             | ✅     | The LangChain client ecosystem works unchanged — React, Vue, Svelte, Angular          |
+
+## Remember things
+
+| Capability                                                                      | Status | What it gets you                                                        |
+| ------------------------------------------------------------------------------- | ------ | ----------------------------------------------------------------------- |
+| [The store, via `getStore()`](./memory.md)                                      | ✅     | Memory that outlives a conversation, reachable from inside a graph node |
+| [Semantic search](./storage.md)                                                 | ✅     | pgvector-backed recall, with optional HNSW indexing                     |
+| [Filters & namespace traversal](./storage.md#filtering-and-namespace-traversal) | ✅     | Query memory by value, and walk namespaces with wildcards               |
+| [Store TTL](./storage.md#store-item-ttl)                                        | ✅     | Expire memories, optionally refreshing on read                          |
+| [Bring your own store](./storage.md#bringing-your-own-store-storeadapter)       | ✅     | Point skein at a LangGraph `BaseStore` or your own implementation       |
+| [Memory patterns](./memory.md)                                                  | ✅     | Profile vs collection shapes, the dedup trap, recall, background writes |
+
+## Connect it to the rest of your system
+
+| Capability                                                                 | Status | What it gets you                                                                    |
+| -------------------------------------------------------------------------- | ------ | ----------------------------------------------------------------------------------- |
+| [Run-completion webhooks](./webhooks.md)                                   | ✅     | Be told a run finished — durably, so a receiver's redeploy doesn't lose the news    |
+| [Signed callbacks](./webhooks.md#verify-a-callback-is-really-from-you)     | ✅     | Receivers can prove a callback is yours and reject replays. The verifier ships too  |
+| [Deliveries & replay](./webhooks.md#see-what-a-callback-did-and-replay-it) | ✅     | See every attempt, and re-send one by hand when it never landed                     |
+| [Custom auth](./agent-protocol.md#authentication--authorization)           | ✅     | LangGraph's `Auth` model, drop-in, with ownership filters pushed into the query     |
+| [Telemetry sinks](./observability.md)                                      | ✅     | LangSmith, PostHog, OpenTelemetry — or your own `TelemetrySink`                     |
+| [Inbound events](./proposals/inbound-events.md)                            | 🗺️     | Agents behind WhatsApp, Slack, or a GitHub webhook, without re-solving the plumbing |
+| [MCP endpoint](./roadmap.md)                                               | 🗺️     | Expose your graphs as MCP tools                                                     |
+
+## Operate it
+
+| Capability                                              | Status     | What it gets you                                                                  |
+| ------------------------------------------------------- | ---------- | --------------------------------------------------------------------------------- |
+| [The console](./console.md)                             | ✅         | A Studio equivalent at `/console` — no account, no tunnel. Off by default in prod |
+| [Postgres + pgvector](./storage.md)                     | ✅         | The production storage driver, with automatic migrations                          |
+| [Redis queue & pub/sub](./runs-and-redis.md)            | ✅         | Durable run queue and cross-instance streaming                                    |
+| [Multi-instance](./deploy.md#scaling-past-one-instance) | ✅         | Atomic create guard, cross-instance cancel, per-thread execution claim            |
+| [Errors & logging](./errors-and-logging.md)             | ✅         | What a failed run reports, and where — wire, log, and callback                    |
+| [Deploy anywhere](./deploy.md)                          | ✅         | One image; guides for Cloud Run, Fly, Railway, Render, AWS, Kubernetes, a VPS     |
+| [Performance tuning](./performance.md)                  | ✅         | Every knob in one table, plus symptom → knob triage                               |
+| [Bun / Deno runtimes](./deploy.md)                      | ⚠️ preview | Fetch launchers and images ship; the runtime matrices must graduate each          |
+
+## Build on it
+
+| Capability                                         | Status | What it gets you                                                         |
+| -------------------------------------------------- | ------ | ------------------------------------------------------------------------ |
+| [Framework adapters](./using-skein.md)             | ✅     | Express, Fastify, NestJS, Next.js, native Fetch — standalone or embedded |
+| [Embed a graph in code](./embedding.md)            | ✅     | No `langgraph.json`, no CLI — bring a compiled graph and mount it        |
+| [Drop-in LangGraph CLI](./langgraph-cli-compat.md) | ✅     | `skein dev` for `langgraph dev`, with your `langgraph.json` unchanged    |
+| [Scaffolding](./scaffolding.md)                    | ✅     | `npm create skein-js@latest` — a working project, no API key needed      |
+| [Your own adapter](./building-an-adapter.md)       | ✅     | Put the handler table on any HTTP framework                              |
+| [Your own agent runtime](./building-a-runner.md)   | ✅     | Serve the Agent Protocol from something that isn't LangGraph             |
+
+## Deliberately not
+
+- **WebSocket transport** — SSE covers the client UX and doesn't affect the React SDK.
+- **`skein deploy` to a hosted platform** — self-hosted by design; there's no managed target.
+- **Sub-minute cron schedules**, and **backfilling missed occurrences** — see
+  [crons.md](./crons.md#semantics).
+- **Exactly-once webhook delivery** — at-least-once with a stable dedup key. See
+  [webhooks.md](./webhooks.md#at-least-once-and-what-your-receiver-owes).
+
+Something missing? [File an issue](https://github.com/skein-js/skein-js/issues) — compatibility
+reports are the most useful feedback we get.
+
+
+---
+
+<!-- source: docs/assistants.md -->
+
+# Assistants
+
+An assistant is a named, versioned configuration of one graph. It's how you ship a prompt change or a
+model swap without redeploying — and how you roll it back when the change was wrong.
+
+## You already have one
+
+Every graph in your `langgraph.json` is registered as an assistant at startup, with
+`assistant_id` equal to `graph_id`. So this works on a fresh server with nothing configured:
+
+```ts
+await client.runs.wait(threadId, "agent", { input }); // "agent" is the graph id *and* an assistant id
+```
+
+If you never need more than one configuration per graph, you can stop reading here. Assistants become
+useful when you want **several** configurations of the same graph.
+
+## Several configurations of one graph
+
+```ts
+const support = await client.assistants.create({
+  graphId: "agent",
+  name: "support-tone",
+  config: { configurable: { system_prompt: "Be concise and formal." } },
+});
+
+await client.runs.wait(threadId, support.assistant_id, { input });
+```
+
+Whatever you put in `config.configurable` arrives in your graph as `config.configurable`. That's the
+seam: the graph stays one deployment, and the assistant decides how it behaves.
+
+This is what makes per-tenant or per-plan behaviour tractable — one assistant per tenant, rather than
+branching inside the graph on metadata you have to thread through every node.
+
+## Versioning and rollback
+
+**Every `PATCH` mints a new immutable version.** The live assistant tracks whichever version is
+current, so changing a prompt is a `PATCH`, and undoing it is one call:
+
+```ts
+await client.assistants.update(assistantId, {
+  config: { configurable: { system_prompt: "Be warm and brief." } },
+}); // now version 2
+
+await client.assistants.getVersions(assistantId); // newest first
+await client.assistants.setLatest(assistantId, 1); // back to version 1
+```
+
+Rollback points the assistant at an existing version — it doesn't delete the newer one, so you can go
+forward again. Nothing is lost by trying a change.
+
+**Runs record which assistant they used**, so a thread tells you what configuration produced it. What
+a version does _not_ capture is your graph's code: rolling back an assistant restores config, not the
+deployment. If the bad change was in a node, roll back the deploy.
+
+## Inspect what a graph expects
+
+Useful when you're building a UI against a graph you didn't write, or checking what a config change is
+allowed to set:
+
+| You want                          | Call                                          |
+| --------------------------------- | --------------------------------------------- |
+| Input/output/state/config schemas | `client.assistants.getSchemas(assistantId)`   |
+| The drawable graph                | `client.assistants.getGraph(assistantId)`     |
+| Subgraph schemas by namespace     | `client.assistants.getSubgraphs(assistantId)` |
+
+The [console](./console.md) renders all three — schemas, graph shape, and version history — so it's
+usually faster to look there than to call them.
+
+## Housekeeping
+
+```ts
+await client.assistants.search({ graphId: "agent" }); // filter by graph, name or metadata
+await client.assistants.delete(assistantId);
+```
+
+Two things to know before deleting:
+
+- **`delete(id, { deleteThreads: true })` cascades** to the threads that assistant owns. Without it,
+  the threads stay and keep their history.
+- **Deleting a graph-registered assistant doesn't stop the graph.** It's re-registered on the next
+  boot, since registration is keyed on the graph id.
+
+## What you must get right
+
+- **`assistant_id` is not a graph id once you create your own.** Runs take an assistant id; a graph id
+  only works because of the startup registration. Store the id you got back from `create`.
+- **`config.configurable` is the contract with your graph.** Nothing validates that an assistant's
+  config matches what the graph reads — a typo'd key is silently ignored rather than rejected. Check
+  `getSchemas` if you're unsure of the shape.
+- **`create` defaults to `if_exists: "raise"`.** Pass `"do_nothing"` if you're seeding assistants at
+  startup and want the call to be idempotent.
+
+## Working example
+
+There's no dedicated example yet. The [console](./console.md)'s Assistants view is the practical way
+to see versioning: edit an assistant's config, run it from the playground, then roll back.
+
+## See also
+
+- [Runs](./runs.md) — passing an assistant id to a run
+- [The console](./console.md) — schemas, graph shape, version history in a UI
+- [LangGraph CLI compatibility](./langgraph-cli-compat.md) — how `graphs` entries become assistants
+- [Agent Protocol](./agent-protocol.md#assistants) — every assistant endpoint and field
+
+
+---
+
+<!-- source: docs/threads.md -->
+
+# Threads
+
+A thread is one conversation: its message history, its graph state, and every checkpoint along the
+way. If you're building a chat product, a thread is what a user would call "a chat" — and it's the
+thing you address instead of tracking state yourself.
+
+## Start a conversation
+
+```ts
+const thread = await client.threads.create();
+await client.runs.wait(thread.thread_id, "agent", { input: { messages: [msg] } });
+```
+
+You rarely need more than that. Threads persist, so the next run on the same id picks up where the
+last one left off — the graph sees the accumulated state without you passing any of it back.
+
+## Address a conversation by your own key
+
+Most apps already have an identity for the conversation — a phone number, a support ticket, an email
+thread. You don't need to store skein's thread id alongside it. Pass your own id and make the create
+a **get-or-create**:
+
+```ts
+const thread = await client.threads.create({
+  threadId: ticketId,
+  ifExists: "do_nothing", // returns the existing thread instead of a 409
+});
+```
+
+Uniqueness is enforced in storage, so two instances racing the same id cannot both win — no lock of
+your own required. The default is `ifExists: "raise"`, a 409 on a taken id.
+
+The other half of the idiom is on run creation: `if_not_exists: "create"` lets a run bring the thread
+into existence, so an inbound webhook can start a run in one call. See [runs.md](./runs.md).
+
+## Read the state
+
+```ts
+const state = await client.threads.getState(threadId); // current values, next nodes, tasks
+const history = await client.threads.getHistory(threadId, { limit: 10 }); // newest first
+```
+
+`getState` is what a UI hydrates from on load. `getHistory` walks the checkpoints backwards — page
+with `before`, passing the last checkpoint you received.
+
+**History is capped, and the cap matters.** You get at most 100 checkpoints when `limit` is omitted,
+and a `limit` above 1000 is rejected — each element is a whole graph state, so a long thread's full
+history is one of the largest responses skein can produce. `useStream` asks for 10, which is enough to
+render the transcript (the newest checkpoint carries the whole message list) and only limits how far
+back the branch/edit tree reaches.
+
+## Time travel: re-run a turn a different way
+
+Fork from any past checkpoint and run forward from there, leaving the original branch intact. This is
+what "edit and resubmit" in a chat UI is built on, and it's also the fastest way to debug what a node
+actually saw.
+
+```ts
+// Run again from an earlier checkpoint
+await client.runs.create(threadId, "agent", { input, checkpointId });
+```
+
+To change the state before re-running, write a new checkpoint that forks history first:
+
+```ts
+const forked = await client.threads.updateState(threadId, {
+  values: { messages: editedMessages },
+  checkpointId, // omit to fork from the tip
+});
+// The SDK returns a checkpoint config; the new id is on `configurable`.
+const forkedId = forked.configurable?.["checkpoint_id"] as string;
+
+// `input: null` + a checkpoint resumes the graph from that point rather than starting over.
+await client.runs.create(threadId, "agent", { input: null, checkpointId: forkedId });
+```
+
+Things to know:
+
+- **The fork target is server-validated.** A client cannot redirect a run to an arbitrary checkpoint
+  through `config` — skein reads `checkpoint_id` only from the top-level field.
+- **`updateState` 409s while a run is in flight** on that thread. Cancel or wait first.
+- **It rides the checkpointer**, so forking costs no extra storage. If you want a whole independent
+  copy instead, `client.threads.copy(threadId)` duplicates the thread and its history.
+- The [console](./console.md) does all of this without code — open a checkpoint, edit, fork, run
+  forward.
+
+> [!WARNING]
+> **Values you write go through the graph's reducers.** A channel that appends — a message list, say —
+> will add what you write rather than replace it. This surprises everyone once. Use `asNode` to
+> attribute the write to a node whose reducer does what you intend.
+
+## Find threads
+
+```ts
+await client.threads.search({ metadata: { graph_id: "my_graph" }, status: "interrupted" });
+```
+
+skein stamps a run's `graph_id` and `assistant_id` onto its thread's metadata, so filtering by graph
+is just a metadata match. The stamp reflects the thread's most recent run — a thread that has never
+run carries no `graph_id`.
+
+Status filters are how you build a "waiting for you" queue: `interrupted` threads are the ones
+[paused for a human](./human-in-the-loop.md).
+
+## Import an existing conversation
+
+Migrating from another system, you usually want the history there without re-running the graph over
+it. `POST /threads` accepts `supersteps` — updates written straight into the checkpoint history:
+
+```ts
+await client.threads.create({
+  graphId: "agent", // required — a brand-new thread has no run to infer the graph from
+  supersteps: [{ updates: [{ values: { messages: [past] }, asNode: "__start__" }] }],
+});
+```
+
+Each superstep is one tick and becomes one checkpoint. Bounded at 100 supersteps of 100 updates.
+Without `graphId` this is a 400 — and it's also what lets the seeded state be **read back**, since
+`getState` falls back to `metadata.graph_id` for a thread that has never run.
+
+## Clean up
+
+| You want                                       | Call                                                 |
+| ---------------------------------------------- | ---------------------------------------------------- |
+| One thread gone, with its runs and checkpoints | `client.threads.delete(threadId)`                    |
+| Many gone, by filter                           | `POST /threads/prune` with `strategy: "delete"`      |
+| To keep the conversation but drop its history  | `POST /threads/prune` with `strategy: "keep_latest"` |
+| Threads to expire on their own                 | `checkpointer.ttl` — see below                       |
+
+`keep_latest` is the one people miss: it keeps each thread's current state and discards only the
+checkpoint history behind it. That's usually where the bytes are, and losing it costs you time travel,
+not the conversation.
+
+### Expiring threads automatically
+
+```json
+{
+  "checkpointer": {
+    "ttl": { "default_ttl": 43200, "strategy": "delete", "sweep_interval_minutes": 60 }
+  }
+}
+```
+
+Durations are in **minutes**. `POST /threads` takes a per-thread `ttl` that overrides the default, and
+an explicit `null` **pins** a thread so no TTL ever collects it.
+
+**Expiry means "may be collected", not "gone".** An expired thread still reads normally until the
+sweeper takes it — hiding it early would make a thread with an in-flight run vanish out from under
+that run.
+
+> [!WARNING]
+> **Deleting a thread deletes any cron scheduled on it.** A thread-scoped [cron](./crons.md) on an
+> expiring thread stops firing, silently. Pin such threads with `ttl: null`, or use a stateless cron,
+> which owns no thread to lose.
+
+LangGraph OSS drops `ttl` on the floor (it's a Platform feature there), so this is skein going past
+what the open-source checkpointers do. Full reference: [storage.md](./storage.md#thread-ttl).
+
+## Working example
+
+[`triage-agent`](https://github.com/skein-js/skein-js/tree/main/examples/triage-agent) puts each issue
+on its own thread, keyed by the issue id, and re-sweeps without duplicating any of them.
+
+## See also
+
+- [Runs](./runs.md) — starting work on a thread
+- [Human-in-the-loop](./human-in-the-loop.md) — the `interrupted` status and resuming
+- [The console](./console.md) — browsing threads, checkpoints and forks in a UI
+- [Storage](./storage.md) — where threads and checkpoints actually live
+- [Agent Protocol](./agent-protocol.md#threads) — every thread endpoint and field
+
+
+---
+
+<!-- source: docs/runs.md -->
+
+# Runs
+
+A run is one execution of your graph. Starting one is the single most common thing you'll do against
+skein, and the shape you pick — wait for it, stream it, or queue it — decides everything about how
+your client has to behave.
+
+## Pick a run mode
+
+| You want                                     | Use                                        | You get                                   |
+| -------------------------------------------- | ------------------------------------------ | ----------------------------------------- |
+| The answer, and you can hold a connection    | `client.runs.wait(threadId, …)`            | The final state, as JSON                  |
+| Tokens as they're produced (a chat UI)       | `client.runs.stream(threadId, …)`          | An SSE stream                             |
+| To return immediately and check back later   | `client.runs.create(threadId, …)`          | The `Run` row; work continues server-side |
+| A one-shot call with no conversation to keep | The same three, with `null` for the thread | skein creates and owns the thread         |
+| To start many at once                        | `client.runs.createBatch([…])`             | Up to 100 runs per request                |
+
+```ts
+// Wait for it
+const state = await client.runs.wait(threadId, "agent", { input });
+
+// Stream it
+for await (const chunk of client.runs.stream(threadId, "agent", {
+  input,
+  streamMode: "messages",
+})) {
+  // …
+}
+
+// Queue it, come back later
+const run = await client.runs.create(threadId, "agent", { input });
+for await (const ev of client.runs.joinStream(threadId, run.run_id)) console.log(ev);
+```
+
+**Background runs need somewhere to run.** They execute on the server after your request returns, so
+they need a process that stays alive — which is why they don't work on serverless platforms. See
+[what doesn't work on serverless](./deploy-serverless.md).
+
+Streaming is its own topic — the stream modes, reconnecting mid-stream, and joining from a second
+client are in [streaming.md](./streaming.md).
+
+## Multitask: what happens to the run already going
+
+Send a second message before the first finishes ("double-texting") and something has to give. Pass
+`multitask_strategy` on the second run to say what:
+
+| Strategy    | The run already going       | The new run        | Reach for it when                                                                          |
+| ----------- | --------------------------- | ------------------ | ------------------------------------------------------------------------------------------ |
+| `reject`    | Keeps going                 | **Fails with 422** | The default. A second message is a bug or a double-click                                   |
+| `interrupt` | Stops, keeps what it wrote  | Starts now         | The user changed their mind, and the partial answer is still worth keeping                 |
+| `rollback`  | Stops, its writes discarded | Starts now         | The user is correcting themselves — the abandoned turn should read as if it never happened |
+| `enqueue`   | Runs to completion          | Waits, then runs   | Both messages matter and order is what you want                                            |
+
+```ts
+await client.runs.create(threadId, "agent", { input, multitaskStrategy: "interrupt" });
+```
+
+Things worth knowing before you pick:
+
+- **`reject` is the default, and a `pending` run counts as busy.** A run held by `afterSeconds`, or
+  one sitting in the queue, will reject the next one just as a running one does. That surprises
+  people — but work _is_ scheduled on the thread.
+- **The 422 is `thread_busy`.** Handle it distinctly from an ordinary validation failure: the
+  client's move is to retry or to switch strategy, not to fix the request.
+- **`enqueue` is not strict FIFO** unless you run at concurrency 1. Several queued runs on one thread
+  are dequeued together and race for the thread. See
+  [head-of-line blocking](./runs-and-redis.md#head-of-line-blocking).
+- **It's decided atomically**, so two instances racing the same thread cannot both win. You don't need
+  a lock of your own.
+
+A displaced run settles `interrupted` (under `interrupt`) or `cancelled` (under `rollback`), and one
+that never started executing sends no [webhook](./webhooks.md).
+
+## Cancelling
+
+```ts
+await client.runs.cancel(threadId, runId); // action: "interrupt", the default
+```
+
+| `action`                | Effect                                                                                                |
+| ----------------------- | ----------------------------------------------------------------------------------------------------- |
+| `interrupt` _(default)_ | Settles the run `cancelled` and **keeps** whatever it wrote                                           |
+| `rollback`              | Also discards its checkpoint writes and deletes the run row — the turn reads as never having happened |
+
+> [!WARNING]
+> **`cancel` takes these positionally, not as an options object.** The signature is
+> `cancel(threadId, runId, wait?, action?)`, so `cancel(tid, rid, { action: "rollback" })` binds your
+> object to `wait` and silently performs an ordinary `interrupt` instead.
+
+```ts
+await client.runs.cancel(threadId, runId, true, "rollback"); // wait for it to stop, discard its writes
+```
+
+The third argument returns only once the run has actually stopped, rather than as soon as it's been
+marked.
+
+To cancel in bulk, `POST /runs/cancel` takes `{ thread_id?, run_ids?, status? }`, narrowest selector
+first: explicit ids, else one thread's inflight runs, else **every** inflight run on the server.
+Unknown ids are skipped rather than failing the sweep, and the response says what actually happened.
+
+## Bound a runaway run
+
+A graph that hangs — a model call with no timeout of its own, a node that loops — holds a worker slot
+until the process restarts. Set `--run-timeout <ms>` or `SKEIN_RUN_TIMEOUT_MS`; the run aborts and
+settles as `timeout`.
+
+**Off by default, deliberately.** A legitimate research or multi-step tool run takes minutes, so a
+default would turn slow-but-working into killed — the exact failure the timeout exists to prevent.
+Pick a number from your own graphs' worst honest case.
+
+## Start a run later
+
+`afterSeconds` holds a run before it starts — capped at 86400 (a day); for anything longer use a
+[cron](./crons.md).
+
+Use it on a **background** run. The queue holds it, so it costs nothing while it waits and, on Redis,
+survives a restart. On an inline `wait`/`stream` run the server holds _your connection_ open instead,
+so a long delay will hit a proxy's idle timeout.
+
+A delayed run is cancellable like any other, and counts as inflight the whole time it waits.
+
+## Fields where skein differs from LangGraph
+
+Two defaults are deliberately not LangGraph's. If you're migrating, these are the ones to check:
+
+| Field           | skein      | LangGraph | Why                                                                                        |
+| --------------- | ---------- | --------- | ------------------------------------------------------------------------------------------ |
+| `on_completion` | `keep`     | `delete`  | A stateless run's thread stays inspectable afterwards                                      |
+| `on_disconnect` | `continue` | `cancel`  | A proxy timeout is indistinguishable from a real hang-up, and shouldn't kill a healthy run |
+
+Pass the LangGraph value explicitly if you want its behaviour. Note `useStream` sends
+`on_disconnect: "cancel"` on every submit unless the stream is resumable, so with a browser client
+closing the tab does stop the run — skein's default only applies to callers that don't send the field.
+
+One more worth knowing, though it matches LangGraph: **naming a thread that doesn't exist is a 404**
+(`if_not_exists: "reject"`). Pass `"create"` to have the run bring the thread into existence instead —
+which is how you start a run keyed on an external identity (a phone number, a ticket id) without a
+round trip to create the thread first.
+
+## Don't create the same run twice
+
+A retrying caller — Stripe, GitHub, Twilio, or your own sweep — should not start a second run. Send an
+`Idempotency-Key` header and the original response replays:
+
+```ts
+// `runs.create` has no `headers` option — a `headers` key in the payload is silently dropped and you
+// get a brand-new run every retry. A per-key client is the only way to send it.
+const client = new Client({ apiUrl, defaultHeaders: { "Idempotency-Key": issue.id } });
+await client.runs.create(threadId, "agent", { input });
+```
+
+Streaming creates reject the header rather than ignoring it — an SSE response has no body to replay.
+Details: [agent-protocol.md](./agent-protocol.md#idempotent-run-creation-idempotency-key).
+
+## Reading a run back
+
+| You want                                 | Call                                      |
+| ---------------------------------------- | ----------------------------------------- |
+| One run's row                            | `client.runs.get(threadId, runId)`        |
+| A thread's runs                          | `client.runs.list(threadId)`              |
+| To tail a run already in flight          | `client.runs.joinStream(threadId, runId)` |
+| To block until it settles, then get JSON | `client.runs.join(threadId, runId)`       |
+
+Joining a run that has **already** settled returns immediately, long after its frames have aged out —
+the wait is decided by the run row, not by the event stream. So a client that reconnects late still
+gets its answer.
+
+To be told a run finished without holding anything open, use a [webhook](./webhooks.md).
+
+## Working example
+
+[`triage-agent`](https://github.com/skein-js/skein-js/tree/main/examples/triage-agent) dispatches one
+background run per issue, each on its own thread, with idempotent re-sweeps — and runs with no API key
+and no network.
+
+## See also
+
+- [Streaming](./streaming.md) — stream modes, reconnecting, joining
+- [Runs & Redis](./runs-and-redis.md) — run concurrency, the queue, scaling past one instance
+- [Human-in-the-loop](./human-in-the-loop.md) — pausing a run for a person
+- [Crons](./crons.md) — running a graph on a schedule
+- [Agent Protocol](./agent-protocol.md#runs--stateless--ephemeral) — every run endpoint and field
+
+
+---
+
+<!-- source: docs/background-jobs.md -->
+
+# Background jobs
+
+Fire-and-forget work: hand skein a job, get an id back immediately, and hear about the result later.
+No conversation to maintain, no connection to hold open. This is the shape you want when the caller is
+another service rather than a person — classification, enrichment, document processing, a queue
+drained by an agent.
+
+There is no separate "tasks" API. A background job **is** a run — you just don't keep the thread.
+
+## Enqueue and return
+
+```ts
+const run = await client.runs.create(null, "agent", {
+  input: { documentUrl },
+  onCompletion: "delete", // don't keep the thread once it's done
+  webhook: "https://example.com/hooks/done", // tell me when it lands
+});
+// returns in milliseconds; the graph runs server-side
+```
+
+`null` for the thread id means **stateless**: skein creates a thread for the run, and
+`onCompletion: "delete"` removes it once the run settles. Nothing accumulates.
+
+Leave `onCompletion` off (skein's default is `keep`) if you'd rather the job stay inspectable
+afterwards — you can read its state and its checkpoints for as long as you keep it.
+
+## Hearing the result
+
+Three ways, in order of how much they cost you:
+
+| Approach                            | Use when                                                       |
+| ----------------------------------- | -------------------------------------------------------------- |
+| A [webhook](./webhooks.md)          | The default. Nothing to poll, and delivery survives a redeploy |
+| `client.runs.join(threadId, runId)` | You can hold a connection and just want the answer             |
+| `client.runs.get(threadId, runId)`  | You already have a polling loop                                |
+
+The webhook is the one to reach for. It's recorded in the same transaction as the run's terminal
+status, so a receiver that was restarting doesn't lose the news — and you can
+[see and replay](./webhooks.md#see-what-a-callback-did-and-replay-it) a callback that never landed.
+
+If you kept the thread (`onCompletion: "keep"`), joining works long after the run settled — the wait is
+decided by the run row, not by a live stream. If you deleted it, the webhook payload is the record;
+that's exactly why the payload is stored rather than re-rendered at send time.
+
+## Don't run the same job twice
+
+A retrying caller — a queue, a cron, a partner's webhook — will re-send. Send an `Idempotency-Key` and
+the original response replays instead of starting a second run:
+
+```ts
+// `runs.create` has no `headers` option, so a per-key client is the only way to send it.
+const client = new Client({ apiUrl, defaultHeaders: { "Idempotency-Key": documentId } });
+await client.runs.create(null, "agent", { input, onCompletion: "delete" });
+```
+
+The claim is arbitrated by a uniqueness constraint, so 50 concurrent retries across two instances
+still produce exactly one run. Details:
+[agent-protocol.md](./agent-protocol.md#idempotent-run-creation-idempotency-key).
+
+## Many, later, or on a schedule
+
+```ts
+// Up to 100 at once
+await client.runs.createBatch(items.map((item) => ({ assistantId: "agent", input: item })));
+
+// Start in 30 seconds (capped at a day)
+await client.runs.create(null, "agent", { input, afterSeconds: 30 });
+
+// Every five minutes, forever
+await client.crons.create("agent", { schedule: "*/5 * * * *", input: { source: "queue" } });
+```
+
+A delayed background run is held by the queue, so it costs nothing while it waits and — on Redis —
+survives a restart. For anything longer than a day, use a [cron](./crons.md).
+
+## How many run at once
+
+One instance executes **10** background runs concurrently by default, matching the LangGraph CLI's
+`--n-jobs-per-worker`. Raise it with `--concurrency` or `SKEIN_RUN_CONCURRENCY` when your jobs are
+I/O-bound (model calls); add instances when they're CPU-bound.
+
+Concurrency is the knob with the widest blast radius — it multiplies memory and Postgres connections
+at once. Size it against your pool: [runs-and-redis.md](./runs-and-redis.md#run-concurrency).
+
+## What you must get right
+
+- **A failed job is not retried.** skein retries webhook _delivery_, not the run. A graph that throws
+  settles `error` and stays there. If your work needs retries, either retry inside the graph, or have
+  your caller re-submit with a fresh idempotency key.
+- **A crashed worker is different.** If the process dies mid-run, the job is recovered rather than
+  lost — and re-delivery is safe, because a run already terminal in the store is skipped.
+- **Background runs need a process that stays alive.** They execute after your request returns, so
+  they don't work on serverless. See [deploy-serverless.md](./deploy-serverless.md).
+- **Use durable storage.** With the in-memory driver a queued job is gone on restart. Postgres for
+  state, Redis for the queue — [runs-and-redis.md](./runs-and-redis.md).
+- **Bound a job that hangs.** A graph with no timeout of its own holds a worker slot until the process
+  restarts. Set `--run-timeout` / `SKEIN_RUN_TIMEOUT_MS`; it's off by default.
+- **Each job holds a Postgres connection** while it runs, and a second one on the Postgres driver for
+  its thread claim. Ten concurrent jobs is not one connection.
+
+## When you want the answer inline instead
+
+If the caller can wait and there's genuinely no conversation — a classifier, an extractor — skip runs
+entirely:
+
+```bash
+curl -sX POST localhost:2024/invoke/triage \
+  -H 'content-type: application/json' \
+  -d '{"text":"Refund charge failed — urgent!"}'
+```
+
+`POST /invoke/:graph_id` takes the graph's input as the body and answers with its final state. No
+threads, no run rows, no webhooks. See
+[serving-a-single-graph.md](./serving-a-single-graph.md).
+
+## Working example
+
+[`triage-agent`](https://github.com/skein-js/skein-js/tree/main/examples/triage-agent) is exactly this
+shape: a cron sweep dispatches one durable background run per item, idempotently, so re-sweeping
+creates nothing. It runs with no API key and no network.
+
+## See also
+
+- [Runs](./runs.md) — every run mode and field
+- [Webhooks](./webhooks.md) — being told a run finished
+- [Crons](./crons.md) — running a graph on a schedule
+- [Runs & Redis](./runs-and-redis.md) — the queue, concurrency, scaling out
+- [Serving a single graph](./serving-a-single-graph.md) — the synchronous non-chat surface
+
+
+---
+
+<!-- source: docs/human-in-the-loop.md -->
+
+# Human-in-the-loop
+
+Pause a run for a person to approve, edit, or answer something — and resume it later, possibly hours
+later, from a different client. An interrupted run holds no connection and no timer, only a
+checkpoint, so your process can restart while it waits.
+
+## Pause the graph
+
+Call LangGraph's `interrupt()` from a node. Whatever you pass becomes the payload your UI renders:
+
+```ts
+import { interrupt } from "@langchain/langgraph";
+
+function askForApproval(state: State) {
+  const answer = interrupt({
+    question: "Send this email?",
+    draft: state.draft,
+  });
+  return { sent: answer === true };
+}
+```
+
+The run settles, the thread's status becomes `interrupted`, and the interrupt surfaces in the stream.
+Nothing is holding anything open.
+
+## Resume it
+
+```ts
+await client.runs.create(threadId, "agent", {
+  input: null, // not a new turn — pick up where the interrupt parked
+  command: { resume: true },
+});
+```
+
+`input: null` plus a `command` is the whole idiom. The run resumes from the checkpoint the interrupt
+parked on rather than starting over, and the value you pass in `resume` is what `interrupt()` returns
+inside the node.
+
+Three commands are available:
+
+| Command  | Does                                        | Use for                                    |
+| -------- | ------------------------------------------- | ------------------------------------------ |
+| `resume` | Returns a value from the `interrupt()` call | Approve / reject / supply an edited answer |
+| `update` | Writes state before continuing              | Correcting something the graph got wrong   |
+| `goto`   | Continues at a named node                   | Sending the turn down a different path     |
+
+If you're building on `POST /threads/{id}/commands` directly, it infers the assistant from the
+thread's last run, so you don't have to track it — and it **409s (`thread_not_interrupted`)** on a
+thread that isn't paused, rather than quietly starting a new turn.
+
+## In a React UI, this is free
+
+[`useStream`](./react-sdk.md) renders the interrupt and resumes it for you — no extra endpoints, no
+polling. The interrupt arrives on the stream, you render your approval card, and submitting a command
+continues the same conversation.
+
+## Find what's waiting
+
+An approvals queue is a thread search:
+
+```ts
+const waiting = await client.threads.search({ status: "interrupted" });
+```
+
+The [console](./console.md) ships this view already — its Overview lists what's waiting for you, and
+the Interrupts view approves, rejects, or resumes with any JSON, without you building a UI first.
+
+## What you must get right
+
+- **A checkpointer is required.** Without one there is no checkpoint to park on, and resume silently
+  no-ops — the single most common way this fails. `skein dev` gives you one; in code, use
+  `embedInMemoryGraphs`/`embedPostgresGraphs` or supply your own. See [embedding.md](./embedding.md).
+- **Use durable storage for anything real.** With the in-memory driver an interrupted thread is gone
+  on restart, which defeats the point of pausing for a human. [Postgres](./storage.md) keeps it.
+- **The pause has no timeout.** A thread waits indefinitely. If your product needs "auto-reject after
+  48 hours", that's a [cron](./crons.md) sweeping `status: "interrupted"` threads — skein won't do it
+  for you.
+- **Resuming starts a new run.** The interrupted run is terminal; the resume is a fresh run on the
+  same thread. So a webhook fires per run, and the run id you resumed with is not the id you get back.
+- **Not available on `POST /invoke/:graph_id`**, which has no thread to park on. See
+  [serving-a-single-graph.md](./serving-a-single-graph.md).
+
+## Interrupting from outside the graph
+
+You can also pause without an `interrupt()` call, by naming nodes on run creation:
+
+```ts
+await client.runs.create(threadId, "agent", { input, interruptBefore: ["send_email"] });
+```
+
+`interruptBefore` / `interruptAfter` take a list of node names, or `"*"` for every node. This is a
+debugging and stepping tool more than a product feature — `interrupt()` is what you want when the
+pause is part of the design, because it carries a payload the UI can render.
+
+## Working examples
+
+- [`triage-agent`](https://github.com/skein-js/skein-js/tree/main/examples/triage-agent) — reached by
+  a conditional edge, so only items that need a human park. Runs with no API key and no network;
+  approve from the console.
+- [`chat-app`](https://github.com/skein-js/skein-js/tree/main/examples/chat-app) — an approval card in
+  a real Next.js UI.
+
+## See also
+
+- [Threads](./threads.md) — the `interrupted` status, and editing state before you resume
+- [Runs](./runs.md) — what a resume run is, and multitask strategies
+- [Frontend SDKs & `useStream`](./react-sdk.md) — rendering and resuming in React
+- [The console](./console.md) — approving without building a UI
+- [Building a runner](./building-a-runner.md) — implementing interrupts for a non-LangGraph runtime
+
+
+---
+
+<!-- source: docs/webhooks.md -->
+
+# Run-completion webhooks
+
+Tell another service that a run finished, and have that news survive a receiver that was redeploying
+when it happened. Pass a `webhook` URL on run creation and skein POSTs the settled run to it —
+durably, with retries, optionally signed, and replayable by hand when it never lands.
+
+## Quick start
+
+```ts
+await client.runs.create(threadId, "agent", {
+  input,
+  webhook: "https://example.com/hooks/run",
+});
+```
+
+That is the whole opt-in. The field is LangGraph's, unchanged; everything below is delivery
+semantics, not a different payload.
+
+It works on every run-creation route that has a run to report on — background, `wait` and `stream`,
+stateless, batch, and each firing of a [cron](./crons.md). It is not available on
+[`POST /invoke/:graph_id`](./serving-a-single-graph.md), which has no run row.
+
+## What the callback carries
+
+The settled run, as a JSON body: the run's own fields (`run_id`, `thread_id`, `assistant_id`,
+`metadata`, …) plus
+
+| Field                           | What it is                                                                                |
+| ------------------------------- | ----------------------------------------------------------------------------------------- |
+| `status`                        | The run's terminal status — `success` · `error` · `timeout` · `interrupted` · `cancelled` |
+| `values`                        | The run's final state                                                                     |
+| `error`                         | The failure message, on a failed run only (a string, matching LangGraph)                  |
+| `run_started_at`/`run_ended_at` | When the run ran                                                                          |
+| `webhook_sent_at`               | When **this attempt** was sent — it changes between retries                               |
+
+`status` is read from the delivery row rather than from the stored body, so a callback can never
+disagree with the run you read back afterwards. A cancel that won the race is reported as the cancel.
+
+**A run that never started executing sends no callback.** A run cancelled while still `pending`, or
+one displaced by a [multitask strategy](./runs.md#multitask-what-happens-to-the-run-already-going)
+before it began, has nothing to report — so do not treat "a run was created" as "a callback is
+owed". Only a run that started does.
+
+Every request also carries three headers:
+
+| Header                | Use                                                         |
+| --------------------- | ----------------------------------------------------------- |
+| `X-Skein-Delivery-Id` | Stable across every retry — **this is your dedup key**      |
+| `X-Skein-Attempt`     | Which attempt this is, counting the first inline one as `1` |
+| `X-Skein-Signature`   | Present when a signing key is configured — see below        |
+
+## The guarantee: why a callback survives a crash
+
+**The callback is recorded in the same transaction as the run's terminal status.** A crash between
+"the run finished" and "someone was told" cannot lose it, because there is no instant where one is
+committed and the other is not.
+
+That guarantee comes from the store. It is not the retry policy, and it is not something you
+configure — a run that carries a `webhook` owes a callback whether or not you have tuned anything.
+skein attempts the first delivery inline, so a healthy receiver hears within milliseconds; only a
+failure falls through to the retry schedule.
+
+A [bring-your-own store](./storage.md) that does not implement the `deliveries` repo degrades to the
+older best-effort path — one POST, failures logged and swallowed. Both bundled drivers implement it.
+
+The body is **stored**, not re-rendered at send time. It has to be: a stateless `POST /runs` deletes
+the thread the server made for it as soon as the run settles, so an hour later there is no run row
+and no checkpoint left to render from — and that is exactly the "another service drives skein and
+wants the answer back" case webhooks exist for.
+
+Each POST is aborted after `SKEIN_WEBHOOK_TIMEOUT_MS` (default 5s), sized against the 8s shutdown
+budget so a slow receiver cannot get the server killed mid-POST. Delivery happens after the thread's
+execution lock is released, so a slow target never blocks other runs on that thread — which also
+means two callbacks for one thread are not guaranteed to arrive in run order.
+
+## At-least-once, and what your receiver owes
+
+**Delivery is at-least-once, never exactly-once.** A POST that timed out _after_ your receiver
+committed is indistinguishable from one that never arrived, so it is retried. Dedupe on
+`X-Skein-Delivery-Id`, which is stable across every attempt.
+
+Answer `2xx` only once the work is durably done. Answering early and then failing loses the callback
+— the sender heard success and cleared the payload. A non-2xx is how you ask for a retry.
+
+The API remains the source of truth for run state. A callback is a notification, not a ledger.
+
+## Where the retries actually run
+
+The durability of a callback is the same everywhere. What differs is whether a retry still _waiting_
+survives a restart:
+
+|                        | Retry schedule                                                               | A pending retry survives a restart?                                               |
+| ---------------------- | ---------------------------------------------------------------------------- | --------------------------------------------------------------------------------- |
+| **Postgres + Redis**   | BullMQ — delayed jobs, exponential backoff with jitter, stalled-job recovery | **Yes.** The schedule lives in Redis                                              |
+| **Postgres, no Redis** | skein polls the outbox for rows that are due                                 | No — but the _delivery_ does. The row is committed, and the next boot picks it up |
+| **Memory (dev)**       | The same poll, in-process                                                    | No, and neither does the delivery — nothing here is durable                       |
+
+So: **run Redis in production.** skein warns at startup when your store is durable but your delivery
+schedule is not. To exercise the real path locally, `skein dev --queue redis`.
+
+A process killed at exactly the wrong moment can leave a committed delivery with no schedule attached.
+Nothing is lost: a background sweep picks it up on its next pass. The practical consequence is that
+such a callback arrives late rather than never — worth knowing if you alert on delivery latency.
+
+The default is 12 attempts over roughly 34 minutes, which rides out a rolling deploy with room to
+spare. Read that as a **time horizon, not a count** — the delays double, so dropping to 6 attempts is
+~31 seconds, which does not survive one redeploy. Tune it under
+[`skein.webhooks`](./langgraph-cli-compat.md#webhooks-skeinwebhooks).
+
+## Verify a callback is really from you
+
+Set `SKEIN_WEBHOOK_SECRET` and every callback carries `X-Skein-Signature` in Stripe's format —
+`t=<unix seconds>,v1=<hex hmac-sha256>` over `"{t}.{raw body}"` — so a receiver can reuse
+verification code it already has. skein ships the verifier too, from a package that installs with no
+graph runtime, so a service whose only relationship with skein is _receiving_ callbacks can depend on
+it for this and nothing else:
+
+```ts
+import { verifySkeinSignature } from "@skein-js/agent-protocol";
+
+const result = verifySkeinSignature({
+  header: req.headers["x-skein-signature"],
+  body: rawBody, // the RAW bytes — see below
+  secrets: [process.env.SKEIN_WEBHOOK_SECRET!],
+});
+if (!result.ok) return res.status(401).end();
+```
+
+It refuses with a `reason` of `missing`, `malformed`, `stale` or `mismatch`, compares digests in
+constant time, and tries every secret you hand it.
+
+Because the signature covers the timestamp, a **replay is detectable with no state on your side**: a
+captured callback stops verifying once it is outside the tolerance window (5 minutes by default,
+`toleranceSeconds`). The check is absolute, so a callback timestamped in the future is refused too.
+
+### Three things receivers get wrong, in the order they get them wrong
+
+1. **Verifying a re-serialized body.** `JSON.stringify(req.body)` does not reproduce what was signed
+   — key order, whitespace and number formatting are not guaranteed to round-trip — so _every_
+   genuine callback fails. In Express: `express.raw({ type: "application/json" })` on that route, or
+   `express.json({ verify })`.
+2. **Not deduping.** See at-least-once above. `X-Skein-Delivery-Id` is the key; `X-Skein-Attempt`
+   tells you it is a retry.
+3. **Answering 2xx before the work is durable.** The sender clears the payload on success. There is
+   nothing left to resend.
+
+A runnable receiver doing all three correctly — accepting a genuine callback, refusing a forged one
+and a replayed one — is `src/webhook-receiver.ts` in
+[`examples/express-basic`](https://github.com/skein-js/skein-js/tree/main/examples/express-basic)
+(`pnpm webhook-receiver`).
+
+### Rotating the key
+
+Set `SKEIN_WEBHOOK_SECRET` to a comma-separated list, **new key first**: skein signs with the first
+and receivers accept any they hold. Remove the old key only once every receiver has the new one — the
+other order refuses every callback until they catch up.
+
+> [!WARNING]
+> If you inject your own `webhookDispatcher`, it must forward `attempt.headers` and send
+> `attempt.body` verbatim, or callbacks go out unsigned while your config says they are signed. skein
+> warns at startup when it sees both a signing key and a custom dispatcher.
+
+## See what a callback did, and replay it
+
+When a receiver was down for longer than the retry horizon, the delivery is `dead` — and still on
+disk, which is what makes a by-hand replay possible.
+
+| Method | Path                                                                 | Notes                               |
+| ------ | -------------------------------------------------------------------- | ----------------------------------- |
+| `GET`  | `/threads/{thread_id}/runs/{run_id}/deliveries`                      | `?status=` · `?limit=` · `?offset=` |
+| `POST` | `/threads/{thread_id}/runs/{run_id}/deliveries/{delivery_id}/replay` | Makes it due immediately            |
+
+```bash
+curl "$API/threads/$TID/runs/$RID/deliveries?status=dead"
+curl -X POST "$API/threads/$TID/runs/$RID/deliveries/$DID/replay"
+```
+
+Each row reports its `status` (`pending` · `delivering` · `delivered` · `dead`), `attempt`,
+`last_error`, `next_attempt_at` and `payload_truncated`.
+
+The list reports a boolean **`replayable`** rather than the payload itself. The payload is up to
+256 KiB of the run's final state _per row_, and this is a list — returning it would make an
+operator's "what failed?" the heaviest response the server can produce, for a field they did not ask
+for. The question a replay turns on is only whether there is anything left to send. Read the state
+from the run.
+
+Replay makes a delivery due immediately. It **409s** on one that already succeeded (its payload was
+cleared on delivery, so there is nothing to resend) and **404s** on a delivery id that does not belong
+to the run in the path — so an id cannot be used to reach a callback on a run you have no access to.
+
+Both endpoints sit in the `runs` route group, so `http.disable_runs` and your existing
+`@auth.on.threads` handler already cover them; no new switch, no new resource.
+
+There is **no console view for deliveries yet** — this is API-only today.
+
+## What this stores, and for how long
+
+A retry has to have something to send, so **the callback body is stored** — including the run's final
+`values`. That is a new at-rest copy of whatever your graph produced, in the `deliveries` table, and
+it is worth classifying deliberately if that state carries personal or regulated data:
+
+- **On success it is cleared immediately**, so steady-state storage is in-flight deliveries, not every
+  delivery ever made.
+- **A `dead` delivery keeps it** for `retain_hours` (default 24) — that is what makes replay possible,
+  and it means a callback that never landed leaves the run's final state on disk for a day.
+- **It is not encrypted by skein.** Use your database's encryption at rest; the column is ordinary
+  `jsonb`.
+- **Deleting a thread or run does not erase its deliveries** — unlike idempotency records, which are
+  erased explicitly. Lower `retain_hours` if that matters to you.
+
+Payloads are capped at `max_payload_bytes` (default 256 KiB). Over the cap, `values` is replaced by a
+truncation marker **inside the signed body** — so a receiver is told it is looking at a truncated
+state rather than left to infer it — and the row's `payload_truncated` records it. Raise the cap, or
+read the state back from the API using the `run_id` in the callback.
+
+skein **redacts the webhook URL's path in logs**, keeping only the scheme and host: for Slack, Discord
+and Teams the path _is_ the credential, and a failing delivery would otherwise write it into your log
+sink on every attempt.
+
+## Accepting webhook URLs from untrusted callers
+
+`webhook` is a caller-supplied URL, so it is a server-side request to a target they chose — and
+retrying it turns a one-shot SSRF probe into a repeated one. Set
+[`skein.webhooks.allowed_hosts`](./langgraph-cli-compat.md#webhooks-skeinwebhooks) if you accept run
+creates from clients you do not control. It is off by default so that upgrading cannot start dropping
+your own callbacks; a refused host is recorded `dead` with the reason rather than silently skipped.
+
+Set `require_https: true` if callbacks leave your network. Plaintext is permitted by default (an
+internal receiver is legitimate), but retries mean the body crosses the wire up to `max_attempts`
+times rather than once — a dozen exposures rather than one.
+
+## Configuration
+
+Every knob — `retries.max_attempts`, `retries.initial_delay_ms`, `secret`, `max_payload_bytes`,
+`retain_hours`, `allowed_hosts`, `require_https` — is documented once, with its default and its
+reasoning, in [`skein.webhooks`](./langgraph-cli-compat.md#webhooks-skeinwebhooks).
+
+Two environment variables sit outside that block: `SKEIN_WEBHOOK_SECRET` (which takes precedence over
+a `secret` in the config file) and `SKEIN_WEBHOOK_TIMEOUT_MS`.
+
+> [!WARNING]
+> skein does **not** expand `${VAR}` anywhere in `langgraph.json`. `"secret": "${SKEIN_WEBHOOK_SECRET}"`
+> signs every callback with that literal 23-character string. Use the environment variable.
+
+## See also
+
+- [Runs](./runs.md) — the run-creation fields a callback reports on
+- [Errors & logging](./errors-and-logging.md) — what a failed run puts in the callback body
+- [Agent Protocol](./agent-protocol.md) — the full endpoint inventory
+- [Background jobs](./background-jobs.md) — the fire-and-forget shape webhooks were built for
 
 
 ---
@@ -5662,7 +6767,8 @@ runs on **one** thread follow `multitask_strategy`; how many run at once across 
 [run concurrency](../runs-and-redis.md#run-concurrency) (default 10).
 
 Working version: [`triage-agent`](https://github.com/skein-js/skein-js/tree/main/examples/triage-agent)
-— one background run per issue, each on its own thread.
+— one background run per issue, each on its own thread. Details: [runs.md](../runs.md); for
+fire-and-forget work with no conversation to keep, [background-jobs.md](../background-jobs.md).
 
 ## Scheduled runs (crons)
 
@@ -5719,7 +6825,7 @@ a `command`. [`useStream`](../react-sdk.md) renders and resumes it for free.
 Working versions:
 [`triage-agent`](https://github.com/skein-js/skein-js/tree/main/examples/triage-agent) (reached by a
 conditional edge) and [`chat-app`](https://github.com/skein-js/skein-js/tree/main/examples/chat-app)
-(approval card in the UI).
+(approval card in the UI). Details: [human-in-the-loop.md](../human-in-the-loop.md).
 
 ## Bound a runaway run
 
@@ -5741,7 +6847,8 @@ await client.runs.create(threadId, "agent", { input, checkpointId });
 ```
 
 The fork target is server-validated, so a client cannot redirect a run to an arbitrary checkpoint through
-config. Visible in the [console](../console.md); details: [agent-protocol.md](../agent-protocol.md).
+config. Visible in the [console](../console.md); details:
+[threads.md](../threads.md#time-travel-re-run-a-turn-a-different-way).
 
 
 ---
@@ -5867,135 +6974,35 @@ await client.runs.create(threadId, "agent", { input, webhook: "https://example.c
 ```
 
 **The callback is recorded in the same transaction as the run's terminal status**, so a crash between
-"the run finished" and "someone was told" cannot lose it. That is the guarantee, and it comes from the
-store — not from the retry policy, and not from anything you configure. skein attempts the first
-delivery inline, so a healthy receiver hears within milliseconds; a failure is recorded and retried.
+"the run finished" and "someone was told" cannot lose it. skein attempts the first delivery inline, so
+a healthy receiver hears within milliseconds; a failure is recorded and retried — for about 34 minutes
+by default, which rides out a rolling deploy.
 
 **It is at-least-once, not exactly-once.** A retry can duplicate a callback your receiver already
 processed — after a network timeout that actually succeeded, say. Every attempt carries the same
 `X-Skein-Delivery-Id`; dedupe on it. The API remains the source of truth for run state.
 
-Each POST is aborted after `SKEIN_WEBHOOK_TIMEOUT_MS` (default 5s), sized against the 8s shutdown
-budget so a slow receiver can't get you killed mid-POST. Delivery happens after the thread's execution
-lock is released, so a slow target never blocks other runs on that thread — which also means two
-callbacks for one thread are not guaranteed to arrive in run order.
-
-### Retries are BullMQ's when you run Redis
-
-Where the retry schedule lives depends on the queue driver, and this is the one place it matters:
-
-|                        | Retry schedule                                                               | Survives a restart?                                                                                                     |
-| ---------------------- | ---------------------------------------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------- |
-| **Postgres + Redis**   | BullMQ — delayed jobs, exponential backoff with jitter, stalled-job recovery | **Yes.** A retry still waiting is in Redis                                                                              |
-| **Postgres, no Redis** | skein polls the outbox for rows that are due                                 | No. A retry still waiting is lost on exit; the _delivery_ is not — the row is still there and the next boot picks it up |
-| **Memory (dev)**       | Same poll, in-process                                                        | No, and neither is the delivery — nothing here is durable                                                               |
-
-So: **run Redis in production.** skein warns at startup when your store is durable but your delivery
-schedule is not. Want to exercise the real thing locally? `skein dev --queue redis` — the same BullMQ
-path, against a local Redis.
-
-There is one window neither side can close on its own: a Redis `add()` cannot join a Postgres
-transaction, so a process that dies between committing the delivery and enqueueing its job leaves a
-callback with no schedule. Nothing is lost — the row is committed — and a background sweep re-schedules
-it, idempotently, on its next pass. That is the standard outbox trade: the database is the single
-commit point, and the queue is a schedule rather than a second source of truth.
-
-Tune the policy under [`skein.webhooks`](../langgraph-cli-compat.md#webhooks-skeinwebhooks). The
-default is 12 attempts over roughly 34 minutes, which rides out a rolling deploy with room to spare.
-Read that as a **time horizon, not a count**: dropping to 6 attempts is ~31 seconds, which does not
-survive one redeploy.
-
-A server accepting untrusted clients should set `skein.webhooks.allowed_hosts`: `webhook` is a
-caller-supplied URL, so it is a server-side request to a target they chose, and retrying it turns a
-one-shot SSRF probe into a repeated one. It is off by default so upgrading cannot start dropping your
-own callbacks.
-
-### Verify that a callback is really from you
-
-Set `SKEIN_WEBHOOK_SECRET` and every callback carries `X-Skein-Signature` in Stripe's format —
-`t=<unix seconds>,v1=<hex hmac-sha256>` over `"{t}.{raw body}"` — so a receiver can reuse verification
-code it already has. skein ships the verifier too, from a package that installs with no graph runtime:
+Set `SKEIN_WEBHOOK_SECRET` and every callback is signed, so a receiver can tell a real one from
+anybody who guessed the URL:
 
 ```ts
 import { verifySkeinSignature } from "@skein-js/agent-protocol";
 
 const result = verifySkeinSignature({
   header: req.headers["x-skein-signature"],
-  body: rawBody, // the RAW bytes — see below
+  body: rawBody, // the RAW bytes, not JSON.stringify(req.body)
   secrets: [process.env.SKEIN_WEBHOOK_SECRET!],
 });
 if (!result.ok) return res.status(401).end();
 ```
 
-Three things receivers get wrong, in the order they get them wrong:
-
-1. **Verify the raw bytes, not a re-serialized body.** `JSON.stringify(req.body)` does not reproduce
-   what was signed — key order and spacing are not guaranteed to round-trip — so every genuine
-   callback fails. In Express: `express.raw({ type: "application/json" })` on that route.
-2. **Dedupe on `X-Skein-Delivery-Id`.** Delivery is at-least-once: a POST that timed out _after_ you
-   committed is indistinguishable from one that never arrived, so it is retried. The id is stable
-   across every retry; the attempt number is in `X-Skein-Attempt`.
-3. **Answer 2xx only once the work is durably done.** Answering early and then failing loses the
-   callback — the sender heard success. A non-2xx is how you ask for a retry.
-
-The signature covers the timestamp, which is what makes a **replay** detectable with no state on your
-side: a captured callback stops verifying once it is outside the tolerance window (5 minutes by
-default). A runnable receiver doing all of this — accepting a genuine callback, refusing a forged one
-and a replayed one — is `src/webhook-receiver.ts` in
+Working receiver: `src/webhook-receiver.ts` in
 [`examples/express-basic`](https://github.com/skein-js/skein-js/tree/main/examples/express-basic)
-(`pnpm webhook-receiver`).
+(`pnpm webhook-receiver`) — accepts a genuine callback, refuses a forged and a replayed one.
 
-Rotate by setting `SKEIN_WEBHOOK_SECRET` to a comma-separated list, new key first: skein signs with
-the first and receivers accept any they hold. Remove the old key only once every receiver has the new
-one — the other order refuses every callback until they catch up.
-
-> [!WARNING]
-> If you inject your own `webhookDispatcher`, it must forward `attempt.headers` and send
-> `attempt.body` verbatim, or callbacks go out unsigned while your config says otherwise. skein warns
-> at startup when it sees both a signing key and a custom dispatcher.
-
-### See what a callback did, and replay it
-
-```
-GET  /threads/{thread_id}/runs/{run_id}/deliveries
-POST /threads/{thread_id}/runs/{run_id}/deliveries/{delivery_id}/replay
-```
-
-The list carries every attempt's status, count and last error — `?status=dead` narrows it to the ones
-that gave up. It reports `replayable` rather than the payload itself — the payload is up to 256 KiB of
-the run's final state per row, and the question a replay turns on is whether there is anything left to
-send. Read the state from the run.
-Replay makes a delivery due again immediately, and 409s one that already succeeded (its payload was
-cleared on delivery, so there is nothing left to resend). Both sit under the `runs` route group, so
-`http.disable_runs` and your existing `@auth.on.threads` handler already cover them.
-
-### What this stores, and for how long
-
-A retry has to have something to send, so **the callback body is stored** — including the run's final
-`values`. That is a new at-rest copy of whatever your graph produced, in the `deliveries` table, and
-it is worth classifying deliberately if that state carries personal or regulated data:
-
-- **On success it is cleared immediately**, so steady-state storage is in-flight deliveries, not every
-  delivery ever made.
-- **A `dead` delivery keeps it** for `retain_hours` (default 24) — that is what makes replay possible,
-  and it means a callback that never landed leaves the run's final state on disk for a day.
-- **It is not encrypted by skein.** Use your database's encryption at rest; the column is ordinary
-  `jsonb`.
-- **Deleting a thread or run does not currently erase its deliveries** — unlike idempotency records,
-  which are erased explicitly. Lower `retain_hours` if that matters to you.
-
-Set `require_https: true` if callbacks leave your network. Plaintext is permitted by default (an
-internal receiver is a legitimate use), but retries mean the body crosses the wire up to
-`max_attempts` times rather than once, so `http://` here is a dozen exposures rather than one.
-
-skein **redacts the webhook URL's path in logs**, keeping only the scheme and host: for Slack, Discord
-and Teams the path _is_ the credential, and a failing delivery would otherwise write it into your log
-sink on every attempt.
-
-Payloads are capped at `max_payload_bytes` (default 256 KiB) because the body is stored for retries.
-Over the cap, `values` is replaced by a truncation marker **inside the body** — so a receiver is told
-it is looking at a truncated state rather than left to infer it. Raise the cap, or read the state back
-from the API using the `run_id` in the callback.
+**Run Redis in production**: without it a retry still waiting is lost on exit (the delivery is not).
+Details — the retry tiers, signature verification and key rotation, listing and replaying failed
+deliveries, and what gets stored and for how long: [webhooks.md](../webhooks.md).
 
 ## Go durable and scale out
 
