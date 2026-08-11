@@ -1979,6 +1979,20 @@ export class PostgresSkeinStore implements SkeinStore {
     // The predicate covers due-ness and crash recovery at once: a `delivering` row whose lease has
     // passed is simply due again, so a worker killed mid-POST needs no reclaim path.
     //
+    // Non-mutating, so a recovery sweep may re-read the same rows every pass without spending their
+    // attempt budget. Same predicate and order as the claim below, so the two cannot disagree about
+    // what "due" means.
+    listDue: async (query) => {
+      const { rows } = await this.#pool.query<DeliveryRow>(
+        `SELECT ${DELIVERY_COLUMNS} FROM deliveries
+          WHERE status IN (${DELIVERY_CLAIMABLE_SQL})
+            AND next_attempt_at <= $1::timestamptz
+          ORDER BY next_attempt_at, delivery_id
+          LIMIT $2`,
+        [query.now, this.#pageLimit(query.limit)],
+      );
+      return rows.map(rowToDelivery);
+    },
     // Three CTEs rather than one `UPDATE … WHERE delivery_id IN (…)`, because the contract promises
     // the rows come back soonest-first and an UPDATE's RETURNING order is unspecified. Re-sorting
     // afterwards cannot recover it either: the claim overwrites `next_attempt_at` with the lease, so
@@ -2025,11 +2039,19 @@ export class PostgresSkeinStore implements SkeinStore {
                 "$3::timestamptz",
                 [deliveryId, result.error, result.nextAttemptAt],
               ];
+      // The count is only overwritten when the caller supplies one — see `DeliveryAttemptResult`.
+      const attempt = result.outcome === "delivered" ? undefined : result.attempt;
+      let attemptSql = "attempt";
+      if (attempt !== undefined) {
+        params.push(attempt);
+        attemptSql = `$${params.length}`;
+      }
       const { rows } = await this.#pool.query<DeliveryRow>(
         `UPDATE deliveries
             SET status = ${statusSql},
                 payload = ${payloadSql},
                 last_error = $2,
+                attempt = ${attemptSql},
                 next_attempt_at = ${nextAttemptSql},
                 updated_at = now()
           WHERE delivery_id = $1

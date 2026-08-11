@@ -2260,6 +2260,78 @@ export function runSkeinStoreConformance(
         expect(claimed.map((row) => row.delivery_id)).toEqual(expected);
       });
 
+      // The read half of the scan-then-act split. It exists so a recovery sweep can look at a
+      // delivery without spending an attempt on it — a claiming sweep would exhaust the budget of
+      // every row it merely glanced at.
+      it("lists due deliveries without claiming them", async () => {
+        const store = await makeStore();
+        const { deliveries, finalize } = outboxOf(store);
+        const { runId, threadId } = await seedRun(store);
+        const { delivery } = await finalize(runId, {
+          status: "success",
+          delivery: deliveryFor(threadId, { next_attempt_at: inMs(-1_000) }),
+        });
+
+        const first = await deliveries.listDue({ now: inMs(0) });
+        expect(first.map((row) => row.delivery_id)).toEqual([delivery.delivery_id]);
+
+        // Still there, still unchanged, still due — reading is free and repeatable.
+        const second = await deliveries.listDue({ now: inMs(0) });
+        expect(second).toEqual(first);
+        const unchanged = await deliveries.get(delivery.delivery_id);
+        expect(unchanged?.attempt).toBe(delivery.attempt);
+        expect(unchanged?.next_attempt_at).toBe(delivery.next_attempt_at);
+        expect(unchanged?.status).toBe(delivery.status);
+      });
+
+      it("hides a delivery that is not due yet from the scan", async () => {
+        const store = await makeStore();
+        const { deliveries, finalize } = outboxOf(store);
+        const { runId, threadId } = await seedRun(store);
+        await finalize(runId, {
+          status: "success",
+          delivery: deliveryFor(threadId, { next_attempt_at: inMs(60_000) }),
+        });
+
+        expect(await deliveries.listDue({ now: inMs(0) })).toEqual([]);
+      });
+
+      it("keeps a settled delivery out of the scan", async () => {
+        const store = await makeStore();
+        const { deliveries, finalize } = outboxOf(store);
+        const { runId, threadId } = await seedRun(store);
+        const { delivery } = await finalize(runId, {
+          status: "success",
+          delivery: deliveryFor(threadId, { next_attempt_at: inMs(-1_000) }),
+        });
+        await deliveries.recordAttempt(delivery.delivery_id, { outcome: "delivered" });
+
+        expect(await deliveries.listDue({ now: inMs(0) })).toEqual([]);
+      });
+
+      it("scans soonest-first, bounded by the driver's page size when no limit is given", async () => {
+        const store = await makeStore({ maxPageSize: 2 });
+        const { deliveries, finalize } = outboxOf(store);
+        const { thread_id } = await store.threads.create();
+        const created = [];
+        for (const offset of [-1_000, -5_000, -3_000]) {
+          const run = await store.runs.create({ thread_id, assistant_id: "a" });
+          const { delivery } = await finalize(run.run_id, {
+            status: "success",
+            delivery: deliveryFor(thread_id, { next_attempt_at: inMs(offset) }),
+          });
+          created.push({ id: delivery.delivery_id, offset });
+        }
+        const expected = [...created]
+          .sort((a, b) => a.offset - b.offset)
+          .slice(0, 2)
+          .map((row) => row.id);
+
+        expect((await deliveries.listDue({ now: inMs(0) })).map((row) => row.delivery_id)).toEqual(
+          expected,
+        );
+      });
+
       it("clears the payload on a delivered attempt", async () => {
         const store = await makeStore();
         const { deliveries, finalize } = outboxOf(store);
@@ -2319,6 +2391,52 @@ export function runSkeinStoreConformance(
         expect(settled?.status).toBe("dead");
         expect(settled?.payload).toEqual(delivery.payload);
         expect(settled?.last_error).toBe("gave up after 12 attempts");
+      });
+
+      // The count is not always the driver's to know: when a `DeliveryQueue` owns the schedule nothing
+      // claims, so the attempt number comes from whoever made the attempt. Without this a delivery
+      // tried a dozen times would still read `attempt: 1` in the admin list and in its headers.
+      it("takes the attempt number from the caller when one is given", async () => {
+        const store = await makeStore();
+        const { deliveries, finalize } = outboxOf(store);
+        const { runId, threadId } = await seedRun(store);
+        const { delivery } = await finalize(runId, {
+          status: "success",
+          delivery: deliveryFor(threadId),
+        });
+
+        const retried = await deliveries.recordAttempt(delivery.delivery_id, {
+          outcome: "retrying",
+          nextAttemptAt: inMs(60_000),
+          error: "down",
+          attempt: 7,
+        });
+        expect(retried?.attempt).toBe(7);
+
+        const dead = await deliveries.recordAttempt(delivery.delivery_id, {
+          outcome: "dead",
+          error: "gave up",
+          attempt: 9,
+        });
+        expect(dead?.attempt).toBe(9);
+      });
+
+      it("keeps the row's own attempt count when the caller gives none", async () => {
+        const store = await makeStore();
+        const { deliveries, finalize } = outboxOf(store);
+        const { runId, threadId } = await seedRun(store);
+        const { delivery } = await finalize(runId, {
+          status: "success",
+          delivery: deliveryFor(threadId),
+        });
+
+        const retried = await deliveries.recordAttempt(delivery.delivery_id, {
+          outcome: "retrying",
+          nextAttemptAt: inMs(60_000),
+          error: "down",
+        });
+        // Unchanged: the polling path advances the count through `claimDue`, not through recording.
+        expect(retried?.attempt).toBe(delivery.attempt);
       });
 
       it("returns null when recording an attempt on an unknown delivery", async () => {

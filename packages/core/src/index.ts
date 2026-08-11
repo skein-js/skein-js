@@ -58,6 +58,7 @@ export type {
   DueCron,
   DueCronsQuery,
   DueDeliveriesQuery,
+  DueDeliveryScan,
   FinalizedRun,
   IdempotencyClaim,
   IdempotencyClaimResult,

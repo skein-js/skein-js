@@ -116,6 +116,13 @@ export interface DeliveryListQuery extends Pagination {
   status?: DeliveryStatus;
 }
 
+/** What a non-mutating due scan asks for. */
+export interface DueDeliveryScan {
+  /** The application's clock. A delivery is due when its `next_attempt_at` is at or before this. */
+  now: string;
+  limit?: number;
+}
+
 /** A worker's claim on due deliveries. */
 export interface DueDeliveriesQuery {
   /** The application's clock. A row is due when its `next_attempt_at` is at or before this. */
@@ -131,8 +138,16 @@ export interface DueDeliveriesQuery {
  */
 export type DeliveryAttemptResult =
   | { outcome: "delivered" }
-  | { outcome: "retrying"; nextAttemptAt: string; error: string }
-  | { outcome: "dead"; error: string };
+  | { outcome: "retrying"; nextAttemptAt: string; error: string; attempt?: number }
+  | { outcome: "dead"; error: string; attempt?: number };
+
+/**
+ * `attempt` above exists because {@link DeliveryRepo.claimDue} is not the only thing that makes an
+ * attempt. When a {@link DeliveryQueue} owns the schedule, the queue hands work to a processor
+ * directly and nothing claims — so the count has to come from whoever knows it, or a delivery tried a
+ * dozen times would still read `attempt: 1` in the admin list and in the `X-Skein-Attempt` header.
+ * Omitted, the row's own count stands, which is what the polling path wants.
+ */
 
 /**
  * Outbound run-completion callbacks awaiting delivery — the transactional outbox behind the
@@ -165,7 +180,23 @@ export interface DeliveryRepo {
    */
   claimDue(query: DueDeliveriesQuery): Promise<Delivery[]>;
   /**
-   * Record how the current attempt ended; `null` for an unknown delivery.
+   * Deliveries due at `query.now`, **without claiming them** — soonest first, same predicate as
+   * {@link claimDue}.
+   *
+   * The read half of the scan-then-act split {@link CronRepo.listDue} makes, and it exists for a
+   * sharper reason than symmetry. When a {@link DeliveryQueue} owns the schedule, the recovery sweep
+   * is looking for deliveries whose *job* was lost, and its remedy is to re-schedule them — an
+   * idempotent operation. Using {@link claimDue} for that would be actively wrong: claiming mutates,
+   * so every pass over a delivery the queue is merely holding would increment its attempt count and
+   * shove its lease forward, exhausting a budget nothing had spent.
+   *
+   * Because this does not mutate, the sweep is free to run against a short horizon — which is what
+   * turns "a lost job is recovered in a couple of hours" into "within one sweep interval".
+   */
+  listDue(query: DueDeliveryScan): Promise<Delivery[]>;
+  /**
+   * Record how the current attempt ended; `null` for an unknown delivery. A `result.attempt` overwrites
+   * the row's count; without one the row keeps its own.
    *
    * `delivered` **clears the payload** — that is what makes steady-state storage (in-flight ×
    * payload cap) rather than (every delivery ever × payload cap), and it is why {@link retryNow}
