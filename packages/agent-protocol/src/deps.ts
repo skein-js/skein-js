@@ -8,6 +8,7 @@ import {
   anySinkWantsRunEvents,
   combineTelemetrySinks,
   type AuthEngine,
+  type DeliveryQueue,
   type GraphSchema,
   type RunAbortChannel,
   type RunEventBus,
@@ -19,6 +20,7 @@ import {
   type TelemetrySink,
 } from "@skein-js/core";
 
+import type { WebhookDeliveryConfig } from "./deliveries/delivery-config.js";
 import type { AgentGraph, AgentGraphFactory } from "./graphs/agent-graph.js";
 import type { ThreadCheckpointer } from "./graphs/thread-checkpointer.js";
 import type { IdempotencyConfig } from "./idempotency/idempotency-config.js";
@@ -74,7 +76,47 @@ export type Clock = () => Date;
  * legitimate use, does **not** block private/loopback hosts. Deployments that accept untrusted
  * `webhook` URLs should inject a dispatcher that validates the resolved host against an allowlist.
  */
-export type WebhookDispatcher = (url: string, payload: unknown) => Promise<void>;
+export type WebhookDispatcher = (
+  url: string,
+  payload: unknown,
+  attempt?: DeliveryAttempt,
+) => Promise<void>;
+
+/**
+ * What this POST is an attempt at — supplied on every delivery the outbox drives.
+ *
+ * Optional so every existing dispatcher keeps compiling and working; a custom one that ignores it
+ * still delivers, it just leaves the receiver without a dedup key.
+ */
+export interface DeliveryAttempt {
+  /** Stable across every retry of this callback. **The receiver's dedup key.** */
+  deliveryId: string;
+  /** Which attempt this is, counting the inline first one. */
+  attempt: number;
+  /**
+   * The headers to send verbatim, already assembled.
+   *
+   * A map rather than individual fields, so a dispatcher forwards whatever skein decided to send
+   * without having to know the names — which is what lets signing land later without every custom
+   * dispatcher needing an update.
+   */
+  headers: Record<string, string>;
+}
+
+/**
+ * The headers that carry a delivery's identity to the receiver.
+ *
+ * `X-Skein-Delivery-Id` is the load-bearing one. Delivery is **at-least-once**: a POST that timed out
+ * after the receiver had already processed it is indistinguishable, from here, from one that never
+ * arrived — so it is retried, and the receiver sees it twice. Dedup on this id and that is a non-event;
+ * ignore it and skein's reliability improvement becomes the receiver's duplicate-processing bug.
+ */
+export function deliveryHeaders(deliveryId: string, attempt: number): Record<string, string> {
+  return {
+    "x-skein-delivery-id": deliveryId,
+    "x-skein-attempt": String(attempt),
+  };
+}
 
 /** A minimal structured logger. Defaults to a no-op so nothing is required. */
 export interface Logger {
@@ -225,9 +267,39 @@ export interface ProtocolDeps {
   idempotency?: IdempotencyConfig;
   /**
    * Delivers run-completion webhooks (the run's `webhook` field). Defaults to a `globalThis.fetch`
-   * POST with a JSON body; inject to customize transport/retries or to capture deliveries in tests.
+   * POST with a JSON body; inject to customize transport or to capture deliveries in tests.
+   *
+   * Note this is the transport only. Retries, dead-lettering and replay are the outbox's job now (see
+   * {@link webhooks}), because they need a write inside the run's own finalize transaction — a window
+   * that closes before any injected dispatcher runs.
    */
   webhookDispatcher?: WebhookDispatcher;
+  /**
+   * How run-completion callbacks are retried and bounded (`langgraph.json` `skein.webhooks`).
+   *
+   * Tuning only — absent means the defaults, **not** that callbacks are fire-once. `retries.max_attempts:
+   * 1` is how you ask for the pre-outbox behaviour. Whether a delivery is *durable* is a property of
+   * the store driver, not of this: a store with a `deliveries` repo records the callback in the run's
+   * finalize transaction either way.
+   *
+   * Carried on the deps rather than passed per-adapter for the same reason {@link idempotency} is:
+   * resolved once where the config is read, and every adapter forwards deps without knowing about it.
+   */
+  webhooks?: WebhookDeliveryConfig;
+  /**
+   * Where an undelivered run-completion callback waits between attempts.
+   *
+   * **This is the production path.** With it — `RedisDeliveryQueue` in a Redis deployment — the whole
+   * retry schedule is BullMQ's: delayed jobs, exponential backoff with jitter, and re-delivery of a
+   * job whose worker was killed mid-POST. Absent, skein falls back to polling the outbox for rows
+   * whose `next_attempt_at` has arrived, which is correct but process-local and lost on restart, and
+   * is the development path.
+   *
+   * Note what does *not* depend on this: whether a callback is durable at all. That comes from the
+   * store recording it in the run's finalize transaction, so a deployment with a Postgres store and
+   * no delivery queue still cannot lose a notification — it just schedules the retries less well.
+   */
+  deliveryQueue?: DeliveryQueue;
   /**
    * Optional auth engine. When set, every request is authenticated (401 on failure) and authorized
    * per resource + action (403 on deny), with ownership filters scoping reads and stamping writes.
@@ -320,7 +392,7 @@ function webhookTimeoutMs(): number {
 }
 
 /** POST the payload as JSON via the global `fetch`. The default {@link WebhookDispatcher}. */
-const fetchWebhookDispatcher: WebhookDispatcher = async (url, payload) => {
+const fetchWebhookDispatcher: WebhookDispatcher = async (url, payload, attempt) => {
   // Only http(s): reject other schemes (`file:`, `data:`, …) up front rather than hand them to fetch.
   let scheme: string;
   try {
@@ -341,7 +413,7 @@ const fetchWebhookDispatcher: WebhookDispatcher = async (url, payload) => {
   try {
     response = await send(url, {
       method: "POST",
-      headers: { "content-type": "application/json" },
+      headers: { "content-type": "application/json", ...attempt?.headers },
       body: JSON.stringify(payload),
       // `AbortSignal.timeout` rather than a manual controller + `setTimeout`: it needs no clearing, so
       // it cannot keep the event loop alive past a delivery that finished early.

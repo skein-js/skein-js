@@ -37,6 +37,40 @@ describe("parseLanggraphJson", () => {
     ).toThrow(SkeinConfigError);
   });
 
+  it("accepts a webhook delivery policy", () => {
+    const config = parseLanggraphJson({
+      graphs: { agent: "./a.ts:graph" },
+      skein: {
+        webhooks: {
+          retries: { max_attempts: 6, initial_delay_ms: 500 },
+          allowed_hosts: ["hooks.example.com"],
+        },
+      },
+    });
+    expect(config.skein?.webhooks).toEqual({
+      retries: { max_attempts: 6, initial_delay_ms: 500 },
+      allowed_hosts: ["hooks.example.com"],
+    });
+  });
+
+  it("rejects a zero attempt count rather than letting it become an off switch", () => {
+    // `.positive()`, not a bare number: `0` survives the engine's `?? default` fallback (`??` only
+    // falls through on nullish), so it would accept a `webhook`, record the delivery, and never send
+    // it — a callback silently owed forever. Same trap `skein.idempotency` documents.
+    expect(() =>
+      parseLanggraphJson({
+        graphs: { agent: "./a.ts:graph" },
+        skein: { webhooks: { retries: { max_attempts: 0 } } },
+      }),
+    ).toThrow(SkeinConfigError);
+    expect(() =>
+      parseLanggraphJson({
+        graphs: { agent: "./a.ts:graph" },
+        skein: { webhooks: { retries: { initial_delay_ms: 0 } } },
+      }),
+    ).toThrow(SkeinConfigError);
+  });
+
   it("passes unknown keys through unchanged (so an existing config round-trips)", () => {
     const config = parseLanggraphJson({ graphs: {}, future_field: 42 }) as Record<string, unknown>;
     expect(config["future_field"]).toBe(42);

@@ -115,6 +115,61 @@ const idempotencySchema = z
 /** The validated `skein.idempotency` block. */
 export type IdempotencyJsonConfig = z.infer<typeof idempotencySchema>;
 
+/**
+ * `skein.webhooks` — how run-completion callbacks are retried and bounded.
+ *
+ * A skein original under the reserved namespace, for the reason {@link idempotencySchema} gives.
+ * LangGraph's `webhook` field is a bare URL with no delivery policy at all, so there is nothing here
+ * to stay compatible with — only the payload shape, which this does not touch.
+ *
+ * Tuning only. Omitting the block does **not** make callbacks fire-once: a run that carries a
+ * `webhook` owes a callback, and how hard the server tries is a deployment decision rather than
+ * permission to try at all. `retries.max_attempts: 1` is how you ask for one shot.
+ */
+const webhooksSchema = z
+  .object({
+    retries: z
+      .object({
+        // `.positive()` throughout, for the reason `idempotencySchema` spells out: a `0` survives the
+        // `?? default` fallback and silently becomes an off switch. `max_attempts: 0` would give every
+        // delivery zero attempts — a `webhook` field accepted, recorded, and never sent, which is
+        // worse than the fire-once behaviour this block exists to improve on. `initial_delay_ms: 0`
+        // collapses the backoff into an unbounded retry storm against a receiver that is already down.
+        /**
+         * Attempts before a delivery is dead, counting the inline first one (default 12).
+         *
+         * A **time horizon, not a count**: the delays double, so 12 ≈ 34 minutes and 6 ≈ 31 seconds.
+         */
+        max_attempts: z.number().positive().optional(),
+        /**
+         * The first retry's delay, and the base the rest double from, in ms (default 1000).
+         *
+         * There is no ceiling knob: the doubling tops out inside an hour at any sane attempt count,
+         * and on Redis the schedule is BullMQ's own exponential backoff rather than ours.
+         */
+        initial_delay_ms: z.number().positive().optional(),
+      })
+      .passthrough()
+      .optional(),
+    /** Cap on a stored delivery body, in bytes (default 262144). Over it, `values` is truncated. */
+    max_payload_bytes: z.number().positive().optional(),
+    /** How long a settled delivery is kept before the sweep reclaims it, in hours (default 24). */
+    retain_hours: z.number().positive().optional(),
+    /**
+     * Hostnames a callback may be sent to. Absent means no restriction, which is today's behaviour —
+     * turning it on by default would make every existing deployment start dropping its own callbacks.
+     *
+     * Set it if you accept run creates from untrusted callers: `webhook` is a caller-supplied URL, so
+     * it is a server-side request to a target they chose, and retrying it turns a one-shot SSRF probe
+     * into a repeated one.
+     */
+    allowed_hosts: z.array(z.string().trim().min(1)).optional(),
+  })
+  .passthrough();
+
+/** The validated `skein.webhooks` block. */
+export type WebhooksJsonConfig = z.infer<typeof webhooksSchema>;
+
 const runtimeSchema = z
   .object({
     /** Native runtime used by the built production artifact. */
@@ -137,6 +192,7 @@ export const langgraphJsonSchema = z
       .object({
         runtime: runtimeSchema.optional(),
         idempotency: idempotencySchema.optional(),
+        webhooks: webhooksSchema.optional(),
       })
       .passthrough()
       .optional(),
@@ -173,11 +229,17 @@ export const langgraphJsonSchema = z
       .object({
         cors: z.object({}).passthrough().optional(),
         // Declared as `unknown`, not `boolean`. This block used to be opaque
-        // (`z.object({}).passthrough()`), so a config carrying `"disable_runs": "${DISABLE_RUNS}"` — env
-        // substitution, which this loader supports — or a hand-written `"true"` string loaded fine.
+        // (`z.object({}).passthrough()`), so a config carrying a hand-written `"true"` string — or a
+        // `"${DISABLE_RUNS}"` written by someone expecting env substitution — loaded fine.
         // Typing these as booleans would turn those into a *startup failure*, since `parseLanggraphJson`
         // throws on any violation. Only a literal `true` disables a group; that decision lives in
         // `disabledRoutesFromHttpConfig`, which is also where the string/number cases are handled.
+        //
+        // To be clear about the `${…}` case, since this comment previously claimed the opposite:
+        // **skein does not expand `${VAR}` anywhere in `langgraph.json`.** `resolve-env.ts` reads the
+        // `env` block into a map and the CLI applies it to `process.env`; nothing reads it back out
+        // into the parsed config. A `"${VAR}"` here is the literal string, which for a boolean flag is
+        // merely ignored — but would be catastrophic for a secret, so no `skein.*` block takes one.
         disable_assistants: z.unknown().optional(),
         disable_threads: z.unknown().optional(),
         disable_runs: z.unknown().optional(),

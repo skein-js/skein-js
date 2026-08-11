@@ -136,6 +136,9 @@ it but is never required.
     // Retention for `Idempotency-Key` records (skein extension; see below). Tuning only —
     // omitting the block does NOT disable the header.
     "idempotency": { "retention_hours": 24, "in_flight_minutes": 15 },
+    // Delivery policy for run-completion callbacks (skein extension; see below). Tuning only —
+    // omitting the block does NOT make callbacks fire-once.
+    "webhooks": { "retries": { "max_attempts": 12 }, "allowed_hosts": ["hooks.example.com"] },
   },
 
   // .env path OR inline map
@@ -195,6 +198,7 @@ it but is never required.
 | `node_version`         | Used by `skein build` / `skein dockerfile` base image selection. Defaults to Node 24 LTS when omitted; an explicit value is honoured verbatim, including an older one.                                                                                                                                                                                                                                                                             |
 | `skein.runtime`        | Native production server and pinned official image: `node`, `bun`, or `deno`. Bun/Deno use `@skein-js/fetch` with `Bun.serve`/`Deno.serve`, never Express compatibility.                                                                                                                                                                                                                                                                           |
 | `skein.idempotency`    | Retention for `Idempotency-Key` records. Tuning only — the header is honoured either way. See [below](#idempotency-skeinidempotency).                                                                                                                                                                                                                                                                                                              |
+| `skein.webhooks`       | How run-completion callbacks are retried and bounded. Tuning only — a run carrying a `webhook` owes a callback either way. See [below](#webhooks-skeinwebhooks).                                                                                                                                                                                                                                                                                   |
 | `env`                  | Loaded into `process.env` at boot (dev) / baked into the image (build).                                                                                                                                                                                                                                                                                                                                                                            |
 | `store`                | `store.index.{embed,dims,fields,hnsw}` configures pgvector semantic search on the Postgres driver (`hnsw: true` opts into the approximate index); `store.ttl.{default_ttl,refresh_on_read,sweep_interval_minutes}` expires items. `store.adapter` is a **skein extension** — `path:export` to your own LangGraph `BaseStore` (e.g. `PostgresStore`, `MongoDBStore`), which then serves the whole `/store` surface. See [storage.md](./storage.md). |
 | `checkpointer`         | `"default"` → `PostgresSaver`; dev falls back to an in-memory `MemorySaver`.                                                                                                                                                                                                                                                                                                                                                                       |
@@ -262,6 +266,62 @@ What each one is for:
 Honoured identically on every driver combination, including `skein dev` with no Docker. See
 [agent-protocol.md](./agent-protocol.md#idempotent-run-creation-idempotency-key) for the request
 semantics and the replay table.
+
+## Webhooks (`skein.webhooks`)
+
+LangGraph's `webhook` field is a bare URL with no delivery policy at all, so this block is a skein
+extension under the reserved namespace, for the same reason `skein.idempotency` is. The **payload
+shape is unchanged** — this configures delivery, not the body.
+
+```jsonc
+{
+  "skein": {
+    "webhooks": {
+      "retries": {
+        "max_attempts": 12, // attempts before a callback is dead, counting the inline first one
+        "initial_delay_ms": 1000, // the first retry's delay; the rest double from it
+      },
+      "max_payload_bytes": 262144, // cap on the stored body; over it, `values` is truncated
+      "retain_hours": 24, // how long a settled delivery is kept before it is reclaimed
+      "allowed_hosts": ["hooks.example.com"], // absent = no restriction (today's behaviour)
+    },
+  },
+}
+```
+
+**This block is tuning, not an on/off switch.** Omitting it does not make callbacks fire-once: a run
+that carries a `webhook` owes a callback, and how hard the server tries is a deployment decision
+rather than permission to try at all. `retries.max_attempts: 1` is how you ask for one shot.
+
+What each one is for:
+
+- `max_attempts` — read it as a **time horizon, not a count**. The delays double, so 12 attempts is
+  1+2+4+…+1024 seconds ≈ **34 minutes**, which rides out a rolling deploy with room to spare. Six is
+  not "half as patient": it is ~31 seconds, which does not survive one redeploy. There is deliberately
+  no ceiling knob — the doubling tops out around 17 minutes at any sane attempt count, and on Redis
+  the schedule is BullMQ's own exponential backoff rather than ours.
+- `initial_delay_ms` — the first retry's delay and the base the rest double from. Raise it for a
+  receiver you know is slow to come back; lower it only if you also lower `max_attempts`.
+- `max_payload_bytes` — the body is **stored** so a retry has something to send, so an unbounded
+  payload is unbounded rows. Over the cap, `values` is replaced by a truncation marker inside the
+  signed body; everything a receiver needs to fetch the state itself survives.
+- `retain_hours` — how long a delivered or dead row is kept. Disk only; nothing is incorrect if the
+  sweep never runs.
+- `allowed_hosts` — an exact-hostname allowlist. Set it if you accept run creates from untrusted
+  callers: `webhook` is a caller-supplied URL, so it is a server-side request to a target they chose,
+  and retrying it turns a one-shot SSRF probe into a repeated one. **Off by default**, because turning
+  it on for everyone would make an upgrade start dropping deployments' own callbacks. A refused host
+  is recorded `dead` with the reason rather than silently skipped.
+
+**Where the retries actually run depends on your queue driver.** With Redis, the whole schedule is
+BullMQ's — delayed jobs, exponential backoff with jitter, and re-delivery of a job whose worker was
+killed — so a retry still waiting survives a restart. Without it, skein polls the outbox instead:
+correct, but the schedule dies with the process, and skein warns at startup when your store is durable
+and your delivery schedule is not. To exercise the production path locally, `skein dev --queue redis`.
+
+Whether a callback is **durable** does not depend on any of this: the delivery is recorded in the same
+transaction as the run's terminal status, so it cannot be lost even with no queue at all. See
+[recipes/production.md](./recipes/production.md#get-notified-when-a-run-finishes).
 
 ## Authentication + authorization (`auth`)
 

@@ -78,6 +78,29 @@ export type {
   SearchCronsInput,
   UpdateCronInput,
 } from "./crons/cron-service.js";
+// Outbound run-completion delivery: the retry policy, and the worker that drains the outbox.
+export { attemptDelivery } from "./deliveries/attempt-delivery.js";
+export type { AttemptDeliveryDeps } from "./deliveries/attempt-delivery.js";
+export { isFinalAttempt, nextAttemptDelayMs } from "./deliveries/backoff.js";
+export {
+  DEFAULT_INITIAL_DELAY_MS,
+  DEFAULT_MAX_ATTEMPTS,
+  DEFAULT_MAX_PAYLOAD_BYTES,
+  DEFAULT_RETAIN_HOURS,
+  DELIVERY_LEASE_MS,
+  queueSweepGraceMs,
+} from "./deliveries/delivery-config.js";
+export type { DeliveryRetryConfig, WebhookDeliveryConfig } from "./deliveries/delivery-config.js";
+export { buildDeliveryPayload, toDeliveryBody } from "./deliveries/delivery-payload.js";
+export { processDelivery } from "./deliveries/delivery-processor.js";
+export type { DeliveryProcessorDeps } from "./deliveries/delivery-processor.js";
+export type { BuiltDeliveryPayload, TruncatedValues } from "./deliveries/delivery-payload.js";
+export { createDeliveryWorker } from "./deliveries/delivery-worker.js";
+export type {
+  DeliveryTickSummary,
+  DeliveryWorker,
+  DeliveryWorkerOptions,
+} from "./deliveries/delivery-worker.js";
 export { idempotencyScope, requestFingerprint } from "./idempotency/fingerprint.js";
 export type { IdempotencyConfig } from "./idempotency/idempotency-config.js";
 export { createIdempotencySweeper } from "./idempotency/idempotency-sweeper.js";
@@ -103,9 +126,11 @@ export { isRunFailureReport, RUN_FAILURE_REPORT_KIND } from "./runs/run-failure.
 export type { RunFailureReport } from "./runs/run-failure.js";
 
 // The injected dependency contract.
+export { deliveryHeaders } from "./deps.js";
 export type {
   Clock,
   CompiledGraphFactory,
+  DeliveryAttempt,
   GraphResolver,
   GraphSchemas,
   Logger,

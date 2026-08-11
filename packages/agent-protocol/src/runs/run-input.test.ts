@@ -1,7 +1,7 @@
 import { isCommand } from "@langchain/langgraph";
+import { describe, expect, it } from "vitest";
 
 import { isAgentCommand } from "../graphs/agent-command.js";
-import { describe, expect, it } from "vitest";
 
 import {
   normalizeModes,
