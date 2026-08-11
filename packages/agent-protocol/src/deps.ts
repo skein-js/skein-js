@@ -382,7 +382,7 @@ export const DEFAULT_WEBHOOK_TIMEOUT_MS = 5_000;
  * the variable after importing skein, and a value that only ever mattered per-request should not be
  * frozen by import order.
  */
-function webhookTimeoutMs(): number {
+export function webhookTimeoutMs(): number {
   const raw = process.env["SKEIN_WEBHOOK_TIMEOUT_MS"]?.trim();
   if (!raw) return DEFAULT_WEBHOOK_TIMEOUT_MS;
   const value = Number(raw);

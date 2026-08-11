@@ -47,6 +47,10 @@ export async function processDelivery(
   if (!delivery) return;
   if (delivery.status === "delivered" || delivery.status === "dead") return;
 
+  // From the row, not from the job: the row is the running total, and it is the only count that
+  // survives the queue re-creating a job for this delivery. See `DeliveryAttemptContext`.
+  const attempt = delivery.attempt + 1;
+
   const disallowed = disallowedHost(delivery.url, deps.webhooks?.allowedHosts);
   if (disallowed) {
     deps.logger.warn(`delivery ${delivery.delivery_id}: ${disallowed}`);
@@ -60,21 +64,21 @@ export async function processDelivery(
       toDeliveryBody(delivery, deps.clock().toISOString()),
       {
         deliveryId: delivery.delivery_id,
-        attempt: context.attempt,
-        headers: deliveryHeaders(delivery.delivery_id, context.attempt),
+        attempt,
+        headers: deliveryHeaders(delivery.delivery_id, attempt),
       },
     );
   } catch (error) {
     const message = error instanceof Error ? error.message : String(error);
     if (context.isFinalAttempt) {
       deps.logger.error(
-        `delivery ${delivery.delivery_id} to ${delivery.url} is dead after ${context.attempt} attempt(s)`,
+        `delivery ${delivery.delivery_id} to ${delivery.url} is dead after ${attempt} attempt(s)`,
         error,
       );
       await deliveries.recordAttempt(delivery.delivery_id, {
         outcome: "dead",
         error: message,
-        attempt: context.attempt,
+        attempt,
       });
       // Deliberately NOT rethrown. The delivery is settled; asking the queue to retry it would
       // contradict the row we just wrote, and on BullMQ would leave a job in the failed set whose
@@ -82,7 +86,7 @@ export async function processDelivery(
       return;
     }
     deps.logger.warn(
-      `delivery ${delivery.delivery_id} to ${delivery.url} failed (attempt ${context.attempt}); retrying`,
+      `delivery ${delivery.delivery_id} to ${delivery.url} failed (attempt ${attempt}); retrying`,
       error,
     );
     // The row records *that* it failed and why. When it is due again is the queue's call, so this is
@@ -93,11 +97,11 @@ export async function processDelivery(
       outcome: "retrying",
       nextAttemptAt: new Date(
         deps.clock().getTime() +
-          nextAttemptDelayMs(context.attempt, deps.webhooks?.retries) +
+          nextAttemptDelayMs(attempt, deps.webhooks?.retries) +
           QUEUE_SWEEP_MARGIN_MS,
       ).toISOString(),
       error: message,
-      attempt: context.attempt,
+      attempt,
     });
     throw error;
   }

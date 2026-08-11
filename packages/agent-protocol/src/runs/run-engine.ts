@@ -29,9 +29,9 @@ import {
 } from "@skein-js/core";
 
 import { attemptDelivery } from "../deliveries/attempt-delivery.js";
-import { DEFAULT_RETAIN_HOURS, DELIVERY_LEASE_MS } from "../deliveries/delivery-config.js";
+import { DEFAULT_RETAIN_HOURS, deliveryLeaseMs } from "../deliveries/delivery-config.js";
 import { buildDeliveryPayload } from "../deliveries/delivery-payload.js";
-import { isNoopLogger, type ResolvedDeps } from "../deps.js";
+import { isNoopLogger, webhookTimeoutMs, type ResolvedDeps } from "../deps.js";
 import {
   requireAgentCapability,
   type AgentGraph,
@@ -302,20 +302,49 @@ export async function executeRun(deps: ResolvedDeps, exec: RunExecution): Promis
     const recordDelivery = deps.store.runs.finalizeWithDelivery;
     // No webhook, no outbox in this driver, or a run that never executed: the pre-outbox path, which
     // for the last case means no callback at all — matching today, where `started` gates the fire.
-    if (!started || kwargs.webhook === undefined || !deps.store.deliveries || !recordDelivery) {
+    //
+    // `recordedDelivery` is the third guard and the least obvious: this function can be reached
+    // twice. Anything after the first `settleRun` — `mirrorThread`'s write, most likely — can throw,
+    // and the catch settles the run again. The status write is idempotent (the second one finds a
+    // terminal row and leaves it), but the delivery insert is deliberately *unconditional*, so a
+    // second pass would record a second callback with a different id — two notifications for one run,
+    // one of them announcing a success that never happened, and the dedup key useless against them
+    // because the ids differ.
+    if (
+      !started ||
+      kwargs.webhook === undefined ||
+      !deps.store.deliveries ||
+      !recordDelivery ||
+      recordedDelivery !== undefined
+    ) {
       return finalizeRun(deps, runId, status, settled.error);
     }
     const endedAt = deps.clock();
-    const { payload, truncated, bytes } = buildDeliveryPayload({
-      run,
-      values: settled.values,
-      runStartedAt: new Date(startedAt).toISOString(),
-      runEndedAt: endedAt.toISOString(),
-      ...(settled.error ? { error: settled.error.message } : {}),
-      ...(deps.webhooks?.maxPayloadBytes !== undefined
-        ? { maxPayloadBytes: deps.webhooks.maxPayloadBytes }
-        : {}),
-    });
+    // Guarded because it serializes: a final state carrying a BigInt or a cycle throws here, and this
+    // now runs *before* the run's status is written. Unguarded, a graph that returned an awkward value
+    // would have its successful run recorded as `error` — the callback machinery deciding the run's
+    // outcome, which it must never do. Falling back to the plain finalize costs the callback and keeps
+    // the run honest; `buildDeliveryPayload` already substitutes a marker for the common cases.
+    let built: ReturnType<typeof buildDeliveryPayload>;
+    try {
+      built = buildDeliveryPayload({
+        run,
+        values: settled.values,
+        runStartedAt: new Date(startedAt).toISOString(),
+        runEndedAt: endedAt.toISOString(),
+        ...(settled.error ? { error: settled.error.message } : {}),
+        ...(deps.webhooks?.maxPayloadBytes !== undefined
+          ? { maxPayloadBytes: deps.webhooks.maxPayloadBytes }
+          : {}),
+      });
+    } catch (error) {
+      deps.logger.error(
+        `run ${runId}: its webhook payload could not be serialized, so no callback was recorded`,
+        error,
+      );
+      return finalizeRun(deps, runId, status, settled.error);
+    }
+    const { payload, truncated, bytes } = built;
     if (truncated) {
       // Warned on every truncation, not once per process: a receiver silently losing `values` is a
       // shape change it cannot detect from the outside, and one log line at boot would not connect
@@ -334,7 +363,10 @@ export async function executeRun(deps: ResolvedDeps, exec: RunExecution): Promis
         payload_truncated: truncated,
         // Born claimed for the inline attempt below; if this process dies before recording its
         // outcome, the lease expires and a worker takes it over.
-        next_attempt_at: new Date(endedAt.getTime() + DELIVERY_LEASE_MS).toISOString(),
+        // A batch of one: the engine makes exactly one inline attempt before handing over.
+        next_attempt_at: new Date(
+          endedAt.getTime() + deliveryLeaseMs(1, webhookTimeoutMs()),
+        ).toISOString(),
         expires_at: new Date(
           endedAt.getTime() + (deps.webhooks?.retainHours ?? DEFAULT_RETAIN_HOURS) * 3_600_000,
         ).toISOString(),

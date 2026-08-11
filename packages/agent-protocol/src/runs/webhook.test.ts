@@ -313,6 +313,69 @@ describe("the run-completion outbox", () => {
     expect(await deps.store.deliveries!.listByRun(run.run_id)).toEqual([]);
   });
 
+  // Regression: `settleRun` can be reached twice — anything after the first one (the thread mirror's
+  // write, most likely) can throw, and the catch settles the run again. The status write is
+  // idempotent, but the delivery insert is deliberately unconditional, so the second pass recorded a
+  // *second* callback with a different id: two notifications for one run, one announcing a success
+  // that never happened, and `X-Skein-Delivery-Id` powerless against them because the ids differ.
+  it("records exactly one delivery even when settling the run twice", async () => {
+    const dispatch = vi.fn<WebhookDispatcher>().mockResolvedValue(undefined);
+    const { deps, run, control, kwargs } = await seed({ webhookDispatcher: dispatch }, "echo", {
+      input: { value: "hi" },
+      webhook: "https://example.test/hook",
+    });
+    // Blow up after the run has been finalized, exactly where the thread mirror writes.
+    const update = deps.store.threads.update.bind(deps.store.threads);
+    let mirrored = false;
+    vi.spyOn(deps.store.threads, "update").mockImplementation(async (threadId, patch) => {
+      if (!mirrored) {
+        mirrored = true;
+        throw new Error("thread mirror failed");
+      }
+      return update(threadId, patch);
+    });
+
+    await executeRun(deps, { run, kwargs, control });
+
+    const deliveries = await deps.store.deliveries!.listByRun(run.run_id);
+    expect(deliveries).toHaveLength(1);
+    expect(dispatch).toHaveBeenCalledTimes(1);
+  });
+
+  // Regression: building the payload serializes it, and that now happens *before* the run's status is
+  // written. A final state carrying a BigInt threw from there, so a successful run was recorded as
+  // `error` — the callback machinery deciding the run's outcome, which it must never do.
+  it("does not fail a run whose final state cannot be serialized", async () => {
+    const dispatch = vi.fn<WebhookDispatcher>().mockResolvedValue(undefined);
+    const { deps, run, control, kwargs } = await seed({ webhookDispatcher: dispatch }, "echo", {
+      input: { value: "hi" },
+      webhook: "https://example.test/hook",
+    });
+    // Thrown only for the delivery body, so the store's own serialization is unaffected — this
+    // stands in for a final state carrying a BigInt or a cycle.
+    const stringify = JSON.stringify.bind(JSON);
+    const spy = vi.spyOn(JSON, "stringify").mockImplementation((value, ...rest) => {
+      if (value !== null && typeof value === "object" && "run_started_at" in value) {
+        throw new TypeError("Do not know how to serialize a BigInt");
+      }
+      return stringify(value, ...(rest as []));
+    });
+
+    let outcome;
+    try {
+      outcome = await executeRun(deps, { run, kwargs, control });
+    } finally {
+      // Restored here rather than in an `afterEach`: a global stub on `JSON.stringify` that outlives
+      // this case breaks every test after it, in ways that look nothing like this one.
+      spy.mockRestore();
+    }
+
+    // The run is what it was. Losing the callback is the acceptable half of this trade.
+    expect(outcome.status).toBe("success");
+    expect((await deps.store.runs.get(run.run_id))?.status).toBe("success");
+    expect(await deps.store.deliveries!.listByRun(run.run_id)).toEqual([]);
+  });
+
   it("truncates an oversized payload inside the body, and says so on the row", async () => {
     const dispatch = vi.fn<WebhookDispatcher>().mockRejectedValue(new Error("down"));
     const { deps, run, control, kwargs } = await seed(
