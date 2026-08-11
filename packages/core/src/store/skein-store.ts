@@ -16,6 +16,7 @@ import type { Assistant, AssistantVersion, Cron, Item, Run, Thread } from "../wi
 
 import type { AssistantRepo } from "./assistants.js";
 import type { CronRepo } from "./crons.js";
+import type { DeliveryRepo } from "./deliveries.js";
 import type { IdempotencyRepo } from "./idempotency.js";
 import type { RunKwargs, RunRepo } from "./runs.js";
 import type { StoreRepo } from "./store-items.js";
@@ -23,6 +24,7 @@ import type { ThreadRepo } from "./threads.js";
 
 export * from "./assistants.js";
 export * from "./crons.js";
+export * from "./deliveries.js";
 export * from "./idempotency.js";
 export * from "./metadata-match.js";
 export * from "./pagination.js";
@@ -38,6 +40,15 @@ export interface SkeinStore {
   crons: CronRepo;
   store: StoreRepo;
   idempotency: IdempotencyRepo;
+  /**
+   * Outbound run-completion callbacks — the outbox behind the `webhook` field on run creation.
+   *
+   * Optional so an existing third-party driver still satisfies the interface, like {@link durable}.
+   * Absent means the pre-outbox behaviour: one best-effort POST, logged on failure and never retried.
+   * Both bundled drivers provide it, and a driver that provides this must also implement
+   * {@link RunRepo.finalizeWithDelivery} — one without the other cannot make a delivery durable.
+   */
+  deliveries?: DeliveryRepo;
   /**
    * Whether rows written here survive a process restart.
    *
@@ -98,4 +109,9 @@ export interface SkeinStoreSnapshot {
   // resource state: carrying `in_flight` rows across a `skein dev` reload would make the first retry
   // after a restart 409 against a claim whose request died with the old process, and carrying `done`
   // rows would replay a response naming runs the reloaded store no longer has.
+  //
+  // Deliveries are absent for the same reason, and one sharper one: a snapshot is a transfer format
+  // that gets written to disk, so carrying them would put every run's whole final state into
+  // `.skein/` — and restoring one would POST to a URL from a previous `skein dev` session on the
+  // next boot, announcing a run the reloaded store may no longer have.
 }

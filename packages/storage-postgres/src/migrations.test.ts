@@ -71,6 +71,7 @@ describe("SKEIN_MIGRATIONS", () => {
       "0008_thread_ttl",
       "0009_drop_redundant_version_index",
       "0010_idempotency",
+      "0011_deliveries",
     ]);
   });
 

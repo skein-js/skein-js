@@ -8,6 +8,7 @@ import { randomUUID } from "node:crypto";
 import {
   SkeinHttpError,
   INFLIGHT_RUN_STATUSES,
+  isTerminalRunStatus,
   type Assistant,
   type AssistantCreate,
   type AssistantRepo,
@@ -22,6 +23,13 @@ import {
   type CronRepo,
   type CronSearchQuery,
   type CronUpdate,
+  type Delivery,
+  type DeliveryAttemptResult,
+  type DeliveryCreate,
+  type DeliveryRepo,
+  type DeliveryStatus,
+  type DueDeliveriesQuery,
+  type FinalizedRun,
   type IdempotencyRecord,
   type IdempotencyRepo,
   type IdempotencyStatus,
@@ -30,6 +38,7 @@ import {
   type Run,
   type RunCreate,
   type RunError,
+  type RunFinalization,
   type RunKwargs,
   type RunRepo,
   type RunStatus,
@@ -328,6 +337,23 @@ interface ItemRow {
   updated_at: Date;
 }
 
+interface DeliveryRow {
+  delivery_id: string;
+  run_id: string;
+  thread_id: string;
+  url: string;
+  payload: unknown;
+  payload_truncated: boolean;
+  run_status: RunStatus;
+  status: DeliveryStatus;
+  attempt: number;
+  next_attempt_at: Date;
+  last_error: string | null;
+  created_at: Date;
+  updated_at: Date;
+  expires_at: Date;
+}
+
 interface IdempotencyRow {
   scope: string;
   key: string;
@@ -389,6 +415,9 @@ export const RUN_COLUMNS =
 export const CRON_COLUMNS =
   "cron_id, assistant_id, thread_id, schedule, timezone, end_time, next_run_date, enabled, occurrence_seq, on_run_completed, payload, metadata, user_id, created_at, updated_at";
 
+export const DELIVERY_COLUMNS =
+  "delivery_id, run_id, thread_id, url, payload, payload_truncated, run_status, status, attempt, next_attempt_at, last_error, created_at, updated_at, expires_at";
+
 /** `"values"` is quoted because unquoted `values` is a SQL keyword in a select list. */
 export const THREAD_COLUMNS =
   'thread_id, status, metadata, "values", interrupts, error, created_at, updated_at, state_updated_at';
@@ -443,6 +472,55 @@ async function insertRun(
     ],
   );
   return rowToRun(rows[0] as RunRow);
+}
+
+/**
+ * The claimable-delivery predicate as a SQL literal list, for the same reason
+ * {@link INFLIGHT_STATUS_SQL} is one: a parameterized `status IN ($n, $n)` cannot be proven to imply
+ * `deliveries_due_idx`'s predicate, so the planner would ignore the partial index and scan every
+ * delivery ever made on every tick of every instance. Internal enum values, never caller input.
+ */
+const DELIVERY_CLAIMABLE_SQL = "'pending', 'delivering'";
+
+/** The counterpart for `deliveries_expires_at_idx`, spelled once for the same reason. */
+const DELIVERY_TERMINAL_SQL = "'delivered', 'dead'";
+
+/**
+ * Insert a delivery row and return it, on whatever executor the caller has.
+ *
+ * `runId` and `runStatus` are arguments rather than fields of `input` because only the transaction
+ * knows them: the status is whichever one actually committed, which is not always the one the caller
+ * asked for (see `RunRepo.finalizeWithDelivery`). Passing them separately is what makes it impossible
+ * to write a delivery that disagrees with the run row beside it.
+ *
+ * The row lands **already claimed** — `delivering`, `attempt` 1, leased until `next_attempt_at` —
+ * because the engine attempts the first delivery inline. A row that started life `pending` would be
+ * picked up by a worker on the very next tick and delivered a second time.
+ */
+async function insertDelivery(
+  executor: Pick<Pool, "query"> | Pick<PoolClient, "query">,
+  runId: string,
+  runStatus: RunStatus,
+  input: DeliveryCreate,
+): Promise<Delivery> {
+  const { rows } = await executor.query<DeliveryRow>(
+    `INSERT INTO deliveries (delivery_id, run_id, thread_id, url, payload, payload_truncated,
+                             run_status, status, attempt, next_attempt_at, expires_at)
+     VALUES ($1, $2, $3, $4, $5::jsonb, $6, $7, 'delivering', 1, $8::timestamptz, $9::timestamptz)
+     RETURNING ${DELIVERY_COLUMNS}`,
+    [
+      input.delivery_id ?? randomUUID(),
+      runId,
+      input.thread_id,
+      input.url,
+      JSON.stringify(input.payload ?? null),
+      input.payload_truncated ?? false,
+      runStatus,
+      input.next_attempt_at,
+      input.expires_at,
+    ],
+  );
+  return rowToDelivery(rows[0] as DeliveryRow);
 }
 
 /** Insert a cron row and return it. Extracted so `create` can wrap it in one try/catch. */
@@ -607,6 +685,25 @@ function rowToRun(row: RunRow): Run {
     // Absent rather than null on a run that did not fail, matching the memory driver.
     ...(row.error === null ? {} : { error: row.error }),
   } as Run;
+}
+
+function rowToDelivery(row: DeliveryRow): Delivery {
+  return {
+    delivery_id: row.delivery_id,
+    run_id: row.run_id,
+    thread_id: row.thread_id,
+    url: row.url,
+    payload: row.payload ?? null,
+    payload_truncated: row.payload_truncated,
+    run_status: row.run_status,
+    status: row.status,
+    attempt: row.attempt,
+    next_attempt_at: toIsoString(row.next_attempt_at),
+    last_error: row.last_error,
+    created_at: toIsoString(row.created_at),
+    updated_at: toIsoString(row.updated_at),
+    expires_at: toIsoString(row.expires_at),
+  };
 }
 
 function rowToCron(row: CronRow): Cron {
@@ -1107,7 +1204,7 @@ export class PostgresSkeinStore implements SkeinStore {
   async truncateAll(): Promise<void> {
     await this.#pool.query(
       "TRUNCATE assistants, assistant_versions, threads, runs, crons, store_items, " +
-        "idempotency_records CASCADE",
+        "idempotency_records, deliveries CASCADE",
     );
   }
 
@@ -1804,6 +1901,161 @@ export class PostgresSkeinStore implements SkeinStore {
         params,
       );
       return rows.map(rowToRun);
+    },
+    // One transaction, so the run's terminal status and the delivery commit together — the property
+    // that makes this an outbox rather than a hopeful POST. The row lock is on the run itself: the
+    // status write is conditional on the run not already being terminal, and a bare read-then-update
+    // pair would let a cancel land in between and be overwritten. Same shape as `claimAndCreateRun`.
+    //
+    // Three cases, and all three insert the delivery, because the engine owns the notification
+    // regardless of who won the status race:
+    //   - no run row: it was deleted mid-run. Today's engine still fires, so we still record — with
+    //     the *requested* status, since nothing else survives to say how the run ended. This is why
+    //     `deliveries` carries no foreign key.
+    //   - already terminal: a cancel beat us. Leave the status alone and stamp the delivery with the
+    //     winner's, so the callback agrees with what `GET /runs/{id}` reports.
+    //   - otherwise: write the status and stamp the delivery with it.
+    finalizeWithDelivery: async (runId, final: RunFinalization): Promise<FinalizedRun> =>
+      this.#withTransaction(async (client) => {
+        const { rows: locked } = await client.query<RunRow>(
+          `SELECT ${RUN_COLUMNS} FROM runs WHERE run_id = $1 FOR UPDATE`,
+          [runId],
+        );
+        const existing = locked[0];
+        if (!existing) {
+          return {
+            run: null,
+            delivery: await insertDelivery(client, runId, final.status, final.delivery),
+          };
+        }
+        if (isTerminalRunStatus(existing.status)) {
+          return {
+            run: rowToRun(existing),
+            delivery: await insertDelivery(client, runId, existing.status, final.delivery),
+          };
+        }
+        const { rows: updated } = await client.query<RunRow>(
+          `UPDATE runs SET status = $2, error = $3::jsonb, updated_at = now()
+            WHERE run_id = $1 RETURNING ${RUN_COLUMNS}`,
+          [runId, final.status, final.error === undefined ? null : JSON.stringify(final.error)],
+        );
+        return {
+          run: rowToRun(updated[0] as RunRow),
+          delivery: await insertDelivery(client, runId, final.status, final.delivery),
+        };
+      }),
+  };
+
+  readonly deliveries: DeliveryRepo = {
+    get: async (deliveryId) => {
+      const { rows } = await this.#pool.query<DeliveryRow>(
+        `SELECT ${DELIVERY_COLUMNS} FROM deliveries WHERE delivery_id = $1`,
+        [deliveryId],
+      );
+      return rows[0] ? rowToDelivery(rows[0]) : null;
+    },
+    listByRun: async (runId, query) => {
+      const params: unknown[] = [runId];
+      let statusSql = "";
+      if (query?.status !== undefined) {
+        params.push(query.status);
+        statusSql = ` AND status = $${params.length}`;
+      }
+      params.push(query?.offset ?? 0);
+      const offsetParam = `$${params.length}`;
+      params.push(this.#pageLimit(query?.limit));
+      const { rows } = await this.#pool.query<DeliveryRow>(
+        `SELECT ${DELIVERY_COLUMNS} FROM deliveries WHERE run_id = $1${statusSql} ` +
+          `ORDER BY created_at DESC, delivery_id DESC OFFSET ${offsetParam} LIMIT $${params.length}`,
+        params,
+      );
+      return rows.map(rowToDelivery);
+    },
+    // One statement, and `FOR UPDATE SKIP LOCKED` is what makes it safe for N workers: each claimer
+    // locks the rows it selects and skips ones a peer already holds, so concurrent ticks partition
+    // the backlog instead of colliding on it. A read-then-update pair would hand one row to two
+    // workers and double-POST — the exact hazard `claimAndCreateRun` closes for crons.
+    //
+    // The predicate covers due-ness and crash recovery at once: a `delivering` row whose lease has
+    // passed is simply due again, so a worker killed mid-POST needs no reclaim path.
+    //
+    // Three CTEs rather than one `UPDATE … WHERE delivery_id IN (…)`, because the contract promises
+    // the rows come back soonest-first and an UPDATE's RETURNING order is unspecified. Re-sorting
+    // afterwards cannot recover it either: the claim overwrites `next_attempt_at` with the lease, so
+    // by the time the rows are in hand every one of them says the same thing. `due_at` carries the
+    // pre-claim due time out of the selecting CTE so the final SELECT can order on it.
+    claimDue: async (query: DueDeliveriesQuery) => {
+      const { rows } = await this.#pool.query<DeliveryRow>(
+        `WITH due AS (
+           SELECT delivery_id, next_attempt_at AS due_at
+             FROM deliveries
+            WHERE status IN (${DELIVERY_CLAIMABLE_SQL})
+              AND next_attempt_at <= $1::timestamptz
+            ORDER BY next_attempt_at, delivery_id
+            LIMIT $3
+            FOR UPDATE SKIP LOCKED
+         ),
+         claimed AS (
+           UPDATE deliveries AS d
+              SET status = 'delivering',
+                  attempt = d.attempt + 1,
+                  next_attempt_at = $2::timestamptz,
+                  updated_at = now()
+             FROM due
+            WHERE d.delivery_id = due.delivery_id
+          RETURNING d.*, due.due_at
+         )
+         SELECT ${DELIVERY_COLUMNS} FROM claimed ORDER BY due_at, delivery_id`,
+        [query.now, query.leaseUntil, this.#pageLimit(query.limit)],
+      );
+      return rows.map(rowToDelivery);
+    },
+    recordAttempt: async (deliveryId, result: DeliveryAttemptResult) => {
+      // `delivered` drops the payload, which is what bounds steady-state storage to in-flight
+      // deliveries rather than to every delivery ever made. `dead` keeps it, or a replay would have
+      // nothing to resend.
+      const [statusSql, payloadSql, nextAttemptSql, params]: [string, string, string, unknown[]] =
+        result.outcome === "delivered"
+          ? ["'delivered'", "NULL", "next_attempt_at", [deliveryId, null]]
+          : result.outcome === "dead"
+            ? ["'dead'", "payload", "next_attempt_at", [deliveryId, result.error]]
+            : [
+                "'pending'",
+                "payload",
+                "$3::timestamptz",
+                [deliveryId, result.error, result.nextAttemptAt],
+              ];
+      const { rows } = await this.#pool.query<DeliveryRow>(
+        `UPDATE deliveries
+            SET status = ${statusSql},
+                payload = ${payloadSql},
+                last_error = $2,
+                next_attempt_at = ${nextAttemptSql},
+                updated_at = now()
+          WHERE delivery_id = $1
+        RETURNING ${DELIVERY_COLUMNS}`,
+        params,
+      );
+      return rows[0] ? rowToDelivery(rows[0]) : null;
+    },
+    // Conditional on the payload still being there, so replaying a delivered row reports "nothing to
+    // resend" rather than silently queueing an empty POST.
+    retryNow: async (deliveryId, nextAttemptAt) => {
+      const { rows } = await this.#pool.query<DeliveryRow>(
+        `UPDATE deliveries
+            SET status = 'pending', next_attempt_at = $2::timestamptz, updated_at = now()
+          WHERE delivery_id = $1 AND payload IS NOT NULL
+        RETURNING ${DELIVERY_COLUMNS}`,
+        [deliveryId, nextAttemptAt],
+      );
+      return rows[0] ? rowToDelivery(rows[0]) : null;
+    },
+    sweepExpired: async (now) => {
+      const { rowCount } = await this.#pool.query(
+        `DELETE FROM deliveries WHERE status IN (${DELIVERY_TERMINAL_SQL}) AND expires_at <= $1::timestamptz`,
+        [now],
+      );
+      return rowCount ?? 0;
     },
   };
 

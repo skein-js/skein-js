@@ -17,6 +17,7 @@ import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import {
   createPostgresPool,
   CRON_COLUMNS,
+  DELIVERY_COLUMNS,
   PostgresSkeinStore,
   RUN_COLUMNS,
   THREAD_COLUMNS,
@@ -60,6 +61,9 @@ describe("query projections match the schema", () => {
     ["runs", RUN_COLUMNS, ["kwargs"]],
     ["crons", CRON_COLUMNS, ["auth"]],
     ["threads", THREAD_COLUMNS, ["ttl_minutes", "expires_at"]],
+    // Nothing omitted: every delivery column is read back, including the payload. A delivery is only
+    // ever read to send it or to show an operator why it failed, so there is no wide list to protect.
+    ["deliveries", DELIVERY_COLUMNS, []],
   ])(
     "projects every %s column except the documented omissions",
     async (table, columns, omitted) => {
