@@ -137,13 +137,13 @@ export interface DueDeliveriesQuery {
  * permanent surface, and a driver cannot invent a fourth outcome.
  */
 export type DeliveryAttemptResult =
-  | { outcome: "delivered" }
+  | { outcome: "delivered"; attempt?: number }
   | { outcome: "retrying"; nextAttemptAt: string; error: string; attempt?: number }
   | { outcome: "dead"; error: string; attempt?: number };
 
 /**
- * `attempt` above exists because {@link DeliveryRepo.claimDue} is not the only thing that makes an
- * attempt. When a {@link DeliveryQueue} owns the schedule, the queue hands work to a processor
+ * `attempt` above exists — on **every** variant, success included — because
+ * {@link DeliveryRepo.claimDue} is not the only thing that makes an attempt. When a {@link DeliveryQueue} owns the schedule, the queue hands work to a processor
  * directly and nothing claims — so the count has to come from whoever knows it, or a delivery tried a
  * dozen times would still read `attempt: 1` in the admin list and in the `X-Skein-Attempt` header.
  * Omitted, the row's own count stands, which is what the polling path wants.

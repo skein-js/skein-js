@@ -45,7 +45,10 @@ const JITTER_FRACTION = 0.2;
 export interface RedisDeliveryQueueOptions {
   /** BullMQ queue name; also namespaces the Redis keys. Must not contain `:`. Default `"skein-deliveries"`. */
   queueName?: string;
-  /** The base delay doubled between attempts, in ms. Default 1000. */
+  /**
+   * skein's configured `initial_delay_ms` — the gap between the engine's inline attempt and the
+   * first retry. The queue derives its own seed from this; do not pre-adjust it.
+   */
   initialDelayMs?: number;
 }
 
@@ -72,6 +75,13 @@ export class RedisDeliveryQueue implements DeliveryQueue {
   }
 
   async schedule(delivery: QueuedDelivery, options: ScheduleDeliveryOptions = {}): Promise<void> {
+    const jobId = `${JOB_NAME}-${delivery.delivery_id}`;
+    if (options.replace) {
+      // Removed rather than left to `add`'s idempotency: an existing delayed job would make the add
+      // a no-op, so a replay would quietly wait out the schedule it was asked to skip. Tolerated if
+      // it fails — the job may be active or already gone, and the add below is what matters.
+      await this.#queue.remove(jobId).catch(() => undefined);
+    }
     await this.#queue.add(
       JOB_NAME,
       { delivery_id: delivery.delivery_id },
@@ -83,12 +93,24 @@ export class RedisDeliveryQueue implements DeliveryQueue {
         //
         // Prefixed rather than passed bare, for the reason the run queue documents: BullMQ rejects a
         // custom id that parses as an integer, and skein does not constrain id formats.
-        jobId: `${JOB_NAME}-${delivery.delivery_id}`,
+        jobId,
         // The attempt budget the queue owns, on top of the engine's inline first attempt.
         ...(options.attempts !== undefined ? { attempts: Math.max(1, options.attempts) } : {}),
         // BullMQ's own exponential backoff, jitter included. This line is the reason there is no
         // retry scheduler in this file: delays, doubling and randomization are all upstream's.
-        backoff: { type: "exponential", delay: this.#initialDelayMs, jitter: JITTER_FRACTION },
+        //
+        // Seeded with **twice** the configured initial delay, and that factor is load-bearing.
+        // BullMQ computes `2^(attemptsMade - 1) * delay` counting only the attempts *it* made, but
+        // the engine already made one inline before this job existed. So its first retry is the
+        // schedule's *second* gap, which is `2 × initial`, not `initial`. Seeding it raw halves every
+        // delay — turning the documented 12-attempt, ~34-minute horizon into ~17 minutes on Redis
+        // while the polling driver still gives 34, which is exactly the "one policy, two meanings"
+        // this whole design says must not happen.
+        backoff: {
+          type: "exponential",
+          delay: this.#initialDelayMs * 2,
+          jitter: JITTER_FRACTION,
+        },
         // Dropped the instant they settle — NOT retained for a window. A retained job keeps holding
         // its `jobId`, and BullMQ answers `add` with the existing job rather than queueing anything,
         // so every later `schedule` for that delivery is a silent no-op: the recovery sweep would

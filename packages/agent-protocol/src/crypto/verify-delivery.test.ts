@@ -106,6 +106,30 @@ describe("skein delivery signatures", () => {
     expect(verify(headerFor(), { body: reserialized })).toMatchObject({ ok: false });
   });
 
+  // The receiver-side bug this guards is invisible on ASCII: decoding each network chunk separately
+  // splits a multi-byte UTF-8 sequence across the boundary, and both halves become U+FFFD. Collect
+  // the buffers and decode once. Same class as re-serializing, and just as hard to see.
+  it("fails when a multi-byte body was decoded per chunk rather than once", () => {
+    const body = JSON.stringify({ run_id: "run-1", values: { note: "café — ☕" } });
+    const header = headerFor({ body });
+    expect(verifySkeinSignature({ header, body, secrets: [SECRET], nowSeconds: NOW })).toEqual({
+      ok: true,
+    });
+
+    // What a naive `raw += String(chunk)` produces when the split lands mid-character. The boundary
+    // is placed immediately after a lead byte, which is exactly what a network chunk boundary does
+    // by chance.
+    const bytes = Buffer.from(body, "utf8");
+    const lead = bytes.findIndex((byte) => byte >= 0xc0);
+    expect(lead).toBeGreaterThan(-1);
+    const split = lead + 1;
+    const perChunk = bytes.subarray(0, split).toString() + bytes.subarray(split).toString();
+    expect(perChunk).not.toBe(body);
+    expect(
+      verifySkeinSignature({ header, body: perChunk, secrets: [SECRET], nowSeconds: NOW }),
+    ).toMatchObject({ ok: false, reason: "mismatch" });
+  });
+
   it("tolerates an unknown extra field, so a future v2 does not break v1 receivers", () => {
     expect(verify(`${headerFor()},v2=whatever`)).toEqual({ ok: true });
   });

@@ -52,9 +52,16 @@ const server = createServer((request, response) => {
   // key order, spacing and number formatting are not guaranteed to round-trip, so a re-serialized
   // body hashes differently and every genuine callback fails. This is the single most common way a
   // working integration looks broken. With Express: `express.raw({ type: "application/json" })`.
-  let raw = "";
-  request.on("data", (chunk) => (raw += String(chunk)));
+  //
+  // Buffers are collected and decoded **once**, at the end. Decoding each chunk separately looks
+  // identical and is wrong: a multi-byte UTF-8 sequence split across a chunk boundary decodes to
+  // U+FFFD on both sides, so the body no longer matches what was signed and every callback carrying a
+  // non-ASCII character fails verification. It is the same class of bug as re-serializing, and just as
+  // hard to see, because it only bites on some payloads.
+  const chunks: Buffer[] = [];
+  request.on("data", (chunk: Buffer) => chunks.push(chunk));
   request.on("end", () => {
+    const raw = Buffer.concat(chunks).toString("utf8");
     const verified = verifySkeinSignature({
       header: request.headers["x-skein-signature"] as string | undefined,
       body: raw,

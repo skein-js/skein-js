@@ -64,6 +64,16 @@ import {
   type ThreadUpdate,
 } from "@skein-js/core";
 
+/**
+ * Timestamps are ISO 8601 in UTC (`toISOString`, always `…Z`), and this driver **compares them as
+ * strings** — due-ness, expiry and ordering are all lexicographic.
+ *
+ * That is correct only because every value is this shape: ISO 8601 in UTC sorts lexicographically in
+ * the same order it sorts chronologically. A value carrying an offset (`+03:00`) would compare
+ * wrongly against a `Z` one, so a caller-supplied `now` or `expires_at` must be UTC. Every caller in
+ * skein produces one through `toISOString`; the Postgres driver has no such constraint, since
+ * `timestamptz` normalizes on the way in.
+ */
 const nowIso = (): string => new Date().toISOString();
 
 /** Deep copy at the persistence boundary — mirrors what a serializing driver (Postgres) does. */
@@ -825,11 +835,10 @@ export class MemorySkeinStore implements SkeinStore {
       // `delivered` drops the payload, bounding steady-state storage to in-flight deliveries. `dead`
       // keeps it, or a replay would have nothing to resend.
       // The count is only overwritten when the caller supplies one — see `DeliveryAttemptResult`.
-      const attempt =
-        result.outcome === "delivered" ? existing.attempt : (result.attempt ?? existing.attempt);
+      const attempt = result.attempt ?? existing.attempt;
       const settled: Delivery =
         result.outcome === "delivered"
-          ? { ...existing, status: "delivered", payload: null, last_error: null }
+          ? { ...existing, status: "delivered", payload: null, last_error: null, attempt }
           : result.outcome === "dead"
             ? { ...existing, status: "dead", last_error: result.error, attempt }
             : {

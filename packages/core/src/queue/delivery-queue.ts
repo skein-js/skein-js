@@ -32,6 +32,15 @@ export interface ScheduleDeliveryOptions {
    * A driver that owns the retry schedule uses this to size it.
    */
   attempts?: number;
+  /**
+   * Drop any job already scheduled for this delivery before scheduling this one.
+   *
+   * Scheduling is idempotent on the delivery id, which is what makes a blind recovery sweep safe —
+   * and which makes an *operator's replay* a silent no-op when the delivery still holds a delayed job
+   * from its original schedule. A replay means "now, whatever was planned", so it asks for this; a
+   * sweep means "in case nothing is planned", so it does not.
+   */
+  replace?: boolean;
 }
 
 /** What the processor is told about the attempt it is being asked to make. */
