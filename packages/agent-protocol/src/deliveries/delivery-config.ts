@@ -76,25 +76,19 @@ export const DEFAULT_DELIVERY_POLL_INTERVAL_MS = 5_000;
 export const DEFAULT_DELIVERY_BATCH_SIZE = 20;
 
 /**
- * How long a delivery is invisible to the recovery sweep once a queue has taken charge of it.
+ * How long past its due time a queue-scheduled delivery is left alone before the recovery sweep
+ * treats its job as lost.
  *
- * When a `DeliveryQueue` owns the schedule, the row's `next_attempt_at` stops meaning "try again at"
- * and starts meaning "assume the job is lost after". So it is set to the whole remaining schedule,
- * doubled: being too generous costs a lost job sitting a while longer, while being too tight has the
- * sweep re-attempting a delivery the queue is merely holding — collapsing the backoff it is applying.
+ * A **margin, not a hiding place.** The sweep re-schedules what it finds, and scheduling is
+ * idempotent on the delivery id, so a sweep that overlaps a job the queue is merely holding costs
+ * nothing — which is exactly why this can be a minute rather than the whole remaining schedule. It is
+ * only large enough that the sweep does not race the queue on every ordinary retry.
+ *
+ * This is what makes a lost enqueue recoverable within a sweep interval instead of within hours. It
+ * is safe only because the sweep reads with {@link DeliveryRepo.listDue} rather than claiming: a
+ * claiming sweep would spend the attempt budget of every delivery it looked at.
  */
-export function queueSweepGraceMs(retries?: DeliveryRetryConfig): number {
-  const initial = retries?.initialDelayMs ?? DEFAULT_INITIAL_DELAY_MS;
-  const attempts = retries?.maxAttempts ?? DEFAULT_MAX_ATTEMPTS;
-  // Clamped, and not merely for tidiness: the schema bounds `max_attempts` only by `.positive()`, so
-  // a config with a few dozen attempts sends `2 ** attempts` past `Number.MAX_SAFE_INTEGER` and on to
-  // `Infinity` — and `new Date(Infinity).toISOString()` throws a `RangeError`, from a code path whose
-  // whole contract is that it does not throw. A day is far longer than any real schedule needs.
-  return Math.min(initial * 2 ** Math.min(attempts, 32) * 2, MAX_SWEEP_GRACE_MS);
-}
-
-/** The ceiling on {@link queueSweepGraceMs}. */
-const MAX_SWEEP_GRACE_MS = 24 * 3_600_000;
+export const QUEUE_SWEEP_MARGIN_MS = 60_000;
 
 /**
  * How many attempts are left for a queue to make, given how many have already happened.
