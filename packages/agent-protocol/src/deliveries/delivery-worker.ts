@@ -99,20 +99,15 @@ export function createDeliveryWorker(
     if (!deliveries) return summary;
 
     const now = clock();
-    const claimed = await deliveries.claimDue({
-      now: now.toISOString(),
-      // The claim moves each row's `next_attempt_at` to the lease, so a peer only takes it over if
-      // this process dies mid-POST — see `Delivery.next_attempt_at`.
-      leaseUntil: new Date(now.getTime() + DELIVERY_LEASE_MS).toISOString(),
-      limit: batchSize,
-    });
-    summary.claimed = claimed.length;
-
     if (deps.deliveryQueue) {
-      // Recovery, not delivery: hand each row back and let the queue schedule it. `schedule` is
-      // idempotent on the delivery id, so re-scheduling one that is somehow still queued costs
-      // nothing — which is what makes a blind sweep safe.
-      for (const delivery of claimed) {
+      // **Read, do not claim.** Recovery re-schedules what it finds, and scheduling is idempotent on
+      // the delivery id — so overlapping a job the queue is merely holding costs nothing. Claiming
+      // would not be free: it increments the attempt count and shoves the lease forward, spending a
+      // budget nothing had spent. That difference is what lets `next_attempt_at` sit a minute past
+      // due instead of hours, and so what makes a lost enqueue recoverable on the next pass.
+      const due = await deliveries.listDue({ now: now.toISOString(), limit: batchSize });
+      summary.claimed = due.length;
+      for (const delivery of due) {
         deps.logger.warn(
           `delivery ${delivery.delivery_id}: no queued job found; re-scheduling it (attempt ${delivery.attempt})`,
         );
@@ -125,6 +120,14 @@ export function createDeliveryWorker(
         );
       }
     } else {
+      const claimed = await deliveries.claimDue({
+        now: now.toISOString(),
+        // The claim moves each row's `next_attempt_at` to the lease, so a peer only takes it over if
+        // this process dies mid-POST — see `Delivery.next_attempt_at`.
+        leaseUntil: new Date(now.getTime() + DELIVERY_LEASE_MS).toISOString(),
+        limit: batchSize,
+      });
+      summary.claimed = claimed.length;
       // Sequential rather than concurrent: a backlog is usually a backlog against *one* receiver that
       // is already struggling, and firing a batch at it in parallel is how a retry storm becomes the
       // outage. The batch is bounded, and every instance drains its own share.

@@ -253,9 +253,12 @@ describe("durable outbound delivery — Postgres outbox, BullMQ schedule", () =>
     disposed = true;
 
     // A healthy instance sweeps: the row is due, no job exists, so it is handed back to the queue.
-    // `next_attempt_at` is pushed a long way out when a queue owns the schedule, so the sweep is
-    // driven with a clock past that grace rather than by waiting for it.
-    const dueAt = new Date(Date.now() + 6 * 3_600_000);
+    //
+    // Two minutes, not two hours. When a queue owns the schedule the row's `next_attempt_at` is the
+    // queue's estimated next attempt plus a one-minute margin — short, because the sweep *reads*
+    // rather than claims, so overlapping a job the queue is merely holding costs nothing. This is the
+    // assertion that a lost enqueue is recovered on the next sweep pass rather than hours later.
+    const dueAt = new Date(Date.now() + 120_000);
     const rescuer = await startInstance(queueName, { clock: () => dueAt });
     await rescuer.runtime.deliveryWorker.tickOnce();
 

@@ -10,7 +10,8 @@ import type { DeliveryAttemptContext, SkeinStore } from "@skein-js/core";
 
 import { deliveryHeaders, type Logger, type WebhookDispatcher } from "../deps.js";
 
-import { queueSweepGraceMs, type WebhookDeliveryConfig } from "./delivery-config.js";
+import { nextAttemptDelayMs } from "./backoff.js";
+import { QUEUE_SWEEP_MARGIN_MS, type WebhookDeliveryConfig } from "./delivery-config.js";
 import { toDeliveryBody } from "./delivery-payload.js";
 import { disallowedHost } from "./delivery-target.js";
 
@@ -84,13 +85,16 @@ export async function processDelivery(
       `delivery ${delivery.delivery_id} to ${delivery.url} failed (attempt ${context.attempt}); retrying`,
       error,
     );
-    // The row records *that* it failed and why. When it is due again is the queue's call, so the row's
-    // `next_attempt_at` is refreshed to a lease rather than to a schedule — it is what a recovery
-    // sweep reads when a job goes missing, not what decides the retry.
+    // The row records *that* it failed and why. When it is due again is the queue's call, so this is
+    // an estimate of the queue's own next attempt plus a margin — what the recovery sweep reads when
+    // a job goes missing, not what decides the retry. The estimate is good because our backoff was
+    // deliberately shaped to match BullMQ's.
     await deliveries.recordAttempt(delivery.delivery_id, {
       outcome: "retrying",
       nextAttemptAt: new Date(
-        deps.clock().getTime() + queueSweepGraceMs(deps.webhooks?.retries),
+        deps.clock().getTime() +
+          nextAttemptDelayMs(context.attempt, deps.webhooks?.retries) +
+          QUEUE_SWEEP_MARGIN_MS,
       ).toISOString(),
       error: message,
       attempt: context.attempt,

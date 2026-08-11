@@ -11,7 +11,7 @@ import { deliveryHeaders, type Logger, type WebhookDispatcher } from "../deps.js
 
 import { isFinalAttempt, nextAttemptDelayMs } from "./backoff.js";
 import {
-  queueSweepGraceMs,
+  QUEUE_SWEEP_MARGIN_MS,
   remainingQueueAttempts,
   type WebhookDeliveryConfig,
 } from "./delivery-config.js";
@@ -162,11 +162,12 @@ function failureResult(
   if (isFinalAttempt(delivery.attempt, deps.webhooks?.retries)) {
     return { outcome: "dead", error: message };
   }
-  // With a queue, `next_attempt_at` is not a schedule — the queue holds that — so it is pushed far
-  // enough out that the recovery sweep only ever sees a delivery whose job is genuinely lost.
-  const dueInMs = deps.deliveryQueue
-    ? queueSweepGraceMs(deps.webhooks?.retries)
-    : nextAttemptDelayMs(delivery.attempt, deps.webhooks?.retries);
+  // With a queue, `next_attempt_at` is not the schedule — the queue holds that — but it is still when
+  // the recovery sweep starts looking, so it stays close to the real next attempt plus a margin. Long
+  // enough that the sweep does not race an ordinary retry; short enough that a job lost to a crash is
+  // found on the next pass rather than hours later.
+  const delayMs = nextAttemptDelayMs(delivery.attempt, deps.webhooks?.retries);
+  const dueInMs = deps.deliveryQueue ? delayMs + QUEUE_SWEEP_MARGIN_MS : delayMs;
   return {
     outcome: "retrying",
     nextAttemptAt: new Date(deps.clock().getTime() + dueInMs).toISOString(),

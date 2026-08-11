@@ -5881,6 +5881,12 @@ So: **run Redis in production.** skein warns at startup when your store is durab
 schedule is not. Want to exercise the real thing locally? `skein dev --queue redis` — the same BullMQ
 path, against a local Redis.
 
+There is one window neither side can close on its own: a Redis `add()` cannot join a Postgres
+transaction, so a process that dies between committing the delivery and enqueueing its job leaves a
+callback with no schedule. Nothing is lost — the row is committed — and a background sweep re-schedules
+it, idempotently, on its next pass. That is the standard outbox trade: the database is the single
+commit point, and the queue is a schedule rather than a second source of truth.
+
 Tune the policy under [`skein.webhooks`](../langgraph-cli-compat.md#webhooks-skeinwebhooks). The
 default is 12 attempts over roughly 34 minutes, which rides out a rolling deploy with room to spare.
 Read that as a **time horizon, not a count**: dropping to 6 attempts is ~31 seconds, which does not

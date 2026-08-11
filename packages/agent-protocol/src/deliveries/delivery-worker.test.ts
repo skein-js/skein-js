@@ -279,8 +279,35 @@ describe("delivery worker", () => {
     });
 
     expect(await worker.tickOnce()).toMatchObject({ claimed: 1 });
-    // The claim took it to attempt 2, so ten of twelve remain.
-    expect(scheduled[0]?.options?.attempts).toBe(10);
+    // Eleven of twelve remain: only the inline attempt has been spent. The sweep reads rather than
+    // claims, so merely looking at a delivery no longer costs it an attempt.
+    expect(scheduled[0]?.options?.attempts).toBe(11);
+  });
+
+  // The property that lets the sweep run against a short horizon: looking is free. A claiming sweep
+  // would spend the budget of every delivery the queue was merely holding, so `next_attempt_at` had
+  // to be pushed hours out to keep the two apart — which is what made a lost job take hours to find.
+  it("does not spend a delivery's attempts by sweeping for it", async () => {
+    const store = new MemorySkeinStore();
+    const { queue, scheduled } = stubQueue();
+    const seeded = await seedDelivery(store, { next_attempt_at: inPast() });
+    const worker = createDeliveryWorker({
+      store,
+      webhookDispatcher: vi.fn<WebhookDispatcher>().mockResolvedValue(undefined),
+      logger: collectingLogger().logger,
+      clock: () => START,
+      deliveryQueue: queue,
+    });
+
+    await worker.tickOnce();
+    await worker.tickOnce();
+    await worker.tickOnce();
+
+    const after = await store.deliveries!.get(seeded.delivery_id);
+    expect(after?.attempt).toBe(seeded.attempt);
+    expect(after?.next_attempt_at).toBe(seeded.next_attempt_at);
+    // Re-scheduled each pass, which is safe because `schedule` is idempotent on the delivery id.
+    expect(scheduled).toHaveLength(3);
   });
 
   it("hands a lost job back to the queue rather than POSTing it itself", async () => {

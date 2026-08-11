@@ -16,6 +16,9 @@ import {
  */
 const JITTER_FRACTION = 0.2;
 
+/** The ceiling any single delay is clamped to. Internal, not a config knob — see the note below. */
+const MAX_ATTEMPT_DELAY_MS = 24 * 3_600_000;
+
 /**
  * How long to wait after `attempt` failed, before the next one.
  *
@@ -33,7 +36,15 @@ export function nextAttemptDelayMs(
 ): number {
   const initial = retries.initialDelayMs ?? DEFAULT_INITIAL_DELAY_MS;
   // `attempt` counts from 1, so the first retry waits `initial` rather than twice it.
-  const ceiling = Math.round(initial * 2 ** Math.max(0, attempt - 1));
+  //
+  // Clamped, and not for tidiness: the schema bounds `max_attempts` only by `.positive()`, so a few
+  // dozen attempts sends `2 ** attempt` past `Number.MAX_SAFE_INTEGER` and on to `Infinity` — and a
+  // caller turning that into `new Date(now + delay).toISOString()` gets a `RangeError` from a path
+  // whose contract is that it does not throw. A day is longer than any real schedule needs.
+  const ceiling = Math.min(
+    Math.round(initial * 2 ** Math.max(0, attempt - 1)),
+    MAX_ATTEMPT_DELAY_MS,
+  );
   const floor = ceiling * (1 - JITTER_FRACTION);
   return Math.floor(random() * ceiling * JITTER_FRACTION + floor);
 }

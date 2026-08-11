@@ -7,11 +7,7 @@
 import { describe, expect, it } from "vitest";
 
 import { isFinalAttempt, nextAttemptDelayMs } from "./backoff.js";
-import {
-  DEFAULT_MAX_ATTEMPTS,
-  queueSweepGraceMs,
-  remainingQueueAttempts,
-} from "./delivery-config.js";
+import { DEFAULT_MAX_ATTEMPTS, remainingQueueAttempts } from "./delivery-config.js";
 
 /** Total wait across every retry a delivery gets, with jitter pinned to its midpoint. */
 function horizonMs(maxAttempts: number, initialDelayMs = 1_000): number {
@@ -83,14 +79,14 @@ describe("delivery backoff", () => {
     expect(nextAttemptDelayMs(1, { initialDelayMs: 1 }, () => 0)).toBeGreaterThanOrEqual(0);
   });
 
-  // Regression: `2 ** attempts` runs to `Infinity` well before the schema's only bound
-  // (`.positive()`) stops you, and `new Date(Infinity).toISOString()` throws a `RangeError` — from a
-  // code path whose whole contract is that it does not throw.
-  it("keeps the sweep grace finite however many attempts are configured", () => {
-    for (const maxAttempts of [12, 43, 1_000, Number.MAX_SAFE_INTEGER]) {
-      const grace = queueSweepGraceMs({ maxAttempts });
-      expect(Number.isFinite(grace)).toBe(true);
-      expect(() => new Date(Date.now() + grace).toISOString()).not.toThrow();
+  // Regression: `2 ** attempt` runs to `Infinity` well before the schema's only bound (`.positive()`)
+  // stops you, and a caller turning that into `new Date(now + delay).toISOString()` gets a
+  // `RangeError` — from a code path whose whole contract is that it does not throw.
+  it("stays finite however many attempts are configured", () => {
+    for (const attempt of [12, 43, 1_000, Number.MAX_SAFE_INTEGER]) {
+      const delay = nextAttemptDelayMs(attempt, { maxAttempts: attempt });
+      expect(Number.isFinite(delay)).toBe(true);
+      expect(() => new Date(Date.now() + delay).toISOString()).not.toThrow();
     }
   });
 
