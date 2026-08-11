@@ -7,7 +7,11 @@
 import { describe, expect, it } from "vitest";
 
 import { isFinalAttempt, nextAttemptDelayMs } from "./backoff.js";
-import { DEFAULT_MAX_ATTEMPTS } from "./delivery-config.js";
+import {
+  DEFAULT_MAX_ATTEMPTS,
+  queueSweepGraceMs,
+  remainingQueueAttempts,
+} from "./delivery-config.js";
 
 /** Total wait across every retry a delivery gets, with jitter pinned to its midpoint. */
 function horizonMs(maxAttempts: number, initialDelayMs = 1_000): number {
@@ -77,6 +81,23 @@ describe("delivery backoff", () => {
 
   it("never returns a negative delay", () => {
     expect(nextAttemptDelayMs(1, { initialDelayMs: 1 }, () => 0)).toBeGreaterThanOrEqual(0);
+  });
+
+  // Regression: `2 ** attempts` runs to `Infinity` well before the schema's only bound
+  // (`.positive()`) stops you, and `new Date(Infinity).toISOString()` throws a `RangeError` — from a
+  // code path whose whole contract is that it does not throw.
+  it("keeps the sweep grace finite however many attempts are configured", () => {
+    for (const maxAttempts of [12, 43, 1_000, Number.MAX_SAFE_INTEGER]) {
+      const grace = queueSweepGraceMs({ maxAttempts });
+      expect(Number.isFinite(grace)).toBe(true);
+      expect(() => new Date(Date.now() + grace).toISOString()).not.toThrow();
+    }
+  });
+
+  it("never offers a queue fewer than one attempt", () => {
+    expect(remainingQueueAttempts(1, { maxAttempts: 12 })).toBe(11);
+    // A policy lowered under a delivery already in flight must not produce a zero or negative budget.
+    expect(remainingQueueAttempts(20, { maxAttempts: 12 })).toBe(1);
   });
 
   it("calls the last attempt final, and only the last", () => {

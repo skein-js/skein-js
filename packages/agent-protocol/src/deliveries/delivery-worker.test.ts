@@ -8,6 +8,8 @@ import { describe, expect, it, vi } from "vitest";
 
 import type { Logger, WebhookDispatcher } from "../deps.js";
 
+import type { DeliveryQueue, QueuedDelivery, ScheduleDeliveryOptions } from "@skein-js/core";
+
 import { DELIVERY_LEASE_MS } from "./delivery-config.js";
 import { createDeliveryWorker } from "./delivery-worker.js";
 
@@ -23,6 +25,22 @@ function collectingLogger() {
   };
   return { logger, errors };
 }
+
+/** A `DeliveryQueue` that records what it was asked to schedule instead of talking to Redis. */
+function stubQueue() {
+  const scheduled: { delivery: QueuedDelivery; options?: ScheduleDeliveryOptions }[] = [];
+  const queue: DeliveryQueue = {
+    schedule: async (delivery, options) => {
+      scheduled.push({ delivery, ...(options ? { options } : {}) });
+    },
+    consume: () => ({ close: async () => {} }),
+    durable: true,
+  };
+  return { queue, scheduled };
+}
+
+/** Due already, so a tick claims it. */
+const inPast = (): string => new Date(START.getTime() - 1_000).toISOString();
 
 /** A clock the test moves by hand. */
 function movableClock(from = START) {
@@ -197,6 +215,91 @@ describe("delivery worker", () => {
 
     expect(await worker.tickOnce()).toMatchObject({ claimed: 2 });
     expect(await worker.tickOnce()).toMatchObject({ claimed: 1 });
+  });
+
+  // Regression: the retention block used to sit after an early `return` on the queue path, so
+  // `retain_hours` was a no-op in exactly the deployments with the most rows — settled deliveries,
+  // dead ones still holding their whole payload, accumulating forever.
+  it("still reclaims settled deliveries when a queue owns the schedule", async () => {
+    const store = new MemorySkeinStore();
+    // Already past its retention when the sweep looks — `expires_at` is absolute, set at creation
+    // from `retain_hours`, so the sweep compares it against plain `now`. Subtracting the retention
+    // again here would keep every settled row for double what `retain_hours` says.
+    const settled = await seedDelivery(store, { next_attempt_at: inPast(), expires_at: inPast() });
+    await store.deliveries!.recordAttempt(settled.delivery_id, { outcome: "delivered" });
+    const worker = createDeliveryWorker({
+      store,
+      webhookDispatcher: vi.fn<WebhookDispatcher>().mockResolvedValue(undefined),
+      logger: collectingLogger().logger,
+      clock: () => START,
+      deliveryQueue: stubQueue().queue,
+    });
+
+    expect(await worker.tickOnce()).toMatchObject({ swept: 1 });
+    expect(await store.deliveries!.get(settled.delivery_id)).toBeNull();
+  });
+
+  it("measures the retention cadence in elapsed time, not in ticks", async () => {
+    // With a queue this loop ticks every five minutes rather than every five seconds, so a tick
+    // *count* would stretch "every ten minutes" into every ten hours.
+    const store = new MemorySkeinStore();
+    const { clock, advance } = movableClock();
+    const worker = createDeliveryWorker({
+      store,
+      webhookDispatcher: vi.fn<WebhookDispatcher>().mockResolvedValue(undefined),
+      logger: collectingLogger().logger,
+      clock,
+      deliveryQueue: stubQueue().queue,
+    });
+    const sweepExpired = vi.spyOn(store.deliveries!, "sweepExpired");
+
+    await worker.tickOnce();
+    expect(sweepExpired).toHaveBeenCalledTimes(1);
+    await worker.tickOnce();
+    expect(sweepExpired).toHaveBeenCalledTimes(1);
+    advance(700_000);
+    await worker.tickOnce();
+    expect(sweepExpired).toHaveBeenCalledTimes(2);
+  });
+
+  // Regression: the sweep used to re-schedule with no attempt budget, so BullMQ gave the job its
+  // default of one — a recovered delivery would die on its next failure instead of finishing the
+  // schedule its configuration promised, and it would look like the policy was ignored.
+  it("re-schedules a lost job with the attempts it has left, not with one", async () => {
+    const store = new MemorySkeinStore();
+    const { queue, scheduled } = stubQueue();
+    await seedDelivery(store, { next_attempt_at: inPast() });
+    const worker = createDeliveryWorker({
+      store,
+      webhookDispatcher: vi.fn<WebhookDispatcher>().mockResolvedValue(undefined),
+      logger: collectingLogger().logger,
+      clock: () => START,
+      deliveryQueue: queue,
+      webhooks: { retries: { maxAttempts: 12 } },
+    });
+
+    expect(await worker.tickOnce()).toMatchObject({ claimed: 1 });
+    // The claim took it to attempt 2, so ten of twelve remain.
+    expect(scheduled[0]?.options?.attempts).toBe(10);
+  });
+
+  it("hands a lost job back to the queue rather than POSTing it itself", async () => {
+    const store = new MemorySkeinStore();
+    const { queue, scheduled } = stubQueue();
+    const delivery = await seedDelivery(store, { next_attempt_at: inPast() });
+    const dispatch = vi.fn<WebhookDispatcher>().mockResolvedValue(undefined);
+    const worker = createDeliveryWorker({
+      store,
+      webhookDispatcher: dispatch,
+      logger: collectingLogger().logger,
+      clock: () => START,
+      deliveryQueue: queue,
+    });
+
+    await worker.tickOnce();
+
+    expect(dispatch).not.toHaveBeenCalled();
+    expect(scheduled.map((s) => s.delivery.delivery_id)).toEqual([delivery.delivery_id]);
   });
 
   it("is a no-op on a store with no deliveries repo", async () => {

@@ -86,7 +86,26 @@ export const DEFAULT_DELIVERY_BATCH_SIZE = 20;
 export function queueSweepGraceMs(retries?: DeliveryRetryConfig): number {
   const initial = retries?.initialDelayMs ?? DEFAULT_INITIAL_DELAY_MS;
   const attempts = retries?.maxAttempts ?? DEFAULT_MAX_ATTEMPTS;
-  return initial * 2 ** attempts * 2;
+  // Clamped, and not merely for tidiness: the schema bounds `max_attempts` only by `.positive()`, so
+  // a config with a few dozen attempts sends `2 ** attempts` past `Number.MAX_SAFE_INTEGER` and on to
+  // `Infinity` — and `new Date(Infinity).toISOString()` throws a `RangeError`, from a code path whose
+  // whole contract is that it does not throw. A day is far longer than any real schedule needs.
+  return Math.min(initial * 2 ** Math.min(attempts, 32) * 2, MAX_SWEEP_GRACE_MS);
+}
+
+/** The ceiling on {@link queueSweepGraceMs}. */
+const MAX_SWEEP_GRACE_MS = 24 * 3_600_000;
+
+/**
+ * How many attempts are left for a queue to make, given how many have already happened.
+ *
+ * Shared by the hand-off after the inline attempt and by the recovery sweep, because the sweep
+ * getting this wrong is silent: a `schedule` with no attempt budget gets BullMQ's default of one, so
+ * a recovered delivery would go `dead` on its next failure instead of finishing the schedule its
+ * configuration promised.
+ */
+export function remainingQueueAttempts(attempt: number, retries?: DeliveryRetryConfig): number {
+  return Math.max(1, (retries?.maxAttempts ?? DEFAULT_MAX_ATTEMPTS) - attempt);
 }
 
 /**

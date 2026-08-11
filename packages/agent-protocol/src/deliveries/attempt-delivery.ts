@@ -11,8 +11,8 @@ import { deliveryHeaders, type Logger, type WebhookDispatcher } from "../deps.js
 
 import { isFinalAttempt, nextAttemptDelayMs } from "./backoff.js";
 import {
-  DEFAULT_MAX_ATTEMPTS,
   queueSweepGraceMs,
+  remainingQueueAttempts,
   type WebhookDeliveryConfig,
 } from "./delivery-config.js";
 import { toDeliveryBody } from "./delivery-payload.js";
@@ -52,13 +52,36 @@ export async function attemptDelivery(
   const deliveries = deps.store.deliveries;
   if (!deliveries) return null;
 
+  /**
+   * Record an outcome without ever rejecting.
+   *
+   * Every write in this function goes through here. An unguarded one would break the contract in the
+   * worst possible place: the engine awaits this inside a `finally`, so a rejection escapes into
+   * `startRunExecution` and skips the cleanup that follows it — leaving a run registered in the
+   * control registry and a stateless run's thread undeleted, and turning a successful run into a 500.
+   */
+  const record = async (result: DeliveryAttemptResult): Promise<Delivery | null> => {
+    try {
+      return await deliveries.recordAttempt(delivery.delivery_id, result);
+    } catch (error) {
+      // Bounded and self-healing: the row keeps its lease, so the next claim attempts it again. That
+      // is one duplicate POST, which at-least-once already permits and the delivery id absorbs.
+      deps.logger.error(
+        `delivery ${delivery.delivery_id}: could not record a ${result.outcome} attempt; ` +
+          `it stays leased and will be retried`,
+        error,
+      );
+      return null;
+    }
+  };
+
   const disallowed = disallowedHost(delivery.url, deps.webhooks?.allowedHosts);
   if (disallowed) {
     // Dead on the spot rather than retried: no number of attempts makes a disallowed host allowed,
     // and recording it is what keeps this visible in the delivery list instead of being a callback
     // that simply never arrives.
     deps.logger.warn(`delivery ${delivery.delivery_id}: ${disallowed}`);
-    return deliveries.recordAttempt(delivery.delivery_id, { outcome: "dead", error: disallowed });
+    return record({ outcome: "dead", error: disallowed });
   }
 
   const sentAt = deps.clock().toISOString();
@@ -94,38 +117,38 @@ export async function attemptDelivery(
     );
   }
 
+  const settled = await record(result);
+  if (result.outcome !== "retrying" || !deps.deliveryQueue) return settled;
+
+  // Handed over rather than left for a poller. `schedule` is idempotent on the delivery id, so a
+  // recovery sweep that cannot prove this happened may safely repeat it.
   try {
-    const settled = await deliveries.recordAttempt(delivery.delivery_id, result);
-    if (result.outcome === "retrying" && deps.deliveryQueue) {
-      // Handed over rather than left for a poller. `schedule` is idempotent on the delivery id, so a
-      // recovery sweep that cannot prove this happened may safely repeat it.
-      await deps.deliveryQueue.schedule(
-        { delivery_id: delivery.delivery_id },
-        {
-          // The delay for *this* retry is ours, because the queue's own backoff only spaces attempts
-          // it made itself and this one was made inline. Every subsequent delay is the queue's.
-          delayMs: nextAttemptDelayMs(delivery.attempt, deps.webhooks?.retries),
-          // What is left of the budget after the inline attempt and this one.
-          attempts: Math.max(
-            1,
-            (deps.webhooks?.retries?.maxAttempts ?? DEFAULT_MAX_ATTEMPTS) - delivery.attempt,
-          ),
-        },
-      );
-    }
+    await deps.deliveryQueue.schedule(
+      { delivery_id: delivery.delivery_id },
+      {
+        // The delay for *this* retry is ours, because the queue's own backoff only spaces attempts
+        // it made itself and this one was made inline. Every subsequent delay is the queue's.
+        delayMs: nextAttemptDelayMs(delivery.attempt, deps.webhooks?.retries),
+        attempts: remainingQueueAttempts(delivery.attempt, deps.webhooks?.retries),
+      },
+    );
     return settled;
   } catch (error) {
-    // Swallowed, so this function keeps its promise never to reject — its two callers both need
-    // that. The cost of losing the write is bounded and self-healing: the row keeps its lease, and
-    // the next `claimDue` after the lease expires simply attempts it again. That is one duplicate
-    // POST, which at-least-once already permits, against a rejection here propagating into the
-    // engine's `finally` or killing the rest of the worker's batch.
+    // The hand-off failed, so nothing owns this delivery's schedule — and the row was written on the
+    // assumption that something did, with `next_attempt_at` hours out where the sweep would not look
+    // for it until then. Pull it back onto the polling schedule so the sweep picks it up on its next
+    // pass. Without this, a momentary Redis blip turns a one-second retry into a multi-hour one.
     deps.logger.error(
-      `delivery ${delivery.delivery_id}: could not record a ${result.outcome} attempt; ` +
-        `it stays leased and will be retried`,
+      `delivery ${delivery.delivery_id}: could not hand the retry to the delivery queue; ` +
+        `falling back to the polling schedule`,
       error,
     );
-    return null;
+    return record({
+      ...result,
+      nextAttemptAt: new Date(
+        deps.clock().getTime() + nextAttemptDelayMs(delivery.attempt, deps.webhooks?.retries),
+      ).toISOString(),
+    });
   }
 }
 
