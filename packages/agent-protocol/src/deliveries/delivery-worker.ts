@@ -25,14 +25,20 @@ import { attemptDelivery } from "./attempt-delivery.js";
 import {
   DEFAULT_DELIVERY_BATCH_SIZE,
   DEFAULT_DELIVERY_POLL_INTERVAL_MS,
-  DEFAULT_RETAIN_HOURS,
   DEFAULT_SWEEP_POLL_INTERVAL_MS,
   DELIVERY_LEASE_MS,
+  remainingQueueAttempts,
   type WebhookDeliveryConfig,
 } from "./delivery-config.js";
 
-/** How many ticks pass between retention sweeps. At the default cadence, roughly every 10 minutes. */
-const SWEEP_EVERY_TICKS = 120;
+/**
+ * How often the retention sweep runs, regardless of the poll cadence.
+ *
+ * Measured in elapsed time rather than in ticks, because the poll cadence is not fixed: with a queue
+ * this loop ticks every five minutes rather than every five seconds, so a tick *count* would stretch
+ * the same "every ten minutes" into every ten hours.
+ */
+const SWEEP_INTERVAL_MS = 600_000;
 
 export interface DeliveryWorkerDeps {
   store: Pick<SkeinStore, "deliveries">;
@@ -81,12 +87,11 @@ export function createDeliveryWorker(
     options.pollIntervalMs ??
     (deps.deliveryQueue ? DEFAULT_SWEEP_POLL_INTERVAL_MS : DEFAULT_DELIVERY_POLL_INTERVAL_MS);
   const batchSize = options.batchSize ?? DEFAULT_DELIVERY_BATCH_SIZE;
-  const retainMs = (deps.webhooks?.retainHours ?? DEFAULT_RETAIN_HOURS) * 3_600_000;
 
   let running = false;
   let timer: ReturnType<typeof setTimeout> | undefined;
   let inFlight: Promise<void> | undefined;
-  let ticks = 0;
+  let lastSweptAtMs: number | undefined;
 
   const tickOnce = async (): Promise<DeliveryTickSummary> => {
     const deliveries = deps.store.deliveries;
@@ -103,43 +108,53 @@ export function createDeliveryWorker(
     });
     summary.claimed = claimed.length;
 
-    // With a queue, this is recovery, not delivery: hand each row back and let the queue schedule it.
-    // `schedule` is idempotent on the delivery id, so re-scheduling one that is somehow still queued
-    // costs nothing — which is what makes a blind sweep safe.
     if (deps.deliveryQueue) {
+      // Recovery, not delivery: hand each row back and let the queue schedule it. `schedule` is
+      // idempotent on the delivery id, so re-scheduling one that is somehow still queued costs
+      // nothing — which is what makes a blind sweep safe.
       for (const delivery of claimed) {
         deps.logger.warn(
           `delivery ${delivery.delivery_id}: no queued job found; re-scheduling it (attempt ${delivery.attempt})`,
         );
-        await deps.deliveryQueue.schedule({ delivery_id: delivery.delivery_id });
+        await deps.deliveryQueue.schedule(
+          { delivery_id: delivery.delivery_id },
+          // The remaining budget, NOT the default. Omitting it hands BullMQ its own default of one
+          // attempt, so a recovered delivery would go dead on its next failure instead of finishing
+          // the schedule its configuration promised — and it would look like the policy was ignored.
+          { attempts: remainingQueueAttempts(delivery.attempt, deps.webhooks?.retries) },
+        );
       }
-      ticks += 1;
-      return summary;
+    } else {
+      // Sequential rather than concurrent: a backlog is usually a backlog against *one* receiver that
+      // is already struggling, and firing a batch at it in parallel is how a retry storm becomes the
+      // outage. The batch is bounded, and every instance drains its own share.
+      for (const delivery of claimed) {
+        const settled = await attemptDelivery(
+          {
+            store: { deliveries },
+            webhookDispatcher: deps.webhookDispatcher,
+            logger: deps.logger,
+            clock,
+            ...(deps.webhooks ? { webhooks: deps.webhooks } : {}),
+          },
+          delivery,
+        );
+        if (settled?.status === "delivered") summary.delivered += 1;
+        else summary.failed += 1;
+      }
     }
 
-    // Sequential rather than concurrent: a backlog is usually a backlog against *one* receiver that
-    // is already struggling, and firing a batch at it in parallel is how a retry storm becomes the
-    // outage. The batch is bounded, and every instance drains its own share.
-    for (const delivery of claimed) {
-      const settled = await attemptDelivery(
-        {
-          store: { deliveries },
-          webhookDispatcher: deps.webhookDispatcher,
-          logger: deps.logger,
-          clock,
-          ...(deps.webhooks ? { webhooks: deps.webhooks } : {}),
-        },
-        delivery,
-      );
-      if (settled?.status === "delivered") summary.delivered += 1;
-      else summary.failed += 1;
-    }
-
-    ticks += 1;
-    if (ticks % SWEEP_EVERY_TICKS === 0) {
-      summary.swept = await deliveries.sweepExpired(
-        new Date(clock().getTime() - retainMs).toISOString(),
-      );
+    // Outside the branch above, deliberately. Retention is not a property of *how* a delivery was
+    // attempted, and skipping it on the queue path would make `retain_hours` a no-op in exactly the
+    // deployments that have the most rows — settled deliveries, dead ones still holding their whole
+    // payload, accumulating forever.
+    const nowMs = clock().getTime();
+    if (lastSweptAtMs === undefined || nowMs - lastSweptAtMs >= SWEEP_INTERVAL_MS) {
+      lastSweptAtMs = nowMs;
+      // Plain `now`. A delivery's `expires_at` was already set to its creation time plus the
+      // configured retention, so subtracting the retention again here would apply it twice and keep
+      // every settled row for double what `retain_hours` says.
+      summary.swept = await deliveries.sweepExpired(new Date(nowMs).toISOString());
       if (summary.swept > 0) {
         deps.logger.info(`delivery sweep removed ${summary.swept} settled delivery/deliveries.`);
       }

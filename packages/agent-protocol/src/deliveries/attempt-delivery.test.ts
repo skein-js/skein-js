@@ -172,6 +172,64 @@ describe("attemptDelivery", () => {
     expect(recordAttempt.mock.calls[0]![1]).toEqual({ outcome: "delivered" });
   });
 
+  // Regression: this branch used to return the store write unguarded, so a store failure rejected a
+  // function documented never to reject — and the engine awaits it inside a `finally`, so the
+  // rejection escaped and skipped the cleanup after it (a leaked control-registry entry, an undeleted
+  // stateless thread, and a 500 on a run that actually succeeded).
+  it("does not reject when the store fails while refusing a disallowed host", async () => {
+    const dispatch = vi.fn<WebhookDispatcher>().mockResolvedValue(undefined);
+    const repo = {
+      recordAttempt: vi.fn().mockRejectedValue(new Error("database gone")),
+    } as unknown as DeliveryRepo;
+    const { logger, errors } = collectingLogger();
+
+    expect(
+      await attemptDelivery(
+        depsFor(dispatch, repo, { allowedHosts: ["hooks.allowed.test"] }, logger),
+        delivery({ url: "https://elsewhere.test/hook" }),
+      ),
+    ).toBeNull();
+    expect(errors.join("\n")).toContain("could not record");
+  });
+
+  // Regression: the row is written first, with `next_attempt_at` hours out because a queue was
+  // supposed to own the schedule. When the hand-off fails, nothing does — so a momentary Redis blip
+  // turned a one-second retry into a multi-hour one.
+  it("falls back to the polling schedule when the queue will not take the retry", async () => {
+    const dispatch = vi.fn<WebhookDispatcher>().mockRejectedValue(new Error("503"));
+    const { repo, recorded } = recordingRepo();
+    const { logger, errors } = collectingLogger();
+    const deliveryQueue = {
+      schedule: vi.fn().mockRejectedValue(new Error("redis is down")),
+      consume: () => ({ close: async () => {} }),
+      durable: true,
+    };
+
+    await attemptDelivery(
+      { ...depsFor(dispatch, repo, { retries: { maxAttempts: 12 } }, logger), deliveryQueue },
+      delivery({ attempt: 1 }),
+    );
+
+    expect(errors.join("\n")).toContain("could not hand the retry");
+    // Rewritten to the ordinary backoff — seconds — rather than left at the sweep's hours-long grace.
+    const rewritten = recorded.at(-1) as { nextAttemptAt: string };
+    expect(new Date(rewritten.nextAttemptAt).getTime() - NOW.getTime()).toBeLessThan(60_000);
+  });
+
+  it("hands the retry to the queue with the attempts it has left", async () => {
+    const dispatch = vi.fn<WebhookDispatcher>().mockRejectedValue(new Error("503"));
+    const { repo } = recordingRepo();
+    const schedule = vi.fn().mockResolvedValue(undefined);
+    const deliveryQueue = { schedule, consume: () => ({ close: async () => {} }), durable: true };
+
+    await attemptDelivery(
+      { ...depsFor(dispatch, repo, { retries: { maxAttempts: 12 } }), deliveryQueue },
+      delivery({ attempt: 1 }),
+    );
+
+    expect(schedule.mock.calls[0]![1]).toMatchObject({ attempts: 11 });
+  });
+
   it("kills a delivery to a host outside the allowlist without trying it", async () => {
     const dispatch = vi.fn<WebhookDispatcher>().mockResolvedValue(undefined);
     const { repo, recorded } = recordingRepo();
