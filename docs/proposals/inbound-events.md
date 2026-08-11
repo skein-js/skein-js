@@ -1,6 +1,7 @@
 # Proposal — Inbound events: agents behind WhatsApp, Slack, and anything else
 
-> **Status:** Planned · **Depends on:** [durable-delivery.md](./durable-delivery.md)
+> **Status:** Planned · **Depends on:** nothing — durable outbound delivery, its one
+> prerequisite, [has shipped](../recipes/production.md#get-notified-when-a-run-finishes)
 >
 > A design proposal, not shipped behaviour. See [proposals/README.md](./README.md).
 
@@ -51,15 +52,15 @@ fetches it. **New storage of any kind.**
 
 Every inbound integration is the same pipeline. One step is genuinely provider-specific:
 
-| Step                                    | Provider-specific?                                        |
-| --------------------------------------- | --------------------------------------------------------- |
-| 1. Verify the request is authentic      | The **recipe** varies; the primitives don't               |
-| 2. Deduplicate the provider's retries   | No — only _where_ the event id lives varies               |
-| 3. Resolve a stable key to a thread     | No                                                        |
-| 4. Start / resume / enqueue / ignore    | No — policy, and it's the same policy everywhere          |
-| 5. Map payload ↔ graph input and output | **Yes. This is the integration.**                         |
-| 6. Signal progress while the run works  | No — a projection of the existing run event bus           |
-| 7. Deliver the reply, durably           | No — [durable-delivery.md](./durable-delivery.md) owns it |
+| Step                                    | Provider-specific?                                 |
+| --------------------------------------- | -------------------------------------------------- |
+| 1. Verify the request is authentic      | The **recipe** varies; the primitives don't        |
+| 2. Deduplicate the provider's retries   | No — only _where_ the event id lives varies        |
+| 3. Resolve a stable key to a thread     | No                                                 |
+| 4. Start / resume / enqueue / ignore    | No — policy, and it's the same policy everywhere   |
+| 5. Map payload ↔ graph input and output | **Yes. This is the integration.**                  |
+| 6. Signal progress while the run works  | No — a projection of the existing run event bus    |
+| 7. Deliver the reply, durably           | No — the delivery outbox already owns it (shipped) |
 
 **The second half of the thesis: model events, not chat messages.** If the canonical type is an
 _event_, the identical pipeline covers `issues.opened` → triage → comment back, a Stripe dispute, an
@@ -280,7 +281,7 @@ provider-verified sender. No bypass anywhere. Consequences, all load-bearing:
 ## The pipeline
 
 **Architectural test: a pure composition of primitives that already exist.** If it needs storage of
-its own, that is a signal durable-delivery is incomplete and the gap belongs there, not here.
+its own, that is a signal the delivery outbox is incomplete and the gap belongs there, not here.
 
 ```
 POST /events/:source
@@ -292,7 +293,7 @@ POST /events/:source
   → resume | start | enqueue    → per onExisting
   → enqueue run, ACK 2xx        ← invariant
   ├→ onSignal(…)                → best-effort, from RunEventBus  [existing machinery]
-  └→ deliver(outcome, replyTo)  → durable, retried, recorded     [durable-delivery]
+  └→ deliver(outcome, replyTo)  → durable, retried, recorded     [delivery outbox]
 ```
 
 **Invariant: acknowledge after enqueueing, never after the run completes.** Slack requires 2xx within
@@ -401,7 +402,7 @@ timestamps, duplicate ids and bot echoes without hand review.
    abstraction is message-shaped and wrong.
 3. Zero vendor SDKs in skein's dependency tree.
 4. Deleting the feature changes nothing for a user who never configured it.
-5. The pipeline adds **no new `SkeinStore` resource** beyond durable-delivery's.
+5. The pipeline adds **no new `SkeinStore` resource** beyond the delivery outbox's.
 6. An event route cannot create a run the deployment's `Auth` block would have denied — proven
    adversarially, including the forged-`x-auth-scheme` case.
 7. Killing the process mid-run loses the typing indicator and **never** loses the answer.
@@ -422,7 +423,7 @@ timestamps, duplicate ids and bot echoes without hand review.
 6. **Slack and email sources**; document the interface and the community-adapter story.
 
 > **The kill condition, stated up front.** The honest baseline is shipping nothing beyond
-> durable-delivery: users write ingress in their own app, and often already have one since skein
+> the delivery outbox: users write ingress in their own app, and often already have one since skein
 > mounts into Express/Fastify/Nest/Next. That alternative gives every integration correctness with
 > zero new concepts and zero maintenance — it just doesn't give anyone step 4, progress signalling,
 > or any guarantee that dedup and thread-keying were done right. **If the phase-1 example comes out

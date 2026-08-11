@@ -21,6 +21,7 @@ import {
 } from "@skein-js/core";
 
 import { SIGNATURE_HEADER } from "./crypto/sign-delivery.js";
+import { redactWebhookUrl } from "./deliveries/delivery-target.js";
 import type { WebhookDeliveryConfig } from "./deliveries/delivery-config.js";
 import type { AgentGraph, AgentGraphFactory } from "./graphs/agent-graph.js";
 import type { ThreadCheckpointer } from "./graphs/thread-checkpointer.js";
@@ -412,7 +413,7 @@ const fetchWebhookDispatcher: WebhookDispatcher = async (url, payload, attempt) 
   try {
     scheme = new URL(url).protocol;
   } catch {
-    throw new Error(`Webhook URL "${url}" is not a valid absolute URL`);
+    throw new Error(`Webhook URL ${redactWebhookUrl(url)} is not a valid absolute URL`);
   }
   if (scheme !== "http:" && scheme !== "https:") {
     throw new Error(`Webhook URL scheme "${scheme}" is not allowed (only http/https)`);
@@ -439,14 +440,19 @@ const fetchWebhookDispatcher: WebhookDispatcher = async (url, payload, attempt) 
     // A timeout arrives as an `AbortError`/`TimeoutError`, which on its own reads like a client bug
     // rather than an unresponsive receiver.
     if (error instanceof Error && (error.name === "TimeoutError" || error.name === "AbortError")) {
-      throw new Error(`Webhook POST to ${url} timed out after ${timeoutMs}ms`, {
+      // Redacted here, not just at the call site. The delivery paths take care to keep the URL's
+      // path out of their log *messages*, and then hand this Error along as `meta` — so an
+      // unredacted message here prints the very thing they redacted, on the next line.
+      throw new Error(`Webhook POST to ${redactWebhookUrl(url)} timed out after ${timeoutMs}ms`, {
         cause: error,
       });
     }
     throw error;
   }
   if (!response.ok) {
-    throw new Error(`Webhook POST to ${url} failed with status ${response.status}`);
+    throw new Error(
+      `Webhook POST to ${redactWebhookUrl(url)} failed with status ${response.status}`,
+    );
   }
 };
 

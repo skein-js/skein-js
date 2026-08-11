@@ -244,7 +244,6 @@ export default defineConfig({
         items: [
           { text: "Overview", link: "/proposals/" },
           { text: "Inbound events", link: "/proposals/inbound-events" },
-          { text: "Durable delivery", link: "/proposals/durable-delivery" },
         ],
       },
     ],

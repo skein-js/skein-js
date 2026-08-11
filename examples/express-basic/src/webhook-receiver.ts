@@ -23,10 +23,21 @@ const PORT = Number(process.env["PORT"] ?? 4000);
  * for the sender to finish rotating, then remove the old one. Removing it first refuses every
  * callback until every sender has caught up.
  */
-const SECRETS = (process.env["SKEIN_WEBHOOK_SECRET"] ?? "whsec_dev")
+const SECRETS = (process.env["SKEIN_WEBHOOK_SECRET"] ?? "")
   .split(",")
   .map((secret) => secret.trim())
   .filter(Boolean);
+
+// Refuse to start rather than fall back to a literal. A default like `"whsec_dev"` would be a key
+// published in this repository, so a copy of this file that lost its env var would keep *appearing*
+// to verify while accepting anything an attacker signs with a value they can read on GitHub — a
+// fail-open with no signal. `verifySkeinSignature` fails closed on an empty list, and this makes
+// sure that is what an unset variable actually produces. `resolveWebhookSecrets` on the sending side
+// takes the same position.
+if (SECRETS.length === 0) {
+  console.error("set SKEIN_WEBHOOK_SECRET to the same value the skein server signs with");
+  process.exit(1);
+}
 
 /**
  * Delivery ids already processed.
