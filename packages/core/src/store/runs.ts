@@ -12,6 +12,7 @@ import type {
   StreamMode,
 } from "../wire/wire.js";
 
+import type { FinalizedRun, RunFinalization } from "./deliveries.js";
 import type { Pagination } from "./pagination.js";
 
 /**
@@ -200,6 +201,34 @@ export interface RunRepo {
    * tie is arbitrary but must not vary between two calls on one driver.
    */
   latestForThread(threadId: string): Promise<Run | null>;
+  /**
+   * Move a run to `status` **only if it is not already terminal**, and record `final.delivery` — both
+   * in one atomic write. Returns the effective run (`null` when the row no longer exists) and the
+   * delivery that was created, whose {@link Delivery.run_status} is the status the transaction
+   * actually committed.
+   *
+   * **The two halves have opposite conditions, on purpose.** The status write is conditional because a
+   * cancel may already have won — {@link setStatus} is what `cancelRun` uses, deliberately racing the
+   * engine and beating it. The delivery insert is *unconditional*, because the engine owns the
+   * notification either way: that is what it does today, and making the insert conditional too would
+   * open a window where a cancel that beats the engine notifies nobody at all.
+   *
+   * **The two writes must commit together.** That is what makes this a transactional outbox, in exactly
+   * the sense {@link CronRepo.claimAndCreateRun} is one. Writing the status alone loses the
+   * notification if the instance dies before the insert — today's bug, which no injected dispatcher can
+   * close, because the window sits *before* any caller-supplied code runs. Inserting first would
+   * announce a completion that never committed. Committed together, the worst case is a leased delivery
+   * whose worker died, which the next {@link DeliveryRepo.claimDue} takes over.
+   *
+   * The delivery is inserted **even when the run row is gone** (deleted mid-run), because the engine
+   * still notifies in that case. That is also why a driver must not put a foreign key on
+   * {@link Delivery.run_id} — see {@link Delivery}.
+   *
+   * Optional so an existing third-party driver still satisfies the interface, like
+   * {@link SkeinStore.durable}. A driver that omits it — or a store with no {@link SkeinStore.deliveries}
+   * — gets the pre-outbox behaviour: a read-checked {@link setStatus} and one best-effort POST.
+   */
+  finalizeWithDelivery?(runId: string, final: RunFinalization): Promise<FinalizedRun>;
 }
 
 /**

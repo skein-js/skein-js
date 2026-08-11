@@ -1,4 +1,4 @@
-import type { SkeinStore, StoreItemFilter, Thread } from "@skein-js/core";
+import type { DeliveryCreate, SkeinStore, StoreItemFilter, Thread } from "@skein-js/core";
 import { describe, expect, it } from "vitest";
 
 /** Driver-agnostic knobs the conformance suite needs to set on the store it is handed. */
@@ -2042,6 +2042,425 @@ export function runSkeinStoreConformance(
         expect(await store.idempotency.sweepExpired(inMs(0))).toBe(1);
         expect(await store.idempotency.sweepExpired(inMs(0))).toBe(0);
         expect(await store.idempotency.get("POST /threads/t/runs alice", "kept")).not.toBeNull();
+      });
+    });
+
+    describe("deliveries", () => {
+      /**
+       * The outbox is optional on `SkeinStore` so an existing driver still *compiles*, but a driver
+       * that ships half of it cannot make a delivery durable — the whole point is that the run's
+       * terminal status and the delivery commit together. So the pair is required here, together,
+       * with a message that says which half is missing rather than a `TypeError` at the call site.
+       */
+      function outboxOf(store: SkeinStore): {
+        deliveries: NonNullable<SkeinStore["deliveries"]>;
+        finalize: NonNullable<SkeinStore["runs"]["finalizeWithDelivery"]>;
+      } {
+        const { deliveries } = store;
+        const finalize = store.runs.finalizeWithDelivery;
+        if (!deliveries || !finalize) {
+          throw new Error(
+            `Driver implements ${deliveries ? "deliveries" : "runs.finalizeWithDelivery"} but not ` +
+              `${deliveries ? "runs.finalizeWithDelivery" : "deliveries"} — a delivery outbox needs both.`,
+          );
+        }
+        return { deliveries, finalize: finalize.bind(store.runs) };
+      }
+
+      const inMs = (ms: number): string => new Date(Date.now() + ms).toISOString();
+
+      /** A delivery to record alongside a finalization. Leased far ahead unless a case says otherwise. */
+      const deliveryFor = (thread_id: string, overrides: Partial<DeliveryCreate> = {}) => ({
+        thread_id,
+        url: "https://hooks.example.com/skein",
+        payload: { status: "success", values: { answer: 42 } },
+        next_attempt_at: inMs(60_000),
+        expires_at: inMs(3_600_000),
+        ...overrides,
+      });
+
+      /** A thread with one run on it, ready to be finalized. */
+      async function seedRun(store: SkeinStore): Promise<{ runId: string; threadId: string }> {
+        const { thread_id } = await store.threads.create();
+        const run = await store.runs.create({ thread_id, assistant_id: "a" });
+        return { runId: run.run_id, threadId: thread_id };
+      }
+
+      it("writes the run's terminal status and its delivery in one call", async () => {
+        const store = await makeStore();
+        const { finalize } = outboxOf(store);
+        const { runId, threadId } = await seedRun(store);
+
+        const { run, delivery } = await finalize(runId, {
+          status: "success",
+          delivery: deliveryFor(threadId),
+        });
+
+        expect(run?.status).toBe("success");
+        expect((await store.runs.get(runId))?.status).toBe("success");
+        // Stamped by the driver from the transaction, never taken from the caller's input.
+        expect(delivery.run_id).toBe(runId);
+        expect(delivery.run_status).toBe("success");
+        expect(delivery.thread_id).toBe(threadId);
+      });
+
+      // The lost race, and the reason `run_status` is a column rather than a field of the payload: a
+      // cancel that beat the engine owns the status, so the callback has to report *its* verdict or
+      // it would contradict the run the receiver can read back a millisecond later.
+      it("stamps the delivery with the winner's status when the run is already terminal", async () => {
+        const store = await makeStore();
+        const { finalize } = outboxOf(store);
+        const { runId, threadId } = await seedRun(store);
+        await store.runs.setStatus(runId, "cancelled");
+
+        const { run, delivery } = await finalize(runId, {
+          status: "success",
+          delivery: deliveryFor(threadId),
+        });
+
+        expect(delivery.run_status).toBe("cancelled");
+        // The status write is the conditional half: an already-terminal run is left exactly as it was.
+        expect(run?.status).toBe("cancelled");
+        expect((await store.runs.get(runId))?.status).toBe("cancelled");
+      });
+
+      // A run deleted mid-flight still notifies today, so the delivery is still recorded — which is
+      // why `deliveries` carries no foreign key on `run_id`.
+      it("records a delivery for a run whose row is gone, reporting no run", async () => {
+        const store = await makeStore();
+        const { finalize } = outboxOf(store);
+        const { thread_id } = await store.threads.create();
+
+        const { run, delivery } = await finalize("vanished", {
+          status: "error",
+          delivery: deliveryFor(thread_id),
+        });
+
+        expect(run).toBeNull();
+        expect(delivery.run_id).toBe("vanished");
+        // Nothing else survives to say how the run ended, so the requested status stands.
+        expect(delivery.run_status).toBe("error");
+      });
+
+      it("records the run's error alongside the status", async () => {
+        const store = await makeStore();
+        const { finalize } = outboxOf(store);
+        const { runId, threadId } = await seedRun(store);
+
+        const { run } = await finalize(runId, {
+          status: "error",
+          error: { error: "Error", name: "Error", message: "boom" },
+          delivery: deliveryFor(threadId),
+        });
+
+        const expected = { error: "Error", name: "Error", message: "boom" };
+        expect(run?.error).toEqual(expected);
+        expect((await store.runs.get(runId))?.error).toEqual(expected);
+      });
+
+      // The engine POSTs the first attempt inline, so the row is born claimed. One that started
+      // `pending` would be picked up by the very next worker tick and delivered a second time.
+      it("creates the delivery already claimed for the caller's inline attempt", async () => {
+        const store = await makeStore();
+        const { finalize } = outboxOf(store);
+        const { runId, threadId } = await seedRun(store);
+        const lease = inMs(30_000);
+
+        const { delivery } = await finalize(runId, {
+          status: "success",
+          delivery: deliveryFor(threadId, { next_attempt_at: lease }),
+        });
+
+        expect(delivery.status).toBe("delivering");
+        expect(delivery.attempt).toBe(1);
+        expect(delivery.next_attempt_at).toBe(lease);
+        expect(delivery.last_error).toBeNull();
+        expect(delivery.payload_truncated).toBe(false);
+      });
+
+      it("holds a claimed delivery back until its lease expires", async () => {
+        const store = await makeStore();
+        const { deliveries, finalize } = outboxOf(store);
+        const { runId, threadId } = await seedRun(store);
+        await finalize(runId, {
+          status: "success",
+          delivery: deliveryFor(threadId, { next_attempt_at: inMs(60_000) }),
+        });
+
+        expect(await deliveries.claimDue({ now: inMs(0), leaseUntil: inMs(30_000) })).toEqual([]);
+      });
+
+      // Crash takeover, and the reason `next_attempt_at` doubles as the lease: a worker killed
+      // mid-POST leaves a `delivering` row nobody will ever finish, and an expired lease is simply
+      // due again. No reclaim path, no sweeper in the loop.
+      it("re-claims a delivering row whose lease has passed, incrementing the attempt", async () => {
+        const store = await makeStore();
+        const { deliveries, finalize } = outboxOf(store);
+        const { runId, threadId } = await seedRun(store);
+        const { delivery } = await finalize(runId, {
+          status: "success",
+          delivery: deliveryFor(threadId, { next_attempt_at: inMs(-1_000) }),
+        });
+
+        const lease = inMs(30_000);
+        const claimed = await deliveries.claimDue({ now: inMs(0), leaseUntil: lease });
+
+        expect(claimed.map((row) => row.delivery_id)).toEqual([delivery.delivery_id]);
+        expect(claimed[0]?.attempt).toBe(2);
+        expect(claimed[0]?.status).toBe("delivering");
+        expect(claimed[0]?.next_attempt_at).toBe(lease);
+        // And the fresh lease holds against the next tick.
+        expect(await deliveries.claimDue({ now: inMs(0), leaseUntil: inMs(60_000) })).toEqual([]);
+      });
+
+      // The property every instance's worker depends on: two claimers, one row, one winner. A
+      // read-then-update pair passes in a single process and double-POSTs behind a load balancer,
+      // which is the same hazard `createIfThreadIdle` and `claimAndCreateRun` close.
+      it("hands a due delivery to exactly one of many concurrent claimers", async () => {
+        const store = await makeStore();
+        const { deliveries, finalize } = outboxOf(store);
+        const { runId, threadId } = await seedRun(store);
+        await finalize(runId, {
+          status: "success",
+          delivery: deliveryFor(threadId, { next_attempt_at: inMs(-1_000) }),
+        });
+
+        const claims = await Promise.all(
+          [0, 1, 2, 3, 4].map(() =>
+            deliveries.claimDue({ now: inMs(0), leaseUntil: inMs(30_000) }),
+          ),
+        );
+
+        expect(claims.flat().length).toBe(1);
+      });
+
+      it("claims soonest-first, bounded by the driver's page size when no limit is given", async () => {
+        const store = await makeStore({ maxPageSize: 2 });
+        const { deliveries, finalize } = outboxOf(store);
+        const { thread_id } = await store.threads.create();
+        // Due times are strictly ordered and deliberately the reverse of insertion order, so a driver
+        // returning rows in storage order rather than due order fails here.
+        const dueAtOffsets = [-1_000, -5_000, -3_000];
+        const created = [];
+        for (const offset of dueAtOffsets) {
+          const run = await store.runs.create({ thread_id, assistant_id: "a" });
+          const { delivery } = await finalize(run.run_id, {
+            status: "success",
+            delivery: deliveryFor(thread_id, { next_attempt_at: inMs(offset) }),
+          });
+          created.push({ id: delivery.delivery_id, offset });
+        }
+        const expected = [...created]
+          .sort((a, b) => a.offset - b.offset)
+          .slice(0, 2)
+          .map((row) => row.id);
+
+        const claimed = await deliveries.claimDue({ now: inMs(0), leaseUntil: inMs(30_000) });
+
+        expect(claimed.map((row) => row.delivery_id)).toEqual(expected);
+      });
+
+      it("clears the payload on a delivered attempt", async () => {
+        const store = await makeStore();
+        const { deliveries, finalize } = outboxOf(store);
+        const { runId, threadId } = await seedRun(store);
+        const { delivery } = await finalize(runId, {
+          status: "success",
+          delivery: deliveryFor(threadId),
+        });
+
+        const settled = await deliveries.recordAttempt(delivery.delivery_id, {
+          outcome: "delivered",
+        });
+
+        expect(settled?.status).toBe("delivered");
+        // What bounds steady-state storage to in-flight deliveries rather than to every one ever made.
+        expect(settled?.payload).toBeNull();
+      });
+
+      it("keeps the payload and records why on a retrying attempt", async () => {
+        const store = await makeStore();
+        const { deliveries, finalize } = outboxOf(store);
+        const { runId, threadId } = await seedRun(store);
+        const { delivery } = await finalize(runId, {
+          status: "success",
+          delivery: deliveryFor(threadId),
+        });
+        const nextAttemptAt = inMs(120_000);
+
+        const settled = await deliveries.recordAttempt(delivery.delivery_id, {
+          outcome: "retrying",
+          nextAttemptAt,
+          error: "503 Service Unavailable",
+        });
+
+        expect(settled?.status).toBe("pending");
+        expect(settled?.next_attempt_at).toBe(nextAttemptAt);
+        expect(settled?.last_error).toBe("503 Service Unavailable");
+        expect(settled?.payload).toEqual(delivery.payload);
+      });
+
+      // A dead delivery keeps its payload precisely so `retryNow` has something to resend — a dead
+      // letter you cannot replay is a log line, not a dead letter.
+      it("keeps the payload on a dead attempt so a replay can resend it", async () => {
+        const store = await makeStore();
+        const { deliveries, finalize } = outboxOf(store);
+        const { runId, threadId } = await seedRun(store);
+        const { delivery } = await finalize(runId, {
+          status: "success",
+          delivery: deliveryFor(threadId),
+        });
+
+        const settled = await deliveries.recordAttempt(delivery.delivery_id, {
+          outcome: "dead",
+          error: "gave up after 12 attempts",
+        });
+
+        expect(settled?.status).toBe("dead");
+        expect(settled?.payload).toEqual(delivery.payload);
+        expect(settled?.last_error).toBe("gave up after 12 attempts");
+      });
+
+      it("returns null when recording an attempt on an unknown delivery", async () => {
+        const store = await makeStore();
+        const { deliveries } = outboxOf(store);
+
+        expect(await deliveries.recordAttempt("nope", { outcome: "delivered" })).toBeNull();
+      });
+
+      it("reopens a dead delivery as pending, due when the caller says", async () => {
+        const store = await makeStore();
+        const { deliveries, finalize } = outboxOf(store);
+        const { runId, threadId } = await seedRun(store);
+        const { delivery } = await finalize(runId, {
+          status: "success",
+          delivery: deliveryFor(threadId),
+        });
+        await deliveries.recordAttempt(delivery.delivery_id, { outcome: "dead", error: "gave up" });
+        const dueAt = inMs(-1_000);
+
+        const replayed = await deliveries.retryNow(delivery.delivery_id, dueAt);
+
+        expect(replayed?.status).toBe("pending");
+        expect(replayed?.next_attempt_at).toBe(dueAt);
+        // And it is genuinely back in the worker's queue, not merely relabelled.
+        const claimed = await deliveries.claimDue({ now: inMs(0), leaseUntil: inMs(30_000) });
+        expect(claimed.map((row) => row.delivery_id)).toEqual([delivery.delivery_id]);
+      });
+
+      // `null` rather than a silently successful no-op, so the caller can say *why* nothing happened.
+      it("refuses to replay a delivered delivery, and an unknown one", async () => {
+        const store = await makeStore();
+        const { deliveries, finalize } = outboxOf(store);
+        const { runId, threadId } = await seedRun(store);
+        const { delivery } = await finalize(runId, {
+          status: "success",
+          delivery: deliveryFor(threadId),
+        });
+        await deliveries.recordAttempt(delivery.delivery_id, { outcome: "delivered" });
+
+        expect(await deliveries.retryNow(delivery.delivery_id, inMs(0))).toBeNull();
+        expect(await deliveries.retryNow("nope", inMs(0))).toBeNull();
+      });
+
+      it("reads a delivery back by id, and answers null for an unknown one", async () => {
+        const store = await makeStore();
+        const { deliveries, finalize } = outboxOf(store);
+        const { runId, threadId } = await seedRun(store);
+        const { delivery } = await finalize(runId, {
+          status: "success",
+          delivery: deliveryFor(threadId),
+        });
+
+        expect((await deliveries.get(delivery.delivery_id))?.delivery_id).toBe(
+          delivery.delivery_id,
+        );
+        expect(await deliveries.get("nope")).toBeNull();
+      });
+
+      // Timestamps forced apart for the same reason as the run-ordering cases: a `created_at` tie is
+      // not assertable across drivers, so parity is pinned on strictly ordered rows and the id
+      // tie-break is a within-driver determinism concern.
+      it("lists a run's deliveries newest first, ordered the same on every driver", async () => {
+        const store = await makeStore();
+        const { deliveries, finalize } = outboxOf(store);
+        const { runId, threadId } = await seedRun(store);
+        const created = [];
+        for (const _ of [0, 1, 2]) {
+          const { delivery } = await finalize(runId, {
+            status: "success",
+            delivery: deliveryFor(threadId),
+          });
+          created.push(delivery);
+          await new Promise((resolve) => setTimeout(resolve, 2));
+        }
+        const expected = [...created]
+          .sort((a, b) => b.created_at.localeCompare(a.created_at))
+          .map((row) => row.delivery_id);
+
+        expect((await deliveries.listByRun(runId)).map((row) => row.delivery_id)).toEqual(expected);
+      });
+
+      it("scopes and filters a run's deliveries, and pages them", async () => {
+        const store = await makeStore();
+        const { deliveries, finalize } = outboxOf(store);
+        const { runId, threadId } = await seedRun(store);
+        const other = await seedRun(store);
+        const { delivery: mine } = await finalize(runId, {
+          status: "success",
+          delivery: deliveryFor(threadId),
+        });
+        await finalize(other.runId, {
+          status: "success",
+          delivery: deliveryFor(other.threadId),
+        });
+        await deliveries.recordAttempt(mine.delivery_id, { outcome: "dead", error: "gave up" });
+
+        expect((await deliveries.listByRun(runId)).map((row) => row.delivery_id)).toEqual([
+          mine.delivery_id,
+        ]);
+        expect(await deliveries.listByRun(runId, { status: "dead" })).toHaveLength(1);
+        expect(await deliveries.listByRun(runId, { status: "delivered" })).toEqual([]);
+        expect(await deliveries.listByRun(runId, { offset: 1 })).toEqual([]);
+      });
+
+      it("bounds a run's deliveries to the driver's page size when no limit is given", async () => {
+        const store = await makeStore({ maxPageSize: 2 });
+        const { deliveries, finalize } = outboxOf(store);
+        const { runId, threadId } = await seedRun(store);
+        for (const _ of [0, 1, 2]) {
+          await finalize(runId, { status: "success", delivery: deliveryFor(threadId) });
+        }
+
+        expect(await deliveries.listByRun(runId)).toHaveLength(2);
+      });
+
+      it("sweeps expired terminal deliveries and leaves in-flight ones alone", async () => {
+        const store = await makeStore();
+        const { deliveries, finalize } = outboxOf(store);
+        const { runId, threadId } = await seedRun(store);
+        const { delivery: swept } = await finalize(runId, {
+          status: "success",
+          delivery: deliveryFor(threadId, { expires_at: inMs(-1_000) }),
+        });
+        // Terminal but not yet expired.
+        const { delivery: kept } = await finalize(runId, {
+          status: "success",
+          delivery: deliveryFor(threadId, { expires_at: inMs(3_600_000) }),
+        });
+        // In-flight, and expired — still not sweepable, because it has not been delivered yet.
+        const { delivery: inFlight } = await finalize(runId, {
+          status: "success",
+          delivery: deliveryFor(threadId, { expires_at: inMs(-1_000) }),
+        });
+        await deliveries.recordAttempt(swept.delivery_id, { outcome: "delivered" });
+        await deliveries.recordAttempt(kept.delivery_id, { outcome: "dead", error: "gave up" });
+
+        expect(await deliveries.sweepExpired(inMs(0))).toBe(1);
+        expect(await deliveries.sweepExpired(inMs(0))).toBe(0);
+        expect(await deliveries.get(swept.delivery_id)).toBeNull();
+        expect(await deliveries.get(kept.delivery_id)).not.toBeNull();
+        expect(await deliveries.get(inFlight.delivery_id)).not.toBeNull();
       });
     });
 

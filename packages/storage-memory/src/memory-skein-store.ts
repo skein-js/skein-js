@@ -32,6 +32,12 @@ import {
   type CronRepo,
   type CronSearchQuery,
   type CronUpdate,
+  type Delivery,
+  type DeliveryAttemptResult,
+  type DeliveryCreate,
+  type DeliveryRepo,
+  type DueDeliveriesQuery,
+  type FinalizedRun,
   type IdempotencyClaim,
   type IdempotencyRecord,
   type IdempotencyRepo,
@@ -39,6 +45,7 @@ import {
   type Run,
   type RunCreate,
   type RunError,
+  type RunFinalization,
   type RunKwargs,
   type RunRepo,
   type RunStatus,
@@ -178,6 +185,9 @@ export class MemorySkeinStore implements SkeinStore {
   // Recorded `Idempotency-Key` responses, keyed by `idempotencyKey(scope, key)`. Deliberately absent
   // from `snapshot()`/`hydrate()` — see the note on `SkeinStoreSnapshot`.
   readonly #idempotency = new Map<string, IdempotencyRecord>();
+  // Outbound run-completion callbacks awaiting delivery. Deliberately absent from
+  // `snapshot()`/`hydrate()` — see the note on `SkeinStoreSnapshot`.
+  readonly #deliveries = new Map<string, Delivery>();
 
   /**
    * Thread expiry, epoch-ms, for threads that have one. Kept beside the row rather than on it — the
@@ -682,6 +692,156 @@ export class MemorySkeinStore implements SkeinStore {
         matched.push(run);
       }
       return clonePage(matched, 0, this.#pageLimit(undefined));
+    },
+    // Atomic for free, and deliberately written to stay that way — the same rule `createIfThreadIdle`
+    // and `claimAndCreateRun` document. The read of the run, the status write and the delivery insert
+    // all run in one event-loop turn because nothing between them suspends (`#insertDelivery` is
+    // synchronous for exactly this reason). Introducing an `await` above the writes would silently
+    // reopen the race this method exists to close, and no CRUD test would notice.
+    //
+    // Three cases, all of which insert: the engine owns the notification regardless of who won the
+    // status race. See the Postgres driver for the reasoning behind each.
+    finalizeWithDelivery: async (runId, final: RunFinalization): Promise<FinalizedRun> => {
+      const existing = this.#runs.get(runId);
+      if (!existing) {
+        return { run: null, delivery: this.#insertDelivery(runId, final.status, final.delivery) };
+      }
+      if (isTerminalRunStatus(existing.status)) {
+        return {
+          run: clone(existing),
+          delivery: this.#insertDelivery(runId, existing.status, final.delivery),
+        };
+      }
+      // Inlined rather than delegating to `setStatus`: that method is `async`, and awaiting it here
+      // would put a suspension point between the read above and the insert below.
+      const { error: _replaced, ...rest } = existing;
+      const run = write(this.#runs, runId, {
+        ...rest,
+        status: final.status,
+        updated_at: nowIso(),
+        ...(final.error ? { error: final.error } : {}),
+      });
+      return { run, delivery: this.#insertDelivery(runId, final.status, final.delivery) };
+    },
+  };
+
+  /**
+   * Insert an already-claimed delivery row and return a copy.
+   *
+   * **Synchronous on purpose.** It is called from `async` repo methods, but its own body must never
+   * suspend — that is what keeps `finalizeWithDelivery` indivisible in this driver, exactly as a
+   * single transaction is in Postgres. Same discipline as {@link #claimCron}.
+   */
+  #insertDelivery(runId: string, runStatus: RunStatus, input: DeliveryCreate): Delivery {
+    const at = nowIso();
+    // `delivering` / `attempt: 1`, not `pending`: the engine attempts the first delivery inline, and
+    // a row that started life pending would be picked up by a worker and delivered a second time.
+    const delivery: Delivery = {
+      delivery_id: input.delivery_id ?? randomUUID(),
+      run_id: runId,
+      thread_id: input.thread_id,
+      url: input.url,
+      payload: input.payload ?? null,
+      payload_truncated: input.payload_truncated ?? false,
+      run_status: runStatus,
+      status: "delivering",
+      attempt: 1,
+      next_attempt_at: input.next_attempt_at,
+      last_error: null,
+      created_at: at,
+      updated_at: at,
+      expires_at: input.expires_at,
+    };
+    return write(this.#deliveries, delivery.delivery_id, delivery);
+  }
+
+  readonly deliveries: DeliveryRepo = {
+    get: async (deliveryId) => readOne(this.#deliveries, deliveryId),
+    listByRun: async (runId, query) => {
+      const matched: Delivery[] = [];
+      for (const delivery of this.#deliveries.values()) {
+        if (delivery.run_id !== runId) continue;
+        if (query?.status !== undefined && delivery.status !== query.status) continue;
+        matched.push(delivery);
+      }
+      // Newest first, tie-broken on delivery_id descending — the contract's determinism promise, and
+      // the Postgres driver's `ORDER BY created_at DESC, delivery_id DESC`.
+      matched.sort((a, b) =>
+        a.created_at === b.created_at
+          ? b.delivery_id.localeCompare(a.delivery_id)
+          : b.created_at.localeCompare(a.created_at),
+      );
+      return clonePage(matched, query?.offset ?? 0, this.#pageLimit(query?.limit));
+    },
+    // Atomic for free under the same single-turn rule as `finalizeWithDelivery`: the scan, the sort
+    // and every claim write complete before any other caller can run. An `await` anywhere in this
+    // body would let two workers claim the same row and double-POST — the case the conformance
+    // suite's two-workers test exists to catch.
+    //
+    // The predicate covers due-ness and crash recovery at once: a `delivering` row whose lease has
+    // passed is due again, so a worker killed mid-POST needs no reclaim path.
+    claimDue: async (query: DueDeliveriesQuery) => {
+      const due: Delivery[] = [];
+      for (const delivery of this.#deliveries.values()) {
+        if (delivery.status !== "pending" && delivery.status !== "delivering") continue;
+        if (delivery.next_attempt_at > query.now) continue;
+        due.push(delivery);
+      }
+      due.sort((a, b) =>
+        a.next_attempt_at === b.next_attempt_at
+          ? a.delivery_id.localeCompare(b.delivery_id)
+          : a.next_attempt_at.localeCompare(b.next_attempt_at),
+      );
+      const at = nowIso();
+      return due.slice(0, this.#pageLimit(query.limit)).map((delivery) =>
+        write(this.#deliveries, delivery.delivery_id, {
+          ...delivery,
+          status: "delivering",
+          attempt: delivery.attempt + 1,
+          next_attempt_at: query.leaseUntil,
+          updated_at: at,
+        }),
+      );
+    },
+    recordAttempt: async (deliveryId, result: DeliveryAttemptResult) => {
+      const existing = this.#deliveries.get(deliveryId);
+      if (!existing) return null;
+      // `delivered` drops the payload, bounding steady-state storage to in-flight deliveries. `dead`
+      // keeps it, or a replay would have nothing to resend.
+      const settled: Delivery =
+        result.outcome === "delivered"
+          ? { ...existing, status: "delivered", payload: null, last_error: null }
+          : result.outcome === "dead"
+            ? { ...existing, status: "dead", last_error: result.error }
+            : {
+                ...existing,
+                status: "pending",
+                last_error: result.error,
+                next_attempt_at: result.nextAttemptAt,
+              };
+      return write(this.#deliveries, deliveryId, { ...settled, updated_at: nowIso() });
+    },
+    // Conditional on the payload still being there, so replaying a delivered row reports "nothing to
+    // resend" rather than silently queueing an empty POST.
+    retryNow: async (deliveryId, nextAttemptAt) => {
+      const existing = this.#deliveries.get(deliveryId);
+      if (!existing || existing.payload === null) return null;
+      return write(this.#deliveries, deliveryId, {
+        ...existing,
+        status: "pending",
+        next_attempt_at: nextAttemptAt,
+        updated_at: nowIso(),
+      });
+    },
+    sweepExpired: async (now) => {
+      let removed = 0;
+      for (const [id, delivery] of this.#deliveries) {
+        if (delivery.status !== "delivered" && delivery.status !== "dead") continue;
+        if (delivery.expires_at > now) continue;
+        this.#deliveries.delete(id);
+        removed += 1;
+      }
+      return removed;
     },
   };
 
