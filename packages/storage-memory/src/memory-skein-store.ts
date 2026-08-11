@@ -755,6 +755,27 @@ export class MemorySkeinStore implements SkeinStore {
     return write(this.#deliveries, delivery.delivery_id, delivery);
   }
 
+  /**
+   * Deliveries due at `now`, soonest first — **stored references, not copies**, so callers clone what
+   * they hand out.
+   *
+   * Synchronous on purpose, like {@link #claimCron}: `claimDue` calls it and must not suspend between
+   * choosing rows and writing them, or two workers could claim the same delivery.
+   */
+  #dueDeliveries(now: string): Delivery[] {
+    const due: Delivery[] = [];
+    for (const delivery of this.#deliveries.values()) {
+      if (delivery.status !== "pending" && delivery.status !== "delivering") continue;
+      if (delivery.next_attempt_at > now) continue;
+      due.push(delivery);
+    }
+    return due.sort((a, b) =>
+      a.next_attempt_at === b.next_attempt_at
+        ? a.delivery_id.localeCompare(b.delivery_id)
+        : a.next_attempt_at.localeCompare(b.next_attempt_at),
+    );
+  }
+
   readonly deliveries: DeliveryRepo = {
     get: async (deliveryId) => readOne(this.#deliveries, deliveryId),
     listByRun: async (runId, query) => {
@@ -773,6 +794,11 @@ export class MemorySkeinStore implements SkeinStore {
       );
       return clonePage(matched, query?.offset ?? 0, this.#pageLimit(query?.limit));
     },
+    // Non-mutating counterpart to `claimDue`, for the recovery sweep — see `DeliveryRepo.listDue`.
+    listDue: async (query) => {
+      const due = this.#dueDeliveries(query.now);
+      return clonePage(due, 0, this.#pageLimit(query.limit));
+    },
     // Atomic for free under the same single-turn rule as `finalizeWithDelivery`: the scan, the sort
     // and every claim write complete before any other caller can run. An `await` anywhere in this
     // body would let two workers claim the same row and double-POST — the case the conformance
@@ -781,17 +807,7 @@ export class MemorySkeinStore implements SkeinStore {
     // The predicate covers due-ness and crash recovery at once: a `delivering` row whose lease has
     // passed is due again, so a worker killed mid-POST needs no reclaim path.
     claimDue: async (query: DueDeliveriesQuery) => {
-      const due: Delivery[] = [];
-      for (const delivery of this.#deliveries.values()) {
-        if (delivery.status !== "pending" && delivery.status !== "delivering") continue;
-        if (delivery.next_attempt_at > query.now) continue;
-        due.push(delivery);
-      }
-      due.sort((a, b) =>
-        a.next_attempt_at === b.next_attempt_at
-          ? a.delivery_id.localeCompare(b.delivery_id)
-          : a.next_attempt_at.localeCompare(b.next_attempt_at),
-      );
+      const due = this.#dueDeliveries(query.now);
       const at = nowIso();
       return due.slice(0, this.#pageLimit(query.limit)).map((delivery) =>
         write(this.#deliveries, delivery.delivery_id, {
@@ -808,16 +824,20 @@ export class MemorySkeinStore implements SkeinStore {
       if (!existing) return null;
       // `delivered` drops the payload, bounding steady-state storage to in-flight deliveries. `dead`
       // keeps it, or a replay would have nothing to resend.
+      // The count is only overwritten when the caller supplies one — see `DeliveryAttemptResult`.
+      const attempt =
+        result.outcome === "delivered" ? existing.attempt : (result.attempt ?? existing.attempt);
       const settled: Delivery =
         result.outcome === "delivered"
           ? { ...existing, status: "delivered", payload: null, last_error: null }
           : result.outcome === "dead"
-            ? { ...existing, status: "dead", last_error: result.error }
+            ? { ...existing, status: "dead", last_error: result.error, attempt }
             : {
                 ...existing,
                 status: "pending",
                 last_error: result.error,
                 next_attempt_at: result.nextAttemptAt,
+                attempt,
               };
       return write(this.#deliveries, deliveryId, { ...settled, updated_at: nowIso() });
     },
