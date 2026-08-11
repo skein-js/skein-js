@@ -19,14 +19,14 @@
 
 import type { DeliveryQueue, SkeinStore } from "@skein-js/core";
 
-import type { Logger, WebhookDispatcher } from "../deps.js";
+import { webhookTimeoutMs, type Logger, type WebhookDispatcher } from "../deps.js";
 
 import { attemptDelivery } from "./attempt-delivery.js";
 import {
   DEFAULT_DELIVERY_BATCH_SIZE,
   DEFAULT_DELIVERY_POLL_INTERVAL_MS,
   DEFAULT_SWEEP_POLL_INTERVAL_MS,
-  DELIVERY_LEASE_MS,
+  deliveryLeaseMs,
   remainingQueueAttempts,
   type WebhookDeliveryConfig,
 } from "./delivery-config.js";
@@ -111,20 +111,33 @@ export function createDeliveryWorker(
         deps.logger.warn(
           `delivery ${delivery.delivery_id}: no queued job found; re-scheduling it (attempt ${delivery.attempt})`,
         );
-        await deps.deliveryQueue.schedule(
-          { delivery_id: delivery.delivery_id },
-          // The remaining budget, NOT the default. Omitting it hands BullMQ its own default of one
-          // attempt, so a recovered delivery would go dead on its next failure instead of finishing
-          // the schedule its configuration promised — and it would look like the policy was ignored.
-          { attempts: remainingQueueAttempts(delivery.attempt, deps.webhooks?.retries) },
-        );
+        try {
+          await deps.deliveryQueue.schedule(
+            { delivery_id: delivery.delivery_id },
+            // The remaining budget, NOT the default. Omitting it hands BullMQ its own default of one
+            // attempt, so a recovered delivery would go dead on its next failure instead of finishing
+            // the schedule its configuration promised — and it would look like the policy was ignored.
+            { attempts: remainingQueueAttempts(delivery.attempt, deps.webhooks?.retries) },
+          );
+        } catch (error) {
+          // Per row, so one unreachable Redis does not abandon the rest of the batch — nor the
+          // retention sweep below it. The row stays due, so the next pass simply tries again.
+          deps.logger.error(
+            `delivery ${delivery.delivery_id}: could not re-schedule it; the next sweep will retry`,
+            error,
+          );
+        }
       }
     } else {
       const claimed = await deliveries.claimDue({
         now: now.toISOString(),
         // The claim moves each row's `next_attempt_at` to the lease, so a peer only takes it over if
-        // this process dies mid-POST — see `Delivery.next_attempt_at`.
-        leaseUntil: new Date(now.getTime() + DELIVERY_LEASE_MS).toISOString(),
+        // this process dies mid-POST — see `Delivery.next_attempt_at`. Sized for the *whole* batch,
+        // because the loop below is sequential: a lease covering one POST would expire under the tail
+        // of a full batch and let a peer re-send it.
+        leaseUntil: new Date(
+          now.getTime() + deliveryLeaseMs(batchSize, webhookTimeoutMs()),
+        ).toISOString(),
         limit: batchSize,
       });
       summary.claimed = claimed.length;

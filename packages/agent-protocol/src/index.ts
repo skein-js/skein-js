@@ -87,7 +87,8 @@ export {
   DEFAULT_MAX_ATTEMPTS,
   DEFAULT_MAX_PAYLOAD_BYTES,
   DEFAULT_RETAIN_HOURS,
-  DELIVERY_LEASE_MS,
+  DELIVERY_LEASE_MARGIN_MS,
+  deliveryLeaseMs,
   QUEUE_SWEEP_MARGIN_MS,
 } from "./deliveries/delivery-config.js";
 export type { DeliveryRetryConfig, WebhookDeliveryConfig } from "./deliveries/delivery-config.js";

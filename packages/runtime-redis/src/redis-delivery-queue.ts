@@ -47,18 +47,9 @@ export interface RedisDeliveryQueueOptions {
   queueName?: string;
   /** The base delay doubled between attempts, in ms. Default 1000. */
   initialDelayMs?: number;
-  /**
-   * How long a settled job is kept in Redis, in seconds.
-   *
-   * Short on purpose, and it costs nothing: the delivery row outlives the job and is what the admin
-   * list and the replay endpoint read. A retained BullMQ job would be a *second* dead-letter store an
-   * operator has to know about, which is exactly the split this design avoids.
-   */
-  keepSettledSeconds?: number;
 }
 
 const DEFAULT_INITIAL_DELAY_MS = 1_000;
-const DEFAULT_KEEP_SETTLED_SECONDS = 3_600;
 
 /** BullMQ-backed {@link DeliveryQueue}. Owns its connections; call {@link dispose} to release them. */
 export class RedisDeliveryQueue implements DeliveryQueue {
@@ -66,14 +57,12 @@ export class RedisDeliveryQueue implements DeliveryQueue {
   readonly #url: string;
   readonly #queueName: string;
   readonly #initialDelayMs: number;
-  readonly #keepSettledSeconds: number;
   readonly #workers = new Set<Worker<QueuedDelivery>>();
 
   constructor(url: string, options: RedisDeliveryQueueOptions = {}) {
     this.#url = url;
     this.#queueName = options.queueName ?? "skein-deliveries";
     this.#initialDelayMs = options.initialDelayMs ?? DEFAULT_INITIAL_DELAY_MS;
-    this.#keepSettledSeconds = options.keepSettledSeconds ?? DEFAULT_KEEP_SETTLED_SECONDS;
     this.#queue = new Queue<QueuedDelivery>(this.#queueName, { connection: { url } });
   }
 
@@ -100,11 +89,16 @@ export class RedisDeliveryQueue implements DeliveryQueue {
         // BullMQ's own exponential backoff, jitter included. This line is the reason there is no
         // retry scheduler in this file: delays, doubling and randomization are all upstream's.
         backoff: { type: "exponential", delay: this.#initialDelayMs, jitter: JITTER_FRACTION },
-        // Settled jobs are dropped promptly. The delivery row is the record — and, as with the run
-        // queue, a retained job would hold its `jobId` and make that delivery permanently
-        // un-re-schedulable, so a replay would silently do nothing.
-        removeOnComplete: { age: this.#keepSettledSeconds },
-        removeOnFail: { age: this.#keepSettledSeconds },
+        // Dropped the instant they settle — NOT retained for a window. A retained job keeps holding
+        // its `jobId`, and BullMQ answers `add` with the existing job rather than queueing anything,
+        // so every later `schedule` for that delivery is a silent no-op: the recovery sweep would
+        // report a rescue on every pass while the callback stayed stuck forever. The run queue takes
+        // exactly this posture, for exactly this reason.
+        //
+        // Nothing is lost by dropping them. The delivery row outlives the job and is what the admin
+        // list, the replay endpoint and the dead letter all read.
+        removeOnComplete: true,
+        removeOnFail: true,
       },
     );
   }
@@ -115,9 +109,6 @@ export class RedisDeliveryQueue implements DeliveryQueue {
       async (job) =>
         process({
           deliveryId: job.data.delivery_id,
-          // +1 for the engine's inline attempt, which happened before this job existed, and +1 again
-          // because `attemptsMade` counts attempts *finished*.
-          attempt: job.attemptsMade + 2,
           // `attemptsMade` counts attempts *finished*, so during the run of attempt n it reads n-1.
           // Asked of the job rather than recomputed from configuration, so the processor and the
           // queue cannot disagree about which attempt is the last — the way they would disagree is a

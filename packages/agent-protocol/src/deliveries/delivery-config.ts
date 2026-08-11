@@ -60,14 +60,26 @@ export const DEFAULT_MAX_PAYLOAD_BYTES = 256 * 1024;
 export const DEFAULT_RETAIN_HOURS = 24;
 
 /**
- * How long a claimer holds a delivery before a peer may take it over.
+ * Headroom added to a claim's lease, on top of the time the batch could actually take.
  *
- * A constant rather than a knob: the only thing it has to clear is one POST, and the POST already has
- * its own bound (`DEFAULT_WEBHOOK_TIMEOUT_MS`, 5s, raisable via `SKEIN_WEBHOOK_TIMEOUT_MS`). A minute
- * leaves an order of magnitude of headroom, and the cost of getting it wrong in the tight direction is
- * one duplicate POST — which at-least-once already permits and the delivery id already absorbs.
+ * A lease has to outlive **every POST in the batch it covers**, not one of them — the polling worker
+ * attempts its claim sequentially, so with the default batch of 20 and the default 5s timeout the
+ * last row is not touched for 100 seconds. A flat minute would expire under rows 13 onward, and a
+ * peer would re-claim and re-POST them: duplicate callbacks, and an attempt budget spent twice as
+ * fast as configured. {@link deliveryLeaseMs} sizes it from the batch; this is the margin on top.
+ *
+ * Erring long is cheap — it only delays takeover after a genuine crash. Erring short duplicates
+ * callbacks in normal operation.
  */
-export const DELIVERY_LEASE_MS = 60_000;
+export const DELIVERY_LEASE_MARGIN_MS = 60_000;
+
+/**
+ * How long a claimer holds a batch of deliveries before a peer may take them over: long enough for
+ * every POST in it, plus {@link DELIVERY_LEASE_MARGIN_MS}.
+ */
+export function deliveryLeaseMs(batchSize: number, perAttemptMs: number): number {
+  return Math.max(1, batchSize) * Math.max(1, perAttemptMs) + DELIVERY_LEASE_MARGIN_MS;
+}
 
 /** How often the delivery worker looks for due deliveries. */
 export const DEFAULT_DELIVERY_POLL_INTERVAL_MS = 5_000;

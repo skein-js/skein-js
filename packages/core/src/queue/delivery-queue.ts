@@ -38,11 +38,12 @@ export interface ScheduleDeliveryOptions {
 export interface DeliveryAttemptContext {
   deliveryId: string;
   /**
-   * Which attempt this is, counting the caller's inline one as the first. Recorded on the delivery
-   * row, so the admin list and the `X-Skein-Attempt` header report what actually happened rather than
-   * the count the row happened to be created with.
+   * Deliberately no attempt number. A queue cannot supply one that survives its own recovery: a job
+   * re-created by the sweep starts counting from zero again, so a count derived from the job would
+   * walk *backwards* — moving the row's `attempt` and the `X-Skein-Attempt` header down, and letting
+   * the total run past `max_attempts`. The processor takes it from the delivery row instead, which is
+   * the running total and which it reads regardless.
    */
-  attempt: number;
   /**
    * True when the queue will **not** schedule another attempt if this one fails, so the processor
    * knows to record the delivery `dead` rather than `retrying`.

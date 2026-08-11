@@ -3,14 +3,13 @@
 // delivery.
 
 import type { Delivery, DeliveryCreate, RunStatus } from "@skein-js/core";
+import type { DeliveryQueue, QueuedDelivery, ScheduleDeliveryOptions } from "@skein-js/core";
 import { MemorySkeinStore } from "@skein-js/storage-memory";
 import { describe, expect, it, vi } from "vitest";
 
 import type { Logger, WebhookDispatcher } from "../deps.js";
 
-import type { DeliveryQueue, QueuedDelivery, ScheduleDeliveryOptions } from "@skein-js/core";
-
-import { DELIVERY_LEASE_MS } from "./delivery-config.js";
+import { deliveryLeaseMs } from "./delivery-config.js";
 import { createDeliveryWorker } from "./delivery-worker.js";
 
 const START = new Date("2026-01-01T00:00:00.000Z");
@@ -143,8 +142,9 @@ describe("delivery worker", () => {
     const { clock, advance } = movableClock();
     // Leased exactly as the engine leases it, then abandoned: the inline attempt claimed the row,
     // started the POST, and the process died before it could record an outcome.
+    const lease = deliveryLeaseMs(1, 5_000);
     const delivery = await seedDelivery(store, {
-      next_attempt_at: new Date(START.getTime() + DELIVERY_LEASE_MS).toISOString(),
+      next_attempt_at: new Date(START.getTime() + lease).toISOString(),
     });
     expect((await store.deliveries!.get(delivery.delivery_id))?.status).toBe("delivering");
 
@@ -157,7 +157,7 @@ describe("delivery worker", () => {
     });
 
     // While the lease holds, a peer must not touch it — or a slow POST would be sent twice.
-    advance(DELIVERY_LEASE_MS - 1_000);
+    advance(lease - 1_000);
     expect(await worker.tickOnce()).toMatchObject({ claimed: 0 });
 
     advance(2_000);
@@ -198,6 +198,61 @@ describe("delivery worker", () => {
     });
 
     expect(await worker.tickOnce()).toMatchObject({ claimed: 2, delivered: 1, failed: 1 });
+  });
+
+  // Regression: the lease was a flat minute while the batch is attempted *sequentially*, so with the
+  // default batch of 20 and the default 5s timeout the tail of a batch outlived its lease — a peer
+  // re-claimed and re-POSTed rows 13 onward, duplicating callbacks and spending the attempt budget
+  // at twice the configured rate.
+  it("leases a claim for the whole batch, not for one POST", async () => {
+    const store = new MemorySkeinStore();
+    for (const _ of [0, 1, 2]) await seedDelivery(store, { next_attempt_at: inPast() });
+    const claimDue = vi.spyOn(store.deliveries!, "claimDue");
+    const worker = createDeliveryWorker(
+      {
+        store,
+        webhookDispatcher: vi.fn<WebhookDispatcher>().mockResolvedValue(undefined),
+        logger: collectingLogger().logger,
+        clock: () => START,
+      },
+      { batchSize: 20 },
+    );
+
+    await worker.tickOnce();
+
+    const { leaseUntil } = claimDue.mock.calls[0]![0];
+    const heldForMs = new Date(leaseUntil).getTime() - START.getTime();
+    // Longer than 20 sequential POSTs could take at the default timeout.
+    expect(heldForMs).toBeGreaterThan(20 * 5_000);
+  });
+
+  it("keeps sweeping the rest of the batch when one re-schedule fails", async () => {
+    const store = new MemorySkeinStore();
+    for (const _ of [0, 1, 2]) await seedDelivery(store, { next_attempt_at: inPast() });
+    const { logger, errors } = collectingLogger();
+    const scheduled: string[] = [];
+    let calls = 0;
+    const queue: DeliveryQueue = {
+      schedule: async (delivery) => {
+        calls += 1;
+        if (calls === 1) throw new Error("redis blip");
+        scheduled.push(delivery.delivery_id);
+      },
+      consume: () => ({ close: async () => {} }),
+      durable: true,
+    };
+    const worker = createDeliveryWorker({
+      store,
+      webhookDispatcher: vi.fn<WebhookDispatcher>().mockResolvedValue(undefined),
+      logger,
+      clock: () => START,
+      deliveryQueue: queue,
+    });
+
+    // One row lost, the other two still handed over — and the retention sweep below still runs.
+    expect(await worker.tickOnce()).toMatchObject({ claimed: 3, swept: 0 });
+    expect(scheduled).toHaveLength(2);
+    expect(errors.join("\n")).toContain("could not re-schedule");
   });
 
   it("bounds one tick to the batch size", async () => {

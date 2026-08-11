@@ -17,7 +17,7 @@
 import { createServer, type Server } from "node:http";
 
 import { MessagesAnnotation, StateGraph } from "@langchain/langgraph";
-import { createProtocolRuntime, DELIVERY_LEASE_MS } from "@skein-js/agent-protocol";
+import { createProtocolRuntime, deliveryLeaseMs } from "@skein-js/agent-protocol";
 import type { ProtocolDeps } from "@skein-js/agent-protocol";
 import { startPostgres, type StartedResource } from "@skein-js/test-support";
 import { afterAll, afterEach, beforeAll, describe, expect, it } from "vitest";
@@ -132,13 +132,15 @@ describe("durable outbound delivery — Postgres store, no Redis, two instances"
     expect(receiver.received).toHaveLength(0);
     instanceA.deps.store.deliveries!.recordAttempt = originalRecord;
 
+    // The engine's inline attempt is a batch of one, so that is the lease it took.
+    const lease = deliveryLeaseMs(1, 5_000);
     // Instance B has never heard of this run. It finds the delivery only because the lease lapsed.
     const instanceB = await startInstance({
-      clock: fixedClock(new Date(diedAt.getTime() + DELIVERY_LEASE_MS + 1_000)),
+      clock: fixedClock(new Date(diedAt.getTime() + lease + 1_000)),
     });
     // Before the lease lapses, B must not touch it — or a slow POST would go out twice.
     const early = await startInstance({
-      clock: fixedClock(new Date(diedAt.getTime() + DELIVERY_LEASE_MS - 1_000)),
+      clock: fixedClock(new Date(diedAt.getTime() + lease - 1_000)),
     });
     expect(await early.runtime.deliveryWorker.tickOnce()).toMatchObject({ claimed: 0 });
 
