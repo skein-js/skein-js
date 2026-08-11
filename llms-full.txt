@@ -5941,8 +5941,9 @@ Three things receivers get wrong, in the order they get them wrong:
 The signature covers the timestamp, which is what makes a **replay** detectable with no state on your
 side: a captured callback stops verifying once it is outside the tolerance window (5 minutes by
 default). A runnable receiver doing all of this — accepting a genuine callback, refusing a forged one
-and a replayed one — is in
-[`examples/express-basic/src/webhook-receiver.ts`](https://github.com/skein-js/skein-js/blob/main/examples/express-basic/src/webhook-receiver.ts).
+and a replayed one — is `src/webhook-receiver.ts` in
+[`examples/express-basic`](https://github.com/skein-js/skein-js/tree/main/examples/express-basic)
+(`pnpm webhook-receiver`).
 
 Rotate by setting `SKEIN_WEBHOOK_SECRET` to a comma-separated list, new key first: skein signs with
 the first and receivers accept any they hold. Remove the old key only once every receiver has the new
