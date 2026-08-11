@@ -708,14 +708,16 @@ export function createProtocolHandlers(service: ProtocolService): ProtocolHandle
         ...(offset !== undefined ? { offset } : {}),
         ...(status !== undefined ? { status } : {}),
       });
-      // `payload` is stripped and replaced by its size. It is up to 256 KiB of the run's final state
-      // per row, and this is a *list* — returning it would make an operator's "what failed?" request
-      // the heaviest response the server can produce, for a field they did not ask for. `GET` on the
-      // run itself is where the state lives.
+      // `payload` is stripped, and replaced by a *boolean* rather than a size. It is up to 256 KiB of
+      // the run's final state per row, and this is a list — returning it would make an operator's
+      // "what failed?" the heaviest response the server can produce, for a field they did not ask
+      // for. Reporting its size would mean re-serializing every row's payload to answer, which is
+      // most of that cost for a number nobody acts on: the question a replay depends on is whether
+      // there is anything left to send, and `payload_truncated` already covers the other one.
       return json({
         deliveries: deliveries.map(({ payload, ...rest }) => ({
           ...rest,
-          payload_bytes: payload === null ? 0 : JSON.stringify(payload).length,
+          replayable: payload !== null,
         })),
       });
     },

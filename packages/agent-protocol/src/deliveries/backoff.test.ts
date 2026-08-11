@@ -90,6 +90,25 @@ describe("delivery backoff", () => {
     }
   });
 
+  // Regression, and the reason `RedisDeliveryQueue` seeds BullMQ with twice the configured delay.
+  // BullMQ computes `2^(attemptsMade - 1) * delay` counting only the attempts *it* made, but the
+  // engine already made one inline — so its first retry is the schedule's *second* gap. Seeding it
+  // raw halves every delay, turning a documented ~34-minute horizon into ~17 on Redis while the
+  // polling driver still gives 34: one policy, two meanings.
+  it("has a second gap of twice the initial delay, which is what BullMQ must be seeded with", () => {
+    const fixed = { initialDelayMs: 1_000 };
+    const midpoint = () => 0.5;
+
+    // Gap 1 (inline attempt → first retry) is the configured delay; the queue is handed this as an
+    // explicit `delayMs`, so BullMQ's own backoff never computes it.
+    expect(nextAttemptDelayMs(1, fixed, midpoint)).toBe(900);
+    // Gap 2 is the first one BullMQ computes, at `attemptsMade = 1` → `2^0 × seed`. For that to
+    // equal this, the seed must be 2 × initial.
+    expect(nextAttemptDelayMs(2, fixed, midpoint)).toBe(1_800);
+    // And gap 3, at `attemptsMade = 2` → `2^1 × seed` = 4 × initial. Doubling holds from there.
+    expect(nextAttemptDelayMs(3, fixed, midpoint)).toBe(3_600);
+  });
+
   it("never offers a queue fewer than one attempt", () => {
     expect(remainingQueueAttempts(1, { maxAttempts: 12 })).toBe(11);
     // A policy lowered under a delivery already in flight must not produce a zero or negative budget.

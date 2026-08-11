@@ -144,7 +144,9 @@ POST /threads/{thread_id}/runs/{run_id}/deliveries/{delivery_id}/replay
 ```
 
 The list carries every attempt's status, count and last error — `?status=dead` narrows it to the ones
-that gave up. It reports `payload_bytes` rather than the payload itself; read the state from the run.
+that gave up. It reports `replayable` rather than the payload itself — the payload is up to 256 KiB of
+the run's final state per row, and the question a replay turns on is whether there is anything left to
+send. Read the state from the run.
 Replay makes a delivery due again immediately, and 409s one that already succeeded (its payload was
 cleared on delivery, so there is nothing left to resend). Both sit under the `runs` route group, so
 `http.disable_runs` and your existing `@auth.on.threads` handler already cover them.

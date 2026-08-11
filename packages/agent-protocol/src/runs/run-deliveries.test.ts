@@ -56,8 +56,9 @@ describe("a run's deliveries", () => {
   });
 
   // The payload is up to 256 KiB of the run's final state, per row. Returning it would make "what
-  // failed?" the heaviest response the server can produce, for a field nobody asked for.
-  it("reports the payload's size in the list rather than the payload", async () => {
+  // failed?" the heaviest response the server can produce — and so would measuring it, which means
+  // re-serializing every row to answer with a number nobody acts on.
+  it("says whether a delivery is replayable rather than returning its payload", async () => {
     const { deps, service, handlers } = await harness();
     const { runId, threadId } = await seedDelivery(service, deps);
 
@@ -73,7 +74,7 @@ describe("a run's deliveries", () => {
     expect(response.kind).toBe("json");
     const { deliveries } = (response as { body: { deliveries: Record<string, unknown>[] } }).body;
     expect(deliveries[0]).not.toHaveProperty("payload");
-    expect(deliveries[0]?.["payload_bytes"]).toBeGreaterThan(0);
+    expect(deliveries[0]?.["replayable"]).toBe(true);
   });
 
   it("filters by status", async () => {
@@ -148,8 +149,16 @@ describe("a run's deliveries", () => {
 
     await service.runs.replayDelivery(runId, delivery.delivery_id);
 
-    // Immediate, rather than waiting for the recovery sweep to notice it.
-    expect(schedule).toHaveBeenCalledWith({ delivery_id: delivery.delivery_id });
+    // Immediate, rather than waiting for the recovery sweep to notice it — and `replace`, because a
+    // delivery being replayed may still hold a delayed job from its original schedule, which would
+    // make the add a silent no-op and leave the "immediate" replay waiting out the old backoff.
+    expect(schedule).toHaveBeenCalledWith(
+      { delivery_id: delivery.delivery_id },
+      expect.objectContaining({ replace: true }),
+    );
+    // The full remaining budget, not BullMQ's default of one — otherwise a replay that fails once
+    // goes straight back to `dead`.
+    expect(schedule.mock.calls[0]![1].attempts).toBeGreaterThan(1);
   });
 
   it("still replays when the queue refuses the hand-off", async () => {

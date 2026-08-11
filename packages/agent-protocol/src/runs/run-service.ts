@@ -26,6 +26,7 @@ import {
 } from "@skein-js/core";
 
 import { toStoredRollbackPlan, type ProtocolContext, type RollbackPlan } from "../context.js";
+import { remainingQueueAttempts } from "../deliveries/delivery-config.js";
 import { rollbackThreadCheckpointsTo } from "../threads/checkpoint-history.js";
 
 import { startRunExecution } from "./run-execution.js";
@@ -884,7 +885,20 @@ export function createRunService(ctx: ProtocolContext): RunService {
       // for the recovery sweep to notice it.
       if (deps.deliveryQueue) {
         try {
-          await deps.deliveryQueue.schedule({ delivery_id: deliveryId });
+          await deps.deliveryQueue.schedule(
+            { delivery_id: deliveryId },
+            {
+              // The remaining budget, not BullMQ's default of one — otherwise a replayed delivery
+              // that fails once goes straight back to `dead`, while the same replay on the polling
+              // path gets the whole schedule.
+              attempts: remainingQueueAttempts(replayed.attempt, deps.webhooks?.retries),
+              // `replace`, because a delivery being replayed may still hold a *delayed* job from its
+              // original schedule. Scheduling is idempotent on the delivery id, so without this the
+              // add is a silent no-op: the API would report an immediate replay while the callback
+              // waited out the original backoff.
+              replace: true,
+            },
+          );
         } catch (error) {
           // Reported, not thrown: the row is already `pending`, so the sweep will pick it up. Failing
           // the request would tell an operator the replay did not happen when it merely will not be

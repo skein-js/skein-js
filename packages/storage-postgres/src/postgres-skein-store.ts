@@ -2040,7 +2040,7 @@ export class PostgresSkeinStore implements SkeinStore {
                 [deliveryId, result.error, result.nextAttemptAt],
               ];
       // The count is only overwritten when the caller supplies one — see `DeliveryAttemptResult`.
-      const attempt = result.outcome === "delivered" ? undefined : result.attempt;
+      const attempt = result.attempt;
       let attemptSql = "attempt";
       if (attempt !== undefined) {
         params.push(attempt);

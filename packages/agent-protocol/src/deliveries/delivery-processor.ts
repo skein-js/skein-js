@@ -104,5 +104,7 @@ export async function processDelivery(
     throw error;
   }
 
-  await deliveries.recordAttempt(delivery.delivery_id, { outcome: "delivered" });
+  // Carries the attempt too: nothing on this path claims, so without it a delivery that succeeded on
+  // its third try is stored as its second, while the `X-Skein-Attempt` the receiver saw said three.
+  await deliveries.recordAttempt(delivery.delivery_id, { outcome: "delivered", attempt });
 }
