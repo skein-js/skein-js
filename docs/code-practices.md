@@ -80,6 +80,12 @@ a chain of `reduce`s. Optimize for the reader.
   immediately; git remembers it.
 - **Flat module layout.** Group by feature (`runs/`, `threads/`, `store/`), not by kind
   (`types/`, `utils/`). Keep a package's public surface in its `src/index.ts`.
+- **Keep files small — split before they grow, not after.** A module that has accumulated several
+  independent sections is several modules. Split it by feature into siblings and keep the original
+  as the composition point that re-exports the parts, so the split is a refactor and never a
+  breaking change. Land it as its own commit, separate from whatever prompted it, so reviewers see
+  a pure move. Adding a **new** resource to an already-large file is the moment to split, not the
+  moment to make it worse: start the new resource in its own file.
 - **Types are documentation.** Prefer precise types over `any`; `noUncheckedIndexedAccess`
   is on. Let the types make illegal states unrepresentable.
 
@@ -103,7 +109,12 @@ has to argue them in review.
 - **Types/interfaces/classes:** `PascalCase`. **Values/functions:** `camelCase`.
   **Constants:** `UPPER_SNAKE_CASE` only for true module-level constants.
 - **Layout by feature, not by kind:** `runs/`, `threads/`, `store/` — not `types/`, `utils/`.
-- **No barrel files** beyond each package's `src/index.ts`.
+- **One file per resource/concern**, split at the boundaries the code already has (see §3). An
+  aggregate module that composes and re-exports its parts — `store/skein-store.ts` over
+  `store/{assistants,threads,runs,crons,idempotency,deliveries}.ts` — is the pattern to copy.
+- **No barrel files** beyond each package's `src/index.ts`. An aggregate module like the above is
+  not a barrel: it declares the composed type, and re-exporting the parts is what keeps the split
+  from breaking importers.
 
 ### Functional style (see §2)
 
