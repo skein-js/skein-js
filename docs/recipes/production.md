@@ -151,6 +151,29 @@ Replay makes a delivery due again immediately, and 409s one that already succeed
 cleared on delivery, so there is nothing left to resend). Both sit under the `runs` route group, so
 `http.disable_runs` and your existing `@auth.on.threads` handler already cover them.
 
+### What this stores, and for how long
+
+A retry has to have something to send, so **the callback body is stored** — including the run's final
+`values`. That is a new at-rest copy of whatever your graph produced, in the `deliveries` table, and
+it is worth classifying deliberately if that state carries personal or regulated data:
+
+- **On success it is cleared immediately**, so steady-state storage is in-flight deliveries, not every
+  delivery ever made.
+- **A `dead` delivery keeps it** for `retain_hours` (default 24) — that is what makes replay possible,
+  and it means a callback that never landed leaves the run's final state on disk for a day.
+- **It is not encrypted by skein.** Use your database's encryption at rest; the column is ordinary
+  `jsonb`.
+- **Deleting a thread or run does not currently erase its deliveries** — unlike idempotency records,
+  which are erased explicitly. Lower `retain_hours` if that matters to you.
+
+Set `require_https: true` if callbacks leave your network. Plaintext is permitted by default (an
+internal receiver is a legitimate use), but retries mean the body crosses the wire up to
+`max_attempts` times rather than once, so `http://` here is a dozen exposures rather than one.
+
+skein **redacts the webhook URL's path in logs**, keeping only the scheme and host: for Slack, Discord
+and Teams the path _is_ the credential, and a failing delivery would otherwise write it into your log
+sink on every attempt.
+
 Payloads are capped at `max_payload_bytes` (default 256 KiB) because the body is stored for retries.
 Over the cap, `values` is replaced by a truncation marker **inside the body** — so a receiver is told
 it is looking at a truncated state rather than left to infer it. Raise the cap, or read the state back

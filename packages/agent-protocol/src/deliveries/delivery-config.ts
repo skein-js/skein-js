@@ -53,6 +53,16 @@ export interface WebhookDeliveryConfig {
    */
   allowedHosts?: readonly string[];
   /**
+   * Refuse a callback whose URL is not `https:`. Absent means plaintext is permitted, which is
+   * today's behaviour.
+   *
+   * Off by default because an internal receiver on a trusted network is a legitimate use and turning
+   * this on for everyone would break those deployments on upgrade. Turn it on if callbacks leave your
+   * network: the body carries the run's **final state**, and retries mean that state crosses the wire
+   * up to `max_attempts` times rather than once — so plaintext here is not one exposure but a dozen.
+   */
+  requireHttps?: boolean;
+  /**
    * The keys callbacks are signed with. Signing is off when this is empty.
    *
    * A **list**, because rotation has to be possible without dropping deliveries. Signing uses the

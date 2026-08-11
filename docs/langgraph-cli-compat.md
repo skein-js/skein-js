@@ -286,6 +286,7 @@ shape is unchanged** — this configures delivery, not the body.
       "max_payload_bytes": 262144, // cap on the stored body; over it, `values` is truncated
       "retain_hours": 24, // how long a settled delivery is kept before it is reclaimed
       "allowed_hosts": ["hooks.example.com"], // absent = no restriction (today's behaviour)
+      "require_https": true, // refuse plaintext callbacks; absent permits them
     },
   },
 }
@@ -315,6 +316,10 @@ What each one is for:
   `${VAR}` anywhere in `langgraph.json`, so `"secret": "${SKEIN_WEBHOOK_SECRET}"` would sign every
   callback with that literal 23-character string. Absent on both → callbacks are unsigned, which is
   today's behaviour.
+- `require_https` — refuse a callback whose URL is not `https:`. Off by default, because an internal
+  receiver on a trusted network is legitimate and turning it on for everyone would break those
+  deployments on upgrade. Turn it on whenever callbacks leave your network: the body carries the run's
+  final state, and retries mean it crosses the wire up to `max_attempts` times rather than once.
 - `allowed_hosts` — an exact-hostname allowlist. Set it if you accept run creates from untrusted
   callers: `webhook` is a caller-supplied URL, so it is a server-side request to a target they chose,
   and retrying it turns a one-shot SSRF probe into a repeated one. **Off by default**, because turning

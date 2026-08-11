@@ -260,6 +260,50 @@ describe("attemptDelivery", () => {
     expect(recorded[0]?.outcome).toBe("dead");
   });
 
+  // The webhook path is frequently the credential — Slack, Discord and Teams all authenticate by an
+  // unguessable path. Logging it verbatim wrote a bearer token into every log sink, once per attempt.
+  it("keeps the URL's path out of the logs", async () => {
+    const dispatch = vi.fn<WebhookDispatcher>().mockRejectedValue(new Error("503"));
+    const { repo } = recordingRepo();
+    const { logger, errors } = collectingLogger();
+
+    await attemptDelivery(
+      depsFor(dispatch, repo, { retries: { maxAttempts: 1 } }, logger),
+      delivery({ url: "https://hooks.slack.test/services/T123/B456/sup3rs3cr3t" }),
+    );
+
+    const logged = errors.join("\n");
+    expect(logged).not.toContain("sup3rs3cr3t");
+    expect(logged).not.toContain("T123");
+    // The host survives, because that is what an operator needs — and the delivery id, already in
+    // the line, is the real correlation key.
+    expect(logged).toContain("hooks.slack.test");
+  });
+
+  it("refuses a plaintext callback when require_https is set", async () => {
+    const dispatch = vi.fn<WebhookDispatcher>().mockResolvedValue(undefined);
+    const { repo, recorded } = recordingRepo();
+
+    await attemptDelivery(
+      depsFor(dispatch, repo, { requireHttps: true }),
+      delivery({ url: "http://hooks.example.test/skein" }),
+    );
+
+    expect(dispatch).not.toHaveBeenCalled();
+    // Dead and visible, like a disallowed host — not silently skipped.
+    expect(recorded[0]).toMatchObject({ outcome: "dead" });
+    expect((recorded[0] as { error: string }).error).toContain("require_https");
+  });
+
+  it("still permits plaintext by default, so upgrading breaks no one", async () => {
+    const dispatch = vi.fn<WebhookDispatcher>().mockResolvedValue(undefined);
+    const { repo } = recordingRepo();
+
+    await attemptDelivery(depsFor(dispatch, repo), delivery({ url: "http://internal.test/hook" }));
+
+    expect(dispatch).toHaveBeenCalledTimes(1);
+  });
+
   it("sends to a host that is on the allowlist", async () => {
     const dispatch = vi.fn<WebhookDispatcher>().mockResolvedValue(undefined);
     const { repo, recorded } = recordingRepo();

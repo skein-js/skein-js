@@ -174,6 +174,14 @@ const webhooksSchema = z
      * into a repeated one.
      */
     allowed_hosts: z.array(z.string().trim().min(1)).optional(),
+    /**
+     * Refuse a callback whose URL is not `https:`. Absent permits plaintext, which is today's
+     * behaviour.
+     *
+     * Worth turning on whenever callbacks leave your network: the body carries the run's final state,
+     * and retries mean that state crosses the wire up to `max_attempts` times rather than once.
+     */
+    require_https: z.boolean().optional(),
   })
   .passthrough();
 
