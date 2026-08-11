@@ -38,21 +38,45 @@ inboxes. They are not the audience for a hosted chat widget.
 
 ## The proposals
 
-Together they formed one round trip that needs no browser: **durable-delivery** made the outbound leg
-trustworthy (the answer gets back), **inbound-events** makes the inbound leg cheap (the event gets
-in). The outbound half has since shipped, so only one proposal is still a proposal.
+One round trip needs no browser: the outbound leg has to be trustworthy (the answer gets back) and
+the inbound leg has to be cheap (the event gets in). **The outbound half shipped**, so one proposal
+remains.
 
-| Proposal                                     | Summary                                                                                           |
-| -------------------------------------------- | ------------------------------------------------------------------------------------------------- |
-| [inbound-events.md](./inbound-events.md)     | **The goal.** An optional inbound pipeline plus a plugin interface, so a source is one small file |
-| [durable-delivery.md](./durable-delivery.md) | **Shipped in 0.16 — history now.** Durable, signed, retried run-completion delivery               |
+| Proposal                                 | Summary                                                                                           |
+| ---------------------------------------- | ------------------------------------------------------------------------------------------------- |
+| [inbound-events.md](./inbound-events.md) | **The goal.** An optional inbound pipeline plus a plugin interface, so a source is one small file |
 
-**`durable-delivery` is done.** It is kept for the argument rather than the plan — what was rejected
-and why is more useful than what was built. The behaviour lives in
+### Shipped: durable outbound delivery
+
+A run's completion notification could be lost with no record and no retry — a defect in the server
+whether or not anything was built on top of it. It now survives a receiver outage, a redeploy and a
+crash, and receivers can authenticate it. Read
 [recipes/production.md](../recipes/production.md#get-notified-when-a-run-finishes) and
-[langgraph-cli-compat.md](../langgraph-cli-compat.md#webhooks-skeinwebhooks); the delivery outbox
-means a run's completion notification can no longer be lost with no record and no retry, which was a
-defect in the server whether or not anything was built on top of it.
+[langgraph-cli-compat.md](../langgraph-cli-compat.md#webhooks-skeinwebhooks) to use it.
+
+The proposal itself is gone from this directory, because this directory is for work that is not yet
+built. What is worth keeping is what the implementation **rejected**, since each was argued for in
+the design and turned out to be wrong:
+
+- **The stated problem was wrong.** The proposal argued from "webhooks are best-effort and unsigned",
+  but `webhookDispatcher` was already injectable — an embedder could roll retries, signing and
+  allowlists themselves. Two things survived scrutiny and justified the work: `buildRuntime` has no
+  override seam at all, so every CLI deployment can inject _nothing_; and nobody, in any persona, can
+  close the crash window between the terminal status write and the first line of a caller's
+  dispatcher, because it opens before caller code runs.
+- **A conditional delivery insert.** Making the insert conditional on winning the finalize would have
+  forced the cancel paths to enqueue deliveries too, and opened a window where a cancel that beats the
+  engine notifies nobody. The insert is unconditional inside a conditional finalize, so the cancel
+  paths are untouched; a `run_status` column carries whichever status actually committed.
+- **`secrets.path`, and a global `GET /webhook-deliveries` with its own `RouteGroup`.** An embedder
+  already has a more expressive hook than the proposed `WebhookSecrets` interface, and a route group
+  is a member of a closed union that can never be withdrawn. The delivery routes are run-scoped
+  instead, which keeps a global list purely additive.
+- **A retry worker of our own.** On Redis the whole schedule — delayed jobs, exponential backoff with
+  jitter, stalled-job recovery — is BullMQ's. In-memory is a development driver, and a design
+  constrained by what it can do under-serves every real deployment. Our polling loop survives as that
+  development path and as the recovery sweep for the one gap a queue cannot cover: a crash between the
+  outbox COMMIT and the enqueue, since a Redis `add()` cannot join a Postgres transaction.
 
 Three things these used to depend on have since shipped, which is why the round trip is now buildable
 at all. **Idempotent run creation** (`Idempotency-Key`) landed in 0.14 as this proposal's first phase
