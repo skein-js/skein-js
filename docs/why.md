@@ -319,7 +319,9 @@ Being honest about the edges is part of the pitch:
 - **No WebSocket transport.** Server-sent events cover the client experience and the React SDK
   doesn't care.
 - **No sub-minute schedules**, and no backfilling schedules missed during an outage.
-- **No exactly-once webhook delivery.** At-least-once with a stable dedup key, documented loudly.
+- **No exactly-once webhook delivery.** Delivery is durable — the callback commits in the same
+  transaction as the run's terminal status, and is retried until it lands. What it is not is
+  exactly-once, which is why every attempt carries a stable dedup key.
 - **We don't restate LangGraph's docs.** We document our _conformance_ and the delta.
 
 The full list of what's shipped, in preview, and planned is on the [features page](./features.md) and

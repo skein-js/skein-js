@@ -405,14 +405,15 @@ Every one of these runs, and CI proves it.
 | [`triage-agent`](https://github.com/skein-js/skein-js/tree/main/examples/triage-agent)             | **Start here** — schedules, background work, approvals, memory and rewind in one agent. **No API key, no network needed** |
 | [`chat-app`](https://github.com/skein-js/skein-js/tree/main/examples/chat-app)                     | **Flagship** — a research assistant with thinking, web search and memory, behind a Next.js + shadcn/ui UI                 |
 | [`migrated-langgraph`](https://github.com/skein-js/skein-js/tree/main/examples/migrated-langgraph) | The drop-in proof — a stock LangGraph project running under `skein dev`                                                   |
-| [`migrated-langgraph`](https://github.com/skein-js/skein-js/tree/main/examples/migrated-langgraph) | The drop-in proof — a stock LangGraph project running under `skein dev`                                                   |
 
-Six more in [`examples/`](https://github.com/skein-js/skein-js/tree/main/examples), including one per
-adapter — standalone, and mounted inside an app that already has its own routes.
+Eleven more in [`examples/`](https://github.com/skein-js/skein-js/tree/main/examples), including one
+per adapter — standalone, and mounted inside an app that already has its own routes.
 
 ## Where to go next
 
-New here? [**Your first agent**](./your-first-agent.md) goes from an empty directory to deployed.
+New here? [**Your first agent**](./your-first-agent.md) goes from an empty directory to deployed,
+then [**what you need to know**](./what-you-need-to-know.md) maps everything it skipped. Never
+written a graph? [**LangGraph essentials**](./langgraph-essentials.md) is the short version.
 Wondering if skein does something specific? The [**features page**](./features.md) answers it in one
 line. Building _with_ an AI agent?
 [`llms.txt`](https://github.com/skein-js/skein-js/blob/main/llms.txt) hands it the whole set.

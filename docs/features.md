@@ -89,7 +89,8 @@ organised by parity instead.
 - **`skein deploy` to a hosted platform** — self-hosted by design; there's no managed target.
 - **Sub-minute cron schedules**, and **backfilling missed occurrences** — see
   [crons.md](./crons.md#semantics).
-- **Exactly-once webhook delivery** — at-least-once with a stable dedup key. See
+- **Exactly-once webhook delivery** — delivery is durable and retried, but at-least-once, so every
+  attempt carries a stable dedup key. See
   [webhooks.md](./webhooks.md#at-least-once-and-what-your-receiver-owes).
 
 Something missing? [File an issue](https://github.com/skein-js/skein-js/issues) — compatibility

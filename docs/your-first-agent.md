@@ -115,6 +115,10 @@ Try it: change `echo:` to `you said:` in `src/echo-graph.ts` and save. The serve
 **keeps your existing threads** — send another message in the console and you will see the new reply
 in the same conversation.
 
+Those four ideas are enough to finish this guide. When you want the rest — custom state, branching,
+subgraphs, `interrupt()` — [LangGraph essentials](./langgraph-essentials.md) is the short version,
+with a link out to the LangChain docs on each one.
+
 ## 5. Give it a real model
 
 Now swap the echo for an LLM. Install a provider:
@@ -262,9 +266,17 @@ Then pick a host: [Cloud Run](./deploy-cloud-run.md), [Fly](./deploy-fly.md),
 
 ## Where to next
 
+**Read [what you need to know](./what-you-need-to-know.md).** It is the map of everything this guide
+skipped — checkpoints, threads, multitask, interrupts, memory, what production actually needs — a few
+lines each, so you can tell which page you want before you need it.
+
+If you would rather understand the graph model first,
+[LangGraph essentials](./langgraph-essentials.md) covers state, reducers, branching, subgraphs and
+`interrupt()`, and links out to the LangChain docs on each.
+
+Then, as you need them:
+
 - [Recipes](./recipes/) — auth, human-in-the-loop, background runs, CORS
 - [The console](./console.md) — what else that UI does: time travel, interrupt approvals, crons
 - [Agent Protocol](./agent-protocol.md) — every endpoint your server exposes
 - [Scaffolding reference](./scaffolding.md) — every flag, and the Nx generators
-- [LangGraph.js docs](https://docs.langchain.com/oss/javascript/langgraph/overview) — for graphs more
-  interesting than a straight line: branching, subgraphs, custom state

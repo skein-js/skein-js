@@ -26,6 +26,8 @@ const DOCS = [
   "docs/embedding.md",
   "docs/serving-a-single-graph.md",
   "docs/agent-protocol.md",
+  "docs/what-you-need-to-know.md",
+  "docs/langgraph-essentials.md",
   "docs/features.md",
   "docs/assistants.md",
   "docs/state-and-context.md",

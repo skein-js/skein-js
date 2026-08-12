@@ -107,8 +107,13 @@ async function remember(state: State, config: LangGraphRunnableConfig) {
 }
 
 // …and inside a tool, where there's no config argument, reach for getStore().
-const store = getStore();
+async function saveName(name: string) {
+  await getStore().put(["users", userId], "profile", { name });
+}
 ```
+
+`getStore()` reads the run currently executing, so it has to be called inside the function — at
+module scope there is no run yet and it throws.
 
 Both reach the same store — skein bridges its own into every run as a LangGraph `BaseStore`, so
 nothing here is skein-specific and the same graph runs unchanged on LangGraph Platform.

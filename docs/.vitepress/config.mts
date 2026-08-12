@@ -188,8 +188,8 @@ export default defineConfig({
       text: "Edit this page on GitHub",
     },
 
-    // Mirrors the documentation map in index.md. That table stays the in-repo index; this is the
-    // canonical one for readers on the web.
+    // The canonical index for readers on the web. Hand-written on purpose: the reading order below
+    // is the argument, and no directory layout would produce it (docs/ is flat).
     sidebar: [
       {
         text: "Getting started",
@@ -200,6 +200,13 @@ export default defineConfig({
           { text: "Getting started", link: "/getting-started" },
           { text: "Scaffolding a project", link: "/scaffolding" },
           { text: "Using skein-js", link: "/using-skein" },
+        ],
+      },
+      {
+        text: "Core concepts",
+        items: [
+          { text: "What you need to know", link: "/what-you-need-to-know" },
+          { text: "LangGraph essentials", link: "/langgraph-essentials" },
         ],
       },
       {

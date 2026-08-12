@@ -41,13 +41,17 @@ one displaced by a [multitask strategy](./runs.md#multitask-what-happens-to-the-
 before it began, has nothing to report — so do not treat "a run was created" as "a callback is
 owed". Only a run that started does.
 
-Every request also carries three headers:
+Every request also carries three headers, whenever the store records deliveries — which both bundled
+drivers do:
 
 | Header                | Use                                                         |
 | --------------------- | ----------------------------------------------------------- |
 | `X-Skein-Delivery-Id` | Stable across every retry — **this is your dedup key**      |
 | `X-Skein-Attempt`     | Which attempt this is, counting the first inline one as `1` |
 | `X-Skein-Signature`   | Present when a signing key is configured — see below        |
+
+The one exception is a custom store that doesn't record deliveries — see
+[the guarantee](#the-guarantee-why-a-callback-survives-a-crash) below.
 
 ## The guarantee: why a callback survives a crash
 
@@ -61,7 +65,14 @@ skein attempts the first delivery inline, so a healthy receiver hears within mil
 failure falls through to the retry schedule.
 
 A [bring-your-own store](./storage.md) that does not implement the `deliveries` repo degrades to the
-older best-effort path — one POST, failures logged and swallowed. Both bundled drivers implement it.
+older best-effort path — one POST, failures logged and swallowed. Both bundled drivers implement it,
+so this only bites a store you wrote yourself.
+
+> [!WARNING]
+> That fallback POST carries **no `X-Skein-Delivery-Id`, no `X-Skein-Attempt` and no
+> `X-Skein-Signature`** — there is no delivery row for those to come from. A receiver that dedupes on
+> the header, or rejects unsigned requests, will find nothing to work with. If you implement a custom
+> store and want callbacks at all, implement the `deliveries` repo.
 
 The body is **stored**, not re-rendered at send time. It has to be: a stateless `POST /runs` deletes
 the thread the server made for it as soon as the run settles, so an hour later there is no run row

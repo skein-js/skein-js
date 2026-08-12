@@ -1084,14 +1084,15 @@ Every one of these runs, and CI proves it.
 | [`triage-agent`](https://github.com/skein-js/skein-js/tree/main/examples/triage-agent)             | **Start here** — schedules, background work, approvals, memory and rewind in one agent. **No API key, no network needed** |
 | [`chat-app`](https://github.com/skein-js/skein-js/tree/main/examples/chat-app)                     | **Flagship** — a research assistant with thinking, web search and memory, behind a Next.js + shadcn/ui UI                 |
 | [`migrated-langgraph`](https://github.com/skein-js/skein-js/tree/main/examples/migrated-langgraph) | The drop-in proof — a stock LangGraph project running under `skein dev`                                                   |
-| [`migrated-langgraph`](https://github.com/skein-js/skein-js/tree/main/examples/migrated-langgraph) | The drop-in proof — a stock LangGraph project running under `skein dev`                                                   |
 
-Six more in [`examples/`](https://github.com/skein-js/skein-js/tree/main/examples), including one per
-adapter — standalone, and mounted inside an app that already has its own routes.
+Eleven more in [`examples/`](https://github.com/skein-js/skein-js/tree/main/examples), including one
+per adapter — standalone, and mounted inside an app that already has its own routes.
 
 ## Where to go next
 
-New here? [**Your first agent**](./your-first-agent.md) goes from an empty directory to deployed.
+New here? [**Your first agent**](./your-first-agent.md) goes from an empty directory to deployed,
+then [**what you need to know**](./what-you-need-to-know.md) maps everything it skipped. Never
+written a graph? [**LangGraph essentials**](./langgraph-essentials.md) is the short version.
 Wondering if skein does something specific? The [**features page**](./features.md) answers it in one
 line. Building _with_ an AI agent?
 [`llms.txt`](https://github.com/skein-js/skein-js/blob/main/llms.txt) hands it the whole set.
@@ -1429,7 +1430,9 @@ Being honest about the edges is part of the pitch:
 - **No WebSocket transport.** Server-sent events cover the client experience and the React SDK
   doesn't care.
 - **No sub-minute schedules**, and no backfilling schedules missed during an outage.
-- **No exactly-once webhook delivery.** At-least-once with a stable dedup key, documented loudly.
+- **No exactly-once webhook delivery.** Delivery is durable — the callback commits in the same
+  transaction as the run's terminal status, and is retried until it lands. What it is not is
+  exactly-once, which is why every attempt carries a stable dedup key.
 - **We don't restate LangGraph's docs.** We document our _conformance_ and the delta.
 
 The full list of what's shipped, in preview, and planned is on the [features page](./features.md) and
@@ -1566,6 +1569,10 @@ its name.
 Try it: change `echo:` to `you said:` in `src/echo-graph.ts` and save. The server hot-reloads and
 **keeps your existing threads** — send another message in the console and you will see the new reply
 in the same conversation.
+
+Those four ideas are enough to finish this guide. When you want the rest — custom state, branching,
+subgraphs, `interrupt()` — [LangGraph essentials](./langgraph-essentials.md) is the short version,
+with a link out to the LangChain docs on each one.
 
 ## 5. Give it a real model
 
@@ -1714,12 +1721,20 @@ Then pick a host: [Cloud Run](./deploy-cloud-run.md), [Fly](./deploy-fly.md),
 
 ## Where to next
 
+**Read [what you need to know](./what-you-need-to-know.md).** It is the map of everything this guide
+skipped — checkpoints, threads, multitask, interrupts, memory, what production actually needs — a few
+lines each, so you can tell which page you want before you need it.
+
+If you would rather understand the graph model first,
+[LangGraph essentials](./langgraph-essentials.md) covers state, reducers, branching, subgraphs and
+`interrupt()`, and links out to the LangChain docs on each.
+
+Then, as you need them:
+
 - [Recipes](./recipes/) — auth, human-in-the-loop, background runs, CORS
 - [The console](./console.md) — what else that UI does: time travel, interrupt approvals, crons
 - [Agent Protocol](./agent-protocol.md) — every endpoint your server exposes
 - [Scaffolding reference](./scaffolding.md) — every flag, and the Nx generators
-- [LangGraph.js docs](https://docs.langchain.com/oss/javascript/langgraph/overview) — for graphs more
-  interesting than a straight line: branching, subgraphs, custom state
 
 
 ---
@@ -3928,6 +3943,405 @@ thread itself is gated.
 
 ---
 
+<!-- source: docs/what-you-need-to-know.md -->
+
+# What you need to know
+
+You have an agent running. This page is the map of everything [the tutorial](./your-first-agent.md)
+skipped: the parts you meet the moment your agent does something real, what each one is for, and
+which page owns the details. Nothing here is deep — every section hands off after a few lines.
+
+If you read only three of them, read **what the agent knows**, **checkpoints**, and **where all
+this lives in production**. Everything else is a consequence of those.
+
+## A run is one turn
+
+You give the server an input, it executes your graph once, and that execution is a **run**. What
+differs is how you wait for it: hold the connection until it finishes, stream tokens as they are
+produced, or take an id back immediately and let it work.
+
+Two things surprise people. A run is not tied to the connection that started it — drop the stream
+and the run keeps going. And a second message arriving mid-run does not queue by default: the
+default [multitask strategy](./runs.md#multitask-what-happens-to-the-run-already-going) is `reject`,
+which fails the _second_ run with a 422 and leaves the first alone. Queueing, interrupting and
+rolling back are all available — you just have to ask.
+
+→ [Runs](./runs.md) — every mode, cancelling, timeouts, deferred starts
+
+## What the agent knows
+
+A run carries four separate bags, and only one of them is remembered:
+
+| You pass              | Persisted?                     |
+| --------------------- | ------------------------------ |
+| `input`               | **Yes** — it becomes state     |
+| `context`             | No — this run only             |
+| `config.configurable` | No — this run only             |
+| `metadata`            | Yes, but as a searchable label |
+
+**The trap:** putting a fact in `context` and expecting the agent to still know it next turn. If it
+should survive the turn, it belongs in `input`.
+
+→ [State, context & persistence](./state-and-context.md) — what each bag is for, and reducers
+
+## Checkpoints: why anything survives at all
+
+LangGraph saves your state at every node boundary. That one mechanism is what buys multi-turn
+conversations, human-in-the-loop, time travel and crash recovery — they are not four features, they
+are four consequences of the same thing.
+
+> [!WARNING]
+> **No checkpointer, none of the above.** Each run starts empty, `interrupt()` has nowhere to park,
+> and resuming silently does nothing. `skein dev` configures one for you, as do
+> `embedInMemoryGraphs` and `embedPostgresGraphs` — the mistake is constructing your own instead.
+
+→ [Checkpoints](./state-and-context.md#checkpoints-what-makes-everything-else-work)
+
+## Threads: one conversation
+
+A **thread** is a conversation: the state, and every checkpoint behind it. You can let the server
+mint thread ids, or address one by a key you already have — a ticket number, a phone number — so
+your system needs no mapping table of its own.
+
+Because every checkpoint is addressable, you can fork one and run forward from the branch. That is
+"edit and resubmit", and it is the same mechanism as everything above.
+
+→ [Threads](./threads.md) · [Time travel](./threads.md#time-travel-re-run-a-turn-a-different-way)
+
+## Memory: what outlives the conversation
+
+Two stores, two lifetimes. The **checkpointer** holds one thread's state and history, written for
+you on every step. The **store** holds whatever you put in it, under namespaces you choose, across
+every thread — read and written explicitly from your nodes, with semantic search and TTL.
+
+**The trap:** keeping a user's name in the thread. They start a new conversation and the agent has
+forgotten who they are. Facts about a _person_ go in the store; facts about _this conversation_ go
+in state.
+
+→ [Memory](./memory.md) — profile vs collection shapes, the dedup trap, recall ·
+[Storage](./storage.md) — the drivers underneath, and bringing your own
+
+## Pausing for a human
+
+Call `interrupt()` inside a node and the run **ends** on a checkpoint. Nothing holds a connection,
+nothing holds a timer, nothing is billed while it waits. Someone approves an hour or a week later,
+you resume with a command, and the graph carries on from where it stopped.
+
+This is the feature that most often justifies durable storage, because a pause that cannot survive
+a redeploy is not a pause.
+
+→ [Human-in-the-loop](./human-in-the-loop.md)
+
+## Watching it happen
+
+Runs stream over server-sent events. LangGraph's stream modes — values, updates, messages, custom —
+map onto the wire unchanged, so the LangChain SDKs and `useStream` work against your server with a
+URL change and nothing else.
+
+A dropped stream is recoverable: reconnect and join the same run, from the same client or a second
+one.
+
+→ [Streaming](./streaming.md) · [Frontend SDKs](./react-sdk.md)
+
+## Work that outlives the request
+
+Not everything is a chat turn. Hand skein a job and get an id back; run a graph on a schedule; be
+told when a run finishes by an HTTP callback to your own service.
+
+**The trap:** treating a webhook as a ledger. Delivery is durable but **at-least-once** — dedupe on
+`X-Skein-Delivery-Id` and answer `2xx` only once your work is committed. The API stays the source of
+truth for run state.
+
+→ [Background jobs](./background-jobs.md) · [Crons](./crons.md) · [Webhooks](./webhooks.md)
+
+## Configuration without a redeploy
+
+An **assistant** is a named, versioned configuration of one graph — a prompt, a model choice, a set
+of knobs. Ship a prompt change by creating a version, and roll it back in one call. Your graph code
+does not move.
+
+→ [Assistants](./assistants.md)
+
+## Where all this lives in production
+
+Development is entirely in-memory and is **only** for development. Production is Postgres and
+Redis, and they buy different things:
+
+|              | Buys you                                                                                     |
+| ------------ | -------------------------------------------------------------------------------------------- |
+| **Postgres** | State, checkpoints, threads, runs, memories and webhook rows that survive a restart          |
+| **Redis**    | A durable run queue, retry schedules, and streaming that works across more than one instance |
+
+Your graph code is identical either way — the drivers are injected, not imported.
+
+→ [Storage](./storage.md) · [Runs & Redis](./runs-and-redis.md) · [Deploy](./deploy.md)
+
+## Where to go next
+
+- [Features](./features.md) — the same ground as a capability table, with what ships and what
+  doesn't
+- [LangGraph essentials](./langgraph-essentials.md) — the graph model underneath all of this, and
+  where to go deep on it
+
+
+---
+
+<!-- source: docs/langgraph-essentials.md -->
+
+# LangGraph essentials
+
+skein-js serves LangGraph.js graphs **unchanged**. It wraps none of the API below, adds no dialect
+of its own, and the graph you write here runs on LangGraph Platform without an edit. This page is
+the shallow dive: the parts of LangGraph you need to read and modify your own agent, each with a
+link to the LangChain docs that own it in full.
+
+It is not a LangGraph tutorial. When a section is the one you actually need,
+[Thinking in LangGraph](https://docs.langchain.com/oss/javascript/langgraph/thinking-in-langgraph)
+and the reference behind each **Go deeper** link are where to spend the time.
+
+## The smallest graph
+
+State, a node, edges and `.compile()` — the first four concepts below, all in the graph
+[`npm create skein-js`](./scaffolding.md) scaffolds for you:
+
+```ts
+import { AIMessage, type BaseMessage } from "@langchain/core/messages";
+import { MessagesAnnotation, StateGraph } from "@langchain/langgraph";
+
+function echo(state: typeof MessagesAnnotation.State): { messages: BaseMessage[] } {
+  const last = state.messages.at(-1);
+  const text = typeof last?.content === "string" ? last.content : "";
+  return { messages: [new AIMessage(`echo: ${text}`)] };
+}
+
+export const graph = new StateGraph(MessagesAnnotation)
+  .addNode("echo", echo)
+  .addEdge("__start__", "echo")
+  .addEdge("echo", "__end__")
+  .compile();
+```
+
+## State and channels
+
+State is the data flowing through your agent, declared as **channels**. `MessagesAnnotation` is the
+ready-made one for chat — a list of messages that appends. When you need your own shape, declare it:
+
+```ts
+import { Annotation, MessagesAnnotation } from "@langchain/langgraph";
+
+const State = Annotation.Root({
+  ...MessagesAnnotation.spec,
+  draft: Annotation<string>(),
+});
+```
+
+Keep **raw data in state and format prompts inside nodes**. Everything in state is checkpointed on
+every step, so a formatted prompt stored in a channel is a copy you pay for forever.
+
+**Go deeper →** [Graph API](https://docs.langchain.com/oss/javascript/langgraph/graph-api)
+
+## Reducers
+
+A channel's reducer decides what happens when a node returns a value for it: replace, or combine.
+The `messages` reducer appends, which is why returning one message adds it rather than truncating
+the conversation to a single entry.
+
+```ts
+// appends to messages — it does not overwrite the list
+return { messages: [new AIMessage("done")] };
+```
+
+This bites in one specific place: **editing state by hand**, from the API or the
+[console](./console.md). You write through the same reducers, so patching `{ messages: [...] }` to
+fix a transcript appends to it. Use `asNode` to attribute the write to a node whose reducer does
+what you meant. See [state & context](./state-and-context.md#state-what-the-agent-knows-right-now).
+
+**Go deeper →** [Graph API](https://docs.langchain.com/oss/javascript/langgraph/graph-api)
+
+## Nodes
+
+A node is a plain function. It receives the current state and returns **only the part that
+changed** — never the whole state. Because it is a plain function, you can import it in a test,
+call it with a literal, and step through it in a debugger without a server anywhere.
+
+Nodes may be async, and they may reach for injected resources — see
+[persistence](#persistence-the-checkpointer-and-the-store) below.
+
+**Go deeper →** [Graph API](https://docs.langchain.com/oss/javascript/langgraph/graph-api)
+
+## Edges and conditional edges
+
+Edges say what runs next. `__start__` and `__end__` are the built-in entry and exit points. A
+straight line needs only `addEdge`; branching — the reason it is a graph at all — uses
+`addConditionalEdges` with a function that returns the name of the next node:
+
+```ts
+const graph = new StateGraph(State)
+  .addNode("classify", classify)
+  .addNode("approve", approve)
+  .addNode("send", send)
+  .addEdge("__start__", "classify")
+  .addConditionalEdges("classify", (state) => (state.needsApproval ? "approve" : "send"))
+  .compile();
+```
+
+Cycles are allowed and expected: an agent loop is a node that routes back to the model until there
+is nothing left to call.
+
+**Go deeper →**
+[Workflows and agents](https://docs.langchain.com/oss/javascript/langgraph/workflows-agents)
+
+## `.compile()`
+
+`.compile()` turns the definition into something runnable, and **what it returns is what skein
+serves** — the value your `langgraph.json` points at:
+
+```json
+{ "graphs": { "agent": "./src/agent-graph.ts:graph" } }
+```
+
+Do not pass a `checkpointer` or `store` to `.compile()` yourself. skein injects both per run; see
+below.
+
+**Go deeper →** [Graph API](https://docs.langchain.com/oss/javascript/langgraph/graph-api)
+
+## Prebuilt agents
+
+Most agents are the same loop: call the model, run the tool it asked for, call the model again.
+`createAgent` is that loop, already written:
+
+```ts
+import { createAgent } from "langchain";
+
+export const graph = createAgent({
+  model: "anthropic:claude-sonnet-5",
+  tools: [getWeather],
+});
+```
+
+It returns a compiled graph like any other, so everything skein does — threads, streaming,
+interrupts, memory — works against it unchanged.
+
+> [!NOTE]
+> You will meet **`createReactAgent`** from `@langchain/langgraph/prebuilt` in older code — including
+> skein's own examples and scaffolder, which have not been migrated yet. It still works, but it is
+> `@deprecated` as of `@langchain/langgraph` 1.4: it moved to the `langchain` package and was renamed.
+> The parameter changed too — `llm` became `model`, which also accepts a `"provider:model"` string.
+
+**Go deeper →** [Agents](https://docs.langchain.com/oss/javascript/langchain/agents)
+
+## Tools
+
+A tool is a function plus the metadata a model needs to decide when to call it:
+
+```ts
+import { tool } from "@langchain/core/tools";
+import { z } from "zod";
+
+const getWeather = tool(async ({ city }: { city: string }) => `It's 21°C in ${city}.`, {
+  name: "get_weather",
+  description: "Get the current weather for a city.",
+  schema: z.object({ city: z.string().describe("City name, e.g. 'Nairobi'") }),
+});
+```
+
+The `description` and the schema's `.describe()` calls are the model's **only** context for the
+tool. Write them for a reader who knows nothing else, because that is exactly the situation.
+
+**Go deeper →** [Tools](https://docs.langchain.com/oss/javascript/langchain/tools)
+
+## `interrupt()` and commands
+
+`interrupt()` pauses the graph from inside a node. The run **ends** on a checkpoint — no connection
+held, no timer running — and resuming later returns your supplied value from the `interrupt()`
+call:
+
+```ts
+import { interrupt } from "@langchain/langgraph";
+
+const answer = interrupt({ question: "Send this email?", draft: state.draft });
+```
+
+This is the concept most dependent on the checkpointer: without one, `interrupt()` has nowhere to
+park and resume silently no-ops. skein exposes resuming as `command: { resume }` on a normal run
+create, plus `resume` / `update` / `goto`.
+
+**Go deeper →** [Interrupts](https://docs.langchain.com/oss/javascript/langgraph/interrupts) ·
+skein side: [human-in-the-loop](./human-in-the-loop.md)
+
+## Subgraphs
+
+A compiled graph can be a node in another graph. That is how you keep a large agent readable — a
+research step, a drafting step, an approval step, each its own graph with its own state, composed
+at the top. skein serves the outer graph; the nesting is invisible to the protocol.
+
+**Go deeper →** [Subgraphs](https://docs.langchain.com/oss/javascript/langgraph/use-subgraphs)
+
+## Stream modes
+
+`graph.stream()` takes a `streamMode` — `values`, `updates`, `messages`, `custom`, `events`,
+`debug` — and you may request several at once. skein maps each of them onto Agent Protocol SSE
+frames without translation, which is why the LangChain SDKs and `useStream` work against a skein
+server with only a URL change.
+
+**Go deeper →** [Streaming](https://docs.langchain.com/oss/javascript/langgraph/streaming) ·
+skein side: [streaming](./streaming.md)
+
+## Persistence: the checkpointer and the store
+
+LangGraph defines two persistence interfaces, and **skein supplies both** — a checkpointer bound to
+the thread, and a `BaseStore` bridged from whichever [storage driver](./storage.md) you configured.
+Your nodes reach the store the usual LangGraph way:
+
+```ts
+import { getStore, type LangGraphRunnableConfig } from "@langchain/langgraph";
+
+// In a node, the store arrives on the config…
+async function remember(state: State, config: LangGraphRunnableConfig) {
+  await config.store?.put(["users", userId], "profile", { name: state.name });
+}
+
+// …and inside a tool, where there's no config argument, reach for getStore().
+async function saveName(name: string) {
+  await getStore().put(["users", userId], "profile", { name });
+}
+```
+
+`getStore()` reads the run currently executing, so call it **inside** the function. At module scope
+there is no run yet and it throws on import.
+
+> [!WARNING]
+> **Do not construct your own checkpointer or store and pass them to `.compile()`.** It is the
+> single most common way this breaks: the graph then persists somewhere skein does not know about,
+> so threads, time travel and interrupt-resume all read the wrong state. Let the injection happen.
+
+**Go deeper →** [Persistence](https://docs.langchain.com/oss/javascript/langgraph/persistence) ·
+skein side: [state & context](./state-and-context.md), [storage](./storage.md)
+
+## Who owns what
+
+| LangGraph owns                        | skein-js owns                                       |
+| ------------------------------------- | --------------------------------------------------- |
+| State, channels, reducers             | Threads, runs, assistants and their versions        |
+| Nodes, edges, subgraphs, `.compile()` | The HTTP surface — Agent Protocol, SSE, the console |
+| Tools and the agent loop              | The run queue, multitask strategies, cancellation   |
+| `interrupt()` and commands            | Crons, run-completion webhooks, idempotency         |
+| Stream modes                          | Storage drivers, and injecting them per run         |
+
+The line matters when something goes wrong: if it is about what your graph _computed_, it is a
+LangGraph question. If it is about what got _served, stored or scheduled_, it is ours.
+
+## See also
+
+- [What you need to know](./what-you-need-to-know.md) — the skein-side map of the same territory
+- [Your first agent](./your-first-agent.md) — build one from an empty directory
+- [LangGraph CLI compatibility](./langgraph-cli-compat.md) — what `langgraph.json` supports
+- [Building a runner](./building-a-runner.md) — serving the protocol from something that isn't
+  LangGraph
+
+
+---
+
 <!-- source: docs/features.md -->
 
 # Features
@@ -4021,7 +4435,8 @@ organised by parity instead.
 - **`skein deploy` to a hosted platform** — self-hosted by design; there's no managed target.
 - **Sub-minute cron schedules**, and **backfilling missed occurrences** — see
   [crons.md](./crons.md#semantics).
-- **Exactly-once webhook delivery** — at-least-once with a stable dedup key. See
+- **Exactly-once webhook delivery** — delivery is durable and retried, but at-least-once, so every
+  attempt carries a stable dedup key. See
   [webhooks.md](./webhooks.md#at-least-once-and-what-your-receiver-owes).
 
 Something missing? [File an issue](https://github.com/skein-js/skein-js/issues) — compatibility
@@ -4252,8 +4667,13 @@ async function remember(state: State, config: LangGraphRunnableConfig) {
 }
 
 // …and inside a tool, where there's no config argument, reach for getStore().
-const store = getStore();
+async function saveName(name: string) {
+  await getStore().put(["users", userId], "profile", { name });
+}
 ```
+
+`getStore()` reads the run currently executing, so it has to be called inside the function — at
+module scope there is no run yet and it throws.
 
 Both reach the same store — skein bridges its own into every run as a LangGraph `BaseStore`, so
 nothing here is skein-specific and the same graph runs unchanged on LangGraph Platform.
@@ -4974,13 +5394,17 @@ one displaced by a [multitask strategy](./runs.md#multitask-what-happens-to-the-
 before it began, has nothing to report — so do not treat "a run was created" as "a callback is
 owed". Only a run that started does.
 
-Every request also carries three headers:
+Every request also carries three headers, whenever the store records deliveries — which both bundled
+drivers do:
 
 | Header                | Use                                                         |
 | --------------------- | ----------------------------------------------------------- |
 | `X-Skein-Delivery-Id` | Stable across every retry — **this is your dedup key**      |
 | `X-Skein-Attempt`     | Which attempt this is, counting the first inline one as `1` |
 | `X-Skein-Signature`   | Present when a signing key is configured — see below        |
+
+The one exception is a custom store that doesn't record deliveries — see
+[the guarantee](#the-guarantee-why-a-callback-survives-a-crash) below.
 
 ## The guarantee: why a callback survives a crash
 
@@ -4994,7 +5418,14 @@ skein attempts the first delivery inline, so a healthy receiver hears within mil
 failure falls through to the retry schedule.
 
 A [bring-your-own store](./storage.md) that does not implement the `deliveries` repo degrades to the
-older best-effort path — one POST, failures logged and swallowed. Both bundled drivers implement it.
+older best-effort path — one POST, failures logged and swallowed. Both bundled drivers implement it,
+so this only bites a store you wrote yourself.
+
+> [!WARNING]
+> That fallback POST carries **no `X-Skein-Delivery-Id`, no `X-Skein-Attempt` and no
+> `X-Skein-Signature`** — there is no delivery row for those to come from. A receiver that dedupes on
+> the header, or rejects unsigned requests, will find nothing to work with. If you implement a custom
+> store and want callbacks at all, implement the `deliveries` repo.
 
 The body is **stored**, not re-rendered at send time. It has to be: a stateless `POST /runs` deletes
 the thread the server made for it as soon as the run settles, so an hour later there is no run row
