@@ -144,6 +144,14 @@ export default withMermaid(
       }
     },
 
+    // Mermaid reaches dayjs, which is CJS. Left unlisted, the dev server serves it raw over @fs and
+    // the page dies on `does not provide an export named 'default'` — diagrams silently fail to render,
+    // while the production build is fine because rollup handles the interop itself. Naming them here
+    // makes esbuild pre-bundle both and emit the ESM wrapper the dev server needs.
+    vite: {
+      optimizeDeps: { include: ["mermaid", "dayjs"] },
+    },
+
     // `:::tabs` containers, used on the landing page so the three on-ramps are a choice rather than
     // three stacked walls of content. Client half is registered in theme/index.ts.
     markdown: {
