@@ -11,7 +11,7 @@
 
 [![npm](https://img.shields.io/npm/v/skein-js?logo=npm&color=cb3837&label=skein-js)](https://www.npmjs.com/package/skein-js)&nbsp;[![downloads](https://img.shields.io/npm/dm/skein-js?color=blue)](https://www.npmjs.com/package/skein-js)&nbsp;[![license](https://img.shields.io/npm/l/skein-js?color=green)](./LICENSE)&nbsp;[![CI](https://github.com/skein-js/skein-js/actions/workflows/ci.yml/badge.svg)](https://github.com/skein-js/skein-js/actions/workflows/ci.yml)&nbsp;[![docs](https://img.shields.io/badge/docs-skein--js.github.io-3b82f6)](https://skein-js.github.io/skein-js/)
 
-**The open-source alternative to LangGraph Platform (now LangSmith Deployment) — for TypeScript.**
+**The open-source LangGraph Platform alternative, for TypeScript.** _(LangGraph Platform is now LangSmith Deployment.)_
 
 Self-host your [LangGraph.js](https://docs.langchain.com/oss/javascript/langgraph/overview) agents behind the same
 standard [Agent Protocol](https://github.com/langchain-ai/agent-protocol) API the LangGraph SDK,
@@ -31,13 +31,14 @@ Think of it as [**aegra**](https://github.com/aegra/aegra) for the TypeScript ec
 
 ## Contents
 
-- [What problem does this solve?](#what-problem-does-this-solve)
-- [Core principles](#core-principles)
 - [Quick start](#quick-start)
+- [What you get](#what-you-get)
+- [The console](#the-console)
 - [Building rich agent UIs](#building-rich-agent-uis)
 - [Using the CLI](#using-the-cli)
 - [Deploy anywhere](#deploy-anywhere)
 - [Embedding skein-js in your own server](#embedding-skein-js-in-your-own-server)
+- [Why skein-js?](#why-skein-js)
 - [Under the hood](#under-the-hood)
 - [Packages](#packages)
 - [Examples](#examples)
@@ -46,98 +47,10 @@ Think of it as [**aegra**](https://github.com/aegra/aegra) for the TypeScript ec
 - [Contributing & feedback](#contributing--feedback)
 - [License](#license)
 
-## What problem does this solve?
-
-Say you've written an agent as a LangGraph.js graph. On its own, a graph is just a function you call
-in-process — to put it in front of a chat UI or another service you need an actual **server**, and a
-capable agent server is a surprising amount of plumbing:
-
-- **Threads** — conversations that persist across requests, with full state and history.
-- **Runs** — a way to execute the graph in three shapes: wait for the answer, **stream** tokens as
-  they're generated, or kick it off in the background.
-- **Streaming over the wire** — pushing tokens, tool calls, and reasoning to a browser as they
-  happen (and letting a client reconnect and replay if the connection drops).
-- **Human-in-the-loop** — pausing a run for approval and resuming it later.
-- **Long-term memory** — storage that outlives a single conversation.
-- **Auth, CORS, persistence, scaling** — the boring-but-essential production concerns.
-
-The **[Agent Protocol](https://github.com/langchain-ai/agent-protocol)** is the open HTTP + SSE
-standard that describes all of this. Because it's a standard, any client that speaks it —
-[`@langchain/langgraph-sdk`](https://github.com/langchain-ai/langgraphjs/tree/main/libs/sdk), the
-[`useStream`](https://reference.langchain.com/javascript/langchain-langgraph-sdk/react/useStream) React hook,
-[Agent Chat UI](https://github.com/langchain-ai/agent-chat-ui), LangGraph Studio — works with any
-server that implements it.
-
-The **LangGraph CLI** (`langgraph dev`) gives you such a server on your laptop. Taking it to
-production is where the options narrow:
-
-- **LangGraph Platform** (the managed deployment target, now **LangSmith Deployment**) is a **paid
-  product** — self-hosting it in production needs a **commercial Enterprise license**
-  ([pricing & licensing below](#a-note-on-langgraph-platform-pricing)).
-- The leading _open_, self-hostable alternative, [**aegra**](https://github.com/aegra/aegra), is
-  **Python / FastAPI only**.
-
-So a **TypeScript team that wants to truly self-host** — your infra, your data, no license key, no
-per-run bill — was stuck choosing between the paid platform, a Python sidecar, or hand-rolling an
-HTTP layer around the graph.
-
-**skein-js is that missing piece:** an open-source, TypeScript-native alternative to LangGraph
-Platform that you host yourself. It serves the same Agent Protocol your existing clients already
-speak, and the `skein` CLI is a drop-in for the LangGraph CLI — so your `langgraph.json`, graphs, and
-clients keep working unchanged.
-
-## Core principles
-
-- **🔓 Self-hosted, no lock-in.** Your agents, your infrastructure, your data — Apache-2.0, no
-  license key, no control plane to call home to, no per-run bill.
-- **🔁 Drop-in LangGraph CLI compatibility.** `skein dev` / `up` / `build` mirror the LangGraph CLI,
-  and your `langgraph.json` stays **unchanged**. Migrating off (or comparing against) the LangGraph
-  CLI is a one-word change. If something works under `langgraph dev` but not `skein dev`, that's a
-  bug we want to hear about — [please file it](https://github.com/skein-js/skein-js/issues).
-- **♻️ Reuse first.** On JavaScript the Agent Protocol server internals are already open source
-  ([`@langchain/langgraph-api`](https://github.com/langchain-ai/langgraphjs/tree/main/libs/langgraph-api), MIT), so
-  skein-js doesn't rebuild them. It reuses the LangGraph runtime, checkpointers, `langgraph.json`
-  parser, schemas, and SDK/types, and adds only the durable-production, multi-framework, and
-  drop-in-CLI layer that OSS lacks. See [docs/reuse.md](./docs/reuse.md).
-- **✨ Rich agent UX out of the box.** Streaming tokens and model **thinking**, structured
-  **tool-result cards**, **human-in-the-loop** interrupt/resume, and cross-thread **long-term
-  memory** — everything you need to communicate effectively with an agent, not just get a final
-  string. See [Building rich agent UIs](#building-rich-agent-uis).
-
-|                                 | LangGraph Platform                      | aegra            | **skein-js**                             |
-| ------------------------------- | --------------------------------------- | ---------------- | ---------------------------------------- |
-| Self-hosted in production       | 💲 Enterprise license only              | ✅ free          | ✅ free                                  |
-| Server runtime license          | Elastic License 2.0 (source-available)  | MIT              | **Apache-2.0**                           |
-| Cost                            | $39/seat/mo + usage; self-host = custom | free             | **free**                                 |
-| Language                        | —                                       | Python / FastAPI | **TypeScript / Node**                    |
-| HTTP framework                  | —                                       | FastAPI          | **Express · Fastify · NestJS · Next.js** |
-| Agent Protocol                  | ✅                                      | ✅               | ✅                                       |
-| Drop-in for the LangGraph _CLI_ | —                                       | partial          | **✅ (`skein dev` / `up` / `build`)**    |
-| Cron / scheduled runs           | ✅                                      | ✅               | **✅ ([crons](./docs/crons.md))**        |
-
-### A note on LangGraph Platform pricing
-
-You _can_ self-host **LangGraph Platform** — but production self-hosting is an **Enterprise add-on
-that requires a commercial license key** (contact sales), because the platform's server runtime is
-source-available under the [Elastic License 2.0](https://www.elastic.co/licensing/elastic-license),
-not open source. The managed **Plus** plan is **$39 / seat / month**, includes one small serverless
-deployment, and meters additional deployment compute and storage through usage-based LCU/LSU rates.
-Fully self-hosted and hybrid deployment are **Enterprise-only** with custom pricing.
-
-If you're a **hobbyist or just getting started**, that model isn't ideal — you shouldn't need a
-commercial license or a per-run bill to ship a side project. And if the LangGraph Platform license
-_does_ make sense for you later (bigger team, SLAs, managed ops), that's fine too: skein-js is built
-to make moving **either direction** painless. Because it's a drop-in for the LangGraph CLI on an
-**unchanged `langgraph.json`**, switching _from_ LangGraph — or back _to_ it — is a one-word change,
-not a migration. Our goal is low lock-in in both directions, so you can start free on skein-js and
-adopt the platform if and when it's worth it.
-
-_LangSmith Deployment pricing/licensing as of August 2026 — see [langchain.com/pricing](https://www.langchain.com/pricing) and the [self-hosting docs](https://docs.langchain.com/langsmith/self-hosted). Always verify current terms._
+## Quick start
 
 > 🚧 **Status: pre-alpha, but end-to-end.** Dev _and_ self-hosted production both work today, with
-> Express, Fastify, NestJS, and Next.js adapters. See the [roadmap](./docs/roadmap.md).
-
-## Quick start
+> Express, Fastify, NestJS, Next.js and Fetch adapters. See the [roadmap](./docs/roadmap.md).
 
 ```bash
 npm create skein-js@latest my-agent
@@ -223,6 +136,45 @@ Edit `src/graph.ts` and save — the server hot-reloads while keeping your threa
 restart — state is restored from `.skein/`. Already have a LangGraph project? Just change your
 `"dev": "langgraph dev"` script to `"dev": "skein dev"` and run it — see
 [`examples/migrated-langgraph`](./examples/migrated-langgraph).
+
+## What you get
+
+Everyone building agents hits the same problems in the same order. skein-js is the server that has
+already solved them, so your repo stays the graph.
+
+| The concept           | What skein-js gives you                                                                                                                |
+| --------------------- | -------------------------------------------------------------------------------------------------------------------------------------- |
+| **Threads**           | Conversations that persist, addressable by your own key — a ticket id, a phone number. [→](./docs/threads.md)                          |
+| **Runs**              | Wait for it, stream it, or queue it in the background — plus what happens when a second message lands mid-run. [→](./docs/runs.md)     |
+| **Streaming**         | SSE with reconnect and replay, a real `streamEvents` mode, fan-out across instances. [→](./docs/streaming.md)                          |
+| **Human-in-the-loop** | `interrupt()` parks a run on a checkpoint holding no connection. Resume hours later, from any client. [→](./docs/human-in-the-loop.md) |
+| **Time travel**       | Fork from any past checkpoint and run forward — the machinery behind "edit and resubmit". [→](./docs/threads.md)                       |
+| **Long-term memory**  | A store reachable via `getStore()` inside a node, with semantic search and TTL. [→](./docs/memory.md)                                  |
+| **Assistants**        | The same graph configured per tenant or per experiment, versioned, with one-call rollback. [→](./docs/assistants.md)                   |
+| **Scheduled work**    | Crons that fire exactly once across instances, no leader election. [→](./docs/crons.md)                                                |
+| **Background jobs**   | Queue a run, get an id back, hear the result on a signed webhook. [→](./docs/background-jobs.md)                                       |
+| **Durable execution** | Postgres state, a Redis queue, crash recovery, and callbacks committed with the run. [→](./docs/webhooks.md)                           |
+| **Observability**     | LangSmith, PostHog and OpenTelemetry sinks — or your own. [→](./docs/observability.md)                                                 |
+
+Can skein do X? [**The features page**](./docs/features.md) answers it in one line per capability,
+including what _isn't_ built.
+
+## The console
+
+`skein dev` serves a full web UI at `/console` — the thing you'd otherwise reach for LangGraph Studio
+to get, except it's **served by your own server**. No account, no internet connection, no CORS to
+configure, no Cloudflare tunnel. It inherits your `auth` rather than needing a bypass.
+
+![The skein console: threads waiting for a human, counts, and recent activity](./docs/public/images/console/overview-light.png)
+
+**"Waiting for you"** is what makes human-in-the-loop real: every thread parked on an `interrupt()`,
+one click from approving, rejecting, or resuming it with any JSON. There's also a playground that
+renders your graph's shape and streams a run into it, an assistants view with schemas and version
+history, live run tails you can cancel or roll back, a store browser with semantic search, and cron
+management.
+
+It is **off by default in production** — opt in with `{"http": {"console": true}}`, because it can
+read and delete everything. [More about the console →](./docs/console.md)
 
 ## Building rich agent UIs
 
@@ -393,6 +345,93 @@ const runtime = await buildRuntime({
 const { router } = await skeinRouter({ deps: runtime.deps, cors: runtime.cors });
 app.use(router);
 ```
+
+## Why skein-js?
+
+Three honest answers, depending on what you'd otherwise do.
+
+### Instead of building the server yourself
+
+On its own, a graph is a function you call in-process. Putting it in front of a chat UI or another
+service means an actual **server** — and everything in [What you get](#what-you-get) is plumbing that
+has nothing to do with your agent. None of it is your product; all of it is load-bearing. It's a few
+thousand lines you'd own forever, and every piece has a subtle failure mode you'd find in production
+rather than in review.
+
+### Instead of the paid platform
+
+The **[Agent Protocol](https://github.com/langchain-ai/agent-protocol)** is the open HTTP + SSE
+standard that describes all of this. Because it's a standard, any client that speaks it —
+[`@langchain/langgraph-sdk`](https://github.com/langchain-ai/langgraphjs/tree/main/libs/sdk), the
+[`useStream`](https://reference.langchain.com/javascript/langchain-langgraph-sdk/react/useStream) React hook,
+[Agent Chat UI](https://github.com/langchain-ai/agent-chat-ui), LangGraph Studio — works with any
+server that implements it.
+
+The **LangGraph CLI** (`langgraph dev`) gives you such a server on your laptop. Taking it to
+production is where the options narrow:
+
+- **LangGraph Platform** (the managed deployment target, now **LangSmith Deployment**) is a **paid
+  product** — self-hosting it in production needs a **commercial Enterprise license**
+  ([pricing & licensing below](#a-note-on-langgraph-platform-pricing)).
+- The leading _open_, self-hostable alternative, [**aegra**](https://github.com/aegra/aegra), is
+  **Python / FastAPI only**.
+
+So a **TypeScript team that wants to truly self-host** — your infra, your data, no license key, no
+per-run bill — was stuck choosing between the paid platform, a Python sidecar, or hand-rolling an
+HTTP layer around the graph.
+
+**skein-js is that missing piece:** an open-source, TypeScript-native alternative to LangGraph
+Platform that you host yourself. It serves the same Agent Protocol your existing clients already
+speak, and the `skein` CLI is a drop-in for the LangGraph CLI — so your `langgraph.json`, graphs, and
+clients keep working unchanged.
+
+### Core principles
+
+- **🔓 Self-hosted, no lock-in.** Your agents, your infrastructure, your data — Apache-2.0, no
+  license key, no control plane to call home to, no per-run bill.
+- **🔁 Drop-in LangGraph CLI compatibility.** `skein dev` / `up` / `build` mirror the LangGraph CLI,
+  and your `langgraph.json` stays **unchanged**. Migrating off (or comparing against) the LangGraph
+  CLI is a one-word change. If something works under `langgraph dev` but not `skein dev`, that's a
+  bug we want to hear about — [please file it](https://github.com/skein-js/skein-js/issues).
+- **♻️ Reuse first.** On JavaScript the Agent Protocol server internals are already open source
+  ([`@langchain/langgraph-api`](https://github.com/langchain-ai/langgraphjs/tree/main/libs/langgraph-api), MIT), so
+  skein-js doesn't rebuild them. It reuses the LangGraph runtime, checkpointers, `langgraph.json`
+  parser, schemas, and SDK/types, and adds only the durable-production, multi-framework, and
+  drop-in-CLI layer that OSS lacks. See [docs/reuse.md](./docs/reuse.md).
+- **✨ Rich agent UX out of the box.** Streaming tokens and model **thinking**, structured
+  **tool-result cards**, **human-in-the-loop** interrupt/resume, and cross-thread **long-term
+  memory** — everything you need to communicate effectively with an agent, not just get a final
+  string. See [Building rich agent UIs](#building-rich-agent-uis).
+
+|                                 | LangGraph Platform                      | aegra            | **skein-js**                             |
+| ------------------------------- | --------------------------------------- | ---------------- | ---------------------------------------- |
+| Self-hosted in production       | 💲 Enterprise license only              | ✅ free          | ✅ free                                  |
+| Server runtime license          | Elastic License 2.0 (source-available)  | MIT              | **Apache-2.0**                           |
+| Cost                            | $39/seat/mo + usage; self-host = custom | free             | **free**                                 |
+| Language                        | —                                       | Python / FastAPI | **TypeScript / Node**                    |
+| HTTP framework                  | —                                       | FastAPI          | **Express · Fastify · NestJS · Next.js** |
+| Agent Protocol                  | ✅                                      | ✅               | ✅                                       |
+| Drop-in for the LangGraph _CLI_ | —                                       | partial          | **✅ (`skein dev` / `up` / `build`)**    |
+| Cron / scheduled runs           | ✅                                      | ✅               | **✅ ([crons](./docs/crons.md))**        |
+
+### A note on LangGraph Platform pricing
+
+You _can_ self-host **LangGraph Platform** — but production self-hosting is an **Enterprise add-on
+that requires a commercial license key** (contact sales), because the platform's server runtime is
+source-available under the [Elastic License 2.0](https://www.elastic.co/licensing/elastic-license),
+not open source. The managed **Plus** plan is **$39 / seat / month**, includes one small serverless
+deployment, and meters additional deployment compute and storage through usage-based LCU/LSU rates.
+Fully self-hosted and hybrid deployment are **Enterprise-only** with custom pricing.
+
+If you're a **hobbyist or just getting started**, that model isn't ideal — you shouldn't need a
+commercial license or a per-run bill to ship a side project. And if the LangGraph Platform license
+_does_ make sense for you later (bigger team, SLAs, managed ops), that's fine too: skein-js is built
+to make moving **either direction** painless. Because it's a drop-in for the LangGraph CLI on an
+**unchanged `langgraph.json`**, switching _from_ LangGraph — or back _to_ it — is a one-word change,
+not a migration. Our goal is low lock-in in both directions, so you can start free on skein-js and
+adopt the platform if and when it's worth it.
+
+_LangSmith Deployment pricing/licensing as of August 2026 — see [langchain.com/pricing](https://www.langchain.com/pricing) and the [self-hosting docs](https://docs.langchain.com/langsmith/self-hosted). Always verify current terms._
 
 ## Under the hood
 
@@ -700,119 +739,253 @@ your `langgraph dev` project work under `skein dev`?).
 
 <!-- source: docs/index.md -->
 
-# skein-js — Overview
+## Your agent works on your laptop. Now what? {#start}
 
-skein-js is the **open-source alternative to LangGraph Platform** (now LangSmith Deployment) **for
-TypeScript** — a framework-agnostic library that implements LangChain's
-[**Agent Protocol**](https://github.com/langchain-ai/agent-protocol) on top of
-[**LangGraph.js**](https://docs.langchain.com/oss/javascript/langgraph/overview), so you can self-host your agents on
-your own infrastructure. It also ships a CLI that is a **drop-in replacement for the LangGraph CLI**.
+You could wrap it in Express yourself — it's an afternoon, and then it's five categories of plumbing
+you maintain forever. None of it is what your users came for.
 
-> **Built around LangGraph OSS, not a reimplementation of it.** Its runtime executes your graphs, its
-> checkpointers persist them, its parser reads your `langgraph.json`, and the wire types come straight
-> from `@langchain/langgraph-sdk`. skein-js rebuilds only what OSS lacks: durable production storage
-> and queueing, the framework adapters, and the drop-in CLI.
->
-> That is why compatibility holds. The SDK's own types are the contract, so `useStream` and every
-> LangGraph client work against skein **by construction** — not through a layer someone maintains.
-
-## The problem
-
-You've built an agent as a LangGraph.js graph. On its own, a graph is a function you call
-in-process. To put it behind a chat UI or expose it to other services you need a **server** — and a
-capable agent server is a lot of plumbing:
-
-- **Threads** — conversations that persist, with full state and history.
-- **Runs** — execute the graph and either wait for the result, **stream** it, or run it in the
-  background.
-- **Streaming** — push tokens, tool calls, and reasoning to the client as they happen, with
-  reconnect/replay if a connection drops.
-- **Human-in-the-loop** — pause a run for approval and resume it later.
-- **Long-term memory** — storage that outlives a single conversation.
-- **Auth, CORS, persistence, and scaling** — the production essentials.
-
-There is no first-class, **self-hostable** way to get all of this for LangGraph.js in the Node
-ecosystem:
-
-- **LangGraph Platform** (now **LangSmith Deployment**) is a **paid product**. You _can_ self-host
-  it, but production self-hosting is an **Enterprise add-on requiring a commercial license key** —
-  the platform's server runtime is source-available under the
-  [Elastic License 2.0](https://www.elastic.co/licensing/elastic-license), not open source. The
-  managed **Plus** plan is **$39 / seat / month**, includes one small serverless deployment, and
-  meters additional deployment compute and storage through usage-based LCU/LSU rates. Fully
-  self-hosted and hybrid deployment are **Enterprise-only** with custom pricing.
-  ([pricing](https://www.langchain.com/pricing) ·
-  [self-hosting docs](https://docs.langchain.com/langsmith/self-hosted), as of August 2026.)
-- **[aegra](https://github.com/aegra/aegra)** — the leading _open_ self-hosted alternative — is
-  **Python / FastAPI only**.
-
-TypeScript teams are left to adopt the paid platform, run a Python sidecar, or hand-roll an HTTP
-layer around a compiled graph.
-
-## What is the Agent Protocol?
-
-The [**Agent Protocol**](https://github.com/langchain-ai/agent-protocol) is the open HTTP + SSE
-standard that describes an agent server's surface — assistants, threads, runs, streaming,
-interrupts, and a store. Because it's a standard, the entire LangChain client ecosystem speaks it:
-
-- [`@langchain/langgraph-sdk`](https://github.com/langchain-ai/langgraphjs/tree/main/libs/sdk) — the vanilla
-  JS client (`client.threads` / `client.runs` / …)
-- [`@langchain/langgraph-sdk/react`](https://reference.langchain.com/javascript/langchain-langgraph-sdk/react/useStream) — the **`useStream`**
-  hook, streaming over SSE
-- [Agent Chat UI](https://github.com/langchain-ai/agent-chat-ui) and LangGraph Studio
-
-Implement the Agent Protocol and **all of these clients work with your server** — no custom SDK, no
-bespoke wire format. skein-js implements it; your existing clients keep working with only a URL
-change. See [agent-protocol.md](./agent-protocol.md) for the exact endpoints.
-
-## The solution
-
-skein-js is an open, self-hostable alternative to LangGraph Platform for the TypeScript ecosystem —
-"aegra for TypeScript." It exposes the Agent Protocol wire format from any Node
-HTTP framework on Node, or native Fetch on Bun and Deno (Express, Fastify, NestJS, Next.js, and Fetch
-adapters ship today), so the whole LangChain
-client surface keeps working with only a URL change.
-
-Unlike aegra — which had to reimplement the server in Python because the Python
-`langgraph-api` is proprietary — the **JavaScript Agent Protocol server is open source and
-MIT** ([`@langchain/langgraph-api`](https://github.com/langchain-ai/langgraphjs/tree/main/libs/langgraph-api)).
-So skein-js is deliberately thin: it **reuses as much LangGraph OSS as possible** (runtime,
-checkpointers, parser, schemas, SDK/types) and rebuilds only the durable-production,
-multi-framework, drop-in-CLI layer that OSS lacks. The package-by-package ledger of what is reused
-versus rebuilt lives in
-[reuse.md](https://github.com/skein-js/skein-js/blob/main/docs/reuse.md).
-
-## Starting from scratch
-
-No graph, no `langgraph.json`, no LangGraph experience — one command writes a working project:
+**skein-js is that backend, and it starts in one command:**
 
 ```bash
 npm create skein-js@latest my-agent
-cd my-agent && npm run dev        # → http://localhost:2024, console at /console
+cd my-agent && npm run dev
 ```
 
-It scaffolds a keyless graph you can edit, a test, and the whole `dev` → `build` → `start` lifecycle.
-Nothing it emits needs an API key or a database.
-[**Your first agent**](./your-first-agent.md) takes it from there to deployed and teaches the
-LangGraph you need on the way; [scaffolding.md](./scaffolding.md) is the reference.
+You now have an agent server on `http://localhost:2024` and a control room at `/console`. **No API
+key, no database, no Docker** — the agent it writes for you runs offline, so the first thing you see
+is your own agent working rather than a credentials error.
 
-## The drop-in promise
+Talk to it with the client you'd already be using. **If it speaks the Agent Protocol, it works** —
+you're only changing a URL:
 
-If you're coming from the LangGraph CLI, migration is **zero-effort**:
+:::tabs
+
+== Any framework
+
+```ts
+import { Client } from "@langchain/langgraph-sdk";
+
+const client = new Client({ apiUrl: "http://localhost:2024" });
+const thread = await client.threads.create();
+
+for await (const chunk of client.runs.stream(thread.thread_id, "agent", {
+  input: { messages: [{ role: "human", content: "hello" }] },
+  streamMode: "messages",
+})) {
+  console.log(chunk);
+}
+```
+
+== React
+
+```tsx
+import { useStream } from "@langchain/langgraph-sdk/react";
+
+const thread = useStream({ apiUrl: "http://localhost:2024", assistantId: "agent" });
+
+thread.submit({ messages: [{ type: "human", content: input }] });
+// thread.messages updates live as tokens arrive; thread.interrupt holds a pending approval
+```
+
+== Vue
+
+```ts
+import { useStream } from "@langchain/vue";
+
+const thread = useStream({ apiUrl: "http://localhost:2024", assistantId: "agent" });
+
+thread.submit({ messages: [{ type: "human", content: input }] });
+```
+
+== Svelte
+
+```ts
+import { getStream, provideStream } from "@langchain/svelte";
+
+provideStream({ apiUrl: "http://localhost:2024", assistantId: "agent" });
+const thread = getStream();
+
+thread.submit({ messages: [{ type: "human", content: input }] });
+```
+
+== Angular
+
+```ts
+import { injectStream } from "@langchain/angular";
+
+const thread = injectStream({ apiUrl: "http://localhost:2024", assistantId: "agent" });
+
+thread.submit({ messages: [{ type: "human", content: input }] });
+```
+
+:::
+
+All four bindings are thin wrappers over the **same** `@langchain/langgraph-sdk`, so they issue
+identical requests and read identical frames. Agent Chat UI and LangGraph Studio work the same way,
+for the same reason. Details and the honest caveats: [react-sdk.md](./react-sdk.md).
+
+[**Your first agent**](./your-first-agent.md) takes it from here to deployed — and teaches you the
+LangGraph you need on the way, if you're new to it.
+
+## How it fits together
+
+Three moving parts. Your clients and your agent are the ones you already have.
+
+<svg class="skein-arch" viewBox="0 0 680 352" role="img" aria-label="Your clients speak the Agent Protocol to skein-js, which runs your LangGraph agent and stores state in your own Postgres and Redis.">
+  <!-- clients -->
+  <rect class="box" x="70" y="6" width="360" height="60" rx="10" />
+  <text class="t" x="250" y="30" text-anchor="middle">Your clients</text>
+  <text class="t-sub" x="250" y="50" text-anchor="middle">LangGraph SDK · useStream · Agent Chat UI</text>
+  <!-- clients → skein -->
+  <path class="wire" d="M250 66 V110" />
+  <path class="wire" d="M244 104 L250 110 L256 104" />
+  <circle class="pulse pulse-a" cx="250" cy="68" r="3.5" style="--travel: 40px" />
+  <text class="t-edge" x="264" y="92">Agent Protocol · HTTP + SSE</text>
+  <!-- skein -->
+  <rect class="box-accent" x="70" y="110" width="360" height="96" rx="10" />
+  <text class="t" x="250" y="140" text-anchor="middle">skein-js</text>
+  <text class="t-sub" x="250" y="163" text-anchor="middle">runs · threads · streaming · approvals</text>
+  <text class="t-sub" x="250" y="182" text-anchor="middle">memory · schedules · webhooks · console</text>
+  <!-- skein → storage -->
+  <path class="wire" d="M430 158 H500" />
+  <rect class="box" x="500" y="132" width="164" height="52" rx="10" />
+  <text class="t-sub" x="582" y="153" text-anchor="middle">Your Postgres</text>
+  <text class="t-sub" x="582" y="171" text-anchor="middle">Your Redis</text>
+  <!-- skein → agent -->
+  <path class="wire" d="M250 206 V250" />
+  <path class="wire" d="M244 244 L250 250 L256 244" />
+  <circle class="pulse pulse-b" cx="250" cy="208" r="3.5" style="--travel: 40px" />
+  <!-- agent -->
+  <rect class="box" x="70" y="250" width="360" height="60" rx="10" />
+  <text class="t" x="250" y="274" text-anchor="middle">Your agent</text>
+  <text class="t-sub" x="250" y="294" text-anchor="middle">a LangGraph.js graph, unchanged</text>
+</svg>
+
+Your clients don't know skein-js exists — they speak a standard. Your agent doesn't either. skein-js
+is the middle box, and it's the only part you didn't have to write.
+
+## You're not learning a new framework
+
+The agent itself is **plain LangGraph.js** — LangChain's own framework, MIT-licensed and pulling
+[millions of downloads a week](https://www.npmjs.com/package/@langchain/langgraph) on npm. skein-js
+introduces no framework of its own, and there is nothing skein-specific in your graph code. No
+imports of ours, no decorators, no lifecycle hooks:
+
+<!-- prettier-ignore -->
+```ts
+import { MessagesAnnotation, StateGraph } from "@langchain/langgraph";
+
+export const graph = new StateGraph(MessagesAnnotation)
+  .addNode("agent", callModel)      // your step
+  .addEdge("__start__", "agent")    // what runs next
+  .compile();
+```
+
+That's the whole contract. The same file runs under `langgraph dev`, on LangGraph Platform, or on
+skein — which is why migrating is one word in either direction, and why
+[`migrated-langgraph`](https://github.com/skein-js/skein-js/tree/main/examples/migrated-langgraph)
+is a stock LangGraph project with nothing changed but a script.
+
+New to it? LangChain's
+[Thinking in LangGraph](https://docs.langchain.com/oss/javascript/langgraph/thinking-in-langgraph)
+is the shortest path to the mental model — nodes, shared state, and explicit routing.
+
+So the thing you're betting on for your agent logic is LangChain's, not ours. What skein-js adds is
+everything around it. [Why we bet on LangGraph →](./why.md#why-we-bet-on-langgraph)
+
+> **Not using LangGraph?** The protocol engine carries no graph runtime, so another agent runtime can
+> serve the same API by implementing two methods — bringing its own persistence and giving up the
+> LangChain-specific pieces. The honest limits are in
+> [building a runner](./building-a-runner.md#known-limits).
+
+## Your stack is already TypeScript
+
+<p class="skein-quote">Your frontend is TypeScript. Your API is TypeScript. Why is your agent in <em>Python</em>?</p>
+
+The cost of a Python sidecar isn't the extra runtime. It's that **nothing crosses the boundary** —
+your types stop dead, the domain logic your API already has is unreachable, and the agent's
+structured output, the thing your UI actually renders, becomes a shape declared twice and trusted
+once.
+
+Keeping it in one language collapses the stack. The people who already ship your product can build
+the agent, review each other's work on it, and fix it when it matters — one toolchain, one CI, one
+set of types, and no small group who are the only ones able to touch it.
+
+[The longer argument, if you want to nerd out →](./why.md#your-stack-is-already-typescript)
+
+## See it running {#see-it}
+
+This ships in the box. It's the thing you'd otherwise reach for LangGraph Studio to get, except
+**your own server hosts it** — no account, no sign-in, no internet connection, no tunnel back to your
+laptop.
+
+<div class="light-only">
+
+![The skein console: two conversations waiting on a human, live counts, and recent activity](/images/console/overview-light.png)
+
+</div>
+<div class="dark-only">
+
+![The skein console: two conversations waiting on a human, live counts, and recent activity](/images/console/overview-dark.png)
+
+</div>
+
+**"Waiting for you"** is the one that changes how you build. Any conversation your agent paused for a
+human shows up there — approve it, reject it, or send back whatever answer you like, and the agent
+carries on from exactly where it stopped. Hours later. After a redeploy. From a different machine.
+
+<div class="light-only">
+
+![The console filtered to conversations paused for a human decision](/images/console/interrupts-light.png)
+
+</div>
+<div class="dark-only">
+
+![The console filtered to conversations paused for a human decision](/images/console/interrupts-dark.png)
+
+</div>
+
+There's more behind it: a playground that draws your agent's shape and streams a run into it, live
+run tails you can cancel or roll back, a memory browser with semantic search, and schedule
+management. It's **off by default in production** — you opt in, because it can read and delete
+everything.
+
+[Take the tour →](./console.md)
+
+## Bring what you already have
+
+Four ways in. Pick yours — they all end at the same server.
+
+:::tabs
+
+== Starting fresh
+
+One command, and you have a working agent to edit:
+
+```bash
+npm create skein-js@latest my-agent
+cd my-agent && npm run dev
+```
+
+Pick a model provider with `--provider anthropic|openai|google`, or take the keyless default and add
+one later. [Scaffolding reference →](./scaffolding.md)
+
+== On the LangGraph CLI
+
+Change one word. Your `langgraph.json`, your agent and your clients stay exactly as they are:
 
 ```diff
 - "dev": "langgraph dev",
 + "dev": "skein dev",
 ```
 
-…while keeping the existing [`langgraph.json`](./langgraph-cli-compat.md) unchanged. Both
-the backend (config + graphs) and the frontend ([`useStream`](./react-sdk.md)) point at
-skein-js by changing only a URL.
+That's the whole migration. Every honoured config field is listed in
+[LangGraph CLI compatibility →](./langgraph-cli-compat.md)
 
-### The other on-ramp: embed a graph you already have
+== Agent in an app I run
 
-If you already have a compiled graph in your own app, bring it **in code** — no `langgraph.json`, no
-CLI:
+Bring it in code — no config file, no CLI. `{ deps }` is the seam every adapter accepts, so the same
+two lines work on Fastify, NestJS, Next.js and Fetch:
 
 ```ts
 import { createExpressServer } from "@skein-js/express";
@@ -823,132 +996,454 @@ const server = await createExpressServer({ deps: embedInMemoryGraphs({ agent: gr
 await server.listen(2024);
 ```
 
-`embedInMemoryGraphs` assembles a `ProtocolDeps` (store, queue, bus, checkpointer) around your graphs;
-`{ deps }` is the seam every adapter accepts. The two on-ramps produce the identical Agent Protocol
-server — see [embedding.md](./embedding.md).
+[More on embedding →](./embedding.md)
 
-### Not building a chat app?
+== Not a chat product
 
-The full protocol (threads, assistants, runs) is what a **chat** UI needs. For a classifier, an
-extractor, or a workflow another service calls, there's a smaller surface: every graph mounted as
-`POST /invoke/:graph_id`, where the request body **is** the graph input and the response **is** its
-final state — no threads, no runs.
+For a classifier, an extractor, or a workflow another service calls, skip threads and runs entirely.
+Each agent gets one endpoint: your JSON in, its answer out.
 
-```ts
-const { router } = await skeinInvokeRouter({ deps: embedInMemoryGraphs({ triage }) });
-app.use(router);
-// curl -X POST localhost:2024/invoke/triage -d '{"text":"…"}'
+```bash
+curl -sX POST localhost:2024/invoke/triage \
+  -H 'content-type: application/json' \
+  -d '{"text":"Refund charge failed — urgent!"}'
 ```
 
-Available on every adapter — see [serving-a-single-graph.md](./serving-a-single-graph.md).
+[Serving a single graph →](./serving-a-single-graph.md)
 
-## Architecture at a glance
+:::
 
-```text
-             ┌─────────────────────────────────────────────┐
-   clients   │  @langchain/langgraph-sdk · /react useStream │
- (unchanged) │  Agent Chat UI · LangGraph Studio            │
-             └──────────────────────┬──────────────────────┘
-                                    │ Agent Protocol (HTTP + SSE)
-             ┌──────────────────────▼──────────────────────┐
-  adapters   │ express · fastify · nestjs · nextjs · native fetch │
-             ├─────────────────────────────────────────────┤
-  protocol   │   @skein-js/agent-protocol — handler table ·    │
-             │   run engine · streaming (SSE)               │
-             ├─────────────────────────────────────────────┤
-   contract  │   @skein-js/core — wire types · SkeinStore +    │
-             │   queue/bus interfaces · edge error          │
-             ├───────────────┬───────────────┬─────────────┤
-             │  @skein-js/config│ storage driver│  @skein-js/redis│
-             │ (langgraph.   │ memory /      │ queue + pub/ │
-             │  json loader) │ postgres+pgv  │ sub          │
-             └───────────────┴───────────────┴─────────────┘
-                                    │
-                       AgentGraph (stream + getState)
-                                    │
-                          @skein-js/langgraph
-                                    │
-                          LangGraph.js compiled graphs
+## Why skein-js? {#why-skein-js}
+
+<div class="skein-cards">
+<a class="skein-card" href="./why#how-everyone-gets-here">
+<span class="ico">🔨</span>
+
+### Cheaper than building it
+
+Every one of those six blocks is load-bearing, none of them are your product, and each has a failure
+mode you'd meet in production rather than in review.
+
+<span class="skein-card-link">How everyone gets here</span>
+
+</a>
+<a class="skein-card" href="./why#the-licensing-part-plainly">
+<span class="ico">🔑</span>
+
+### Self-hosting without a sales call
+
+LangGraph Platform is paid, and production self-hosting needs a commercial Enterprise licence key.
+skein-js is Apache-2.0. Your database, your servers, no key.
+
+<span class="skein-card-link">The licensing part, plainly</span>
+
+</a>
+<a class="skein-card" href="./why#the-same-stack-in-dev-and-production">
+<span class="ico">💻</span>
+
+### The same stack, dev and prod
+
+`skein dev --store postgres --queue redis` is the real thing, not an approximation — same
+checkpointer, same queue, same image you deploy. Reproduce a production bug locally, and read the
+source when that isn't enough.
+
+<span class="skein-card-link">Same stack in dev and production</span>
+
+</a>
+<a class="skein-card" href="./why#we-want-leaving-to-be-easy">
+<span class="ico">↔️</span>
+
+### Leaving is one word
+
+It's a drop-in on an unchanged config — which runs _both_ ways. Start free here, move to a managed
+platform later if it's worth paying for. That's deliberate.
+
+<span class="skein-card-link">Why we want leaving to be easy</span>
+
+</a>
+<a class="skein-card" href="./why#why-we-bet-on-langgraph">
+<span class="ico">🧩</span>
+
+### Built on LangGraph, deliberately
+
+Agents are state machines, and LangGraph is honest about it — its checkpointers are what make
+approvals, time travel and crash recovery possible at all. On JavaScript it's genuinely open source,
+which is why skein-js can be thin rather than a reimplementation.
+
+<span class="skein-card-link">Why we bet on LangGraph</span>
+
+</a>
+</div>
+
+## Steal our examples
+
+Every one of these runs, and CI proves it.
+
+| Example                                                                                            | What it shows                                                                                                             |
+| -------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------- |
+| [`triage-agent`](https://github.com/skein-js/skein-js/tree/main/examples/triage-agent)             | **Start here** — schedules, background work, approvals, memory and rewind in one agent. **No API key, no network needed** |
+| [`chat-app`](https://github.com/skein-js/skein-js/tree/main/examples/chat-app)                     | **Flagship** — a research assistant with thinking, web search and memory, behind a Next.js + shadcn/ui UI                 |
+| [`migrated-langgraph`](https://github.com/skein-js/skein-js/tree/main/examples/migrated-langgraph) | The drop-in proof — a stock LangGraph project running under `skein dev`                                                   |
+| [`migrated-langgraph`](https://github.com/skein-js/skein-js/tree/main/examples/migrated-langgraph) | The drop-in proof — a stock LangGraph project running under `skein dev`                                                   |
+
+Six more in [`examples/`](https://github.com/skein-js/skein-js/tree/main/examples), including one per
+adapter — standalone, and mounted inside an app that already has its own routes.
+
+## Where to go next
+
+New here? [**Your first agent**](./your-first-agent.md) goes from an empty directory to deployed.
+Wondering if skein does something specific? The [**features page**](./features.md) answers it in one
+line. Building _with_ an AI agent?
+[`llms.txt`](https://github.com/skein-js/skein-js/blob/main/llms.txt) hands it the whole set.
+
+---
+
+**If this saved you a week, [give it a star](https://github.com/skein-js/skein-js)** — it's how other
+TypeScript teams find it. Hit something that doesn't work?
+[Tell us](https://github.com/skein-js/skein-js/issues); compatibility reports are the most useful
+feedback we get.
+
+
+---
+
+<!-- source: docs/why.md -->
+
+# Why skein-js
+
+You can build an agent in an afternoon. Putting it in front of real users is the part nobody warns
+you about. This page is the honest version of how that goes, what your options are, and where
+skein-js fits — including where it doesn't.
+
+## How everyone gets here
+
+<ol class="skein-steps">
+<li>
+
+**You write an agent, and it works.** Twenty lines of LangGraph. It answers questions, calls a tool,
+returns a result. You demo it and people are impressed.
+
+</li>
+<li>
+
+**Someone asks to use it.** So you wrap it in an HTTP handler. Fine — an hour's work.
+
+</li>
+<li>
+
+**"Can it remember what I said?"** Now you need conversations that persist, keyed to a user, restored
+on the next request. That's a schema, a migration, and a serialization format for graph state.
+
+</li>
+<li>
+
+**"Why does it take nine seconds to say anything?"** It doesn't — it's just not streaming. So you add
+server-sent events. Then a client drops mid-answer and you add reconnect-and-replay.
+
+</li>
+<li>
+
+**"Legal needs to approve before it sends."** Your agent has to _stop_, wait for a human who might
+answer tomorrow, and resume from exactly where it paused — across a deploy. That's checkpointing.
+
+</li>
+<li>
+
+**"Run it every morning."** A scheduler. Which must not fire twice when you scale to two servers.
+
+</li>
+<li>
+
+**"Tell our CRM when it's done."** A webhook. Which must not be lost when the receiver is redeploying,
+so now you own a retry queue and an outbox.
+
+</li>
+<li>
+
+**Something breaks at 2am** and you have no idea which conversation, which step, or what the agent
+actually saw.
+
+</li>
+</ol>
+
+None of that was your product. All of it is load-bearing. It's a few thousand lines you'd own
+forever, and every item has a failure mode you find in production rather than in review.
+
+**skein-js is that entire list, already built, on your own infrastructure.**
+
+## Your four options
+
+<div class="skein-cards">
+<div class="skein-card">
+<span class="ico">🔨</span>
+
+### Build it yourself
+
+Total control, no dependency. Also the few thousand lines above, plus the ongoing cost of keeping up
+with a protocol other people's clients expect.
+
+</div>
+<div class="skein-card">
+<span class="ico">💳</span>
+
+### LangGraph Platform
+
+The managed option, and genuinely good. Paid per seat plus metered compute; production self-hosting
+is an Enterprise add-on requiring a commercial licence key.
+
+</div>
+<div class="skein-card">
+<span class="ico">🐍</span>
+
+### aegra
+
+The leading _open_ self-hosted alternative, and the project that inspired this one. Excellent — and
+Python only, so a TypeScript team runs a second language in production.
+
+</div>
+<div class="skein-card">
+<span class="ico">🧵</span>
+
+### skein-js
+
+Open source, self-hosted, TypeScript. Your database, your servers, no licence key, no per-run bill —
+and a one-word path back out if you change your mind.
+
+</div>
+</div>
+
+## How they compare
+
+|                               | LangGraph Platform         | aegra       | **skein-js**                                     |
+| ----------------------------- | -------------------------- | ----------- | ------------------------------------------------ |
+| Language                      | Python + JS                | Python only | **TypeScript**                                   |
+| Licence                       | Elastic License 2.0        | Apache-2.0  | **Apache-2.0**                                   |
+| Self-host in production       | Enterprise add-on + key    | ✅          | ✅ **no key**                                    |
+| Cost                          | Per-seat + metered compute | Free        | **Free**                                         |
+| Your own database             | Managed, or Enterprise     | ✅          | ✅                                               |
+| Studio-style UI               | Hosted, needs an account   | —           | ✅ **yours, at `/console`**                      |
+| Drop-in for the LangGraph CLI | —                          | Partial     | ✅ **one word**                                  |
+| HTTP framework                | Theirs                     | FastAPI     | **Express · Fastify · NestJS · Next.js · Fetch** |
+
+## Your stack is already TypeScript
+
+Look at what you've already got. The frontend is TypeScript. The API is TypeScript. The types are
+shared across them, the CI is one pipeline, the team reviews each other's code. Then the agent shows
+up, and it's the one component anyone suggests you write in a different language.
+
+That's a real cost, and it's usually undercounted. The expensive part isn't the extra runtime — it's
+that **nothing crosses the boundary**:
+
+- **Types stop dead.** The agent's input and output are the shapes your app cares most about, and
+  they become a Zod schema on one side and a Pydantic model on the other, kept in step by hand. You
+  find out they've drifted in production, not at compile time.
+- **You can't reuse what you've already written.** The validation, the domain rules, the permission
+  checks, the money and date formatting — your API has all of it, and the agent can reach none of it.
+  So you duplicate it, and the two copies drift; or you put it behind HTTP, and the agent makes a
+  network call to your own API to ask what a customer's plan is.
+- **The agent's output is a UI contract, and it's the one that hurts most.** A node returns a
+  structured result — a booking, a diff, a set of options, a chart spec — and a component in your app
+  renders it. In one language that's a single exported type shared by the node that produces it and
+  the component that draws it, with the compiler catching a mismatch before you ship. Across two it's
+  a shape declared in Pydantic, re-declared in TypeScript, and rendered on trust. Same story for a
+  tool's schema: one Zod object can validate the model's arguments _and_ generate the form your UI
+  shows.
+- **Two of everything around the code.** Two dependency trees to patch, two test runners, two CI
+  pipelines, two Dockerfiles, two streams of security advisories, two ways to configure a logger.
+- **Review narrows.** A team fluent in TypeScript reviewing Python is working outside its
+  day-to-day, so in practice one or two people end up owning the agent. That shows up as slow reviews
+  long before it shows up as an incident.
+- **A smaller pool of people who can fix it.** At 2am the question isn't which language is nicer,
+  it's who on the team can read the stack trace.
+
+**The honest counterpoint:** Python's ML ecosystem is deeper, and that's not close. If your agent
+does real numerical work, or reaches a model or library that only exists in Python, pay the cost —
+it's worth it, and [aegra](https://github.com/aegra/aegra) is very good.
+
+But that isn't the common case. The common case is an LLM behind an HTTP API, calling tools that are
+your own services. Every major model provider ships a first-class TypeScript SDK, LangGraph has a
+JavaScript implementation, and the whole thing can be one language, one deploy, one set of types.
+
+Agent tooling in JavaScript has lagged the Python side — not because the ecosystem is smaller, but
+because the infrastructure kept getting built there first. skein-js is one piece of closing that gap:
+the production server was the missing part, so we built it, in the open, for the language most
+product teams already ship.
+
+## The licensing part, plainly
+
+You _can_ self-host LangGraph Platform (now LangSmith Deployment). But production self-hosting is an
+**Enterprise add-on that requires a commercial licence key** — the platform's server runtime is
+source-available under the
+[Elastic License 2.0](https://www.elastic.co/licensing/elastic-license), which is not an open-source
+licence. The managed **Plus** plan is **$39 / seat / month**, includes one small serverless
+deployment, and meters additional compute and storage on top. Fully self-hosted and hybrid deployment
+are Enterprise-only, with custom pricing.
+
+_As of August 2026 — see [langchain.com/pricing](https://www.langchain.com/pricing) and the
+[self-hosting docs](https://docs.langchain.com/langsmith/self-hosted). Always verify current terms._
+
+If you're a solo developer, a small team, or just trying an idea, that model is a poor fit. You
+shouldn't need a commercial licence or a per-run bill to ship a side project.
+
+## The same stack in dev and production
+
+With a managed platform, local development is an _approximation_ of production. You develop against a
+dev server, ship to someone else's service, and the gap between the two is where the surprises live —
+because the thing you deploy to is a thing you cannot run yourself.
+
+Self-hosted and open source removes that gap entirely:
+
+```bash
+skein dev --store postgres --queue redis   # the real drivers, on your machine
+skein up                                   # app + Postgres + Redis, via Compose
+skein build                                # the image you deploy — `skein start` runs inside it
 ```
 
-- **`@skein-js/core`** is the shared contract — wire types plus the `SkeinStore`, queue, and bus
-  interfaces every other package depends on.
-- **`@skein-js/agent-protocol`** holds the protocol logic once, against _normalized_ request/response
-  types, driven entirely by injected dependencies. Framework adapters are thin shims, and the
-  package is publishable on its own. See each doc below for detail.
-- **`@skein-js/langgraph`** is the LangGraph.js binding. The engine drives an **`AgentGraph`** —
-  `stream` and `getState` required, everything else optional — so `@skein-js/agent-protocol` installs
-  with no graph runtime, and a non-LangGraph agent can serve the protocol by implementing that type.
-  Every on-ramp wires the binding for you.
+The same checkpointer, the same migrations, the same BullMQ queue semantics, the same code path. When
+something misbehaves in production you can reproduce it locally, because there is no privileged
+environment you're locked out of.
 
-## Examples
+And when reproducing isn't enough, you can read the server — all of it, Apache-2.0 — set a breakpoint
+in it, and patch it. That's not a small thing at 2am.
 
-Runnable projects under [`examples/`](https://github.com/skein-js/skein-js/tree/main/examples) — each proves a slice of the promise:
+## We want leaving to be easy
 
-| Example                                                                                            | What it shows                                                                                                                    |
-| -------------------------------------------------------------------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------- |
-| [`chat-app`](https://github.com/skein-js/skein-js/tree/main/examples/chat-app)                     | **Flagship** — Gemini research assistant (thinking + web search + long-term memory) with a Next.js + shadcn/ui UI and full tests |
-| [`migrated-langgraph`](https://github.com/skein-js/skein-js/tree/main/examples/migrated-langgraph) | The drop-in proof — a stock LangGraph project under `skein dev`, hot reload + persistence                                        |
-| [`gemini-chat`](https://github.com/skein-js/skein-js/tree/main/examples/gemini-chat)               | Model-backed end-to-end — a Gemini ReAct agent streamed into a browser                                                           |
-| [`express-basic`](https://github.com/skein-js/skein-js/tree/main/examples/express-basic)           | Zero-setup `echo` + a Claude `agent` graph in one config                                                                         |
-| [`embed-graph`](https://github.com/skein-js/skein-js/tree/main/examples/embed-graph)               | In-code embedding — serve a graph you already have with **no `langgraph.json`** (`embedInMemoryGraphs` + `{ deps }`)             |
-| [`invoke-endpoint`](https://github.com/skein-js/skein-js/tree/main/examples/invoke-endpoint)       | The **non-chat** surface — graphs as plain `POST /invoke/:graph_id` endpoints, body-in / final-state-out                         |
-| `fastify-basic` / `fastify-app`                                                                    | Fastify — standalone graph server, and the protocol embedded under `/agent` alongside a REST API                                 |
-| `nestjs-basic` / `nestjs-app`                                                                      | NestJS — standalone graph server, and `SkeinModule` alongside the app's own controller                                           |
-| `nextjs-basic` / `nextjs-app`                                                                      | Next.js — headless Pages Router API, and a full-stack App Router app serving the protocol same-origin behind a `useStream` UI    |
-| [`react-usestream`](https://github.com/skein-js/skein-js/tree/main/examples/react-usestream)       | Minimal `useStream` SSE-compatibility harness                                                                                    |
+This is the part that's easy to leave unsaid.
 
-## Documentation map
+skein-js is a **drop-in for the LangGraph CLI on an unchanged `langgraph.json`**. That's usually
+pitched as "migration is one word" — and it is. But the same fact runs in both directions: if your
+team grows, you want SLAs and managed operations, and LangGraph Platform starts making sense, then
+**switching back is also one word**.
 
-Start with the user-facing guides; the design docs at the bottom explain how skein-js is built.
-Brand new, with nothing built yet? [your-first-agent.md](./your-first-agent.md) starts from an empty
-directory. Already have a graph? [getting-started.md](./getting-started.md) is the guided path. Building an app _with_ skein
-(especially as an AI agent)? [using-skein.md](./using-skein.md) is the terse cheat-sheet, and the
-machine-readable [`llms.txt`](https://github.com/skein-js/skein-js/blob/main/llms.txt) / [`llms-full.txt`](https://github.com/skein-js/skein-js/blob/main/llms-full.txt) index the whole set.
+That's deliberate. Low lock-in in both directions means you can start free, ship something real, and
+adopt a managed platform if and when it's actually worth paying for — instead of choosing your
+production architecture on day one, under uncertainty, and living with it.
 
-| Doc                                                      | Covers                                                                 |
-| -------------------------------------------------------- | ---------------------------------------------------------------------- |
-| [your-first-agent.md](./your-first-agent.md)             | From an empty directory to deployed — no LangGraph assumed             |
-| [scaffolding.md](./scaffolding.md)                       | `npm create skein-js` — every flag, and doing it by hand               |
-| [getting-started.md](./getting-started.md)               | Guided walkthrough — zero to a running server, then prod               |
-| [using-skein.md](./using-skein.md)                       | Consumer/agent cheat-sheet — install, the seam, mount, call            |
-| [features.md](./features.md)                             | **Can skein do X?** — every capability in one page, each linking out   |
-| [recipes.md](./recipes/)                                 | Auth, HITL, memory, CORS, background runs, webhooks, deploy            |
-| [langgraph-cli-compat.md](./langgraph-cli-compat.md)     | `langgraph.json` fields + CLI commands                                 |
-| [embedding.md](./embedding.md)                           | The in-code on-ramp — embed a graph, no `langgraph.json`               |
-| [serving-a-single-graph.md](./serving-a-single-graph.md) | The non-chat surface — a graph as a plain HTTP endpoint                |
-| [agent-protocol.md](./agent-protocol.md)                 | The REST + streaming endpoints skein-js implements                     |
-| [runs.md](./runs.md)                                     | Run modes, multitask/double-texting, cancel, timeouts                  |
-| [background-jobs.md](./background-jobs.md)               | Fire-and-forget jobs — enqueue, hear the result, don't run it twice    |
-| [threads.md](./threads.md)                               | Conversations that persist — state, history, time travel, TTL          |
-| [human-in-the-loop.md](./human-in-the-loop.md)           | Pause for a person and resume later, from anywhere                     |
-| [assistants.md](./assistants.md)                         | Versioned graph configuration — ship a change, roll it back            |
-| [webhooks.md](./webhooks.md)                             | Run-completion callbacks — durable, signed, retried, replayable        |
-| [building-an-adapter.md](./building-an-adapter.md)       | How to put skein-js on any HTTP framework (custom adapter)             |
-| [building-a-runner.md](./building-a-runner.md)           | Serving the Agent Protocol with your own agent (the `AgentGraph` seam) |
-| [streaming.md](./streaming.md)                           | LangGraph stream modes → Agent Protocol SSE                            |
-| [react-sdk.md](./react-sdk.md)                           | Frontend SDKs — `useStream` plus Vue, Svelte and Angular               |
-| [storage.md](./storage.md)                               | `SkeinStore`, in-memory + Postgres, pgvector, checkpointer             |
-| [memory.md](./memory.md)                                 | Agent memory patterns — shapes, dedup, recall, background writes       |
-| [runs-and-redis.md](./runs-and-redis.md)                 | Run engine, queue, cross-instance streaming                            |
-| [crons.md](./crons.md)                                   | Scheduled runs — the Crons resource and the scheduler                  |
-| [console.md](./console.md)                               | The skein console — a web UI served by the server itself               |
-| [errors-and-logging.md](./errors-and-logging.md)         | What a failed run reports, and where — wire, log, `skein dev`          |
-| [observability.md](./observability.md)                   | Tracing + metrics — LangSmith, PostHog, OpenTelemetry, custom          |
-| [deploy.md](./deploy.md)                                 | Deploy anywhere — Cloud Run, Railway, Fly, Render, AWS, K8s            |
-| [performance.md](./performance.md)                       | Sizing, every tuning knob, backpressure + drops, triage                |
-| [profiling.md](./profiling.md)                           | Learn measurement/profiling; Node, Bun, Deno hands-on recipes          |
-| [bundling.md](./bundling.md)                             | Bundling skein yourself — ESM, `require()`, what to externalize        |
-| [roadmap.md](./roadmap.md)                               | Milestones and post-MVP non-goals                                      |
+It's also the standard we hold ourselves to: we'd rather you stay because skein-js keeps being the
+right fit than because leaving got expensive.
 
-**Working on skein-js rather than with it?** The contributor docs live in the repo, not on this site: [CONTRIBUTING.md](https://github.com/skein-js/skein-js/blob/main/CONTRIBUTING.md), [AGENTS.md](https://github.com/skein-js/skein-js/blob/main/AGENTS.md), [reuse.md](https://github.com/skein-js/skein-js/blob/main/docs/reuse.md) (what we reuse vs. rebuild), [code-practices.md](https://github.com/skein-js/skein-js/blob/main/docs/code-practices.md) and [testing.md](https://github.com/skein-js/skein-js/blob/main/docs/testing.md).
+## Won't it drift out of compatibility?
 
-## References
+The reasonable worry about any community project tracking a commercial one: it falls behind, breaks
+subtly, and strands you.
 
-- Agent Protocol — <https://github.com/langchain-ai/agent-protocol>
-- LangGraph.js docs — <https://docs.langchain.com/oss/javascript/langgraph/overview>
-- LangGraph.js source — <https://github.com/langchain-ai/langgraphjs>
-- aegra (Python prior art) — <https://github.com/aegra/aegra> · <https://www.aegra.dev>
+That isn't the shape of this, because **compatibility here isn't maintained by hand**. The wire
+format is `@langchain/langgraph-sdk`'s own types — the SDK's types _are_ the contract, so `useStream`
+works by construction rather than because someone keeps a copy in sync. Your agent runs on
+LangGraph's runtime, saves through its checkpointers, and your `langgraph.json` is read by its
+parser.
+
+That reuse is possible because on JavaScript the pieces are **MIT-licensed**, including the Agent
+Protocol server internals
+([`@langchain/langgraph-api`](https://github.com/langchain-ai/langgraphjs/tree/main/libs/langgraph-api)).
+skein-js wraps them; it doesn't clone them, so there's no second implementation to fall behind.
+
+skein-js builds only what open source genuinely lacks: durable production storage and queueing, the
+framework adapters, the console, and the drop-in CLI. The package-by-package ledger of what's reused
+versus rebuilt is in
+[reuse.md](https://github.com/skein-js/skein-js/blob/main/docs/reuse.md).
+
+## Why we bet on LangGraph
+
+skein-js is built for LangGraph.js, and that isn't incidental — it's the choice the whole project
+rests on. Here's the reasoning, because if you're adopting skein you're adopting that bet too.
+
+The short version: it isn't a new or niche framework. It's LangChain's, it's MIT, and it pulls
+[millions of npm downloads a week](https://www.npmjs.com/package/@langchain/langgraph) — so the part
+of your stack doing the actual agent work is the well-trodden part.
+
+**Control flow is explicit.** You break the agent into discrete steps — nodes — connected by a state
+they each read and write, and routing is a decision you can point at. As LangChain's own
+[Thinking in LangGraph](https://docs.langchain.com/oss/javascript/langgraph/thinking-in-langgraph)
+puts it, "you can always understand what your agent will do next by looking at the current node."
+That sounds academic until you need to pause halfway through, resume after a deploy, or ask what the
+agent saw three steps ago — at which point an explicit graph is the difference between a feature and
+a rewrite.
+
+**Its persistence primitives are exactly what a server needs.** Checkpointers aren't a nice-to-have
+we work around; they're the substrate. LangGraph writes a checkpoint at node boundaries, and
+human-in-the-loop, time travel, resumable runs and crash recovery all fall out of that one fact — a
+run that stops resumes from the node it stopped in, days later, on a different machine. A framework
+without it would make most of this page impossible to build.
+
+**The client ecosystem already exists.** `useStream`, the SDK, Agent Chat UI, Studio — all of it
+speaks one protocol, and the wire types are the SDK's own. Betting on LangGraph means your users'
+frontends work by construction rather than through a compatibility layer someone maintains.
+
+**And the graph is portable.** Nothing in your graph code is skein-specific — no imports, no
+decorators, no lifecycle hooks. It's the same file that runs under `langgraph dev` or on LangGraph
+Platform. That's what makes [leaving easy](#we-want-leaving-to-be-easy) in both directions.
+
+### So, am I locked in?
+
+To LangGraph, **today, mostly yes** — and it's worth saying plainly rather than overselling a seam.
+Your agent runs on LangGraph's runtime, state persists through its checkpointers, `langgraph.json`
+uses its parser. It isn't merely the supported path; it's the complete one.
+
+What _is_ decoupled is narrower:
+
+- **The protocol engine carries no graph runtime.** `@skein-js/agent-protocol` installs without
+  LangGraph or LangChain, and a test pins that. The LangGraph binding is a separate package using
+  only the engine's public entry point.
+- **The runner seam is real, but partial.** The engine drives an `AgentGraph` — `stream` and
+  `getState` required, the rest optional — so another runtime _can_ serve the protocol. It would
+  bring its own persistence, and lose what's LangChain-specific by construction: `events` stream mode
+  is a LangChain demux, and time travel needs `updateState` + `getStateHistory` you'd write yourself.
+  The limits are listed honestly in [building a runner](./building-a-runner.md#known-limits).
+- **Your clients were never tied to skein.** They speak the Agent Protocol, so on that side the thing
+  you'd migrate is a URL.
+
+Practically: if you're not writing LangGraph.js graphs, skein-js probably isn't for you yet.
+
+What we deliberately **don't** do is argue LangGraph beats every alternative — that's LangChain's
+case to make, and their [docs](https://docs.langchain.com/oss/javascript/langgraph/overview) make it.
+The above is why _we_ built on it.
+
+## Who this is for
+
+<div class="skein-cards">
+<div class="skein-card">
+
+### A good fit
+
+TypeScript teams who want their agents and their data on their own infrastructure · anyone whose
+compliance story rules out a managed control plane · developers who want to ship a side project
+without a per-run bill · teams already on the LangGraph CLI who need a production story.
+
+</div>
+<div class="skein-card">
+
+### Probably not for you
+
+Python-first teams — use [aegra](https://github.com/aegra/aegra), it's good · teams who want managed
+operations, SLAs and a vendor to call — that's what LangGraph Platform is for · anyone who wants
+`skein deploy` to a hosted platform, which is a deliberate non-goal.
+
+</div>
+</div>
+
+## What we deliberately don't do
+
+Being honest about the edges is part of the pitch:
+
+- **No hosted platform.** Self-hosted by design; there's no managed target to deploy to.
+- **No WebSocket transport.** Server-sent events cover the client experience and the React SDK
+  doesn't care.
+- **No sub-minute schedules**, and no backfilling schedules missed during an outage.
+- **No exactly-once webhook delivery.** At-least-once with a stable dedup key, documented loudly.
+- **We don't restate LangGraph's docs.** We document our _conformance_ and the delta.
+
+The full list of what's shipped, in preview, and planned is on the [features page](./features.md) and
+the [roadmap](./roadmap.md).
+
+## Convinced, or curious?
+
+```bash
+npm create skein-js@latest my-agent
+cd my-agent && npm run dev
+```
+
+No API key, no database, no Docker. [Your first agent](./your-first-agent.md) takes it from there —
+or if you already have a LangGraph project, [change one word](./langgraph-cli-compat.md).
 
 
 ---
@@ -1119,7 +1614,7 @@ generated.
 
 ## 6. Give it a tool
 
-An agent that can only talk is a chatbot. Tools are what make it an agent:
+Talking is half of it. Tools are what let an agent actually do things:
 
 ```ts
 import { tool } from "@langchain/core/tools";
@@ -3462,6 +3957,7 @@ organised by parity instead.
 
 | Capability                                                            | Status | What it gets you                                                                      |
 | --------------------------------------------------------------------- | ------ | ------------------------------------------------------------------------------------- |
+| [State, context & persistence](./state-and-context.md)                | ✅     | What the agent knows, what's only for this run, and what survives a restart           |
 | [Threads](./threads.md)                                               | ✅     | Conversations that persist, addressable by your own key (a ticket id, a phone number) |
 | [Streaming (SSE)](./streaming.md)                                     | ✅     | Tokens, tool calls and reasoning as they happen — including a true `events` mode      |
 | [Reconnect & join](./streaming.md)                                    | ✅     | Resume a dropped stream, or tail the same run from a second client                    |
@@ -3641,6 +4137,182 @@ to see versioning: edit an assistant's config, run it from the playground, then 
 - [The console](./console.md) — schemas, graph shape, version history in a UI
 - [LangGraph CLI compatibility](./langgraph-cli-compat.md) — how `graphs` entries become assistants
 - [Agent Protocol](./agent-protocol.md#assistants) — every assistant endpoint and field
+
+
+---
+
+<!-- source: docs/state-and-context.md -->
+
+# State, context & persistence
+
+What your agent knows, where each piece of it lives, and what survives a restart. This is the
+building block everything else rests on — interrupts, time travel, memory and durability are all
+consequences of it.
+
+## The four bags, and which one you want
+
+This is the single most common source of confusion, so start here. A run carries four separate
+things, and they behave completely differently:
+
+| You pass              | Goes to                         | Persisted?                        | Use it for                                                                  |
+| --------------------- | ------------------------------- | --------------------------------- | --------------------------------------------------------------------------- |
+| `input`               | Your graph's **state channels** | **Yes** — checkpointed per thread | The turn itself: the new message, the document                              |
+| `context`             | LangGraph's **runtime context** | Stored on the run, not the state  | Per-run facts the graph reads but shouldn't remember: a locale, a tenant id |
+| `config.configurable` | The graph's **config**          | Stored on the run, not the state  | Knobs: which model, which prompt, a feature flag                            |
+| `metadata`            | The **run/thread row**          | Yes, as searchable labels         | Finding things later — never read by the graph                              |
+
+```ts
+await client.runs.create(threadId, "agent", {
+  input: { messages: [msg] }, // becomes state
+  context: { locale: "en-GB" }, // available to nodes this run
+  config: { configurable: { model: "fast" } }, // knobs
+  metadata: { ticket: "T-1234" }, // searchable label
+});
+```
+
+The rule of thumb: **if the agent should still know it next turn, it belongs in `input`.** Everything
+else is per-run.
+
+## State: what the agent knows right now
+
+Your graph declares the shape — the channels — and each node returns a partial update. skein-js
+doesn't define this; it's LangGraph's, unchanged. If the model is new to you,
+[Thinking in LangGraph](https://docs.langchain.com/oss/javascript/langgraph/thinking-in-langgraph)
+is the shortest path to it — and its advice to keep **raw data in state and format prompts inside
+nodes** is worth following, because everything you put in state is what gets checkpointed.
+
+The part that surprises people is that **updates go through reducers**. A channel that appends (the
+usual `messages` reducer) _adds_ what you return rather than replacing it:
+
+```ts
+// appends to messages — it does not overwrite the list
+return { messages: [new AIMessage("done")] };
+```
+
+That matters the moment you edit state by hand, from the API or the [console](./console.md): you're
+writing through the same reducers, so writing `{ messages: [...] }` to fix a transcript will append,
+not replace. Use `asNode` to attribute the write to a node whose reducer does what you intend.
+
+## Checkpoints: what makes everything else work
+
+LangGraph saves the state to a **checkpoint** at node boundaries — each superstep of the graph. That
+single mechanism is what gives you:
+
+- **Multi-turn conversations** — the next run on the thread resumes from the last checkpoint rather
+  than starting empty.
+- **[Human-in-the-loop](./human-in-the-loop.md)** — `interrupt()` parks on a checkpoint. The run
+  ends; nothing holds a connection or a timer. Resuming reads the checkpoint back.
+- **[Time travel](./threads.md#time-travel-re-run-a-turn-a-different-way)** — every checkpoint is
+  addressable, so you can read one, fork it, and run forward from the branch.
+- **Crash recovery** — a process that dies mid-run leaves a committed checkpoint behind.
+
+> [!WARNING]
+> **No checkpointer, none of the above.** Without one, each run starts empty, `interrupt()` has
+> nowhere to park, and resume silently no-ops — the single most common way this goes wrong. `skein dev`
+> configures one for you; in code, `embedInMemoryGraphs` / `embedPostgresGraphs` do.
+
+Checkpoint history is readable and pageable — see [threads.md](./threads.md#read-the-state). It's
+also the largest thing you store, which is why `POST /threads/prune` has a `keep_latest` strategy
+that drops history while keeping current state.
+
+## Short-term vs long-term: two different stores
+
+The distinction people miss:
+
+<div class="skein-cards">
+<div class="skein-card">
+<span class="ico">🧵</span>
+
+### Short-term — the checkpointer
+
+Scoped to **one thread**. Holds the conversation's state and its history. Written automatically by
+the graph on every step; you rarely touch it directly.
+
+</div>
+<div class="skein-card">
+<span class="ico">🗄️</span>
+
+### Long-term — the store
+
+Scoped to **whatever namespace you choose**, across every thread. Read and written explicitly by your
+nodes via `getStore()`, with semantic search and TTL.
+
+</div>
+</div>
+
+A user's name belongs in the store, not the thread — otherwise the agent forgets it the moment they
+start a new conversation:
+
+```ts
+import { getStore, type LangGraphRunnableConfig } from "@langchain/langgraph";
+
+// In a node, the store arrives on the config…
+async function remember(state: State, config: LangGraphRunnableConfig) {
+  await config.store?.put(["users", userId], "profile", { name: state.name });
+}
+
+// …and inside a tool, where there's no config argument, reach for getStore().
+const store = getStore();
+```
+
+Both reach the same store — skein bridges its own into every run as a LangGraph `BaseStore`, so
+nothing here is skein-specific and the same graph runs unchanged on LangGraph Platform.
+
+Full patterns — profile vs collection shapes, the dedup trap, recall — are in
+[memory.md](./memory.md); the mechanism and drivers are in [storage.md](./storage.md).
+
+## What actually persists, and where
+
+| Thing                     | Stored in                          | Survives a restart?                 |
+| ------------------------- | ---------------------------------- | ----------------------------------- |
+| Graph state & checkpoints | The checkpointer                   | With Postgres, yes. In memory, no   |
+| Threads, runs, assistants | The store                          | With Postgres, yes. In memory, no   |
+| Long-term memories        | The store                          | With Postgres, yes. In memory, no   |
+| Queued & delayed runs     | The queue                          | With Redis, yes                     |
+| Pending webhook retries   | The queue (schedule) + store (row) | Row always; schedule needs Redis    |
+| Live stream frames        | The event bus                      | No — replayable only while retained |
+
+**In development** everything is in-memory and disappears on exit — except that `skein dev` snapshots
+to `.skein/` so your threads survive a restart while you work. **In production**, use Postgres for
+state and Redis for the queue. See [storage.md](./storage.md) and
+[runs-and-redis.md](./runs-and-redis.md).
+
+## Expiring what you don't need
+
+State accumulates. Two TTLs bound it:
+
+- **Thread TTL** (`checkpointer.ttl`) — expire whole conversations. A per-thread `ttl` overrides the
+  default, and `null` pins a thread forever. [Details](./storage.md#thread-ttl)
+- **Store TTL** (`store.ttl`) — expire individual memories, optionally refreshing on read.
+  [Details](./storage.md#store-item-ttl)
+
+Both are skein going past LangGraph OSS, which drops `ttl` on the floor.
+
+## What you must get right
+
+- **`input` is the only bag the agent remembers.** `context` and `configurable` are per-run. Putting
+  a fact in `context` and expecting it next turn is the classic mistake.
+- **Reserved `configurable` keys are stripped.** `thread_id`, `run_id`, `checkpoint_id`,
+  `checkpoint_ns`, `langgraph_auth_user`, anything starting with `__` — the server owns these, so a
+  client can't redirect a run to another thread or spoof the authenticated caller. Your own keys pass
+  through untouched.
+- **The authenticated user arrives in `configurable`**, not in `context` — as
+  `langgraph_auth_user`, `langgraph_auth_user_id` and `langgraph_auth_permissions`, stamped
+  server-side and unspoofable. Present only when [auth](./agent-protocol.md#authentication--authorization)
+  is configured.
+- **The store is not ownership-scoped by default.** An authenticated caller can read every tenant's
+  items unless an `@auth.on.store` handler narrows it. See
+  [scoping the store](./agent-protocol.md#scoping-the-store).
+- **Big state is expensive.** Checkpoints hold the whole state per superstep, so a graph that keeps
+  large blobs in a channel multiplies them. Keep artifacts in object storage and a reference in state.
+
+## See also
+
+- [Threads](./threads.md) — reading, editing, forking and expiring conversation state
+- [Memory](./memory.md) — long-term memory patterns
+- [Storage](./storage.md) — `SkeinStore`, drivers, TTL, bring-your-own
+- [Human-in-the-loop](./human-in-the-loop.md) — what checkpoints make possible
+- [Building a runner](./building-a-runner.md) — implementing state for a non-LangGraph runtime
 
 
 ---
@@ -8960,8 +9632,8 @@ inside `docker build`.
 
 LangChain publishes a large, **MIT-licensed** JavaScript ecosystem under
 [`langchain-ai/langgraphjs`](https://github.com/langchain-ai/langgraphjs). Crucially — and
-unlike the Python side that [aegra](https://github.com/aegra/aegra) had to reimplement from
-scratch — the **JS Agent Protocol dev server itself is open source**
+unlike the Python side, where the equivalent is not open — the **JS Agent Protocol dev server
+itself is open source**
 ([`@langchain/langgraph-api`](https://github.com/langchain-ai/langgraphjs/tree/main/libs/langgraph-api), MIT).
 
 So skein-js is deliberately _thin_. We stand on the OSS runtime, checkpointers, parser,
@@ -9013,8 +9685,8 @@ for Python — is skein-js's actual product:
 - **Upgrades are cheap.** When LangGraph ships new stream modes or schema fields, skein-js
   inherits them through the shared runtime/types instead of chasing them by hand.
 - **Honest positioning.** skein-js is an open alternative to LangGraph Platform — "aegra for
-  TypeScript" — but lighter than aegra, because on JS the server internals are already open. We add
-  production durability, not a second server.
+  TypeScript" — with a narrower job to do, because on JS the server internals are already open. We
+  add production durability, not a second server.
 
 See [code-practices.md](./code-practices.md) for how we keep the code we _do_ write small
 and neat, and [storage.md](./storage.md) / [runs-and-redis.md](./runs-and-redis.md) for the

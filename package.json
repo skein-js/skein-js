@@ -28,6 +28,7 @@
     "format": "nx format:write --all",
     "format:check": "nx format:check --all",
     "docs:llms": "node scripts/generate-llms-full.mjs",
+    "docs:og": "node scripts/generate-og.mjs",
     "docs:dev": "nx dev docs",
     "docs:build": "nx build docs",
     "docs:preview": "nx preview docs",
@@ -59,6 +60,8 @@
     "typescript-eslint": "^8.18.1",
     "vite": "8.1.4",
     "vitepress": "^1.6.4",
-    "vitest": "4.1.9"
+    "vitepress-plugin-tabs": "^0.9.1",
+    "vitest": "4.1.9",
+    "vue": "^3.5.41"
   }
 }

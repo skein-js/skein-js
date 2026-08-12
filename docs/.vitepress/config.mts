@@ -2,6 +2,7 @@ import { readFileSync } from "node:fs";
 import { join } from "node:path";
 
 import { defineConfig } from "vitepress";
+import { tabsMarkdownPlugin } from "vitepress-plugin-tabs";
 
 // The docs site. `docs/` is VitePress's default srcDir, so every markdown file here stays exactly
 // where README.md, llms.txt and scripts/generate-llms-full.mjs already point at it — the site is
@@ -18,6 +19,8 @@ const REPO = "https://github.com/skein-js/skein-js";
  *
  * Frontmatter would be the conventional place, but every doc here is also read as raw Markdown on
  * GitHub and most of them are concatenated into llms-full.txt by scripts/generate-llms-full.mjs —
+ * (`docs/index.md` is the one exception: it is a `layout: home` page, so its hero and features have
+ * to live in frontmatter, and the bundle generator strips that block back out) —
  * which is a plain readFile+concat, so YAML preambles would leak straight into the bundle. Deriving
  * the description at build time keeps the source files as they are and cannot drift from them.
  */
@@ -52,8 +55,12 @@ const describePage = (markdown: string): string | undefined => {
 
 export default defineConfig({
   title: "skein-js",
+  // The site-wide fallback description, and the positioning line used verbatim across the README,
+  // the npm packages and the social card. Kept under ~155 characters because that is where search
+  // engines truncate — a longer one is not "more description", it is a description with the end cut
+  // off. `describePage` below holds derived per-page descriptions to the same bound.
   description:
-    "The open-source alternative to LangGraph Platform for TypeScript — a self-hosted Agent Protocol server for LangGraph.js.",
+    "The open-source LangGraph Platform alternative for TypeScript. Self-host LangGraph.js agents with threads, streaming, human-in-the-loop, memory and crons.",
   base: BASE,
   cleanUrls: true,
   lastUpdated: true,
@@ -66,7 +73,27 @@ export default defineConfig({
     ["meta", { property: "og:type", content: "website" }],
     ["meta", { property: "og:site_name", content: "skein-js" }],
     ["meta", { property: "og:locale", content: "en_US" }],
-    ["meta", { name: "twitter:card", content: "summary" }],
+    // `summary_large_image` + an absolute og:image is what makes a posted link render as a card
+    // rather than a line of grey text. Absolute because crawlers do not resolve `base`-relative
+    // paths. Regenerate the PNG with `pnpm docs:og` when the pitch on it changes.
+    // LinkedIn reads only the og:* tags (never twitter:*), wants an absolute URL that resolves with
+    // no redirect, and caches what it scrapes for about a week — so after a deploy that changes any
+    // of these, re-scrape via https://www.linkedin.com/post-inspector/ or the old card sticks.
+    // `secure_url`, `type` and `alt` are the three it most often wants and VitePress does not add.
+    ["meta", { name: "twitter:card", content: "summary_large_image" }],
+    ["meta", { property: "og:image", content: `${ORIGIN}${BASE}og.png` }],
+    ["meta", { property: "og:image:secure_url", content: `${ORIGIN}${BASE}og.png` }],
+    ["meta", { property: "og:image:type", content: "image/png" }],
+    ["meta", { property: "og:image:width", content: "1200" }],
+    ["meta", { property: "og:image:height", content: "630" }],
+    [
+      "meta",
+      {
+        property: "og:image:alt",
+        content: "skein-js — the open-source LangGraph Platform alternative, for TypeScript",
+      },
+    ],
+    ["meta", { name: "twitter:image", content: `${ORIGIN}${BASE}og.png` }],
     ["meta", { name: "theme-color", media: "(prefers-color-scheme: light)", content: "#ffffff" }],
     ["meta", { name: "theme-color", media: "(prefers-color-scheme: dark)", content: "#000000" }],
   ],
@@ -110,6 +137,14 @@ export default defineConfig({
     }
   },
 
+  // `:::tabs` containers, used on the landing page so the three on-ramps are a choice rather than
+  // three stacked walls of content. Client half is registered in theme/index.ts.
+  markdown: {
+    config(md) {
+      md.use(tabsMarkdownPlugin);
+    },
+  },
+
   // VitePress does not treat README.md as a directory index, so proposals/README.md would serve at
   // /proposals/README and /proposals/ would 404. Rewriting keeps the file named README.md — which is
   // what makes GitHub render it when you open the folder — while the site serves it at /proposals/.
@@ -137,8 +172,10 @@ export default defineConfig({
     search: { provider: "local" },
 
     nav: [
+      { text: "Why skein-js", link: "/why" },
       { text: "Guide", link: "/getting-started" },
       { text: "Features", link: "/features" },
+      { text: "Console", link: "/console" },
       { text: "Protocol", link: "/agent-protocol" },
       { text: "Deploy", link: "/deploy" },
       { text: "Roadmap", link: "/roadmap" },
@@ -158,6 +195,7 @@ export default defineConfig({
         text: "Getting started",
         items: [
           { text: "Overview", link: "/" },
+          { text: "Why skein-js", link: "/why" },
           { text: "Your first agent", link: "/your-first-agent" },
           { text: "Getting started", link: "/getting-started" },
           { text: "Scaffolding a project", link: "/scaffolding" },
@@ -168,6 +206,7 @@ export default defineConfig({
         text: "Features",
         items: [
           { text: "Overview", link: "/features" },
+          { text: "State, context & persistence", link: "/state-and-context" },
           { text: "Assistants", link: "/assistants" },
           { text: "Threads & time travel", link: "/threads" },
           { text: "Runs & multitask", link: "/runs" },

@@ -162,7 +162,7 @@ generated.
 
 ## 6. Give it a tool
 
-An agent that can only talk is a chatbot. Tools are what make it an agent:
+Talking is half of it. Tools are what let an agent actually do things:
 
 ```ts
 import { tool } from "@langchain/core/tools";

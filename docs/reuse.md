@@ -12,8 +12,8 @@
 
 LangChain publishes a large, **MIT-licensed** JavaScript ecosystem under
 [`langchain-ai/langgraphjs`](https://github.com/langchain-ai/langgraphjs). Crucially — and
-unlike the Python side that [aegra](https://github.com/aegra/aegra) had to reimplement from
-scratch — the **JS Agent Protocol dev server itself is open source**
+unlike the Python side, where the equivalent is not open — the **JS Agent Protocol dev server
+itself is open source**
 ([`@langchain/langgraph-api`](https://github.com/langchain-ai/langgraphjs/tree/main/libs/langgraph-api), MIT).
 
 So skein-js is deliberately _thin_. We stand on the OSS runtime, checkpointers, parser,
@@ -65,8 +65,8 @@ for Python — is skein-js's actual product:
 - **Upgrades are cheap.** When LangGraph ships new stream modes or schema fields, skein-js
   inherits them through the shared runtime/types instead of chasing them by hand.
 - **Honest positioning.** skein-js is an open alternative to LangGraph Platform — "aegra for
-  TypeScript" — but lighter than aegra, because on JS the server internals are already open. We add
-  production durability, not a second server.
+  TypeScript" — with a narrower job to do, because on JS the server internals are already open. We
+  add production durability, not a second server.
 
 See [code-practices.md](./code-practices.md) for how we keep the code we _do_ write small
 and neat, and [storage.md](./storage.md) / [runs-and-redis.md](./runs-and-redis.md) for the

@@ -17,6 +17,7 @@ const repoRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), ".."
 const DOCS = [
   "README.md",
   "docs/index.md",
+  "docs/why.md",
   "docs/your-first-agent.md",
   "docs/getting-started.md",
   "docs/scaffolding.md",
@@ -27,6 +28,7 @@ const DOCS = [
   "docs/agent-protocol.md",
   "docs/features.md",
   "docs/assistants.md",
+  "docs/state-and-context.md",
   "docs/threads.md",
   "docs/runs.md",
   "docs/background-jobs.md",
@@ -65,10 +67,22 @@ const HEADER = `# skein-js — full documentation
 
 `;
 
+/**
+ * Drop a leading YAML frontmatter block.
+ *
+ * Docs here are frontmatter-free by convention, with one deliberate exception: `docs/index.md` is a
+ * VitePress `layout: home` page, and its hero/features live in frontmatter because that is the only
+ * place the theme reads them. Emitting that YAML into the bundle would hand a model a page of
+ * config keys where the pitch should be — so it is stripped, and the markdown body below it (which
+ * carries the actual content) is what ships.
+ */
+const stripFrontmatter = (markdown) =>
+  markdown.startsWith("---\n") ? markdown.replace(/^---\n[\s\S]*?\n---\n/, "") : markdown;
+
 const sections = await Promise.all(
   DOCS.map(async (relativePath) => {
     const contents = await readFile(path.join(repoRoot, relativePath), "utf8");
-    return `<!-- source: ${relativePath} -->\n\n${contents.trim()}\n`;
+    return `<!-- source: ${relativePath} -->\n\n${stripFrontmatter(contents).trim()}\n`;
   }),
 );
 

@@ -1,0 +1,137 @@
+<!doctype html>
+<!--
+  Source for the social share card (docs/public/og.png), rendered at 1200×630 by
+  scripts/generate-og.mjs. Kept as HTML rather than a binary-only asset so the card can be
+  re-rendered when the pitch changes, instead of being redrawn by hand in a design tool.
+
+  Palette is the console's: near-black ground, the same blue accent as the docs' links.
+-->
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <style>
+      * {
+        margin: 0;
+        padding: 0;
+        box-sizing: border-box;
+      }
+      body {
+        width: 1200px;
+        height: 630px;
+        background: hsl(0 0% 0%);
+        color: hsl(0 0% 93%);
+        font-family:
+          ui-sans-serif,
+          system-ui,
+          -apple-system,
+          "Segoe UI",
+          Roboto,
+          "Helvetica Neue",
+          sans-serif;
+        letter-spacing: -0.02em;
+        padding: 72px 80px;
+        display: flex;
+        flex-direction: column;
+        justify-content: space-between;
+        position: relative;
+        overflow: hidden;
+      }
+      /* A single soft wash so the card isn't a flat black rectangle in a timeline. */
+      .glow {
+        position: absolute;
+        width: 900px;
+        height: 900px;
+        right: -320px;
+        top: -420px;
+        background: radial-gradient(circle, hsl(212 100% 47% / 0.22) 0%, transparent 62%);
+      }
+      .wordmark {
+        font-size: 30px;
+        font-weight: 600;
+        letter-spacing: -0.03em;
+        display: flex;
+        align-items: center;
+        gap: 14px;
+      }
+      .dot {
+        width: 13px;
+        height: 13px;
+        border-radius: 50%;
+        background: hsl(212 100% 55%);
+      }
+      h1 {
+        font-size: 74px;
+        line-height: 1.04;
+        font-weight: 600;
+        letter-spacing: -0.035em;
+        max-width: 15ch;
+      }
+      h1 em {
+        font-style: normal;
+        color: hsl(212 100% 65%);
+      }
+      p {
+        font-size: 27px;
+        line-height: 1.45;
+        color: hsl(0 0% 63%);
+        max-width: 40ch;
+        margin-top: 26px;
+        letter-spacing: -0.01em;
+      }
+      .chips {
+        display: flex;
+        gap: 10px;
+        flex-wrap: wrap;
+      }
+      .chip {
+        font-size: 20px;
+        color: hsl(0 0% 78%);
+        border: 1px solid hsl(0 0% 20%);
+        border-radius: 999px;
+        padding: 9px 18px;
+        background: hsl(0 0% 6%);
+      }
+      footer {
+        display: flex;
+        justify-content: space-between;
+        align-items: flex-end;
+      }
+      .cmd {
+        font-family: ui-monospace, SFMono-Regular, "SF Mono", Menlo, Consolas, monospace;
+        font-size: 21px;
+        color: hsl(0 0% 93%);
+        background: hsl(0 0% 7%);
+        border: 1px solid hsl(0 0% 18%);
+        border-radius: 10px;
+        padding: 14px 20px;
+        letter-spacing: 0;
+      }
+      .cmd span {
+        color: hsl(212 100% 65%);
+      }
+    </style>
+  </head>
+  <body>
+    <div class="glow"></div>
+
+    <div class="wordmark"><span class="dot"></span> skein-js</div>
+
+    <div>
+      <h1>The open-source <em>LangGraph Platform</em> alternative</h1>
+      <p>
+        For TypeScript. The agent backend you don't have to build — conversations, streaming, human
+        approvals, memory and schedules, on your own servers.
+      </p>
+    </div>
+
+    <footer>
+      <div class="chips">
+        <div class="chip">Self-hosted</div>
+        <div class="chip">Agent Protocol</div>
+        <div class="chip">TypeScript</div>
+        <div class="chip">Apache-2.0</div>
+      </div>
+      <div class="cmd"><span>$</span> npm create skein-js@latest</div>
+    </footer>
+  </body>
+</html>

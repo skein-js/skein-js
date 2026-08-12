@@ -112,3 +112,582 @@ h2,
 h3 {
   letter-spacing: -0.02em;
 }
+
+/* Screenshots come in matched light/dark pairs — the console has its own theme toggle, and a light
+   screenshot on a dark page (or vice versa) reads as a rendering bug rather than a screenshot. The
+   wrappers are plain <div>s in the markdown so the images stay markdown `![]()`, which is what gets
+   the `base` path rewritten; a raw <img src="/…"> would not and would 404 on GitHub Pages. */
+html:not(.dark) .dark-only,
+html.dark .light-only {
+  display: none;
+}
+
+/* Screenshots are UI, not illustrations: a hairline and radius keep a white console panel from
+   bleeding into a white page, and match the console's own card treatment. */
+.light-only img,
+.dark-only img {
+  border: 1px solid var(--vp-c-divider);
+  border-radius: 8px;
+}
+
+/* ---------------------------------------------------------------------------
+   Card grids.
+
+   VitePress's `features` frontmatter only works on the home hero; everything
+   below it is ordinary prose. These classes give the same visual weight to
+   sections further down the page — and to the Why page, which is not a home
+   layout at all. Plain <div>s in markdown rather than Vue components so the
+   pages still read on GitHub and in llms-full.txt.
+   --------------------------------------------------------------------------- */
+
+.skein-cards {
+  display: grid;
+  gap: 16px;
+  grid-template-columns: repeat(auto-fit, minmax(268px, 1fr));
+  margin: 28px 0;
+}
+
+.skein-card {
+  border: 1px solid var(--vp-c-divider);
+  border-radius: 12px;
+  padding: 22px 24px;
+  background: var(--vp-c-bg-soft);
+  transition:
+    border-color 0.2s,
+    background-color 0.2s;
+}
+
+.skein-card:hover {
+  border-color: var(--vp-c-brand-1);
+}
+
+/* `.vp-doc h3` carries a top border and large margins meant for prose. */
+.vp-doc .skein-card h3 {
+  margin: 0 0 8px;
+  padding: 0;
+  border: 0;
+  font-size: 16px;
+  font-weight: 600;
+  letter-spacing: -0.015em;
+}
+
+.vp-doc .skein-card p {
+  margin: 0;
+  font-size: 14px;
+  line-height: 1.65;
+  color: var(--vp-c-text-2);
+}
+
+.skein-card .ico {
+  display: block;
+  font-size: 22px;
+  line-height: 1;
+  margin-bottom: 12px;
+}
+
+/* A numbered walk-through — the "how did we get here" beats on the Why page. */
+.skein-steps {
+  counter-reset: skein-step;
+  margin: 28px 0;
+  padding: 0;
+  list-style: none;
+}
+
+.vp-doc .skein-steps > li {
+  counter-increment: skein-step;
+  position: relative;
+  padding: 0 0 26px 52px;
+  margin: 0;
+  border-left: 1px solid var(--vp-c-divider);
+}
+
+.vp-doc .skein-steps > li:last-child {
+  border-left-color: transparent;
+  padding-bottom: 0;
+}
+
+.vp-doc .skein-steps > li::before {
+  content: counter(skein-step);
+  position: absolute;
+  left: -16px;
+  top: -2px;
+  width: 32px;
+  height: 32px;
+  border-radius: 50%;
+  background: var(--vp-c-bg);
+  border: 1px solid var(--vp-c-divider);
+  color: var(--vp-c-text-2);
+  font-size: 13px;
+  font-weight: 600;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.vp-doc .skein-steps > li > strong {
+  display: block;
+  margin-bottom: 4px;
+  font-size: 17px;
+  letter-spacing: -0.015em;
+}
+
+/* ---------------------------------------------------------------------------
+   Typographic scale.
+
+   VitePress sizes tables and feature details at 14px, which is right for a
+   dense API reference and too small for pages whose job is to be read and
+   shared. These bump the places carrying the pitch, without touching the 16px
+   body measure (which is correct at the theme's 688px column).
+   --------------------------------------------------------------------------- */
+
+.vp-doc table {
+  font-size: 15px;
+  line-height: 1.6;
+}
+
+.vp-doc th {
+  font-size: 13px;
+  letter-spacing: 0.02em;
+  text-transform: uppercase;
+  color: var(--vp-c-text-2);
+}
+
+.vp-doc .skein-card p {
+  font-size: 15px;
+  line-height: 1.65;
+}
+
+.vp-doc .skein-card h3 {
+  font-size: 17px;
+}
+
+/* Section heads on the long-form pages carry more weight than the default 24px,
+   so a reader skimming for the section they want can actually find it. */
+.vp-doc h2 {
+  font-size: 28px;
+  line-height: 1.3;
+}
+
+.vp-doc h1 {
+  font-size: 38px;
+  line-height: 1.15;
+}
+
+/* ---------------------------------------------------------------------------
+   The architecture diagram.
+
+   Inline SVG rather than an <img>, so it inherits the theme tokens and follows
+   the manual light/dark toggle rather than only the OS setting.
+   --------------------------------------------------------------------------- */
+
+.skein-arch {
+  width: 100%;
+  height: auto;
+  margin: 28px 0;
+  overflow: visible;
+}
+
+.skein-arch .box {
+  fill: var(--vp-c-bg-soft);
+  stroke: var(--vp-c-divider);
+  stroke-width: 1;
+}
+
+.skein-arch .box-accent {
+  fill: var(--vp-c-brand-soft);
+  stroke: var(--vp-c-brand-1);
+  stroke-width: 1.5;
+}
+
+.skein-arch .t {
+  fill: var(--vp-c-text-1);
+  font-family: var(--vp-font-family-base);
+  font-size: 15px;
+  font-weight: 600;
+}
+
+.skein-arch .t-sub {
+  fill: var(--vp-c-text-2);
+  font-family: var(--vp-font-family-base);
+  font-size: 12.5px;
+  font-weight: 400;
+}
+
+.skein-arch .t-edge {
+  fill: var(--vp-c-text-3);
+  font-family: var(--vp-font-family-mono);
+  font-size: 11.5px;
+}
+
+.skein-arch .wire {
+  stroke: var(--vp-c-divider);
+  stroke-width: 1.5;
+  fill: none;
+}
+
+.skein-arch .pulse {
+  fill: var(--vp-c-brand-1);
+}
+
+/* Two dots travelling the wires: requests down, results back up. Slow enough to
+   read as "this is a pipeline", not as a loading spinner. */
+@keyframes skein-flow-down {
+  from {
+    transform: translateY(0);
+    opacity: 0;
+  }
+  12%,
+  88% {
+    opacity: 1;
+  }
+  to {
+    transform: translateY(var(--travel));
+    opacity: 0;
+  }
+}
+
+.skein-arch .pulse-a {
+  --travel: 96px;
+  animation: skein-flow-down 2.8s ease-in-out infinite;
+}
+
+.skein-arch .pulse-b {
+  --travel: 92px;
+  animation: skein-flow-down 2.8s ease-in-out 0.9s infinite;
+}
+
+.skein-arch .pulse-c {
+  --travel: 88px;
+  animation: skein-flow-down 2.8s ease-in-out 1.8s infinite;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .skein-arch .pulse-a,
+  .skein-arch .pulse-b,
+  .skein-arch .pulse-c {
+    animation: none;
+    opacity: 0.9;
+  }
+}
+
+/* ---------------------------------------------------------------------------
+   Reading comfort.
+
+   The tight tracking above is right for headings — it is most of what reads as
+   "Geist" without shipping Geist — but negative tracking on body copy at 16px
+   fights legibility, and these pages are meant to be *read*, not scanned.
+
+   So: headings keep their tight, designed feel; running prose gets a longer
+   measure-friendly size, neutral tracking, and a slightly softened ink. Pure
+   near-black on pure white (and 93% on pure black) is the highest-contrast,
+   least comfortable combination available — backing both off a few percent is
+   the single biggest comfort win, and it leaves the brand grounds untouched so
+   the docs still match the console.
+   --------------------------------------------------------------------------- */
+
+:root {
+  --skein-c-prose: hsl(0 0% 22%);
+}
+
+.dark {
+  --skein-c-prose: hsl(0 0% 82%);
+}
+
+.vp-doc p,
+.vp-doc li,
+.vp-doc blockquote p {
+  font-size: 17px;
+  line-height: 1.78;
+  letter-spacing: 0;
+  color: var(--skein-c-prose);
+}
+
+/* 17px at the theme's 688px column lands around 72 characters — inside the
+   55–75 range that reads comfortably, where 16px was running to ~78. */
+.vp-doc p {
+  margin: 20px 0;
+}
+
+.vp-doc li {
+  line-height: 1.72;
+}
+
+/* Body tracking relaxes; headings keep the tight treatment set earlier. */
+body {
+  letter-spacing: -0.003em;
+}
+
+.vp-doc table {
+  font-size: 15.5px;
+  line-height: 1.65;
+}
+
+.vp-doc td {
+  color: var(--skein-c-prose);
+  padding-top: 12px;
+  padding-bottom: 12px;
+}
+
+.vp-doc .skein-card p {
+  font-size: 15.5px;
+  line-height: 1.7;
+}
+
+/* Inline code sits inside relaxed prose now, so it needs to match rather than
+   punch a hole in the line. */
+.vp-doc :not(pre) > code {
+  font-size: 0.88em;
+}
+
+/* ---------------------------------------------------------------------------
+   The building-block cards (the home hero's `features` grid).
+
+   These carry the answer to "why not hand-roll this myself?", so they are the
+   most-read thing on the site after the headline. A static grid reads as a
+   spec sheet; a little motion on entry and a lift on hover makes them read as
+   something you are meant to look through. Motion is small and fast on
+   purpose — this is a docs site, not a splash page.
+   --------------------------------------------------------------------------- */
+
+.VPFeatures .VPFeature {
+  transition:
+    transform 0.18s ease,
+    border-color 0.18s ease,
+    box-shadow 0.18s ease;
+}
+
+.VPFeatures .VPFeature:hover {
+  transform: translateY(-3px);
+  border-color: var(--vp-c-brand-1);
+  box-shadow: 0 10px 28px -16px rgb(0 0 0 / 0.35);
+}
+
+@keyframes skein-rise {
+  from {
+    opacity: 0;
+    transform: translateY(12px);
+  }
+  to {
+    opacity: 1;
+    transform: none;
+  }
+}
+
+/* `backwards` so each card holds its pre-animation state during its delay,
+   rather than flashing in at full opacity and then animating. */
+.VPFeatures .VPFeature {
+  animation: skein-rise 0.5s cubic-bezier(0.16, 1, 0.3, 1) backwards;
+}
+
+.VPFeatures .items .item:nth-child(1) .VPFeature {
+  animation-delay: 0.04s;
+}
+.VPFeatures .items .item:nth-child(2) .VPFeature {
+  animation-delay: 0.1s;
+}
+.VPFeatures .items .item:nth-child(3) .VPFeature {
+  animation-delay: 0.16s;
+}
+.VPFeatures .items .item:nth-child(4) .VPFeature {
+  animation-delay: 0.22s;
+}
+.VPFeatures .items .item:nth-child(5) .VPFeature {
+  animation-delay: 0.28s;
+}
+
+/* The card titles are the five categories — give them a touch more weight than
+   the theme's default so the grid scans as a list of headings. */
+.VPFeatures .VPFeature .title {
+  font-size: 17px;
+  letter-spacing: -0.015em;
+}
+
+.VPFeatures .VPFeature .details {
+  font-size: 15px;
+  line-height: 1.62;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .VPFeatures .VPFeature {
+    animation: none;
+  }
+  .VPFeatures .VPFeature:hover {
+    transform: none;
+  }
+}
+
+/* Each building-block card now carries an icon and links to the page that block lives on, so the
+   grid is a navigation surface rather than a list of claims — which is also why the old "where each
+   block lives" table below it could go. These styles give the icons the brand accent instead of the
+   theme's neutral grey, and put a hairline of accent along the top edge on hover so the card reads
+   as something you can click. */
+
+.VPFeatures .VPFeature .icon {
+  width: 44px;
+  height: 44px;
+  font-size: 22px;
+  background: var(--vp-c-brand-soft);
+  border-radius: 12px;
+  margin-bottom: 16px;
+}
+
+.VPFeatures .VPFeature {
+  position: relative;
+  overflow: hidden;
+}
+
+/* Drawn as a pseudo-element so it can wipe in from the left rather than just appear. */
+.VPFeatures .VPFeature::before {
+  content: "";
+  position: absolute;
+  inset: 0 0 auto 0;
+  height: 2px;
+  background: linear-gradient(90deg, var(--vp-c-brand-1), transparent);
+  transform: scaleX(0);
+  transform-origin: left;
+  transition: transform 0.28s cubic-bezier(0.16, 1, 0.3, 1);
+}
+
+.VPFeatures .VPFeature:hover::before {
+  transform: scaleX(1);
+}
+
+.VPFeatures .VPFeature .link-text {
+  font-size: 14px;
+}
+
+.VPFeatures .VPFeature .link-text-value {
+  color: var(--vp-c-brand-1);
+  font-weight: 500;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .VPFeatures .VPFeature::before {
+    transition: none;
+  }
+}
+
+/* Two columns rather than the theme's three. These cards carry a sentence of real copy each, not a
+   four-word label, and at a third of the width that sentence wraps to five cramped lines. Two columns
+   give it room and keep the grid scannable as three rows of two. Collapses to one column on narrow
+   screens, where the theme's own breakpoint already does the right thing. */
+@media (min-width: 768px) {
+  .VPFeatures .items .item {
+    width: 50%;
+    max-width: 50%;
+    flex-basis: 50%;
+  }
+}
+
+/* ---------------------------------------------------------------------------
+   Clickable `.skein-card`s.
+
+   Same treatment as the home hero's building-block grid, so the two card
+   sections on the page read as one system: accented icon tile, an accent
+   hairline that wipes across the top on hover, and a link affordance at the
+   foot. Authored as <a class="skein-card"> in the markdown.
+   --------------------------------------------------------------------------- */
+
+.vp-doc a.skein-card {
+  display: block;
+  position: relative;
+  overflow: hidden;
+  text-decoration: none;
+  color: inherit;
+  font-weight: inherit;
+}
+
+.vp-doc a.skein-card::before {
+  content: "";
+  position: absolute;
+  inset: 0 0 auto 0;
+  height: 2px;
+  background: linear-gradient(90deg, var(--vp-c-brand-1), transparent);
+  transform: scaleX(0);
+  transform-origin: left;
+  transition: transform 0.28s cubic-bezier(0.16, 1, 0.3, 1);
+}
+
+.vp-doc a.skein-card:hover::before {
+  transform: scaleX(1);
+}
+
+.vp-doc a.skein-card:hover {
+  transform: translateY(-3px);
+  box-shadow: 0 10px 28px -16px rgb(0 0 0 / 0.35);
+}
+
+/* The icon becomes a tile rather than a loose glyph, matching .VPFeature .icon. */
+.skein-cards .ico {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 44px;
+  height: 44px;
+  font-size: 22px;
+  background: var(--vp-c-brand-soft);
+  border-radius: 12px;
+  margin-bottom: 14px;
+}
+
+.skein-card-link {
+  display: block;
+  margin-top: 14px;
+  font-size: 14px;
+  font-weight: 500;
+  color: var(--vp-c-brand-1);
+}
+
+.skein-card-link::after {
+  content: " →";
+  transition: transform 0.18s ease;
+  display: inline-block;
+}
+
+.vp-doc a.skein-card:hover .skein-card-link::after {
+  transform: translateX(3px);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .vp-doc a.skein-card,
+  .vp-doc a.skein-card::before,
+  .skein-card-link::after {
+    transition: none;
+  }
+  .vp-doc a.skein-card:hover {
+    transform: none;
+  }
+}
+
+/* ---------------------------------------------------------------------------
+   Pull quote.
+
+   One idea, set large enough to stop a scroll — used for the arguments that are
+   a single sentence rather than a section. Deliberately not a blockquote: the
+   theme's blockquote is for asides and notes, and this is the opposite of an
+   aside.
+   --------------------------------------------------------------------------- */
+
+.vp-doc .skein-quote {
+  margin: 40px 0;
+  padding: 4px 0 4px 26px;
+  border-left: 3px solid var(--vp-c-brand-1);
+  font-size: 27px;
+  line-height: 1.35;
+  letter-spacing: -0.022em;
+  font-weight: 600;
+  color: var(--vp-c-text-1);
+  max-width: 22ch;
+}
+
+.vp-doc .skein-quote em {
+  font-style: normal;
+  color: var(--vp-c-brand-1);
+}
+
+@media (max-width: 640px) {
+  .vp-doc .skein-quote {
+    font-size: 22px;
+    max-width: none;
+  }
+}

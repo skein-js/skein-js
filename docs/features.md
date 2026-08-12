@@ -25,6 +25,7 @@ organised by parity instead.
 
 | Capability                                                            | Status | What it gets you                                                                      |
 | --------------------------------------------------------------------- | ------ | ------------------------------------------------------------------------------------- |
+| [State, context & persistence](./state-and-context.md)                | ✅     | What the agent knows, what's only for this run, and what survives a restart           |
 | [Threads](./threads.md)                                               | ✅     | Conversations that persist, addressable by your own key (a ticket id, a phone number) |
 | [Streaming (SSE)](./streaming.md)                                     | ✅     | Tokens, tool calls and reasoning as they happen — including a true `events` mode      |
 | [Reconnect & join](./streaming.md)                                    | ✅     | Resume a dropped stream, or tail the same run from a second client                    |
