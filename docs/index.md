@@ -412,7 +412,7 @@ per adapter — standalone, and mounted inside an app that already has its own r
 ## Where to go next
 
 New here? [**Your first agent**](./your-first-agent.md) goes from an empty directory to deployed,
-then [**what you need to know**](./what-you-need-to-know.md) maps everything it skipped. Never
+then [**building blocks**](./building-blocks.md) names every piece an agent is made of. Never
 written a graph? [**LangGraph essentials**](./langgraph-essentials.md) is the short version.
 Wondering if skein does something specific? The [**features page**](./features.md) answers it in one
 line. Building _with_ an AI agent?

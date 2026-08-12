@@ -245,7 +245,7 @@ export default defineConfig({
         text: "Understand",
         collapsed: false,
         items: [
-          { text: "What you need to know", link: "/what-you-need-to-know" },
+          { text: "Building blocks", link: "/building-blocks" },
           { text: "LangGraph essentials", link: "/langgraph-essentials" },
           { text: "State, context & persistence", link: "/state-and-context" },
           { text: "Threads & time travel", link: "/threads" },

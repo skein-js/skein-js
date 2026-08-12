@@ -266,7 +266,7 @@ Then pick a host: [Cloud Run](./deploy-cloud-run.md), [Fly](./deploy-fly.md),
 
 ## Where to next
 
-**Read [what you need to know](./what-you-need-to-know.md).** It is the map of everything this guide
+**Read [building blocks](./building-blocks.md).** It is the map of everything this guide
 skipped — checkpoints, threads, multitask, interrupts, memory, what production actually needs — a few
 lines each, so you can tell which page you want before you need it.
 

@@ -243,7 +243,7 @@ LangGraph question. If it is about what got _served, stored or scheduled_, it is
 
 ## See also
 
-- [What you need to know](./what-you-need-to-know.md) — the skein-side map of the same territory
+- [Building blocks](./building-blocks.md) — the skein-side map of the same territory
 - [Your first agent](./your-first-agent.md) — build one from an empty directory
 - [LangGraph CLI compatibility](./langgraph-cli-compat.md) — what `langgraph.json` supports
 - [Building a runner](./building-a-runner.md) — serving the protocol from something that isn't
