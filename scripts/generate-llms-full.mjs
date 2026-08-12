@@ -22,6 +22,7 @@ const DOCS = [
   "docs/getting-started.md",
   "docs/scaffolding.md",
   "docs/using-skein.md",
+  "docs/adapters.md",
   "docs/langgraph-cli-compat.md",
   "docs/embedding.md",
   "docs/serving-a-single-graph.md",

@@ -213,11 +213,21 @@ export default defineConfig({
           { text: "Your first agent", link: "/your-first-agent" },
           { text: "Getting started", link: "/getting-started" },
           { text: "Scaffolding a project", link: "/scaffolding" },
-          { text: "Using skein-js", link: "/using-skein" },
-          { text: "Embedding in your server", link: "/embedding" },
-          { text: "LangGraph CLI compatibility", link: "/langgraph-cli-compat" },
-          { text: "Serving a single graph", link: "/serving-a-single-graph" },
+          { text: "Framework adapters", link: "/adapters" },
           { text: "Frontend SDKs & useStream", link: "/react-sdk" },
+          {
+            // The default path is the three entries above. These four are alternatives — a different
+            // on-ramp, or a smaller surface — and listing them as peers made "Build" read as five
+            // competing ways to start, with the two taglined "simplified"/"in-code" pulling hardest.
+            text: "Other ways in",
+            collapsed: true,
+            items: [
+              { text: "LangGraph CLI compatibility", link: "/langgraph-cli-compat" },
+              { text: "Embedding a graph in code", link: "/embedding" },
+              { text: "A graph as a plain endpoint", link: "/serving-a-single-graph" },
+              { text: "Using skein-js (reference)", link: "/using-skein" },
+            ],
+          },
           {
             text: "Recipes",
             collapsed: true,

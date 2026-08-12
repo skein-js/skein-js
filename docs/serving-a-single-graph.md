@@ -1,4 +1,4 @@
-# Serving a graph as a plain endpoint — the simplified path
+# Serving a graph as a plain endpoint — no threads, no runs
 
 > **User guide.** skein's main surface is the full [Agent Protocol](./agent-protocol.md) — threads,
 > assistants, runs, streaming, history, human-in-the-loop. That's what a **chat** app needs. Plenty of

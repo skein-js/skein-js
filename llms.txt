@@ -22,6 +22,7 @@ Upstream references: [LangGraph.js overview](https://docs.langchain.com/oss/java
 ## Guides
 
 - [LangGraph CLI compatibility](https://github.com/skein-js/skein-js/blob/main/docs/langgraph-cli-compat.md): Every `langgraph.json` field + the `skein` command mapping (`dev`/`up`/`build`/`dockerfile`).
+- [Framework adapters](https://github.com/skein-js/skein-js/blob/main/docs/adapters.md): Express, Fastify, NestJS, Next.js and Fetch — the standalone and mount-into-your-app entry for each, and what actually differs between them: mount path, CORS mechanism, JSON body cap, logger default, whether `/ok` exists, and what drains the run worker on shutdown.
 - [Embedding a graph in code](https://github.com/skein-js/skein-js/blob/main/docs/embedding.md): The in-code on-ramp — serve a compiled graph with no `langgraph.json` and no CLI.
 - [Serving a graph as a plain endpoint](https://github.com/skein-js/skein-js/blob/main/docs/serving-a-single-graph.md): The non-chat surface — `POST /invoke/:graph_id`, body-in / final-state-out, no threads or runs.
 - [Agent Protocol surface](https://github.com/skein-js/skein-js/blob/main/docs/agent-protocol.md): The REST + SSE endpoint inventory skein implements, plus the auth route→permission map.
@@ -63,6 +64,7 @@ Upstream references: [LangGraph.js overview](https://docs.langchain.com/oss/java
 - [@skein-js/fastify](https://github.com/skein-js/skein-js/tree/main/packages/server-fastify#readme): Fastify adapter — `createFastifyServer`, `skeinPlugin`.
 - [@skein-js/nestjs](https://github.com/skein-js/skein-js/tree/main/packages/server-nestjs#readme): NestJS adapter — `SkeinModule.forRoot`, `createNestServer`.
 - [@skein-js/nextjs](https://github.com/skein-js/skein-js/tree/main/packages/server-nextjs#readme): Next.js adapter — `createSkeinRouteHandlers` (App Router), `createSkeinPagesHandler` (Pages Router).
+- [@skein-js/fetch](https://github.com/skein-js/skein-js/tree/main/packages/server-fetch#readme): Web-standard Fetch transport — `createSkeinFetchServer`, plus `startBunServer` / `startDenoServer`. The production path on Bun and Deno; the only adapter that caps request bodies itself.
 - [@skein-js/storage-memory](https://github.com/skein-js/skein-js/tree/main/packages/storage-memory#readme): In-memory `SkeinStore` + queue (dev/tests).
 - [@skein-js/storage-postgres](https://github.com/skein-js/skein-js/tree/main/packages/storage-postgres#readme): Postgres `SkeinStore` + pgvector; reuses `PostgresSaver`.
 - [@skein-js/redis](https://github.com/skein-js/skein-js/tree/main/packages/runtime-redis#readme): Redis run queue + cross-instance pub/sub streaming.

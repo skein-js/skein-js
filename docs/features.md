@@ -76,7 +76,7 @@ organised by parity instead.
 
 | Capability                                         | Status | What it gets you                                                         |
 | -------------------------------------------------- | ------ | ------------------------------------------------------------------------ |
-| [Framework adapters](./using-skein.md)             | ✅     | Express, Fastify, NestJS, Next.js, native Fetch — standalone or embedded |
+| [Framework adapters](./adapters.md)                | ✅     | Express, Fastify, NestJS, Next.js, native Fetch — standalone or embedded |
 | [Embed a graph in code](./embedding.md)            | ✅     | No `langgraph.json`, no CLI — bring a compiled graph and mount it        |
 | [Drop-in LangGraph CLI](./langgraph-cli-compat.md) | ✅     | `skein dev` for `langgraph dev`, with your `langgraph.json` unchanged    |
 | [Scaffolding](./scaffolding.md)                    | ✅     | `npm create skein-js@latest` — a working project, no API key needed      |

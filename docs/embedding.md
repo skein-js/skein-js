@@ -1,4 +1,4 @@
-# Embedding a graph you already have — the in-code path
+# Embedding a graph you already have
 
 > **User guide.** skein-js has **two on-ramps**. If you already run the LangGraph CLI, the
 > [drop-in](./langgraph-cli-compat.md) (`langgraph dev` → `skein dev`, unchanged `langgraph.json`) is
@@ -82,9 +82,10 @@ the [`EmbeddableGraph`](#api-reference) type leaves the graph's generics open on
 ```ts
 const deps = embedInMemoryGraphs({ agent: graph });
 
-// Express — standalone server, or mounted on your existing app:
+// Express — standalone server, or mounted on your existing app.
+// `skeinRouter` is async: it seeds assistants and starts the run worker before returning.
 await (await createExpressServer({ deps })).listen(2024);
-app.use(skeinRouter({ deps }).router);
+app.use((await skeinRouter({ deps })).router);
 
 // Fastify — plugin under a prefix:
 await app.register(skeinPlugin, { prefix: "/agent", deps });
@@ -98,6 +99,9 @@ export const { GET, POST, PUT, PATCH, DELETE, OPTIONS } = createSkeinRouteHandle
 
 The Next.js App Router case is the lightest full-stack story — an 11-line `route.ts` serving the
 protocol same-origin behind a `useStream` UI. See [`examples/nextjs-app`](https://github.com/skein-js/skein-js/tree/main/examples/nextjs-app).
+
+Each adapter mounts a little differently — prefixes, CORS, body limits, `/ok` and shutdown all vary.
+[adapters.md](./adapters.md) covers each one in full.
 
 ## Bring your own drivers, auth, logger
 
