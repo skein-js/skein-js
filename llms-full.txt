@@ -7299,19 +7299,15 @@ per-thread execution claim, held for the whole run.
 
 ## Deployment topology (`skein up`)
 
-```
-        ┌──────────┐     ┌──────────┐        clients (SSE)
-        │ instance │     │ instance │  ◄───────────────────
-        │    A     │     │    B     │
-        └────┬─────┘     └────┬─────┘
-             │  queue + pub/sub │
-             └───────┬──────────┘
-                 ┌───▼───┐        ┌───────────────┐
-                 │ Redis │        │   Postgres    │
-                 └───────┘        │ checkpoints + │
-                                  │ resources +   │
-                                  │ pgvector      │
-                                  └───────────────┘
+```mermaid
+flowchart TB
+  C(["clients · SSE"]) --> A["instance A"]
+  C --> B["instance B"]
+  A --> R[("Redis<br/>queue + pub/sub")]
+  B --> R
+  A --> P[("Postgres<br/>checkpoints · resources<br/>pgvector")]
+  B --> P
+  class R accent
 ```
 
 `skein up` brings this stack up via Docker Compose. Horizontal scaling is verified by
