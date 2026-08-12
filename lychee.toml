@@ -20,3 +20,22 @@ exclude = [
   # vanished would still show up as a broken badge image rather than pass silently.
   '^https?://(?:www\.)?npmjs\.com/',
 ]
+
+# Two places where the docs are written for VitePress's resolution rather than the filesystem's, so
+# lychee has to be told the same rules. These are *remaps*, not excludes, on purpose: the link is
+# still checked, just against the path VitePress would serve it from. An image that vanished, or a
+# card pointing at a page that no longer exists, still fails the build.
+remap = [
+  # Only the *first* matching rule applies, so this identity rule is a guard: README.md is read on
+  # GitHub, not by VitePress, and already spells the path out as `docs/public/images/...`. Without
+  # this, the rule below would match it too and prepend a second `docs/public`.
+  'file://(.+)/docs/public/images/(.+) file://$1/docs/public/images/$2',
+  # `docs/public/` is the VitePress public directory — it is served at the site root, so a page
+  # references a screenshot as `/images/console/overview-light.png`. lychee resolves that against
+  # `--root-dir` (the repo root) and looks for `<repo>/images/...`, which is nothing.
+  'file://(.+)/images/(.+) file://$1/docs/public/images/$2',
+  # `cleanUrls: true` means an in-page link is written extensionless — `./why#why-we-bet-on-langgraph`.
+  # Markdown links can say `./why.md` and VitePress rewrites them, but these live in a raw HTML card
+  # block, which it leaves alone, so extensionless is the only form that works on the site.
+  'file://(.+)/docs/([a-z0-9-]+)#(.+) file://$1/docs/$2.md#$3',
+]
