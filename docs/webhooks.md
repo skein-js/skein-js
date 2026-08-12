@@ -55,6 +55,19 @@ The one exception is a custom store that doesn't record deliveries — see
 
 ## The guarantee: why a callback survives a crash
 
+```mermaid
+flowchart LR
+  R[run settles] --> TX
+  subgraph TX["one transaction"]
+    ST[terminal status] --- D[delivery row]
+  end
+  TX --> I[inline attempt]
+  I -->|2xx| Done[done]
+  I -->|fails| Q[retry schedule]
+  Q --> Done
+  class TX accent
+```
+
 **The callback is recorded in the same transaction as the run's terminal status.** A crash between
 "the run finished" and "someone was told" cannot lose it, because there is no instant where one is
 committed and the other is not.

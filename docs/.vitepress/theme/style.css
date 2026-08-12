@@ -691,3 +691,109 @@ body {
     max-width: none;
   }
 }
+
+/* ---------------------------------------------------------------------------
+   Mermaid diagrams.
+
+   Mermaid bakes its palette into the SVG at render time and does not re-render on a theme toggle, so
+   the colours have to come from CSS rather than from `themeVariables`. Everything below maps onto the
+   same --vp-c-* variables the rest of the page uses, which is what keeps a diagram legible in both
+   themes without shipping two of them. `!important` is unavoidable: mermaid writes inline attributes.
+   --------------------------------------------------------------------------- */
+.mermaid {
+  margin: 24px 0;
+  overflow-x: auto;
+  text-align: center;
+}
+
+/* Nodes: the page's soft surface, hairline border — a diagram should read as part of the page. */
+.mermaid .node rect,
+.mermaid .node polygon,
+.mermaid .node circle,
+.mermaid .node ellipse,
+.mermaid .node path,
+.mermaid .cluster rect {
+  fill: var(--vp-c-bg-soft) !important;
+  stroke: var(--vp-c-divider) !important;
+}
+
+/* One accented shape per diagram, at most: `class X accent` in the mermaid source. */
+.mermaid .accent > rect,
+.mermaid .accent > polygon,
+.mermaid .accent > circle,
+.mermaid .accent > path {
+  fill: var(--vp-c-brand-soft) !important;
+  stroke: var(--vp-c-brand-1) !important;
+}
+
+/* Flowchart labels are a plain <div> inside a <foreignObject>, so `.nodeLabel`-style selectors miss
+   them entirely and they inherit mermaid's own 16px Trebuchet. Mermaid then sizes the foreignObject by
+   measuring that text and rounds slightly short, which clips the last glyph — "checkpoint" renders as
+   "checkpoin". Letting the foreignObject overflow fixes the clip (the surrounding rect has ample
+   slack), and setting the type here puts diagram labels on the page's own font and scale. */
+.mermaid foreignObject {
+  overflow: visible !important;
+}
+.mermaid foreignObject div,
+.mermaid foreignObject span,
+.mermaid foreignObject p,
+.mermaid text,
+.mermaid .nodeLabel,
+.mermaid .cluster-label {
+  font-family: ui-sans-serif, system-ui, sans-serif !important;
+  font-size: 14px !important;
+  line-height: 1.45 !important;
+  white-space: nowrap;
+  text-align: center;
+  fill: var(--vp-c-text-1) !important;
+  color: var(--vp-c-text-1) !important;
+}
+
+.mermaid .edgeLabel,
+.mermaid .edgeLabel rect,
+.mermaid .labelBkg {
+  background-color: var(--vp-c-bg) !important;
+  fill: var(--vp-c-bg) !important;
+}
+.mermaid .edgeLabel foreignObject span,
+.mermaid .edgeLabel p {
+  color: var(--vp-c-text-2) !important;
+  background: var(--vp-c-bg) !important;
+}
+
+.mermaid .edgePath path,
+.mermaid .flowchart-link,
+.mermaid line,
+.mermaid .messageLine0,
+.mermaid .messageLine1 {
+  stroke: var(--vp-c-text-3) !important;
+}
+.mermaid marker path,
+.mermaid .arrowheadPath,
+.mermaid .marker {
+  fill: var(--vp-c-text-3) !important;
+  stroke: none !important;
+}
+
+/* Sequence diagrams: actor boxes, lifelines and the note bubbles. */
+.mermaid .actor {
+  fill: var(--vp-c-bg-soft) !important;
+  stroke: var(--vp-c-divider) !important;
+}
+.mermaid .actor-line {
+  stroke: var(--vp-c-divider) !important;
+}
+.mermaid .note {
+  fill: var(--vp-c-brand-soft) !important;
+  stroke: var(--vp-c-brand-1) !important;
+}
+.mermaid .messageText,
+.mermaid .noteText,
+.mermaid .labelText,
+.mermaid .loopText {
+  fill: var(--vp-c-text-1) !important;
+}
+.mermaid .labelBox {
+  fill: var(--vp-c-bg-soft) !important;
+  stroke: var(--vp-c-divider) !important;
+}

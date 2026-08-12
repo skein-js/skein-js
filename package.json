@@ -53,6 +53,7 @@
     "eslint-plugin-import": "^2.31.0",
     "eslint-plugin-unused-imports": "^4.1.4",
     "jiti": "2.4.2",
+    "mermaid": "^11.16.1",
     "nx": "23.0.2",
     "prettier": "^3.9.6",
     "testcontainers": "^10.16.0",
@@ -61,6 +62,7 @@
     "typescript-eslint": "^8.18.1",
     "vite": "8.1.4",
     "vitepress": "^1.6.4",
+    "vitepress-plugin-mermaid": "^2.0.17",
     "vitepress-plugin-tabs": "^0.9.1",
     "vitest": "4.1.9",
     "vue": "^3.5.41"

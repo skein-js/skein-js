@@ -4,6 +4,21 @@ Pause a run for a person to approve, edit, or answer something — and resume it
 later, from a different client. An interrupted run holds no connection and no timer, only a
 checkpoint, so your process can restart while it waits.
 
+```mermaid
+sequenceDiagram
+  participant U as Your app
+  participant S as skein
+  participant G as Graph
+  U->>S: create run
+  S->>G: execute
+  G-->>S: interrupt(payload)
+  Note over S: run ends · nothing held open
+  S-->>U: status interrupted
+  U->>S: command resume (hours later)
+  S->>G: continue from the checkpoint
+  G-->>S: done
+```
+
 ## Pause the graph
 
 Call LangGraph's `interrupt()` from a node. Whatever you pass becomes the payload your UI renders:

@@ -51,6 +51,15 @@ back the branch/edit tree reaches.
 
 ## Time travel: re-run a turn a different way
 
+```mermaid
+flowchart LR
+  C1[turn 1] --> C2[turn 2] --> C3[turn 3]
+  C2 --> F[edited copy of turn 2] --> F2[turn 3, differently]
+  class F accent
+```
+
+The original branch is left intact — a fork is a new checkpoint, not a rewrite.
+
 Fork from any past checkpoint and run forward from there, leaving the original branch intact. This is
 what "edit and resubmit" in a chat UI is built on, and it's also the fastest way to debug what a node
 actually saw.
