@@ -6,17 +6,13 @@ checkpoint, so your process can restart while it waits.
 
 ```mermaid
 sequenceDiagram
-  participant U as Your app
+  participant A as Your app
   participant S as skein
-  participant G as Graph
-  U->>S: create run
-  S->>G: execute
-  G-->>S: interrupt(payload)
-  Note over S: run ends · nothing held open
-  S-->>U: status interrupted
-  U->>S: command resume (hours later)
-  S->>G: continue from the checkpoint
-  G-->>S: done
+  A->>S: create run
+  S-->>A: interrupted
+  Note over A,S: nothing held open — for hours, or weeks
+  A->>S: resume with a value
+  S-->>A: done
 ```
 
 ## Pause the graph
