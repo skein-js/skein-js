@@ -188,121 +188,116 @@ export default defineConfig({
       text: "Edit this page on GitHub",
     },
 
-    // The canonical index for readers on the web. Hand-written on purpose: the reading order below
-    // is the argument, and no directory layout would produce it (docs/ is flat).
+    // Ordered as a journey, not as a filing cabinet: decide whether to use it, build something,
+    // understand what you built, ship it, extend it. Hand-written on purpose — docs/ is flat, so no
+    // directory layout would produce this, and the ordering is the argument.
+    //
+    // Every group sets `collapsed`, which is what makes it collapsible at all; omitting it pins a
+    // group open. The long tails — recipes, the per-platform deploy guides, proposals — are nested
+    // one level down so they are reachable without dominating the scroll.
     sidebar: [
       {
-        text: "Getting started",
+        text: "Decide",
+        collapsed: false,
         items: [
           { text: "Overview", link: "/" },
           { text: "Why skein-js", link: "/why" },
+          { text: "Features", link: "/features" },
+          { text: "Roadmap", link: "/roadmap" },
+        ],
+      },
+      {
+        text: "Build",
+        collapsed: false,
+        items: [
           { text: "Your first agent", link: "/your-first-agent" },
           { text: "Getting started", link: "/getting-started" },
           { text: "Scaffolding a project", link: "/scaffolding" },
           { text: "Using skein-js", link: "/using-skein" },
+          { text: "Embedding in your server", link: "/embedding" },
+          { text: "LangGraph CLI compatibility", link: "/langgraph-cli-compat" },
+          { text: "Serving a single graph", link: "/serving-a-single-graph" },
+          { text: "Frontend SDKs & useStream", link: "/react-sdk" },
+          {
+            text: "Recipes",
+            collapsed: true,
+            items: [
+              { text: "Overview", link: "/recipes/" },
+              { text: "Serving", link: "/recipes/serving" },
+              { text: "Running agents", link: "/recipes/running-agents" },
+              { text: "Memory", link: "/recipes/memory" },
+              { text: "Production", link: "/recipes/production" },
+            ],
+          },
         ],
       },
       {
-        text: "Core concepts",
+        text: "Understand",
+        collapsed: false,
         items: [
           { text: "What you need to know", link: "/what-you-need-to-know" },
           { text: "LangGraph essentials", link: "/langgraph-essentials" },
-        ],
-      },
-      {
-        text: "Features",
-        items: [
-          { text: "Overview", link: "/features" },
           { text: "State, context & persistence", link: "/state-and-context" },
-          { text: "Assistants", link: "/assistants" },
           { text: "Threads & time travel", link: "/threads" },
           { text: "Runs & multitask", link: "/runs" },
           { text: "Streaming", link: "/streaming" },
           { text: "Human-in-the-loop", link: "/human-in-the-loop" },
+          { text: "Long-term memory", link: "/memory" },
+          { text: "Assistants", link: "/assistants" },
           { text: "Background jobs", link: "/background-jobs" },
           { text: "Crons", link: "/crons" },
           { text: "Webhooks & delivery", link: "/webhooks" },
-          { text: "Long-term memory", link: "/memory" },
-          { text: "The console", link: "/console" },
         ],
       },
       {
-        text: "Recipes",
+        text: "Ship",
+        collapsed: false,
         items: [
-          { text: "Overview", link: "/recipes/" },
-          { text: "Serving", link: "/recipes/serving" },
-          { text: "Running agents", link: "/recipes/running-agents" },
-          { text: "Memory", link: "/recipes/memory" },
-          { text: "Production", link: "/recipes/production" },
-        ],
-      },
-      {
-        text: "Guides",
-        items: [
-          { text: "LangGraph CLI compatibility", link: "/langgraph-cli-compat" },
-          { text: "Embedding in your server", link: "/embedding" },
-          { text: "Serving a single graph", link: "/serving-a-single-graph" },
-        ],
-      },
-      {
-        text: "Protocol & extending",
-        items: [
-          { text: "Agent Protocol", link: "/agent-protocol" },
-          { text: "Frontend SDKs & useStream", link: "/react-sdk" },
-          { text: "Building an adapter", link: "/building-an-adapter" },
-          { text: "Building a runner", link: "/building-a-runner" },
-        ],
-      },
-      {
-        text: "Storage & scale",
-        items: [
+          { text: "Deploy anywhere", link: "/deploy" },
           { text: "Storage", link: "/storage" },
           { text: "Runs & Redis", link: "/runs-and-redis" },
-        ],
-      },
-      {
-        text: "Operations",
-        items: [
+          { text: "The console", link: "/console" },
           { text: "Errors & logging", link: "/errors-and-logging" },
           { text: "Observability", link: "/observability" },
           { text: "Performance", link: "/performance" },
           { text: "Profiling", link: "/profiling" },
           { text: "Bundling", link: "/bundling" },
+          {
+            text: "Platform guides",
+            collapsed: true,
+            items: [
+              { text: "Google Cloud Run", link: "/deploy-cloud-run" },
+              { text: "AWS", link: "/deploy-aws" },
+              { text: "Fly.io", link: "/deploy-fly" },
+              { text: "Railway", link: "/deploy-railway" },
+              { text: "Render", link: "/deploy-render" },
+              { text: "Kubernetes", link: "/deploy-kubernetes" },
+              { text: "VPS", link: "/deploy-vps" },
+              { text: "Serverless", link: "/deploy-serverless" },
+            ],
+          },
         ],
       },
       {
-        text: "Deploy",
-        collapsed: false,
-        items: [
-          { text: "Deploy anywhere", link: "/deploy" },
-          { text: "Google Cloud Run", link: "/deploy-cloud-run" },
-          { text: "AWS", link: "/deploy-aws" },
-          { text: "Fly.io", link: "/deploy-fly" },
-          { text: "Railway", link: "/deploy-railway" },
-          { text: "Render", link: "/deploy-render" },
-          { text: "Kubernetes", link: "/deploy-kubernetes" },
-          { text: "VPS", link: "/deploy-vps" },
-          { text: "Serverless", link: "/deploy-serverless" },
-        ],
-      },
-      {
-        text: "Project",
+        text: "Extend",
         collapsed: true,
         items: [
-          { text: "Roadmap", link: "/roadmap" },
+          { text: "Agent Protocol", link: "/agent-protocol" },
+          { text: "Building an adapter", link: "/building-an-adapter" },
+          { text: "Building a runner", link: "/building-a-runner" },
+          {
+            text: "Proposals",
+            collapsed: true,
+            items: [
+              { text: "Overview", link: "/proposals/" },
+              { text: "Inbound events", link: "/proposals/inbound-events" },
+            ],
+          },
           { text: "Changelog", link: "https://github.com/skein-js/skein-js/releases" },
           {
             text: "Contributing",
             link: "https://github.com/skein-js/skein-js/blob/main/CONTRIBUTING.md",
           },
-        ],
-      },
-      {
-        text: "Proposals",
-        collapsed: true,
-        items: [
-          { text: "Overview", link: "/proposals/" },
-          { text: "Inbound events", link: "/proposals/inbound-events" },
         ],
       },
     ],
