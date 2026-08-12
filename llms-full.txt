@@ -7820,18 +7820,6 @@ package-relative files at runtime, because bundlers rewrite `import.meta.url` to
 the console does it for HTML, JS and CSS. A test pins the total size so the CLI's install cost cannot
 drift upward unnoticed.
 
-## Why not a hosted UI
-
-LangGraph ships no UI in its CLI or server: `langgraph dev` prints a link to Studio, a web app on
-LangChain's domain that talks to your local server from the browser. That buys instant updates and zero
-install size, and costs an account, an internet connection, permissive CORS, and a Cloudflare tunnel
-(`--tunnel`) for the browsers that refuse `https` → `http://localhost`.
-
-Serving from the server inverts every one of those: no CORS, no tunnel, no mixed content, no account,
-works air-gapped, inherits your `Auth` instead of needing a bypass header, and the console can never
-drift from the protocol version of the server it is talking to. The costs are real too — install size,
-and a release to update it — which is why the size budget exists.
-
 
 ---
 
