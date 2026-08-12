@@ -5,14 +5,10 @@ later, from a different client. An interrupted run holds no connection and no ti
 checkpoint, so your process can restart while it waits.
 
 ```mermaid
-sequenceDiagram
-  participant A as Your app
-  participant S as skein
-  A->>S: create run
-  S-->>A: interrupted
-  Note over A,S: nothing held open — for hours, or weeks
-  A->>S: resume with a value
-  S-->>A: done
+flowchart LR
+  A[create run] --> B["interrupt()"] --> C["run ends<br/>nothing held open"]
+  C --> D["hours, or weeks"] --> E[resume] --> F[done]
+  class C accent
 ```
 
 ## Pause the graph

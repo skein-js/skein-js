@@ -5510,18 +5510,10 @@ later, from a different client. An interrupted run holds no connection and no ti
 checkpoint, so your process can restart while it waits.
 
 ```mermaid
-sequenceDiagram
-  participant U as Your app
-  participant S as skein
-  participant G as Graph
-  U->>S: create run
-  S->>G: execute
-  G-->>S: interrupt(payload)
-  Note over S: run ends · nothing held open
-  S-->>U: status interrupted
-  U->>S: command resume (hours later)
-  S->>G: continue from the checkpoint
-  G-->>S: done
+flowchart LR
+  A[create run] --> B["interrupt()"] --> C["run ends<br/>nothing held open"]
+  C --> D["hours, or weeks"] --> E[resume] --> F[done]
+  class C accent
 ```
 
 ## Pause the graph
@@ -9156,17 +9148,103 @@ dashboard and CLI steps on top of it.
 
 ## Pick a platform
 
-| Platform                                       | Deploy from                     | Postgres + Redis                       | Background runs                                      | Scales to zero                          | Stop-signal window                  |
-| ---------------------------------------------- | ------------------------------- | -------------------------------------- | ---------------------------------------------------- | --------------------------------------- | ----------------------------------- |
-| [Google Cloud Run](./deploy-cloud-run.md)      | push image to Artifact Registry | Cloud SQL + Memorystore, or any hosted | ⚠️ needs `--no-cpu-throttling` + `--min-instances=1` | yes — queued runs stall until a request | 10s default, configurable           |
-| [Railway](./deploy-railway.md)                 | Dockerfile in repo              | Railway plugins                        | ✅ default                                           | no                                      | ~30s                                |
-| [Fly.io](./deploy-fly.md)                      | Dockerfile in repo              | Fly Postgres / Upstash Redis           | ⚠️ needs `min_machines_running = 1`                  | yes, if auto-stop is on                 | `kill_timeout` (5s default)         |
-| [Render](./deploy-render.md)                   | Dockerfile or image             | Render Postgres + Key Value            | ⚠️ paid instance (free ones spin down)               | free tier only                          | ~30s                                |
-| [AWS App Runner](./deploy-aws.md#app-runner)   | push image to ECR               | RDS + ElastiCache                      | ⚠️ CPU throttled between requests                    | no (min 1 instance)                     | ~30s                                |
-| [AWS ECS Fargate](./deploy-aws.md#ecs-fargate) | push image to ECR               | RDS + ElastiCache                      | ✅ default                                           | no                                      | `stopTimeout` (30s default)         |
-| [Kubernetes](./deploy-kubernetes.md)           | push image to any registry      | whatever you run                       | ✅ default                                           | no (unless KEDA/Knative)                | `terminationGracePeriodSeconds` 30s |
-| [VPS / plain Docker](./deploy-vps.md)          | build on the box or pull        | containers or managed                  | ✅ default                                           | no                                      | `docker stop -t` (10s default)      |
-| [Vercel & serverless](./deploy-serverless.md)  | n/a — not a container           | any hosted                             | ❌ not supported                                     | yes                                     | none                                |
+**Background runs is the deciding column.** A platform that throttles or suspends your container
+between requests will stall a queued run until the next request wakes it — which is fine for a
+request/response graph and wrong for anything scheduled or fired-and-forgotten.
+
+:::tabs
+
+== Cloud Run
+
+- **Deploy from** — push image to Artifact Registry
+- **Postgres + Redis** — Cloud SQL + Memorystore, or any hosted
+- **Background runs** — ⚠️ needs `--no-cpu-throttling` + `--min-instances=1`
+- **Scales to zero** — yes — queued runs stall until a request
+- **Stop-signal window** — 10s default, configurable
+
+→ [Google Cloud Run guide](./deploy-cloud-run.md)
+
+== Railway
+
+- **Deploy from** — Dockerfile in repo
+- **Postgres + Redis** — Railway plugins
+- **Background runs** — ✅ default
+- **Scales to zero** — no
+- **Stop-signal window** — ~30s
+
+→ [Railway guide](./deploy-railway.md)
+
+== Fly.io
+
+- **Deploy from** — Dockerfile in repo
+- **Postgres + Redis** — Fly Postgres / Upstash Redis
+- **Background runs** — ⚠️ needs `min_machines_running = 1`
+- **Scales to zero** — yes, if auto-stop is on
+- **Stop-signal window** — `kill_timeout` (5s default)
+
+→ [Fly.io guide](./deploy-fly.md)
+
+== Render
+
+- **Deploy from** — Dockerfile or image
+- **Postgres + Redis** — Render Postgres + Key Value
+- **Background runs** — ⚠️ paid instance (free ones spin down)
+- **Scales to zero** — free tier only
+- **Stop-signal window** — ~30s
+
+→ [Render guide](./deploy-render.md)
+
+== AWS App Runner
+
+- **Deploy from** — push image to ECR
+- **Postgres + Redis** — RDS + ElastiCache
+- **Background runs** — ⚠️ CPU throttled between requests
+- **Scales to zero** — no (min 1 instance)
+- **Stop-signal window** — ~30s
+
+→ [AWS App Runner guide](./deploy-aws.md#app-runner)
+
+== AWS Fargate
+
+- **Deploy from** — push image to ECR
+- **Postgres + Redis** — RDS + ElastiCache
+- **Background runs** — ✅ default
+- **Scales to zero** — no
+- **Stop-signal window** — `stopTimeout` (30s default)
+
+→ [AWS ECS Fargate guide](./deploy-aws.md#ecs-fargate)
+
+== Kubernetes
+
+- **Deploy from** — push image to any registry
+- **Postgres + Redis** — whatever you run
+- **Background runs** — ✅ default
+- **Scales to zero** — no (unless KEDA/Knative)
+- **Stop-signal window** — `terminationGracePeriodSeconds` 30s
+
+→ [Kubernetes guide](./deploy-kubernetes.md)
+
+== VPS
+
+- **Deploy from** — build on the box or pull
+- **Postgres + Redis** — containers or managed
+- **Background runs** — ✅ default
+- **Scales to zero** — no
+- **Stop-signal window** — `docker stop -t` (10s default)
+
+→ [VPS / plain Docker guide](./deploy-vps.md)
+
+== Serverless
+
+- **Deploy from** — n/a — not a container
+- **Postgres + Redis** — any hosted
+- **Background runs** — ❌ not supported
+- **Scales to zero** — yes
+- **Stop-signal window** — none
+
+→ [Vercel & serverless guide](./deploy-serverless.md)
+
+:::
 
 > **How these were verified.** The image contract itself — port binding, the `/ok` probe, `SIGTERM`
 > draining in-flight runs to a terminal status, Postgres migrations on boot — was exercised
