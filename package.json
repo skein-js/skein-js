@@ -29,6 +29,7 @@
     "format:check": "nx format:check --all",
     "docs:llms": "node scripts/generate-llms-full.mjs",
     "docs:og": "node scripts/generate-og.mjs",
+    "docs:logo": "node scripts/generate-logo.mjs",
     "docs:dev": "nx dev docs",
     "docs:build": "nx build docs",
     "docs:preview": "nx preview docs",

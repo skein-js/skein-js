@@ -53,11 +53,11 @@
         align-items: center;
         gap: 14px;
       }
-      .dot {
-        width: 13px;
-        height: 13px;
-        border-radius: 50%;
-        background: hsl(212 100% 55%);
+      .mark {
+        width: 40px;
+        height: 40px;
+        display: block;
+        flex: none;
       }
       h1 {
         font-size: 74px;
@@ -114,7 +114,11 @@
   <body>
     <div class="glow"></div>
 
-    <div class="wordmark"><span class="dot"></span> skein-js</div>
+    <div class="wordmark">
+      <!-- Same file the site header uses, so the card cannot drift from the mark. -->
+      <img class="mark" src="../public/skein-knot-dark.svg" alt="" />
+      skein-js
+    </div>
 
     <div>
       <h1>The open-source <em>LangGraph Platform</em> alternative</h1>

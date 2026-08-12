@@ -70,6 +70,11 @@ export default defineConfig({
   // Site-wide social/meta tags. Per-page og:title, og:description and canonical are added in
   // transformPageData below — these are only the values that never vary.
   head: [
+    // The mark is a stroked SVG, so it inherits nothing and needs no light/dark variant here — the
+    // icon cut is a single flat blue that holds against both browser chromes. Apple ignores SVG
+    // favicons and does not composite transparency, hence the PNG on its own white ground.
+    ["link", { rel: "icon", type: "image/svg+xml", href: `${BASE}favicon.svg` }],
+    ["link", { rel: "apple-touch-icon", href: `${BASE}apple-touch-icon.png` }],
     ["meta", { property: "og:type", content: "website" }],
     ["meta", { property: "og:site_name", content: "skein-js" }],
     ["meta", { property: "og:locale", content: "en_US" }],
@@ -168,6 +173,11 @@ export default defineConfig({
   // into a hard build error ("Language `caddyfile` not found"), for both `text` and `txt` targets.
 
   themeConfig: {
+    // The display cut, whose three arcs are three steps of the accent so the strand reads as passing
+    // in front of and behind itself. Two files rather than one `currentColor` mark because the ramp
+    // has to shift on a dark ground, not just invert.
+    logo: { light: "/skein-knot.svg", dark: "/skein-knot-dark.svg", alt: "" },
+
     // Local minisearch — no Algolia account, no network call, no crawler to keep in sync.
     search: { provider: "local" },
 
