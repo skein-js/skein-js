@@ -155,6 +155,33 @@ GDPR erasure request actually arrives in:
 await client.threads.search({ metadata: { skein_thread_key: "whatsapp:+254712345678" } });
 ```
 
+### Ending a conversation and starting a new one
+
+There are two different things people mean by this, and they need different answers.
+
+**"Forget everything and start over."** Delete the thread. The next message from that number derives
+the same id and finds nothing there, so it begins a fresh conversation with no history:
+
+```ts
+await client.threads.delete(threadIdForChannelKey("twilio", "whatsapp:+254712345678"));
+```
+
+**"Start a new conversation, but keep the old one."** Then the thread key is not just the phone
+number — it is the phone number _and_ which conversation. `threadKey` is whatever your channel says,
+so put the session in it:
+
+```ts
+// A support ticket, a billing period, a counter you keep — whatever "a conversation" means to you.
+threadKey: `${message.From}:${await currentSessionFor(message.From)}`;
+```
+
+Old conversations stay readable, each under its own thread, and a search on
+`skein_thread_key` still finds them because the raw key is what gets stamped.
+
+A channel that wants to skip the derivation entirely returns `threadId` on the event instead, and
+skein does no transformation at all — which is the escape hatch if you already have your own
+conversation ids and would rather use those.
+
 ## Configuration
 
 | Key                  | Meaning                                                               |
