@@ -17,6 +17,7 @@ import {
   resolveMaxPageSize,
   resolveRunConcurrency,
   resolveMemoryBusLimits,
+  resolveWebhooks,
   type EmbeddableGraph,
 } from "@skein-js/server-kit";
 import { MemoryRunEventBus, MemoryRunQueue } from "@skein-js/storage-memory";
@@ -207,11 +208,16 @@ export async function embedPostgresGraphs(
     // No Redis means the in-memory bus in production. Bound it from the environment rather than
     // leaving it at the constructor defaults — this is the path a Postgres-only deployment runs on,
     // and it is the one that has to survive weeks of uptime.
+    // Signing keys reach this path from the environment, exactly as they do for `embedInMemoryGraphs`
+    // and for the `langgraph.json` path. Without it a host that sets `SKEIN_WEBHOOK_SECRET` and
+    // follows the docs sends **unsigned** callbacks and cannot tell — an explicit `overrides.webhooks`
+    // still wins, since it is spread last onto `deps`.
+    const webhooks = options.overrides?.webhooks ?? resolveWebhooks(undefined);
     const { queue, bus, deliveryQueue } = redisUrl
       ? connectRedisQueue({
           url: redisUrl,
           disposers,
-          ...(options.overrides?.webhooks ? { webhooks: options.overrides.webhooks } : {}),
+          ...(webhooks ? { webhooks } : {}),
         })
       : {
           queue: new MemoryRunQueue(),
@@ -237,6 +243,7 @@ export async function embedPostgresGraphs(
       // either way, because a per-thread `ttl` needs collecting with or without a default.
       ...(options.threadTtl ? { threadTtl: options.threadTtl } : {}),
       ...(deliveryQueue ? { deliveryQueue } : {}),
+      ...(webhooks ? { webhooks } : {}),
       ...options.overrides, // spread LAST, mirroring embedInMemoryGraphs
     };
     return { deps, dispose };
