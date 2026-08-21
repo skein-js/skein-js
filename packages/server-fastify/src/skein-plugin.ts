@@ -92,6 +92,24 @@ export async function prepareSkeinContext(
   } catch {
     // Already replaced in this context by the other skein plugin — the parser below is identical.
   }
+  // Fastify ships parsers for `application/json` and `text/plain` and nothing else, so an unmatched
+  // content type is `FST_ERR_CTP_INVALID_MEDIA_TYPE` — a **415 before any handler runs**. That makes a
+  // form-encoded provider request (Twilio, a Slack slash command) unreachable on this adapter, which
+  // is why channel routes could not work here at all until now. A catch-all parser keeps the body as
+  // text and lets the route decide; the JSON parser below is more specific, so it still wins for JSON.
+  //
+  // Registered only when a route actually asked for it, so a deployment with no channels keeps
+  // Fastify's own 415 for a content type nothing serves.
+  if ((options.routes ?? skeinRoutes).some((route) => route.retainRawBody)) {
+    try {
+      fastify.addContentTypeParser("*", { parseAs: "string" }, (_req, body, done) => {
+        done(null, typeof body === "string" ? body : body.toString());
+      });
+    } catch {
+      // Already registered in this encapsulation context by the other skein plugin.
+    }
+  }
+
   fastify.addContentTypeParser("application/json", { parseAs: "string" }, (_req, body, done) => {
     const text = (typeof body === "string" ? body : body.toString()).trim();
     if (text === "") {

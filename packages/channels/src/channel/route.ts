@@ -29,5 +29,7 @@ export function channelRouteBindings(names: readonly string[]): RouteBinding[] {
     method: "post" as const,
     path: `/channels/${name}`,
     handler: "handleInboundEvent" as const,
+    // A provider's request is frequently not JSON, and its signature covers the bytes as sent.
+    retainRawBody: true,
   }));
 }

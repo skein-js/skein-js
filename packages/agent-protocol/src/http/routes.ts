@@ -32,6 +32,21 @@ export interface RouteBinding<HandlerName = keyof ProtocolHandlers> {
    */
   group?: RouteGroup;
   /**
+   * Hand the handler the body as **text**, not as parsed JSON.
+   *
+   * Opt-in per route, and only the channel routes set it. Two reasons it is not global: retaining the
+   * undecoded body on every request costs memory a busy server does not need to spend, and every
+   * protocol route genuinely wants JSON — turning that off everywhere would be a large change to buy
+   * nothing.
+   *
+   * It exists because an inbound provider request is frequently **not** JSON (Twilio and Slack slash
+   * commands are form-encoded) and because a signature scheme covers the bytes as sent: re-serializing
+   * a parsed body does not reproduce what was signed, so verifying it becomes impossible rather than
+   * merely awkward. An adapter that ignores this flag leaves the handler with no body to verify, which
+   * `verify()` will refuse — a channel fails closed on a transport that has not implemented it.
+   */
+  retainRawBody?: boolean;
+  /**
    * Fold the path `thread_id` into the request body before dispatch. The SDK addresses a
    * thread-scoped run by its path (`POST /threads/{id}/runs/stream`) while carrying only
    * `assistant_id` in the body, but the stateless run handlers read `thread_id` from the body — so a

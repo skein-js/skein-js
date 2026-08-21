@@ -60,15 +60,22 @@ async function toProtocolRequest(
   url: URL,
   skeinPathname: string,
   params: Record<string, string>,
+  retainRawBody = false,
 ): Promise<ProtocolRequest> {
   let body: unknown;
   if (request.method !== "GET" && request.method !== "HEAD") {
     const text = await request.text();
-    // A malformed JSON body is a client error (400), not an unexpected server fault (500).
-    try {
-      body = text ? JSON.parse(text) : {};
-    } catch {
-      throw SkeinHttpError.badRequest("Request body is not valid JSON.");
+    // A route that asked for text gets it undecoded — a form-encoded provider request would otherwise
+    // 400 here before its handler ever ran, and the bytes a signature covers would be gone.
+    if (retainRawBody) {
+      body = text;
+    } else {
+      // A malformed JSON body is a client error (400), not an unexpected server fault (500).
+      try {
+        body = text ? JSON.parse(text) : {};
+      } catch {
+        throw SkeinHttpError.badRequest("Request body is not valid JSON.");
+      }
     }
   }
   return {
@@ -132,7 +139,13 @@ export function createSkeinRouteHandlers(options: SkeinRouteHandlerOptions): Ske
     }
 
     try {
-      const request_ = await toProtocolRequest(request, url, skeinPathname, match.params);
+      const request_ = await toProtocolRequest(
+        request,
+        url,
+        skeinPathname,
+        match.params,
+        match.binding.retainRawBody ?? false,
+      );
       const invoke = resolved.runtime.handlers[match.binding.handler];
       const response = await invoke(
         match.binding.foldThreadIdIntoBody ? copyThreadIdIntoBody(request_) : request_,

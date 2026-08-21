@@ -95,14 +95,21 @@ async function toProtocolRequest(
   skeinPathname: string,
   params: Record<string, string>,
   maxBodyBytes: number,
+  retainRawBody = false,
 ): Promise<ProtocolRequest> {
   let body: unknown;
   if (request.method !== "GET" && request.method !== "HEAD") {
     const text = await readBoundedText(request, maxBodyBytes);
-    try {
-      body = text ? JSON.parse(text) : {};
-    } catch {
-      throw SkeinHttpError.badRequest("Request body is not valid JSON.");
+    // A route that asked for text gets it undecoded. Parsing first would 400 every form-encoded
+    // provider request before its handler ran, and would destroy the bytes a signature covers.
+    if (retainRawBody) {
+      body = text;
+    } else {
+      try {
+        body = text ? JSON.parse(text) : {};
+      } catch {
+        throw SkeinHttpError.badRequest("Request body is not valid JSON.");
+      }
     }
   }
   return {
@@ -258,6 +265,7 @@ function createFetchHandler(
         skeinPathname,
         match.params,
         maxBodyBytes,
+        match.binding.retainRawBody ?? false,
       );
       const invoke = resolved.runtime.handlers[match.binding.handler];
       const response = await invoke(
