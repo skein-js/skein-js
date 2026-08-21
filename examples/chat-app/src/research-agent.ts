@@ -9,9 +9,9 @@
 // exercise them without a model. This module only assembles the model + agent.
 
 import { ChatGoogleGenerativeAI } from "@langchain/google-genai";
-import { createReactAgent } from "@langchain/langgraph/prebuilt";
+import { createAgent, dynamicSystemPromptMiddleware } from "langchain";
 
-import { buildPromptWithMemories, saveMemoryTool, webSearchTool } from "./research-tools.js";
+import { buildSystemPromptWithMemories, saveMemoryTool, webSearchTool } from "./research-tools.js";
 import { bookFlightTool, getWeatherTool, searchFlightsTool } from "./trip-tools.js";
 
 /**
@@ -24,13 +24,13 @@ const model = new ChatGoogleGenerativeAI({
   thinkingConfig: { includeThoughts: true, thinkingBudget: 2048 },
 });
 
-export const graph = createReactAgent({
-  llm: model,
+export const graph = createAgent({
+  model,
   // Research tools (web search + long-term memory) plus the trip-planner tools that return structured
   // JSON the UI renders as cards — and `book_flight`, which pauses for human-in-the-loop approval.
   tools: [webSearchTool, saveMemoryTool, getWeatherTool, searchFlightsTool, bookFlightTool],
-  // Recall is an application choice (see buildPromptWithMemories): this example auto-injects relevant
-  // memories into the system prompt before each model call, so recall doesn't depend on the model
-  // invoking a tool. skein itself stays unopinionated — it only makes getStore() available.
-  prompt: buildPromptWithMemories,
+  // Recall is an application choice (see buildSystemPromptWithMemories): this example auto-injects
+  // relevant memories into the system prompt before each model call, so recall doesn't depend on the
+  // model invoking a tool. skein itself stays unopinionated — it only makes getStore() available.
+  middleware: [dynamicSystemPromptMiddleware(buildSystemPromptWithMemories)],
 });

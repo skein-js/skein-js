@@ -93,17 +93,17 @@ importers:
   examples/chat-app:
     dependencies:
       '@langchain/core':
-        specifier: ^1.2.0
-        version: 1.2.2(@opentelemetry/api@1.9.1)(ws@8.21.0)
+        specifier: ^1.2.9
+        version: 1.2.9(@opentelemetry/api@1.9.1)(ws@8.21.0)
       '@langchain/google-genai':
         specifier: ^2.2.0
-        version: 2.2.0(@langchain/core@1.2.2(@opentelemetry/api@1.9.1)(ws@8.21.0))
+        version: 2.2.0(@langchain/core@1.2.9(@opentelemetry/api@1.9.1)(ws@8.21.0))
       '@langchain/langgraph':
         specifier: ^1.4.0
-        version: 1.4.7(@langchain/core@1.2.2(@opentelemetry/api@1.9.1)(ws@8.21.0))(react-dom@19.2.6(react@19.2.6))(react@19.2.6)(vue@3.5.41(typescript@5.9.3))(zod@3.25.76)
+        version: 1.4.7(@langchain/core@1.2.9(@opentelemetry/api@1.9.1)(ws@8.21.0))(react-dom@19.2.6(react@19.2.6))(react@19.2.6)(vue@3.5.41(typescript@5.9.3))(zod@3.25.76)
       '@langchain/langgraph-sdk':
         specifier: ^1.9.0
-        version: 1.9.25(@langchain/core@1.2.2(@opentelemetry/api@1.9.1)(ws@8.21.0))(react-dom@19.2.6(react@19.2.6))(react@19.2.6)(vue@3.5.41(typescript@5.9.3))
+        version: 1.9.25(@langchain/core@1.2.9(@opentelemetry/api@1.9.1)(ws@8.21.0))(react-dom@19.2.6(react@19.2.6))(react@19.2.6)(vue@3.5.41(typescript@5.9.3))
       '@radix-ui/react-collapsible':
         specifier: ^1.1.2
         version: 1.1.16(@types/react-dom@19.2.3(@types/react@19.2.15))(@types/react@19.2.15)(react-dom@19.2.6(react@19.2.6))(react@19.2.6)
@@ -119,6 +119,9 @@ importers:
       clsx:
         specifier: ^2.1.1
         version: 2.1.1
+      langchain:
+        specifier: ^1.5.0
+        version: 1.5.10(@langchain/core@1.2.9(@opentelemetry/api@1.9.1)(ws@8.21.0))(@opentelemetry/api@1.9.1)(react-dom@19.2.6(react@19.2.6))(react@19.2.6)(vue@3.5.41(typescript@5.9.3))(ws@8.21.0)
       lucide-react:
         specifier: ^0.469.0
         version: 0.469.0(react@19.2.6)
@@ -178,11 +181,11 @@ importers:
   examples/embed-graph:
     dependencies:
       '@langchain/core':
-        specifier: ^1.2.0
-        version: 1.2.2(@opentelemetry/api@1.9.1)(ws@8.21.0)
+        specifier: ^1.2.9
+        version: 1.2.9(@opentelemetry/api@1.9.1)(ws@8.21.0)
       '@langchain/langgraph':
         specifier: ^1.4.0
-        version: 1.4.7(@langchain/core@1.2.2(@opentelemetry/api@1.9.1)(ws@8.21.0))(react-dom@19.2.6(react@19.2.6))(react@19.2.6)(vue@3.5.41(typescript@5.9.3))(zod@3.25.76)
+        version: 1.4.7(@langchain/core@1.2.9(@opentelemetry/api@1.9.1)(ws@8.21.0))(react-dom@19.2.6(react@19.2.6))(react@19.2.6)(vue@3.5.41(typescript@5.9.3))(zod@3.25.76)
       '@skein-js/express':
         specifier: workspace:*
         version: link:../../packages/server-express
@@ -195,7 +198,7 @@ importers:
     devDependencies:
       '@langchain/langgraph-sdk':
         specifier: ^1.9.0
-        version: 1.9.25(@langchain/core@1.2.2(@opentelemetry/api@1.9.1)(ws@8.21.0))(react-dom@19.2.6(react@19.2.6))(react@19.2.6)(vue@3.5.41(typescript@5.9.3))
+        version: 1.9.25(@langchain/core@1.2.9(@opentelemetry/api@1.9.1)(ws@8.21.0))(react-dom@19.2.6(react@19.2.6))(react@19.2.6)(vue@3.5.41(typescript@5.9.3))
       tsx:
         specifier: ^4.19.2
         version: 4.22.4
@@ -203,27 +206,30 @@ importers:
   examples/express-basic:
     dependencies:
       '@langchain/core':
-        specifier: ^1.2.0
-        version: 1.2.2(@opentelemetry/api@1.9.1)(ws@8.21.0)
+        specifier: ^1.2.9
+        version: 1.2.9(@opentelemetry/api@1.9.1)(ws@8.21.0)
       '@langchain/google-genai':
         specifier: ^2.2.0
-        version: 2.2.0(@langchain/core@1.2.2(@opentelemetry/api@1.9.1)(ws@8.21.0))
+        version: 2.2.0(@langchain/core@1.2.9(@opentelemetry/api@1.9.1)(ws@8.21.0))
       '@langchain/langgraph':
         specifier: ^1.4.0
-        version: 1.4.7(@langchain/core@1.2.2(@opentelemetry/api@1.9.1)(ws@8.21.0))(react-dom@19.2.6(react@19.2.6))(react@19.2.6)(vue@3.5.41(typescript@5.9.3))(zod@3.25.76)
+        version: 1.4.7(@langchain/core@1.2.9(@opentelemetry/api@1.9.1)(ws@8.21.0))(react-dom@19.2.6(react@19.2.6))(react@19.2.6)(vue@3.5.41(typescript@5.9.3))(zod@3.25.76)
       '@skein-js/agent-protocol':
         specifier: workspace:*
         version: link:../../packages/agent-protocol
       '@skein-js/express':
         specifier: workspace:*
         version: link:../../packages/server-express
+      langchain:
+        specifier: ^1.5.0
+        version: 1.5.10(@langchain/core@1.2.9(@opentelemetry/api@1.9.1)(ws@8.21.0))(@opentelemetry/api@1.9.1)(react-dom@19.2.6(react@19.2.6))(react@19.2.6)(vue@3.5.41(typescript@5.9.3))(ws@8.21.0)
       zod:
         specifier: ^3.25.32
         version: 3.25.76
     devDependencies:
       '@langchain/langgraph-sdk':
         specifier: ^1.9.0
-        version: 1.9.25(@langchain/core@1.2.2(@opentelemetry/api@1.9.1)(ws@8.21.0))(react-dom@19.2.6(react@19.2.6))(react@19.2.6)(vue@3.5.41(typescript@5.9.3))
+        version: 1.9.25(@langchain/core@1.2.9(@opentelemetry/api@1.9.1)(ws@8.21.0))(react-dom@19.2.6(react@19.2.6))(react@19.2.6)(vue@3.5.41(typescript@5.9.3))
       express:
         specifier: ^5.2.1
         version: 5.2.1
@@ -234,27 +240,30 @@ importers:
   examples/fastify-app:
     dependencies:
       '@langchain/core':
-        specifier: ^1.2.0
-        version: 1.2.2(@opentelemetry/api@1.9.1)(ws@8.21.0)
+        specifier: ^1.2.9
+        version: 1.2.9(@opentelemetry/api@1.9.1)(ws@8.21.0)
       '@langchain/google-genai':
         specifier: ^2.2.0
-        version: 2.2.0(@langchain/core@1.2.2(@opentelemetry/api@1.9.1)(ws@8.21.0))
+        version: 2.2.0(@langchain/core@1.2.9(@opentelemetry/api@1.9.1)(ws@8.21.0))
       '@langchain/langgraph':
         specifier: ^1.4.0
-        version: 1.4.7(@langchain/core@1.2.2(@opentelemetry/api@1.9.1)(ws@8.21.0))(react-dom@19.2.6(react@19.2.6))(react@19.2.6)(vue@3.5.41(typescript@5.9.3))(zod@3.25.76)
+        version: 1.4.7(@langchain/core@1.2.9(@opentelemetry/api@1.9.1)(ws@8.21.0))(react-dom@19.2.6(react@19.2.6))(react@19.2.6)(vue@3.5.41(typescript@5.9.3))(zod@3.25.76)
       '@skein-js/fastify':
         specifier: workspace:*
         version: link:../../packages/server-fastify
       fastify:
         specifier: ^5.2.0
         version: 5.10.0
+      langchain:
+        specifier: ^1.5.0
+        version: 1.5.10(@langchain/core@1.2.9(@opentelemetry/api@1.9.1)(ws@8.21.0))(@opentelemetry/api@1.9.1)(react-dom@19.2.6(react@19.2.6))(react@19.2.6)(vue@3.5.41(typescript@5.9.3))(ws@8.21.0)
       zod:
         specifier: ^3.25.32
         version: 3.25.76
     devDependencies:
       '@langchain/langgraph-sdk':
         specifier: ^1.9.0
-        version: 1.9.25(@langchain/core@1.2.2(@opentelemetry/api@1.9.1)(ws@8.21.0))(react-dom@19.2.6(react@19.2.6))(react@19.2.6)(vue@3.5.41(typescript@5.9.3))
+        version: 1.9.25(@langchain/core@1.2.9(@opentelemetry/api@1.9.1)(ws@8.21.0))(react-dom@19.2.6(react@19.2.6))(react@19.2.6)(vue@3.5.41(typescript@5.9.3))
       tsx:
         specifier: ^4.19.2
         version: 4.22.4
@@ -265,27 +274,30 @@ importers:
         specifier: ^10.0.1
         version: 10.1.0
       '@langchain/core':
-        specifier: ^1.2.0
-        version: 1.2.2(@opentelemetry/api@1.9.1)(ws@8.21.0)
+        specifier: ^1.2.9
+        version: 1.2.9(@opentelemetry/api@1.9.1)(ws@8.21.0)
       '@langchain/google-genai':
         specifier: ^2.2.0
-        version: 2.2.0(@langchain/core@1.2.2(@opentelemetry/api@1.9.1)(ws@8.21.0))
+        version: 2.2.0(@langchain/core@1.2.9(@opentelemetry/api@1.9.1)(ws@8.21.0))
       '@langchain/langgraph':
         specifier: ^1.4.0
-        version: 1.4.7(@langchain/core@1.2.2(@opentelemetry/api@1.9.1)(ws@8.21.0))(react-dom@19.2.6(react@19.2.6))(react@19.2.6)(vue@3.5.41(typescript@5.9.3))(zod@3.25.76)
+        version: 1.4.7(@langchain/core@1.2.9(@opentelemetry/api@1.9.1)(ws@8.21.0))(react-dom@19.2.6(react@19.2.6))(react@19.2.6)(vue@3.5.41(typescript@5.9.3))(zod@3.25.76)
       '@skein-js/fastify':
         specifier: workspace:*
         version: link:../../packages/server-fastify
       fastify:
         specifier: ^5.2.0
         version: 5.10.0
+      langchain:
+        specifier: ^1.5.0
+        version: 1.5.10(@langchain/core@1.2.9(@opentelemetry/api@1.9.1)(ws@8.21.0))(@opentelemetry/api@1.9.1)(react-dom@19.2.6(react@19.2.6))(react@19.2.6)(vue@3.5.41(typescript@5.9.3))(ws@8.21.0)
       zod:
         specifier: ^3.25.32
         version: 3.25.76
     devDependencies:
       '@langchain/langgraph-sdk':
         specifier: ^1.9.0
-        version: 1.9.25(@langchain/core@1.2.2(@opentelemetry/api@1.9.1)(ws@8.21.0))(react-dom@19.2.6(react@19.2.6))(react@19.2.6)(vue@3.5.41(typescript@5.9.3))
+        version: 1.9.25(@langchain/core@1.2.9(@opentelemetry/api@1.9.1)(ws@8.21.0))(react-dom@19.2.6(react@19.2.6))(react@19.2.6)(vue@3.5.41(typescript@5.9.3))
       tsx:
         specifier: ^4.19.2
         version: 4.22.4
@@ -293,24 +305,27 @@ importers:
   examples/gemini-chat:
     dependencies:
       '@langchain/core':
-        specifier: ^1.2.0
-        version: 1.2.2(@opentelemetry/api@1.9.1)(ws@8.21.0)
+        specifier: ^1.2.9
+        version: 1.2.9(@opentelemetry/api@1.9.1)(ws@8.21.0)
       '@langchain/google-genai':
         specifier: ^2.2.0
-        version: 2.2.0(@langchain/core@1.2.2(@opentelemetry/api@1.9.1)(ws@8.21.0))
+        version: 2.2.0(@langchain/core@1.2.9(@opentelemetry/api@1.9.1)(ws@8.21.0))
       '@langchain/langgraph':
         specifier: ^1.4.0
-        version: 1.4.7(@langchain/core@1.2.2(@opentelemetry/api@1.9.1)(ws@8.21.0))(react-dom@19.2.6(react@19.2.6))(react@19.2.6)(vue@3.5.41(typescript@5.9.3))(zod@3.25.76)
+        version: 1.4.7(@langchain/core@1.2.9(@opentelemetry/api@1.9.1)(ws@8.21.0))(react-dom@19.2.6(react@19.2.6))(react@19.2.6)(vue@3.5.41(typescript@5.9.3))(zod@3.25.76)
       '@skein-js/express':
         specifier: workspace:*
         version: link:../../packages/server-express
+      langchain:
+        specifier: ^1.5.0
+        version: 1.5.10(@langchain/core@1.2.9(@opentelemetry/api@1.9.1)(ws@8.21.0))(@opentelemetry/api@1.9.1)(react-dom@19.2.6(react@19.2.6))(react@19.2.6)(vue@3.5.41(typescript@5.9.3))(ws@8.21.0)
       zod:
         specifier: ^3.25.32
         version: 3.25.76
     devDependencies:
       '@langchain/langgraph-sdk':
         specifier: ^1.9.0
-        version: 1.9.25(@langchain/core@1.2.2(@opentelemetry/api@1.9.1)(ws@8.21.0))(react-dom@19.2.6(react@19.2.6))(react@19.2.6)(vue@3.5.41(typescript@5.9.3))
+        version: 1.9.25(@langchain/core@1.2.9(@opentelemetry/api@1.9.1)(ws@8.21.0))(react-dom@19.2.6(react@19.2.6))(react@19.2.6)(vue@3.5.41(typescript@5.9.3))
       express:
         specifier: ^5.2.1
         version: 5.2.1
@@ -322,7 +337,7 @@ importers:
     dependencies:
       '@langchain/langgraph':
         specifier: ^1.4.0
-        version: 1.4.7(@langchain/core@1.2.2(@opentelemetry/api@1.9.1)(ws@8.21.0))(react-dom@19.2.6(react@19.2.6))(react@19.2.6)(vue@3.5.41(typescript@5.9.3))(zod@3.25.76)
+        version: 1.4.7(@langchain/core@1.2.9(@opentelemetry/api@1.9.1)(ws@8.21.0))(react-dom@19.2.6(react@19.2.6))(react@19.2.6)(vue@3.5.41(typescript@5.9.3))(zod@3.25.76)
       '@skein-js/express':
         specifier: workspace:*
         version: link:../../packages/server-express
@@ -343,15 +358,15 @@ importers:
   examples/migrated-langgraph:
     dependencies:
       '@langchain/core':
-        specifier: ^1.2.0
-        version: 1.2.2(@opentelemetry/api@1.9.1)(ws@8.21.0)
+        specifier: ^1.2.9
+        version: 1.2.9(@opentelemetry/api@1.9.1)(ws@8.21.0)
       '@langchain/langgraph':
         specifier: ^1.4.0
-        version: 1.4.7(@langchain/core@1.2.2(@opentelemetry/api@1.9.1)(ws@8.21.0))(react-dom@19.2.6(react@19.2.6))(react@19.2.6)(vue@3.5.41(typescript@5.9.3))(zod@3.25.76)
+        version: 1.4.7(@langchain/core@1.2.9(@opentelemetry/api@1.9.1)(ws@8.21.0))(react-dom@19.2.6(react@19.2.6))(react@19.2.6)(vue@3.5.41(typescript@5.9.3))(zod@3.25.76)
     devDependencies:
       '@langchain/langgraph-sdk':
         specifier: ^1.9.0
-        version: 1.9.25(@langchain/core@1.2.2(@opentelemetry/api@1.9.1)(ws@8.21.0))(react-dom@19.2.6(react@19.2.6))(react@19.2.6)(vue@3.5.41(typescript@5.9.3))
+        version: 1.9.25(@langchain/core@1.2.9(@opentelemetry/api@1.9.1)(ws@8.21.0))(react-dom@19.2.6(react@19.2.6))(react@19.2.6)(vue@3.5.41(typescript@5.9.3))
       skein-js:
         specifier: workspace:*
         version: link:../../packages/cli
@@ -359,14 +374,14 @@ importers:
   examples/nestjs-app:
     dependencies:
       '@langchain/core':
-        specifier: ^1.2.0
-        version: 1.2.2(@opentelemetry/api@1.9.1)(ws@8.21.0)
+        specifier: ^1.2.9
+        version: 1.2.9(@opentelemetry/api@1.9.1)(ws@8.21.0)
       '@langchain/google-genai':
         specifier: ^2.2.0
-        version: 2.2.0(@langchain/core@1.2.2(@opentelemetry/api@1.9.1)(ws@8.21.0))
+        version: 2.2.0(@langchain/core@1.2.9(@opentelemetry/api@1.9.1)(ws@8.21.0))
       '@langchain/langgraph':
         specifier: ^1.4.0
-        version: 1.4.7(@langchain/core@1.2.2(@opentelemetry/api@1.9.1)(ws@8.21.0))(react-dom@19.2.6(react@19.2.6))(react@19.2.6)(vue@3.5.41(typescript@5.9.3))(zod@3.25.76)
+        version: 1.4.7(@langchain/core@1.2.9(@opentelemetry/api@1.9.1)(ws@8.21.0))(react-dom@19.2.6(react@19.2.6))(react@19.2.6)(vue@3.5.41(typescript@5.9.3))(zod@3.25.76)
       '@nestjs/common':
         specifier: ^11.0.0
         version: 11.1.24(reflect-metadata@0.2.2)(rxjs@7.8.2)
@@ -379,6 +394,9 @@ importers:
       '@skein-js/nestjs':
         specifier: workspace:*
         version: link:../../packages/server-nestjs
+      langchain:
+        specifier: ^1.5.0
+        version: 1.5.10(@langchain/core@1.2.9(@opentelemetry/api@1.9.1)(ws@8.21.0))(@opentelemetry/api@1.9.1)(react-dom@19.2.6(react@19.2.6))(react@19.2.6)(vue@3.5.41(typescript@5.9.3))(ws@8.21.0)
       reflect-metadata:
         specifier: ^0.2.2
         version: 0.2.2
@@ -391,7 +409,7 @@ importers:
     devDependencies:
       '@langchain/langgraph-sdk':
         specifier: ^1.9.0
-        version: 1.9.25(@langchain/core@1.2.2(@opentelemetry/api@1.9.1)(ws@8.21.0))(react-dom@19.2.6(react@19.2.6))(react@19.2.6)(vue@3.5.41(typescript@5.9.3))
+        version: 1.9.25(@langchain/core@1.2.9(@opentelemetry/api@1.9.1)(ws@8.21.0))(react-dom@19.2.6(react@19.2.6))(react@19.2.6)(vue@3.5.41(typescript@5.9.3))
       tsx:
         specifier: ^4.19.2
         version: 4.22.4
@@ -399,14 +417,14 @@ importers:
   examples/nestjs-basic:
     dependencies:
       '@langchain/core':
-        specifier: ^1.2.0
-        version: 1.2.2(@opentelemetry/api@1.9.1)(ws@8.21.0)
+        specifier: ^1.2.9
+        version: 1.2.9(@opentelemetry/api@1.9.1)(ws@8.21.0)
       '@langchain/google-genai':
         specifier: ^2.2.0
-        version: 2.2.0(@langchain/core@1.2.2(@opentelemetry/api@1.9.1)(ws@8.21.0))
+        version: 2.2.0(@langchain/core@1.2.9(@opentelemetry/api@1.9.1)(ws@8.21.0))
       '@langchain/langgraph':
         specifier: ^1.4.0
-        version: 1.4.7(@langchain/core@1.2.2(@opentelemetry/api@1.9.1)(ws@8.21.0))(react-dom@19.2.6(react@19.2.6))(react@19.2.6)(vue@3.5.41(typescript@5.9.3))(zod@3.25.76)
+        version: 1.4.7(@langchain/core@1.2.9(@opentelemetry/api@1.9.1)(ws@8.21.0))(react-dom@19.2.6(react@19.2.6))(react@19.2.6)(vue@3.5.41(typescript@5.9.3))(zod@3.25.76)
       '@nestjs/common':
         specifier: ^11.0.0
         version: 11.1.24(reflect-metadata@0.2.2)(rxjs@7.8.2)
@@ -419,6 +437,9 @@ importers:
       '@skein-js/nestjs':
         specifier: workspace:*
         version: link:../../packages/server-nestjs
+      langchain:
+        specifier: ^1.5.0
+        version: 1.5.10(@langchain/core@1.2.9(@opentelemetry/api@1.9.1)(ws@8.21.0))(@opentelemetry/api@1.9.1)(react-dom@19.2.6(react@19.2.6))(react@19.2.6)(vue@3.5.41(typescript@5.9.3))(ws@8.21.0)
       reflect-metadata:
         specifier: ^0.2.2
         version: 0.2.2
@@ -431,7 +452,7 @@ importers:
     devDependencies:
       '@langchain/langgraph-sdk':
         specifier: ^1.9.0
-        version: 1.9.25(@langchain/core@1.2.2(@opentelemetry/api@1.9.1)(ws@8.21.0))(react-dom@19.2.6(react@19.2.6))(react@19.2.6)(vue@3.5.41(typescript@5.9.3))
+        version: 1.9.25(@langchain/core@1.2.9(@opentelemetry/api@1.9.1)(ws@8.21.0))(react-dom@19.2.6(react@19.2.6))(react@19.2.6)(vue@3.5.41(typescript@5.9.3))
       tsx:
         specifier: ^4.19.2
         version: 4.22.4
@@ -439,23 +460,26 @@ importers:
   examples/nextjs-app:
     dependencies:
       '@langchain/core':
-        specifier: ^1.2.0
-        version: 1.2.2(@opentelemetry/api@1.9.1)(ws@8.21.0)
+        specifier: ^1.2.9
+        version: 1.2.9(@opentelemetry/api@1.9.1)(ws@8.21.0)
       '@langchain/google-genai':
         specifier: ^2.2.0
-        version: 2.2.0(@langchain/core@1.2.2(@opentelemetry/api@1.9.1)(ws@8.21.0))
+        version: 2.2.0(@langchain/core@1.2.9(@opentelemetry/api@1.9.1)(ws@8.21.0))
       '@langchain/langgraph':
         specifier: ^1.4.0
-        version: 1.4.7(@langchain/core@1.2.2(@opentelemetry/api@1.9.1)(ws@8.21.0))(react-dom@19.2.6(react@19.2.6))(react@19.2.6)(vue@3.5.41(typescript@5.9.3))(zod@3.25.76)
+        version: 1.4.7(@langchain/core@1.2.9(@opentelemetry/api@1.9.1)(ws@8.21.0))(react-dom@19.2.6(react@19.2.6))(react@19.2.6)(vue@3.5.41(typescript@5.9.3))(zod@3.25.76)
       '@langchain/langgraph-sdk':
         specifier: ^1.9.0
-        version: 1.9.25(@langchain/core@1.2.2(@opentelemetry/api@1.9.1)(ws@8.21.0))(react-dom@19.2.6(react@19.2.6))(react@19.2.6)(vue@3.5.41(typescript@5.9.3))
+        version: 1.9.25(@langchain/core@1.2.9(@opentelemetry/api@1.9.1)(ws@8.21.0))(react-dom@19.2.6(react@19.2.6))(react@19.2.6)(vue@3.5.41(typescript@5.9.3))
       '@skein-js/nextjs':
         specifier: workspace:*
         version: link:../../packages/server-nextjs
       '@skein-js/server-kit':
         specifier: workspace:*
         version: link:../../packages/server-kit
+      langchain:
+        specifier: ^1.5.0
+        version: 1.5.10(@langchain/core@1.2.9(@opentelemetry/api@1.9.1)(ws@8.21.0))(@opentelemetry/api@1.9.1)(react-dom@19.2.6(react@19.2.6))(react@19.2.6)(vue@3.5.41(typescript@5.9.3))(ws@8.21.0)
       next:
         specifier: ^15.1.3
         version: 15.5.18(@babel/core@7.29.7)(@opentelemetry/api@1.9.1)(@playwright/test@1.61.1)(react-dom@19.2.6(react@19.2.6))(react@19.2.6)
@@ -485,14 +509,14 @@ importers:
   examples/nextjs-basic:
     dependencies:
       '@langchain/core':
-        specifier: ^1.2.0
-        version: 1.2.2(@opentelemetry/api@1.9.1)(ws@8.21.0)
+        specifier: ^1.2.9
+        version: 1.2.9(@opentelemetry/api@1.9.1)(ws@8.21.0)
       '@langchain/google-genai':
         specifier: ^2.2.0
-        version: 2.2.0(@langchain/core@1.2.2(@opentelemetry/api@1.9.1)(ws@8.21.0))
+        version: 2.2.0(@langchain/core@1.2.9(@opentelemetry/api@1.9.1)(ws@8.21.0))
       '@langchain/langgraph':
         specifier: ^1.4.0
-        version: 1.4.7(@langchain/core@1.2.2(@opentelemetry/api@1.9.1)(ws@8.21.0))(react-dom@19.2.6(react@19.2.6))(react@19.2.6)(vue@3.5.41(typescript@5.9.3))(zod@3.25.76)
+        version: 1.4.7(@langchain/core@1.2.9(@opentelemetry/api@1.9.1)(ws@8.21.0))(react-dom@19.2.6(react@19.2.6))(react@19.2.6)(vue@3.5.41(typescript@5.9.3))(zod@3.25.76)
       '@skein-js/agent-protocol':
         specifier: workspace:*
         version: link:../../packages/agent-protocol
@@ -505,6 +529,9 @@ importers:
       '@skein-js/storage-memory':
         specifier: workspace:*
         version: link:../../packages/storage-memory
+      langchain:
+        specifier: ^1.5.0
+        version: 1.5.10(@langchain/core@1.2.9(@opentelemetry/api@1.9.1)(ws@8.21.0))(@opentelemetry/api@1.9.1)(react-dom@19.2.6(react@19.2.6))(react@19.2.6)(vue@3.5.41(typescript@5.9.3))(ws@8.21.0)
       next:
         specifier: ^15.1.3
         version: 15.5.18(@babel/core@7.29.7)(@opentelemetry/api@1.9.1)(@playwright/test@1.61.1)(react-dom@19.2.6(react@19.2.6))(react@19.2.6)
@@ -535,7 +562,7 @@ importers:
     dependencies:
       '@langchain/langgraph-sdk':
         specifier: ^1.9.0
-        version: 1.9.25(@langchain/core@1.2.2(@opentelemetry/api@1.9.1)(ws@8.21.0))(react-dom@19.2.6(react@19.2.6))(react@19.2.6)(vue@3.5.41(typescript@5.9.3))
+        version: 1.9.25(@langchain/core@1.2.9(@opentelemetry/api@1.9.1)(ws@8.21.0))(react-dom@19.2.6(react@19.2.6))(react@19.2.6)(vue@3.5.41(typescript@5.9.3))
       next:
         specifier: ^15.1.3
         version: 15.5.18(@babel/core@7.29.7)(@opentelemetry/api@1.9.1)(@playwright/test@1.61.1)(react-dom@19.2.6(react@19.2.6))(react@19.2.6)
@@ -559,17 +586,17 @@ importers:
   examples/triage-agent:
     dependencies:
       '@langchain/core':
-        specifier: ^1.2.0
-        version: 1.2.2(@opentelemetry/api@1.9.1)(ws@8.21.0)
+        specifier: ^1.2.9
+        version: 1.2.9(@opentelemetry/api@1.9.1)(ws@8.21.0)
       '@langchain/google-genai':
         specifier: ^2.2.0
-        version: 2.2.0(@langchain/core@1.2.2(@opentelemetry/api@1.9.1)(ws@8.21.0))
+        version: 2.2.0(@langchain/core@1.2.9(@opentelemetry/api@1.9.1)(ws@8.21.0))
       '@langchain/langgraph':
         specifier: ^1.4.0
-        version: 1.4.7(@langchain/core@1.2.2(@opentelemetry/api@1.9.1)(ws@8.21.0))(react-dom@19.2.6(react@19.2.6))(react@19.2.6)(vue@3.5.41(typescript@5.9.3))(zod@3.25.76)
+        version: 1.4.7(@langchain/core@1.2.9(@opentelemetry/api@1.9.1)(ws@8.21.0))(react-dom@19.2.6(react@19.2.6))(react@19.2.6)(vue@3.5.41(typescript@5.9.3))(zod@3.25.76)
       '@langchain/langgraph-sdk':
         specifier: ^1.9.0
-        version: 1.9.25(@langchain/core@1.2.2(@opentelemetry/api@1.9.1)(ws@8.21.0))(react-dom@19.2.6(react@19.2.6))(react@19.2.6)(vue@3.5.41(typescript@5.9.3))
+        version: 1.9.25(@langchain/core@1.2.9(@opentelemetry/api@1.9.1)(ws@8.21.0))(react-dom@19.2.6(react@19.2.6))(react@19.2.6)(vue@3.5.41(typescript@5.9.3))
       zod:
         specifier: ^3.25.32
         version: 3.25.76
@@ -585,7 +612,7 @@ importers:
     dependencies:
       '@langchain/langgraph':
         specifier: ^1.4.0
-        version: 1.4.7(@langchain/core@1.2.2(@opentelemetry/api@1.9.1)(ws@8.21.0))(react-dom@19.2.6(react@19.2.6))(react@19.2.6)(vue@3.5.41(typescript@5.9.3))(zod@3.25.76)
+        version: 1.4.7(@langchain/core@1.2.9(@opentelemetry/api@1.9.1)(ws@8.21.0))(react-dom@19.2.6(react@19.2.6))(react@19.2.6)(vue@3.5.41(typescript@5.9.3))(zod@3.25.76)
       '@skein-js/core':
         specifier: workspace:*
         version: link:../core
@@ -598,7 +625,7 @@ importers:
     devDependencies:
       '@langchain/langgraph-sdk':
         specifier: ^1.9.0
-        version: 1.9.25(@langchain/core@1.2.2(@opentelemetry/api@1.9.1)(ws@8.21.0))(react-dom@19.2.6(react@19.2.6))(react@19.2.6)(vue@3.5.41(typescript@5.9.3))
+        version: 1.9.25(@langchain/core@1.2.9(@opentelemetry/api@1.9.1)(ws@8.21.0))(react-dom@19.2.6(react@19.2.6))(react@19.2.6)(vue@3.5.41(typescript@5.9.3))
       '@skein-js/storage-memory':
         specifier: workspace:*
         version: link:../storage-memory
@@ -606,11 +633,11 @@ importers:
   packages/bench:
     dependencies:
       '@langchain/core':
-        specifier: ^1.2.0
-        version: 1.2.2(@opentelemetry/api@1.9.1)(ws@8.21.0)
+        specifier: ^1.2.9
+        version: 1.2.9(@opentelemetry/api@1.9.1)(ws@8.21.0)
       '@langchain/langgraph':
         specifier: ^1.4.0
-        version: 1.4.7(@langchain/core@1.2.2(@opentelemetry/api@1.9.1)(ws@8.21.0))(react-dom@19.2.6(react@19.2.6))(react@19.2.6)(vue@3.5.41(typescript@5.9.3))(zod@3.25.76)
+        version: 1.4.7(@langchain/core@1.2.9(@opentelemetry/api@1.9.1)(ws@8.21.0))(react-dom@19.2.6(react@19.2.6))(react@19.2.6)(vue@3.5.41(typescript@5.9.3))(zod@3.25.76)
       '@skein-js/agent-protocol':
         specifier: workspace:*
         version: link:../agent-protocol
@@ -646,10 +673,10 @@ importers:
         version: 13.1.0(commander@13.1.0)
       '@langchain/langgraph':
         specifier: ^1.4.0
-        version: 1.4.7(@langchain/core@1.2.2(@opentelemetry/api@1.9.1)(ws@8.21.0))(react-dom@19.2.6(react@19.2.6))(react@19.2.6)(vue@3.5.41(typescript@5.9.3))(zod@3.25.76)
+        version: 1.4.7(@langchain/core@1.2.9(@opentelemetry/api@1.9.1)(ws@8.21.0))(react-dom@19.2.6(react@19.2.6))(react@19.2.6)(vue@3.5.41(typescript@5.9.3))(zod@3.25.76)
       '@langchain/langgraph-checkpoint-postgres':
         specifier: ^1.0.4
-        version: 1.0.4(@langchain/core@1.2.2(@opentelemetry/api@1.9.1)(ws@8.21.0))(@langchain/langgraph-checkpoint@1.1.3(@langchain/core@1.2.2(@opentelemetry/api@1.9.1)(ws@8.21.0)))
+        version: 1.0.4(@langchain/core@1.2.9(@opentelemetry/api@1.9.1)(ws@8.21.0))(@langchain/langgraph-checkpoint@1.1.5(@langchain/core@1.2.9(@opentelemetry/api@1.9.1)(ws@8.21.0)))
       '@skein-js/agent-protocol':
         specifier: workspace:*
         version: link:../agent-protocol
@@ -686,13 +713,13 @@ importers:
     dependencies:
       '@langchain/langgraph':
         specifier: ^1.4.0
-        version: 1.4.7(@langchain/core@1.2.2(@opentelemetry/api@1.9.1)(ws@8.21.0))(react-dom@19.2.6(react@19.2.6))(react@19.2.6)(vue@3.5.41(typescript@5.9.3))(zod@3.25.76)
+        version: 1.4.7(@langchain/core@1.2.9(@opentelemetry/api@1.9.1)(ws@8.21.0))(react-dom@19.2.6(react@19.2.6))(react@19.2.6)(vue@3.5.41(typescript@5.9.3))(zod@3.25.76)
       '@langchain/langgraph-api':
         specifier: ^1.4.0
-        version: 1.4.2(@langchain/core@1.2.2(@opentelemetry/api@1.9.1)(ws@8.21.0))(@langchain/langgraph-checkpoint@1.1.3(@langchain/core@1.2.2(@opentelemetry/api@1.9.1)(ws@8.21.0)))(@langchain/langgraph-sdk@1.9.25(@langchain/core@1.2.2(@opentelemetry/api@1.9.1)(ws@8.21.0))(react-dom@19.2.6(react@19.2.6))(react@19.2.6)(vue@3.5.41(typescript@5.9.3)))(@langchain/langgraph@1.4.7(@langchain/core@1.2.2(@opentelemetry/api@1.9.1)(ws@8.21.0))(react-dom@19.2.6(react@19.2.6))(react@19.2.6)(vue@3.5.41(typescript@5.9.3))(zod@3.25.76))(@opentelemetry/api@1.9.1)(babel-plugin-macros@3.1.0)(typescript@5.9.3)(ws@8.21.0)
+        version: 1.4.2(@langchain/core@1.2.9(@opentelemetry/api@1.9.1)(ws@8.21.0))(@langchain/langgraph-checkpoint@1.1.5(@langchain/core@1.2.9(@opentelemetry/api@1.9.1)(ws@8.21.0)))(@langchain/langgraph-sdk@1.9.25(@langchain/core@1.2.9(@opentelemetry/api@1.9.1)(ws@8.21.0))(react-dom@19.2.6(react@19.2.6))(react@19.2.6)(vue@3.5.41(typescript@5.9.3)))(@langchain/langgraph@1.4.7(@langchain/core@1.2.9(@opentelemetry/api@1.9.1)(ws@8.21.0))(react-dom@19.2.6(react@19.2.6))(react@19.2.6)(vue@3.5.41(typescript@5.9.3))(zod@3.25.76))(@opentelemetry/api@1.9.1)(babel-plugin-macros@3.1.0)(typescript@5.9.3)(ws@8.21.0)
       '@langchain/langgraph-sdk':
         specifier: ^1.9.0
-        version: 1.9.25(@langchain/core@1.2.2(@opentelemetry/api@1.9.1)(ws@8.21.0))(react-dom@19.2.6(react@19.2.6))(react@19.2.6)(vue@3.5.41(typescript@5.9.3))
+        version: 1.9.25(@langchain/core@1.2.9(@opentelemetry/api@1.9.1)(ws@8.21.0))(react-dom@19.2.6(react@19.2.6))(react@19.2.6)(vue@3.5.41(typescript@5.9.3))
       '@skein-js/core':
         specifier: workspace:*
         version: link:../core
@@ -704,7 +731,7 @@ importers:
     devDependencies:
       '@langchain/langgraph-sdk':
         specifier: ^1.9.0
-        version: 1.9.25(@langchain/core@1.2.2(@opentelemetry/api@1.9.1)(ws@8.21.0))(react-dom@19.2.6(react@19.2.6))(react@19.2.6)(vue@3.5.41(typescript@5.9.3))
+        version: 1.9.25(@langchain/core@1.2.9(@opentelemetry/api@1.9.1)(ws@8.21.0))(react-dom@19.2.6(react@19.2.6))(react@19.2.6)(vue@3.5.41(typescript@5.9.3))
       '@radix-ui/react-dropdown-menu':
         specifier: ^2.1.4
         version: 2.1.24(@types/react-dom@19.2.3(@types/react@19.2.15))(@types/react@19.2.15)(react-dom@19.2.6(react@19.2.6))(react@19.2.6)
@@ -725,7 +752,7 @@ importers:
         version: 19.2.3(@types/react@19.2.15)
       '@vitejs/plugin-react':
         specifier: ^6.0.0
-        version: 6.0.5(vite@8.1.4(@types/node@22.20.0)(esbuild@0.28.1)(jiti@1.21.7)(terser@5.49.2)(tsx@4.22.4)(yaml@2.9.0))
+        version: 6.0.5(vite@8.1.4(@types/node@22.20.0)(esbuild@0.28.1)(jiti@2.7.0)(terser@5.49.2)(tsx@4.22.4)(yaml@2.9.0))
       autoprefixer:
         specifier: ^10.4.20
         version: 10.5.2(postcss@8.5.16)
@@ -737,13 +764,13 @@ importers:
         version: 2.1.1
       eslint-plugin-jsx-a11y:
         specifier: 6.10.1
-        version: 6.10.1(eslint@9.39.4(jiti@1.21.7))
+        version: 6.10.1(eslint@9.39.4(jiti@2.7.0))
       eslint-plugin-react:
         specifier: ^7.35.0
-        version: 7.37.5(eslint@9.39.4(jiti@1.21.7))
+        version: 7.37.5(eslint@9.39.4(jiti@2.7.0))
       eslint-plugin-react-hooks:
         specifier: 5.0.0
-        version: 5.0.0(eslint@9.39.4(jiti@1.21.7))
+        version: 5.0.0(eslint@9.39.4(jiti@2.7.0))
       jsdom:
         specifier: ^27.1.0
         version: 27.4.0
@@ -770,7 +797,7 @@ importers:
     dependencies:
       '@langchain/langgraph-sdk':
         specifier: ^1.9.0
-        version: 1.9.25(@langchain/core@1.2.2(@opentelemetry/api@1.9.1)(ws@8.21.0))(react-dom@19.2.6(react@19.2.6))(react@19.2.6)(vue@3.5.41(typescript@5.9.3))
+        version: 1.9.25(@langchain/core@1.2.9(@opentelemetry/api@1.9.1)(ws@8.21.0))(react-dom@19.2.6(react@19.2.6))(react@19.2.6)(vue@3.5.41(typescript@5.9.3))
 
   packages/create-skein-js:
     dependencies:
@@ -792,7 +819,7 @@ importers:
     dependencies:
       '@langchain/langgraph':
         specifier: ^1.4.0
-        version: 1.4.7(@langchain/core@1.2.2(@opentelemetry/api@1.9.1)(ws@8.21.0))(react-dom@19.2.6(react@19.2.6))(react@19.2.6)(vue@3.5.41(typescript@5.9.3))(zod@3.25.76)
+        version: 1.4.7(@langchain/core@1.2.9(@opentelemetry/api@1.9.1)(ws@8.21.0))(react-dom@19.2.6(react@19.2.6))(react@19.2.6)(vue@3.5.41(typescript@5.9.3))(zod@3.25.76)
       '@skein-js/agent-protocol':
         specifier: workspace:*
         version: link:../agent-protocol
@@ -832,14 +859,14 @@ importers:
         version: 2.8.6
     devDependencies:
       '@langchain/core':
-        specifier: ^1.2.0
-        version: 1.2.2(@opentelemetry/api@1.9.1)(ws@8.21.0)
+        specifier: ^1.2.9
+        version: 1.2.9(@opentelemetry/api@1.9.1)(ws@8.21.0)
       '@langchain/langgraph':
         specifier: ^1.4.0
-        version: 1.4.7(@langchain/core@1.2.2(@opentelemetry/api@1.9.1)(ws@8.21.0))(react-dom@19.2.6(react@19.2.6))(react@19.2.6)(vue@3.5.41(typescript@5.9.3))(zod@3.25.76)
+        version: 1.4.7(@langchain/core@1.2.9(@opentelemetry/api@1.9.1)(ws@8.21.0))(react-dom@19.2.6(react@19.2.6))(react@19.2.6)(vue@3.5.41(typescript@5.9.3))(zod@3.25.76)
       '@langchain/langgraph-checkpoint-postgres':
         specifier: ^1.0.4
-        version: 1.0.4(@langchain/core@1.2.2(@opentelemetry/api@1.9.1)(ws@8.21.0))(@langchain/langgraph-checkpoint@1.1.3(@langchain/core@1.2.2(@opentelemetry/api@1.9.1)(ws@8.21.0)))
+        version: 1.0.4(@langchain/core@1.2.9(@opentelemetry/api@1.9.1)(ws@8.21.0))(@langchain/langgraph-checkpoint@1.1.5(@langchain/core@1.2.9(@opentelemetry/api@1.9.1)(ws@8.21.0)))
       '@skein-js/langsmith':
         specifier: workspace:*
         version: link:../telemetry-langsmith
@@ -891,11 +918,11 @@ importers:
         version: 2.8.6
     devDependencies:
       '@langchain/core':
-        specifier: ^1.2.0
-        version: 1.2.2(@opentelemetry/api@1.9.1)(ws@8.21.0)
+        specifier: ^1.2.9
+        version: 1.2.9(@opentelemetry/api@1.9.1)(ws@8.21.0)
       '@langchain/langgraph':
         specifier: ^1.4.0
-        version: 1.4.7(@langchain/core@1.2.2(@opentelemetry/api@1.9.1)(ws@8.21.0))(react-dom@19.2.6(react@19.2.6))(react@19.2.6)(vue@3.5.41(typescript@5.9.3))(zod@3.25.76)
+        version: 1.4.7(@langchain/core@1.2.9(@opentelemetry/api@1.9.1)(ws@8.21.0))(react-dom@19.2.6(react@19.2.6))(react@19.2.6)(vue@3.5.41(typescript@5.9.3))(zod@3.25.76)
       '@skein-js/langgraph':
         specifier: workspace:*
         version: link:../langgraph
@@ -928,11 +955,11 @@ importers:
         specifier: ^10.0.1
         version: 10.1.0
       '@langchain/core':
-        specifier: ^1.2.0
-        version: 1.2.2(@opentelemetry/api@1.9.1)(ws@8.21.0)
+        specifier: ^1.2.9
+        version: 1.2.9(@opentelemetry/api@1.9.1)(ws@8.21.0)
       '@langchain/langgraph':
         specifier: ^1.4.0
-        version: 1.4.7(@langchain/core@1.2.2(@opentelemetry/api@1.9.1)(ws@8.21.0))(react-dom@19.2.6(react@19.2.6))(react@19.2.6)(vue@3.5.41(typescript@5.9.3))(zod@3.25.76)
+        version: 1.4.7(@langchain/core@1.2.9(@opentelemetry/api@1.9.1)(ws@8.21.0))(react-dom@19.2.6(react@19.2.6))(react@19.2.6)(vue@3.5.41(typescript@5.9.3))(zod@3.25.76)
       '@skein-js/langgraph':
         specifier: workspace:*
         version: link:../langgraph
@@ -957,7 +984,7 @@ importers:
     devDependencies:
       '@langchain/langgraph':
         specifier: ^1.4.0
-        version: 1.4.7(@langchain/core@1.2.2(@opentelemetry/api@1.9.1)(ws@8.21.0))(react-dom@19.2.6(react@19.2.6))(react@19.2.6)(vue@3.5.41(typescript@5.9.3))(zod@3.25.76)
+        version: 1.4.7(@langchain/core@1.2.9(@opentelemetry/api@1.9.1)(ws@8.21.0))(react-dom@19.2.6(react@19.2.6))(react@19.2.6)(vue@3.5.41(typescript@5.9.3))(zod@3.25.76)
 
   packages/server-kit:
     dependencies:
@@ -987,11 +1014,11 @@ importers:
         version: 3.25.76
     devDependencies:
       '@langchain/core':
-        specifier: ^1.2.0
-        version: 1.2.2(@opentelemetry/api@1.9.1)(ws@8.21.0)
+        specifier: ^1.2.9
+        version: 1.2.9(@opentelemetry/api@1.9.1)(ws@8.21.0)
       '@langchain/langgraph':
         specifier: ^1.4.0
-        version: 1.4.7(@langchain/core@1.2.2(@opentelemetry/api@1.9.1)(ws@8.21.0))(react-dom@19.2.6(react@19.2.6))(react@19.2.6)(vue@3.5.41(typescript@5.9.3))(zod@3.25.76)
+        version: 1.4.7(@langchain/core@1.2.9(@opentelemetry/api@1.9.1)(ws@8.21.0))(react-dom@19.2.6(react@19.2.6))(react@19.2.6)(vue@3.5.41(typescript@5.9.3))(zod@3.25.76)
       '@types/cors':
         specifier: ^2.8.17
         version: 2.8.19
@@ -1009,11 +1036,11 @@ importers:
         version: link:../server-kit
     devDependencies:
       '@langchain/core':
-        specifier: ^1.2.0
-        version: 1.2.2(@opentelemetry/api@1.9.1)(ws@8.21.0)
+        specifier: ^1.2.9
+        version: 1.2.9(@opentelemetry/api@1.9.1)(ws@8.21.0)
       '@langchain/langgraph':
         specifier: ^1.4.0
-        version: 1.4.7(@langchain/core@1.2.2(@opentelemetry/api@1.9.1)(ws@8.21.0))(react-dom@19.2.6(react@19.2.6))(react@19.2.6)(vue@3.5.41(typescript@5.9.3))(zod@3.25.76)
+        version: 1.4.7(@langchain/core@1.2.9(@opentelemetry/api@1.9.1)(ws@8.21.0))(react-dom@19.2.6(react@19.2.6))(react@19.2.6)(vue@3.5.41(typescript@5.9.3))(zod@3.25.76)
       '@nestjs/common':
         specifier: ^11.0.0
         version: 11.1.24(reflect-metadata@0.2.2)(rxjs@7.8.2)
@@ -1052,11 +1079,11 @@ importers:
         version: 15.5.18(@babel/core@7.29.7)(@opentelemetry/api@1.9.1)(@playwright/test@1.61.1)(react-dom@19.2.6(react@19.2.6))(react@19.2.6)
     devDependencies:
       '@langchain/core':
-        specifier: ^1.2.0
-        version: 1.2.2(@opentelemetry/api@1.9.1)(ws@8.21.0)
+        specifier: ^1.2.9
+        version: 1.2.9(@opentelemetry/api@1.9.1)(ws@8.21.0)
       '@langchain/langgraph':
         specifier: ^1.4.0
-        version: 1.4.7(@langchain/core@1.2.2(@opentelemetry/api@1.9.1)(ws@8.21.0))(react-dom@19.2.6(react@19.2.6))(react@19.2.6)(vue@3.5.41(typescript@5.9.3))(zod@3.25.76)
+        version: 1.4.7(@langchain/core@1.2.9(@opentelemetry/api@1.9.1)(ws@8.21.0))(react-dom@19.2.6(react@19.2.6))(react@19.2.6)(vue@3.5.41(typescript@5.9.3))(zod@3.25.76)
       '@skein-js/langgraph':
         specifier: workspace:*
         version: link:../langgraph
@@ -1078,7 +1105,7 @@ importers:
     dependencies:
       '@langchain/langgraph-checkpoint-postgres':
         specifier: ^1.0.4
-        version: 1.0.4(@langchain/core@1.2.2(@opentelemetry/api@1.9.1)(ws@8.21.0))(@langchain/langgraph-checkpoint@1.1.3(@langchain/core@1.2.2(@opentelemetry/api@1.9.1)(ws@8.21.0)))
+        version: 1.0.4(@langchain/core@1.2.9(@opentelemetry/api@1.9.1)(ws@8.21.0))(@langchain/langgraph-checkpoint@1.1.5(@langchain/core@1.2.9(@opentelemetry/api@1.9.1)(ws@8.21.0)))
       '@skein-js/core':
         specifier: workspace:*
         version: link:../core
@@ -1100,8 +1127,8 @@ importers:
         version: link:../core
     devDependencies:
       '@langchain/core':
-        specifier: ^1.2.0
-        version: 1.2.2(@opentelemetry/api@1.9.1)(ws@8.21.0)
+        specifier: ^1.2.9
+        version: 1.2.9(@opentelemetry/api@1.9.1)(ws@8.21.0)
       langsmith:
         specifier: ^0.7.3
         version: 0.7.3(@opentelemetry/api@1.9.1)(ws@8.21.0)
@@ -1139,14 +1166,14 @@ importers:
         version: 2.1.9(@types/node@22.20.0)(jsdom@27.4.0)(lightningcss@1.32.0)(terser@5.49.2)
     devDependencies:
       '@langchain/core':
-        specifier: ^1.2.0
-        version: 1.2.2(@opentelemetry/api@1.9.1)(ws@8.21.0)
+        specifier: ^1.2.9
+        version: 1.2.9(@opentelemetry/api@1.9.1)(ws@8.21.0)
       '@langchain/langgraph':
         specifier: ^1.4.0
-        version: 1.4.7(@langchain/core@1.2.2(@opentelemetry/api@1.9.1)(ws@8.21.0))(react-dom@19.2.6(react@19.2.6))(react@19.2.6)(vue@3.5.41(typescript@5.9.3))(zod@3.25.76)
+        version: 1.4.7(@langchain/core@1.2.9(@opentelemetry/api@1.9.1)(ws@8.21.0))(react-dom@19.2.6(react@19.2.6))(react@19.2.6)(vue@3.5.41(typescript@5.9.3))(zod@3.25.76)
       '@langchain/langgraph-sdk':
         specifier: ^1.9.0
-        version: 1.9.25(@langchain/core@1.2.2(@opentelemetry/api@1.9.1)(ws@8.21.0))(react-dom@19.2.6(react@19.2.6))(react@19.2.6)(vue@3.5.41(typescript@5.9.3))
+        version: 1.9.25(@langchain/core@1.2.9(@opentelemetry/api@1.9.1)(ws@8.21.0))(react-dom@19.2.6(react@19.2.6))(react@19.2.6)(vue@3.5.41(typescript@5.9.3))
 
 packages:
 
@@ -2729,8 +2756,8 @@ packages:
   '@keyv/serialize@1.1.1':
     resolution: {integrity: sha512-dXn3FZhPv0US+7dtJsIi2R+c7qWYiReoEh5zUntWCf4oSpMNib8FDhSoed6m3QyZdx5hK7iLFkYk3rNxwt8vTA==}
 
-  '@langchain/core@1.2.2':
-    resolution: {integrity: sha512-KfjEOT6sCg0vvItagfEtGpmrGoLMGfma4Affb5BGEqPmS2YR3AxW54pABSkhQlzCehTB+0BnLquAe1lGF4J9zQ==}
+  '@langchain/core@1.2.9':
+    resolution: {integrity: sha512-conzSEj9Zu1AyXJLXsSbgrtxtxinmI1yGqQ5CIJZSoV5rvv+yvQE/vgBnoySpBQ/bl3YPgj2FL/gbDjWykLSfg==}
     engines: {node: '>=20'}
 
   '@langchain/google-genai@2.2.0':
@@ -2768,8 +2795,32 @@ packages:
     peerDependencies:
       '@langchain/core': ^1.1.48
 
+  '@langchain/langgraph-checkpoint@1.1.5':
+    resolution: {integrity: sha512-BwDwl5VeTOh6CVuiIPgsUgfK51vTJDMSbFcSCUfjJWsl8/DPdK/mbv+ejxJstkSk/BlSPMP4JfXWcN6jD2ea2Q==}
+    engines: {node: '>=18'}
+    peerDependencies:
+      '@langchain/core': ^1.1.48
+
   '@langchain/langgraph-sdk@1.9.25':
     resolution: {integrity: sha512-mRKW8zyQUaHox+HirRFMRrPqOvNbQI3xeXDt6kkk4PbBg77V92bsO1WzUVNrmJ81zCkvxyOrWSK8D6ioCj0a8A==}
+    peerDependencies:
+      '@langchain/core': ^1.1.48
+      react: ^18 || ^19
+      react-dom: ^18 || ^19
+      svelte: ^4.0.0 || ^5.0.0
+      vue: ^3.0.0
+    peerDependenciesMeta:
+      react:
+        optional: true
+      react-dom:
+        optional: true
+      svelte:
+        optional: true
+      vue:
+        optional: true
+
+  '@langchain/langgraph-sdk@1.9.31':
+    resolution: {integrity: sha512-y1sSdq39IPb6mOX43+JiSezVbUdA8EBEJ1gvn91GP0jrLG0EcSApeRDCjRouyDpPXZ51bQXEQhA8CiHM0mzcAw==}
     peerDependencies:
       '@langchain/core': ^1.1.48
       react: ^18 || ^19
@@ -2790,6 +2841,13 @@ packages:
     resolution: {integrity: sha512-rGsuI9sW86xnyYo/BTQ0MSNc0s/kziOXf2C8K52ckX5PWWvJp7ObiHdx9Te9OFWXwm87F8SyVBaQLHmQNq5vOA==}
     engines: {node: ^18.19.0 || >=20.16.0}
     hasBin: true
+
+  '@langchain/langgraph@1.4.12':
+    resolution: {integrity: sha512-63iH/igH5Fh5fHqmWp09YYWaDKKB9v4RCmYNJBrnQ224rFRbjebgyYW6o5RCczN5FZxIhQj+xT51rrNmG0zi5A==}
+    engines: {node: '>=18'}
+    peerDependencies:
+      '@langchain/core': ^1.1.48
+      zod: ^3.25.32 || ^4.2.0
 
   '@langchain/langgraph@1.4.7':
     resolution: {integrity: sha512-2tcyf3QGC7v89kqSxMCtRvzg/3L/4yHtOaWC49A8KieCciWJs7LGaxHoPB6QRxXyUgyR+Zg9Q1ss/XJIE+JuSQ==}
@@ -7224,6 +7282,12 @@ packages:
   kuler@2.0.0:
     resolution: {integrity: sha512-Xq9nH7KlWZmXAtodXDDRE7vs6DU1gTU8zYDHDiWLSip45Egwq3plLHzPn27NgvzL2r1LMPC1vdqh98sQxtqj4A==}
 
+  langchain@1.5.10:
+    resolution: {integrity: sha512-JaC12C1qyGn985vvjttr4hr8lfFzWhrXp2M1byZJGmNJ2RiIgqnhiYDuLlG/xHDxhKD3onJ5pCuUif/cbdqPhA==}
+    engines: {node: '>=20'}
+    peerDependencies:
+      '@langchain/core': ^1.2.9
+
   langsmith@0.7.3:
     resolution: {integrity: sha512-Gg+IeRGoF1/aStu80aEnIXJCu+N6+4NoV4tAVFS51ZPRBsRa2KG0LkS7K7/ryZ/yES7O9xdqah5QuuWMIeMjQw==}
     peerDependencies:
@@ -10969,14 +11033,14 @@ snapshots:
   '@esbuild/win32-x64@0.28.1':
     optional: true
 
-  '@eslint-community/eslint-utils@4.9.1(eslint@9.39.4(jiti@1.21.7))':
-    dependencies:
-      eslint: 9.39.4(jiti@1.21.7)
-      eslint-visitor-keys: 3.4.3
-
   '@eslint-community/eslint-utils@4.9.1(eslint@9.39.4(jiti@2.4.2))':
     dependencies:
       eslint: 9.39.4(jiti@2.4.2)
+      eslint-visitor-keys: 3.4.3
+
+  '@eslint-community/eslint-utils@4.9.1(eslint@9.39.4(jiti@2.7.0))':
+    dependencies:
+      eslint: 9.39.4(jiti@2.7.0)
       eslint-visitor-keys: 3.4.3
 
   '@eslint-community/regexpp@4.12.2': {}
@@ -11277,7 +11341,7 @@ snapshots:
   '@keyv/serialize@1.1.1':
     optional: true
 
-  '@langchain/core@1.2.2(@opentelemetry/api@1.9.1)(ws@8.21.0)':
+  '@langchain/core@1.2.9(@opentelemetry/api@1.9.1)(ws@8.21.0)':
     dependencies:
       '@cfworker/json-schema': 4.1.1
       '@standard-schema/spec': 1.1.0
@@ -11293,20 +11357,20 @@ snapshots:
       - openai
       - ws
 
-  '@langchain/google-genai@2.2.0(@langchain/core@1.2.2(@opentelemetry/api@1.9.1)(ws@8.21.0))':
+  '@langchain/google-genai@2.2.0(@langchain/core@1.2.9(@opentelemetry/api@1.9.1)(ws@8.21.0))':
     dependencies:
       '@google/generative-ai': 0.24.1
-      '@langchain/core': 1.2.2(@opentelemetry/api@1.9.1)(ws@8.21.0)
+      '@langchain/core': 1.2.9(@opentelemetry/api@1.9.1)(ws@8.21.0)
 
-  '@langchain/langgraph-api@1.4.2(@langchain/core@1.2.2(@opentelemetry/api@1.9.1)(ws@8.21.0))(@langchain/langgraph-checkpoint@1.1.3(@langchain/core@1.2.2(@opentelemetry/api@1.9.1)(ws@8.21.0)))(@langchain/langgraph-sdk@1.9.25(@langchain/core@1.2.2(@opentelemetry/api@1.9.1)(ws@8.21.0))(react-dom@19.2.6(react@19.2.6))(react@19.2.6)(vue@3.5.41(typescript@5.9.3)))(@langchain/langgraph@1.4.7(@langchain/core@1.2.2(@opentelemetry/api@1.9.1)(ws@8.21.0))(react-dom@19.2.6(react@19.2.6))(react@19.2.6)(vue@3.5.41(typescript@5.9.3))(zod@3.25.76))(@opentelemetry/api@1.9.1)(babel-plugin-macros@3.1.0)(typescript@5.9.3)(ws@8.21.0)':
+  '@langchain/langgraph-api@1.4.2(@langchain/core@1.2.9(@opentelemetry/api@1.9.1)(ws@8.21.0))(@langchain/langgraph-checkpoint@1.1.5(@langchain/core@1.2.9(@opentelemetry/api@1.9.1)(ws@8.21.0)))(@langchain/langgraph-sdk@1.9.25(@langchain/core@1.2.9(@opentelemetry/api@1.9.1)(ws@8.21.0))(react-dom@19.2.6(react@19.2.6))(react@19.2.6)(vue@3.5.41(typescript@5.9.3)))(@langchain/langgraph@1.4.7(@langchain/core@1.2.9(@opentelemetry/api@1.9.1)(ws@8.21.0))(react-dom@19.2.6(react@19.2.6))(react@19.2.6)(vue@3.5.41(typescript@5.9.3))(zod@3.25.76))(@opentelemetry/api@1.9.1)(babel-plugin-macros@3.1.0)(typescript@5.9.3)(ws@8.21.0)':
     dependencies:
       '@babel/code-frame': 7.29.7
       '@hono/node-server': 1.19.14(hono@4.12.27)
       '@hono/node-ws': 1.3.1(@hono/node-server@1.19.14(hono@4.12.27))(hono@4.12.27)
       '@hono/zod-validator': 0.7.6(hono@4.12.27)(zod@3.25.76)
-      '@langchain/core': 1.2.2(@opentelemetry/api@1.9.1)(ws@8.21.0)
-      '@langchain/langgraph': 1.4.7(@langchain/core@1.2.2(@opentelemetry/api@1.9.1)(ws@8.21.0))(react-dom@19.2.6(react@19.2.6))(react@19.2.6)(vue@3.5.41(typescript@5.9.3))(zod@3.25.76)
-      '@langchain/langgraph-checkpoint': 1.1.3(@langchain/core@1.2.2(@opentelemetry/api@1.9.1)(ws@8.21.0))
+      '@langchain/core': 1.2.9(@opentelemetry/api@1.9.1)(ws@8.21.0)
+      '@langchain/langgraph': 1.4.7(@langchain/core@1.2.9(@opentelemetry/api@1.9.1)(ws@8.21.0))(react-dom@19.2.6(react@19.2.6))(react@19.2.6)(vue@3.5.41(typescript@5.9.3))(zod@3.25.76)
+      '@langchain/langgraph-checkpoint': 1.1.5(@langchain/core@1.2.9(@opentelemetry/api@1.9.1)(ws@8.21.0))
       '@langchain/langgraph-ui': 1.4.2
       '@langchain/protocol': 0.0.18
       '@types/json-schema': 7.0.15
@@ -11326,7 +11390,7 @@ snapshots:
       winston-console-format: 1.0.8
       zod: 3.25.76
     optionalDependencies:
-      '@langchain/langgraph-sdk': 1.9.25(@langchain/core@1.2.2(@opentelemetry/api@1.9.1)(ws@8.21.0))(react-dom@19.2.6(react@19.2.6))(react@19.2.6)(vue@3.5.41(typescript@5.9.3))
+      '@langchain/langgraph-sdk': 1.9.25(@langchain/core@1.2.9(@opentelemetry/api@1.9.1)(ws@8.21.0))(react-dom@19.2.6(react@19.2.6))(react@19.2.6)(vue@3.5.41(typescript@5.9.3))
     transitivePeerDependencies:
       - '@opentelemetry/api'
       - '@opentelemetry/exporter-trace-otlp-proto'
@@ -11338,21 +11402,37 @@ snapshots:
       - utf-8-validate
       - ws
 
-  '@langchain/langgraph-checkpoint-postgres@1.0.4(@langchain/core@1.2.2(@opentelemetry/api@1.9.1)(ws@8.21.0))(@langchain/langgraph-checkpoint@1.1.3(@langchain/core@1.2.2(@opentelemetry/api@1.9.1)(ws@8.21.0)))':
+  '@langchain/langgraph-checkpoint-postgres@1.0.4(@langchain/core@1.2.9(@opentelemetry/api@1.9.1)(ws@8.21.0))(@langchain/langgraph-checkpoint@1.1.5(@langchain/core@1.2.9(@opentelemetry/api@1.9.1)(ws@8.21.0)))':
     dependencies:
-      '@langchain/core': 1.2.2(@opentelemetry/api@1.9.1)(ws@8.21.0)
-      '@langchain/langgraph-checkpoint': 1.1.3(@langchain/core@1.2.2(@opentelemetry/api@1.9.1)(ws@8.21.0))
+      '@langchain/core': 1.2.9(@opentelemetry/api@1.9.1)(ws@8.21.0)
+      '@langchain/langgraph-checkpoint': 1.1.5(@langchain/core@1.2.9(@opentelemetry/api@1.9.1)(ws@8.21.0))
       pg: 8.21.0
     transitivePeerDependencies:
       - pg-native
 
-  '@langchain/langgraph-checkpoint@1.1.3(@langchain/core@1.2.2(@opentelemetry/api@1.9.1)(ws@8.21.0))':
+  '@langchain/langgraph-checkpoint@1.1.3(@langchain/core@1.2.9(@opentelemetry/api@1.9.1)(ws@8.21.0))':
     dependencies:
-      '@langchain/core': 1.2.2(@opentelemetry/api@1.9.1)(ws@8.21.0)
+      '@langchain/core': 1.2.9(@opentelemetry/api@1.9.1)(ws@8.21.0)
 
-  '@langchain/langgraph-sdk@1.9.25(@langchain/core@1.2.2(@opentelemetry/api@1.9.1)(ws@8.21.0))(react-dom@19.2.6(react@19.2.6))(react@19.2.6)(vue@3.5.41(typescript@5.9.3))':
+  '@langchain/langgraph-checkpoint@1.1.5(@langchain/core@1.2.9(@opentelemetry/api@1.9.1)(ws@8.21.0))':
     dependencies:
-      '@langchain/core': 1.2.2(@opentelemetry/api@1.9.1)(ws@8.21.0)
+      '@langchain/core': 1.2.9(@opentelemetry/api@1.9.1)(ws@8.21.0)
+
+  '@langchain/langgraph-sdk@1.9.25(@langchain/core@1.2.9(@opentelemetry/api@1.9.1)(ws@8.21.0))(react-dom@19.2.6(react@19.2.6))(react@19.2.6)(vue@3.5.41(typescript@5.9.3))':
+    dependencies:
+      '@langchain/core': 1.2.9(@opentelemetry/api@1.9.1)(ws@8.21.0)
+      '@langchain/protocol': 0.0.18
+      '@types/json-schema': 7.0.15
+      p-queue: 9.3.1
+      p-retry: 7.1.1
+    optionalDependencies:
+      react: 19.2.6
+      react-dom: 19.2.6(react@19.2.6)
+      vue: 3.5.41(typescript@5.9.3)
+
+  '@langchain/langgraph-sdk@1.9.31(@langchain/core@1.2.9(@opentelemetry/api@1.9.1)(ws@8.21.0))(react-dom@19.2.6(react@19.2.6))(react@19.2.6)(vue@3.5.41(typescript@5.9.3))':
+    dependencies:
+      '@langchain/core': 1.2.9(@opentelemetry/api@1.9.1)(ws@8.21.0)
       '@langchain/protocol': 0.0.18
       '@types/json-schema': 7.0.15
       p-queue: 9.3.1
@@ -11370,11 +11450,25 @@ snapshots:
       esbuild-plugin-tailwindcss: 2.2.0
       zod: 3.25.76
 
-  '@langchain/langgraph@1.4.7(@langchain/core@1.2.2(@opentelemetry/api@1.9.1)(ws@8.21.0))(react-dom@19.2.6(react@19.2.6))(react@19.2.6)(vue@3.5.41(typescript@5.9.3))(zod@3.25.76)':
+  '@langchain/langgraph@1.4.12(@langchain/core@1.2.9(@opentelemetry/api@1.9.1)(ws@8.21.0))(react-dom@19.2.6(react@19.2.6))(react@19.2.6)(vue@3.5.41(typescript@5.9.3))(zod@3.25.76)':
     dependencies:
-      '@langchain/core': 1.2.2(@opentelemetry/api@1.9.1)(ws@8.21.0)
-      '@langchain/langgraph-checkpoint': 1.1.3(@langchain/core@1.2.2(@opentelemetry/api@1.9.1)(ws@8.21.0))
-      '@langchain/langgraph-sdk': 1.9.25(@langchain/core@1.2.2(@opentelemetry/api@1.9.1)(ws@8.21.0))(react-dom@19.2.6(react@19.2.6))(react@19.2.6)(vue@3.5.41(typescript@5.9.3))
+      '@langchain/core': 1.2.9(@opentelemetry/api@1.9.1)(ws@8.21.0)
+      '@langchain/langgraph-checkpoint': 1.1.5(@langchain/core@1.2.9(@opentelemetry/api@1.9.1)(ws@8.21.0))
+      '@langchain/langgraph-sdk': 1.9.31(@langchain/core@1.2.9(@opentelemetry/api@1.9.1)(ws@8.21.0))(react-dom@19.2.6(react@19.2.6))(react@19.2.6)(vue@3.5.41(typescript@5.9.3))
+      '@langchain/protocol': 0.0.18
+      '@standard-schema/spec': 1.1.0
+      zod: 3.25.76
+    transitivePeerDependencies:
+      - react
+      - react-dom
+      - svelte
+      - vue
+
+  '@langchain/langgraph@1.4.7(@langchain/core@1.2.9(@opentelemetry/api@1.9.1)(ws@8.21.0))(react-dom@19.2.6(react@19.2.6))(react@19.2.6)(vue@3.5.41(typescript@5.9.3))(zod@3.25.76)':
+    dependencies:
+      '@langchain/core': 1.2.9(@opentelemetry/api@1.9.1)(ws@8.21.0)
+      '@langchain/langgraph-checkpoint': 1.1.3(@langchain/core@1.2.9(@opentelemetry/api@1.9.1)(ws@8.21.0))
+      '@langchain/langgraph-sdk': 1.9.25(@langchain/core@1.2.9(@opentelemetry/api@1.9.1)(ws@8.21.0))(react-dom@19.2.6(react@19.2.6))(react@19.2.6)(vue@3.5.41(typescript@5.9.3))
       '@langchain/protocol': 0.0.18
       '@standard-schema/spec': 1.1.0
       zod: 3.25.76
@@ -13298,10 +13392,10 @@ snapshots:
       d3-selection: 3.0.0
       d3-transition: 3.0.1(d3-selection@3.0.0)
 
-  '@vitejs/plugin-react@6.0.5(vite@8.1.4(@types/node@22.20.0)(esbuild@0.28.1)(jiti@1.21.7)(terser@5.49.2)(tsx@4.22.4)(yaml@2.9.0))':
+  '@vitejs/plugin-react@6.0.5(vite@8.1.4(@types/node@22.20.0)(esbuild@0.28.1)(jiti@2.7.0)(terser@5.49.2)(tsx@4.22.4)(yaml@2.9.0))':
     dependencies:
       '@rolldown/pluginutils': 1.0.1
-      vite: 8.1.4(@types/node@22.20.0)(esbuild@0.28.1)(jiti@1.21.7)(terser@5.49.2)(tsx@4.22.4)(yaml@2.9.0)
+      vite: 8.1.4(@types/node@22.20.0)(esbuild@0.28.1)(jiti@2.7.0)(terser@5.49.2)(tsx@4.22.4)(yaml@2.9.0)
 
   '@vitejs/plugin-vue@5.2.4(vite@5.4.21(@types/node@22.20.0)(lightningcss@1.32.0)(terser@5.49.2))(vue@3.5.41(typescript@5.9.3))':
     dependencies:
@@ -15268,7 +15362,7 @@ snapshots:
       - eslint-import-resolver-webpack
       - supports-color
 
-  eslint-plugin-jsx-a11y@6.10.1(eslint@9.39.4(jiti@1.21.7)):
+  eslint-plugin-jsx-a11y@6.10.1(eslint@9.39.4(jiti@2.7.0)):
     dependencies:
       aria-query: 5.3.2
       array-includes: 3.1.9
@@ -15279,7 +15373,7 @@ snapshots:
       damerau-levenshtein: 1.0.8
       emoji-regex: 9.2.2
       es-iterator-helpers: 1.4.0
-      eslint: 9.39.4(jiti@1.21.7)
+      eslint: 9.39.4(jiti@2.7.0)
       hasown: 2.0.4
       jsx-ast-utils: 3.3.5
       language-tags: 1.0.9
@@ -15288,11 +15382,11 @@ snapshots:
       safe-regex-test: 1.1.0
       string.prototype.includes: 2.0.1
 
-  eslint-plugin-react-hooks@5.0.0(eslint@9.39.4(jiti@1.21.7)):
+  eslint-plugin-react-hooks@5.0.0(eslint@9.39.4(jiti@2.7.0)):
     dependencies:
-      eslint: 9.39.4(jiti@1.21.7)
+      eslint: 9.39.4(jiti@2.7.0)
 
-  eslint-plugin-react@7.37.5(eslint@9.39.4(jiti@1.21.7)):
+  eslint-plugin-react@7.37.5(eslint@9.39.4(jiti@2.7.0)):
     dependencies:
       array-includes: 3.1.9
       array.prototype.findlast: 1.2.5
@@ -15300,7 +15394,7 @@ snapshots:
       array.prototype.tosorted: 1.1.4
       doctrine: 2.1.0
       es-iterator-helpers: 1.4.0
-      eslint: 9.39.4(jiti@1.21.7)
+      eslint: 9.39.4(jiti@2.7.0)
       estraverse: 5.3.0
       hasown: 2.0.4
       jsx-ast-utils: 3.3.5
@@ -15335,47 +15429,6 @@ snapshots:
   eslint-visitor-keys@4.2.1: {}
 
   eslint-visitor-keys@5.0.1: {}
-
-  eslint@9.39.4(jiti@1.21.7):
-    dependencies:
-      '@eslint-community/eslint-utils': 4.9.1(eslint@9.39.4(jiti@1.21.7))
-      '@eslint-community/regexpp': 4.12.2
-      '@eslint/config-array': 0.21.2
-      '@eslint/config-helpers': 0.4.2
-      '@eslint/core': 0.17.0
-      '@eslint/eslintrc': 3.3.5
-      '@eslint/js': 9.39.4
-      '@eslint/plugin-kit': 0.4.1
-      '@humanfs/node': 0.16.8
-      '@humanwhocodes/module-importer': 1.0.1
-      '@humanwhocodes/retry': 0.4.3
-      '@types/estree': 1.0.9
-      ajv: 6.15.0
-      chalk: 4.1.2
-      cross-spawn: 7.0.6
-      debug: 4.4.3(supports-color@7.2.0)
-      escape-string-regexp: 4.0.0
-      eslint-scope: 8.4.0
-      eslint-visitor-keys: 4.2.1
-      espree: 10.4.0
-      esquery: 1.7.0
-      esutils: 2.0.3
-      fast-deep-equal: 3.1.3
-      file-entry-cache: 8.0.0
-      find-up: 5.0.0
-      glob-parent: 6.0.2
-      ignore: 5.3.2
-      imurmurhash: 0.1.4
-      is-glob: 4.0.3
-      json-stable-stringify-without-jsonify: 1.0.1
-      lodash.merge: 4.6.2
-      minimatch: 3.1.5
-      natural-compare: 1.4.0
-      optionator: 0.9.4
-    optionalDependencies:
-      jiti: 1.21.7
-    transitivePeerDependencies:
-      - supports-color
 
   eslint@9.39.4(jiti@2.4.2):
     dependencies:
@@ -15415,6 +15468,47 @@ snapshots:
       optionator: 0.9.4
     optionalDependencies:
       jiti: 2.4.2
+    transitivePeerDependencies:
+      - supports-color
+
+  eslint@9.39.4(jiti@2.7.0):
+    dependencies:
+      '@eslint-community/eslint-utils': 4.9.1(eslint@9.39.4(jiti@2.7.0))
+      '@eslint-community/regexpp': 4.12.2
+      '@eslint/config-array': 0.21.2
+      '@eslint/config-helpers': 0.4.2
+      '@eslint/core': 0.17.0
+      '@eslint/eslintrc': 3.3.5
+      '@eslint/js': 9.39.4
+      '@eslint/plugin-kit': 0.4.1
+      '@humanfs/node': 0.16.8
+      '@humanwhocodes/module-importer': 1.0.1
+      '@humanwhocodes/retry': 0.4.3
+      '@types/estree': 1.0.9
+      ajv: 6.15.0
+      chalk: 4.1.2
+      cross-spawn: 7.0.6
+      debug: 4.4.3(supports-color@7.2.0)
+      escape-string-regexp: 4.0.0
+      eslint-scope: 8.4.0
+      eslint-visitor-keys: 4.2.1
+      espree: 10.4.0
+      esquery: 1.7.0
+      esutils: 2.0.3
+      fast-deep-equal: 3.1.3
+      file-entry-cache: 8.0.0
+      find-up: 5.0.0
+      glob-parent: 6.0.2
+      ignore: 5.3.2
+      imurmurhash: 0.1.4
+      is-glob: 4.0.3
+      json-stable-stringify-without-jsonify: 1.0.1
+      lodash.merge: 4.6.2
+      minimatch: 3.1.5
+      natural-compare: 1.4.0
+      optionator: 0.9.4
+    optionalDependencies:
+      jiti: 2.7.0
     transitivePeerDependencies:
       - supports-color
 
@@ -16477,6 +16571,24 @@ snapshots:
     optional: true
 
   kuler@2.0.0: {}
+
+  langchain@1.5.10(@langchain/core@1.2.9(@opentelemetry/api@1.9.1)(ws@8.21.0))(@opentelemetry/api@1.9.1)(react-dom@19.2.6(react@19.2.6))(react@19.2.6)(vue@3.5.41(typescript@5.9.3))(ws@8.21.0):
+    dependencies:
+      '@langchain/core': 1.2.9(@opentelemetry/api@1.9.1)(ws@8.21.0)
+      '@langchain/langgraph': 1.4.12(@langchain/core@1.2.9(@opentelemetry/api@1.9.1)(ws@8.21.0))(react-dom@19.2.6(react@19.2.6))(react@19.2.6)(vue@3.5.41(typescript@5.9.3))(zod@3.25.76)
+      '@langchain/langgraph-checkpoint': 1.1.5(@langchain/core@1.2.9(@opentelemetry/api@1.9.1)(ws@8.21.0))
+      langsmith: 0.7.3(@opentelemetry/api@1.9.1)(ws@8.21.0)
+      zod: 3.25.76
+    transitivePeerDependencies:
+      - '@opentelemetry/api'
+      - '@opentelemetry/exporter-trace-otlp-proto'
+      - '@opentelemetry/sdk-trace-base'
+      - openai
+      - react
+      - react-dom
+      - svelte
+      - vue
+      - ws
 
   langsmith@0.7.3(@opentelemetry/api@1.9.1)(ws@8.21.0):
     dependencies:
@@ -19117,22 +19229,6 @@ snapshots:
       tsx: 4.22.4
       yaml: 2.9.0
 
-  vite@8.1.4(@types/node@22.20.0)(esbuild@0.28.1)(jiti@1.21.7)(terser@5.49.2)(tsx@4.22.4)(yaml@2.9.0):
-    dependencies:
-      lightningcss: 1.32.0
-      picomatch: 4.0.5
-      postcss: 8.5.16
-      rolldown: 1.1.5
-      tinyglobby: 0.2.17
-    optionalDependencies:
-      '@types/node': 22.20.0
-      esbuild: 0.28.1
-      fsevents: 2.3.3
-      jiti: 1.21.7
-      terser: 5.49.2
-      tsx: 4.22.4
-      yaml: 2.9.0
-
   vite@8.1.4(@types/node@22.20.0)(esbuild@0.28.1)(jiti@2.7.0)(terser@5.49.2)(tsx@4.22.4)(yaml@2.9.0):
     dependencies:
       lightningcss: 1.32.0
@@ -19148,7 +19244,6 @@ snapshots:
       terser: 5.49.2
       tsx: 4.22.4
       yaml: 2.9.0
-    optional: true
 
   vitepress-plugin-mermaid@2.0.17(mermaid@11.16.1)(vitepress@1.6.4(@algolia/client-search@5.56.0)(@types/node@22.20.0)(axios@1.16.1)(lightningcss@1.32.0)(postcss@8.5.16)(react-dom@19.2.6(react@19.2.6))(react@19.2.6)(search-insights@2.17.3)(terser@5.49.2)(typescript@5.9.3)):
     dependencies:

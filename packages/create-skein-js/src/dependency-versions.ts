@@ -14,9 +14,12 @@ import type { ModelProvider } from "./scaffold-options.js";
 
 /** Ranges every scaffolded project pins. */
 export const CORE_VERSIONS = {
-  "@langchain/core": "^1.2.0",
+  "@langchain/core": "^1.2.9",
   "@langchain/langgraph": "^1.4.0",
   "@langchain/langgraph-sdk": "^1.9.0",
+  // `createAgent` lives here, not in @langchain/langgraph: LangGraph v1 deprecated the
+  // `createReactAgent` prebuilt and moved it to the `langchain` package.
+  langchain: "^1.5.0",
   zod: "^3.25.32",
 } as const;
 

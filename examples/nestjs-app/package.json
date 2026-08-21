@@ -9,13 +9,14 @@
     "start": "tsx src/main.ts"
   },
   "dependencies": {
+    "@langchain/core": "^1.2.9",
     "@langchain/google-genai": "^2.2.0",
-    "@langchain/core": "^1.2.0",
     "@langchain/langgraph": "^1.4.0",
     "@nestjs/common": "^11.0.0",
     "@nestjs/core": "^11.0.0",
     "@nestjs/platform-express": "^11.0.0",
     "@skein-js/nestjs": "workspace:*",
+    "langchain": "^1.5.0",
     "reflect-metadata": "^0.2.2",
     "rxjs": "^7.8.1",
     "zod": "^3.25.32"

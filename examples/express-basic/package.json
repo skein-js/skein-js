@@ -9,12 +9,13 @@
     "webhook-receiver": "node --experimental-strip-types src/webhook-receiver.ts"
   },
   "dependencies": {
+    "@langchain/core": "^1.2.9",
     "@langchain/google-genai": "^2.2.0",
-    "@langchain/core": "^1.2.0",
     "@langchain/langgraph": "^1.4.0",
+    "@skein-js/agent-protocol": "workspace:*",
     "@skein-js/express": "workspace:*",
-    "zod": "^3.25.32",
-    "@skein-js/agent-protocol": "workspace:*"
+    "langchain": "^1.5.0",
+    "zod": "^3.25.32"
   },
   "devDependencies": {
     "@langchain/langgraph-sdk": "^1.9.0",

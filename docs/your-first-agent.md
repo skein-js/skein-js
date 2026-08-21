@@ -131,15 +131,16 @@ Create `src/agent-graph.ts`:
 
 ```ts
 import { ChatAnthropic } from "@langchain/anthropic";
-import { createReactAgent } from "@langchain/langgraph/prebuilt";
+import { createAgent } from "langchain";
 
 const model = new ChatAnthropic({ model: "claude-sonnet-5", temperature: 0 });
 
-export const graph = createReactAgent({ llm: model, tools: [] });
+export const graph = createAgent({ model, tools: [] });
 ```
 
-`createReactAgent` is LangGraph's prebuilt agent loop: call the model, and if it asks for a tool,
-run the tool and call the model again. You did not have to build that loop.
+`createAgent` is LangChain's prebuilt agent loop: call the model, and if it asks for a tool, run the
+tool and call the model again. You did not have to build that loop. It lives in the `langchain`
+package — LangGraph v1 deprecated its own `createReactAgent` and moved it there.
 
 Register it in `langgraph.json`:
 
@@ -194,7 +195,7 @@ const getWeather = tool(
 );
 ```
 
-Pass it in — `createReactAgent({ llm: model, tools: [getWeather] })` — and ask "what's the weather in
+Pass it in — `createAgent({ model, tools: [getWeather] })` — and ask "what's the weather in
 Nairobi?". The console shows the model deciding to call the tool, the result coming back, and the
 final answer. (Open-Meteo needs no API key of its own.)
 

@@ -1586,15 +1586,16 @@ Create `src/agent-graph.ts`:
 
 ```ts
 import { ChatAnthropic } from "@langchain/anthropic";
-import { createReactAgent } from "@langchain/langgraph/prebuilt";
+import { createAgent } from "langchain";
 
 const model = new ChatAnthropic({ model: "claude-sonnet-5", temperature: 0 });
 
-export const graph = createReactAgent({ llm: model, tools: [] });
+export const graph = createAgent({ model, tools: [] });
 ```
 
-`createReactAgent` is LangGraph's prebuilt agent loop: call the model, and if it asks for a tool,
-run the tool and call the model again. You did not have to build that loop.
+`createAgent` is LangChain's prebuilt agent loop: call the model, and if it asks for a tool, run the
+tool and call the model again. You did not have to build that loop. It lives in the `langchain`
+package — LangGraph v1 deprecated its own `createReactAgent` and moved it there.
 
 Register it in `langgraph.json`:
 
@@ -1649,7 +1650,7 @@ const getWeather = tool(
 );
 ```
 
-Pass it in — `createReactAgent({ llm: model, tools: [getWeather] })` — and ask "what's the weather in
+Pass it in — `createAgent({ model, tools: [getWeather] })` — and ask "what's the weather in
 Nairobi?". The console shows the model deciding to call the tool, the result coming back, and the
 final answer. (Open-Meteo needs no API key of its own.)
 
@@ -4486,10 +4487,11 @@ It returns a compiled graph like any other, so everything skein does — threads
 interrupts, memory — works against it unchanged.
 
 > [!NOTE]
-> You will meet **`createReactAgent`** from `@langchain/langgraph/prebuilt` in older code — including
-> skein's own examples and scaffolder, which have not been migrated yet. It still works, but it is
-> `@deprecated` as of `@langchain/langgraph` 1.4: it moved to the `langchain` package and was renamed.
-> The parameter changed too — `llm` became `model`, which also accepts a `"provider:model"` string.
+> You will meet **`createReactAgent`** from `@langchain/langgraph/prebuilt` in older code. It still
+> works, but it is `@deprecated` as of `@langchain/langgraph` 1.4: it moved to the `langchain` package
+> and was renamed. The parameter changed too — `llm` became `model`, which also accepts a
+> `"provider:model"` string — and a dynamic `prompt` function becomes `dynamicSystemPromptMiddleware`.
+> skein's examples and scaffolder are all on `createAgent`.
 
 **Go deeper →** [Agents](https://docs.langchain.com/oss/javascript/langchain/agents)
 
@@ -6341,10 +6343,10 @@ the single-graph invoke handler — it is mapped to a `SkeinHttpError` carrying 
 "graph_load_failed"`, so it stops being an unhandled fault. How much of _why_ reaches the caller is
 governed by [`exposeErrorStacks`](#exposeerrorstacks), the same switch that governs stacks:
 
-| | Body |
-| --- | --- |
-| **`skein dev`** (on) | `{"status":500,"message":"Graph \"agent\" failed to load: GOOGLE_API_KEY is not set …","code":"graph_load_failed"}` |
-| **`skein start`**, embedded (off) | `{"status":500,"message":"Graph \"agent\" failed to load.","code":"graph_load_failed"}` |
+|                                   | Body                                                                                                                |
+| --------------------------------- | ------------------------------------------------------------------------------------------------------------------- |
+| **`skein dev`** (on)              | `{"status":500,"message":"Graph \"agent\" failed to load: GOOGLE_API_KEY is not set …","code":"graph_load_failed"}` |
+| **`skein start`**, embedded (off) | `{"status":500,"message":"Graph \"agent\" failed to load.","code":"graph_load_failed"}`                             |
 
 The reason is withheld in production because a load failure's message is not skein's: `Cannot find
 module '/srv/app/dist/tools.js'` and `connect ECONNREFUSED 10.0.3.14:5432` are both ordinary ones,

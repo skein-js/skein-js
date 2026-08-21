@@ -31,7 +31,7 @@ agent, not just print its final string:
   injects a checkpointer — the same interrupt/resume path LangGraph Platform provides.
 - **Long-term memory across threads.** A `save_memory` tool writes durable facts, and relevant
   memories are **auto-injected** into the system prompt before each turn (a dynamic `prompt` on
-  `createReactAgent`), so the agent remembers you **across threads** without depending on the model to
+  `createAgent`), so the agent remembers you **across threads** without depending on the model to
   call a recall tool. Both use skein's injected LangGraph
   [`BaseStore`](../../docs/storage.md#long-term-memory-in-the-graph-getstore) (`getStore()`). Run with
   a Postgres store to get **pgvector semantic recall** (see below).

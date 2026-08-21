@@ -56,7 +56,7 @@
     "@langchain/langgraph-checkpoint-postgres": "^1.0.4"
   },
   "devDependencies": {
-    "@langchain/core": "^1.2.0",
+    "@langchain/core": "^1.2.9",
     "@langchain/langgraph": "^1.4.0",
     "@langchain/langgraph-checkpoint-postgres": "^1.0.4",
     "@skein-js/langsmith": "workspace:*",

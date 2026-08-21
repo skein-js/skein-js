@@ -2,9 +2,14 @@
 // Kept separate from `research-agent.ts` so the unit suite can import these without constructing the
 // Gemini model (which needs an API key at construction time).
 
-import { type BaseMessage, SystemMessage } from "@langchain/core/messages";
+import type { BaseMessage } from "@langchain/core/messages";
 import { tool } from "@langchain/core/tools";
-import { type BaseStore, getStore, type LangGraphRunnableConfig } from "@langchain/langgraph";
+import {
+  type BaseStore,
+  getConfig,
+  getStore,
+  type LangGraphRunnableConfig,
+} from "@langchain/langgraph";
 import { z } from "zod";
 
 // --- web search ---------------------------------------------------------------------------------
@@ -208,27 +213,28 @@ const SYSTEM_PROMPT = [
 /**
  * Recall strategy — an **application choice, not a skein feature**. skein (like LangGraph) only makes
  * the store available via `getStore()`; how and when you recall is up to your graph. This example
- * demonstrates the *auto-inject* pattern via `createReactAgent`'s dynamic `prompt`: before each model
- * call it fetches relevant memories for the latest question and folds them into the system message,
- * so personalization doesn't depend on the model choosing to call a recall tool. (Memory goes into
- * the single system message, not a second one — Gemini rejects a system message that isn't first.)
+ * demonstrates the *auto-inject* pattern via `dynamicSystemPromptMiddleware`: before each model call
+ * it fetches relevant memories for the latest question and folds them into the system prompt, so
+ * personalization doesn't depend on the model choosing to call a recall tool. (Memory goes into the
+ * single system prompt, not a second message — Gemini rejects a system message that isn't first.)
  * Equally valid alternatives (pick per your needs): expose recall as a tool the model calls, use a
  * library like `langmem`, or skip memory entirely.
+ *
+ * Returns the system prompt *text*: the middleware owns placing it, where LangGraph's deprecated
+ * `createReactAgent({ prompt })` expected the whole rebuilt message list back.
  */
-export async function buildPromptWithMemories(
-  state: { messages: BaseMessage[] },
-  config: LangGraphRunnableConfig,
-): Promise<BaseMessage[]> {
+export async function buildSystemPromptWithMemories(state: {
+  messages: BaseMessage[];
+}): Promise<string> {
   const store = getStore();
   const query = latestUserText(state.messages);
-  let systemText = SYSTEM_PROMPT;
-  if (store && query) {
-    const memories = await recallMemories(store, userIdFrom(config), query, 5);
-    if (memories.length > 0) {
-      systemText += `\n\nThings you remember about the user:\n${memories
-        .map((memory) => `- ${memory}`)
-        .join("\n")}`;
-    }
-  }
-  return [new SystemMessage(systemText), ...state.messages];
+  if (!store || !query) return SYSTEM_PROMPT;
+
+  // `getConfig()` rather than a `config` parameter: the middleware hands us the agent runtime, not a
+  // `LangGraphRunnableConfig`, and this is the same ambient accessor `getStore()` above already uses.
+  const memories = await recallMemories(store, userIdFrom(getConfig()), query, 5);
+  if (memories.length === 0) return SYSTEM_PROMPT;
+  return `${SYSTEM_PROMPT}\n\nThings you remember about the user:\n${memories
+    .map((memory) => `- ${memory}`)
+    .join("\n")}`;
 }

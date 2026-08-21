@@ -9,7 +9,7 @@ thing runs against your own Gemini key, with only a URL pointing the client at s
 | -------- | ---------------------------------------------- | ------------------- | ----------------------------------------------------------------- |
 | `gemini` | [`src/gemini-graph.ts`](./src/gemini-graph.ts) | ✅ `GOOGLE_API_KEY` | A Gemini ReAct agent with a `get_weather` tool; streams over SSE. |
 
-It's a plain LangGraph.js graph (`createReactAgent` with `ChatGoogleGenerativeAI`) — skein-js serves
+It's a plain LangGraph.js graph (`createAgent` with `ChatGoogleGenerativeAI`) — skein-js serves
 it unchanged.
 
 ## What you'll learn

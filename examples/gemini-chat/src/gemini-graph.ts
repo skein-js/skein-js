@@ -1,6 +1,6 @@
 import { tool } from "@langchain/core/tools";
 import { ChatGoogleGenerativeAI } from "@langchain/google-genai";
-import { createReactAgent } from "@langchain/langgraph/prebuilt";
+import { createAgent } from "langchain";
 import { z } from "zod";
 
 /**
@@ -73,4 +73,4 @@ const model = new ChatGoogleGenerativeAI({
   temperature: 0,
 });
 
-export const graph = createReactAgent({ llm: model, tools: [getWeather] });
+export const graph = createAgent({ model, tools: [getWeather] });

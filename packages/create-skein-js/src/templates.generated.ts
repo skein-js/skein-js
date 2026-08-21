@@ -180,7 +180,7 @@ the image.
 `,
   "src/agent-graph.ts": `import { tool } from "@langchain/core/tools";
 import { <%= modelClass %> } from "<%= modelPackage %>";
-import { createReactAgent } from "@langchain/langgraph/prebuilt";
+import { createAgent } from "langchain";
 import { z } from "zod";
 
 /**
@@ -261,7 +261,7 @@ const model = new <%= modelClass %>({
   temperature: 0,
 });
 
-export const graph = createReactAgent({ llm: model, tools: [getWeather] });
+export const graph = createAgent({ model, tools: [getWeather] });
 `,
   "src/echo-graph.test.ts": `import { HumanMessage } from "@langchain/core/messages";
 import { describe, it, expect } from "vitest";

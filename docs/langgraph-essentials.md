@@ -133,10 +133,11 @@ It returns a compiled graph like any other, so everything skein does — threads
 interrupts, memory — works against it unchanged.
 
 > [!NOTE]
-> You will meet **`createReactAgent`** from `@langchain/langgraph/prebuilt` in older code — including
-> skein's own examples and scaffolder, which have not been migrated yet. It still works, but it is
-> `@deprecated` as of `@langchain/langgraph` 1.4: it moved to the `langchain` package and was renamed.
-> The parameter changed too — `llm` became `model`, which also accepts a `"provider:model"` string.
+> You will meet **`createReactAgent`** from `@langchain/langgraph/prebuilt` in older code. It still
+> works, but it is `@deprecated` as of `@langchain/langgraph` 1.4: it moved to the `langchain` package
+> and was renamed. The parameter changed too — `llm` became `model`, which also accepts a
+> `"provider:model"` string — and a dynamic `prompt` function becomes `dynamicSystemPromptMiddleware`.
+> skein's examples and scaffolder are all on `createAgent`.
 
 **Go deeper →** [Agents](https://docs.langchain.com/oss/javascript/langchain/agents)
 
