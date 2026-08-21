@@ -376,6 +376,48 @@ describe("the run-completion outbox", () => {
     expect(await deps.store.deliveries!.listByRun(run.run_id)).toEqual([]);
   });
 
+  it("carries the pending question when a run parks on an interrupt", async () => {
+    // The whole point of the field, end to end. A receiver that only has the callback — which is every
+    // async channel, since nobody holds a stream open for hours — has no other way to reach an
+    // `interrupt()` payload: it is not in `values`, and by the time the callback lands the run is
+    // terminal. Without this the question is never asked and the thread waits forever.
+    //
+    // Asserted on what the dispatcher was handed rather than on the stored row, because a `delivered`
+    // row clears its payload by design (see the `DeliveryRepo` contract) — the body a receiver sees is
+    // the thing under test.
+    const dispatch = vi.fn<WebhookDispatcher>().mockResolvedValue(undefined);
+    const { deps, run, control, kwargs } = await seed(
+      { webhookDispatcher: dispatch },
+      "interrupting",
+      { input: { value: "go" }, webhook: "https://example.test/hook" },
+    );
+
+    const outcome = await executeRun(deps, { run, kwargs, control });
+
+    expect(outcome.status).toBe("interrupted");
+    const [, body] = dispatch.mock.calls[0]!;
+    const interrupts = (body as { interrupts?: Record<string, { value?: unknown }[]> }).interrupts;
+    expect(interrupts).toBeDefined();
+    expect(
+      Object.values(interrupts!)
+        .flat()
+        .map((entry) => entry.value),
+    ).toContain("approve?");
+  });
+
+  it("leaves the callback shape untouched for a run that is not waiting", async () => {
+    // The compatibility half: adding a field must not change what an existing receiver already parses.
+    const dispatch = vi.fn<WebhookDispatcher>().mockResolvedValue(undefined);
+    const { deps, run, control, kwargs } = await seed({ webhookDispatcher: dispatch }, "echo", {
+      input: { value: "hi" },
+      webhook: "https://example.test/hook",
+    });
+
+    await executeRun(deps, { run, kwargs, control });
+
+    expect(dispatch.mock.calls[0]![1]).not.toHaveProperty("interrupts");
+  });
+
   it("truncates an oversized payload inside the body, and says so on the row", async () => {
     const dispatch = vi.fn<WebhookDispatcher>().mockRejectedValue(new Error("down"));
     const { deps, run, control, kwargs } = await seed(

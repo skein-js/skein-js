@@ -30,11 +30,38 @@ The settled run, as a JSON body: the run's own fields (`run_id`, `thread_id`, `a
 | `status`                        | The run's terminal status — `success` · `error` · `timeout` · `interrupted` · `cancelled` |
 | `values`                        | The run's final state                                                                     |
 | `error`                         | The failure message, on a failed run only (a string, matching LangGraph)                  |
+| `interrupts`                    | The questions the run is waiting on, on an `interrupted` run only — see below             |
+| `reply`                         | What the graph declared should be sent back, if it declared one — see below               |
 | `run_started_at`/`run_ended_at` | When the run ran                                                                          |
 | `webhook_sent_at`               | When **this attempt** was sent — it changes between retries                               |
 
 `status` is read from the delivery row rather than from the stored body, so a callback can never
 disagree with the run you read back afterwards. A cancel that won the race is reported as the cancel.
+
+### `interrupts` — the question a paused run is asking
+
+A run that hits `interrupt()` settles as `interrupted` and waits for an answer. The question itself is
+**not in `values`** — it is the interrupt's payload, which lives on the thread's pending tasks — so a
+receiver holding only the callback could not render it, and a question nobody asks is a conversation
+that waits forever.
+
+`interrupts` carries it, keyed by the task that raised it, in the same shape
+[`GET /threads/{id}`](./threads.md) returns:
+
+```jsonc
+{
+  "run_id": "…",
+  "status": "interrupted",
+  "values": { "…": "…" },
+  "interrupts": { "task-1": [{ "id": "…", "value": { "question": "Refund £40?" } }] },
+}
+```
+
+The field is **absent entirely** on any other status, so a run that succeeded sends exactly the body it
+sent before this existed. Both `values` and `interrupts` count toward
+[`max_payload_bytes`](#what-this-stores-and-for-how-long); if the body is over the cap, `values` is replaced by a
+truncation marker first and `interrupts` only if that was not enough — you can act on a question
+without the state, but not on the state without the question.
 
 **A run that never started executing sends no callback.** A run cancelled while still `pending`, or
 one displaced by a [multitask strategy](./runs.md#multitask-what-happens-to-the-run-already-going)
@@ -157,6 +184,50 @@ Because the signature covers the timestamp, a **replay is detectable with no sta
 captured callback stops verifying once it is outside the tolerance window (5 minutes by default,
 `toleranceSeconds`). The check is absolute, so a callback timestamped in the future is refused too.
 
+### `reply` — letting the graph say what to send back
+
+Anything turning a run into an outbound message — a chat reply, a notification, an email — has to know
+where the answer lives. Only two parties could decide: your receiver, or the graph. A receiver that
+guesses (`state.answer`? `state.messages.at(-1)`? `state.draft`?) stops working the moment you change
+the graph's state shape.
+
+So let the graph declare it, on the custom stream:
+
+```ts
+import { replyWith } from "@skein-js/agent-protocol";
+
+// inside a node, with LangGraph's StreamWriter in scope
+writer(replyWith("Your order ships Tuesday."));
+```
+
+It arrives as `reply` in the callback body, and the run must request the custom stream
+(`stream_mode: ["values", "custom"]`) for the writer's output to be seen. The field is absent unless
+the graph declared one, so nothing changes for a graph that doesn't — and it **adds** to the body
+rather than replacing `values`, so a receiver that already reads state keeps working.
+
+Declaring it on the stream rather than in state is deliberate: the reply is a message _about_ the run,
+not part of it, and putting it in state would make it a channel every reducer and checkpoint carries
+forever. skein captures it into the stored delivery as the run settles, so — unlike anything read off
+a live stream — it survives a crash and is replayed verbatim on a retry. Last write wins.
+
+### Verifying somebody else's signature
+
+`verifySkeinSignature` only understands skein's own format. If you are on the _other_ side — checking
+a signature from Twilio, Slack, GitHub or Stripe as it arrives at a route of yours — the one piece
+worth borrowing rather than writing is the comparison:
+
+```ts
+import { equalsConstantTime } from "@skein-js/agent-protocol";
+
+const expected = createHmac("sha1", authToken).update(signable, "utf8").digest("base64");
+if (!equalsConstantTime(expected, received)) return res.status(401).end();
+```
+
+`===` on a signature is a timing oracle — it returns at the first differing byte, so an attacker who
+can send many requests and measure your response recovers a valid signature a byte at a time. The
+length check inside is not decoration either: Node's `timingSafeEqual` **throws** on unequal lengths,
+so the obvious hand-rolled version turns a forged short signature into a 500 instead of a 401.
+
 ### Three things receivers get wrong, in the order they get them wrong
 
 1. **Verifying a re-serialized body.** `JSON.stringify(req.body)` does not reproduce what was signed
@@ -236,6 +307,10 @@ Payloads are capped at `max_payload_bytes` (default 256 KiB). Over the cap, `val
 truncation marker **inside the signed body** — so a receiver is told it is looking at a truncated
 state rather than left to infer it — and the row's `payload_truncated` records it. Raise the cap, or
 read the state back from the API using the `run_id` in the callback.
+
+`values` and `interrupts` are the only fields ever replaced, because they are the only unbounded ones.
+When both are present `values` goes first: an interrupted run's question is what makes the callback
+actionable at all, so it is the last thing dropped.
 
 skein **redacts the webhook URL's path in logs**, keeping only the scheme and host: for Slack, Discord
 and Teams the path _is_ the credential, and a failing delivery would otherwise write it into your log

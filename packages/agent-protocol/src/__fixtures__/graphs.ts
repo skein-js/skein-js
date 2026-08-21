@@ -11,6 +11,8 @@ import {
   StateGraph,
 } from "@langchain/langgraph";
 
+import { replyWith } from "../runs/declared-reply.js";
+
 const ValueState = Annotation.Root({
   value: Annotation<string>({ reducer: (_prev, next) => next, default: () => "" }),
 });
@@ -30,6 +32,17 @@ export const interruptingGraph: CompiledGraph<string> = new StateGraph(ValueStat
   })
   .addEdge("__start__", "ask")
   .addEdge("ask", "__end__")
+  .compile() as unknown as CompiledGraph<string>;
+
+/** Declares its answer on the custom stream via `replyWith`, instead of leaving it in state. */
+export const declaringGraph: CompiledGraph<string> = new StateGraph(ValueState)
+  .addNode("answer", (state, config) => {
+    const writer = (config as { writer?: (chunk: unknown) => void }).writer;
+    writer?.(replyWith(`declared: ${state.value}`));
+    return { value: "state value nobody should send" };
+  })
+  .addEdge("__start__", "answer")
+  .addEdge("answer", "__end__")
   .compile() as unknown as CompiledGraph<string>;
 
 /** Always throws, to exercise the error path (error frame + error status). */

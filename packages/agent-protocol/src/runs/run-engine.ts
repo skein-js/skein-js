@@ -16,6 +16,7 @@ import {
   SkeinHttpError,
   toRunError,
   type DefaultValues,
+  type Interrupt,
   type Delivery,
   type Metadata,
   type Run,
@@ -44,10 +45,16 @@ import {
   streamEventToFrameBody,
   toRunFrame,
   type GraphStreamEvent,
+  type RunFrameBody,
 } from "../sse/run-frame-stream.js";
-import { runStatusForSnapshot, snapshotToThreadUpdate } from "../threads/thread-mirror.js";
+import {
+  collectInterrupts,
+  runStatusForSnapshot,
+  snapshotToThreadUpdate,
+} from "../threads/thread-mirror.js";
 
 import type { AbortReason, RunControl } from "./cancellation.js";
+import { readDeclaredReply } from "./declared-reply.js";
 import { RUN_FAILURE_REPORT_KIND, toError, type RunFailureReport } from "./run-failure.js";
 import {
   toFactoryConfigurable,
@@ -121,6 +128,16 @@ export interface RunOutcome {
    * worker) can still report the failure.
    */
   error?: RunError;
+  /**
+   * The questions a run that ended `interrupted` is waiting on, keyed by task.
+   *
+   * Part of the outcome rather than read back afterwards because the snapshot holding them is only in
+   * scope while the run settles — and because a second read could observe a thread that has since
+   * moved on.
+   */
+  interrupts?: Record<string, Interrupt[]>;
+  /** What the graph declared should be sent back, via `replyWith` on the custom stream. */
+  reply?: unknown;
 }
 
 /**
@@ -242,6 +259,15 @@ export async function executeRun(deps: ResolvedDeps, exec: RunExecution): Promis
   let started = false;
   let outcome: RunOutcome = { status: "error", values: {} as DefaultValues };
   let webhookErrorMessage: string | undefined;
+  // The reply the graph declared on the custom stream, if any. Held here rather than read back off the
+  // bus at delivery time: bus frames live in memory and are never persisted, so a crash between the run
+  // settling and the callback going out would lose the answer — the one thing the outbox must not lose.
+  // Last write wins; a run has one answer.
+  let declaredReply: { reply: unknown } | undefined;
+  const captureDeclaredReply = (body: RunFrameBody): void => {
+    const found = readDeclaredReply(body.data);
+    if (found) declaredReply = found;
+  };
   // Hoisted out of the `try` so the catch can take a post-mortem snapshot to name the failing node.
   let graph: AgentGraph | undefined;
   // Telemetry, all hoisted so the `finally` can close the span the `try` opened. The context needs
@@ -298,7 +324,14 @@ export async function executeRun(deps: ResolvedDeps, exec: RunExecution): Promis
    */
   const settleRun = async (
     status: RunStatus,
-    settled: { values: DefaultValues; error?: RunError },
+    settled: {
+      values: DefaultValues;
+      error?: RunError;
+      /** Pending interrupts, for a run that parked on one. See `BuildDeliveryPayloadInput`. */
+      interrupts?: Record<string, Interrupt[]>;
+      /** The graph's declared reply, if it wrote one. See `BuildDeliveryPayloadInput`. */
+      reply?: unknown;
+    },
   ): Promise<RunStatus> => {
     const recordDelivery = deps.store.runs.finalizeWithDelivery;
     // No webhook, no outbox in this driver, or a run that never executed: the pre-outbox path, which
@@ -334,6 +367,8 @@ export async function executeRun(deps: ResolvedDeps, exec: RunExecution): Promis
         runStartedAt: new Date(startedAt).toISOString(),
         runEndedAt: endedAt.toISOString(),
         ...(settled.error ? { error: settled.error.message } : {}),
+        ...(settled.interrupts ? { interrupts: settled.interrupts } : {}),
+        ...(settled.reply !== undefined ? { reply: settled.reply } : {}),
         ...(deps.webhooks?.maxPayloadBytes !== undefined
           ? { maxPayloadBytes: deps.webhooks.maxPayloadBytes }
           : {}),
@@ -466,6 +501,7 @@ export async function executeRun(deps: ResolvedDeps, exec: RunExecution): Promis
           const body = streamEventToFrameBody(event, runId, graphModes);
           if (!body) continue;
           seq += 1;
+          captureDeclaredReply(body);
           await deps.bus.publish(runId, toRunFrame(seq, body));
           if (deps.logRunActivity) logToolActivity(body.data);
         }
@@ -474,6 +510,7 @@ export async function executeRun(deps: ResolvedDeps, exec: RunExecution): Promis
         for await (const chunk of stream) {
           seq += 1;
           const body = chunkToFrameBody(chunk);
+          captureDeclaredReply(body);
           await deps.bus.publish(runId, toRunFrame(seq, body));
           if (deps.logRunActivity) logToolActivity(body.data);
         }
@@ -507,7 +544,13 @@ export async function executeRun(deps: ResolvedDeps, exec: RunExecution): Promis
       configurable: { thread_id: threadId },
     });
     const computed = runStatusForSnapshot(snapshot);
-    const finalStatus = await settleRun(computed, { values: snapshot.values as DefaultValues });
+    // The snapshot is already in hand, so the questions cost nothing extra to carry — no second read
+    // of the thread, and no window in which the run settles before they are captured.
+    const finalStatus = await settleRun(computed, {
+      values: snapshot.values as DefaultValues,
+      interrupts: collectInterrupts(snapshot),
+      ...(declaredReply ? { reply: declaredReply.reply } : {}),
+    });
     if (finalStatus === computed) {
       await mirrorThread(deps, threadId, snapshotToThreadUpdate(snapshot, finalStatus));
     } else {
@@ -520,7 +563,12 @@ export async function executeRun(deps: ResolvedDeps, exec: RunExecution): Promis
       );
     }
     logFinished(finalStatus);
-    outcome = { status: finalStatus, values: snapshot.values as DefaultValues };
+    outcome = {
+      status: finalStatus,
+      values: snapshot.values as DefaultValues,
+      interrupts: collectInterrupts(snapshot),
+      ...(declaredReply ? { reply: declaredReply.reply } : {}),
+    };
     return outcome;
   } catch (error) {
     const reason = control.reason.current;
@@ -677,6 +725,12 @@ export async function executeRun(deps: ResolvedDeps, exec: RunExecution): Promis
       run_ended_at: sentAt,
       webhook_sent_at: sentAt,
       ...(webhookErrorMessage !== undefined ? { error: webhookErrorMessage } : {}),
+      // Carried here too: a store with no `deliveries` repo is still a store whose receiver cannot
+      // reach the question any other way. Omitting it would leave the gap open on exactly the drivers
+      // least able to work around it.
+      ...(settled.interrupts && Object.keys(settled.interrupts).length > 0
+        ? { interrupts: settled.interrupts }
+        : {}),
     };
     return async () => {
       try {
