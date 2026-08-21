@@ -38,12 +38,14 @@ import {
   type DeliveryRepo,
   type DueDeliveriesQuery,
   type FinalizedRun,
+  type GuardedRunCreate,
   type IdempotencyClaim,
   type IdempotencyRecord,
   type IdempotencyRepo,
   type Item,
   type Run,
   type RunCreate,
+  type RunCreateGuard,
   type RunError,
   type RunFinalization,
   type RunKwargs,
@@ -652,6 +654,32 @@ export class MemorySkeinStore implements SkeinStore {
         if (run.thread_id === input.thread_id && !isTerminalRunStatus(run.status)) return null;
       }
       return this.runs.create(input);
+    },
+    // Same single-turn atomicity as `createIfThreadIdle` above, and the same standing warning: every
+    // guard is evaluated before `create` is reached, and inserting an `await` anywhere between the
+    // first check and the write reopens the race across callers.
+    createIfThreadMatches: async (
+      input: RunCreate,
+      guard: RunCreateGuard,
+    ): Promise<GuardedRunCreate> => {
+      const thread = this.#threads.get(input.thread_id);
+      // An unknown thread is not a guard refusal — it is the same "no row to lock" the Postgres
+      // driver reports, and the protocol layer answers it 404 rather than 409.
+      if (!thread) throw SkeinHttpError.notFound(`Thread "${input.thread_id}" not found.`);
+      if (guard.threadStatusIn && !guard.threadStatusIn.includes(thread.status)) {
+        return { refused: "thread_status_mismatch", status: thread.status };
+      }
+      if (guard.requireNoActiveRun) {
+        for (const run of this.#runs.values()) {
+          if (run.thread_id === input.thread_id && !isTerminalRunStatus(run.status)) {
+            return { refused: "thread_busy" };
+          }
+        }
+      }
+      // `create`'s body has no `await`, so the row is written before this yields — the same reason
+      // `createIfThreadIdle` can `return` the promise directly.
+      const created = this.runs.create(input);
+      return { run: await created };
     },
     setStatus: async (runId, status: RunStatus, error?: RunError) => {
       const existing = this.#runs.get(runId);

@@ -19,6 +19,8 @@ const streamModeSchema = z.union([z.string(), z.array(z.string())]);
 const configSchema = z.record(z.unknown());
 
 const multitaskStrategySchema = z.enum(["reject", "interrupt", "rollback", "enqueue"]);
+/** The thread-status vocabulary, shared by `if_thread_status` and the thread search filter. */
+const threadStatusSchema = z.enum(["idle", "busy", "interrupted", "error"]);
 
 const interruptWhenSchema = z.union([z.array(z.string()), z.literal("*")]);
 
@@ -80,6 +82,9 @@ export const runCreateSchema = z
      * stateless run's thread, so there is never a named thread to be missing.
      */
     if_not_exists: z.enum(["create", "reject"]).optional(),
+    // Non-empty because an empty list would admit nothing at all — a request that can only 409 is a
+    // caller bug worth reporting at the boundary rather than at the driver.
+    if_thread_status: z.array(threadStatusSchema).nonempty().optional(),
     /**
      * Hold the run this long before starting it — the SDK's "schedule a future run".
      *
@@ -263,7 +268,7 @@ export const threadSearchSchema = z
   .object({
     metadata: z.record(z.unknown()).optional(),
     values: z.record(z.unknown()).optional(),
-    status: z.enum(["idle", "busy", "interrupted", "error"]).optional(),
+    status: threadStatusSchema.optional(),
     ids: z.array(z.string()).optional(),
     // Capped to match `assistantSearchSchema`. A thread row carries its full mirrored graph state, so
     // an unbounded page here is the most expensive one in the protocol. An *absent* limit is bounded

@@ -873,6 +873,106 @@ export function runSkeinStoreConformance(
         ).toBeNull();
       });
 
+      // `createIfThreadMatches` is optional on `RunRepo`, so a driver that omits it opts out of
+      // `if_thread_status` rather than failing the suite — the same shape `finalizeWithDelivery` has.
+      // A driver that *does* implement it must satisfy every case below, because the protocol layer
+      // stops guarding the thread itself once the method is present.
+      describe("createIfThreadMatches", () => {
+        const guarded = async (store: SkeinStore) =>
+          store.runs.createIfThreadMatches ? store : undefined;
+
+        it("admits a create when the thread's status is allowed", async () => {
+          const store = await makeStore();
+          if (!(await guarded(store))) return;
+          const thread_id = await seedThread(store);
+
+          const result = await store.runs.createIfThreadMatches!(
+            { thread_id, assistant_id: "a" },
+            { threadStatusIn: ["idle"] },
+          );
+
+          expect(result).toMatchObject({ run: { thread_id, status: "pending" } });
+        });
+
+        it("refuses a start on an interrupted thread, and says what it saw", async () => {
+          // The case this method exists for. `interrupted` is a *terminal* run status, so the thread
+          // holds no inflight run and every other guard in the system lets this create through —
+          // silently discarding the interrupt a human is expected to answer.
+          const store = await makeStore();
+          if (!(await guarded(store))) return;
+          const thread_id = await seedThread(store);
+          await store.threads.update(thread_id, { status: "interrupted" });
+
+          const result = await store.runs.createIfThreadMatches!(
+            { thread_id, assistant_id: "a" },
+            { threadStatusIn: ["idle", "error"] },
+          );
+
+          expect(result).toEqual({ refused: "thread_status_mismatch", status: "interrupted" });
+          // And nothing was written — a refusal must not leave a run behind.
+          expect(await store.runs.listByThread(thread_id)).toHaveLength(0);
+        });
+
+        it("reports thread_busy separately from a status mismatch", async () => {
+          // The two refusals demand opposite client behaviour (wait, versus re-read and re-decide),
+          // which is why this returns a union rather than a null.
+          const store = await makeStore();
+          if (!(await guarded(store))) return;
+          const thread_id = await seedThread(store);
+          await store.runs.create({ thread_id, assistant_id: "a" });
+
+          const result = await store.runs.createIfThreadMatches!(
+            { thread_id, assistant_id: "a" },
+            { requireNoActiveRun: true, threadStatusIn: ["idle"] },
+          );
+
+          expect(result).toEqual({ refused: "thread_busy" });
+        });
+
+        it("does not constrain when the guard is empty", async () => {
+          const store = await makeStore();
+          if (!(await guarded(store))) return;
+          const thread_id = await seedThread(store);
+          await store.threads.update(thread_id, { status: "interrupted" });
+
+          expect(
+            await store.runs.createIfThreadMatches!({ thread_id, assistant_id: "a" }, {}),
+          ).toMatchObject({ run: { thread_id } });
+        });
+
+        it("admits exactly one of many concurrent creates", async () => {
+          // The same race `createIfThreadIdle` closes, re-proven here: an in-process mutex passes this
+          // in one process and fails across two, so only a driver that serializes on the thread row
+          // satisfies it. This is the case that makes the whole precondition worth having.
+          const store = await makeStore();
+          if (!(await guarded(store))) return;
+          const thread_id = await seedThread(store);
+
+          const results = await Promise.all(
+            Array.from({ length: 5 }, () =>
+              store.runs.createIfThreadMatches!(
+                { thread_id, assistant_id: "a" },
+                { requireNoActiveRun: true, threadStatusIn: ["idle"] },
+              ),
+            ),
+          );
+
+          expect(results.filter((result) => "run" in result)).toHaveLength(1);
+          expect(await store.runs.listActiveRuns(thread_id)).toHaveLength(1);
+        });
+
+        it("throws for a thread that does not exist", async () => {
+          // Not a refusal: a missing thread is a 404 the caller cannot retry into a different answer,
+          // whereas both refusals describe a thread that is really there.
+          const store = await makeStore();
+          if (!(await guarded(store))) return;
+
+          await expect(
+            store.runs.createIfThreadMatches!({ thread_id: "ghost", assistant_id: "a" }, {}),
+          ).rejects.toMatchObject({ status: 404 });
+        });
+      });
+
       it("lists every thread's inflight runs when no thread is named", async () => {
         // The sweep behind `POST /runs/cancel` with only a status filter.
         const store = await makeStore();

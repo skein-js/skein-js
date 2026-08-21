@@ -63,6 +63,18 @@ export class SkeinHttpError extends Error {
   static unprocessable(message: string, options?: SkeinHttpErrorOptions): SkeinHttpError {
     return new SkeinHttpError(422, message, options);
   }
+
+  /**
+   * 501 — the request is valid, but this deployment's storage driver cannot serve it.
+   *
+   * Distinct from 422 on purpose: 422 says the caller should change the request, 501 says the caller
+   * should change the *server* (or stop sending the option). It is the honest answer for an optional
+   * `SkeinStore` capability a third-party driver has not implemented, and the alternative — quietly
+   * degrading to a non-atomic path — turns a missing capability into a race nobody can see.
+   */
+  static notImplemented(message: string, options?: SkeinHttpErrorOptions): SkeinHttpError {
+    return new SkeinHttpError(501, message, options);
+  }
 }
 
 /** Narrow an unknown thrown value to a {@link SkeinHttpError}. */

@@ -17,6 +17,8 @@ import {
   type AuthFilters,
   type AuthResource,
   type Metadata,
+  type RunCreate,
+  type RunCreateGuard,
   type RunRepo,
   type SkeinStore,
   type ThreadRepo,
@@ -214,6 +216,23 @@ export function createAuthScopedStore(
       // `listActiveRuns` above: it must see every inflight run on the thread, whoever started it.
       createIfThreadIdle: (input) =>
         inner.runs.createIfThreadIdle({ ...input, metadata: stamp(input.metadata) }),
+      // Stamped like its siblings. Conditionally defined, because the method is optional on the repo
+      // and a blind wrapper would make every driver *look* like it implements it — the protocol layer
+      // decides whether `if_thread_status` is servable by testing for its presence, so manufacturing
+      // one here would turn "this driver cannot do it" into a runtime crash.
+      //
+      // Neither guard is ownership-filtered, for the reason `createIfThreadIdle` gives: the thread's
+      // status and its inflight runs are properties of the thread, not of the caller, and scoping them
+      // would let one principal start a run on a thread another principal has a human waiting on.
+      ...(inner.runs.createIfThreadMatches
+        ? {
+            createIfThreadMatches: (input: RunCreate, guard: RunCreateGuard) =>
+              inner.runs.createIfThreadMatches!(
+                { ...input, metadata: stamp(input.metadata) },
+                guard,
+              ),
+          }
+        : {}),
       // `error` must be forwarded: dropping it here compiles fine and would silently discard every
       // run failure reason on every auth-enabled deployment.
       setStatus: async (runId, status, error) => {

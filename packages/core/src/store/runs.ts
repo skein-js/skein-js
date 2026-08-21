@@ -10,6 +10,7 @@ import type {
   Run,
   RunStatus,
   StreamMode,
+  ThreadStatus,
 } from "../wire/wire.js";
 
 import type { FinalizedRun, RunFinalization } from "./deliveries.js";
@@ -122,6 +123,39 @@ export interface RunListQuery extends Pagination {
   status?: RunStatus;
 }
 
+/**
+ * The preconditions {@link RunRepo.createIfThreadMatches} settles atomically with the insert.
+ *
+ * An omitted field does not constrain, so `{}` is an unguarded create. Both are expressed here rather
+ * than as separate methods because a driver evaluates them against one locked thread row.
+ */
+export interface RunCreateGuard {
+  /** Refuse when the thread already has an inflight run — `multitask_strategy: "reject"`'s guard. */
+  readonly requireNoActiveRun?: boolean;
+  /**
+   * Refuse unless the thread's status is one of these — the `if_thread_status` precondition.
+   *
+   * Read from the thread row, which the run engine mirrors as runs settle, rather than recomputed
+   * from the thread's runs: the row is what a caller read before deciding to send this request, so
+   * gating on anything else would refuse a request that was correct when it was made.
+   */
+  readonly threadStatusIn?: readonly ThreadStatus[];
+}
+
+/**
+ * The outcome of a guarded create: the run, or which guard refused it.
+ *
+ * A discriminated union rather than `Run | null` because the two refusals demand different client
+ * behaviour — `thread_busy` says wait or pick another multitask strategy, `thread_status_mismatch`
+ * says re-read the thread and decide again — and a caller cannot tell them apart from a null.
+ * `status` carries what was actually observed, so the caller can branch on it without a second read
+ * that might see a third value.
+ */
+export type GuardedRunCreate =
+  | { readonly run: Run }
+  | { readonly refused: "thread_busy" }
+  | { readonly refused: "thread_status_mismatch"; readonly status: ThreadStatus };
+
 export interface RunRepo {
   get(runId: string): Promise<Run | null>;
   listByThread(threadId: string, query?: RunListQuery): Promise<Run[]>;
@@ -142,6 +176,29 @@ export interface RunRepo {
    * so more than one inflight run per thread is legal — only the `reject` path forbids it.
    */
   createIfThreadIdle(input: RunCreate): Promise<Run | null>;
+  /**
+   * Create a run only if the thread satisfies `guard`, atomically — the same indivisibility contract
+   * {@link createIfThreadIdle} carries, widened from "has no inflight run" to "and its status is one
+   * of these".
+   *
+   * **Why a thread-*status* guard exists at all.** `interrupted` is a terminal run status (see
+   * {@link TERMINAL_RUN_STATUSES}), so a thread waiting on a human holds no inflight run and
+   * {@link createIfThreadIdle} admits a plain start against it — silently discarding the pending
+   * interrupt, with no error and no log line. `multitask_strategy` cannot help: it arbitrates
+   * `pending`/`running` only. A caller that wants "start this only if nobody is waiting on an answer"
+   * has no way to say so, and an in-process lock cannot supply one because the window is between
+   * replicas.
+   *
+   * **Both guards travel together on purpose.** Postgres settles them inside one `FOR UPDATE`
+   * transaction; splitting them across two calls would let a request pass the inflight check and fail
+   * the status check non-atomically, which is the race this method exists to close.
+   *
+   * Optional so an existing third-party driver still satisfies the interface, exactly like
+   * {@link finalizeWithDelivery}. A driver that omits it cannot serve `if_thread_status`, and the
+   * protocol layer must say so rather than fall back to a read-then-create — a silent non-atomic
+   * path here reads as working until two replicas race.
+   */
+  createIfThreadMatches?(input: RunCreate, guard: RunCreateGuard): Promise<GuardedRunCreate>;
   /**
    * Move a run to `status`, recording why it got there when the transition is a failure. The run's
    * stored `error` is rewritten on *every* call, so omitting it clears any previously stored one —
