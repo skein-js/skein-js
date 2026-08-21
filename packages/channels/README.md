@@ -108,8 +108,8 @@ texts is the failure this avoids.
 
 ## See also
 
-- [docs/channels.md](https://github.com/skein-js/skein-js/blob/main/docs/channels.md) — the guide
-- [docs/webhooks.md](https://github.com/skein-js/skein-js/blob/main/docs/webhooks.md) — the durable
+- [docs/channels.md](../../docs/channels.md) — the guide
+- [docs/webhooks.md](../../docs/webhooks.md) — the durable
   delivery this rides on
-- [docs/human-in-the-loop.md](https://github.com/skein-js/skein-js/blob/main/docs/human-in-the-loop.md)
+- [docs/human-in-the-loop.md](../../docs/human-in-the-loop.md)
   — why a reply hours later has to resume rather than restart

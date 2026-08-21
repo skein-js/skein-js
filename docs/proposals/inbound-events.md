@@ -69,7 +69,7 @@
 > A design proposal, not shipped behaviour. See [proposals/README.md](./README.md).
 >
 > The kill test has been run:
-> [`examples/whatsapp-typing`](https://github.com/skein-js/skein-js/tree/main/examples/whatsapp-typing)
+> [`examples/whatsapp-agent`](https://github.com/skein-js/skein-js/tree/main/examples/whatsapp-agent)
 > builds all seven steps by hand with no pipeline. Read
 > [**Phase 1 result**](#phase-1-result--the-example-is-built-and-the-kill-condition-did-not-fire) and
 > [**What we need to build**](#what-we-need-to-build) first — they supersede parts of the design
@@ -500,7 +500,7 @@ timestamps, duplicate ids and bot echoes without hand review.
 > wins and we take it.**" It did not come out short — but the reason to proceed turned out to be
 > different from the reason predicted. See the verdict below.
 
-[`examples/whatsapp-typing`](https://github.com/skein-js/skein-js/tree/main/examples/whatsapp-typing)
+[`examples/whatsapp-agent`](https://github.com/skein-js/skein-js/tree/main/examples/whatsapp-agent)
 exists: all seven steps against today's public API, no pipeline, 14 offline tests, verified end to
 end against a live server including the async human-in-the-loop turn.
 
@@ -670,7 +670,7 @@ As originally designed, with three corrections from phase 1:
   finding 2 disappear rather than needing an escape hatch in the header.
 - Rendering an interrupt reads 0.2 from the outcome it already has, instead of a second `threads.get`.
 
-Port `examples/whatsapp-typing` onto it and re-measure against the 334-line baseline. Success
+Port `examples/whatsapp-agent` onto it and re-measure against the 334-line baseline. Success
 criterion 1 ("under 60 lines") should be treated as a target to test, not a claim already banked.
 
 ### Stage 3 — run signals

@@ -608,7 +608,7 @@ importers:
         specifier: ^5.7.2
         version: 5.9.3
 
-  examples/whatsapp-typing:
+  examples/whatsapp-agent:
     dependencies:
       '@langchain/core':
         specifier: ^1.2.0
@@ -622,22 +622,16 @@ importers:
       '@skein-js/agent-protocol':
         specifier: workspace:*
         version: link:../../packages/agent-protocol
-      '@skein-js/express':
+      '@skein-js/channels':
         specifier: workspace:*
-        version: link:../../packages/server-express
-      '@skein-js/server-kit':
-        specifier: workspace:*
-        version: link:../../packages/server-kit
-      express:
-        specifier: ^5.2.1
-        version: 5.2.1
+        version: link:../../packages/channels
     devDependencies:
-      '@types/express':
-        specifier: ^5.0.0
-        version: 5.0.6
-      tsx:
-        specifier: ^4.19.2
-        version: 4.22.4
+      skein-js:
+        specifier: workspace:*
+        version: link:../../packages/cli
+      typescript:
+        specifier: ^5.7.2
+        version: 5.9.3
 
   packages/agent-protocol:
     dependencies:
