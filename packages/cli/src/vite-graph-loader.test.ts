@@ -53,3 +53,30 @@ describe("createViteGraphLoader tsconfig paths", () => {
     }
   });
 });
+
+describe("createViteGraphLoader env files", () => {
+  // vite restarts its dev server whenever a `.env` it owns changes. In middleware mode that swaps
+  // `server.environments.ssr` out from under the module runner we hold, so the next import hangs
+  // until vite's 60s transport timeout — editing `.env` wedged `skein dev` entirely. skein applies
+  // env itself (`applyProjectEnv`), so vite's copy was never the one graphs read.
+  it("keeps serving graphs after the project's .env changes", async () => {
+    const root = await makeTempDir("skein-envfile-");
+    await writeFile(path.join(root, ".env"), "SOME_KEY=before\n");
+    await writeFile(path.join(root, "graph.ts"), "export const graph = { id: 'ok' } as const;\n");
+
+    const loader = await createViteGraphLoader(root);
+    try {
+      expect(await loader.importModule(path.join(root, "graph.ts"))).toHaveProperty("graph");
+
+      await writeFile(path.join(root, ".env"), "SOME_KEY=after\nGOOGLE_API_KEY=filled-in\n");
+      // Long enough for a restart to have been triggered and to have torn the runner down.
+      await new Promise((resolve) => setTimeout(resolve, 500));
+
+      loader.clearCache();
+      const reloaded = await loader.importModule(path.join(root, "graph.ts"));
+      expect(reloaded).toHaveProperty("graph");
+    } finally {
+      await loader.close();
+    }
+  }, 30_000);
+});
