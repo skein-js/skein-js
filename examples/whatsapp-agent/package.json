@@ -1,0 +1,22 @@
+{
+  "name": "@skein-js/example-whatsapp-agent",
+  "version": "0.0.0",
+  "private": true,
+  "description": "An agent behind a WhatsApp number — signature checks, retry dedup, conversation memory, typing indicators, async human-in-the-loop, and a durable reply.",
+  "type": "module",
+  "scripts": {
+    "dev": "skein dev --port 2024",
+    "start": "skein dev --port 2024"
+  },
+  "dependencies": {
+    "@langchain/core": "^1.2.0",
+    "@langchain/langgraph": "^1.4.0",
+    "@langchain/langgraph-sdk": "^1.9.0",
+    "@skein-js/agent-protocol": "workspace:*",
+    "@skein-js/channels": "workspace:*"
+  },
+  "devDependencies": {
+    "skein-js": "workspace:*",
+    "typescript": "^5.7.2"
+  }
+}

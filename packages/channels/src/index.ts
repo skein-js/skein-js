@@ -35,6 +35,8 @@ export { channelThreadMetadata, threadIdForChannelKey } from "./channel/thread-i
 export { handleInboundEvent } from "./pipeline/handle-event.js";
 export type { PipelineDeps } from "./pipeline/handle-event.js";
 export { resolveRunPlan } from "./pipeline/resolve-run.js";
+export { fanOutRunSignals } from "./pipeline/signals.js";
+export type { RunFrames } from "./pipeline/signals.js";
 export { wrapChannelDispatcher } from "./pipeline/deliver.js";
 export type { Dispatcher } from "./pipeline/deliver.js";
 export { resolveReply, toRunOutcome } from "./pipeline/resolve-reply.js";

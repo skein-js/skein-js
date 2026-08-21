@@ -42,9 +42,15 @@ One round trip needs no browser: the outbound leg has to be trustworthy (the ans
 the inbound leg has to be cheap (the event gets in). **The outbound half shipped**, so one proposal
 remains.
 
-| Proposal                                 | Summary                                                                                           |
-| ---------------------------------------- | ------------------------------------------------------------------------------------------------- |
-| [inbound-events.md](./inbound-events.md) | **The goal.** An optional inbound pipeline plus a plugin interface, so a source is one small file |
+_Nothing is currently unbuilt._ Both proposals in this directory have shipped; each is kept as a record
+of what its implementation **rejected**.
+
+### Shipped: inbound channels
+
+An agent behind any inbound event — a WhatsApp number, a Slack workspace, a GitHub webhook. Read
+[channels.md](../channels.md) to use it. What the implementation rejected is kept in
+[inbound-events.md](./inbound-events.md), including the three things phase 1 proved could not be made
+correct from user code at all.
 
 ### Shipped: durable outbound delivery
 

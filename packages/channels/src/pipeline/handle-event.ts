@@ -27,6 +27,7 @@ import { channelThreadMetadata, threadIdForChannelKey } from "../channel/thread-
 import { claimEventKey, type ClaimOutcome, type IdempotencyDeps } from "./claim-key.js";
 import { toChannelDeliveryUrl } from "./reply-target.js";
 import { resolveRunPlan } from "./resolve-run.js";
+import { fanOutRunSignals, type RunFrames } from "./signals.js";
 
 /** What the pipeline needs from the server it is mounted in. */
 export interface PipelineDeps extends IdempotencyDeps {
@@ -61,6 +62,13 @@ export interface PipelineDeps extends IdempotencyDeps {
   authorize(principal: ChannelPrincipal, authz: RouteAuthz): Promise<AuthContext | undefined>;
   logger: { warn(message: string, error?: unknown): void };
   clock(): Date;
+  /**
+   * A run's frames, for channels that asked for progress signals.
+   *
+   * Optional: a deployment whose bus is unreachable simply gets no indicators, which is a cosmetic
+   * loss rather than a broken conversation. The answer still arrives — that rides the outbox.
+   */
+  runFrames?: RunFrames;
 }
 
 /** Handle one inbound request for `registered`. */
@@ -152,26 +160,36 @@ export async function handleInboundEvent(
     );
 
     // 6. Start or resume, per the channel's policy, atomically against the thread's real status.
-    const plan = await resolveRunPlan(event, threadId, deps);
-    const { runId } = await deps.createRun({
+    //
+    //    Retried **once** on a status mismatch, because the guard is doing its job: the thread changed
+    //    between reading it and creating the run — most often because the agent parked on a question
+    //    microseconds ago — and the right answer is to re-decide against what is true now, which turns
+    //    this message into the answer rather than a new conversation. Once, not in a loop: a thread
+    //    that keeps changing under us is a genuine conflict the provider should retry.
+    const { runId } = await createWithPlan(
+      event,
       threadId,
       assistantId,
-      ...plan.run,
-      streamMode: streamModesFor(channel),
-      ...(authContext ? { authContext } : {}),
-      // Only when the channel named a reply target *and* can actually send one. A channel with no
-      // `deliver` — a GitHub integration that comments from inside the graph — owes no callback, and
-      // giving it one would record a delivery nothing could ever complete.
-      ...(event.replyTo !== undefined && channel.deliver
-        ? {
-            webhook: toChannelDeliveryUrl({ channelName: channel.name, replyTo: event.replyTo }),
-          }
-        : {}),
-    });
+      deps,
+      channel,
+      authContext,
+    );
 
     // 7. Acknowledge **after enqueueing, never after the run completes.** Slack gives you three
     //    seconds before it retries and shows the user an error; Twilio times out comparably. This is
     //    also why signals exist at all — the ack is early, so progress has to arrive out of band.
+    // Started before the acknowledgement and deliberately not awaited: the provider is waiting on
+    // this response, and a typing indicator must never be the reason it times out.
+    if (deps.runFrames && event.replyTo !== undefined) {
+      fanOutRunSignals({
+        channel,
+        runId,
+        target: event.replyTo,
+        frames: deps.runFrames,
+        logger: deps.logger,
+      });
+    }
+
     const response: ProtocolResponse = { kind: "json", status: 202, body: { run_id: runId } };
     await claim.record(response, { runId, threadId });
     return response;
@@ -181,6 +199,50 @@ export async function handleInboundEvent(
     await claim.release();
     throw error;
   }
+}
+
+/**
+ * Create the run, re-deciding once if the thread moved under us.
+ *
+ * The 409 this catches is the precondition working: something changed between reading the thread's
+ * status and creating the run. Re-resolving turns the message into an answer to the question that
+ * just appeared, instead of a start that would discard it.
+ */
+async function createWithPlan(
+  event: InboundEvent,
+  threadId: string,
+  assistantId: string,
+  deps: PipelineDeps,
+  channel: Channel,
+  authContext: AuthContext | undefined,
+): Promise<{ runId: string }> {
+  const attempt = async (): Promise<{ runId: string }> => {
+    const plan = await resolveRunPlan(event, threadId, deps);
+    return deps.createRun({
+      threadId,
+      assistantId,
+      ...plan.run,
+      streamMode: streamModesFor(channel),
+      ...(authContext ? { authContext } : {}),
+      // Only when the channel named a reply target *and* can actually send one. A channel with no
+      // `deliver` — a GitHub integration that comments from inside the graph — owes no callback, and
+      // giving it one would record a delivery nothing could ever complete.
+      ...(event.replyTo !== undefined && channel.deliver
+        ? { webhook: toChannelDeliveryUrl({ channelName: channel.name, replyTo: event.replyTo }) }
+        : {}),
+    });
+  };
+
+  try {
+    return await attempt();
+  } catch (error) {
+    if (!isThreadStatusMismatch(error)) throw error;
+    return attempt();
+  }
+}
+
+function isThreadStatusMismatch(error: unknown): boolean {
+  return (error as { code?: string } | null)?.code === "thread_status_mismatch";
 }
 
 /**

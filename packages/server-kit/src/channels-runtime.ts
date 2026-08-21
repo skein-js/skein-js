@@ -132,6 +132,9 @@ function buildPipelineDeps(deps: ProtocolDeps, service: () => ProtocolService) {
     ...(deps.store.idempotency ? { idempotency: deps.store.idempotency } : {}),
     clock: () => (deps.clock ? deps.clock() : new Date()),
     logger: deps.logger ?? console,
+    // Straight off the run event bus — the same stream `runs.joinStream` serves, without the HTTP
+    // connection per conversation that reaching it from outside would cost.
+    runFrames: { subscribe: (runId: string) => deps.bus.subscribe(runId) },
 
     authorize: async (
       principal: { identity: string; permissions?: string[]; metadata?: Record<string, unknown> },

@@ -37,6 +37,7 @@ const DOCS = [
   "docs/background-jobs.md",
   "docs/human-in-the-loop.md",
   "docs/webhooks.md",
+  "docs/channels.md",
   "docs/streaming.md",
   "docs/errors-and-logging.md",
   "docs/react-sdk.md",
