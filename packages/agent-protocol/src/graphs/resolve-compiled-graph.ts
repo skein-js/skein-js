@@ -48,6 +48,10 @@ export async function resolveCompiledGraph(
   graphId: string,
   attachments: CompiledGraphAttachments,
 ): Promise<AgentGraph> {
+  // Deliberately NOT `loadGraphOrThrow`: this is the run path, and a failed run already reports the
+  // whole `cause` chain through `toRunError` (the `error` frame, `Run.error`, a failed `runs/wait`).
+  // Wrapping here would spend one of that chain's five levels and rename the error for no gain. The
+  // invoke handler, which answers over HTTP directly, maps the failure at its own call site.
   const resolved = await graphs.load(graphId);
   const shared =
     typeof resolved === "function"

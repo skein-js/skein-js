@@ -34,7 +34,15 @@ export type {
 
 // Persistence contract for protocol resources.
 // The page-size bound is a value, not a type: both drivers apply it, so it has to be shared.
-export { DEFAULT_MAX_PAGE_SIZE, requireValidMaxPageSize } from "./store/skein-store.js";
+export {
+  DEFAULT_MAX_PAGE_SIZE,
+  INFLIGHT_RUN_STATUSES,
+  isMetadataSubset,
+  isTerminalRunStatus,
+  requireValidMaxPageSize,
+  RUN_STATUSES,
+  TERMINAL_RUN_STATUSES,
+} from "./store/skein-store.js";
 export type {
   AssistantCreate,
   AssistantRepo,
@@ -85,23 +93,10 @@ export type {
   ThreadTtlConfig,
   ThreadUpdate,
 } from "./store/skein-store.js";
-export {
-  INFLIGHT_RUN_STATUSES,
-  isMetadataSubset,
-  isTerminalRunStatus,
-  RUN_STATUSES,
-  TERMINAL_RUN_STATUSES,
-} from "./store/skein-store.js";
 
 // Store traversal semantics. Shared rather than per-driver: the memory driver runs these directly
 // and the Postgres driver mirrors them in SQL, so both the operator set and the matching rules have
 // to have exactly one definition. The conformance suite holds the drivers to them.
-export type {
-  StoreFilterCondition,
-  StoreFilterOperators,
-  StoreFilterScalar,
-  StoreItemFilter,
-} from "./store/item-filter.js";
 export {
   isStoreFilterOperators,
   matchesItemFilter,
@@ -109,18 +104,24 @@ export {
   STORE_FILTER_OPERATORS,
   storeItemFilterProblem,
 } from "./store/item-filter.js";
-export type { StoreNamespaceQuery } from "./store/namespace-match.js";
+export type {
+  StoreFilterCondition,
+  StoreFilterOperators,
+  StoreFilterScalar,
+  StoreItemFilter,
+} from "./store/item-filter.js";
 export {
   compareNamespaces,
   hasNamespaceWildcard,
   isValidNamespaceDepth,
-  MAX_NAMESPACE_DEPTH,
   matchesNamespacePrefix,
   matchesNamespaceQuery,
   matchesNamespaceSuffix,
+  MAX_NAMESPACE_DEPTH,
   NAMESPACE_WILDCARD,
   truncateNamespaceDepth,
 } from "./store/namespace-match.js";
+export type { StoreNamespaceQuery } from "./store/namespace-match.js";
 
 // Cross-instance per-thread execution serialization contract.
 export type { ThreadExecutionGate, ThreadExecutionLease } from "./queue/thread-execution-gate.js";
@@ -167,6 +168,10 @@ export { isSkeinHttpError, SkeinHttpError } from "./errors/skein-http-error.js";
 // and the `__error__` body of a failed `POST /runs/wait`.
 export { runError, toRunError } from "./errors/run-error.js";
 export type { RunError, ToRunErrorOptions } from "./errors/run-error.js";
+
+// The deepest link of a `cause` chain — what a one-line failure report should say, as opposed to the
+// wrapper that says where it happened.
+export { rootCause, rootCauseMessage } from "./errors/root-cause.js";
 
 // Telemetry contract — the injectable sink a run reports itself to (traces + lifecycle events).
 // A third surface alongside logs and the wire; see docs/observability.md.

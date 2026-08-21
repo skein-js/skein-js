@@ -15,7 +15,8 @@ npm run dev     →  http://localhost:2024           the Agent Protocol API
                 →  http://localhost:2024/console   threads, live runs, time travel
 ```
 
-No API key, no database, no Docker. The project you get runs immediately.
+No database, no Docker, and no API key — `echo` answers your first request immediately. With
+`--provider` you also get a model-backed graph, and setting its key is listed as a step.
 
 > Keep the `@latest`. Without it, npm's npx cache (and `pnpm dlx`'s 24-hour one) can serve a stale
 > version of this package.
@@ -56,6 +57,10 @@ npm needs `--` before flags; `pnpm create` and `npx` do not:
 npm create skein-js@latest my-agent -- --provider anthropic
 pnpm create skein-js my-agent --provider anthropic
 ```
+
+With a provider you get a second graph — a ReAct agent with a live weather tool. Setting its API key
+is a step before `dev`: until it is set that graph fails to load, naming the variable it wants, while
+the keyless `echo` graph keeps serving.
 
 ## Monorepos
 

@@ -58,7 +58,8 @@ pnpm dev            # skein dev — in-process, hot-reload, on http://localhost:
 ```
 
 `skein dev` loads your TypeScript graphs through vite (no separate loader), hot-reloads on save, and
-persists dev state across restarts. This is the full LangGraph CLI surface —
+persists dev state across restarts. `.env` counts as a save: filling in a model key there reloads the
+graphs, so a graph that could not load for want of a credential starts working without a restart. This is the full LangGraph CLI surface —
 [langgraph-cli-compat.md](./langgraph-cli-compat.md) documents every field and command.
 
 Prefer to mount it inside your own Express/Fastify/Nest/Next app instead of the CLI? Point an adapter

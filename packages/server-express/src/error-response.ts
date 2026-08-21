@@ -16,7 +16,14 @@ export function sendErrorResponse(error: unknown, res: Response, logger?: Logger
     return;
   }
 
+  // A 5xx is a *server* fault even when it is deliberate and typed, so it always reaches the log;
+  // 4xx are the caller's problem and stay quiet. Without this a graph that cannot load would answer
+  // with `graph_load_failed` and leave nothing behind — the CLI reports it at startup, but an
+  // embedded app has no such pass, and `exposeErrorStacks` is off in production.
   if (isSkeinHttpError(error)) {
+    if (error.status >= 500) {
+      logger?.error(`Request failed: ${error.message}`, error);
+    }
     res.status(error.status).json({
       status: error.status,
       message: error.message,

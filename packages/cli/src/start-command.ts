@@ -29,6 +29,7 @@ import { printBanner } from "./banner.js";
 import { skeinCliVersion } from "./cli-version.js";
 import { mountConsole } from "./console-mount.js";
 import { createDevLogger } from "./dev-logger.js";
+import { loadGraphsAndReportFailures } from "./graph-load-failure.js";
 import { applyProjectEnv } from "./project-env.js";
 import { resolveRequestLog } from "./request-log.js";
 import { resolveRuntimeSelection } from "./runtime-selection.js";
@@ -179,7 +180,9 @@ export async function runStart(options: StartCommandOptions): Promise<void> {
     const sharedOptions = {
       deps: runtime.deps,
       cors: runtime.cors,
-      warm: true,
+      // Not `warm: true` — the eager load runs after the banner instead, so a graph that cannot load
+      // is reported as part of the startup summary rather than above it. Same load, same
+      // report-don't-throw behaviour; see `loadGraphsAndReportFailures`.
       logger,
       worker: { maxConcurrency: runConcurrency, shutdownGraceMs },
     } as const;
@@ -274,6 +277,11 @@ export async function runStart(options: StartCommandOptions): Promise<void> {
     },
     logger,
   );
+
+  // Import every graph now, below the banner, alongside the other "already true before any traffic
+  // arrives" checks. Reported, never thrown: one graph that cannot load must not take down the ones
+  // that can.
+  await loadGraphsAndReportFailures(runtime.deps.graphs, logger);
 
   // Two sizing mistakes that are already true before any traffic arrives, and that otherwise only show
   // up as symptoms much later: an unexplained restart (OOM kill), and requests queuing on the pool.

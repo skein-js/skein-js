@@ -1,6 +1,7 @@
 // The console logger for `skein dev`: implements the agent-protocol `Logger` interface with colored,
 // level-prefixed output (`info:`/`warn:`/`error:`/`debug:`), a compact key=value rendering of
-// structured meta, and a prominent block for a failed graph run. All coloring lives here;
+// structured meta, and a prominent block for each of the two ways a graph fails — one that crashed
+// mid-run, and one that could not be loaded at all. All coloring lives here;
 // `@skein-js/agent-protocol` and `@skein-js/express` only ever emit plain strings/meta through the
 // injected `Logger`, so they stay framework-agnostic. Color disables itself for non-TTY / `NO_COLOR`.
 
@@ -9,9 +10,8 @@ import { describeError } from "@skein-js/server-kit";
 
 import { codeFrameForStack } from "./code-frame.js";
 import { bold, cyan, dim, green, red, yellow } from "./colors.js";
-
-/** Indent for the meta block and continuation lines — aligns under the level prefix. */
-const INDENT = "       ";
+import { fencedBlock, indent, INDENT, labelled } from "./failure-block.js";
+import { graphLoadFailureBlock, isGraphLoadFailureReport } from "./graph-load-failure.js";
 
 /** `String()` that never throws — a null-prototype object has no `toPrimitive` to convert through. */
 function safeString(value: unknown): string {
@@ -29,14 +29,6 @@ function safeStringify(value: unknown): string {
   } catch {
     return safeString(value);
   }
-}
-
-/** Indent every line of a block, so multi-line output stays under the level prefix. */
-function indent(text: string): string {
-  return text
-    .split("\n")
-    .map((line) => `${INDENT}${line}`)
-    .join("\n");
 }
 
 /** Render structured meta under the message line: an `Error` as its stack + cause chain, an object
@@ -70,26 +62,10 @@ function metaBlock(meta: unknown): string {
   return `\n${indent(dim(String(meta)))}`;
 }
 
-/** Width of the rules fencing the failure block. Fixed rather than derived from the terminal: dev
- *  output is often piped, and a stable width reads and diffs better than a reflowing one. */
-const RULE_WIDTH = 66;
-const TITLE = " GRAPH RUN FAILED ";
-
-/** `──────── GRAPH RUN FAILED ────────`, and the plain closing rule. */
-function titleRule(): string {
-  const dashes = Math.max(0, RULE_WIDTH - TITLE.length);
-  const left = "─".repeat(Math.floor(dashes / 2));
-  return `${left}${TITLE}${"─".repeat(dashes - left.length)}`;
-}
-
-function labelled(label: string, value: string): string {
-  return `${dim(label.padEnd(10))}${value}`;
-}
-
 /**
- * The failed-run block. Deliberately fenced by *text* rules and blank lines rather than color alone:
- * `colorEnabled` is false for every piped log, CI run, and test, and a crash needs to stand out from
- * the surrounding request lines precisely there. Degrades to the same layout in plain text.
+ * The failed-run block: identity, the offending source, then the trace — one section per blank line.
+ * Its chrome (rules, indent, label column) is `failure-block.ts`, shared with the failed-*load*
+ * block so the two ways a graph fails look like siblings.
  */
 function runFailureBlock(report: RunFailureReport, sourceRoot: string): string {
   const rows = [
@@ -102,19 +78,12 @@ function runFailureBlock(report: RunFailureReport, sourceRoot: string): string {
     rows.push(labelled("node", report.failingNodes.join(", ")));
   }
 
-  const sections = [rows.join("\n")];
   const frame = codeFrameForStack(report.error, sourceRoot);
-  if (frame) sections.push(dim(frame));
-  sections.push(dim(describeError(report.error)));
-
-  return [
-    "",
-    indent(red(titleRule())),
-    // A blank line between sections: identity, the offending source, then the trace.
-    sections.map((section) => indent(section)).join(`\n${INDENT}\n`),
-    indent(red("─".repeat(RULE_WIDTH))),
-    "",
-  ].join("\n");
+  return fencedBlock("GRAPH RUN FAILED", [
+    rows.join("\n"),
+    frame ? dim(frame) : "",
+    dim(describeError(report.error)),
+  ]);
 }
 
 /** Colorize the request-log arrows the Express request logger emits: `<-- …` dim, `--> … <status>`
@@ -135,6 +104,9 @@ function paintHttp(message: string): string {
 function line(prefix: string, message: string, sourceRoot: string, meta?: unknown): string {
   if (isRunFailureReport(meta)) {
     return `${prefix} ${bold(message)}\n${runFailureBlock(meta, sourceRoot)}`;
+  }
+  if (isGraphLoadFailureReport(meta)) {
+    return `${prefix} ${bold(message)}\n${graphLoadFailureBlock(meta, sourceRoot)}`;
   }
   return `${prefix} ${paintHttp(message)}${metaBlock(meta)}`;
 }

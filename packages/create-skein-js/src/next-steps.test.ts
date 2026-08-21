@@ -48,6 +48,19 @@ describe("describeNextSteps", () => {
     expect(withProvider).toContain("ANTHROPIC_API_KEY");
   });
 
+  // A dim footnote after the URLs is a footnote people scroll past, and the cost of scrolling past
+  // it is a graph that fails to load on first boot. It belongs in the numbered sequence, before the
+  // command it is a prerequisite for.
+  it("lists the key as a step before `dev`, and says where to get one", () => {
+    const lines = describeNextSteps(optionsFor({ provider: "google" }), outcome);
+    const keyStep = lines.findIndex((line) => line.includes("Set GOOGLE_API_KEY in .env"));
+    const devStep = lines.findIndex((line) => line.includes("pnpm dev"));
+
+    expect(keyStep).toBeGreaterThanOrEqual(0);
+    expect(keyStep).toBeLessThan(devStep);
+    expect(lines.join("\n")).toContain("https://aistudio.google.com/apikey");
+  });
+
   it("says nothing about keys when there is no model graph", () => {
     const keyless = describeNextSteps(optionsFor(), outcome).join("\n");
     expect(keyless).not.toContain("API_KEY");

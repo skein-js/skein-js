@@ -18,6 +18,7 @@ import {
 import type { ProtocolContext } from "../context.js";
 import { agentCommand } from "../graphs/agent-command.js";
 import { requireAgentCapability, type AgentGraph } from "../graphs/agent-graph.js";
+import { loadGraphOrThrow } from "../graphs/load-graph.js";
 
 import { copyCheckpointHistory, pruneThreadCheckpointsToLatest } from "./checkpoint-history.js";
 import {
@@ -203,7 +204,7 @@ export function createThreadService(ctx: ProtocolContext): ThreadService {
     graphId: string,
     resolveConfigurable?: () => Promise<Record<string, unknown> | undefined>,
   ): Promise<AgentGraph> => {
-    const resolved = await deps.graphs.load(graphId);
+    const resolved = await loadGraphOrThrow(deps.graphs, graphId, deps.exposeErrorStacks === true);
     // A factory graph must be built with the same `configurable` the run engine uses, so a graph whose
     // shape depends on run config is reconstructed identically here.
     const graph =

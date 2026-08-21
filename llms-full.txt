@@ -1801,7 +1801,8 @@ pnpm dev            # skein dev — in-process, hot-reload, on http://localhost:
 ```
 
 `skein dev` loads your TypeScript graphs through vite (no separate loader), hot-reloads on save, and
-persists dev state across restarts. This is the full LangGraph CLI surface —
+persists dev state across restarts. `.env` counts as a save: filling in a model key there reloads the
+graphs, so a graph that could not load for want of a credential starts working without a restart. This is the full LangGraph CLI surface —
 [langgraph-cli-compat.md](./langgraph-cli-compat.md) documents every field and command.
 
 Prefer to mount it inside your own Express/Fastify/Nest/Next app instead of the CLI? Point an adapter
@@ -2018,6 +2019,10 @@ pnpm create skein-js my-agent --provider anthropic
 
 With a provider you also get a ReAct agent wired to a live weather tool that needs no key of its own,
 so the agent is genuinely runnable the moment you add your model key.
+
+Until the key is set, `agent` fails to load naming the variable it wants — a
+[load-failure block](./errors-and-logging.md#the-load-failure-block), while `echo` keeps serving.
+`skein dev` watches `.env`, so filling the key in takes effect on save.
 
 ### Behaviour you can rely on
 
@@ -2735,7 +2740,7 @@ multi-framework, drop-in-CLI layer that isn't open — so your project moves ove
 | CLI                      | [commander](https://github.com/tj/commander.js) — the `skein dev`/`up`/`build`/`dockerfile` command surface, plus `skein start` (below).                                                                                                                                                                                                        |
 | Dev graph loading        | [vite](https://vitejs.dev) loads your TypeScript graphs **in-process** — no separate build step. tsconfig `paths` aliases resolve, so graphs in an Nx/Turborepo/pnpm-workspace monorepo import shared workspace packages unchanged.                                                                                                             |
 | Prod image build         | `skein build`/`up` bundle graphs (+ auth/embed) to plain JS with `vite.build()` at build time — same alias resolution as dev, anchored at the workspace root — into a self-contained `.skein/build` artifact. The slim image installs prod deps only and runs the compiled output via `skein start` (no vite, no runtime TypeScript transform). |
-| Dev hot reload           | **State-preserving** reload on source change: your threads, runs, and memory survive the reload.                                                                                                                                                                                                                                                |
+| Dev hot reload           | **State-preserving** reload on source change: your threads, runs, and memory survive the reload. `.env` is watched too, so filling in a missing model key reloads the graphs instead of needing a restart.                                                                                                                                      |
 | Dev persistence          | Dev state is snapshotted to `.skein/` so it survives restarts (opt out with `--no-persist`).                                                                                                                                                                                                                                                    |
 | Run queue (prod)         | [BullMQ](https://docs.bullmq.io) on Redis — background runs, retries, backoff, and crash recovery.                                                                                                                                                                                                                                              |
 | Cross-instance streaming | [ioredis](https://github.com/redis/ioredis) + **Redis Streams**/pub-sub — join a run's SSE stream from any instance.                                                                                                                                                                                                                            |
@@ -6276,6 +6281,46 @@ Two parts are best-effort and are simply omitted when unavailable, never faked:
   region after the header, and reads only files resolving inside the project root — so a crafted
   message cannot steer it into reading an unrelated file.
 
+### The load-failure block
+
+A graph can fail the other way too — never loading at all, because importing its module threw. That
+is the failure a fresh project hits first, and almost always for one reason: the graph builds a model
+client at module scope and the API key is not set.
+
+`skein dev` and `skein start` import every declared graph once at startup, **after** the banner, and
+report each failure as its own block:
+
+```
+error: graph "agent" failed to load
+
+       ────────────────────── GRAPH FAILED TO LOAD ──────────────────────
+       graph     agent
+       source    src/agent-graph.ts:68
+
+         66 | const apiKey = process.env.GOOGLE_API_KEY;
+         67 | if (!apiKey) {
+       > 68 |   throw new Error(
+            |   ^
+
+       GOOGLE_API_KEY is not set — the "agent" graph needs it. Uncomment it in
+       .env (get a key at https://aistudio.google.com/apikey) and save; the dev
+       server picks it up on reload. The "echo" graph needs no key.
+
+       SkeinConfigError: Failed to import graph module ".../src/agent-graph.ts".
+       caused by: Error: GOOGLE_API_KEY is not set — the "agent" graph needs it. …
+       ──────────────────────────────────────────────────────────────────
+```
+
+The headline is the **root** of the `cause` chain, not the wrapper: `SkeinConfigError` says _where_
+the failure happened, and only its cause says _what_ went wrong. The code frame follows the root's
+stack for the same reason — the wrapper's stack is nothing but skein frames. The full chain still
+prints underneath.
+
+One graph that cannot load never takes the server down; the rest keep serving. Under `skein dev` the
+project's `.env` is watched, so filling in the missing key and saving reloads the graphs — a key that
+is _newly added_ takes effect, while changing one that is already set still needs a restart (the
+ambient environment outranks the file, by design).
+
 ## Errors at the edges
 
 Two typed errors, both carrying a `cause` that the CLI prints:
@@ -6288,8 +6333,29 @@ Two typed errors, both carrying a `cause` that the CLI prints:
   module that failed to import. Its `cause` is the actual import failure and its `details` are the
   Zod issues, so read past the top-level message.
 
-A graph that fails to _load_ during a run is not special-cased: it surfaces through the same failure
-path as one that throws, with the config error's `cause` chain intact.
+A graph that fails to _load_ during a **run** surfaces through the same failure path as one that
+throws, with the config error's `cause` chain intact — unchanged.
+
+On the surfaces that answer over HTTP directly — thread state and history, assistant introspection,
+the single-graph invoke handler — it is mapped to a `SkeinHttpError` carrying `code:
+"graph_load_failed"`, so it stops being an unhandled fault. How much of _why_ reaches the caller is
+governed by [`exposeErrorStacks`](#exposeerrorstacks), the same switch that governs stacks:
+
+| | Body |
+| --- | --- |
+| **`skein dev`** (on) | `{"status":500,"message":"Graph \"agent\" failed to load: GOOGLE_API_KEY is not set …","code":"graph_load_failed"}` |
+| **`skein start`**, embedded (off) | `{"status":500,"message":"Graph \"agent\" failed to load.","code":"graph_load_failed"}` |
+
+The reason is withheld in production because a load failure's message is not skein's: `Cannot find
+module '/srv/app/dist/tools.js'` and `connect ECONNREFUSED 10.0.3.14:5432` are both ordinary ones,
+and they name server paths and internal hosts. The stack never travels either way.
+
+**The operator loses nothing.** Adapters log every `5xx` — including this one, typed or not — with
+the full `cause` chain, so the reason is always in your logs even when it is not on the wire.
+
+`rootCause(thrown)` / `rootCauseMessage(thrown)` (`@skein-js/core`) are what collapse a chain to one
+sentence, if you want the same in your own handler. Cycle-safe and depth-capped, like `toRunError` —
+which you want instead when a client should see _every_ layer.
 
 ## LangGraph Platform compatibility
 

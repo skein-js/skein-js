@@ -135,6 +135,22 @@ describe.each(everyProvider)("a project scaffolded with --provider %s", (provide
     }
   });
 
+  // The agent graph builds its model at import time, so an unset key fails the whole module. That is
+  // fine — but it has to fail saying which variable, in a sentence, rather than leaving the user to
+  // read the model client's own error out of a wrapped stack trace.
+  it("names the missing key itself rather than letting the model client do it", () => {
+    if (provider === "none") return;
+    const { apiKeyEnvVar, consoleUrl } = PROVIDER_DETAILS[provider];
+    const agentGraph = files.find((file) => file.path === "src/agent-graph.ts")!.contents;
+
+    // Guarded before the model is constructed, not after.
+    expect(agentGraph.indexOf("throw new Error")).toBeLessThan(agentGraph.indexOf("new Chat"));
+    expect(agentGraph).toContain(`process.env.${apiKeyEnvVar}`);
+    expect(agentGraph).toContain(`${apiKeyEnvVar} is not set`);
+    // …and says where to get one, so the message is a fix and not just a diagnosis.
+    expect(agentGraph).toContain(consoleUrl);
+  });
+
   it("emits TypeScript that parses", () => {
     for (const file of files.filter((candidate) => candidate.path.endsWith(".ts"))) {
       const source = ts.createSourceFile(

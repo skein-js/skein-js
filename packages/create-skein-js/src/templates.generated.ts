@@ -133,6 +133,9 @@ The \`echo\` graph runs with no credentials. The \`agent\` graph needs \`<%= api
 # <%= apiKeyEnvVar %>=your-key-here     ← get one at <%= providerConsoleUrl %>
 \`\`\`
 
+Until you do, \`agent\` fails to load and says so, while \`echo\` keeps serving. Save the key in and the
+dev server reloads — no restart.
+
 <%_ } _%>
 ## Talk to it
 
@@ -240,7 +243,20 @@ const getWeather = tool(
   },
 );
 
+// The one credential this project needs, checked by name and up front. Without this the first error
+// you see is the model client's own — which does name the variable, but only after a wrapped
+// graph-load failure and two stack traces. Say it plainly instead.
+const apiKey = process.env.<%= apiKeyEnvVar %>;
+if (!apiKey) {
+  throw new Error(
+    '<%= apiKeyEnvVar %> is not set — the "agent" graph needs it. Uncomment it in .env ' +
+      "(get a key at <%= providerConsoleUrl %>) and save; the dev server picks it up on reload. " +
+      'The "echo" graph needs no key.',
+  );
+}
+
 const model = new <%= modelClass %>({
+  apiKey,
   model: process.env.<%= modelEnvVar %> ?? "<%= defaultModel %>",
   temperature: 0,
 });
