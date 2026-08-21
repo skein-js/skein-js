@@ -94,6 +94,7 @@ export type {
 } from "./crypto/verify-delivery.js";
 
 // Outbound run-completion delivery: the retry policy, and the worker that drains the outbox.
+export { fetchWebhookDispatcher } from "./deps.js";
 export { attemptDelivery } from "./deliveries/attempt-delivery.js";
 export type { AttemptDeliveryDeps } from "./deliveries/attempt-delivery.js";
 export { isFinalAttempt, nextAttemptDelayMs } from "./deliveries/backoff.js";

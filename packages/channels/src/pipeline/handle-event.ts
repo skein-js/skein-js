@@ -25,6 +25,7 @@ import type { RegisteredChannel } from "../channel/registry.js";
 import { channelThreadMetadata, threadIdForChannelKey } from "../channel/thread-id.js";
 
 import { claimEventKey, type ClaimOutcome, type IdempotencyDeps } from "./claim-key.js";
+import { toChannelDeliveryUrl } from "./reply-target.js";
 import { resolveRunPlan } from "./resolve-run.js";
 
 /** What the pipeline needs from the server it is mounted in. */
@@ -40,6 +41,11 @@ export interface PipelineDeps extends IdempotencyDeps {
     streamMode: readonly string[];
     metadata?: Metadata;
     authContext?: AuthContext;
+    /**
+     * Where the answer goes, as a delivery URL. Server-derived: see `reply-target.ts` for why a
+     * caller cannot name this scheme itself.
+     */
+    webhook?: string;
   }): Promise<{ runId: string }>;
   /** Get-or-create, so a first message and a hundredth take the same path. */
   ensureThread(threadId: string, metadata: Metadata, authContext?: AuthContext): Promise<void>;
@@ -153,6 +159,14 @@ export async function handleInboundEvent(
       ...plan.run,
       streamMode: streamModesFor(channel),
       ...(authContext ? { authContext } : {}),
+      // Only when the channel named a reply target *and* can actually send one. A channel with no
+      // `deliver` — a GitHub integration that comments from inside the graph — owes no callback, and
+      // giving it one would record a delivery nothing could ever complete.
+      ...(event.replyTo !== undefined && channel.deliver
+        ? {
+            webhook: toChannelDeliveryUrl({ channelName: channel.name, replyTo: event.replyTo }),
+          }
+        : {}),
     });
 
     // 7. Acknowledge **after enqueueing, never after the run completes.** Slack gives you three

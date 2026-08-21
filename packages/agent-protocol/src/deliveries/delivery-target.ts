@@ -10,6 +10,10 @@
  */
 export function disallowedHost(url: string, allowedHosts?: readonly string[]): string | undefined {
   if (!allowedHosts || allowedHosts.length === 0) return undefined;
+  // A server-derived target has no host to allow-list. Both guards exist to bound where a *caller*
+  // can make the server send a request, and the run-create schema already refuses this scheme from a
+  // caller — so applying them here would only break replies the deployment configured itself.
+  if (isServerDerivedTarget(url)) return undefined;
   let host: string;
   try {
     host = new URL(url).hostname;
@@ -26,6 +30,9 @@ export function disallowedHost(url: string, allowedHosts?: readonly string[]): s
 /** Why this URL may not be sent to over plaintext, or `undefined` when it may. */
 export function insecureTransport(url: string, requireHttps?: boolean): string | undefined {
   if (!requireHttps) return undefined;
+  // See `disallowedHost`: nothing about a channel reply travels over plaintext HTTP for this check to
+  // protect — the channel's own transport is its business, and it never reaches the outbox's fetch.
+  if (isServerDerivedTarget(url)) return undefined;
   let protocol: string;
   try {
     protocol = new URL(url).protocol;
@@ -58,4 +65,14 @@ export function redactWebhookUrl(url: string): string {
     // typo. Say nothing about its contents.
     return "<unparseable url>";
   }
+}
+
+/**
+ * A delivery target skein minted rather than one a caller supplied — today, a channel reply.
+ *
+ * Recognised by scheme, which is safe **only because** the run-create schema restricts `webhook` to
+ * `http`/`https`. If that restriction is ever relaxed, this becomes a way to bypass both guards above.
+ */
+function isServerDerivedTarget(url: string): boolean {
+  return url.startsWith("skein+channel://");
 }
