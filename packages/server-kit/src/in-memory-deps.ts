@@ -27,14 +27,38 @@ import { resolveMemoryBusLimits } from "./memory-bus-limits.js";
 type AnyCompiledGraph = CompiledGraph<any>;
 
 /**
- * A graph you can embed in code: any compiled LangGraph.js graph, or a factory that builds one per run
- * (called with the run's `configurable`). Keys of a graph map become graph ids.
+ * The surface the engine actually drives, stated structurally.
+ *
+ * `CompiledGraph` is not the right bound here even though every graph is one. LangChain's own
+ * `createAgent` returns a `ReactAgent`, which is graph-*like* — it streams and it has state — but is
+ * not structurally a `CompiledGraph`, so requiring that type rejected the blessed way to build an
+ * agent. The engine never needed it: `langGraphResolver` casts whatever it is to an `AgentGraph`, and
+ * `AgentGraph` requires exactly these two methods.
+ *
+ * Kept narrow enough to still catch a mistake — an object with neither method is not a graph — while
+ * accepting anything the runtime can genuinely drive.
+ */
+interface EmbeddableAgentSurface {
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  stream(input: any, options?: any): any;
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  getState(config: any): any;
+}
+
+/**
+ * A graph you can embed in code: any compiled LangGraph.js graph, anything `createAgent` returns, or a
+ * factory that builds one per run (called with the run's `configurable`). Keys of a graph map become
+ * graph ids.
  */
 export type EmbeddableGraph =
   | AnyCompiledGraph
+  | EmbeddableAgentSurface
   | ((config: {
       configurable?: Record<string, unknown>;
-    }) => AnyCompiledGraph | Promise<AnyCompiledGraph>);
+    }) =>
+      | AnyCompiledGraph
+      | EmbeddableAgentSurface
+      | Promise<AnyCompiledGraph | EmbeddableAgentSurface>);
 
 /**
  * A ready {@link GraphResolver} vs a plain graph map: only the resolver has an `ids` array and a `load`
