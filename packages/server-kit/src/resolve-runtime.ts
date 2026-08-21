@@ -15,6 +15,7 @@ import {
   type CronSchedulerOptions,
   type RunWorkerOptions,
 } from "@skein-js/agent-protocol";
+import type { LoadedChannel } from "@skein-js/config";
 import type { ModuleImporter } from "@skein-js/config";
 import type { CorsOptions } from "cors";
 
@@ -131,6 +132,8 @@ export interface ResolvedRuntimeDeps {
   routes: readonly RouteBinding[];
   /** The resolved logger — see {@link ResolvedProtocolRuntime.logger}. */
   logger?: Logger;
+  /** Channel modules named by `skein.channels`, already imported. Absent on the injected-deps path. */
+  channels?: Record<string, LoadedChannel>;
 }
 
 /**
@@ -168,7 +171,7 @@ export async function resolveRuntimeDeps(
   // `embedPostgresGraphs` and every production embedding does — then never loads the `langgraph.json`
   // loader, the in-memory drivers, or `MemorySaver`.
   const loaded = options.deps
-    ? { deps: options.deps, cors: undefined, routes: skeinRoutes }
+    ? { deps: options.deps, cors: undefined, routes: skeinRoutes, channels: undefined }
     : await (
         await import("./in-memory-runtime.js")
       ).loadInMemoryRuntime(options.config, options.importModule);
@@ -184,7 +187,13 @@ export async function resolveRuntimeDeps(
   // never overwrites a choice the caller made. That is also why an injected `deps.logger` outranks
   // the adapter option rather than the other way round.
   if (logger && !loaded.deps.logger) loaded.deps.logger = logger;
-  return { deps: loaded.deps, cors: loaded.cors, routes: loaded.routes, logger };
+  return {
+    deps: loaded.deps,
+    cors: loaded.cors,
+    routes: loaded.routes,
+    ...(loaded.channels ? { channels: loaded.channels } : {}),
+    logger,
+  };
 }
 
 /**
@@ -203,6 +212,7 @@ export async function resolveProtocolRuntime(
     deps,
     cors: corsFromConfig,
     routes,
+    channels,
     logger,
   } = await resolveRuntimeDeps(options, frameworkLogger);
 
@@ -221,7 +231,29 @@ export async function resolveProtocolRuntime(
   // Resolve worker settings here rather than in each adapter: this is the ONE place options +
   // environment become the worker's settings, so Express/Fastify/NestJS/Next.js and `skein dev`/`start`
   // can't drift.
+  // Built before the runtime because its handler has to be injected into it, and resolved with a
+  // lazy service getter because the service does not exist until that call returns. Absent — and the
+  // package never even imported — when no channel is configured.
+  //
+  // `runtimeRef` is filled immediately below; nothing can dispatch a request before then.
+  const runtimeRef: { current?: ProtocolRuntime } = {};
+  const channelSurface = channels
+    ? await (
+        await import("./channels-runtime.js")
+      ).resolveChannels({
+        channels,
+        graphIds: deps.graphs.ids,
+        deps,
+        service: () => {
+          const current = runtimeRef.current;
+          if (!current) throw new Error("channel pipeline used before the runtime was assembled");
+          return current.service;
+        },
+      })
+    : undefined;
+
   const runtime = createProtocolRuntime(deps, {
+    ...(channelSurface ? { handlers: channelSurface.handlers } : {}),
     worker: {
       ...options.worker,
       maxConcurrency: resolveRunConcurrency(options.worker?.maxConcurrency),
@@ -235,6 +267,7 @@ export async function resolveProtocolRuntime(
       enabled: options.scheduler?.enabled ?? routes.some((route) => route.group === "crons"),
     },
   });
+  runtimeRef.current = runtime;
   await runtime.service.assistants.registerGraphAssistants();
   if (options.warm) {
     await Promise.all(
@@ -288,5 +321,13 @@ export async function resolveProtocolRuntime(
     },
   };
 
-  return { runtime: { ...runtime, worker }, cors: corsFromConfig, routes, logger };
+  return {
+    runtime: { ...runtime, worker },
+    cors: corsFromConfig,
+    // Channel routes are *appended*, never declared in `skeinRoutes`: they exist only when a channel
+    // is configured, which is what makes the feature undetectable to a deployment that never wanted
+    // it — strictly stronger than an `http.disable_*` flag, and it needs no `RouteGroup` to express.
+    routes: channelSurface ? [...routes, ...channelSurface.routes] : routes,
+    logger,
+  };
 }

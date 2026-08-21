@@ -1,7 +1,7 @@
 {
   "name": "@skein-js/server-kit",
   "version": "0.15.0",
-  "description": "Shared, framework-agnostic building blocks for skein-js HTTP adapters — in-memory dev runtime, LangGraph dev-state import, and langgraph.json CORS mapping.",
+  "description": "Shared, framework-agnostic building blocks for skein-js HTTP adapters \u2014 in-memory dev runtime, LangGraph dev-state import, and langgraph.json CORS mapping.",
   "license": "Apache-2.0",
   "author": "Maina Wycliffe <wmmaina7@gmail.com>",
   "homepage": "https://github.com/skein-js/skein-js/tree/main/packages/server-kit#readme",
@@ -56,14 +56,21 @@
     "zod": "^3.25.76"
   },
   "peerDependencies": {
-    "@langchain/langgraph": "^1.4.0"
+    "@langchain/langgraph": "^1.4.0",
+    "@skein-js/channels": "workspace:*"
   },
   "devDependencies": {
     "@langchain/core": "^1.2.9",
     "@langchain/langgraph": "^1.4.0",
-    "@types/cors": "^2.8.17"
+    "@types/cors": "^2.8.17",
+    "@skein-js/channels": "workspace:*"
   },
   "publishConfig": {
     "access": "public"
+  },
+  "peerDependenciesMeta": {
+    "@skein-js/channels": {
+      "optional": true
+    }
   }
 }
