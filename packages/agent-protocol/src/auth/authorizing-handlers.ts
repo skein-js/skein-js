@@ -9,7 +9,11 @@
 import type { AuthContext, AuthEngine } from "@skein-js/core";
 
 import type { ProtocolContext } from "../context.js";
-import { createProtocolHandlers, type ProtocolHandlers } from "../create-handlers.js";
+import {
+  createProtocolHandlers,
+  type ProtocolHandlerExtras,
+  type ProtocolHandlers,
+} from "../create-handlers.js";
 import { createProtocolServiceFromContext } from "../service.js";
 
 import { createAuthScopedStore } from "./auth-scoped-store.js";
@@ -24,10 +28,11 @@ import { authValue, rewrittenStoreTarget, ROUTE_AUTHZ, withStoreTarget } from ".
 export function createAuthorizingHandlers(
   context: ProtocolContext,
   engine: AuthEngine,
+  extras: ProtocolHandlerExtras = {},
 ): ProtocolHandlers {
   // The shared, unscoped handler table — built once and reused on the fast path (no principal, no
   // ownership filters), so a request with nothing to inject skips rebuilding the service.
-  const baseHandlers = createProtocolHandlers(createProtocolServiceFromContext(context));
+  const baseHandlers = createProtocolHandlers(createProtocolServiceFromContext(context), extras);
   const names = Object.keys(ROUTE_AUTHZ) as (keyof ProtocolHandlers)[];
 
   const wrapped = {} as ProtocolHandlers;

@@ -11,7 +11,11 @@ import { resolveAuthContext } from "./auth/authenticate-request.js";
 import { createAuthorizingHandlers } from "./auth/authorizing-handlers.js";
 import { authValue, ROUTE_AUTHZ } from "./auth/route-authz.js";
 import { createContext } from "./context.js";
-import { createProtocolHandlers, type ProtocolHandlers } from "./create-handlers.js";
+import {
+  createProtocolHandlers,
+  type ProtocolHandlerExtras,
+  type ProtocolHandlers,
+} from "./create-handlers.js";
 import {
   createCronScheduler,
   type CronScheduler,
@@ -60,6 +64,13 @@ export interface ProtocolRuntimeOptions {
    * the server configured.
    */
   deliveryWorker?: DeliveryWorkerOptions;
+  /**
+   * Handlers the core table cannot build for itself — today, the channel pipeline.
+   *
+   * Injected rather than assembled here, because `@skein-js/channels` is optional: a deployment that
+   * configures no channel must not have to install it, so the engine cannot import it.
+   */
+  handlers?: ProtocolHandlerExtras;
 }
 
 /** The wired engine: the service, the handler table, the background worker, and the cron scheduler. */
@@ -127,9 +138,10 @@ export function createProtocolRuntime(
   const service = createProtocolServiceFromContext(context);
   // When an auth engine is injected, every request is authenticated + authorized through one
   // transport-neutral seam; without it, the handler table is unchanged (unauthenticated, as before).
+  const handlerExtras = options.handlers ?? {};
   const authorized = deps.auth
-    ? createAuthorizingHandlers(context, deps.auth)
-    : createProtocolHandlers(service);
+    ? createAuthorizingHandlers(context, deps.auth, handlerExtras)
+    : createProtocolHandlers(service, handlerExtras);
   // Idempotency wraps the authorizing table from **outside**, because a key's scope has to include
   // the principal — without it, one tenant guessing another's key would be handed that tenant's
   // recorded response. The cost is one extra `authenticate` on requests that actually carry a key

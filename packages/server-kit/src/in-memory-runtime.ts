@@ -12,11 +12,13 @@ import type {
 } from "@skein-js/agent-protocol";
 import {
   loadAuthEngine,
+  loadChannels,
   loadConfig,
   type GraphRegistry,
   type GraphSchemas as ConfigGraphSchemas,
   type LanggraphJson,
   type ModuleImporter,
+  type LoadedChannel,
 } from "@skein-js/config";
 import { langGraphResolver } from "@skein-js/langgraph";
 import { MemoryRunEventBus, MemoryRunQueue, MemorySkeinStore } from "@skein-js/storage-memory";
@@ -58,6 +60,13 @@ export interface InMemoryRuntimeConfig {
   cors?: CorsOptions;
   /** The route table to mount, with any `http.disable_*` groups already removed. */
   routes: readonly RouteBinding[];
+  /**
+   * Channel modules named by `skein.channels`, already imported, keyed by name.
+   *
+   * Empty when none is configured, which is what keeps the channel routes out of the table entirely
+   * rather than merely disabled.
+   */
+  channels?: Record<string, LoadedChannel>;
 }
 
 /** Load `langgraph.json`, wiring fresh in-memory drivers and reading its `http.cors` for the adapter. */
@@ -75,6 +84,10 @@ export async function loadInMemoryRuntime(
   deps.auth = await loadAuthEngine(config.auth, { configDir, importModule });
   return {
     deps,
+    channels: await loadChannels(config.skein?.channels, {
+      configDir,
+      ...(importModule ? { importModule } : {}),
+    }),
     cors: corsFromHttpConfig(config.http),
     routes: routesFromHttpConfig(config.http),
   };
@@ -173,6 +186,13 @@ export async function loadReloadableInMemoryRuntime(
 
   return {
     deps,
+    // Loaded here so the modules are imported once, with the same importer the graphs used — under
+    // `skein dev` that is the vite-backed one, which is what lets a channel be a TypeScript file in
+    // the user's own repo rather than something they have to build first.
+    channels: await loadChannels(first.config.skein?.channels, {
+      configDir: first.configDir,
+      ...(importModule ? { importModule } : {}),
+    }),
     cors: corsFromHttpConfig(first.config.http),
     routes: routesFromHttpConfig(first.config.http),
     config: first.config,
