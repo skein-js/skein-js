@@ -63,6 +63,9 @@ describe("a configured channel", () => {
       method: "post",
       path: "/channels/twilio",
       handler: "handleInboundEvent",
+      // A provider's request is frequently not JSON, and its signature covers the bytes as sent — so
+      // the binding asks the adapter for the body as text rather than parsed.
+      retainRawBody: true,
     });
   });
 

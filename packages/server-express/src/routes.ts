@@ -86,6 +86,29 @@ export function createHandlerRouter(
   // origin (rather than a bare `*`), which also works for credentialed requests.
   if (options.cors) router.use(cors(options.cors === true ? { origin: true } : options.cors));
   requireParsableLimit(options.json?.limit);
+
+  // Routes that asked for the body as text get a parser *before* the JSON one, because `express.json`
+  // consumes the stream for every request routed into this router — not just the ones it matches. A
+  // text parser registered afterwards would find nothing left, which is the trap the hand-written
+  // version of this integration documented: mount order is load-bearing and fails silently.
+  //
+  // `type: "*/*"` because a provider chooses the content type, not us: Twilio sends form-encoded,
+  // Slack sends JSON, and a channel needs the same bytes either way. `body-parser` sets `req._body`
+  // once it has consumed a stream and every other parser skips a request already marked, so the JSON
+  // parser below leaves these alone.
+  const textRoutes = new Set(
+    (options.routes ?? skeinRoutes)
+      .filter((route) => route.retainRawBody)
+      .map((route) => route.path),
+  );
+  if (textRoutes.size > 0) {
+    const parseText = express.text({ type: "*/*", ...(options.json ?? {}) });
+    router.use((req, res, next) => {
+      if (!textRoutes.has(req.path)) return next();
+      parseText(req, res, next);
+    });
+  }
+
   router.use(express.json(options.json ?? {}));
 
   for (const binding of options.routes ?? skeinRoutes) {

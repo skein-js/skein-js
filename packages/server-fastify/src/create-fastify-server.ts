@@ -5,7 +5,7 @@
 
 import type { Server } from "node:http";
 
-import type { Logger, ProtocolRuntime } from "@skein-js/agent-protocol";
+import type { Logger, ProtocolRuntime, RouteBinding } from "@skein-js/agent-protocol";
 import {
   resolveProtocolRuntime,
   type CorsOptions,
@@ -53,8 +53,9 @@ export async function createFastifyServer(
   let runtime: ProtocolRuntime;
   let cors: CorsOptions | undefined;
   let logger: Logger | undefined;
+  let routes: readonly RouteBinding[] | undefined;
   try {
-    ({ runtime, cors, logger } = await resolveProtocolRuntime(
+    ({ runtime, cors, routes, logger } = await resolveProtocolRuntime(
       options,
       createFastifyLogger(app.log),
     ));
@@ -64,6 +65,11 @@ export async function createFastifyServer(
     app.get("/ok", async () => ({ ok: true }));
 
     await registerSkeinHandlers(app, runtime.handlers, {
+      // The **resolved** table, not the static one. Dropping it here meant this server silently
+      // ignored the route table the runtime resolved — so `http.disable_*` did nothing, and a
+      // configured channel's routes were never mounted. `skeinPlugin` next door always passed it,
+      // which is why only the standalone server was affected.
+      routes,
       logger,
       // Explicit option wins; otherwise fall back to the config's `http.cors`, else off.
       cors: options.cors ?? cors ?? false,
