@@ -68,6 +68,17 @@ export async function createViteGraphLoader(
   const server: ViteDevServer = await createServer({
     root,
     configFile: false,
+    // vite loads `.env` into `import.meta.env` and — the part that matters — RESTARTS its dev server
+    // whenever one changes. In middleware mode that restart replaces `server.environments.ssr` out
+    // from under the module runner we hold, so the next `importModule` hangs until vite's 60s
+    // transport timeout and every graph load after it fails. Editing `.env` wedged `skein dev`.
+    //
+    // skein owns env itself (`applyProjectEnv` merges `.env` + `langgraph.json`'s `env` into
+    // `process.env`, ambient winning), so vite's copy was never the one graphs read. Turning it off
+    // loses nothing and hands the file back to `skein dev`'s own watcher + reload — which is what
+    // makes filling in a missing API key take effect on save. (`envDir: false` is vite 8's spelling;
+    // the older `envFile: false` is deprecated.)
+    envDir: false,
     // Resolve tsconfig `paths` natively (vite 8+): vite reads the project's tsconfig, follows
     // `extends` to a base tsconfig (e.g. `tsconfig.base.json`), and honors `baseUrl` + wildcard
     // aliases — so graphs that import workspace packages through path aliases resolve.
