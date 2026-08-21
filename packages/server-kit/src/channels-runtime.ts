@@ -17,9 +17,14 @@ import type {
   RouteAuthz,
   WebhookDispatcher,
 } from "@skein-js/agent-protocol";
+import {
+  createAuthScopedStore,
+  createContext,
+  createProtocolServiceFromContext,
+} from "@skein-js/agent-protocol";
 import { SkeinConfigError } from "@skein-js/config";
 import type { LoadedChannel } from "@skein-js/config";
-import { SkeinHttpError, type AuthContext, type Metadata } from "@skein-js/core";
+import { SkeinHttpError, type AuthContext, type AuthFilters, type Metadata } from "@skein-js/core";
 
 /**
  * The outbox dispatcher, as this module composes it.
@@ -128,6 +133,37 @@ export async function resolveChannels(
  * was assembled — it takes an interface, and this is the only place that knows the answer.
  */
 function buildPipelineDeps(deps: ProtocolDeps, service: () => ProtocolService) {
+  // Set by `authorize` and read by `scopedService`, both of which run once per request inside a single
+  // `handleInboundEvent` call — the pipeline awaits authorization before it touches either.
+  let requestFilters: AuthFilters | undefined;
+
+  /**
+   * The service this request runs as.
+   *
+   * The base service reads and writes unscoped, which is right for the fast path (no auth block, no
+   * filters) and wrong the moment a deployment has either. This mirrors what
+   * `createAuthorizingHandlers` does for every other route: a context carrying the authenticated
+   * caller — so the run service stamps it onto the run and the graph sees
+   * `configurable.langgraph_auth_user` — and, when the handler returned ownership filters, a store
+   * scoped by them.
+   */
+  const scopedService = (authContext: AuthContext | undefined): ProtocolService => {
+    if (!authContext && !requestFilters) return service();
+    const base = createContext(deps);
+    return createProtocolServiceFromContext({
+      ...base,
+      ...(authContext?.user ? { authUser: authContext.user } : {}),
+      ...(authContext?.scopes ? { authScopes: authContext.scopes } : {}),
+      deps:
+        requestFilters && deps.auth
+          ? {
+              ...base.deps,
+              store: createAuthScopedStore(base.deps.store, deps.auth, requestFilters, "threads"),
+            }
+          : base.deps,
+    });
+  };
+
   return {
     ...(deps.store.idempotency ? { idempotency: deps.store.idempotency } : {}),
     clock: () => (deps.clock ? deps.clock() : new Date()),
@@ -156,19 +192,31 @@ function buildPipelineDeps(deps: ProtocolDeps, service: () => ProtocolService) {
         },
         scopes: principal.permissions ?? [],
       };
-      await deps.auth.authorize({
+      const decision = await deps.auth.authorize({
         resource: authz.resource,
         action: authz.action,
         value: {},
         context,
       });
+      // The ownership filters the handler returned are what actually scope this request. Discarding
+      // them — which this did — created every channel thread and run **unscoped**, so a deployment
+      // that carefully wrote `@auth.on.threads` got none of it on its inbound messages while the docs
+      // promised multi-tenancy worked. Stashed for `scopedService` below.
+      requestFilters = decision.filters;
       return context;
     },
 
-    ensureThread: async (threadId: string, metadata: Metadata) => {
+    ensureThread: async (threadId: string, metadata: Metadata, authContext?: AuthContext) => {
       // `ifExists: "do_nothing"` makes this atomically get-or-create, so a first message and a
       // hundredth take the same path with no read-then-create race between them.
-      await service().threads.create({ thread_id: threadId, metadata, ifExists: "do_nothing" });
+      //
+      // Through the **scoped** service, so the ownership filters stamp their values onto the thread's
+      // metadata — without that, a later filtered read cannot match the thread this just created.
+      await scopedService(authContext).threads.create({
+        thread_id: threadId,
+        metadata,
+        ifExists: "do_nothing",
+      });
     },
 
     threadStatus: async (threadId: string) => {
@@ -188,11 +236,14 @@ function buildPipelineDeps(deps: ProtocolDeps, service: () => ProtocolService) {
       streamMode: readonly string[];
       metadata?: Metadata;
       webhook?: string;
+      authContext?: AuthContext;
     }) => {
       // The service, not HTTP. The pipeline runs in-process, so it never meets the SDK's missing
       // `headers` field or `AsyncCaller`'s retries — both of which forced the hand-written version of
       // this to drop to raw `fetch`.
-      const run = await service().runs.createBackground(input.threadId, {
+      // The scoped service, so the run is stamped with the authenticated caller and the graph sees
+      // `configurable.langgraph_auth_user` — the same thing every other run-creating route gives it.
+      const run = await scopedService(input.authContext).runs.createBackground(input.threadId, {
         assistant_id: input.assistantId,
         ...(input.input !== undefined ? { input: input.input } : {}),
         ...(input.command ? { command: input.command } : {}),

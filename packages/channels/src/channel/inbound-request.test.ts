@@ -67,14 +67,24 @@ describe("streamModesFor", () => {
       ...(signals ? { signals } : {}),
     }) as Channel;
 
-  it("pays for nothing when a channel wants no signals", () => {
-    // A GitHub channel should cost exactly what an API run costs.
-    expect(streamModesFor(channel())).toEqual(["values"]);
+  it("always requests the custom stream, so a declared reply can be captured", () => {
+    // `replyWith()` writes to the custom stream and the engine only captures frames it receives, so
+    // omitting this made the documented first choice of reply source silently impossible.
+    expect(streamModesFor(channel())).toContain("custom");
+  });
+
+  it("pays for no progress stream when a channel wants no signals", () => {
+    // A GitHub channel should cost what an API run costs, plus the custom stream it may reply on.
+    expect(streamModesFor(channel())).toEqual(["values", "custom"]);
   });
 
   it("adds only the cheap stream for a progress subscription", () => {
     // The load argument: an indicator needs to know work is happening, not what the tokens were.
-    expect(streamModesFor(channel({ kinds: ["progress"] }))).toEqual(["values", "updates"]);
+    expect(streamModesFor(channel({ kinds: ["progress"] }))).toEqual([
+      "values",
+      "custom",
+      "updates",
+    ]);
   });
 
   it("never selects token streaming", () => {

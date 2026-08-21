@@ -55,3 +55,6 @@ coverage/
 vite.config.*.timestamp*
 vitest.config.*.timestamp*
 packages/console/src/assets.generated.ts
+
+# Throwaway fixture projects written by tests into their own package directory.
+.tmp-*/

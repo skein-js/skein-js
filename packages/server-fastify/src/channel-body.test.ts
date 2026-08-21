@@ -34,11 +34,25 @@ async function projectWithChannel(): Promise<string> {
   );
   await writeFile(
     path.join(dir, "channel.ts"),
-    `export const channel = {
+    `function safeJson(request) {
+       try {
+         return request.json();
+       } catch {
+         return undefined;
+       }
+     }
+     export const channel = {
        name: "twilio",
-       verify: (request) =>
-         request.form()["MessageSid"] ? { identity: "channel:twilio" } : false,
-       parseEvent: (request) => ({ kind: "respond", status: 200, body: { seen: request.form() } }),
+       // Accepts either shape, the way a real channel would: form for Twilio, JSON for Slack.
+       verify: (request) => {
+         const id = request.form()["MessageSid"] ?? safeJson(request)?.MessageSid;
+         return id ? { identity: "channel:twilio" } : false;
+       },
+       parseEvent: (request) => ({
+         kind: "respond",
+         status: 200,
+         body: { seen: request.form(), raw: request.text() },
+       }),
      };`,
   );
   const configPath = path.join(dir, "langgraph.json");
@@ -68,9 +82,33 @@ describe("a form-encoded provider request over Fastify", () => {
     });
 
     expect(response.statusCode).toBe(200);
-    expect(response.json() as unknown).toEqual({
+    expect(response.json() as unknown).toMatchObject({
       seen: { From: "whatsapp:+254", Body: "hi", MessageSid: "SM-1" },
     });
+  });
+
+  it("reaches a JSON-bodied channel with its bytes intact", async () => {
+    // Slack, GitHub and Stripe all send JSON, and a more specific content-type parser always wins in
+    // Fastify — so the catch-all above does not cover them. Without a carve-out they arrived parsed,
+    // with nothing left to verify, and every genuine event answered 401. Only form-encoded providers
+    // worked, which is precisely what the first test happened to cover.
+    const server = await createFastifyServer({ config: await projectWithChannel() });
+    close = async () => {
+      await server.runtime.worker.stop();
+      await server.close();
+    };
+    const payload = JSON.stringify({ MessageSid: "SM-9", From: "slack:U1", Body: "hi" });
+
+    const response = await server.app.inject({
+      method: "POST",
+      url: "/channels/twilio",
+      headers: { "content-type": "application/json" },
+      payload,
+    });
+
+    expect(response.statusCode).toBe(200);
+    // The channel read it as text and parsed it itself, byte for byte.
+    expect((response.json() as { raw: string }).raw).toBe(payload);
   });
 
   it("leaves JSON routes parsing JSON", async () => {

@@ -95,12 +95,16 @@ export async function prepareSkeinContext(
   // Fastify ships parsers for `application/json` and `text/plain` and nothing else, so an unmatched
   // content type is `FST_ERR_CTP_INVALID_MEDIA_TYPE` — a **415 before any handler runs**. That makes a
   // form-encoded provider request (Twilio, a Slack slash command) unreachable on this adapter, which
-  // is why channel routes could not work here at all until now. A catch-all parser keeps the body as
-  // text and lets the route decide; the JSON parser below is more specific, so it still wins for JSON.
+  // is why channel routes could not work here at all until now.
   //
   // Registered only when a route actually asked for it, so a deployment with no channels keeps
   // Fastify's own 415 for a content type nothing serves.
-  if ((options.routes ?? skeinRoutes).some((route) => route.retainRawBody)) {
+  const rawBodyPaths = new Set(
+    (options.routes ?? skeinRoutes)
+      .filter((route) => route.retainRawBody)
+      .map((route) => route.path),
+  );
+  if (rawBodyPaths.size > 0) {
     try {
       fastify.addContentTypeParser("*", { parseAs: "string" }, (_req, body, done) => {
         done(null, typeof body === "string" ? body : body.toString());
@@ -110,8 +114,32 @@ export async function prepareSkeinContext(
     }
   }
 
-  fastify.addContentTypeParser("application/json", { parseAs: "string" }, (_req, body, done) => {
-    const text = (typeof body === "string" ? body : body.toString()).trim();
+  /**
+   * True when this request is for a route that asked for its body as text.
+   *
+   * Needed because the catch-all above does **not** cover `application/json`: a more specific parser
+   * always wins in Fastify, so a JSON-bodied provider — Slack, GitHub, Stripe — would have reached its
+   * channel with a parsed object and no bytes to verify, and answered 401 for every genuine event.
+   * Only form-encoded providers worked, which is exactly what the first test happened to cover.
+   *
+   * Matched by suffix because the plugin can be registered under a prefix, so `req.url` carries
+   * whatever mount path the host chose.
+   */
+  const wantsRawBody = (url: string | undefined): boolean => {
+    if (rawBodyPaths.size === 0 || !url) return false;
+    const pathname = url.split("?")[0] ?? "";
+    for (const path of rawBodyPaths) if (pathname.endsWith(path)) return true;
+    return false;
+  };
+
+  fastify.addContentTypeParser("application/json", { parseAs: "string" }, (req, body, done) => {
+    const raw = typeof body === "string" ? body : body.toString();
+    // A channel verifies a signature over these bytes; parsing them first makes that impossible.
+    if (wantsRawBody(req.url)) {
+      done(null, raw);
+      return;
+    }
+    const text = raw.trim();
     if (text === "") {
       done(null, {});
       return;

@@ -149,6 +149,10 @@ export async function handleInboundEvent(
     };
   }
 
+  // Tracked so the catch below can tell "nothing happened" from "the run exists but bookkeeping
+  // afterwards failed" — releasing the key in the second case invites the provider's retry to create
+  // a *second* run for one message, which is the exact failure the key exists to prevent.
+  let created: { runId: string } | undefined;
   try {
     // 5. Resolve the thread. Deterministic, so the same phone number always resumes the same
     //    conversation, and get-or-create so a first message costs no special case.
@@ -194,9 +198,14 @@ export async function handleInboundEvent(
     await claim.record(response, { runId, threadId });
     return response;
   } catch (error) {
-    // Never record a failure: pinning a transient 503 for the retention window would make a momentary
-    // outage permanent for this event, and every retry would replay it instead of trying again.
-    await claim.release();
+    // Released **only when no run was created**. A failure before the create means nothing happened,
+    // so freeing the key lets the provider's retry try again for real — pinning a transient 503 for
+    // the whole retention window would make a momentary outage permanent for this event.
+    //
+    // After the create, the opposite is true: the run is real and working, and releasing the key would
+    // let the retry start a second one. The lost bookkeeping is the cheaper failure — the claim simply
+    // expires on its own in-flight window, and until then a retry gets a 409 rather than a duplicate.
+    if (!created) await claim.release();
     throw error;
   }
 }

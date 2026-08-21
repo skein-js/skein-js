@@ -24,6 +24,11 @@ export default tseslint.config(
       "**/.nx/**",
       "**/*.config.*",
       "packages/cli/src/bundle/__fixtures__/**", // mini-monorepo fixture shaped for the bundler, not our lint rules
+      // Throwaway projects a test writes into its own package directory, because a fixture that
+      // declares an `auth.path` has to sit somewhere node resolution can reach the workspace's
+      // `node_modules`. They are deleted in `afterAll`, but a lint running alongside the suite would
+      // otherwise pick them up mid-flight and fail on generated code nobody wrote.
+      "**/.tmp-*/**",
       "packages/test-support/fixtures/**", // project/artifact fixtures shaped for the image build, same reason
     ],
   },

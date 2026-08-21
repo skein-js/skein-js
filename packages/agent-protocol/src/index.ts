@@ -22,6 +22,9 @@ export type { ProtocolHandlerExtras } from "./create-handlers.js";
 // Exported so a surface that authenticates outside the handler table — the channel pipeline — can
 // authorize against the *same* row this table would have used, rather than restating the pair.
 export { ROUTE_AUTHZ } from "./auth/route-authz.js";
+// Exported for the same reason `ROUTE_AUTHZ` is: a surface that authorizes outside the handler table
+// has to scope its store the way the table would, not approximate it.
+export { createAuthScopedStore } from "./auth/auth-scoped-store.js";
 export type { RouteAuthz } from "./auth/route-authz.js";
 export type {
   ProtocolHandler,
