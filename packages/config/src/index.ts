@@ -6,7 +6,12 @@ export { loadConfig } from "./load-config.js";
 export type { GraphRegistry, GraphSchemas, LoadConfigOptions, SkeinConfig } from "./load-config.js";
 
 export { langgraphJsonSchema, parseLanggraphJson } from "./langgraph-json.js";
-export type { LanggraphJson, SkeinRuntimeName, TelemetryConfig } from "./langgraph-json.js";
+export type {
+  ChannelsJsonConfig,
+  LanggraphJson,
+  SkeinRuntimeName,
+  TelemetryConfig,
+} from "./langgraph-json.js";
 
 export { loadGraph, parseGraphSpec } from "./graph-spec.js";
 export type {
@@ -19,6 +24,8 @@ export type {
 export { parseEnvFile, resolveEnv } from "./resolve-env.js";
 
 export { loadAuthEngine } from "./auth-engine.js";
+export { loadChannels } from "./channels.js";
+export type { LoadChannelsOptions, LoadedChannel } from "./channels.js";
 export type { AuthConfig, LoadAuthEngineOptions } from "./auth-engine.js";
 
 export { SkeinConfigError } from "./errors.js";
