@@ -1,0 +1,13 @@
+{
+  "graphs": {
+    "support": "./src/support-graph.ts:graph"
+  },
+  "skein": {
+    "channels": {
+      "twilio": {
+        "path": "./src/twilio-channel.ts:channel",
+        "assistant": "support"
+      }
+    }
+  }
+}

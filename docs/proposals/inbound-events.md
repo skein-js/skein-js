@@ -1,9 +1,79 @@
+# Shipped — inbound channels
+
+> **This proposal shipped**, as [`docs/channels.md`](../channels.md) and `@skein-js/channels`. The
+> durable explanation lives there; what is kept here is what the implementation **rejected**, because
+> each was argued for in the design and turned out to be wrong.
+>
+> See [proposals/README.md](./README.md) for why this directory works that way.
+
+## What the implementation rejected
+
+- **`EventSource` as a name.** It ships as **`Channel`** — the word people already use for putting an
+  agent on WhatsApp, and the one Twilio, Intercom and Zendesk use. The _payload_ stayed
+  `InboundEvent`, so `from`/`to`/`body`/`typing` are still absent from the core types and a GitHub
+  webhook is still the same pipeline. Four other meanings of "channel" already existed in the repo
+  (`RunAbortChannel`, Redis pub/sub, LangGraph state channels, `stream_mode: "custom"`); only one is
+  public API and it is prefixed, so the collision was a discipline problem rather than a semantic one.
+
+- **`onExisting` as merely a better default.** It was specified as a policy with a sensible default.
+  That is not enough: nothing on the server enforced it, because `interrupted` is a _terminal_ run
+  status. It is now built on `if_thread_status`, a precondition settled inside the driver's atomic
+  create — [#35](https://github.com/skein-js/skein-js/issues/35).
+
+- **`replyWith` on the custom stream, as designed.** Unbuildable. Run frames are published to the
+  event bus and never persisted, so reading a declared reply from the stream loses it on exactly the
+  crash the outbox exists to survive. It became an engine-side capture into the delivery payload —
+  [#36](https://github.com/skein-js/skein-js/issues/36).
+
+- **Five `RunSignal` kinds.** `accepted`, `interrupted` and `settled` were cut: the acknowledgement is
+  already the HTTP response, the interrupt now arrives durably in the callback, and the motivating
+  provider's indicator clears itself when the reply lands, so `settled` had no call to make. Only
+  `progress` and `keepalive` shipped.
+
+- **A new `RouteGroup`.** A group is a member of a closed union that can never be withdrawn, and it is
+  1:1 with LangGraph's `http.disable_*` flags — so `"channels"` would have needed a skein-only
+  `disable_channels` in the _un-namespaced_ `http` block. The routes are appended only when a channel
+  is configured, which is strictly stronger than a disable flag.
+
+- **`rawBody` as the hard part of the transport work.** Twilio signs the URL plus _parsed_, sorted
+  params, so the motivating provider never needed raw bytes. The genuinely hard half was the **public
+  URL**, and nothing in the repo resolves one — the one place that considered it refused, calling
+  `x-forwarded-proto` spoofable. It became configuration. What the transports actually needed was for
+  a form-encoded body to arrive at all: Fastify 415'd it before any handler ran.
+
+- **A `skein+channel://` URL the caller could name.** The first delivery design keyed the dispatcher
+  on a URL scheme — reachable from the caller-supplied `webhook` field, since `z.string().url()`
+  accepts any scheme. That would have let a run create deliver an attacker's message through someone
+  else's provider account. `webhook` is now restricted to `http(s)` at the schema, which is the only
+  boundary that can tell a caller-supplied URL from a server-derived one.
+
+- **"Resume with the same `input`."** `input` is a graph _input envelope_; `interrupt()` returns
+  whatever the node asked for, usually a scalar. Handing a message-shaped graph its own envelope makes
+  the node read nonsense. `InboundEvent.resumeWith` says which is which, and skein still coerces
+  nothing.
+
+- **Under 60 lines.** The Twilio integration came out at **65**, against a 334-line hand-written
+  baseline. The line count was never the strongest argument: three of the seven steps could not be made
+  _correct_ from user code at all, and each failed silently.
+
+---
+
+<details>
+<summary>The original proposal, kept for the argument it makes</summary>
+
 # Proposal — Inbound events: agents behind WhatsApp, Slack, and anything else
 
-> **Status:** Planned · **Depends on:** nothing — durable outbound delivery, its one
-> prerequisite, [has shipped](../webhooks.md)
+> **Status:** Phase 1 done — proceed, with the justification rewritten · **Depends on:** nothing —
+> durable outbound delivery, its one prerequisite, [has shipped](../webhooks.md)
 >
 > A design proposal, not shipped behaviour. See [proposals/README.md](./README.md).
+>
+> The kill test has been run:
+> [`examples/whatsapp-typing`](https://github.com/skein-js/skein-js/tree/main/examples/whatsapp-typing)
+> builds all seven steps by hand with no pipeline. Read
+> [**Phase 1 result**](#phase-1-result--the-example-is-built-and-the-kill-condition-did-not-fire) and
+> [**What we need to build**](#what-we-need-to-build) first — they supersede parts of the design
+> below, and each correction is marked inline.
 
 ## Problem
 
@@ -123,6 +193,13 @@ at a thread whose run is `interrupted` should resume that interrupt, because a h
 pause on an async channel is exactly what a reply hours later is answering. Making the correct
 behaviour the default is most of this proposal's practical value.
 
+> **Corrected by phase 1.** This understated the problem. It is not only that the default is easy to
+> get wrong — it is that **nothing on the server enforces it**. `interrupted` is a terminal run
+> status, so a plain start on an interrupted thread succeeds and silently discards the pending
+> interrupt, and no `multitask_strategy` guards it. `onExisting` must therefore be implemented on
+> top of a real precondition ([stage 0.1](#stage-0--the-missing-primitives)), not merely be a
+> better-chosen default.
+
 ### `InboundRequest` — raw bytes are mandatory
 
 ```ts
@@ -236,6 +313,14 @@ export interface SignalSubscription {
 cross-instance via Redis. Declaring a subscription (rather than always-on) lets the pipeline pick the
 cheapest stream mode that satisfies it: a source wanting only "keep the indicator alive" shouldn't
 pay for token streaming, and a GitHub source should pay nothing.
+
+> **Corrected by phase 1.** The subscription argument held up — the example's indicator discards
+> every frame it receives, so paying for token streaming would be pure waste. Two things were wrong.
+> `RunEventBus` is **not reachable** from a host on the `{ config }` path, because `ProtocolRuntime`
+> exposes no `deps`; the example had to use `runs.joinStream`, one HTTP connection per in-flight
+> conversation. And `settled` buys nothing on the motivating provider: Twilio's indicator expires by
+> itself and is cleared by delivering the reply, so there is no "stop typing" call to make. Since
+> `RunSignal` is permanent public API, justify each kind against a real consumer before it ships.
 
 **`deliver` and `onSignal` are separate methods because they have opposite guarantees** — durable,
 at-least-once, retried, replayed from the outbox versus best-effort, at-most-once, lost by design.
@@ -396,7 +481,8 @@ timestamps, duplicate ids and bot echoes without hand review.
 
 1. A working Twilio WhatsApp integration — verify, dedup, thread mapping, HITL resume, typing
    indicator, durable reply — in **under 60 lines** of user code, written **entirely outside this
-   repo**.
+   repo**. _Phase 1 baseline: the same integration by hand is **334** code lines, so this is a target
+   to be tested at stage 2, not a figure already banked._
 2. A **GitHub webhook** integration on the identical interface, using no chat-specific concept and
    subscribing to no signals. The real test of the thesis; if it needs special-casing, the
    abstraction is message-shaped and wrong.
@@ -407,25 +493,208 @@ timestamps, duplicate ids and bot echoes without hand review.
    adversarially, including the forged-`x-auth-scheme` case.
 7. Killing the process mid-run loses the typing indicator and **never** loses the answer.
 
-## Phasing
+## Phase 1 result — the example is built, and the kill condition did not fire
 
-1. **Write `examples/whatsapp-typing` first, against the raw primitives, with no pipeline at all** —
-   including the typing indicator, wired by hand off the existing run event bus. Deliberate: it
-   discovers the real contract instead of guessing.
-2. **Raw-body preservation across all five transport adapters** — independently useful, and a hard
-   prerequisite for any signature verification.
-3. **Extract the pipeline**, the `EventSource` interface and the agnostic verification helpers from
-   what phase 1 proved repetitive. Port the example onto it and measure the delta honestly.
-4. **Run signals** — the `RunEventBus` projection, the subscription declaration, the keepalive timer,
-   with the bounded-subscription question answered.
-5. **A second, non-chat source** (GitHub) plus the conformance suite, before the interface is
-   advertised as stable — while the contract is still cheap to change.
-6. **Slack and email sources**; document the interface and the community-adapter story.
+> **The kill condition, as it was stated up front.** "The honest baseline is shipping nothing beyond
+> the delivery outbox… **If the phase-1 example comes out short without a pipeline, that alternative
+> wins and we take it.**" It did not come out short — but the reason to proceed turned out to be
+> different from the reason predicted. See the verdict below.
 
-> **The kill condition, stated up front.** The honest baseline is shipping nothing beyond
-> the delivery outbox: users write ingress in their own app, and often already have one since skein
-> mounts into Express/Fastify/Nest/Next. That alternative gives every integration correctness with
-> zero new concepts and zero maintenance — it just doesn't give anyone step 4, progress signalling,
-> or any guarantee that dedup and thread-keying were done right. **If the phase-1 example comes out
-> short without a pipeline, that alternative wins and we take it.** Phase 3 measures the delta
-> honestly, and if it isn't dramatic, ship only the helpers and stop.
+[`examples/whatsapp-typing`](https://github.com/skein-js/skein-js/tree/main/examples/whatsapp-typing)
+exists: all seven steps against today's public API, no pipeline, 14 offline tests, verified end to
+end against a live server including the async human-in-the-loop turn.
+
+**The measurement.** Non-comment, non-blank lines in the four integration files, excluding the graph
+(the user's product either way), the Twilio transport seam, the server bootstrap, and the tests:
+
+| Step                                | File                  | Code lines |
+| ----------------------------------- | --------------------- | ---------: |
+| 1 · verify                          | `twilio-signature.ts` |         32 |
+| 2 · dedup · 3 · thread · 4 · branch | `inbound-route.ts`    |        137 |
+| 6 · progress                        | `typing-indicator.ts` |         87 |
+| 5-out · 7 · deliver                 | `reply-route.ts`      |         78 |
+| **Total**                           |                       |    **334** |
+
+Against success criterion 1 — "under 60 lines of user code" — that is a **5.6× miss**, and the
+criterion should be read as aspirational rather than achieved. Steps 3 and 7 really are close to
+free, exactly as the genericity thesis predicted; the cost is concentrated in 1, 4 and 6.
+
+**But line count is the weaker half of the finding.** Three things turned out to be not merely
+tedious but _impossible or actively wrong_ in user code, and none of them were in this proposal:
+
+1. **An `interrupted` thread has no server-side protection.** `interrupted` is a **terminal** run
+   status ([`core/src/store/runs.ts:239`](https://github.com/skein-js/skein-js/blob/main/packages/core/src/store/runs.ts);
+   the comment above `hasActiveRun` says so outright), so `createIfThreadIdle` sees an idle thread
+   and a plain start on an interrupted thread **succeeds**, silently discarding the pending
+   interrupt — no 422, no warning, no log line. `multitask_strategy` guards only `pending`/`running`
+   and cannot help. An in-process mutex closes the `idle → busy` window; nothing closes
+   `idle → interrupted` across replicas, because there is no `if_thread_status` on run create and
+   the engine's own per-thread lock is internal. **This is the proposal's strongest justification and
+   it was previously stated only as a default (`onExisting: "resume"`), not as a missing primitive.**
+2. **`Idempotency-Key` fires on correct behaviour.** `requestFingerprint` hashes the request body. A
+   provider retry that correctly re-reads the thread and derives a _resume_ instead of a _start_
+   sends the same key with a different body and is refused `422 idempotency_key_reused`. The header
+   assumes a client replaying a fixed request; a webhook derives its body from mutable server state.
+   Splitting the key per branch is worse — then the retry really does create a second run. The only
+   correct user-side handling is to catch 409 and 422 and answer the provider 2xx anyway.
+3. **The interrupt question is unreachable from the callback.** `buildDeliveryPayload` sends
+   `{...run, values, run_started_at, run_ended_at}`; the interrupt payload lives in the thread
+   snapshot's `tasks[].interrupts` and is not part of `values`. Rendering the question therefore
+   costs a second round trip to `threads.get`, and skipping it strands the conversation permanently
+   with nothing reported anywhere.
+
+**Four smaller findings, all fixable independently of the pipeline:**
+
+- `equalsConstantTime` is not exported, so every source author hand-rolls a timing-safe compare —
+  including the length guard, without which `timingSafeEqual` _throws_ and a forged short signature
+  becomes a 500 instead of a 401. `verifySkeinSignature` does not transfer (it is skein's outbound
+  format); only its shape does.
+- **`embedInMemoryGraphs` sets no `webhooks`**, and `SKEIN_WEBHOOK_SECRET` is read only on the
+  `{ config }` path — so an embedded host that follows the docs gets working but **unsigned**
+  callbacks. A fail-open indistinguishable from a working setup. Worth fixing on its own.
+- **`ProtocolRuntime` exposes no `deps`**, so the run event bus is unreachable on the `{ config }`
+  path every CLI deployment takes. The example uses `runs.joinStream` instead, which costs an HTTP
+  connection per in-flight conversation — the load question under Open questions is real, and the
+  cheap path is available only to hosts that hand-built their deps.
+- **The official SDK cannot express the request.** `RunsCreatePayload` has no `headers`, so the one
+  header skein asks webhook callers to send cannot be set per request; `AsyncCaller` also retries and
+  hides the status code the route must read. The example drops to raw `fetch` for run creation.
+
+**Corrections to this proposal, from building it:**
+
+- Twilio's typing indicator is keyed on the **inbound `MessageSid`**, so `idempotencyKey` and
+  `replyTo` are the same value for the motivating provider, and it **auto-clears on delivery** —
+  there is no "stop typing" call, which means `RunSignal`'s `settled` kind buys nothing here. Since
+  `RunSignal` would be permanent public API, that is worth resolving before it ships.
+- Phase 1 assumed the typing indicator would be "wired by hand off the existing run event bus". It
+  cannot be, for the `deps` reason above. The phrasing should be `runs.joinStream`.
+
+**Verdict: proceed, with the justification rewritten.** The case for the pipeline is _not_ the 334
+lines — a determined user can write those once and copy them. It is that three of the seven steps
+cannot be made correct from user code at all, and that the failures are silent: a discarded
+interrupt, a retry refused for being right, a question never asked. Those are precisely the failures
+the proposal predicted would "land in front of end users rather than in a test".
+
+## What we need to build
+
+Phase 1 changed the shape of this work. Three of its findings are **missing primitives, not a missing
+pipeline** — each is a defect on its own terms, each is useful to someone who never adopts
+`EventSource`, and each would otherwise get quietly absorbed into a big feature where nobody could
+adopt it separately. Golden rule 1 says build the primitive, not the feature, so those come first.
+
+Stage 0 is worth doing **even if the pipeline is never built**. That is the test each item had to
+pass to be in it.
+
+### Stage 0 — the missing primitives
+
+| #   | What                                       | Why it is a defect today                                           | Blocks |
+| --- | ------------------------------------------ | ------------------------------------------------------------------ | ------ |
+| 0.1 | A thread-status precondition on run create | A start on an `interrupted` thread silently discards the interrupt | step 4 |
+| 0.2 | Pending interrupts in the delivery payload | The question a run is waiting on is unreachable from the callback  | step 5 |
+| 0.3 | Export the signature-verification helpers  | Every source author hand-rolls a timing-safe compare               | step 1 |
+| 0.4 | Close the embed-path signing fail-open     | `embedInMemoryGraphs` yields silently **unsigned** callbacks       | step 7 |
+
+**0.1 — a thread-status precondition on run create.** The load-bearing one. `interrupted` is a
+terminal run status, so `createIfThreadIdle` sees an idle thread and no multitask strategy guards it.
+The smallest primitive that fixes this is a **precondition**, not a policy:
+
+```jsonc
+// POST /threads/{id}/runs
+{ "assistant_id": "support", "input": …, "if_thread_status": ["idle", "error"] }
+// → 409 `thread_status_mismatch`, carrying the status actually observed
+```
+
+A precondition rather than the proposal's `onExisting` because **policy belongs to the deployment**:
+"a message on an interrupted thread is an answer" is true for WhatsApp and false for a Stripe event.
+`if_thread_status` lets the caller decide and makes the decision atomic; `onExisting` can then be
+built on top of it inside the pipeline rather than being the only way to get correctness. It also
+composes with `multitask_strategy` instead of overlapping it — that one guards `pending`/`running`,
+this one guards everything else.
+
+The check has to live **in the driver's atomic create**, alongside `createIfThreadIdle`'s existing
+condition — not merely under the engine's `locks.run(threadId, …)`, which is in-process and would
+leave the window open across replicas, exactly as the example's hand-written mutex does. That means
+no new storage and no new transaction shape, but it does mean both drivers plus the `SkeinStore`
+conformance suite.
+
+**0.2 — pending interrupts in the delivery payload.** `buildDeliveryPayload` sends
+`{...run, values, run_started_at, run_ended_at}`. Add the thread snapshot's pending interrupts, so a
+receiver can render the question without a second round trip — and, more importantly, so that
+"deliver the interrupt" is possible at all for a receiver that only has the callback:
+
+```jsonc
+{ "run_id": "…", "status": "interrupted", "values": { … }, "interrupts": [{ "value": … }] }
+```
+
+Additive, and only present on an `interrupted` run. Two things to settle: it must count toward
+`maxPayloadBytes` like `values` does, and it is stored at finalize time, so it is a snapshot rather
+than a live read — which is correct, since the body is stored and replayed verbatim.
+
+**0.3 — export the verification helpers.** `equalsConstantTime` is the concrete miss: unexported, and
+the length guard it carries is the difference between a 401 and a thrown 500 on a forged short
+signature. Export it, and add a vendor-neutral signature-header parser only once the Slack and Twilio
+recipes in stage 5 prove what shape it should have — one worked example is not enough to generalise
+from. `verifySkeinSignature` itself stays as-is: it is skein's outbound format and does not transfer.
+
+**0.4 — close the embed-path signing fail-open.** `embedInMemoryGraphs` (and the Postgres embedding)
+set no `webhooks`, and `SKEIN_WEBHOOK_SECRET` is read only on the `{ config }` path. An embedded host
+that follows the docs gets working, **unsigned** callbacks — indistinguishable from a correct setup.
+Read the same env var on the embed path, or refuse to sign silently and say so at boot.
+
+**Not ours, but log it:** `RunsCreatePayload` has no `headers`, so the official SDK cannot send
+`Idempotency-Key` per request. Worth an upstream issue on `@langchain/langgraph-sdk`; until then the
+documented answer is a per-request `Client` with `defaultHeaders`, or raw `fetch`.
+
+**Deliberately not in stage 0: the `Idempotency-Key` body-fingerprint problem** (finding 2). A
+webhook derives its request body from mutable server state, so a correct retry legitimately changes
+the body and is refused. Every fix — a fingerprint-exempt mode, a key that covers only the key —
+weakens a guard that exists to catch a real caller bug, and the pipeline can avoid the problem
+entirely by claiming the key _before_ deciding the branch. Leave the header alone and solve it in
+stage 2.
+
+### Stage 1 — raw bodies across the transports
+
+Unchanged from the original phase 2, and still a hard prerequisite: all six transports parse and
+discard, and `ProtocolRequest` has no field to carry bytes. Cheapest retention points are Fastify's
+content-type parser and the Fetch adapter's reader, which already hold the string; Express needs
+`express.json({ verify })` and Next.js Pages needs `bodyParser: false`. Phase 1 also surfaced that
+**mount order is a silent trap** — a raw-body route registered after `skeinRouter` cannot verify a
+signature — which is worth documenting regardless of whether this stage lands.
+
+### Stage 2 — the pipeline and `EventSource`
+
+As originally designed, with three corrections from phase 1:
+
+- `onExisting` is implemented **on top of 0.1**, not instead of it.
+- The pipeline claims the idempotency key **before** resolving the branch, which is what makes
+  finding 2 disappear rather than needing an escape hatch in the header.
+- Rendering an interrupt reads 0.2 from the outcome it already has, instead of a second `threads.get`.
+
+Port `examples/whatsapp-typing` onto it and re-measure against the 334-line baseline. Success
+criterion 1 ("under 60 lines") should be treated as a target to test, not a claim already banked.
+
+### Stage 3 — run signals
+
+Unchanged, with two corrections. `ProtocolRuntime` exposes no `deps`, so the projection has to be
+reachable without hand-built deps or every CLI deployment pays an HTTP connection per conversation —
+resolve that before the interface is advertised. And `RunSignal`'s `settled` kind buys nothing on the
+motivating provider, since Twilio's indicator auto-clears on delivery; since the union is permanent
+public API, justify each kind against a real consumer or drop it.
+
+### Stage 4 — a second, non-chat source, plus the conformance suite
+
+Unchanged: GitHub, before the interface is advertised as stable, while the contract is cheap to
+change. The adversarial source-conformance suite lands here.
+
+### Stage 5 — Slack and email, and the community-adapter story
+
+Unchanged.
+
+### What this order buys
+
+Stage 0 is four small, separately reviewable changes that make the _hand-written_ integration
+correct — which is the honest baseline this proposal is measured against, and the one most users will
+still be on. If stages 2–5 never happen, skein is strictly better for inbound work than it is today,
+and nobody is holding an `EventSource` they cannot withdraw.
+
+</details>

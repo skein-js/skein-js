@@ -53,13 +53,9 @@ and an open alternative to the second.
 | Cron / scheduled runs                    | ✅     | Full Crons resource + scheduler, every driver. [Details](./crons.md)                                                     |
 | Observability                            | ✅     | LangSmith, PostHog, OpenTelemetry. [Details](./observability.md)                                                         |
 | **Console / Studio equivalent**          | ✅     | Self-hosted at `/console` — no account, no tunnel. [Details](./console.md)                                               |
+| **Inbound channels**                     | ✅     | An agent behind WhatsApp, Slack or any webhook — one small file per integration. [Details](./channels.md)                |
 
 ## Planned
-
-- 🗺️ **Inbound events — agents behind WhatsApp, Slack and anything else.** The big one: a pipeline
-  plus an `EventSource` plugin interface, so putting an agent behind a provider is one small file
-  instead of six pieces of plumbing everyone re-solves. Generic over events, so a GitHub webhook fits
-  the same interface. [Design](./proposals/inbound-events.md).
 
 - 🗺️ **MCP endpoint**, **generative UI**, **`/docs` OpenAPI page** — the LangGraph parity backlog
   above, in priority order.

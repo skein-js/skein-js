@@ -61,18 +61,37 @@ export async function resolveRunPlan(
   }
 
   if (status === "interrupted") {
-    // The message answers the pending question. Resume with the event's input **verbatim** — the
-    // graph author wrote `interrupt()` and is the only party who knows whether that node wants
-    // `true`, `"approve"`, or free text, so coercing here would be guessing on their behalf.
+    // The message answers the pending question. Resumed **verbatim** — the graph author wrote
+    // `interrupt()` and is the only party who knows whether that node wants `true`, `"approve"`, or
+    // free text, so coercing here would be guessing on their behalf. A channel that needs the resume
+    // value to differ from its graph input says so with `resumeWith`; see `InboundEvent`.
     //
     // Guarded on `interrupted`: if the thread moved on between the read and the create — someone
     // answered from the console, a cron fired — this 409s rather than resuming an interrupt that is
     // no longer there.
-    return { run: { ...base, command: { resume: event.input }, ifThreadStatus: ["interrupted"] } };
+    const resume = event.resumeWith !== undefined ? event.resumeWith : event.input;
+    return { run: { ...base, command: { resume }, ifThreadStatus: ["interrupted"] } };
   }
 
-  // A fresh turn. Guarded so that a thread which becomes `interrupted` in the meantime is not
-  // trampled: the caller gets a 409 and can re-resolve, rather than silently discarding a question
-  // that arrived microseconds ago.
-  return { run: { ...base, input: event.input, ifThreadStatus: ["idle", "error", "busy"] } };
+  // A fresh turn, and it **enqueues**.
+  //
+  // The server's default `multitask_strategy` is `reject`, which would answer 422 when a customer
+  // sends a second message while the agent is still thinking — and for Twilio that renders as a failed
+  // message for having typed twice. A conversation wants ordering, not rejection.
+  //
+  // The status read above cannot be used to detect that case, which is worth knowing: a run that is
+  // still `pending` holds the thread but has not yet been mirrored onto the thread row, so the status
+  // reads `idle` while a create would be refused. `enqueue` is correct either way.
+  //
+  // Still guarded, so a thread that becomes `interrupted` between the read and the create is not
+  // trampled — the caller gets a 409 and re-resolves rather than silently discarding a question that
+  // arrived microseconds ago.
+  return {
+    run: {
+      ...base,
+      input: event.input,
+      multitaskStrategy: "enqueue",
+      ifThreadStatus: ["idle", "error", "busy"],
+    },
+  };
 }

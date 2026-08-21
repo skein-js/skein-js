@@ -277,6 +277,7 @@ export default withMermaid(
             { text: "Background jobs", link: "/background-jobs" },
             { text: "Crons", link: "/crons" },
             { text: "Webhooks & delivery", link: "/webhooks" },
+            { text: "Channels (WhatsApp, Slack, webhooks)", link: "/channels" },
           ],
         },
         {

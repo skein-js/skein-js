@@ -85,8 +85,21 @@ export interface InboundEvent {
   threadKey: string;
   /** The thread id outright, when a channel would rather choose it than have one derived. */
   threadId?: string;
-  /** Graph input, or a `Command` when this event resumes an interrupt. */
+  /** Graph input for a fresh turn. */
   input: unknown;
+  /**
+   * What to hand `interrupt()` when this event resumes a paused run, if not `input`.
+   *
+   * The proposal assumed the resume value could just be `input`. It cannot, and the reason generalises
+   * past chat: `input` is a *graph input envelope* — for a message-shaped graph, `{ messages: [...] }`
+   * — while `interrupt()` returns whatever the node asked for, which is usually a scalar the author
+   * chose (`true`, `"approve"`, the raw text). Passing the envelope hands the node an object it will
+   * stringify into nonsense, and the graph silently reads it as "no".
+   *
+   * Still no coercion by skein: the channel knows the payload, the graph author knows the node, and
+   * this is where the two agree. Defaults to `input` for a channel whose two shapes genuinely match.
+   */
+  resumeWith?: unknown;
   /** The provider's own event id, used to make retried deliveries idempotent. */
   idempotencyKey?: string;
   /** Handed back to `deliver` and `onSignal`. */
