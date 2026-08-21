@@ -21,6 +21,17 @@ exclude = [
   '^https?://(?:www\.)?npmjs\.com/',
 ]
 
+# A third rule lives in `.github/workflows/docs-check.yml` rather than here, because it needs the
+# absolute workspace path and this file cannot interpolate one: links to *this repo's own files*, written
+# as `github.com/skein-js/skein-js/blob/main/...`, are resolved against the working tree instead of
+# against GitHub.
+#
+# That is a stricter check, not a looser one. Against GitHub those URLs answer for whatever is on
+# `main`, so a pull request that *adds* a doc fails on links to the file it is adding, and — worse —
+# one that *deletes* a doc still passes, because `main` has not caught up. Resolving locally fixes both
+# directions. URLs carrying a fragment are left alone: `#readme` is a GitHub UI anchor, not something
+# that resolves against a directory on disk.
+#
 # Two places where the docs are written for VitePress's resolution rather than the filesystem's, so
 # lychee has to be told the same rules. These are *remaps*, not excludes, on purpose: the link is
 # still checked, just against the path VitePress would serve it from. An image that vanished, or a

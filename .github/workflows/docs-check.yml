@@ -73,6 +73,7 @@ jobs:
           args: >-
             --root-dir ${{ github.workspace }}
             --config lychee.toml
+            --remap 'https://github\.com/skein-js/skein-js/(?:blob|tree)/main/([^#]+)$ file://${{ github.workspace }}/$1'
             --no-progress
             README.md
             llms.txt
