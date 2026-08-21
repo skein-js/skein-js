@@ -44,6 +44,9 @@ function dependenciesFor(options: ScaffoldOptions): Record<string, string> {
     dependencies[provider.packageName] = provider.versionRange;
     // Only the agent graph uses zod (for its tool schema), so it follows the provider.
     dependencies["zod"] = CORE_VERSIONS["zod"];
+    // Likewise `langchain`, which is where `createAgent` lives — the agent graph is the only
+    // template that imports it, and it is only emitted when a provider was chosen.
+    dependencies["langchain"] = CORE_VERSIONS["langchain"];
   }
 
   return sortedByKey(dependencies);
