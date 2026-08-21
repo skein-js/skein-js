@@ -81,7 +81,7 @@ export type {
 // Verifying a skein callback. Exported for *receivers*: this package installs with no graph runtime,
 // so a service whose only relationship with skein is receiving callbacks can depend on it for this.
 export { SIGNATURE_HEADER, signDelivery } from "./crypto/sign-delivery.js";
-export { verifySkeinSignature } from "./crypto/verify-delivery.js";
+export { equalsConstantTime, verifySkeinSignature } from "./crypto/verify-delivery.js";
 export type {
   SignatureFailure,
   VerifySignatureInput,
@@ -103,6 +103,8 @@ export {
 } from "./deliveries/delivery-config.js";
 export type { DeliveryRetryConfig, WebhookDeliveryConfig } from "./deliveries/delivery-config.js";
 export { buildDeliveryPayload, toDeliveryBody } from "./deliveries/delivery-payload.js";
+// A graph declaring the answer that should be sent back — see `runs/declared-reply.ts`.
+export { DECLARED_REPLY_KEY, readDeclaredReply, replyWith } from "./runs/declared-reply.js";
 export { toDeliveryRequest } from "./deliveries/delivery-request.js";
 export type { DeliveryRequest } from "./deliveries/delivery-request.js";
 export { processDelivery } from "./deliveries/delivery-processor.js";

@@ -116,3 +116,50 @@ describe("delivery payload", () => {
     );
   });
 });
+
+describe("pending interrupts", () => {
+  const interrupts = { "task-1": [{ value: { question: "Refund £40?" } }] };
+
+  it("is absent on a run that is not waiting on anything", () => {
+    // The compatibility guarantee: a successful run's body is exactly what it was before this field
+    // existed, so no receiver sees a shape change it did not ask for.
+    expect(built().payload).not.toHaveProperty("interrupts");
+    expect(built({ interrupts: {} }).payload).not.toHaveProperty("interrupts");
+  });
+
+  it("carries the question a run is waiting on", () => {
+    // Otherwise unreachable from a callback: `values` is graph state, and an `interrupt()` payload is
+    // not part of it. Without this a receiver cannot ask the question, and the thread waits forever.
+    expect(built({ interrupts }).payload["interrupts"]).toEqual(interrupts);
+  });
+
+  it("counts toward the payload cap like values does", () => {
+    const big = { "task-1": [{ value: { question: "x".repeat(600) } }] };
+    expect(built({ interrupts: big, maxPayloadBytes: 500 }).truncated).toBe(true);
+  });
+
+  it("sacrifices values before interrupts", () => {
+    // The ordering that matters. Both are unbounded, but a receiver can act on a question without the
+    // state and cannot act on the state without the question.
+    const { payload } = built({
+      values: { transcript: "y".repeat(2000) } as unknown as DefaultValues,
+      interrupts,
+      maxPayloadBytes: 600,
+    });
+
+    expect(payload["values"]).toMatchObject({ $skein_truncated: true });
+    expect(payload["interrupts"]).toEqual(interrupts);
+  });
+
+  it("drops interrupts only when truncating values was not enough", () => {
+    const huge = { "task-1": [{ value: { question: "z".repeat(2000) } }] };
+    const { payload } = built({
+      values: { transcript: "y".repeat(2000) } as unknown as DefaultValues,
+      interrupts: huge,
+      maxPayloadBytes: 400,
+    });
+
+    expect(payload["values"]).toMatchObject({ $skein_truncated: true });
+    expect(payload["interrupts"]).toMatchObject({ $skein_truncated: true });
+  });
+});

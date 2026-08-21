@@ -102,14 +102,19 @@ function parseHeader(header: string): { timestampSeconds: number; v1: string } |
 }
 
 /**
- * Compare two hex digests without leaking where they diverge.
+ * Compare two signatures without leaking where they diverge.
  *
  * `===` on a signature is a timing oracle: it returns at the first differing byte, so an attacker who
  * can send many callbacks and measure the response can recover a valid signature one byte at a time.
  * The length check first is safe — `timingSafeEqual` throws on unequal lengths, and the length of a
  * digest is not a secret.
+ *
+ * **Exported for verifying *inbound* requests**, not just skein's own callbacks. Anyone checking a
+ * provider signature (Twilio's HMAC-SHA1, Slack's `v0:` scheme, a GitHub `X-Hub-Signature-256`) needs
+ * exactly this, and hand-rolling it is where the length guard gets left out — without it
+ * `timingSafeEqual` *throws*, turning a forged short signature into a 500 instead of a 401.
  */
-function equalsConstantTime(expected: string, actual: string): boolean {
+export function equalsConstantTime(expected: string, actual: string): boolean {
   const a = Buffer.from(expected, "utf8");
   const b = Buffer.from(actual, "utf8");
   return a.length === b.length && timingSafeEqual(a, b);
