@@ -35,4 +35,15 @@ export { channelThreadMetadata, threadIdForChannelKey } from "./channel/thread-i
 export { handleInboundEvent } from "./pipeline/handle-event.js";
 export type { PipelineDeps } from "./pipeline/handle-event.js";
 export { resolveRunPlan } from "./pipeline/resolve-run.js";
+export { wrapChannelDispatcher } from "./pipeline/deliver.js";
+export type { Dispatcher } from "./pipeline/deliver.js";
+export { resolveReply, toRunOutcome } from "./pipeline/resolve-reply.js";
+export type { DeliveryPayload } from "./pipeline/resolve-reply.js";
+export {
+  CHANNEL_DELIVERY_SCHEME,
+  isChannelDeliveryUrl,
+  parseChannelDeliveryUrl,
+  toChannelDeliveryUrl,
+} from "./pipeline/reply-target.js";
+export type { ChannelDeliveryTarget } from "./pipeline/reply-target.js";
 export type { RunPlan } from "./pipeline/resolve-run.js";

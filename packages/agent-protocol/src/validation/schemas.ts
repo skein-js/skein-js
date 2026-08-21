@@ -56,6 +56,20 @@ export const runCreateSchema = z
     webhook: z
       .string()
       .url()
+      // **`http`/`https` only.** `z.string().url()` accepts *any* scheme the platform URL parser
+      // does, and skein derives internal delivery URLs under its own scheme for a run whose reply
+      // belongs to a channel. Without this, a caller could name that scheme itself and have the
+      // server deliver a message of their choosing through somebody else's provider account — the
+      // delivery machinery cannot tell a caller-supplied URL from a server-derived one, so the
+      // boundary that can is this one. Documented as `http(s)` since the field shipped, so nothing
+      // legitimate is being taken away.
+      .refine(
+        (value) => {
+          const protocol = new URL(value).protocol;
+          return protocol === "http:" || protocol === "https:";
+        },
+        { message: "webhook must be an http(s) URL." },
+      )
       // `URL` canonicalizes the value the server stores, dispatches, and logs. In particular it
       // removes embedded ASCII control characters that `z.string().url()` accepts via the platform
       // URL parser, preventing a caller from forging additional log lines with the original text.
@@ -519,6 +533,14 @@ const cronRunPayloadSchema = z.object({
   webhook: z
     .string()
     .url()
+    // Same restriction, same reason, as the run-create copy above.
+    .refine(
+      (value) => {
+        const protocol = new URL(value).protocol;
+        return protocol === "http:" || protocol === "https:";
+      },
+      { message: "webhook must be an http(s) URL." },
+    )
     .transform((value) => new URL(value).href)
     .optional(),
   checkpoint_id: z.string().optional(),

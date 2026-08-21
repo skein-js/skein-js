@@ -6,6 +6,7 @@
 
 import {
   createProtocolRuntime,
+  fetchWebhookDispatcher,
   skeinRoutes,
   type RunWorker,
   type Logger,
@@ -251,6 +252,15 @@ export async function resolveProtocolRuntime(
         },
       })
     : undefined;
+
+  // Applied to `deps` *before* the runtime is built, so the engine records channel replies through
+  // the same outbox as any webhook — written in the run's finalize transaction, retried by the same
+  // worker, replayable from the same routes. Everything that is not a channel target falls through to
+  // whatever the deployment already had.
+  if (channelSurface) {
+    const inner = deps.webhookDispatcher ?? fetchWebhookDispatcher;
+    deps.webhookDispatcher = channelSurface.wrapDispatcher(inner) as typeof inner;
+  }
 
   const runtime = createProtocolRuntime(deps, {
     ...(channelSurface ? { handlers: channelSurface.handlers } : {}),

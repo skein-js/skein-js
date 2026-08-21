@@ -407,7 +407,14 @@ export function webhookTimeoutMs(): number {
 }
 
 /** POST the payload as JSON via the global `fetch`. The default {@link WebhookDispatcher}. */
-const fetchWebhookDispatcher: WebhookDispatcher = async (url, payload, attempt) => {
+/**
+ * The built-in dispatcher: POST the body over `fetch`.
+ *
+ * Exported so a caller that *wraps* dispatch — the channel surface routes its own scheme and lets
+ * everything else through — can fall back to exactly what an unconfigured deployment would have used,
+ * rather than reimplementing the timeout, the redaction and the scheme check below.
+ */
+export const fetchWebhookDispatcher: WebhookDispatcher = async (url, payload, attempt) => {
   // Only http(s): reject other schemes (`file:`, `data:`, …) up front rather than hand them to fetch.
   let scheme: string;
   try {

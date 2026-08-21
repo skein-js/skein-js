@@ -15,15 +15,32 @@ import type {
   ProtocolService,
   RouteBinding,
   RouteAuthz,
+  WebhookDispatcher,
 } from "@skein-js/agent-protocol";
 import { SkeinConfigError } from "@skein-js/config";
 import type { LoadedChannel } from "@skein-js/config";
 import { SkeinHttpError, type AuthContext, type Metadata } from "@skein-js/core";
 
+/**
+ * The outbox dispatcher, as this module composes it.
+ *
+ * Aliased to `WebhookDispatcher` rather than restated: the wrapper has to be droppable straight back
+ * onto `deps.webhookDispatcher`, and a structurally similar type with a looser `attempt` would not be
+ * assignable in that direction.
+ */
+type Dispatcher = WebhookDispatcher;
+
 /** What the channel surface adds to a runtime: routes to mount, and the handler they dispatch into. */
 export interface ResolvedChannels {
   routes: readonly RouteBinding[];
   handlers: ProtocolHandlerExtras;
+  /**
+   * Wrap the deployment's delivery dispatcher so a channel's replies ride the outbox.
+   *
+   * Applied to `deps` before the runtime is built, so a channel reply is written in the run's finalize
+   * transaction and retried by the same worker as any webhook — no second mechanism to make crash-safe.
+   */
+  wrapDispatcher(inner: Dispatcher): Dispatcher;
 }
 
 export interface ResolveChannelsInput {
@@ -76,6 +93,12 @@ export async function resolveChannels(
 
   return {
     routes: channels.channelRouteBindings(registry.names),
+    wrapDispatcher: (inner) =>
+      channels.wrapChannelDispatcher({
+        registry,
+        inner,
+        logger: input.deps.logger ?? console,
+      }),
     handlers: {
       handleInboundEvent: async (req: ProtocolRequest): Promise<ProtocolResponse> => {
         // The route is one literal path per channel, so the name is recoverable from the path and an
@@ -161,6 +184,7 @@ function buildPipelineDeps(deps: ProtocolDeps, service: () => ProtocolService) {
       multitaskStrategy?: "reject" | "interrupt" | "rollback" | "enqueue";
       streamMode: readonly string[];
       metadata?: Metadata;
+      webhook?: string;
     }) => {
       // The service, not HTTP. The pipeline runs in-process, so it never meets the SDK's missing
       // `headers` field or `AsyncCaller`'s retries — both of which forced the hand-written version of
@@ -172,6 +196,7 @@ function buildPipelineDeps(deps: ProtocolDeps, service: () => ProtocolService) {
         ...(input.ifThreadStatus ? { if_thread_status: [...input.ifThreadStatus] } : {}),
         ...(input.multitaskStrategy ? { multitask_strategy: input.multitaskStrategy } : {}),
         ...(input.metadata ? { metadata: input.metadata } : {}),
+        ...(input.webhook ? { webhook: input.webhook } : {}),
         stream_mode: [...input.streamMode] as never,
       });
       return { runId: run.run_id };
@@ -186,6 +211,11 @@ interface ChannelsModule {
     graphIds: readonly string[];
   }): { names: readonly string[]; get(name: string): unknown };
   channelRouteBindings(names: readonly string[]): RouteBinding[];
+  wrapChannelDispatcher(options: {
+    registry: unknown;
+    inner: Dispatcher;
+    logger: { warn(message: string, error?: unknown): void };
+  }): Dispatcher;
   handleInboundEvent(registered: unknown, raw: unknown, deps: unknown): Promise<ProtocolResponse>;
 }
 
