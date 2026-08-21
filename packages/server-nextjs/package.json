@@ -50,7 +50,7 @@
     "next": ">=14.0.0"
   },
   "devDependencies": {
-    "@langchain/core": "^1.2.0",
+    "@langchain/core": "^1.2.9",
     "@langchain/langgraph": "^1.4.0",
     "@skein-js/langgraph": "workspace:*",
     "@skein-js/storage-memory": "workspace:*"

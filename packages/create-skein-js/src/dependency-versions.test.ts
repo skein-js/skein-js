@@ -31,12 +31,15 @@ describe("the versions a scaffolded project pins", () => {
   const example = readManifest("examples/express-basic/package.json");
   const exampleVersions = { ...example.dependencies, ...example.devDependencies };
 
-  it.each(["@langchain/core", "@langchain/langgraph", "@langchain/langgraph-sdk", "zod"] as const)(
-    "pins %s to the range examples/express-basic uses",
-    (packageName) => {
-      expect(CORE_VERSIONS[packageName]).toBe(exampleVersions[packageName]);
-    },
-  );
+  it.each([
+    "@langchain/core",
+    "@langchain/langgraph",
+    "@langchain/langgraph-sdk",
+    "langchain",
+    "zod",
+  ] as const)("pins %s to the range examples/express-basic uses", (packageName) => {
+    expect(CORE_VERSIONS[packageName]).toBe(exampleVersions[packageName]);
+  });
 
   it("pins @langchain/google-genai to the range examples/express-basic uses", () => {
     expect(PROVIDER_DETAILS.google.versionRange).toBe(exampleVersions["@langchain/google-genai"]);

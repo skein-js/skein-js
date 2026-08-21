@@ -59,7 +59,7 @@
   },
   "devDependencies": {
     "langsmith": "^0.7.3",
-    "@langchain/core": "^1.2.0"
+    "@langchain/core": "^1.2.9"
   },
   "publishConfig": {
     "access": "public"
