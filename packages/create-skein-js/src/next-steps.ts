@@ -45,6 +45,19 @@ export function describeNextSteps(
   if (!outcome.installed) {
     lines.push(`  ${cyan(`${options.packageManager} install`)}`);
   }
+  // Listed as a *step*, in sequence and in color, rather than as a footnote after the URLs. Someone
+  // who scrolls past a dim aside gets a graph that fails to load on first boot, and the reason for it
+  // is then something they have to read out of a stack trace instead of out of this list.
+  //
+  // Never "cp .env.example .env": the scaffolder already wrote .env, and preserved one that was
+  // already there. Telling someone to copy over it would destroy exactly the credentials that
+  // preservation exists to protect.
+  if (options.provider !== "none") {
+    const provider = PROVIDER_DETAILS[options.provider];
+    lines.push(
+      `  ${yellow(`Set ${provider.apiKeyEnvVar} in .env`)}   ${dim(`— uncomment it; get a key at ${provider.consoleUrl}`)}`,
+    );
+  }
   lines.push(`  ${cyan(runCommand(options, "dev"))}`, "");
 
   lines.push(
@@ -54,13 +67,9 @@ export function describeNextSteps(
   );
 
   if (options.provider !== "none") {
-    const provider = PROVIDER_DETAILS[options.provider];
     lines.push(
-      `  ${dim("The `echo` graph needs no key. For `agent`:")}`,
-      // Never "cp .env.example .env": the scaffolder already wrote .env, and preserved one that was
-      // already there. Telling someone to copy over it would destroy exactly the credentials that
-      // preservation exists to protect.
-      `  ${dim(`uncomment ${provider.apiKeyEnvVar} in .env`)}`,
+      `  ${dim("Only the `agent` graph needs that key — `echo` runs without one, so you can")}`,
+      `  ${dim("start the server and talk to it before you have set anything up.")}`,
       "",
     );
   }

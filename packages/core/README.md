@@ -37,6 +37,8 @@ them. Everything downstream imports it:
 - **`SkeinHttpError`** — the typed edge error carrying an HTTP status.
 - **`RunError`** / **`toRunError`** — why a run failed, as one JSON-safe payload shared by the
   `error` SSE frame, the persisted `Run.error`, and a failed `POST /runs/wait`.
+- **`rootCause`** / **`rootCauseMessage`** — the deepest link of an `Error.cause` chain, for the
+  places with room for one sentence rather than the whole chain.
 - **`serializeWireJson`** — flattens LangChain messages to the Agent Protocol wire shape for output.
 
 ## Install

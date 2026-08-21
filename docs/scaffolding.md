@@ -94,6 +94,10 @@ pnpm create skein-js my-agent --provider anthropic
 With a provider you also get a ReAct agent wired to a live weather tool that needs no key of its own,
 so the agent is genuinely runnable the moment you add your model key.
 
+Until the key is set, `agent` fails to load naming the variable it wants — a
+[load-failure block](./errors-and-logging.md#the-load-failure-block), while `echo` keeps serving.
+`skein dev` watches `.env`, so filling the key in takes effect on save.
+
 ### Behaviour you can rely on
 
 - **It never hangs unattended.** Prompts appear only when both streams are a TTY, `--yes` was not

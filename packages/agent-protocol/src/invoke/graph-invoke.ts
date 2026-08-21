@@ -38,6 +38,7 @@ import { authValue } from "../auth/route-authz.js";
 import type { ProtocolHandler, ProtocolRequest, ProtocolResponse } from "../create-handlers.js";
 import { resolveDeps, type ProtocolDeps } from "../deps.js";
 import { requireAgentCapability } from "../graphs/agent-graph.js";
+import { graphLoadHttpError } from "../graphs/load-graph.js";
 import { resolveCompiledGraph } from "../graphs/resolve-compiled-graph.js";
 import type { RouteBinding } from "../http/routes.js";
 import { toError } from "../runs/run-failure.js";
@@ -208,11 +209,20 @@ export function createGraphInvokeHandler(
 
     // A fresh saver + thread id per call: graphs that require a checkpointer run, nothing persists.
     const factoryConfigurable = withAuthUser({}, authContext?.user, authContext?.scopes);
-    const graph = await resolveCompiledGraph(deps.graphs, graphId, {
-      configurable: Object.keys(factoryConfigurable).length > 0 ? factoryConfigurable : undefined,
-      checkpointer: deps.ephemeralCheckpointer?.(),
-      store: deps.storeBridge?.(deps.store.store),
-    });
+    // This sits ahead of the try/catch that turns a *run* failure into a `RunError`, so without this
+    // a graph that cannot be imported escapes raw to the adapter — an opaque 500 for the caller and
+    // a stack logged on every request. Mapped here rather than inside `resolveCompiledGraph` so the
+    // run engine, which shares it, keeps reporting through `toRunError` untouched.
+    let graph;
+    try {
+      graph = await resolveCompiledGraph(deps.graphs, graphId, {
+        configurable: Object.keys(factoryConfigurable).length > 0 ? factoryConfigurable : undefined,
+        checkpointer: deps.ephemeralCheckpointer?.(),
+        store: deps.storeBridge?.(deps.store.store),
+      });
+    } catch (error) {
+      throw graphLoadHttpError(error, graphId, deps.exposeErrorStacks === true);
+    }
 
     const threadId = randomUUID();
     const configurable = withAuthUser(

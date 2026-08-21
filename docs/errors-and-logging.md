@@ -244,6 +244,46 @@ Two parts are best-effort and are simply omitted when unavailable, never faked:
   region after the header, and reads only files resolving inside the project root — so a crafted
   message cannot steer it into reading an unrelated file.
 
+### The load-failure block
+
+A graph can fail the other way too — never loading at all, because importing its module threw. That
+is the failure a fresh project hits first, and almost always for one reason: the graph builds a model
+client at module scope and the API key is not set.
+
+`skein dev` and `skein start` import every declared graph once at startup, **after** the banner, and
+report each failure as its own block:
+
+```
+error: graph "agent" failed to load
+
+       ────────────────────── GRAPH FAILED TO LOAD ──────────────────────
+       graph     agent
+       source    src/agent-graph.ts:68
+
+         66 | const apiKey = process.env.GOOGLE_API_KEY;
+         67 | if (!apiKey) {
+       > 68 |   throw new Error(
+            |   ^
+
+       GOOGLE_API_KEY is not set — the "agent" graph needs it. Uncomment it in
+       .env (get a key at https://aistudio.google.com/apikey) and save; the dev
+       server picks it up on reload. The "echo" graph needs no key.
+
+       SkeinConfigError: Failed to import graph module ".../src/agent-graph.ts".
+       caused by: Error: GOOGLE_API_KEY is not set — the "agent" graph needs it. …
+       ──────────────────────────────────────────────────────────────────
+```
+
+The headline is the **root** of the `cause` chain, not the wrapper: `SkeinConfigError` says _where_
+the failure happened, and only its cause says _what_ went wrong. The code frame follows the root's
+stack for the same reason — the wrapper's stack is nothing but skein frames. The full chain still
+prints underneath.
+
+One graph that cannot load never takes the server down; the rest keep serving. Under `skein dev` the
+project's `.env` is watched, so filling in the missing key and saving reloads the graphs — a key that
+is _newly added_ takes effect, while changing one that is already set still needs a restart (the
+ambient environment outranks the file, by design).
+
 ## Errors at the edges
 
 Two typed errors, both carrying a `cause` that the CLI prints:
@@ -256,8 +296,29 @@ Two typed errors, both carrying a `cause` that the CLI prints:
   module that failed to import. Its `cause` is the actual import failure and its `details` are the
   Zod issues, so read past the top-level message.
 
-A graph that fails to _load_ during a run is not special-cased: it surfaces through the same failure
-path as one that throws, with the config error's `cause` chain intact.
+A graph that fails to _load_ during a **run** surfaces through the same failure path as one that
+throws, with the config error's `cause` chain intact — unchanged.
+
+On the surfaces that answer over HTTP directly — thread state and history, assistant introspection,
+the single-graph invoke handler — it is mapped to a `SkeinHttpError` carrying `code:
+"graph_load_failed"`, so it stops being an unhandled fault. How much of _why_ reaches the caller is
+governed by [`exposeErrorStacks`](#exposeerrorstacks), the same switch that governs stacks:
+
+|                                   | Body                                                                                                                |
+| --------------------------------- | ------------------------------------------------------------------------------------------------------------------- |
+| **`skein dev`** (on)              | `{"status":500,"message":"Graph \"agent\" failed to load: GOOGLE_API_KEY is not set …","code":"graph_load_failed"}` |
+| **`skein start`**, embedded (off) | `{"status":500,"message":"Graph \"agent\" failed to load.","code":"graph_load_failed"}`                             |
+
+The reason is withheld in production because a load failure's message is not skein's: `Cannot find
+module '/srv/app/dist/tools.js'` and `connect ECONNREFUSED 10.0.3.14:5432` are both ordinary ones,
+and they name server paths and internal hosts. The stack never travels either way.
+
+**The operator loses nothing.** Adapters log every `5xx` — including this one, typed or not — with
+the full `cause` chain, so the reason is always in your logs even when it is not on the wire.
+
+`rootCause(thrown)` / `rootCauseMessage(thrown)` (`@skein-js/core`) are what collapse a chain to one
+sentence, if you want the same in your own handler. Cycle-safe and depth-capped, like `toRunError` —
+which you want instead when a client should see _every_ layer.
 
 ## LangGraph Platform compatibility
 

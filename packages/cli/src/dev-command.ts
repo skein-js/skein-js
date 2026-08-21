@@ -27,7 +27,8 @@ import { skeinCliVersion } from "./cli-version.js";
 import { mountConsole } from "./console-mount.js";
 import { createDevLogger } from "./dev-logger.js";
 import { devStateFile, LANGGRAPH_DIR, STATE_DIR, writeDevStateFile } from "./dev-state.js";
-import { applyProjectEnv } from "./project-env.js";
+import { loadGraphsAndReportFailures } from "./graph-load-failure.js";
+import { applyProjectEnv, projectEnvPaths } from "./project-env.js";
 import { resolveRequestLog } from "./request-log.js";
 import { describeBindError, envHost, envPort } from "./serve-env.js";
 import { createShutdownHandler, forceExitDelayMs } from "./shutdown.js";
@@ -167,7 +168,9 @@ export async function runDev(options: DevCommandOptions): Promise<void> {
     server = await createExpressServer({
       deps: runtime.deps,
       cors: runtime.cors,
-      warm: true,
+      // Not `warm: true`. The eager load happens below, *after* the banner — see
+      // `loadGraphsAndReportFailures`. Warming here would put the one line that matters (a graph
+      // that cannot load, and why) above thirty lines of banner, where nobody sees it.
       logger: devLogger,
       requestLog: resolveRequestLog(options.requestLog, true),
       worker: { maxConcurrency: runConcurrency, shutdownGraceMs },
@@ -199,6 +202,12 @@ export async function runDev(options: DevCommandOptions): Promise<void> {
     },
     devLogger,
   );
+
+  // Import every graph now, below the banner, so a graph that cannot load says so where the eye
+  // already is — and says it once, rather than on every request that touches it. Failures are
+  // reported, never thrown: the keyless graph in a scaffolded project must keep serving while the
+  // model-backed one waits for its API key.
+  await loadGraphsAndReportFailures(runtime.deps.graphs, devLogger);
 
   let lastSaved: string | undefined;
   const saveState = () => {
@@ -233,18 +242,16 @@ export async function runDev(options: DevCommandOptions): Promise<void> {
       reloading = true;
       try {
         console.log("skein: change detected, reloading…");
+        // Re-read the project's env first, so the fix for the failure the last reload reported —
+        // "GOOGLE_API_KEY is not set" — takes effect by saving `.env`, not by restarting. Only
+        // *newly added* keys: `applyProjectEnv` fills holes and never clobbers, because the ambient
+        // environment has to keep outranking a file (see project-env.ts). Changing a key that is
+        // already set still needs a restart.
+        await applyProjectEnv(config, configDir);
         loader.clearCache();
         await runtime.reloadGraphs();
         // Re-import graphs: surfaces errors now and re-arms vite's watcher on the fresh module graph.
-        await Promise.all(
-          runtime.deps.graphs.ids.map((id) =>
-            runtime.deps.graphs.load(id).catch((error: unknown) => {
-              // The Error goes as meta, so the dev logger prints the stack and, for a config
-              // error, the `caused by:` chain that names the real import failure.
-              devLogger.error(`graph "${id}" failed to load`, error);
-            }),
-          ),
-        );
+        await loadGraphsAndReportFailures(runtime.deps.graphs, devLogger);
         console.log("skein: reloaded.");
       } catch (error) {
         // A bad config (e.g. langgraph.json edited to invalid JSON) rejects reloadGraphs. Log and
@@ -258,12 +265,21 @@ export async function runDev(options: DevCommandOptions): Promise<void> {
         }
       }
     };
-    loader.watcher.on("change", (file) => {
+    // `.env` sits inside the project but is not part of any module graph, so vite has no reason to
+    // watch it. Add it explicitly: uncommenting an API key there is the fix for the failure the
+    // startup report just printed, and it should land the same way a source edit does.
+    loader.watcher.add(projectEnvPaths(config, configDir));
+    const onFileEvent = (file: string): void => {
       // Defense in depth against a self-triggered loop: never reload on our own state writes.
       if (`${path.resolve(file)}${path.sep}`.startsWith(`${stateDir}${path.sep}`)) return;
       if (pending) clearTimeout(pending);
       pending = setTimeout(() => void reload(), RELOAD_DEBOUNCE_MS);
-    });
+    };
+    loader.watcher.on("change", onFileEvent);
+    // `add` too, not just `change`: the watcher runs with `ignoreInitial`, so a path that does not
+    // exist yet reports its creation as `add`. Writing a `.env` for the first time — the very case
+    // the env watch exists for — would otherwise never fire.
+    loader.watcher.on("add", onFileEvent);
   }
 
   const shutdown = createShutdownHandler({

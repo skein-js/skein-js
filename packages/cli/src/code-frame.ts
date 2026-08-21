@@ -138,10 +138,20 @@ function frameRegion(error: Error): string | undefined {
 }
 
 /**
+ * The first user-owned source location in `error`'s stack, when there is one. Exposed alongside
+ * {@link codeFrameForStack} so a report can name the file and line ("source src/agent-graph.ts:66")
+ * as well as draw the excerpt, without either caller re-parsing the stack — and without
+ * {@link frameRegion}, the security-relevant step, becoming public.
+ */
+export function userFrameForStack(error: Error): StackLocation | undefined {
+  return findUserFrame(frameRegion(error));
+}
+
+/**
  * The code frame for the first user-owned frame of `error`, when one can be produced. `sourceRoot`
  * bounds which files may be read.
  */
 export function codeFrameForStack(error: Error, sourceRoot: string): string | undefined {
-  const location = findUserFrame(frameRegion(error));
+  const location = userFrameForStack(error);
   return location ? renderCodeFrame(location, sourceRoot) : undefined;
 }

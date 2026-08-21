@@ -26,6 +26,7 @@ import { authFiltersToMetadataSubset } from "../auth/auth-filters-to-metadata.js
 import type { ProtocolContext } from "../context.js";
 import type { GraphSchemas } from "../deps.js";
 import { requireAgentCapability, type AgentGraph } from "../graphs/agent-graph.js";
+import { graphLoadHttpError, loadGraphOrThrow } from "../graphs/load-graph.js";
 import { collectPages } from "../store/collect-pages.js";
 import type { ThreadService } from "../threads/thread-service.js";
 
@@ -161,10 +162,26 @@ export function createAssistantService(
     return owned;
   };
 
+  // Schema extraction fails the same way a graph load does — a syntax error, a bad import — and it
+  // reached the adapter untyped, which is the opaque-500-plus-stack-per-request this maps away. Same
+  // `graph_load_failed` code as `loadGraphOrThrow`: to a caller, "this graph is not usable" is one
+  // condition however skein happened to discover it.
+  const loadSchemasOrThrow = async (graphId: string): Promise<GraphSchemas> => {
+    try {
+      return await deps.graphs.schemas(graphId);
+    } catch (error) {
+      throw graphLoadHttpError(error, graphId, deps.exposeErrorStacks === true);
+    }
+  };
+
   // Compile the assistant's graph for introspection (draw/subgraphs). A factory export is built with
   // the assistant's own `configurable`, exactly as the run engine does, so its shape matches a run's.
   const compileGraph = async (assistant: Assistant): Promise<AgentGraph> => {
-    const resolved = await deps.graphs.load(assistant.graph_id);
+    const resolved = await loadGraphOrThrow(
+      deps.graphs,
+      assistant.graph_id,
+      deps.exposeErrorStacks === true,
+    );
     return typeof resolved === "function"
       ? await resolved(factoryConfigurable(assistant.config))
       : resolved;
@@ -209,7 +226,7 @@ export function createAssistantService(
 
     async schemas(assistantId) {
       const assistant = await requireAssistant(assistantId);
-      return deps.graphs.schemas(assistant.graph_id);
+      return loadSchemasOrThrow(assistant.graph_id);
     },
 
     async create({ ifExists, ...input }) {
@@ -272,7 +289,7 @@ export function createAssistantService(
     async subgraphs(assistantId, options) {
       const assistant = await requireAssistant(assistantId);
       const graph = requireAgentCapability(await compileGraph(assistant), "getSubgraphsAsync");
-      const schemas = await deps.graphs.schemas(assistant.graph_id);
+      const schemas = await loadSchemasOrThrow(assistant.graph_id);
       // Schemas are keyed by the root graph id (no `|`) and `${rootGraphId}|${namespace}` per
       // subgraph — mirror @langchain/langgraph-api's lookup. Iterating the compiled graph's actual
       // subgraphs is what tells us which namespaces exist (and honors namespace/recurse filters).

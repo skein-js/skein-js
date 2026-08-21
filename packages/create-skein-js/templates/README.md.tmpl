@@ -39,6 +39,9 @@ The `echo` graph runs with no credentials. The `agent` graph needs `<%= apiKeyEn
 # <%= apiKeyEnvVar %>=your-key-here     ← get one at <%= providerConsoleUrl %>
 ```
 
+Until you do, `agent` fails to load and says so, while `echo` keeps serving. Save the key in and the
+dev server reloads — no restart.
+
 <%_ } _%>
 ## Talk to it
 
