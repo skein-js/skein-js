@@ -626,6 +626,9 @@ importers:
         specifier: workspace:*
         version: link:../../packages/channels
     devDependencies:
+      '@skein-js/server-kit':
+        specifier: workspace:*
+        version: link:../../packages/server-kit
       skein-js:
         specifier: workspace:*
         version: link:../../packages/cli

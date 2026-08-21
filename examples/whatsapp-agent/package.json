@@ -16,6 +16,7 @@
     "@skein-js/channels": "workspace:*"
   },
   "devDependencies": {
+    "@skein-js/server-kit": "workspace:*",
     "skein-js": "workspace:*",
     "typescript": "^5.7.2"
   }
