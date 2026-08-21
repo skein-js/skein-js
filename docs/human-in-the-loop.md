@@ -84,6 +84,20 @@ the Interrupts view approves, rejects, or resumes with any JSON, without you bui
   for you.
 - **Resuming starts a new run.** The interrupted run is terminal; the resume is a fresh run on the
   same thread. So a webhook fires per run, and the run id you resumed with is not the id you get back.
+- **A plain start on a waiting thread is not refused for you.** Because the interrupted run is
+  _terminal_, the thread holds no inflight run — so `multitask_strategy`, which arbitrates
+  `pending`/`running`, never sees it, and a fresh start **succeeds** and discards the pending
+  question. Pass [`if_thread_status`](./runs.md#dont-start-a-run-on-a-thread-thats-waiting-for-a-human)
+  when the caller might not know the thread is waiting, which is every asynchronous channel:
+
+  ```ts
+  // 409 `thread_status_mismatch` instead of silently trampling the interrupt.
+  { assistant_id: "support", input, if_thread_status: ["idle", "error"] }
+  ```
+
+  The check runs inside the driver's atomic create, so it holds across replicas — an in-process lock
+  cannot give you this.
+
 - **Not available on `POST /invoke/:graph_id`**, which has no thread to park on. See
   [serving-a-single-graph.md](./serving-a-single-graph.md).
 

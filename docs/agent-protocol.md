@@ -231,6 +231,15 @@ can start a run without a round trip to create the thread first.
 All three thread-scoped run routes agree, and the default is the safe one — a mistyped thread id fails loudly rather than running against a fresh empty thread with none
 of the history the caller expected. Pass `if_not_exists: "create"` to restore the old behaviour.
 
+**`if_thread_status` on run creation.** A skein extension, and the counterpart to `multitask_strategy`:
+that one arbitrates `pending`/`running`, this one guards every other thread status. It matters most for
+`interrupted`, which is a **terminal** run status — a thread waiting on a human holds no inflight run,
+so no multitask strategy protects it and a plain start discards the pending interrupt. Send
+`if_thread_status: ["idle", "error"]` and an interrupted thread answers **409 `thread_status_mismatch`**
+with the observed status in `details`. Settled inside the driver's atomic create, so it holds across
+replicas. A storage driver that does not implement the precondition answers
+`501 if_thread_status_unsupported` rather than degrading to a non-atomic check.
+
 A thread created this way still belongs to the **caller**, not to the run: `on_completion: "delete"`
 never removes it, because the caller named it. Only a thread the server minted (no `thread_id` at all)
 is the run's to delete.

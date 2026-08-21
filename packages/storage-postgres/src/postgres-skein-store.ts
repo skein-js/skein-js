@@ -30,6 +30,7 @@ import {
   type DeliveryStatus,
   type DueDeliveriesQuery,
   type FinalizedRun,
+  type GuardedRunCreate,
   type IdempotencyRecord,
   type IdempotencyRepo,
   type IdempotencyStatus,
@@ -37,6 +38,7 @@ import {
   type RecordedResponse,
   type Run,
   type RunCreate,
+  type RunCreateGuard,
   type RunError,
   type RunFinalization,
   type RunKwargs,
@@ -60,6 +62,7 @@ import {
   type ThreadCreate,
   type ThreadRepo,
   type ThreadSearchQuery,
+  type ThreadStatus,
   type ThreadUpdate,
 } from "@skein-js/core";
 import { Pool, type PoolClient } from "pg";
@@ -1835,6 +1838,41 @@ export class PostgresSkeinStore implements SkeinStore {
         if (inflight[0]?.exists) return null;
 
         return insertRun(client, input);
+      });
+    },
+    createIfThreadMatches: async (
+      input: RunCreate,
+      guard: RunCreateGuard,
+    ): Promise<GuardedRunCreate> => {
+      // The same thread-row lock `createIfThreadIdle` takes, for the same reason — and both guards are
+      // settled inside it, so a request cannot pass one and fail the other against different states.
+      // The lock also makes the status read below authoritative: the run engine's mirror write has to
+      // queue behind us to change it.
+      return this.#withTransaction(async (client) => {
+        const { rows: threadRows } = await client.query<{
+          thread_id: string;
+          status: ThreadStatus;
+        }>("SELECT thread_id, status FROM threads WHERE thread_id = $1 FOR UPDATE", [
+          input.thread_id,
+        ]);
+        const thread = threadRows[0];
+        // An unknown thread is not a guard refusal — see the memory driver, which throws the same 404
+        // rather than reporting a mismatch the caller could retry into existence.
+        if (!thread) throw SkeinHttpError.notFound(`Thread "${input.thread_id}" not found.`);
+
+        if (guard.threadStatusIn && !guard.threadStatusIn.includes(thread.status)) {
+          return { refused: "thread_status_mismatch", status: thread.status };
+        }
+
+        if (guard.requireNoActiveRun) {
+          const { rows: inflight } = await client.query<{ exists: boolean }>(
+            `SELECT EXISTS(SELECT 1 FROM runs WHERE thread_id = $1 AND status IN (${INFLIGHT_STATUS_SQL})) AS exists`,
+            [input.thread_id],
+          );
+          if (inflight[0]?.exists) return { refused: "thread_busy" };
+        }
+
+        return { run: await insertRun(client, input) };
       });
     },
     setStatus: async (runId, status: RunStatus, error?: RunError) => {

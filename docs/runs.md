@@ -136,6 +136,49 @@ One more worth knowing, though it matches LangGraph: **naming a thread that does
 which is how you start a run keyed on an external identity (a phone number, a ticket id) without a
 round trip to create the thread first.
 
+## Don't start a run on a thread that's waiting for a human
+
+`interrupt()` leaves a thread parked until someone answers, and the run that parked it is **terminal**
+— `interrupted` is a finished status, so the thread holds no inflight run. That means
+`multitask_strategy` cannot protect it: every strategy, including the default `reject`, arbitrates
+`pending` and `running` only. A plain start on an interrupted thread therefore **succeeds**, and the
+pending question is discarded with no error and no log line.
+
+`if_thread_status` is how you say "only if nobody is waiting":
+
+```ts
+await fetch(`${url}/threads/${threadId}/runs`, {
+  method: "POST",
+  headers: { "content-type": "application/json" },
+  body: JSON.stringify({
+    assistant_id: "support",
+    input: { messages: [{ role: "human", content: text }] },
+    if_thread_status: ["idle", "error"],
+  }),
+});
+// → 409 { code: "thread_status_mismatch", details: { status: "interrupted" } }
+```
+
+The check happens **inside the driver's atomic create**, alongside the one `multitask_strategy: "reject"`
+already uses — so two replicas racing the same thread cannot both win. An in-process mutex cannot give
+you this; the window is between processes.
+
+The 409 carries the status it actually observed, so you can branch without a second read that might
+see a third value. The usual branch for an async chat channel is: refused with `interrupted` → resume
+the pending interrupt instead of starting a new run.
+
+```ts
+// The reply hours later is an answer, not a new conversation.
+body: JSON.stringify({ assistant_id: "support", command: { resume: text } });
+```
+
+It composes with `multitask_strategy` rather than overlapping it — that one guards `pending`/`running`,
+this one guards everything else. Omit the field and run creation behaves exactly as it always has.
+
+A storage driver that does not implement the precondition answers `501 if_thread_status_unsupported`
+rather than quietly falling back to a read-then-create, because a non-atomic fallback looks like it
+works right up until two replicas race. Both first-party drivers implement it.
+
 ## Don't create the same run twice
 
 A retrying caller — Stripe, GitHub, Twilio, or your own sweep — should not start a second run. Send an

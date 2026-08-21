@@ -15,6 +15,7 @@ import {
   type Metadata,
   type MultitaskStrategy,
   type Run,
+  type RunCreate,
   type RunError,
   type RunFrame,
   type RunKwargs,
@@ -23,6 +24,7 @@ import {
   type RunTrigger,
   type StreamMode,
   type Thread,
+  type ThreadStatus,
 } from "@skein-js/core";
 
 import { toStoredRollbackPlan, type ProtocolContext, type RollbackPlan } from "../context.js";
@@ -81,6 +83,19 @@ export interface CreateRunInput {
    * into the default.
    */
   on_disconnect?: "cancel" | "continue";
+  /**
+   * Create the run **only if** the thread's status is one of these, atomically — otherwise 409
+   * `thread_status_mismatch`, carrying the status actually observed.
+   *
+   * A precondition rather than a policy, because whether an inbound message on an `interrupted`
+   * thread is an answer to the pending question or an unrelated request is a deployment's call, not
+   * the server's. `["idle", "error"]` is the "don't trample a human-in-the-loop pause" spelling.
+   *
+   * It composes with {@link multitask_strategy} rather than overlapping it: that one arbitrates
+   * `pending`/`running`, this one guards every other status — including `interrupted`, which is
+   * *terminal*, holds no inflight run, and is therefore invisible to every multitask strategy.
+   */
+  if_thread_status?: ThreadStatus[];
 }
 
 /**
@@ -404,20 +419,63 @@ export function createRunService(ctx: ProtocolContext): RunService {
     return locks.run(threadId, async () => {
       const strategy = input.multitask_strategy ?? "reject";
 
+      // A thread-status precondition, when the caller sent one, is applied at whichever insert the
+      // chosen strategy reaches — never as a path of its own. Short-circuiting here instead would skip
+      // the displacement `interrupt`/`rollback` owe (their active runs would never be cancelled), so
+      // the guard rides along with the existing flow rather than replacing it.
+      const guardedInsert = async (
+        create: RunCreate,
+        requireNoActiveRun: boolean,
+      ): Promise<Run | "thread_busy"> => {
+        if (!input.if_thread_status) {
+          if (!requireNoActiveRun) return deps.store.runs.create(create);
+          return (await deps.store.runs.createIfThreadIdle(create)) ?? "thread_busy";
+        }
+        const guardedCreate = deps.store.runs.createIfThreadMatches;
+        if (!guardedCreate) {
+          // Refused rather than silently degraded to a read-then-create: a non-atomic fallback looks
+          // like it works until two replicas race, which is the failure this field exists to prevent.
+          // 501 because it is the deployment's storage driver that cannot serve the request, not the
+          // request that is malformed.
+          throw SkeinHttpError.notImplemented(
+            "`if_thread_status` needs a storage driver implementing `createIfThreadMatches`; " +
+              "this deployment's driver does not.",
+            { code: "if_thread_status_unsupported" },
+          );
+        }
+        const result = await guardedCreate.call(deps.store.runs, create, {
+          ...(requireNoActiveRun ? { requireNoActiveRun: true } : {}),
+          threadStatusIn: input.if_thread_status,
+        });
+        if ("run" in result) return result.run;
+        if (result.refused === "thread_busy") return "thread_busy";
+        // 409 rather than a third 422 on this route: `thread_busy` and `idempotency_key_in_flight`
+        // both mean "retry the same request later", while this one means the caller's assumption about
+        // the thread was wrong and it must re-read and re-decide. The observed status rides the error so
+        // it can do that without a second read that might see a third value.
+        throw SkeinHttpError.conflict(
+          `Thread status is "${result.status}", which is not in the requested if_thread_status.`,
+          { code: "thread_status_mismatch", details: { status: result.status } },
+        );
+      };
+
       // `reject` is decided by the *driver*, in one atomic check-and-insert, so two instances racing the
       // same thread cannot both win. The in-process lock around it is still worth holding — it keeps a
       // single process from spending a round trip per concurrent request to lose the same race — but it
       // is no longer what makes this correct.
       if (strategy === "reject") {
-        const created = await deps.store.runs.createIfThreadIdle({
-          thread_id: threadId,
-          assistant_id: assistantId,
-          status: "pending",
-          metadata: input.metadata,
-          multitask_strategy: strategy,
-          kwargs,
-        });
-        if (!created) {
+        const created = await guardedInsert(
+          {
+            thread_id: threadId,
+            assistant_id: assistantId,
+            status: "pending",
+            metadata: input.metadata,
+            multitask_strategy: strategy,
+            kwargs,
+          },
+          true,
+        );
+        if (created === "thread_busy") {
           // Matches @langchain/langgraph-api: 422, with the same message.
           throw SkeinHttpError.unprocessable(
             "Thread is already running a task. Wait for it to finish or choose a different multitask strategy.",
@@ -449,19 +507,34 @@ export function createRunService(ctx: ProtocolContext): RunService {
         // (startRunExecution) makes it wait behind the active run.
       }
 
-      const created = await deps.store.runs.create({
-        thread_id: threadId,
-        assistant_id: assistantId,
-        status: "pending",
-        metadata: input.metadata,
-        multitask_strategy: strategy,
-        // The plan rides the run's own kwargs, so whichever instance ends up executing this run applies
-        // it — and so a run recovered after a crash still cleans up what it displaced. Written with the
-        // rest of the kwargs, costing no extra round trip.
-        kwargs: rollbackPlan
-          ? { ...kwargs, rollback_plan: toStoredRollbackPlan(rollbackPlan) }
-          : kwargs,
-      });
+      // `false`: these strategies have just displaced or queued behind the thread's active runs, so an
+      // inflight check here would refuse the create they exist to allow. A thread-status precondition,
+      // if the caller sent one, still applies.
+      const created = await guardedInsert(
+        {
+          thread_id: threadId,
+          assistant_id: assistantId,
+          status: "pending",
+          metadata: input.metadata,
+          multitask_strategy: strategy,
+          // The plan rides the run's own kwargs, so whichever instance ends up executing this run
+          // applies it — and so a run recovered after a crash still cleans up what it displaced.
+          // Written with the rest of the kwargs, costing no extra round trip.
+          kwargs: rollbackPlan
+            ? { ...kwargs, rollback_plan: toStoredRollbackPlan(rollbackPlan) }
+            : kwargs,
+        },
+        false,
+      );
+      // Unreachable: `guardedInsert` only reports `thread_busy` when asked to check, which is the
+      // `reject` branch above. Narrowing rather than asserting, so a future caller that does ask here
+      // has to decide what it means instead of getting a `Run` that is a string.
+      if (created === "thread_busy") {
+        throw SkeinHttpError.unprocessable(
+          "Thread is already running a task. Wait for it to finish or choose a different multitask strategy.",
+          { code: "thread_busy" },
+        );
+      }
       // Also noted in-process, as the fast path for the common single-instance case: the executing run
       // then needs no read to discover it has work to do first.
       if (rollbackPlan) ctx.rollbackPlans.set(created.run_id, rollbackPlan);
