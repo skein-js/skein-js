@@ -213,6 +213,44 @@ describe("provider selection", () => {
     expect(agentGraph.contents).toContain(details.defaultModel);
   });
 
+  it("declares every package the generated source imports", () => {
+    // The general form of a bug that shipped: the `createReactAgent` -> `createAgent` migration
+    // rewrote the agent template to `import { createAgent } from "langchain"` and added the version
+    // to the shared table, but never added `langchain` to the generated manifest. Every scaffolded
+    // project with a provider then failed `tsc --noEmit` on its very first typecheck — caught only by
+    // the smoke test in CI, and only after install.
+    //
+    // Asserted over the source rather than against a fixed list, so the next template that reaches
+    // for a new package fails here instead of in someone's fresh project.
+    for (const provider of ["anthropic", "openai", "google", "none"] as const) {
+      const files = buildProjectFiles(optionsFor(provider));
+      const manifest = JSON.parse(files.find((file) => file.path === "package.json")!.contents) as {
+        dependencies?: Record<string, string>;
+        devDependencies?: Record<string, string>;
+      };
+      const declared = new Set([
+        ...Object.keys(manifest.dependencies ?? {}),
+        ...Object.keys(manifest.devDependencies ?? {}),
+      ]);
+
+      for (const file of files.filter((candidate) => candidate.path.endsWith(".ts"))) {
+        for (const match of file.contents.matchAll(/from "([^"]+)"/g)) {
+          const specifier = match[1]!;
+          // Relative imports are the project's own; `node:` is the platform's.
+          if (specifier.startsWith(".") || specifier.startsWith("node:")) continue;
+          // A subpath import (`@langchain/langgraph/prebuilt`) is satisfied by its package.
+          const packageName = specifier.startsWith("@")
+            ? specifier.split("/").slice(0, 2).join("/")
+            : specifier.split("/")[0]!;
+          expect(
+            declared,
+            `${file.path} imports "${specifier}" but ${packageName} is not in package.json (provider: ${provider})`,
+          ).toContain(packageName);
+        }
+      }
+    }
+  });
+
   it("pins the model package the graph imports", () => {
     const manifest = JSON.parse(
       buildProjectFiles(optionsFor("anthropic")).find((file) => file.path === "package.json")!
