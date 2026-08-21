@@ -174,6 +174,16 @@ the environment, so they reach an embedded host without a code change. Size them
 actually emits, and note that a far-behind subscriber loses the oldest frames here where Redis would
 still have them: [performance.md](./performance.md) has the sizing table and the triage symptoms.
 
+**Signing run-completion callbacks.** `SKEIN_WEBHOOK_SECRET` is read on the embed paths too, so
+setting it is all an embedded host has to do to get signed callbacks — there is no `langgraph.json`
+here to carry a `skein.webhooks` block. Pass `overrides.webhooks` to configure the rest of the
+delivery policy (retries, `allowed_hosts`, `max_payload_bytes`); it is spread last, so an explicit
+value wins over the environment. See [webhooks.md](./webhooks.md).
+
+> Before this was wired up, an embedded host that exported `SKEIN_WEBHOOK_SECRET` sent **unsigned**
+> callbacks with no warning — the env var was only read on the `langgraph.json` path. If you embed and
+> rely on signatures, check you are on a version that includes this.
+
 Prefer to assemble the drivers yourself (e.g. a Postgres store with an in-memory queue, or your own
 pool)? Pass them through `embedInMemoryGraphs`' `overrides`:
 

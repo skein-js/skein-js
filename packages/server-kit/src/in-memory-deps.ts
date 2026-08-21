@@ -18,6 +18,7 @@ import { MemoryRunEventBus, MemoryRunQueue, MemorySkeinStore } from "@skein-js/s
 
 import { resolveMaxPageSize } from "./max-page-size.js";
 import { resolveMemoryBusLimits } from "./memory-bus-limits.js";
+import { resolveWebhooks } from "./webhooks-config.js";
 
 // The graph's node-name/state generics are left open so a concretely-typed `.compile()` result (e.g.
 // from `MessagesAnnotation`) is accepted without a cast at the call site — the engine only drives the
@@ -141,6 +142,9 @@ export function embedInMemoryGraphs(
   graphs: GraphResolver | Record<string, EmbeddableGraph>,
   overrides: Omit<Partial<ProtocolDeps>, "graphs"> = {},
 ): ProtocolDeps {
+  // `resolveWebhooks(undefined)` answers `undefined` unless the environment actually configures
+  // something, so a host that sets nothing keeps exactly the deps it had before this existed.
+  const webhooks = resolveWebhooks(undefined);
   return {
     // `maxPageSize` resolved for the same reason as the bus limits below: an embedded host's
     // `SKEIN_MAX_PAGE_SIZE` has to reach the driver that applies it.
@@ -158,6 +162,13 @@ export function embedInMemoryGraphs(
     ephemeralCheckpointer: () => new MemorySaver(),
     // Clones a checkpoint before it is re-put under another thread id — see `ProtocolDeps.cloneCheckpoint`.
     cloneCheckpoint: cloneLangGraphCheckpoint,
+    // Resolved for the same reason as `maxPageSize` and the bus limits: an embedded host's env has to
+    // reach the code that applies it. Without this, a host that sets `SKEIN_WEBHOOK_SECRET` and
+    // follows the docs gets callbacks that are silently **unsigned** — a fail-open indistinguishable
+    // from a working setup, since an unsigned callback is delivered exactly like a signed one and only
+    // the receiver ever finds out. There is no `langgraph.json` on this path, so the env var is the
+    // only input; `overrides` still spreads last and wins.
+    ...(webhooks ? { webhooks } : {}),
     ...overrides,
   };
 }

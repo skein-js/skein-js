@@ -665,6 +665,7 @@ Each is a runnable project — `cd` into it and follow its README.
 | [`fastify-basic`](./examples/fastify-basic) · [`fastify-app`](./examples/fastify-app) | **Fastify** — a standalone graph server, and the protocol embedded under `/agent` alongside a REST API                                                                                             | `pnpm dev`                 |
 | [`nestjs-basic`](./examples/nestjs-basic) · [`nestjs-app`](./examples/nestjs-app)     | **NestJS** — a standalone graph server, and `SkeinModule` alongside the app's own controller                                                                                                       | `pnpm dev`                 |
 | [`nextjs-basic`](./examples/nextjs-basic) · [`nextjs-app`](./examples/nextjs-app)     | **Next.js** — headless Pages Router API, and a full-stack App Router app serving the protocol same-origin behind a `useStream` chat UI                                                             | `pnpm dev`                 |
+| [`whatsapp-typing`](./examples/whatsapp-typing)                                       | **An agent behind a phone number** — Twilio signature checks, retry dedup, number→thread mapping, async human-in-the-loop resume, a typing indicator and a durable reply; runs offline             | `pnpm start`               |
 | [`react-usestream`](./examples/react-usestream)                                       | A minimal **`useStream` SSE frontend** you can point at any skein-js server                                                                                                                        | `pnpm dev`                 |
 
 ## Tested end-to-end
@@ -3243,6 +3244,16 @@ the environment, so they reach an embedded host without a code change. Size them
 actually emits, and note that a far-behind subscriber loses the oldest frames here where Redis would
 still have them: [performance.md](./performance.md) has the sizing table and the triage symptoms.
 
+**Signing run-completion callbacks.** `SKEIN_WEBHOOK_SECRET` is read on the embed paths too, so
+setting it is all an embedded host has to do to get signed callbacks — there is no `langgraph.json`
+here to carry a `skein.webhooks` block. Pass `overrides.webhooks` to configure the rest of the
+delivery policy (retries, `allowed_hosts`, `max_payload_bytes`); it is spread last, so an explicit
+value wins over the environment. See [webhooks.md](./webhooks.md).
+
+> Before this was wired up, an embedded host that exported `SKEIN_WEBHOOK_SECRET` sent **unsigned**
+> callbacks with no warning — the env var was only read on the `langgraph.json` path. If you embed and
+> rely on signatures, check you are on a version that includes this.
+
 Prefer to assemble the drivers yourself (e.g. a Postgres store with an in-memory queue, or your own
 pool)? Pass them through `embedInMemoryGraphs`' `overrides`:
 
@@ -3818,6 +3829,15 @@ can start a run without a round trip to create the thread first.
 
 All three thread-scoped run routes agree, and the default is the safe one — a mistyped thread id fails loudly rather than running against a fresh empty thread with none
 of the history the caller expected. Pass `if_not_exists: "create"` to restore the old behaviour.
+
+**`if_thread_status` on run creation.** A skein extension, and the counterpart to `multitask_strategy`:
+that one arbitrates `pending`/`running`, this one guards every other thread status. It matters most for
+`interrupted`, which is a **terminal** run status — a thread waiting on a human holds no inflight run,
+so no multitask strategy protects it and a plain start discards the pending interrupt. Send
+`if_thread_status: ["idle", "error"]` and an interrupted thread answers **409 `thread_status_mismatch`**
+with the observed status in `details`. Settled inside the driver's atomic create, so it holds across
+replicas. A storage driver that does not implement the precondition answers
+`501 if_thread_status_unsupported` rather than degrading to a non-atomic check.
 
 A thread created this way still belongs to the **caller**, not to the run: `on_completion: "delete"`
 never removes it, because the caller named it. Only a thread the server minted (no `thread_id` at all)
@@ -5327,6 +5347,49 @@ One more worth knowing, though it matches LangGraph: **naming a thread that does
 which is how you start a run keyed on an external identity (a phone number, a ticket id) without a
 round trip to create the thread first.
 
+## Don't start a run on a thread that's waiting for a human
+
+`interrupt()` leaves a thread parked until someone answers, and the run that parked it is **terminal**
+— `interrupted` is a finished status, so the thread holds no inflight run. That means
+`multitask_strategy` cannot protect it: every strategy, including the default `reject`, arbitrates
+`pending` and `running` only. A plain start on an interrupted thread therefore **succeeds**, and the
+pending question is discarded with no error and no log line.
+
+`if_thread_status` is how you say "only if nobody is waiting":
+
+```ts
+await fetch(`${url}/threads/${threadId}/runs`, {
+  method: "POST",
+  headers: { "content-type": "application/json" },
+  body: JSON.stringify({
+    assistant_id: "support",
+    input: { messages: [{ role: "human", content: text }] },
+    if_thread_status: ["idle", "error"],
+  }),
+});
+// → 409 { code: "thread_status_mismatch", details: { status: "interrupted" } }
+```
+
+The check happens **inside the driver's atomic create**, alongside the one `multitask_strategy: "reject"`
+already uses — so two replicas racing the same thread cannot both win. An in-process mutex cannot give
+you this; the window is between processes.
+
+The 409 carries the status it actually observed, so you can branch without a second read that might
+see a third value. The usual branch for an async chat channel is: refused with `interrupted` → resume
+the pending interrupt instead of starting a new run.
+
+```ts
+// The reply hours later is an answer, not a new conversation.
+body: JSON.stringify({ assistant_id: "support", command: { resume: text } });
+```
+
+It composes with `multitask_strategy` rather than overlapping it — that one guards `pending`/`running`,
+this one guards everything else. Omit the field and run creation behaves exactly as it always has.
+
+A storage driver that does not implement the precondition answers `501 if_thread_status_unsupported`
+rather than quietly falling back to a read-then-create, because a non-atomic fallback looks like it
+works right up until two replicas race. Both first-party drivers implement it.
+
 ## Don't create the same run twice
 
 A retrying caller — Stripe, GitHub, Twilio, or your own sweep — should not start a second run. Send an
@@ -5596,6 +5659,20 @@ the Interrupts view approves, rejects, or resumes with any JSON, without you bui
   for you.
 - **Resuming starts a new run.** The interrupted run is terminal; the resume is a fresh run on the
   same thread. So a webhook fires per run, and the run id you resumed with is not the id you get back.
+- **A plain start on a waiting thread is not refused for you.** Because the interrupted run is
+  _terminal_, the thread holds no inflight run — so `multitask_strategy`, which arbitrates
+  `pending`/`running`, never sees it, and a fresh start **succeeds** and discards the pending
+  question. Pass [`if_thread_status`](./runs.md#dont-start-a-run-on-a-thread-thats-waiting-for-a-human)
+  when the caller might not know the thread is waiting, which is every asynchronous channel:
+
+  ```ts
+  // 409 `thread_status_mismatch` instead of silently trampling the interrupt.
+  { assistant_id: "support", input, if_thread_status: ["idle", "error"] }
+  ```
+
+  The check runs inside the driver's atomic create, so it holds across replicas — an in-process lock
+  cannot give you this.
+
 - **Not available on `POST /invoke/:graph_id`**, which has no thread to park on. See
   [serving-a-single-graph.md](./serving-a-single-graph.md).
 
@@ -5664,11 +5741,38 @@ The settled run, as a JSON body: the run's own fields (`run_id`, `thread_id`, `a
 | `status`                        | The run's terminal status — `success` · `error` · `timeout` · `interrupted` · `cancelled` |
 | `values`                        | The run's final state                                                                     |
 | `error`                         | The failure message, on a failed run only (a string, matching LangGraph)                  |
+| `interrupts`                    | The questions the run is waiting on, on an `interrupted` run only — see below             |
+| `reply`                         | What the graph declared should be sent back, if it declared one — see below               |
 | `run_started_at`/`run_ended_at` | When the run ran                                                                          |
 | `webhook_sent_at`               | When **this attempt** was sent — it changes between retries                               |
 
 `status` is read from the delivery row rather than from the stored body, so a callback can never
 disagree with the run you read back afterwards. A cancel that won the race is reported as the cancel.
+
+### `interrupts` — the question a paused run is asking
+
+A run that hits `interrupt()` settles as `interrupted` and waits for an answer. The question itself is
+**not in `values`** — it is the interrupt's payload, which lives on the thread's pending tasks — so a
+receiver holding only the callback could not render it, and a question nobody asks is a conversation
+that waits forever.
+
+`interrupts` carries it, keyed by the task that raised it, in the same shape
+[`GET /threads/{id}`](./threads.md) returns:
+
+```jsonc
+{
+  "run_id": "…",
+  "status": "interrupted",
+  "values": { "…": "…" },
+  "interrupts": { "task-1": [{ "id": "…", "value": { "question": "Refund £40?" } }] },
+}
+```
+
+The field is **absent entirely** on any other status, so a run that succeeded sends exactly the body it
+sent before this existed. Both `values` and `interrupts` count toward
+[`max_payload_bytes`](#what-this-stores-and-for-how-long); if the body is over the cap, `values` is replaced by a
+truncation marker first and `interrupts` only if that was not enough — you can act on a question
+without the state, but not on the state without the question.
 
 **A run that never started executing sends no callback.** A run cancelled while still `pending`, or
 one displaced by a [multitask strategy](./runs.md#multitask-what-happens-to-the-run-already-going)
@@ -5791,6 +5895,50 @@ Because the signature covers the timestamp, a **replay is detectable with no sta
 captured callback stops verifying once it is outside the tolerance window (5 minutes by default,
 `toleranceSeconds`). The check is absolute, so a callback timestamped in the future is refused too.
 
+### `reply` — letting the graph say what to send back
+
+Anything turning a run into an outbound message — a chat reply, a notification, an email — has to know
+where the answer lives. Only two parties could decide: your receiver, or the graph. A receiver that
+guesses (`state.answer`? `state.messages.at(-1)`? `state.draft`?) stops working the moment you change
+the graph's state shape.
+
+So let the graph declare it, on the custom stream:
+
+```ts
+import { replyWith } from "@skein-js/agent-protocol";
+
+// inside a node, with LangGraph's StreamWriter in scope
+writer(replyWith("Your order ships Tuesday."));
+```
+
+It arrives as `reply` in the callback body, and the run must request the custom stream
+(`stream_mode: ["values", "custom"]`) for the writer's output to be seen. The field is absent unless
+the graph declared one, so nothing changes for a graph that doesn't — and it **adds** to the body
+rather than replacing `values`, so a receiver that already reads state keeps working.
+
+Declaring it on the stream rather than in state is deliberate: the reply is a message _about_ the run,
+not part of it, and putting it in state would make it a channel every reducer and checkpoint carries
+forever. skein captures it into the stored delivery as the run settles, so — unlike anything read off
+a live stream — it survives a crash and is replayed verbatim on a retry. Last write wins.
+
+### Verifying somebody else's signature
+
+`verifySkeinSignature` only understands skein's own format. If you are on the _other_ side — checking
+a signature from Twilio, Slack, GitHub or Stripe as it arrives at a route of yours — the one piece
+worth borrowing rather than writing is the comparison:
+
+```ts
+import { equalsConstantTime } from "@skein-js/agent-protocol";
+
+const expected = createHmac("sha1", authToken).update(signable, "utf8").digest("base64");
+if (!equalsConstantTime(expected, received)) return res.status(401).end();
+```
+
+`===` on a signature is a timing oracle — it returns at the first differing byte, so an attacker who
+can send many requests and measure your response recovers a valid signature a byte at a time. The
+length check inside is not decoration either: Node's `timingSafeEqual` **throws** on unequal lengths,
+so the obvious hand-rolled version turns a forged short signature into a 500 instead of a 401.
+
 ### Three things receivers get wrong, in the order they get them wrong
 
 1. **Verifying a re-serialized body.** `JSON.stringify(req.body)` does not reproduce what was signed
@@ -5870,6 +6018,10 @@ Payloads are capped at `max_payload_bytes` (default 256 KiB). Over the cap, `val
 truncation marker **inside the signed body** — so a receiver is told it is looking at a truncated
 state rather than left to infer it — and the row's `payload_truncated` records it. Raise the cap, or
 read the state back from the API using the `run_id` in the callback.
+
+`values` and `interrupts` are the only fields ever replaced, because they are the only unbounded ones.
+When both are present `values` goes first: an interrupted run's question is what makes the callback
+actionable at all, so it is the last thing dropped.
 
 skein **redacts the webhook URL's path in logs**, keeping only the scheme and host: for Slack, Discord
 and Teams the path _is_ the credential, and a failing delivery would otherwise write it into your log
