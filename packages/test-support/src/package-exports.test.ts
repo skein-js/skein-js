@@ -55,8 +55,8 @@ const libraryPackages = publishablePackages.filter(
 describe("publishable package manifests", () => {
   it("finds every publishable package", () => {
     // Guards the discovery itself: a broken glob would silently make every case below vacuous.
-    expect(publishablePackages.length).toBe(20);
-    expect(libraryPackages.length).toBe(18);
+    expect(publishablePackages.length).toBe(21);
+    expect(libraryPackages.length).toBe(19);
   });
 
   it.each(libraryPackages.map((pkg) => [pkg.manifest.name as string, pkg] as const))(

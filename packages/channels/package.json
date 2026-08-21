@@ -1,0 +1,52 @@
+{
+  "name": "@skein-js/channels",
+  "version": "0.15.0",
+  "description": "Inbound channels for skein-js \u2014 put an agent behind WhatsApp, Slack, a webhook, or anything else that POSTs.",
+  "license": "Apache-2.0",
+  "author": "Maina Wycliffe <wmmaina7@gmail.com>",
+  "homepage": "https://github.com/skein-js/skein-js/tree/main/packages/channels#readme",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/skein-js/skein-js.git",
+    "directory": "packages/channels"
+  },
+  "bugs": {
+    "url": "https://github.com/skein-js/skein-js/issues"
+  },
+  "keywords": [
+    "typescript",
+    "langgraph",
+    "agent-protocol",
+    "agents",
+    "whatsapp",
+    "webhook",
+    "twilio"
+  ],
+  "type": "module",
+  "main": "./dist/index.js",
+  "module": "./dist/index.js",
+  "types": "./dist/index.d.ts",
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "import": "./dist/index.js",
+      "default": "./dist/index.js"
+    }
+  },
+  "files": [
+    "dist",
+    "LICENSE",
+    "README.md"
+  ],
+  "sideEffects": false,
+  "engines": {
+    "node": ">=20"
+  },
+  "dependencies": {
+    "@skein-js/config": "workspace:*",
+    "@skein-js/core": "workspace:*"
+  },
+  "publishConfig": {
+    "access": "public"
+  }
+}
