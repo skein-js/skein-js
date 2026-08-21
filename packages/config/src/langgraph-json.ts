@@ -116,6 +116,51 @@ const idempotencySchema = z
 export type IdempotencyJsonConfig = z.infer<typeof idempotencySchema>;
 
 /**
+ * `skein.channels` — inbound integrations, keyed by the name that becomes their route segment.
+ *
+ * A skein original under the reserved namespace, for the reason {@link idempotencySchema} gives.
+ * Entirely optional: with no block, the channel routes are not added to the table at all, so a
+ * deployment that never configures one cannot tell the feature exists.
+ */
+const channelsSchema = z
+  .record(
+    z
+      .object({
+        /** `"./src/twilio-channel.ts:channel"` or a package name — the same `path:export` spec graphs use. */
+        path: z.string(),
+        /**
+         * Which graph this channel's events run. Accepts a graph name or an assistant UUID.
+         *
+         * **Required**, and deliberately not something a channel can default. The binding is
+         * deployment knowledge: a community Twilio adapter has no business knowing you named your
+         * graph `support`.
+         */
+        assistant: z.string(),
+        /**
+         * Graphs this channel may route to itself. Omitted means it cannot route at all.
+         *
+         * Opt-in and bounded, because a channel is an npm package someone installed: without this,
+         * an unbounded assistant id on an inbound event would let any published channel direct
+         * untrusted input into any graph.
+         */
+        allowed_assistants: z.array(z.string()).optional(),
+        /**
+         * The externally reachable origin, e.g. `https://api.example.com`.
+         *
+         * Configuration rather than something derived from the request, and that is a security
+         * decision: providers like Twilio sign the full request URL, and the only inputs a server has
+         * for reconstructing it — `Host` and `X-Forwarded-Proto` — are attacker-controlled.
+         */
+        public_url: z.string().optional(),
+      })
+      .passthrough(),
+  )
+  .optional();
+
+/** The validated `skein.channels` block. */
+export type ChannelsJsonConfig = z.infer<typeof channelsSchema>;
+
+/**
  * `skein.webhooks` — how run-completion callbacks are retried and bounded.
  *
  * A skein original under the reserved namespace, for the reason {@link idempotencySchema} gives.
@@ -210,6 +255,7 @@ export const langgraphJsonSchema = z
       .object({
         runtime: runtimeSchema.optional(),
         idempotency: idempotencySchema.optional(),
+        channels: channelsSchema,
         webhooks: webhooksSchema.optional(),
       })
       .passthrough()
