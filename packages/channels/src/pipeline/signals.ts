@@ -60,14 +60,24 @@ export function fanOutRunSignals(options: FanOutOptions): void {
     // Most providers expire an indicator within seconds, so it has to be re-sent while the run works.
     // A timer rather than a frame-driven refresh, because a graph can be busy without emitting
     // anything — a single long model call produces no frames at all.
+    // Armed whenever a cadence is set, and the signal it emits follows what the channel subscribed
+    // to. Requiring `kinds: ["keepalive"]` looked tidier and was wrong: every documented example pairs
+    // `keepaliveMs` with `kinds: ["progress"]`, because most providers refresh an indicator by
+    // re-sending the *same* call rather than a distinct one — so the timer never armed and the
+    // indicator expired mid-run, silently.
     const keepaliveMs = channel.signals?.keepaliveMs;
-    const keepalive =
-      keepaliveMs && wants.has("keepalive")
-        ? setInterval(() => {
-            if (settled || Date.now() - started > (options.maxMs ?? DEFAULT_MAX_MS)) return;
-            void emit({ kind: "keepalive", runId });
-          }, keepaliveMs)
-        : undefined;
+    const keepaliveKind = wants.has("keepalive") ? "keepalive" : "progress";
+    const keepalive = keepaliveMs
+      ? setInterval(() => {
+          if (settled || Date.now() - started > (options.maxMs ?? DEFAULT_MAX_MS)) {
+            // Past the cap, or the run is done: stop the timer here rather than leaving it ticking
+            // until the frame stream ends, which for a run that never closes is forever.
+            clearInterval(keepalive);
+            return;
+          }
+          void emit({ kind: keepaliveKind, runId } as RunSignal);
+        }, keepaliveMs)
+      : undefined;
     // Never hold the process open for a cosmetic timer.
     keepalive?.unref?.();
 

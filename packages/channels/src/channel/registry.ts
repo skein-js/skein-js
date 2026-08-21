@@ -128,7 +128,15 @@ function asChannel(module: LoadedChannelExport, name: string): Channel {
         `\`parseEvent\` functions.`,
     );
   }
-  return { ...candidate, name: candidate.name ?? name } as Channel;
+  // **Not** `{ ...candidate }`. A spread copies own enumerable properties only, so a channel written
+  // as a class passes the checks above (its methods live on the prototype and `typeof` finds them)
+  // and then throws `channel.verify is not a function` on the first real request. Naming it without
+  // copying keeps every shape working — object literal, class instance, or something returned by a
+  // factory.
+  if (candidate.name === undefined) {
+    Object.defineProperty(candidate, "name", { value: name, enumerable: true, configurable: true });
+  }
+  return candidate as Channel;
 }
 
 function isUuid(value: string): boolean {

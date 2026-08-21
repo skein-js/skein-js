@@ -102,7 +102,11 @@ export function createHandlerRouter(
       .map((route) => route.path),
   );
   if (textRoutes.size > 0) {
-    const parseText = express.text({ type: "*/*", ...(options.json ?? {}) });
+    // `type` is applied **after** the caller's options, not before. Spreading `options.json` last let
+    // a host that narrowed it (say `type: "application/json"`) silently un-match every other content
+    // type, so a form-encoded provider request fell through to the JSON parser and the channel saw an
+    // empty body. Size limits and the rest of the caller's options still apply.
+    const parseText = express.text({ ...(options.json ?? {}), type: "*/*" });
     router.use((req, res, next) => {
       if (!textRoutes.has(req.path)) return next();
       parseText(req, res, next);

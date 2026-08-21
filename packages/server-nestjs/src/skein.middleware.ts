@@ -110,7 +110,7 @@ export class SkeinMiddleware implements NestMiddleware {
     res.once("close", () => disconnected.abort(new Error("client disconnected")));
 
     try {
-      const body = await readJsonBody(req);
+      const body = await readJsonBody(req, match.binding.retainRawBody ?? false);
       const request = {
         ...toProtocolRequest(req, url, match.params, body),
         signal: disconnected.signal,

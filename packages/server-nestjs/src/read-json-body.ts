@@ -13,7 +13,8 @@ export type NestRequest = IncomingMessage & { originalUrl?: string; body?: unkno
  * absent (e.g. the host bootstrapped with `bodyParser: false`) and the request carries a JSON body,
  * read and parse it here so the adapter is self-sufficient. A malformed body is a 400, not a 500.
  */
-export async function readJsonBody(req: NestRequest): Promise<unknown> {
+export async function readJsonBody(req: NestRequest, retainRawBody = false): Promise<unknown> {
+  if (retainRawBody) return readRawBody(req);
   if (req.body !== undefined) return req.body;
   const contentType = req.headers["content-type"];
   const single = Array.isArray(contentType) ? contentType[0] : contentType;
@@ -27,4 +28,26 @@ export async function readJsonBody(req: NestRequest): Promise<unknown> {
   } catch {
     throw SkeinHttpError.badRequest("Request body is not valid JSON.");
   }
+}
+
+/**
+ * The body as text, for a route that verifies a signature over it.
+ *
+ * The host's global parser is a real problem here rather than a detail: NestJS bootstraps with one by
+ * default, and once it has consumed the stream the bytes are gone. Re-serializing what it produced
+ * does not reproduce them — key order, whitespace and number formatting are not guaranteed to
+ * round-trip — so a signature check would fail on every genuine request. Better to say so than to
+ * hand a channel something that looks right and cannot be verified.
+ */
+async function readRawBody(req: NestRequest): Promise<string> {
+  if (req.body !== undefined) {
+    throw SkeinHttpError.badRequest(
+      "This route needs the unparsed request body, but a body parser has already consumed it. " +
+        "Bootstrap NestJS with `{ bodyParser: false }`, or exclude the channel routes from it.",
+      { code: "raw_body_unavailable" },
+    );
+  }
+  const chunks: Buffer[] = [];
+  for await (const chunk of req) chunks.push(chunk as Buffer);
+  return Buffer.concat(chunks).toString("utf8");
 }

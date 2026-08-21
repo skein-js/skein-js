@@ -5,17 +5,27 @@
 // `@skein-js/channels`, nothing a deployment could trip over. The second is what "entirely optional"
 // means in practice, and it is easy to lose to a stray static import.
 
-import { mkdtemp, writeFile } from "node:fs/promises";
-import { tmpdir } from "node:os";
+import { mkdtemp, rm, writeFile } from "node:fs/promises";
 import path from "node:path";
+import { pathToFileURL } from "node:url";
 
-import { describe, expect, it } from "vitest";
+import { Auth } from "@langchain/langgraph-sdk/auth";
+import { afterAll, describe, expect, it } from "vitest";
 
 import { resolveProtocolRuntime } from "./resolve-runtime.js";
 
+const created: string[] = [];
+afterAll(async () => {
+  await Promise.all(created.map((dir) => rm(dir, { recursive: true, force: true })));
+});
+
 /** A throwaway project with one graph, plus whatever `langgraph.json` extras a case needs. */
 async function project(extra: Record<string, unknown>, channelSource?: string): Promise<string> {
-  const dir = await mkdtemp(path.join(tmpdir(), "skein-channels-"));
+  // Inside the workspace rather than in `os.tmpdir()`, because a fixture that declares an
+  // `auth.path` has to be able to `import "@langchain/langgraph-sdk/auth"` — and node resolution
+  // only finds it by walking up to the repo's `node_modules`.
+  const dir = await mkdtemp(path.join(process.cwd(), ".tmp-channels-"));
+  created.push(dir);
   await writeFile(
     path.join(dir, "graph.ts"),
     `import { MessagesAnnotation, StateGraph } from "@langchain/langgraph";
@@ -135,6 +145,78 @@ describe("a configured channel", () => {
     await expect(resolveProtocolRuntime({ config: configPath })).rejects.toThrow(
       /not one of this deployment's graphs/,
     );
+  });
+});
+
+describe("authorization scopes the request it authorized", () => {
+  // The finding this pins: the pipeline built an `AuthContext`, authorized against it, and then
+  // dropped both the context and the ownership filters — so channel threads and runs were created
+  // **unscoped**, and the graph never saw `configurable.langgraph_auth_user`. The docs promised the
+  // opposite. Nothing type-checked it, because the pipeline reaches server-kit across an
+  // `unknown`-typed dynamic-import boundary.
+  /**
+   * An `Auth` whose `@auth.on.threads` handler returns ownership filters.
+   *
+   * Injected through the runtime's own importer seam rather than written to disk: the fixture project
+   * lives outside any `node_modules` that resolves `@langchain/langgraph-sdk`, and the seam is there
+   * precisely so a caller can supply modules it already holds.
+   */
+  const withOwnershipAuth = async () => {
+    const configPath = await project(
+      {
+        auth: { path: "./auth.ts:auth" },
+        skein: { channels: { twilio: { path: "./channel.ts:channel", assistant: "support" } } },
+      },
+      echoChannel,
+    );
+    const auth = new Auth()
+      .authenticate(() => ({ identity: "unused-by-channels", permissions: [] }))
+      .on("threads", ({ user }) => ({ owner: user.identity }));
+    const configDir = path.dirname(configPath);
+    return resolveProtocolRuntime({
+      config: configPath,
+      importModule: async (sourceFile: string) =>
+        sourceFile === path.join(configDir, "auth.ts")
+          ? { auth }
+          : ((await import(pathToFileURL(sourceFile).href)) as Record<string, unknown>),
+    });
+  };
+
+  const deliver = (resolved: Awaited<ReturnType<typeof resolveProtocolRuntime>>) =>
+    resolved.runtime.handlers.handleInboundEvent({
+      method: "POST",
+      url: "http://127.0.0.1:2024/channels/twilio",
+      headers: { "x-secret": "shh", "content-type": "application/x-www-form-urlencoded" },
+      body: "From=whatsapp%3A%2B254&Body=hi&MessageSid=SM-1",
+      params: {},
+      query: {},
+    });
+
+  it("stamps the handler's ownership filters onto the thread", async () => {
+    // Without this the thread exists but no filtered read can match it — the caller's own
+    // conversation becomes invisible to the caller, which is worse than no scoping at all.
+    const resolved = await withOwnershipAuth();
+
+    const response = await deliver(resolved);
+
+    expect(response.status).toBe(202);
+    const [thread] = await resolved.runtime.service.threads.search({});
+    // `owner` comes from the `@auth.on.threads` handler, keyed on the principal the *channel*
+    // verified — not on any header the caller could have set.
+    expect(thread?.metadata).toMatchObject({ owner: "channel:twilio:+254" });
+  });
+
+  it("runs as the principal the channel verified", async () => {
+    const resolved = await withOwnershipAuth();
+
+    await deliver(resolved);
+
+    const [thread] = await resolved.runtime.service.threads.search({});
+    const [run] = await resolved.runtime.service.runs.listByThread(thread!.thread_id);
+    // The same ownership filters stamp the run, which is what a later filtered read matches on — and
+    // the run is created through a context carrying the principal, so the graph sees it as
+    // `configurable.langgraph_auth_user`.
+    expect(run?.metadata).toMatchObject({ owner: "channel:twilio:+254" });
   });
 });
 

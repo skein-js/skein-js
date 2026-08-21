@@ -79,6 +79,26 @@ describe("buildChannelRegistry", () => {
     expect(registry.get("twilio")?.channel.name).toBe("twilio");
   });
 
+  it("accepts a channel written as a class", () => {
+    // A spread copies own enumerable properties only, so a class instance passed boot validation —
+    // `typeof` finds prototype methods — and then threw `verify is not a function` on the first real
+    // request. Boot validation that accepts something the request path rejects is worse than none.
+    class TwilioChannel {
+      readonly name = "twilio";
+      verify() {
+        return { identity: "channel:twilio:+254" };
+      }
+      parseEvent() {
+        return { kind: "ignore" as const };
+      }
+    }
+
+    const registered = build({}, new TwilioChannel()).get("twilio")!;
+
+    expect(typeof registered.channel.verify).toBe("function");
+    expect(registered.channel.verify({} as never)).toEqual({ identity: "channel:twilio:+254" });
+  });
+
   it("has nothing at all when nothing is configured", () => {
     // Goal G5: a deployment that never configures a channel cannot tell the feature exists — and an
     // empty registry is what keeps the routes out of the table entirely.

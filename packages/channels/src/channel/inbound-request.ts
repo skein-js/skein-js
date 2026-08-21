@@ -94,9 +94,15 @@ function resolvePublicUrl(requestUrl: string, publicUrl?: string): URL {
  * always requested because the reply is resolved from the settled state.
  */
 export function streamModesFor(channel: Channel): string[] {
-  const wantsProgress = channel.signals?.kinds.includes("progress") ?? false;
-  // `updates` is the cheap one — a frame per node, which is all an indicator needs to know work is
-  // happening. Token-level `events` is deliberately never selected here; nothing in the signal union
-  // exposes tokens, so paying for them would buy a channel nothing at all.
-  return wantsProgress ? ["values", "updates"] : ["values"];
+  // `custom` is **always** requested, and it is not optional the way the others are: it is the stream
+  // `replyWith()` writes to, and the engine only captures a declared reply from frames it actually
+  // receives. Leaving it out made the documented first choice of reply source silently impossible —
+  // every channel run fell through to the last-AI-message fallback, and a graph with non-message state
+  // said nothing at all. It costs one frame per `writer()` call, which is a graph that opted in.
+  const modes = ["values", "custom"];
+  // `updates` is the cheap progress stream — a frame per node, which is all an indicator needs to know
+  // work is happening. Token-level `events` is deliberately never selected; nothing in the signal
+  // union exposes tokens, so paying for them would buy a channel nothing at all.
+  if (channel.signals?.kinds.includes("progress")) modes.push("updates");
+  return modes;
 }

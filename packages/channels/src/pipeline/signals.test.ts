@@ -23,6 +23,13 @@ const channelOf = (overrides: Partial<Channel>): Channel =>
 
 const settle = () => new Promise((resolve) => setTimeout(resolve, 20));
 
+/** A run that is busy without emitting anything — one long model call. */
+async function* neverEndingFrames(ms: number) {
+  await new Promise((resolve) => setTimeout(resolve, ms));
+  // Unreachable in practice; present so this is a generator rather than a promise of one.
+  yield { seq: 1, event: "updates", data: {} };
+}
+
 describe("fanOutRunSignals", () => {
   it("signals immediately, before the first frame", async () => {
     // A graph whose first node takes ten seconds would otherwise show nothing for ten seconds, which
@@ -86,6 +93,25 @@ describe("fanOutRunSignals", () => {
 
     await settle();
     expect(warn).toHaveBeenCalled();
+  });
+
+  it("refreshes the indicator for a channel that only subscribed to progress", async () => {
+    // Every documented example pairs `keepaliveMs` with `kinds: ["progress"]`, because most providers
+    // refresh an indicator by re-sending the same call rather than a distinct one. Requiring
+    // `kinds: ["keepalive"]` meant the timer never armed and the indicator expired mid-run, silently.
+    const onSignal = vi.fn().mockResolvedValue(undefined);
+    fanOutRunSignals({
+      channel: channelOf({ onSignal, signals: { kinds: ["progress"], keepaliveMs: 5 } }),
+      runId: "run-1",
+      target: "x",
+      // A run that is busy without emitting anything — one long model call — which is exactly when a
+      // refresh matters and frames cannot provide one.
+      frames: { subscribe: () => neverEndingFrames(40) },
+      logger: { warn: vi.fn() },
+    });
+
+    await new Promise((resolve) => setTimeout(resolve, 30));
+    expect(onSignal.mock.calls.length).toBeGreaterThan(1);
   });
 
   it("stops when the run settles", async () => {
