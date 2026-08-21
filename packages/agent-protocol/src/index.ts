@@ -18,6 +18,11 @@ export type { ProtocolService } from "./service.js";
 
 // The transport-neutral HTTP handler table an adapter mounts.
 export { createProtocolHandlers } from "./create-handlers.js";
+export type { ProtocolHandlerExtras } from "./create-handlers.js";
+// Exported so a surface that authenticates outside the handler table — the channel pipeline — can
+// authorize against the *same* row this table would have used, rather than restating the pair.
+export { ROUTE_AUTHZ } from "./auth/route-authz.js";
+export type { RouteAuthz } from "./auth/route-authz.js";
 export type {
   ProtocolHandler,
   ProtocolHandlers,

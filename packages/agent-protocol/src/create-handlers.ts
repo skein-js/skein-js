@@ -137,6 +137,15 @@ export interface ProtocolHandlers {
   postThreadCommands: ProtocolHandler;
   // meta
   getServerInfo: ProtocolHandler;
+  /**
+   * `POST /channels/:channel` — an inbound event from a configured channel.
+   *
+   * Present on the table always, so `ROUTE_AUTHZ` stays exhaustive by type, but **bound to no route**
+   * unless a channel is configured: the bindings are appended to the resolved route table by
+   * `@skein-js/channels`, so a deployment with no channels serves nothing here at all. With no
+   * pipeline injected it answers 404, which is what an adapter dispatching a stale table should see.
+   */
+  handleInboundEvent: ProtocolHandler;
   // store
   putStoreItem: ProtocolHandler;
   getStoreItem: ProtocolHandler;
@@ -388,7 +397,22 @@ function runLocationHeaders(threadId: string, runId: string): Record<string, str
   return { "content-location": `/threads/${threadId}/runs/${runId}` };
 }
 
-export function createProtocolHandlers(service: ProtocolService): ProtocolHandlers {
+/**
+ * Handlers the core table cannot build for itself, supplied by whatever assembled the runtime.
+ *
+ * An optional second parameter rather than a wider `ProtocolService`, because these are genuinely
+ * optional surfaces: the channel pipeline lives in `@skein-js/channels`, which a deployment need not
+ * install. Making the service carry it would drag the dependency into every server.
+ */
+export interface ProtocolHandlerExtras {
+  /** The channel pipeline, when channels are configured. Absent leaves the route answering 404. */
+  handleInboundEvent?: ProtocolHandler;
+}
+
+export function createProtocolHandlers(
+  service: ProtocolService,
+  extras: ProtocolHandlerExtras = {},
+): ProtocolHandlers {
   // Build an SSE response whose terminal event reflects the run's final status once frames end.
   const sse = (
     started: {
@@ -963,5 +987,14 @@ export function createProtocolHandlers(service: ProtocolService): ProtocolHandle
       });
       return json({ namespaces });
     },
+
+    // 404 rather than 501 when no pipeline is injected: with no channel configured this route is not
+    // in the table at all, so the only way to reach this branch is a request for a path that really
+    // does not exist on this server. Saying "not implemented" would imply it might appear later.
+    handleInboundEvent:
+      extras.handleInboundEvent ??
+      (async () => {
+        throw SkeinHttpError.notFound("No channel is configured on this server.");
+      }),
   };
 }

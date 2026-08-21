@@ -43,10 +43,14 @@
     "node": ">=20"
   },
   "dependencies": {
+    "@skein-js/agent-protocol": "workspace:*",
     "@skein-js/config": "workspace:*",
     "@skein-js/core": "workspace:*"
   },
   "publishConfig": {
     "access": "public"
+  },
+  "devDependencies": {
+    "@skein-js/storage-memory": "workspace:*"
   }
 }

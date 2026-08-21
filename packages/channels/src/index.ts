@@ -19,6 +19,8 @@ export type {
 export { buildInboundRequest, streamModesFor } from "./channel/inbound-request.js";
 export type { BuildInboundRequestOptions, RawRequest } from "./channel/inbound-request.js";
 
+export { channelRouteBindings } from "./channel/route.js";
+
 export { buildChannelRegistry } from "./channel/registry.js";
 export type {
   BuildRegistryInput,
@@ -29,3 +31,8 @@ export type {
 } from "./channel/registry.js";
 
 export { channelThreadMetadata, threadIdForChannelKey } from "./channel/thread-id.js";
+
+export { handleInboundEvent } from "./pipeline/handle-event.js";
+export type { PipelineDeps } from "./pipeline/handle-event.js";
+export { resolveRunPlan } from "./pipeline/resolve-run.js";
+export type { RunPlan } from "./pipeline/resolve-run.js";
