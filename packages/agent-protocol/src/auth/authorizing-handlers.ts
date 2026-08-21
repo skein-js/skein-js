@@ -41,6 +41,29 @@ export function createAuthorizingHandlers(
       wrapped[name] = baseHandlers[name];
       continue;
     }
+    // The channel route is exempted here for the **opposite** reason to `getServerInfo`, and the
+    // difference matters enough to spell out: `/info` is exempt because it exposes nothing, whereas
+    // this route *creates runs*.
+    //
+    // It is exempt because `resolveAuthContext` cannot authenticate it. A channel authenticates by
+    // provider signature, over the raw request, before anything is parsed — there is no bearer token
+    // for the deployment's `authenticate` handler to read, so routing it through here would 401 every
+    // legitimate inbound event. Worse, `resolveAuthContext` admits `x-auth-scheme: langsmith` without
+    // authenticating at all, which on a run-creating route is one forged header from free run
+    // creation.
+    //
+    // So the pipeline authenticates through the channel's `verify()` — strictly stronger, since a
+    // signature cannot be forged the way a header can — and then authorizes **inside** the handler
+    // against `ROUTE_AUTHZ.handleInboundEvent`, reading the same row this wrapper would have used.
+    //
+    // The hazard this comment exists for: nothing type-checks that it actually does. `ROUTE_AUTHZ`
+    // being exhaustive gives an entry, not a call site. `packages/channels/src/pipeline` owns that
+    // obligation and pins it adversarially — a forged `x-auth-scheme` must 401, and a denying
+    // `@auth.on.threads` handler must 403 with no run created.
+    if (name === "handleInboundEvent") {
+      wrapped[name] = baseHandlers[name];
+      continue;
+    }
     const route = ROUTE_AUTHZ[name];
     wrapped[name] = async (req) => {
       const authContext: AuthContext | undefined = await resolveAuthContext(engine, req);

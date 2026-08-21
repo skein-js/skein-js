@@ -699,12 +699,19 @@ importers:
 
   packages/channels:
     dependencies:
+      '@skein-js/agent-protocol':
+        specifier: workspace:*
+        version: link:../agent-protocol
       '@skein-js/config':
         specifier: workspace:*
         version: link:../config
       '@skein-js/core':
         specifier: workspace:*
         version: link:../core
+    devDependencies:
+      '@skein-js/storage-memory':
+        specifier: workspace:*
+        version: link:../storage-memory
 
   packages/cli:
     dependencies:

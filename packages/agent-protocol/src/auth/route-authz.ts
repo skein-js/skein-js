@@ -50,6 +50,16 @@ export interface RouteAuthz {
 
 /** Every handler's resource + action. Keyed by handler name so it stays in lockstep with the table. */
 export const ROUTE_AUTHZ: Record<keyof ProtocolHandlers, RouteAuthz> = {
+  // channels — an inbound event creates a run on a thread, so it authorizes exactly as every other
+  // run-creating route does. The crons precedent: the principal comes from somewhere other than a
+  // bearer token, but what it is allowed to do is the same question.
+  //
+  // **This row is read by the pipeline rather than applied by `createAuthorizingHandlers`.** The
+  // channel route authenticates through the channel's `verify()`, which runs over the raw request
+  // before anything is parsed, so it cannot go through `resolveAuthContext` — see the note in
+  // `authorizing-handlers.ts`. The entry stays here so there is one source of truth for the pair, and
+  // so this record remains exhaustive over the handler table.
+  handleInboundEvent: { resource: "threads", action: "create_run" },
   // assistants
   getAssistant: { resource: "assistants", action: "read" },
   getAssistantSchemas: { resource: "assistants", action: "read" },
