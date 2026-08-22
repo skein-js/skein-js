@@ -54,6 +54,8 @@ coverage/
 
 vite.config.*.timestamp*
 vitest.config.*.timestamp*
+# VitePress's, which the two globs above miss: nothing precedes `config.` in the name it picks.
+docs/.vitepress/config.*.timestamp*
 packages/console/src/assets.generated.ts
 
 # Throwaway fixture projects written by tests into their own package directory.
