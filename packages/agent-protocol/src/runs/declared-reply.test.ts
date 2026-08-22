@@ -87,6 +87,41 @@ describe("a declared reply in the callback", () => {
     expect(outcome.reply).toBe("declared: hi");
   });
 
+  it("survives on a store with no delivery outbox", async () => {
+    // `interrupts` and `reply` exist for the same reason — a receiver holding only the callback has no
+    // other way to reach either — so the pre-outbox path must carry both or neither. It carried
+    // `interrupts` and not `reply`, dropping whatever the graph asked to send on exactly the drivers
+    // least able to work around it.
+    const dispatch = vi.fn<WebhookDispatcher>().mockResolvedValue(undefined);
+    const deps = resolveDeps(createFixtureDeps({ webhookDispatcher: dispatch, graphs: resolver }));
+    await deps.store.assistants.create({ graph_id: "declaring", assistant_id: "declaring" });
+    const thread = await deps.store.threads.create();
+    const run: Run = await deps.store.runs.create({
+      thread_id: thread.thread_id,
+      assistant_id: "declaring",
+      status: "pending",
+    });
+    const withoutOutbox = {
+      ...deps,
+      store: Object.assign(Object.create(Object.getPrototypeOf(deps.store) as object), deps.store, {
+        deliveries: undefined,
+        runs: { ...deps.store.runs, finalizeWithDelivery: undefined },
+      }),
+    } as typeof deps;
+
+    await executeRun(withoutOutbox, {
+      run,
+      kwargs: {
+        input: { value: "hi" },
+        webhook: "https://example.test/hook",
+        stream_mode: ["values", "custom"],
+      },
+      control: new RunControlRegistry().register(run.run_id),
+    });
+
+    expect(dispatch.mock.calls[0]![1]).toMatchObject({ reply: "declared: hi" });
+  });
+
   it("adds nothing for a graph that declares no reply", async () => {
     const { dispatch } = await runGraph("echo");
 
