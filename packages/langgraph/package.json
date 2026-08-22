@@ -1,6 +1,6 @@
 {
   "name": "@skein-js/langgraph",
-  "version": "0.15.0",
+  "version": "0.16.0",
   "description": "The LangGraph.js binding for @skein-js/agent-protocol — wraps a compiled graph as an AgentGraph.",
   "license": "Apache-2.0",
   "author": "Maina Wycliffe <wmmaina7@gmail.com>",

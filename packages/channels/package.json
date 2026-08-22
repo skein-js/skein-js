@@ -1,7 +1,7 @@
 {
   "name": "@skein-js/channels",
-  "version": "0.15.0",
-  "description": "Inbound channels for skein-js \u2014 put an agent behind WhatsApp, Slack, a webhook, or anything else that POSTs.",
+  "version": "0.16.0",
+  "description": "Inbound channels for skein-js — put an agent behind WhatsApp, Slack, a webhook, or anything else that POSTs.",
   "license": "Apache-2.0",
   "author": "Maina Wycliffe <wmmaina7@gmail.com>",
   "homepage": "https://github.com/skein-js/skein-js/tree/main/packages/channels#readme",

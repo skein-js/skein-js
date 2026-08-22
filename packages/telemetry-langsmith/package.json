@@ -1,6 +1,6 @@
 {
   "name": "@skein-js/langsmith",
-  "version": "0.15.0",
+  "version": "0.16.0",
   "description": "LangSmith tracing for skein-js — run identity and thread grouping on every graph call.",
   "license": "Apache-2.0",
   "author": "Maina Wycliffe <wmmaina7@gmail.com>",

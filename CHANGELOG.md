@@ -1,3 +1,48 @@
+## 0.16.0 (2026-08-22)
+
+### 🚀 Features
+
+- **adapters:** let a provider's request reach a channel route ([#10](https://github.com/skein-js/skein-js/issues/10))
+- **agent-protocol:** retry run-completion callbacks, with BullMQ owning the schedule ([2f632a0](https://github.com/skein-js/skein-js/commit/2f632a0))
+- **agent-protocol:** sign run-completion callbacks, and let an operator see and replay them ([#9](https://github.com/skein-js/skein-js/issues/9))
+- **agent-protocol:** let a callback carry the question, the answer, and a safe compare ([#36](https://github.com/skein-js/skein-js/issues/36))
+- **channels:** the contract an inbound integration implements ([4a3c993](https://github.com/skein-js/skein-js/commit/4a3c993))
+- **channels:** the route, the authorization, and the pipeline ([#10](https://github.com/skein-js/skein-js/issues/10))
+- **channels:** deliver the answer through the outbox, not beside it ([#10](https://github.com/skein-js/skein-js/issues/10))
+- **channels:** the WhatsApp example, run signals, and the docs ([#10](https://github.com/skein-js/skein-js/issues/10))
+- **config:** read and load `skein.channels` from langgraph.json ([#10](https://github.com/skein-js/skein-js/issues/10))
+- **core:** record a run's webhook delivery in the same transaction as its status ([a0b8248](https://github.com/skein-js/skein-js/commit/a0b8248))
+- **core:** let a recorded attempt carry its number, and add a non-mutating due scan ([bd47ccb](https://github.com/skein-js/skein-js/commit/bd47ccb))
+- **core:** refuse a run that would trample a thread waiting for a human ([#35](https://github.com/skein-js/skein-js/issues/35))
+- **docs:** give skein-js a mark ([d703394](https://github.com/skein-js/skein-js/commit/d703394))
+- **server-kit:** mount configured channels, and nothing when there are none ([#10](https://github.com/skein-js/skein-js/issues/10))
+
+### 🩹 Fixes
+
+- name the missing env var when a graph fails to load ([955adb7](https://github.com/skein-js/skein-js/commit/955adb7))
+- regenerate the lockfile, and document ending a conversation ([7adb385](https://github.com/skein-js/skein-js/commit/7adb385))
+- **agent-protocol:** close the gaps code review found in the delivery queue path ([ffc07d4](https://github.com/skein-js/skein-js/commit/ffc07d4))
+- **agent-protocol:** close the second round of code-review findings ([f0a94f0](https://github.com/skein-js/skein-js/commit/f0a94f0))
+- **agent-protocol:** close the code-review findings on signing and replay ([3c0ddea](https://github.com/skein-js/skein-js/commit/3c0ddea))
+- **agent-protocol:** stop writing webhook credentials to logs, and allow refusing plaintext ([983c15e](https://github.com/skein-js/skein-js/commit/983c15e))
+- **agent-protocol:** carry the declared reply on the pre-outbox path too ([ad46d6c](https://github.com/skein-js/skein-js/commit/ad46d6c))
+- **channels:** ten review findings, three of which broke documented behaviour ([dd9fcf4](https://github.com/skein-js/skein-js/commit/dd9fcf4))
+- **cli:** keep `skein dev` alive when `.env` changes ([7fbe7b6](https://github.com/skein-js/skein-js/commit/7fbe7b6))
+- **create-skein-js:** declare `langchain`, which the agent template imports ([3300c81](https://github.com/skein-js/skein-js/commit/3300c81))
+- **docs:** teach the link checker VitePress's two resolution rules ([0c8fc6e](https://github.com/skein-js/skein-js/commit/0c8fc6e))
+- **docs:** pre-bundle mermaid so the dev server renders diagrams ([58119b3](https://github.com/skein-js/skein-js/commit/58119b3))
+- **example:** declare @skein-js/server-kit, which the test imports ([90f50ca](https://github.com/skein-js/skein-js/commit/90f50ca))
+- **server-kit:** accept what `createAgent` returns as an embeddable graph ([5f6171f](https://github.com/skein-js/skein-js/commit/5f6171f))
+- **server-kit:** sign callbacks on the embed paths, instead of failing open ([#37](https://github.com/skein-js/skein-js/issues/37))
+
+### 🔥 Performance
+
+- **agent-protocol:** recover a lost delivery job in a sweep pass, not in hours ([69b4ee1](https://github.com/skein-js/skein-js/commit/69b4ee1))
+
+### ❤️ Thank You
+
+- Maina Wycliffe
+
 ## 0.15.0 (2026-08-09)
 
 ### 🚀 Features

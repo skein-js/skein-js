@@ -1,7 +1,7 @@
 {
   "name": "create-skein-js",
-  "version": "0.15.0",
-  "description": "Scaffold a skein-js project \u2014 the open-source LangGraph Platform alternative for TypeScript. Self-host your LangGraph.js agents in one command.",
+  "version": "0.16.0",
+  "description": "Scaffold a skein-js project — the open-source LangGraph Platform alternative for TypeScript. Self-host your LangGraph.js agents in one command.",
   "license": "Apache-2.0",
   "author": "Maina Wycliffe <wmmaina7@gmail.com>",
   "homepage": "https://github.com/skein-js/skein-js/tree/main/packages/create-skein-js#readme",
