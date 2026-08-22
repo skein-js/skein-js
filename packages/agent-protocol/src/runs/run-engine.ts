@@ -731,6 +731,10 @@ export async function executeRun(deps: ResolvedDeps, exec: RunExecution): Promis
       ...(settled.interrupts && Object.keys(settled.interrupts).length > 0
         ? { interrupts: settled.interrupts }
         : {}),
+      // The declared reply belongs here for the same reason `interrupts` does: a store with no
+      // `deliveries` repo is still a store whose receiver has no other way to reach it. Carrying one
+      // and not the other silently dropped whatever the graph asked to send.
+      ...(settled.reply !== undefined ? { reply: settled.reply } : {}),
     };
     return async () => {
       try {
