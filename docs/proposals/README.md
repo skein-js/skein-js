@@ -38,19 +38,75 @@ inboxes. They are not the audience for a hosted chat widget.
 
 ## The proposals
 
-One round trip needs no browser: the outbound leg has to be trustworthy (the answer gets back) and
-the inbound leg has to be cheap (the event gets in). **The outbound half shipped**, so one proposal
-remains.
-
-_Nothing is currently unbuilt._ Both proposals in this directory have shipped; each is kept as a record
-of what its implementation **rejected**.
+_Nothing here is currently unbuilt._ One round trip needs no browser: the outbound leg has to be
+trustworthy (the answer gets back) and the inbound leg has to be cheap (the event gets in). **Both
+halves have now shipped**, so what this file holds is the record of what each implementation
+**rejected** — which is the half worth keeping, because a design is only tested by building it.
 
 ### Shipped: inbound channels
 
 An agent behind any inbound event — a WhatsApp number, a Slack workspace, a GitHub webhook. Read
-[channels.md](../channels.md) to use it. What the implementation rejected is kept in
-[inbound-events.md](./inbound-events.md), including the three things phase 1 proved could not be made
-correct from user code at all.
+[channels.md](../channels.md) to use it.
+
+Its phase 1 was explicitly allowed to kill it: write the WhatsApp example against raw primitives with
+no pipeline at all, and if it came out short, ship only the helpers and stop. It did not — but the
+reason to proceed was **not** the one predicted. The hand-written version was 334 lines against a
+"under 60" target, and the pipeline brought it to 65, which is a near miss rather than a win. What
+justified the work was that three of the seven steps could not be made _correct_ from user code at
+all, and each failed silently: a start that discarded a pending question
+([#35](https://github.com/skein-js/skein-js/issues/35)), a question unreachable from the callback
+([#36](https://github.com/skein-js/skein-js/issues/36)), and a retry refused for having done the
+right thing. All three shipped as defect fixes in their own right.
+
+What the implementation **rejected**, each argued for in the design and each wrong:
+
+- **`EventSource` as a name.** It ships as **`Channel`** — the word people already use for putting an
+  agent on WhatsApp, and the one Twilio, Intercom and Zendesk use. The _payload_ stayed
+  `InboundEvent`, so `from`/`to`/`body`/`typing` are still absent from the core types and a GitHub
+  webhook is still the same pipeline. Four other meanings of "channel" already existed in the repo
+  (`RunAbortChannel`, Redis pub/sub, LangGraph state channels, `stream_mode: "custom"`); only one is
+  public API and it is prefixed, so the collision was a discipline problem rather than a semantic one.
+
+- **`onExisting` as merely a better default.** It was specified as a policy with a sensible default.
+  That is not enough: nothing on the server enforced it, because `interrupted` is a _terminal_ run
+  status. It is now built on `if_thread_status`, a precondition settled inside the driver's atomic
+  create — [#35](https://github.com/skein-js/skein-js/issues/35).
+
+- **`replyWith` on the custom stream, as designed.** Unbuildable. Run frames are published to the
+  event bus and never persisted, so reading a declared reply from the stream loses it on exactly the
+  crash the outbox exists to survive. It became an engine-side capture into the delivery payload —
+  [#36](https://github.com/skein-js/skein-js/issues/36).
+
+- **Five `RunSignal` kinds.** `accepted`, `interrupted` and `settled` were cut: the acknowledgement is
+  already the HTTP response, the interrupt now arrives durably in the callback, and the motivating
+  provider's indicator clears itself when the reply lands, so `settled` had no call to make. Only
+  `progress` and `keepalive` shipped.
+
+- **A new `RouteGroup`.** A group is a member of a closed union that can never be withdrawn, and it is
+  1:1 with LangGraph's `http.disable_*` flags — so `"channels"` would have needed a skein-only
+  `disable_channels` in the _un-namespaced_ `http` block. The routes are appended only when a channel
+  is configured, which is strictly stronger than a disable flag.
+
+- **`rawBody` as the hard part of the transport work.** Twilio signs the URL plus _parsed_, sorted
+  params, so the motivating provider never needed raw bytes. The genuinely hard half was the **public
+  URL**, and nothing in the repo resolves one — the one place that considered it refused, calling
+  `x-forwarded-proto` spoofable. It became configuration. What the transports actually needed was for
+  a form-encoded body to arrive at all: Fastify 415'd it before any handler ran.
+
+- **A `skein+channel://` URL the caller could name.** The first delivery design keyed the dispatcher
+  on a URL scheme — reachable from the caller-supplied `webhook` field, since `z.string().url()`
+  accepts any scheme. That would have let a run create deliver an attacker's message through someone
+  else's provider account. `webhook` is now restricted to `http(s)` at the schema, which is the only
+  boundary that can tell a caller-supplied URL from a server-derived one.
+
+- **"Resume with the same `input`."** `input` is a graph _input envelope_; `interrupt()` returns
+  whatever the node asked for, usually a scalar. Handing a message-shaped graph its own envelope makes
+  the node read nonsense. `InboundEvent.resumeWith` says which is which, and skein still coerces
+  nothing.
+
+- **Under 60 lines.** The Twilio integration came out at **65**, against a 334-line hand-written
+  baseline. The line count was never the strongest argument: three of the seven steps could not be made
+  _correct_ from user code at all, and each failed silently.
 
 ### Shipped: durable outbound delivery
 
@@ -92,14 +148,11 @@ at all. **Idempotent run creation** (`Idempotency-Key`) landed in 0.14 as this p
 an external service needs to address a conversation it did not create, and `if_exists` making thread
 creation idempotent by construction is why `Idempotency-Key` ended up runs-only.
 
-`inbound-events` remains a genuine **bet**, and its phase 1 is explicitly allowed to kill it: write
-the WhatsApp example against raw primitives with no pipeline at all, and if it comes out short, ship
-only the helpers and stop.
-
 ## How to read these
 
-These are **not user documentation**. They describe intent, not behaviour — nothing here is shipped
-until it appears in [`docs/roadmap.md`](../roadmap.md) as done, and none of these files are part of
+These are **not user documentation**, and while a proposal is open they describe intent rather than
+behaviour — nothing is shipped until it appears in [`docs/roadmap.md`](../roadmap.md) as done. None of
+these files are part of
 the [`llms-full.txt`](https://github.com/skein-js/skein-js/blob/main/llms-full.txt) bundle (that list is curated in
 `scripts/generate-llms-full.mjs` and covers user-facing docs only). When a proposal ships, the
 durable explanation moves into a real doc and the proposal becomes history.

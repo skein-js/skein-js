@@ -6,7 +6,7 @@
 // `@skein-js/agent-protocol`'s install. Everything else about a compiled graph already satisfies
 // `AgentGraph` structurally.
 //
-// This imports only agent-protocol's public entry point — the rule docs/proposals/inbound-events.md
+// This imports only agent-protocol's public entry point — the rule docs/channels.md
 // sets for `EventSource`. If it ever needs an internal, the internal is missing from the public API.
 
 import { Command, type CommandParams } from "@langchain/langgraph";

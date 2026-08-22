@@ -56,7 +56,7 @@ organised by parity instead.
 | [Deliveries & replay](./webhooks.md#see-what-a-callback-did-and-replay-it) | ✅     | See every attempt, and re-send one by hand when it never landed                     |
 | [Custom auth](./agent-protocol.md#authentication--authorization)           | ✅     | LangGraph's `Auth` model, drop-in, with ownership filters pushed into the query     |
 | [Telemetry sinks](./observability.md)                                      | ✅     | LangSmith, PostHog, OpenTelemetry — or your own `TelemetrySink`                     |
-| [Inbound events](./proposals/inbound-events.md)                            | 🗺️     | Agents behind WhatsApp, Slack, or a GitHub webhook, without re-solving the plumbing |
+| [Channels](./channels.md)                                                  | ✅     | Agents behind WhatsApp, Slack, or a GitHub webhook, without re-solving the plumbing |
 | [MCP endpoint](./roadmap.md)                                               | 🗺️     | Expose your graphs as MCP tools                                                     |
 
 ## Operate it
