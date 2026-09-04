@@ -15,6 +15,26 @@ const fixture = (name: string): string =>
   path.join(path.dirname(fileURLToPath(import.meta.url)), "__fixtures__", name);
 
 describe("buildRuntime — all-memory (skein dev)", () => {
+  it("carries the deps that bind the engine to LangGraph", async () => {
+    const runtime = await buildRuntime({
+      configPath: fixture("langgraph.json"),
+      store: "memory",
+      queue: "memory",
+    });
+    try {
+      // The durable branch below sets these three, and this branch once did not — so a node's
+      // `config.store`/`getStore()` was `undefined`, a thread copy re-`put` the source thread's own
+      // checkpoint object, and `POST /invoke/:graph_id` had no saver. The engine reaches each one
+      // optionally, so all three failures were silent. Asserted here as well as in server-kit
+      // because this is the function `skein dev` actually calls.
+      expect(runtime.deps.storeBridge).toBeTypeOf("function");
+      expect(runtime.deps.cloneCheckpoint).toBeTypeOf("function");
+      expect(runtime.deps.ephemeralCheckpointer).toBeTypeOf("function");
+    } finally {
+      await runtime.dispose();
+    }
+  });
+
   it("honours store.adapter, so a bring-your-own store works under `skein dev`", async () => {
     const runtime = await buildRuntime({
       configPath: fixture("langgraph.adapter.json"),

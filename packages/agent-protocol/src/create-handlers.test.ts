@@ -7,6 +7,7 @@ import { isSkeinHttpError, SkeinHttpError, type RunEventBus } from "@skein-js/co
 import { describe, expect, it } from "vitest";
 
 import { createFixtureDeps, createFixtureResolver } from "./__fixtures__/deps.js";
+import { fixtureGraphs } from "./__fixtures__/graphs.js";
 import { createContext } from "./context.js";
 import {
   createProtocolHandlers,
@@ -234,7 +235,11 @@ describe("pagination response metadata", () => {
     });
 
     expect(response.kind).toBe("json");
-    expect(response.headers?.["x-pagination-total"]).toBe("6");
+    // The total is "every fixture graph got an assistant", not the literal 6 — the point of the
+    // header is that it ignores `limit: 1`, and pinning the count makes an unrelated fixture fail.
+    expect(response.headers?.["x-pagination-total"]).toBe(
+      String(Object.keys(fixtureGraphs).length),
+    );
   });
 });
 

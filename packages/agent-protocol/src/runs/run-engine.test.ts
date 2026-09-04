@@ -194,4 +194,22 @@ describe("executeRun", () => {
     const item = await deps.store.store.get(["memories"], "note");
     expect(item?.value).toEqual({ text: "remember me" });
   });
+
+  it("injects the store on the node's own config, the accessor the docs lead with", async () => {
+    const { deps, run, kwargs } = await seed(createFixtureDeps(), "config-store", {
+      value: "remember me",
+    });
+    const control = new RunControlRegistry().register(run.run_id);
+
+    const outcome = await executeRun(deps, { run, kwargs, control });
+
+    // Worth asserting separately from `getStore()` above even though the two read the same object:
+    // `config.store?.put(...)` swallows a missing store, so this is the pattern whose breakage is
+    // invisible, and it is the one docs/state-and-context.md shows first.
+    expect(outcome.status).toBe("success");
+    expect(outcome.values).toEqual({ value: "stored: remember me" });
+    expect((await deps.store.store.get(["memories"], "note"))?.value).toEqual({
+      text: "remember me",
+    });
+  });
 });

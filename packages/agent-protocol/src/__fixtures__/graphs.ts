@@ -96,6 +96,27 @@ export const storeGraph: CompiledGraph<string> = new StateGraph(ValueState)
   .addEdge("remember", "__end__")
   .compile() as unknown as CompiledGraph<string>;
 
+/**
+ * The same round trip as {@link storeGraph}, but through `config.store` instead of `getStore()`.
+ *
+ * Both are the same object at runtime (LangGraph runs a node with the very config it puts in
+ * AsyncLocalStorage), but `config.store` is the accessor the docs lead with, and it was the one no
+ * test covered — so an on-ramp that failed to inject `storeBridge` broke the documented pattern
+ * silently, since `config.store?.put(...)` on a missing store is a no-op rather than a throw.
+ */
+export const configStoreGraph: CompiledGraph<string> = new StateGraph(ValueState)
+  .addNode("remember", async (state, config: LangGraphRunnableConfig) => {
+    const store = config.store;
+    if (!store) throw new Error("expected a store on the node's config");
+    await store.put(["memories"], "note", { text: state.value });
+    const item = await store.get(["memories"], "note");
+    const text = (item?.value as { text?: string } | undefined)?.text ?? "?";
+    return { value: `stored: ${text}` };
+  })
+  .addEdge("__start__", "remember")
+  .addEdge("remember", "__end__")
+  .compile() as unknown as CompiledGraph<string>;
+
 /** The fixture graphs keyed by graph id, for a test `GraphResolver`. */
 export const fixtureGraphs: Record<string, CompiledGraph<string>> = {
   echo: echoGraph,
@@ -104,4 +125,5 @@ export const fixtureGraphs: Record<string, CompiledGraph<string>> = {
   "throwing-with-cause": throwingWithCauseGraph,
   slow: slowGraph,
   store: storeGraph,
+  "config-store": configStoreGraph,
 };
