@@ -219,6 +219,12 @@ Schedules with their assistant, expression, timezone, target thread (or `statele
 occurrence. Pause and resume without deleting, which is the fastest way to stop a noisy schedule
 while you look at it.
 
+The next-occurrence column counts forwards — `in 2h`, `in 3d`, `in 14mo` — and names the states a
+schedule can be in: `paused` when it is disabled, and `no upcoming run` when it is enabled but its
+expression will never fire again. That last one is the case the column exists for; it otherwise looks
+identical to a healthy schedule. A schedule already past due but not yet fired reads in the other
+direction (`2m ago`) — brief while a tick is pending, and a sign the scheduler is stuck if it grows.
+
 Creating one takes an assistant, a 5-field expression and an input. Sub-minute schedules are a
 [deliberate non-goal](./crons.md#semantics), and the form says so rather than failing at submit.
 

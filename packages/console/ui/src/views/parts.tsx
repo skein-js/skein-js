@@ -130,12 +130,58 @@ export function Timestamp({ value }: { value: string | null | undefined }) {
   );
 }
 
-function formatRelative(date: Date): string {
-  const seconds = Math.round((Date.now() - date.getTime()) / 1000);
-  if (seconds < 60) return `${seconds}s ago`;
-  if (seconds < 3600) return `${Math.round(seconds / 60)}m ago`;
-  if (seconds < 86_400) return `${Math.round(seconds / 3600)}h ago`;
-  return date.toLocaleDateString();
+/**
+ * The rungs both directions share. Past rows fall off the end to a date; future rows keep counting.
+ *
+ * `max` is a ceiling on the **rounded count**, not on the raw seconds, and that distinction is the
+ * whole point: bounding the seconds lets a value round up into its own ceiling, so an hourly cron
+ * 3599s out reported `in 60m` rather than `in 1h` (and a daily one `in 24h` rather than `in 1d`).
+ */
+const RUNGS = [
+  { unit: "s", per: 1, max: 60 },
+  { unit: "m", per: 60, max: 60 },
+  { unit: "h", per: 3600, max: 24 },
+] as const;
+
+const DAY_SECONDS = 86_400;
+const MONTH_SECONDS = 2_592_000;
+
+/**
+ * Terse relative time, in **both** directions.
+ *
+ * The sign is an input here, not an accident: this used to compute `now - date` and test `< 60`, so
+ * every future date fell through to the seconds rung and came out signed — a cron due in two hours
+ * read `-7200s ago`. Crons is the only view that renders a future timestamp (`next_run_date`), and it
+ * is the view where the column matters most. The past direction had a quieter version of the same bug:
+ * when the server clock leads the browser's, a just-created row is a few seconds "ahead" and rendered
+ * `-3s ago`.
+ *
+ * Hand-signed rather than `Intl.RelativeTimeFormat`: narrow style renders `2 hr. ago` in `en`, not the
+ * `2h ago` the rest of this file is written to, and a localised unit would make the tests
+ * machine-dependent for no gain.
+ *
+ * **The two directions deliberately diverge past 24h.** A distant past date is best read off a
+ * calendar, so it keeps falling through to `toLocaleDateString()` — every other view renders only
+ * `created_at`/`updated_at`, and their output is unchanged below the day mark. A distant *future*
+ * keeps counting, because `crons.tsx` exists to make a schedule whose next occurrence is "never, or a
+ * year away" look different from a healthy one, and both `in 8760h` and a bare date defeat that.
+ *
+ * The one past-direction shift: rounding to `24h` now promotes to the next rung, so the last half hour
+ * before a day old reads as a date rather than `24h ago`. That is the same trade that turns `in 24h`
+ * into `in 1d`, and at the day mark either reading is fine.
+ */
+export function formatRelative(date: Date, now: number = Date.now()): string {
+  const seconds = Math.round((now - date.getTime()) / 1000);
+  const ahead = seconds < 0;
+  const magnitude = Math.abs(seconds);
+
+  for (const { unit, per, max } of RUNGS) {
+    const count = Math.round(magnitude / per);
+    if (count < max) return ahead ? `in ${count}${unit}` : `${count}${unit} ago`;
+  }
+  if (!ahead) return date.toLocaleDateString();
+  const days = Math.round(magnitude / DAY_SECONDS);
+  return days < 30 ? `in ${days}d` : `in ${Math.round(magnitude / MONTH_SECONDS)}mo`;
 }
 
 /** An id, shortened for the eye, linking to the full resource and keeping the whole value on hover. */
