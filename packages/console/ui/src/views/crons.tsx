@@ -95,10 +95,16 @@ export function CronsView() {
                         )}
                       </TableCell>
                       <TableCell>
-                        {enabled ? (
+                        {!enabled ? (
+                          <Badge variant="muted">paused</Badge>
+                        ) : cron.next_run_date ? (
                           <Timestamp value={cron.next_run_date} />
                         ) : (
-                          <Badge variant="muted">paused</Badge>
+                          // Enabled with no next occurrence: the expression parsed but will never
+                          // fire again. `Timestamp` renders a bare `—` for an absent value, which is
+                          // right for a missing `created_at` and useless here — this is exactly the
+                          // state this column exists to expose, so it says so.
+                          <Badge variant="muted">no upcoming run</Badge>
                         )}
                       </TableCell>
                       <TableCell className="text-right">
