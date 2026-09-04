@@ -91,6 +91,27 @@ function selfClient(headers: Record<string, string> = {}): Client {
   });
 }
 
+/**
+ * The store is a premise of this graph, not an optional extra — so say so instead of degrading.
+ *
+ * All three callers used to guard with `if (store)` and carry on, and the sweep is where that was
+ * worst: with the reads skipped every occurrence re-dispatched the whole backlog, and with the writes
+ * skipped `report` still announced `3 dispatched` over a store holding nothing. That summary is the
+ * evidence that opened this bug.
+ */
+function requireStore(
+  config: LangGraphRunnableConfig,
+): NonNullable<LangGraphRunnableConfig["store"]> {
+  const store = config.store;
+  if (!store) {
+    throw new Error(
+      "no long-term store on the run config — the triage example needs one. Under `skein dev` it " +
+        "is wired automatically; check that the server was started by the skein CLI.",
+    );
+  }
+  return store;
+}
+
 async function fetchWork(state: State): Promise<Partial<State>> {
   return { fetched: await fetchItems({ repo: state.repo, limit: state.limit }) };
 }
@@ -107,8 +128,9 @@ async function filterDecided(
   state: State,
   config: LangGraphRunnableConfig,
 ): Promise<Partial<State>> {
-  const store = config.store;
-  if (!store || state.force) return { fresh: state.fetched, skipped: [] };
+  const store = requireStore(config);
+  // `--force` still re-runs settled items deliberately; that is a request, not a missing store.
+  if (state.force) return { fresh: state.fetched, skipped: [] };
 
   const fresh: TriageItem[] = [];
   const skipped: string[] = [];
@@ -133,7 +155,7 @@ export function routeSweep(state: State): "dispatch" | "report" {
 
 async function dispatch(state: State, config: LangGraphRunnableConfig): Promise<Partial<State>> {
   const client = selfClient();
-  const store = config.store;
+  const store = requireStore(config);
 
   // Confirm the target actually serves the graph we are about to dispatch into, before dispatching
   // anything. `SKEIN_API_URL` defaults to port 2024, so a server started on another port sends its
@@ -172,9 +194,8 @@ async function dispatch(state: State, config: LangGraphRunnableConfig): Promise<
         ifExists: "do_nothing",
       });
 
-      const previousRunId = store
-        ? ((await store.get(DISPATCH_NAMESPACE, key))?.value["runId"] as string | undefined)
-        : undefined;
+      const previousRunId = (await store.get(DISPATCH_NAMESPACE, key))?.value["runId"] as
+        string | undefined;
 
       // A client carrying this item's idempotency key. A second sweep of the same item replays the
       // original response instead of starting a second run.
@@ -190,7 +211,7 @@ async function dispatch(state: State, config: LangGraphRunnableConfig): Promise<
       // Getting the *same* run id back is the idempotency key doing its job, and the only way to
       // observe that from outside is to have remembered what the first sweep produced.
       const replayed = previousRunId === run.run_id;
-      if (store && !replayed) {
+      if (!replayed) {
         await store.put(DISPATCH_NAMESPACE, key, { runId: run.run_id, threadId: thread.thread_id });
       }
       dispatched.push({ key, threadId: thread.thread_id, runId: run.run_id, replayed });
@@ -219,19 +240,16 @@ async function report(state: State, config: LangGraphRunnableConfig): Promise<Pa
     `${started} dispatched, ${replayed} replayed, ${state.skipped.length} already decided` +
     (state.failed.length > 0 ? `, ${state.failed.length} failed` : "");
 
-  const store = config.store;
-  if (store) {
-    // Keyed by time so sweeps accumulate into a readable history rather than overwriting each other.
-    await store.put(SWEEPS_NAMESPACE, new Date().toISOString(), {
-      source: resolveSource(),
-      fetched: state.fetched.length,
-      started,
-      replayed,
-      skipped: state.skipped.length,
-      failed: state.failed,
-      summary,
-    });
-  }
+  // Keyed by time so sweeps accumulate into a readable history rather than overwriting each other.
+  await requireStore(config).put(SWEEPS_NAMESPACE, new Date().toISOString(), {
+    source: resolveSource(),
+    fetched: state.fetched.length,
+    started,
+    replayed,
+    skipped: state.skipped.length,
+    failed: state.failed,
+    summary,
+  });
   return { summary };
 }
 

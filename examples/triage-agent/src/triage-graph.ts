@@ -56,6 +56,26 @@ const CONVENTIONS_NAMESPACE = ["triage", "conventions"];
 const DECISIONS_NAMESPACE = ["triage", "decisions"];
 
 /**
+ * The store is a premise of this graph, not an optional extra — so say so instead of degrading.
+ *
+ * Both callers used to guard with `if (store)` and carry on. `record` was the harmful one: it skipped
+ * the write and still returned `recorded as ...`, so a decision could be reported and lost in the same
+ * breath. `gather` merely classified with no context, which is quieter but no more correct.
+ */
+function requireStore(
+  config: LangGraphRunnableConfig,
+): NonNullable<LangGraphRunnableConfig["store"]> {
+  const store = config.store;
+  if (!store) {
+    throw new Error(
+      "no long-term store on the run config — the triage example needs one. Under `skein dev` it " +
+        "is wired automatically; check that the server was started by the skein CLI.",
+    );
+  }
+  return store;
+}
+
+/**
  * Validate the input, before anything expensive happens.
  *
  * Its own node rather than a check inside the next one, so a bad input fails on a step called
@@ -68,12 +88,12 @@ function prepare(state: State): Partial<State> {
 
 /**
  * Read context out of the store: learned conventions, and anything already triaged that looks
- * related. `getStore()` is injected by skein, so this is the same code against in-memory storage
- * under `skein dev` and Postgres + pgvector in production.
+ * related. The store is injected by skein — reachable as `config.store` here, or `getStore()` where
+ * there is no config argument — so this is the same code against in-memory storage under `skein dev`
+ * and Postgres + pgvector in production.
  */
 async function gather(state: State, config: LangGraphRunnableConfig): Promise<Partial<State>> {
-  const store = config.store;
-  if (!store) return { conventions: [], related: [] };
+  const store = requireStore(config);
 
   const [conventions, decisions] = await Promise.all([
     store.search(CONVENTIONS_NAMESPACE, { limit: 10 }),
@@ -183,20 +203,18 @@ async function record(state: State, config: LangGraphRunnableConfig): Promise<Pa
   if (state.approved !== true) {
     return { outcome: `not recorded — ${state.routedBecause ?? "rejected"}` };
   }
-  const store = config.store;
-  if (store) {
-    await store.put(DECISIONS_NAMESPACE, state.item.sourceId, {
-      url: state.item.url,
-      title: state.item.title,
-      author: state.item.author,
-      category: state.verdict?.category,
-      severity: state.verdict?.severity,
-      reply: state.verdict?.reply,
-      decidedBy: state.decidedBy,
-      routedBecause: state.routedBecause,
-      decidedAt: new Date().toISOString(),
-    });
-  }
+  const store = requireStore(config);
+  await store.put(DECISIONS_NAMESPACE, state.item.sourceId, {
+    url: state.item.url,
+    title: state.item.title,
+    author: state.item.author,
+    category: state.verdict?.category,
+    severity: state.verdict?.severity,
+    reply: state.verdict?.reply,
+    decidedBy: state.decidedBy,
+    routedBecause: state.routedBecause,
+    decidedAt: new Date().toISOString(),
+  });
   return {
     outcome: `recorded as ${state.verdict?.category}/${state.verdict?.severity} (${state.decidedBy})`,
   };

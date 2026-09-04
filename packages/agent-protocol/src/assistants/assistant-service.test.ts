@@ -3,6 +3,7 @@ import { MemorySkeinStore } from "@skein-js/storage-memory";
 import { describe, expect, it } from "vitest";
 
 import { createFixtureDeps } from "../__fixtures__/deps.js";
+import { fixtureGraphs } from "../__fixtures__/graphs.js";
 import { createContext, type ProtocolContext } from "../context.js";
 import type { ProtocolDeps } from "../deps.js";
 import { createThreadService } from "../threads/thread-service.js";
@@ -35,20 +36,17 @@ describe("assistant service", () => {
   it("registers one assistant per graph, id defaulting to graph_id, idempotently", async () => {
     const { service } = makeService();
 
+    // Derived from the fixture set rather than frozen as a literal: the property under test is
+    // "one assistant per graph, id defaulting to graph_id", which a hard-coded list restates as
+    // "these six graphs" — so adding a fixture graph fails this test instead of the engine.
+    const graphIds = Object.keys(fixtureGraphs).sort();
     const first = await service.registerGraphAssistants();
-    expect(first.map((a) => a.assistant_id).sort()).toEqual([
-      "echo",
-      "interrupting",
-      "slow",
-      "store",
-      "throwing",
-      "throwing-with-cause",
-    ]);
+    expect(first.map((a) => a.assistant_id).sort()).toEqual(graphIds);
     expect((await service.get("echo")).graph_id).toBe("echo");
 
     // Second registration doesn't duplicate.
     await service.registerGraphAssistants();
-    expect((await service.list()).length).toBe(6);
+    expect((await service.list()).length).toBe(graphIds.length);
   });
 
   it("returns schemas for a known assistant and 404s an unknown one", async () => {

@@ -1,7 +1,8 @@
 // Load a `langgraph.json` into a `ProtocolDeps` backed by in-process drivers — the zero-setup runtime
 // that powers `skein dev`. The config-free counterpart (bring a compiled graph in code, no config file)
-// is `embedInMemoryGraphs` in ./in-memory-deps.ts; both assemble the same in-memory drivers, so `skein
-// up` can swap Postgres + Redis deps through the adapters' `{ deps }` seam (see skein-router.ts).
+// is `embedInMemoryGraphs` in ./in-memory-deps.ts, and both entry points here build their deps *through*
+// it, so there is exactly one in-memory assembly site and `skein up` can still swap Postgres + Redis
+// deps through the adapters' `{ deps }` seam (see skein-router.ts).
 
 import { MemorySaver } from "@langchain/langgraph";
 import type {
@@ -20,8 +21,7 @@ import {
   type ModuleImporter,
   type LoadedChannel,
 } from "@skein-js/config";
-import { langGraphResolver } from "@skein-js/langgraph";
-import { MemoryRunEventBus, MemoryRunQueue, MemorySkeinStore } from "@skein-js/storage-memory";
+import { MemorySkeinStore } from "@skein-js/storage-memory";
 import type { CorsOptions } from "cors";
 
 import { corsFromHttpConfig, routesFromHttpConfig } from "./cors-config.js";
@@ -33,7 +33,6 @@ import {
 import { resolveIdempotency } from "./idempotency-config.js";
 import { embedInMemoryGraphs } from "./in-memory-deps.js";
 import { resolveMaxPageSize } from "./max-page-size.js";
-import { resolveMemoryBusLimits } from "./memory-bus-limits.js";
 import { resolveStoreTtl, resolveThreadTtl } from "./ttl-config.js";
 import { resolveWebhooks } from "./webhooks-config.js";
 
@@ -80,7 +79,7 @@ export async function loadInMemoryRuntime(
     importModule,
     staticSchemas,
   });
-  const deps = embedInMemoryGraphs(langGraphResolver(toGraphResolver(graphs)));
+  const deps = embedInMemoryGraphs(toGraphResolver(graphs));
   deps.auth = await loadAuthEngine(config.auth, { configDir, importModule });
   return {
     deps,
@@ -136,13 +135,14 @@ export async function loadReloadableInMemoryRuntime(
   let current: GraphRegistry = first.graphs;
 
   // The resolver delegates to `current` on every call, so swapping it below reroutes future loads.
-  // Wrapped, because these graphs come from `langgraph.json` and are therefore LangGraph graphs: the
-  // engine emits a command envelope and the binding is what turns it back into a `Command`.
-  const graphs: GraphResolver = langGraphResolver({
+  // Left unwrapped: `embedInMemoryGraphs` runs it through `langGraphResolver` below, which is what these
+  // graphs need (they come from `langgraph.json` and are therefore LangGraph graphs — the engine emits a
+  // command envelope and the binding is what turns it back into a `Command`).
+  const graphs: GraphResolver = {
     ids: first.graphs.ids,
     load: (graphId) => current.load(graphId),
     schemas: async (graphId) => (await current.schemas(graphId)) as unknown as GraphSchemas,
-  });
+  };
 
   // Hold the concrete drivers so their state can be snapshot/restored for cross-restart persistence.
   //
@@ -167,22 +167,32 @@ export async function loadReloadableInMemoryRuntime(
     ...(storeTtl ? { ttl: storeTtl } : {}),
   });
   const checkpointer = new MemorySaver();
-  const deps: ProtocolDeps = {
+  // Built *through* `embedInMemoryGraphs` rather than by hand. Hand-assembling this is how `skein dev`
+  // came to run without `storeBridge`, `cloneCheckpoint` and `ephemeralCheckpointer` — the three deps
+  // that bind the engine to LangGraph — while the embed paths had them all along. The engine reaches
+  // each one optionally (`deps.storeBridge?.(…)`), so every consequence was silent: a node's
+  // `config.store`/`getStore()` was `undefined` so long-term memory writes vanished, a thread copy or
+  // rollback re-`put` the *source* thread's own mutable checkpoint object, and `POST /invoke/:graph_id`
+  // had no throwaway saver. Going through the one assembler leaves nothing to drift.
+  //
+  // Only what this path genuinely differs on is overridden: the store carries `maxPageSize` and both
+  // TTLs, and both it and the checkpointer are held above so their state can be snapshot and restored.
+  // `queue` and `bus` are deliberately absent — `embedInMemoryGraphs` builds the same `MemoryRunQueue`
+  // and a `MemoryRunEventBus(resolveMemoryBusLimits())`, so the bounds still reach the longest-lived
+  // memory bus skein runs (this is the path `skein start` and `skein up` take by default).
+  const deps: ProtocolDeps = embedInMemoryGraphs(graphs, {
     store,
-    graphs,
-    queue: new MemoryRunQueue(),
-    // This is the path `skein start` and `skein up` take by default, so it is the longest-lived
-    // memory bus skein runs — the bounds have to be resolved here too, not just on the embed paths.
-    bus: new MemoryRunEventBus(resolveMemoryBusLimits()),
     checkpointer,
     auth: await loadAuthEngine(first.config.auth, { configDir: first.configDir, importModule }),
     // Present only when configured — its presence is what starts the thread TTL sweeper.
     ...(threadTtl ? { threadTtl } : {}),
     // Unlike `threadTtl`, absence here means *defaults*, not *off*: the header is honoured either way.
     ...(idempotency ? { idempotency } : {}),
+    // Resolved from this runtime's config, which `resolveWebhooks` already merges with the environment
+    // — so this subsumes the env-only value `embedInMemoryGraphs` computes, and overrides spread last.
     ...(webhooks ? { webhooks } : {}),
     ...extraDeps,
-  };
+  });
 
   return {
     deps,
