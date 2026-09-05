@@ -43,7 +43,7 @@
   },
   "dependencies": {
     "@skein-js/core": "workspace:*",
-    "pg": ">=8.11.0"
+    "pg": "^8.11.0"
   },
   "peerDependencies": {
     "@langchain/langgraph-checkpoint-postgres": "^1.0.4"

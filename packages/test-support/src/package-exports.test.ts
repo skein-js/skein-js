@@ -59,6 +59,35 @@ describe("publishable package manifests", () => {
     expect(libraryPackages.length).toBe(19);
   });
 
+  // Ranges we *install* have to name a major, because npm resolves them at install time and a
+  // caret is the only thing that stops the next major arriving in a fresh install untested. This is
+  // not hypothetical: `"bullmq": ">=5.0.0"` and `"ioredis": ">=5.4.0"` shipped, both majors were
+  // published, and every fresh install of `@skein-js/redis` got code the suite has never run
+  // against — surfacing as `Cannot read properties of undefined (reading 'then')` on every shutdown,
+  // because BullMQ 6 dropped the `client` getter the teardown helper read.
+  //
+  // `peerDependencies` are deliberately exempt: there the *host* chooses the version and a wide
+  // range is the point — an adapter that pinned `express` to one major would be the bug.
+  it.each(publishablePackages.map((pkg) => [pkg.manifest.name as string, pkg] as const))(
+    "%s pins a major for every dependency it installs",
+    (_name, pkg) => {
+      // An allowlist of shapes, not a denylist of one. `>=` is merely how this happened to be
+      // written; `*`, `>5.0.0`, `latest` and `5 || 6` all admit an untested major just as freely,
+      // and a guard that named only the spelling it had already seen would not have caught them.
+      const allowed = /^(?:workspace:\*|[~^]?\d+\.\d+\.\d+(?:-[\w.]+)?)$/;
+      const installed = {
+        ...((pkg.manifest.dependencies ?? {}) as Record<string, string>),
+        ...((pkg.manifest.optionalDependencies ?? {}) as Record<string, string>),
+      };
+      const unbounded = Object.entries(installed).filter(([, range]) => !allowed.test(range));
+
+      expect(
+        unbounded,
+        "use `^x.y.z` (or an exact version) for anything installed rather than brought by the host",
+      ).toEqual([]);
+    },
+  );
+
   it.each(libraryPackages.map((pkg) => [pkg.manifest.name as string, pkg] as const))(
     "%s resolves under both import and require",
     (_name, pkg) => {
