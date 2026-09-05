@@ -65,13 +65,16 @@ skein is a drop-in for it.
 
 **`package.json`** — the commands that are the whole lifecycle:
 
-|                        |                                                              |
-| ---------------------- | ------------------------------------------------------------ |
-| `npm run dev`          | what you're running: hot reload, in-memory state, zero setup |
-| `npm run dev:services` | Postgres + Redis in Docker, for `dev:postgres` and `start`   |
-| `npm run dev:postgres` | the same hot reload, against those services instead          |
-| `npm run build`        | compile your graphs to plain JavaScript in `.skein/`         |
-| `npm start`            | serve that build — this is what production runs              |
+|                        |                                                               |
+| ---------------------- | ------------------------------------------------------------- |
+| `npm run dev`          | what you're running: hot reload, in-memory state, zero setup  |
+| `npm run dev:services` | Postgres + Redis in Docker, for the durable `dev` and `start` |
+| `npm run dev:postgres` | the same hot reload, against those services instead           |
+| `npm run build`        | compile your graphs to plain JavaScript in `.skein/`          |
+| `npm start`            | serve that build — this is what production runs               |
+
+(If you picked Postgres at the storage prompt, `dev` is already the durable one and the in-memory
+spelling is `dev:memory` instead — both are always there.)
 
 The rest: `.env` (ready to use — the model key is commented out, the service URIs are not) and
 `.env.example` (a committed reference copy of it), `compose.dev.yaml` (the services for `start`),

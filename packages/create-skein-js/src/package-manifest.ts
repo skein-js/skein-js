@@ -17,19 +17,24 @@ function sortedByKey(entries: Record<string, string>): Record<string, string> {
   return Object.fromEntries(Object.entries(entries).sort(([a], [b]) => a.localeCompare(b)));
 }
 
-function scriptsFor(): Record<string, string> {
+function scriptsFor(options: ScaffoldOptions): Record<string, string> {
+  const memory = "skein dev --port 2024";
+  const durable = `${memory} --store postgres --queue redis`;
+  const durableIsDefault = options.devStorage === "postgres";
   return {
     // The drop-in for `langgraph dev`: TypeScript loaded in-process, hot reload, and dev state
-    // persisted to .skein/ across restarts. Runs on in-memory drivers — nothing to install.
-    dev: "skein dev --port 2024",
-    // `start` and `dev:postgres` are durable-only, so this is what makes them runnable locally.
+    // persisted to .skein/ across restarts. In-memory by default — nothing to install, nothing to
+    // start — unless the scaffold was told to develop against durable drivers instead.
+    dev: durableIsDefault ? durable : memory,
+    // `start`, and `dev` on the durable axis, need these locally.
     // `--wait`, not a bare `up -d`: without it this returns once the containers are *created*, and
     // the documented `dev:services && build && start` chain then races first-boot `initdb`. The
     // compose file declares healthchecks for both services precisely so this can block on them.
     "dev:services": "docker compose -f compose.dev.yaml up -d --wait",
-    // Develop against the drivers production actually uses. The CLI has always supported this; no
-    // scaffolded script exposed it, so finding it meant finding flags the project never mentions.
-    "dev:postgres": "skein dev --port 2024 --store postgres --queue redis",
+    // Whichever spelling `dev` is not. Both are always emitted, so choosing one at scaffold time
+    // never takes the other away — and the durable one is otherwise a pair of flags the generated
+    // project never mentions, which is how "develop against Postgres" came to be undiscoverable.
+    ...(durableIsDefault ? { "dev:memory": memory } : { "dev:postgres": durable }),
     // `--artifact-only` stops at .skein/build instead of invoking Docker, so `build` + `start` work
     // on a machine with no Docker daemon. Drop the flag (or use `skein up`) to get an image.
     build: "skein build --artifact-only",
@@ -84,7 +89,7 @@ export function renderPackageManifest(options: ScaffoldOptions): string {
     version: "0.1.0",
     private: true,
     type: "module",
-    scripts: scriptsFor(),
+    scripts: scriptsFor(options),
     dependencies: dependenciesFor(options),
     devDependencies: devDependenciesFor(options),
   };

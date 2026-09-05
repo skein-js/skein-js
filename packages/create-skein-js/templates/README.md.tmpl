@@ -13,6 +13,17 @@ An [Agent Protocol](https://github.com/langchain-ai/agent-protocol) server for y
 - <http://localhost:2024> — the Agent Protocol API
 - <http://localhost:2024/console> — the console: threads, live runs, interrupt approvals, time travel
 
+<%_ if (devIsDurable) { _%>
+Postgres and Redis, the same drivers production runs on — start them with `<%= runServices %>` first.
+Edit a graph and save; the server hot-reloads and keeps your threads.
+
+For the zero-setup path instead — in-memory drivers, nothing to install or start, state restored from
+`.skein/` across restarts:
+
+```bash
+<%= runDevAlternate %>
+```
+<%_ } else { _%>
 In-memory drivers, nothing to install or start. Edit a graph and save — the server hot-reloads and
 keeps your threads. Stop and restart it and your state is restored from `.skein/`.
 
@@ -21,8 +32,9 @@ Redis rather than `.skein/`:
 
 ```bash
 <%= runServices %>   # Postgres + Redis
-<%= runDevPostgres %>
+<%= runDevAlternate %>
 ```
+<%_ } _%>
 
 ## What's in here
 

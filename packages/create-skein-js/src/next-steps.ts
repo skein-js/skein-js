@@ -5,6 +5,7 @@
 
 import { bold, cyan, dim, yellow } from "./colors.js";
 import { PROVIDER_DETAILS } from "./dependency-versions.js";
+import type { GitOutcome } from "./git.js";
 import type { ScaffoldOptions } from "./scaffold-options.js";
 
 /** What actually happened during the scaffold, which decides what still needs doing. */
@@ -13,6 +14,8 @@ export interface ScaffoldOutcome {
   readonly relativeDirectory: string;
   /** Whether dependencies are already installed. */
   readonly installed: boolean;
+  /** What git did, or `undefined` when it was not attempted (`--no-git`, or the user declined). */
+  readonly git?: GitOutcome;
   /** Set when the npm-legal package name had to differ from the directory name. */
   readonly renamedPackageTo?: string;
 }
@@ -39,6 +42,19 @@ export function describeNextSteps(
     );
   }
 
+  // Stated rather than left to be inferred from the absence of `.git`. Skipping inside an existing
+  // work tree is the *correct* behaviour and the one most likely to look like a bug, so it is the
+  // one that most needs saying.
+  if (outcome.git === "skipped-existing-repo") {
+    lines.push(`  ${dim("Skipped git init — this is already inside a git repository.")}`, "");
+  } else if (outcome.git === "failed") {
+    lines.push(
+      yellow("  Could not initialize a git repository."),
+      dim("  git may be missing, or have no user.name / user.email configured."),
+      "",
+    );
+  }
+
   if (outcome.relativeDirectory !== ".") {
     lines.push(`  ${cyan(`cd ${outcome.relativeDirectory}`)}`);
   }
@@ -57,6 +73,12 @@ export function describeNextSteps(
     lines.push(
       `  ${yellow(`Set ${provider.apiKeyEnvVar} in .env`)}   ${dim(`— uncomment it; get a key at ${provider.consoleUrl}`)}`,
     );
+  }
+  // On the durable axis `dev` needs Postgres and Redis, so the very first command we print would
+  // otherwise fail with nothing running. Listed as its own step for the same reason the API key is:
+  // a footnote after the URLs is a footnote people scroll past.
+  if (options.devStorage === "postgres") {
+    lines.push(`  ${cyan(runCommand(options, "dev:services"))}   ${dim("— Postgres + Redis")}`);
   }
   lines.push(`  ${cyan(runCommand(options, "dev"))}`, "");
 

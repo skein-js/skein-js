@@ -43,15 +43,23 @@ my-agent/
 
 The scripts are the whole skein CLI lifecycle:
 
-| Script         | Command                                      | What it does                                                |
-| -------------- | -------------------------------------------- | ----------------------------------------------------------- |
-| `dev`          | `skein dev --port 2024`                      | In-memory drivers, hot reload, state persisted to `.skein/` |
-| `dev:services` | `docker compose -f compose.dev.yaml up -d`   | Postgres + Redis, for `dev:postgres` and `start`            |
-| `dev:postgres` | `skein dev … --store postgres --queue redis` | The same hot reload, against the drivers production uses    |
-| `build`        | `skein build --artifact-only`                | Graphs → plain JavaScript in `.skein/build`                 |
-| `start`        | `skein start -c .skein/build/langgraph.json` | Serve that build — the production entrypoint                |
-| `typecheck`    | `tsc --noEmit`                               |                                                             |
-| `test`         | `vitest run`                                 |                                                             |
+| Script         | Command                                           | What it does                                                |
+| -------------- | ------------------------------------------------- | ----------------------------------------------------------- |
+| `dev`          | `skein dev --port 2024`                           | In-memory drivers, hot reload, state persisted to `.skein/` |
+| `dev:services` | `docker compose -f compose.dev.yaml up -d --wait` | Postgres + Redis, for the durable `dev` and for `start`     |
+| `dev:postgres` | `skein dev … --store postgres --queue redis`      | The same hot reload, against the drivers production uses    |
+| `build`        | `skein build --artifact-only`                     | Graphs → plain JavaScript in `.skein/build`                 |
+| `start`        | `skein start -c .skein/build/langgraph.json`      | Serve that build — the production entrypoint                |
+| `typecheck`    | `tsc --noEmit`                                    |                                                             |
+| `test`         | `vitest run`                                      |                                                             |
+
+That is the in-memory axis, which is the default. The storage prompt decides only which of the two
+`dev` spellings is which: pick Postgres and `dev` becomes the durable one, with the in-memory one
+emitted as `dev:memory` instead of `dev:postgres`. Both are always on disk, so the choice sets a
+default rather than removing an option.
+
+`dev:services` uses `--wait` so it returns once both healthchecks pass, not merely once the containers
+exist — otherwise the very next command races first-boot `initdb`.
 
 `start` names the artifact's own `langgraph.json` because `skein start` serves a _build_, not a source
 project: it wants `schemas.json` beside the config it loads, and that file only exists in
@@ -77,8 +85,8 @@ create-skein-js [directory]
 
   -m, --provider <name>   none | google | anthropic | openai   (default: prompted, else none)
       --pm <name>         npm | pnpm | yarn | bun              (default: detected)
-      --no-install        Skip installing dependencies
-      --no-git            Skip initializing a git repository
+      --no-install        Skip installing dependencies                (else: prompted, default yes)
+      --no-git            Skip initializing a git repository          (else: prompted)
   -y, --yes               Accept every default; never prompt
   -f, --force             Scaffold into a directory that is not empty
   -v, --version
@@ -118,7 +126,10 @@ Until the key is set, `agent` fails to load naming the variable it wants — a
 - **Scaffolding into a fresh clone works.** A directory holding only `.git`, `LICENSE`, editor
   folders or `.DS_Store` counts as empty, so "create an empty repo, clone it, scaffold into it" needs
   no `--force`.
-- **git is skipped inside an existing work tree**, so it never nests a repository in yours.
+- **git is skipped inside an existing work tree**, so it never nests a repository in yours — and the
+  closing output says so, rather than leaving you to infer it from a missing `.git`. A failure (git
+  absent, or no `user.email` configured) is reported too, and distinctly: the two used to be the same
+  silent non-event.
 - **The version is pinned to a matching runtime.** Because every `packages/*` shares one version,
   `create-skein-js@x.y.z` pins `skein-js@^x.y.z` — the scaffolder and the runtime it scaffolds are
   always the same release.

@@ -9,6 +9,7 @@ function optionsFor(overrides: Partial<ScaffoldOptions> = {}): ScaffoldOptions {
     packageName: "my-agent",
     provider: "none",
     packageManager: "pnpm",
+    devStorage: "memory",
     skeinVersionRange: "^0.14.0",
     ...overrides,
   };
@@ -73,5 +74,51 @@ describe("describeNextSteps", () => {
     }).join("\n");
     expect(renamed).toContain("my-agent");
     expect(renamed).toContain("package.json");
+  });
+});
+
+describe("what git actually did", () => {
+  it("says so when it skipped because you are already in a repository", () => {
+    // The outcome the scaffolder used to discard. It is the *correct* behaviour and the one most
+    // likely to be read as a bug, since all you see afterwards is a project with no `.git`.
+    const lines = describeNextSteps(optionsFor(), { ...outcome, git: "skipped-existing-repo" });
+
+    expect(lines.join("\n")).toMatch(/skipped git init/i);
+    expect(lines.join("\n")).toMatch(/already inside a git repository/i);
+  });
+
+  it("says so when it tried and failed", () => {
+    const lines = describeNextSteps(optionsFor(), { ...outcome, git: "failed" }).join("\n");
+
+    expect(lines).toMatch(/could not initialize/i);
+    // Actionable: the usual cause is an unconfigured identity, not a missing binary.
+    expect(lines).toMatch(/user\.email/);
+  });
+
+  it("stays quiet when it worked, or was never attempted", () => {
+    // Nothing to report: a repository exists and the next steps are the point of this output. Not a
+    // bare /git/ — the closing line links to skein-js.github.io, which would match it.
+    const initialized = describeNextSteps(optionsFor(), { ...outcome, git: "initialized" }).join(
+      "\n",
+    );
+    expect(initialized).not.toMatch(/skipped git/i);
+    expect(initialized).not.toMatch(/could not initialize/i);
+    expect(describeNextSteps(optionsFor(), outcome).join("\n")).not.toMatch(/skipped git/i);
+  });
+});
+
+describe("the durable development axis", () => {
+  it("tells you to start the services before the dev server that needs them", () => {
+    const lines = describeNextSteps(optionsFor({ devStorage: "postgres" }), outcome);
+    const text = lines.join("\n");
+
+    expect(text).toContain("dev:services");
+    // Order matters more than presence: `dev` on this axis fails outright with nothing running.
+    expect(text.indexOf("dev:services")).toBeLessThan(text.indexOf("pnpm dev\n"));
+  });
+
+  it("says nothing about services on the in-memory axis", () => {
+    // The zero-setup promise: the default path must not mention Docker at all.
+    expect(describeNextSteps(optionsFor(), outcome).join("\n")).not.toContain("dev:services");
   });
 });
