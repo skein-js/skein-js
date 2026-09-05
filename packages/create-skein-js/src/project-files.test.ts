@@ -22,6 +22,7 @@ function optionsFor(provider: ScaffoldOptions["provider"]): ScaffoldOptions {
     packageName: "my-agent",
     provider,
     packageManager: "pnpm",
+    devStorage: "memory",
     skeinVersionRange: "^0.14.0",
   };
 }
@@ -292,6 +293,8 @@ describe("the scripts a scaffolded project ships", () => {
     // Durable development, which the CLI always supported and no script exposed.
     expect(manifest.scripts["dev:postgres"]).toContain("--store postgres");
     expect(manifest.scripts["dev:postgres"]).toContain("--queue redis");
+    // In-memory by default, so `dev` needs nothing installed or started.
+    expect(manifest.scripts["dev"]).not.toContain("--store postgres");
 
     // `start` serves the *artifact*, so it must point at the artifact's own `langgraph.json`. A bare
     // `skein start` resolves `langgraph.json` from the cwd and dies on the missing `schemas.json`
@@ -336,5 +339,33 @@ describe("the scripts a scaffolded project ships", () => {
     ) as { devDependencies: Record<string, string> };
 
     expect(manifest.devDependencies["skein-js"]).toBe("^0.14.0");
+  });
+});
+
+describe("the local development storage axis", () => {
+  const scriptsFor = (devStorage: ScaffoldOptions["devStorage"]) =>
+    JSON.parse(
+      buildProjectFiles({ ...optionsFor("none"), devStorage }).find(
+        (file) => file.path === "package.json",
+      )!.contents,
+    ).scripts as Record<string, string>;
+
+  it("makes `dev` durable when asked, and keeps the in-memory spelling", () => {
+    const scripts = scriptsFor("postgres");
+
+    expect(scripts["dev"]).toContain("--store postgres --queue redis");
+    expect(scripts["dev:memory"]).toBe("skein dev --port 2024");
+    expect(scripts["dev:postgres"]).toBeUndefined();
+  });
+
+  it("never takes the other spelling away", () => {
+    // Choosing at scaffold time picks a default, not a capability: whichever way the axis goes, both
+    // commands are on disk, so nobody has to discover a pair of flags the project never mentions.
+    for (const storage of ["memory", "postgres"] as const) {
+      const scripts = scriptsFor(storage);
+      const both = [scripts["dev"], scripts["dev:memory"] ?? scripts["dev:postgres"]];
+      expect(both.filter((script) => script?.includes("--store postgres"))).toHaveLength(1);
+      expect(both.filter((script) => script === "skein dev --port 2024")).toHaveLength(1);
+    }
   });
 });

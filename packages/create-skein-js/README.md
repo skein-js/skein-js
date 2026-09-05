@@ -25,13 +25,16 @@ No database, no Docker, and no API key — `echo` answers your first request imm
 
 A `langgraph.json` project driven by the `skein` CLI — the same lifecycle you ship with:
 
-| Command        | What it does                                                        |
-| -------------- | ------------------------------------------------------------------- |
-| `dev`          | In-memory drivers, hot reload, dev state persisted across restarts  |
-| `dev:services` | Postgres + Redis via Docker Compose, for `dev:postgres` and `start` |
-| `dev:postgres` | The same hot reload, against the drivers production uses            |
-| `build`        | Bundle the graphs to plain JavaScript in `.skein/build`             |
-| `start`        | Serve that bundle — the production entrypoint                       |
+| Command        | What it does                                                           |
+| -------------- | ---------------------------------------------------------------------- |
+| `dev`          | In-memory drivers, hot reload, dev state persisted across restarts     |
+| `dev:services` | Postgres + Redis via Docker Compose, for the durable `dev` and `start` |
+| `dev:postgres` | The same hot reload, against the drivers production uses               |
+| `build`        | Bundle the graphs to plain JavaScript in `.skein/build`                |
+| `start`        | Serve that bundle — the production entrypoint                          |
+
+Choosing Postgres at the storage prompt swaps the last two: `dev` becomes the durable spelling and
+the in-memory one is emitted as `dev:memory`. Both are always present either way.
 
 ...plus an echo graph that runs with no credentials, a test for it, an optional model-backed ReAct
 agent, and a README explaining every file.
@@ -43,14 +46,20 @@ create-skein-js [directory]
 
   -m, --provider <name>   none | google | anthropic | openai   (default: prompted)
       --pm <name>         npm | pnpm | yarn | bun              (default: detected)
-      --no-install        Skip installing dependencies
-      --no-git            Skip initializing a git repository
+      --no-install        Skip installing dependencies             (else: prompted, default yes)
+      --no-git            Skip initializing a git repository       (else: prompted)
   -y, --yes               Accept every default; never prompt
   -f, --force             Scaffold into a directory that is not empty
 ```
 
 Everything is prompted when the terminal is interactive, and defaulted when it is not — so this is
-safe to run in a Dockerfile or a CI job without hanging.
+safe to run in a Dockerfile or a CI job without hanging. Interactively that means five questions:
+directory, model provider, local development storage, whether to install, and whether to initialize a
+git repository. The last defaults to no inside an existing work tree, since nesting a repository in
+yours is never the intent — and whichever way it goes, the closing output says what git actually did.
+
+`--pm` stays a flag with no prompt: it is detected from `npm_config_user_agent`, so asking would be a
+question whose answer is already known.
 
 npm needs `--` before flags; `pnpm create` and `npx` do not:
 

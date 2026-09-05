@@ -40,6 +40,23 @@ export async function promptText(
   return trimmed === "" ? fallback : trimmed;
 }
 
+/**
+ * Ask a yes/no question. An empty answer, or anything unrecognised, takes `defaultValue` — same
+ * forgiveness as {@link promptChoice}, and for the same reason: a stray keystroke during a scaffold
+ * should not be an error, and the default is always the safe answer.
+ */
+export async function promptConfirm(
+  ask: AskQuestion,
+  question: string,
+  defaultValue: boolean,
+): Promise<boolean> {
+  const hint = defaultValue ? "Y/n" : "y/N";
+  const answer = (await ask(`${bold(question)} ${dim(`(${hint})`)} `)).trim().toLowerCase();
+  if (answer === "y" || answer === "yes") return true;
+  if (answer === "n" || answer === "no") return false;
+  return defaultValue;
+}
+
 /** One selectable option in {@link promptChoice}. */
 export interface PromptChoice<T extends string> {
   readonly value: T;

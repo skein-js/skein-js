@@ -8,7 +8,7 @@
  */
 export const TEMPLATE_SOURCES: Readonly<Record<string, string>> = {
   "compose.dev.yaml": `# Local services for \`skein start\`, which is durable-only. Start them with:
-#   docker compose -f compose.dev.yaml up -d
+#   docker compose -f compose.dev.yaml up -d --wait
 # \`skein dev\` does not need them — it runs on in-memory drivers.
 
 services:
@@ -68,7 +68,7 @@ volumes:
 
 <%_ } _%>
 # ---------------------------------------------------------------------------
-# Used by \`skein start\` and \`<%= runDevPostgres %>\`, both of which are durable-only.
+# Used by \`skein start\`, and by the durable \`dev\` spelling — both need these two.
 # These are already the right values for the \`compose.dev.yaml\` in this project — bring it up with
 # \`<%= runServices %>\`. Nothing reads them until you do; \`skein dev\` stays in memory regardless.
 # ---------------------------------------------------------------------------
@@ -114,6 +114,17 @@ An [Agent Protocol](https://github.com/langchain-ai/agent-protocol) server for y
 - <http://localhost:2024> — the Agent Protocol API
 - <http://localhost:2024/console> — the console: threads, live runs, interrupt approvals, time travel
 
+<%_ if (devIsDurable) { _%>
+Postgres and Redis, the same drivers production runs on — start them with \`<%= runServices %>\` first.
+Edit a graph and save; the server hot-reloads and keeps your threads.
+
+For the zero-setup path instead — in-memory drivers, nothing to install or start, state restored from
+\`.skein/\` across restarts:
+
+\`\`\`bash
+<%= runDevAlternate %>
+\`\`\`
+<%_ } else { _%>
 In-memory drivers, nothing to install or start. Edit a graph and save — the server hot-reloads and
 keeps your threads. Stop and restart it and your state is restored from \`.skein/\`.
 
@@ -122,8 +133,9 @@ Redis rather than \`.skein/\`:
 
 \`\`\`bash
 <%= runServices %>   # Postgres + Redis
-<%= runDevPostgres %>
+<%= runDevAlternate %>
 \`\`\`
+<%_ } _%>
 
 ## What's in here
 

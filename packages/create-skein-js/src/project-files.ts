@@ -1,8 +1,7 @@
 // The shared pure core: every file a scaffolded project consists of, as data.
 //
-// Pure and side-effect-free so it is trivially unit-testable and so both entry points can share it
-// verbatim — the `npm create` bin writes the result with node:fs, the Nx generator writes it through
-// devkit's virtual Tree. Same split as packages/cli/src/bundle/write-manifest.ts: pure builders
+// Pure and side-effect-free so it is trivially unit-testable: this returns the files, and the caller
+// writes them with node:fs. Same split as packages/cli/src/bundle/write-manifest.ts — pure builders
 // here, I/O in the caller.
 //
 // The file *contents* live in ../templates/**.tmpl and are compiled into templates.generated.ts at
@@ -44,7 +43,13 @@ function templateValuesFor(options: ScaffoldOptions): TemplateValues {
     apiKeyEnvVar: provider?.apiKeyEnvVar ?? "",
     providerConsoleUrl: provider?.consoleUrl ?? "",
     runDev: runCommand(options, "dev"),
-    runDevPostgres: runCommand(options, "dev:postgres"),
+    devIsDurable: options.devStorage === "postgres",
+    // Whichever spelling `dev` is not — `package-manifest` emits exactly one of the two, so naming
+    // the wrong one here would put a script in the README that is not in `package.json`.
+    runDevAlternate: runCommand(
+      options,
+      options.devStorage === "postgres" ? "dev:memory" : "dev:postgres",
+    ),
     runServices: runCommand(options, "dev:services"),
     runBuild: runCommand(options, "build"),
     runStart: runCommand(options, "start"),

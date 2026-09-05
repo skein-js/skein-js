@@ -1,7 +1,7 @@
 // The fully-resolved description of one scaffolded project. Everything that varies between two
-// generated projects lives here, and nothing else does — both entry points (the `npm create` bin and
-// the Nx `app` generator) reduce their very different inputs to this one shape before touching a
-// template. That is what keeps the two doors from drifting apart.
+// generated projects lives here, and nothing else does: the `npm create` bin reduces its flags and
+// prompts to this one shape before touching a template, so what a template can vary on is exactly
+// this interface and nothing ambient.
 //
 // There is deliberately no "template" or "framework" axis. A scaffolded project is a `langgraph.json`
 // driven by the skein CLI — `skein dev` to develop, `skein build` + `skein start` to ship. Mounting
@@ -10,20 +10,25 @@
 // adapter, not a starter: a scaffolder that emitted one would be generating an app rather than an
 // agent.
 //
-// There is no storage axis either, because the CLI lifecycle already fixes it: `skein dev` runs on
-// in-memory drivers with zero setup, and `skein start` is durable-only — it defaults to
-// `--store postgres --queue redis` and fails without POSTGRES_URI/REDIS_URI. Every scaffolded
-// project therefore ships the compose file that provides them, and the only real choice left is the
-// model provider.
+// There is one storage axis, and it is narrow: which drivers the generated `dev` script runs on.
+// The CLI lifecycle fixes everything else — `skein dev` runs on in-memory drivers with zero setup,
+// and `skein start` is durable-only (it defaults to `--store postgres --queue redis` and fails
+// without POSTGRES_URI/REDIS_URI), so every scaffolded project ships the compose file that provides
+// them either way. What the axis changes is only which of the two `dev` spellings is the default and
+// which is the alternate script; both are always emitted, so neither choice takes anything away.
 
 /** Which chat model the optional second graph is wired to. `none` emits no model graph at all. */
 export type ModelProvider = "none" | "google" | "anthropic" | "openai";
+
+/** Which drivers the generated `dev` script runs on. See {@link ScaffoldOptions.devStorage}. */
+export type DevStorage = "memory" | "postgres";
 
 /** Package managers we detect, emit instructions for, and can run an install with. */
 export type PackageManagerName = "npm" | "pnpm" | "yarn" | "bun";
 
 export const MODEL_PROVIDERS: readonly ModelProvider[] = ["none", "google", "anthropic", "openai"];
 export const PACKAGE_MANAGERS: readonly PackageManagerName[] = ["npm", "pnpm", "yarn", "bun"];
+export const DEV_STORAGES: readonly DevStorage[] = ["memory", "postgres"];
 
 /** Everything a template needs. Fully resolved — no defaults left to apply downstream. */
 export interface ScaffoldOptions {
@@ -34,6 +39,14 @@ export interface ScaffoldOptions {
   readonly provider: ModelProvider;
   /** Chosen or detected. Affects the install command and the instructions we print — nothing else. */
   readonly packageManager: PackageManagerName;
+  /**
+   * Which drivers the generated `dev` script runs on.
+   *
+   * `memory` is the zero-setup default and what the docs lead with. `postgres` makes `dev` the
+   * durable spelling for someone who wants local development to match production; the other
+   * spelling is still emitted, as `dev:memory` or `dev:postgres` respectively.
+   */
+  readonly devStorage: DevStorage;
   /**
    * The range emitted for `skein-js` and every `@skein-js/*` dependency, e.g. `^0.14.0`. Derived
    * from this package's own version: `nx release` runs a *fixed* group over `packages/*`, so the
