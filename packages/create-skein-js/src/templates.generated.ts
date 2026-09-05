@@ -48,7 +48,13 @@ services:
 volumes:
   postgres-data:
 `,
-  "env.example": `# Copy this file to .env and fill in what you need.
+  "env.example": `<%_ if (isEnvExample) { _%>
+# Copy this file to \`.env\` and fill in what you need. \`.env\` is gitignored, so a fresh clone of this
+# project has this file and not that one — this is the copy you start from.
+<%_ } else { _%>
+# This project's local environment, written for you when the project was scaffolded. Nothing to copy:
+# this *is* \`.env\`. (\`.env.example\` is the committed copy, for anyone cloning this repo.)
+<%_ } _%>
 # \`skein dev\` needs none of it: the \`echo\` graph runs with no credentials and no services.
 
 <%_ if (hasProvider) { _%>
@@ -62,11 +68,12 @@ volumes:
 
 <%_ } _%>
 # ---------------------------------------------------------------------------
-# Required by \`skein start\` — the production entrypoint is durable-only.
-# Run \`docker compose -f compose.dev.yaml up -d\` to get both locally.
+# Used by \`skein start\` and \`<%= runDevPostgres %>\`, both of which are durable-only.
+# These are already the right values for the \`compose.dev.yaml\` in this project — bring it up with
+# \`<%= runServices %>\`. Nothing reads them until you do; \`skein dev\` stays in memory regardless.
 # ---------------------------------------------------------------------------
-# POSTGRES_URI=postgresql://postgres:postgres@localhost:5432/skein
-# REDIS_URI=redis://localhost:6379
+POSTGRES_URI=postgresql://postgres:postgres@localhost:5432/skein
+REDIS_URI=redis://localhost:6379
 `,
   gitignore: `node_modules/
 dist/
@@ -110,6 +117,14 @@ An [Agent Protocol](https://github.com/langchain-ai/agent-protocol) server for y
 In-memory drivers, nothing to install or start. Edit a graph and save — the server hot-reloads and
 keeps your threads. Stop and restart it and your state is restored from \`.skein/\`.
 
+To develop against the drivers production runs on instead — same hot reload, state in Postgres and
+Redis rather than \`.skein/\`:
+
+\`\`\`bash
+<%= runServices %>   # Postgres + Redis
+<%= runDevPostgres %>
+\`\`\`
+
 ## What's in here
 
 - **\`src/echo-graph.ts\`** — a LangGraph.js graph that echoes your message back. No API key, no
@@ -118,7 +133,8 @@ keeps your threads. Stop and restart it and your state is restored from \`.skein
 - **\`src/agent-graph.ts\`** — a ReAct agent with a live weather tool. Needs a model key.
 <%_ } _%>
 - **\`langgraph.json\`** — points skein at your graphs. The same format the LangGraph CLI reads.
-- **\`.env.example\`** — copy to \`.env\`. Nothing in it is needed for \`dev\`.
+- **\`.env\`** — already in place, nothing to copy. Nothing in it is needed for \`dev\`.
+  (\`.env.example\` is the committed reference copy; \`.env\` itself is gitignored.)
 - **\`compose.dev.yaml\`** — Postgres and Redis, which \`start\` needs.
 - **\`tsconfig.json\`** — strict TypeScript, ESM.
 
@@ -127,7 +143,7 @@ keeps your threads. Stop and restart it and your state is restored from \`.skein
 
 The \`echo\` graph runs with no credentials. The \`agent\` graph needs \`<%= apiKeyEnvVar %>\`:
 
-\`.env\` is already here, with every line commented out. Uncomment one:
+\`.env\` is already here, with the model lines commented out. Uncomment one:
 
 \`\`\`bash
 # <%= apiKeyEnvVar %>=your-key-here     ← get one at <%= providerConsoleUrl %>
@@ -161,10 +177,12 @@ bundle with no TypeScript toolchain in the loop. That pair is exactly what the p
 
 \`\`\`bash
 <%= runServices %>   # Postgres + Redis
-# then uncomment POSTGRES_URI and REDIS_URI in .env
 <%= runBuild %>
 <%= runStart %>
 \`\`\`
+
+Nothing to edit first: \`.env\` already carries the \`POSTGRES_URI\` and \`REDIS_URI\` that match the
+\`compose.dev.yaml\` above, and \`skein dev\` ignores them either way.
 
 \`skein start\` is durable-only: it expects \`POSTGRES_URI\` and \`REDIS_URI\`, because that is what makes
 runs survive a restart and lets you run more than one instance. For a container instead,

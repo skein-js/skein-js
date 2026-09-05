@@ -1519,17 +1519,19 @@ Eleven files. The three that matter:
 what clients ask for by name. This is the same file format the LangGraph CLI reads, which is why
 skein is a drop-in for it.
 
-**`package.json`** — four commands that are the whole lifecycle:
+**`package.json`** — the commands that are the whole lifecycle:
 
 |                        |                                                              |
 | ---------------------- | ------------------------------------------------------------ |
 | `npm run dev`          | what you're running: hot reload, in-memory state, zero setup |
-| `npm run dev:services` | Postgres + Redis in Docker, needed by `start`                |
+| `npm run dev:services` | Postgres + Redis in Docker, for `dev:postgres` and `start`   |
+| `npm run dev:postgres` | the same hot reload, against those services instead          |
 | `npm run build`        | compile your graphs to plain JavaScript in `.skein/`         |
 | `npm start`            | serve that build — this is what production runs              |
 
-The rest: `.env` and `.env.example` (identical, entirely commented out — nothing in them is required
-yet), `compose.dev.yaml` (the services for `start`), `tsconfig.json`, a test, and a README.
+The rest: `.env` (ready to use — the model key is commented out, the service URIs are not) and
+`.env.example` (a committed reference copy of it), `compose.dev.yaml` (the services for `start`),
+`tsconfig.json`, a test, and a README.
 
 ## 4. Understanding the graph
 
@@ -1704,10 +1706,12 @@ and your node code does not change. See [storage.md](./storage.md) and [memory.m
 
 ```bash
 npm run dev:services    # Postgres + Redis via Docker
-# uncomment POSTGRES_URI and REDIS_URI in .env
 npm run build           # graphs → plain JavaScript in .skein/build
 npm start
 ```
+
+Nothing to edit first: the `POSTGRES_URI` and `REDIS_URI` in `.env` already match those services, and
+`npm start` loads them itself.
 
 `build` compiles your TypeScript graphs ahead of time; `start` serves that output with no TypeScript
 toolchain in the loop. It is exactly what the production container runs.
@@ -1959,8 +1963,8 @@ my-agent/
 ├── tsconfig.json           Strict, ESM, bundler resolution
 ├── vitest.config.ts
 ├── compose.dev.yaml        Postgres + Redis — what `start` needs
-├── .env.example            Every value optional for `dev`
-├── .env                    A copy of it, gitignored — never overwritten if one already exists
+├── .env                    Ready to use, gitignored — never overwritten if one already exists
+├── .env.example            A committed reference copy of it
 ├── .gitignore
 ├── README.md               Explains each of these files
 └── src/
@@ -1971,22 +1975,32 @@ my-agent/
 
 The scripts are the whole skein CLI lifecycle:
 
-| Script         | Command                                    | What it does                                                |
-| -------------- | ------------------------------------------ | ----------------------------------------------------------- |
-| `dev`          | `skein dev --port 2024`                    | In-memory drivers, hot reload, state persisted to `.skein/` |
-| `dev:services` | `docker compose -f compose.dev.yaml up -d` | Postgres + Redis for `start`                                |
-| `build`        | `skein build --artifact-only`              | Graphs → plain JavaScript in `.skein/build`                 |
-| `start`        | `skein start`                              | Serve that build — the production entrypoint                |
-| `typecheck`    | `tsc --noEmit`                             |                                                             |
-| `test`         | `vitest run`                               |                                                             |
+| Script         | Command                                      | What it does                                                |
+| -------------- | -------------------------------------------- | ----------------------------------------------------------- |
+| `dev`          | `skein dev --port 2024`                      | In-memory drivers, hot reload, state persisted to `.skein/` |
+| `dev:services` | `docker compose -f compose.dev.yaml up -d`   | Postgres + Redis, for `dev:postgres` and `start`            |
+| `dev:postgres` | `skein dev … --store postgres --queue redis` | The same hot reload, against the drivers production uses    |
+| `build`        | `skein build --artifact-only`                | Graphs → plain JavaScript in `.skein/build`                 |
+| `start`        | `skein start -c .skein/build/langgraph.json` | Serve that build — the production entrypoint                |
+| `typecheck`    | `tsc --noEmit`                               |                                                             |
+| `test`         | `vitest run`                                 |                                                             |
+
+`start` names the artifact's own `langgraph.json` because `skein start` serves a _build_, not a source
+project: it wants `schemas.json` beside the config it loads, and that file only exists in
+`.skein/build`. Run from the project root like this, it also picks up the `POSTGRES_URI` and
+`REDIS_URI` from the project's `.env` — `skein start` reads a conventional `.env` from its working
+directory as well as from the config's, because an artifact deliberately carries none of its own (it
+is the Docker build context). So `dev:services && build && start` works with nothing to edit first.
 
 Two deliberate choices worth knowing:
 
 - **`dev` never needs a credential or a service.** The `echo` graph is always present and always
   first in `graphs`, so the very first request works with an empty `.env`.
-- **`compose.dev.yaml` is always generated**, not hidden behind a flag. `skein start` is durable-only
-  — it defaults to `--store postgres --queue redis` and fails without `POSTGRES_URI`/`REDIS_URI` — so
-  a project shipping a `start` script has to ship the services it needs, or that script is a trap.
+- **`compose.dev.yaml` is always generated**, not hidden behind a flag, and the `POSTGRES_URI` /
+  `REDIS_URI` in `.env` are live rather than commented out. `skein start` is durable-only — it
+  defaults to `--store postgres --queue redis` and fails without those two — so a project shipping a
+  `start` script has to ship both the services and the URIs that reach them, or the script is a trap.
+  The values are the ones the generated compose file serves, so there was never anything to decide.
 
 ## Options
 
@@ -10055,6 +10069,13 @@ cd /srv/skein && npm install --omit=dev
 export POSTGRES_URI=postgres://… REDIS_URI=redis://…
 npx skein start                      # or: node node_modules/skein-js/dist/index.js start
 ```
+
+`skein start` also reads a conventional `.env` from the directory you run it in, as well as one beside
+the config it loads — so running your own build from the project root
+(`skein start -c .skein/build/langgraph.json`) picks up that project's `.env` without exporting
+anything. An artifact never carries a `.env` of its own: it is the Docker build context, and `skein
+build` drops a file `env` from the config for that reason. The ambient environment still wins over
+both, which is what the `export` above relies on.
 
 `skein start` serves the artifact and is the same entrypoint the image uses — the container's `CMD` is
 literally `node /app/node_modules/skein-js/dist/index.js start --store postgres --queue redis --host

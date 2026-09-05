@@ -16,6 +16,14 @@ An [Agent Protocol](https://github.com/langchain-ai/agent-protocol) server for y
 In-memory drivers, nothing to install or start. Edit a graph and save — the server hot-reloads and
 keeps your threads. Stop and restart it and your state is restored from `.skein/`.
 
+To develop against the drivers production runs on instead — same hot reload, state in Postgres and
+Redis rather than `.skein/`:
+
+```bash
+<%= runServices %>   # Postgres + Redis
+<%= runDevPostgres %>
+```
+
 ## What's in here
 
 - **`src/echo-graph.ts`** — a LangGraph.js graph that echoes your message back. No API key, no
@@ -24,7 +32,8 @@ keeps your threads. Stop and restart it and your state is restored from `.skein/
 - **`src/agent-graph.ts`** — a ReAct agent with a live weather tool. Needs a model key.
 <%_ } _%>
 - **`langgraph.json`** — points skein at your graphs. The same format the LangGraph CLI reads.
-- **`.env.example`** — copy to `.env`. Nothing in it is needed for `dev`.
+- **`.env`** — already in place, nothing to copy. Nothing in it is needed for `dev`.
+  (`.env.example` is the committed reference copy; `.env` itself is gitignored.)
 - **`compose.dev.yaml`** — Postgres and Redis, which `start` needs.
 - **`tsconfig.json`** — strict TypeScript, ESM.
 
@@ -33,7 +42,7 @@ keeps your threads. Stop and restart it and your state is restored from `.skein/
 
 The `echo` graph runs with no credentials. The `agent` graph needs `<%= apiKeyEnvVar %>`:
 
-`.env` is already here, with every line commented out. Uncomment one:
+`.env` is already here, with the model lines commented out. Uncomment one:
 
 ```bash
 # <%= apiKeyEnvVar %>=your-key-here     ← get one at <%= providerConsoleUrl %>
@@ -67,10 +76,12 @@ bundle with no TypeScript toolchain in the loop. That pair is exactly what the p
 
 ```bash
 <%= runServices %>   # Postgres + Redis
-# then uncomment POSTGRES_URI and REDIS_URI in .env
 <%= runBuild %>
 <%= runStart %>
 ```
+
+Nothing to edit first: `.env` already carries the `POSTGRES_URI` and `REDIS_URI` that match the
+`compose.dev.yaml` above, and `skein dev` ignores them either way.
 
 `skein start` is durable-only: it expects `POSTGRES_URI` and `REDIS_URI`, because that is what makes
 runs survive a restart and lets you run more than one instance. For a container instead,

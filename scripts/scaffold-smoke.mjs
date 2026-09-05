@@ -21,6 +21,11 @@ import path from "node:path";
 const scaffolder = path.resolve("packages/create-skein-js/dist/index.js");
 const providers = ["none", "anthropic"];
 
+/** Whether a Docker daemon is reachable — the durable half of this script needs one. */
+function dockerIsAvailable() {
+  return spawnSync("docker", ["info"], { stdio: "ignore", shell: false }).status === 0;
+}
+
 /** Run a command, streaming output, and fail the script if it exits non-zero. */
 function run(command, args, options = {}) {
   const label = `${command} ${args.join(" ")}`;
@@ -151,6 +156,90 @@ async function smokeTest(provider, port, ownVersion) {
   }
 }
 
+/**
+ * The other half of the generated README: `dev:services` → `build` → `start`.
+ *
+ * `dev` was the only thing this script exercised, so `start` being broken passed every check — it
+ * resolved `langgraph.json` from the cwd and died on the missing `schemas.json`, before it ever
+ * looked at `POSTGRES_URI`. Run verbatim, as a stranger following the README would: no exported
+ * variables and no hand-edited `.env`, because needing either is the bug.
+ *
+ * Provider-independent, so it runs once rather than per provider — the durable path does not touch
+ * the model. Skipped without a Docker daemon so the `dev` half still runs on a machine that has none.
+ */
+async function shipItSmokeTest(port, ownVersion) {
+  if (!dockerIsAvailable()) {
+    process.stdout.write("\nNo Docker daemon; skipping the `start` half of the smoke test.\n");
+    return;
+  }
+
+  const workspace = mkdtempSync(path.join(tmpdir(), "skein-scaffold-ship-"));
+  const project = path.join(workspace, "my-agent");
+  process.stdout.write(`\n=== ship it (dev:services → build → start) → ${project} ===\n`);
+
+  try {
+    run("node", [scaffolder, "my-agent", "--provider", "none", "--no-install", "--no-git", "-y"], {
+      cwd: workspace,
+    });
+    useAPublishedSkein(project, ownVersion);
+    run("npm", ["install", "--no-audit", "--no-fund"], { cwd: project });
+
+    // Inside the try, so the finally below tears the containers down even if compose itself fails
+    // partway. The workspace holding `compose.dev.yaml` is deleted straight after, so a leaked
+    // container could not be cleaned up by hand afterwards.
+    try {
+      run("npm", ["run", "dev:services"], { cwd: project });
+      run("npm", ["run", "build"], { cwd: project });
+
+      // `PORT` rather than a flag: `skein start` reads it, and the scaffolded script takes no args.
+      //
+      // The two URIs are passed explicitly, and only because this script installs the *published*
+      // `skein-js` on purpose. Reading them from the project's own `.env` — which is what makes the
+      // generated README's steps work with nothing to edit — needs `skein start` to read a
+      // conventional `.env` from its working directory, and the released CLI predates that. They
+      // match `compose.dev.yaml`, and the ambient environment outranks `.env` either way, so this
+      // changes nothing about what is under test here: that `build` produces an artifact and the
+      // scaffolded `start` script actually serves it. The `.env` half is covered by
+      // `packages/cli/src/project-env.test.ts`. Drop these two lines once the fix is released.
+      const server = spawn("npm", ["start"], {
+        cwd: project,
+        stdio: "inherit",
+        shell: false,
+        env: {
+          ...process.env,
+          PORT: String(port),
+          POSTGRES_URI: "postgresql://postgres:postgres@localhost:5432/skein",
+          REDIS_URI: "redis://localhost:6379",
+        },
+      });
+      // Raced against readiness below: a `start` that exits immediately is the exact failure this
+      // test exists to catch, and without this it would be reported as a 120s readiness timeout
+      // instead of as the exit code it actually was.
+      const crashed = new Promise((_resolve, reject) => {
+        server.once("exit", (code, signal) => {
+          if (signal === "SIGTERM") return; // our own teardown, below
+          reject(new Error(`\`npm start\` exited early (code ${code}, signal ${signal})`));
+        });
+      });
+      try {
+        const baseUrl = `http://127.0.0.1:${port}`;
+        await Promise.race([waitForServer(baseUrl, 120), crashed]);
+        await callTheServer(baseUrl);
+        process.stdout.write("\n✓ ship it: built an artifact and served a run from it\n");
+      } finally {
+        const exited = new Promise((resolve) => server.once("exit", resolve));
+        server.kill("SIGTERM");
+        await Promise.race([exited, new Promise((resolve) => setTimeout(resolve, 15_000))]);
+      }
+    } finally {
+      // Volumes too: a leftover Postgres volume would carry state into the next run of this script.
+      run("docker", ["compose", "-f", "compose.dev.yaml", "down", "-v"], { cwd: project });
+    }
+  } finally {
+    rmSync(workspace, { recursive: true, force: true, maxRetries: 5, retryDelay: 200 });
+  }
+}
+
 // Sanity-check that the scaffolder pins the version it was built at, so a stale `dist/` cannot make
 // the rest of this pass against the wrong runtime.
 const ownVersion = JSON.parse(
@@ -162,5 +251,7 @@ let port = 2400;
 for (const provider of providers) {
   await smokeTest(provider, (port += 1), ownVersion);
 }
+
+await shipItSmokeTest((port += 1), ownVersion);
 
 process.stdout.write("\nAll scaffold smoke tests passed.\n");

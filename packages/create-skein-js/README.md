@@ -25,12 +25,13 @@ No database, no Docker, and no API key — `echo` answers your first request imm
 
 A `langgraph.json` project driven by the `skein` CLI — the same lifecycle you ship with:
 
-| Command        | What it does                                                       |
-| -------------- | ------------------------------------------------------------------ |
-| `dev`          | In-memory drivers, hot reload, dev state persisted across restarts |
-| `dev:services` | Postgres + Redis via Docker Compose, which `start` needs           |
-| `build`        | Bundle the graphs to plain JavaScript in `.skein/build`            |
-| `start`        | Serve that bundle — the production entrypoint                      |
+| Command        | What it does                                                        |
+| -------------- | ------------------------------------------------------------------- |
+| `dev`          | In-memory drivers, hot reload, dev state persisted across restarts  |
+| `dev:services` | Postgres + Redis via Docker Compose, for `dev:postgres` and `start` |
+| `dev:postgres` | The same hot reload, against the drivers production uses            |
+| `build`        | Bundle the graphs to plain JavaScript in `.skein/build`             |
+| `start`        | Serve that bundle — the production entrypoint                       |
 
 ...plus an echo graph that runs with no credentials, a test for it, an optional model-backed ReAct
 agent, and a README explaining every file.
