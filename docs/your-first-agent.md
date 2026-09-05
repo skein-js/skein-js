@@ -63,17 +63,19 @@ Eleven files. The three that matter:
 what clients ask for by name. This is the same file format the LangGraph CLI reads, which is why
 skein is a drop-in for it.
 
-**`package.json`** — four commands that are the whole lifecycle:
+**`package.json`** — the commands that are the whole lifecycle:
 
 |                        |                                                              |
 | ---------------------- | ------------------------------------------------------------ |
 | `npm run dev`          | what you're running: hot reload, in-memory state, zero setup |
-| `npm run dev:services` | Postgres + Redis in Docker, needed by `start`                |
+| `npm run dev:services` | Postgres + Redis in Docker, for `dev:postgres` and `start`   |
+| `npm run dev:postgres` | the same hot reload, against those services instead          |
 | `npm run build`        | compile your graphs to plain JavaScript in `.skein/`         |
 | `npm start`            | serve that build — this is what production runs              |
 
-The rest: `.env` and `.env.example` (identical, entirely commented out — nothing in them is required
-yet), `compose.dev.yaml` (the services for `start`), `tsconfig.json`, a test, and a README.
+The rest: `.env` (ready to use — the model key is commented out, the service URIs are not) and
+`.env.example` (a committed reference copy of it), `compose.dev.yaml` (the services for `start`),
+`tsconfig.json`, a test, and a README.
 
 ## 4. Understanding the graph
 
@@ -248,10 +250,12 @@ and your node code does not change. See [storage.md](./storage.md) and [memory.m
 
 ```bash
 npm run dev:services    # Postgres + Redis via Docker
-# uncomment POSTGRES_URI and REDIS_URI in .env
 npm run build           # graphs → plain JavaScript in .skein/build
 npm start
 ```
+
+Nothing to edit first: the `POSTGRES_URI` and `REDIS_URI` in `.env` already match those services, and
+`npm start` loads them itself.
 
 `build` compiles your TypeScript graphs ahead of time; `start` serves that output with no TypeScript
 toolchain in the loop. It is exactly what the production container runs.

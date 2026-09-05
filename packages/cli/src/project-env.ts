@@ -1,8 +1,8 @@
 // Shared env resolution for the CLI commands. A conventional `.env` in the project is the base,
 // `langgraph.json`'s declared `env` overrides it, and the ambient environment wins over both
-// (dotenv convention). Both `skein dev` and `skein import-langgraph` apply env this way, so keeping
-// it in one place stops the two commands from resolving the same project's env (e.g. POSTGRES_URI)
-// differently. `resolveEnv` itself is intentionally pure (it just computes the map); this is the
+// (dotenv convention). `skein dev`, `skein start` and `skein import-langgraph` all apply env this
+// way, so keeping it in one place stops them from resolving the same project's env (e.g.
+// POSTGRES_URI) differently. `resolveEnv` itself is intentionally pure (it just computes the map); this is the
 // thin "apply to process.env" layer on top.
 
 import { existsSync, readFileSync } from "node:fs";
@@ -69,13 +69,29 @@ function readConventionalDotEnv(dir: string): Record<string, string> {
  * `env` file is missing but continues — once per process, not once per call, since `skein dev` calls
  * this again on every reload. Skips the conventional `.env` read when the declared
  * `env` already points at the same file, so it isn't read and parsed twice.
+ *
+ * `alsoReadDotEnvIn` adds a second conventional `.env`, ranked *below* everything else — see below.
  */
-export async function applyProjectEnv(config: LanggraphJson, configDir: string): Promise<void> {
+export async function applyProjectEnv(
+  config: LanggraphJson,
+  configDir: string,
+  options: { alsoReadDotEnvIn?: string } = {},
+): Promise<void> {
   const declaredEnvPath =
     typeof config.env === "string" ? path.resolve(configDir, config.env) : undefined;
   const conventional =
     declaredEnvPath === path.join(configDir, ".env") ? {} : readConventionalDotEnv(configDir);
-  applyEnv({ ...conventional, ...(await resolveEnv(config, configDir)) });
+  // A second conventional `.env`, at the lowest precedence, for a command whose config does not sit
+  // in the project. `skein start` is the only such command: it serves a *build*, so `configDir` is
+  // `.skein/build`, and a build deliberately carries no `.env` — it is the Docker build context, and
+  // `write-manifest` drops a file `env` for the same reason. Without this the URIs a scaffolded
+  // project ships in its own `.env` are never seen by the entrypoint that requires them.
+  const extra =
+    options.alsoReadDotEnvIn !== undefined &&
+    path.resolve(options.alsoReadDotEnvIn) !== path.resolve(configDir)
+      ? readConventionalDotEnv(options.alsoReadDotEnvIn)
+      : {};
+  applyEnv({ ...extra, ...conventional, ...(await resolveEnv(config, configDir)) });
   if (declaredEnvPath !== undefined && !existsSync(declaredEnvPath) && !warnedMissingEnvFile) {
     warnedMissingEnvFile = true;
     console.warn(`skein: env file "${config.env}" not found; continuing without it.`);

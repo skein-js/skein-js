@@ -125,8 +125,13 @@ export async function runStart(options: StartCommandOptions): Promise<void> {
     configDir = loaded.configDir;
     authPath = loaded.config.auth?.path;
     httpConfig = loaded.config.http;
-    // Apply an inline `env` map baked into the production config (a file `env` was dropped at build).
-    await applyProjectEnv(loaded.config, configDir);
+    // Apply an inline `env` map baked into the production config (a file `env` was dropped at build),
+    // plus a conventional `.env` in the working directory. The latter is what lets a project run its
+    // own build — `skein start -c .skein/build/langgraph.json` from the project root — without
+    // exporting `POSTGRES_URI`/`REDIS_URI` by hand: the artifact has no `.env` of its own by design,
+    // so the project's is the only one there is. Lowest precedence, so nothing baked into the
+    // artifact and nothing already in the ambient environment is overridden by it.
+    await applyProjectEnv(loaded.config, configDir, { alsoReadDotEnvIn: process.cwd() });
     // Flag → LangGraph-compat alias → SKEIN_RUN_CONCURRENCY → N_JOBS_PER_WORKER → default. Inside this
     // block so a bad value prints `skein: …` and exits 1, like every other boot-config failure.
     runConcurrency = resolveRunConcurrency(options.concurrency ?? options.nJobsPerWorker);

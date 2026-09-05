@@ -44,9 +44,27 @@ describe.each(everyProvider)("a project scaffolded with --provider %s", (provide
     const emitted = new Set(files.map((file) => file.path));
 
     expect(emitted.has(config.env)).toBe(true);
-    expect(files.find((file) => file.path === ".env")!.contents).toBe(
-      files.find((file) => file.path === ".env.example")!.contents,
-    );
+
+    // The two come from one template but must not be byte-identical: they were, so the file that
+    // *is* `.env` opened by telling you to copy it to `.env`.
+    const dotEnv = files.find((file) => file.path === ".env")!.contents;
+    const example = files.find((file) => file.path === ".env.example")!.contents;
+    expect(dotEnv).not.toBe(example);
+    // The instruction itself, not the word "copy". `.env` must not tell you to produce `.env` — it
+    // is `.env`. `.env.example` must, because it is the only one of the two a fresh clone gets.
+    expect(dotEnv).not.toMatch(/copy this file to `?\.env/i);
+    expect(example).toMatch(/copy this file to `?\.env/i);
+    // Only the header differs. Compared from the first divider rather than by line count, because
+    // the two headers are deliberately different lengths — everything a reader would actually set
+    // has to stay identical, or the "reference copy" stops being one.
+    const body = (contents: string): string => {
+      const divider = contents.indexOf("# ---");
+      // Guarded: `slice(-1)` would compare one character and pass whatever the two files held.
+      expect(divider, "no `# ---` divider to compare bodies from").toBeGreaterThan(-1);
+      return contents.slice(divider);
+    };
+    expect(body(dotEnv)).toBe(body(example));
+    expect(body(dotEnv)).toContain("POSTGRES_URI=");
 
     // …and it must stay out of git, since a real one will hold real keys.
     expect(files.find((file) => file.path === ".gitignore")!.contents).toMatch(/^\.env$/m);
@@ -271,7 +289,14 @@ describe("the scripts a scaffolded project ships", () => {
 
     expect(manifest.scripts["dev"]).toContain("skein dev");
     expect(manifest.scripts["build"]).toContain("skein build");
-    expect(manifest.scripts["start"]).toBe("skein start");
+    // Durable development, which the CLI always supported and no script exposed.
+    expect(manifest.scripts["dev:postgres"]).toContain("--store postgres");
+    expect(manifest.scripts["dev:postgres"]).toContain("--queue redis");
+
+    // `start` serves the *artifact*, so it must point at the artifact's own `langgraph.json`. A bare
+    // `skein start` resolves `langgraph.json` from the cwd and dies on the missing `schemas.json`
+    // beside it — which made the generated README's own "Ship it" steps fail at the last one.
+    expect(manifest.scripts["start"]).toBe("skein start -c .skein/build/langgraph.json");
   });
 
   // `skein start` defaults to --store postgres --queue redis and fails without them, so a project
@@ -292,9 +317,17 @@ describe("the scripts a scaffolded project ships", () => {
     expect(compose.contents).toContain('"127.0.0.1:5432:5432"');
     expect(compose.contents).toContain('"127.0.0.1:6379:6379"');
 
+    // Uncommented, not merely present: they used to be commented out, so the documented `start`
+    // step failed and the README told you to hand-edit a file in the middle of the happy path. The
+    // values match the compose file above, so there was never anything for the user to decide.
     const envExample = files.find((file) => file.path === ".env.example")!;
-    expect(envExample.contents).toContain("POSTGRES_URI");
-    expect(envExample.contents).toContain("REDIS_URI");
+    expect(envExample.contents).toMatch(
+      /^POSTGRES_URI=postgresql:\/\/postgres:postgres@localhost:5432\/skein$/m,
+    );
+    expect(envExample.contents).toMatch(/^REDIS_URI=redis:\/\/localhost:6379$/m);
+    const dotEnv = files.find((file) => file.path === ".env")!;
+    expect(dotEnv.contents).toMatch(/^POSTGRES_URI=/m);
+    expect(dotEnv.contents).toMatch(/^REDIS_URI=/m);
   });
 
   it("pins skein-js to the range it was told to", () => {

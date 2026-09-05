@@ -37,6 +37,11 @@ describe("renderTemplate", () => {
       apiKeyEnvVar: "K",
       modelEnvVar: "M",
       defaultModel: "m",
+      // `env.example` renders twice, once per output file, and names the run commands it points at.
+      // Unsupplied names throw by design (see the note on `renderTemplate`), so they belong here.
+      isEnvExample: true,
+      runServices: "npm run dev:services",
+      runDevPostgres: "npm run dev:postgres",
     };
     const withoutProvider = { ...withProvider, hasProvider: false };
 

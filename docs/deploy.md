@@ -209,6 +209,13 @@ export POSTGRES_URI=postgres://… REDIS_URI=redis://…
 npx skein start                      # or: node node_modules/skein-js/dist/index.js start
 ```
 
+`skein start` also reads a conventional `.env` from the directory you run it in, as well as one beside
+the config it loads — so running your own build from the project root
+(`skein start -c .skein/build/langgraph.json`) picks up that project's `.env` without exporting
+anything. An artifact never carries a `.env` of its own: it is the Docker build context, and `skein
+build` drops a file `env` from the config for that reason. The ambient environment still wins over
+both, which is what the `export` above relies on.
+
 `skein start` serves the artifact and is the same entrypoint the image uses — the container's `CMD` is
 literally `node /app/node_modules/skein-js/dist/index.js start --store postgres --queue redis --host
 0.0.0.0`. `skein-js` is pinned into the artifact's own dependencies, so the install above puts the CLI

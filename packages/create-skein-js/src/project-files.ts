@@ -44,6 +44,7 @@ function templateValuesFor(options: ScaffoldOptions): TemplateValues {
     apiKeyEnvVar: provider?.apiKeyEnvVar ?? "",
     providerConsoleUrl: provider?.consoleUrl ?? "",
     runDev: runCommand(options, "dev"),
+    runDevPostgres: runCommand(options, "dev:postgres"),
     runServices: runCommand(options, "dev:services"),
     runBuild: runCommand(options, "build"),
     runStart: runCommand(options, "start"),
@@ -60,9 +61,15 @@ function templateValuesFor(options: ScaffoldOptions): TemplateValues {
  */
 export function buildProjectFiles(options: ScaffoldOptions): readonly GeneratedFile[] {
   const values = templateValuesFor(options);
-  const fromTemplate = (templateKey: string, outputPath: string): GeneratedFile => ({
+  // `extras` is for the one thing a single shared value map cannot express: the same template
+  // rendered twice, differing per output file. Only `.env`/`.env.example` need it — see below.
+  const fromTemplate = (
+    templateKey: string,
+    outputPath: string,
+    extras: TemplateValues = {},
+  ): GeneratedFile => ({
     path: outputPath,
-    contents: renderTemplate(templateKey, values),
+    contents: renderTemplate(templateKey, { ...values, ...extras }),
   });
 
   const files: GeneratedFile[] = [
@@ -73,12 +80,17 @@ export function buildProjectFiles(options: ScaffoldOptions): readonly GeneratedF
     // The template is `gitignore.tmpl`, not `.gitignore.tmpl`: npm rewrites a `.gitignore` inside a
     // published tarball, which would silently ship a broken template.
     fromTemplate("gitignore", ".gitignore"),
-    fromTemplate("env.example", ".env.example"),
-    // The same contents, written twice on purpose. `langgraph.json` points at `.env`, so without it
-    // the very first `skein dev` opens with a warning about a missing file — a confusing way to greet
-    // someone whose project is working fine. Every line in it is commented out, and `.gitignore`
-    // excludes it, so this commits nothing and changes no behaviour.
-    { ...fromTemplate("env.example", ".env"), preserveIfPresent: true },
+    fromTemplate("env.example", ".env.example", { isEnvExample: true }),
+    // One template, written twice on purpose. `langgraph.json` points at `.env`, so without it the
+    // very first `skein dev` opens with a warning about a missing file — a confusing way to greet
+    // someone whose project is working fine. `.gitignore` excludes it, so this commits nothing.
+    //
+    // `isEnvExample` is what keeps the header honest: the two files were byte-identical, so the one
+    // that *is* `.env` opened by telling you to copy it to `.env`.
+    {
+      ...fromTemplate("env.example", ".env", { isEnvExample: false }),
+      preserveIfPresent: true,
+    },
     // Always emitted, not gated behind a flag: `skein start` is durable-only, so without this the
     // `start` script the project ships would be a trap.
     fromTemplate("compose.dev.yaml", "compose.dev.yaml"),

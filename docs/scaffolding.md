@@ -31,8 +31,8 @@ my-agent/
 ├── tsconfig.json           Strict, ESM, bundler resolution
 ├── vitest.config.ts
 ├── compose.dev.yaml        Postgres + Redis — what `start` needs
-├── .env.example            Every value optional for `dev`
-├── .env                    A copy of it, gitignored — never overwritten if one already exists
+├── .env                    Ready to use, gitignored — never overwritten if one already exists
+├── .env.example            A committed reference copy of it
 ├── .gitignore
 ├── README.md               Explains each of these files
 └── src/
@@ -43,22 +43,32 @@ my-agent/
 
 The scripts are the whole skein CLI lifecycle:
 
-| Script         | Command                                    | What it does                                                |
-| -------------- | ------------------------------------------ | ----------------------------------------------------------- |
-| `dev`          | `skein dev --port 2024`                    | In-memory drivers, hot reload, state persisted to `.skein/` |
-| `dev:services` | `docker compose -f compose.dev.yaml up -d` | Postgres + Redis for `start`                                |
-| `build`        | `skein build --artifact-only`              | Graphs → plain JavaScript in `.skein/build`                 |
-| `start`        | `skein start`                              | Serve that build — the production entrypoint                |
-| `typecheck`    | `tsc --noEmit`                             |                                                             |
-| `test`         | `vitest run`                               |                                                             |
+| Script         | Command                                      | What it does                                                |
+| -------------- | -------------------------------------------- | ----------------------------------------------------------- |
+| `dev`          | `skein dev --port 2024`                      | In-memory drivers, hot reload, state persisted to `.skein/` |
+| `dev:services` | `docker compose -f compose.dev.yaml up -d`   | Postgres + Redis, for `dev:postgres` and `start`            |
+| `dev:postgres` | `skein dev … --store postgres --queue redis` | The same hot reload, against the drivers production uses    |
+| `build`        | `skein build --artifact-only`                | Graphs → plain JavaScript in `.skein/build`                 |
+| `start`        | `skein start -c .skein/build/langgraph.json` | Serve that build — the production entrypoint                |
+| `typecheck`    | `tsc --noEmit`                               |                                                             |
+| `test`         | `vitest run`                                 |                                                             |
+
+`start` names the artifact's own `langgraph.json` because `skein start` serves a _build_, not a source
+project: it wants `schemas.json` beside the config it loads, and that file only exists in
+`.skein/build`. Run from the project root like this, it also picks up the `POSTGRES_URI` and
+`REDIS_URI` from the project's `.env` — `skein start` reads a conventional `.env` from its working
+directory as well as from the config's, because an artifact deliberately carries none of its own (it
+is the Docker build context). So `dev:services && build && start` works with nothing to edit first.
 
 Two deliberate choices worth knowing:
 
 - **`dev` never needs a credential or a service.** The `echo` graph is always present and always
   first in `graphs`, so the very first request works with an empty `.env`.
-- **`compose.dev.yaml` is always generated**, not hidden behind a flag. `skein start` is durable-only
-  — it defaults to `--store postgres --queue redis` and fails without `POSTGRES_URI`/`REDIS_URI` — so
-  a project shipping a `start` script has to ship the services it needs, or that script is a trap.
+- **`compose.dev.yaml` is always generated**, not hidden behind a flag, and the `POSTGRES_URI` /
+  `REDIS_URI` in `.env` are live rather than commented out. `skein start` is durable-only — it
+  defaults to `--store postgres --queue redis` and fails without those two — so a project shipping a
+  `start` script has to ship both the services and the URIs that reach them, or the script is a trap.
+  The values are the ones the generated compose file serves, so there was never anything to decide.
 
 ## Options
 
