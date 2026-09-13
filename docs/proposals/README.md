@@ -38,7 +38,16 @@ inboxes. They are not the audience for a hosted chat widget.
 
 ## The proposals
 
-_Nothing here is currently unbuilt._ One round trip needs no browser: the outbound leg has to be
+### Draft: decoupled sources and destinations
+
+[sources-and-destinations.md](./sources-and-destinations.md) tests whether an inbound integration and
+the provider that receives a run's result can be selected independently without adding a workflow
+DSL. Its first phase is deliberately an example over existing APIs; it may end with no new package
+surface.
+
+### Shipped foundations
+
+One round trip needs no browser: the outbound leg has to be
 trustworthy (the answer gets back) and the inbound leg has to be cheap (the event gets in). **Both
 halves have now shipped**, so what this file holds is the record of what each implementation
 **rejected** — which is the half worth keeping, because a design is only tested by building it.

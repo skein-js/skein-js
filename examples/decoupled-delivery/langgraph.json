@@ -1,0 +1,26 @@
+{
+  "graphs": {
+    "relay": "./src/relay-graph.ts:graph"
+  },
+  "auth": {
+    "path": "./src/auth.ts:auth"
+  },
+  "skein": {
+    "channels": {
+      "email": {
+        "path": "./src/email-channel.ts:channel",
+        "assistant": "relay"
+      },
+      "whatsapp": {
+        "path": "./src/whatsapp-channel.ts:channel",
+        "assistant": "relay"
+      }
+    },
+    "webhooks": {
+      "retries": {
+        "max_attempts": 3,
+        "initial_delay_ms": 1
+      }
+    }
+  }
+}
