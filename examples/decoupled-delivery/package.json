@@ -1,0 +1,22 @@
+{
+  "name": "@skein-js/example-decoupled-delivery",
+  "version": "0.0.0",
+  "private": true,
+  "description": "A code-first proof that email and WhatsApp can independently source events and receive graph-selected durable deliveries.",
+  "type": "module",
+  "scripts": {
+    "dev": "skein dev --port 2024"
+  },
+  "dependencies": {
+    "@langchain/langgraph": "^1.4.0",
+    "@langchain/langgraph-sdk": "^1.9.0",
+    "@skein-js/agent-protocol": "workspace:*",
+    "@skein-js/channels": "workspace:*",
+    "zod": "^3.25.32"
+  },
+  "devDependencies": {
+    "@skein-js/server-kit": "workspace:*",
+    "skein-js": "workspace:*",
+    "typescript": "^5.7.2"
+  }
+}
