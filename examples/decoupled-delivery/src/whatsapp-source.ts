@@ -1,8 +1,8 @@
 import { equalsConstantTime } from "@skein-js/agent-protocol";
+import type { Channel } from "@skein-js/channels";
 import { z } from "zod";
 
 import { findRefundApproverByNumber } from "./approval-roles.js";
-import type { WorkflowSource } from "./workflow-delivery.js";
 
 export const WHATSAPP_SOURCE_SECRET = "example-whatsapp-secret";
 
@@ -32,7 +32,7 @@ function principalForWhatsAppNumber(number: string): string {
   );
 }
 
-export const whatsappSource: WorkflowSource = {
+export const whatsappSource = {
   name: "whatsapp",
   verify(request) {
     const token = request.headers["x-example-token"] ?? "";
@@ -80,4 +80,4 @@ export const whatsappSource: WorkflowSource = {
       },
     };
   },
-};
+} satisfies Pick<Channel, "name" | "verify" | "parseEvent">;

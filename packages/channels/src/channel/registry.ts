@@ -33,6 +33,7 @@ export interface RegisteredChannel {
 export interface ChannelRegistry {
   /** The configured names, for building the route table. */
   readonly names: readonly string[];
+  /** Resolve a configured route name or an unambiguous explicit `Channel.name` delivery alias. */
   get(name: string): RegisteredChannel | undefined;
 }
 
@@ -60,9 +61,14 @@ export interface BuildRegistryInput {
  * **Everything is checked here, at boot, not at the first event.** Discovering that `assistant` names
  * a graph that does not exist when the first customer texts is precisely the failure this avoids, and
  * it is the kind of typo that only shows up in production because nothing else reads the key.
+ * Explicit channel names are also indexed as delivery aliases, but never as routes; ambiguous aliases
+ * fail here before they can merge thread namespaces or send a callback through the wrong channel.
  */
 export function buildChannelRegistry(input: BuildRegistryInput): ChannelRegistry {
+  const routeNames = Object.keys(input.channels);
+  for (const name of routeNames) assertChannelName(name, "configured channel");
   const registered = new Map<string, RegisteredChannel>();
+  const identityOwners = new Map(routeNames.map((name) => [name, name]));
 
   for (const [name, { module, config }] of Object.entries(input.channels)) {
     const channel = asChannel(module, name);
@@ -98,11 +104,24 @@ export function buildChannelRegistry(input: BuildRegistryInput): ChannelRegistry
       }
     }
 
-    registered.set(name, { channel, config });
+    const explicitIdentity = channel.name;
+    assertChannelName(explicitIdentity, `skein.channels.${name} channel`);
+    const identityOwner = identityOwners.get(explicitIdentity);
+    if (identityOwner !== undefined && identityOwner !== name) {
+      throw configError(
+        `skein.channels.${name} resolves to channel name "${explicitIdentity}", which collides ` +
+          `with configured channel "${identityOwner}". Channel names must be unique.`,
+      );
+    }
+    identityOwners.set(explicitIdentity, name);
+
+    const value = { channel, config };
+    registered.set(name, value);
+    registered.set(explicitIdentity, value);
   }
 
   return {
-    names: [...registered.keys()],
+    names: routeNames,
     get: (name) => registered.get(name),
   };
 }
@@ -141,6 +160,12 @@ function asChannel(module: LoadedChannelExport, name: string): Channel {
 
 function isUuid(value: string): boolean {
   return /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(value);
+}
+
+function assertChannelName(name: unknown, owner: string): asserts name is string {
+  if (typeof name !== "string" || name.trim().length === 0) {
+    throw configError(`${owner} must have a non-empty string name.`);
+  }
 }
 
 /**

@@ -49,3 +49,12 @@ export {
 } from "./pipeline/reply-target.js";
 export type { ChannelDeliveryTarget } from "./pipeline/reply-target.js";
 export type { RunPlan } from "./pipeline/resolve-run.js";
+
+export {
+  composeRoutedChannel,
+  declareChannelDestinationDelivery,
+} from "./routing/routed-channel.js";
+export type {
+  ChannelDestinationDelivery,
+  ChannelDestinationIntent,
+} from "./routing/routed-channel.js";

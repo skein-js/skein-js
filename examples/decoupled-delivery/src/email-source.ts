@@ -1,7 +1,6 @@
 import { equalsConstantTime } from "@skein-js/agent-protocol";
+import type { Channel } from "@skein-js/channels";
 import { z } from "zod";
-
-import type { WorkflowSource } from "./workflow-delivery.js";
 
 export const EMAIL_SOURCE_SECRET = "example-email-secret";
 
@@ -18,7 +17,7 @@ const emailEventSchema = z.object({
   refundReason: z.string().min(1).optional(),
 });
 
-export const emailSource: WorkflowSource = {
+export const emailSource = {
   name: "email",
   verify(request) {
     const token = request.headers["x-example-token"] ?? "";
@@ -38,4 +37,4 @@ export const emailSource: WorkflowSource = {
       },
     };
   },
-};
+} satisfies Pick<Channel, "name" | "verify" | "parseEvent">;

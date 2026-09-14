@@ -87,6 +87,26 @@ describe("wrapChannelDispatcher", () => {
     );
   });
 
+  it("keeps inferred interrupt delivery unchanged for a directly implemented channel", async () => {
+    const deliver = vi.fn().mockResolvedValue(undefined);
+    const dispatch = wrapChannelDispatcher({
+      registry: registryOf({ name: "twilio", verify: vi.fn(), parseEvent: vi.fn(), deliver }),
+      inner: vi.fn(),
+      logger: { warn: vi.fn() },
+    });
+
+    await dispatch(toChannelDeliveryUrl({ channelName: "twilio", replyTo: "sender" }), {
+      run_id: "run-interrupted",
+      status: "interrupted",
+      interrupts: { task: [{ value: "Approve refund?" }] },
+    });
+
+    expect(deliver).toHaveBeenCalledWith(
+      expect.objectContaining({ status: "interrupted", reply: "Approve refund?" }),
+      "sender",
+    );
+  });
+
   it("throws when a channel fails, so the outbox retries it", async () => {
     // The whole reason `deliver` runs *inside* the dispatcher: a failed send is an attempt the outbox
     // already knows how to back off, record and replay.

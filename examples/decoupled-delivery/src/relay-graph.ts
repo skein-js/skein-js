@@ -1,8 +1,16 @@
-import { Annotation, END, interrupt, Send, START, StateGraph } from "@langchain/langgraph";
+import {
+  Annotation,
+  END,
+  interrupt,
+  Send,
+  START,
+  StateGraph,
+  type LangGraphRunnableConfig,
+} from "@langchain/langgraph";
+import { declareChannelDestinationDelivery } from "@skein-js/channels";
 import { z } from "zod";
 
 import { refundApprovers, type RefundApprovalRole } from "./approval-roles.js";
-import { declareDestinationDelivery } from "./workflow-delivery.js";
 
 const refundDecisionSchema = z.object({
   actor: z.string().min(1),
@@ -39,15 +47,13 @@ const RelayState = Annotation.Root({
 
 type RelayStateValue = typeof RelayState.State;
 
-interface GraphConfig {
-  configurable?: Record<string, unknown>;
-  writer?: (chunk: unknown) => void;
-}
-
-function routeDelivery(state: RelayStateValue, config: GraphConfig): Partial<RelayStateValue> {
+function routeDelivery(
+  state: RelayStateValue,
+  config: LangGraphRunnableConfig,
+): Partial<RelayStateValue> {
   if (state.source === "whatsapp") {
     if (!state.emailAddress) throw new Error("A WhatsApp instruction needs an email destination.");
-    declareDestinationDelivery(config.writer, {
+    declareChannelDestinationDelivery(config.writer, {
       destination: "email",
       target: { to: state.emailAddress },
       payload: {
@@ -61,7 +67,7 @@ function routeDelivery(state: RelayStateValue, config: GraphConfig): Partial<Rel
   if (state.priority === "low") return {};
 
   if (state.subject === "route:missing") {
-    declareDestinationDelivery(config.writer, {
+    declareChannelDestinationDelivery(config.writer, {
       destination: "not-configured",
       target: {},
       payload: {},
@@ -73,7 +79,7 @@ function routeDelivery(state: RelayStateValue, config: GraphConfig): Partial<Rel
     if (!state.refundAmount || !state.refundReason) {
       throw new Error("A refund approval needs an amount and reason.");
     }
-    declareDestinationDelivery(config.writer, {
+    declareChannelDestinationDelivery(config.writer, {
       destination: "whatsapp-approval-batch",
       target: { refundId: state.conversationId },
       payload: { kind: "refund-approval-batch" },
@@ -82,7 +88,7 @@ function routeDelivery(state: RelayStateValue, config: GraphConfig): Partial<Rel
   }
 
   if (!state.whatsappNumber) throw new Error("An important email needs a WhatsApp destination.");
-  declareDestinationDelivery(config.writer, {
+  declareChannelDestinationDelivery(config.writer, {
     destination: "whatsapp",
     target: { to: state.whatsappNumber },
     payload: { body: `Important email from ${state.from}: ${state.subject ?? state.body}` },
@@ -105,7 +111,7 @@ function nextAfterRouting(state: RelayStateValue): typeof END | Send[] {
 
 function collectRefundApproval(
   state: RelayStateValue,
-  config: GraphConfig,
+  config: LangGraphRunnableConfig,
 ): Partial<RelayStateValue> {
   const role = state.approvalRole;
   const assignedPrincipal = state.assignedPrincipal;
@@ -133,11 +139,14 @@ function collectRefundApproval(
   }
 }
 
-function finalizeRefund(state: RelayStateValue, config: GraphConfig): Partial<RelayStateValue> {
+function finalizeRefund(
+  state: RelayStateValue,
+  config: LangGraphRunnableConfig,
+): Partial<RelayStateValue> {
   const approved =
     state.decisions.length === refundApprovers.length &&
     state.decisions.every((decision) => decision.outcome === "approve");
-  declareDestinationDelivery(config.writer, {
+  declareChannelDestinationDelivery(config.writer, {
     destination: "email",
     target: { to: state.from },
     payload: {

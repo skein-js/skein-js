@@ -145,8 +145,9 @@ export interface RunOutcomeForChannel {
   threadId: string;
   status: RunStatus;
   /**
-   * The answer to send, already resolved — the graph's declared reply if it wrote one, else the last
-   * AI message in `values.messages`, else absent.
+   * The answer to deliver, already resolved — the graph's declared reply if it wrote one, else the
+   * last AI message in `values.messages`, else absent. A composed routed channel uses an explicitly
+   * declared reply as a destination instruction instead of sending it back through the source.
    *
    * Resolved by the pipeline rather than by the channel, because the alternative is every channel
    * knowing the graph's state shape, which is what would stop them being reusable across graphs.

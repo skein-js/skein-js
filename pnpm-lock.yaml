@@ -736,6 +736,9 @@ importers:
       '@skein-js/core':
         specifier: workspace:*
         version: link:../core
+      zod:
+        specifier: ^3.25.32
+        version: 3.25.76
     devDependencies:
       '@skein-js/storage-memory':
         specifier: workspace:*

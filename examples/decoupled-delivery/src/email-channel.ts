@@ -1,5 +1,6 @@
+import { composeRoutedChannel } from "@skein-js/channels";
+
 import { destinations } from "./destinations.js";
 import { emailSource } from "./email-source.js";
-import { composeSourceChannel } from "./workflow-delivery.js";
 
-export const channel = composeSourceChannel(emailSource, destinations);
+export const channel = composeRoutedChannel(emailSource, destinations);

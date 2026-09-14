@@ -449,7 +449,7 @@ describe("decoupled sources and destinations", () => {
     const [delivery] = await resolved.runtime.service.runs.listDeliveries(runId);
     expect(delivery).toMatchObject({
       status: "pending",
-      last_error: expect.stringContaining('No workflow destination named "not-configured"'),
+      last_error: expect.stringContaining('No channel destination named "not-configured"'),
     });
     expect(recordedEffects()).toEqual([]);
   });
