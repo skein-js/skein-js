@@ -7,6 +7,7 @@ import path from "node:path";
 import { fileURLToPath } from "node:url";
 
 import { createProtocolRuntime } from "@skein-js/agent-protocol";
+import { resolveProtocolRuntime } from "@skein-js/server-kit";
 import { describe, expect, it } from "vitest";
 
 import { buildRuntime } from "./build-runtime.js";
@@ -32,6 +33,33 @@ describe("buildRuntime — all-memory (skein dev)", () => {
       expect(runtime.deps.ephemeralCheckpointer).toBeTypeOf("function");
     } finally {
       await runtime.dispose();
+    }
+  });
+
+  it("carries preloaded channels through the deps-based adapter seam used by the CLI", async () => {
+    const assembled = await buildRuntime({
+      configPath: fixture("langgraph.channels.json"),
+      store: "memory",
+      queue: "memory",
+    });
+    let resolved: Awaited<ReturnType<typeof resolveProtocolRuntime>> | undefined;
+    try {
+      expect(Object.keys(assembled.channels ?? {})).toEqual(["fixture"]);
+      resolved = await resolveProtocolRuntime({
+        deps: assembled.deps,
+        channels: assembled.channels,
+      });
+      expect(resolved.routes).toContainEqual({
+        method: "get",
+        path: "/channels",
+        handler: "listChannels",
+      });
+      expect(resolved.routes).toContainEqual(
+        expect.objectContaining({ method: "post", path: "/channels/fixture" }),
+      );
+    } finally {
+      await resolved?.runtime.worker.stop();
+      await assembled.dispose();
     }
   });
 

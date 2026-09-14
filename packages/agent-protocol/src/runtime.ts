@@ -65,7 +65,7 @@ export interface ProtocolRuntimeOptions {
    */
   deliveryWorker?: DeliveryWorkerOptions;
   /**
-   * Handlers the core table cannot build for itself — today, the channel pipeline.
+   * Handlers the core table cannot build for itself — today, the optional channel HTTP surface.
    *
    * Injected rather than assembled here, because `@skein-js/channels` is optional: a deployment that
    * configures no channel must not have to install it, so the engine cannot import it.

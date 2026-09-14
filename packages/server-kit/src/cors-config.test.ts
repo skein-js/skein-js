@@ -35,7 +35,7 @@ describe("toCorsOptions (LangGraph http.cors → cors options)", () => {
 
     expect(options.origin).toEqual(["http://localhost:3000"]);
     expect(options.methods).toEqual(["GET", "POST"]);
-    expect(options.allowedHeaders).toEqual(["authorization", "idempotency-key"]);
+    expect(options.allowedHeaders).toEqual(["authorization", "idempotency-key", "x-api-key"]);
     expect(options.credentials).toBe(true);
     expect(options.maxAge).toBe(600);
   });
@@ -61,8 +61,16 @@ describe("toCorsOptions (LangGraph http.cors → cors options)", () => {
   });
 
   it("does not duplicate idempotency-key when allow_headers already spells it", () => {
-    const options = toCorsOptions({ allow_headers: ["Idempotency-Key", "authorization"] });
-    expect(options.allowedHeaders).toEqual(["Idempotency-Key", "authorization"]);
+    const options = toCorsOptions({
+      allow_headers: ["Idempotency-Key", "X-API-Key", "authorization"],
+    });
+    expect(options.allowedHeaders).toEqual(["Idempotency-Key", "X-API-Key", "authorization"]);
+  });
+
+  it("allows the console API key through an explicit allow_headers list", () => {
+    expect(toCorsOptions({ allow_headers: ["content-type"] }).allowedHeaders).toContain(
+      "x-api-key",
+    );
   });
 
   it("leaves an explicitly empty allow_headers empty", () => {

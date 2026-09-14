@@ -60,6 +60,9 @@ export const ROUTE_AUTHZ: Record<keyof ProtocolHandlers, RouteAuthz> = {
   // `authorizing-handlers.ts`. The entry stays here so there is one source of truth for the pair, and
   // so this record remains exhaustive over the handler table.
   handleInboundEvent: { resource: "threads", action: "create_run" },
+  // Runtime wiring discovery for authenticated operators. Each row names an assistant but exposes
+  // neither module paths nor provider credentials, so it inherits the existing assistants read gate.
+  listChannels: { resource: "assistants", action: "read" },
   // assistants
   getAssistant: { resource: "assistants", action: "read" },
   getAssistantSchemas: { resource: "assistants", action: "read" },

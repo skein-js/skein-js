@@ -95,9 +95,23 @@ export async function resolveChannels(
   });
 
   const pipelineDeps = buildPipelineDeps(input.deps, input.service);
+  const channelInventory = registry.names.map((routeName) => {
+    const registered = registry.get(routeName);
+    if (!registered) throw new Error(`Channel registry lost configured route "${routeName}".`);
+    return {
+      route_name: routeName,
+      assistant: registered.config.assistant,
+      allowed_assistants: [...(registered.config.allowedAssistants ?? [])],
+      channel_name: registered.channel.name,
+      delivery_supported: typeof registered.channel.deliver === "function",
+    };
+  });
 
   return {
-    routes: channels.channelRouteBindings(registry.names),
+    routes: [
+      { method: "get", path: "/channels", handler: "listChannels" },
+      ...channels.channelRouteBindings(registry.names),
+    ],
     wrapDispatcher: (inner) =>
       channels.wrapChannelDispatcher({
         registry,
@@ -105,6 +119,11 @@ export async function resolveChannels(
         logger: input.deps.logger ?? console,
       }),
     handlers: {
+      listChannels: async (): Promise<ProtocolResponse> => ({
+        kind: "json",
+        status: 200,
+        body: { channels: channelInventory },
+      }),
       handleInboundEvent: async (req: ProtocolRequest): Promise<ProtocolResponse> => {
         // The route is one literal path per channel, so the name is recoverable from the path and an
         // unconfigured one never dispatches here at all.
@@ -263,7 +282,15 @@ interface ChannelsModule {
   buildChannelRegistry(input: {
     channels: Record<string, { module: unknown; config: Record<string, unknown> }>;
     graphIds: readonly string[];
-  }): { names: readonly string[]; get(name: string): unknown };
+  }): {
+    names: readonly string[];
+    get(name: string):
+      | {
+          channel: { name: string; deliver?: unknown };
+          config: { assistant: string; allowedAssistants?: readonly string[] };
+        }
+      | undefined;
+  };
   channelRouteBindings(names: readonly string[]): RouteBinding[];
   wrapChannelDispatcher(options: {
     registry: unknown;

@@ -37,13 +37,14 @@ export function createAuthorizingHandlers(
 
   const wrapped = {} as ProtocolHandlers;
   for (const name of names) {
+    const baseHandler = baseHandlers[name];
     // `GET /info` is served unauthenticated, matching `@langchain/langgraph-api`, whose auth middleware
     // opens with an explicit `if (c.req.path === "/info") return next()`. It is a *capability
     // handshake*: Studio and monitoring clients probe it before they have credentials, so 401-ing it
     // would break connecting to an auth-enabled skein server that `langgraph dev` would have answered.
     // It exposes no thread, run, or store content — only versions and which resources are served.
     if (name === "getServerInfo") {
-      wrapped[name] = baseHandlers[name];
+      wrapped[name] = baseHandler;
       continue;
     }
     // The channel route is exempted here for the **opposite** reason to `getServerInfo`, and the
@@ -66,7 +67,7 @@ export function createAuthorizingHandlers(
     // obligation and pins it adversarially — a forged `x-auth-scheme` must 401, and a denying
     // `@auth.on.threads` handler must 403 with no run created.
     if (name === "handleInboundEvent") {
-      wrapped[name] = baseHandlers[name];
+      wrapped[name] = baseHandler;
       continue;
     }
     const route = ROUTE_AUTHZ[name];
@@ -142,7 +143,7 @@ export function createAuthorizingHandlers(
       const filters = primary.filters ?? fallback?.filters;
 
       // Fast path: nothing request-specific to inject — reuse the shared, once-built handler table.
-      if (!filters && !authContext) return baseHandlers[name](scopedRequest);
+      if (!filters && !authContext) return baseHandler(scopedRequest);
 
       // Otherwise dispatch through a per-request context carrying the authenticated caller (so the run
       // service stamps it onto the run → `configurable.langgraph_auth_user`) and, when the handler
@@ -160,7 +161,7 @@ export function createAuthorizingHandlers(
             }
           : context.deps,
       };
-      return createProtocolHandlers(createProtocolServiceFromContext(requestContext))[name](
+      return createProtocolHandlers(createProtocolServiceFromContext(requestContext), extras)[name](
         scopedRequest,
       );
     };

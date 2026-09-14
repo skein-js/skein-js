@@ -81,7 +81,7 @@ Pass `overrides` to swap in production drivers or an auth engine while keeping t
   **`@deprecated`** alias. `graphMapToResolver` / `normalizeEmbeddableGraphs` are the lower-level
   graph→`GraphResolver` helpers.
 - **`resolveProtocolRuntime(options, frameworkLogger?): Promise<ResolvedProtocolRuntime>`** — turn a
-  `{ config } | { deps }` bag (`SkeinRuntimeOptions`) into a live runtime (assistants seeded, worker
+  `{ config } | { deps, channels? }` bag (`SkeinRuntimeOptions`) into a live runtime (assistants seeded, worker
   started) — the step every adapter runs before mounting routes. `options.worker`
   (`RunWorkerOptions`) tunes the background worker; `worker.maxConcurrency` is how many queued runs
   run at once. `frameworkLogger` is the adapter's own default, applied only when the caller supplied

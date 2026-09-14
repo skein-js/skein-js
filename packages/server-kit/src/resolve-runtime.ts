@@ -101,7 +101,13 @@ export type SkeinRuntimeOptions = SkeinRuntimeCommonOptions &
         importModule?: ModuleImporter;
         deps?: never;
       }
-    | { deps: ProtocolDeps; config?: never; importModule?: never }
+    | {
+        deps: ProtocolDeps;
+        config?: never;
+        importModule?: never;
+        /** Preloaded channel modules when another assembler consumed langgraph.json before us. */
+        channels?: Record<string, LoadedChannel>;
+      }
   );
 
 export interface ResolvedProtocolRuntime {
@@ -172,7 +178,7 @@ export async function resolveRuntimeDeps(
   // `embedPostgresGraphs` and every production embedding does — then never loads the `langgraph.json`
   // loader, the in-memory drivers, or `MemorySaver`.
   const loaded = options.deps
-    ? { deps: options.deps, cors: undefined, routes: skeinRoutes, channels: undefined }
+    ? { deps: options.deps, cors: undefined, routes: skeinRoutes, channels: options.channels }
     : await (
         await import("./in-memory-runtime.js")
       ).loadInMemoryRuntime(options.config, options.importModule);

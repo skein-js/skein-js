@@ -167,6 +167,7 @@ export async function runDev(options: DevCommandOptions): Promise<void> {
   try {
     server = await createExpressServer({
       deps: runtime.deps,
+      ...(runtime.channels ? { channels: runtime.channels } : {}),
       cors: runtime.cors,
       // Not `warm: true`. The eager load happens below, *after* the banner — see
       // `loadGraphsAndReportFailures`. Warming here would put the one line that matters (a graph
