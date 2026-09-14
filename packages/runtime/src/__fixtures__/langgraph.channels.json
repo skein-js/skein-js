@@ -1,0 +1,13 @@
+{
+  "graphs": {
+    "echo": "./echo.ts:graph"
+  },
+  "skein": {
+    "channels": {
+      "fixture": {
+        "path": "./channel.ts:channel",
+        "assistant": "echo"
+      }
+    }
+  }
+}

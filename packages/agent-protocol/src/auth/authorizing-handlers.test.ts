@@ -116,6 +116,24 @@ describe("authorizing handlers", () => {
     );
   });
 
+  it("guards and preserves an optional channel inventory handler on the scoped path", async () => {
+    const inventory = createProtocolRuntime(createFixtureDeps({ auth: fakeEngine() }), {
+      handlers: {
+        listChannels: async () => ({
+          kind: "json",
+          status: 200,
+          body: { channels: [{ route_name: "support" }] },
+        }),
+      },
+    });
+
+    await expectStatus(inventory.handlers.listChannels!(makeReq()), 401);
+    const response = await inventory.handlers.listChannels!(asUser("alice"));
+    expect((response as { body: unknown }).body).toEqual({
+      channels: [{ route_name: "support" }],
+    });
+  });
+
   it("stamps the owner onto a created thread", async () => {
     const response = await runtime.handlers.createThread(
       asUser("alice", { method: "POST", body: {} }),

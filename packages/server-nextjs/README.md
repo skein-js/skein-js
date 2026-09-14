@@ -98,7 +98,7 @@ details, including the "Critical dependency" warning, in
   surface (`POST <basePath>/:graph_id`, body-in / final-state-out); returns `{ POST, OPTIONS }` for
   `app/api/invoke/[graph_id]/route.ts`. `basePath` defaults to `/api/invoke`; adds `streamMode`.
 - Both accept `SkeinRouteHandlerOptions` / `SkeinPagesHandlerOptions`: the shared
-  `{ config, importModule? } | { deps }` seam **plus** an optional `cors` (off by default) and a
+  `{ config, importModule? } | { deps, channels? }` seam **plus** an optional `cors` (off by default) and a
   `basePath` (defaults to `/api`, matching the mount). `deps` comes from
   [`@skein-js/runtime`](../runtime)'s `buildRuntime` for production Postgres/Redis.
 - **`getSkeinRuntime(options): Promise<ResolvedProtocolRuntime>`** — the memoized runtime accessor

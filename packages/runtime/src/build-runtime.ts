@@ -15,10 +15,12 @@ import { withStoreItems } from "@skein-js/agent-protocol";
 import type { GraphResolver, GraphSchemas, ProtocolDeps } from "@skein-js/agent-protocol";
 import {
   loadAuthEngine,
+  loadChannels,
   loadConfig,
   parseLanggraphJson,
   type GraphRegistry,
   type ModuleImporter,
+  type LoadedChannel,
 } from "@skein-js/config";
 import type { GraphSchemas as ConfigGraphSchemas } from "@skein-js/config";
 import type { TelemetrySink } from "@skein-js/core";
@@ -85,10 +87,12 @@ export interface BuildRuntimeOptions {
  * lifecycle hooks (`reloadGraphs`, `dispose`, and — in all-memory mode — state snapshot/hydrate).
  */
 export interface SkeinRuntime {
-  /** Assembled dependency bundle to pass as `createExpressServer({ deps })`. */
+  /** Assembled dependency bundle to pass to an adapter together with {@link channels}. */
   deps: ProtocolDeps;
   /** CORS mapped from the config's `http.cors`, or `undefined` when none is declared. */
   cors?: CorsOptions;
+  /** Channel modules already loaded from `skein.channels`, for the adapter's optional HTTP surface. */
+  channels?: Record<string, LoadedChannel>;
   /** Re-read the config and swap in freshly imported graphs, keeping every driver + all state. */
   reloadGraphs(): Promise<void>;
   /** Tear down whichever concrete Postgres/Redis resources were created (no-op for all-memory). */
@@ -248,6 +252,7 @@ export async function buildRuntime(options: BuildRuntimeOptions): Promise<SkeinR
     return {
       deps: runtime.deps,
       cors: runtime.cors,
+      ...(runtime.channels ? { channels: runtime.channels } : {}),
       reloadGraphs: () => runtime.reloadGraphs(),
       dispose: async () => {
         await flushTelemetry(telemetry);
@@ -417,6 +422,10 @@ export async function buildRuntime(options: BuildRuntimeOptions): Promise<SkeinR
     return {
       deps,
       cors: corsFromHttpConfig(first.config.http),
+      channels: await loadChannels(first.config.skein?.channels, {
+        configDir: first.configDir,
+        ...(importModule ? { importModule } : {}),
+      }),
       reloadGraphs: async () => {
         reroute((await loadConfig({ configPath, importModule, staticSchemas: schemas })).graphs);
       },

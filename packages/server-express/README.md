@@ -65,7 +65,11 @@ const runtime = await buildRuntime({
   store: "postgres",
   queue: "redis",
 });
-const { router } = await skeinRouter({ deps: runtime.deps, cors: runtime.cors });
+const { router } = await skeinRouter({
+  deps: runtime.deps,
+  channels: runtime.channels,
+  cors: runtime.cors,
+});
 app.use(router);
 ```
 
@@ -99,8 +103,9 @@ Send `Accept: text/event-stream` to stream the steps instead. See
   (`POST /invoke/:graph_id`, body-in / final-state-out). `SkeinInvokeRouter` = `{ router, deps }`;
   options add `prefix` (default `/invoke`), `streamMode`, and `json`.
 - **`SkeinRouterOptions`** — common `{ logger?, cors?, warm?, json?, requestLog? }` **plus** either
-  `{ config, importModule? }` (in-memory runtime from a `langgraph.json`) **or** `{ deps }`
-  (bring-your-own `ProtocolDeps`). `warm: true` eagerly loads graphs at startup.
+  `{ config, importModule? }` (in-memory runtime from a `langgraph.json`) **or** `{ deps, channels? }`
+  (bring-your-own `ProtocolDeps`; forward `channels` when using `buildRuntime`). `warm: true` eagerly
+  loads graphs at startup.
   - `json: { limit }` — body-parser limit, default `express.json()`'s 100kb. A run's `input` is a graph
     state, so a long message history or a base64 attachment passes 100kb easily. `skeinInvokeRouter`
     takes the same option and needs it more, since that endpoint carries the whole input in one body.

@@ -11,7 +11,8 @@ Part of **[skein-js](../../README.md)** — the open-source alternative to LangG
 ## What it does
 
 `buildRuntime()` assembles a [`ProtocolDeps`](../agent-protocol) from a `langgraph.json` plus a chosen
-store/queue driver, and hands it to any framework adapter through the injectable `{ deps }` seam.
+store/queue driver, and hands it to any framework adapter through the injectable `{ deps, channels? }`
+seam. Forward `channels` with `deps`: channel modules are deliberately outside the protocol core.
 This is the one place a production driver combination is selected — so `skein dev` and `skein up` run
 the **same** engine against either the zero-setup in-memory drivers or production-shaped
 Postgres + Redis. The engine itself stays driver-agnostic.
@@ -26,7 +27,11 @@ const runtime = await buildRuntime({
   queue: "redis", //    "memory" | "redis"     (redis reads REDIS_URI)
 });
 
-const server = await createExpressServer({ deps: runtime.deps, cors: runtime.cors });
+const server = await createExpressServer({
+  deps: runtime.deps,
+  channels: runtime.channels,
+  cors: runtime.cors,
+});
 await server.listen(2024);
 // …on shutdown:
 await runtime.dispose();
@@ -96,7 +101,7 @@ TypeScript graphs/embedders requires passing an `importModule` (the CLI injects 
 
 - **`buildRuntime(options): Promise<SkeinRuntime>`** — `options`:
   `{ configPath, store, queue, importModule? }`. Durable deps **from a `langgraph.json`**.
-- **`interface SkeinRuntime`** — `{ deps, cors?, reloadGraphs(), dispose(), snapshotState?(), hydrateState?() }`
+- **`interface SkeinRuntime`** — `{ deps, channels?, cors?, reloadGraphs(), dispose(), snapshotState?(), hydrateState?() }`
   (the last two only in all-memory mode).
 - **`type StoreDriver`** = `"memory" | "postgres"` · **`type QueueDriver`** = `"memory" | "redis"`.
 - **`embedPostgresGraphs(graphs, options?): Promise<EmbeddedPostgresRuntime>`** — durable deps **from

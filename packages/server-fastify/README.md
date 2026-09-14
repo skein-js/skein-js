@@ -85,8 +85,8 @@ pre-serialized frames the engine produced, tearing the run's subscription down o
   onto their own handler table.
 - **`SkeinRuntimeOptions`** — the shared seam every adapter accepts: common `{ logger?, cors?, warm? }`
   **plus** either `{ config, importModule? }` (in-memory runtime from a `langgraph.json`) **or**
-  `{ deps }` (bring-your-own `ProtocolDeps`, e.g. from [`@skein-js/runtime`](../runtime)'s
-  `buildRuntime`). `warm: true` eagerly loads graphs at startup.
+  `{ deps, channels? }` (bring-your-own `ProtocolDeps`; forward `channels` from
+  [`@skein-js/runtime`](../runtime)'s `buildRuntime`). `warm: true` eagerly loads graphs at startup.
 - **Logging** — defaults to the host's own `fastify.log`, so a failed graph run lands in your app's log
   stream as a structured pino record (`err` plus `run_id` / `thread_id` / `assistant_id` fields). It
   honors your Fastify config, `logger: false` included. Pass `logger` to redirect it, or

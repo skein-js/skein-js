@@ -77,6 +77,56 @@ describe("a configured channel", () => {
       // the binding asks the adapter for the body as text rather than parsed.
       retainRawBody: true,
     });
+    expect(resolved.routes).toContainEqual({
+      method: "get",
+      path: "/channels",
+      handler: "listChannels",
+    });
+  });
+
+  it("reports only the effective, sanitized runtime wiring", async () => {
+    const configPath = await project(
+      {
+        skein: {
+          channels: {
+            twilio: {
+              path: "./channel.ts:channel",
+              assistant: "support",
+              allowed_assistants: ["support"],
+              public_url: "https://secret.example.test/hooks/twilio?token=hidden",
+            },
+          },
+        },
+      },
+      `${echoChannel.replace("parseEvent:", "deliver: async () => {},\n  parseEvent:")}`,
+    );
+    const resolved = await resolveProtocolRuntime({ config: configPath });
+    const response = await resolved.runtime.handlers.listChannels!({
+      method: "GET",
+      url: "http://127.0.0.1:2024/channels",
+      headers: {},
+      body: undefined,
+      params: {},
+      query: {},
+    });
+
+    expect(response).toEqual({
+      kind: "json",
+      status: 200,
+      body: {
+        channels: [
+          {
+            route_name: "twilio",
+            assistant: "support",
+            allowed_assistants: ["support"],
+            channel_name: "twilio",
+            delivery_supported: true,
+          },
+        ],
+      },
+    });
+    expect(JSON.stringify(response)).not.toContain("secret.example.test");
+    expect(JSON.stringify(response)).not.toContain("channel.ts");
   });
 
   it("carries no route group, so no `http.disable_*` flag has to exist for it", async () => {
@@ -226,7 +276,21 @@ describe("no configured channel", () => {
 
     const resolved = await resolveProtocolRuntime({ config: configPath });
 
-    expect(resolved.routes.some((route) => route.path.startsWith("/channels/"))).toBe(false);
+    expect(
+      resolved.routes.some(
+        (route) => route.path === "/channels" || route.path.startsWith("/channels/"),
+      ),
+    ).toBe(false);
+    await expect(
+      resolved.runtime.handlers.listChannels({
+        method: "GET",
+        url: "http://127.0.0.1:2024/channels",
+        headers: {},
+        body: undefined,
+        params: {},
+        query: {},
+      }),
+    ).rejects.toMatchObject({ status: 404 });
   });
 
   it("answers 404 if something dispatches into the handler anyway", async () => {

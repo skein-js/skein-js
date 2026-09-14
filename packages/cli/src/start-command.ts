@@ -184,6 +184,7 @@ export async function runStart(options: StartCommandOptions): Promise<void> {
   try {
     const sharedOptions = {
       deps: runtime.deps,
+      ...(runtime.channels ? { channels: runtime.channels } : {}),
       cors: runtime.cors,
       // Not `warm: true` — the eager load runs after the banner instead, so a graph that cannot load
       // is reported as part of the startup summary rather than above it. Same load, same

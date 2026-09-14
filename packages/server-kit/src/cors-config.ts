@@ -35,7 +35,7 @@ const ALWAYS_EXPOSED_HEADERS = ["content-location", "x-pagination-total", "idemp
 // deployment that sets it to its own list silently blocks these at the preflight — and the failure is
 // a CORS error on the browser side with nothing logged on the server. Exposing `idempotent-replay` in
 // the response while refusing `idempotency-key` in the request would be exactly half a feature.
-const ALWAYS_ALLOWED_HEADERS = ["idempotency-key"];
+const ALWAYS_ALLOWED_HEADERS = ["idempotency-key", "x-api-key"];
 
 /** Translate a LangGraph `http.cors` config into `cors` middleware options. */
 export function toCorsOptions(config: LanggraphCorsConfig): CorsOptions {

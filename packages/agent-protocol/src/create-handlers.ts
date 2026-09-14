@@ -137,6 +137,8 @@ export interface ProtocolHandlers {
   postThreadCommands: ProtocolHandler;
   // meta
   getServerInfo: ProtocolHandler;
+  /** Console-only inventory of configured channel routes. Returns 404 when none are configured. */
+  listChannels: ProtocolHandler;
   /**
    * `POST /channels/:channel` — an inbound event from a configured channel.
    *
@@ -407,6 +409,8 @@ function runLocationHeaders(threadId: string, runId: string): Record<string, str
 export interface ProtocolHandlerExtras {
   /** The channel pipeline, when channels are configured. Absent leaves the route answering 404. */
   handleInboundEvent?: ProtocolHandler;
+  /** A sanitized runtime inventory for operator tooling. Absent means no inventory route is mounted. */
+  listChannels?: ProtocolHandler;
 }
 
 export function createProtocolHandlers(
@@ -939,6 +943,15 @@ export function createProtocolHandlers(
 
     // --- meta ---------------------------------------------------------------------------------
     getServerInfo: async () => json(await service.meta.info()),
+
+    // Present on the handler table even when the route is not mounted, just like
+    // `handleInboundEvent`. Keeping every `ProtocolHandlers[keyof ProtocolHandlers]` callable is a
+    // backwards-compatibility guarantee for adapters and other handler-table consumers.
+    listChannels:
+      extras.listChannels ??
+      (async () => {
+        throw SkeinHttpError.notFound("No channel is configured on this server.");
+      }),
 
     // --- store --------------------------------------------------------------------------------
     putStoreItem: async (req) => {

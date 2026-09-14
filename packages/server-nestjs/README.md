@@ -155,7 +155,7 @@ produced, tearing the run's subscription down on client disconnect.
   `SKEIN_INVOKE` token.
 - **`SkeinRuntimeOptions`** — the shared seam every adapter accepts: common `{ logger?, cors?, warm? }`
   **plus** either `{ config, importModule? }` (in-memory runtime from a `langgraph.json`) **or**
-  `{ deps }` (bring-your-own `ProtocolDeps`). Build `deps` in code with `embedInMemoryGraphs`
+  `{ deps, channels? }` (bring-your-own `ProtocolDeps`; forward `channels` from `buildRuntime`). Build `deps` in code with `embedInMemoryGraphs`
   ([`@skein-js/server-kit`](../server-kit)) or `embedPostgresGraphs` ([`@skein-js/runtime`](../runtime)),
   or from a `langgraph.json` with that package's `buildRuntime`.
 - **Logging** — `SkeinModule` defaults to NestJS's own `Logger`, so a failed graph run appears in your
