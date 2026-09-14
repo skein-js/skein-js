@@ -11,6 +11,13 @@
         "cwd": "examples/decoupled-delivery"
       }
     },
+    "ui": {
+      "executor": "nx:run-commands",
+      "options": {
+        "command": "tsx src/ui-server.ts",
+        "cwd": "examples/decoupled-delivery"
+      }
+    },
     "typecheck": {
       "executor": "nx:run-commands",
       "options": {

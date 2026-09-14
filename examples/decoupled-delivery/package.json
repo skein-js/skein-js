@@ -6,7 +6,8 @@
   "type": "module",
   "scripts": {
     "demo": "tsx src/refund-demo.ts",
-    "dev": "skein dev --port 2024"
+    "dev": "skein dev --port 2024",
+    "ui": "tsx src/ui-server.ts"
   },
   "dependencies": {
     "@langchain/langgraph": "^1.4.0",

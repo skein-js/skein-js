@@ -42,6 +42,21 @@ The example uses Skein's public `composeRoutedChannel` and
 
 The provider clients are recording fakes, so no credentials or network are required.
 
+## Try the browser playground
+
+```bash
+pnpm exec nx run example-decoupled-delivery:ui
+```
+
+Open `http://127.0.0.1:3030`. The playground provides three runnable scenarios: an important email
+routed to WhatsApp, a WhatsApp instruction routed to email, and a refund that pauses for HR,
+manager and Finance. In the refund scenario, the approval buttons submit authenticated WhatsApp
+events to the exact interrupt ids returned by LangGraph.
+
+The small local server keeps the example self-contained. Browser requests never receive the fake
+provider secrets: it proxies source events to the same resolved Skein channel handlers exercised by
+the CLI demo, then exposes the in-memory thread state and recorded destination effects for display.
+
 ## Run the refund relay
 
 ```bash
