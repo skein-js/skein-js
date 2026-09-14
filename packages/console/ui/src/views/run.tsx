@@ -15,6 +15,7 @@ import { useAsync } from "@/use-async";
 import { useRunStream, type RunFrame } from "@/use-run-stream";
 
 import { Async, Json, Panel, StatusBadge } from "./parts";
+import { RunDeliveries } from "./run-deliveries";
 
 export function RunView({ threadId, runId }: { threadId: string; runId: string }) {
   const client = createConsoleClient();
@@ -101,6 +102,8 @@ export function RunView({ threadId, runId }: { threadId: string; runId: string }
       >
         <Async state={run}>{(data) => <Json value={data} />}</Async>
       </Panel>
+
+      <RunDeliveries threadId={threadId} runId={runId} />
 
       <Panel
         title="Event stream"

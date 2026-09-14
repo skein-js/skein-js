@@ -4,7 +4,13 @@
 
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
-import { resolveApiKey, resolveApiUrl, setApiKey, setApiUrl } from "./api";
+import {
+  createSkeinConsoleClient,
+  resolveApiKey,
+  resolveApiUrl,
+  setApiKey,
+  setApiUrl,
+} from "./api";
 
 /** Put the page at a URL, the way the browser would have. */
 function visit(url: string) {
@@ -18,6 +24,7 @@ beforeEach(() => {
 
 afterEach(() => {
   window.localStorage.clear();
+  vi.unstubAllGlobals();
 });
 
 describe("resolveApiUrl", () => {
@@ -111,5 +118,66 @@ describe("API key scoping", () => {
     visit("/console/?baseUrl=https://agents.example");
     expect(resolveApiUrl()).toBe("https://agents.example");
     confirmSpy.mockRestore();
+  });
+});
+
+describe("skein console client", () => {
+  it("uses the authenticated SDK transport for channel inventory", async () => {
+    setApiKey("secret");
+    const fetchMock = vi.fn().mockResolvedValue(
+      new Response(JSON.stringify({ channels: [] }), {
+        status: 200,
+        headers: { "content-type": "application/json" },
+      }),
+    );
+    vi.stubGlobal("fetch", fetchMock);
+
+    await createSkeinConsoleClient().listChannels();
+
+    expect(fetchMock).toHaveBeenCalledWith(
+      `${window.location.origin}/channels`,
+      expect.objectContaining({ headers: expect.objectContaining({ "x-api-key": "secret" }) }),
+    );
+  });
+
+  it("reads an absent channel capability as an empty inventory", async () => {
+    vi.stubGlobal(
+      "fetch",
+      vi
+        .fn()
+        .mockResolvedValue(new Response("not found", { status: 404, statusText: "Not Found" })),
+    );
+
+    await expect(createSkeinConsoleClient().listChannels()).resolves.toEqual({ channels: [] });
+  });
+
+  it("encodes every delivery path segment and reloads through the dedicated routes", async () => {
+    const fetchMock = vi
+      .fn()
+      .mockResolvedValueOnce(
+        new Response(JSON.stringify({ deliveries: [] }), {
+          status: 200,
+          headers: { "content-type": "application/json" },
+        }),
+      )
+      .mockResolvedValueOnce(
+        new Response(JSON.stringify({ status: "pending" }), {
+          status: 200,
+          headers: { "content-type": "application/json" },
+        }),
+      );
+    vi.stubGlobal("fetch", fetchMock);
+    const client = createSkeinConsoleClient();
+
+    await client.listRunDeliveries("thread/one", "run/two");
+    await client.replayRunDelivery("thread/one", "run/two", "delivery/three");
+
+    expect(fetchMock.mock.calls[0]?.[0]).toBe(
+      `${window.location.origin}/threads/thread%2Fone/runs/run%2Ftwo/deliveries`,
+    );
+    expect(fetchMock.mock.calls[1]?.[0]).toBe(
+      `${window.location.origin}/threads/thread%2Fone/runs/run%2Ftwo/deliveries/delivery%2Fthree/replay`,
+    );
+    expect(fetchMock.mock.calls[1]?.[1]).toEqual(expect.objectContaining({ method: "POST" }));
   });
 });

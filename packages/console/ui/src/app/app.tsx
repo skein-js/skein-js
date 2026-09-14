@@ -5,13 +5,22 @@
 // answers "which server am I on", the bottom answers "what am I looking at" — and it leaves the
 // content area unbroken.
 
-import { Bot, Clock, Database, LayoutDashboard, MessagesSquare, Terminal } from "lucide-react";
+import {
+  Bot,
+  Clock,
+  Database,
+  LayoutDashboard,
+  MessagesSquare,
+  Radio,
+  Terminal,
+} from "lucide-react";
 import { useEffect } from "react";
 
 import { ThemeToggle } from "@/components/theme-toggle";
 import { cn } from "@/lib/utils";
 import { routeHref, useRoute } from "@/router";
 import { AssistantsView } from "@/views/assistants";
+import { ChannelsView } from "@/views/channels";
 import { ChatView } from "@/views/chat";
 import { ConnectionBadge } from "@/views/connection";
 import { CronsView } from "@/views/crons";
@@ -26,6 +35,7 @@ const NAV = [
   { path: "overview", label: "Overview", Icon: LayoutDashboard },
   { path: "assistants", label: "Assistants", Icon: Bot },
   { path: "threads", label: "Threads", Icon: MessagesSquare },
+  { path: "channels", label: "Channels", Icon: Radio },
   { path: "store", label: "Store", Icon: Database },
   { path: "crons", label: "Crons", Icon: Clock },
 ] as const;
@@ -55,7 +65,7 @@ export function App() {
             <ThemeToggle />
           </div>
         </div>
-        <nav className="mx-auto flex max-w-[1280px] gap-0.5 px-3">
+        <nav className="mx-auto flex max-w-[1280px] gap-0.5 overflow-x-auto px-3">
           {NAV.map(({ path, label, Icon }) => {
             const active = section === path;
             return (
@@ -129,6 +139,8 @@ function Body({ segments, query }: { segments: readonly string[]; query: URLSear
           {...(query.get("status") ? { status: query.get("status") as string } : {})}
         />
       );
+    case "channels":
+      return <ChannelsView />;
     case "store":
       return <StoreView />;
     case "crons":
