@@ -13,7 +13,7 @@
 // directory with its last segment removed: `/console/` → `/`, `/api/console/` → `/api`. That is the
 // only coupling between this bundle and where a server chooses to mount it.
 
-import { Client } from "@langchain/langgraph-sdk";
+import { BaseClient, Client } from "@langchain/langgraph-sdk/client";
 
 const BASE_URL_STORAGE_KEY = "skein-console:baseUrl";
 const API_KEY_STORAGE_KEY = "skein-console:apiKey";
@@ -113,6 +113,75 @@ export function setApiKey(key: string | undefined): void {
 export function createConsoleClient(): Client {
   const apiKey = resolveApiKey();
   return new Client({ apiUrl: resolveApiUrl(), ...(apiKey ? { apiKey } : {}) });
+}
+
+export interface ChannelSummary {
+  route_name: string;
+  assistant: string;
+  allowed_assistants: string[];
+  channel_name: string;
+  delivery_supported: boolean;
+}
+
+export interface DeliverySummary {
+  delivery_id: string;
+  run_id: string;
+  thread_id: string;
+  url: string;
+  payload_truncated: boolean;
+  run_status: string;
+  status: "pending" | "delivering" | "delivered" | "dead";
+  attempt: number;
+  next_attempt_at: string;
+  last_error: string | null;
+  created_at: string;
+  updated_at: string;
+  expires_at: string;
+  replayable: boolean;
+}
+
+/** Skein extensions not yet represented by the upstream SDK's resource clients. */
+class SkeinConsoleClient extends BaseClient {
+  async listChannels(signal?: AbortSignal): Promise<{ channels: ChannelSummary[] }> {
+    try {
+      return await this.fetch("/channels", { signal });
+    } catch (error) {
+      // The route is intentionally absent when the deployment configured no channels. Treat that
+      // capability absence as an empty inventory; auth failures and real server faults stay visible.
+      if (typeof error === "object" && error !== null && "status" in error && error.status === 404)
+        return { channels: [] };
+      throw error;
+    }
+  }
+
+  listRunDeliveries(
+    threadId: string,
+    runId: string,
+    signal?: AbortSignal,
+  ): Promise<{ deliveries: DeliverySummary[] }> {
+    return this.fetch(
+      `/threads/${encodeURIComponent(threadId)}/runs/${encodeURIComponent(runId)}/deliveries`,
+      { signal },
+    );
+  }
+
+  async replayRunDelivery(
+    threadId: string,
+    runId: string,
+    deliveryId: string,
+    signal?: AbortSignal,
+  ): Promise<void> {
+    await this.fetch(
+      `/threads/${encodeURIComponent(threadId)}/runs/${encodeURIComponent(runId)}/deliveries/${encodeURIComponent(deliveryId)}/replay`,
+      { method: "POST", signal },
+    );
+  }
+}
+
+/** An authenticated SDK client for the console's small skein-specific operator surface. */
+export function createSkeinConsoleClient(): SkeinConsoleClient {
+  const apiKey = resolveApiKey();
+  return new SkeinConsoleClient({ apiUrl: resolveApiUrl(), ...(apiKey ? { apiKey } : {}) });
 }
 
 /** `GET /info` — the capability handshake. The SDK exposes no accessor for it, so: a plain fetch. */

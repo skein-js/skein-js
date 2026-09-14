@@ -1,7 +1,8 @@
 # @skein-js/console
 
 The **skein console** — a web UI for a running [skein](https://github.com/skein-js/skein-js) server:
-assistants, threads, live runs, interrupts, time travel, the store, and crons.
+assistants, threads, live runs, channel wiring and deliveries, interrupts, time travel, the store,
+and crons.
 
 Served by the server itself, so it is same-origin: no CORS, no second process, no account, and it works
 with no internet connection.
@@ -64,5 +65,7 @@ nx test console         # resolver contract + size budget
 `src/assets.generated.ts` is generated, not committed. `build`, `typecheck` and `test` all depend on the
 `generate-assets` target, so it cannot go stale.
 
-The console is a **client**: it adds no endpoints and holds no server-side state. If a view cannot be
-built from the Agent Protocol surface, that is a gap in the API to write down — not a reason to add one.
+The console is a **client** and holds no server-side state. It uses the Agent Protocol through the
+official LangGraph SDK, plus two narrow skein operator endpoints for sanitized channel inventory and
+run-delivery tracking. The Channels tab is read-only; code and `langgraph.json` stay the source of
+truth. Delivery destinations are redacted before rendering, and replay requires confirmation.

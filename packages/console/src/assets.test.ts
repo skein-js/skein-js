@@ -15,7 +15,10 @@ import { consoleAssetHeaders, normalizeMountPath, resolveConsoleRequest } from "
  * This ceiling is deliberately close to the current build: it should fail when a dependency is added
  * carelessly, and be raised knowingly when a feature earns it.
  */
-const SIZE_BUDGET_BYTES = 900 * 1024;
+// Channel inventory and delivery tracking add the SDK's reusable BaseClient plus their operator UI.
+// The resulting build is ~956 KiB; 1 MiB leaves a narrow regression margin without pretending this
+// earned feature is free. Keep this close enough that another large dependency still fails loudly.
+const SIZE_BUDGET_BYTES = 1024 * 1024;
 
 describe("bundled assets", () => {
   it("contains an index.html and a script", () => {

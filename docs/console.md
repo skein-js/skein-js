@@ -1,13 +1,15 @@
 # The skein console
 
-> A web UI for a running skein server: assistants, threads, live runs, interrupts, time travel, the
-> store, and crons. Served by the server itself, at `/console`.
+> A web UI for a running skein server: assistants, threads, live runs, channel wiring and deliveries,
+> interrupts, time travel, the store, and crons. Served by the server itself, at `/console`.
 
 ## What it is
 
-The console is a **client**. It adds no endpoints and stores nothing of its own: every screen is built
-from the Agent Protocol surface a skein server already exposes, driven through the real
-[`@langchain/langgraph-sdk`](./react-sdk.md).
+The console is a **client** and stores nothing of its own. Most screens use the standard Agent
+Protocol through the real [`@langchain/langgraph-sdk`](./react-sdk.md). Two small skein extensions
+cover operational state the upstream SDK does not model: a sanitized channel inventory and a run's
+durable delivery attempts. The console subclasses the SDK's transport for these calls, so connection,
+authentication, retries and errors still behave like the rest of the client.
 
 That is a deliberate constraint, not a coincidence. If a view cannot be built, it means the API is
 missing something, and we would rather feel that here than paper over it with a bespoke endpoint. (One
@@ -63,7 +65,7 @@ Two things worth knowing before you enable it on a public host:
 
 ## What it shows
 
-Six tabs, plus three views that live inside them rather than in the nav — runs open from a thread,
+Seven tabs, plus three views that live inside them rather than in the nav — runs open from a thread,
 and interrupts and time travel are panels on the thread and playground.
 
 | View            | What it is for                                                                                                                                                                              |
@@ -72,7 +74,8 @@ and interrupts and time travel are panels on the thread and playground.
 | **Overview**    | **Waiting for you** (threads parked on `interrupt()`, linking straight to the filtered list), counts, recent threads, and the `GET /info` capability handshake.                             |
 | **Assistants**  | Every registered graph, its schemas, its graph JSON, its version history. Read-only.                                                                                                        |
 | **Threads**     | Filter by status (`#/threads?status=interrupted` is a shareable link); per thread: state, runs, checkpoints, and pending interrupts.                                                        |
-| **Runs**        | Live SSE tail, cancel, rollback, delete. Works on finished runs too — the server replays what it persisted.                                                                                 |
+| **Runs**        | Live SSE tail, delivery status and safe replay controls, cancel, rollback, delete. Works on finished runs too.                                                                              |
+| **Channels**    | The effective inbound routes, provider identity, graph routing allowlist, and outbound support that booted from `skein.channels`. Read-only.                                                |
 | **Interrupts**  | The "Waiting for you" panel: approve, reject, or resume with any JSON value.                                                                                                                |
 | **Time travel** | Open a past checkpoint, edit its state, fork it, and run forward — from the fork or from the original.                                                                                      |
 | **Store**       | Namespace listing by prefix, item search with a `filter` and semantic `query`, delete.                                                                                                      |
@@ -178,6 +181,34 @@ The buffer holds the most recent 500 frames and tells you when it dropped earlie
 silently truncating. Each frame collapses to one line; click to expand the payload. **Cancel** and
 **Rollback** are enabled only while the run is in flight, **Delete** only when it is not.
 
+The **Deliveries** panel tracks every durable callback the run created: lifecycle status, attempt
+count, last error, next retry, and timestamps. A dead delivery can be replayed after confirmation;
+the console then reloads the server's list rather than trusting an optimistic state. Delivery is
+at-least-once, so the receiver must deduplicate by the stable delivery id.
+
+Destination display is deliberately redacted. For HTTP callbacks it shows only the host and whether
+a non-root path exists; webhook paths, queries and userinfo often are credentials. For a
+channel reply it shows the channel name but never its opaque reply target.
+
+### Channels
+
+The Channels tab answers “what did this server actually mount?” It reads `GET /channels`, which only
+exists when `skein.channels` configured at least one route, and shows:
+
+- the `POST /channels/{route_name}` path to give a provider;
+- the channel's provider identity and default assistant;
+- the bounded `allowed_assistants` routing set; and
+- whether the channel implements outbound delivery.
+
+It is an inventory, not an editor: `langgraph.json` and the channel module remain the source of truth,
+and changes take effect after restart. Module paths, `public_url`, provider credentials and raw
+configuration are never returned. With custom auth, the inventory uses `assistants:read`; inbound
+provider requests continue to authenticate through the channel's own signature verification.
+
+To test the whole flow, send a real or fixture provider event to the copied inbound path, open the
+thread and run it created, then inspect Deliveries. That keeps source routing and destination tracking
+connected without pretending they are the same concern.
+
 ### Time travel
 
 Every checkpoint is addressable, and the checkpoint panel gives you three separate things to do,
@@ -237,8 +268,8 @@ knowing before you reach for it:
   stream is live. A console that polls is a console that lies about when it last looked.
 - **Lists are capped and there is no pagination** — 50 threads, 50 runs, 20 checkpoints, 100
   assistants, 100 schedules. Past that, use the API.
-- **Destructive actions do not confirm.** Deleting a run, a schedule or a store item happens on the
-  click.
+- **Replay confirms; deletes do not.** Replaying may duplicate an external side effect, so it asks
+  first. Deleting a run, schedule or store item still happens on the click.
 - **It is read-mostly.** It cannot create or edit assistants, write store items, copy or prune
   threads, or roll an assistant back to an earlier version — all of which the
   [API](./agent-protocol.md) supports. What is missing is tracked in
@@ -247,7 +278,7 @@ knowing before you reach for it:
 ## Mounting it yourself
 
 The console is route bindings and bytes, so any adapter can serve it. It is not a dependency of the
-adapters on purpose — the compiled UI is ~670 kB, and mounting the protocol should not cost that.
+adapters on purpose — the compiled UI is about 956 KiB, and mounting the protocol should not cost that.
 
 ```ts
 import { consoleAssetHeaders, resolveConsoleRequest } from "@skein-js/console";

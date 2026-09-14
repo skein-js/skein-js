@@ -86,12 +86,15 @@ function statusToken(status: string): string {
   switch (status) {
     case "running":
     case "pending":
+    case "delivering":
     case "busy":
       return "var(--status-running)";
     case "success":
+    case "delivered":
       return "var(--status-success)";
     case "error":
     case "timeout":
+    case "dead":
       return "var(--status-error)";
     case "interrupted":
       return "var(--status-interrupted)";
