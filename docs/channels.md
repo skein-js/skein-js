@@ -100,11 +100,115 @@ approvals with LangGraph `interrupt()`, then sends the result by email. Its runn
 Skein's normal channel, auth, deduplication, thread/run and delivery paths with offline provider
 fakes.
 
-The composition deliberately remains application-local. Skein does not currently publish separate
-`Source` or `Destination` interfaces: the example combines the existing `Channel`, `replyWith` and
-delivery outbox contracts without changing them. That keeps provider credentials and business
-routing policy in the application while real consumers establish whether a smaller shared primitive
-is necessary.
+Skein exposes this as a small composition layer rather than separate provider hierarchies:
+
+```ts
+import {
+  composeRoutedChannel,
+  declareChannelDestinationDelivery,
+  type ChannelDestinationDelivery,
+} from "@skein-js/channels";
+
+const destinations = new Map([
+  [
+    "whatsapp",
+    async (delivery: ChannelDestinationDelivery) => {
+      const message = whatsappSchema.parse(delivery);
+      await sendWhatsApp(message, { idempotencyKey: delivery.runId });
+    },
+  ],
+]);
+
+export const channel = composeRoutedChannel(emailSource, destinations);
+```
+
+### How LangGraph selects the destination
+
+LangGraph passes a custom-stream writer to every node in `LangGraphRunnableConfig`. The Skein helper
+uses that existing writer to declare the result of the workflow; the node does not call WhatsApp or
+email itself:
+
+```ts
+import {
+  Annotation,
+  END,
+  START,
+  StateGraph,
+  type LangGraphRunnableConfig,
+} from "@langchain/langgraph";
+import { declareChannelDestinationDelivery } from "@skein-js/channels";
+
+const RelayState = Annotation.Root({
+  source: Annotation<"email" | "whatsapp">,
+  sender: Annotation<string>,
+  whatsappNumber: Annotation<string | undefined>,
+  subject: Annotation<string>,
+});
+
+function routeMessage(
+  state: typeof RelayState.State,
+  config: LangGraphRunnableConfig,
+): Partial<typeof RelayState.State> {
+  if (state.source === "email" && state.whatsappNumber) {
+    declareChannelDestinationDelivery(config.writer, {
+      destination: "whatsapp",
+      target: { to: state.whatsappNumber },
+      payload: { body: `Important email from ${state.sender}: ${state.subject}` },
+    });
+  } else {
+    declareChannelDestinationDelivery(config.writer, {
+      destination: "email",
+      target: { to: state.sender },
+      payload: { subject: "Assistant update", body: state.subject },
+    });
+  }
+
+  // The destination declaration is an output instruction, not graph state.
+  return {};
+}
+
+export const graph = new StateGraph(RelayState)
+  .addNode("route-message", routeMessage)
+  .addEdge(START, "route-message")
+  .addEdge("route-message", END)
+  .compile();
+```
+
+The interaction is deliberately small:
+
+1. The source channel converts email or WhatsApp into ordinary LangGraph input.
+2. LangGraph performs extraction, classification, branching, `Send`, and `interrupt()` as usual.
+3. The final node writes one explicit destination declaration through `config.writer`.
+4. When the run settles, Skein resolves that declaration and invokes the allowlisted destination
+   through its existing durable outbox.
+
+For approvals, keep using LangGraph's `interrupt()`; no Skein approval abstraction is needed. A node
+can declare the WhatsApp approval request before it interrupts, and declare the final email result
+after `interrupt()` returns on resume. The complete parallel HR/Manager/Finance implementation is
+[`examples/decoupled-delivery/src/relay-graph.ts`](https://github.com/skein-js/skein-js/blob/main/examples/decoupled-delivery/src/relay-graph.ts).
+
+The map allowlists destination adapters and remains application-owned, along with provider credentials
+and routing policy. It does not authorize recipients or operations: derive those from trusted workflow
+data and enforce tenant/recipient policy before sending, rather than treating an LLM-selected or
+user-supplied target as permission. Only `declareChannelDestinationDelivery` triggers routing;
+ordinary `replyWith` values and inferred interrupt/AI-message replies are not dispatched by a routed
+channel. Construct declarations through the helper, never its internal persisted marker.
+
+`target` and `payload` must be plain JSON values so the outbox can persist them. They remain `unknown`
+to the destination, which must validate its provider boundary—Zod is used above for exactly that.
+Unknown or malformed declarations and thrown callbacks fail the outbox attempt visibly and are
+retried. Delivery is at-least-once, so pass a stable key such as `runId` to providers that support
+idempotency. One run still owns one outbox retry unit; aggregate fan-out does not create independent
+delivery rows.
+
+This helper is for channel-ingested runs. A poller using the Agent Protocol run API still uses its own
+HTTP callback receiver. Existing `Channel` implementations with `deliver` continue to work unchanged.
+Configured route keys and explicit channel-name aliases must be unique; collisions now fail at boot
+instead of sharing thread identity or misrouting a callback.
+
+For copy-first implementations, compare the practical
+[WhatsApp → order lookup → WhatsApp recipe](./recipes/coupled-channel.md) with the
+[customer refund email → Finance WhatsApp approval → customer email recipe](./recipes/decoupled-channel-delivery.md).
 
 ## The pipeline
 
@@ -459,6 +563,15 @@ Everything is validated **at boot**: a missing `assistant`, one naming a graph t
 any of those when the first customer texts is the failure this avoids.
 
 ## Testing a channel
+
+The quickest end-to-end check is the console's **Channels** tab. It shows the effective routes and
+assistant allowlists that passed boot validation. Copy an inbound path, send a fixture or provider
+event, then open the resulting thread and run: the run's **Deliveries** panel shows attempts, retry
+timing, errors, and a confirmed replay action. Sensitive webhook paths and opaque reply targets are
+redacted in the UI.
+
+The same inventory is available as authenticated `GET /channels`; it is mounted only when at least
+one channel is configured and exposes no module paths, public URLs, credentials or raw config.
 
 A channel is a plain object, so `verify` and `parseEvent` are unit-testable with no server:
 

@@ -188,6 +188,29 @@ Both sit in the **`runs` route group** deliberately: a run is already an ownersh
 `RouteGroup` — which, once shipped, could never be withdrawn. Delivery semantics, signing and
 retention are in [webhooks.md](./webhooks.md).
 
+**Configured-channel inventory.** When a deployment configures `skein.channels`, it also mounts
+`GET /channels` for operator tooling. The response is intentionally small and sanitized:
+
+```json
+{
+  "channels": [
+    {
+      "route_name": "support-whatsapp",
+      "assistant": "support",
+      "allowed_assistants": ["refunds"],
+      "channel_name": "twilio",
+      "delivery_supported": true
+    }
+  ]
+}
+```
+
+The inbound path is derived as `/channels/{route_name}`. The endpoint never returns module paths,
+`public_url`, raw configuration, credentials or reply destinations. It is absent when no channel is
+configured and, under custom auth, requires `assistants:read`. This is a skein operator extension,
+not part of the Agent Protocol or the upstream SDK resource clients; the console reuses the SDK's base
+transport for it.
+
 **Joining a run: two shapes.** `.../runs/{run_id}/stream` tails a run as SSE (`client.runs.joinStream()`,
 resumable with `Last-Event-ID`). `.../runs/{run_id}/join` is the blocking form (`client.runs.join()`): it
 waits for the run to settle and answers the thread's final `values` as plain JSON, or

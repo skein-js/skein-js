@@ -163,7 +163,11 @@ const rt = await buildRuntime({
   store: "postgres",
   queue: "redis",
 });
-const server = await createExpressServer({ deps: rt.deps, cors: rt.cors });
+const server = await createExpressServer({
+  deps: rt.deps,
+  channels: rt.channels,
+  cors: rt.cors,
+});
 ```
 
 Redis is optional but **required to run more than one instance** (the in-memory queue is

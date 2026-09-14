@@ -50,6 +50,8 @@ const DOCS = [
   "docs/recipes/index.md",
   "docs/recipes/serving.md",
   "docs/recipes/running-agents.md",
+  "docs/recipes/coupled-channel.md",
+  "docs/recipes/decoupled-channel-delivery.md",
   "docs/recipes/memory.md",
   "docs/recipes/production.md",
   "docs/building-an-adapter.md",

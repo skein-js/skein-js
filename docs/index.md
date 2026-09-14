@@ -176,7 +176,7 @@ Three moving parts. Your clients and your agent are the ones you already have.
   <rect class="box-accent" x="70" y="110" width="360" height="96" rx="10" />
   <text class="t" x="250" y="140" text-anchor="middle">skein-js</text>
   <text class="t-sub" x="250" y="163" text-anchor="middle">runs · threads · streaming · approvals</text>
-  <text class="t-sub" x="250" y="182" text-anchor="middle">memory · schedules · webhooks · console</text>
+  <text class="t-sub" x="250" y="182" text-anchor="middle">memory · schedules · channels · console</text>
   <!-- skein → storage -->
   <path class="wire" d="M430 158 H500" />
   <rect class="box" x="500" y="132" width="164" height="52" rx="10" />
