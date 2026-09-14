@@ -5,6 +5,7 @@
   "description": "A code-first proof that email and WhatsApp can independently source events and receive graph-selected durable deliveries.",
   "type": "module",
   "scripts": {
+    "demo": "tsx src/refund-demo.ts",
     "dev": "skein dev --port 2024"
   },
   "dependencies": {
@@ -17,6 +18,7 @@
   "devDependencies": {
     "@skein-js/server-kit": "workspace:*",
     "skein-js": "workspace:*",
+    "tsx": "^4.19.2",
     "typescript": "^5.7.2"
   }
 }

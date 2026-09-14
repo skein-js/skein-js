@@ -14,6 +14,28 @@ authorization and policy; no human-task service survives.
 Surface delta: zero permanent exported symbols, config keys, routes, headers, wire fields or
 interface methods.
 
+### Phase 1C audit
+
+**PASS after revision.** The runnable operations-relay demo and Dayweaver second-consumer spike may
+proceed with zero new published Skein surface.
+
+The verifier corrected the Dayweaver path from `/invoke` to the full Agent Protocol run API with
+custom streaming, because only the latter creates durable run/outbox state and captures `replyWith`.
+The independent auditors then required the existing LangGraph SDK client, stable run-create
+idempotency, Skein callback signature verification, provider-level delivery-id idempotency, a real
+end-to-end callback test, a real same-thread WhatsApp interrupt resume, and user-facing discovery.
+Those requirements are now part of Phase 1C.
+
+No `Source`, `Destination`, registry, workflow engine, approval engine, scheduler, run client, HMAC
+implementation or internal channel-target input survived the audit. LangGraph owns execution,
+checkpointing, `Send` and `interrupt`; Skein's existing core path owns auth, deduplication, run/thread
+coordination, the checkpoint bridge, outbox, callback signing and retry. Application code continues
+to own polling, provider credentials, routing, role policy and provider idempotency.
+
+Dayweaver is evidence only for the destination-envelope/callback seam. Because its polled input does
+not use an inbound channel, it cannot justify extracting `composeSourceChannel`; that requires a
+second genuinely inbound-channel consumer and another public-surface audit.
+
 ## Rollability ledger
 
 | Capability                                                     | Owner            | Today                  | Existing mechanism                                                      | Verdict                         |

@@ -4,6 +4,13 @@
   "sourceRoot": "examples/decoupled-delivery/src",
   "projectType": "library",
   "targets": {
+    "demo": {
+      "executor": "nx:run-commands",
+      "options": {
+        "command": "tsx src/refund-demo.ts",
+        "cwd": "examples/decoupled-delivery"
+      }
+    },
     "typecheck": {
       "executor": "nx:run-commands",
       "options": {
