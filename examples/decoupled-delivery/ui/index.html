@@ -1,0 +1,78 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <meta
+      name="description"
+      content="Test email and WhatsApp routing through a LangGraph workflow."
+    />
+    <title>Skein Relay Playground</title>
+    <link rel="stylesheet" href="/styles.css" />
+  </head>
+  <body>
+    <main class="shell">
+      <header>
+        <div class="eyebrow"><span class="pulse"></span> Local channel playground</div>
+        <h1>Send it in one way.<br /><span>Deliver it another.</span></h1>
+        <p>
+          Watch Skein receive a source event, let LangGraph decide what happens, and deliver through
+          an independent destination.
+        </p>
+      </header>
+
+      <nav class="scenarios" aria-label="Example scenarios">
+        <button class="scenario active" data-scenario="important-email">
+          Email <b>→</b> WhatsApp
+        </button>
+        <button class="scenario" data-scenario="instruction">WhatsApp <b>→</b> Email</button>
+        <button class="scenario" data-scenario="refund">Refund approvals</button>
+      </nav>
+
+      <section class="workspace">
+        <form id="event-form" class="composer">
+          <div class="section-label"><span>01</span> Source event</div>
+          <div id="fields"></div>
+          <button class="send" type="submit">
+            <span>Run workflow</span><span aria-hidden="true">→</span>
+          </button>
+        </form>
+
+        <div class="flow" aria-label="Processing flow">
+          <div class="flow-line"></div>
+          <div class="graph-node">
+            <small>LANGGRAPH</small><strong>relay</strong><span id="graph-status">Ready</span>
+          </div>
+          <div class="flow-line"></div>
+        </div>
+
+        <section class="result">
+          <div class="section-label"><span>03</span> Destination</div>
+          <div id="empty-result" class="empty-state">
+            <div>↗</div>
+            <strong>No delivery yet</strong>
+            <p>Run a source event to see where the graph sends it.</p>
+          </div>
+          <div id="deliveries" class="delivery-list"></div>
+        </section>
+      </section>
+
+      <section id="approvals" class="approvals hidden">
+        <div class="section-label"><span>02</span> Human approvals</div>
+        <div class="approval-heading">
+          <h2>LangGraph is interrupted</h2>
+          <p>Respond as each authenticated WhatsApp approver.</p>
+        </div>
+        <div id="approval-list" class="approval-grid"></div>
+      </section>
+
+      <section class="activity">
+        <div class="section-label"><span>•</span> Activity</div>
+        <ol id="activity-list">
+          <li class="muted">Waiting for an event.</li>
+        </ol>
+      </section>
+    </main>
+    <script type="module" src="/app.js"></script>
+  </body>
+</html>
