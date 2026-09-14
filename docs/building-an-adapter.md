@@ -62,19 +62,20 @@ easiest way to get production `deps` from a `langgraph.json` is
 [`@skein-js/runtime`](https://github.com/skein-js/skein-js/tree/main/packages/runtime)'s `buildRuntime`:
 
 ```ts
-import { createProtocolRuntime } from "@skein-js/agent-protocol";
 import { buildRuntime } from "@skein-js/runtime";
+import { resolveProtocolRuntime } from "@skein-js/server-kit";
 
-const { deps } = await buildRuntime({
+const assembled = await buildRuntime({
   configPath: "./langgraph.json",
   store: "memory", // or "postgres"
   queue: "memory", // or "redis"
 });
 
-const runtime = createProtocolRuntime(deps);
-await runtime.service.assistants.registerGraphAssistants(); // seed one assistant per graph
-runtime.worker.start(); // start the background run worker
-// runtime.handlers is your ProtocolHandlers table
+const resolved = await resolveProtocolRuntime({
+  deps: assembled.deps,
+  channels: assembled.channels,
+});
+// resolved.runtime is running; resolved.routes includes optional channel routes.
 ```
 
 > You can also construct `deps` by hand (your own `SkeinStore`, `RunQueue`, `RunEventBus`, and a
@@ -86,11 +87,13 @@ runtime.worker.start(); // start the background run worker
 The paths mirror the `@langchain/langgraph-sdk` client exactly (that's the conformance oracle — don't
 invent your own spelling). Bind each `method + path` to a handler name. The canonical table is
 exported from `@skein-js/agent-protocol` as `skeinRoutes` (re-exported from `@skein-js/express` too,
-for back-compat):
+for back-compat). Mount `resolved.routes` when using `resolveProtocolRuntime`: it starts with that
+canonical table and appends configured channel routes without changing the core protocol surface.
 
 ```ts
 import { skeinRoutes, copyThreadIdIntoBody, matchSkeinRoute } from "@skein-js/agent-protocol";
 // skeinRoutes: { method, path, handler, foldThreadIdIntoBody? }[]
+// resolved.routes: the same table plus deployment-specific channel bindings
 // e.g. { method: "post", path: "/threads/:thread_id/runs/stream",
 //        handler: "createStreamRun", foldThreadIdIntoBody: true }
 //
@@ -216,21 +219,23 @@ A dependency-free adapter over Node's built-in `http` server — no Express, no 
 ```ts
 import { createServer } from "node:http";
 
-import { createProtocolRuntime, skeinRoutes, SSE_HEADERS } from "@skein-js/agent-protocol";
+import { SSE_HEADERS } from "@skein-js/agent-protocol";
 import { isSkeinHttpError, serializeWireJson } from "@skein-js/core";
 import { buildRuntime } from "@skein-js/runtime";
+import { resolveProtocolRuntime } from "@skein-js/server-kit";
 
-const { deps } = await buildRuntime({
+const assembled = await buildRuntime({
   configPath: "./langgraph.json",
   store: "memory",
   queue: "memory",
 });
-const runtime = createProtocolRuntime(deps);
-await runtime.service.assistants.registerGraphAssistants();
-runtime.worker.start();
+const { runtime, routes: routeBindings } = await resolveProtocolRuntime({
+  deps: assembled.deps,
+  channels: assembled.channels,
+});
 
-// Compile the SDK route patterns to matchers once.
-const routes = skeinRoutes.map((r) => ({
+// Compile the resolved protocol + channel route patterns to matchers once.
+const routes = routeBindings.map((r) => ({
   ...r,
   regex: new RegExp("^" + r.path.replace(/:(\w+)/g, "(?<$1>[^/]+)") + "$"),
 }));
@@ -292,7 +297,7 @@ const server = createServer(async (req, res) => {
 });
 
 server.listen(2024);
-// On shutdown: await runtime.worker.stop(); server.close();
+// On shutdown: await runtime.worker.stop(); server.close(); await assembled.dispose();
 ```
 
 Point the official SDK at `http://localhost:2024` and it just works — because the wire format is
@@ -301,7 +306,7 @@ produced by the same handler table the Express adapter uses.
 ## Checklist
 
 - [ ] Assembled a `ProtocolRuntime`; called `registerGraphAssistants()` and `worker.start()`.
-- [ ] Bound every route in `skeinRoutes`, most-specific-first, with `foldThreadIdIntoBody` honored.
+- [ ] Bound every route in `resolved.routes`, most-specific-first, with `foldThreadIdIntoBody` honored.
 - [ ] `ProtocolRequest` has lowercased single-value headers and an absolute `url` (with query).
 - [ ] JSON responses serialized with `serializeWireJson` (not a plain `JSON.stringify`/`res.json`).
 - [ ] `response.headers` forwarded on all three kinds (silently lost otherwise — see step 4).

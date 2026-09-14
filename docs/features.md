@@ -49,28 +49,28 @@ organised by parity instead.
 
 ## Connect it to the rest of your system
 
-| Capability                                                                 | Status | What it gets you                                                                    |
-| -------------------------------------------------------------------------- | ------ | ----------------------------------------------------------------------------------- |
-| [Run-completion webhooks](./webhooks.md)                                   | ✅     | Be told a run finished — durably, so a receiver's redeploy doesn't lose the news    |
-| [Signed callbacks](./webhooks.md#verify-a-callback-is-really-from-you)     | ✅     | Receivers can prove a callback is yours and reject replays. The verifier ships too  |
-| [Deliveries & replay](./webhooks.md#see-what-a-callback-did-and-replay-it) | ✅     | See every attempt, and re-send one by hand when it never landed                     |
-| [Custom auth](./agent-protocol.md#authentication--authorization)           | ✅     | LangGraph's `Auth` model, drop-in, with ownership filters pushed into the query     |
-| [Telemetry sinks](./observability.md)                                      | ✅     | LangSmith, PostHog, OpenTelemetry — or your own `TelemetrySink`                     |
-| [Channels](./channels.md)                                                  | ✅     | Agents behind WhatsApp, Slack, or a GitHub webhook, without re-solving the plumbing |
-| [MCP endpoint](./roadmap.md)                                               | 🗺️     | Expose your graphs as MCP tools                                                     |
+| Capability                                                                 | Status | What it gets you                                                                   |
+| -------------------------------------------------------------------------- | ------ | ---------------------------------------------------------------------------------- |
+| [Run-completion webhooks](./webhooks.md)                                   | ✅     | Be told a run finished — durably, so a receiver's redeploy doesn't lose the news   |
+| [Signed callbacks](./webhooks.md#verify-a-callback-is-really-from-you)     | ✅     | Receivers can prove a callback is yours and reject replays. The verifier ships too |
+| [Deliveries & replay](./webhooks.md#see-what-a-callback-did-and-replay-it) | ✅     | See every attempt, and re-send one by hand when it never landed                    |
+| [Custom auth](./agent-protocol.md#authentication--authorization)           | ✅     | LangGraph's `Auth` model, drop-in, with ownership filters pushed into the query    |
+| [Telemetry sinks](./observability.md)                                      | ✅     | LangSmith, PostHog, OpenTelemetry — or your own `TelemetrySink`                    |
+| [Channels](./channels.md)                                                  | ✅     | Inbound webhooks plus graph-selected, allowlisted cross-provider delivery          |
+| [MCP endpoint](./roadmap.md)                                               | 🗺️     | Expose your graphs as MCP tools                                                    |
 
 ## Operate it
 
-| Capability                                              | Status     | What it gets you                                                                  |
-| ------------------------------------------------------- | ---------- | --------------------------------------------------------------------------------- |
-| [The console](./console.md)                             | ✅         | A Studio equivalent at `/console` — no account, no tunnel. Off by default in prod |
-| [Postgres + pgvector](./storage.md)                     | ✅         | The production storage driver, with automatic migrations                          |
-| [Redis queue & pub/sub](./runs-and-redis.md)            | ✅         | Durable run queue and cross-instance streaming                                    |
-| [Multi-instance](./deploy.md#scaling-past-one-instance) | ✅         | Atomic create guard, cross-instance cancel, per-thread execution claim            |
-| [Errors & logging](./errors-and-logging.md)             | ✅         | What a failed run reports, and where — wire, log, and callback                    |
-| [Deploy anywhere](./deploy.md)                          | ✅         | One image; guides for Cloud Run, Fly, Railway, Render, AWS, Kubernetes, a VPS     |
-| [Performance tuning](./performance.md)                  | ✅         | Every knob in one table, plus symptom → knob triage                               |
-| [Bun / Deno runtimes](./deploy.md)                      | ⚠️ preview | Fetch launchers and images ship; the runtime matrices must graduate each          |
+| Capability                                              | Status     | What it gets you                                                              |
+| ------------------------------------------------------- | ---------- | ----------------------------------------------------------------------------- |
+| [The console](./console.md)                             | ✅         | Test graphs and track channel wiring, interrupts and deliveries at `/console` |
+| [Postgres + pgvector](./storage.md)                     | ✅         | The production storage driver, with automatic migrations                      |
+| [Redis queue & pub/sub](./runs-and-redis.md)            | ✅         | Durable run queue and cross-instance streaming                                |
+| [Multi-instance](./deploy.md#scaling-past-one-instance) | ✅         | Atomic create guard, cross-instance cancel, per-thread execution claim        |
+| [Errors & logging](./errors-and-logging.md)             | ✅         | What a failed run reports, and where — wire, log, and callback                |
+| [Deploy anywhere](./deploy.md)                          | ✅         | One image; guides for Cloud Run, Fly, Railway, Render, AWS, Kubernetes, a VPS |
+| [Performance tuning](./performance.md)                  | ✅         | Every knob in one table, plus symptom → knob triage                           |
+| [Bun / Deno runtimes](./deploy.md)                      | ⚠️ preview | Fetch launchers and images ship; the runtime matrices must graduate each      |
 
 ## Build on it
 

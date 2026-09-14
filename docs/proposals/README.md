@@ -38,13 +38,6 @@ inboxes. They are not the audience for a hosted chat widget.
 
 ## The proposals
 
-### Draft: decoupled sources and destinations
-
-[sources-and-destinations.md](./sources-and-destinations.md) tests whether an inbound integration and
-the provider that receives a run's result can be selected independently without adding a workflow
-DSL. Its first phase is deliberately an example over existing APIs; it may end with no new package
-surface.
-
 ### Shipped foundations
 
 One round trip needs no browser: the outbound leg has to be
@@ -54,8 +47,9 @@ halves have now shipped**, so what this file holds is the record of what each im
 
 ### Shipped: inbound channels
 
-An agent behind any inbound event — a WhatsApp number, a Slack workspace, a GitHub webhook. Read
-[channels.md](../channels.md) to use it.
+An agent behind any inbound event — a WhatsApp number, a Slack workspace, a GitHub webhook — with
+optional graph-selected delivery through another provider. Read [channels.md](../channels.md) to use
+it.
 
 Its phase 1 was explicitly allowed to kill it: write the WhatsApp example against raw primitives with
 no pipeline at all, and if it came out short, ship only the helpers and stop. It did not — but the

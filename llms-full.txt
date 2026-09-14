@@ -871,7 +871,7 @@ Three moving parts. Your clients and your agent are the ones you already have.
   <rect class="box-accent" x="70" y="110" width="360" height="96" rx="10" />
   <text class="t" x="250" y="140" text-anchor="middle">skein-js</text>
   <text class="t-sub" x="250" y="163" text-anchor="middle">runs · threads · streaming · approvals</text>
-  <text class="t-sub" x="250" y="182" text-anchor="middle">memory · schedules · webhooks · console</text>
+  <text class="t-sub" x="250" y="182" text-anchor="middle">memory · schedules · channels · console</text>
   <!-- skein → storage -->
   <path class="wire" d="M430 158 H500" />
   <rect class="box" x="500" y="132" width="164" height="52" rx="10" />
@@ -1939,9 +1939,10 @@ process.on("SIGTERM", async () => {
 });
 ```
 
-From a `langgraph.json`, either assemble `deps` with `buildRuntime({ store: "postgres", queue: "redis" })`,
-or skip code entirely: `skein dev --store postgres --queue redis`, and `skein build` / `skein up`
-to containerize. Redis is optional for a single instance but required to run more than one. Details:
+From a `langgraph.json`, either call `buildRuntime({ store: "postgres", queue: "redis" })` and pass its
+`deps` **and** `channels` to the adapter, or skip code entirely: `skein dev --store postgres --queue
+redis`, and `skein build` / `skein up` to containerize. Redis is optional for a single instance but
+required to run more than one. Details:
 [embedding.md](./embedding.md#going-to-production), [storage.md](./storage.md),
 [runs-and-redis.md](./runs-and-redis.md), [deploy.md](./deploy.md).
 
@@ -2371,7 +2372,11 @@ const rt = await buildRuntime({
   store: "postgres",
   queue: "redis",
 });
-const server = await createExpressServer({ deps: rt.deps, cors: rt.cors });
+const server = await createExpressServer({
+  deps: rt.deps,
+  channels: rt.channels,
+  cors: rt.cors,
+});
 ```
 
 Redis is optional but **required to run more than one instance** (the in-memory queue is
@@ -3840,6 +3845,29 @@ Both sit in the **`runs` route group** deliberately: a run is already an ownersh
 `RouteGroup` — which, once shipped, could never be withdrawn. Delivery semantics, signing and
 retention are in [webhooks.md](./webhooks.md).
 
+**Configured-channel inventory.** When a deployment configures `skein.channels`, it also mounts
+`GET /channels` for operator tooling. The response is intentionally small and sanitized:
+
+```json
+{
+  "channels": [
+    {
+      "route_name": "support-whatsapp",
+      "assistant": "support",
+      "allowed_assistants": ["refunds"],
+      "channel_name": "twilio",
+      "delivery_supported": true
+    }
+  ]
+}
+```
+
+The inbound path is derived as `/channels/{route_name}`. The endpoint never returns module paths,
+`public_url`, raw configuration, credentials or reply destinations. It is absent when no channel is
+configured and, under custom auth, requires `assistants:read`. This is a skein operator extension,
+not part of the Agent Protocol or the upstream SDK resource clients; the console reuses the SDK's base
+transport for it.
+
 **Joining a run: two shapes.** `.../runs/{run_id}/stream` tails a run as SSE (`client.runs.joinStream()`,
 resumable with `Last-Event-ID`). `.../runs/{run_id}/join` is the blocking form (`client.runs.join()`): it
 waits for the run to settle and answers the thread's final `values` as plain JSON, or
@@ -4733,28 +4761,28 @@ organised by parity instead.
 
 ## Connect it to the rest of your system
 
-| Capability                                                                 | Status | What it gets you                                                                    |
-| -------------------------------------------------------------------------- | ------ | ----------------------------------------------------------------------------------- |
-| [Run-completion webhooks](./webhooks.md)                                   | ✅     | Be told a run finished — durably, so a receiver's redeploy doesn't lose the news    |
-| [Signed callbacks](./webhooks.md#verify-a-callback-is-really-from-you)     | ✅     | Receivers can prove a callback is yours and reject replays. The verifier ships too  |
-| [Deliveries & replay](./webhooks.md#see-what-a-callback-did-and-replay-it) | ✅     | See every attempt, and re-send one by hand when it never landed                     |
-| [Custom auth](./agent-protocol.md#authentication--authorization)           | ✅     | LangGraph's `Auth` model, drop-in, with ownership filters pushed into the query     |
-| [Telemetry sinks](./observability.md)                                      | ✅     | LangSmith, PostHog, OpenTelemetry — or your own `TelemetrySink`                     |
-| [Channels](./channels.md)                                                  | ✅     | Agents behind WhatsApp, Slack, or a GitHub webhook, without re-solving the plumbing |
-| [MCP endpoint](./roadmap.md)                                               | 🗺️     | Expose your graphs as MCP tools                                                     |
+| Capability                                                                 | Status | What it gets you                                                                   |
+| -------------------------------------------------------------------------- | ------ | ---------------------------------------------------------------------------------- |
+| [Run-completion webhooks](./webhooks.md)                                   | ✅     | Be told a run finished — durably, so a receiver's redeploy doesn't lose the news   |
+| [Signed callbacks](./webhooks.md#verify-a-callback-is-really-from-you)     | ✅     | Receivers can prove a callback is yours and reject replays. The verifier ships too |
+| [Deliveries & replay](./webhooks.md#see-what-a-callback-did-and-replay-it) | ✅     | See every attempt, and re-send one by hand when it never landed                    |
+| [Custom auth](./agent-protocol.md#authentication--authorization)           | ✅     | LangGraph's `Auth` model, drop-in, with ownership filters pushed into the query    |
+| [Telemetry sinks](./observability.md)                                      | ✅     | LangSmith, PostHog, OpenTelemetry — or your own `TelemetrySink`                    |
+| [Channels](./channels.md)                                                  | ✅     | Inbound webhooks plus graph-selected, allowlisted cross-provider delivery          |
+| [MCP endpoint](./roadmap.md)                                               | 🗺️     | Expose your graphs as MCP tools                                                    |
 
 ## Operate it
 
-| Capability                                              | Status     | What it gets you                                                                  |
-| ------------------------------------------------------- | ---------- | --------------------------------------------------------------------------------- |
-| [The console](./console.md)                             | ✅         | A Studio equivalent at `/console` — no account, no tunnel. Off by default in prod |
-| [Postgres + pgvector](./storage.md)                     | ✅         | The production storage driver, with automatic migrations                          |
-| [Redis queue & pub/sub](./runs-and-redis.md)            | ✅         | Durable run queue and cross-instance streaming                                    |
-| [Multi-instance](./deploy.md#scaling-past-one-instance) | ✅         | Atomic create guard, cross-instance cancel, per-thread execution claim            |
-| [Errors & logging](./errors-and-logging.md)             | ✅         | What a failed run reports, and where — wire, log, and callback                    |
-| [Deploy anywhere](./deploy.md)                          | ✅         | One image; guides for Cloud Run, Fly, Railway, Render, AWS, Kubernetes, a VPS     |
-| [Performance tuning](./performance.md)                  | ✅         | Every knob in one table, plus symptom → knob triage                               |
-| [Bun / Deno runtimes](./deploy.md)                      | ⚠️ preview | Fetch launchers and images ship; the runtime matrices must graduate each          |
+| Capability                                              | Status     | What it gets you                                                              |
+| ------------------------------------------------------- | ---------- | ----------------------------------------------------------------------------- |
+| [The console](./console.md)                             | ✅         | Test graphs and track channel wiring, interrupts and deliveries at `/console` |
+| [Postgres + pgvector](./storage.md)                     | ✅         | The production storage driver, with automatic migrations                      |
+| [Redis queue & pub/sub](./runs-and-redis.md)            | ✅         | Durable run queue and cross-instance streaming                                |
+| [Multi-instance](./deploy.md#scaling-past-one-instance) | ✅         | Atomic create guard, cross-instance cancel, per-thread execution claim        |
+| [Errors & logging](./errors-and-logging.md)             | ✅         | What a failed run reports, and where — wire, log, and callback                |
+| [Deploy anywhere](./deploy.md)                          | ✅         | One image; guides for Cloud Run, Fly, Railway, Render, AWS, Kubernetes, a VPS |
+| [Performance tuning](./performance.md)                  | ✅         | Every knob in one table, plus symptom → knob triage                           |
+| [Bun / Deno runtimes](./deploy.md)                      | ⚠️ preview | Fetch launchers and images ship; the runtime matrices must graduate each      |
 
 ## Build on it
 
@@ -6219,11 +6247,115 @@ approvals with LangGraph `interrupt()`, then sends the result by email. Its runn
 Skein's normal channel, auth, deduplication, thread/run and delivery paths with offline provider
 fakes.
 
-The composition deliberately remains application-local. Skein does not currently publish separate
-`Source` or `Destination` interfaces: the example combines the existing `Channel`, `replyWith` and
-delivery outbox contracts without changing them. That keeps provider credentials and business
-routing policy in the application while real consumers establish whether a smaller shared primitive
-is necessary.
+Skein exposes this as a small composition layer rather than separate provider hierarchies:
+
+```ts
+import {
+  composeRoutedChannel,
+  declareChannelDestinationDelivery,
+  type ChannelDestinationDelivery,
+} from "@skein-js/channels";
+
+const destinations = new Map([
+  [
+    "whatsapp",
+    async (delivery: ChannelDestinationDelivery) => {
+      const message = whatsappSchema.parse(delivery);
+      await sendWhatsApp(message, { idempotencyKey: delivery.runId });
+    },
+  ],
+]);
+
+export const channel = composeRoutedChannel(emailSource, destinations);
+```
+
+### How LangGraph selects the destination
+
+LangGraph passes a custom-stream writer to every node in `LangGraphRunnableConfig`. The Skein helper
+uses that existing writer to declare the result of the workflow; the node does not call WhatsApp or
+email itself:
+
+```ts
+import {
+  Annotation,
+  END,
+  START,
+  StateGraph,
+  type LangGraphRunnableConfig,
+} from "@langchain/langgraph";
+import { declareChannelDestinationDelivery } from "@skein-js/channels";
+
+const RelayState = Annotation.Root({
+  source: Annotation<"email" | "whatsapp">,
+  sender: Annotation<string>,
+  whatsappNumber: Annotation<string | undefined>,
+  subject: Annotation<string>,
+});
+
+function routeMessage(
+  state: typeof RelayState.State,
+  config: LangGraphRunnableConfig,
+): Partial<typeof RelayState.State> {
+  if (state.source === "email" && state.whatsappNumber) {
+    declareChannelDestinationDelivery(config.writer, {
+      destination: "whatsapp",
+      target: { to: state.whatsappNumber },
+      payload: { body: `Important email from ${state.sender}: ${state.subject}` },
+    });
+  } else {
+    declareChannelDestinationDelivery(config.writer, {
+      destination: "email",
+      target: { to: state.sender },
+      payload: { subject: "Assistant update", body: state.subject },
+    });
+  }
+
+  // The destination declaration is an output instruction, not graph state.
+  return {};
+}
+
+export const graph = new StateGraph(RelayState)
+  .addNode("route-message", routeMessage)
+  .addEdge(START, "route-message")
+  .addEdge("route-message", END)
+  .compile();
+```
+
+The interaction is deliberately small:
+
+1. The source channel converts email or WhatsApp into ordinary LangGraph input.
+2. LangGraph performs extraction, classification, branching, `Send`, and `interrupt()` as usual.
+3. The final node writes one explicit destination declaration through `config.writer`.
+4. When the run settles, Skein resolves that declaration and invokes the allowlisted destination
+   through its existing durable outbox.
+
+For approvals, keep using LangGraph's `interrupt()`; no Skein approval abstraction is needed. A node
+can declare the WhatsApp approval request before it interrupts, and declare the final email result
+after `interrupt()` returns on resume. The complete parallel HR/Manager/Finance implementation is
+[`examples/decoupled-delivery/src/relay-graph.ts`](https://github.com/skein-js/skein-js/blob/main/examples/decoupled-delivery/src/relay-graph.ts).
+
+The map allowlists destination adapters and remains application-owned, along with provider credentials
+and routing policy. It does not authorize recipients or operations: derive those from trusted workflow
+data and enforce tenant/recipient policy before sending, rather than treating an LLM-selected or
+user-supplied target as permission. Only `declareChannelDestinationDelivery` triggers routing;
+ordinary `replyWith` values and inferred interrupt/AI-message replies are not dispatched by a routed
+channel. Construct declarations through the helper, never its internal persisted marker.
+
+`target` and `payload` must be plain JSON values so the outbox can persist them. They remain `unknown`
+to the destination, which must validate its provider boundary—Zod is used above for exactly that.
+Unknown or malformed declarations and thrown callbacks fail the outbox attempt visibly and are
+retried. Delivery is at-least-once, so pass a stable key such as `runId` to providers that support
+idempotency. One run still owns one outbox retry unit; aggregate fan-out does not create independent
+delivery rows.
+
+This helper is for channel-ingested runs. A poller using the Agent Protocol run API still uses its own
+HTTP callback receiver. Existing `Channel` implementations with `deliver` continue to work unchanged.
+Configured route keys and explicit channel-name aliases must be unique; collisions now fail at boot
+instead of sharing thread identity or misrouting a callback.
+
+For copy-first implementations, compare the practical
+[WhatsApp → order lookup → WhatsApp recipe](./recipes/coupled-channel.md) with the
+[customer refund email → Finance WhatsApp approval → customer email recipe](./recipes/decoupled-channel-delivery.md).
 
 ## The pipeline
 
@@ -6578,6 +6710,15 @@ Everything is validated **at boot**: a missing `assistant`, one naming a graph t
 any of those when the first customer texts is the failure this avoids.
 
 ## Testing a channel
+
+The quickest end-to-end check is the console's **Channels** tab. It shows the effective routes and
+assistant allowlists that passed boot validation. Copy an inbound path, send a fixture or provider
+event, then open the resulting thread and run: the run's **Deliveries** panel shows attempts, retry
+timing, errors, and a confirmed replay action. Sensitive webhook paths and opaque reply targets are
+redacted in the UI.
+
+The same inventory is available as authenticated `GET /channels`; it is mounted only when at least
+one channel is configured and exposes no module paths, public URLs, credentials or raw config.
 
 A channel is a plain object, so `verify` and `parseEvent` are unit-testable with no server:
 
@@ -8371,14 +8512,16 @@ See [agent-protocol.md](./agent-protocol.md#authentication--authorization) for t
 
 # The skein console
 
-> A web UI for a running skein server: assistants, threads, live runs, interrupts, time travel, the
-> store, and crons. Served by the server itself, at `/console`.
+> A web UI for a running skein server: assistants, threads, live runs, channel wiring and deliveries,
+> interrupts, time travel, the store, and crons. Served by the server itself, at `/console`.
 
 ## What it is
 
-The console is a **client**. It adds no endpoints and stores nothing of its own: every screen is built
-from the Agent Protocol surface a skein server already exposes, driven through the real
-[`@langchain/langgraph-sdk`](./react-sdk.md).
+The console is a **client** and stores nothing of its own. Most screens use the standard Agent
+Protocol through the real [`@langchain/langgraph-sdk`](./react-sdk.md). Two small skein extensions
+cover operational state the upstream SDK does not model: a sanitized channel inventory and a run's
+durable delivery attempts. The console subclasses the SDK's transport for these calls, so connection,
+authentication, retries and errors still behave like the rest of the client.
 
 That is a deliberate constraint, not a coincidence. If a view cannot be built, it means the API is
 missing something, and we would rather feel that here than paper over it with a bespoke endpoint. (One
@@ -8434,7 +8577,7 @@ Two things worth knowing before you enable it on a public host:
 
 ## What it shows
 
-Six tabs, plus three views that live inside them rather than in the nav — runs open from a thread,
+Seven tabs, plus three views that live inside them rather than in the nav — runs open from a thread,
 and interrupts and time travel are panels on the thread and playground.
 
 | View            | What it is for                                                                                                                                                                              |
@@ -8443,7 +8586,8 @@ and interrupts and time travel are panels on the thread and playground.
 | **Overview**    | **Waiting for you** (threads parked on `interrupt()`, linking straight to the filtered list), counts, recent threads, and the `GET /info` capability handshake.                             |
 | **Assistants**  | Every registered graph, its schemas, its graph JSON, its version history. Read-only.                                                                                                        |
 | **Threads**     | Filter by status (`#/threads?status=interrupted` is a shareable link); per thread: state, runs, checkpoints, and pending interrupts.                                                        |
-| **Runs**        | Live SSE tail, cancel, rollback, delete. Works on finished runs too — the server replays what it persisted.                                                                                 |
+| **Runs**        | Live SSE tail, delivery status and safe replay controls, cancel, rollback, delete. Works on finished runs too.                                                                              |
+| **Channels**    | The effective inbound routes, provider identity, graph routing allowlist, and outbound support that booted from `skein.channels`. Read-only.                                                |
 | **Interrupts**  | The "Waiting for you" panel: approve, reject, or resume with any JSON value.                                                                                                                |
 | **Time travel** | Open a past checkpoint, edit its state, fork it, and run forward — from the fork or from the original.                                                                                      |
 | **Store**       | Namespace listing by prefix, item search with a `filter` and semantic `query`, delete.                                                                                                      |
@@ -8549,6 +8693,34 @@ The buffer holds the most recent 500 frames and tells you when it dropped earlie
 silently truncating. Each frame collapses to one line; click to expand the payload. **Cancel** and
 **Rollback** are enabled only while the run is in flight, **Delete** only when it is not.
 
+The **Deliveries** panel tracks every durable callback the run created: lifecycle status, attempt
+count, last error, next retry, and timestamps. A dead delivery can be replayed after confirmation;
+the console then reloads the server's list rather than trusting an optimistic state. Delivery is
+at-least-once, so the receiver must deduplicate by the stable delivery id.
+
+Destination display is deliberately redacted. For HTTP callbacks it shows only the host and whether
+a non-root path exists; webhook paths, queries and userinfo often are credentials. For a
+channel reply it shows the channel name but never its opaque reply target.
+
+### Channels
+
+The Channels tab answers “what did this server actually mount?” It reads `GET /channels`, which only
+exists when `skein.channels` configured at least one route, and shows:
+
+- the `POST /channels/{route_name}` path to give a provider;
+- the channel's provider identity and default assistant;
+- the bounded `allowed_assistants` routing set; and
+- whether the channel implements outbound delivery.
+
+It is an inventory, not an editor: `langgraph.json` and the channel module remain the source of truth,
+and changes take effect after restart. Module paths, `public_url`, provider credentials and raw
+configuration are never returned. With custom auth, the inventory uses `assistants:read`; inbound
+provider requests continue to authenticate through the channel's own signature verification.
+
+To test the whole flow, send a real or fixture provider event to the copied inbound path, open the
+thread and run it created, then inspect Deliveries. That keeps source routing and destination tracking
+connected without pretending they are the same concern.
+
 ### Time travel
 
 Every checkpoint is addressable, and the checkpoint panel gives you three separate things to do,
@@ -8608,8 +8780,8 @@ knowing before you reach for it:
   stream is live. A console that polls is a console that lies about when it last looked.
 - **Lists are capped and there is no pagination** — 50 threads, 50 runs, 20 checkpoints, 100
   assistants, 100 schedules. Past that, use the API.
-- **Destructive actions do not confirm.** Deleting a run, a schedule or a store item happens on the
-  click.
+- **Replay confirms; deletes do not.** Replaying may duplicate an external side effect, so it asks
+  first. Deleting a run, schedule or store item still happens on the click.
 - **It is read-mostly.** It cannot create or edit assistants, write store items, copy or prune
   threads, or roll an assistant back to an earlier version — all of which the
   [API](./agent-protocol.md) supports. What is missing is tracked in
@@ -8618,7 +8790,7 @@ knowing before you reach for it:
 ## Mounting it yourself
 
 The console is route bindings and bytes, so any adapter can serve it. It is not a dependency of the
-adapters on purpose — the compiled UI is ~670 kB, and mounting the protocol should not cost that.
+adapters on purpose — the compiled UI is about 956 KiB, and mounting the protocol should not cost that.
 
 ```ts
 import { consoleAssetHeaders, resolveConsoleRequest } from "@skein-js/console";
@@ -9006,19 +9178,21 @@ pnpm --filter @skein-js/example-triage-agent seed   # register the schedule + sw
 
 ## The recipes
 
-| Page                                  | Covers                                                                 |
-| ------------------------------------- | ---------------------------------------------------------------------- |
-| [Serving](./serving.md)               | Pick an adapter, serve a graph as a plain endpoint, CORS for a browser |
-| [Running agents](./running-agents.md) | Background runs, crons, idempotency, human-in-the-loop, run timeouts   |
-| [Memory](./memory.md)                 | `getStore()`, semantic search, and the dedup trap                      |
-| [Production](./production.md)         | Auth, run-completion webhooks, durable storage and deploying           |
+| Page                                                                    | Covers                                                                     |
+| ----------------------------------------------------------------------- | -------------------------------------------------------------------------- |
+| [Serving](./serving.md)                                                 | Pick an adapter, serve a graph as a plain endpoint, CORS for a browser     |
+| [Running agents](./running-agents.md)                                   | Background runs, crons, idempotency, human-in-the-loop, run timeouts       |
+| [Coupled WhatsApp replies](./coupled-channel.md)                        | WhatsApp → LangGraph → WhatsApp with one source-and-destination channel    |
+| [Decoupled email-to-WhatsApp delivery](./decoupled-channel-delivery.md) | Email → LangGraph → WhatsApp with graph-selected, allowlisted destinations |
+| [Memory](./memory.md)                                                   | `getStore()`, semantic search, and the dedup trap                          |
+| [Production](./production.md)                                           | Auth, run-completion webhooks, durable storage and deploying               |
 
 ## Which example shows what
 
 | Example                                                                                            | Shows                                                           |
 | -------------------------------------------------------------------------------------------------- | --------------------------------------------------------------- |
 | [`triage-agent`](https://github.com/skein-js/skein-js/tree/main/examples/triage-agent)             | Crons, background runs, idempotency, HITL, memory, time travel  |
-| [`decoupled-delivery`](https://github.com/skein-js/skein-js/tree/main/examples/decoupled-delivery) | Email → LangGraph approvals → WhatsApp → email, offline         |
+| [`decoupled-delivery`](https://github.com/skein-js/skein-js/tree/main/examples/decoupled-delivery) | Public routed-channel API: email → approvals → WhatsApp → email |
 | [`chat-app`](https://github.com/skein-js/skein-js/tree/main/examples/chat-app)                     | Full-stack chat: streaming, thinking, tool cards, HITL, memory  |
 | [`invoke-endpoint`](https://github.com/skein-js/skein-js/tree/main/examples/invoke-endpoint)       | Non-chat graphs as plain HTTP endpoints                         |
 | [`embed-graph`](https://github.com/skein-js/skein-js/tree/main/examples/embed-graph)               | A graph you already have, served with no `langgraph.json`       |
@@ -9192,6 +9366,459 @@ config. Visible in the [console](../console.md); details:
 
 ---
 
+<!-- source: docs/recipes/coupled-channel.md -->
+
+# Build a LangGraph WhatsApp agent with coupled replies
+
+Use a coupled channel when messages arrive from a provider and replies naturally go back through the
+same provider: WhatsApp → LangGraph → WhatsApp, Slack → LangGraph → Slack, or email → LangGraph →
+email. One `Channel` owns both translations, while Skein supplies authentication, deduplication,
+thread resolution, interrupt/resume, and durable delivery.
+
+Consider a customer who sends **“Where is order GT-1042?”** to a shop's WhatsApp number. The graph
+looks up the shipment and replies **“GT-1042 left our Nairobi warehouse and arrives tomorrow.”** The
+sender, conversation, and expected return provider are already the same, so splitting the source and
+destination would add ceremony without adding control.
+
+## When coupling is the simpler design
+
+Coupling is useful, not a limitation, when the inbound event already contains the correct reply
+address. A WhatsApp sender expects a WhatsApp response, and keeping both provider mappings together
+means fewer names, maps, and failure paths.
+
+Use [decoupled graph-routed delivery](./decoupled-channel-delivery.md) when LangGraph must choose a
+different provider—for example, an email event that should alert a manager over WhatsApp.
+
+## Implement the WhatsApp channel
+
+The event's `replyTo` is opaque to Skein. It is stored with the run and passed back to the same
+channel's `deliver` method after the run settles.
+
+```ts
+import type { Channel } from "@skein-js/channels";
+import { z } from "zod";
+
+const whatsappReplyTargetSchema = z.object({ to: z.string().min(1) });
+
+export const channel: Channel = {
+  name: "whatsapp",
+
+  verify(request) {
+    if (!verifyWhatsAppSignature(request)) return false;
+    const message = request.form();
+    return { identity: `channel:whatsapp:${message["From"]}` };
+  },
+
+  parseEvent(request) {
+    const message = request.form();
+    if (!message["Body"] || !message["From"]) return { kind: "ignore" };
+
+    return {
+      kind: "event",
+      event: {
+        threadKey: message["From"],
+        idempotencyKey: message["MessageSid"],
+        input: { customerMessage: message["Body"] },
+        resumeWith: message["Body"],
+        replyTo: { to: message["From"] },
+      },
+    };
+  },
+
+  async deliver(outcome, target) {
+    if (outcome.reply === undefined) return;
+    const { to } = whatsappReplyTargetSchema.parse(target);
+    await sendWhatsAppMessage({ to, body: String(outcome.reply) }, { key: outcome.runId });
+  },
+};
+```
+
+Provider retries cannot create duplicate runs when `idempotencyKey` is stable. Delivery is
+at-least-once, so use `outcome.runId` as a provider idempotency key when the provider supports one.
+
+## Return a reply from LangGraph
+
+A LangGraph node can declare the exact value delivered by the channel with Skein's existing
+`replyWith` helper. If it does not, Skein can fall back to the last AI message in message-shaped
+state.
+
+```ts
+import {
+  Annotation,
+  END,
+  START,
+  StateGraph,
+  type LangGraphRunnableConfig,
+} from "@langchain/langgraph";
+import { replyWith } from "@skein-js/agent-protocol";
+
+const State = Annotation.Root({ customerMessage: Annotation<string> });
+
+async function answerOrderQuestion(state: typeof State.State, config: LangGraphRunnableConfig) {
+  const orderId = /GT-\d+/.exec(state.customerMessage)?.[0];
+  const shipment = orderId ? await orderSystem.findShipment(orderId) : undefined;
+
+  const answer = shipment
+    ? `${orderId} ${shipment.status} and arrives ${shipment.estimatedArrival}.`
+    : "I could not find that order. Please send the order number, for example GT-1042.";
+
+  config.writer?.(replyWith(answer));
+  return {};
+}
+
+export const graph = new StateGraph(State)
+  .addNode("answer-order-question", answerOrderQuestion)
+  .addEdge(START, "answer-order-question")
+  .addEdge("answer-order-question", END)
+  .compile();
+```
+
+Bind the channel to that graph:
+
+```jsonc
+{
+  "graphs": { "order-support": "./src/graph.ts:graph" },
+  "skein": {
+    "channels": {
+      "whatsapp": {
+        "path": "./src/whatsapp-channel.ts:channel",
+        "assistant": "order-support",
+        "public_url": "https://api.example.com",
+      },
+    },
+  },
+}
+```
+
+The result follows one durable path:
+
+```text
+WhatsApp webhook → channel.parseEvent → LangGraph → channel.deliver → WhatsApp
+```
+
+For a runnable implementation with `interrupt()` and resume, see
+[`examples/whatsapp-agent`](https://github.com/skein-js/skein-js/tree/main/examples/whatsapp-agent).
+
+
+---
+
+<!-- source: docs/recipes/decoupled-channel-delivery.md -->
+
+# Route email to WhatsApp with LangGraph and decoupled channels
+
+Use decoupled channel delivery when an event arrives through one provider but LangGraph must choose
+another destination: email → LangGraph → WhatsApp, WhatsApp → LangGraph → email, or one source routed
+to several application-owned provider adapters.
+
+The source still uses Skein's normal channel pipeline. The only extra layer is an allowlisted
+destination map plus one explicit instruction written by the graph.
+
+The example below handles a concrete request: a customer emails **“Please refund KES 27,500 for
+order GT-1042; I was charged twice.”** LangGraph asks Finance for approval over WhatsApp, the Finance
+reply resumes the interrupted graph, and the customer receives the decision by email.
+
+## When source and destination should be separate
+
+Decoupling is appropriate when routing is a workflow decision rather than an inherent response:
+
+- an ERP order event alerts a sales team over WhatsApp;
+- an email refund request asks HR, a manager, and Finance for approval;
+- a personal assistant reads calendar or email events and sends a WhatsApp briefing.
+
+If a WhatsApp message simply needs a WhatsApp reply, use the smaller
+[coupled WhatsApp channel recipe](./coupled-channel.md). Both forms use the same `Channel`, run,
+thread, LangGraph, and outbox primitives; decoupling is additive rather than a replacement.
+
+## 1. Define an inbound email source
+
+A source verifies and parses only. `composeRoutedChannel` arms the existing durable callback path, so
+the source does not need a fake email `deliver` method. Both inbound providers use one trusted,
+tenant-scoped workflow ID when they intentionally converge on the same thread:
+
+```ts
+const tenantId = "acme"; // Deployment configuration, never inbound request data.
+
+export function workflowThreadId(refundId: string): string {
+  return `relay:${tenantId}:${refundId}`;
+}
+```
+
+Here `refundId` is issued by the application or verified provider metadata; do not derive an
+authoritative thread ID directly from email text or another user-controlled field.
+
+```ts
+import type { Channel } from "@skein-js/channels";
+import { z } from "zod";
+
+import { workflowThreadId } from "./workflow-thread-id.js";
+
+const refundEmailSchema = z.object({
+  messageId: z.string().min(1),
+  refundId: z.string().min(1),
+  from: z.string().email(),
+  orderId: z.string().min(1),
+  amountKes: z.number().positive(),
+  reason: z.string().min(1),
+});
+
+export const emailSource = {
+  name: "email-source",
+  verify(request) {
+    if (!verifyEmailWebhook(request)) return false;
+    return { identity: "channel:email:inbound" };
+  },
+  parseEvent(request) {
+    const email = refundEmailSchema.parse(request.json());
+    return {
+      kind: "event" as const,
+      event: {
+        threadKey: email.refundId,
+        threadId: workflowThreadId(email.refundId),
+        idempotencyKey: email.messageId,
+        input: {
+          source: "email",
+          refundId: email.refundId,
+          customerEmail: email.from,
+          orderId: email.orderId,
+          amountKes: email.amountKes,
+          reason: email.reason,
+          financeWhatsapp: "whatsapp:+254700000013",
+        },
+      },
+    };
+  },
+} satisfies Pick<Channel, "name" | "verify" | "parseEvent">;
+```
+
+## 2. Allowlist provider destinations
+
+Destination callbacks own credentials, provider validation, authorization, and idempotency. Names
+are explicit and local to this composed channel. The map allowlists provider adapters, not recipients:
+authorize every target from trusted application data rather than treating an LLM-selected or
+user-supplied phone number as permission to send.
+
+```ts
+import { composeRoutedChannel, type ChannelDestinationDelivery } from "@skein-js/channels";
+import { z } from "zod";
+
+const whatsappDeliverySchema = z.object({
+  target: z.object({ to: z.string().min(1) }),
+  payload: z.object({ body: z.string().min(1) }),
+});
+const emailDeliverySchema = z.object({
+  target: z.object({ to: z.string().email() }),
+  payload: z.object({ subject: z.string(), body: z.string() }),
+});
+
+export const destinations = new Map([
+  [
+    "whatsapp",
+    async (delivery: ChannelDestinationDelivery) => {
+      const message = whatsappDeliverySchema.parse(delivery);
+      await assertAuthorizedRecipient(delivery.threadId, "whatsapp", message.target.to);
+      await sendWhatsAppMessage(
+        { to: message.target.to, body: message.payload.body },
+        { key: delivery.runId },
+      );
+    },
+  ],
+  [
+    "email",
+    async (delivery: ChannelDestinationDelivery) => {
+      const message = emailDeliverySchema.parse(delivery);
+      await assertAuthorizedRecipient(delivery.threadId, "email", message.target.to);
+      await sendEmail(
+        {
+          to: message.target.to,
+          subject: message.payload.subject,
+          body: message.payload.body,
+        },
+        { key: delivery.runId },
+      );
+    },
+  ],
+]);
+
+export const channel = composeRoutedChannel(emailSource, destinations);
+```
+
+The map is copied at construction and is the complete adapter allowlist. Unknown destination names
+fail the durable outbox attempt instead of silently dropping or guessing a route. Recipient and
+operation policy remains application-owned; `assertAuthorizedRecipient` represents a lookup against
+trusted workflow or tenant data, not another check of the recipient's string shape.
+
+## 3. Let LangGraph choose WhatsApp
+
+LangGraph passes `config.writer` to the node. The graph declares data; the destination callback
+performs the external side effect only after the run settles.
+
+```ts
+import {
+  Annotation,
+  END,
+  interrupt,
+  START,
+  StateGraph,
+  type LangGraphRunnableConfig,
+} from "@langchain/langgraph";
+import { declareChannelDestinationDelivery } from "@skein-js/channels";
+
+const State = Annotation.Root({
+  source: Annotation<"email">,
+  refundId: Annotation<string>,
+  customerEmail: Annotation<string>,
+  orderId: Annotation<string>,
+  amountKes: Annotation<number>,
+  reason: Annotation<string>,
+  financeWhatsapp: Annotation<string>,
+  financeDecision: Annotation<"approve" | "reject" | undefined>,
+});
+
+function notifyFinance(state: typeof State.State, config: LangGraphRunnableConfig) {
+  declareChannelDestinationDelivery(config.writer, {
+    destination: "whatsapp",
+    target: { to: state.financeWhatsapp },
+    payload: {
+      body:
+        `Approve KES ${state.amountKes.toLocaleString()} refund for ${state.orderId}? ` +
+        `Reason: ${state.reason}. Reply APPROVE or REJECT.`,
+    },
+  });
+  return {};
+}
+
+function awaitFinance(state: typeof State.State) {
+  const decision = interrupt({
+    kind: "refund-approval",
+    refundId: state.refundId,
+    assignedTo: state.financeWhatsapp,
+  });
+  return { financeDecision: decision as "approve" | "reject" };
+}
+
+function emailCustomer(state: typeof State.State, config: LangGraphRunnableConfig) {
+  const approved = state.financeDecision === "approve";
+  declareChannelDestinationDelivery(config.writer, {
+    destination: "email",
+    target: { to: state.customerEmail },
+    payload: {
+      subject: approved
+        ? `Refund approved for ${state.orderId}`
+        : `Refund update for ${state.orderId}`,
+      body: approved
+        ? `Finance approved your KES ${state.amountKes.toLocaleString()} refund.`
+        : "Finance could not approve this refund. Our support team will contact you.",
+    },
+  });
+  return {};
+}
+
+export const graph = new StateGraph(State)
+  .addNode("notify-finance", notifyFinance)
+  .addNode("await-finance", awaitFinance)
+  .addNode("email-customer", emailCustomer)
+  .addEdge(START, "notify-finance")
+  .addEdge("notify-finance", "await-finance")
+  .addEdge("await-finance", "email-customer")
+  .addEdge("email-customer", END)
+  .compile();
+```
+
+On the first run, `notify-finance` supplies the durable WhatsApp delivery and `await-finance` parks
+the thread. The WhatsApp approval webhook needs its own verified source channel, must address the same
+trusted workflow thread, and resumes the interrupt:
+
+```ts
+import { composeRoutedChannel, type Channel } from "@skein-js/channels";
+import { z } from "zod";
+
+import { destinations } from "./destinations.js";
+import { workflowThreadId } from "./workflow-thread-id.js";
+
+const financeReplySchema = z.object({
+  messageId: z.string().min(1),
+  refundId: z.string().min(1),
+  interruptId: z.string().min(1),
+  from: z.string().min(1),
+  decision: z.enum(["approve", "reject"]),
+});
+
+const whatsappSource = {
+  name: "whatsapp-source",
+  verify(request) {
+    if (!verifyWhatsAppWebhook(request)) return false;
+    const message = financeReplySchema.parse(request.json());
+    return { identity: `channel:whatsapp:${message.from}` };
+  },
+  parseEvent(request) {
+    const message = financeReplySchema.parse(request.json());
+    return {
+      kind: "event" as const,
+      event: {
+        threadKey: message.refundId,
+        threadId: workflowThreadId(message.refundId),
+        idempotencyKey: message.messageId,
+        input: { source: "whatsapp", ...message },
+        resumeWith: { [message.interruptId]: message.decision },
+      },
+    };
+  },
+} satisfies Pick<Channel, "name" | "verify" | "parseEvent">;
+
+export const channel = composeRoutedChannel(whatsappSource, destinations);
+```
+
+`workflowThreadId` must derive a tenant-scoped ID from trusted workflow data, and both sources must use
+the same function. Derive the Finance principal from the verified WhatsApp sender and validate that
+the principal is assigned to this approval before accepting the decision. The runnable example
+performs both checks and keeps the actor, provider event ID, and timestamp in graph state as an audit
+trail.
+
+Only `declareChannelDestinationDelivery` triggers a routed destination. Ordinary `replyWith` output
+and inferred AI replies are ignored here, preventing an accidental chat response from becoming an
+external action. `target` and `payload` must be JSON-persistable; the destination validates their
+provider-specific shape.
+
+## 4. Configure the source route
+
+```jsonc
+{
+  "graphs": { "relay": "./src/relay-graph.ts:graph" },
+  "skein": {
+    "channels": {
+      "email": {
+        "path": "./src/email-channel.ts:channel",
+        "assistant": "relay",
+        "public_url": "https://api.example.com",
+      },
+      "whatsapp": {
+        "path": "./src/whatsapp-channel.ts:channel",
+        "assistant": "relay",
+        "public_url": "https://api.example.com",
+      },
+    },
+  },
+}
+```
+
+Configured route keys and explicit source names must be unique. Skein rejects those collisions at
+boot so a delivery alias cannot resolve to the wrong channel. That does not namespace an explicit
+`threadId`: this recipe intentionally shares one between email and WhatsApp. Build explicit IDs from
+trusted, tenant-scoped workflow identifiers; when `threadId` is omitted, Skein safely namespaces the
+derived ID by channel name instead.
+
+The complete flow is:
+
+```text
+Customer email → LangGraph → Finance WhatsApp → interrupt/resume → LangGraph → customer email
+```
+
+For conditional email/WhatsApp routing plus parallel LangGraph `interrupt()` approvals, run
+[`examples/decoupled-delivery`](https://github.com/skein-js/skein-js/tree/main/examples/decoupled-delivery).
+
+
+---
+
 <!-- source: docs/recipes/memory.md -->
 
 # Memory
@@ -9355,7 +9982,7 @@ const rt = await buildRuntime({
   store: "postgres",
   queue: "redis",
 });
-// pass rt.deps to any adapter's { deps }; call rt.dispose() on shutdown
+// pass { deps: rt.deps, channels: rt.channels } to an adapter; call rt.dispose() on shutdown
 ```
 
 Or use the CLI: `skein build` produces a deployable image, `skein up` brings up app + Postgres + Redis via
@@ -9449,19 +10076,20 @@ easiest way to get production `deps` from a `langgraph.json` is
 [`@skein-js/runtime`](https://github.com/skein-js/skein-js/tree/main/packages/runtime)'s `buildRuntime`:
 
 ```ts
-import { createProtocolRuntime } from "@skein-js/agent-protocol";
 import { buildRuntime } from "@skein-js/runtime";
+import { resolveProtocolRuntime } from "@skein-js/server-kit";
 
-const { deps } = await buildRuntime({
+const assembled = await buildRuntime({
   configPath: "./langgraph.json",
   store: "memory", // or "postgres"
   queue: "memory", // or "redis"
 });
 
-const runtime = createProtocolRuntime(deps);
-await runtime.service.assistants.registerGraphAssistants(); // seed one assistant per graph
-runtime.worker.start(); // start the background run worker
-// runtime.handlers is your ProtocolHandlers table
+const resolved = await resolveProtocolRuntime({
+  deps: assembled.deps,
+  channels: assembled.channels,
+});
+// resolved.runtime is running; resolved.routes includes optional channel routes.
 ```
 
 > You can also construct `deps` by hand (your own `SkeinStore`, `RunQueue`, `RunEventBus`, and a
@@ -9473,11 +10101,13 @@ runtime.worker.start(); // start the background run worker
 The paths mirror the `@langchain/langgraph-sdk` client exactly (that's the conformance oracle — don't
 invent your own spelling). Bind each `method + path` to a handler name. The canonical table is
 exported from `@skein-js/agent-protocol` as `skeinRoutes` (re-exported from `@skein-js/express` too,
-for back-compat):
+for back-compat). Mount `resolved.routes` when using `resolveProtocolRuntime`: it starts with that
+canonical table and appends configured channel routes without changing the core protocol surface.
 
 ```ts
 import { skeinRoutes, copyThreadIdIntoBody, matchSkeinRoute } from "@skein-js/agent-protocol";
 // skeinRoutes: { method, path, handler, foldThreadIdIntoBody? }[]
+// resolved.routes: the same table plus deployment-specific channel bindings
 // e.g. { method: "post", path: "/threads/:thread_id/runs/stream",
 //        handler: "createStreamRun", foldThreadIdIntoBody: true }
 //
@@ -9603,21 +10233,23 @@ A dependency-free adapter over Node's built-in `http` server — no Express, no 
 ```ts
 import { createServer } from "node:http";
 
-import { createProtocolRuntime, skeinRoutes, SSE_HEADERS } from "@skein-js/agent-protocol";
+import { SSE_HEADERS } from "@skein-js/agent-protocol";
 import { isSkeinHttpError, serializeWireJson } from "@skein-js/core";
 import { buildRuntime } from "@skein-js/runtime";
+import { resolveProtocolRuntime } from "@skein-js/server-kit";
 
-const { deps } = await buildRuntime({
+const assembled = await buildRuntime({
   configPath: "./langgraph.json",
   store: "memory",
   queue: "memory",
 });
-const runtime = createProtocolRuntime(deps);
-await runtime.service.assistants.registerGraphAssistants();
-runtime.worker.start();
+const { runtime, routes: routeBindings } = await resolveProtocolRuntime({
+  deps: assembled.deps,
+  channels: assembled.channels,
+});
 
-// Compile the SDK route patterns to matchers once.
-const routes = skeinRoutes.map((r) => ({
+// Compile the resolved protocol + channel route patterns to matchers once.
+const routes = routeBindings.map((r) => ({
   ...r,
   regex: new RegExp("^" + r.path.replace(/:(\w+)/g, "(?<$1>[^/]+)") + "$"),
 }));
@@ -9679,7 +10311,7 @@ const server = createServer(async (req, res) => {
 });
 
 server.listen(2024);
-// On shutdown: await runtime.worker.stop(); server.close();
+// On shutdown: await runtime.worker.stop(); server.close(); await assembled.dispose();
 ```
 
 Point the official SDK at `http://localhost:2024` and it just works — because the wire format is
@@ -9688,7 +10320,7 @@ produced by the same handler table the Express adapter uses.
 ## Checklist
 
 - [ ] Assembled a `ProtocolRuntime`; called `registerGraphAssistants()` and `worker.start()`.
-- [ ] Bound every route in `skeinRoutes`, most-specific-first, with `foldThreadIdIntoBody` honored.
+- [ ] Bound every route in `resolved.routes`, most-specific-first, with `foldThreadIdIntoBody` honored.
 - [ ] `ProtocolRequest` has lowercased single-value headers and an absolute `url` (with query).
 - [ ] JSON responses serialized with `serializeWireJson` (not a plain `JSON.stringify`/`res.json`).
 - [ ] `response.headers` forwarded on all three kinds (silently lost otherwise — see step 4).
@@ -11427,14 +12059,15 @@ suitable for development and testing"), built on Hono and oriented around the CL
 not aim to provide durable production infrastructure. That gap — the same one aegra fills
 for Python — is skein-js's actual product:
 
-| Gap in OSS                                                                               | skein-js package                                                 | Why it's needed                                                                                                                |
-| ---------------------------------------------------------------------------------------- | ---------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------ |
-| Durable persistence of **protocol resources** (assistants / threads / runs / store rows) | `@skein-js/storage-postgres` + `SkeinStore`                      | The OSS server keeps these in memory; production needs Postgres (+ pgvector). Graph _checkpoints_ still reuse `PostgresSaver`. |
-| Durable **background-run queue** + **cross-instance pub/sub** streaming                  | `@skein-js/redis`                                                | The OSS server runs runs in-process; horizontal scaling needs a real queue and fan-out.                                        |
-| **Framework-native adapters**                                                            | `@skein-js/express` (· `@skein-js/fastify` · `@skein-js/nestjs`) | The OSS server is Hono-only; teams want to mount the protocol into their existing Express/Fastify/Nest app.                    |
-| **Normalized protocol core** tying runtime + checkpointer + store + queue together       | `@skein-js/core`                                                 | Adapter- and driver-agnostic handlers so behavior is identical everywhere.                                                     |
-| **Drop-in production CLI**                                                               | `skein-js`                                                       | `skein dev/up/build/dockerfile` reading an unchanged `langgraph.json`, wiring the durable drivers.                             |
-| **`langgraph.json` loading orchestration**                                               | `@skein-js/config`                                               | Thin wrapper over `@langchain/langgraph-api`'s `./schema` parser, adding `skein.json` overrides and driver selection.          |
+| Gap in OSS                                                                               | skein-js package                                                 | Why it's needed                                                                                                                                       |
+| ---------------------------------------------------------------------------------------- | ---------------------------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Durable persistence of **protocol resources** (assistants / threads / runs / store rows) | `@skein-js/storage-postgres` + `SkeinStore`                      | The OSS server keeps these in memory; production needs Postgres (+ pgvector). Graph _checkpoints_ still reuse `PostgresSaver`.                        |
+| Durable **background-run queue** + **cross-instance pub/sub** streaming                  | `@skein-js/redis`                                                | The OSS server runs runs in-process; horizontal scaling needs a real queue and fan-out.                                                               |
+| **Framework-native adapters**                                                            | `@skein-js/express` (· `@skein-js/fastify` · `@skein-js/nestjs`) | The OSS server is Hono-only; teams want to mount the protocol into their existing Express/Fastify/Nest app.                                           |
+| **Normalized protocol core** tying runtime + checkpointer + store + queue together       | `@skein-js/core`                                                 | Adapter- and driver-agnostic handlers so behavior is identical everywhere.                                                                            |
+| **Drop-in production CLI**                                                               | `skein-js`                                                       | `skein dev/up/build/dockerfile` reading an unchanged `langgraph.json`, wiring the durable drivers.                                                    |
+| **`langgraph.json` loading orchestration**                                               | `@skein-js/config`                                               | Thin wrapper over `@langchain/langgraph-api`'s `./schema` parser, adding `skein.json` overrides and driver selection.                                 |
+| **Cross-provider channel delivery**                                                      | `@skein-js/channels`                                             | LangGraph still chooses routes and writes custom output; Skein adapts an explicit destination intent to its existing durable channel callback/outbox. |
 
 ## Consequences
 

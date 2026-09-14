@@ -264,6 +264,11 @@ export default withMermaid(
                 { text: "Overview", link: "/recipes/" },
                 { text: "Serving", link: "/recipes/serving" },
                 { text: "Running agents", link: "/recipes/running-agents" },
+                { text: "Coupled WhatsApp replies", link: "/recipes/coupled-channel" },
+                {
+                  text: "Email-to-WhatsApp routing",
+                  link: "/recipes/decoupled-channel-delivery",
+                },
                 { text: "Memory", link: "/recipes/memory" },
                 { text: "Production", link: "/recipes/production" },
               ],

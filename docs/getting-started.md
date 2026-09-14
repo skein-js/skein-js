@@ -162,9 +162,10 @@ process.on("SIGTERM", async () => {
 });
 ```
 
-From a `langgraph.json`, either assemble `deps` with `buildRuntime({ store: "postgres", queue: "redis" })`,
-or skip code entirely: `skein dev --store postgres --queue redis`, and `skein build` / `skein up`
-to containerize. Redis is optional for a single instance but required to run more than one. Details:
+From a `langgraph.json`, either call `buildRuntime({ store: "postgres", queue: "redis" })` and pass its
+`deps` **and** `channels` to the adapter, or skip code entirely: `skein dev --store postgres --queue
+redis`, and `skein build` / `skein up` to containerize. Redis is optional for a single instance but
+required to run more than one. Details:
 [embedding.md](./embedding.md#going-to-production), [storage.md](./storage.md),
 [runs-and-redis.md](./runs-and-redis.md), [deploy.md](./deploy.md).
 

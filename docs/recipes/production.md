@@ -92,7 +92,7 @@ const rt = await buildRuntime({
   store: "postgres",
   queue: "redis",
 });
-// pass rt.deps to any adapter's { deps }; call rt.dispose() on shutdown
+// pass { deps: rt.deps, channels: rt.channels } to an adapter; call rt.dispose() on shutdown
 ```
 
 Or use the CLI: `skein build` produces a deployable image, `skein up` brings up app + Postgres + Redis via
