@@ -32,8 +32,8 @@ stable `${initialRunId}:${interruptId}` idempotency key to each provider send, s
 failure does not duplicate a recipient that already succeeded. This proves safe aggregate fan-out,
 not independently replayable delivery records per recipient.
 
-The proof adds no Skein API. `composeSourceChannel` and `declareDestinationDelivery` are deliberately
-example-local. They compose the existing public contracts:
+The example uses Skein's public `composeRoutedChannel` and
+`declareChannelDestinationDelivery` helpers. They compose the existing contracts:
 
 - channel verification, authorization, event deduplication and thread start/resume;
 - `replyWith(unknown)` for one graph-declared structured result;
@@ -83,9 +83,9 @@ pnpm exec nx test example-decoupled-delivery
 pnpm exec nx typecheck example-decoupled-delivery
 ```
 
-This is intentionally not a general source/destination framework. It is the smallest experiment that
-can falsify the need for one. If application-local composition remains correct and small, it should
-stay a recipe rather than become permanent package API.
+This is intentionally not a workflow framework. LangGraph still owns routing, parallel work and
+interrupts; Skein only adapts a graph-declared, allowlisted destination to the existing durable
+channel callback path.
 
 The demo and offline tests use the in-memory runtime. They exercise the same runtime assembly and
 handler path as production adapters, but they are restart-volatile: pending interrupts, delivery

@@ -75,6 +75,50 @@ adapter never has to know what you named your graph:
 }
 ```
 
+## Route one source to another provider
+
+Use `composeRoutedChannel` when the inbound provider should not own outbound delivery. The source
+still verifies and parses events; an application-owned map supplies allowlisted destinations:
+
+```ts
+import { composeRoutedChannel, type ChannelDestinationDelivery } from "@skein-js/channels";
+
+const destinations = new Map([
+  [
+    "whatsapp",
+    async ({ target, payload, runId }: ChannelDestinationDelivery) => {
+      const message = whatsappPayloadSchema.parse({ target, payload });
+      await sendWhatsApp(message, { idempotencyKey: runId });
+    },
+  ],
+]);
+
+export const channel = composeRoutedChannel(emailSource, destinations);
+```
+
+The graph selects a destination after processing:
+
+```ts
+import { declareChannelDestinationDelivery } from "@skein-js/channels";
+
+declareChannelDestinationDelivery(config.writer, {
+  destination: "whatsapp",
+  target: { to: "+254700000001" },
+  payload: { body: "Order GT-1042 needs approval." },
+});
+```
+
+Only this explicit declaration is dispatched. Ordinary `replyWith` values and inferred interrupt or
+AI-message replies are intentionally ignored by a routed channel. Targets and payloads must be plain
+JSON values, and every destination must validate its provider-specific boundary. The map allowlists
+adapters, not recipients: authorize targets from trusted workflow data instead of treating an
+LLM-selected or user-supplied value as permission to send. An invalid or unknown declaration, or a
+callback that throws, fails the existing outbox attempt visibly.
+
+Delivery remains at-least-once. Use a stable provider idempotency key such as `runId`; a run still has
+one outbox retry unit, even when one callback performs aggregate fan-out. Existing channels that
+implement `Channel.deliver` directly continue to work unchanged.
+
 ## Decisions worth knowing
 
 **`verify` returns a principal, not a boolean.** A provider's signature _is_ an authentication
@@ -105,7 +149,8 @@ from the other direction, which is the shape a GDPR erasure request arrives in.
 
 **Configuration is validated at boot**, not at the first event. An `assistant` naming a graph that
 does not exist fails startup with a precise error — discovering that typo when the first customer
-texts is the failure this avoids.
+texts is the failure this avoids. Configured route keys and explicit `Channel.name` aliases must also
+be unambiguous; collisions fail at boot before they can merge thread identities or misroute a reply.
 
 ## See also
 

@@ -1,4 +1,5 @@
-// Routing a settled run's answer to the channel that started it.
+// Routing a settled run's answer through the callback armed by its source channel. A conventional
+// channel sends the answer directly; a composed routed channel dispatches its declared destination.
 
 import type { ChannelRegistry } from "../channel/registry.js";
 

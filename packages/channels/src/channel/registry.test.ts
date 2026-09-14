@@ -79,6 +79,70 @@ describe("buildChannelRegistry", () => {
     expect(registry.get("twilio")?.channel.name).toBe("twilio");
   });
 
+  it("refuses empty configured and explicit channel names", () => {
+    expect(() =>
+      buildChannelRegistry({
+        channels: { "   ": { module: validChannel, config: { assistant: "support" } } },
+        graphIds: ["support"],
+      }),
+    ).toThrow(/non-empty string name/);
+    expect(() => build({}, { ...validChannel, name: "   " })).toThrow(/non-empty string name/);
+    expect(() => build({}, { ...validChannel, name: 42 })).toThrow(/non-empty string name/);
+  });
+
+  it("keeps configured keys as routes and resolves an explicit delivery alias", () => {
+    const registry = buildChannelRegistry({
+      channels: {
+        inbox: {
+          module: { ...validChannel, name: "email-source" },
+          config: { assistant: "support" },
+        },
+      },
+      graphIds: ["support"],
+    });
+
+    expect(registry.names).toEqual(["inbox"]);
+    expect(registry.get("inbox")).toBe(registry.get("email-source"));
+  });
+
+  it.each([
+    ["first", ["one", "two"]],
+    ["second", ["two", "one"]],
+  ])("refuses duplicate explicit names in %s insertion order", (_label, order) => {
+    const channels = Object.fromEntries(
+      order.map((name) => [
+        name,
+        {
+          module: { ...validChannel, name: "shared" },
+          config: { assistant: "support" },
+        },
+      ]),
+    );
+    expect(() => buildChannelRegistry({ channels, graphIds: ["support"] })).toThrow(
+      /Channel names must be unique/,
+    );
+  });
+
+  it.each([
+    ["alias first", ["alias-owner", "reserved"]],
+    ["route first", ["reserved", "alias-owner"]],
+  ])("refuses an alias-to-route-key collision with %s", (_label, order) => {
+    const definitions = {
+      "alias-owner": {
+        module: { ...validChannel, name: "reserved" },
+        config: { assistant: "support" },
+      },
+      reserved: {
+        module: { ...validChannel, name: "reserved" },
+        config: { assistant: "support" },
+      },
+    };
+    const channels = Object.fromEntries(
+      order.map((name) => [name, definitions[name as keyof typeof definitions]]),
+    );
+    expect(() => buildChannelRegistry({ channels, graphIds: ["support"] })).toThrow(/collides/);
+  });
+
   it("accepts a channel written as a class", () => {
     // A spread copies own enumerable properties only, so a class instance passed boot validation —
     // `typeof` finds prototype methods — and then threw `verify is not a function` on the first real
