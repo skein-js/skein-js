@@ -91,6 +91,21 @@ That serves `POST /channels/twilio`. Point your provider's webhook at it.
 A complete, runnable version — offline, no Twilio account —
 is [`examples/whatsapp-agent`](https://github.com/skein-js/skein-js/tree/main/examples/whatsapp-agent).
 
+### Route between different providers
+
+The provider that receives an event does not have to send the result. The
+[`decoupled-delivery`](https://github.com/skein-js/skein-js/tree/main/examples/decoupled-delivery)
+example routes an email through one LangGraph workflow to WhatsApp, collects parallel authenticated
+approvals with LangGraph `interrupt()`, then sends the result by email. Its runnable refund demo uses
+Skein's normal channel, auth, deduplication, thread/run and delivery paths with offline provider
+fakes.
+
+The composition deliberately remains application-local. Skein does not currently publish separate
+`Source` or `Destination` interfaces: the example combines the existing `Channel`, `replyWith` and
+delivery outbox contracts without changing them. That keeps provider credentials and business
+routing policy in the application while real consumers establish whether a smaller shared primitive
+is necessary.
+
 ## The pipeline
 
 ```text

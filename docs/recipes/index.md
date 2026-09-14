@@ -29,6 +29,7 @@ pnpm --filter @skein-js/example-triage-agent seed   # register the schedule + sw
 | Example                                                                                            | Shows                                                           |
 | -------------------------------------------------------------------------------------------------- | --------------------------------------------------------------- |
 | [`triage-agent`](https://github.com/skein-js/skein-js/tree/main/examples/triage-agent)             | Crons, background runs, idempotency, HITL, memory, time travel  |
+| [`decoupled-delivery`](https://github.com/skein-js/skein-js/tree/main/examples/decoupled-delivery) | Email → LangGraph approvals → WhatsApp → email, offline         |
 | [`chat-app`](https://github.com/skein-js/skein-js/tree/main/examples/chat-app)                     | Full-stack chat: streaming, thinking, tool cards, HITL, memory  |
 | [`invoke-endpoint`](https://github.com/skein-js/skein-js/tree/main/examples/invoke-endpoint)       | Non-chat graphs as plain HTTP endpoints                         |
 | [`embed-graph`](https://github.com/skein-js/skein-js/tree/main/examples/embed-graph)               | A graph you already have, served with no `langgraph.json`       |

@@ -42,6 +42,42 @@ example-local. They compose the existing public contracts:
 
 The provider clients are recording fakes, so no credentials or network are required.
 
+## Run the refund relay
+
+```bash
+pnpm exec nx run example-decoupled-delivery:demo
+```
+
+The command sends a representative refund email through Skein's resolved email channel handler,
+waits for the real LangGraph graph to pause on three parallel interrupts, answers them through the
+resolved WhatsApp channel handler in Finance → HR → Manager order, and prints the final email plus
+the checkpointed decision audit trail.
+
+The orchestration path is real: channel verification, Skein auth and event deduplication, thread/run
+coordination, the LangGraph checkpoint bridge, `Send`/`interrupt`, graph-declared `replyWith`, and the
+Skein callback/outbox path all execute. Only the provider edges are fake—the example records the
+email and WhatsApp effects locally instead of contacting provider APIs.
+
+Representative trace:
+
+```text
+1. Email received: refund KES 27,500 for a duplicate order charge.
+2. LangGraph paused on three parallel approvals:
+   - hr -> whatsapp:+254700000011
+   - manager -> whatsapp:+254700000012
+   - finance -> whatsapp:+254700000013
+3. finance approves over authenticated WhatsApp.
+3. hr approves over authenticated WhatsApp.
+3. manager approves over authenticated WhatsApp.
+4. Final destination: email -> {"to":"customer@example.com"}.
+5. Checkpointed decision audit trail:
+   - hr: approve by channel:whatsapp:+254700000011 (...)
+   - manager: approve by channel:whatsapp:+254700000012 (...)
+   - finance: approve by channel:whatsapp:+254700000013 (...)
+```
+
+The trace is for people, not a stable machine-readable output format.
+
 ```bash
 pnpm exec nx test example-decoupled-delivery
 pnpm exec nx typecheck example-decoupled-delivery
@@ -51,5 +87,7 @@ This is intentionally not a general source/destination framework. It is the smal
 can falsify the need for one. If application-local composition remains correct and small, it should
 stay a recipe rather than become permanent package API.
 
-The offline tests use the in-memory runtime. Production approval workflows must select durable Skein
-storage and a durable LangGraph checkpointer; otherwise pending interrupts disappear on restart.
+The demo and offline tests use the in-memory runtime. They exercise the same runtime assembly and
+handler path as production adapters, but they are restart-volatile: pending interrupts, delivery
+rows and retry schedules disappear with the process. Production approval workflows must select
+durable Skein storage and a durable LangGraph checkpointer.
