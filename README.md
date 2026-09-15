@@ -139,6 +139,7 @@ restart — state is restored from `.skein/`. Already have a LangGraph project? 
 - [Examples](#examples)
 - [Tested end-to-end](#tested-end-to-end)
 - [Documentation](#documentation)
+- [Sponsorship](#sponsorship)
 - [Contributing & feedback](#contributing--feedback)
 - [License](#license)
 
@@ -733,6 +734,14 @@ live in the repo rather than on the docs site.
 **For AI agents & tools:** [`llms.txt`](./llms.txt) is a curated, machine-readable index of these docs
 (per the [llmstxt.org](https://llmstxt.org) convention); [`llms-full.txt`](./llms-full.txt) is the same
 set concatenated for wholesale ingestion. Regenerate the latter with `pnpm docs:llms`.
+
+## Sponsorship
+
+skein-js is sponsored by **Garatropic Studios**, supporting the project's engineering and ongoing
+maintenance.
+
+Individuals and organizations can also sponsor skein-js. If you would like to support ongoing
+development, [get in touch](https://github.com/skein-js/skein-js/issues).
 
 ## Contributing & feedback
 
