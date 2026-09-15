@@ -1,15 +1,16 @@
 # `@skein-js/channels`
 
-Bring the same agent to WhatsApp, Slack, email, GitHub, or any service that can send a webhook.
-skein-js keeps conversations connected, prevents duplicate work, resumes approvals, and delivers
-replies reliably; each integration only translates its provider's messages.
+Turn authenticated provider webhooks into LangGraph runs, then deliver each outcome through the
+source channel or a graph-selected, allowlisted destination.
+skein-js keeps conversations connected, prevents duplicate work, resumes interrupted workflows, and
+delivers outcomes reliably; each integration only translates its provider's events and deliveries.
 
 Part of **[skein-js](https://github.com/skein-js/skein-js)**. Entirely optional: a deployment that
 configures no channel cannot tell this package exists.
 
 ## The problem
 
-Putting an agent behind a phone number means writing, by hand: signature verification, dedup for the
+Connecting a workflow to a phone number means writing, by hand: signature verification, dedup for the
 provider's retries, a mapping from `whatsapp:+254…` to a thread, a branch on whether that thread is
 waiting on a human, payload mapping in both directions, and a reply path that does not double-send.
 

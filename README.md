@@ -15,8 +15,9 @@ AWS, Kubernetes, or a plain VPS. Your agents, your data, **no license key, no pe
 
 **Fits your stack:** Express · Fastify · NestJS · Next.js · Bun · Deno · React · Vue · Svelte · Angular
 
-Bring the same agent to WhatsApp, Slack, email, GitHub, or any webhook with
-[channel integrations](./docs/channels.md). See how it behaves in production with
+Receive authenticated events from WhatsApp, Slack, email, GitHub, or any webhook, then return a
+coupled reply or route the result to another provider with [channels](./docs/channels.md). See how it
+behaves in production with
 [PostHog](./docs/observability.md#posthog), LangSmith, or OpenTelemetry.
 
 **Already using the LangGraph CLI?** Change one word: `langgraph dev` → `skein dev`. Your
@@ -140,20 +141,20 @@ restart — state is restored from `.skein/`. Already have a LangGraph project? 
 
 Your graph is the product. skein-js handles the production plumbing around it:
 
-| The concept           | What skein-js gives you                                                                                                                |
-| --------------------- | -------------------------------------------------------------------------------------------------------------------------------------- |
-| **Threads**           | Conversations that persist, addressable by your own key — a ticket id, a phone number. [→](./docs/threads.md)                          |
-| **Runs**              | Wait for it, stream it, or queue it in the background — plus what happens when a second message lands mid-run. [→](./docs/runs.md)     |
-| **Streaming**         | SSE with reconnect and replay, a real `streamEvents` mode, fan-out across instances. [→](./docs/streaming.md)                          |
-| **Human-in-the-loop** | `interrupt()` parks a run on a checkpoint holding no connection. Resume hours later, from any client. [→](./docs/human-in-the-loop.md) |
-| **Time travel**       | Fork from any past checkpoint and run forward — the machinery behind "edit and resubmit". [→](./docs/threads.md)                       |
-| **Long-term memory**  | A store reachable via `getStore()` inside a node, with semantic search and TTL. [→](./docs/memory.md)                                  |
-| **Assistants**        | The same graph configured per tenant or per experiment, versioned, with one-call rollback. [→](./docs/assistants.md)                   |
-| **Scheduled work**    | Crons that fire exactly once across instances, no leader election. [→](./docs/crons.md)                                                |
-| **Background jobs**   | Queue a run, get an id back, hear the result on a signed webhook. [→](./docs/background-jobs.md)                                       |
-| **Durable execution** | Postgres state, a Redis queue, crash recovery, and callbacks committed with the run. [→](./docs/webhooks.md)                           |
-| **Channels**          | Bring the same agent to WhatsApp, Slack, email, GitHub, or any service that can send a webhook. [→](./docs/channels.md)                |
-| **Observability**     | LangSmith, PostHog and OpenTelemetry sinks — or your own. [→](./docs/observability.md)                                                 |
+| The concept           | What skein-js gives you                                                                                                                                  |
+| --------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| **Threads**           | Conversations that persist, addressable by your own key — a ticket id, a phone number. [→](./docs/threads.md)                                            |
+| **Runs**              | Wait for it, stream it, or queue it in the background — plus what happens when a second message lands mid-run. [→](./docs/runs.md)                       |
+| **Streaming**         | SSE with reconnect and replay, a real `streamEvents` mode, fan-out across instances. [→](./docs/streaming.md)                                            |
+| **Human-in-the-loop** | `interrupt()` parks a run on a checkpoint holding no connection. Resume hours later, from any client. [→](./docs/human-in-the-loop.md)                   |
+| **Time travel**       | Fork from any past checkpoint and run forward — the machinery behind "edit and resubmit". [→](./docs/threads.md)                                         |
+| **Long-term memory**  | A store reachable via `getStore()` inside a node, with semantic search and TTL. [→](./docs/memory.md)                                                    |
+| **Assistants**        | The same graph configured per tenant or per experiment, versioned, with one-call rollback. [→](./docs/assistants.md)                                     |
+| **Scheduled work**    | Crons that fire exactly once across instances, no leader election. [→](./docs/crons.md)                                                                  |
+| **Background jobs**   | Queue a run, get an id back, hear the result on a signed webhook. [→](./docs/background-jobs.md)                                                         |
+| **Durable execution** | Postgres state, a Redis queue, crash recovery, and callbacks committed with the run. [→](./docs/webhooks.md)                                             |
+| **Channels**          | Turn authenticated provider events into graph runs, then reply on the source or route the outcome to an allowlisted destination. [→](./docs/channels.md) |
+| **Observability**     | LangSmith, PostHog and OpenTelemetry sinks — or your own. [→](./docs/observability.md)                                                                   |
 
 Can skein do X? [**The features page**](./docs/features.md) answers it in one line per capability,
 including what _isn't_ built.
@@ -598,11 +599,12 @@ const config = await loadConfig({ configPath: "./langgraph.json" });
 
 → [`packages/config`](./packages/config)
 
-### `@skein-js/channels` — agents beyond the browser
+### `@skein-js/channels` — workflows connected to external systems
 
-Bring the same agent to WhatsApp, Slack, email, GitHub, or any service that can send a webhook.
-skein-js keeps conversations connected, prevents duplicate work, resumes approvals, and delivers
-replies reliably; each integration only translates its provider's messages.
+Turn authenticated webhooks from WhatsApp, Slack, email, GitHub, or another provider into graph
+runs. skein-js keeps conversations connected, prevents duplicate work, resumes interrupts, and
+delivers outcomes reliably—either back through the source or through a graph-selected, allowlisted
+destination.
 
 ```bash
 pnpm add @skein-js/channels
@@ -658,19 +660,19 @@ An MCP endpoint and the remaining LangGraph SDK gaps are planned. See the
 
 Each is a runnable project — `cd` into it and follow its README.
 
-| Example                                                                               | What you'll learn                                                                                                                                                                                         | How to run                 |
-| ------------------------------------------------------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | -------------------------- |
-| [`chat-app`](./examples/chat-app)                                                     | **Flagship** — build a full rich-UX chat app: streamed thinking, web search, structured tool-result cards, human-in-the-loop booking, long-term memory, custom auth (Gemini + Next.js + shadcn/ui)        | `pnpm dev` + `pnpm dev:ui` |
-| [`migrated-langgraph`](./examples/migrated-langgraph)                                 | The **drop-in proof** — a stock LangGraph project under `skein dev`, with hot reload + `.skein/` persistence                                                                                              | `pnpm dev`                 |
-| [`gemini-chat`](./examples/gemini-chat)                                               | **Model-backed end-to-end** — a Gemini ReAct agent streamed into a browser; also an embedded `@skein-js/express` server                                                                                   | `pnpm dev`                 |
-| [`express-basic`](./examples/express-basic)                                           | **Hello world** — zero-setup `echo` (no API key) + a Claude `agent` graph in one config                                                                                                                   | `pnpm dev`                 |
-| [`embed-graph`](./examples/embed-graph)                                               | **In-code embedding** — serve a graph you already have with **no `langgraph.json`** (`embedInMemoryGraphs` + `{ deps }`); the config-free counterpart to `express-basic`                                  | `pnpm dev`                 |
-| [`invoke-endpoint`](./examples/invoke-endpoint)                                       | **Non-chat serving** — graphs as plain `POST /invoke/:graph_id` endpoints (body in, final state out), with no threads or runs                                                                             | `pnpm start`               |
-| [`fastify-basic`](./examples/fastify-basic) · [`fastify-app`](./examples/fastify-app) | **Fastify** — a standalone graph server, and the protocol embedded under `/agent` alongside a REST API                                                                                                    | `pnpm dev`                 |
-| [`nestjs-basic`](./examples/nestjs-basic) · [`nestjs-app`](./examples/nestjs-app)     | **NestJS** — a standalone graph server, and `SkeinModule` alongside the app's own controller                                                                                                              | `pnpm dev`                 |
-| [`nextjs-basic`](./examples/nextjs-basic) · [`nextjs-app`](./examples/nextjs-app)     | **Next.js** — headless Pages Router API, and a full-stack App Router app serving the protocol same-origin behind a `useStream` chat UI                                                                    | `pnpm dev`                 |
-| [`whatsapp-agent`](./examples/whatsapp-agent)                                         | **An agent behind a phone number** — a compact Twilio integration with signature checks, retry dedup, conversation memory, a typing indicator, async human-in-the-loop, and a durable reply; runs offline | `pnpm dev`                 |
-| [`react-usestream`](./examples/react-usestream)                                       | A minimal **`useStream` SSE frontend** you can point at any skein-js server                                                                                                                               | `pnpm dev`                 |
+| Example                                                                               | What you'll learn                                                                                                                                                                                      | How to run                 |
+| ------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ | -------------------------- |
+| [`chat-app`](./examples/chat-app)                                                     | **Flagship** — build a full rich-UX chat app: streamed thinking, web search, structured tool-result cards, human-in-the-loop booking, long-term memory, custom auth (Gemini + Next.js + shadcn/ui)     | `pnpm dev` + `pnpm dev:ui` |
+| [`migrated-langgraph`](./examples/migrated-langgraph)                                 | The **drop-in proof** — a stock LangGraph project under `skein dev`, with hot reload + `.skein/` persistence                                                                                           | `pnpm dev`                 |
+| [`gemini-chat`](./examples/gemini-chat)                                               | **Model-backed end-to-end** — a Gemini ReAct agent streamed into a browser; also an embedded `@skein-js/express` server                                                                                | `pnpm dev`                 |
+| [`express-basic`](./examples/express-basic)                                           | **Hello world** — zero-setup `echo` (no API key) + a Claude `agent` graph in one config                                                                                                                | `pnpm dev`                 |
+| [`embed-graph`](./examples/embed-graph)                                               | **In-code embedding** — serve a graph you already have with **no `langgraph.json`** (`embedInMemoryGraphs` + `{ deps }`); the config-free counterpart to `express-basic`                               | `pnpm dev`                 |
+| [`invoke-endpoint`](./examples/invoke-endpoint)                                       | **Non-chat serving** — graphs as plain `POST /invoke/:graph_id` endpoints (body in, final state out), with no threads or runs                                                                          | `pnpm start`               |
+| [`fastify-basic`](./examples/fastify-basic) · [`fastify-app`](./examples/fastify-app) | **Fastify** — a standalone graph server, and the protocol embedded under `/agent` alongside a REST API                                                                                                 | `pnpm dev`                 |
+| [`nestjs-basic`](./examples/nestjs-basic) · [`nestjs-app`](./examples/nestjs-app)     | **NestJS** — a standalone graph server, and `SkeinModule` alongside the app's own controller                                                                                                           | `pnpm dev`                 |
+| [`nextjs-basic`](./examples/nextjs-basic) · [`nextjs-app`](./examples/nextjs-app)     | **Next.js** — headless Pages Router API, and a full-stack App Router app serving the protocol same-origin behind a `useStream` chat UI                                                                 | `pnpm dev`                 |
+| [`whatsapp-agent`](./examples/whatsapp-agent)                                         | **A coupled WhatsApp workflow** — a compact Twilio integration with signature checks, retry dedup, conversation memory, a typing indicator, async human-in-the-loop, and a durable reply; runs offline | `pnpm dev`                 |
+| [`react-usestream`](./examples/react-usestream)                                       | A minimal **`useStream` SSE frontend** you can point at any skein-js server                                                                                                                            | `pnpm dev`                 |
 
 ## Tested end-to-end
 
@@ -710,7 +712,7 @@ Start here:
 - [LangGraph CLI compatibility](https://skein-js.github.io/skein-js/langgraph-cli-compat) — commands + every `langgraph.json` field
 - [Agent Protocol surface](https://skein-js.github.io/skein-js/agent-protocol) — the endpoints skein-js serves
 - [Recipes](https://skein-js.github.io/skein-js/recipes) — auth, human-in-the-loop, long-term memory, CORS, background runs
-- [Channels](https://skein-js.github.io/skein-js/channels) — connect an agent to WhatsApp, Slack, email, GitHub, or another webhook
+- [Channels](https://skein-js.github.io/skein-js/channels) — connect webhook sources and durable, optionally cross-provider destinations to LangGraph workflows
 - [Observability](https://skein-js.github.io/skein-js/observability) — PostHog, LangSmith, OpenTelemetry, and custom telemetry
 - [Deploy anywhere](https://skein-js.github.io/skein-js/deploy) — Cloud Run, Railway, Fly.io, Render, AWS, Kubernetes, VPS
 
