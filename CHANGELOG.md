@@ -1,3 +1,30 @@
+## 0.17.0 (2026-09-15)
+
+### 🚀 Features
+
+- **channels:** add graph-routed destinations ([825dbee](https://github.com/skein-js/skein-js/commit/825dbee))
+- **console:** track channels and deliveries ([201d863](https://github.com/skein-js/skein-js/commit/201d863))
+- **create-skein-js:** prompt for install, git and dev storage, and report what git did ([#18](https://github.com/skein-js/skein-js/issues/18))
+- **docs:** serve llms.txt and add a Copy-page control to every doc ([#11](https://github.com/skein-js/skein-js/issues/11))
+- **example:** prove decoupled approval workflows ([165f86c](https://github.com/skein-js/skein-js/commit/165f86c))
+- **example:** add runnable refund relay demo ([650d77d](https://github.com/skein-js/skein-js/commit/650d77d))
+- **example:** add decoupled delivery playground ([2f1d3d6](https://github.com/skein-js/skein-js/commit/2f1d3d6))
+- **runtime:** expose configured channel inventory ([282198d](https://github.com/skein-js/skein-js/commit/282198d))
+
+### 🩹 Fixes
+
+- **console:** read relative times forwards, not as negative "ago" ([#27](https://github.com/skein-js/skein-js/issues/27))
+- **create-skein-js:** make the durable path a scaffolded project ships actually work ([#17](https://github.com/skein-js/skein-js/issues/17))
+- **example:** lint static browser UI ([35ae813](https://github.com/skein-js/skein-js/commit/35ae813))
+- **redis:** stop shipping untested majors of bullmq and ioredis ([#28](https://github.com/skein-js/skein-js/issues/28))
+- **server-kit:** give `skein dev` the deps that bind the engine to LangGraph ([#28](https://github.com/skein-js/skein-js/issues/28))
+
+### ❤️ Thank You
+
+- amirkiarafiei
+- Claude Opus 5 (1M context)
+- Maina Wycliffe
+
 ## 0.16.0 (2026-08-22)
 
 ### 🚀 Features

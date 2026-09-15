@@ -1,6 +1,6 @@
 {
   "name": "@skein-js/channels",
-  "version": "0.16.0",
+  "version": "0.17.0",
   "description": "Inbound sources and graph-routed destinations for skein-js — connect agents to WhatsApp, Slack, email, webhooks, and more.",
   "license": "Apache-2.0",
   "author": "Maina Wycliffe <wmmaina7@gmail.com>",
