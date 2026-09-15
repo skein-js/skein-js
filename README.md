@@ -15,10 +15,15 @@ AWS, Kubernetes, or a plain VPS. Your agents, your data, **no license key, no pe
 
 **Fits your stack:** Express · Fastify · NestJS · Next.js · Bun · Deno · React · Vue · Svelte · Angular
 
-Receive authenticated events from WhatsApp, Slack, email, GitHub, or any webhook, then return a
-coupled reply or route the result to another provider with [channels](./docs/channels.md). See how it
-behaves in production with
+**Turn LangGraph graphs into real-world workflows.** LangGraph owns the orchestration; it doesn't own
+provider integrations. Skein [channels](./docs/channels.md) connect authenticated sources such as
+WhatsApp, email, Slack, GitHub, or your own webhooks to the graph, then deliver its outcome reliably
+to the same provider or a graph-selected destination. See how the whole workflow behaves with
 [PostHog](./docs/observability.md#posthog), LangSmith, or OpenTelemetry.
+
+That means practical processes such as a WhatsApp support request that looks up an order and replies,
+an emailed refund that gathers approvals over WhatsApp before notifying the customer, or a failed
+GitHub deployment that evaluates severity before alerting the on-call team in Slack.
 
 **Already using the LangGraph CLI?** Change one word: `langgraph dev` → `skein dev`. Your
 `langgraph.json`, graphs, and clients stay unchanged. You also get a self-hosted
@@ -141,20 +146,20 @@ restart — state is restored from `.skein/`. Already have a LangGraph project? 
 
 Your graph is the product. skein-js handles the production plumbing around it:
 
-| The concept           | What skein-js gives you                                                                                                                                  |
-| --------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| **Threads**           | Conversations that persist, addressable by your own key — a ticket id, a phone number. [→](./docs/threads.md)                                            |
-| **Runs**              | Wait for it, stream it, or queue it in the background — plus what happens when a second message lands mid-run. [→](./docs/runs.md)                       |
-| **Streaming**         | SSE with reconnect and replay, a real `streamEvents` mode, fan-out across instances. [→](./docs/streaming.md)                                            |
-| **Human-in-the-loop** | `interrupt()` parks a run on a checkpoint holding no connection. Resume hours later, from any client. [→](./docs/human-in-the-loop.md)                   |
-| **Time travel**       | Fork from any past checkpoint and run forward — the machinery behind "edit and resubmit". [→](./docs/threads.md)                                         |
-| **Long-term memory**  | A store reachable via `getStore()` inside a node, with semantic search and TTL. [→](./docs/memory.md)                                                    |
-| **Assistants**        | The same graph configured per tenant or per experiment, versioned, with one-call rollback. [→](./docs/assistants.md)                                     |
-| **Scheduled work**    | Crons that fire exactly once across instances, no leader election. [→](./docs/crons.md)                                                                  |
-| **Background jobs**   | Queue a run, get an id back, hear the result on a signed webhook. [→](./docs/background-jobs.md)                                                         |
-| **Durable execution** | Postgres state, a Redis queue, crash recovery, and callbacks committed with the run. [→](./docs/webhooks.md)                                             |
-| **Channels**          | Turn authenticated provider events into graph runs, then reply on the source or route the outcome to an allowlisted destination. [→](./docs/channels.md) |
-| **Observability**     | LangSmith, PostHog and OpenTelemetry sinks — or your own. [→](./docs/observability.md)                                                                   |
+| The concept              | What skein-js gives you                                                                                                                                 |
+| ------------------------ | ------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| **Threads**              | Conversations that persist, addressable by your own key — a ticket id, a phone number. [→](./docs/threads.md)                                           |
+| **Runs**                 | Wait for it, stream it, or queue it in the background — plus what happens when a second message lands mid-run. [→](./docs/runs.md)                      |
+| **Streaming**            | SSE with reconnect and replay, a real `streamEvents` mode, fan-out across instances. [→](./docs/streaming.md)                                           |
+| **Human-in-the-loop**    | `interrupt()` parks a run on a checkpoint holding no connection. Resume hours later, from any client. [→](./docs/human-in-the-loop.md)                  |
+| **Time travel**          | Fork from any past checkpoint and run forward — the machinery behind "edit and resubmit". [→](./docs/threads.md)                                        |
+| **Long-term memory**     | A store reachable via `getStore()` inside a node, with semantic search and TTL. [→](./docs/memory.md)                                                   |
+| **Assistants**           | The same graph configured per tenant or per experiment, versioned, with one-call rollback. [→](./docs/assistants.md)                                    |
+| **Scheduled work**       | Crons that fire exactly once across instances, no leader election. [→](./docs/crons.md)                                                                 |
+| **Background jobs**      | Queue a run, get an id back, hear the result on a signed webhook. [→](./docs/background-jobs.md)                                                        |
+| **Durable execution**    | Postgres state, a Redis queue, crash recovery, and callbacks committed with the run. [→](./docs/webhooks.md)                                            |
+| **Workflows & channels** | Bring authenticated provider events into LangGraph, then deliver workflow outcomes to the source or an allowlisted destination. [→](./docs/channels.md) |
+| **Observability**        | LangSmith, PostHog and OpenTelemetry sinks — or your own. [→](./docs/observability.md)                                                                  |
 
 Can skein do X? [**The features page**](./docs/features.md) answers it in one line per capability,
 including what _isn't_ built.
@@ -599,12 +604,12 @@ const config = await loadConfig({ configPath: "./langgraph.json" });
 
 → [`packages/config`](./packages/config)
 
-### `@skein-js/channels` — workflows connected to external systems
+### `@skein-js/channels` — connect workflows to external systems
 
-Turn authenticated webhooks from WhatsApp, Slack, email, GitHub, or another provider into graph
-runs. skein-js keeps conversations connected, prevents duplicate work, resumes interrupts, and
-delivers outcomes reliably—either back through the source or through a graph-selected, allowlisted
-destination.
+Connect a LangGraph workflow to authenticated sources and destinations from WhatsApp, Slack, email,
+GitHub, or another provider. skein-js keeps conversations connected, prevents duplicate work,
+resumes interrupts, and delivers outcomes reliably. The shape is source → LangGraph workflow →
+destination, with Skein owning the durable provider lifecycle around the graph.
 
 ```bash
 pnpm add @skein-js/channels
@@ -712,7 +717,7 @@ Start here:
 - [LangGraph CLI compatibility](https://skein-js.github.io/skein-js/langgraph-cli-compat) — commands + every `langgraph.json` field
 - [Agent Protocol surface](https://skein-js.github.io/skein-js/agent-protocol) — the endpoints skein-js serves
 - [Recipes](https://skein-js.github.io/skein-js/recipes) — auth, human-in-the-loop, long-term memory, CORS, background runs
-- [Channels](https://skein-js.github.io/skein-js/channels) — connect webhook sources and durable, optionally cross-provider destinations to LangGraph workflows
+- [Workflows and channels](https://skein-js.github.io/skein-js/channels) — connect provider sources and durable destinations through LangGraph workflows
 - [Observability](https://skein-js.github.io/skein-js/observability) — PostHog, LangSmith, OpenTelemetry, and custom telemetry
 - [Deploy anywhere](https://skein-js.github.io/skein-js/deploy) — Cloud Run, Railway, Fly.io, Render, AWS, Kubernetes, VPS
 

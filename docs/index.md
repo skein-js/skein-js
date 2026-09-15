@@ -4,12 +4,12 @@ layout: home
 # valuable string on the most-linked page, wasted. Containing "skein-js" also trips the `selfTitled`
 # branch in transformPageData, which drops the "| skein-js" suffix rather than repeating it.
 title: skein-js — The open-source LangGraph Platform alternative, for TypeScript
-description: The open-source LangGraph Platform alternative for TypeScript. Self-host LangGraph.js agents with threads, streaming, human-in-the-loop, memory and crons.
+description: The open-source LangGraph Platform alternative for TypeScript. Self-host LangGraph.js workflows and connect them to WhatsApp, email, Slack, GitHub, or any webhook.
 
 hero:
   name: skein-js
   text: The open-source LangGraph Platform alternative, for TypeScript
-  tagline: Self-host your LangGraph.js agents on your own infrastructure — your servers, your database, your data. Apache-2.0, no licence key, no per-run bill.
+  tagline: Self-host LangGraph.js workflows and connect them to real systems — your servers, your database, your data. Apache-2.0, no licence key, no per-run bill.
   # Each action goes somewhere distinct. A primary CTA that scrolls 200px down the page it is already
   # on is not a call to action — the 60-second command is in the first section regardless.
   actions:
@@ -23,9 +23,9 @@ hero:
       text: See it running
       link: "#see-it"
 
-# Written from the seat of the person *using* the agent, not the one running it: six things that
+# Written from the seat of the person *using* the agent, not the one running it: the things that
 # separate an agent people trust from a demo. The model and the tools are the developer's (LangGraph's,
-# unchanged) — these six are what they would otherwise build a backend for, so each card links to the
+# unchanged) — these are what they would otherwise build a backend for, so each card links to the
 # page that block lives on.
 features:
   - icon: 🧠
@@ -58,6 +58,16 @@ features:
     details: A run whose process died is recovered, not lost. Two messages on one conversation serialize. One server or ten, the work still completes.
     link: /deploy
     linkText: Running it in production
+  - icon: 🔀
+    title: Workflows
+    details: Turn external events into multi-step processes that branch, call tools, pause for people, resume later, and choose what happens next.
+    link: /channels
+    linkText: How workflows fit
+  - icon: 🔌
+    title: Integrations
+    details: Connect WhatsApp, email, Slack, GitHub or any webhook as an authenticated source or durable destination for a workflow.
+    link: /channels
+    linkText: Sources & destinations
 ---
 
 **Works with:**
@@ -66,10 +76,15 @@ features:
 
 **Fits your stack:** Express · Fastify · NestJS · Next.js · Bun · Deno · React · Vue · Svelte · Angular
 
-Receive authenticated events from WhatsApp, Slack, email, GitHub, or any webhook, then return a
-coupled reply or route the result to another provider with [channels](./channels.md). See how it
-behaves in production with
+**Turn LangGraph graphs into real-world workflows.** LangGraph owns the orchestration; it doesn't own
+provider integrations. Skein [channels](./channels.md) connect authenticated sources such as
+WhatsApp, email, Slack, GitHub, or your own webhooks to the graph, then deliver its outcome reliably
+to the same provider or a graph-selected destination. See how the whole workflow behaves with
 [PostHog](./observability.md#posthog), LangSmith, or OpenTelemetry.
+
+That means practical processes such as a WhatsApp support request that looks up an order and replies,
+an emailed refund that gathers approvals over WhatsApp before notifying the customer, or a failed
+GitHub deployment that evaluates severity before alerting the on-call team in Slack.
 
 ## Your agent works on your laptop. Now what? {#start}
 

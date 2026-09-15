@@ -24,10 +24,15 @@ AWS, Kubernetes, or a plain VPS. Your agents, your data, **no license key, no pe
 
 **Fits your stack:** Express · Fastify · NestJS · Next.js · Bun · Deno · React · Vue · Svelte · Angular
 
-Receive authenticated events from WhatsApp, Slack, email, GitHub, or any webhook, then return a
-coupled reply or route the result to another provider with [channels](./docs/channels.md). See how it
-behaves in production with
+**Turn LangGraph graphs into real-world workflows.** LangGraph owns the orchestration; it doesn't own
+provider integrations. Skein [channels](./docs/channels.md) connect authenticated sources such as
+WhatsApp, email, Slack, GitHub, or your own webhooks to the graph, then deliver its outcome reliably
+to the same provider or a graph-selected destination. See how the whole workflow behaves with
 [PostHog](./docs/observability.md#posthog), LangSmith, or OpenTelemetry.
+
+That means practical processes such as a WhatsApp support request that looks up an order and replies,
+an emailed refund that gathers approvals over WhatsApp before notifying the customer, or a failed
+GitHub deployment that evaluates severity before alerting the on-call team in Slack.
 
 **Already using the LangGraph CLI?** Change one word: `langgraph dev` → `skein dev`. Your
 `langgraph.json`, graphs, and clients stay unchanged. You also get a self-hosted
@@ -150,20 +155,20 @@ restart — state is restored from `.skein/`. Already have a LangGraph project? 
 
 Your graph is the product. skein-js handles the production plumbing around it:
 
-| The concept           | What skein-js gives you                                                                                                                |
-| --------------------- | -------------------------------------------------------------------------------------------------------------------------------------- |
-| **Threads**           | Conversations that persist, addressable by your own key — a ticket id, a phone number. [→](./docs/threads.md)                          |
-| **Runs**              | Wait for it, stream it, or queue it in the background — plus what happens when a second message lands mid-run. [→](./docs/runs.md)     |
-| **Streaming**         | SSE with reconnect and replay, a real `streamEvents` mode, fan-out across instances. [→](./docs/streaming.md)                          |
-| **Human-in-the-loop** | `interrupt()` parks a run on a checkpoint holding no connection. Resume hours later, from any client. [→](./docs/human-in-the-loop.md) |
-| **Time travel**       | Fork from any past checkpoint and run forward — the machinery behind "edit and resubmit". [→](./docs/threads.md)                       |
-| **Long-term memory**  | A store reachable via `getStore()` inside a node, with semantic search and TTL. [→](./docs/memory.md)                                  |
-| **Assistants**        | The same graph configured per tenant or per experiment, versioned, with one-call rollback. [→](./docs/assistants.md)                   |
-| **Scheduled work**    | Crons that fire exactly once across instances, no leader election. [→](./docs/crons.md)                                                |
-| **Background jobs**   | Queue a run, get an id back, hear the result on a signed webhook. [→](./docs/background-jobs.md)                                       |
-| **Durable execution** | Postgres state, a Redis queue, crash recovery, and callbacks committed with the run. [→](./docs/webhooks.md)                           |
-| **Channels**          | Turn authenticated provider events into graph runs, then reply on the source or route the outcome to an allowlisted destination. [→](./docs/channels.md) |
-| **Observability**     | LangSmith, PostHog and OpenTelemetry sinks — or your own. [→](./docs/observability.md)                                                 |
+| The concept              | What skein-js gives you                                                                                                                                 |
+| ------------------------ | ------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| **Threads**              | Conversations that persist, addressable by your own key — a ticket id, a phone number. [→](./docs/threads.md)                                           |
+| **Runs**                 | Wait for it, stream it, or queue it in the background — plus what happens when a second message lands mid-run. [→](./docs/runs.md)                      |
+| **Streaming**            | SSE with reconnect and replay, a real `streamEvents` mode, fan-out across instances. [→](./docs/streaming.md)                                           |
+| **Human-in-the-loop**    | `interrupt()` parks a run on a checkpoint holding no connection. Resume hours later, from any client. [→](./docs/human-in-the-loop.md)                  |
+| **Time travel**          | Fork from any past checkpoint and run forward — the machinery behind "edit and resubmit". [→](./docs/threads.md)                                        |
+| **Long-term memory**     | A store reachable via `getStore()` inside a node, with semantic search and TTL. [→](./docs/memory.md)                                                   |
+| **Assistants**           | The same graph configured per tenant or per experiment, versioned, with one-call rollback. [→](./docs/assistants.md)                                    |
+| **Scheduled work**       | Crons that fire exactly once across instances, no leader election. [→](./docs/crons.md)                                                                 |
+| **Background jobs**      | Queue a run, get an id back, hear the result on a signed webhook. [→](./docs/background-jobs.md)                                                        |
+| **Durable execution**    | Postgres state, a Redis queue, crash recovery, and callbacks committed with the run. [→](./docs/webhooks.md)                                            |
+| **Workflows & channels** | Bring authenticated provider events into LangGraph, then deliver workflow outcomes to the source or an allowlisted destination. [→](./docs/channels.md) |
+| **Observability**        | LangSmith, PostHog and OpenTelemetry sinks — or your own. [→](./docs/observability.md)                                                                  |
 
 Can skein do X? [**The features page**](./docs/features.md) answers it in one line per capability,
 including what _isn't_ built.
@@ -608,12 +613,12 @@ const config = await loadConfig({ configPath: "./langgraph.json" });
 
 → [`packages/config`](./packages/config)
 
-### `@skein-js/channels` — workflows connected to external systems
+### `@skein-js/channels` — connect workflows to external systems
 
-Turn authenticated webhooks from WhatsApp, Slack, email, GitHub, or another provider into graph
-runs. skein-js keeps conversations connected, prevents duplicate work, resumes interrupts, and
-delivers outcomes reliably—either back through the source or through a graph-selected, allowlisted
-destination.
+Connect a LangGraph workflow to authenticated sources and destinations from WhatsApp, Slack, email,
+GitHub, or another provider. skein-js keeps conversations connected, prevents duplicate work,
+resumes interrupts, and delivers outcomes reliably. The shape is source → LangGraph workflow →
+destination, with Skein owning the durable provider lifecycle around the graph.
 
 ```bash
 pnpm add @skein-js/channels
@@ -669,19 +674,19 @@ An MCP endpoint and the remaining LangGraph SDK gaps are planned. See the
 
 Each is a runnable project — `cd` into it and follow its README.
 
-| Example                                                                               | What you'll learn                                                                                                                                                                                         | How to run                 |
-| ------------------------------------------------------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | -------------------------- |
-| [`chat-app`](./examples/chat-app)                                                     | **Flagship** — build a full rich-UX chat app: streamed thinking, web search, structured tool-result cards, human-in-the-loop booking, long-term memory, custom auth (Gemini + Next.js + shadcn/ui)        | `pnpm dev` + `pnpm dev:ui` |
-| [`migrated-langgraph`](./examples/migrated-langgraph)                                 | The **drop-in proof** — a stock LangGraph project under `skein dev`, with hot reload + `.skein/` persistence                                                                                              | `pnpm dev`                 |
-| [`gemini-chat`](./examples/gemini-chat)                                               | **Model-backed end-to-end** — a Gemini ReAct agent streamed into a browser; also an embedded `@skein-js/express` server                                                                                   | `pnpm dev`                 |
-| [`express-basic`](./examples/express-basic)                                           | **Hello world** — zero-setup `echo` (no API key) + a Claude `agent` graph in one config                                                                                                                   | `pnpm dev`                 |
-| [`embed-graph`](./examples/embed-graph)                                               | **In-code embedding** — serve a graph you already have with **no `langgraph.json`** (`embedInMemoryGraphs` + `{ deps }`); the config-free counterpart to `express-basic`                                  | `pnpm dev`                 |
-| [`invoke-endpoint`](./examples/invoke-endpoint)                                       | **Non-chat serving** — graphs as plain `POST /invoke/:graph_id` endpoints (body in, final state out), with no threads or runs                                                                             | `pnpm start`               |
-| [`fastify-basic`](./examples/fastify-basic) · [`fastify-app`](./examples/fastify-app) | **Fastify** — a standalone graph server, and the protocol embedded under `/agent` alongside a REST API                                                                                                    | `pnpm dev`                 |
-| [`nestjs-basic`](./examples/nestjs-basic) · [`nestjs-app`](./examples/nestjs-app)     | **NestJS** — a standalone graph server, and `SkeinModule` alongside the app's own controller                                                                                                              | `pnpm dev`                 |
-| [`nextjs-basic`](./examples/nextjs-basic) · [`nextjs-app`](./examples/nextjs-app)     | **Next.js** — headless Pages Router API, and a full-stack App Router app serving the protocol same-origin behind a `useStream` chat UI                                                                    | `pnpm dev`                 |
+| Example                                                                               | What you'll learn                                                                                                                                                                                      | How to run                 |
+| ------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ | -------------------------- |
+| [`chat-app`](./examples/chat-app)                                                     | **Flagship** — build a full rich-UX chat app: streamed thinking, web search, structured tool-result cards, human-in-the-loop booking, long-term memory, custom auth (Gemini + Next.js + shadcn/ui)     | `pnpm dev` + `pnpm dev:ui` |
+| [`migrated-langgraph`](./examples/migrated-langgraph)                                 | The **drop-in proof** — a stock LangGraph project under `skein dev`, with hot reload + `.skein/` persistence                                                                                           | `pnpm dev`                 |
+| [`gemini-chat`](./examples/gemini-chat)                                               | **Model-backed end-to-end** — a Gemini ReAct agent streamed into a browser; also an embedded `@skein-js/express` server                                                                                | `pnpm dev`                 |
+| [`express-basic`](./examples/express-basic)                                           | **Hello world** — zero-setup `echo` (no API key) + a Claude `agent` graph in one config                                                                                                                | `pnpm dev`                 |
+| [`embed-graph`](./examples/embed-graph)                                               | **In-code embedding** — serve a graph you already have with **no `langgraph.json`** (`embedInMemoryGraphs` + `{ deps }`); the config-free counterpart to `express-basic`                               | `pnpm dev`                 |
+| [`invoke-endpoint`](./examples/invoke-endpoint)                                       | **Non-chat serving** — graphs as plain `POST /invoke/:graph_id` endpoints (body in, final state out), with no threads or runs                                                                          | `pnpm start`               |
+| [`fastify-basic`](./examples/fastify-basic) · [`fastify-app`](./examples/fastify-app) | **Fastify** — a standalone graph server, and the protocol embedded under `/agent` alongside a REST API                                                                                                 | `pnpm dev`                 |
+| [`nestjs-basic`](./examples/nestjs-basic) · [`nestjs-app`](./examples/nestjs-app)     | **NestJS** — a standalone graph server, and `SkeinModule` alongside the app's own controller                                                                                                           | `pnpm dev`                 |
+| [`nextjs-basic`](./examples/nextjs-basic) · [`nextjs-app`](./examples/nextjs-app)     | **Next.js** — headless Pages Router API, and a full-stack App Router app serving the protocol same-origin behind a `useStream` chat UI                                                                 | `pnpm dev`                 |
 | [`whatsapp-agent`](./examples/whatsapp-agent)                                         | **A coupled WhatsApp workflow** — a compact Twilio integration with signature checks, retry dedup, conversation memory, a typing indicator, async human-in-the-loop, and a durable reply; runs offline | `pnpm dev`                 |
-| [`react-usestream`](./examples/react-usestream)                                       | A minimal **`useStream` SSE frontend** you can point at any skein-js server                                                                                                                               | `pnpm dev`                 |
+| [`react-usestream`](./examples/react-usestream)                                       | A minimal **`useStream` SSE frontend** you can point at any skein-js server                                                                                                                            | `pnpm dev`                 |
 
 ## Tested end-to-end
 
@@ -721,7 +726,7 @@ Start here:
 - [LangGraph CLI compatibility](https://skein-js.github.io/skein-js/langgraph-cli-compat) — commands + every `langgraph.json` field
 - [Agent Protocol surface](https://skein-js.github.io/skein-js/agent-protocol) — the endpoints skein-js serves
 - [Recipes](https://skein-js.github.io/skein-js/recipes) — auth, human-in-the-loop, long-term memory, CORS, background runs
-- [Channels](https://skein-js.github.io/skein-js/channels) — connect webhook sources and durable, optionally cross-provider destinations to LangGraph workflows
+- [Workflows and channels](https://skein-js.github.io/skein-js/channels) — connect provider sources and durable destinations through LangGraph workflows
 - [Observability](https://skein-js.github.io/skein-js/observability) — PostHog, LangSmith, OpenTelemetry, and custom telemetry
 - [Deploy anywhere](https://skein-js.github.io/skein-js/deploy) — Cloud Run, Railway, Fly.io, Render, AWS, Kubernetes, VPS
 
@@ -763,10 +768,15 @@ your `langgraph dev` project work under `skein dev`?).
 
 **Fits your stack:** Express · Fastify · NestJS · Next.js · Bun · Deno · React · Vue · Svelte · Angular
 
-Receive authenticated events from WhatsApp, Slack, email, GitHub, or any webhook, then return a
-coupled reply or route the result to another provider with [channels](./channels.md). See how it
-behaves in production with
+**Turn LangGraph graphs into real-world workflows.** LangGraph owns the orchestration; it doesn't own
+provider integrations. Skein [channels](./channels.md) connect authenticated sources such as
+WhatsApp, email, Slack, GitHub, or your own webhooks to the graph, then deliver its outcome reliably
+to the same provider or a graph-selected destination. See how the whole workflow behaves with
 [PostHog](./observability.md#posthog), LangSmith, or OpenTelemetry.
+
+That means practical processes such as a WhatsApp support request that looks up an order and replies,
+an emailed refund that gathers approvals over WhatsApp before notifying the customer, or a failed
+GitHub deployment that evaluates severity before alerting the on-call team in Slack.
 
 ## Your agent works on your laptop. Now what? {#start}
 
@@ -4762,16 +4772,19 @@ organised by parity instead.
 | [Bring your own store](./storage.md#bringing-your-own-store-storeadapter)       | ✅     | Point skein at a LangGraph `BaseStore` or your own implementation       |
 | [Memory patterns](./memory.md)                                                  | ✅     | Profile vs collection shapes, the dedup trap, recall, background writes |
 
-## Connect it to the rest of your system
+## Build workflows across your systems
+
+LangGraph owns workflow orchestration; it doesn't own provider integrations. Skein channels supply
+the authenticated sources and durable destinations around the graph.
 
 | Capability                                                                 | Status | What it gets you                                                                   |
 | -------------------------------------------------------------------------- | ------ | ---------------------------------------------------------------------------------- |
+| [Workflows & channels](./channels.md)                                      | ✅     | Turn provider events into real processes with durable outcomes                     |
 | [Run-completion webhooks](./webhooks.md)                                   | ✅     | Be told a run finished — durably, so a receiver's redeploy doesn't lose the news   |
 | [Signed callbacks](./webhooks.md#verify-a-callback-is-really-from-you)     | ✅     | Receivers can prove a callback is yours and reject replays. The verifier ships too |
 | [Deliveries & replay](./webhooks.md#see-what-a-callback-did-and-replay-it) | ✅     | See every attempt, and re-send one by hand when it never landed                    |
 | [Custom auth](./agent-protocol.md#authentication--authorization)           | ✅     | LangGraph's `Auth` model, drop-in, with ownership filters pushed into the query    |
 | [Telemetry sinks](./observability.md)                                      | ✅     | LangSmith, PostHog, OpenTelemetry — or your own `TelemetrySink`                    |
-| [Channels](./channels.md)                                                  | ✅     | Inbound webhooks plus graph-selected, allowlisted cross-provider delivery          |
 | [MCP endpoint](./roadmap.md)                                               | 🗺️     | Expose your graphs as MCP tools                                                    |
 
 ## Operate it
@@ -6148,16 +6161,97 @@ a `secret` in the config file) and `SKEIN_WEBHOOK_TIMEOUT_MS`.
 
 <!-- source: docs/channels.md -->
 
-# Channels — connect LangGraph workflows to external systems
+# Workflows and channels — connect LangGraph to external systems
 
-A **channel** is Skein's durable boundary between an authenticated webhook and a LangGraph workflow.
-It turns a provider event—such as a WhatsApp message, Slack event, GitHub webhook, or inbound-email
-notification—into ordinary graph input, then delivers the workflow's outcome.
+Workflows and channels solve different halves of the same problem. A **workflow** defines what should
+happen after an event arrives. A **channel** is the provider integration: it defines how that event
+enters the workflow and how an outcome reaches an external system. Together they form one reliable
+path:
 
-The source and destination may be **coupled**: a WhatsApp message enters and its reply returns to the
-same conversation. They may also be **decoupled**: an email starts a refund workflow, the graph asks
-Finance for approval over WhatsApp, and the final decision returns by email. LangGraph still owns
-state, branching, tools, and `interrupt()`; Skein owns the provider-facing lifecycle around the run.
+```text
+channel source  →  LangGraph workflow  →  channel destination
+```
+
+Skein owns the channel boundary: authentication, deduplication, thread and run coordination, and
+durable delivery. LangGraph owns the workflow in the middle: state, decisions, tools, branching, and
+`interrupt()`.
+
+LangGraph deliberately doesn't own integrations to WhatsApp, email, Slack, GitHub, or your internal
+systems. It gives you the orchestration engine. Skein channels give that engine authenticated sources
+and durable destinations. This is the part Skein adds: the integration lifecycle that turns graph
+logic into a workflow people and systems can actually participate in.
+
+## What “workflow” means here
+
+A workflow is the business process expressed by your LangGraph graph and carried across its persisted
+thread state. It is more than forwarding one message to another provider. It can inspect an event,
+call tools, branch, fan out work, ask a person for a decision, pause for hours or days, resume from a
+later event, and finally choose what should happen next.
+
+For example, “send this email to WhatsApp” is message forwarding. “Validate a refund request, collect
+the required approvals over WhatsApp, wait for every response, decide the refund, and notify the
+customer by email” is a workflow.
+
+Workflow is not a new Skein resource or API. It is the LangGraph graph you already write, plus the
+state LangGraph persists in a thread. A channel is the adapter and Skein pipeline around that graph:
+its source verifies and translates provider events; its destination translates and delivers graph
+outcomes.
+
+```text
+channel source                  LangGraph workflow                  channel destination
+email / WhatsApp / webhook  →   state + decisions              →   email / WhatsApp / provider API
+                                tools + branching
+                                interrupt / resume
+```
+
+## What this looks like in practice
+
+The useful unit is the whole process, not a provider-to-provider pipe:
+
+| Real-world workflow            | Channel source            | LangGraph does                                                | Channel destination                     |
+| ------------------------------ | ------------------------- | ------------------------------------------------------------- | --------------------------------------- |
+| **Answer an order question**   | Customer WhatsApp message | Looks up the order, decides whether to escalate, drafts reply | Reply to the same WhatsApp chat         |
+| **Approve a refund**           | Customer email            | Validates the claim, gathers approvals, pauses and resumes    | WhatsApp approvers, then email customer |
+| **Handle a failed deploy**     | GitHub deployment webhook | Inspects the failure, classifies severity, chooses escalation | Alert the on-call team in Slack         |
+| **Resolve an order exception** | ERP order webhook         | Checks inventory, branches by risk, waits for warehouse input | Notify sales or email the customer      |
+
+In every case, the channel handles provider truth—signatures, event IDs, identities, payloads, and
+delivery—while the workflow handles business truth: what the event means and what should happen next.
+
+## Why LangGraph and channels fit together
+
+LangGraph doesn't try to own provider integrations, and external systems fail differently from
+business logic. A provider webhook needs authentication, a fast acknowledgement, retry
+deduplication, and stable identity mapping. The business process needs state, branching, tool calls,
+and human-in-the-loop pauses. Outbound delivery needs recipient policy, provider-specific validation,
+retries, and idempotency.
+
+Keeping those responsibilities separate gives each layer one job:
+
+| Layer                   | Owns                                                                 |
+| ----------------------- | -------------------------------------------------------------------- |
+| **Channel source**      | Verify, parse, deduplicate, identify the thread, and start or resume |
+| **LangGraph workflow**  | State, decisions, tools, branching, fan-out, and `interrupt()`       |
+| **Channel destination** | Validate and deliver the declared outcome through the durable outbox |
+
+This keeps provider code thin and keeps transport concerns out of the graph. The graph declares an
+outcome; the destination adapter performs the external side effect after the run settles.
+
+## When to use it
+
+Use a workflow with channels when an external provider event starts or resumes a process whose state
+belongs in LangGraph, and the result must return to a provider reliably. The channel shape depends on
+the workflow:
+
+- Use a **coupled channel** when the source already determines where the outcome belongs, such as a
+  WhatsApp question followed by a WhatsApp answer.
+- Use **decoupled channel delivery** when the workflow must choose another provider, recipient, or
+  route, such as an email request that triggers WhatsApp approvals and an email decision.
+- Use the Agent Protocol run API directly when your own application already owns ingress and only
+  needs to invoke or stream a graph; a channel adds no value in that path.
+
+In both shapes, the workflow stays provider-independent. It receives ordinary graph input and
+declares an outcome; the surrounding channels translate between that data and provider payloads.
 
 You write thin provider adapters. Skein handles retry deduplication, external-identity-to-thread
 mapping, start-versus-resume decisions, and durable delivery consistently across channels.
@@ -6169,7 +6263,7 @@ mapping, start-versus-resume decisions, and durable delivery consistently across
 Entirely optional. A deployment that configures no channel does not install the package, serves no
 channel routes, and cannot tell the feature exists.
 
-## What Skein enables
+## What Skein removes from each workflow connection
 
 Connecting a workflow to a phone number by hand means writing signature verification, deduplication
 for retried deliveries, a mapping from `whatsapp:+254…` to a thread, a branch on whether that thread
@@ -6247,14 +6341,14 @@ That serves `POST /channels/twilio`. Point your provider's webhook at it.
 A complete, runnable version — offline, no Twilio account —
 is [`examples/whatsapp-agent`](https://github.com/skein-js/skein-js/tree/main/examples/whatsapp-agent).
 
-### Route between different providers
+### Let a workflow route between providers
 
-The provider that receives an event does not have to send the result. The
+The source that starts a workflow does not have to receive the result. The
 [`decoupled-delivery`](https://github.com/skein-js/skein-js/tree/main/examples/decoupled-delivery)
-example routes an email through one LangGraph workflow to WhatsApp, collects parallel authenticated
-approvals with LangGraph `interrupt()`, then sends the result by email. Its runnable refund demo uses
-Skein's normal channel, auth, deduplication, thread/run and delivery paths with offline provider
-fakes.
+example sends an email into one LangGraph workflow, routes approval requests to WhatsApp, collects
+parallel authenticated approvals with LangGraph `interrupt()`, then sends the result by email. Its
+runnable refund demo uses Skein's source, destination, auth, deduplication, thread/run and delivery
+paths with offline provider fakes.
 
 Skein exposes this as a small composition layer rather than separate provider hierarchies:
 
@@ -6278,7 +6372,7 @@ const destinations = new Map([
 export const channel = composeRoutedChannel(emailSource, destinations);
 ```
 
-### How LangGraph selects the destination
+### How LangGraph fills the middle and selects the destination
 
 LangGraph passes a custom-stream writer to every node in `LangGraphRunnableConfig`. The Skein helper
 uses that existing writer to declare the result of the workflow; the node does not call WhatsApp or
@@ -6330,13 +6424,13 @@ export const graph = new StateGraph(RelayState)
   .compile();
 ```
 
-The interaction is deliberately small:
+The workflow connection is deliberately small:
 
-1. The source channel converts email or WhatsApp into ordinary LangGraph input.
+1. Skein's source converts email or WhatsApp into ordinary LangGraph input.
 2. LangGraph performs extraction, classification, branching, `Send`, and `interrupt()` as usual.
-3. The final node writes one explicit destination declaration through `config.writer`.
+3. The graph writes one explicit destination declaration through `config.writer`.
 4. When the run settles, Skein resolves that declaration and invokes the allowlisted destination
-   through its existing durable outbox.
+   through its durable outbox.
 
 For approvals, keep using LangGraph's `interrupt()`; no Skein approval abstraction is needed. A node
 can declare the WhatsApp approval request before it interrupts, and declare the final email result
@@ -6362,7 +6456,7 @@ HTTP callback receiver. Existing `Channel` implementations with `deliver` contin
 Configured route keys and explicit channel-name aliases must be unique; collisions now fail at boot
 instead of sharing thread identity or misrouting a callback.
 
-For copy-first implementations, compare the practical
+For copy-first workflow implementations, compare the practical
 [WhatsApp → order lookup → WhatsApp recipe](./recipes/coupled-channel.md) with the
 [customer refund email → Finance WhatsApp approval → customer email recipe](./recipes/decoupled-channel-delivery.md).
 
@@ -9187,26 +9281,26 @@ pnpm --filter @skein-js/example-triage-agent seed   # register the schedule + sw
 
 ## The recipes
 
-| Page                                                                    | Covers                                                                     |
-| ----------------------------------------------------------------------- | -------------------------------------------------------------------------- |
-| [Serving](./serving.md)                                                 | Pick an adapter, serve a graph as a plain endpoint, CORS for a browser     |
-| [Running agents](./running-agents.md)                                   | Background runs, crons, idempotency, human-in-the-loop, run timeouts       |
-| [Coupled WhatsApp replies](./coupled-channel.md)                        | WhatsApp → LangGraph → WhatsApp with one source-and-destination channel    |
-| [Decoupled email-to-WhatsApp delivery](./decoupled-channel-delivery.md) | Email → LangGraph → WhatsApp with graph-selected, allowlisted destinations |
-| [Memory](./memory.md)                                                   | `getStore()`, semantic search, and the dedup trap                          |
-| [Production](./production.md)                                           | Auth, run-completion webhooks, durable storage and deploying               |
+| Page                                                       | Covers                                                                      |
+| ---------------------------------------------------------- | --------------------------------------------------------------------------- |
+| [Serving](./serving.md)                                    | Pick an adapter, serve a graph as a plain endpoint, CORS for a browser      |
+| [Running agents](./running-agents.md)                      | Background runs, crons, idempotency, human-in-the-loop, run timeouts        |
+| [Coupled WhatsApp workflow](./coupled-channel.md)          | A workflow with the same provider as source and destination                 |
+| [Cross-provider workflow](./decoupled-channel-delivery.md) | Email source → LangGraph workflow → allowlisted WhatsApp/email destinations |
+| [Memory](./memory.md)                                      | `getStore()`, semantic search, and the dedup trap                           |
+| [Production](./production.md)                              | Auth, run-completion webhooks, durable storage and deploying                |
 
 ## Which example shows what
 
-| Example                                                                                            | Shows                                                           |
-| -------------------------------------------------------------------------------------------------- | --------------------------------------------------------------- |
-| [`triage-agent`](https://github.com/skein-js/skein-js/tree/main/examples/triage-agent)             | Crons, background runs, idempotency, HITL, memory, time travel  |
-| [`decoupled-delivery`](https://github.com/skein-js/skein-js/tree/main/examples/decoupled-delivery) | Public routed-channel API: email → approvals → WhatsApp → email |
-| [`chat-app`](https://github.com/skein-js/skein-js/tree/main/examples/chat-app)                     | Full-stack chat: streaming, thinking, tool cards, HITL, memory  |
-| [`invoke-endpoint`](https://github.com/skein-js/skein-js/tree/main/examples/invoke-endpoint)       | Non-chat graphs as plain HTTP endpoints                         |
-| [`embed-graph`](https://github.com/skein-js/skein-js/tree/main/examples/embed-graph)               | A graph you already have, served with no `langgraph.json`       |
-| [`migrated-langgraph`](https://github.com/skein-js/skein-js/tree/main/examples/migrated-langgraph) | The drop-in proof — a stock LangGraph project under `skein dev` |
-| [`react-usestream`](https://github.com/skein-js/skein-js/tree/main/examples/react-usestream)       | A minimal `useStream` frontend against any skein server         |
+| Example                                                                                            | Shows                                                                           |
+| -------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------- |
+| [`triage-agent`](https://github.com/skein-js/skein-js/tree/main/examples/triage-agent)             | Crons, background runs, idempotency, HITL, memory, time travel                  |
+| [`decoupled-delivery`](https://github.com/skein-js/skein-js/tree/main/examples/decoupled-delivery) | Routed channels: email source → approval workflow → WhatsApp/email destinations |
+| [`chat-app`](https://github.com/skein-js/skein-js/tree/main/examples/chat-app)                     | Full-stack chat: streaming, thinking, tool cards, HITL, memory                  |
+| [`invoke-endpoint`](https://github.com/skein-js/skein-js/tree/main/examples/invoke-endpoint)       | Non-chat graphs as plain HTTP endpoints                                         |
+| [`embed-graph`](https://github.com/skein-js/skein-js/tree/main/examples/embed-graph)               | A graph you already have, served with no `langgraph.json`                       |
+| [`migrated-langgraph`](https://github.com/skein-js/skein-js/tree/main/examples/migrated-langgraph) | The drop-in proof — a stock LangGraph project under `skein dev`                 |
+| [`react-usestream`](https://github.com/skein-js/skein-js/tree/main/examples/react-usestream)       | A minimal `useStream` frontend against any skein server                         |
 
 
 ---
@@ -9377,12 +9471,12 @@ config. Visible in the [console](../console.md); details:
 
 <!-- source: docs/recipes/coupled-channel.md -->
 
-# Build a LangGraph WhatsApp agent with coupled replies
+# Build a LangGraph WhatsApp workflow with a coupled channel
 
-Use a coupled channel when messages arrive from a provider and replies naturally go back through the
-same provider: WhatsApp → LangGraph → WhatsApp, Slack → LangGraph → Slack, or email → LangGraph →
-email. One `Channel` owns both translations, while Skein supplies authentication, deduplication,
-thread resolution, interrupt/resume, and durable delivery.
+Use a coupled channel when a workflow receives messages from a provider and its outcome naturally goes
+back through the same provider: WhatsApp → LangGraph → WhatsApp, Slack → LangGraph → Slack, or email
+→ LangGraph → email. One `Channel` owns both translations, while Skein supplies authentication,
+deduplication, thread resolution, interrupt/resume, and durable delivery.
 
 Consider a customer who sends **“Where is order GT-1042?”** to a shop's WhatsApp number. The graph
 looks up the shipment and replies **“GT-1042 left our Nairobi warehouse and arrives tomorrow.”** The
@@ -9395,8 +9489,8 @@ Coupling is useful, not a limitation, when the inbound event already contains th
 address. A WhatsApp sender expects a WhatsApp response, and keeping both provider mappings together
 means fewer names, maps, and failure paths.
 
-Use [decoupled graph-routed delivery](./decoupled-channel-delivery.md) when LangGraph must choose a
-different provider—for example, an email event that should alert a manager over WhatsApp.
+Use a [cross-provider workflow](./decoupled-channel-delivery.md) when LangGraph must choose a
+different destination—for example, an email source that should alert a manager over WhatsApp.
 
 ## Implement the WhatsApp channel
 
@@ -9513,11 +9607,17 @@ For a runnable implementation with `interrupt()` and resume, see
 
 <!-- source: docs/recipes/decoupled-channel-delivery.md -->
 
-# Route email to WhatsApp with LangGraph and decoupled channels
+# Build a cross-provider workflow with Skein channels
 
-Use decoupled channel delivery when an event arrives through one provider but LangGraph must choose
-another destination: email → LangGraph → WhatsApp, WhatsApp → LangGraph → email, or one source routed
-to several application-owned provider adapters.
+Use a routed workflow when a source starts work in one system and LangGraph must choose a different
+destination: email → LangGraph → WhatsApp, WhatsApp → LangGraph → email, or one source routed to
+several application-owned provider adapters. The technical mechanism is decoupled channel delivery:
+Skein supplies the source and destination, while LangGraph fills the middle with the workflow.
+
+Here, a workflow means the complete business process, not merely forwarding a message: validate the
+request, collect approvals, pause and resume, decide the result, and notify the customer. The
+[workflows and channels guide](../channels.md#what-workflow-means-here) explains why these
+responsibilities are split across Skein and LangGraph.
 
 The source still uses Skein's normal channel pipeline. The only extra layer is an allowlisted
 destination map plus one explicit instruction written by the graph.
@@ -9537,19 +9637,21 @@ approved result is delivered back to the customer by email.
   Your browser cannot play this video.
 </video>
 
-## When source and destination should be separate
+## When a workflow should use separate source and destination
 
-Decoupling is appropriate when routing is a workflow decision rather than an inherent response:
+Separate source and destination providers are appropriate when routing is a workflow decision rather
+than an inherent response:
 
 - an ERP order event alerts a sales team over WhatsApp;
 - an email refund request asks HR, a manager, and Finance for approval;
 - a personal assistant reads calendar or email events and sends a WhatsApp briefing.
 
 If a WhatsApp message simply needs a WhatsApp reply, use the smaller
-[coupled WhatsApp channel recipe](./coupled-channel.md). Both forms use the same `Channel`, run,
-thread, LangGraph, and outbox primitives; decoupling is additive rather than a replacement.
+[coupled WhatsApp workflow recipe](./coupled-channel.md). Both forms use the same `Channel`, run,
+thread, LangGraph, and outbox primitives; decoupled delivery is an additional routing shape, not a
+replacement.
 
-## 1. Define an inbound email source
+## 1. Define the workflow's inbound source
 
 A source verifies and parses only. `composeRoutedChannel` arms the existing durable callback path, so
 the source does not need a fake email `deliver` method. Both inbound providers use one trusted,
@@ -9610,7 +9712,7 @@ export const emailSource = {
 } satisfies Pick<Channel, "name" | "verify" | "parseEvent">;
 ```
 
-## 2. Allowlist provider destinations
+## 2. Allowlist workflow destinations
 
 Destination callbacks own credentials, provider validation, authorization, and idempotency. Names
 are explicit and local to this composed channel. The map allowlists provider adapters, not recipients:
@@ -9667,7 +9769,7 @@ fail the durable outbox attempt instead of silently dropping or guessing a route
 operation policy remains application-owned; `assertAuthorizedRecipient` represents a lookup against
 trusted workflow or tenant data, not another check of the recipient's string shape.
 
-## 3. Let LangGraph choose WhatsApp
+## 3. Let LangGraph run the workflow and choose WhatsApp
 
 LangGraph passes `config.writer` to the node. The graph declares data; the destination callback
 performs the external side effect only after the run settles.
@@ -9799,7 +9901,7 @@ and inferred AI replies are ignored here, preventing an accidental chat response
 external action. `target` and `payload` must be JSON-persistable; the destination validates their
 provider-specific shape.
 
-## 4. Configure the source route
+## 4. Configure the workflow's source routes
 
 ```jsonc
 {
@@ -9827,7 +9929,7 @@ boot so a delivery alias cannot resolve to the wrong channel. That does not name
 trusted, tenant-scoped workflow identifiers; when `threadId` is omitted, Skein safely namespaces the
 derived ID by channel name instead.
 
-The complete flow is:
+The complete workflow is:
 
 ```text
 Customer email → LangGraph → Finance WhatsApp → interrupt/resume → LangGraph → customer email
@@ -12079,15 +12181,15 @@ suitable for development and testing"), built on Hono and oriented around the CL
 not aim to provide durable production infrastructure. That gap — the same one aegra fills
 for Python — is skein-js's actual product:
 
-| Gap in OSS                                                                               | skein-js package                                                 | Why it's needed                                                                                                                                       |
-| ---------------------------------------------------------------------------------------- | ---------------------------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------- |
-| Durable persistence of **protocol resources** (assistants / threads / runs / store rows) | `@skein-js/storage-postgres` + `SkeinStore`                      | The OSS server keeps these in memory; production needs Postgres (+ pgvector). Graph _checkpoints_ still reuse `PostgresSaver`.                        |
-| Durable **background-run queue** + **cross-instance pub/sub** streaming                  | `@skein-js/redis`                                                | The OSS server runs runs in-process; horizontal scaling needs a real queue and fan-out.                                                               |
-| **Framework-native adapters**                                                            | `@skein-js/express` (· `@skein-js/fastify` · `@skein-js/nestjs`) | The OSS server is Hono-only; teams want to mount the protocol into their existing Express/Fastify/Nest app.                                           |
-| **Normalized protocol core** tying runtime + checkpointer + store + queue together       | `@skein-js/core`                                                 | Adapter- and driver-agnostic handlers so behavior is identical everywhere.                                                                            |
-| **Drop-in production CLI**                                                               | `skein-js`                                                       | `skein dev/up/build/dockerfile` reading an unchanged `langgraph.json`, wiring the durable drivers.                                                    |
-| **`langgraph.json` loading orchestration**                                               | `@skein-js/config`                                               | Thin wrapper over `@langchain/langgraph-api`'s `./schema` parser, adding `skein.json` overrides and driver selection.                                 |
-| **Cross-provider channel delivery**                                                      | `@skein-js/channels`                                             | LangGraph still chooses routes and writes custom output; Skein adapts an explicit destination intent to its existing durable channel callback/outbox. |
+| Gap in OSS                                                                               | skein-js package                                                 | Why it's needed                                                                                                                                         |
+| ---------------------------------------------------------------------------------------- | ---------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Durable persistence of **protocol resources** (assistants / threads / runs / store rows) | `@skein-js/storage-postgres` + `SkeinStore`                      | The OSS server keeps these in memory; production needs Postgres (+ pgvector). Graph _checkpoints_ still reuse `PostgresSaver`.                          |
+| Durable **background-run queue** + **cross-instance pub/sub** streaming                  | `@skein-js/redis`                                                | The OSS server runs runs in-process; horizontal scaling needs a real queue and fan-out.                                                                 |
+| **Framework-native adapters**                                                            | `@skein-js/express` (· `@skein-js/fastify` · `@skein-js/nestjs`) | The OSS server is Hono-only; teams want to mount the protocol into their existing Express/Fastify/Nest app.                                             |
+| **Normalized protocol core** tying runtime + checkpointer + store + queue together       | `@skein-js/core`                                                 | Adapter- and driver-agnostic handlers so behavior is identical everywhere.                                                                              |
+| **Drop-in production CLI**                                                               | `skein-js`                                                       | `skein dev/up/build/dockerfile` reading an unchanged `langgraph.json`, wiring the durable drivers.                                                      |
+| **`langgraph.json` loading orchestration**                                               | `@skein-js/config`                                               | Thin wrapper over `@langchain/langgraph-api`'s `./schema` parser, adding `skein.json` overrides and driver selection.                                   |
+| **Channels for cross-provider workflows**                                                | `@skein-js/channels`                                             | Skein supplies durable sources and destinations; LangGraph owns the workflow and writes an explicit destination intent to the existing callback/outbox. |
 
 ## Consequences
 

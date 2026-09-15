@@ -45,10 +45,11 @@ trustworthy (the answer gets back) and the inbound leg has to be cheap (the even
 halves have now shipped**, so what this file holds is the record of what each implementation
 **rejected** — which is the half worth keeping, because a design is only tested by building it.
 
-### Shipped: channels
+### Shipped: channels for external workflows
 
-Authenticated provider events enter ordinary LangGraph workflows with durable coupled replies or
-graph-selected delivery through another provider. Read [channels.md](../channels.md) to use it.
+Authenticated provider events enter ordinary LangGraph workflows, which can return a coupled reply
+or select a durable destination through another provider. Read [channels.md](../channels.md) to see
+how workflows and channels fit together.
 
 Its phase 1 was explicitly allowed to kill it: write the WhatsApp example against raw primitives with
 no pipeline at all, and if it came out short, ship only the helpers and stop. It did not — but the

@@ -1,7 +1,7 @@
 {
   "name": "@skein-js/channels",
   "version": "0.16.0",
-  "description": "Inbound sources and graph-routed destinations for skein-js — connect agents to WhatsApp, Slack, email, webhooks, and more.",
+  "description": "Channels and integrations for real-world LangGraph workflows — authenticated sources and durable destinations for WhatsApp, Slack, email, webhooks, and more.",
   "license": "Apache-2.0",
   "author": "Maina Wycliffe <wmmaina7@gmail.com>",
   "homepage": "https://github.com/skein-js/skein-js/tree/main/packages/channels#readme",

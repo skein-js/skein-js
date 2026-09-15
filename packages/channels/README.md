@@ -1,24 +1,38 @@
 # `@skein-js/channels`
 
-Turn authenticated provider webhooks into LangGraph runs, then deliver each outcome through the
-source channel or a graph-selected, allowlisted destination.
+Connect LangGraph workflows to external systems through durable sources and destinations. The
+workflow defines what happens—state, decisions, tools, branching, and interrupts. A channel defines
+how an authenticated provider event enters that workflow and how its outcome leaves. Together:
+
+```text
+channel source → LangGraph workflow → channel destination
+```
+
 skein-js keeps conversations connected, prevents duplicate work, resumes interrupted workflows, and
 delivers outcomes reliably; each integration only translates its provider's events and deliveries.
+
+LangGraph deliberately doesn't own provider integrations. This package supplies that missing
+lifecycle around the graph. For example:
+
+- WhatsApp question → order lookup and escalation workflow → WhatsApp answer;
+- customer email → refund validation and approvals → WhatsApp approvers → customer email;
+- GitHub deployment webhook → failure triage workflow → Slack on-call alert.
 
 Part of **[skein-js](https://github.com/skein-js/skein-js)**. Entirely optional: a deployment that
 configures no channel cannot tell this package exists.
 
-## The problem
+## Why workflows need channels
 
-Connecting a workflow to a phone number means writing, by hand: signature verification, dedup for the
-provider's retries, a mapping from `whatsapp:+254…` to a thread, a branch on whether that thread is
-waiting on a human, payload mapping in both directions, and a reply path that does not double-send.
+LangGraph can express and persist the business process, but a provider connection still needs
+signature verification, dedup for retries, a mapping from `whatsapp:+254…` to a thread, a branch on
+whether that thread is waiting on a human, payload mapping in both directions, and a reply path that
+does not double-send.
 
 Only two of those are about the provider. The rest are identical for every integration anyone will
 ever write — and the interesting failures (a double reply, a lost reply, an interrupt that never
 resumes) land in front of end users rather than in a test.
 
-## The shape
+## How a channel wraps a workflow
 
 A channel implements two required methods. Everything else is skein's, once, for every channel.
 
@@ -76,7 +90,7 @@ adapter never has to know what you named your graph:
 }
 ```
 
-## Route one source to another provider
+## Route a workflow from one provider to another
 
 Use `composeRoutedChannel` when the inbound provider should not own outbound delivery. The source
 still verifies and parses events; an application-owned map supplies allowlisted destinations:
@@ -97,7 +111,7 @@ const destinations = new Map([
 export const channel = composeRoutedChannel(emailSource, destinations);
 ```
 
-The graph selects a destination after processing:
+The workflow selects a destination after processing:
 
 ```ts
 import { declareChannelDestinationDelivery } from "@skein-js/channels";
@@ -155,7 +169,7 @@ be unambiguous; collisions fail at boot before they can merge thread identities 
 
 ## See also
 
-- [docs/channels.md](../../docs/channels.md) — the guide
+- [docs/channels.md](../../docs/channels.md) — the workflows and channels guide
 - [docs/webhooks.md](../../docs/webhooks.md) — the durable
   delivery this rides on
 - [docs/human-in-the-loop.md](../../docs/human-in-the-loop.md)

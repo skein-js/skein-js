@@ -1,8 +1,14 @@
-# Route email to WhatsApp with LangGraph and decoupled channels
+# Build a cross-provider workflow with Skein channels
 
-Use decoupled channel delivery when an event arrives through one provider but LangGraph must choose
-another destination: email → LangGraph → WhatsApp, WhatsApp → LangGraph → email, or one source routed
-to several application-owned provider adapters.
+Use a routed workflow when a source starts work in one system and LangGraph must choose a different
+destination: email → LangGraph → WhatsApp, WhatsApp → LangGraph → email, or one source routed to
+several application-owned provider adapters. The technical mechanism is decoupled channel delivery:
+Skein supplies the source and destination, while LangGraph fills the middle with the workflow.
+
+Here, a workflow means the complete business process, not merely forwarding a message: validate the
+request, collect approvals, pause and resume, decide the result, and notify the customer. The
+[workflows and channels guide](../channels.md#what-workflow-means-here) explains why these
+responsibilities are split across Skein and LangGraph.
 
 The source still uses Skein's normal channel pipeline. The only extra layer is an allowlisted
 destination map plus one explicit instruction written by the graph.
@@ -22,19 +28,21 @@ approved result is delivered back to the customer by email.
   Your browser cannot play this video.
 </video>
 
-## When source and destination should be separate
+## When a workflow should use separate source and destination
 
-Decoupling is appropriate when routing is a workflow decision rather than an inherent response:
+Separate source and destination providers are appropriate when routing is a workflow decision rather
+than an inherent response:
 
 - an ERP order event alerts a sales team over WhatsApp;
 - an email refund request asks HR, a manager, and Finance for approval;
 - a personal assistant reads calendar or email events and sends a WhatsApp briefing.
 
 If a WhatsApp message simply needs a WhatsApp reply, use the smaller
-[coupled WhatsApp channel recipe](./coupled-channel.md). Both forms use the same `Channel`, run,
-thread, LangGraph, and outbox primitives; decoupling is additive rather than a replacement.
+[coupled WhatsApp workflow recipe](./coupled-channel.md). Both forms use the same `Channel`, run,
+thread, LangGraph, and outbox primitives; decoupled delivery is an additional routing shape, not a
+replacement.
 
-## 1. Define an inbound email source
+## 1. Define the workflow's inbound source
 
 A source verifies and parses only. `composeRoutedChannel` arms the existing durable callback path, so
 the source does not need a fake email `deliver` method. Both inbound providers use one trusted,
@@ -95,7 +103,7 @@ export const emailSource = {
 } satisfies Pick<Channel, "name" | "verify" | "parseEvent">;
 ```
 
-## 2. Allowlist provider destinations
+## 2. Allowlist workflow destinations
 
 Destination callbacks own credentials, provider validation, authorization, and idempotency. Names
 are explicit and local to this composed channel. The map allowlists provider adapters, not recipients:
@@ -152,7 +160,7 @@ fail the durable outbox attempt instead of silently dropping or guessing a route
 operation policy remains application-owned; `assertAuthorizedRecipient` represents a lookup against
 trusted workflow or tenant data, not another check of the recipient's string shape.
 
-## 3. Let LangGraph choose WhatsApp
+## 3. Let LangGraph run the workflow and choose WhatsApp
 
 LangGraph passes `config.writer` to the node. The graph declares data; the destination callback
 performs the external side effect only after the run settles.
@@ -284,7 +292,7 @@ and inferred AI replies are ignored here, preventing an accidental chat response
 external action. `target` and `payload` must be JSON-persistable; the destination validates their
 provider-specific shape.
 
-## 4. Configure the source route
+## 4. Configure the workflow's source routes
 
 ```jsonc
 {
@@ -312,7 +320,7 @@ boot so a delivery alias cannot resolve to the wrong channel. That does not name
 trusted, tenant-scoped workflow identifiers; when `threadId` is omitted, Skein safely namespaces the
 derived ID by channel name instead.
 
-The complete flow is:
+The complete workflow is:
 
 ```text
 Customer email → LangGraph → Finance WhatsApp → interrupt/resume → LangGraph → customer email

@@ -47,16 +47,19 @@ organised by parity instead.
 | [Bring your own store](./storage.md#bringing-your-own-store-storeadapter)       | ✅     | Point skein at a LangGraph `BaseStore` or your own implementation       |
 | [Memory patterns](./memory.md)                                                  | ✅     | Profile vs collection shapes, the dedup trap, recall, background writes |
 
-## Connect it to the rest of your system
+## Build workflows across your systems
+
+LangGraph owns workflow orchestration; it doesn't own provider integrations. Skein channels supply
+the authenticated sources and durable destinations around the graph.
 
 | Capability                                                                 | Status | What it gets you                                                                   |
 | -------------------------------------------------------------------------- | ------ | ---------------------------------------------------------------------------------- |
+| [Workflows & channels](./channels.md)                                      | ✅     | Turn provider events into real processes with durable outcomes                     |
 | [Run-completion webhooks](./webhooks.md)                                   | ✅     | Be told a run finished — durably, so a receiver's redeploy doesn't lose the news   |
 | [Signed callbacks](./webhooks.md#verify-a-callback-is-really-from-you)     | ✅     | Receivers can prove a callback is yours and reject replays. The verifier ships too |
 | [Deliveries & replay](./webhooks.md#see-what-a-callback-did-and-replay-it) | ✅     | See every attempt, and re-send one by hand when it never landed                    |
 | [Custom auth](./agent-protocol.md#authentication--authorization)           | ✅     | LangGraph's `Auth` model, drop-in, with ownership filters pushed into the query    |
 | [Telemetry sinks](./observability.md)                                      | ✅     | LangSmith, PostHog, OpenTelemetry — or your own `TelemetrySink`                    |
-| [Channels](./channels.md)                                                  | ✅     | Inbound webhooks plus graph-selected, allowlisted cross-provider delivery          |
 | [MCP endpoint](./roadmap.md)                                               | 🗺️     | Expose your graphs as MCP tools                                                    |
 
 ## Operate it

@@ -17,23 +17,23 @@ pnpm --filter @skein-js/example-triage-agent seed   # register the schedule + sw
 
 ## The recipes
 
-| Page                                                                    | Covers                                                                     |
-| ----------------------------------------------------------------------- | -------------------------------------------------------------------------- |
-| [Serving](./serving.md)                                                 | Pick an adapter, serve a graph as a plain endpoint, CORS for a browser     |
-| [Running agents](./running-agents.md)                                   | Background runs, crons, idempotency, human-in-the-loop, run timeouts       |
-| [Coupled WhatsApp replies](./coupled-channel.md)                        | WhatsApp → LangGraph → WhatsApp with one source-and-destination channel    |
-| [Decoupled email-to-WhatsApp delivery](./decoupled-channel-delivery.md) | Email → LangGraph → WhatsApp with graph-selected, allowlisted destinations |
-| [Memory](./memory.md)                                                   | `getStore()`, semantic search, and the dedup trap                          |
-| [Production](./production.md)                                           | Auth, run-completion webhooks, durable storage and deploying               |
+| Page                                                       | Covers                                                                      |
+| ---------------------------------------------------------- | --------------------------------------------------------------------------- |
+| [Serving](./serving.md)                                    | Pick an adapter, serve a graph as a plain endpoint, CORS for a browser      |
+| [Running agents](./running-agents.md)                      | Background runs, crons, idempotency, human-in-the-loop, run timeouts        |
+| [Coupled WhatsApp workflow](./coupled-channel.md)          | A workflow with the same provider as source and destination                 |
+| [Cross-provider workflow](./decoupled-channel-delivery.md) | Email source → LangGraph workflow → allowlisted WhatsApp/email destinations |
+| [Memory](./memory.md)                                      | `getStore()`, semantic search, and the dedup trap                           |
+| [Production](./production.md)                              | Auth, run-completion webhooks, durable storage and deploying                |
 
 ## Which example shows what
 
-| Example                                                                                            | Shows                                                           |
-| -------------------------------------------------------------------------------------------------- | --------------------------------------------------------------- |
-| [`triage-agent`](https://github.com/skein-js/skein-js/tree/main/examples/triage-agent)             | Crons, background runs, idempotency, HITL, memory, time travel  |
-| [`decoupled-delivery`](https://github.com/skein-js/skein-js/tree/main/examples/decoupled-delivery) | Public routed-channel API: email → approvals → WhatsApp → email |
-| [`chat-app`](https://github.com/skein-js/skein-js/tree/main/examples/chat-app)                     | Full-stack chat: streaming, thinking, tool cards, HITL, memory  |
-| [`invoke-endpoint`](https://github.com/skein-js/skein-js/tree/main/examples/invoke-endpoint)       | Non-chat graphs as plain HTTP endpoints                         |
-| [`embed-graph`](https://github.com/skein-js/skein-js/tree/main/examples/embed-graph)               | A graph you already have, served with no `langgraph.json`       |
-| [`migrated-langgraph`](https://github.com/skein-js/skein-js/tree/main/examples/migrated-langgraph) | The drop-in proof — a stock LangGraph project under `skein dev` |
-| [`react-usestream`](https://github.com/skein-js/skein-js/tree/main/examples/react-usestream)       | A minimal `useStream` frontend against any skein server         |
+| Example                                                                                            | Shows                                                                           |
+| -------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------- |
+| [`triage-agent`](https://github.com/skein-js/skein-js/tree/main/examples/triage-agent)             | Crons, background runs, idempotency, HITL, memory, time travel                  |
+| [`decoupled-delivery`](https://github.com/skein-js/skein-js/tree/main/examples/decoupled-delivery) | Routed channels: email source → approval workflow → WhatsApp/email destinations |
+| [`chat-app`](https://github.com/skein-js/skein-js/tree/main/examples/chat-app)                     | Full-stack chat: streaming, thinking, tool cards, HITL, memory                  |
+| [`invoke-endpoint`](https://github.com/skein-js/skein-js/tree/main/examples/invoke-endpoint)       | Non-chat graphs as plain HTTP endpoints                                         |
+| [`embed-graph`](https://github.com/skein-js/skein-js/tree/main/examples/embed-graph)               | A graph you already have, served with no `langgraph.json`                       |
+| [`migrated-langgraph`](https://github.com/skein-js/skein-js/tree/main/examples/migrated-langgraph) | The drop-in proof — a stock LangGraph project under `skein dev`                 |
+| [`react-usestream`](https://github.com/skein-js/skein-js/tree/main/examples/react-usestream)       | A minimal `useStream` frontend against any skein server                         |

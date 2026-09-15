@@ -1,9 +1,9 @@
-# Build a LangGraph WhatsApp agent with coupled replies
+# Build a LangGraph WhatsApp workflow with a coupled channel
 
-Use a coupled channel when messages arrive from a provider and replies naturally go back through the
-same provider: WhatsApp → LangGraph → WhatsApp, Slack → LangGraph → Slack, or email → LangGraph →
-email. One `Channel` owns both translations, while Skein supplies authentication, deduplication,
-thread resolution, interrupt/resume, and durable delivery.
+Use a coupled channel when a workflow receives messages from a provider and its outcome naturally goes
+back through the same provider: WhatsApp → LangGraph → WhatsApp, Slack → LangGraph → Slack, or email
+→ LangGraph → email. One `Channel` owns both translations, while Skein supplies authentication,
+deduplication, thread resolution, interrupt/resume, and durable delivery.
 
 Consider a customer who sends **“Where is order GT-1042?”** to a shop's WhatsApp number. The graph
 looks up the shipment and replies **“GT-1042 left our Nairobi warehouse and arrives tomorrow.”** The
@@ -16,8 +16,8 @@ Coupling is useful, not a limitation, when the inbound event already contains th
 address. A WhatsApp sender expects a WhatsApp response, and keeping both provider mappings together
 means fewer names, maps, and failure paths.
 
-Use [decoupled graph-routed delivery](./decoupled-channel-delivery.md) when LangGraph must choose a
-different provider—for example, an email event that should alert a manager over WhatsApp.
+Use a [cross-provider workflow](./decoupled-channel-delivery.md) when LangGraph must choose a
+different destination—for example, an email source that should alert a manager over WhatsApp.
 
 ## Implement the WhatsApp channel
 
