@@ -132,6 +132,22 @@ export default tseslint.config(
     },
   },
 
+  // Static example UIs run directly in a browser without a framework build. Keep their platform
+  // globals explicit so `no-undef` still catches misspelled APIs and accidental Node dependencies.
+  {
+    files: ["examples/*/ui/**/*.js"],
+    languageOptions: {
+      globals: {
+        clearTimeout: "readonly",
+        crypto: "readonly",
+        document: "readonly",
+        fetch: "readonly",
+        FormData: "readonly",
+        setTimeout: "readonly",
+      },
+    },
+  },
+
   // @skein-js/storage-postgres must stay bundleable: it is the driver that framework adapters and
   // embedPostgresGraphs pull into a downstream bundle, and it used to read its own migrations/ dir
   // via import.meta.url — which bundlers rewrite to the output location, breaking at runtime. The
