@@ -43,17 +43,17 @@ and an open alternative to the second.
 
 **Storage, scale and operations**
 
-| Capability                               | Status | Notes                                                                                                                    |
-| ---------------------------------------- | ------ | ------------------------------------------------------------------------------------------------------------------------ |
-| In-memory (dev) · Postgres + pgvector    | ✅     | [Details](./storage.md)                                                                                                  |
-| Bring your own store (`store.adapter`)   | ✅     | [Details](./storage.md#bringing-your-own-store-storeadapter)                                                             |
-| Store TTL · filter · namespace traversal | ✅     | [Details](./storage.md#filtering-and-namespace-traversal)                                                                |
-| Thread TTL                               | ✅     | Past LangGraph OSS, which drops `ttl` on the floor                                                                       |
-| Multi-instance                           | ✅     | Atomic create guard, cross-instance cancel, per-thread execution claim. [Details](./deploy.md#scaling-past-one-instance) |
-| Cron / scheduled runs                    | ✅     | Full Crons resource + scheduler, every driver. [Details](./crons.md)                                                     |
-| Observability                            | ✅     | LangSmith, PostHog, OpenTelemetry. [Details](./observability.md)                                                         |
-| **Console / Studio equivalent**          | ✅     | Self-hosted at `/console` — no account, no tunnel. [Details](./console.md)                                               |
-| **Inbound channels**                     | ✅     | An agent behind WhatsApp, Slack or any webhook — one small file per integration. [Details](./channels.md)                |
+| Capability                               | Status | Notes                                                                                                                       |
+| ---------------------------------------- | ------ | --------------------------------------------------------------------------------------------------------------------------- |
+| In-memory (dev) · Postgres + pgvector    | ✅     | [Details](./storage.md)                                                                                                     |
+| Bring your own store (`store.adapter`)   | ✅     | [Details](./storage.md#bringing-your-own-store-storeadapter)                                                                |
+| Store TTL · filter · namespace traversal | ✅     | [Details](./storage.md#filtering-and-namespace-traversal)                                                                   |
+| Thread TTL                               | ✅     | Past LangGraph OSS, which drops `ttl` on the floor                                                                          |
+| Multi-instance                           | ✅     | Atomic create guard, cross-instance cancel, per-thread execution claim. [Details](./deploy.md#scaling-past-one-instance)    |
+| Cron / scheduled runs                    | ✅     | Full Crons resource + scheduler, every driver. [Details](./crons.md)                                                        |
+| Observability                            | ✅     | LangSmith, PostHog, OpenTelemetry. [Details](./observability.md)                                                            |
+| **Console / Studio equivalent**          | ✅     | Self-hosted at `/console` — no account, no tunnel. [Details](./console.md)                                                  |
+| **Channels**                             | ✅     | Authenticated webhook sources with durable coupled replies or allowlisted cross-provider delivery. [Details](./channels.md) |
 
 ## Planned
 

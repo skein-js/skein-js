@@ -24,8 +24,9 @@ AWS, Kubernetes, or a plain VPS. Your agents, your data, **no license key, no pe
 
 **Fits your stack:** Express · Fastify · NestJS · Next.js · Bun · Deno · React · Vue · Svelte · Angular
 
-Bring the same agent to WhatsApp, Slack, email, GitHub, or any webhook with
-[channel integrations](./docs/channels.md). See how it behaves in production with
+Receive authenticated events from WhatsApp, Slack, email, GitHub, or any webhook, then return a
+coupled reply or route the result to another provider with [channels](./docs/channels.md). See how it
+behaves in production with
 [PostHog](./docs/observability.md#posthog), LangSmith, or OpenTelemetry.
 
 **Already using the LangGraph CLI?** Change one word: `langgraph dev` → `skein dev`. Your
@@ -161,7 +162,7 @@ Your graph is the product. skein-js handles the production plumbing around it:
 | **Scheduled work**    | Crons that fire exactly once across instances, no leader election. [→](./docs/crons.md)                                                |
 | **Background jobs**   | Queue a run, get an id back, hear the result on a signed webhook. [→](./docs/background-jobs.md)                                       |
 | **Durable execution** | Postgres state, a Redis queue, crash recovery, and callbacks committed with the run. [→](./docs/webhooks.md)                           |
-| **Channels**          | Bring the same agent to WhatsApp, Slack, email, GitHub, or any service that can send a webhook. [→](./docs/channels.md)                |
+| **Channels**          | Turn authenticated provider events into graph runs, then reply on the source or route the outcome to an allowlisted destination. [→](./docs/channels.md) |
 | **Observability**     | LangSmith, PostHog and OpenTelemetry sinks — or your own. [→](./docs/observability.md)                                                 |
 
 Can skein do X? [**The features page**](./docs/features.md) answers it in one line per capability,
@@ -607,11 +608,12 @@ const config = await loadConfig({ configPath: "./langgraph.json" });
 
 → [`packages/config`](./packages/config)
 
-### `@skein-js/channels` — agents beyond the browser
+### `@skein-js/channels` — workflows connected to external systems
 
-Bring the same agent to WhatsApp, Slack, email, GitHub, or any service that can send a webhook.
-skein-js keeps conversations connected, prevents duplicate work, resumes approvals, and delivers
-replies reliably; each integration only translates its provider's messages.
+Turn authenticated webhooks from WhatsApp, Slack, email, GitHub, or another provider into graph
+runs. skein-js keeps conversations connected, prevents duplicate work, resumes interrupts, and
+delivers outcomes reliably—either back through the source or through a graph-selected, allowlisted
+destination.
 
 ```bash
 pnpm add @skein-js/channels
@@ -678,7 +680,7 @@ Each is a runnable project — `cd` into it and follow its README.
 | [`fastify-basic`](./examples/fastify-basic) · [`fastify-app`](./examples/fastify-app) | **Fastify** — a standalone graph server, and the protocol embedded under `/agent` alongside a REST API                                                                                                    | `pnpm dev`                 |
 | [`nestjs-basic`](./examples/nestjs-basic) · [`nestjs-app`](./examples/nestjs-app)     | **NestJS** — a standalone graph server, and `SkeinModule` alongside the app's own controller                                                                                                              | `pnpm dev`                 |
 | [`nextjs-basic`](./examples/nextjs-basic) · [`nextjs-app`](./examples/nextjs-app)     | **Next.js** — headless Pages Router API, and a full-stack App Router app serving the protocol same-origin behind a `useStream` chat UI                                                                    | `pnpm dev`                 |
-| [`whatsapp-agent`](./examples/whatsapp-agent)                                         | **An agent behind a phone number** — a compact Twilio integration with signature checks, retry dedup, conversation memory, a typing indicator, async human-in-the-loop, and a durable reply; runs offline | `pnpm dev`                 |
+| [`whatsapp-agent`](./examples/whatsapp-agent)                                         | **A coupled WhatsApp workflow** — a compact Twilio integration with signature checks, retry dedup, conversation memory, a typing indicator, async human-in-the-loop, and a durable reply; runs offline | `pnpm dev`                 |
 | [`react-usestream`](./examples/react-usestream)                                       | A minimal **`useStream` SSE frontend** you can point at any skein-js server                                                                                                                               | `pnpm dev`                 |
 
 ## Tested end-to-end
@@ -719,7 +721,7 @@ Start here:
 - [LangGraph CLI compatibility](https://skein-js.github.io/skein-js/langgraph-cli-compat) — commands + every `langgraph.json` field
 - [Agent Protocol surface](https://skein-js.github.io/skein-js/agent-protocol) — the endpoints skein-js serves
 - [Recipes](https://skein-js.github.io/skein-js/recipes) — auth, human-in-the-loop, long-term memory, CORS, background runs
-- [Channels](https://skein-js.github.io/skein-js/channels) — connect an agent to WhatsApp, Slack, email, GitHub, or another webhook
+- [Channels](https://skein-js.github.io/skein-js/channels) — connect webhook sources and durable, optionally cross-provider destinations to LangGraph workflows
 - [Observability](https://skein-js.github.io/skein-js/observability) — PostHog, LangSmith, OpenTelemetry, and custom telemetry
 - [Deploy anywhere](https://skein-js.github.io/skein-js/deploy) — Cloud Run, Railway, Fly.io, Render, AWS, Kubernetes, VPS
 
@@ -761,8 +763,9 @@ your `langgraph dev` project work under `skein dev`?).
 
 **Fits your stack:** Express · Fastify · NestJS · Next.js · Bun · Deno · React · Vue · Svelte · Angular
 
-Bring the same agent to WhatsApp, Slack, email, GitHub, or any webhook with
-[channel integrations](./channels.md). See how it behaves in production with
+Receive authenticated events from WhatsApp, Slack, email, GitHub, or any webhook, then return a
+coupled reply or route the result to another provider with [channels](./channels.md). See how it
+behaves in production with
 [PostHog](./observability.md#posthog), LangSmith, or OpenTelemetry.
 
 ## Your agent works on your laptop. Now what? {#start}
@@ -6145,14 +6148,19 @@ a `secret` in the config file) and `SKEIN_WEBHOOK_TIMEOUT_MS`.
 
 <!-- source: docs/channels.md -->
 
-# Channels — an agent behind WhatsApp, Slack, or any webhook
+# Channels — connect LangGraph workflows to external systems
 
-LangGraph gives you an agent behind an API. A **channel** puts one behind anything that POSTs: a
-WhatsApp number, a Slack workspace, a GitHub webhook, an inbound mailbox.
+A **channel** is Skein's durable boundary between an authenticated webhook and a LangGraph workflow.
+It turns a provider event—such as a WhatsApp message, Slack event, GitHub webhook, or inbound-email
+notification—into ordinary graph input, then delivers the workflow's outcome.
 
-You write two functions. Everything else — deduplicating the provider's retries, mapping an external
-identity to a thread, deciding whether a message starts a turn or answers a question the agent is
-already waiting on, getting the reply back durably — is skein's, once, for every channel.
+The source and destination may be **coupled**: a WhatsApp message enters and its reply returns to the
+same conversation. They may also be **decoupled**: an email starts a refund workflow, the graph asks
+Finance for approval over WhatsApp, and the final decision returns by email. LangGraph still owns
+state, branching, tools, and `interrupt()`; Skein owns the provider-facing lifecycle around the run.
+
+You write thin provider adapters. Skein handles retry deduplication, external-identity-to-thread
+mapping, start-versus-resume decisions, and durable delivery consistently across channels.
 
 > A chat channel is a `Channel` whose reply target happens to be the sender. A GitHub webhook and a
 > Stripe dispute go through the identical pipeline without that property — which is why these types
@@ -6161,11 +6169,12 @@ already waiting on, getting the reply back durably — is skein's, once, for eve
 Entirely optional. A deployment that configures no channel does not install the package, serves no
 channel routes, and cannot tell the feature exists.
 
-## What you are signing up for
+## What Skein enables
 
-Putting an agent behind a phone number by hand means writing: signature verification, dedup for
-retried deliveries, a mapping from `whatsapp:+254…` to a thread, a branch on whether that thread is
-already waiting on a human, payload mapping both ways, and a reply path that does not double-send.
+Connecting a workflow to a phone number by hand means writing signature verification, deduplication
+for retried deliveries, a mapping from `whatsapp:+254…` to a thread, a branch on whether that thread
+is already waiting on a human, payload mapping in both directions, and a reply path that does not
+double-send.
 
 Only two of those are about the provider. The rest are identical for every integration anyone will
 ever write — and their failures are silent ones: a double reply, a lost reply, a question nobody was
@@ -6177,7 +6186,7 @@ ever asked.
 pnpm add @skein-js/channels
 ```
 
-Write the channel, bind it to a graph, done:
+Write the provider adapter and bind its source route to a graph:
 
 **`src/twilio-channel.ts`**
 

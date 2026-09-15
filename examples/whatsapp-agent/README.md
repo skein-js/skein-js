@@ -1,4 +1,4 @@
-# whatsapp-agent — an agent behind a phone number
+# whatsapp-agent — a coupled WhatsApp workflow
 
 A customer texts a WhatsApp number. The agent answers. When the request is irreversible — a refund, a
 cancellation — it stops and asks, and the customer's reply **hours later resumes that same question**

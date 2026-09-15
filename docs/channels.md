@@ -1,11 +1,16 @@
-# Channels — an agent behind WhatsApp, Slack, or any webhook
+# Channels — connect LangGraph workflows to external systems
 
-LangGraph gives you an agent behind an API. A **channel** puts one behind anything that POSTs: a
-WhatsApp number, a Slack workspace, a GitHub webhook, an inbound mailbox.
+A **channel** is Skein's durable boundary between an authenticated webhook and a LangGraph workflow.
+It turns a provider event—such as a WhatsApp message, Slack event, GitHub webhook, or inbound-email
+notification—into ordinary graph input, then delivers the workflow's outcome.
 
-You write two functions. Everything else — deduplicating the provider's retries, mapping an external
-identity to a thread, deciding whether a message starts a turn or answers a question the agent is
-already waiting on, getting the reply back durably — is skein's, once, for every channel.
+The source and destination may be **coupled**: a WhatsApp message enters and its reply returns to the
+same conversation. They may also be **decoupled**: an email starts a refund workflow, the graph asks
+Finance for approval over WhatsApp, and the final decision returns by email. LangGraph still owns
+state, branching, tools, and `interrupt()`; Skein owns the provider-facing lifecycle around the run.
+
+You write thin provider adapters. Skein handles retry deduplication, external-identity-to-thread
+mapping, start-versus-resume decisions, and durable delivery consistently across channels.
 
 > A chat channel is a `Channel` whose reply target happens to be the sender. A GitHub webhook and a
 > Stripe dispute go through the identical pipeline without that property — which is why these types
@@ -14,11 +19,12 @@ already waiting on, getting the reply back durably — is skein's, once, for eve
 Entirely optional. A deployment that configures no channel does not install the package, serves no
 channel routes, and cannot tell the feature exists.
 
-## What you are signing up for
+## What Skein enables
 
-Putting an agent behind a phone number by hand means writing: signature verification, dedup for
-retried deliveries, a mapping from `whatsapp:+254…` to a thread, a branch on whether that thread is
-already waiting on a human, payload mapping both ways, and a reply path that does not double-send.
+Connecting a workflow to a phone number by hand means writing signature verification, deduplication
+for retried deliveries, a mapping from `whatsapp:+254…` to a thread, a branch on whether that thread
+is already waiting on a human, payload mapping in both directions, and a reply path that does not
+double-send.
 
 Only two of those are about the provider. The rest are identical for every integration anyone will
 ever write — and their failures are silent ones: a double reply, a lost reply, a question nobody was
@@ -30,7 +36,7 @@ ever asked.
 pnpm add @skein-js/channels
 ```
 
-Write the channel, bind it to a graph, done:
+Write the provider adapter and bind its source route to a graph:
 
 **`src/twilio-channel.ts`**
 
