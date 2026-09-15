@@ -746,8 +746,8 @@ set concatenated for wholesale ingestion. Regenerate the latter with `pnpm docs:
 
 ## Sponsorship
 
-skein-js is sponsored by **Garatropic Studios**, supporting the project's engineering and ongoing
-maintenance.
+skein-js is sponsored by **[Garatropic Studios](https://garatropic.com)**, supporting the project's
+engineering and ongoing maintenance.
 
 Individuals and organizations can also sponsor skein-js. If you would like to support ongoing
 development, [get in touch](https://github.com/skein-js/skein-js/issues).
