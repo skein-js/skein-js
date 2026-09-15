@@ -11,6 +11,17 @@ The example below handles a concrete request: a customer emails **“Please refu
 order GT-1042; I was charged twice.”** LangGraph asks Finance for approval over WhatsApp, the Finance
 reply resumes the interrupted graph, and the customer receives the decision by email.
 
+## See the refund approval workflow
+
+The recording follows the complete example: an email starts the workflow, LangGraph pauses for the
+three required approvals, each authenticated WhatsApp response resumes its own interrupt, and the
+approved result is delivered back to the customer by email.
+
+<video controls playsinline preload="metadata" style="width: 100%; border-radius: 12px">
+  <source src="../videos/decoupled-refund-approval.mp4" type="video/mp4">
+  Your browser cannot play this video.
+</video>
+
 ## When source and destination should be separate
 
 Decoupling is appropriate when routing is a workflow decision rather than an inherent response:
