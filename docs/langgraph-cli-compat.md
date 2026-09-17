@@ -371,8 +371,10 @@ lifecycle and the route → resource/action map.
 
 ## `dev` vs `up`
 
-- **`skein dev`** — single Node process, in-memory (or file-backed) state, hot reload on
-  source change. No Docker. Fast feedback, the exact `langgraph dev` niche.
+- **`skein dev`** — a single Node app process with hot reload. It defaults to in-memory
+  (optionally file-backed) state, so Docker is not required; pass
+  `--store postgres --queue redis` to develop against the production drivers, including Postgres
+  and Redis running in Docker. Fast feedback, the exact `langgraph dev` niche.
 - **`skein up`** — Docker Compose bringing up the app plus Postgres (checkpoints + protocol
   resources + pgvector) and Redis (queue + cross-instance streaming). Mirrors production —
   see [runs-and-redis.md](./runs-and-redis.md).

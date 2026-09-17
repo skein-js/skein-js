@@ -61,3 +61,5 @@ packages/console/src/assets.generated.ts
 # Throwaway fixture projects written by tests into their own package directory.
 .tmp-*/
 docs/.vitepress/.temp
+tmp
+output

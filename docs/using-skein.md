@@ -243,8 +243,8 @@ Grow from the minimal server without rewrites — each step changes one thing:
 ## Gotchas
 
 - **Auth is off by default.** No `auth` block / no `auth` dep → the server is fully open, exactly like
-  `langgraph dev`. Turn it on with a `@langchain/langgraph-sdk/auth` `Auth` instance — see
-  [recipes.md](./recipes/production.md#custom-auth).
+  `langgraph dev`. Turn it on with a `@langchain/langgraph-sdk/auth` `Auth` instance — see the
+  [provider recipes](./recipes/authentication.md) and [production recipe](./recipes/production.md#custom-auth).
 - **CORS is off by default.** Browser clients on another origin need `http.cors` in `langgraph.json`
   (or the `cors` option). Same-origin (e.g. Next.js) needs nothing.
 - **A long-lived Node process** is required for the background run worker and in-memory drivers — fine

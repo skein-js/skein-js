@@ -1,8 +1,8 @@
 # Recipes
 
-Task-oriented pages: a problem, the smallest code that solves it, and a runnable example to copy from.
-Every example named here is in the repo and exercised by CI. For a terse API reference see
-[using-skein.md](../using-skein.md).
+Task-oriented pages: a problem and the smallest code that solves it. Runnable examples named here are
+in the repo and exercised by CI; provider integration snippets are checked against the linked official
+SDK documentation. For a terse API reference see [using-skein.md](../using-skein.md).
 
 ## Read working code first
 
@@ -24,6 +24,7 @@ pnpm --filter @skein-js/example-triage-agent seed   # register the schedule + sw
 | [Coupled WhatsApp workflow](./coupled-channel.md)          | A workflow with the same provider as source and destination                 |
 | [Cross-provider workflow](./decoupled-channel-delivery.md) | Email source → LangGraph workflow → allowlisted WhatsApp/email destinations |
 | [Memory](./memory.md)                                      | `getStore()`, semantic search, and the dedup trap                           |
+| [Authenticating requests](./authentication.md)             | Better Auth, Clerk, Supabase, Firebase, OIDC/JWT, and authorization policy  |
 | [Production](./production.md)                              | Auth, run-completion webhooks, durable storage and deploying                |
 
 ## Which example shows what

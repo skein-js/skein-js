@@ -6,7 +6,8 @@ Locking it down, being told when work finishes, and running it durably.
 
 The server is open by default. skein implements
 [LangGraph's custom-auth model](https://docs.langchain.com/langsmith/custom-auth), so an existing `Auth`
-file is drop-in.
+file is drop-in. Using Better Auth, Clerk, Supabase, Firebase, Auth0, or another OIDC provider? Start
+with the [authentication provider recipes](./authentication.md).
 
 ```ts
 // auth.ts

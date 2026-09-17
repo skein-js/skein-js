@@ -222,8 +222,8 @@ export default withMermaid(
       // directory layout would produce this, and the ordering is the argument.
       //
       // Every group sets `collapsed`, which is what makes it collapsible at all; omitting it pins a
-      // group open. The long tails — recipes, the per-platform deploy guides, proposals — are nested
-      // one level down so they are reachable without dominating the scroll.
+      // group open. The per-platform deploy guides and proposals are nested one level down so they
+      // are reachable without dominating the scroll; recipes are a top-level task-oriented path.
       sidebar: [
         {
           text: "Decide",
@@ -257,22 +257,23 @@ export default withMermaid(
                 { text: "Using skein-js (reference)", link: "/using-skein" },
               ],
             },
+          ],
+        },
+        {
+          text: "Recipes",
+          collapsed: false,
+          items: [
+            { text: "Overview", link: "/recipes/" },
+            { text: "Serving", link: "/recipes/serving" },
+            { text: "Running agents", link: "/recipes/running-agents" },
+            { text: "Coupled WhatsApp replies", link: "/recipes/coupled-channel" },
             {
-              text: "Recipes",
-              collapsed: true,
-              items: [
-                { text: "Overview", link: "/recipes/" },
-                { text: "Serving", link: "/recipes/serving" },
-                { text: "Running agents", link: "/recipes/running-agents" },
-                { text: "Coupled WhatsApp replies", link: "/recipes/coupled-channel" },
-                {
-                  text: "Email-to-WhatsApp routing",
-                  link: "/recipes/decoupled-channel-delivery",
-                },
-                { text: "Memory", link: "/recipes/memory" },
-                { text: "Production", link: "/recipes/production" },
-              ],
+              text: "Email-to-WhatsApp routing",
+              link: "/recipes/decoupled-channel-delivery",
             },
+            { text: "Memory", link: "/recipes/memory" },
+            { text: "Authenticating requests", link: "/recipes/authentication" },
+            { text: "Production", link: "/recipes/production" },
           ],
         },
         {
