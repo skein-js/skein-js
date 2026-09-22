@@ -35,7 +35,7 @@ export function ChatView({ threadId }: { threadId?: string }) {
   const selected = assistantId ?? assistants.data?.[0]?.assistant_id;
 
   return (
-    <div className="grid gap-4 lg:grid-cols-[200px_1fr]">
+    <div className="grid gap-4 lg:grid-cols-[200px_minmax(0,1fr)]">
       <aside>
         <Panel title="Graph">
           <Async state={assistants} empty="No graphs registered.">
@@ -280,7 +280,7 @@ function Session({ assistantId, threadId }: { assistantId: string; threadId?: st
   const structure = graph.data as { nodes?: GraphNode[]; edges?: GraphEdge[] } | undefined;
 
   return (
-    <div className="flex flex-col">
+    <div className="min-w-0 flex flex-col">
       {/* One row that says what mode you are in, why, and what the run is doing. This used to be a
           bare two-button toggle with nothing on screen explaining either choice. */}
       <div className="mb-3 flex flex-wrap items-center gap-x-3 gap-y-2">
@@ -365,7 +365,7 @@ function Session({ assistantId, threadId }: { assistantId: string; threadId?: st
         </div>
       </div>
 
-      <div className="flex gap-4">
+      <div className="flex min-w-0 gap-4">
         {structure?.nodes?.length ? (
           // Hugs its content rather than stretching: a five-node graph inside a full-height panel was
           // mostly empty space, which reads as "something failed to load".
@@ -382,13 +382,13 @@ function Session({ assistantId, threadId }: { assistantId: string; threadId?: st
           </div>
         ) : null}
 
-        <div className="flex min-h-[20rem] flex-1 flex-col overflow-hidden rounded-lg border bg-card">
-          <div className="flex flex-1 flex-col overflow-y-auto p-4">
+        <div className="flex min-w-0 min-h-[20rem] flex-1 flex-col overflow-hidden rounded-lg border bg-card">
+          <div className="flex min-w-0 flex-1 flex-col overflow-y-auto p-4">
             {mode === "chat" ? (
               messages.length === 0 && !running ? (
                 <Hint>Send a message below and the graph&apos;s reply appears here.</Hint>
               ) : (
-                <ol className="space-y-3">
+                <ol className="min-w-0 space-y-3">
                   {messages.map((message, index) => (
                     <Bubble key={messageKey(message, index)} message={message} />
                   ))}
@@ -505,10 +505,10 @@ function Bubble({ message }: { message: Message }) {
   const role = shape.type ?? shape.role ?? "unknown";
   const human = role === "human" || role === "user";
   return (
-    <li className={cn("flex", human ? "justify-end" : "justify-start")}>
+    <li className={cn("flex min-w-0", human ? "justify-end" : "justify-start")}>
       <div
         className={cn(
-          "max-w-[80%] rounded-lg px-3 py-2 text-[13px] leading-relaxed",
+          "min-w-0 max-w-[80%] rounded-lg px-3 py-2 text-[13px] leading-relaxed",
           human ? "bg-primary text-primary-foreground" : "border bg-muted/40",
         )}
       >
@@ -529,14 +529,16 @@ function Bubble({ message }: { message: Message }) {
  * a tool call you debug twice.
  */
 function Content({ content }: { content: Message["content"] }) {
-  if (typeof content === "string") return <span className="whitespace-pre-wrap">{content}</span>;
+  if (typeof content === "string") {
+    return <span className="block max-w-full overflow-x-auto whitespace-pre-wrap">{content}</span>;
+  }
   if (!Array.isArray(content)) return <Json value={content} />;
   return (
-    <div className="space-y-1.5">
+    <div className="min-w-0 space-y-1.5">
       {content.map((block, index) => {
         if (typeof block === "string") {
           return (
-            <span key={index} className="whitespace-pre-wrap">
+            <span key={index} className="block max-w-full overflow-x-auto whitespace-pre-wrap">
               {block}
             </span>
           );
@@ -544,7 +546,7 @@ function Content({ content }: { content: Message["content"] }) {
         const typed = block as { type?: string; text?: string };
         if (typed.type === "text" && typeof typed.text === "string") {
           return (
-            <span key={index} className="whitespace-pre-wrap">
+            <span key={index} className="block max-w-full overflow-x-auto whitespace-pre-wrap">
               {typed.text}
             </span>
           );
