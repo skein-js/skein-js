@@ -89,6 +89,10 @@ program
   // console you have to opt into is one most people never find. `skein start` is the reverse — there
   // it takes an `http.console` block in langgraph.json. See docs/console.md.
   .option("--no-console", "Don't serve the skein console at /console")
+  .option(
+    "--dev-ui-access",
+    "Generate a temporary API key for the console and Studio (loopback dev server only)",
+  )
   .option("-v, --verbose", "Log per-run activity: start/finish, tool calls, and interrupts")
   // On by default here, off by default under `start` — see `request-log.ts`. No commander
   // default so an unset flag stays `undefined` and the env var gets a look in.

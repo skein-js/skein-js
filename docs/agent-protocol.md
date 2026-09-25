@@ -502,9 +502,11 @@ otherwise the server is unauthenticated.
 
 Per request:
 
-1. **Authenticate** — run the user's `authenticate` handler → an `AuthContext`, or `401`. Studio
-   traffic (`x-auth-scheme: langsmith`) is admitted without authenticating unless `disable_studio_auth`
-   is set.
+1. **Authenticate** — run the user's `authenticate` handler → an `AuthContext`, or `401`. The CLI
+   requires credentials for Studio, regardless of its self-declared `x-auth-scheme: langsmith` header.
+   In loopback `skein dev`, `--dev-ui-access` or `auth.dev_ui_access: true` creates a temporary API
+   key for both Studio and the console. A directly injected `AuthEngine` may choose its own Studio
+   policy.
 2. **Authorize** — run the matching `@auth.on.*` handler (priority `resource:action` → `resource` →
    `*:action` → `*`) → `403` on `false`, else an ownership **filter**.
 3. **Dispatch** — with the authenticated `user`. Ownership scoping applies to the `threads` family

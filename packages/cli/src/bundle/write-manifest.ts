@@ -23,8 +23,8 @@ export interface ManifestRewrites {
  * Produce the artifact's production `langgraph.json`: the source config with every graph/auth/embed
  * spec repointed at the bundled JS, and a **string** `env` (a `.env` file path) dropped — secrets are
  * never baked into the image; runtime env arrives through the environment/compose. An **inline** `env`
- * map is preserved (it's non-secret defaults declared in the config itself). All other fields pass
- * through unchanged, so the langgraph.json contract is otherwise identical.
+ * map is preserved (it's non-secret defaults declared in the config itself). The dev-only UI access
+ * switch is dropped from production artifacts. Other fields pass through unchanged.
  */
 export function buildProductionConfig(
   source: LanggraphJson,
@@ -37,6 +37,7 @@ export function buildProductionConfig(
   if (rewrites.auth && config.auth) {
     config.auth = { ...config.auth, path: rewrites.auth };
   }
+  if (config.auth) delete config.auth.dev_ui_access;
   if (rewrites.embed && config.store?.index) {
     config.store = {
       ...config.store,

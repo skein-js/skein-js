@@ -17,6 +17,8 @@ import { parseGraphSpec, type ModuleImporter } from "./graph-spec.js";
 export interface AuthConfig {
   path: string;
   disable_studio_auth?: boolean;
+  /** Skein-only: allow a rotating dev UI key under `skein dev`; ignored in production. */
+  dev_ui_access?: boolean;
 }
 
 /** Where and how to load the auth module — mirrors `loadGraph`'s importer seam. */
@@ -205,7 +207,7 @@ export async function loadAuthEngine(
   const { isAuthMatching } = await import("@langchain/langgraph-api/auth");
   return createAuthEngine(
     exported["~handlerCache"],
-    auth.disable_studio_auth ?? false,
+    auth.disable_studio_auth ?? true,
     isAuthMatching,
   );
 }

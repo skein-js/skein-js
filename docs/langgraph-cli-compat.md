@@ -171,7 +171,8 @@ it but is never required.
   // custom authentication + authorization (see below)
   "auth": {
     "path": "./src/auth.ts:auth", // a "@langchain/langgraph-sdk/auth" `Auth` instance
-    "disable_studio_auth": false,
+    "disable_studio_auth": true, // default; CLI always requires credentials for Studio
+    "dev_ui_access": false, // skein-only; dev key for console + Studio when true
   },
 
   // where runs report themselves — traces + lifecycle events (a skein extension; see below)
@@ -203,7 +204,7 @@ it but is never required.
 | `store`                | `store.index.{embed,dims,fields,hnsw}` configures pgvector semantic search on the Postgres driver (`hnsw: true` opts into the approximate index); `store.ttl.{default_ttl,refresh_on_read,sweep_interval_minutes}` expires items. `store.adapter` is a **skein extension** — `path:export` to your own LangGraph `BaseStore` (e.g. `PostgresStore`, `MongoDBStore`), which then serves the whole `/store` surface. See [storage.md](./storage.md). |
 | `checkpointer`         | `"default"` → `PostgresSaver`; dev falls back to an in-memory `MemorySaver`.                                                                                                                                                                                                                                                                                                                                                                       |
 | `http`                 | `http.cors` maps to the adapter's CORS options; the `disable_*` flags remove that resource's routes before mounting, so it 404s from the host app as under `langgraph dev`. `http.console` is skein-only — it serves the [console](./console.md) at `/console` (off unless set; `skein dev` serves it regardless). `http.app` is still accepted and ignored.                                                                                       |
-| `auth`                 | `auth.path` loads an `Auth` from `@langchain/langgraph-sdk/auth`; every request is authenticated + authorized; `disable_studio_auth` honored.                                                                                                                                                                                                                                                                                                      |
+| `auth`                 | `auth.path` loads an `Auth` from `@langchain/langgraph-sdk/auth`; every request is authenticated + authorized. The CLI requires credentials for Studio regardless of `disable_studio_auth`; `auth.dev_ui_access: true` or loopback `skein dev --dev-ui-access` provides a temporary key for Studio and the console. The setting is stripped from production builds.                                                                                |
 | `telemetry`            | **skein extension.** Builds the telemetry sinks runs report to — see [observability.md](./observability.md). Unknown to `langgraph dev`, which ignores it.                                                                                                                                                                                                                                                                                         |
 | `dependencies`         | **skein extension on the JS side** (LangGraph's schema has it for Python only). Extra packages `skein build` pins into the artifact — see below.                                                                                                                                                                                                                                                                                                   |
 | `dockerfile_lines`     | Appended by `skein dockerfile` / `skein build`.                                                                                                                                                                                                                                                                                                                                                                                                    |
@@ -362,9 +363,12 @@ export const auth = new Auth()
   hides other owners' rows on reads and stamps ownership onto new rows. Runs authorize through their
   owning thread (there is no separate `runs` resource), matching LangGraph.
 - **No `auth` block** → the server is fully open (unauthenticated), exactly as before.
-- `disable_studio_auth: false` (the default) lets LangGraph Studio traffic
-  (`x-auth-scheme: langsmith`) through without authenticating, so local dev stays frictionless; set
-  it to `true` to require real credentials from everyone.
+- Studio's `x-auth-scheme: langsmith` header is caller-controlled, so the CLI requires credentials for
+  Studio even when `disable_studio_auth` is `false`. `skein dev --dev-ui-access` or
+  `auth.dev_ui_access: true` prints a temporary API key accepted by Studio and the console on a
+  loopback server. `skein start` never enables it, and production builds strip the setting.
+  Direct config loaders also default `disable_studio_auth` to `true`; an explicitly injected engine
+  controls its own policy.
 
 See [agent-protocol.md](./agent-protocol.md#authentication--authorization) for the full request
 lifecycle and the route → resource/action map.

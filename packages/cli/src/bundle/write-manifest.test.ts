@@ -24,7 +24,7 @@ describe("buildProductionConfig", () => {
   it("rewrites auth.path only when auth was declared, preserving its other keys", () => {
     const withAuth: LanggraphJson = {
       ...base,
-      auth: { path: "./src/auth.ts:auth", disable_studio_auth: true },
+      auth: { path: "./src/auth.ts:auth", disable_studio_auth: true, dev_ui_access: true },
     };
     const config = buildProductionConfig(withAuth, {
       graphs: { agent: "./graphs/agent.js:graph", echo: "./graphs/echo.js:default" },

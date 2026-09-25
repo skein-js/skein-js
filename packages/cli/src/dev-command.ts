@@ -27,6 +27,14 @@ import { skeinCliVersion } from "./cli-version.js";
 import { mountConsole } from "./console-mount.js";
 import { createDevLogger } from "./dev-logger.js";
 import { devStateFile, LANGGRAPH_DIR, STATE_DIR, writeDevStateFile } from "./dev-state.js";
+import {
+  createDevUiAccessKeys,
+  DEV_UI_KEY_ROTATION_MS,
+  devUiAccessEnabled,
+  isLoopbackHost,
+  requireStudioCredentials,
+  withDevUiAccessKey,
+} from "./dev-ui-auth.js";
 import { loadGraphsAndReportFailures } from "./graph-load-failure.js";
 import { applyProjectEnv, projectEnvPaths } from "./project-env.js";
 import { resolveRequestLog } from "./request-log.js";
@@ -63,6 +71,8 @@ export interface DevCommandOptions {
   requestLog?: boolean;
   /** `false` when `--no-console` was passed. The console is served by default under `dev`. */
   console?: boolean;
+  /** Give the console and Studio a temporary key that bypasses the project's authenticate handler. */
+  devUiAccess?: boolean;
 }
 
 /** Wait this long after the last change event before reloading, so a burst of saves is one reload. */
@@ -107,6 +117,17 @@ export async function runDev(options: DevCommandOptions): Promise<void> {
   // always wins). Resolved after applyProjectEnv above, so a PORT in the project's .env counts.
   const port = options.portExplicit ? options.port : envPort(options.port);
   const host = options.hostExplicit ? options.host : envHost(options.host);
+  const enableDevUiAccess = devUiAccessEnabled(options.devUiAccess, config.auth?.dev_ui_access);
+  if (enableDevUiAccess && !isLoopbackHost(host)) {
+    await Promise.allSettled([loader.close(), runtime.dispose()]);
+    throw new Error("Dev UI access requires a loopback --host (127.0.0.1, ::1, or localhost).");
+  }
+  const devUiKeys = enableDevUiAccess && runtime.deps.auth ? createDevUiAccessKeys() : undefined;
+  if (runtime.deps.auth) {
+    runtime.deps.auth = devUiKeys
+      ? withDevUiAccessKey(runtime.deps.auth, devUiKeys)
+      : requireStudioCredentials(runtime.deps.auth);
+  }
   // Flag → LangGraph-compat alias → SKEIN_RUN_CONCURRENCY → N_JOBS_PER_WORKER → default. Resolved
   // after applyProjectEnv above, so a value in the project's .env counts — the PORT/HOST rule.
   const runConcurrency = resolveRunConcurrency(options.concurrency ?? options.nJobsPerWorker);
@@ -168,7 +189,9 @@ export async function runDev(options: DevCommandOptions): Promise<void> {
     server = await createExpressServer({
       deps: runtime.deps,
       ...(runtime.channels ? { channels: runtime.channels } : {}),
-      cors: runtime.cors,
+      // Studio is hosted at smith.langchain.com. When the dev UI key is enabled, admit that one
+      // browser origin unless the project supplied its own explicit CORS policy.
+      cors: runtime.cors ?? (devUiKeys ? { origin: "https://smith.langchain.com" } : undefined),
       // Not `warm: true`. The eager load happens below, *after* the banner — see
       // `loadGraphsAndReportFailures`. Warming here would put the one line that matters (a graph
       // that cannot load, and why) above thirty lines of banner, where nobody sees it.
@@ -200,6 +223,7 @@ export async function runDev(options: DevCommandOptions): Promise<void> {
       authPath: config.auth?.path,
       runConcurrency,
       ...(consoleMountPath ? { consoleMountPath } : {}),
+      ...(devUiKeys ? { devUiAccessKey: devUiKeys.currentKey } : {}),
     },
     devLogger,
   );
@@ -209,6 +233,13 @@ export async function runDev(options: DevCommandOptions): Promise<void> {
   // reported, never thrown: the keyless graph in a scaffolded project must keep serving while the
   // model-backed one waits for its API key.
   await loadGraphsAndReportFailures(runtime.deps.graphs, devLogger);
+
+  const rotateDevUiKey = devUiKeys
+    ? setInterval(() => {
+        devLogger.info(`Console / Studio dev API key rotated: ${devUiKeys.rotate()}`);
+      }, DEV_UI_KEY_ROTATION_MS)
+    : undefined;
+  rotateDevUiKey?.unref();
 
   let lastSaved: string | undefined;
   const saveState = () => {
@@ -288,6 +319,7 @@ export async function runDev(options: DevCommandOptions): Promise<void> {
     // Stop autosaving and flush one last snapshot synchronously, before anything can race it.
     onShutdownStart: () => {
       if (autosave) clearInterval(autosave);
+      if (rotateDevUiKey) clearInterval(rotateDevUiKey);
       saveState();
     },
     // Strictly ordered, never concurrent. `server.close()` stops the worker, which needs the store

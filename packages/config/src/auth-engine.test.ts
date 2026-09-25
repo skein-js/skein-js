@@ -134,6 +134,7 @@ describe("loadAuthEngine", () => {
   it("carries the disable_studio_auth flag onto the engine", async () => {
     const auth = new Auth().authenticate(() => "u");
     expect((await engineFor(auth, { disableStudioAuth: true }))!.studioAuthDisabled).toBe(true);
-    expect((await engineFor(auth))!.studioAuthDisabled).toBe(false);
+    expect((await engineFor(auth, { disableStudioAuth: false }))!.studioAuthDisabled).toBe(false);
+    expect((await engineFor(auth))!.studioAuthDisabled).toBe(true);
   });
 });

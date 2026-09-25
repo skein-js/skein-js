@@ -59,9 +59,11 @@ Point `langgraph.json` at that export:
 }
 ```
 
-Set `disable_studio_auth` to `false` only when you intentionally want LangGraph Studio traffic to
-bypass your provider during development. Authentication answers _who is calling_; the `.on(...)`
-handlers answer _what they may access_. Keep organization membership, roles, and other application
+The CLI requires credentials for Studio even when `disable_studio_auth` is `false`: a caller can forge
+Studio's identifying header. For local development, `skein dev --dev-ui-access` or
+`auth.dev_ui_access: true` in `langgraph.json` prints a temporary API key accepted by both Studio and
+the console on a loopback server. Authentication answers _who is calling_; the `.on(...)` handlers
+answer _what they may access_. Keep organization membership, roles, and other application
 policy in those handlers rather than in Skein config.
 
 Bearer-token providers can share this small helper:

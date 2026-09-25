@@ -29,6 +29,7 @@ import { printBanner } from "./banner.js";
 import { skeinCliVersion } from "./cli-version.js";
 import { mountConsole } from "./console-mount.js";
 import { createDevLogger } from "./dev-logger.js";
+import { requireStudioCredentials } from "./dev-ui-auth.js";
 import { loadGraphsAndReportFailures } from "./graph-load-failure.js";
 import { applyProjectEnv } from "./project-env.js";
 import { resolveRequestLog } from "./request-log.js";
@@ -169,6 +170,11 @@ export async function runStart(options: StartCommandOptions): Promise<void> {
     console.error(`skein: ${describeError(error)}`);
     process.exitCode = 1;
     return;
+  }
+  // A client can forge `x-auth-scheme: langsmith`; the compatibility bypass is never safe on a
+  // production listener. `skein start` requires the project's real auth for Studio as well.
+  if (runtime.deps.auth) {
+    runtime.deps.auth = requireStudioCredentials(runtime.deps.auth);
   }
   // `exposeErrorStacks` stays off here: production logs the full stack (the adapter's `logger`
   // option below reaches the run engine), but never puts it on the wire.

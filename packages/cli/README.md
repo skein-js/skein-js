@@ -72,19 +72,20 @@ any layer. Public-registry builds don't need it.
 
 ## `skein dev` flags
 
-| Flag                      | Values               | Default     | Notes                                                                              |
-| ------------------------- | -------------------- | ----------- | ---------------------------------------------------------------------------------- |
-| `-p, --port`              | number               | `2024`      | Port to listen on.                                                                 |
-| `--host`                  | host                 | `127.0.0.1` | Interface to bind.                                                                 |
-| `--store <driver>`        | `memory`, `postgres` | `memory`    | `postgres` reads `POSTGRES_URI`; also selects `PostgresSaver`.                     |
-| `--queue <driver>`        | `memory`, `redis`    | `memory`    | `redis` reads `REDIS_URI` (BullMQ queue + Redis Streams bus).                      |
-| `--concurrency`           | number               | `10`        | Queued runs the background worker executes at once.                                |
-| `-n, --n-jobs-per-worker` | number               | `10`        | LangGraph-compatible alias for `--concurrency`.                                    |
-| `--no-persist`            | —                    | persists    | Don't snapshot dev state to `.skein/` across restarts.                             |
-| `--no-reload`             | —                    | reloads     | Disable hot reload on source change.                                               |
-| `-v, --verbose`           | —                    | off         | Log per-run activity (tool calls, interrupts, timing). Failures are always logged. |
-| `--request-log`           | —                    | on          | A line per HTTP request. `--no-request-log` turns it off; env `SKEIN_REQUEST_LOG`. |
-| `--run-timeout <ms>`      | number               | off         | Abort a run executing longer than this; env `SKEIN_RUN_TIMEOUT_MS`.                |
+| Flag                      | Values               | Default     | Notes                                                                                   |
+| ------------------------- | -------------------- | ----------- | --------------------------------------------------------------------------------------- |
+| `-p, --port`              | number               | `2024`      | Port to listen on.                                                                      |
+| `--host`                  | host                 | `127.0.0.1` | Interface to bind.                                                                      |
+| `--store <driver>`        | `memory`, `postgres` | `memory`    | `postgres` reads `POSTGRES_URI`; also selects `PostgresSaver`.                          |
+| `--queue <driver>`        | `memory`, `redis`    | `memory`    | `redis` reads `REDIS_URI` (BullMQ queue + Redis Streams bus).                           |
+| `--concurrency`           | number               | `10`        | Queued runs the background worker executes at once.                                     |
+| `-n, --n-jobs-per-worker` | number               | `10`        | LangGraph-compatible alias for `--concurrency`.                                         |
+| `--no-persist`            | —                    | persists    | Don't snapshot dev state to `.skein/` across restarts.                                  |
+| `--no-reload`             | —                    | reloads     | Disable hot reload on source change.                                                    |
+| `--dev-ui-access`         | —                    | off         | Rotating console/Studio key; also enabled by `auth.dev_ui_access: true`. Loopback only. |
+| `-v, --verbose`           | —                    | off         | Log per-run activity (tool calls, interrupts, timing). Failures are always logged.      |
+| `--request-log`           | —                    | on          | A line per HTTP request. `--no-request-log` turns it off; env `SKEIN_REQUEST_LOG`.      |
+| `--run-timeout <ms>`      | number               | off         | Abort a run executing longer than this; env `SKEIN_RUN_TIMEOUT_MS`.                     |
 
 `--concurrency`, `-n, --n-jobs-per-worker`, and `--run-timeout` are accepted by `skein start` too. The
 first two also read

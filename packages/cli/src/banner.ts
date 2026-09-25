@@ -34,12 +34,14 @@ export interface BannerInfo {
    * console nobody can find is a console nobody uses — this line is how most people will discover it.
    */
   consoleMountPath?: string;
+  /** Temporary dev key shared by the console and Studio. */
+  devUiAccessKey?: string;
 }
 
 /** Print the startup banner. Decorative header + URLs go straight to stdout; the status lines use
  * `logger` so they match the `info:` styling of the request/run logs that follow. */
 export function printBanner(info: BannerInfo, logger: Logger): void {
-  const { host, port, graphIds, authPath, runConcurrency, consoleMountPath } = info;
+  const { host, port, graphIds, authPath, runConcurrency, consoleMountPath, devUiAccessKey } = info;
   const base = `http://${host}:${port}`;
 
   console.log();
@@ -54,6 +56,7 @@ export function printBanner(info: BannerInfo, logger: Logger): void {
 
   for (const id of graphIds) logger.info(`Registering graph with id '${id}'`);
   if (authPath) logger.info(`Loading auth from ${authPath}`);
+  if (devUiAccessKey) logger.info(`Console / Studio dev API key: ${devUiAccessKey}`);
   logger.info(
     runConcurrency === 1
       ? "Starting 1 worker"
