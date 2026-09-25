@@ -1,6 +1,6 @@
 {
   "name": "@skein-js/channels",
-  "version": "0.17.0",
+  "version": "0.18.0",
   "description": "Channels and integrations for real-world LangGraph workflows — authenticated sources and durable destinations for WhatsApp, Slack, email, webhooks, and more.",
   "license": "Apache-2.0",
   "author": "Maina Wycliffe <wmmaina7@gmail.com>",

@@ -1,3 +1,32 @@
+## 0.18.0 (2026-09-25)
+
+### 🚀 Features
+
+- **channels:** add graph-routed destinations ([a91309f](https://github.com/skein-js/skein-js/commit/a91309f))
+- **cli:** allow dev auth bypass for console and Studio ([1483eb5](https://github.com/skein-js/skein-js/commit/1483eb5))
+- **console:** track channels and deliveries ([30f5c77](https://github.com/skein-js/skein-js/commit/30f5c77))
+- **create-skein-js:** prompt for install, git and dev storage, and report what git did ([#18](https://github.com/skein-js/skein-js/issues/18))
+- **docs:** serve llms.txt and add a Copy-page control to every doc ([#11](https://github.com/skein-js/skein-js/issues/11))
+- **example:** prove decoupled approval workflows ([7dee5f4](https://github.com/skein-js/skein-js/commit/7dee5f4))
+- **example:** add runnable refund relay demo ([10c19ed](https://github.com/skein-js/skein-js/commit/10c19ed))
+- **example:** add decoupled delivery playground ([3ff7fca](https://github.com/skein-js/skein-js/commit/3ff7fca))
+- **runtime:** expose configured channel inventory ([b8e193d](https://github.com/skein-js/skein-js/commit/b8e193d))
+
+### 🩹 Fixes
+
+- **console:** read relative times forwards, not as negative "ago" ([#27](https://github.com/skein-js/skein-js/issues/27))
+- **console:** contain long playground content ([90e570f](https://github.com/skein-js/skein-js/commit/90e570f))
+- **create-skein-js:** make the durable path a scaffolded project ships actually work ([#17](https://github.com/skein-js/skein-js/issues/17))
+- **example:** lint static browser UI ([3f001db](https://github.com/skein-js/skein-js/commit/3f001db))
+- **redis:** stop shipping untested majors of bullmq and ioredis ([#28](https://github.com/skein-js/skein-js/issues/28))
+- **server-kit:** give `skein dev` the deps that bind the engine to LangGraph ([#28](https://github.com/skein-js/skein-js/issues/28))
+
+### ❤️ Thank You
+
+- amirkiarafiei
+- Claude Opus 5 (1M context)
+- Maina Wycliffe
+
 ## 0.17.0 (2026-09-25)
 
 ### 🚀 Features
