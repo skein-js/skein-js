@@ -333,12 +333,13 @@ export const langgraphJsonSchema = z
      * Custom authentication + authorization. `path` is a `"file:export"` spec pointing at a module
      * that default-exports (or named-exports) an `@langchain/langgraph-sdk/auth` `Auth` instance;
      * when absent, every request is allowed (unauthenticated — the current behavior). Matches the
-     * LangGraph CLI's `auth` block, including `disable_studio_auth`.
+     * LangGraph CLI's `auth` block, including `disable_studio_auth`, plus Skein's dev-only UI key.
      */
     auth: z
       .object({
         path: z.string(),
-        disable_studio_auth: z.boolean().optional().default(false),
+        disable_studio_auth: z.boolean().optional().default(true),
+        dev_ui_access: z.boolean().optional(),
       })
       .passthrough()
       .optional(),

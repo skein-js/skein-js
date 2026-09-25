@@ -169,7 +169,9 @@ including what _isn't_ built.
 
 `skein dev` serves a full web UI at `/console` — the thing you'd otherwise reach for LangGraph Studio
 to get, except it's **served by your own server**. No account, no internet connection, no CORS to
-configure, no Cloudflare tunnel. It inherits your `auth` rather than needing a bypass.
+configure, no Cloudflare tunnel. It uses your configured `auth` by default. For local development,
+`skein dev --dev-ui-access` gives the console and LangGraph Studio a rotating access key; the option
+is unavailable in production. [More about development UI access →](./docs/recipes/authentication.md)
 
 ![The skein console: threads waiting for a human, counts, and recent activity](./docs/public/images/console/overview-light.png)
 

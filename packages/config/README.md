@@ -26,6 +26,8 @@ CLI, the runtime assembler, and the adapters all start from.
   without touching `process.env`.
 - **`loadAuthEngine()`** loads the optional `auth` block's `path:export` module (a LangGraph
   `@langchain/langgraph-sdk/auth` `Auth` instance) and adapts it to core's injectable `AuthEngine`.
+- **`auth.dev_ui_access`** is a Skein-only, dev-only boolean used by `skein dev` to issue the rotating
+  console/Studio key. `skein start` ignores it, and production builds omit it.
 - The parsed `env` / `store` / `checkpointer` / `http` / `auth` fields are exposed on `config` for
   the CLI and adapters to wire up.
 

@@ -67,6 +67,22 @@ describe("printBanner", () => {
     ]);
   });
 
+  it("prints the temporary UI key when development access is enabled", () => {
+    const logger = capturingLogger();
+    vi.spyOn(console, "log").mockImplementation(() => {});
+    printBanner(
+      {
+        host: "127.0.0.1",
+        port: 2024,
+        graphIds: ["agent"],
+        runConcurrency: 1,
+        devUiAccessKey: "temporary-key",
+      },
+      logger,
+    );
+    expect(logger.infos).toContain("Console / Studio dev API key: temporary-key");
+  });
+
   it("prints the served API URL", () => {
     expect(headerLines().join("\n")).toContain("http://127.0.0.1:2024");
   });

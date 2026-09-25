@@ -9,6 +9,28 @@ describe("parseLanggraphJson", () => {
     expect(config.graphs).toEqual({ agent: "./src/agent.ts:graph" });
   });
 
+  it("requires credentials for Studio by default when custom auth is configured", () => {
+    const config = parseLanggraphJson({
+      graphs: { agent: "./src/agent.ts:graph" },
+      auth: { path: "./src/auth.ts:auth" },
+    });
+    expect(config.auth?.disable_studio_auth).toBe(true);
+  });
+
+  it("accepts an explicit dev-only UI access setting", () => {
+    const config = parseLanggraphJson({
+      graphs: { agent: "./src/agent.ts:graph" },
+      auth: { path: "./src/auth.ts:auth", dev_ui_access: true },
+    });
+    expect(config.auth?.dev_ui_access).toBe(true);
+    expect(() =>
+      parseLanggraphJson({
+        graphs: { agent: "./src/agent.ts:graph" },
+        auth: { path: "./src/auth.ts:auth", dev_ui_access: "true" },
+      }),
+    ).toThrow(SkeinConfigError);
+  });
+
   it("preserves known optional fields", () => {
     const config = parseLanggraphJson({
       graphs: { agent: "./a.ts:graph" },

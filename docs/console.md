@@ -33,6 +33,27 @@ Docs     https://github.com/skein-js/skein-js/tree/main/docs
 
 Pass `--no-console` to leave it out.
 
+With custom auth, run `skein dev --dev-ui-access` or enable it in `langgraph.json`:
+
+```jsonc
+{
+  "auth": {
+    "path": "./src/auth.ts:auth",
+    "dev_ui_access": true, // skein dev only; stripped from production builds
+  },
+}
+```
+
+Both forms print a temporary API key shared by the console and LangGraph Studio. Enter it in the
+console's connection control or add `x-api-key` under Studio's **Custom Headers**. The key skips your
+custom `authenticate` callback; your `@auth.on.*` authorization callbacks still run with the
+`skein-dev-ui-user` identity. It rotates every 15 minutes, with a one-minute grace period for the
+previous key. The new key appears in the server output; enter it again in each UI. It works only when
+the dev server binds to loopback (`127.0.0.1`, `::1`, or `localhost`). Without either opt-in, both
+UIs need normal credentials. Dev UI access allows Studio's `https://smith.langchain.com` origin when
+no `http.cors` policy is configured; an explicit policy must allow that origin itself. Keep the
+printed key private; anyone holding it can call the API as that dev identity.
+
 Because it is served by the server, it is **same origin**: no CORS to configure, no second process, no
 account, and it works with no internet connection.
 
@@ -52,8 +73,9 @@ decision you make:
 ```
 
 Requests from the console go through the **same** [`auth`](./agent-protocol.md#authentication--authorization)
-path as any other client; there is no bypass. On a server with custom auth, use the console's
-connection control (top right) to supply an API key — it is sent as `x-api-key` and held in
+path as any other client. The temporary UI key is unavailable under `skein start`. On a server with
+custom auth, use the console's connection control (top right) to supply an API key — it is sent as
+`x-api-key` and held in
 `localStorage`, since a static bundle has no server of its own to set a cookie.
 
 Two things worth knowing before you enable it on a public host:
