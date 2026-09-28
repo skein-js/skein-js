@@ -11,7 +11,12 @@
 
 [![npm](https://img.shields.io/npm/v/skein-js?logo=npm&color=cb3837&label=skein-js)](https://www.npmjs.com/package/skein-js)&nbsp;[![downloads](https://img.shields.io/npm/dm/skein-js?color=blue)](https://www.npmjs.com/package/skein-js)&nbsp;[![license](https://img.shields.io/npm/l/skein-js?color=green)](./LICENSE)&nbsp;[![CI](https://github.com/skein-js/skein-js/actions/workflows/ci.yml/badge.svg)](https://github.com/skein-js/skein-js/actions/workflows/ci.yml)&nbsp;[![docs](https://img.shields.io/badge/docs-skein--js.github.io-3b82f6)](https://skein-js.github.io/skein-js/)
 
-**The open-source LangGraph Platform alternative, for TypeScript.** _(LangGraph Platform is now LangSmith Deployment.)_
+**The open-source, self-hosted server runtime for LangGraph.js agents, in TypeScript.**
+
+LangGraph.js defines and executes each agent graph. **skein-js hosts one or many of those graphs** and
+provides the server around them: an API, persistent conversations, streaming, background work, and a
+console. It works with LangGraph.js and is an alternative to LangGraph Platform (now LangSmith
+Deployment).
 
 Self-host your [LangGraph.js](https://docs.langchain.com/oss/javascript/langgraph/overview) agents with
 threads, streaming, long-term memory, human-in-the-loop, background work, and scheduling already
@@ -777,6 +782,11 @@ your `langgraph dev` project work under `skein dev`?).
 [LangGraph.js](https://docs.langchain.com/oss/javascript/langgraph/overview) · LangGraph SDK ·
 [Agent Chat UI](https://github.com/langchain-ai/agent-chat-ui) · LangGraph Studio
 
+**The relationship:** LangGraph.js defines and executes each agent graph. skein-js hosts those graphs
+and gives them an API, persistent conversations, streaming, background work, and a console. It is an
+open-source alternative to LangGraph Platform (now LangSmith Deployment), while continuing to use
+LangGraph.js for the agent itself.
+
 **Fits your stack:** Express · Fastify · NestJS · Next.js · Bun · Deno · React · Vue · Svelte · Angular
 
 **Turn LangGraph graphs into real-world workflows.** LangGraph owns the orchestration; it doesn't own
@@ -879,9 +889,9 @@ LangGraph you need on the way, if you're new to it.
 
 ## How it fits together
 
-Three moving parts. Your clients and your agent are the ones you already have.
+Three moving parts. Your clients and your agents are the ones you already have.
 
-<svg class="skein-arch" viewBox="0 0 680 352" role="img" aria-label="Your clients speak the Agent Protocol to skein-js, which runs your LangGraph agent and stores state in your own Postgres and Redis.">
+<svg class="skein-arch" viewBox="0 0 680 352" role="img" aria-label="Your clients speak the Agent Protocol to skein-js, the server runtime for one or more LangGraph.js agents, with state in your own Postgres and Redis.">
   <!-- clients -->
   <rect class="box" x="70" y="6" width="360" height="60" rx="10" />
   <text class="t" x="250" y="30" text-anchor="middle">Your clients</text>
@@ -905,14 +915,14 @@ Three moving parts. Your clients and your agent are the ones you already have.
   <path class="wire" d="M250 206 V250" />
   <path class="wire" d="M244 244 L250 250 L256 244" />
   <circle class="pulse pulse-b" cx="250" cy="208" r="3.5" style="--travel: 40px" />
-  <!-- agent -->
+  <!-- agents -->
   <rect class="box" x="70" y="250" width="360" height="60" rx="10" />
-  <text class="t" x="250" y="274" text-anchor="middle">Your agent</text>
-  <text class="t-sub" x="250" y="294" text-anchor="middle">a LangGraph.js graph, unchanged</text>
+  <text class="t" x="250" y="274" text-anchor="middle">Your agents</text>
+  <text class="t-sub" x="250" y="294" text-anchor="middle">one or more LangGraph.js graphs, unchanged</text>
 </svg>
 
-Your clients don't know skein-js exists — they speak a standard. Your agent doesn't either. skein-js
-is the middle box, and it's the only part you didn't have to write.
+Your clients speak the Agent Protocol to skein-js. skein-js hosts your LangGraph.js graphs and handles
+the server work around them; the graph code stays the same.
 
 ## You're not learning a new framework
 
@@ -1164,6 +1174,10 @@ feedback we get.
 You can build an agent in an afternoon. Putting it in front of real users is the part nobody warns
 you about. This page is the honest version of how that goes, what your options are, and where
 skein-js fits — including where it doesn't.
+
+The short version: **LangGraph.js defines and executes the agent workflows. skein-js is the
+self-hosted server runtime around them.** You can host several task-specific graphs behind one
+server, with conversations, streaming, background work, and a console already wired up.
 
 ## How everyone gets here
 

@@ -2,7 +2,12 @@
 
 [![npm](https://img.shields.io/npm/v/skein-js?logo=npm&color=cb3837&label=skein-js)](https://www.npmjs.com/package/skein-js)&nbsp;[![downloads](https://img.shields.io/npm/dm/skein-js?color=blue)](https://www.npmjs.com/package/skein-js)&nbsp;[![license](https://img.shields.io/npm/l/skein-js?color=green)](./LICENSE)&nbsp;[![CI](https://github.com/skein-js/skein-js/actions/workflows/ci.yml/badge.svg)](https://github.com/skein-js/skein-js/actions/workflows/ci.yml)&nbsp;[![docs](https://img.shields.io/badge/docs-skein--js.github.io-3b82f6)](https://skein-js.github.io/skein-js/)
 
-**The open-source LangGraph Platform alternative, for TypeScript.** _(LangGraph Platform is now LangSmith Deployment.)_
+**The open-source, self-hosted server runtime for LangGraph.js agents, in TypeScript.**
+
+LangGraph.js defines and executes each agent graph. **skein-js hosts one or many of those graphs** and
+provides the server around them: an API, persistent conversations, streaming, background work, and a
+console. It works with LangGraph.js and is an alternative to LangGraph Platform (now LangSmith
+Deployment).
 
 Self-host your [LangGraph.js](https://docs.langchain.com/oss/javascript/langgraph/overview) agents with
 threads, streaming, long-term memory, human-in-the-loop, background work, and scheduling already

@@ -59,12 +59,11 @@ const describePage = (markdown: string): string | undefined => {
 export default withMermaid(
   defineConfig({
     title: "skein-js",
-    // The site-wide fallback description, and the positioning line used verbatim across the README,
-    // the npm packages and the social card. Kept under ~155 characters because that is where search
+    // The site-wide fallback description. Kept under ~155 characters because that is where search
     // engines truncate — a longer one is not "more description", it is a description with the end cut
     // off. `describePage` below holds derived per-page descriptions to the same bound.
     description:
-      "The open-source LangGraph Platform alternative for TypeScript. Self-host LangGraph.js agents with threads, streaming, human-in-the-loop, memory and crons.",
+      "Open-source, self-hosted server runtime for LangGraph.js agents in TypeScript. Run multiple graphs with threads, streaming, and background work.",
     base: BASE,
     cleanUrls: true,
     lastUpdated: true,
@@ -99,7 +98,7 @@ export default withMermaid(
         "meta",
         {
           property: "og:image:alt",
-          content: "skein-js — the open-source LangGraph Platform alternative, for TypeScript",
+          content: "skein-js — the self-hosted server runtime for LangGraph.js agents",
         },
       ],
       ["meta", { name: "twitter:image", content: `${ORIGIN}${BASE}og.png` }],

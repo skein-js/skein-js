@@ -3,13 +3,13 @@ layout: home
 # `layout: home` gives the page no H1, so without this the <title> is the bare site name — the most
 # valuable string on the most-linked page, wasted. Containing "skein-js" also trips the `selfTitled`
 # branch in transformPageData, which drops the "| skein-js" suffix rather than repeating it.
-title: skein-js — The open-source LangGraph Platform alternative, for TypeScript
-description: The open-source LangGraph Platform alternative for TypeScript. Self-host LangGraph.js workflows and connect them to WhatsApp, email, Slack, GitHub, or any webhook.
+title: skein-js — The self-hosted server runtime for LangGraph.js
+description: An open-source TypeScript server runtime for LangGraph.js agents. Host multiple graphs on your own infrastructure with persistent threads, streaming, background work, and a console.
 
 hero:
   name: skein-js
-  text: The open-source LangGraph Platform alternative, for TypeScript
-  tagline: Self-host LangGraph.js workflows and connect them to real systems — your servers, your database, your data. Apache-2.0, no licence key, no per-run bill.
+  text: The self-hosted server runtime for LangGraph.js agents
+  tagline: Build each agent with LangGraph.js. Run one or many with skein-js — your servers, your database, your data.
   # Each action goes somewhere distinct. A primary CTA that scrolls 200px down the page it is already
   # on is not a call to action — the 60-second command is in the first section regardless.
   actions:
@@ -73,6 +73,11 @@ features:
 **Works with:**
 [LangGraph.js](https://docs.langchain.com/oss/javascript/langgraph/overview) · LangGraph SDK ·
 [Agent Chat UI](https://github.com/langchain-ai/agent-chat-ui) · LangGraph Studio
+
+**The relationship:** LangGraph.js defines and executes each agent graph. skein-js hosts those graphs
+and gives them an API, persistent conversations, streaming, background work, and a console. It is an
+open-source alternative to LangGraph Platform (now LangSmith Deployment), while continuing to use
+LangGraph.js for the agent itself.
 
 **Fits your stack:** Express · Fastify · NestJS · Next.js · Bun · Deno · React · Vue · Svelte · Angular
 
@@ -176,9 +181,9 @@ LangGraph you need on the way, if you're new to it.
 
 ## How it fits together
 
-Three moving parts. Your clients and your agent are the ones you already have.
+Three moving parts. Your clients and your agents are the ones you already have.
 
-<svg class="skein-arch" viewBox="0 0 680 352" role="img" aria-label="Your clients speak the Agent Protocol to skein-js, which runs your LangGraph agent and stores state in your own Postgres and Redis.">
+<svg class="skein-arch" viewBox="0 0 680 352" role="img" aria-label="Your clients speak the Agent Protocol to skein-js, the server runtime for one or more LangGraph.js agents, with state in your own Postgres and Redis.">
   <!-- clients -->
   <rect class="box" x="70" y="6" width="360" height="60" rx="10" />
   <text class="t" x="250" y="30" text-anchor="middle">Your clients</text>
@@ -202,14 +207,14 @@ Three moving parts. Your clients and your agent are the ones you already have.
   <path class="wire" d="M250 206 V250" />
   <path class="wire" d="M244 244 L250 250 L256 244" />
   <circle class="pulse pulse-b" cx="250" cy="208" r="3.5" style="--travel: 40px" />
-  <!-- agent -->
+  <!-- agents -->
   <rect class="box" x="70" y="250" width="360" height="60" rx="10" />
-  <text class="t" x="250" y="274" text-anchor="middle">Your agent</text>
-  <text class="t-sub" x="250" y="294" text-anchor="middle">a LangGraph.js graph, unchanged</text>
+  <text class="t" x="250" y="274" text-anchor="middle">Your agents</text>
+  <text class="t-sub" x="250" y="294" text-anchor="middle">one or more LangGraph.js graphs, unchanged</text>
 </svg>
 
-Your clients don't know skein-js exists — they speak a standard. Your agent doesn't either. skein-js
-is the middle box, and it's the only part you didn't have to write.
+Your clients speak the Agent Protocol to skein-js. skein-js hosts your LangGraph.js graphs and handles
+the server work around them; the graph code stays the same.
 
 ## You're not learning a new framework
 

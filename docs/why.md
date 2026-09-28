@@ -4,6 +4,10 @@ You can build an agent in an afternoon. Putting it in front of real users is the
 you about. This page is the honest version of how that goes, what your options are, and where
 skein-js fits — including where it doesn't.
 
+The short version: **LangGraph.js defines and executes the agent workflows. skein-js is the
+self-hosted server runtime around them.** You can host several task-specific graphs behind one
+server, with conversations, streaming, background work, and a console already wired up.
+
 ## How everyone gets here
 
 <ol class="skein-steps">

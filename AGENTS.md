@@ -5,10 +5,12 @@ one file before contributing, read this one. (Claude Code: `CLAUDE.md` points he
 
 ## What skein-js is
 
-The **open-source alternative to LangGraph Platform** (now LangSmith Deployment) **for TypeScript**:
-a self-hosted [Agent Protocol](https://github.com/langchain-ai/agent-protocol) server for
-[LangGraph.js](https://github.com/langchain-ai/langgraphjs), plus a CLI that is a **drop-in
-replacement for the LangGraph CLI** (`skein dev` ⇄ `langgraph dev`, unchanged `langgraph.json`).
+The **open-source, self-hosted server runtime for LangGraph.js agents** in TypeScript. LangGraph.js
+defines and executes each graph; skein-js hosts one or many graphs and supplies the API, persistence,
+background work, and console around them. It is an alternative to LangGraph Platform (now LangSmith
+Deployment), and includes an [Agent Protocol](https://github.com/langchain-ai/agent-protocol) server
+plus a CLI that is a **drop-in replacement for the LangGraph CLI** (`skein dev` ⇄ `langgraph dev`,
+unchanged `langgraph.json`).
 Think "[aegra](https://github.com/aegra/aegra) for TypeScript."
 
 ## Read first
