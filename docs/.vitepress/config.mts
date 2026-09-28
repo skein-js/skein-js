@@ -241,6 +241,7 @@ export default withMermaid(
             { text: "Your first agent", link: "/your-first-agent" },
             { text: "Getting started", link: "/getting-started" },
             { text: "Scaffolding a project", link: "/scaffolding" },
+            { text: "Agent skills", link: "/agent-skills" },
             { text: "Framework adapters", link: "/adapters" },
             { text: "Frontend SDKs & useStream", link: "/react-sdk" },
             {

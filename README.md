@@ -56,6 +56,8 @@ nothing but Node. Add a model when you want one (`--provider anthropic|openai|go
 
 [**Your first agent**](./docs/your-first-agent.md) walks from here to deployed and teaches the
 LangGraph you need along the way. [Scaffolding reference](./docs/scaffolding.md) covers every flag.
+Using an AI coding agent? [Install the skein-js agent skills](./docs/agent-skills.md) for project setup
+and monorepo integration.
 
 ### Or wire it up by hand
 

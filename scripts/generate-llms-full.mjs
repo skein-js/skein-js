@@ -21,6 +21,7 @@ const DOCS = [
   "docs/your-first-agent.md",
   "docs/getting-started.md",
   "docs/scaffolding.md",
+  "docs/agent-skills.md",
   "docs/using-skein.md",
   "docs/adapters.md",
   "docs/langgraph-cli-compat.md",
