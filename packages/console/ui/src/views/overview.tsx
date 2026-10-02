@@ -58,7 +58,7 @@ export function OverviewView() {
       </div>
 
       <Panel
-        title="Recent threads"
+        title="Recent threads (latest 10)"
         actions={
           <Button variant="ghost" size="icon" aria-label="Refresh" onClick={recent.reload}>
             <RefreshCw className="size-3.5" />

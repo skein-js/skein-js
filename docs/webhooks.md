@@ -286,7 +286,7 @@ to the run in the path — so an id cannot be used to reach a callback on a run 
 Both endpoints sit in the `runs` route group, so `http.disable_runs` and your existing
 `@auth.on.threads` handler already cover them; no new switch, no new resource.
 
-There is **no console view for deliveries yet** — this is API-only today.
+The console shows deliveries on each run page, including failed attempts and a confirmed Replay action.
 
 ## What this stores, and for how long
 

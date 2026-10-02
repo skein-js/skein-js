@@ -94,13 +94,13 @@ and interrupts and time travel are panels on the thread and playground.
 | --------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | **Playground**  | Pick a graph and run it: a chat transcript for graphs with a `messages` channel, a JSON editor for everything else. Streams live, and surfaces interrupts inline. This is the landing page. |
 | **Overview**    | **Waiting for you** (threads parked on `interrupt()`, linking straight to the filtered list), counts, recent threads, and the `GET /info` capability handshake.                             |
-| **Assistants**  | Every registered graph, its schemas, its graph JSON, its version history. Read-only.                                                                                                        |
+| **Assistants**  | Every registered graph, its schemas, graph JSON, version history, and an editor for existing assistant settings.                                                                            |
 | **Threads**     | Filter by status (`#/threads?status=interrupted` is a shareable link); per thread: state, runs, checkpoints, and pending interrupts.                                                        |
 | **Runs**        | Live SSE tail, delivery status and safe replay controls, cancel, rollback, delete. Works on finished runs too.                                                                              |
 | **Channels**    | The effective inbound routes, provider identity, graph routing allowlist, and outbound support that booted from `skein.channels`. Read-only.                                                |
 | **Interrupts**  | The "Waiting for you" panel: approve, reject, or resume with any JSON value.                                                                                                                |
 | **Time travel** | Open a past checkpoint, edit its state, fork it, and run forward — from the fork or from the original.                                                                                      |
-| **Store**       | Namespace listing by prefix, item search with a `filter` and semantic `query`, delete.                                                                                                      |
+| **Store**       | Namespace listing by prefix, item search with a `filter` and semantic `query`, edit values, delete.                                                                                         |
 | **Crons**       | Schedules with their next occurrence, pause/resume, create, delete.                                                                                                                         |
 
 Opening the console lands on the **playground**, because the first question anyone has about a server
@@ -288,14 +288,15 @@ knowing before you reach for it:
 
 - **Nothing refreshes itself.** Every list loads on mount and has a Refresh button; only the run
   stream is live. A console that polls is a console that lies about when it last looked.
-- **Lists are capped and there is no pagination** — 50 threads, 50 runs, 20 checkpoints, 100
-  assistants, 100 schedules. Past that, use the API.
-- **Replay confirms; deletes do not.** Replaying may duplicate an external side effect, so it asks
-  first. Deleting a run, schedule or store item still happens on the click.
-- **It is read-mostly.** It cannot create or edit assistants, write store items, copy or prune
-  threads, or roll an assistant back to an earlier version — all of which the
-  [API](./agent-protocol.md) supports. What is missing is tracked in
-  [the issues](https://github.com/skein-js/skein-js/issues).
+- **Lists are paged.** Previous/Next controls show the current range. Checkpoint history pages by
+  checkpoint; the overview intentionally shows only the latest ten threads.
+- **Destructive actions confirm.** Cancelling, rolling back or deleting a run, deleting a schedule
+  or store item, and replaying a delivery each describe the consequence before sending a request.
+- **Existing records can be edited.** Assistant settings, thread metadata and store item JSON values
+  use the same [API](./agent-protocol.md) and authorization as other clients. The console does not
+  create assistants or store items, copy or prune threads, or change an assistant's latest version.
+  Assistant metadata updates merge keys, so the editor rejects removed keys. Saving a store item
+  resets its expiry to the server default; the editor shows this and asks before writing.
 
 ## Mounting it yourself
 

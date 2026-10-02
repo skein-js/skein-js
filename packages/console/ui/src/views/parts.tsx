@@ -4,6 +4,7 @@
 import { AlertCircle, Loader2 } from "lucide-react";
 import type { CSSProperties, ReactNode } from "react";
 
+import { Button } from "@/components/ui/button";
 import { routeHref } from "@/router";
 import type { AsyncState } from "@/use-async";
 
@@ -77,6 +78,40 @@ export function Empty({ children, action }: { children: ReactNode; action?: Reac
     <div className="flex flex-col items-center gap-3 px-4 py-14 text-center">
       <p className="max-w-sm text-[13px] text-muted-foreground">{children}</p>
       {action}
+    </div>
+  );
+}
+
+export function Pagination({
+  offset,
+  count,
+  hasNext,
+  total,
+  loading,
+  onPrevious,
+  onNext,
+}: {
+  offset: number;
+  count: number;
+  hasNext: boolean;
+  total?: number;
+  loading: boolean;
+  onPrevious: () => void;
+  onNext: () => void;
+}) {
+  const range = count === 0 ? "0" : `${offset + 1}–${offset + count}`;
+  return (
+    <div className="flex items-center justify-end gap-3 border-t px-4 py-2 text-xs text-muted-foreground">
+      <span aria-live="polite">
+        {range}
+        {total === undefined ? "" : ` of ${total}`}
+      </span>
+      <Button variant="outline" size="sm" disabled={offset === 0 || loading} onClick={onPrevious}>
+        Previous
+      </Button>
+      <Button variant="outline" size="sm" disabled={!hasNext || loading} onClick={onNext}>
+        Next
+      </Button>
     </div>
   );
 }

@@ -15,6 +15,7 @@
 
 import { spawn, spawnSync } from "node:child_process";
 import { mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
+import { createServer } from "node:net";
 import { tmpdir } from "node:os";
 import path from "node:path";
 
@@ -34,6 +35,34 @@ function run(command, args, options = {}) {
   if (result.status !== 0) {
     throw new Error(`Failed (exit ${result.status ?? "signal"}): ${label}`);
   }
+}
+
+/** Ask the OS for an unused loopback port so another project cannot answer this smoke case. */
+async function unusedPort() {
+  const server = createServer();
+  await new Promise((resolve, reject) => {
+    server.once("error", reject);
+    server.listen(0, "127.0.0.1", resolve);
+  });
+  const address = server.address();
+  if (address === null || typeof address === "string") throw new Error("No loopback port assigned");
+  await new Promise((resolve, reject) =>
+    server.close((error) => (error ? reject(error) : resolve())),
+  );
+  return address.port;
+}
+
+/** npm scripts launch a shell and CLI child; stop the whole group between smoke cases. */
+async function stopServer(server) {
+  if (server.exitCode !== null || server.signalCode !== null) return;
+  const exited = new Promise((resolve) => server.once("exit", resolve));
+  try {
+    if (process.platform === "win32" || server.pid === undefined) server.kill("SIGTERM");
+    else process.kill(-server.pid, "SIGTERM");
+  } catch (error) {
+    if (error?.code !== "ESRCH") throw error;
+  }
+  await Promise.race([exited, new Promise((resolve) => setTimeout(resolve, 15_000))]);
 }
 
 /** Ask the running server a question over the Agent Protocol and check it answers. */
@@ -112,7 +141,7 @@ function useAPublishedSkein(project, ownVersion) {
   );
 }
 
-async function smokeTest(provider, port, ownVersion) {
+async function smokeTest(provider, ownVersion) {
   const workspace = mkdtempSync(path.join(tmpdir(), `skein-scaffold-${provider}-`));
   const project = path.join(workspace, "my-agent");
   process.stdout.write(`\n=== --provider ${provider} → ${project} ===\n`);
@@ -130,13 +159,16 @@ async function smokeTest(provider, port, ownVersion) {
 
     // A real install from the registry: this is what proves the emitted version ranges resolve.
     run("npm", ["install", "--no-audit", "--no-fund"], { cwd: project });
-    run("npx", ["tsc", "--noEmit"], { cwd: project });
-    run("npx", ["vitest", "run"], { cwd: project });
+    run("npm", ["run", "typecheck"], { cwd: project });
+    run("npm", ["run", "test"], { cwd: project });
 
-    const dev = spawn("npx", ["skein", "dev", "--port", String(port)], {
+    // The generated script pins 2024; the last --port wins while still exercising that script.
+    const port = await unusedPort();
+    const dev = spawn("npm", ["run", "dev", "--", "--port", String(port)], {
       cwd: project,
       stdio: "inherit",
       shell: false,
+      detached: process.platform !== "win32",
     });
 
     try {
@@ -147,9 +179,7 @@ async function smokeTest(provider, port, ownVersion) {
     } finally {
       // Wait for it to actually exit before removing the directory: `skein dev` snapshots its state
       // to .skein/ on shutdown, and deleting the tree out from under that write races it.
-      const exited = new Promise((resolve) => dev.once("exit", resolve));
-      dev.kill("SIGTERM");
-      await Promise.race([exited, new Promise((resolve) => setTimeout(resolve, 15_000))]);
+      await stopServer(dev);
     }
   } finally {
     rmSync(workspace, { recursive: true, force: true, maxRetries: 5, retryDelay: 200 });
@@ -175,6 +205,8 @@ async function shipItSmokeTest(port, ownVersion) {
 
   const workspace = mkdtempSync(path.join(tmpdir(), "skein-scaffold-ship-"));
   const project = path.join(workspace, "my-agent");
+  const postgresPort = process.env.SKEIN_SCAFFOLD_SMOKE_POSTGRES_PORT ?? "5432";
+  const redisPort = process.env.SKEIN_SCAFFOLD_SMOKE_REDIS_PORT ?? "6379";
   process.stdout.write(`\n=== ship it (dev:services → build → start) → ${project} ===\n`);
 
   try {
@@ -183,6 +215,16 @@ async function shipItSmokeTest(port, ownVersion) {
     });
     useAPublishedSkein(project, ownVersion);
     run("npm", ["install", "--no-audit", "--no-fund"], { cwd: project });
+
+    // CI exercises the generated compose file unchanged. A contributor with either default host
+    // port already occupied can choose alternate loopback ports for this disposable smoke project.
+    if (postgresPort !== "5432" || redisPort !== "6379") {
+      const composePath = path.join(project, "compose.dev.yaml");
+      const compose = readFileSync(composePath, "utf8")
+        .replace("127.0.0.1:5432:5432", `127.0.0.1:${postgresPort}:5432`)
+        .replace("127.0.0.1:6379:6379", `127.0.0.1:${redisPort}:6379`);
+      writeFileSync(composePath, compose);
+    }
 
     // Inside the try, so the finally below tears the containers down even if compose itself fails
     // partway. The workspace holding `compose.dev.yaml` is deleted straight after, so a leaked
@@ -205,11 +247,12 @@ async function shipItSmokeTest(port, ownVersion) {
         cwd: project,
         stdio: "inherit",
         shell: false,
+        detached: process.platform !== "win32",
         env: {
           ...process.env,
           PORT: String(port),
-          POSTGRES_URI: "postgresql://postgres:postgres@localhost:5432/skein",
-          REDIS_URI: "redis://localhost:6379",
+          POSTGRES_URI: `postgresql://postgres:postgres@localhost:${postgresPort}/skein`,
+          REDIS_URI: `redis://localhost:${redisPort}`,
         },
       });
       // Raced against readiness below: a `start` that exits immediately is the exact failure this
@@ -227,9 +270,7 @@ async function shipItSmokeTest(port, ownVersion) {
         await callTheServer(baseUrl);
         process.stdout.write("\n✓ ship it: built an artifact and served a run from it\n");
       } finally {
-        const exited = new Promise((resolve) => server.once("exit", resolve));
-        server.kill("SIGTERM");
-        await Promise.race([exited, new Promise((resolve) => setTimeout(resolve, 15_000))]);
+        await stopServer(server);
       }
     } finally {
       // Volumes too: a leftover Postgres volume would carry state into the next run of this script.
@@ -247,11 +288,10 @@ const ownVersion = JSON.parse(
 ).version;
 process.stdout.write(`create-skein-js ${ownVersion} → pins skein-js@^${ownVersion}\n`);
 
-let port = 2400;
 for (const provider of providers) {
-  await smokeTest(provider, (port += 1), ownVersion);
+  await smokeTest(provider, ownVersion);
 }
 
-await shipItSmokeTest((port += 1), ownVersion);
+await shipItSmokeTest(await unusedPort(), ownVersion);
 
 process.stdout.write("\nAll scaffold smoke tests passed.\n");

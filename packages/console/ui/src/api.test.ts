@@ -173,7 +173,7 @@ describe("skein console client", () => {
     await client.replayRunDelivery("thread/one", "run/two", "delivery/three");
 
     expect(fetchMock.mock.calls[0]?.[0]).toBe(
-      `${window.location.origin}/threads/thread%2Fone/runs/run%2Ftwo/deliveries`,
+      `${window.location.origin}/threads/thread%2Fone/runs/run%2Ftwo/deliveries?offset=0&limit=21`,
     );
     expect(fetchMock.mock.calls[1]?.[0]).toBe(
       `${window.location.origin}/threads/thread%2Fone/runs/run%2Ftwo/deliveries/delivery%2Fthree/replay`,

@@ -157,10 +157,12 @@ class SkeinConsoleClient extends BaseClient {
   listRunDeliveries(
     threadId: string,
     runId: string,
+    offset = 0,
+    limit = 21,
     signal?: AbortSignal,
   ): Promise<{ deliveries: DeliverySummary[] }> {
     return this.fetch(
-      `/threads/${encodeURIComponent(threadId)}/runs/${encodeURIComponent(runId)}/deliveries`,
+      `/threads/${encodeURIComponent(threadId)}/runs/${encodeURIComponent(runId)}/deliveries?offset=${offset}&limit=${limit}`,
       { signal },
     );
   }

@@ -68,9 +68,13 @@ export function RunView({ threadId, runId }: { threadId: string; runId: string }
               size="sm"
               disabled={!inFlight || action.busy}
               // `interrupt` stops the run where it is and settles it as `cancelled`.
-              onClick={() =>
-                perform(() => client.runs.cancel(threadId, runId, false, "interrupt"), "reload")
-              }
+              onClick={() => {
+                if (window.confirm(`Cancel run ${runId}? Its current execution will stop.`))
+                  void perform(
+                    () => client.runs.cancel(threadId, runId, false, "interrupt"),
+                    "reload",
+                  );
+              }}
             >
               <Ban className="size-3.5" />
               Cancel
@@ -81,9 +85,13 @@ export function RunView({ threadId, runId }: { threadId: string; runId: string }
               disabled={!inFlight || action.busy}
               // `rollback` additionally discards the checkpoints this run wrote, so the thread returns
               // to the state it had before the run started. Destructive, hence the separate control.
-              onClick={() =>
-                perform(() => client.runs.cancel(threadId, runId, false, "rollback"), "reload")
-              }
+              onClick={() => {
+                if (window.confirm(`Rollback run ${runId}? Its checkpoints will be discarded.`))
+                  void perform(
+                    () => client.runs.cancel(threadId, runId, false, "rollback"),
+                    "reload",
+                  );
+              }}
             >
               <RotateCcw className="size-3.5" />
               Rollback
@@ -92,7 +100,10 @@ export function RunView({ threadId, runId }: { threadId: string; runId: string }
               variant="ghost"
               size="sm"
               disabled={inFlight || action.busy}
-              onClick={() => perform(() => client.runs.delete(threadId, runId), "leave")}
+              onClick={() => {
+                if (window.confirm(`Delete run ${runId}? This cannot be undone.`))
+                  void perform(() => client.runs.delete(threadId, runId), "leave");
+              }}
             >
               <Trash2 className="size-3.5" />
               Delete
