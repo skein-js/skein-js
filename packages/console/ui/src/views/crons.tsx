@@ -19,16 +19,19 @@ import {
   TableHeader,
   TableRow,
 } from "@/components/ui/table";
-import { useAsync } from "@/use-async";
+import { usePagedRows } from "@/use-paged-rows";
 
-import { Async, IdLink, Panel, ShortId, Timestamp } from "./parts";
+import { Async, IdLink, Pagination, Panel, ShortId, Timestamp } from "./parts";
 
 export function CronsView() {
   const client = createConsoleClient();
   const [error, setError] = useState<Error | undefined>();
-  const crons = useAsync(
-    (signal) => client.crons.search({ limit: 100, sortBy: "next_run_date", signal }),
-    [],
+  const crons = usePagedRows(
+    (offset, limit, signal) =>
+      client.crons.search({ offset, limit, sortBy: "next_run_date", signal }),
+    "schedules",
+    50,
+    (signal) => client.crons.count({ signal }),
   );
 
   const perform = async (mutate: () => Promise<unknown>) => {
@@ -51,9 +54,9 @@ export function CronsView() {
 
       <CreateCron onCreated={() => crons.reload()} onError={setError} />
 
-      <Panel title="Schedules" count={crons.data?.length}>
+      <Panel title="Schedules" count={crons.total ?? crons.rows?.length}>
         <Async
-          state={crons}
+          state={{ ...crons, data: crons.rows }}
           empty="No schedules. Create one above, or from your app with client.crons.create()."
         >
           {(rows) => (
@@ -128,7 +131,14 @@ export function CronsView() {
                           variant="ghost"
                           size="icon"
                           aria-label="Delete"
-                          onClick={() => void perform(() => client.crons.delete(cron.cron_id))}
+                          onClick={() => {
+                            if (
+                              window.confirm(
+                                `Delete schedule ${cron.cron_id}? Future runs will stop.`,
+                              )
+                            )
+                              void perform(() => client.crons.delete(cron.cron_id));
+                          }}
                         >
                           <Trash2 className="size-3.5" />
                         </Button>
@@ -140,6 +150,12 @@ export function CronsView() {
             </Table>
           )}
         </Async>
+        <Pagination
+          {...crons}
+          count={crons.rows?.length ?? 0}
+          onPrevious={crons.previous}
+          onNext={crons.next}
+        />
       </Panel>
     </>
   );

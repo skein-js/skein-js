@@ -10,9 +10,8 @@
 //
 // Fork-then-run is the interesting pair: change one value at step 3 and watch a different ending.
 
-import type { ThreadState } from "@langchain/langgraph-sdk";
 import { GitBranch, Play, Search } from "lucide-react";
-import { useState } from "react";
+import { useEffect, useState } from "react";
 
 import { createConsoleClient } from "@/api";
 import { Button } from "@/components/ui/button";
@@ -24,27 +23,48 @@ import {
   TableHeader,
   TableRow,
 } from "@/components/ui/table";
-import { useAsync, type AsyncState } from "@/use-async";
+import { useAsync } from "@/use-async";
 
-import { Async, Json, Panel, ShortId, Timestamp } from "./parts";
+import { Async, Json, Pagination, Panel, ShortId, Timestamp } from "./parts";
 
 export function CheckpointHistory({
   threadId,
-  history,
   assistantId,
   onForked,
 }: {
   threadId: string;
-  history: AsyncState<ThreadState[]>;
   assistantId: string | undefined;
   onForked: () => void;
 }) {
   const [selected, setSelected] = useState<string | undefined>();
+  const [cursors, setCursors] = useState<string[]>([]);
+  const before = cursors.at(-1);
+  const client = createConsoleClient();
+  const history = useAsync(
+    async (signal) => ({
+      before,
+      snapshots: await client.threads.getHistory(threadId, {
+        limit: 21,
+        ...(before ? { before: { configurable: { checkpoint_id: before } } } : {}),
+        signal,
+      }),
+    }),
+    [threadId, before],
+  );
+  const snapshots =
+    history.data && history.data.before === before ? history.data.snapshots : undefined;
+  const loading = history.loading || (snapshots === undefined && !history.error);
+  const rows = snapshots?.slice(0, 20);
+  const hasNext = (snapshots?.length ?? 0) > 20 && !!rows?.at(-1)?.checkpoint?.checkpoint_id;
+  useEffect(() => {
+    if (!loading && !history.error && snapshots?.length === 0 && cursors.length > 0)
+      setCursors((previous) => previous.slice(0, -1));
+  }, [snapshots, history.error, loading, cursors.length]);
 
   return (
     <>
-      <Panel title="Checkpoint history" count={history.data?.length}>
-        <Async state={history} empty="No checkpoints.">
+      <Panel title="Checkpoint history" count={rows?.length}>
+        <Async state={{ ...history, data: rows, loading }} empty="No checkpoints.">
           {(rows) => (
             <Table>
               <TableHeader>
@@ -98,6 +118,17 @@ export function CheckpointHistory({
             </Table>
           )}
         </Async>
+        <Pagination
+          offset={cursors.length * 20}
+          count={rows?.length ?? 0}
+          hasNext={hasNext}
+          loading={loading}
+          onPrevious={() => setCursors((previous) => previous.slice(0, -1))}
+          onNext={() => {
+            const checkpointId = rows?.at(-1)?.checkpoint?.checkpoint_id;
+            if (checkpointId) setCursors((previous) => [...previous, checkpointId]);
+          }}
+        />
       </Panel>
 
       {selected ? (
@@ -105,7 +136,10 @@ export function CheckpointHistory({
           threadId={threadId}
           checkpointId={selected}
           assistantId={assistantId}
-          onForked={onForked}
+          onForked={() => {
+            history.reload();
+            onForked();
+          }}
         />
       ) : null}
     </>

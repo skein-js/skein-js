@@ -24,6 +24,7 @@ import { fileURLToPath, pathToFileURL } from "node:url";
 
 const repoRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
 const outDir = path.join(repoRoot, "docs/public");
+const consoleAssetDir = path.join(repoRoot, "packages/console/ui/src/assets");
 
 const TAU = Math.PI * 2;
 const PIECES_PER_ARC = 5;
@@ -169,6 +170,9 @@ for (const [name, contents] of Object.entries(files)) {
   await writeFile(path.join(outDir, name), contents, "utf8");
   console.log(`Wrote docs/public/${name} (${contents.length} bytes)`);
 }
+await mkdir(consoleAssetDir, { recursive: true });
+await writeFile(path.join(consoleAssetDir, "skein-knot.svg"), files["favicon.svg"], "utf8");
+console.log("Wrote packages/console/ui/src/assets/skein-knot.svg");
 
 // iOS ignores SVG favicons and does not composite transparency, so the touch icon is a PNG on its own
 // ground. Playwright is resolved from examples/chat-app rather than added at the root, matching

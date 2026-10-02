@@ -16,6 +16,7 @@ import {
 } from "lucide-react";
 import { useEffect } from "react";
 
+import knot from "@/assets/skein-knot.svg?url";
 import { ThemeToggle } from "@/components/theme-toggle";
 import { cn } from "@/lib/utils";
 import { routeHref, useRoute } from "@/router";
@@ -55,7 +56,7 @@ export function App() {
       <header className="sticky top-0 z-40 border-b bg-background/80 backdrop-blur-md">
         <div className="mx-auto flex h-14 max-w-[1280px] items-center gap-3 px-5">
           <a href={routeHref("")} className="flex items-center gap-2">
-            <Mark />
+            <img src={knot} alt="" className="size-5" />
             <span className="text-[15px] font-semibold tracking-tight">skein</span>
             <span className="text-muted-foreground/40">/</span>
             <span className="text-[15px] text-muted-foreground">console</span>
@@ -95,27 +96,6 @@ export function App() {
         <Body segments={segments} query={query} />
       </main>
     </div>
-  );
-}
-
-/** A woven-thread mark: three strands crossing. Inline SVG so it costs nothing and themes itself. */
-function Mark() {
-  return (
-    <svg viewBox="0 0 16 16" className="size-4" aria-hidden fill="none">
-      <path
-        d="M2 4c3 0 3 8 6 8s3-8 6-8"
-        stroke="currentColor"
-        strokeWidth="1.5"
-        strokeLinecap="round"
-      />
-      <path
-        d="M2 12c3 0 3-8 6-8s3 8 6 8"
-        stroke="currentColor"
-        strokeWidth="1.5"
-        strokeLinecap="round"
-        opacity="0.4"
-      />
-    </svg>
   );
 }
 

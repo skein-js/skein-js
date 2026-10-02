@@ -4,7 +4,9 @@
 // protocol (runs list per thread, `GET /threads/:id/runs`), so it would have to fan out over threads.
 // That gap is real and deliberate to surface — see packages/console/README.md.
 
+import type { Thread } from "@langchain/langgraph-sdk";
 import { ArrowLeft, RefreshCw } from "lucide-react";
+import { useState } from "react";
 
 import { createConsoleClient } from "@/api";
 import { Button } from "@/components/ui/button";
@@ -19,10 +21,11 @@ import {
 import { cn } from "@/lib/utils";
 import { routeHref, useRoute } from "@/router";
 import { useAsync } from "@/use-async";
+import { usePagedRows } from "@/use-paged-rows";
 
 import { CheckpointHistory } from "./checkpoints";
 import { InterruptPanel, pendingInterrupts } from "./interrupts";
-import { Async, IdLink, Json, Panel, StatusBadge, Timestamp } from "./parts";
+import { Async, IdLink, Json, Pagination, Panel, StatusBadge, Timestamp } from "./parts";
 import { RunView } from "./run";
 
 export function ThreadsView({
@@ -65,22 +68,25 @@ type StatusFilter = (typeof STATUS_FILTERS)[number];
 function ThreadList({ status }: { status: StatusFilter }) {
   const client = createConsoleClient();
   const { navigate } = useRoute();
-  const threads = useAsync(
-    (signal) =>
+  const threads = usePagedRows(
+    (offset, limit, signal) =>
       client.threads.search({
-        limit: 50,
+        offset,
+        limit,
         sortBy: "updated_at",
         sortOrder: "desc",
         ...(status === "all" ? {} : { status }),
         signal,
       }),
-    [status],
+    status,
+    50,
+    (signal) => client.threads.count({ ...(status === "all" ? {} : { status }), signal }),
   );
 
   return (
     <Panel
       title="Threads"
-      count={threads.data?.length}
+      count={threads.total ?? threads.rows?.length}
       actions={
         <>
           <div className="flex rounded-md border p-0.5">
@@ -105,7 +111,7 @@ function ThreadList({ status }: { status: StatusFilter }) {
       }
     >
       <Async
-        state={threads}
+        state={{ ...threads, data: threads.rows }}
         empty={
           status === "interrupted"
             ? "Nothing is waiting for you."
@@ -145,6 +151,12 @@ function ThreadList({ status }: { status: StatusFilter }) {
           </Table>
         )}
       </Async>
+      <Pagination
+        {...threads}
+        count={threads.rows?.length ?? 0}
+        onPrevious={threads.previous}
+        onNext={threads.next}
+      />
     </Panel>
   );
 }
@@ -156,9 +168,13 @@ function ThreadDetail({ threadId }: { threadId: string }) {
     (signal) => client.threads.getState(threadId, undefined, { signal }),
     [threadId],
   );
-  const runs = useAsync((signal) => client.runs.list(threadId, { limit: 50, signal }), [threadId]);
-  const history = useAsync(
-    (signal) => client.threads.getHistory(threadId, { limit: 20, signal }),
+  const runs = usePagedRows(
+    (offset, limit, signal) => client.runs.list(threadId, { offset, limit, signal }),
+    threadId,
+    50,
+  );
+  const latestRun = useAsync(
+    (signal) => client.runs.list(threadId, { limit: 1, signal }),
     [threadId],
   );
 
@@ -180,11 +196,12 @@ function ThreadDetail({ threadId }: { threadId: string }) {
         threadId={threadId}
         // The assistant that parked here: the most recent run's. Reading it off the thread's own runs
         // means resuming never has to ask the operator which assistant to use.
-        assistantId={runs.data?.[0]?.assistant_id}
+        assistantId={latestRun.data?.[0]?.assistant_id}
         interrupts={pendingInterrupts(state.data)}
         onResumed={() => {
           state.reload();
           runs.reload();
+          latestRun.reload();
           thread.reload();
         }}
       />
@@ -193,12 +210,20 @@ function ThreadDetail({ threadId }: { threadId: string }) {
         <Async state={thread}>{(data) => <Json value={data} />}</Async>
       </Panel>
 
+      {thread.data ? (
+        <ThreadMetadataEditor
+          key={`${threadId}:${thread.data.updated_at}`}
+          thread={thread.data}
+          onSaved={thread.reload}
+        />
+      ) : null}
+
       <Panel
         title="Runs"
-        count={runs.data?.length}
+        count={runs.rows?.length}
         actions={<RefreshButton onClick={runs.reload} />}
       >
-        <Async state={runs} empty="No runs on this thread.">
+        <Async state={{ ...runs, data: runs.rows }} empty="No runs on this thread.">
           {(rows) => (
             <Table>
               <TableHeader>
@@ -230,6 +255,12 @@ function ThreadDetail({ threadId }: { threadId: string }) {
             </Table>
           )}
         </Async>
+        <Pagination
+          {...runs}
+          count={runs.rows?.length ?? 0}
+          onPrevious={runs.previous}
+          onNext={runs.next}
+        />
       </Panel>
 
       <Panel title="Current state" padded>
@@ -237,16 +268,71 @@ function ThreadDetail({ threadId }: { threadId: string }) {
       </Panel>
 
       <CheckpointHistory
+        key={threadId}
         threadId={threadId}
-        history={history}
-        assistantId={runs.data?.[0]?.assistant_id}
+        assistantId={latestRun.data?.[0]?.assistant_id}
         onForked={() => {
-          history.reload();
           state.reload();
           runs.reload();
+          latestRun.reload();
           thread.reload();
         }}
       />
     </>
+  );
+}
+
+function ThreadMetadataEditor({ thread, onSaved }: { thread: Thread; onSaved: () => void }) {
+  const [draft, setDraft] = useState(JSON.stringify(thread.metadata ?? {}, null, 2));
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState<Error>();
+  const save = async () => {
+    setBusy(true);
+    setError(undefined);
+    try {
+      const metadata = JSON.parse(draft) as unknown;
+      if (typeof metadata !== "object" || metadata === null || Array.isArray(metadata))
+        throw new Error("Thread metadata must be a JSON object.");
+      await createConsoleClient().threads.update(thread.thread_id, {
+        metadata: metadata as Record<string, unknown>,
+      });
+      onSaved();
+    } catch (caught) {
+      setError(caught instanceof Error ? caught : new Error(String(caught)));
+    } finally {
+      setBusy(false);
+    }
+  };
+  return (
+    <Panel title="Edit thread metadata" padded>
+      <form
+        className="grid gap-2"
+        onSubmit={(event) => {
+          event.preventDefault();
+          void save();
+        }}
+      >
+        <label className="text-xs text-muted-foreground" htmlFor="thread-metadata">
+          Metadata (JSON)
+        </label>
+        <textarea
+          id="thread-metadata"
+          className="h-32 w-full rounded-md border border-input bg-background p-2 font-mono text-xs"
+          value={draft}
+          onChange={(event) => setDraft(event.target.value)}
+          spellCheck={false}
+        />
+        {error ? (
+          <p role="alert" className="text-xs text-status-error">
+            {error.message}
+          </p>
+        ) : null}
+        <div>
+          <Button type="submit" size="sm" disabled={busy}>
+            Save metadata
+          </Button>
+        </div>
+      </form>
+    </Panel>
   );
 }
