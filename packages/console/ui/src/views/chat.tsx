@@ -21,24 +21,33 @@ import { acceptsMessages, inputSchemaOf, sampleInputFor } from "@/graph-schema";
 import { cn } from "@/lib/utils";
 import { routeHref } from "@/router";
 import { useAsync } from "@/use-async";
+import { usePagedRows } from "@/use-paged-rows";
 
 import { describeAssistant } from "./assistants";
 import { InterruptPanel, pendingInterrupts } from "./interrupts";
-import { Async, Json, Panel } from "./parts";
+import { Async, Json, Pagination, Panel } from "./parts";
 
 type InputMode = "chat" | "json";
 
 export function ChatView({ threadId }: { threadId?: string }) {
   const client = createConsoleClient();
-  const assistants = useAsync((signal) => client.assistants.search({ limit: 100, signal }), []);
+  const assistants = usePagedRows(
+    (offset, limit, signal) => client.assistants.search({ offset, limit, signal }),
+    "playground-assistants",
+    25,
+    (signal) => client.assistants.count({ signal }),
+  );
   const [assistantId, setAssistantId] = useState<string | undefined>();
-  const selected = assistantId ?? assistants.data?.[0]?.assistant_id;
+  useEffect(() => {
+    if (!assistantId && assistants.rows?.[0]) setAssistantId(assistants.rows[0].assistant_id);
+  }, [assistantId, assistants.rows]);
+  const selected = assistantId;
 
   return (
     <div className="grid gap-4 lg:grid-cols-[200px_minmax(0,1fr)]">
       <aside>
         <Panel title="Graph">
-          <Async state={assistants} empty="No graphs registered.">
+          <Async state={{ ...assistants, data: assistants.rows }} empty="No graphs registered.">
             {(rows) => (
               <ul className="p-1">
                 {rows.map((assistant) => (
@@ -66,6 +75,12 @@ export function ChatView({ threadId }: { threadId?: string }) {
               </ul>
             )}
           </Async>
+          <Pagination
+            {...assistants}
+            count={assistants.rows?.length ?? 0}
+            onPrevious={assistants.previous}
+            onNext={assistants.next}
+          />
         </Panel>
       </aside>
 

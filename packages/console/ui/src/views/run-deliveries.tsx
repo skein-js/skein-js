@@ -12,15 +12,17 @@ import {
   TableRow,
 } from "@/components/ui/table";
 import { formatDeliveryTarget } from "@/delivery-target";
-import { useAsync } from "@/use-async";
+import { usePagedRows } from "@/use-paged-rows";
 
-import { Async, Panel, ShortId, StatusBadge, Timestamp } from "./parts";
+import { Async, Pagination, Panel, ShortId, StatusBadge, Timestamp } from "./parts";
 
 export function RunDeliveries({ threadId, runId }: { threadId: string; runId: string }) {
   const client = createSkeinConsoleClient();
-  const deliveries = useAsync(
-    async (signal) => (await client.listRunDeliveries(threadId, runId, signal)).deliveries,
-    [threadId, runId],
+  const deliveries = usePagedRows(
+    async (offset, limit, signal) =>
+      (await client.listRunDeliveries(threadId, runId, offset, limit, signal)).deliveries,
+    `${threadId}:${runId}`,
+    20,
   );
   const [replay, setReplay] = useState<{ deliveryId?: string; error?: Error }>({});
 
@@ -45,7 +47,7 @@ export function RunDeliveries({ threadId, runId }: { threadId: string; runId: st
   return (
     <Panel
       title="Deliveries"
-      count={deliveries.data?.length}
+      count={deliveries.rows?.length}
       actions={
         <Button variant="ghost" size="sm" onClick={deliveries.reload} disabled={deliveries.loading}>
           <RefreshCw className={deliveries.loading ? "size-3.5 animate-spin" : "size-3.5"} />
@@ -58,7 +60,10 @@ export function RunDeliveries({ threadId, runId }: { threadId: string; runId: st
           {replay.error.message}
         </div>
       ) : null}
-      <Async state={deliveries} empty="This run did not create an outbound delivery.">
+      <Async
+        state={{ ...deliveries, data: deliveries.rows }}
+        empty="This run did not create an outbound delivery."
+      >
         {(rows) => (
           <Table>
             <TableHeader>
@@ -137,6 +142,12 @@ export function RunDeliveries({ threadId, runId }: { threadId: string; runId: st
           </Table>
         )}
       </Async>
+      <Pagination
+        {...deliveries}
+        count={deliveries.rows?.length ?? 0}
+        onPrevious={deliveries.previous}
+        onNext={deliveries.next}
+      />
     </Panel>
   );
 }
