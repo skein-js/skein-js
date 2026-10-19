@@ -58,8 +58,8 @@ Upstream references: [LangGraph.js overview](https://docs.langchain.com/oss/java
 - [@skein-js/console](https://github.com/skein-js/skein-js/tree/main/packages/console#readme): The skein console — the compiled web UI plus `resolveConsoleRequest`/`consoleAssetHeaders`. No runtime dependencies; the SPA is embedded as string constants.
 - [@skein-js/config](https://github.com/skein-js/skein-js/tree/main/packages/config#readme): `langgraph.json` parser + graph loader. `loadConfig`.
 - [@skein-js/server-kit](https://github.com/skein-js/skein-js/tree/main/packages/server-kit#readme): Shared adapter building blocks. `embedInMemoryGraphs`, in-memory runtime, CORS.
-- [@skein-js/local](https://github.com/skein-js/skein-js/tree/main/packages/local#readme): `embedSqliteGraphs` assembles SQLite resources, queue, and upstream checkpoints. The host owns process and worker lifetime.
-- [@skein-js/storage-sqlite](https://github.com/skein-js/skein-js/tree/main/packages/storage-sqlite#readme): `openSqliteStorage` supplies the resource store, durable queue, borrowed connection, and disposal for one database file.
+- [@skein-js/local](https://github.com/skein-js/skein-js/blob/main/packages/local/README.md): `embedSqliteGraphs` assembles SQLite resources, queue, and upstream checkpoints. The host owns process and worker lifetime.
+- [@skein-js/storage-sqlite](https://github.com/skein-js/skein-js/blob/main/packages/storage-sqlite/README.md): `openSqliteStorage` supplies the resource store, durable queue, borrowed connection, and disposal for one database file.
 - [@skein-js/runtime](https://github.com/skein-js/skein-js/tree/main/packages/runtime#readme): Assembles production deps. `buildRuntime` (from `langgraph.json`), `embedPostgresGraphs` (from graphs in code).
 - [@skein-js/langsmith](https://github.com/skein-js/skein-js/tree/main/packages/telemetry-langsmith#readme): LangSmith tracing — run identity and Threads grouping. `createLangSmithTelemetry`.
 - [@skein-js/posthog](https://github.com/skein-js/skein-js/tree/main/packages/telemetry-posthog#readme): PostHog analytics — run lifecycle events plus `$ai_generation`. `createPostHogTelemetry`.
