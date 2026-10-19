@@ -5,13 +5,19 @@ one file before contributing, read this one. (Claude Code: `CLAUDE.md` points he
 
 ## What skein-js is
 
-The **open-source, self-hosted server runtime for LangGraph.js agents** in TypeScript. LangGraph.js
+The **open-source, self-hosted runtime for LangGraph.js agents** in TypeScript. LangGraph.js
 defines and executes each graph; skein-js hosts one or many graphs and supplies the API, persistence,
 background work, and console around them. It is an alternative to LangGraph Platform (now LangSmith
 Deployment), and includes an [Agent Protocol](https://github.com/langchain-ai/agent-protocol) server
 plus a CLI that is a **drop-in replacement for the LangGraph CLI** (`skein dev` ⇄ `langgraph dev`,
 unchanged `langgraph.json`).
 Think "[aegra](https://github.com/aegra/aegra) for TypeScript."
+
+Local deployment is an option alongside shared servers: `@skein-js/local` embeds the same Agent
+Protocol engine with SQLite in a desktop app, CLI, daemon, or one Node owner. LangGraph owns
+execution and checkpoints; applications own models, tools, credentials, process lifetime, and
+recovery decisions. SQLite records abandoned attempts as failures without automatically replaying
+input. See [docs/local-deployment.md](./docs/local-deployment.md).
 
 ## Read first
 
@@ -43,6 +49,7 @@ Think "[aegra](https://github.com/aegra/aegra) for TypeScript."
    your staged changes touch. Build and the Docker-backed integration tests run in
    [CI](.github/workflows/ci.yml) — run them locally too for anything substantial
    (`nx run-many -t build test-integration`). Keep docs current with any behavior/architecture change —
+   including the installable `skills/` guidance when onboarding or deployment changes —
    and when you touch a user-facing doc, regenerate the LLM bundle with `pnpm docs:llms` (rebuilds
    [`llms-full.txt`](llms-full.txt) from the curated list in `scripts/generate-llms-full.mjs`; the
    hand-written index is [`llms.txt`](llms.txt)).
@@ -86,6 +93,9 @@ nx graph                          # visualize the project graph
 
 Vitest via a workspace config; Testcontainers for real Postgres/Redis. See
 [docs/testing.md](./docs/testing.md).
+
+SQLite's real-file, reopening, and subprocess-crash cases run in ordinary Nx `test` targets
+(`storage-sqlite` and `local`) without Docker. Native desktop packaging has separate CI gates.
 
 ```bash
 pnpm test                         # fast unit + conformance (memory), no Docker

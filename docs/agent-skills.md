@@ -2,11 +2,23 @@
 
 The [Agent Skills](https://agentskills.io/specification) in this repository guide coding agents through building a LangGraph.js project with skein-js. They are optional: skein-js works without an AI coding agent or an installed skill.
 
-| Skill                                                                                            | Use it for                                                                                      |
-| ------------------------------------------------------------------------------------------------ | ----------------------------------------------------------------------------------------------- |
-| [`skein-js`](https://github.com/skein-js/skein-js/tree/main/skills/skein-js)                     | Creating an agent project, serving an existing `langgraph.json`, or embedding a graph in an app |
-| [`skein-js-nx`](https://github.com/skein-js/skein-js/tree/main/skills/skein-js-nx)               | Integrating a skein-js app with an Nx workspace                                                 |
-| [`skein-js-turborepo`](https://github.com/skein-js/skein-js/tree/main/skills/skein-js-turborepo) | Integrating a skein-js app with a Turborepo workspace                                           |
+| Skill                                                                                            | Use it for                                                                        |
+| ------------------------------------------------------------------------------------------------ | --------------------------------------------------------------------------------- |
+| [`skein-js`](https://github.com/skein-js/skein-js/tree/main/skills/skein-js)                     | Scaffolding or embedding graphs in a server, desktop app, CLI, or daemon          |
+| [`skein-js-nx`](https://github.com/skein-js/skein-js/tree/main/skills/skein-js-nx)               | Nx targets, storage selection, build outputs, and runtime-state cache boundaries  |
+| [`skein-js-turborepo`](https://github.com/skein-js/skein-js/tree/main/skills/skein-js-turborepo) | Turbo tasks, storage selection, build outputs, and runtime-state cache boundaries |
+
+## Server or local application
+
+The skills cover the same LangGraph execution and Agent Protocol in either deployment. Choose
+SQLite explicitly for a desktop app, CLI, daemon, or one Node owner; choose Postgres/Redis for a
+shared server. Existing development defaults remain unchanged.
+
+The local guidance covers `--storage sqlite`, `embedSqliteGraphs`, host-owned startup/shutdown,
+and persistent state after reopening. Workspace skills keep live SQLite databases and their WAL/SHM
+files out of build caches while preserving the application's build artifacts. Models, tools,
+credentials, and decisions to retry or resume remain application choices. Start with the
+[local deployment guide](./local-deployment.md) and its Electron, Tauri, and CLI examples.
 
 ## Find and install a skill
 
@@ -22,3 +34,6 @@ Replace `codex` with `cursor`, `github-copilot`, or `claude-code` to install for
 You can also copy a skill directory into your agent's project skill location. Codex, Cursor, and GitHub Copilot read `.agents/skills/<skill-name>/SKILL.md`; Claude Code reads `.claude/skills/<skill-name>/SKILL.md`. Copy the whole directory, including any supporting files. See each agent's documentation for user-wide installation paths.
 
 Once installed, the agent sees the skill's name and description and may select it for a matching task. To select it explicitly, ask it to use the `skein-js` skill while describing the project you want. A skill checked into this repository is available to agents working **on skein-js**; installing it in your own project makes it available to agents building **with skein-js**.
+
+Upgrading an npm package does not refresh separately installed or copied skills. Update those from
+this repository too; `@main` follows current guidance, while `@<tag>` selects that release's snapshot.

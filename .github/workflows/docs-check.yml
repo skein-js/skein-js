@@ -66,7 +66,7 @@ jobs:
         uses: actions/cache@v4
         with:
           path: .lycheecache
-          key: lychee-${{ runner.os }}-${{ hashFiles('lychee.toml', 'README.md', 'llms.txt', 'docs/**/*.md', 'packages/*/README.md', 'examples/*/README.md') }}
+          key: lychee-${{ runner.os }}-${{ hashFiles('lychee.toml', 'README.md', 'AGENTS.md', 'llms.txt', 'docs/**/*.md', 'skills/**/SKILL.md', '.agents/skills/**/SKILL.md', 'packages/*/README.md', 'examples/*/README.md') }}
           restore-keys: |
             lychee-${{ runner.os }}-
 
@@ -79,8 +79,11 @@ jobs:
             --remap 'https://github\.com/skein-js/skein-js/(?:blob|tree)/main/([^#]+)$ file://${{ github.workspace }}/$1'
             --no-progress
             README.md
+            AGENTS.md
             llms.txt
             'docs/**/*.md'
+            'skills/**/SKILL.md'
+            '.agents/skills/**/SKILL.md'
             'packages/*/README.md'
             'examples/*/README.md'
           fail: true

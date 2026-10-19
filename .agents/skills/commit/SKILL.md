@@ -58,6 +58,10 @@ them in a clean env where the key-gated tests self-skip. If your change touches 
 example's target directly too (`nx test example-<name>`, `nx build example-<name>`). For a quick
 inner-loop pre-check you may first run `pnpm affected`, but the `run-many` above is what must pass.
 
+SQLite real-file, reopen, and subprocess-crash cases belong to the ordinary `storage-sqlite` and
+`local` test targets, included in the gate above; Docker is not required for those cases. Changes to
+native packaging also need the relevant packed-consumer/desktop Nx targets and platform CI proof.
+
 **Container integration tests** (CI's second job — Testcontainers spinning up Postgres/Redis). If
 Docker is running, run them; they are required when the change touches `packages/storage-postgres`,
 `packages/redis`, `packages/runtime`, or any `*.integration.test.ts`:
