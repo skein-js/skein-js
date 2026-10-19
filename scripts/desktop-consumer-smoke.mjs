@@ -11,6 +11,8 @@ const interactive = process.argv.includes("--interactive");
 const envArgument = process.argv.find((value) => value.startsWith("--env-file="));
 if (envArgument) process.loadEnvFile(path.resolve(root, envArgument.slice("--env-file=".length)));
 if (!["electron", "tauri"].includes(host)) throw new Error("Expected electron or tauri");
+console.log("Packed-consumer npm version:");
+run("npm", ["--version"]);
 const project = path.join(root, "examples", `desktop-${host}`);
 const require = createRequire(path.join(project, "package.json"));
 const temporary = await mkdtemp(path.join(tmpdir(), `skein-packed-${host}-`));

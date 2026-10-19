@@ -6,6 +6,9 @@ import { spawn } from "node:child_process";
 import { createServer } from "node:net";
 import { packWorkspace, root, run, installConsumer } from "./pack-local-consumer.mjs";
 
+console.log("Packed-consumer npm version:");
+run("npm", ["--version"]);
+
 // Exercise npm's file-spec encoding even on runners without Windows short-name temp paths.
 const temporary = await mkdtemp(path.join(tmpdir(), "skein-packed-local-~ path-"));
 const packed = packWorkspace(path.join(temporary, "packages"));
