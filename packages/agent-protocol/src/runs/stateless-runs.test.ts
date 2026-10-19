@@ -191,6 +191,22 @@ describe("on_completion", () => {
     expect(await deps.store.threads.get(threadId)).toBeNull();
   });
 
+  it("still deletes the thread when its checkpoints cannot be deleted", async () => {
+    const deps = createFixtureDeps();
+    deps.checkpointer.deleteThread = async () => {
+      throw new Error("checkpointer unavailable");
+    };
+    const { service } = await harness(deps);
+
+    const { threadId } = await service.runs.createWait({
+      assistant_id: "echo",
+      input: { value: "hi" },
+      on_completion: "delete",
+    });
+
+    expect(await deps.store.threads.get(threadId)).toBeNull();
+  });
+
   it("does NOT erase idempotency records when it tidies up its own thread", async () => {
     // The counterpart to the thread service's erasure. This cleanup deletes a thread the *server*
     // created and disposes of on every stateless run — it is not a caller asking for erasure. Routing

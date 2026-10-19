@@ -113,10 +113,30 @@ describe("RedisRunEventBus cross-instance", () => {
 
       await bus.close("idle-run");
       await received;
-      // Closing is delivered live over pub/sub, so it still costs no additional check.
-      expect(existsCalls).toBe(1);
+      // The close checks its own marker once (it is idempotent); the subscriber, told over pub/sub,
+      // makes no further check.
+      expect(existsCalls).toBe(2);
     } finally {
       await bus.dispose();
+    }
+  });
+
+  it("treats a repeated close as a no-op, so polling a finished run does not grow its stream", async () => {
+    const prefix = `skein:test:${randomUUID()}`;
+    const bus = new RedisRunEventBus(redis.url, { keyPrefix: prefix });
+    const raw = new Redis(redis.url);
+    try {
+      await bus.publish("done", frame(1));
+      await bus.close("done");
+      const length = await raw.xlen(`${prefix}:runs:stream:done`);
+
+      await bus.close("done");
+      await bus.close("done");
+
+      expect(await raw.xlen(`${prefix}:runs:stream:done`)).toBe(length);
+    } finally {
+      await bus.dispose();
+      raw.disconnect();
     }
   });
 

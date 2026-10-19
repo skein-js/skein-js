@@ -64,6 +64,13 @@ fn main() {
                 std::fs::remove_dir_all(&directory)?;
                 app.handle().exit(if status.success() { 0 } else { 1 });
             } else {
+                // Keep draining the sidecar's stdout: dropping the reader closes the pipe, and the
+                // backend's next log line would then fail with EPIPE.
+                std::thread::spawn(move || {
+                    for line in reader.lines().map_while(Result::ok) {
+                        println!("{line}");
+                    }
+                });
                 app.manage(Backend {
                     child: Mutex::new(child),
                     connection,

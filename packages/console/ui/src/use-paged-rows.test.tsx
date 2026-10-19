@@ -39,6 +39,33 @@ describe("usePagedRows", () => {
     await waitFor(() => expect(result.current.rows).toEqual(["a", "b"]));
   });
 
+  it("skips the probe for a page shorter than one the server already returned", async () => {
+    const rows = Array.from({ length: 60 }, (_, index) => index);
+    const load = vi.fn(async (offset: number, limit: number) => rows.slice(offset, offset + limit));
+    const { result } = renderHook(() => usePagedRows(load, "uncapped", 50));
+    await waitFor(() => expect(result.current.rows).toEqual(rows.slice(0, 50)));
+    expect(load).toHaveBeenCalledTimes(1);
+
+    act(() => result.current.next());
+    await waitFor(() => expect(result.current.rows).toEqual(rows.slice(50)));
+    expect(result.current.hasNext).toBe(false);
+    expect(load).toHaveBeenCalledTimes(2);
+  });
+
+  it("finds rows added to a collection that filled the server cap exactly", async () => {
+    const rows = Array.from({ length: 50 }, (_, index) => index);
+    const load = vi.fn(async (offset: number, limit: number) =>
+      rows.slice(offset, offset + Math.min(limit, 50)),
+    );
+    const { result } = renderHook(() => usePagedRows(load, "capped", 50));
+    await waitFor(() => expect(result.current.rows).toHaveLength(50));
+    expect(result.current.hasNext).toBe(false);
+
+    rows.push(50, 51);
+    act(() => result.current.reload());
+    await waitFor(() => expect(result.current.hasNext).toBe(true));
+  });
+
   it.each([
     { cap: 50, withCount: true },
     { cap: 17, withCount: true },

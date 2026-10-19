@@ -392,6 +392,8 @@ export class MemoryRunEventBus implements RunEventBus {
   }
 
   async close(runId: string): Promise<void> {
+    // Already released as finished: re-closing would recreate the channel only to release it again.
+    if (!this.#channels.has(runId) && this.#finishedRunIds.has(runId)) return;
     const channel = this.#channel(runId);
     channel.closed = true;
     this.#wake(channel);

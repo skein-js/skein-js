@@ -134,7 +134,8 @@ or gcloud settings, or accepts one in Settings. No project name/ID is hardcoded.
 a model; defaults are `gemini-3-flash-preview` for Google and `gpt-5-mini` for OpenAI. Provider-specific
 `GOOGLE_MODEL`, `OPENAI_MODEL`, `ANTHROPIC_MODEL` and `OLLAMA_MODEL` also work. The Vertex region defaults to `global`. Cloud providers require valid access and available billing/quota. Explicit environment preferences override saved
 UI preferences. UI-entered keys live only in backend session memory; only non-secret preferences
-are persisted. Selected source material and tool results are sent to the selected provider. Anthropic defaults to `claude-sonnet-5-5`; Ollama defaults to `qwen3:8b` at
+are persisted. Disconnecting stays in effect across restarts until the user reconnects, even when
+environment credentials remain available. Selected source material and tool results are sent to the selected provider. Anthropic defaults to `claude-sonnet-5-5`; Ollama defaults to `qwen3:8b` at
 `http://127.0.0.1:11434`. Ollama needs an installed tool-capable model and no API key. The app never
 downloads models automatically. All model names and the Ollama endpoint are editable. This is application code: Skein adds no
 provider configuration or credential store. Model integration remains application-owned.

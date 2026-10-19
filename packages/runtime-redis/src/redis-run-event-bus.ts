@@ -279,6 +279,10 @@ export class RedisRunEventBus implements RunEventBus {
   }
 
   async close(runId: string): Promise<void> {
+    // Idempotent: `join` closes every terminal run it is asked for, to restore a marker that expired.
+    // Re-closing a run still marked closed would append a close entry and refresh both TTLs on every
+    // poll, keeping a finished run's stream alive indefinitely.
+    if ((await this.#commands.exists(this.#closedKey(runId))) === 1) return;
     const streamKey = this.#streamKey(runId);
     const pipeline = this.#commands.pipeline();
     // The terminal marker lives in the stream too, so a late joiner replaying the stream also completes.

@@ -14,7 +14,8 @@ Nothing here adds a public library API or a new protocol.
 `model-session.ts` selects Vertex AI (Google ADC), Gemini API, OpenAI, Anthropic, or Ollama using the normal LangChain
 model integrations. Desktop Settings and environment variables configure provider, model, project
 region and Ollama endpoint. API keys can be supplied through the UI or environment; UI keys live only in backend
-session memory. Only non-secret preferences are persisted. Credentials never enter
+session memory. Only non-secret preferences are persisted, including a disconnected choice that
+remains in effect across restarts until the user reconnects. Credentials never enter
 protocol inputs or checkpointed configuration. Provider failures are surfaced rather than replaced
 with simulated answers. Deterministic output is limited to explicit tests and packaging proofs.
 
