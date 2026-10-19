@@ -2,23 +2,26 @@
 
 [![npm](https://img.shields.io/npm/v/skein-js?logo=npm&color=cb3837&label=skein-js)](https://www.npmjs.com/package/skein-js)&nbsp;[![downloads](https://img.shields.io/npm/dm/skein-js?color=blue)](https://www.npmjs.com/package/skein-js)&nbsp;[![license](https://img.shields.io/npm/l/skein-js?color=green)](./LICENSE)&nbsp;[![CI](https://github.com/skein-js/skein-js/actions/workflows/ci.yml/badge.svg)](https://github.com/skein-js/skein-js/actions/workflows/ci.yml)&nbsp;[![docs](https://img.shields.io/badge/docs-skein--js.github.io-3b82f6)](https://skein-js.github.io/skein-js/)
 
-**The open-source, self-hosted server runtime for LangGraph.js agents, in TypeScript.**
+**The open-source, self-hosted runtime for LangGraph.js agents, in TypeScript.**
 
 LangGraph.js defines and executes each agent graph. **skein-js hosts one or many of those graphs** and
-provides the server around them: an API, persistent conversations, streaming, background work, and a
-console. It works with LangGraph.js and is an alternative to LangGraph Platform (now LangSmith
-Deployment).
+provides an Agent Protocol API, persistent conversations, streaming, background work, and a console.
+Run it as a self-hosted server or embed it in desktop and terminal applications. It works with
+LangGraph.js and is an alternative to LangGraph Platform (now LangSmith Deployment).
 
 Self-host your [LangGraph.js](https://docs.langchain.com/oss/javascript/langgraph/overview) agents with
 threads, streaming, long-term memory, human-in-the-loop, background work, and scheduling already
-built in. Run them on **your infrastructure** and your Postgres — Cloud Run, Railway, Fly.io, Render,
-AWS, Kubernetes, or a plain VPS. Your agents, your data, **no license key, no per-run bill**.
+built in. Run them on **your infrastructure** with Postgres and Redis — Cloud Run, Railway, Fly.io,
+Render, AWS, Kubernetes, or a plain VPS — or on **your device** with SQLite. Your agents, your data,
+**no license key, no per-run bill**.
 
 **Works with:**
 [LangGraph.js](https://docs.langchain.com/oss/javascript/langgraph/overview) · LangGraph SDK ·
 [Agent Chat UI](https://github.com/langchain-ai/agent-chat-ui) · LangGraph Studio
 
 **Fits your stack:** Express · Fastify · NestJS · Next.js · Bun · Deno · React · Vue · Svelte · Angular
+
+**Runs locally:** Electron · Tauri with a Node backend · Node CLI apps · separate daemons
 
 **Turn LangGraph graphs into real-world workflows.** LangGraph owns the orchestration; it doesn't own
 provider integrations. Skein [channels](./docs/channels.md) connect authenticated sources such as
@@ -137,6 +140,7 @@ restart — state is restored from `.skein/`. Already have a LangGraph project? 
 - [What you get](#what-you-get)
 - [The console](#the-console)
 - [Building rich agent UIs](#building-rich-agent-uis)
+- [Desktop and terminal apps](#desktop-and-terminal-apps)
 - [Using the CLI](#using-the-cli)
 - [Deploy anywhere](#deploy-anywhere)
 - [Embedding skein-js in your own server](#embedding-skein-js-in-your-own-server)
@@ -158,14 +162,15 @@ Your graph is the product. skein-js handles the production plumbing around it:
 | ------------------------ | ------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | **Threads**              | Conversations that persist, addressable by your own key — a ticket id, a phone number. [→](./docs/threads.md)                                           |
 | **Runs**                 | Wait for it, stream it, or queue it in the background — plus what happens when a second message lands mid-run. [→](./docs/runs.md)                      |
-| **Streaming**            | SSE with reconnect and replay, a real `streamEvents` mode, fan-out across instances. [→](./docs/streaming.md)                                           |
+| **Streaming**            | SSE with reconnect and replay, a real `streamEvents` mode, Redis fan-out across instances. [→](./docs/streaming.md)                                     |
 | **Human-in-the-loop**    | `interrupt()` parks a run on a checkpoint holding no connection. Resume hours later, from any client. [→](./docs/human-in-the-loop.md)                  |
 | **Time travel**          | Fork from any past checkpoint and run forward — the machinery behind "edit and resubmit". [→](./docs/threads.md)                                        |
 | **Long-term memory**     | A store reachable via `getStore()` inside a node, with semantic search and TTL. [→](./docs/memory.md)                                                   |
 | **Assistants**           | The same graph configured per tenant or per experiment, versioned, with one-call rollback. [→](./docs/assistants.md)                                    |
 | **Scheduled work**       | Crons that fire exactly once across instances, no leader election. [→](./docs/crons.md)                                                                 |
 | **Background jobs**      | Queue a run, get an id back, hear the result on a signed webhook. [→](./docs/background-jobs.md)                                                        |
-| **Durable execution**    | Postgres state, a Redis queue, crash recovery, and callbacks committed with the run. [→](./docs/webhooks.md)                                            |
+| **Durable execution**    | Postgres/Redis for shared deployments or SQLite for one local owner, with callbacks committed with the run. [→](./docs/storage.md)                      |
+| **Local applications**   | Embed the same Agent Protocol engine with SQLite resources, checkpoints, and queued work. [→](./docs/local-deployment.md)                               |
 | **Workflows & channels** | Bring authenticated provider events into LangGraph, then deliver workflow outcomes to the source or an allowlisted destination. [→](./docs/channels.md) |
 | **Observability**        | LangSmith, PostHog and OpenTelemetry sinks — or your own. [→](./docs/observability.md)                                                                  |
 
@@ -233,7 +238,8 @@ setup. See [`docs/react-sdk.md`](./docs/react-sdk.md).
 
 **Long-term memory across threads** — inside a graph node, `getStore()` gives you a namespaced,
 persistent store that outlives a single conversation. skein-js injects it as a LangGraph
-`BaseStore` — in-memory in dev, Postgres with **pgvector semantic search** in production:
+`BaseStore` — in-memory in dev, SQLite with text/filter search for local apps, or Postgres with
+**pgvector semantic search**:
 
 ```ts
 import { getStore } from "@langchain/langgraph";
@@ -246,6 +252,38 @@ const recalled = await store.search(["memories", userId], { query: "seat prefere
 
 See [`docs/storage.md`](./docs/storage.md).
 
+## Desktop and terminal apps
+
+Build a meeting workspace, a document library, a daily planner, or another application around your
+LangGraph graphs. [`@skein-js/local`](./packages/local) assembles the existing Agent Protocol engine
+with a SQLite store, durable queue, and LangGraph's SQLite checkpointer. Local deployment needs no
+Postgres, Redis, or Docker. The library supports Node 22/24; the examples build with Node 24.
+
+The same SDK and protocol power background work, streamed answers and tool activity, saved
+conversations, approval screens, checkpoint history, and alternative drafts. These examples show
+those capabilities in ordinary applications:
+
+| Application                                           | What you can build                                                                                               | Run from the repository root after `pnpm install` |
+| ----------------------------------------------------- | ---------------------------------------------------------------------------------------------------------------- | ------------------------------------------------- |
+| [**Daybook** — Electron](./examples/desktop-electron) | A meeting workspace that reads project context, searches earlier meetings, and saves a recap after you review it | `pnpm nx run example-desktop-electron:start`      |
+| [**Reading Room** — Tauri](./examples/desktop-tauri)  | A document library that reads sources, searches saved documents, and produces reading briefs for review          | `pnpm nx run example-desktop-tauri:start`         |
+| [**Dayplan** — CLI](./examples/local-cli)             | A daily planner that reads a task inbox and earlier plans, then asks before saving focus blocks                  | `pnpm nx run example-local-cli:start`             |
+
+Desktop start commands package and open the apps. Their first build requires native build tools;
+Tauri also requires Rust. Each example's README covers setup. Choose Vertex AI, Gemini API, OpenAI,
+Anthropic, or Ollama through desktop **Settings** or environment variables. Models, credentials,
+tools, and local file actions belong to the application.
+
+The host chooses the application-data directory and process lifetime. Embed in an Electron utility
+process, package a Node backend with Tauri, or run a separate daemon. Desktop UIs use the existing
+LangGraph SDK over HTTP/SSE; terminal apps can call the protocol service directly. Assembly starts
+no workers or listeners until the host starts them.
+
+SQLite preserves records, checkpoints, and unclaimed queued jobs across restarts. Abandoned
+attempts become `ProcessLostError` failures; the application decides whether to retry or resume.
+Live stream frames stay in memory. See the [local deployment guide](./docs/local-deployment.md) for
+embedding, lifecycle, authentication, and crash behavior.
+
 ## Using the CLI
 
 Point `skein` at an existing `langgraph.json`; your graph code and config are unchanged.
@@ -253,6 +291,8 @@ Point `skein` at an existing `langgraph.json`; your graph code and config are un
 ```bash
 skein dev                                  # in-process dev server, hot reload, no Docker (port 2024)
 skein dev --store postgres --queue redis   # dev against production-shaped storage (POSTGRES_URI / REDIS_URI)
+skein dev --store sqlite --queue sqlite    # durable local state, no database services
+skein start -c .skein/build/langgraph.json --store sqlite --queue sqlite  # run a built local artifact
 skein up                                    # self-hosted stack via Docker Compose: app + Postgres + Redis
 skein build -t my-agent                     # build a deployable Docker image
 skein build -t my-agent --runtime bun       # native Bun image (Deno is also available)
@@ -262,15 +302,21 @@ skein dockerfile -o Dockerfile              # emit a standalone Dockerfile
 | Command            | What it does                                                              | LangGraph CLI equivalent |
 | ------------------ | ------------------------------------------------------------------------- | ------------------------ |
 | `skein dev`        | In-process dev server: vite-loaded TS graphs, hot reload, `.skein/` state | `langgraph dev`          |
+| `skein start`      | Run a built artifact with the selected storage and queue                  | —                        |
 | `skein up`         | Production Docker Compose stack (app + Postgres + Redis)                  | `langgraph up`           |
 | `skein build`      | Build a deployable Docker image                                           | `langgraph build`        |
 | `skein dockerfile` | Emit a standalone Dockerfile                                              | `langgraph dockerfile`   |
 
-Useful `skein dev` flags: `-p, --port` (default 2024), `--host`, `--store memory|postgres`,
-`--queue memory|redis`, `--concurrency` (background runs at once, default 10 — also
+Useful `skein dev` flags: `-p, --port` (default 2024), `--host`, `--store memory|postgres|sqlite`,
+`--queue memory|redis|sqlite`, `--sqlite-path`, `--concurrency` (background runs at once, default 10 — also
 `-n, --n-jobs-per-worker`, as in the LangGraph CLI), `--no-persist`, `--no-reload`, `-v, --verbose`.
 Full mapping and the annotated `langgraph.json`:
 [`docs/langgraph-cli-compat.md`](./docs/langgraph-cli-compat.md).
+
+SQLite requires the store/queue pair and an installed `@skein-js/local` with
+`@langchain/langgraph-checkpoint-sqlite@~1.0.4`. Both `dev` and `start` default to
+`.skein/state.sqlite` under the working directory; `--sqlite-path` selects another file. Scaffold
+this setup with `npm create skein-js@latest my-app -- --storage sqlite`.
 
 Production images default to Node 24 LTS. Select Node, Bun, or Deno with `--runtime` and optionally
 `--runtime-version`, or set `skein.runtime` in `langgraph.json`. Bun and Deno use the native Fetch
@@ -464,6 +510,9 @@ toolset:
   long-term memory with semantic search, while checkpoints stay LangGraph-native via
   **[`PostgresSaver`](https://github.com/langchain-ai/langgraphjs/tree/main/libs/checkpoint-postgres)** —
   reused, not reinvented.
+- **SQLite** backs local protocol resources and the run queue in one exclusively owned file.
+  Background runs and jobs commit together. The upstream **`SqliteSaver`** shares the connection
+  for LangGraph checkpoints; [`@skein-js/local`](./packages/local) supplies the assembly.
 
 Because storage and the queue are **pluggable drivers**, `skein dev` can even run against
 production-shaped Postgres/Redis without Docker (`--store postgres --queue redis`). None of this
@@ -472,13 +521,14 @@ and [docs/runs-and-redis.md](./docs/runs-and-redis.md).
 
 ## Packages
 
-Most projects install only the **CLI** (`skein-js`). The rest are building blocks for embedding,
-custom drivers, or a custom server; they share one version, so one number pins the whole set. Each
+For a server configured through `langgraph.json`, start with the **CLI** (`skein-js`). For local
+embedding, start with **`@skein-js/local`**. The other packages provide adapters, custom drivers,
+and integration building blocks. They share one version, so one number pins the whole set. Each
 section links to that package's README for install, usage, and API reference.
 
 ### `skein-js` — the CLI
 
-The drop-in for the LangGraph CLI; this is the only package most projects install.
+The drop-in for the LangGraph CLI, covering development, artifact builds, and server startup.
 
 ```bash
 pnpm add -D skein-js
@@ -580,8 +630,9 @@ no adapter depends on another.
 
 ### `@skein-js/runtime` — production wiring
 
-Assembles a production `ProtocolDeps` (memory / Postgres / Redis) from a `langgraph.json` — the same
-wiring the CLI uses. Use it to embed a production-shaped server in your own app.
+Assembles `ProtocolDeps` with memory, Postgres/Redis, or the SQLite pair from a `langgraph.json` —
+the same wiring the CLI uses. SQLite loads the optional `@skein-js/local` package. Use that package
+directly for embedding graphs in code with a smaller dependency tree.
 
 ```bash
 pnpm add @skein-js/runtime
@@ -597,6 +648,21 @@ const runtime = await buildRuntime({
 ```
 
 → [`packages/runtime`](./packages/runtime)
+
+### `@skein-js/local` — SQLite embedding
+
+`embedSqliteGraphs(graphs, { sqlitePath })` supplies protocol dependencies backed by SQLite and the
+upstream LangGraph saver. Give it an absolute application-data path, then use the protocol service
+or an existing HTTP adapter. The host owns worker startup, listeners, and shutdown; the helper
+returns `{ deps, dispose }`.
+
+```bash
+pnpm add @skein-js/local @langchain/langgraph @langchain/langgraph-checkpoint-sqlite@~1.0.4
+```
+
+The library installs without the server configuration loader, Postgres, Redis, BullMQ, or HTTP
+adapters. See [`packages/local`](./packages/local) and the
+[local deployment guide](./docs/local-deployment.md) for a complete embedding example.
 
 ### `@skein-js/config` — `langgraph.json` loader
 
@@ -646,6 +712,7 @@ cross-instance fan-out). These map directly to the CLI's `--store` and `--queue`
 | Package                                                     | Use it for                                                                               | Install                               |
 | ----------------------------------------------------------- | ---------------------------------------------------------------------------------------- | ------------------------------------- |
 | [`@skein-js/storage-memory`](./packages/storage-memory)     | Zero-dependency in-memory store + queue + bus (dev / tests)                              | `pnpm add @skein-js/storage-memory`   |
+| [`@skein-js/storage-sqlite`](./packages/storage-sqlite)     | Local protocol store + durable run queue in one SQLite file; text/filter search          | `pnpm add @skein-js/storage-sqlite`   |
 | [`@skein-js/storage-postgres`](./packages/storage-postgres) | Production Postgres store with **pgvector** semantic search; `PostgresSaver` checkpoints | `pnpm add @skein-js/storage-postgres` |
 | [`@skein-js/redis`](./packages/runtime-redis)               | Redis job queue (BullMQ) + cross-instance streaming bus (multi-instance prod)            | `pnpm add @skein-js/redis`            |
 
@@ -673,7 +740,9 @@ An MCP endpoint and the remaining LangGraph SDK gaps are planned. See the
 
 ## Examples
 
-Each is a runnable project — `cd` into it and follow its README.
+Each is a runnable project — `cd` into it and follow its README. For the **Daybook**, **Reading Room**,
+and **Dayplan** local applications, use the repository-root commands under
+[Desktop and terminal apps](#desktop-and-terminal-apps).
 
 | Example                                                                               | What you'll learn                                                                                                                                                                                      | How to run                 |
 | ------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ | -------------------------- |
@@ -694,8 +763,12 @@ Each is a runnable project — `cd` into it and follow its README.
 skein-js is verified in layers — not just unit tests, but real clients driving a real server. The
 examples above _are_ the integration/e2e suite:
 
-- **Storage conformance** — every storage driver (memory + Postgres) runs against one shared
+- **Storage conformance** — every storage driver (memory + SQLite + Postgres) runs against one shared
   `SkeinStore` conformance suite, so drivers behave identically.
+- **Local deployment and packaging** — clean packed Node 22/24 consumers verify SQLite persistence,
+  approval resume after reopening, and scaffold install/build/start. Electron 44 and Tauri 2 gates
+  install and launch native apps on Linux x64, Windows x64, and macOS ARM64/x64, exercising the SDK,
+  streaming, local actions, checkpoints, and authentication.
 - **SDK conformance (e2e)** — `examples/express-basic` (and the Fastify/NestJS `*-basic` + `*-app`
   examples) are exercised by the **real `@langchain/langgraph-sdk`** client (`threads.create`,
   `runs.stream`, `runs.wait`). Every adapter also has its own HTTP conformance suite (`fetch` against
@@ -730,6 +803,7 @@ Start here:
 - [Workflows and channels](https://skein-js.github.io/skein-js/channels) — connect provider sources and durable destinations through LangGraph workflows
 - [Observability](https://skein-js.github.io/skein-js/observability) — PostHog, LangSmith, OpenTelemetry, and custom telemetry
 - [Deploy anywhere](https://skein-js.github.io/skein-js/deploy) — Cloud Run, Railway, Fly.io, Render, AWS, Kubernetes, VPS
+- [Local deployment](./docs/local-deployment.md) — SQLite embedding, desktop and CLI apps, separate daemons, and crash behavior
 
 The source markdown lives in [`docs/`](./docs); the site's sidebar is the complete index. This list is
 deliberately short — it used to mirror the whole set and had already drifted out of date.
