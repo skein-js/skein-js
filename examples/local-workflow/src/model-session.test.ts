@@ -134,6 +134,21 @@ it.each(["gemini", "openai"] as const)(
   },
 );
 
+it("stays disconnected across a restart when the saved preference says so", async () => {
+  vi.stubEnv("MODEL_PROVIDER", "gemini");
+  vi.stubEnv("GOOGLE_API_KEY", "environment-test-key");
+  const session = createModelSession();
+
+  await session.initialize({
+    provider: "gemini",
+    model: "gemini-3-flash-preview",
+    disconnected: true,
+  });
+
+  expect(session.status().configured).toBe(false);
+  expect(() => session.createModel()).toThrow("Connect a model");
+});
+
 it("keeps the working connection when a replacement key is rejected", async () => {
   vi.stubEnv("MODEL_PROVIDER", "gemini");
   vi.stubEnv("GOOGLE_API_KEY", "existing-test-key");

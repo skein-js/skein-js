@@ -54,8 +54,9 @@ export interface StartCommandOptions {
   store: Extract<StoreDriver, "postgres" | "sqlite">;
   /** Run queue + stream bus. Redis only (`REDIS_URI`), for the same reason as `store`. */
   queue: Extract<QueueDriver, "redis" | "sqlite">;
-  /** `--concurrency`: queued runs the background worker executes at once. Unset → env → default. */
+  /** `--sqlite-path`: the SQLite database file. Resolved against the cwd; unset → `.skein/state.sqlite`. */
   sqlitePath?: string;
+  /** `--concurrency`: queued runs the background worker executes at once. Unset → env → default. */
   concurrency?: number;
   /** `--n-jobs-per-worker` / `-n`: the LangGraph spelling; used only when `--concurrency` is absent. */
   nJobsPerWorker?: number;

@@ -210,6 +210,8 @@ export function createModelSession() {
       };
       if (provider === "vertex" && !preferences.project)
         preferences.project = await new GoogleAuth().getProjectId().catch(() => "");
+      // A disconnect outlives the process; otherwise an environment key would quietly reconnect it.
+      enabled = preference?.["disconnected"] !== true;
       return status();
     },
     status,

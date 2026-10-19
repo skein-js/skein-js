@@ -929,7 +929,10 @@ export function createRunService(ctx: ProtocolContext): RunService {
       if (!run) {
         throw SkeinHttpError.notFound(`Run "${runId}" not found.`);
       }
-      // Closing a terminal stream retains replay while restoring a lost completion marker.
+      // A terminal run's completion marker can be gone — the process restarted over a durable store,
+      // or the bus's retention expired — and a subscriber would then wait forever. Closing restores
+      // it; the drivers treat a close of a run they still know is closed as a no-op, so polling a
+      // finished run reads rather than writes.
       if (isTerminalRunStatus(run.status)) await deps.bus.close(runId);
       return deps.bus.subscribe(runId, afterSeq);
     },

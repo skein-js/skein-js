@@ -14,7 +14,12 @@ async function stop() {
   await server.dispose();
   process.exit(0);
 }
+// Any line, or the pipe closing, means the host is gone or quitting. A crashed or force-killed host
+// only closes stdin, and a sidecar left running would keep the SQLite file locked for the next launch.
 process.stdin.on("data", () => {
+  void stop();
+});
+process.stdin.on("end", () => {
   void stop();
 });
 process.stdin.resume();

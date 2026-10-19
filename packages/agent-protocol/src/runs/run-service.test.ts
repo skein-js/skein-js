@@ -262,10 +262,13 @@ describe("run service", () => {
     const run = await service.runs.createStatelessBackground(request);
     const kwargs = await deps.store.runs.getKwargs(run.run_id);
     expect(Date.parse(kwargs!.queue_not_before!)).toBeGreaterThan(Date.now() + 59_000);
-    const inline = await service.runs.createWait({
+    // Forged at the top level, where `toKwargs` would pick it up — not inside the graph input.
+    const inlineRequest = {
       assistant_id: "echo",
-      input: { queue_not_before: "forged" },
-    });
+      queue_not_before: "1900-01-01T00:00:00.000Z",
+      input: {},
+    };
+    const inline = await service.runs.createWait(inlineRequest);
     expect((await deps.store.runs.getKwargs(inline.runId))?.queue_not_before).toBeUndefined();
   });
 

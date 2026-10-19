@@ -134,6 +134,29 @@ export async function startRunExecution(
     control.clear(runId);
     runBaseCheckpoints.delete(runId);
     await deleteThreadIfRunOwnedIt(ctx, run, kwargs);
+    if (runControl.reason.current === "cancel") await deleteCheckpointsOfDeletedThread(ctx, run);
+  }
+}
+
+/**
+ * Drop checkpoints a cancelled run wrote after its thread was deleted.
+ *
+ * `DELETE /threads/:id` only *signals* the abort — the run may be executing on another instance — and
+ * then erases the thread's checkpoints. The run's current superstep can still finish and save one
+ * more, recreating rows for a thread no API can reach. The instance executing the run is the only one
+ * that knows when it has stopped writing, so the sweep belongs here, after the run has settled.
+ * Gated on a cancel, so an ordinary run never pays the extra read.
+ */
+async function deleteCheckpointsOfDeletedThread(ctx: ProtocolContext, run: Run): Promise<void> {
+  const { deps } = ctx;
+  try {
+    if (await deps.store.threads.get(run.thread_id)) return;
+    await deps.checkpointer.deleteThread(run.thread_id);
+  } catch (error) {
+    deps.logger.warn(
+      `run ${run.run_id}: could not delete checkpoints it wrote after thread ${run.thread_id} was deleted`,
+      error,
+    );
   }
 }
 
@@ -160,12 +183,20 @@ async function deleteThreadIfRunOwnedIt(
   const { deps } = ctx;
   const settled = await deps.store.runs.get(run.run_id);
   if (settled?.status === "interrupted") return;
+  // Best-effort by construction: the run itself succeeded, and failing it now — after the client has
+  // its result and the webhook has fired — would report a completed run as broken. The two deletes are
+  // independent, so a checkpointer failure still removes the thread row.
   try {
     await deps.checkpointer.deleteThread(run.thread_id);
+  } catch (error) {
+    deps.logger.warn(
+      `run ${run.run_id}: could not delete the checkpoints of its stateless thread ${run.thread_id}`,
+      error,
+    );
+  }
+  try {
     await deps.store.threads.delete(run.thread_id);
   } catch (error) {
-    // Best-effort by construction: the run itself succeeded, and failing it now — after the client has
-    // its result and the webhook has fired — would report a completed run as broken.
     deps.logger.warn(
       `run ${run.run_id}: could not delete its stateless thread ${run.thread_id} on completion`,
       error,

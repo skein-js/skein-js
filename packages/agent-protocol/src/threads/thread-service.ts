@@ -355,6 +355,10 @@ export function createThreadService(ctx: ProtocolContext): ThreadService {
         await deps.bus.close(run.run_id);
       }
     }
+    // Checkpoints before the row, and not best-effort: a failure leaves the thread in place, so the
+    // caller's retry of `DELETE` finishes the erasure. Row-first would strand unreachable checkpoints.
+    // A run still unwinding from the abort above sweeps any checkpoint it writes after this, once it
+    // settles (`deleteCheckpointsOfDeletedThread`).
     await deps.checkpointer.deleteThread(threadId);
     await deps.store.threads.delete(threadId);
     // Erasure has to reach the idempotency records too. A recorded response outlives its run by

@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 
-import { createFixtureDeps, createFixtureResolver } from "../__fixtures__/deps.js";
+import { collect, createFixtureDeps, createFixtureResolver } from "../__fixtures__/deps.js";
 import { createContext } from "../context.js";
 import type { GraphResolver, ResolvedGraph } from "../deps.js";
 import { createProtocolServiceFromContext } from "../service.js";
@@ -131,6 +131,35 @@ describe("thread service", () => {
     await service.threads.delete(thread.thread_id);
     expect(await service.threads.get(thread.thread_id).catch((e) => e.status)).toBe(404);
     expect(await deps.store.runs.get(run.run_id)).toBeNull();
+  });
+
+  it("sweeps checkpoints again once a run aborted by the delete has settled", async () => {
+    // The delete only signals the abort, so the run's last superstep may still save a checkpoint
+    // after the thread's checkpoints were erased. The settled run sweeps them a second time.
+    const deps = createFixtureDeps();
+    const service = await serviceWithAssistants(deps);
+    const thread = await service.threads.create();
+    const { runId, frames } = await service.runs.createStream({
+      thread_id: thread.thread_id,
+      assistant_id: "slow",
+      input: {},
+    });
+    await new Promise((resolve) => setTimeout(resolve, 20));
+    expect((await deps.store.runs.get(runId))?.status).toBe("running");
+    const checkpointDeletes: string[] = [];
+    const deleteCheckpoints = deps.checkpointer.deleteThread.bind(deps.checkpointer);
+    deps.checkpointer.deleteThread = async (threadId) => {
+      checkpointDeletes.push(threadId);
+      await deleteCheckpoints(threadId);
+    };
+
+    await service.threads.delete(thread.thread_id);
+    await collect(frames);
+    for (let attempt = 0; attempt < 100 && checkpointDeletes.length < 2; attempt += 1) {
+      await new Promise((resolve) => setTimeout(resolve, 10));
+    }
+
+    expect(checkpointDeletes).toEqual([thread.thread_id, thread.thread_id]);
   });
 
   it("erases the thread's idempotency records, which hold its recorded run output", async () => {

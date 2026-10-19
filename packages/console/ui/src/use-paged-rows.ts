@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 
 import { useAsync } from "./use-async";
 
@@ -28,6 +28,10 @@ export function usePagedRows<Row>(
       : firstPageOffsets;
   const page = offsets.length - 1;
   const offset = offsets[page]!;
+  // The most rows the server has returned in one response. The page cap (`SKEIN_MAX_PAGE_SIZE`) is at
+  // least this, so a shorter page cannot have been cut by it. Only this survives reloads: whether a
+  // collection *ended* stops being true as soon as a row is added.
+  const largestResponse = useRef(0);
   const result = useAsync(
     async (signal) => {
       const [fetched, total] = await Promise.all([
@@ -36,11 +40,13 @@ export function usePagedRows<Row>(
       ]);
       const rows = fetched.slice(0, pageSize);
       // A short response can reflect the server's page cap, even when more rows exist.
+      const mayBeCapped = fetched.length >= largestResponse.current;
+      largestResponse.current = Math.max(largestResponse.current, fetched.length);
       const hasNext =
         rows.length > 0 &&
         (fetched.length > pageSize ||
           (total === undefined
-            ? (await load(offset + rows.length, 1, signal)).length > 0
+            ? mayBeCapped && (await load(offset + rows.length, 1, signal)).length > 0
             : offset + rows.length < total));
       return {
         queryKey,

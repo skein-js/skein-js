@@ -1,3 +1,4 @@
+import { createHash } from "node:crypto";
 import { mkdir, readFile, writeFile } from "node:fs/promises";
 import { join } from "node:path";
 
@@ -180,9 +181,13 @@ export function buildDailyPlanner(
       const plans = join(directory, "daily-plans");
       await mkdir(plans, { recursive: true });
       const id = String(getConfig().configurable?.thread_id);
-      const filename = join(plans, `${encodeURIComponent(id)}.md`);
+      // Named by content, as recaps are: a replayed node rewrites nothing, and a newer approved plan on
+      // the same thread gets its own file instead of losing to the first one's EEXIST.
+      const markdown = dailyPlanMarkdown(current);
+      const revision = createHash("sha256").update(markdown).digest("hex");
+      const filename = join(plans, `${encodeURIComponent(id)}-${revision}.md`);
       try {
-        await writeFile(filename, dailyPlanMarkdown(current), { flag: "wx" });
+        await writeFile(filename, markdown, { flag: "wx" });
       } catch (error) {
         if ((error as NodeJS.ErrnoException).code !== "EEXIST") throw error;
       }

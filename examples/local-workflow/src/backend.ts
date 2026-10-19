@@ -102,12 +102,18 @@ export async function startWorkflowServer(
         });
       }
     });
-    server.app.delete("/app/model", (request, response) => {
+    server.app.delete("/app/model", async (request, response) => {
       if (!hasLaunchCredential(request.headers.authorization, token)) {
         response.status(401).json({ message: "Launch credential required." });
         return;
       }
       session.disconnect();
+      // Kept with the saved choice, so the next launch stays disconnected until the user reconnects.
+      const saved = await embedded.deps.store.store.get(["meeting-workspace"], "model");
+      await embedded.deps.store.store.put(["meeting-workspace"], "model", {
+        ...saved?.value,
+        disconnected: true,
+      });
       response.json(session.status());
     });
     const bound = await server.listen(0, "127.0.0.1");
