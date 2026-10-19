@@ -34,8 +34,8 @@ async function waitFor(predicate: () => boolean, timeoutMs = 2000): Promise<void
 }
 
 /**
- * The behavioral contract every {@link RunQueue} driver must satisfy — the in-memory queue and
- * `@skein-js/redis` run the *same* suite, so the run worker behaves identically whichever it has.
+ * The behavioral contract every {@link RunQueue} driver must satisfy — memory, SQLite, and
+ * `@skein-js/redis` run the same suite, so the run worker behaves identically whichever it has.
  * At the *driver's* default concurrency of 1 (what `consume()` uses when passed no options), a
  * single consumer delivers runs in enqueue order. The run worker passes a higher value by default,
  * above which no ordering across runs is guaranteed — see `DEFAULT_RUN_CONCURRENCY`.
@@ -71,8 +71,8 @@ export function runRunQueueConformance(label: string, makeQueue: RunQueueFactory
     });
 
     // What makes the cron scheduler's outbox sweep safe: it re-enqueues runs it cannot prove
-    // reached the queue, so enqueueing the same run twice must not execute it twice. Both drivers
-    // key on the run id to dedupe — BullMQ via `jobId`, the memory queue by scanning its FIFO.
+    // reached the queue, so enqueueing the same run twice must not execute it twice. Every driver
+    // keys on the run id to dedupe.
     it("does not deliver the same run twice when it is enqueued twice", async () => {
       const queue = await make();
       // Both enqueues happen **before** a consumer exists. With one running, a driver that drops a
@@ -113,21 +113,25 @@ export function runRunQueueConformance(label: string, makeQueue: RunQueueFactory
     it("holds a delayed run back until its delay elapses", async () => {
       const queue = await make();
       const received: string[] = [];
+      let delayedRunStartedAt = 0;
       const consumer = queue.consume(async (run) => {
         received.push(run.run_id);
+        if (run.run_id === "later") delayedRunStartedAt = Date.now();
       });
 
-      await queue.enqueue({ run_id: "later", thread_id: "t" }, { delayMs: 400 });
+      const delayMs = 400;
+      const notBefore = Date.now() + delayMs;
+      await queue.enqueue({ run_id: "later", thread_id: "t" }, { delayMs });
       // An undelayed run enqueued *after* it still goes first — the delay is a visibility time, not a
       // position in the queue.
       await queue.enqueue({ run_id: "now", thread_id: "t" });
 
-      await waitFor(() => received.includes("now"));
-      expect(received).not.toContain("later");
-
       await waitFor(() => received.includes("later"), 4000);
       await consumer.close();
       expect(received).toEqual(["now", "later"]);
+      // Measure when the processor starts. A busy runner may not wake the test's polling timer
+      // until both jobs have correctly run, after the deadline has passed.
+      expect(delayedRunStartedAt).toBeGreaterThanOrEqual(notBefore);
     });
 
     it("treats a zero delay as an ordinary enqueue", async () => {
@@ -149,22 +153,24 @@ export function runRunQueueConformance(label: string, makeQueue: RunQueueFactory
     // delay short or schedule it a second time.
     it("does not let a re-enqueue cut a pending delay short", async () => {
       const queue = await make();
-      await queue.enqueue({ run_id: "delayed", thread_id: "t" }, { delayMs: 400 });
+      const delayMs = 400;
+      const notBefore = Date.now() + delayMs;
+      await queue.enqueue({ run_id: "delayed", thread_id: "t" }, { delayMs });
       await queue.enqueue({ run_id: "delayed", thread_id: "t" });
 
       const received: string[] = [];
+      let delayedRunStartedAt = 0;
       const consumer = queue.consume(async (run) => {
         received.push(run.run_id);
+        delayedRunStartedAt = Date.now();
       });
-
-      await new Promise((resolve) => setTimeout(resolve, 150));
-      expect(received).toEqual([]);
 
       await waitFor(() => received.length === 1, 4000);
       // Long enough after it came due that a second delivery would have landed.
       await new Promise((resolve) => setTimeout(resolve, 200));
       await consumer.close();
       expect(received).toEqual(["delayed"]);
+      expect(delayedRunStartedAt).toBeGreaterThanOrEqual(notBefore);
     });
   });
 }

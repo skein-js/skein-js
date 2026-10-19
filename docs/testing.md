@@ -112,6 +112,10 @@ SQLite runs the same suite in `storage-sqlite` against a real database file with
 These cases verify consistent resource behavior across all three drivers; queue ownership and
 crash recovery follow each driver's contract.
 
+Queue delay conformance uses real clocks, including Redis's clock. Record the delivery time inside
+the processor and compare it with the earliest allowed time. A busy runner may wake a test's polling
+timer after the deadline, so an assertion that a delayed job is still absent can reject valid delivery.
+
 **Adding a `SkeinStore` method means adding conformance cases in the same commit.** Without them the
 drivers drift on exactly the details nothing else checks — ordering, tie-breaking, and what an omitted
 `limit` means. Two rules the suite already encodes and a new method must follow:
