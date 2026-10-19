@@ -244,8 +244,9 @@ async function remember(state: typeof MessagesAnnotation.State) {
 }
 ```
 
-In `dev` this is in-memory. In production it is Postgres, with vector search for semantic recall —
-and your node code does not change. See [storage.md](./storage.md) and [memory.md](./memory.md).
+The default `dev` uses memory. A server can use Postgres with vector search for semantic recall;
+a local application can use SQLite with text/filter search. Your node code does not change.
+See [storage.md](./storage.md) and [memory.md](./memory.md).
 
 ## 9. Ship it
 
@@ -263,8 +264,11 @@ Nothing to edit first: the `POSTGRES_URI` and `REDIS_URI` in `.env` already matc
 `build` compiles your TypeScript graphs ahead of time; `start` serves that output with no TypeScript
 toolchain in the loop. It is exactly what the production container runs.
 
-`start` requires Postgres and Redis on purpose. That is what makes runs survive a restart, lets a
-human approve an interrupt an hour later, and lets you run more than one instance.
+The default `start` selects Postgres and Redis for durable state, queued work, and multiple
+instances. It is one deployment option. For a desktop app, CLI, daemon, or single Node owner,
+choose [SQLite](./local-deployment.md): scaffold with `--storage sqlite` to generate SQLite
+dev/start scripts without Compose. The same graphs, checkpoints, and protocol are used; the
+application decides whether to retry an abandoned attempt.
 
 For a container, `npx skein up` brings up the whole stack, and `npx skein build` produces an image.
 Then pick a host: [Cloud Run](./deploy-cloud-run.md), [Fly](./deploy-fly.md),

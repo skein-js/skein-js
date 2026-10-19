@@ -26,6 +26,9 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
+        with:
+          # Match Pages: page timestamps and sitemap lastmod use git history.
+          fetch-depth: 0
 
       - uses: pnpm/action-setup@v4
       - uses: actions/setup-node@v4
@@ -50,8 +53,8 @@ jobs:
 
       # `docs` is an Nx project, so a broken link target or config change fails here rather than at
       # deploy time (docs.yml only runs on push to main).
-      - name: Build the docs site
-        run: pnpm exec nx build docs --output-style=stream
+      - name: Build and verify the docs site
+        run: pnpm exec nx run docs:check-seo --output-style=stream
 
   links:
     name: docs links

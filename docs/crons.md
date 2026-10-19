@@ -146,14 +146,19 @@ runs on.
 
 ## Driver requirements
 
-Crons work on **every** store/queue combination, including `skein dev` on memory with no Docker.
+Crons work on every supported store/queue combination, including `skein dev` on memory with no Docker.
 
 | Store    | Queue  | Crons                                             | Posture                   |
 | -------- | ------ | ------------------------------------------------- | ------------------------- |
 | memory   | memory | Work; snapshotted to `.skein/` by `skein dev`     | Development               |
 | postgres | memory | Durable; single-instance delivery                 | Fine for small production |
-| postgres | redis  | Durable; at-least-once delivery; multi-instance   | **Recommended**           |
+| postgres | redis  | Durable; at-least-once delivery; multi-instance   | Shared servers            |
 | memory   | redis  | Work, but **lost on restart** outside `skein dev` | Warned about at startup   |
+| sqlite   | sqlite | Durable schedules and unclaimed queued jobs       | One local Node owner      |
+
+SQLite requires the store/queue pair. Claimed or executing attempts abandoned by a process become
+failures without replaying their input; the schedule remains enabled for future occurrences. See
+[local crash behavior](./local-deployment.md#what-survives-a-process-ending).
 
 The scheduler logs one warning at startup on a non-durable store. A schedule that quietly stops is
 worse than one that was never created, and an embedded memory store in production loses every cron on

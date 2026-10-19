@@ -1,7 +1,8 @@
 # Local deployment validation
 
-Recorded on 2026-10-19 on macOS ARM64. These are measured results for this implementation, not
-throughput, footprint or cross-platform support guarantees.
+Recorded on 2026-10-19. Local measurements were taken on macOS ARM64; the CI platform results below
+come from their corresponding runners. Measurements are samples for this implementation, not
+throughput or footprint guarantees.
 
 ## Completed checks
 
@@ -14,14 +15,14 @@ throughput, footprint or cross-platform support guarantees.
   LangGraph run. The real graph retained its checkpoint and its original input was not replayed.
 - Affected adapter suites, including terminal stream replay with lost completion state, all five
   transports and both Next.js boundaries.
-- Existing Postgres/Redis integration suites: 490 passed, two existing cases skipped.
+- Existing Postgres/Redis integration suites: 491 passed, two existing cases skipped.
 - Existing Node/Bun/Deno server conformance matrix: 14 checks per runtime, all passed. SQLite remains
   Node-only.
 - Clean packed-library and generated SQLite project installs outside the checkout on Node 22.23.3
   and 24.15.0. Declaration consumption, built import/require, dependency closure, scaffold tests,
   artifact build, dev and start all passed. Packed-consumer gates use npm 11 for file overrides.
 - Packaged Electron 44.9.0 utility-process and Tauri 2/portable Node 24 backend launches passed on
-  macOS ARM64. Both streamed progress, resumed approval, saved Markdown meeting recaps under isolated host-data
+  macOS ARM64. Both streamed progress, resumed approval, saved application Markdown output under isolated host-data
   paths, and rejected missing credentials and forged Studio headers.
 - Affected lint, typecheck and build passed across 47 projects. Next.js builds use `NODE_ENV=production`.
 - Affected ordinary tests passed: 2,307 cases across 16 projects. Nx formatting checks passed.
@@ -67,9 +68,19 @@ Packed npm artifacts measured 6,500 bytes for `@skein-js/local` and 13,894 bytes
 bundle measured about 327.86 MiB for Reading Room with five model integrations; a small library
 tarball does not imply a comparably small desktop application.
 
-## Platform gates still requiring their runners
+## Completed CI platform gates
 
-The reusable local-deployment CI workflow covers Linux x64, Windows x64, macOS ARM64 and macOS x64,
-Node 22/24, and packaged Electron/Tauri launches. Linux, Windows and macOS x64 native launches were
-not executed on this ARM64 Mac. Their CI results remain acceptance gates; configuration alone is
-not evidence that those platforms passed.
+[CI run 39261927104](https://github.com/skein-js/skein-js/actions/runs/39261927104) passed all 27 jobs
+at commit `a2abf18`, including the following local-deployment matrix:
+
+| Runner      | SQLite consumers on Node 22/24 | Packaged Electron 44 | Packaged Tauri 2 |
+| ----------- | ------------------------------ | -------------------- | ---------------- |
+| Linux x64   | Passed                         | Passed               | Passed           |
+| Windows x64 | Passed                         | Passed               | Passed           |
+| macOS ARM64 | Passed                         | Passed               | Passed           |
+| macOS x64   | Passed                         | Passed               | Passed           |
+
+The consumer checks install packed artifacts outside the checkout, exercise native SQLite loading,
+and run authenticated protocol workflows. Windows gates verify literal file paths, an explicit
+npm 11 CLI, and the installed Tauri backend with normalized Windows paths. These are recorded
+launch proofs; shipping applications still own their installer, signing, and update behavior.

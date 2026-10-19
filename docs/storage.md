@@ -1,20 +1,26 @@
+---
+title: LangGraph.js storage — SQLite, Postgres and memory
+description: Choose memory for development, SQLite for local apps, or Postgres with pgvector for a server. Skein reuses LangGraph checkpointers and the getStore interface.
+---
+
 # Storage
 
 **What this gives you:** durable agents and **long-term memory** that outlives a single
 conversation, with zero setup in dev. Threads, runs, and stored memories survive restarts, and inside
 a graph node you get a LangGraph-native store — `getStore()` — for cross-thread facts ("prefers window
-seats") backed by **pgvector semantic search** in production. It's the same store LangGraph Platform
+seats") backed by **pgvector semantic search** when using Postgres with indexing. It's the same store LangGraph Platform
 auto-provides, so a graph that calls `getStore()` runs unchanged on skein-js. The best part: you write
-your graph once and skein-js swaps the backend for you — **in-memory in `skein dev`, Postgres +
-pgvector in production** — no code change. The flagship [`chat-app`](https://github.com/skein-js/skein-js/tree/main/examples/chat-app) example uses
+your graph once and choose a backend — **memory for the default `skein dev`, SQLite for local apps,
+or Postgres + pgvector for a server** — no graph code change. SQLite provides text/filter search;
+semantic indexing uses Postgres or an external store. The flagship [`chat-app`](https://github.com/skein-js/skein-js/tree/main/examples/chat-app) example uses
 this to remember a user across sessions.
 
 skein-js separates two kinds of persistence, and it is important not to conflate them:
 
 1. **Graph checkpoints** — LangGraph's own state/history for a thread (this is what powers
    **interrupt/resume** and history). **Reused, never reimplemented:** delegated to an existing
-   LangGraph checkpointer (`MemorySaver` in dev, `PostgresSaver` in prod;
-   `@langchain/langgraph-checkpoint-redis` and `-sqlite` are also available). See [reuse.md](https://github.com/skein-js/skein-js/blob/main/docs/reuse.md).
+   LangGraph checkpointer (`MemorySaver` for memory, `SqliteSaver` for the local assembly,
+   `PostgresSaver` for Postgres). See [reuse.md](https://github.com/skein-js/skein-js/blob/main/docs/reuse.md).
 2. **Protocol resources** — assistants, thread metadata/status, run rows, and long-term
    store items. These are the gap OSS keeps _in memory_, so skein-js owns them behind a single
    `SkeinStore` interface with durable drivers.
@@ -48,7 +54,8 @@ interface SkeinStore {
 
 Each repo exposes CRUD + list/search shaped to the [Agent Protocol](./agent-protocol.md)
 endpoints. All drivers are validated against **one shared conformance test suite**, so
-memory and Postgres behave identically.
+memory, SQLite, and Postgres share the same resource behavior. Their queue ownership and crash
+semantics differ; see [local deployment](./local-deployment.md#what-survives-a-process-ending).
 
 ### Page bound (`SKEIN_MAX_PAGE_SIZE`)
 
@@ -435,11 +442,11 @@ do it by hand.
 
 ## Checkpointer selection
 
-| `langgraph.json` `checkpointer` | skein-js uses                      |
-| ------------------------------- | ---------------------------------- |
-| absent (dev / `skein dev`)      | `MemorySaver`                      |
-| `"default"`                     | `PostgresSaver` (Postgres)         |
-| `"custom"`                      | user-supplied checkpointer (later) |
+| Storage selection                | skein-js uses                                       |
+| -------------------------------- | --------------------------------------------------- |
+| Memory (the default `skein dev`) | `MemorySaver`                                       |
+| Postgres                         | `PostgresSaver`                                     |
+| SQLite store/queue pair          | `SqliteSaver` sharing the owned resource connection |
 
 You rarely wire these drivers by hand. [`@skein-js/runtime`](https://github.com/skein-js/skein-js/tree/main/packages/runtime) assembles the
 `PostgresSkeinStore` + `PostgresSaver` + Redis queue/bus (and their `dispose()`) for you, two ways:
@@ -450,6 +457,10 @@ see [embedding.md](./embedding.md#going-to-production)).
 Protocol resources (`SkeinStore`) stay separate from LangGraph checkpoints, which is what allows an
 in-memory dev experience with no database while the checkpoint format stays 100% LangGraph-native — so
 history endpoints and interrupt/resume behave exactly as LangGraph expects.
+
+For SQLite, use `embedSqliteGraphs` from `@skein-js/local`, or the CLI's explicit SQLite pair.
+It assembles resources, the queue, and the upstream saver with one file owner. See
+[local deployment](./local-deployment.md) for lifecycle and native packaging.
 
 ## Local SQLite storage
 

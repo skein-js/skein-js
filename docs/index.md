@@ -3,13 +3,13 @@ layout: home
 # `layout: home` gives the page no H1, so without this the <title> is the bare site name — the most
 # valuable string on the most-linked page, wasted. Containing "skein-js" also trips the `selfTitled`
 # branch in transformPageData, which drops the "| skein-js" suffix rather than repeating it.
-title: skein-js — The self-hosted server runtime for LangGraph.js
-description: An open-source TypeScript server runtime for LangGraph.js agents. Host multiple graphs on your own infrastructure with persistent threads, streaming, background work, and a console.
+title: skein-js — LangGraph.js runtime for servers and local apps
+description: Self-host LangGraph.js agents in TypeScript. Choose Postgres/Redis servers or SQLite desktop and CLI apps with the same Agent Protocol.
 
 hero:
   name: skein-js
-  text: The self-hosted server runtime for LangGraph.js agents
-  tagline: Build each agent with LangGraph.js. Run one or many with skein-js — your servers, your database, your data.
+  text: The self-hosted runtime for LangGraph.js agents
+  tagline: Build with LangGraph.js. Run on your servers or devices with the same Agent Protocol — your models, your database, your data.
   # Each action goes somewhere distinct. A primary CTA that scrolls 200px down the page it is already
   # on is not a call to action — the 60-second command is in the first section regardless.
   actions:
@@ -17,8 +17,8 @@ hero:
       text: Get started
       link: /your-first-agent
     - theme: alt
-      text: Why skein-js?
-      link: /why
+      text: Build a local app
+      link: /local-deployment
     - theme: alt
       text: See it running
       link: "#see-it"
@@ -55,9 +55,9 @@ features:
     linkText: Background jobs & crons
   - icon: 🛡️
     title: Durable execution
-    details: A run whose process died is recovered, not lost. Two messages on one conversation serialize. One server or ten, the work still completes.
-    link: /deploy
-    linkText: Running it in production
+    details: Keep queued work and checkpoint history across restarts. Choose SQLite for one local owner or Postgres/Redis for shared deployments.
+    link: /storage
+    linkText: Choose your storage
   - icon: 🔀
     title: Workflows
     details: Turn external events into multi-step processes that branch, call tools, pause for people, resume later, and choose what happens next.
@@ -78,6 +78,10 @@ features:
 and gives them an API, persistent conversations, streaming, background work, and a console. It is an
 open-source alternative to LangGraph Platform (now LangSmith Deployment), while continuing to use
 LangGraph.js for the agent itself.
+
+Choose a self-hosted server for shared access, or embed the same engine in a desktop app, CLI, or
+separate daemon with SQLite. Local deployment is an option alongside the server paths; it uses
+the same graphs and protocol.
 
 **Fits your stack:** Express · Fastify · NestJS · Next.js · Bun · Deno · React · Vue · Svelte · Angular
 
@@ -181,9 +185,20 @@ LangGraph you need on the way, if you're new to it.
 
 ## How it fits together
 
+### Choose where it runs
+
+| Deployment                     | Choose it when                                                                        | Guide                                          |
+| ------------------------------ | ------------------------------------------------------------------------------------- | ---------------------------------------------- |
+| **Server with Postgres/Redis** | A shared web/API service, with Redis when workers span instances                      | [Server deployment](./deploy.md)               |
+| **Local with SQLite**          | A desktop app, terminal tool, daemon, or single Node process owning one database file | [Local apps and SQLite](./local-deployment.md) |
+
+The default `skein dev` uses memory drivers with development snapshots. SQLite is an explicit
+choice (`--store sqlite --queue sqlite`), supports Node 22/24, and needs no database service.
+Applications choose models and tools in either deployment; a local app can use a cloud model or Ollama.
+
 Three moving parts. Your clients and your agents are the ones you already have.
 
-<svg class="skein-arch" viewBox="0 0 680 352" role="img" aria-label="Your clients speak the Agent Protocol to skein-js, the server runtime for one or more LangGraph.js agents, with state in your own Postgres and Redis.">
+<svg class="skein-arch" viewBox="0 0 680 352" role="img" aria-label="Your clients speak the Agent Protocol to skein-js, hosting LangGraph.js graphs with Postgres and Redis for servers or SQLite for a local application.">
   <!-- clients -->
   <rect class="box" x="70" y="6" width="360" height="60" rx="10" />
   <text class="t" x="250" y="30" text-anchor="middle">Your clients</text>
@@ -201,8 +216,8 @@ Three moving parts. Your clients and your agents are the ones you already have.
   <!-- skein → storage -->
   <path class="wire" d="M430 158 H500" />
   <rect class="box" x="500" y="132" width="164" height="52" rx="10" />
-  <text class="t-sub" x="582" y="153" text-anchor="middle">Your Postgres</text>
-  <text class="t-sub" x="582" y="171" text-anchor="middle">Your Redis</text>
+  <text class="t-sub" x="582" y="153" text-anchor="middle">Postgres + Redis</text>
+  <text class="t-sub" x="582" y="171" text-anchor="middle">or local SQLite</text>
   <!-- skein → agent -->
   <path class="wire" d="M250 206 V250" />
   <path class="wire" d="M244 244 L250 250 L256 244" />
@@ -306,7 +321,7 @@ everything.
 
 ## Bring what you already have
 
-Four ways in. Pick yours — they all end at the same server.
+Pick the entry point that matches your application. Each uses the same Agent Protocol engine.
 
 :::tabs
 
@@ -349,6 +364,20 @@ await server.listen(2024);
 ```
 
 [More on embedding →](./embedding.md)
+
+== Desktop or CLI
+
+Choose SQLite when one Node process should own durable application state:
+
+```bash
+npm create skein-js@latest my-app -- --storage sqlite
+cd my-app && npm run dev
+```
+
+For graphs already in code, `embedSqliteGraphs` returns dependencies for the protocol service or
+an existing HTTP adapter. Your host owns process lifetime and the application-data path.
+
+[Embedding, desktop examples, and crash behavior →](./local-deployment.md)
 
 == Not a chat product
 
@@ -436,8 +465,11 @@ Every one of these runs, and CI proves it.
 | [`triage-agent`](https://github.com/skein-js/skein-js/tree/main/examples/triage-agent)             | **Start here** — schedules, background work, approvals, memory and rewind in one agent. **No API key, no network needed** |
 | [`chat-app`](https://github.com/skein-js/skein-js/tree/main/examples/chat-app)                     | **Flagship** — a research assistant with thinking, web search and memory, behind a Next.js + shadcn/ui UI                 |
 | [`migrated-langgraph`](https://github.com/skein-js/skein-js/tree/main/examples/migrated-langgraph) | The drop-in proof — a stock LangGraph project running under `skein dev`                                                   |
+| [**Daybook**](https://github.com/skein-js/skein-js/tree/main/examples/desktop-electron)            | An Electron meeting workspace with model tools, streamed answers, and reviewed recaps                                     |
+| [**Reading Room**](https://github.com/skein-js/skein-js/tree/main/examples/desktop-tauri)          | A Tauri document library with source excerpts, persistent conversation, and reading briefs                                |
+| [**Dayplan**](https://github.com/skein-js/skein-js/tree/main/examples/local-cli)                   | A CLI planner that reads local tasks and earlier plans, then asks before saving                                           |
 
-Eleven more in [`examples/`](https://github.com/skein-js/skein-js/tree/main/examples), including one
+More in [`examples/`](https://github.com/skein-js/skein-js/tree/main/examples), including one
 per adapter — standalone, and mounted inside an app that already has its own routes.
 
 ## Where to go next

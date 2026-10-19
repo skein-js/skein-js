@@ -110,6 +110,9 @@ is demand-driven by the platform.
 - When a run executes on a **different** worker than the one holding the client connection,
   [`@skein-js/redis`](./runs-and-redis.md) pub/sub fans the frames across instances so the join
   still works. In single-process `skein dev`, an in-memory event bus is used instead.
+- The [SQLite local assembly](./local-deployment.md) also uses a process-local event bus. Records
+  and checkpoints survive reopening, but live token frames do not. Use persisted state/history to
+  restore the UI after restart; SQLite does not provide cross-instance fan-out.
 
 ## Why SSE is enough (no WebSocket in v1)
 

@@ -19,7 +19,7 @@ inputs, plus optional common fields:
 ```
 
 `config` → in-memory drivers, hot-reload, great for dev. `deps` → whatever you assembled (Postgres +
-Redis for production, or an in-code graph map). **Same server either way** — only the wiring differs.
+Redis for a server, SQLite for a local app, or an in-code graph map). **Same server either way** — only the wiring differs.
 
 ## Install
 
@@ -36,7 +36,8 @@ pnpm add @skein-js/nestjs   @langchain/langgraph        # NestJS
 pnpm add @skein-js/nextjs   @langchain/langgraph        # Next.js
 ```
 
-For production drivers add `@skein-js/runtime` (assembles Postgres/Redis). Prefer the CLI on-ramp?
+For server drivers add `@skein-js/runtime` (assembles Postgres/Redis). For local SQLite graphs,
+use `@skein-js/local` with the upstream SQLite saver. Prefer the CLI on-ramp?
 `pnpm add -D skein-js` and run `skein dev` — a drop-in for `langgraph dev`.
 
 ## Three on-ramps
@@ -140,7 +141,24 @@ Mount at the root (no prefix) and `apiUrl` is just the server root. NestJS is th
 reads the mount from the framework rather than from an argument you pass, so there is no skein-side
 option to keep in sync with `setGlobalPrefix`.
 
-## Go to production (Postgres + Redis)
+## Local applications with SQLite
+
+Use `embedSqliteGraphs` from `@skein-js/local` for an Electron utility process, a packaged Tauri
+Node backend, a CLI, or a separate daemon. Supply an absolute application-data path, then use the
+protocol service directly or pass `deps` to an existing adapter. The host owns process lifetime.
+
+On the config path, install the local package and saver, then select both SQLite drivers:
+
+```bash
+skein dev --store sqlite --queue sqlite
+skein start -c .skein/build/langgraph.json --store sqlite --queue sqlite
+```
+
+Both default to `.skein/state.sqlite`; `--sqlite-path` selects a different file. SQLite has one owner
+per database. Unclaimed jobs persist, but abandoned attempts become failures rather than replaying
+input. See [local deployment](./local-deployment.md) for the full setup and examples.
+
+## Shared server deployment (Postgres + Redis) {#go-to-production-postgres--redis}
 
 Swap the in-memory `deps` for durable ones — everything else stays the same. Two ways:
 

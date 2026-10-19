@@ -274,9 +274,10 @@ a stateless run's thread, so nothing can be missing.
 "schedule a future run". Capped at **86400** (a day); anything longer is a [cron](./crons.md).
 
 A **background** run (`POST /runs`, `/runs/batch`, `POST /threads/{id}/runs`) is held by the queue
-itself, so it costs nothing while it waits and, on Redis, survives a process restart — BullMQ keeps it
-in its own delayed set. On the in-memory queue it is a timer, and is lost on restart exactly as every
-other run already sitting in that queue is.
+itself. Redis keeps delayed jobs in BullMQ's delayed set; SQLite persists unclaimed jobs with their
+original due times. Both retain waiting jobs across a process restart. On the in-memory queue the
+delay is a timer, lost on restart along with the other queued jobs. Abandoned active attempts follow
+each [queue driver's crash behavior](./runs-and-redis.md#queue-drivers).
 
 An **inline** run (`/runs/wait`, `/runs/stream`) has no queue to hold it, so the server waits with your
 connection open. A stream still responds immediately — the run row, its `Content-Location`, and the

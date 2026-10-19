@@ -1,8 +1,17 @@
+---
+title: SQLite for LangGraph.js desktop and CLI apps
+description: Embed LangGraph.js agents in Electron, Tauri, CLI apps, or a daemon with SQLite persistence and the existing Agent Protocol. Keep models and tools in your app.
+---
+
 # Durable local deployment
 
 `@skein-js/local` assembles the existing Agent Protocol engine with SQLite persistence and LangGraph's
 SQLite checkpointer. Use the same graphs in a desktop application, terminal tool, separate daemon,
 or server. The application chooses models and tools, including any connection to a local model.
+
+Choose this deployment when one Node process can own the database file. For a shared service with
+multiple instances, use [Postgres and Redis](./deploy.md). The default development server continues
+to use memory drivers; SQLite is selected explicitly and does not change existing defaults.
 
 ## Embed agents
 

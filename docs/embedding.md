@@ -1,3 +1,8 @@
+---
+title: Embed LangGraph.js agents in TypeScript apps
+description: Embed compiled LangGraph.js graphs with memory, SQLite, or Postgres storage. Reuse the Agent Protocol in your server, desktop app, CLI, or daemon.
+---
+
 # Embedding a graph you already have
 
 > **User guide.** skein-js has **two on-ramps**. If you already run the LangGraph CLI, the
@@ -19,6 +24,18 @@
 Both produce the **exact same** Agent Protocol server — same threads/runs/streaming/HITL/persistence,
 same `useStream` / Agent Chat UI / LangGraph SDK compatibility. The only difference is how graphs get
 in and how `ProtocolDeps` is assembled. Everything downstream is identical.
+
+### Choose an assembly for your host
+
+| Helper                                            | Storage                                           | Choose it for                                               |
+| ------------------------------------------------- | ------------------------------------------------- | ----------------------------------------------------------- |
+| `embedInMemoryGraphs` from `@skein-js/server-kit` | Memory                                            | Development, tests, or state owned elsewhere                |
+| `embedSqliteGraphs` from `@skein-js/local`        | SQLite resources, queue, and upstream checkpoints | A local app, CLI, daemon, or one Node process               |
+| `embedPostgresGraphs` from `@skein-js/runtime`    | Postgres, optionally Redis                        | A durable server, with Redis for workers spanning instances |
+
+The memory example below is the smallest server. For the local option, see
+[SQLite embedding and host lifecycle](./local-deployment.md). Its helper starts no worker or
+listener; your host owns startup and stops its runtime before disposing storage.
 
 ## The whole thing
 

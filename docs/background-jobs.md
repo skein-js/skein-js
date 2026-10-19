@@ -87,15 +87,16 @@ at once. Size it against your pool: [runs-and-redis.md](./runs-and-redis.md#run-
 - **A failed job is not retried.** skein retries webhook _delivery_, not the run. A graph that throws
   settles `error` and stays there. If your work needs retries, either retry inside the graph, or have
   your caller re-submit with a fresh idempotency key.
-- **A crashed worker is different.** If the process dies mid-run, the job is recovered rather than
-  lost — and re-delivery is safe, because a run already terminal in the store is skipped.
+- **A crashed worker follows its queue's contract.** Redis can redeliver stalled work, skipping
+  already terminal runs. SQLite preserves unclaimed jobs but marks abandoned attempts as
+  `ProcessLostError` failures; applications choose whether to retry. Memory loses queued jobs.
 - **Background runs need a process that stays alive.** They execute after your request returns, so
   they don't work on serverless. See [deploy-serverless.md](./deploy-serverless.md).
-- **Use durable storage.** With the in-memory driver a queued job is gone on restart. Postgres for
-  state, Redis for the queue — [runs-and-redis.md](./runs-and-redis.md).
+- **Use durable storage.** Choose SQLite for one local owner, or Postgres/Redis for shared workers.
+  See [local deployment](./local-deployment.md) and [runs-and-redis.md](./runs-and-redis.md).
 - **Bound a job that hangs.** A graph with no timeout of its own holds a worker slot until the process
   restarts. Set `--run-timeout` / `SKEIN_RUN_TIMEOUT_MS`; it's off by default.
-- **Each job holds a Postgres connection** while it runs, and a second one on the Postgres driver for
+- **With Postgres, each job holds a connection** while it runs, and a second one on that driver for
   its thread claim. Ten concurrent jobs is not one connection.
 
 ## When you want the answer inline instead

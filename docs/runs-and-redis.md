@@ -38,15 +38,16 @@ instance executes at once.
 
 ## Queue drivers
 
-The engine talks to a small `RunQueue` / `RunEventBus` interface (`@skein-js/core`) with two
-implementations. `RunQueue` is **processor-driven**: `enqueue(run)` adds a job and
+The engine talks to small `RunQueue` / `RunEventBus` interfaces (`@skein-js/core`) with queue
+drivers for memory, SQLite, and Redis. `RunQueue` is **processor-driven**: `enqueue(run)` adds a job and
 `consume(process)` registers a worker that drains the queue — so the same run worker code drives
-both drivers. Delivery is **at-least-once** (a crashed processor's run is redelivered); the worker
-makes this safe by skipping any run already terminal in the store.
+each driver. Crash behavior depends on the queue: Redis can redeliver stalled work; SQLite records
+abandoned attempts as failures; memory loses queued work on process exit. The worker skips runs
+already terminal in the store.
 
 `enqueue` takes an optional `{ delayMs }` — the run-create
 [`after_seconds`](./agent-protocol.md). The driver holds the run until it comes due, which is why a
-delayed run costs nothing while it waits and cannot be picked up early. Both drivers dedupe a
+delayed run cannot be picked up early. The drivers dedupe a
 re-enqueue of a run that is still waiting out its delay, so the cron scheduler's outbox sweep — which
 re-enqueues anything it cannot prove reached the queue — can never cut a delay short or schedule the
 same run twice. A delayed run is durable exactly as far as its driver is: see below.
@@ -58,7 +59,18 @@ same run twice. A delayed run is durable exactly as far as its driver is: see be
 - An `after_seconds` delay is a local timer, so it is lost on restart — like every other run already
   sitting in this queue, which is in-process too.
 
-### `@skein-js/redis` (prod)
+### SQLite (local applications)
+
+- `@skein-js/storage-sqlite` persists the queue in the same file as protocol resources, owned by
+  one process. `@skein-js/local` adds the upstream checkpointer and process-local event bus.
+- Run creation and background-job admission commit together. Unclaimed jobs retain their original
+  due times across reopening; duplicate enqueue does not shorten a delay.
+- Claimed or executing attempts abandoned by a process become `ProcessLostError` failures. Skein
+  does not replay their input or resume checkpoints automatically. The application decides.
+- Live stream frames stay in memory. This is a Node 22/24 option for local apps and single-owner
+  services, with no distributed worker support. See [local deployment](./local-deployment.md).
+
+### `@skein-js/redis` (shared servers)
 
 - **Job queue ([BullMQ](https://docs.bullmq.io))** — background runs are enqueued in Redis; worker
   processes across instances consume and execute them. BullMQ provides retries, backoff, and

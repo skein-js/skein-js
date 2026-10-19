@@ -1,4 +1,22 @@
+---
+title: Deploy a self-hosted LangGraph.js server
+description: Deploy skein-js with Postgres and Redis on your infrastructure, or choose SQLite for a local Node application. Use the same LangGraph.js graphs and protocol.
+---
+
 # Deploy anywhere
+
+## Choose a deployment
+
+| Option                | Use it for                                            | Storage and host                                                           |
+| --------------------- | ----------------------------------------------------- | -------------------------------------------------------------------------- |
+| **Shared server**     | Web/API clients and workers spanning instances        | Postgres for resources/checkpoints; Redis for a shared queue and streaming |
+| **Local application** | Desktop apps, CLI tools, daemons, or one Node process | One exclusively owned SQLite file through `@skein-js/local`                |
+
+For the SQLite option, follow [local deployment](./local-deployment.md). It supports Node 22/24;
+Electron and Tauri hosts package the same engine and use the existing protocol. Models and tools
+remain application choices. The default `skein dev` continues to use memory drivers.
+
+The rest of this page covers the **server image and shared-service deployment**.
 
 **Deploy your LangGraph.js graphs anywhere you can run a container — or just Node.** skein has no `skein deploy` and
 no control plane — that's the point ([roadmap.md](./roadmap.md) lists it as an explicit non-goal).
@@ -28,7 +46,7 @@ explicit network, environment, artifact-read, system, and native-library permiss
 make an arbitrary Node-native graph dependency portable; the compatibility probe fails that image
 build so the dependency can be replaced or isolated before deployment.
 
-This page is everything that is true on **every** platform. The per-platform guides are just the
+The server image contract below applies across the listed hosting platforms. The per-platform guides are the
 dashboard and CLI steps on top of it.
 
 ## Pick a platform

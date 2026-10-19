@@ -5,7 +5,8 @@ Remembering things across threads and sessions.
 ## Long-term memory (`getStore()`)
 
 The store is injected into every run as a LangGraph `BaseStore`, so a node reads and writes it the native
-way — and the backend swaps (in-memory under `skein dev`, Postgres in production) with no code change.
+way — with memory for the default `skein dev`, SQLite for local apps, or Postgres for a shared
+server. The graph code stays the same.
 
 ```ts
 import { getStore } from "@langchain/langgraph";
@@ -29,7 +30,7 @@ conventions back into the prompt).
 > [!WARNING]
 > **Read this before writing a dedup rule**
 >
-> Both `storage-memory` and Postgres **without** `store.index` return `score: 1` for every text hit — so
+> Memory, SQLite, and Postgres **without** `store.index` return `score: 1` for every text hit — so
 > the obvious "score >= 0.9 means duplicate" rule classifies everything as a duplicate and the agent
 > **silently stops recording memories**. It does not error. [memory.md](../memory.md) covers this and the
 > other shapes that bite.

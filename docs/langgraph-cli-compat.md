@@ -31,13 +31,27 @@ TypeScript at runtime inside the image.
 **skein-only dev flags** (beyond the LangGraph CLI) — run `skein dev` against production-shaped
 storage without Docker:
 
-| Flag               | Values               | Default  | Notes                                                           |
-| ------------------ | -------------------- | -------- | --------------------------------------------------------------- |
-| `--store <driver>` | `memory`, `postgres` | `memory` | `postgres` reads `POSTGRES_URI`; also selects `PostgresSaver`.  |
-| `--queue <driver>` | `memory`, `redis`    | `memory` | `redis` reads `REDIS_URI` (BullMQ queue + Streams/pub-sub bus). |
+| Flag                   | Values                         | Default               | Notes                                                                               |
+| ---------------------- | ------------------------------ | --------------------- | ----------------------------------------------------------------------------------- |
+| `--store <driver>`     | `memory`, `postgres`, `sqlite` | `memory`              | Postgres selects `PostgresSaver`; SQLite selects the upstream SQLite saver.         |
+| `--queue <driver>`     | `memory`, `redis`, `sqlite`    | `memory`              | Redis provides the shared queue/bus; SQLite persists jobs in the resource database. |
+| `--sqlite-path <path>` | File path                      | `.skein/state.sqlite` | Resolved against the working directory; also accepted by `start`.                   |
 
 Graph hot-reload works with any driver; the `.skein/` snapshot is skipped for durable drivers
 (they persist inherently).
+
+SQLite is a skein deployment option for a desktop app, CLI, daemon, or one Node owner. Install
+`@skein-js/local` and `@langchain/langgraph-checkpoint-sqlite@~1.0.4`, then select both drivers:
+
+```bash
+skein dev --store sqlite --queue sqlite
+skein start -c .skein/build/langgraph.json --store sqlite --queue sqlite
+```
+
+Mixed SQLite/non-SQLite pairs are rejected. `dev` still defaults to memory/memory and `start` to
+Postgres/Redis. SQLite requires Node 22/24, does not import memory snapshots, and keeps its file
+outside the build artifact. Models and tools remain in the graph. See
+[local deployment](./local-deployment.md) for ownership, crash behavior, and native packaging.
 
 **Background-run concurrency.** `-n, --n-jobs-per-worker <count>` is honored on `skein dev` **and**
 `skein start`, with the same default of **10** the LangGraph CLI uses — so an existing

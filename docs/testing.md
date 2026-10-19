@@ -108,10 +108,11 @@ runSkeinStoreConformance("postgres", async () => {
 });
 ```
 
-This is what guarantees the in-memory dev driver and the production Postgres driver are
-truly interchangeable.
+SQLite runs the same suite in `storage-sqlite` against a real database file without Docker.
+These cases verify consistent resource behavior across all three drivers; queue ownership and
+crash recovery follow each driver's contract.
 
-**Adding a `SkeinStore` method means adding conformance cases in the same commit.** Without them the two
+**Adding a `SkeinStore` method means adding conformance cases in the same commit.** Without them the
 drivers drift on exactly the details nothing else checks — ordering, tie-breaking, and what an omitted
 `limit` means. Two rules the suite already encodes and a new method must follow:
 
@@ -194,10 +195,22 @@ Tests run **through Nx**, not bare Vitest:
 
 ## Commands
 
-| Command                                               | Does                                                                       |
-| ----------------------------------------------------- | -------------------------------------------------------------------------- |
-| `pnpm test`                                           | `nx run-many -t test` — unit + conformance (memory), fast, no Docker.      |
-| `pnpm test:integration`                               | `nx run-many -t test-integration` — `*.integration.test.ts`, needs Docker. |
-| `pnpm test:coverage`                                  | `nx run-many -t test --coverage` (`@vitest/coverage-v8`).                  |
-| `nx test <project>` / `nx test-integration <project>` | A single project.                                                          |
-| `pnpm affected`                                       | Only projects affected by your changes.                                    |
+For documentation, run `pnpm docs:llms`, then `pnpm nx run docs:check-seo`. This builds the site
+and checks rendered titles/descriptions, canonical and social URLs, sitemap coverage, 404 indexing,
+the social image, deployment links, and current LLM assets. It runs in the docs CI job. The docs
+build tracks the root LLM bundles and relevant git history as inputs, so a cached build cannot
+retain an older copy or stale page timestamps. Docs CI fetches full history to match Pages.
+
+The checker also accepts a directory argument through `--args="/absolute/path/to/site"` for
+testing an isolated artifact. It verifies static output; live crawling and search indexing are
+properties of the deployed site. Regenerate the social image with `pnpm docs:og` after editing its
+HTML source.
+
+| Command                                               | Does                                                                                      |
+| ----------------------------------------------------- | ----------------------------------------------------------------------------------------- |
+| `pnpm test`                                           | `nx run-many -t test` — unit + conformance (memory), fast, no Docker.                     |
+| `pnpm test:integration`                               | `nx run-many -t test-integration` — `*.integration.test.ts`, needs Docker.                |
+| `pnpm test:coverage`                                  | `nx run-many -t test --coverage` (`@vitest/coverage-v8`).                                 |
+| `nx test <project>` / `nx test-integration <project>` | A single project.                                                                         |
+| `pnpm affected`                                       | Only projects affected by your changes.                                                   |
+| `pnpm nx test storage-sqlite`                         | SQLite conformance, retention, real-file reopening, and subprocess crash tests; no Docker |

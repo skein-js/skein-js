@@ -77,7 +77,8 @@ Working receiver: `src/webhook-receiver.ts` in
 [`examples/express-basic`](https://github.com/skein-js/skein-js/tree/main/examples/express-basic)
 (`pnpm webhook-receiver`) — accepts a genuine callback, refuses a forged and a replayed one.
 
-**Run Redis in production**: without it a retry still waiting is lost on exit (the delivery is not).
+**Persist the delivery outbox** with Postgres or SQLite. The delivery worker polls pending records
+after restart; Redis supplies scheduled delivery when configured, but is not required for recovery.
 Details — the retry tiers, signature verification and key rotation, listing and replaying failed
 deliveries, and what gets stored and for how long: [webhooks.md](../webhooks.md).
 
@@ -101,6 +102,10 @@ Compose, and `skein dev --store postgres --queue redis` runs the durable stack l
 for one instance and **required for more than one**.
 
 ## Deploy it
+
+For a local app or one Node owner, SQLite is another durable option. It needs no Postgres/Redis
+services and uses the same protocol; the host owns lifetime and recovery decisions. Follow
+[local deployment](../local-deployment.md) for CLI selection or `embedSqliteGraphs`.
 
 That image runs anywhere you can run a container. [deploy.md](../deploy.md) covers what every platform
 needs — Postgres, Redis, the port, the `/ok` probe, pool sizing, SIGTERM draining, SSE through proxies —

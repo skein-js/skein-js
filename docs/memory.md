@@ -12,24 +12,27 @@ policy your `@auth.on.store` handler decides, and [Multi-tenant memory](#multi-t
 
 ## What you already have
 
-| Need                            | Use                                                              | From                                                                         |
-| ------------------------------- | ---------------------------------------------------------------- | ---------------------------------------------------------------------------- |
-| Durable thread state            | the checkpointer — `PostgresSaver` in prod, `MemorySaver` in dev | skein wires it ([storage.md](./storage.md))                                  |
-| Trimming a long conversation    | `trimMessages`, `filterMessages`, `RemoveMessage`                | `@langchain/core`                                                            |
-| Summarizing a long conversation | `summarizationMiddleware`, `contextEditingMiddleware`            | the `langchain` v1 package                                                   |
-| Cross-thread memory store       | `getStore()` — namespace/key items, vector search                | skein injects it into every run                                              |
-| Semantic search over memories   | `store.index` (pgvector, HNSW optional)                          | skein ([storage.md](./storage.md#drivers))                                   |
-| Per-owner isolation             | an `@auth.on.store` handler that roots the namespace             | you ([agent-protocol.md](./agent-protocol.md#authentication--authorization)) |
-| Scheduled background extraction | a cron firing an extractor graph                                 | skein ([crons.md](./crons.md))                                               |
-| Memory _shapes_, tools, dedup   | this page                                                        | you, in ~100 lines                                                           |
+| Need                            | Use                                                                          | From                                                                         |
+| ------------------------------- | ---------------------------------------------------------------------------- | ---------------------------------------------------------------------------- |
+| Durable thread state            | the upstream checkpointer — `SqliteSaver`, `PostgresSaver`, or `MemorySaver` | skein selects it for the chosen storage ([storage.md](./storage.md))         |
+| Trimming a long conversation    | `trimMessages`, `filterMessages`, `RemoveMessage`                            | `@langchain/core`                                                            |
+| Summarizing a long conversation | `summarizationMiddleware`, `contextEditingMiddleware`                        | the `langchain` v1 package                                                   |
+| Cross-thread memory store       | `getStore()` — namespace/key items, vector search                            | skein injects it into every run                                              |
+| Semantic search over memories   | `store.index` (pgvector, HNSW optional)                                      | skein ([storage.md](./storage.md#drivers))                                   |
+| Per-owner isolation             | an `@auth.on.store` handler that roots the namespace                         | you ([agent-protocol.md](./agent-protocol.md#authentication--authorization)) |
+| Scheduled background extraction | a cron firing an extractor graph                                             | skein ([crons.md](./crons.md))                                               |
+| Memory _shapes_, tools, dedup   | this page                                                                    | you, in ~100 lines                                                           |
 
 ## Short-term memory is already solved
 
 Worth stating plainly, because "durable short-term memory" sounds like a gap and is not one.
 
-**Durability** is the checkpointer. `PostgresSaver` persists a thread's state and history, so a
+**Durability** is the checkpointer. `SqliteSaver` or `PostgresSaver` persists a thread's state and history, so a
 conversation survives restarts and resumes from an interrupt; thread TTL collects the ones that go stale.
 skein selects it for you — nothing to build.
+
+Choose [SQLite](./local-deployment.md) for one local Node owner, or Postgres for a server. SQLite
+supplies text/filter search; semantic recall requires Postgres indexing or an external semantic store.
 
 **Context management** — keeping a long thread inside the model's window — is upstream too:
 

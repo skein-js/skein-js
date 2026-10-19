@@ -24,6 +24,10 @@ stale copy of the scaffolder.
 
 ## What it generates
 
+The default storage choice is `memory`. It keeps development simple and supplies Postgres/Redis
+services for the default production `start`. Choose `--storage sqlite` for a local application;
+its generated scripts and files differ as described below.
+
 ```text
 my-agent/
 ├── langgraph.json          Points skein at your graphs; the LangGraph CLI's format
@@ -53,10 +57,8 @@ The scripts are the whole skein CLI lifecycle:
 | `typecheck`    | `tsc --noEmit`                                    |                                                             |
 | `test`         | `vitest run`                                      |                                                             |
 
-That is the in-memory axis, which is the default. The storage prompt decides only which of the two
-`dev` spellings is which: pick Postgres and `dev` becomes the durable one, with the in-memory one
-emitted as `dev:memory` instead of `dev:postgres`. Both are always on disk, so the choice sets a
-default rather than removing an option.
+Those are the default memory scripts. Pick Postgres and `dev` becomes the Postgres/Redis command,
+with the in-memory alternative emitted as `dev:memory` instead of `dev:postgres`.
 
 `dev:services` uses `--wait` so it returns once both healthchecks pass, not merely once the containers
 exist — otherwise the very next command races first-boot `initdb`.
@@ -70,13 +72,29 @@ is the Docker build context). So `dev:services && build && start` works with not
 
 Two deliberate choices worth knowing:
 
-- **`dev` never needs a credential or a service.** The `echo` graph is always present and always
-  first in `graphs`, so the very first request works with an empty `.env`.
-- **`compose.dev.yaml` is always generated**, not hidden behind a flag, and the `POSTGRES_URI` /
-  `REDIS_URI` in `.env` are live rather than commented out. `skein start` is durable-only — it
-  defaults to `--store postgres --queue redis` and fails without those two — so a project shipping a
+- **The default `dev` needs no credential or service.** The `echo` graph is always present and
+  first in `graphs`, so the first request works with an empty `.env` and memory drivers.
+- **Memory and Postgres projects include `compose.dev.yaml`**, and the `POSTGRES_URI` /
+  `REDIS_URI` in `.env` are live rather than commented out. The default `skein start` selects
+  `--store postgres --queue redis` and requires those services, so a project shipping that
   `start` script has to ship both the services and the URIs that reach them, or the script is a trap.
   The values are the ones the generated compose file serves, so there was never anything to decide.
+
+### SQLite projects
+
+```bash
+npm create skein-js@latest my-app -- --storage sqlite
+cd my-app
+npm run dev
+npm run build
+npm start
+```
+
+SQLite projects install `@skein-js/local`, LangGraph, and its SQLite saver. Both `dev` and `start`
+select `--store sqlite --queue sqlite`, with the database at `.skein/state.sqlite`; `dev:memory`
+keeps the memory alternative. There is no Compose file, service-start script, or Postgres/Redis
+environment configuration. Graphs still build to `.skein/build` and the database stays outside it.
+Use Node 22/24. See [local deployment](./local-deployment.md) for embedding and desktop examples.
 
 ## Options
 
@@ -84,6 +102,7 @@ Two deliberate choices worth knowing:
 create-skein-js [directory]
 
   -m, --provider <name>   none | google | anthropic | openai   (default: prompted, else none)
+      --storage <name>    memory | postgres | sqlite          (default: prompted, else memory)
       --pm <name>         npm | pnpm | yarn | bun              (default: detected)
       --no-install        Skip installing dependencies                (else: prompted, default yes)
       --no-git            Skip initializing a git repository          (else: prompted)

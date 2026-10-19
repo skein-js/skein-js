@@ -26,6 +26,7 @@ pnpm --filter @skein-js/example-triage-agent seed   # register the schedule + sw
 | [Memory](./memory.md)                                      | `getStore()`, semantic search, and the dedup trap                           |
 | [Authenticating requests](./authentication.md)             | Better Auth, Clerk, Supabase, Firebase, OIDC/JWT, and authorization policy  |
 | [Production](./production.md)                              | Auth, run-completion webhooks, durable storage and deploying                |
+| [Local apps and SQLite](../local-deployment.md)            | Desktop, CLI, and daemon hosts with one owned database file                 |
 
 ## Which example shows what
 
@@ -38,3 +39,6 @@ pnpm --filter @skein-js/example-triage-agent seed   # register the schedule + sw
 | [`embed-graph`](https://github.com/skein-js/skein-js/tree/main/examples/embed-graph)               | A graph you already have, served with no `langgraph.json`                       |
 | [`migrated-langgraph`](https://github.com/skein-js/skein-js/tree/main/examples/migrated-langgraph) | The drop-in proof — a stock LangGraph project under `skein dev`                 |
 | [`react-usestream`](https://github.com/skein-js/skein-js/tree/main/examples/react-usestream)       | A minimal `useStream` frontend against any skein server                         |
+| [Daybook — Electron](https://github.com/skein-js/skein-js/tree/main/examples/desktop-electron)     | Meeting context tools, streaming, recap review, and Markdown revisions          |
+| [Reading Room — Tauri](https://github.com/skein-js/skein-js/tree/main/examples/desktop-tauri)      | Local documents, library tools, source excerpts, and reviewed reading briefs    |
+| [Dayplan — CLI](https://github.com/skein-js/skein-js/tree/main/examples/local-cli)                 | Local task files, previous plans, and approval before saving                    |

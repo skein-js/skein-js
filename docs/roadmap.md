@@ -46,6 +46,7 @@ and an open alternative to the second.
 | Capability                               | Status | Notes                                                                                                                    |
 | ---------------------------------------- | ------ | ------------------------------------------------------------------------------------------------------------------------ |
 | In-memory (dev) · Postgres + pgvector    | ✅     | [Details](./storage.md)                                                                                                  |
+| SQLite local deployment                  | ✅     | `@skein-js/storage-sqlite` and `@skein-js/local`; CLI, Electron and Tauri examples. [Details](./local-deployment.md)     |
 | Bring your own store (`store.adapter`)   | ✅     | [Details](./storage.md#bringing-your-own-store-storeadapter)                                                             |
 | Store TTL · filter · namespace traversal | ✅     | [Details](./storage.md#filtering-and-namespace-traversal)                                                                |
 | Thread TTL                               | ✅     | Past LangGraph OSS, which drops `ttl` on the floor                                                                       |
