@@ -5,7 +5,11 @@ export const root = path.resolve(import.meta.dirname, "..");
 export function run(command, args, options = {}) {
   let executable = command;
   let arguments_ = args;
-  if (process.platform === "win32" && ["npm", "pnpm"].includes(command)) {
+  const npmCli = process.env["SKEIN_CONSUMER_NPM_CLI"];
+  if (command === "npm" && npmCli) {
+    executable = process.execPath;
+    arguments_ = [npmCli, ...args];
+  } else if (process.platform === "win32" && ["npm", "pnpm"].includes(command)) {
     // Execute the active tool's JavaScript entry rather than passing paths through cmd.exe.
     const located = spawnSync("where.exe", [`${command}.cmd`], { encoding: "utf8" });
     const shim = located.stdout?.trim().split(/\r?\n/)[0];
