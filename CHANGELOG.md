@@ -1,3 +1,23 @@
+## 0.19.0 (2026-10-19)
+
+### 🚀 Features
+
+- **console:** add operator controls and paged views ([#29](https://github.com/skein-js/skein-js/issues/29), [#31](https://github.com/skein-js/skein-js/issues/31), [#32](https://github.com/skein-js/skein-js/issues/32), [#30](https://github.com/skein-js/skein-js/issues/30), [#22](https://github.com/skein-js/skein-js/issues/22))
+- **local:** add durable SQLite deployment and desktop examples ([35922dd](https://github.com/skein-js/skein-js/commit/35922dd))
+
+### 🩹 Fixes
+
+- harden runtime cleanup and local application lifecycle ([52629b6](https://github.com/skein-js/skein-js/commit/52629b6))
+- **ci:** handle Windows paths in local consumer checks ([0fa9cc5](https://github.com/skein-js/skein-js/commit/0fa9cc5))
+- **ci:** prefer upgraded npm on Windows runners ([c3a8111](https://github.com/skein-js/skein-js/commit/c3a8111))
+- **docs:** validate new package links against PR files ([abd9571](https://github.com/skein-js/skein-js/commit/abd9571))
+- **local:** pin consumer npm and normalize Tauri backend paths ([ac78fc4](https://github.com/skein-js/skein-js/commit/ac78fc4))
+- **test-support:** measure queue delays at delivery ([6f8aef3](https://github.com/skein-js/skein-js/commit/6f8aef3))
+
+### ❤️ Thank You
+
+- Maina Wycliffe
+
 ## 0.18.0 (2026-09-25)
 
 ### 🚀 Features
