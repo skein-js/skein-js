@@ -9,10 +9,9 @@
 // queue. It ticks rarely, because that is a crash-only event. Same outbox-plus-sweep shape the cron
 // scheduler uses, and for the same reason.
 //
-// **Without one — development — it is the retry loop itself**, polling the outbox for rows whose
-// `next_attempt_at` has arrived and POSTing them. Correct, process-local, and lost on restart. That
-// is fine for `skein dev`; point a local Redis at it (`skein dev --queue redis`) to exercise what
-// production actually does.
+// **Without one it is the retry loop itself**, polling persisted due times and leases.
+// With a durable store, waiting retries and abandoned delivery leases survive restart. Only an
+// in-memory store loses them; no separate delivery queue is required for SQLite or Postgres.
 //
 // The retention sweep rides along on a slower cadence rather than living in a second loop: it is one
 // indexed DELETE, and one loop is one thing to start, one thing to stop, and one thing to get wrong.

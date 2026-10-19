@@ -1,0 +1,39 @@
+{
+  "$schema": "../../node_modules/nx/schemas/project-schema.json",
+  "name": "example-desktop-tauri",
+  "projectType": "application",
+  "sourceRoot": "examples/desktop-tauri/src",
+  "targets": {
+    "start": {
+      "executor": "nx:run-commands",
+      "dependsOn": ["build"],
+      "cache": false,
+      "options": {
+        "command": "node scripts/desktop-consumer-smoke.mjs tauri --interactive",
+        "cwd": "."
+      }
+    },
+    "typecheck": {
+      "executor": "nx:run-commands",
+      "options": {
+        "command": "tsc --noEmit",
+        "cwd": "examples/desktop-tauri"
+      }
+    },
+    "build": {
+      "executor": "nx:run-commands",
+      "options": {
+        "command": "node ../../scripts/build-local-example.mjs desktop-tauri",
+        "cwd": "examples/desktop-tauri"
+      },
+      "inputs": ["production", "^production", "{workspaceRoot}/scripts/build-local-example.mjs"]
+    },
+    "format-native": {
+      "executor": "nx:run-commands",
+      "options": {
+        "command": "cargo fmt --manifest-path src-tauri/Cargo.toml",
+        "cwd": "examples/desktop-tauri"
+      }
+    }
+  }
+}

@@ -256,11 +256,6 @@ export function createProtocolRuntime(
     options.deliveryWorker ?? {},
   );
 
-  // Said once at startup, not discovered later. A deployment whose *store* survives a restart but
-  // whose delivery *schedule* does not will lose every in-flight retry on each deploy — and the
-  // symptom is a callback that silently stops being retried, which is precisely what this feature
-  // exists to make impossible. Same posture, and the same reason, as the cron scheduler's warning
-  // about a non-durable store.
   // The sharpest footgun in the whole feature. A caller who injected a `webhookDispatcher` before
   // signing existed keeps a working dispatcher — it just ignores the third argument, so every
   // callback goes out unsigned while the config says otherwise. Nothing fails; receivers simply
@@ -271,15 +266,9 @@ export function createProtocolRuntime(
         "only sent if that dispatcher forwards `attempt.headers` and sends `attempt.body` verbatim.",
     );
   }
-  if (deps.store.durable === true && deps.deliveryQueue?.durable !== true) {
-    context.deps.logger.warn(
-      "run-completion callbacks are scheduled in memory: a retry still waiting when this process " +
-        "exits is lost. Configure Redis (REDIS_URI) so BullMQ owns the retry schedule.",
-    );
-  }
-
   // The queue's consumer, when there is a queue. This is what actually retries a callback in
-  // production; `deliveryWorker` above is only the sweep that recovers jobs a crash lost.
+  // production when configured. Without it, `deliveryWorker` claims persisted due rows directly,
+  // including leases left by a process that stopped during delivery.
   //
   // Opened in `start()`, NOT here. Consuming from construction would mean merely *building* a runtime
   // starts pulling other instances' work — so a process that assembled one to inspect its handler

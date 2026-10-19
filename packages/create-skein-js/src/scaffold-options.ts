@@ -21,14 +21,14 @@
 export type ModelProvider = "none" | "google" | "anthropic" | "openai";
 
 /** Which drivers the generated `dev` script runs on. See {@link ScaffoldOptions.devStorage}. */
-export type DevStorage = "memory" | "postgres";
+export type DevStorage = "memory" | "postgres" | "sqlite";
 
 /** Package managers we detect, emit instructions for, and can run an install with. */
 export type PackageManagerName = "npm" | "pnpm" | "yarn" | "bun";
 
 export const MODEL_PROVIDERS: readonly ModelProvider[] = ["none", "google", "anthropic", "openai"];
 export const PACKAGE_MANAGERS: readonly PackageManagerName[] = ["npm", "pnpm", "yarn", "bun"];
-export const DEV_STORAGES: readonly DevStorage[] = ["memory", "postgres"];
+export const DEV_STORAGES: readonly DevStorage[] = ["memory", "postgres", "sqlite"];
 
 /** Everything a template needs. Fully resolved — no defaults left to apply downstream. */
 export interface ScaffoldOptions {

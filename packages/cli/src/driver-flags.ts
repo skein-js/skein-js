@@ -20,12 +20,12 @@ export function parseChoice<const T extends string>(choices: readonly T[], hint?
 
 /** Shared by both `start` driver parsers, so the two rejections read identically. */
 export const START_REQUIRES_DURABLE =
-  "`skein start` is the production entrypoint and requires Postgres + Redis. " +
+  "`skein start` is the production entrypoint and requires Postgres + Redis or the SQLite store/queue pair. " +
   "For a local run with no infrastructure use `skein dev`; to point dev at production drivers, " +
   "`skein dev --store postgres --queue redis`.";
 
-export const parseStore = parseChoice(["memory", "postgres"] as const);
-export const parseQueue = parseChoice(["memory", "redis"] as const);
+export const parseStore = parseChoice(["memory", "postgres", "sqlite"] as const);
+export const parseQueue = parseChoice(["memory", "redis", "sqlite"] as const);
 
 /**
  * `start` accepts only the durable drivers — its own parsers, deliberately not `dev`'s.
@@ -40,5 +40,8 @@ export const parseQueue = parseChoice(["memory", "redis"] as const);
  * The flags are **kept** rather than removed: images built by older `skein build` versions pass
  * `--store postgres --queue redis` in their CMD, and dropping the flags would break every one of them.
  */
-export const parseStartStore = parseChoice(["postgres"] as const, START_REQUIRES_DURABLE);
-export const parseStartQueue = parseChoice(["redis"] as const, START_REQUIRES_DURABLE);
+export const parseStartStore = parseChoice(["postgres", "sqlite"] as const, START_REQUIRES_DURABLE);
+export const parseStartQueue = parseChoice(["redis", "sqlite"] as const, START_REQUIRES_DURABLE);
+
+/** Import supports only the implemented memory and Postgres targets. */
+export const parseImportStore = parseChoice(["memory", "postgres"] as const);

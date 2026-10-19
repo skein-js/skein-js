@@ -51,10 +51,11 @@ export interface StartCommandOptions {
    * Protocol-resource + checkpoint store. Postgres only (`POSTGRES_URI`) — narrower than `StoreDriver`
    * on purpose, since this is the production entrypoint and the flag rejects `memory` at parse time.
    */
-  store: Extract<StoreDriver, "postgres">;
+  store: Extract<StoreDriver, "postgres" | "sqlite">;
   /** Run queue + stream bus. Redis only (`REDIS_URI`), for the same reason as `store`. */
-  queue: Extract<QueueDriver, "redis">;
+  queue: Extract<QueueDriver, "redis" | "sqlite">;
   /** `--concurrency`: queued runs the background worker executes at once. Unset → env → default. */
+  sqlitePath?: string;
   concurrency?: number;
   /** `--n-jobs-per-worker` / `-n`: the LangGraph spelling; used only when `--concurrency` is absent. */
   nJobsPerWorker?: number;
@@ -114,6 +115,8 @@ export async function runStart(options: StartCommandOptions): Promise<void> {
     const loaded = await loadConfig({ configPath });
     const runtimeSelection = resolveRuntimeSelection(loaded.config, options);
     selectedRuntime = runtimeSelection.name;
+    if (options.store === "sqlite" && selectedRuntime !== "node")
+      throw new Error("SQLite is supported by the Node runtime only.");
     // `capabilities.name` rather than a second hand-rolled detection: two sources of truth for the
     // same fact can disagree, and then this guard validates the wrong one.
     const actualRuntime = capabilities.name;
@@ -162,6 +165,7 @@ export async function runStart(options: StartCommandOptions): Promise<void> {
       configPath,
       store: options.store,
       queue: options.queue,
+      sqlitePath: path.resolve(process.cwd(), options.sqlitePath ?? ".skein/state.sqlite"),
       schemas,
       // The CLI knows its own version and the engine deliberately does not — see cli-version.ts.
       serverVersion: skeinCliVersion(),

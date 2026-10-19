@@ -450,3 +450,9 @@ see [embedding.md](./embedding.md#going-to-production)).
 Protocol resources (`SkeinStore`) stay separate from LangGraph checkpoints, which is what allows an
 in-memory dev experience with no database while the checkpoint format stays 100% LangGraph-native — so
 history endpoints and interrupt/resume behave exactly as LangGraph expects.
+
+## Local SQLite storage
+
+[`@skein-js/storage-sqlite`](./local-deployment.md) implements the full resource store and a persisted
+run queue in one exclusively owned file. `@skein-js/local` assembles it with LangGraph's SQLite saver.
+Unclaimed work persists; abandoned attempts become failures without automatic input replay.

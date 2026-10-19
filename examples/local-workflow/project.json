@@ -1,0 +1,32 @@
+{
+  "$schema": "../../node_modules/nx/schemas/project-schema.json",
+  "name": "example-local-workflow",
+  "projectType": "application",
+  "sourceRoot": "examples/local-workflow/src",
+  "targets": {
+    "typecheck": {
+      "executor": "nx:run-commands",
+      "options": {
+        "command": "tsc --noEmit",
+        "cwd": "examples/local-workflow"
+      }
+    },
+    "build": {
+      "executor": "nx:run-commands",
+      "options": {
+        "command": "node ../../scripts/build-local-example.mjs local-workflow",
+        "cwd": "examples/local-workflow"
+      },
+      "inputs": ["production", "^production", "{workspaceRoot}/scripts/build-local-example.mjs"]
+    },
+    "verify-models": {
+      "executor": "nx:run-commands",
+      "dependsOn": ["build"],
+      "cache": false,
+      "options": {
+        "command": "node scripts/verify-models.mjs",
+        "cwd": "examples/local-workflow"
+      }
+    }
+  }
+}

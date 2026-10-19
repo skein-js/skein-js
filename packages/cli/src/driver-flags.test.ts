@@ -6,6 +6,7 @@
 import { describe, expect, it } from "vitest";
 
 import {
+  parseImportStore,
   parseQueue,
   parseStartQueue,
   parseStartStore,
@@ -34,7 +35,7 @@ describe("start driver flags", () => {
   });
 
   it("rejects an unknown driver too", () => {
-    expect(() => parseStartStore("sqlite")).toThrow();
+    expect(() => parseStartStore("unknown")).toThrow();
     expect(() => parseStartQueue("sqs")).toThrow();
   });
 });
@@ -52,6 +53,16 @@ describe("dev driver flags", () => {
   // No hint here: `--store sqlite` under `dev` is a typo, not someone reaching for a documented
   // combination, so the allowed-values list is the whole answer.
   it("rejects an unknown driver without the start hint", () => {
-    expect(() => parseStore("sqlite")).toThrow(/Must be one of: memory, postgres\.$/);
+    expect(() => parseStore("unknown")).toThrow(/Must be one of: memory, postgres, sqlite\.$/);
+  });
+});
+
+describe("SQLite selection", () => {
+  it("accepts SQLite for dev and start but keeps the importer limited", () => {
+    expect(parseStore("sqlite")).toBe("sqlite");
+    expect(parseQueue("sqlite")).toBe("sqlite");
+    expect(parseStartStore("sqlite")).toBe("sqlite");
+    expect(parseStartQueue("sqlite")).toBe("sqlite");
+    expect(() => parseImportStore("sqlite")).toThrow();
   });
 });

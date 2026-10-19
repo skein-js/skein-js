@@ -11,6 +11,8 @@ export default tseslint.config(
   {
     ignores: [
       "**/dist/**",
+      "examples/desktop-tauri/backend/**",
+      "examples/desktop-tauri/src-tauri/target/**",
       // `skein build` output inside an example. Git already ignores `.skein/`, so a developer who has
       // run a local build otherwise fails `pnpm lint` on bundled third-party code they did not write.
       "**/.skein/**",

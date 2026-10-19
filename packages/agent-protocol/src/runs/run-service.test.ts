@@ -238,6 +238,37 @@ describe("run service", () => {
     });
   });
 
+  it("completes a terminal join after the bus has lost its completion state", async () => {
+    const deps = createFixtureDeps();
+    const { service } = await serviceWithAssistants(deps);
+    const thread = await deps.store.threads.create();
+    const run = await deps.store.runs.create({
+      thread_id: thread.thread_id,
+      assistant_id: "echo",
+      status: "error",
+    });
+    expect(await collect(await service.runs.join(run.run_id))).toEqual([]);
+  });
+
+  it("records server-owned background intent before admission, excluding inline requests", async () => {
+    const deps = createFixtureDeps();
+    const { service } = await serviceWithAssistants(deps);
+    const request = {
+      assistant_id: "echo",
+      after_seconds: 60,
+      queue_not_before: "1900-01-01T00:00:00.000Z",
+      input: {},
+    };
+    const run = await service.runs.createStatelessBackground(request);
+    const kwargs = await deps.store.runs.getKwargs(run.run_id);
+    expect(Date.parse(kwargs!.queue_not_before!)).toBeGreaterThan(Date.now() + 59_000);
+    const inline = await service.runs.createWait({
+      assistant_id: "echo",
+      input: { queue_not_before: "forged" },
+    });
+    expect((await deps.store.runs.getKwargs(inline.runId))?.queue_not_before).toBeUndefined();
+  });
+
   it("join replays a finished run's frames from the buffer", async () => {
     const { service } = await serviceWithAssistants();
     const { runId, frames } = await service.runs.createStream({ assistant_id: "echo", input: {} });

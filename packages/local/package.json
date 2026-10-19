@@ -1,0 +1,61 @@
+{
+  "name": "@skein-js/local",
+  "version": "0.18.0",
+  "description": "Embed LangGraph agents with durable local SQLite storage.",
+  "license": "Apache-2.0",
+  "author": "Maina Wycliffe <wmmaina7@gmail.com>",
+  "homepage": "https://github.com/skein-js/skein-js/tree/main/packages/local#readme",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/skein-js/skein-js.git",
+    "directory": "packages/local"
+  },
+  "bugs": {
+    "url": "https://github.com/skein-js/skein-js/issues"
+  },
+  "keywords": [
+    "typescript",
+    "langgraph",
+    "agent-protocol",
+    "sqlite",
+    "local"
+  ],
+  "type": "module",
+  "main": "./dist/index.js",
+  "module": "./dist/index.js",
+  "types": "./dist/index.d.ts",
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "import": "./dist/index.js",
+      "default": "./dist/index.js"
+    }
+  },
+  "files": [
+    "dist",
+    "LICENSE",
+    "README.md"
+  ],
+  "sideEffects": false,
+  "engines": {
+    "node": "^22.0.0 || ^24.0.0"
+  },
+  "dependencies": {
+    "@skein-js/core": "workspace:*",
+    "@skein-js/agent-protocol": "workspace:*",
+    "@skein-js/langgraph": "workspace:*",
+    "@skein-js/storage-memory": "workspace:*",
+    "@skein-js/storage-sqlite": "workspace:*"
+  },
+  "devDependencies": {
+    "@skein-js/test-support": "workspace:*",
+    "@types/better-sqlite3": "^7.6.13"
+  },
+  "publishConfig": {
+    "access": "public"
+  },
+  "peerDependencies": {
+    "@langchain/langgraph": "^1.4.0",
+    "@langchain/langgraph-checkpoint-sqlite": "~1.0.4"
+  }
+}

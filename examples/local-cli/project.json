@@ -1,0 +1,41 @@
+{
+  "$schema": "../../node_modules/nx/schemas/project-schema.json",
+  "name": "example-local-cli",
+  "projectType": "application",
+  "sourceRoot": "examples/local-cli/src",
+  "targets": {
+    "typecheck": {
+      "executor": "nx:run-commands",
+      "options": {
+        "command": "tsc --noEmit",
+        "cwd": "examples/local-cli"
+      }
+    },
+    "build": {
+      "executor": "nx:run-commands",
+      "options": {
+        "command": "node ../../scripts/build-local-example.mjs local-cli",
+        "cwd": "examples/local-cli"
+      },
+      "inputs": ["production", "^production", "{workspaceRoot}/scripts/build-local-example.mjs"]
+    },
+    "start": {
+      "executor": "nx:run-commands",
+      "dependsOn": ["build"],
+      "cache": false,
+      "options": {
+        "command": "node examples/local-cli/dist/index.js",
+        "cwd": "."
+      }
+    },
+    "smoke": {
+      "executor": "nx:run-commands",
+      "dependsOn": ["build"],
+      "cache": false,
+      "options": {
+        "command": "node dist/index.js --smoke",
+        "cwd": "examples/local-cli"
+      }
+    }
+  }
+}

@@ -53,7 +53,8 @@
   },
   "peerDependencies": {
     "@langchain/langgraph": "^1.4.0",
-    "@langchain/langgraph-checkpoint-postgres": "^1.0.4"
+    "@langchain/langgraph-checkpoint-postgres": "^1.0.4",
+    "@skein-js/local": "0.18.0"
   },
   "devDependencies": {
     "@langchain/core": "^1.2.9",
@@ -63,9 +64,15 @@
     "@skein-js/otel": "workspace:*",
     "@skein-js/posthog": "workspace:*",
     "@skein-js/test-support": "workspace:*",
-    "@types/cors": "^2.8.17"
+    "@types/cors": "^2.8.17",
+    "@skein-js/local": "workspace:*"
   },
   "publishConfig": {
     "access": "public"
+  },
+  "peerDependenciesMeta": {
+    "@skein-js/local": {
+      "optional": true
+    }
   }
 }

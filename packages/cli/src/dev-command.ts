@@ -60,6 +60,7 @@ export interface DevCommandOptions {
   /** Run queue + stream bus: `"memory"` (default) or `"redis"` (`REDIS_URI`). */
   queue: QueueDriver;
   /** `--concurrency`: queued runs the background worker executes at once. Unset → env → default. */
+  sqlitePath?: string;
   concurrency?: number;
   /** `--n-jobs-per-worker` / `-n`: the LangGraph spelling; used only when `--concurrency` is absent. */
   nJobsPerWorker?: number;
@@ -82,6 +83,11 @@ const AUTOSAVE_MS = 2000;
 
 export async function runDev(options: DevCommandOptions): Promise<void> {
   const configPath = path.resolve(process.cwd(), options.config);
+  const sqlitePath = path.resolve(process.cwd(), options.sqlitePath ?? ".skein/state.sqlite");
+  const sqliteArtifacts =
+    options.store === "sqlite"
+      ? [sqlitePath, `${sqlitePath}-wal`, `${sqlitePath}-shm`, `${sqlitePath}-journal`]
+      : [];
 
   // Validate + resolve env before starting anything, so a bad config fails fast and graphs see
   // their env on first load. `loadConfig` here does not import `.ts` — that happens through vite.
@@ -99,7 +105,11 @@ export async function runDev(options: DevCommandOptions): Promise<void> {
 
   // Ignore our own persisted-state dir: its periodic autosave writes would otherwise be seen as
   // source changes and trigger an endless reload loop.
-  const loader = await createViteGraphLoader(configDir, [`${STATE_DIR}/**`, `**/${STATE_DIR}/**`]);
+  const loader = await createViteGraphLoader(configDir, [
+    `${STATE_DIR}/**`,
+    `**/${STATE_DIR}/**`,
+    ...sqliteArtifacts.map((filename) => filename.replaceAll("\\", "/")),
+  ]);
   // The dev server's console logger — colored, `info:`-prefixed output that drives per-request
   // logging, the background-run summaries, the startup banner, and engine warnings. Its failure-block
   // code frame is bounded to the workspace vite serves from: wide enough for an aliased lib above the
@@ -110,6 +120,7 @@ export async function runDev(options: DevCommandOptions): Promise<void> {
     importModule: loader.importModule,
     store: options.store,
     queue: options.queue,
+    sqlitePath,
     // The CLI knows its own version and the engine deliberately does not — see cli-version.ts.
     serverVersion: skeinCliVersion(),
   });
@@ -303,6 +314,7 @@ export async function runDev(options: DevCommandOptions): Promise<void> {
     loader.watcher.add(projectEnvPaths(config, configDir));
     const onFileEvent = (file: string): void => {
       // Defense in depth against a self-triggered loop: never reload on our own state writes.
+      if (sqliteArtifacts.includes(path.resolve(file))) return;
       if (`${path.resolve(file)}${path.sep}`.startsWith(`${stateDir}${path.sep}`)) return;
       if (pending) clearTimeout(pending);
       pending = setTimeout(() => void reload(), RELOAD_DEBOUNCE_MS);

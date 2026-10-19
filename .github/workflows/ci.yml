@@ -35,6 +35,9 @@ env:
   NODE_LTS: 24
 
 jobs:
+  local-deployment:
+    uses: ./.github/workflows/local-deployment.yml
+
   check:
     name: lint · typecheck · test · build
     runs-on: ubuntu-latest

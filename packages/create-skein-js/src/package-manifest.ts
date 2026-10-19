@@ -20,6 +20,15 @@ function sortedByKey(entries: Record<string, string>): Record<string, string> {
 function scriptsFor(options: ScaffoldOptions): Record<string, string> {
   const memory = "skein dev --port 2024";
   const durable = `${memory} --store postgres --queue redis`;
+  if (options.devStorage === "sqlite")
+    return {
+      dev: `${memory} --store sqlite --queue sqlite`,
+      "dev:memory": memory,
+      build: "skein build --artifact-only",
+      start: "skein start -c .skein/build/langgraph.json --store sqlite --queue sqlite",
+      typecheck: "tsc --noEmit",
+      test: "vitest run",
+    };
   const durableIsDefault = options.devStorage === "postgres";
   return {
     // The drop-in for `langgraph dev`: TypeScript loaded in-process, hot reload, and dev state
@@ -56,6 +65,11 @@ function dependenciesFor(options: ScaffoldOptions): Record<string, string> {
     "@langchain/core": CORE_VERSIONS["@langchain/core"],
     "@langchain/langgraph": CORE_VERSIONS["@langchain/langgraph"],
   };
+
+  if (options.devStorage === "sqlite") {
+    dependencies["@skein-js/local"] = options.skeinVersionRange;
+    dependencies["@langchain/langgraph-checkpoint-sqlite"] = "~1.0.4";
+  }
 
   if (options.provider !== "none") {
     const provider = PROVIDER_DETAILS[options.provider];

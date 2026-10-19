@@ -25,6 +25,7 @@ import {
 import type { GraphSchemas as ConfigGraphSchemas } from "@skein-js/config";
 import type { TelemetrySink } from "@skein-js/core";
 import { cloneLangGraphCheckpoint, langGraphResolver, SkeinBaseStore } from "@skein-js/langgraph";
+import type { EmbeddedSqliteRuntime, embedSqliteGraphs } from "@skein-js/local";
 import {
   corsFromHttpConfig,
   loadReloadableInMemoryRuntime,
@@ -56,9 +57,9 @@ import { resolveStoreAdapter } from "./resolve-store-adapter.js";
 import { resolveTelemetry } from "./resolve-telemetry.js";
 
 /** Where protocol resources (assistants/threads/runs/store) and checkpoints are persisted. */
-export type StoreDriver = "memory" | "postgres";
+export type StoreDriver = "memory" | "postgres" | "sqlite";
 /** Where background runs are queued and stream frames are fanned out. */
-export type QueueDriver = "memory" | "redis";
+export type QueueDriver = "memory" | "redis" | "sqlite";
 
 /** Options for {@link buildRuntime}: which `langgraph.json` to load and which drivers to wire. */
 export interface BuildRuntimeOptions {
@@ -75,6 +76,8 @@ export interface BuildRuntimeOptions {
   store: StoreDriver;
   /** `"memory"` (default dev) or `"redis"` (reads `REDIS_URI`). */
   queue: QueueDriver;
+  /** Required absolute database path when the SQLite store/queue pair is selected. */
+  sqlitePath?: string;
   /**
    * The version `GET /info` reports. Passed in by the CLI, which — as an *application* rather than a
    * library — may read its own `package.json`; see `ProtocolDeps.serverVersion`.
@@ -185,6 +188,13 @@ async function flushTelemetry(sinks: readonly TelemetrySink[]): Promise<void> {
 /** Assemble a {@link SkeinRuntime} for the requested driver combination. */
 export async function buildRuntime(options: BuildRuntimeOptions): Promise<SkeinRuntime> {
   const { configPath, importModule, store, queue, schemas, serverVersion } = options;
+
+  if ((store === "sqlite") !== (queue === "sqlite")) {
+    throw new RuntimeConfigError("SQLite requires --store sqlite --queue sqlite together.");
+  }
+  if (store === "sqlite" && (!options.sqlitePath || !path.isAbsolute(options.sqlitePath))) {
+    throw new RuntimeConfigError("SQLite requires an explicit absolute sqlitePath.");
+  }
 
   // All-memory: reuse the express reloadable in-memory runtime verbatim (hot-reload + snapshot).
   if (store === "memory" && queue === "memory") {
@@ -297,38 +307,6 @@ export async function buildRuntime(options: BuildRuntimeOptions): Promise<SkeinR
     const webhooks = resolveWebhooks(first.config.skein?.webhooks, {
       warn: (message) => console.warn(message),
     });
-    // `requireEnv` is evaluated eagerly (before any connect), so a missing POSTGRES_URI still throws
-    // before a pool is opened. The Postgres store + saver assembly (shared connection tuning, ordered
-    // teardown) lives in `connectPostgresStore` — reused by `embedPostgresGraphs`.
-    // `threadExecutionGate` comes with the Postgres store: it is the cross-instance per-thread
-    // execution claim, and the memory driver has no second instance to coordinate with.
-    const {
-      store: skeinStore,
-      checkpointer,
-      threadExecutionGate,
-    } = store === "postgres"
-      ? await connectPostgresStore({
-          url: requireEnv("POSTGRES_URI", "postgres"),
-          index: await resolveStoreIndex(first.config.store?.index, {
-            configDir: first.configDir,
-            importModule,
-          }),
-          ttl: storeTtl,
-          ...(threadTtl ? { threadTtl } : {}),
-          connectionOptions: postgresConnectionOptions(),
-          maxPageSize: resolveMaxPageSize(),
-          runConcurrency: resolveRunConcurrency(),
-          disposers,
-        })
-      : {
-          store: new MemorySkeinStore({
-            ...(storeTtl ? { ttl: storeTtl } : {}),
-            ...(threadTtl ? { threadTtl } : {}),
-            maxPageSize: resolveMaxPageSize(),
-          }),
-          checkpointer: new MemorySaver(),
-        };
-
     // Bring-your-own long-term-memory store (`store.adapter`). Only the memory repo is replaced —
     // assistants, threads, runs, crons and idempotency keep using the driver above — and the
     // substitution happens in `resolveDeps` via `withStoreItems`, so the driver's `maxPageSize` and
@@ -346,12 +324,80 @@ export async function buildRuntime(options: BuildRuntimeOptions): Promise<SkeinR
         })
       : undefined;
 
+    if (store === "sqlite" && first.config.store?.index) {
+      throw new RuntimeConfigError(
+        "SQLite does not support store.index. Use store.adapter to configure an external semantic store.",
+      );
+    }
+    let localRuntime: EmbeddedSqliteRuntime | undefined;
+    if (store === "sqlite") {
+      let localModule: { embedSqliteGraphs: typeof embedSqliteGraphs };
+      try {
+        localModule = await import("@skein-js/local");
+      } catch (error) {
+        if (
+          (error as NodeJS.ErrnoException).code !== "ERR_MODULE_NOT_FOUND" &&
+          (error as NodeJS.ErrnoException).code !== "MODULE_NOT_FOUND"
+        )
+          throw error;
+        throw new RuntimeConfigError(
+          "SQLite needs @skein-js/local and @langchain/langgraph-checkpoint-sqlite. Install them with: npm install @skein-js/local @langchain/langgraph-checkpoint-sqlite@~1.0.4",
+        );
+      }
+      localRuntime = await localModule.embedSqliteGraphs(resolver, {
+        sqlitePath: options.sqlitePath!,
+        maxPageSize: resolveMaxPageSize(),
+        ttl: storeTtl,
+        threadTtl,
+        overrides: storeItems ? { storeItems } : undefined,
+      });
+      disposers.push(() => localRuntime!.dispose());
+    }
+
+    // `requireEnv` is evaluated eagerly (before any connect), so a missing POSTGRES_URI still throws
+    // before a pool is opened. The Postgres store + saver assembly (shared connection tuning, ordered
+    // teardown) lives in `connectPostgresStore` — reused by `embedPostgresGraphs`.
+    // `threadExecutionGate` comes with the Postgres store: it is the cross-instance per-thread
+    // execution claim, and the memory driver has no second instance to coordinate with.
+    const {
+      store: skeinStore,
+      checkpointer,
+      threadExecutionGate,
+    } = localRuntime
+      ? {
+          store: localRuntime.deps.store,
+          checkpointer: localRuntime.deps.checkpointer,
+          threadExecutionGate: undefined,
+        }
+      : store === "postgres"
+        ? await connectPostgresStore({
+            url: requireEnv("POSTGRES_URI", "postgres"),
+            index: await resolveStoreIndex(first.config.store?.index, {
+              configDir: first.configDir,
+              importModule,
+            }),
+            ttl: storeTtl,
+            ...(threadTtl ? { threadTtl } : {}),
+            connectionOptions: postgresConnectionOptions(),
+            maxPageSize: resolveMaxPageSize(),
+            runConcurrency: resolveRunConcurrency(),
+            disposers,
+          })
+        : {
+            store: new MemorySkeinStore({
+              ...(storeTtl ? { ttl: storeTtl } : {}),
+              ...(threadTtl ? { threadTtl } : {}),
+              maxPageSize: resolveMaxPageSize(),
+            }),
+            checkpointer: new MemorySaver(),
+          };
+
     // When TTL is configured, sweep expired store items on a background interval (memory or postgres).
     // An adapter that cannot expire items has already failed startup above, so if we reach here with
     // both, the adapted store really can sweep — but the sweeper is pointed at `skeinStore`, whose own
     // `store` repo is the driver's. Point it at the adapter when one is configured, or a `store.ttl`
     // deployment would sweep the wrong store and never expire the rows that actually carry a TTL.
-    if (storeTtl) {
+    if (storeTtl && !localRuntime) {
       startStoreTtlSweeper(
         storeItems ? withStoreItems(skeinStore, storeItems) : skeinStore,
         storeTtl,
@@ -366,19 +412,26 @@ export async function buildRuntime(options: BuildRuntimeOptions): Promise<SkeinR
       bus,
       abortChannel,
       deliveryQueue,
-    } = queue === "redis"
-      ? connectRedisQueue({
-          url: requireEnv("REDIS_URI", "redis"),
-          disposers,
-          ...(webhooks ? { webhooks } : {}),
-        })
-      : {
-          queue: new MemoryRunQueue(),
-          bus: new MemoryRunEventBus(resolveMemoryBusLimits()),
-          // No delivery queue on the memory path: the delivery worker polls the outbox instead. That
-          // is the development shape — correct, but the schedule dies with the process.
+    } = localRuntime
+      ? {
+          queue: localRuntime.deps.queue,
+          bus: localRuntime.deps.bus,
+          abortChannel: undefined,
           deliveryQueue: undefined,
-        };
+        }
+      : queue === "redis"
+        ? connectRedisQueue({
+            url: requireEnv("REDIS_URI", "redis"),
+            disposers,
+            ...(webhooks ? { webhooks } : {}),
+          })
+        : {
+            queue: new MemoryRunQueue(),
+            bus: new MemoryRunEventBus(resolveMemoryBusLimits()),
+            // No delivery queue on the memory path: the delivery worker polls the outbox instead. That
+            // retains due times in the durable store and recovers expired leases after restart.
+            deliveryQueue: undefined,
+          };
 
     // Telemetry sinks from the `telemetry` block plus environment auto-detection. Left off the deps
     // entirely when nothing is configured, so the engine's `telemetryEnabled` guards stay false.
@@ -409,7 +462,7 @@ export async function buildRuntime(options: BuildRuntimeOptions): Promise<SkeinR
       ...(idempotency ? { idempotency } : {}),
       ...(webhooks ? { webhooks } : {}),
       // Present only with Redis. Without it the delivery worker polls the outbox instead — correct,
-      // but the schedule dies with the process, which is why `createProtocolRuntime` warns.
+      // retaining due times whenever the configured store is durable.
       ...(deliveryQueue ? { deliveryQueue } : {}),
       ...(serverVersion !== undefined ? { serverVersion } : {}),
       auth: await loadAuthEngine(first.config.auth, {

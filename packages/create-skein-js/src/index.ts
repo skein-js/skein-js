@@ -24,6 +24,7 @@ import { resolvePackageManager, runPackageManagerInstall } from "./package-manag
 import { buildProjectFiles } from "./project-files.js";
 import { canPrompt, promptChoice, promptConfirm, promptText } from "./prompt.js";
 import {
+  DEV_STORAGES,
   isModelProvider,
   isPackageManagerName,
   toPackageName,
@@ -34,6 +35,12 @@ import {
 } from "./scaffold-options.js";
 import { resolveSkeinVersionRange, scaffolderVersion } from "./skein-version.js";
 import { assertTargetDirectoryUsable } from "./target-directory.js";
+
+function parseStorage(value: string): DevStorage {
+  if (!(DEV_STORAGES as readonly string[]).includes(value))
+    throw new InvalidArgumentError("Expected one of: memory, postgres, sqlite.");
+  return value as DevStorage;
+}
 
 function parseProvider(value: string): ModelProvider {
   if (!isModelProvider(value)) {
@@ -63,6 +70,7 @@ const PROVIDER_CHOICES = [
  */
 const STORAGE_CHOICES = [
   { value: "memory", label: "In memory", hint: "zero setup — state in .skein/" },
+  { value: "sqlite", label: "SQLite", hint: "durable local file; Node 22/24; no services" },
   { value: "postgres", label: "Postgres + Redis", hint: "matches production; needs Docker" },
 ] as const satisfies readonly { value: DevStorage; label: string; hint: string }[];
 
@@ -77,6 +85,7 @@ const program = new Command()
     "Model provider: none | google | anthropic | openai",
     parseProvider,
   )
+  .option("--storage <driver>", "Storage: memory | postgres | sqlite", parseStorage)
   .option("--pm <name>", "Package manager: npm | pnpm | yarn | bun", parsePackageManager)
   .option("--no-install", "Skip installing dependencies")
   .option("--no-git", "Skip initializing a git repository")
@@ -110,9 +119,11 @@ const program = new Command()
       const targetDirectory = path.resolve(process.cwd(), projectName);
       assertTargetDirectoryUsable(targetDirectory, { force: options.force });
 
-      const devStorage = interactive
-        ? await promptChoice(ask, "Local development storage?", STORAGE_CHOICES, "memory")
-        : "memory";
+      const devStorage =
+        options.storage ??
+        (interactive
+          ? await promptChoice(ask, "Local development storage?", STORAGE_CHOICES, "memory")
+          : "memory");
 
       // Both of these have a flag already; the flag is the *override*, and its absence used to mean
       // "assume yes" rather than "ask". Installing takes time, network and a `node_modules`, and git

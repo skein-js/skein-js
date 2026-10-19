@@ -253,6 +253,7 @@ export default withMermaid(
               items: [
                 { text: "LangGraph CLI compatibility", link: "/langgraph-cli-compat" },
                 { text: "Embedding a graph in code", link: "/embedding" },
+                { text: "Durable local deployment", link: "/local-deployment" },
                 { text: "A graph as a plain endpoint", link: "/serving-a-single-graph" },
                 { text: "Using skein-js (reference)", link: "/using-skein" },
               ],

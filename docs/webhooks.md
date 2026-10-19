@@ -137,17 +137,17 @@ The API remains the source of truth for run state. A callback is a notification,
 
 ## Where the retries actually run
 
-The durability of a callback is the same everywhere. What differs is whether a retry still _waiting_
-survives a restart:
+Durable stores retain both delivery payloads and scheduling timestamps. A separate delivery queue
+changes how retries are scheduled, rather than whether those timestamps survive:
 
-|                        | Retry schedule                                                               | A pending retry survives a restart?                                               |
-| ---------------------- | ---------------------------------------------------------------------------- | --------------------------------------------------------------------------------- |
-| **Postgres + Redis**   | BullMQ — delayed jobs, exponential backoff with jitter, stalled-job recovery | **Yes.** The schedule lives in Redis                                              |
-| **Postgres, no Redis** | skein polls the outbox for rows that are due                                 | No — but the _delivery_ does. The row is committed, and the next boot picks it up |
-| **Memory (dev)**       | The same poll, in-process                                                    | No, and neither does the delivery — nothing here is durable                       |
+| Deployment                   | Retry scheduling                                | Restart behavior                                                             |
+| ---------------------------- | ----------------------------------------------- | ---------------------------------------------------------------------------- |
+| Postgres + Redis             | BullMQ delayed jobs and recovery sweep          | Waiting jobs survive in Redis; persisted outbox rows recover lost scheduling |
+| Postgres or SQLite, no Redis | Polling persisted due times and delivery leases | Waiting retries and abandoned delivery leases survive in the database        |
+| Memory                       | Polling the in-memory outbox                    | Delivery rows and due times are lost with the process                        |
 
-So: **run Redis in production.** skein warns at startup when your store is durable but your delivery
-schedule is not. To exercise the real path locally, `skein dev --queue redis`.
+The polling worker needs no SQLite-specific delivery queue. The host starts and stops it through the
+existing protocol runtime lifecycle.
 
 A process killed at exactly the wrong moment can leave a committed delivery with no schedule attached.
 Nothing is lost: a background sweep picks it up on its next pass. The practical consequence is that

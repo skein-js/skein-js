@@ -1,0 +1,25 @@
+{
+  "$schema": "../../node_modules/nx/schemas/project-schema.json",
+  "name": "storage-sqlite",
+  "sourceRoot": "packages/storage-sqlite/src",
+  "projectType": "library",
+  "targets": {
+    "build": {
+      "executor": "nx:run-commands",
+      "options": {
+        "command": "tsup src/index.ts --format esm --dts --clean",
+        "cwd": "packages/storage-sqlite"
+      }
+    },
+    "typecheck": {
+      "executor": "nx:run-commands",
+      "options": {
+        "command": "tsc --noEmit",
+        "cwd": "packages/storage-sqlite"
+      }
+    },
+    "test": {
+      "dependsOn": ["build", "^build"]
+    }
+  }
+}

@@ -67,6 +67,7 @@ volumes:
 # <%= modelEnvVar %>=<%= defaultModel %>
 
 <%_ } _%>
+<%_ if (!devIsSqlite) { _%>
 # ---------------------------------------------------------------------------
 # Used by \`skein start\`, and by the durable \`dev\` spelling — both need these two.
 # These are already the right values for the \`compose.dev.yaml\` in this project — bring it up with
@@ -74,6 +75,7 @@ volumes:
 # ---------------------------------------------------------------------------
 POSTGRES_URI=postgresql://postgres:postgres@localhost:5432/skein
 REDIS_URI=redis://localhost:6379
+<%_ } _%>
 `,
   gitignore: `node_modules/
 dist/
@@ -98,6 +100,38 @@ dist/
   },
   "env": ".env"
 }
+`,
+  "README-sqlite.md": `# <%= projectName %>
+
+A LangGraph.js agent project served through Skein's existing Agent Protocol.
+
+Run \`<%= runDev %>\` on Node 22 or 24. The API is at http://localhost:2024 and the console at
+http://localhost:2024/console. SQLite persists resources, queued work and checkpoints in
+\`.skein/state.sqlite\`; select another location with \`--sqlite-path /absolute/path/state.sqlite\`.
+
+No services are required. Stop the server before opening the same database in another process.
+Unclaimed jobs survive restart with their original delays. An attempt abandoned by a stopped process
+becomes an error; your application decides whether to submit another run or resume saved state.
+Live stream frames remain in memory.
+
+\`src/echo-graph.ts\` runs without credentials. Edit it to begin.
+<%_ if (hasProvider) { _%>
+\`src/agent-graph.ts\` uses <%= modelPackage %>. Set \`<%= apiKeyEnvVar %>\` in \`.env\` to use it.
+<%_ } _%>
+For memory development instead, run \`<%= runDevAlternate %>\`.
+
+Build and serve the artifact:
+
+\`\`\`sh
+<%= runBuild %>
+<%= runStart %>
+\`\`\`
+
+The database stays outside \`.skein/build\`. Any Agent Protocol client, including
+\`@langchain/langgraph-sdk\`, can connect. Models and local tools are configured in your graph.
+
+See [local deployment](https://skein-js.github.io/skein-js/local-deployment) for embedding and
+packaging with Electron or Tauri.
 `,
   "README.md": `# <%= projectName %>
 

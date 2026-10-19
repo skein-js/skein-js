@@ -1,0 +1,32 @@
+{
+  "$schema": "../../node_modules/nx/schemas/project-schema.json",
+  "name": "example-desktop-electron",
+  "projectType": "application",
+  "sourceRoot": "examples/desktop-electron/src",
+  "targets": {
+    "start": {
+      "executor": "nx:run-commands",
+      "dependsOn": ["build"],
+      "cache": false,
+      "options": {
+        "command": "node scripts/desktop-consumer-smoke.mjs electron --interactive",
+        "cwd": "."
+      }
+    },
+    "typecheck": {
+      "executor": "nx:run-commands",
+      "options": {
+        "command": "tsc --noEmit",
+        "cwd": "examples/desktop-electron"
+      }
+    },
+    "build": {
+      "executor": "nx:run-commands",
+      "options": {
+        "command": "node ../../scripts/build-local-example.mjs desktop-electron",
+        "cwd": "examples/desktop-electron"
+      },
+      "inputs": ["production", "^production", "{workspaceRoot}/scripts/build-local-example.mjs"]
+    }
+  }
+}

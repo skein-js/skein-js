@@ -28,7 +28,7 @@ import { createViteGraphLoader } from "./vite-graph-loader.js";
 export interface ImportLanggraphOptions {
   config: string;
   /** Import target: `"memory"` (write `.skein/dev-state.json`) or `"postgres"` (`POSTGRES_URI`). */
-  store: StoreDriver;
+  store: Exclude<StoreDriver, "sqlite">;
   /** Source directory; defaults to `<configDir>/.langgraph_api`. */
   from?: string;
   /** Overwrite an existing `.skein/dev-state.json` (memory sink only). */

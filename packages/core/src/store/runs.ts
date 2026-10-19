@@ -22,6 +22,8 @@ import type { Pagination } from "./pagination.js";
  * up later, or a run reclaimed after a crash, can be reconstructed from just its `run_id`.
  */
 export interface RunKwargs {
+  /** Server-owned background intent and original absolute queue eligibility time. */
+  queue_not_before?: string;
   /** Graph input for a fresh turn. Absent when the run is a resume (see {@link command}). */
   input?: unknown;
   /** A LangGraph command (e.g. `{ resume }`) — present when resuming an interrupted thread. */

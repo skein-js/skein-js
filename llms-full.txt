@@ -3101,11 +3101,11 @@ What each one is for:
 **Where the retries actually run depends on your queue driver.** With Redis, the whole schedule is
 BullMQ's — delayed jobs, exponential backoff with jitter, and re-delivery of a job whose worker was
 killed — so a retry still waiting survives a restart. Without it, skein polls the outbox instead:
-correct, but the schedule dies with the process, and skein warns at startup when your store is durable
-and your delivery schedule is not. To exercise the production path locally, `skein dev --queue redis`.
+the stored due time and delivery lease survive restart whenever the store is durable. SQLite and
+Postgres therefore retain waiting retries without a separate delivery queue.
 
-Whether a callback is **durable** does not depend on any of this: the delivery is recorded in the same
-transaction as the run's terminal status, so it cannot be lost even with no queue at all. See
+With a durable store, the delivery and its due time are recorded in the same transaction as the
+run's terminal status. Waiting retries therefore survive restart without a separate queue. See
 [webhooks.md](./webhooks.md).
 
 ## Authentication + authorization (`auth`)
@@ -3523,6 +3523,268 @@ shutdown.
 - [building-an-adapter.md](./building-an-adapter.md) — putting the engine on any HTTP framework
 - [storage.md](./storage.md) · [runs-and-redis.md](./runs-and-redis.md) — swapping in production drivers
 - [`examples/embed-graph`](https://github.com/skein-js/skein-js/tree/main/examples/embed-graph) · [`examples/nextjs-app`](https://github.com/skein-js/skein-js/tree/main/examples/nextjs-app)
+
+For durable local embedding, use [`embedSqliteGraphs`](./local-deployment.md) from `@skein-js/local`.
+It uses the same protocol and graph bindings with one owned SQLite file.
+
+
+---
+
+<!-- source: docs/local-deployment.md -->
+
+# Durable local deployment
+
+`@skein-js/local` assembles the existing Agent Protocol engine with SQLite persistence and LangGraph's
+SQLite checkpointer. Use the same graphs in a desktop application, terminal tool, separate daemon,
+or server. The application chooses models and tools, including any connection to a local model.
+
+## Embed agents
+
+```sh
+npm install @skein-js/local @langchain/langgraph @langchain/langgraph-checkpoint-sqlite@~1.0.4
+```
+
+```ts
+import { embedSqliteGraphs } from "@skein-js/local";
+import { createProtocolRuntime } from "@skein-js/agent-protocol";
+
+const local = await embedSqliteGraphs(
+  { assistant: graph },
+  {
+    sqlitePath: "/absolute/application-data/state.sqlite",
+    // maxPageSize, ttl, threadTtl and non-owned ProtocolDeps overrides are optional.
+  },
+);
+const runtime = createProtocolRuntime(local.deps);
+await runtime.service.assistants.registerGraphAssistants();
+runtime.worker.start();
+
+// Use runtime.service, or give local.deps to an existing framework adapter.
+// The host stops its worker/adapter before disposing owned resources.
+await runtime.worker.stop();
+await local.dispose();
+```
+
+The helper starts no assistants, workers, listener, application process or global signal handler.
+It owns storage and a small item-expiry timer. The existing protocol runtime owns the scheduler,
+thread-retention sweep, idempotency sweep and delivery worker. An adapter manages that runtime's
+lifecycle through its existing APIs. `dispose()` is idempotent.
+
+For direct storage use, `openSqliteStorage` from `@skein-js/storage-sqlite` returns the existing
+`store` and `queue` contracts, the borrowed native `database`, and `dispose()`. The helper's
+`sqlitePath` and driver's `filename` must be absolute. Both create the requested parent directory.
+Do not close or change ownership settings on the borrowed connection.
+
+`overrides` retains existing auth, logger, clock, telemetry, webhook and external `storeItems`
+injection. The owned graph/storage/queue/bus/checkpointer bindings cannot be replaced there.
+The two libraries do not install server-kit, schema/config loading, Postgres, Redis, BullMQ or HTTP
+adapters. Add an existing adapter when a transport is needed.
+
+## CLI and scaffolding
+
+```sh
+npm create skein-js@latest my-agent -- --storage sqlite
+cd my-agent
+npm run dev
+npm run build
+npm start
+```
+
+Or select the SQLite pair on an existing project:
+
+```sh
+skein dev --store sqlite --queue sqlite
+skein start -c .skein/build/langgraph.json --store sqlite --queue sqlite
+```
+
+Install `@skein-js/local` and the saver in the project first. Both commands accept `--sqlite-path`;
+the CLI resolves it against the working directory and defaults to `.skein/state.sqlite` there.
+The file remains outside the build artifact. SQLite does not import memory development snapshots.
+Mixed SQLite/non-SQLite store and queue pairs are refused. Existing command defaults remain unchanged.
+The LangGraph import command retains its memory and Postgres targets.
+
+The config path keeps auth, channels, telemetry, retention and external-store configuration. SQLite
+provides text/filter search and rejects `store.index`; configure an external semantic store through
+its existing adapter seam. SQLite scaffolds omit Compose and external-service environment settings
+and include `dev:memory` as an alternative. The scaffolder adds no desktop-framework or model axis.
+
+## What survives a process ending
+
+| Driver | Unclaimed queued work               | Abandoned executing attempt                                | Stream frames                |
+| ------ | ----------------------------------- | ---------------------------------------------------------- | ---------------------------- |
+| Memory | Lost with the in-memory queue       | No durable failure accounting                              | Process-local                |
+| SQLite | Persists with its original due time | Existing `error` status with `ProcessLostError`; no replay | Process-local                |
+| Redis  | Persists in Redis                   | Existing BullMQ stalled-job/redelivery behavior            | Existing Redis bus retention |
+
+SQLite holds exclusive file ownership from an initialization write until disposal. A second owner
+is refused; an OS process exit releases the lock. Startup examines abandoned runs and queue claims
+in internal batches without the public page cap. Pending inline requests also become failures.
+Terminal outcomes, including real approval interruptions, retain their results. Saved values,
+checkpoints and interrupt payloads remain available through existing state/history APIs.
+
+Run creation records server-owned background intent and its absolute due time. SQLite commits the
+run, kwargs and queue job together, including guarded admission and cron claims. Enqueue deduplicates
+without shortening delays. Cron jobs remain immediately eligible; cron `after_seconds` remains ignored.
+
+Failure accounting does not retry input, resume a checkpoint, cancel a thread's pending backlog,
+or reconstruct a successful outcome. Applications use existing run/state APIs to make those choices.
+Reconciliation does not synthesize completion callbacks, telemetry or application cleanup. Previously
+committed delivery records remain eligible for the existing polling retry worker after restart.
+
+## Desktop and daemon hosts
+
+The maintained consumers are distinct applications:
+
+| Consumer                                                                             | Application                          | Model tools and local actions                                                         |
+| ------------------------------------------------------------------------------------ | ------------------------------------ | ------------------------------------------------------------------------------------- |
+| [Electron](https://github.com/skein-js/skein-js/tree/main/examples/desktop-electron) | **Daybook**, a meeting workspace     | Read project context, search earlier meetings, review and save follow-ups             |
+| [Tauri](https://github.com/skein-js/skein-js/tree/main/examples/desktop-tauri)       | **Reading Room**, a document library | Read a source document, search the library, review a brief with exact source excerpts |
+| [CLI](https://github.com/skein-js/skein-js/tree/main/examples/local-cli)             | **Dayplan**, a daily planner         | Read a selected task file and prior plans, review focus blocks, save a Markdown plan  |
+
+From the repository on Node 24, install dependencies and choose a provider in desktop Settings or the CLI environment:
+
+```sh
+pnpm install
+pnpm nx run example-desktop-electron:start
+# Or:
+pnpm nx run example-desktop-tauri:start
+pnpm nx run example-local-cli:start
+```
+
+Desktop start commands package and open the applications; their first run requires native build
+prerequisites and can take several minutes. The CLI starts directly. The examples offer **Vertex AI**, **Gemini API**, **OpenAI**, **Anthropic**, and **Ollama**. Desktop Settings configures the
+provider, model and connection. The CLI uses environment variables:
+
+| Provider   | Configuration                                                                                    |
+| ---------- | ------------------------------------------------------------------------------------------------ |
+| Vertex AI  | `MODEL_PROVIDER=vertex`, Google ADC, optional `GOOGLE_CLOUD_PROJECT` and `GOOGLE_CLOUD_LOCATION` |
+| Gemini API | `MODEL_PROVIDER=gemini`, `GOOGLE_API_KEY` (or `GEMINI_API_KEY`)                                  |
+| OpenAI     | `MODEL_PROVIDER=openai`, `OPENAI_API_KEY`                                                        |
+| Anthropic  | `MODEL_PROVIDER=anthropic`, `ANTHROPIC_API_KEY`                                                  |
+| Ollama     | `MODEL_PROVIDER=ollama`, optional `OLLAMA_BASE_URL` and `OLLAMA_MODEL`                           |
+
+For Vertex, run `gcloud auth application-default login`; the app discovers a project from environment
+or gcloud settings, or accepts one in Settings. No project name/ID is hardcoded. `MODEL_NAME` selects
+a model; defaults are `gemini-3-flash-preview` for Google and `gpt-5-mini` for OpenAI. Provider-specific
+`GOOGLE_MODEL`, `OPENAI_MODEL`, `ANTHROPIC_MODEL` and `OLLAMA_MODEL` also work. The Vertex region defaults to `global`. Cloud providers require valid access and available billing/quota. Explicit environment preferences override saved
+UI preferences. UI-entered keys live only in backend session memory; only non-secret preferences
+are persisted. Selected source material and tool results are sent to the selected provider. Anthropic defaults to `claude-sonnet-5-5`; Ollama defaults to `qwen3:8b` at
+`http://127.0.0.1:11434`. Ollama needs an installed tool-capable model and no API key. The app never
+downloads models automatically. All model names and the Ollama endpoint are editable. This is application code: Skein adds no
+provider configuration or credential store. Model integration remains application-owned.
+
+Desktop UIs use `@langchain/langgraph-sdk` over the existing HTTP/SSE adapter. Background
+`runs.create` and `runs.joinStream` let preparation continue while the user navigates. Actual tool
+activity and generated answers stream through `custom` and `messages` modes. Drafts autosave,
+conversations persist in separate threads, and pending reviews reopen from SQLite checkpoints.
+Approval sends `command.resume`; the host-selected local file action runs only after review.
+**History and versions** shows actual requests, run status and checkpoints. **Create alternative**
+uses thread copy and state-update APIs without replacing the original. Saved output is searchable
+through Skein's shared store. These application features require no additional library API.
+Normal launches use the real model. Keyless deterministic fixtures are explicitly selected only
+by tests and packaging gates.
+
+Hosts choose application-data paths, launch and shutdown behavior. A separate daemon uses the same
+assembly; its host owns supervision, endpoint discovery and credential exchange. No CLI daemon
+lifecycle or desktop-specific protocol is introduced. The examples bind loopback on an OS-assigned
+port and use a per-launch bearer through existing auth, with `studioAuthDisabled: true`. Credentials
+are passed through environment/private bridges, rather than command-line arguments or saved files.
+
+The target matrix is Node 22/24, Electron 44 and Tauri 2 on Linux x64, Windows x64, and macOS ARM64/x64.
+Packaged consumer gates install tarballs outside the checkout and exercise native addon loading,
+writable data paths, streaming, approval resume and credential rejection. Platform support requires
+those gates to pass on the corresponding runner; a source build alone supplies no packaging evidence.
+
+Tauri packages an official portable Node 24 distribution, verified against its SHA-256 manifest,
+plus the backend directory and native assets. Electron rebuilds the SQLite addon against its own ABI.
+See [Tauri resources](https://tauri.app/develop/resources/) for the bundle mapping.
+This release does not support SQLite in browsers, Bun/Deno or distributed workers, or promise a
+single executable containing every native dependency. Size/startup measurements belong to the
+specific packed consumer and platform; the smoke prints package bytes, assembly time and process RSS.
+
+See the [validation record](./local-deployment-validation.md) for measured sizes and completed versus
+pending platform gates.
+
+
+---
+
+<!-- source: docs/local-deployment-validation.md -->
+
+# Local deployment validation
+
+Recorded on 2026-10-19 on macOS ARM64. These are measured results for this implementation, not
+throughput, footprint or cross-platform support guarantees.
+
+## Completed checks
+
+- Shared SQLite resource/queue conformance and driver regressions: 218 passed, one existing shared
+  case skipped. Covers real files, retained delays, deduplication, guarded/CAS admission, migrations,
+  exclusive ownership, configured retention, bounded reconciliation and disposal.
+- Local assembly/checkpointer regressions: six passed. Covers actual approval resume after reopen,
+  state/history, copy, fork, prune, rollback, deletion, retention cleanup and durable outbox polling.
+- Separate subprocess kills before enqueue, before/after commit, after claim, and during an actual
+  LangGraph run. The real graph retained its checkpoint and its original input was not replayed.
+- Affected adapter suites, including terminal stream replay with lost completion state, all five
+  transports and both Next.js boundaries.
+- Existing Postgres/Redis integration suites: 490 passed, two existing cases skipped.
+- Existing Node/Bun/Deno server conformance matrix: 14 checks per runtime, all passed. SQLite remains
+  Node-only.
+- Clean packed-library and generated SQLite project installs outside the checkout on Node 22.23.3
+  and 24.15.0. Declaration consumption, built import/require, dependency closure, scaffold tests,
+  artifact build, dev and start all passed. Packed-consumer gates use npm 11 for file overrides.
+- Packaged Electron 44.9.0 utility-process and Tauri 2/portable Node 24 backend launches passed on
+  macOS ARM64. Both streamed progress, resumed approval, saved Markdown meeting recaps under isolated host-data
+  paths, and rejected missing credentials and forged Studio headers.
+- Affected lint, typecheck and build passed across 47 projects. Next.js builds use `NODE_ENV=production`.
+- Affected ordinary tests passed: 2,307 cases across 16 projects. Nx formatting checks passed.
+- Local application tests: 18 passed. Covers meeting/reading/planner reviews across SQLite reopening,
+  edited approval, immutable recap revisions and identical-content reuse, dismissal without output,
+  source preservation, and credential-safe provider settings.
+- Live Gemini 3 Flash verification passed with automatic Google Cloud project discovery: all three
+  applications called real tools, generated reviews and saved approved output. Desktop assistant
+  conversations streamed and persisted through the existing SDK. No project ID is hardcoded.
+- Vertex AI, Gemini API, OpenAI, Anthropic and Ollama are selectable through UI/environment settings.
+  SDK request tests cover API-key routing, GPT-5 token parameters, Anthropic headers, Ollama endpoint
+  selection/tool probes, rejected credentials and non-secret preference restoration. Live OpenAI and
+  Anthropic generation was not checked because corresponding funded keys were unavailable.
+- The installed Ollama models reported completion/vision capabilities without tools. A real local
+  server check confirmed the UI rejects a model without tool support; no model was downloaded.
+  Full local generation requires installing a compatible model such as `qwen3:8b`.
+- Both desktop interfaces were exercised against real SQLite/Vertex backends: autosave, actual tool
+  activity, edited review/save, restored chat, independent checkpoint alternatives, provider switching
+  and dynamic project selection. Normal apps use real models; deterministic fixtures are explicit.
+- Updated packed Electron 44.9.0 and Tauri 2 launches passed on macOS ARM64 with all five provider
+  integrations installed from declared dependencies outside the checkout. The reading proof covers
+  source excerpts, library search and chat; both hosts reject missing/forged credentials on model
+  settings routes as well as their ordinary authenticated protocol workflows.
+
+Test-only build dependencies ensure package/export checks inspect both built libraries rather than
+skipping absent output.
+
+## Measurements
+
+One clean packed-library sample per Node version, after imports and graph construction:
+
+| Measurement                        | Node 22.23.3      | Node 24.15.0      |
+| ---------------------------------- | ----------------- | ----------------- |
+| Local runtime assembly             | 9.73 ms           | 8.75 ms           |
+| Process RSS at assembly completion | 123,551,744 bytes | 159,350,784 bytes |
+
+Assembly timing excludes process/module startup and the first graph run. RSS includes Node and
+loaded dependencies, and is not incremental library memory. These single samples do not establish
+a performance comparison.
+
+Packed npm artifacts measured 6,500 bytes for `@skein-js/local` and 13,894 bytes for
+`@skein-js/storage-sqlite`. Those figures exclude dependencies and native assets. The macOS Tauri
+bundle measured about 327.86 MiB for Reading Room with five model integrations; a small library
+tarball does not imply a comparably small desktop application.
+
+## Platform gates still requiring their runners
+
+The reusable local-deployment CI workflow covers Linux x64, Windows x64, macOS ARM64 and macOS x64,
+Node 22/24, and packaged Electron/Tauri launches. Linux, Windows and macOS x64 native launches were
+not executed on this ARM64 Mac. Their CI results remain acceptance gates; configuration alone is
+not evidence that those platforms passed.
 
 
 ---
@@ -6010,17 +6272,17 @@ The API remains the source of truth for run state. A callback is a notification,
 
 ## Where the retries actually run
 
-The durability of a callback is the same everywhere. What differs is whether a retry still _waiting_
-survives a restart:
+Durable stores retain both delivery payloads and scheduling timestamps. A separate delivery queue
+changes how retries are scheduled, rather than whether those timestamps survive:
 
-|                        | Retry schedule                                                               | A pending retry survives a restart?                                               |
-| ---------------------- | ---------------------------------------------------------------------------- | --------------------------------------------------------------------------------- |
-| **Postgres + Redis**   | BullMQ — delayed jobs, exponential backoff with jitter, stalled-job recovery | **Yes.** The schedule lives in Redis                                              |
-| **Postgres, no Redis** | skein polls the outbox for rows that are due                                 | No — but the _delivery_ does. The row is committed, and the next boot picks it up |
-| **Memory (dev)**       | The same poll, in-process                                                    | No, and neither does the delivery — nothing here is durable                       |
+| Deployment                   | Retry scheduling                                | Restart behavior                                                             |
+| ---------------------------- | ----------------------------------------------- | ---------------------------------------------------------------------------- |
+| Postgres + Redis             | BullMQ delayed jobs and recovery sweep          | Waiting jobs survive in Redis; persisted outbox rows recover lost scheduling |
+| Postgres or SQLite, no Redis | Polling persisted due times and delivery leases | Waiting retries and abandoned delivery leases survive in the database        |
+| Memory                       | Polling the in-memory outbox                    | Delivery rows and due times are lost with the process                        |
 
-So: **run Redis in production.** skein warns at startup when your store is durable but your delivery
-schedule is not. To exercise the real path locally, `skein dev --queue redis`.
+The polling worker needs no SQLite-specific delivery queue. The host starts and stops it through the
+existing protocol runtime lifecycle.
 
 A process killed at exactly the wrong moment can leave a committed delivery with no schedule attached.
 Nothing is lost: a background sweep picks it up on its next pass. The practical consequence is that
@@ -8019,6 +8281,12 @@ Protocol resources (`SkeinStore`) stay separate from LangGraph checkpoints, whic
 in-memory dev experience with no database while the checkpoint format stays 100% LangGraph-native — so
 history endpoints and interrupt/resume behave exactly as LangGraph expects.
 
+## Local SQLite storage
+
+[`@skein-js/storage-sqlite`](./local-deployment.md) implements the full resource store and a persisted
+run queue in one exclusively owned file. `@skein-js/local` assembles it with LangGraph's SQLite saver.
+Unclaimed work persists; abandoned attempts become failures without automatic input replay.
+
 
 ---
 
@@ -8785,6 +9053,10 @@ and interrupts and time travel are panels on the thread and playground.
 
 Opening the console lands on the **playground**, because the first question anyone has about a server
 is whether their graph works; everything else answers a question you only have later.
+
+Collection views support forward and backward pagination, including servers configured with a
+smaller `SKEIN_MAX_PAGE_SIZE`. Each page advances by the rows returned, so the server cap does not
+hide or skip later records. Counts are shown where the protocol provides them.
 
 Routing is on the URL **hash** (`#/threads/abc`), so deep links never reach the server and the console
 needs no SPA history fallback on any adapter. An unknown route renders a "no such view" page rather

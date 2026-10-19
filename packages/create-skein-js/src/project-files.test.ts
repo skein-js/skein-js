@@ -369,3 +369,19 @@ describe("the local development storage axis", () => {
     }
   });
 });
+
+describe("SQLite project", () => {
+  it("uses the SQLite pair for dev and start, declares dependencies and omits external services", () => {
+    const files = buildProjectFiles({ ...optionsFor("none"), devStorage: "sqlite" });
+    const manifest = JSON.parse(files.find((file) => file.path === "package.json")!.contents);
+    expect(manifest.scripts.dev).toContain("--store sqlite --queue sqlite");
+    expect(manifest.scripts.start).toContain("--store sqlite --queue sqlite");
+    expect(manifest.scripts["dev:memory"]).toBeTruthy();
+    expect(manifest.scripts["dev:services"]).toBeUndefined();
+    expect(manifest.dependencies["@skein-js/local"]).toBe("^0.14.0");
+    expect(manifest.dependencies["@langchain/langgraph-checkpoint-sqlite"]).toBe("~1.0.4");
+    expect(files.some((file) => file.path === "compose.dev.yaml")).toBe(false);
+    for (const file of files)
+      expect(file.contents).not.toMatch(/POSTGRES_URI|REDIS_URI|docker compose/);
+  });
+});

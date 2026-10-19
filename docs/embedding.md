@@ -319,3 +319,6 @@ shutdown.
 - [building-an-adapter.md](./building-an-adapter.md) — putting the engine on any HTTP framework
 - [storage.md](./storage.md) · [runs-and-redis.md](./runs-and-redis.md) — swapping in production drivers
 - [`examples/embed-graph`](https://github.com/skein-js/skein-js/tree/main/examples/embed-graph) · [`examples/nextjs-app`](https://github.com/skein-js/skein-js/tree/main/examples/nextjs-app)
+
+For durable local embedding, use [`embedSqliteGraphs`](./local-deployment.md) from `@skein-js/local`.
+It uses the same protocol and graph bindings with one owned SQLite file.
