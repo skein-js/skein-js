@@ -123,19 +123,21 @@ Full patterns — profile vs collection shapes, the dedup trap, recall — are i
 
 ## What actually persists, and where
 
-| Thing                     | Stored in                          | Survives a restart?                 |
-| ------------------------- | ---------------------------------- | ----------------------------------- |
-| Graph state & checkpoints | The checkpointer                   | With Postgres, yes. In memory, no   |
-| Threads, runs, assistants | The store                          | With Postgres, yes. In memory, no   |
-| Long-term memories        | The store                          | With Postgres, yes. In memory, no   |
-| Queued & delayed runs     | The queue                          | With Redis, yes                     |
-| Pending webhook retries   | The queue (schedule) + store (row) | Row always; schedule needs Redis    |
-| Live stream frames        | The event bus                      | No — replayable only while retained |
+| Thing                     | Stored in                        | Survives a restart?                                                                    |
+| ------------------------- | -------------------------------- | -------------------------------------------------------------------------------------- |
+| Graph state & checkpoints | The checkpointer                 | With SQLite/Postgres, yes. In memory, no                                               |
+| Threads, runs, assistants | The store                        | With SQLite/Postgres, yes. In memory, no                                               |
+| Long-term memories        | The store                        | With SQLite/Postgres, yes. In memory, no                                               |
+| Queued & delayed runs     | The queue                        | Unclaimed jobs persist with SQLite/Redis; active attempts follow driver crash behavior |
+| Pending webhook retries   | The delivery outbox in the store | With SQLite/Postgres; the delivery worker polls persisted records after restart        |
+| Live stream frames        | The event bus                    | SQLite uses process-local frames; Redis frames remain replayable within retention      |
 
-**In development** everything is in-memory and disappears on exit — except that `skein dev` snapshots
-to `.skein/` so your threads survive a restart while you work. **In production**, use Postgres for
-state and Redis for the queue. See [storage.md](./storage.md) and
-[runs-and-redis.md](./runs-and-redis.md).
+**By default, `skein dev` uses memory drivers** and snapshots to `.skein/` so your threads survive a
+restart while you work. **For a shared server**, use Postgres
+and Redis. **For a local app or one Node owner**, SQLite persists resources and checkpoints in
+one file. It records abandoned attempts as `ProcessLostError` failures without replaying input;
+applications decide whether to retry or resume. See [storage.md](./storage.md),
+[local deployment](./local-deployment.md), and [runs-and-redis.md](./runs-and-redis.md).
 
 ## Expiring what you don't need
 

@@ -153,17 +153,22 @@ every run recorded and replayable.
 
 ## Where this lives in production
 
-Development is in memory and meant to be. Production is Postgres and Redis, and they buy different
-things:
+The default development server uses memory drivers. Durable deployment is a choice: SQLite for
+one local Node owner, or Postgres/Redis for a shared server. They provide different capabilities:
 
-|              | Buys you                                                                               |
-| ------------ | -------------------------------------------------------------------------------------- |
-| **Postgres** | State, checkpoints, threads, runs, memories and pending webhooks across a restart      |
-| **Redis**    | A durable run queue, retry schedules that outlive a deploy, streaming across instances |
+|              | Buys you                                                                                           |
+| ------------ | -------------------------------------------------------------------------------------------------- |
+| **Postgres** | State, checkpoints, threads, runs, memories and pending webhooks across a restart                  |
+| **Redis**    | A shared durable run queue and streaming across instances                                          |
+| **SQLite**   | Local resources, checkpoints, unclaimed queued jobs, and delivery outbox records in one owned file |
 
 Your graph code is identical either way — drivers are injected, not imported.
 
-→ [Storage](./storage.md) · [Runs & Redis](./runs-and-redis.md) · [Deploy](./deploy.md)
+SQLite records abandoned attempts as failures; applications choose whether to retry or resume.
+Redis retains its existing stalled-job redelivery behavior. Delivery retries poll the store's
+outbox and do not require Redis.
+
+→ [Storage](./storage.md) · [Local deployment](./local-deployment.md) · [Runs & Redis](./runs-and-redis.md) · [Deploy](./deploy.md)
 
 ## What was yours all along
 

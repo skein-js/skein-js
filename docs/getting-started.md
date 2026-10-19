@@ -10,9 +10,15 @@ matches what you have right now:
 All three produce the **identical** server. For a terse reference instead of a walkthrough, see
 [using-skein.md](./using-skein.md).
 
+Deployment is a separate choice: keep the default memory drivers while developing, use
+[Postgres/Redis](./deploy.md) for a shared server, or choose
+[SQLite for a local app or one Node process](./local-deployment.md). The graphs and Agent Protocol
+remain the same.
+
 ## Prerequisites
 
 - **Node ≥ 20** and a package manager (`pnpm`/`npm`).
+- **Node 22 or 24** when selecting SQLite; desktop examples build with Node 24.
 - For Paths B and C, a
   **[LangGraph.js graph](https://docs.langchain.com/oss/javascript/langgraph/graph-api)** — a
   `CompiledStateGraph` from `@langchain/langgraph`. Path A writes one for you.
@@ -142,7 +148,7 @@ See [react-sdk.md](./react-sdk.md).
 
 ## Go to production
 
-Dev uses in-memory drivers. For durability and horizontal scale, swap in Postgres (state +
+The default dev server uses in-memory drivers. For durability and horizontal scale, swap in Postgres (state +
 checkpoints) and Redis (run queue + cross-instance streaming). Nothing else about your server
 changes — only how `deps` is built.
 
@@ -168,6 +174,20 @@ redis`, and `skein build` / `skein up` to containerize. Redis is optional for a 
 required to run more than one. Details:
 [embedding.md](./embedding.md#going-to-production), [storage.md](./storage.md),
 [runs-and-redis.md](./runs-and-redis.md), [deploy.md](./deploy.md).
+
+### Or choose SQLite for a local application
+
+Scaffold with `npm create skein-js@latest my-app -- --storage sqlite` for SQLite dev/start scripts,
+or install `@skein-js/local` and the upstream SQLite saver in an existing project:
+
+```bash
+pnpm add @skein-js/local @langchain/langgraph-checkpoint-sqlite@~1.0.4
+pnpm skein dev --store sqlite --queue sqlite
+```
+
+The CLI defaults to `.skein/state.sqlite`. For an Electron utility process, a Tauri Node backend,
+or a CLI using graphs in code, use `embedSqliteGraphs` and let the host own startup and shutdown.
+See [local deployment](./local-deployment.md) for embedding, examples, and failure accounting.
 
 ## Where to next
 

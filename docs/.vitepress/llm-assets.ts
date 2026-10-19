@@ -43,8 +43,8 @@ const twinPath = (servedPath: string) => servedPath;
 /**
  * Frontmatter is stripped. It is site configuration — `layout: home`, a `description` override — and
  * never prose, so to a reader it is noise and to a model it is noise that looks like content.
- * `generate-llms-full.mjs` strips it from `docs/index.md` for the same reason; this applies the rule
- * to every page instead of the one that happened to need it.
+ * `generate-llms-full.mjs` applies the same rule to the curated bundle, including page-specific SEO
+ * metadata and the landing page's configuration.
  */
 const stripFrontmatter = (markdown: string) => markdown.replace(/^---\r?\n.*?\r?\n---\r?\n/s, "");
 

@@ -8,9 +8,22 @@
     "build": {
       "executor": "nx:run-commands",
       "options": { "command": "vitepress build docs" },
-      "inputs": ["{projectRoot}/**/*", "sharedGlobals"],
+      "inputs": [
+        "{projectRoot}/**/*",
+        "sharedGlobals",
+        "{workspaceRoot}/llms.txt",
+        "{workspaceRoot}/llms-full.txt",
+        { "runtime": "git log -1 --format=%H -- docs llms.txt llms-full.txt" },
+        { "runtime": "git rev-parse --is-shallow-repository" }
+      ],
       "outputs": ["{workspaceRoot}/docs/.vitepress/dist"],
       "cache": true
+    },
+    "check-seo": {
+      "executor": "nx:run-commands",
+      "dependsOn": ["build"],
+      "cache": false,
+      "options": { "command": "node scripts/check-docs-seo.mjs" }
     },
     "dev": {
       "executor": "nx:run-commands",

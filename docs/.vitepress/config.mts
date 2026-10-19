@@ -12,7 +12,7 @@ import { llmAssetsDevPlugin, writeLlmAssets } from "./llm-assets";
 // configuration layered over the repo's docs, not a copy of them.
 //
 // Served from GitHub Pages as a *project* site (skein-js.github.io/skein-js), hence `base`. Swap in
-// a custom domain by adding docs/public/CNAME and deleting the `base` line.
+// a custom domain by adding docs/public/CNAME and updating ORIGIN/BASE, robots.txt, and the SEO gate.
 const BASE = "/skein-js/";
 const ORIGIN = "https://skein-js.github.io";
 const REPO = "https://github.com/skein-js/skein-js";
@@ -20,16 +20,13 @@ const REPO = "https://github.com/skein-js/skein-js";
 /**
  * A page's meta description, taken from its first real paragraph.
  *
- * Frontmatter would be the conventional place, but every doc here is also read as raw Markdown on
- * GitHub and most of them are concatenated into llms-full.txt by scripts/generate-llms-full.mjs —
- * (`docs/index.md` is the one exception: it is a `layout: home` page, so its hero and features have
- * to live in frontmatter, and the bundle generator strips that block back out) —
- * which is a plain readFile+concat, so YAML preambles would leak straight into the bundle. Deriving
- * the description at build time keeps the source files as they are and cannot drift from them.
+ * Pages can override this with frontmatter for a search-specific description. The fallback keeps
+ * ordinary guides useful without requiring a second summary on every page. Markdown twins and
+ * the LLM bundle strip frontmatter before publishing prose.
  */
 const describePage = (markdown: string): string | undefined => {
   const paragraph = markdown
-    .replace(/^---\n.*?\n---\n/s, "") // frontmatter, should any page ever grow one
+    .replace(/^---\r?\n.*?\r?\n---\r?\n/s, "") // frontmatter
     .replace(/^```.*?^```/gms, "") // fenced code
     .split(/\n{2,}/)
     .map((block) => block.trim())
@@ -59,11 +56,9 @@ const describePage = (markdown: string): string | undefined => {
 export default withMermaid(
   defineConfig({
     title: "skein-js",
-    // The site-wide fallback description. Kept under ~155 characters because that is where search
-    // engines truncate — a longer one is not "more description", it is a description with the end cut
-    // off. `describePage` below holds derived per-page descriptions to the same bound.
+    // A concise fallback; search engines may select a different snippet for a particular query.
     description:
-      "Open-source, self-hosted server runtime for LangGraph.js agents in TypeScript. Run multiple graphs with threads, streaming, and background work.",
+      "Self-host LangGraph.js agents in TypeScript. Choose Postgres/Redis servers or SQLite desktop and CLI apps with the same Agent Protocol.",
     base: BASE,
     cleanUrls: true,
     lastUpdated: true,
@@ -98,13 +93,18 @@ export default withMermaid(
         "meta",
         {
           property: "og:image:alt",
-          content: "skein-js — the self-hosted server runtime for LangGraph.js agents",
+          content: "skein-js — LangGraph.js agents on your servers or devices",
         },
       ],
       ["meta", { name: "twitter:image", content: `${ORIGIN}${BASE}og.png` }],
       ["meta", { name: "theme-color", media: "(prefers-color-scheme: light)", content: "#ffffff" }],
       ["meta", { name: "theme-color", media: "(prefers-color-scheme: dark)", content: "#000000" }],
     ],
+
+    transformHead({ pageData }) {
+      if (pageData.relativePath === "404.md")
+        return [["meta", { name: "robots", content: "noindex, follow" }]];
+    },
 
     transformPageData(pageData, { siteConfig }) {
       // With `rewrites`, relativePath is the served route and filePath the file on disk.
@@ -205,7 +205,13 @@ export default withMermaid(
         { text: "Features", link: "/features" },
         { text: "Console", link: "/console" },
         { text: "Protocol", link: "/agent-protocol" },
-        { text: "Deploy", link: "/deploy" },
+        {
+          text: "Deploy",
+          items: [
+            { text: "Server deployment", link: "/deploy" },
+            { text: "Local apps & SQLite", link: "/local-deployment" },
+          ],
+        },
         { text: "Roadmap", link: "/roadmap" },
       ],
 
@@ -253,7 +259,6 @@ export default withMermaid(
               items: [
                 { text: "LangGraph CLI compatibility", link: "/langgraph-cli-compat" },
                 { text: "Embedding a graph in code", link: "/embedding" },
-                { text: "Durable local deployment", link: "/local-deployment" },
                 { text: "A graph as a plain endpoint", link: "/serving-a-single-graph" },
                 { text: "Using skein-js (reference)", link: "/using-skein" },
               ],
@@ -301,6 +306,7 @@ export default withMermaid(
           collapsed: false,
           items: [
             { text: "Deploy anywhere", link: "/deploy" },
+            { text: "Local apps & SQLite", link: "/local-deployment" },
             { text: "Storage", link: "/storage" },
             { text: "Runs & Redis", link: "/runs-and-redis" },
             { text: "The console", link: "/console" },

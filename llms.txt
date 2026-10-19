@@ -1,8 +1,8 @@
 # skein-js
 
-> The open-source LangGraph Platform alternative, for TypeScript (LangGraph Platform is now LangSmith Deployment): a self-hosted Agent Protocol server for LangGraph.js, plus a drop-in replacement for the LangGraph CLI (`skein dev` ⇄ `langgraph dev`). Serve any LangGraph.js graph as a standard HTTP + SSE agent server — threads, runs, streaming, interrupts, long-term memory — from Express, Fastify, NestJS, or Next.js. Runs on your own infrastructure and your own Postgres, deployable anywhere you can run a container (Cloud Run, Railway, Fly.io, Render, AWS, Kubernetes, or your own VPS), with no license key and no per-run bill. Open source (Apache-2.0). Includes cron/scheduled runs. Not yet implemented: an `/mcp` endpoint.
+> The open-source LangGraph Platform alternative for TypeScript (LangGraph Platform is now LangSmith Deployment). Host LangGraph.js graphs with the existing Agent Protocol, persistent threads, runs, streaming, approvals, and schedules. Choose Postgres/Redis for a shared server, or SQLite for a desktop app, CLI, daemon, or one Node owner. The CLI remains a drop-in replacement for the LangGraph CLI (`skein dev` ⇄ `langgraph dev`). Open source (Apache-2.0), with no license key or per-run bill. Not yet implemented: an `/mcp` endpoint.
 
-skein-js implements LangChain's Agent Protocol, so the whole LangChain client ecosystem (`@langchain/langgraph-sdk`, the `useStream` React hook, Agent Chat UI, LangGraph Studio) works against your server by changing only a URL — no custom SDK, no bespoke wire format. It deliberately reuses LangGraph OSS (runtime, checkpointers, config parser, schemas, SDK types) and rebuilds only the durable-production, multi-framework, drop-in-CLI layer OSS lacks. The one thing to know when consuming it: every framework adapter takes the same `{ config } | { deps }` options bag — point it at a `langgraph.json`, or hand it a `ProtocolDeps` you assembled (in-memory for dev, Postgres + Redis for production).
+skein-js implements LangChain's Agent Protocol, so the LangChain client ecosystem (`@langchain/langgraph-sdk`, `useStream`, Agent Chat UI, LangGraph Studio) works with an existing HTTP/SSE adapter. Terminal applications can call the protocol service directly. It reuses LangGraph execution and checkpointers; applications own models, tools, credentials, and recovery decisions. Every adapter accepts `{ config } | { deps }`: load a `langgraph.json`, or supply assembled protocol dependencies from memory, Postgres/Redis, or `@skein-js/local` with SQLite. SQLite supports Node 22/24, has one owner per file, and records abandoned attempts as failures without automatically replaying input.
 
 Upstream references: [LangGraph.js overview](https://docs.langchain.com/oss/javascript/langgraph/overview), [LangGraph CLI](https://docs.langchain.com/langsmith/cli), and [Agent Server](https://docs.langchain.com/langsmith/agent-server).
 
@@ -21,6 +21,7 @@ Upstream references: [LangGraph.js overview](https://docs.langchain.com/oss/java
 
 ## Guides
 
+- [Local apps and SQLite](https://github.com/skein-js/skein-js/blob/main/docs/local-deployment.md): An optional deployment for Electron, Tauri, CLI apps, and daemons using the same Agent Protocol. Embedding, CLI selection, ownership, and crash behavior.
 - [LangGraph CLI compatibility](https://github.com/skein-js/skein-js/blob/main/docs/langgraph-cli-compat.md): Every `langgraph.json` field + the `skein` command mapping (`dev`/`up`/`build`/`dockerfile`).
 - [Framework adapters](https://github.com/skein-js/skein-js/blob/main/docs/adapters.md): Express, Fastify, NestJS, Next.js and Fetch — the standalone and mount-into-your-app entry for each, and what actually differs between them: mount path, CORS mechanism, JSON body cap, logger default, whether `/ok` exists, and what drains the run worker on shutdown.
 - [Embedding a graph in code](https://github.com/skein-js/skein-js/blob/main/docs/embedding.md): The in-code on-ramp — serve a compiled graph with no `langgraph.json` and no CLI.
@@ -38,7 +39,7 @@ Upstream references: [LangGraph.js overview](https://docs.langchain.com/oss/java
 - [Streaming](https://github.com/skein-js/skein-js/blob/main/docs/streaming.md): LangGraph stream modes mapped onto Agent Protocol SSE, with cross-instance fan-out.
 - [Errors & logging](https://github.com/skein-js/skein-js/blob/main/docs/errors-and-logging.md): What happens when a graph throws — the `RunError` payload, `exposeErrorStacks`, the `Logger` interface, and the `skein dev` failure block.
 - [React SDK / useStream](https://github.com/skein-js/skein-js/blob/main/docs/react-sdk.md): Frontend compatibility — `@langchain/langgraph-sdk` and `useStream` over SSE.
-- [Storage](https://github.com/skein-js/skein-js/blob/main/docs/storage.md): `SkeinStore`, in-memory vs Postgres, pgvector semantic search, checkpointer, and `getStore()` in a graph.
+- [Storage](https://github.com/skein-js/skein-js/blob/main/docs/storage.md): `SkeinStore`, memory/SQLite/Postgres selection, pgvector semantic search, upstream checkpointers, and `getStore()` in a graph.
 - [Runs & Redis](https://github.com/skein-js/skein-js/blob/main/docs/runs-and-redis.md): The run engine, the queue, and cross-instance streaming with Redis.
 - [Observability](https://github.com/skein-js/skein-js/blob/main/docs/observability.md): Tracing and metrics — the `TelemetrySink` seam, LangSmith thread grouping, PostHog `$ai_generation` analytics, OpenTelemetry spans/metrics, and guides for Langfuse, Braintrust, Sentry, and Datadog/Grafana/Honeycomb.
 - [Deploy anywhere](https://github.com/skein-js/skein-js/blob/main/docs/deploy.md): Deploying the `skein build` Docker image on any platform — Postgres/Redis setup, ports, the `/ok` health probe, connection-pool sizing, SIGTERM draining, SSE through proxies, and the multi-instance caveats.
@@ -57,6 +58,8 @@ Upstream references: [LangGraph.js overview](https://docs.langchain.com/oss/java
 - [@skein-js/console](https://github.com/skein-js/skein-js/tree/main/packages/console#readme): The skein console — the compiled web UI plus `resolveConsoleRequest`/`consoleAssetHeaders`. No runtime dependencies; the SPA is embedded as string constants.
 - [@skein-js/config](https://github.com/skein-js/skein-js/tree/main/packages/config#readme): `langgraph.json` parser + graph loader. `loadConfig`.
 - [@skein-js/server-kit](https://github.com/skein-js/skein-js/tree/main/packages/server-kit#readme): Shared adapter building blocks. `embedInMemoryGraphs`, in-memory runtime, CORS.
+- [@skein-js/local](https://github.com/skein-js/skein-js/tree/main/packages/local#readme): `embedSqliteGraphs` assembles SQLite resources, queue, and upstream checkpoints. The host owns process and worker lifetime.
+- [@skein-js/storage-sqlite](https://github.com/skein-js/skein-js/tree/main/packages/storage-sqlite#readme): `openSqliteStorage` supplies the resource store, durable queue, borrowed connection, and disposal for one database file.
 - [@skein-js/runtime](https://github.com/skein-js/skein-js/tree/main/packages/runtime#readme): Assembles production deps. `buildRuntime` (from `langgraph.json`), `embedPostgresGraphs` (from graphs in code).
 - [@skein-js/langsmith](https://github.com/skein-js/skein-js/tree/main/packages/telemetry-langsmith#readme): LangSmith tracing — run identity and Threads grouping. `createLangSmithTelemetry`.
 - [@skein-js/posthog](https://github.com/skein-js/skein-js/tree/main/packages/telemetry-posthog#readme): PostHog analytics — run lifecycle events plus `$ai_generation`. `createPostHogTelemetry`.
@@ -74,6 +77,9 @@ Upstream references: [LangGraph.js overview](https://docs.langchain.com/oss/java
 
 ## Examples
 
+- [Daybook — Electron](https://github.com/skein-js/skein-js/tree/main/examples/desktop-electron): Meeting notes, model tools, streamed conversation, and recaps saved after review.
+- [Reading Room — Tauri](https://github.com/skein-js/skein-js/tree/main/examples/desktop-tauri): A document library with source excerpts, reading briefs, and persistent conversation.
+- [Dayplan — CLI](https://github.com/skein-js/skein-js/tree/main/examples/local-cli): A daily planner using local tasks, earlier plans, and approval before saving.
 - [express-basic](https://github.com/skein-js/skein-js/tree/main/examples/express-basic): Zero-setup `echo` + a model-backed `agent` graph from one `langgraph.json`.
 - [embed-graph](https://github.com/skein-js/skein-js/tree/main/examples/embed-graph): In-code embedding with no `langgraph.json` (`embedInMemoryGraphs` + `{ deps }`).
 - [chat-app](https://github.com/skein-js/skein-js/tree/main/examples/chat-app): Flagship — a Gemini research assistant (thinking + web search + long-term memory) with a Next.js + shadcn UI.
@@ -87,5 +93,3 @@ Upstream references: [LangGraph.js overview](https://docs.langchain.com/oss/java
 - [Roadmap](https://github.com/skein-js/skein-js/blob/main/docs/roadmap.md): Milestones, shipped features, known gaps vs LangGraph, and non-goals.
 - [AGENTS.md](https://github.com/skein-js/skein-js/blob/main/AGENTS.md): For agents/humans working ON skein itself (contributor guide), not consuming it.
 - [llms-full.txt](https://github.com/skein-js/skein-js/blob/main/llms-full.txt): The user-facing docs concatenated into one file for wholesale ingestion.
-
-- [Durable local deployment](https://github.com/skein-js/skein-js/blob/main/docs/local-deployment.md): SQLite embedding, CLI selection, crash semantics, and packaged Electron/Tauri examples.

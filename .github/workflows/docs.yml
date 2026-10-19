@@ -3,9 +3,12 @@ name: Docs
 on:
   push:
     branches: [main]
-    # The site is built from docs/ alone — skip the deploy for pushes that can't change it.
+    # The site includes docs and the root LLM bundles copied by the build-end hook.
     paths:
       - "docs/**"
+      - "llms.txt"
+      - "llms-full.txt"
+      - "scripts/check-docs-seo.mjs"
       - ".github/workflows/docs.yml"
       - "package.json"
       - "pnpm-lock.yaml"
@@ -59,9 +62,9 @@ jobs:
 
       - uses: actions/configure-pages@v5
 
-      # Fails the build on dead internal links — the gate that keeps docs/ self-consistent.
-      - name: Build site
-        run: pnpm docs:build
+      # Build first, then inspect rendered metadata and assets before uploading to Pages.
+      - name: Build and verify site
+        run: pnpm exec nx run docs:check-seo --output-style=stream
 
       - uses: actions/upload-pages-artifact@v3
         with:

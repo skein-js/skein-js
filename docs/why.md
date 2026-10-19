@@ -8,6 +8,10 @@ The short version: **LangGraph.js defines and executes the agent workflows. skei
 self-hosted server runtime around them.** You can host several task-specific graphs behind one
 server, with conversations, streaming, background work, and a console already wired up.
 
+That runtime can also be embedded in a local application. Choose SQLite for a desktop app, CLI,
+daemon, or one Node owner; choose Postgres/Redis for a shared server. Both reuse the existing
+Agent Protocol and LangGraph execution. [Local deployment and examples →](./local-deployment.md)
+
 ## How everyone gets here
 
 <ol class="skein-steps">

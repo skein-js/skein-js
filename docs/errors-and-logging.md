@@ -4,6 +4,14 @@ What happens when a graph throws — where the failure shows up, what a client s
 your logs. Errors and logging live in one doc because a failure goes to both, on deliberately
 different terms: **the log gets everything; the wire gets what is safe to hand a caller.**
 
+## When a local process disappears
+
+Reopening a SQLite deployment records abandoned executing/claimed attempts and pending inline
+requests as `error` with a `ProcessLostError` payload. Unclaimed queued jobs keep their due times;
+terminal outcomes and real approval interruptions are preserved. This startup bookkeeping does not
+replay input, resume checkpoints, or synthesize completion callbacks and telemetry. Applications
+decide what to do next. See [local crash behavior](./local-deployment.md#what-survives-a-process-ending).
+
 ## When a graph throws
 
 A node that throws does not crash the server. The run engine catches it, and five things happen:

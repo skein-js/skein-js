@@ -64,16 +64,17 @@ the authenticated sources and durable destinations around the graph.
 
 ## Operate it
 
-| Capability                                              | Status     | What it gets you                                                              |
-| ------------------------------------------------------- | ---------- | ----------------------------------------------------------------------------- |
-| [The console](./console.md)                             | ✅         | Test graphs and track channel wiring, interrupts and deliveries at `/console` |
-| [Postgres + pgvector](./storage.md)                     | ✅         | The production storage driver, with automatic migrations                      |
-| [Redis queue & pub/sub](./runs-and-redis.md)            | ✅         | Durable run queue and cross-instance streaming                                |
-| [Multi-instance](./deploy.md#scaling-past-one-instance) | ✅         | Atomic create guard, cross-instance cancel, per-thread execution claim        |
-| [Errors & logging](./errors-and-logging.md)             | ✅         | What a failed run reports, and where — wire, log, and callback                |
-| [Deploy anywhere](./deploy.md)                          | ✅         | One image; guides for Cloud Run, Fly, Railway, Render, AWS, Kubernetes, a VPS |
-| [Performance tuning](./performance.md)                  | ✅         | Every knob in one table, plus symptom → knob triage                           |
-| [Bun / Deno runtimes](./deploy.md)                      | ⚠️ preview | Fetch launchers and images ship; the runtime matrices must graduate each      |
+| Capability                                              | Status     | What it gets you                                                                     |
+| ------------------------------------------------------- | ---------- | ------------------------------------------------------------------------------------ |
+| [The console](./console.md)                             | ✅         | Test graphs and track channel wiring, interrupts and deliveries at `/console`        |
+| [Postgres + pgvector](./storage.md)                     | ✅         | Durable server storage with semantic search and automatic migrations                 |
+| [Local apps with SQLite](./local-deployment.md)         | ✅         | Desktop, CLI, and daemon embedding with persistent resources, queue, and checkpoints |
+| [Redis queue & pub/sub](./runs-and-redis.md)            | ✅         | Durable run queue and cross-instance streaming                                       |
+| [Multi-instance](./deploy.md#scaling-past-one-instance) | ✅         | Atomic create guard, cross-instance cancel, per-thread execution claim               |
+| [Errors & logging](./errors-and-logging.md)             | ✅         | What a failed run reports, and where — wire, log, and callback                       |
+| [Deploy anywhere](./deploy.md)                          | ✅         | One image; guides for Cloud Run, Fly, Railway, Render, AWS, Kubernetes, a VPS        |
+| [Performance tuning](./performance.md)                  | ✅         | Every knob in one table, plus symptom → knob triage                                  |
+| [Bun / Deno runtimes](./deploy.md)                      | ⚠️ preview | Fetch launchers and images ship; the runtime matrices must graduate each             |
 
 ## Build on it
 
