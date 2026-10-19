@@ -21,11 +21,8 @@ jobs:
         shell: bash
         run: |
           npm install --global npm@11
-          # setup-node's bundled npm precedes the Windows runner's global prefix on PATH.
-          # Promote the upgraded npm for subsequent steps, including Node child processes.
-          if [ "$RUNNER_OS" = "Windows" ]; then
-            npm prefix --global >> "$GITHUB_PATH"
-          fi
+          # Nx prepends Node's bundled npm to PATH. Pin the upgraded CLI for consumer installs.
+          printf 'SKEIN_CONSUMER_NPM_CLI=%s/npm/bin/npm-cli.js\n' "$(npm root --global)" >> "$GITHUB_ENV"
       - run: pnpm install --frozen-lockfile
       - run: pnpm nx run-many -t test -p storage-sqlite,local,example-local-workflow
         env:
@@ -55,9 +52,7 @@ jobs:
         shell: bash
         run: |
           npm install --global npm@11
-          if [ "$RUNNER_OS" = "Windows" ]; then
-            npm prefix --global >> "$GITHUB_PATH"
-          fi
+          printf 'SKEIN_CONSUMER_NPM_CLI=%s/npm/bin/npm-cli.js\n' "$(npm root --global)" >> "$GITHUB_ENV"
       - run: pnpm install --frozen-lockfile
       - name: Pack and launch native host
         shell: bash

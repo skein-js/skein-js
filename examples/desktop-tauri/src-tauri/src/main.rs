@@ -25,6 +25,9 @@ fn main() {
     let app = tauri::Builder::default()
         .setup(move |app| {
             let resource = app.path().resource_dir()?.join("backend");
+            // Tauri can return Windows verbatim paths (\\?\C:\...), which Node's module
+            // loader cannot resolve. Reuse Tauri's path normalizer at the process boundary.
+            let resource = dunce::simplified(&resource).to_path_buf();
             let application_data = app.path().app_data_dir()?;
             let directory = if smoke {
                 application_data
@@ -34,6 +37,7 @@ fn main() {
                 application_data
             };
             std::fs::create_dir_all(&directory)?;
+            let directory = dunce::simplified(&directory).to_path_buf();
             let token = uuid::Uuid::new_v4().to_string();
             let node = resource.join(if cfg!(windows) { "node.exe" } else { "node" });
             let mut child = Command::new(node)
