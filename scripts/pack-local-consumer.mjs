@@ -1,7 +1,6 @@
 import { spawnSync } from "node:child_process";
 import { readdirSync, readFileSync, mkdirSync, copyFileSync, existsSync } from "node:fs";
 import path from "node:path";
-import { pathToFileURL } from "node:url";
 export const root = path.resolve(import.meta.dirname, "..");
 export function run(command, args, options = {}) {
   let executable = command;
@@ -47,7 +46,7 @@ export function packWorkspace(directory) {
         encoding: "utf8",
       });
       const filename = result.stdout.trim().split(/\r?\n/).at(-1);
-      overrides[manifest.name] = pathToFileURL(path.resolve(project, filename)).href;
+      overrides[manifest.name] = path.resolve(project, filename);
     }
   return overrides;
 }
@@ -62,16 +61,21 @@ export function copyTree(source, destination) {
 }
 export function installConsumer(directory, manifest, overrides) {
   mkdirSync(directory, { recursive: true });
+  // npm encodes file specs itself. A pre-encoded URL double-encodes characters such as the
+  // tilde in Windows' RUNNER~1 temp directory and makes npm open a nonexistent RUNNER%7E1 path.
+  const fileOverrides = Object.fromEntries(
+    Object.entries(overrides).map(([name, filename]) => [name, `file:${filename}`]),
+  );
   const resolveDependencies = (dependencies) =>
     Object.fromEntries(
       Object.entries(dependencies ?? {}).map(([name, version]) => [
         name,
-        overrides[name] ?? version,
+        fileOverrides[name] ?? version,
       ]),
     );
   return {
     ...manifest,
-    overrides,
+    overrides: fileOverrides,
     dependencies: resolveDependencies(manifest.dependencies),
     ...(manifest.devDependencies
       ? { devDependencies: resolveDependencies(manifest.devDependencies) }
