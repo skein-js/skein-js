@@ -78,6 +78,6 @@ describe("process loss", () => {
     10_000,
   );
   it("requires a real built entry rather than falling back to source aliases", () => {
-    expect(fileURLToPath(entry)).toContain("dist/index.js");
+    expect(fileURLToPath(entry)).toContain(join("dist", "index.js"));
   });
 });

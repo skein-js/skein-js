@@ -2,12 +2,12 @@ import assert from "node:assert/strict";
 import { mkdtemp, writeFile, readFile, rm, stat } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import path from "node:path";
-import { fileURLToPath } from "node:url";
 import { spawn } from "node:child_process";
 import { createServer } from "node:net";
 import { packWorkspace, root, run, installConsumer } from "./pack-local-consumer.mjs";
 
-const temporary = await mkdtemp(path.join(tmpdir(), "skein-packed-local-"));
+// Exercise npm's file-spec encoding even on runners without Windows short-name temp paths.
+const temporary = await mkdtemp(path.join(tmpdir(), "skein-packed-local-~ path-"));
 const packed = packWorkspace(path.join(temporary, "packages"));
 const consumer = path.join(temporary, "consumer");
 try {
@@ -90,7 +90,7 @@ try {
     console.log(
       JSON.stringify({
         package: name,
-        tarballBytes: (await stat(fileURLToPath(packed[name]))).size,
+        tarballBytes: (await stat(packed[name])).size,
       }),
     );
 
