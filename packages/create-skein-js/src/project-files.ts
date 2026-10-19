@@ -43,12 +43,13 @@ function templateValuesFor(options: ScaffoldOptions): TemplateValues {
     apiKeyEnvVar: provider?.apiKeyEnvVar ?? "",
     providerConsoleUrl: provider?.consoleUrl ?? "",
     runDev: runCommand(options, "dev"),
+    devIsSqlite: options.devStorage === "sqlite",
     devIsDurable: options.devStorage === "postgres",
     // Whichever spelling `dev` is not — `package-manifest` emits exactly one of the two, so naming
     // the wrong one here would put a script in the README that is not in `package.json`.
     runDevAlternate: runCommand(
       options,
-      options.devStorage === "postgres" ? "dev:memory" : "dev:postgres",
+      options.devStorage !== "memory" ? "dev:memory" : "dev:postgres",
     ),
     runServices: runCommand(options, "dev:services"),
     runBuild: runCommand(options, "build"),
@@ -98,8 +99,10 @@ export function buildProjectFiles(options: ScaffoldOptions): readonly GeneratedF
     },
     // Always emitted, not gated behind a flag: `skein start` is durable-only, so without this the
     // `start` script the project ships would be a trap.
-    fromTemplate("compose.dev.yaml", "compose.dev.yaml"),
-    fromTemplate("README.md", "README.md"),
+    ...(options.devStorage === "sqlite"
+      ? []
+      : [fromTemplate("compose.dev.yaml", "compose.dev.yaml")]),
+    fromTemplate(options.devStorage === "sqlite" ? "README-sqlite.md" : "README.md", "README.md"),
     fromTemplate("src/echo-graph.ts", "src/echo-graph.ts"),
     fromTemplate("src/echo-graph.test.ts", "src/echo-graph.test.ts"),
   ];

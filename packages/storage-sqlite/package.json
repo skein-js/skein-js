@@ -1,0 +1,54 @@
+{
+  "name": "@skein-js/storage-sqlite",
+  "version": "0.18.0",
+  "description": "Durable SQLite SkeinStore and run queue for local applications.",
+  "license": "Apache-2.0",
+  "author": "Maina Wycliffe <wmmaina7@gmail.com>",
+  "homepage": "https://github.com/skein-js/skein-js/tree/main/packages/storage-sqlite#readme",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/skein-js/skein-js.git",
+    "directory": "packages/storage-sqlite"
+  },
+  "bugs": {
+    "url": "https://github.com/skein-js/skein-js/issues"
+  },
+  "keywords": [
+    "typescript",
+    "langgraph",
+    "agent-protocol",
+    "sqlite",
+    "local"
+  ],
+  "type": "module",
+  "main": "./dist/index.js",
+  "module": "./dist/index.js",
+  "types": "./dist/index.d.ts",
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "import": "./dist/index.js",
+      "default": "./dist/index.js"
+    }
+  },
+  "files": [
+    "dist",
+    "LICENSE",
+    "README.md"
+  ],
+  "sideEffects": false,
+  "engines": {
+    "node": "^22.0.0 || ^24.0.0"
+  },
+  "dependencies": {
+    "@skein-js/core": "workspace:*",
+    "better-sqlite3": "^12.10.0",
+    "@types/better-sqlite3": "^7.6.13"
+  },
+  "devDependencies": {
+    "@skein-js/test-support": "workspace:*"
+  },
+  "publishConfig": {
+    "access": "public"
+  }
+}

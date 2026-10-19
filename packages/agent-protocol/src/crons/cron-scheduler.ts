@@ -248,6 +248,7 @@ export function createCronScheduler(
       auth?.scopes,
     );
 
+    kwargs.queue_not_before = deps.clock().toISOString();
     const claimed = await deps.store.crons.claimAndCreateRun(
       cron.cron_id,
       { expectedSeq: occurrenceSeq, nextRunDate },

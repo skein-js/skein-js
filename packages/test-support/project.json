@@ -18,15 +18,65 @@
         "server-fastify:build",
         "server-nestjs:build",
         "server-nextjs:build",
-        "server-fetch:build"
+        "server-fetch:build",
+        "local:build",
+        "storage-sqlite:build"
       ],
       "inputs": [
         "default",
         "^production",
         "{workspaceRoot}/packages/*/package.json",
         "{workspaceRoot}/packages/agent-protocol/src/validation/schemas.ts",
-        "{workspaceRoot}/pnpm-lock.yaml"
+        "{workspaceRoot}/pnpm-lock.yaml",
+        "{workspaceRoot}/packages/local/src/**/*",
+        "{workspaceRoot}/packages/storage-sqlite/src/**/*",
+        "{workspaceRoot}/packages/langgraph/src/**/*"
       ]
+    },
+    "test-local-consumer": {
+      "executor": "nx:run-commands",
+      "cache": false,
+      "dependsOn": ["local:build", "storage-sqlite:build", "cli:build", "create-skein-js:build"],
+      "options": {
+        "command": "node scripts/local-consumer-smoke.mjs",
+        "cwd": "."
+      }
+    },
+    "test-local-electron": {
+      "executor": "nx:run-commands",
+      "cache": false,
+      "dependsOn": ["example-desktop-electron:build"],
+      "options": {
+        "command": "node scripts/desktop-consumer-smoke.mjs electron",
+        "cwd": "."
+      }
+    },
+    "test-local-tauri": {
+      "executor": "nx:run-commands",
+      "cache": false,
+      "dependsOn": ["example-desktop-tauri:build"],
+      "options": {
+        "command": "node scripts/desktop-consumer-smoke.mjs tauri",
+        "cwd": "."
+      }
+    },
+    "test-runtime-matrix": {
+      "executor": "nx:run-commands",
+      "cache": false,
+      "dependsOn": ["cli:build"],
+      "options": {
+        "command": "node scripts/local-runtime-matrix.mjs",
+        "cwd": "."
+      }
+    },
+    "test-local-node22": {
+      "executor": "nx:run-commands",
+      "cache": false,
+      "dependsOn": ["local:build", "storage-sqlite:build", "cli:build", "create-skein-js:build"],
+      "options": {
+        "command": "pnpm --package=node@22 --package=npm@11 dlx node scripts/local-consumer-smoke.mjs",
+        "cwd": "."
+      }
     }
   }
 }

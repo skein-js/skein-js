@@ -63,3 +63,7 @@ packages/console/src/assets.generated.ts
 docs/.vitepress/.temp
 tmp
 output
+# Packaged local-host resources and Rust build output
+examples/desktop-tauri/backend/
+examples/desktop-tauri/src-tauri/target/
+examples/desktop-tauri/src-tauri/gen/

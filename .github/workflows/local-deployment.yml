@@ -1,0 +1,57 @@
+name: Local deployment
+on:
+  workflow_call:
+jobs:
+  sqlite:
+    name: SQLite · ${{ matrix.os }} · Node ${{ matrix.node }}
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, windows-latest, macos-15, macos-15-intel]
+        node: [22, 24]
+    runs-on: ${{ matrix.os }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: pnpm/action-setup@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: ${{ matrix.node }}
+          cache: pnpm
+      - name: Packed-consumer npm toolchain
+        run: npm install --global npm@11
+      - run: pnpm install --frozen-lockfile
+      - run: pnpm nx run-many -t test -p storage-sqlite,local,example-local-workflow
+        env:
+          CI: true
+      - run: pnpm nx run test-support:test-local-consumer
+  desktop:
+    name: Packaged ${{ matrix.host }} · ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, windows-latest, macos-15, macos-15-intel]
+        host: [electron, tauri]
+    runs-on: ${{ matrix.os }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: pnpm/action-setup@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          cache: pnpm
+      - name: Linux native prerequisites
+        if: runner.os == 'Linux'
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y xvfb libwebkit2gtk-4.1-dev build-essential libxdo-dev libssl-dev librsvg2-dev patchelf
+      - name: Packed-consumer npm toolchain
+        run: npm install --global npm@11
+      - run: pnpm install --frozen-lockfile
+      - name: Pack and launch native host
+        shell: bash
+        run: |
+          if [ "$RUNNER_OS" = "Linux" ]; then
+            xvfb-run -a pnpm nx run test-support:test-local-${{ matrix.host }}
+          else
+            pnpm nx run test-support:test-local-${{ matrix.host }}
+          fi

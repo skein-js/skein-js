@@ -27,8 +27,9 @@ export interface QueuedRun {
 }
 
 /**
- * Executes one queued run. Resolving marks the job done; throwing leaves it for the queue to retry
- * or recover (a crashed processor's job is redelivered). The processor loads the run from the
+ * Executes one queued run. Resolving marks the job done. Failure/restart behavior belongs to the
+ * driver: Redis can redeliver stalled jobs; SQLite retires abandoned attempts and records failure.
+ * The processor loads the run from the
  * {@link SkeinStore} by id and drives it to a terminal status.
  */
 export type RunProcessor = (run: QueuedRun) => Promise<void>;
@@ -68,7 +69,7 @@ export interface EnqueueOptions {
 }
 
 /**
- * A durable queue of background runs. One producer enqueues; a consumer's processor drains it.
+ * A queue of background runs. Durability and crash behavior depend on the selected driver.
  * The in-memory driver implements this for `skein dev`; `@skein-js/redis` backs it with BullMQ
  * (retries, backoff, stalled-job crash recovery, cross-instance workers).
  */

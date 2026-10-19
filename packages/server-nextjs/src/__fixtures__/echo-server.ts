@@ -117,8 +117,9 @@ export async function startEchoServer(options: {
   router: "app" | "pages";
   cors?: boolean | CorsOptions;
   auth?: AuthEngine;
+  deps?: ProtocolDeps;
 }): Promise<RunningServer> {
-  const deps = createEchoDeps(options.auth);
+  const deps = options.deps ?? createEchoDeps(options.auth);
   const appHandlers: SkeinRouteHandlers = createSkeinRouteHandlers({
     deps,
     cors: options.cors,

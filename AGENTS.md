@@ -137,6 +137,8 @@ Prerequisites: the git remote must point at `skein-js/skein-js` (Nx derives the 
 | `@skein-js/express` · `@skein-js/fastify` · `@skein-js/nestjs` · `@skein-js/nextjs` | Framework adapters — thin transport shims over the engine's handler table + `skeinRoutes`                                                           |
 | `@skein-js/fetch`                                                                   | Web-standard Fetch transport — `Bun.serve` / `Deno.serve`; the production path on those runtimes                                                    |
 | `@skein-js/storage-memory`                                                          | In-memory `SkeinStore` + queue (dev/tests)                                                                                                          |
+| `@skein-js/storage-sqlite`                                                          | Durable local `SkeinStore` + run queue in one exclusively owned SQLite file                                                                         |
+| `@skein-js/local`                                                                   | Lean SQLite/LangGraph embedding through `embedSqliteGraphs`                                                                                         |
 | `@skein-js/storage-postgres`                                                        | Postgres `SkeinStore` + pgvector; reuses `PostgresSaver`                                                                                            |
 | `@skein-js/redis`                                                                   | Run **queue** + cross-instance pub/sub (not a checkpointer)                                                                                         |
 | `@skein-js/console`                                                                 | The skein console — a web UI (assistants/threads/runs/store/crons/time travel) compiled into the package and served by the server at `/console`     |
@@ -145,6 +147,12 @@ Prerequisites: the git remote must point at `skein-js/skein-js` (Nx derives the 
 | `skein-js` (CLI)                                                                    | Drop-in `dev` / `up` / `build` / `dockerfile`                                                                                                       |
 | `create-skein-js`                                                                   | `npm create skein-js@latest` — scaffolds a project. Templates are real files under `templates/*.tmpl`, compiled into `src/templates.generated.ts`   |
 | `@skein-js/test-support`                                                            | _(private)_ Testcontainers helpers + `SkeinStore` conformance suite                                                                                 |
+
+Local applications are `desktop-electron` (Daybook meeting workspace), `desktop-tauri` (Reading Room
+document library), and `local-cli` (Dayplan daily planner). Their private shared graph/UI code lives
+in `local-workflow`. Normal runs select Vertex AI, Gemini API, OpenAI, Anthropic or Ollama through UI/environment settings; deterministic fixtures
+are limited to tests and packaging gates. See [local deployment](docs/local-deployment.md) for start
+commands and host boundaries.
 
 Examples live in `examples/`: `chat-app` (flagship — research assistant + Next.js/shadcn UI),
 `triage-agent` (the console's workload — cron sweep, a durable run per item, idempotent re-sweeps,

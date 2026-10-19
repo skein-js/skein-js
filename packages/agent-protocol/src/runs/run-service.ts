@@ -559,6 +559,7 @@ export function createRunService(ctx: ProtocolContext): RunService {
   const prepareRun = async (
     input: CreateRunInput,
     resolveThread: () => Promise<Thread>,
+    background = false,
   ): Promise<{ run: Run; kwargs: RunKwargs }> => {
     const assistant = await requireAssistant(input.assistant_id);
     const thread = await resolveThread();
@@ -566,6 +567,10 @@ export function createRunService(ctx: ProtocolContext): RunService {
     // not "we happened to create one". A caller that supplies an id owns that thread even when this
     // run is what brings it into existence, so `on_completion: "delete"` must not reach for it.
     const kwargs = toKwargs(input, input.thread_id === undefined, authUser, authScopes);
+    if (background)
+      kwargs.queue_not_before = new Date(
+        deps.clock().getTime() + Math.max(0, input.after_seconds ?? 0) * 1000,
+      ).toISOString();
     const run = await createPendingRun(
       { ...input, thread_id: thread.thread_id },
       thread.thread_id,
@@ -771,7 +776,7 @@ export function createRunService(ctx: ProtocolContext): RunService {
     // missing. Left in the input rather than stripped, so the field means the same thing everywhere it
     // is read — `resolveRunThread` ignores it on the undefined-thread branch.
     const { thread_id: _ignored, ...stateless } = input;
-    const { run } = await prepareRun(stateless, () => deps.store.threads.create());
+    const { run } = await prepareRun(stateless, () => deps.store.threads.create(), true);
     return enqueueBackgroundRun(run, stateless.after_seconds);
   };
 
@@ -830,8 +835,10 @@ export function createRunService(ctx: ProtocolContext): RunService {
     },
 
     async createBackground(threadId, input) {
-      const { run } = await prepareRun({ ...input, thread_id: threadId }, () =>
-        resolveRunThread(threadId, input.if_not_exists),
+      const { run } = await prepareRun(
+        { ...input, thread_id: threadId },
+        () => resolveRunThread(threadId, input.if_not_exists),
+        true,
       );
       return enqueueBackgroundRun(run, input.after_seconds);
     },
@@ -918,9 +925,12 @@ export function createRunService(ctx: ProtocolContext): RunService {
     },
 
     async join(runId, afterSeq = 0) {
-      if (!(await deps.store.runs.get(runId))) {
+      const run = await deps.store.runs.get(runId);
+      if (!run) {
         throw SkeinHttpError.notFound(`Run "${runId}" not found.`);
       }
+      // Closing a terminal stream retains replay while restoring a lost completion marker.
+      if (isTerminalRunStatus(run.status)) await deps.bus.close(runId);
       return deps.bus.subscribe(runId, afterSeq);
     },
 

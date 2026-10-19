@@ -1,0 +1,32 @@
+{
+  "$schema": "https://schema.tauri.app/config/2",
+  "productName": "Reading Room",
+  "version": "0.1.0",
+  "identifier": "dev.skein.local-example",
+  "build": {
+    "frontendDist": "../dist"
+  },
+  "app": {
+    "windows": [
+      {
+        "title": "Reading Room",
+        "width": 1240,
+        "height": 900,
+        "minWidth": 760,
+        "minHeight": 600
+      }
+    ],
+    "security": {
+      "csp": "default-src 'self'; script-src 'self'; connect-src ipc: http://ipc.localhost http://127.0.0.1:*; style-src 'self' 'unsafe-inline'"
+    }
+  },
+  "bundle": {
+    "active": true,
+    "targets": "all",
+    "resources": {
+      "../backend/": "backend/"
+    },
+    "icon": ["icons/icon.png", "icons/icon.ico"]
+  },
+  "mainBinaryName": "skein-local-example"
+}

@@ -12,7 +12,13 @@ import type { SkeinRuntimeName } from "@skein-js/config";
 
 import { runDev } from "./dev-command.js";
 import { runBuild, runDockerfile, runUp } from "./docker/commands.js";
-import { parseQueue, parseStartQueue, parseStartStore, parseStore } from "./driver-flags.js";
+import {
+  parseQueue,
+  parseStartQueue,
+  parseStartStore,
+  parseStore,
+  parseImportStore,
+} from "./driver-flags.js";
 import { runImportLanggraph } from "./import-command.js";
 import { DEFAULT_CONTAINER_PORT, DEFAULT_DEV_PORT } from "./serve-env.js";
 import { runStart } from "./start-command.js";
@@ -68,8 +74,9 @@ program
   .option("--no-reload", "Disable hot reload")
   .option("--no-persist", "Don't persist dev state to .skein/ between restarts")
   // Develop against production-shaped storage without Docker (needs POSTGRES_URI / REDIS_URI).
-  .option("--store <driver>", "Store driver: memory | postgres", parseStore, "memory")
-  .option("--queue <driver>", "Queue driver: memory | redis", parseQueue, "memory")
+  .option("--store <driver>", "Store driver: memory | postgres | sqlite", parseStore, "memory")
+  .option("--queue <driver>", "Queue driver: memory | redis | sqlite", parseQueue, "memory")
+  .option("--sqlite-path <path>", "SQLite database file (default .skein/state.sqlite)")
   // Deliberately no commander default: an unset flag stays `undefined`, which is what lets runDev
   // fall through to SKEIN_RUN_CONCURRENCY / N_JOBS_PER_WORKER. That is also why this needs none of
   // the `getOptionValueSource(...) === "cli"` machinery --port/--host require for their defaults.
@@ -127,8 +134,9 @@ program
   // Durable-only, and defaulted so a bare `skein start` reaches for them. `@skein-js/runtime`'s
   // `requireEnv` then fails with an actionable error when POSTGRES_URI / REDIS_URI is missing, so the
   // hard requirement mostly falls out of the defaults — the restricted parsers close the rest.
-  .option("--store <driver>", "Store driver: postgres", parseStartStore, "postgres")
-  .option("--queue <driver>", "Queue driver: redis", parseStartQueue, "redis")
+  .option("--store <driver>", "Store driver: postgres | sqlite", parseStartStore, "postgres")
+  .option("--queue <driver>", "Queue driver: redis | sqlite", parseStartQueue, "redis")
+  .option("--sqlite-path <path>", "SQLite database file (default .skein/state.sqlite)")
   .option("--runtime <runtime>", "Production runtime: node | bun | deno", parseRuntime)
   .option("--runtime-version <version>", "Override the configured runtime version")
   // Same pair as `dev` — see the note there on why neither carries a commander default.
@@ -205,7 +213,7 @@ program
   .option(
     "--store <driver>",
     "Import target: memory (.skein/dev-state.json) | postgres (POSTGRES_URI)",
-    parseStore,
+    parseImportStore,
     "memory",
   )
   .option("--from <dir>", "Source .langgraph_api directory (defaults to alongside langgraph.json)")

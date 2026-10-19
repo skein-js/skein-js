@@ -330,11 +330,11 @@ What each one is for:
 **Where the retries actually run depends on your queue driver.** With Redis, the whole schedule is
 BullMQ's — delayed jobs, exponential backoff with jitter, and re-delivery of a job whose worker was
 killed — so a retry still waiting survives a restart. Without it, skein polls the outbox instead:
-correct, but the schedule dies with the process, and skein warns at startup when your store is durable
-and your delivery schedule is not. To exercise the production path locally, `skein dev --queue redis`.
+the stored due time and delivery lease survive restart whenever the store is durable. SQLite and
+Postgres therefore retain waiting retries without a separate delivery queue.
 
-Whether a callback is **durable** does not depend on any of this: the delivery is recorded in the same
-transaction as the run's terminal status, so it cannot be lost even with no queue at all. See
+With a durable store, the delivery and its due time are recorded in the same transaction as the
+run's terminal status. Waiting retries therefore survive restart without a separate queue. See
 [webhooks.md](./webhooks.md).
 
 ## Authentication + authorization (`auth`)

@@ -355,6 +355,7 @@ export function createThreadService(ctx: ProtocolContext): ThreadService {
         await deps.bus.close(run.run_id);
       }
     }
+    await deps.checkpointer.deleteThread(threadId);
     await deps.store.threads.delete(threadId);
     // Erasure has to reach the idempotency records too. A recorded response outlives its run by
     // design — that is what makes a replay possible — and for `POST /runs/wait` that response *is*

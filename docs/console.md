@@ -106,6 +106,10 @@ and interrupts and time travel are panels on the thread and playground.
 Opening the console lands on the **playground**, because the first question anyone has about a server
 is whether their graph works; everything else answers a question you only have later.
 
+Collection views support forward and backward pagination, including servers configured with a
+smaller `SKEIN_MAX_PAGE_SIZE`. Each page advances by the rows returned, so the server cap does not
+hide or skip later records. Counts are shown where the protocol provides them.
+
 Routing is on the URL **hash** (`#/threads/abc`), so deep links never reach the server and the console
 needs no SPA history fallback on any adapter. An unknown route renders a "no such view" page rather
 than a blank one.

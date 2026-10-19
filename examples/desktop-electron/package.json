@@ -1,0 +1,22 @@
+{
+  "name": "@skein-js/example-desktop-electron",
+  "version": "0.0.0",
+  "private": true,
+  "type": "module",
+  "dependencies": {
+    "@langchain/langgraph": "^1.4.0",
+    "@langchain/langgraph-checkpoint-sqlite": "~1.0.4",
+    "@skein-js/local": "workspace:*",
+    "@skein-js/agent-protocol": "workspace:*",
+    "@skein-js/example-local-workflow": "workspace:*",
+    "@langchain/langgraph-sdk": "^1.9.0",
+    "@langchain/core": "^1.2.9"
+  },
+  "devDependencies": {
+    "@types/node": "^22.10.0",
+    "electron": "^44.0.0",
+    "@electron/packager": "^19.0.0",
+    "@electron/rebuild": "^4.0.0"
+  },
+  "main": "dist/main.js"
+}

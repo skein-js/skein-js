@@ -1,0 +1,220 @@
+import { mkdtemp, rm } from "node:fs/promises";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
+
+import { runSkeinStoreConformance, runRunQueueConformance } from "@skein-js/test-support";
+import { afterEach, describe, expect, it } from "vitest";
+
+import { openSqliteStorage, type SqliteStorage, type SqliteStorageOptions } from "./index.js";
+
+const resources: { storage: SqliteStorage; directory: string }[] = [];
+async function open(options: Partial<SqliteStorageOptions> = {}): Promise<SqliteStorage> {
+  const directory = await mkdtemp(join(tmpdir(), "skein-sqlite-"));
+  const storage = await openSqliteStorage({
+    filename: join(directory, "state.sqlite"),
+    ...options,
+  });
+  resources.push({ storage, directory });
+  return storage;
+}
+afterEach(async () => {
+  for (const { storage, directory } of resources.splice(0)) {
+    await storage.dispose();
+    await rm(directory, { recursive: true, force: true });
+  }
+});
+runSkeinStoreConformance("sqlite", async (options) => (await open(options)).store);
+runRunQueueConformance("sqlite", async () => (await open()).queue);
+
+describe("durability and ownership", () => {
+  it("commits run intent and original due time together before enqueue", async () => {
+    const storage = await open();
+    const filename = storage.database.name;
+    const thread = await storage.store.threads.create();
+    const due = new Date(Date.now() + 60_000).toISOString();
+    const run = await storage.store.runs.create({
+      thread_id: thread.thread_id,
+      assistant_id: "agent",
+      kwargs: { input: { value: 1 }, queue_not_before: due },
+    });
+    await storage.dispose();
+    const reopened = await openSqliteStorage({ filename });
+    try {
+      expect((await reopened.store.runs.get(run.run_id))?.status).toBe("pending");
+      await reopened.queue.enqueue(run);
+      expect(
+        reopened.database
+          .prepare("SELECT due_at FROM skein_run_jobs WHERE run_id=?")
+          .get(run.run_id),
+      ).toEqual({ due_at: Date.parse(due) });
+    } finally {
+      await reopened.dispose();
+    }
+  });
+  it("fails every abandoned attempt beyond the page cap, preserving saved state and real interrupts", async () => {
+    const storage = await open({ maxPageSize: 1 });
+    const filename = storage.database.name;
+    const thread = await storage.store.threads.create();
+    await storage.store.threads.update(thread.thread_id, {
+      values: { saved: true },
+      interrupts: { node: [{ value: "approve", id: "interrupt" }] },
+    });
+    for (let index = 0; index < 140; index++)
+      await storage.store.runs.create({ thread_id: thread.thread_id, assistant_id: "agent" });
+    const paused = await storage.store.runs.create({
+      thread_id: thread.thread_id,
+      assistant_id: "agent",
+      status: "interrupted",
+    });
+    await storage.dispose();
+    const reopened = await openSqliteStorage({ filename, maxPageSize: 1 });
+    try {
+      expect(await reopened.store.runs.listActiveRuns()).toEqual([]);
+      expect((await reopened.store.runs.get(paused.run_id))?.status).toBe("interrupted");
+      const failures = await reopened.store.runs.listByThread(thread.thread_id, {
+        status: "error",
+      });
+      expect(failures).toHaveLength(140);
+      expect(failures[0]?.error?.name).toBe("ProcessLostError");
+      expect((await reopened.store.threads.get(thread.thread_id))?.values).toEqual({ saved: true });
+    } finally {
+      await reopened.dispose();
+    }
+  });
+  it("rejects a second owner and releases ownership on idempotent disposal", async () => {
+    const storage = await open();
+    await expect(openSqliteStorage({ filename: storage.database.name })).rejects.toThrow(/locked/);
+    await Promise.all([storage.dispose(), storage.dispose()]);
+    const reopened = await openSqliteStorage({ filename: storage.database.name });
+    await reopened.dispose();
+  }, 10_000);
+  it("rolls back cron advancement if run admission fails", async () => {
+    const storage = await open();
+    const cron = await storage.store.crons.create({
+      assistant_id: "agent",
+      schedule: "* * * * *",
+      next_run_date: new Date().toISOString(),
+    });
+    await expect(
+      storage.store.crons.claimAndCreateRun(
+        cron.cron_id,
+        { expectedSeq: 0, nextRunDate: null },
+        { thread_id: "missing", assistant_id: "agent" },
+      ),
+    ).rejects.toThrow();
+    expect((await storage.store.crons.get(cron.cron_id))?.next_run_date).toBe(cron.next_run_date);
+  });
+});
+
+describe("configured retention", () => {
+  it("applies default item TTL, hides expired items in search and namespaces, and sweeps", async () => {
+    const storage = await open({ ttl: { defaultTtl: 0.0001 } });
+    await storage.store.store.put(["expires"], "key", {});
+    await new Promise((resolve) => setTimeout(resolve, 20));
+    expect(await storage.store.store.search({})).toEqual([]);
+    expect(await storage.store.store.listNamespaces()).toEqual([]);
+    expect(await storage.store.store.sweepExpired()).toBe(1);
+  });
+  it.each([true, false])("refreshes only when refreshOnRead is %s", async (refreshOnRead) => {
+    const storage = await open({ ttl: { defaultTtl: 60, refreshOnRead } });
+    await storage.store.store.put(["ns"], "key", {});
+    storage.database.prepare("UPDATE skein_items SET expires_at=?").run(Date.now() + 1000);
+    const before = storage.database.prepare("SELECT expires_at FROM skein_items").get() as {
+      expires_at: number;
+    };
+    await storage.store.store.get(["ns"], "key");
+    const after = storage.database.prepare("SELECT expires_at FROM skein_items").get() as {
+      expires_at: number;
+    };
+    expect(after.expires_at > before.expires_at).toBe(refreshOnRead);
+  });
+  it("applies default thread TTL without hiding a thread before service cleanup", async () => {
+    const storage = await open({ threadTtl: { defaultTtl: 0.0001 } });
+    const thread = await storage.store.threads.create();
+    const pinned = await storage.store.threads.create({ ttl: null });
+    await new Promise((resolve) => setTimeout(resolve, 20));
+    expect(
+      await storage.store.threads.listExpired({ now: new Date().toISOString(), limit: 10 }),
+    ).toEqual([thread.thread_id]);
+    expect(await storage.store.threads.get(thread.thread_id)).not.toBeNull();
+    expect(await storage.store.threads.get(pinned.thread_id)).not.toBeNull();
+  });
+});
+
+it("rolls back an entire migration when one statement fails", async () => {
+  const directory = await mkdtemp(join(tmpdir(), "skein-migration-"));
+  const filename = join(directory, "state.sqlite");
+  const { default: Database } = await import("better-sqlite3");
+  let database = new Database(filename);
+  database.exec("CREATE TABLE skein_items (collision TEXT)");
+  database.close();
+  try {
+    await expect(openSqliteStorage({ filename })).rejects.toThrow(/already exists/);
+    database = new Database(filename);
+    expect(
+      database.prepare("SELECT name FROM sqlite_master WHERE name='skein_migrations'").get(),
+    ).toBeUndefined();
+    expect(
+      database.prepare("SELECT name FROM sqlite_master WHERE name='skein_assistants'").get(),
+    ).toBeUndefined();
+  } finally {
+    if (database.open) database.close();
+    await rm(directory, { recursive: true, force: true });
+  }
+});
+
+it("wakes an existing consumer for atomic admission before the later enqueue call", async () => {
+  const storage = await open();
+  const thread = await storage.store.threads.create();
+  let received: (value: string) => void = () => {};
+  const delivered = new Promise<string>((resolve) => {
+    received = resolve;
+  });
+  const consumer = storage.queue.consume(async (job) => {
+    expect(storage.database.inTransaction).toBe(false);
+    expect(await storage.store.runs.get(job.run_id)).not.toBeNull();
+    received(job.run_id);
+  });
+  try {
+    const run = await storage.store.runs.create({
+      thread_id: thread.thread_id,
+      assistant_id: "agent",
+      kwargs: { queue_not_before: new Date().toISOString() },
+    });
+    expect(await delivered).toBe(run.run_id);
+  } finally {
+    await consumer.close();
+  }
+});
+
+it("repairs a failed attempt's busy thread without cancelling its queued backlog", async () => {
+  const storage = await open();
+  const filename = storage.database.name;
+  const thread = await storage.store.threads.create({ status: "busy" });
+  const due = new Date(Date.now() + 60_000).toISOString();
+  const active = await storage.store.runs.create({
+    thread_id: thread.thread_id,
+    assistant_id: "agent",
+    status: "running",
+    kwargs: { queue_not_before: due },
+  });
+  const pending = await storage.store.runs.create({
+    thread_id: thread.thread_id,
+    assistant_id: "agent",
+    kwargs: { queue_not_before: due },
+  });
+  await storage.dispose();
+  const reopened = await openSqliteStorage({ filename });
+  try {
+    expect((await reopened.store.runs.get(active.run_id))?.error?.name).toBe("ProcessLostError");
+    expect((await reopened.store.threads.get(thread.thread_id))?.status).toBe("error");
+    expect((await reopened.store.runs.get(pending.run_id))?.status).toBe("pending");
+    expect(
+      reopened.database
+        .prepare("SELECT due_at,status FROM skein_run_jobs WHERE run_id=?")
+        .get(pending.run_id),
+    ).toEqual({ due_at: Date.parse(due), status: "waiting" });
+  } finally {
+    await reopened.dispose();
+  }
+});

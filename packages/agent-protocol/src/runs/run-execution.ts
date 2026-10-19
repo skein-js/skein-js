@@ -161,6 +161,7 @@ async function deleteThreadIfRunOwnedIt(
   const settled = await deps.store.runs.get(run.run_id);
   if (settled?.status === "interrupted") return;
   try {
+    await deps.checkpointer.deleteThread(run.thread_id);
     await deps.store.threads.delete(run.thread_id);
   } catch (error) {
     // Best-effort by construction: the run itself succeeded, and failing it now — after the client has

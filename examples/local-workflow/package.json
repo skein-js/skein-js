@@ -1,0 +1,30 @@
+{
+  "name": "@skein-js/example-local-workflow",
+  "version": "0.0.0",
+  "private": true,
+  "type": "module",
+  "dependencies": {
+    "@langchain/langgraph": "^1.4.0",
+    "@langchain/langgraph-checkpoint-sqlite": "~1.0.4",
+    "@skein-js/local": "workspace:*",
+    "@skein-js/agent-protocol": "workspace:*",
+    "@skein-js/express": "workspace:*",
+    "@skein-js/core": "workspace:*",
+    "@langchain/langgraph-sdk": "^1.9.0",
+    "@langchain/core": "^1.2.9",
+    "@langchain/google": "0.2.0",
+    "langchain": "^1.5.0",
+    "zod": "^3.25.76",
+    "google-auth-library": "^10.6.2",
+    "@langchain/openai": "1.3.0",
+    "@langchain/anthropic": "1.5.6",
+    "@langchain/ollama": "1.3.0"
+  },
+  "devDependencies": {
+    "@types/node": "^22.10.0"
+  },
+  "exports": {
+    ".": "./dist/index.js",
+    "./ui": "./dist/ui.js"
+  }
+}

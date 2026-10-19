@@ -9,9 +9,9 @@ import {
   MessagesAnnotation,
   StateGraph,
 } from "@langchain/langgraph";
-import { cloneLangGraphCheckpoint, langGraphResolver, SkeinBaseStore } from "@skein-js/langgraph";
 import type { GraphResolver, GraphSchemas, ProtocolDeps } from "@skein-js/agent-protocol";
 import type { AuthEngine } from "@skein-js/core";
+import { cloneLangGraphCheckpoint, langGraphResolver, SkeinBaseStore } from "@skein-js/langgraph";
 import type { CorsOptions } from "@skein-js/server-kit";
 import { MemoryRunEventBus, MemoryRunQueue, MemorySkeinStore } from "@skein-js/storage-memory";
 
@@ -70,10 +70,10 @@ export interface RunningServer {
 
 /** Boot the echo server on an ephemeral loopback port. `cors` is off unless explicitly enabled. */
 export async function startEchoServer(
-  options: { cors?: boolean | CorsOptions; auth?: AuthEngine } = {},
+  options: { cors?: boolean | CorsOptions; auth?: AuthEngine; deps?: ProtocolDeps } = {},
 ): Promise<RunningServer> {
   const server = await createFastifyServer({
-    deps: createEchoDeps(options.auth),
+    deps: options.deps ?? createEchoDeps(options.auth),
     cors: options.cors,
   });
   const httpServer = await server.listen(0, "127.0.0.1");

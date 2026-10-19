@@ -59,7 +59,7 @@ describe("renderTemplate", () => {
 
     // Block form: `<%_ … _%>` slurps the tag lines, so an omitted section leaves no blank hole.
     it("leaves no stray blank lines when a block is dropped", () => {
-      const rendered = renderTemplate("env.example", withoutProvider);
+      const rendered = renderTemplate("env.example", { ...withoutProvider, devIsSqlite: false });
       expect(rendered).not.toContain("API_KEY");
       expect(rendered).not.toMatch(/\n\n\n/);
     });

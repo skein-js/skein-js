@@ -1,0 +1,25 @@
+{
+  "$schema": "../../node_modules/nx/schemas/project-schema.json",
+  "name": "local",
+  "sourceRoot": "packages/local/src",
+  "projectType": "library",
+  "targets": {
+    "build": {
+      "executor": "nx:run-commands",
+      "options": {
+        "command": "tsup src/index.ts --format esm --dts --clean",
+        "cwd": "packages/local"
+      }
+    },
+    "typecheck": {
+      "executor": "nx:run-commands",
+      "options": {
+        "command": "tsc --noEmit",
+        "cwd": "packages/local"
+      }
+    },
+    "test": {
+      "dependsOn": ["build", "^build"]
+    }
+  }
+}

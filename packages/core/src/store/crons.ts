@@ -206,8 +206,9 @@ export interface CronRepo {
    * advancing without the run would silently skip the occurrence if the instance died in between
    * (at-most-once), and creating the run first would re-fire it. Committed together, the worst case
    * is a `pending` run that was never enqueued — which the scheduler's sweep re-enqueues, and which
-   * is the same window every background run already has. Delivery is therefore at-least-once, and
-   * execution exactly-once, because enqueue is idempotent and the worker skips runs already terminal.
+   * is the admission window for separately stored queues. SQLite records the run and queue job in
+   * the same transaction. Enqueue is idempotent and terminal runs are skipped; replay of an abandoned
+   * executing attempt depends on the queue driver, not this cron claim.
    */
   claimAndCreateRun(
     cronId: string,

@@ -295,9 +295,8 @@ export function connectRedisQueue(args: {
   const queue = new RedisRunQueue(url);
   disposers.push(() => queue.dispose());
   // Comes along with Redis rather than behind a flag, for the same reason the abort channel does:
-  // Redis is what makes a deployment production-shaped, and a production deployment whose webhook
-  // retries live in a process timer loses them on every deploy. With this, the retry schedule is
-  // BullMQ's — delayed jobs, exponential backoff with jitter, stalled-job recovery.
+  // BullMQ owns scheduling when Redis is selected. Without it the existing delivery worker polls
+  // durable due times and expired leases directly from the outbox.
   const deliveryQueue = new RedisDeliveryQueue(url, {
     ...(args.webhooks?.retries?.initialDelayMs !== undefined
       ? { initialDelayMs: args.webhooks.retries.initialDelayMs }

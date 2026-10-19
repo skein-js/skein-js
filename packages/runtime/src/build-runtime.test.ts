@@ -134,3 +134,17 @@ describe("buildRuntime — all-memory (skein dev)", () => {
     }
   });
 });
+
+describe("SQLite driver selection", () => {
+  it("requires a pair and an absolute filename before reading project configuration", async () => {
+    await expect(
+      buildRuntime({ configPath: "/missing.json", store: "sqlite", queue: "memory" }),
+    ).rejects.toThrow(/together/);
+    await expect(
+      buildRuntime({ configPath: "/missing.json", store: "postgres", queue: "sqlite" }),
+    ).rejects.toThrow(/together/);
+    await expect(
+      buildRuntime({ configPath: "/missing.json", store: "sqlite", queue: "sqlite" }),
+    ).rejects.toThrow(/absolute sqlitePath/);
+  });
+});

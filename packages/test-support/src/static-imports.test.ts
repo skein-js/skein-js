@@ -140,6 +140,32 @@ describe("adapter static import graph", () => {
     expect(leaked).toEqual([]);
   });
 
+  it.each(["@skein-js/local", "@skein-js/storage-sqlite"])(
+    "%s keeps its local dependency closure lean",
+    (name) => {
+      const entry = builtPackages.get(name);
+      expect(entry, "Nx must build each new library before this guard runs").toBeTruthy();
+      expect(existsSync((entry as string).replace(/\.js$/, ".d.ts"))).toBe(true);
+      const reached = [...reachableSpecifiers(entry as string, builtPackages)];
+      const forbidden = [
+        "@skein-js/server-kit",
+        "@skein-js/config",
+        "@skein-js/storage-postgres",
+        "@skein-js/redis",
+        "bullmq",
+        "pg",
+        "ioredis",
+        "@langchain/langgraph-api",
+        ...ADAPTERS,
+      ];
+      expect(
+        reached.filter((specifier) =>
+          forbidden.some((prefix) => specifier === prefix || specifier.startsWith(`${prefix}/`)),
+        ),
+      ).toEqual([]);
+    },
+  );
+
   // The native Fetch adapter carries one more promise than the others: it exists so a Bun or Deno
   // production image never loads Express or Node's HTTP shim. That is a claim about its module graph,
   // so it belongs here rather than in a comment.

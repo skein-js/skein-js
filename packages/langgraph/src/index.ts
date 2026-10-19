@@ -20,3 +20,9 @@ export { SkeinBaseStore } from "./skein-base-store.js";
 // rollback). Wired onto `ProtocolDeps.cloneCheckpoint`; LangGraph's `copyCheckpoint` is a *value*
 // import, and it was the last one keeping a graph runtime in the engine's install.
 export { cloneLangGraphCheckpoint } from "./clone-checkpoint.js";
+
+export {
+  graphMapToResolver,
+  normalizeEmbeddableGraphs,
+  type EmbeddableGraph,
+} from "./embeddable-graphs.js";

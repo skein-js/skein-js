@@ -87,3 +87,5 @@ Upstream references: [LangGraph.js overview](https://docs.langchain.com/oss/java
 - [Roadmap](https://github.com/skein-js/skein-js/blob/main/docs/roadmap.md): Milestones, shipped features, known gaps vs LangGraph, and non-goals.
 - [AGENTS.md](https://github.com/skein-js/skein-js/blob/main/AGENTS.md): For agents/humans working ON skein itself (contributor guide), not consuming it.
 - [llms-full.txt](https://github.com/skein-js/skein-js/blob/main/llms-full.txt): The user-facing docs concatenated into one file for wholesale ingestion.
+
+- [Durable local deployment](https://github.com/skein-js/skein-js/blob/main/docs/local-deployment.md): SQLite embedding, CLI selection, crash semantics, and packaged Electron/Tauri examples.

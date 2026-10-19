@@ -153,3 +153,26 @@ describe("createSkeinFetchServer", () => {
     }
   });
 });
+
+it("completes terminal stream joins with a fresh completion marker and buffered replay", async () => {
+  const deps = embedInMemoryGraphs({ echo: graph });
+  const thread = await deps.store.threads.create();
+  const run = await deps.store.runs.create({
+    thread_id: thread.thread_id,
+    assistant_id: "echo",
+    status: "error",
+  });
+  await deps.bus.publish(run.run_id, { seq: 1, event: "values", data: { retained: true } });
+  const server = await createSkeinFetchServer({ deps });
+  try {
+    const response = await server.fetch(
+      new Request(`http://localhost/threads/${thread.thread_id}/runs/${run.run_id}/stream`, {
+        signal: AbortSignal.timeout(2000),
+      }),
+    );
+    expect(response.status).toBe(200);
+    expect(await response.text()).toContain('"retained":true');
+  } finally {
+    await server.close();
+  }
+});

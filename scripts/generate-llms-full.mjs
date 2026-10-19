@@ -26,6 +26,8 @@ const DOCS = [
   "docs/adapters.md",
   "docs/langgraph-cli-compat.md",
   "docs/embedding.md",
+  "docs/local-deployment.md",
+  "docs/local-deployment-validation.md",
   "docs/serving-a-single-graph.md",
   "docs/agent-protocol.md",
   "docs/building-blocks.md",
