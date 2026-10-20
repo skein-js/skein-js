@@ -151,9 +151,15 @@ export default withMermaid(
     // makes esbuild pre-bundle both and emit the ESM wrapper the dev server needs.
     vite: {
       // Keep VitePress 1's existing native destructuring output for Safari 14. Newer esbuild
-      // detects Safari's function-name collision bug but cannot lower destructuring for it.
+      // detects Safari's function-name collision bug but cannot lower destructuring for it. Both
+      // esbuild passes need it: `esbuild` covers per-file transforms (all `vitepress build` uses),
+      // `optimizeDeps.esbuildOptions` covers the dev server's dependency pre-bundling — without it
+      // `vitepress dev` dies pre-bundling mermaid's d3 and iconify dependencies.
       esbuild: { supported: { destructuring: true } },
-      optimizeDeps: { include: ["mermaid", "dayjs"] },
+      optimizeDeps: {
+        include: ["mermaid", "dayjs"],
+        esbuildOptions: { supported: { destructuring: true } },
+      },
       // Serves `/llms.txt`, `/llms-full.txt` and every page's `.md` twin over the dev server, so the
       // Copy-page control is exercised locally rather than first on Pages. See llm-assets.ts.
       plugins: [llmAssetsDevPlugin()],
