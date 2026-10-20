@@ -31,4 +31,20 @@ describe("resolveRuntimeSelection", () => {
       version: "20",
     });
   });
+
+  it("selects Node 26 through existing config and CLI options", () => {
+    expect(resolveRuntimeSelection({ graphs: {}, node_version: "26" })).toEqual({
+      name: "node",
+      version: "26",
+    });
+    expect(
+      resolveRuntimeSelection({
+        graphs: {},
+        skein: { runtime: { name: "node", version: "26.12.0" } },
+      }),
+    ).toEqual({ name: "node", version: "26.12.0" });
+    expect(
+      resolveRuntimeSelection({ graphs: {} }, { runtime: "node", runtimeVersion: "26" }),
+    ).toEqual({ name: "node", version: "26" });
+  });
 });

@@ -76,7 +76,7 @@ That's it — an agent server on <http://localhost:2024>, with the console at
 nothing but Node. Add a model when you want one (`--provider anthropic|openai|google`).
 
 Generated projects enable ESLint and Prettier by default and recommend Node 24 (engines:
-`^22.12.0 || ^24.0.0`). In Nx 23.2.1 through 23.x, install `@skein-js/nx` at the workspace root
+`^22.12.0 || ^24.0.0 || ^26.0.0`). In Nx 23.2.1 through 23.x, install `@skein-js/nx` at the workspace root
 and use `nx g @skein-js/nx:application --directory=apps/agent`. See [scaffolding](docs/scaffolding.md)
 for workspace setup, inheritance, opt-outs and current limitations.
 
@@ -281,7 +281,7 @@ See [`docs/storage.md`](./docs/storage.md).
 Build a meeting workspace, a document library, a daily planner, or another application around your
 LangGraph graphs. [`@skein-js/local`](./packages/local) assembles the existing Agent Protocol engine
 with a SQLite store, durable queue, and LangGraph's SQLite checkpointer. Local deployment needs no
-Postgres, Redis, or Docker. The library supports Node 22/24; the examples build with Node 24.
+Postgres, Redis, or Docker. The library supports Node 22/24/26; the examples build with Node 24.
 
 The same SDK and protocol power background work, streamed answers and tool activity, saved
 conversations, approval screens, checkpoint history, and alternative drafts. These examples show
@@ -1001,7 +1001,7 @@ LangGraph you need on the way, if you're new to it.
 | **Local with SQLite**          | A desktop app, terminal tool, daemon, or single Node process owning one database file | [Local apps and SQLite](./local-deployment.md) |
 
 The default `skein dev` uses memory drivers with development snapshots. SQLite is an explicit
-choice (`--store sqlite --queue sqlite`), supports Node 22/24, and needs no database service.
+choice (`--store sqlite --queue sqlite`), supports Node 22/24/26, and needs no database service.
 Applications choose models and tools in either deployment; a local app can use a cloud model or Ollama.
 
 Three moving parts. Your clients and your agents are the ones you already have.
@@ -1977,9 +1977,9 @@ remain the same.
 
 ## Prerequisites
 
-- **New projects (Path A):** Node 24 is recommended. Generated engines support `^22.12.0 || ^24.0.0`.
+- **New projects (Path A):** Node 24 is recommended. Generated engines support `^22.12.0 || ^24.0.0 || ^26.0.0`.
 - **Existing graphs (Paths B and C):** Node ≥ 20 and a package manager (`pnpm`/`npm`).
-- **Node 22 or 24** when selecting SQLite; desktop examples build with Node 24.
+- **Node 22, 24 or 26** when selecting SQLite; desktop examples build with Node 24.
 - For Paths B and C, a
   **[LangGraph.js graph](https://docs.langchain.com/oss/javascript/langgraph/graph-api)** — a
   `CompiledStateGraph` from `@langchain/langgraph`. Path A writes one for you.
@@ -2186,7 +2186,7 @@ npx create-skein-js@latest my-agent
 ```
 
 **Keep the `@latest`** to request the latest published scaffolder instead of relying on a cached
-version. Node 24 is recommended; generated projects support `^22.12.0 || ^24.0.0`.
+version. Node 24 is recommended; generated projects support `^22.12.0 || ^24.0.0 || ^26.0.0`.
 
 For an existing workspace, choose a new child directory such as `apps/my-agent`. Use the
 [Nx generator](#nx-and-other-monorepos) in Nx workspaces.
@@ -2270,7 +2270,7 @@ SQLite projects install `@skein-js/local`, LangGraph, and its SQLite saver. Both
 select `--store sqlite --queue sqlite`, with the database at `.skein/state.sqlite`; `dev:memory`
 keeps the memory alternative. There is no Compose file, service-start script, or Postgres/Redis
 environment configuration. Graphs still build to `.skein/build` and the database stays outside it.
-Use Node 24 or Node 22.12+ within 22.x. See [local deployment](./local-deployment.md) for embedding and desktop examples.
+Use Node 24 (recommended), Node 22.12+ within 22.x, or Node 26. See [local deployment](./local-deployment.md) for embedding and desktop examples.
 
 ## Options
 
@@ -2345,11 +2345,12 @@ state and package-manager lockfiles are ignored. Missing tool dependencies are a
 of inherited configuration, and new files follow workspace formatting; see the
 [workspace tooling and caching](#workspace-tooling-and-caching).
 
-The shared policy recommends **Node 24** with engines `^22.12.0 || ^24.0.0`. It derives `.nvmrc`
+The shared policy recommends **Node 24** with engines `^22.12.0 || ^24.0.0 || ^26.0.0`. It derives `.nvmrc`
 and `langgraph.json.node_version` from the same selection. Compatible numeric workspace pins in
 `.nvmrc` or `.node-version` are honored. Unsupported numeric pins fail before writing; unresolved
-aliases such as `lts/*` produce an explanation and fall back to Node 24. Review the policy when Node 26
-enters LTS in October 2026, after native SQLite and desktop CI gates pass.
+aliases such as `lts/*` produce an explanation and fall back to Node 24. Node 26 is an additional
+supported runtime; production defaults and desktop packaging remain on Node 24. Yarn users on Node 26
+must install Corepack separately because it is no longer bundled with Node.
 
 ## Nx and other monorepos
 
@@ -2414,9 +2415,9 @@ Keep the workspace's dependency graph accurate and retain the generated SQLite/W
 
 ## Scaffold validation
 
-The internal `scripts/scaffold-cases.json` catalog drives 96 generation combinations and 30 installed
+The internal `scripts/scaffold-cases.json` catalog drives 96 generation combinations and 33 installed
 consumers: every package-manager/storage and provider/storage pair, opt-outs, independent tooling
-inheritance, and both Nx layouts on Node 22.12 and 24.
+inheritance, both Nx layouts on Node 22.12 and 24, and three additional Node 26 consumers.
 
 CI builds and packs the commit once and distributes tarballs. Consumers install outside the checkout,
 verify transitive Skein artifact hashes, run typechecking, tests, applicable lint/format checks and
@@ -3109,7 +3110,7 @@ skein start -c .skein/build/langgraph.json --store sqlite --queue sqlite
 ```
 
 Mixed SQLite/non-SQLite pairs are rejected. `dev` still defaults to memory/memory and `start` to
-Postgres/Redis. SQLite requires Node 22/24, does not import memory snapshots, and keeps its file
+Postgres/Redis. SQLite requires Node 22/24/26, does not import memory snapshots, and keeps its file
 outside the build artifact. Models and tools remain in the graph. See
 [local deployment](./local-deployment.md) for ownership, crash behavior, and native packaging.
 
@@ -4010,7 +4011,7 @@ lifecycle or desktop-specific protocol is introduced. The examples bind loopback
 port and use a per-launch bearer through existing auth, with `studioAuthDisabled: true`. Credentials
 are passed through environment/private bridges, rather than command-line arguments or saved files.
 
-The target matrix is Node 22/24, Electron 44 and Tauri 2 on Linux x64, Windows x64, and macOS ARM64/x64.
+The target matrix is Node 22/24/26, Electron 44 and Tauri 2 on Linux x64, Windows x64, and macOS ARM64/x64.
 Packaged consumer gates install tarballs outside the checkout and exercise native addon loading,
 writable data paths, streaming, approval resume and credential rejection. Platform support requires
 those gates to pass on the corresponding runner; a source build alone supplies no packaging evidence.
@@ -8972,7 +8973,7 @@ same run twice. A delayed run is durable exactly as far as its driver is: see be
   due times across reopening; duplicate enqueue does not shorten a delay.
 - Claimed or executing attempts abandoned by a process become `ProcessLostError` failures. Skein
   does not replay their input or resume checkpoints automatically. The application decides.
-- Live stream frames stay in memory. This is a Node 22/24 option for local apps and single-owner
+- Live stream frames stay in memory. This is a Node 22/24/26 option for local apps and single-owner
   services, with no distributed worker support. See [local deployment](./local-deployment.md).
 
 ### `@skein-js/redis` (shared servers)
@@ -12190,7 +12191,7 @@ Reading it is the fastest way to see what a complete binding looks like.
 | **Shared server**     | Web/API clients and workers spanning instances        | Postgres for resources/checkpoints; Redis for a shared queue and streaming |
 | **Local application** | Desktop apps, CLI tools, daemons, or one Node process | One exclusively owned SQLite file through `@skein-js/local`                |
 
-For the SQLite option, follow [local deployment](./local-deployment.md). It supports Node 22/24;
+For the SQLite option, follow [local deployment](./local-deployment.md). It supports Node 22/24/26;
 Electron and Tauri hosts package the same engine and use the existing protocol. Models and tools
 remain application choices. The default `skein dev` continues to use memory drivers.
 

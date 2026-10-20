@@ -140,6 +140,18 @@ describe("headless entrypoint", () => {
     expect(existsSync(path.join(root, "apps"))).toBe(false);
     expect(existsSync(path.join(root, "pnpm-workspace.yaml"))).toBe(false);
   });
+  it.each([".nvmrc", ".node-version"])("honors a Node 26 workspace pin in %s", (filename) => {
+    const root = createRoot();
+    writeFileSync(path.join(root, "package.json"), '{"workspaces":["apps/*"]}');
+    writeFileSync(path.join(root, filename), "26.12.0\n");
+    const result = invoke(root, ["--yes"]);
+    expect(result.status, result.stderr).toBe(0);
+    expect(readFileSync(path.join(root, "apps/agent/.nvmrc"), "utf8")).toBe("26.12.0\n");
+    expect(
+      JSON.parse(readFileSync(path.join(root, "apps/agent/langgraph.json"), "utf8")).node_version,
+    ).toBe("26");
+    expect(readFileSync(path.join(root, filename), "utf8")).toBe("26.12.0\n");
+  });
   it.each([".nvmrc", ".node-version"])(
     "rejects an unsupported Node pin in %s before writing",
     (filename) => {

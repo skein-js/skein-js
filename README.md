@@ -67,7 +67,7 @@ That's it — an agent server on <http://localhost:2024>, with the console at
 nothing but Node. Add a model when you want one (`--provider anthropic|openai|google`).
 
 Generated projects enable ESLint and Prettier by default and recommend Node 24 (engines:
-`^22.12.0 || ^24.0.0`). In Nx 23.2.1 through 23.x, install `@skein-js/nx` at the workspace root
+`^22.12.0 || ^24.0.0 || ^26.0.0`). In Nx 23.2.1 through 23.x, install `@skein-js/nx` at the workspace root
 and use `nx g @skein-js/nx:application --directory=apps/agent`. See [scaffolding](docs/scaffolding.md)
 for workspace setup, inheritance, opt-outs and current limitations.
 
@@ -272,7 +272,7 @@ See [`docs/storage.md`](./docs/storage.md).
 Build a meeting workspace, a document library, a daily planner, or another application around your
 LangGraph graphs. [`@skein-js/local`](./packages/local) assembles the existing Agent Protocol engine
 with a SQLite store, durable queue, and LangGraph's SQLite checkpointer. Local deployment needs no
-Postgres, Redis, or Docker. The library supports Node 22/24; the examples build with Node 24.
+Postgres, Redis, or Docker. The library supports Node 22/24/26; the examples build with Node 24.
 
 The same SDK and protocol power background work, streamed answers and tool activity, saved
 conversations, approval screens, checkpoint history, and alternative drafts. These examples show

@@ -333,6 +333,39 @@
       "node": "24",
       "tooling": "both",
       "linting": false
+    },
+    {
+      "id": "standalone-pnpm-sqlite-node26",
+      "entry": "cli",
+      "layout": "standalone",
+      "packageManager": "pnpm",
+      "storage": "sqlite",
+      "provider": "openai",
+      "node": "26",
+      "tooling": "neither",
+      "linting": true
+    },
+    {
+      "id": "nx-integrated-both-node26",
+      "entry": "nx",
+      "layout": "integrated",
+      "packageManager": "pnpm",
+      "storage": "memory",
+      "provider": "openai",
+      "node": "26",
+      "tooling": "both",
+      "linting": true
+    },
+    {
+      "id": "nx-packages-neither-node26",
+      "entry": "nx",
+      "layout": "packages",
+      "packageManager": "pnpm",
+      "storage": "postgres",
+      "provider": "none",
+      "node": "26",
+      "tooling": "neither",
+      "linting": true
     }
   ],
   "npmVersion": "11.12.1"

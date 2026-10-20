@@ -20,7 +20,7 @@ npx create-skein-js@latest my-agent
 ```
 
 **Keep the `@latest`** to request the latest published scaffolder instead of relying on a cached
-version. Node 24 is recommended; generated projects support `^22.12.0 || ^24.0.0`.
+version. Node 24 is recommended; generated projects support `^22.12.0 || ^24.0.0 || ^26.0.0`.
 
 For an existing workspace, choose a new child directory such as `apps/my-agent`. Use the
 [Nx generator](#nx-and-other-monorepos) in Nx workspaces.
@@ -104,7 +104,7 @@ SQLite projects install `@skein-js/local`, LangGraph, and its SQLite saver. Both
 select `--store sqlite --queue sqlite`, with the database at `.skein/state.sqlite`; `dev:memory`
 keeps the memory alternative. There is no Compose file, service-start script, or Postgres/Redis
 environment configuration. Graphs still build to `.skein/build` and the database stays outside it.
-Use Node 24 or Node 22.12+ within 22.x. See [local deployment](./local-deployment.md) for embedding and desktop examples.
+Use Node 24 (recommended), Node 22.12+ within 22.x, or Node 26. See [local deployment](./local-deployment.md) for embedding and desktop examples.
 
 ## Options
 
@@ -179,11 +179,12 @@ state and package-manager lockfiles are ignored. Missing tool dependencies are a
 of inherited configuration, and new files follow workspace formatting; see the
 [workspace tooling and caching](#workspace-tooling-and-caching).
 
-The shared policy recommends **Node 24** with engines `^22.12.0 || ^24.0.0`. It derives `.nvmrc`
+The shared policy recommends **Node 24** with engines `^22.12.0 || ^24.0.0 || ^26.0.0`. It derives `.nvmrc`
 and `langgraph.json.node_version` from the same selection. Compatible numeric workspace pins in
 `.nvmrc` or `.node-version` are honored. Unsupported numeric pins fail before writing; unresolved
-aliases such as `lts/*` produce an explanation and fall back to Node 24. Review the policy when Node 26
-enters LTS in October 2026, after native SQLite and desktop CI gates pass.
+aliases such as `lts/*` produce an explanation and fall back to Node 24. Node 26 is an additional
+supported runtime; production defaults and desktop packaging remain on Node 24. Yarn users on Node 26
+must install Corepack separately because it is no longer bundled with Node.
 
 ## Nx and other monorepos
 
@@ -248,9 +249,9 @@ Keep the workspace's dependency graph accurate and retain the generated SQLite/W
 
 ## Scaffold validation
 
-The internal `scripts/scaffold-cases.json` catalog drives 96 generation combinations and 30 installed
+The internal `scripts/scaffold-cases.json` catalog drives 96 generation combinations and 33 installed
 consumers: every package-manager/storage and provider/storage pair, opt-outs, independent tooling
-inheritance, and both Nx layouts on Node 22.12 and 24.
+inheritance, both Nx layouts on Node 22.12 and 24, and three additional Node 26 consumers.
 
 CI builds and packs the commit once and distributes tarballs. Consumers install outside the checkout,
 verify transitive Skein artifact hashes, run typechecking, tests, applicable lint/format checks and

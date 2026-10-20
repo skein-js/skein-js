@@ -17,9 +17,9 @@ remain the same.
 
 ## Prerequisites
 
-- **New projects (Path A):** Node 24 is recommended. Generated engines support `^22.12.0 || ^24.0.0`.
+- **New projects (Path A):** Node 24 is recommended. Generated engines support `^22.12.0 || ^24.0.0 || ^26.0.0`.
 - **Existing graphs (Paths B and C):** Node ≥ 20 and a package manager (`pnpm`/`npm`).
-- **Node 22 or 24** when selecting SQLite; desktop examples build with Node 24.
+- **Node 22, 24 or 26** when selecting SQLite; desktop examples build with Node 24.
 - For Paths B and C, a
   **[LangGraph.js graph](https://docs.langchain.com/oss/javascript/langgraph/graph-api)** — a
   `CompiledStateGraph` from `@langchain/langgraph`. Path A writes one for you.

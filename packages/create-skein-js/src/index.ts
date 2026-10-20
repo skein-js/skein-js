@@ -76,7 +76,7 @@ const PROVIDER_CHOICES = [
  */
 const STORAGE_CHOICES = [
   { value: "memory", label: "In memory", hint: "zero setup — state in .skein/" },
-  { value: "sqlite", label: "SQLite", hint: "durable local file; Node 22/24; no services" },
+  { value: "sqlite", label: "SQLite", hint: "durable local file; Node 22/24/26; no services" },
   { value: "postgres", label: "Postgres + Redis", hint: "matches production; needs Docker" },
 ] as const satisfies readonly { value: DevStorage; label: string; hint: string }[];
 

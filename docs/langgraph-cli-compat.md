@@ -49,7 +49,7 @@ skein start -c .skein/build/langgraph.json --store sqlite --queue sqlite
 ```
 
 Mixed SQLite/non-SQLite pairs are rejected. `dev` still defaults to memory/memory and `start` to
-Postgres/Redis. SQLite requires Node 22/24, does not import memory snapshots, and keeps its file
+Postgres/Redis. SQLite requires Node 22/24/26, does not import memory snapshots, and keeps its file
 outside the build artifact. Models and tools remain in the graph. See
 [local deployment](./local-deployment.md) for ownership, crash behavior, and native packaging.
 

@@ -1,6 +1,6 @@
 # @skein-js/local
 
-Embed LangGraph.js agents with durable SQLite resources, checkpoints and queued work on Node 22/24.
+Embed LangGraph.js agents with durable SQLite resources, checkpoints and queued work on Node 22/24/26.
 
 📖 **Docs:** [Local deployment](https://skein-js.github.io/skein-js/local-deployment#embed-agents)
 

@@ -207,7 +207,7 @@ LangGraph you need on the way, if you're new to it.
 | **Local with SQLite**          | A desktop app, terminal tool, daemon, or single Node process owning one database file | [Local apps and SQLite](./local-deployment.md) |
 
 The default `skein dev` uses memory drivers with development snapshots. SQLite is an explicit
-choice (`--store sqlite --queue sqlite`), supports Node 22/24, and needs no database service.
+choice (`--store sqlite --queue sqlite`), supports Node 22/24/26, and needs no database service.
 Applications choose models and tools in either deployment; a local app can use a cloud model or Ollama.
 
 Three moving parts. Your clients and your agents are the ones you already have.
