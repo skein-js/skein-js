@@ -2,10 +2,11 @@
   "name": "@skein-js/example-deep-agent",
   "version": "0.0.0",
   "private": true,
-  "description": "A LangChain Deep Agent served by skein from an unchanged langgraph.json: planning, a synchronous subagent streamed under its own namespace, per-thread files, per-user durable memory, human approval of a sensitive tool, and an async subagent driven over the Agent Protocol. Runs offline with a scripted model, or against a real model via DEEP_AGENT_MODEL.",
+  "description": "A research briefing assistant built with LangChain Deep Agents and served by skein from an unchanged langgraph.json: it plans, delegates research to a subagent, drafts briefings into the conversation, remembers each user's preferences, asks before emailing, and runs deep dives in the background. Runs offline with a scripted model, or against a real model via DEEP_AGENT_MODEL.",
   "type": "module",
   "scripts": {
-    "dev": "skein dev --port 2024"
+    "dev": "skein dev --port 2024",
+    "demo": "node --experimental-strip-types src/demo.ts"
   },
   "dependencies": {
     "@langchain/core": "^1.2.14",

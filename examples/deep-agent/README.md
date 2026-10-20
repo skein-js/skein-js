@@ -1,48 +1,78 @@
-# Deep Agent example
+# Research briefing assistant (Deep Agents)
 
-A LangChain [Deep Agent](https://docs.langchain.com/oss/javascript/deepagents/overview) served by skein
-from an ordinary `langgraph.json`. The graph files import `deepagents`, not skein.
+> [!WARNING]
+> **Experimental.** Serving LangChain Deep Agents on skein is experimental: it is tested end to end,
+> but the integration may change in a minor release. See the
+> [Deep Agents recipe](../../docs/recipes/deep-agents.md) for what is covered.
 
-| Graph        | What it is                                                                                       |
-| ------------ | ------------------------------------------------------------------------------------------------ |
-| `supervisor` | Plans, keeps notes, remembers per user, delegates to subagents, and asks before sending a report |
-| `researcher` | The graph the supervisor runs as an **async** subagent, over HTTP, on this same server           |
+Ask it to brief you on a topic and it researches, writes and — with your sign-off — emails a one-page
+briefing, remembering how you like them written. It is a LangChain
+[Deep Agent](https://docs.langchain.com/oss/javascript/deepagents/overview) served by skein from an
+ordinary `langgraph.json`; the graph files import `deepagents`, not skein.
 
-It runs offline. With no `DEEP_AGENT_MODEL`, both graphs use a scripted model that reads a directive at
-the start of your message ([`src/scripted-model.ts`](./src/scripted-model.ts)):
+```text
+you › Remember that I prefer short briefings in bullet points.
+assistant › Got it — I'll keep that in mind for every future briefing.
 
-| Say                      | The supervisor                                                                     |
-| ------------------------ | ---------------------------------------------------------------------------------- |
-| `plan: gather; draft`    | writes a todo list                                                                 |
-| `note: …` / `read-note`  | writes / reads `/notes.md`: thread state, gone with the thread                     |
-| `remember: …` / `recall` | writes / reads `/memories/facts.md`: the store, shared by all of your threads      |
-| `research: …`            | runs the `researcher` subagent in a tool call (stream it with `stream_subgraphs`)  |
-| `send: to \| body`       | wants to call `send_report` and waits for approve / edit / reject                  |
-| `background: …`          | starts the async subagent; then `check: <id>`, `update: <id> \| …`, `cancel: <id>` |
+you › Brief me on heat pumps.
+   assistant  · → read_file          checks your saved preferences
+   assistant  · → write_todos        plans the briefing
+   assistant  · → task               hands the research to its subagent
+   researcher · writes its reply     (streamed separately with stream_subgraphs)
+   assistant  · → write_file         saves the draft
+assistant › Your briefing on heat pumps is ready in /briefings/heat-pumps.md.
 
-For a real model, set `DEEP_AGENT_MODEL` to a LangChain `provider:model` string, such as
-`google-genai:gemini-2.5-flash` with `GOOGLE_API_KEY`.
-
-```bash
-pnpm dev                      # skein dev on :2024
-pnpm nx test example-deep-agent # from the repository root; offline end-to-end suite
+you › Email the briefing to facilities@example.com
+   (paused: send_briefing to facilities@example.com needs approval — approving)
+assistant › Emailed "Briefing: heat pumps" to facilities@example.com.
 ```
 
-Callers identify themselves with an `x-user` header ([`src/auth.ts`](./src/auth.ts)). It is a demo
-stand-in for real authentication, and it is what keeps one user's `/memories/` apart from another's
-([`src/memory-namespace.ts`](./src/memory-namespace.ts)). The async subagent calls back into the server
-at `SKEIN_URL` (default `http://127.0.0.1:2024`) as the originating caller. The supervisor is a graph
-factory so every async client receives caller-specific headers. Production deployments should mint or
-forward a caller-scoped credential instead of a shared service token. Task records arrive through
-graph input and must not grant broader authority than the caller already has.
+## Run it
 
-HTTP store routes are denied in this example; the graph's injected store still works through its
-validated namespace callback. Replacing demo authentication with real authentication must retain both
-thread ownership and store authorization.
+```bash
+pnpm dev     # skein dev on :2024 — open the console at /console to watch the runs
+pnpm demo    # in another terminal: the session above, through @langchain/langgraph-sdk
+```
 
-The [Deep Agents recipe](../../docs/recipes/deep-agents.md) explains each choice. It also covers why
-`LocalShellBackend` does not belong on a shared server.
+It runs offline: with no `DEEP_AGENT_MODEL`, both agents use a scripted model
+([`src/scripted-model.ts`](./src/scripted-model.ts)) that follows these requests and writes sample
+research notes. For a real model, set `DEEP_AGENT_MODEL` to a LangChain `provider:model` string, such
+as `google-genai:gemini-2.5-flash` with `GOOGLE_API_KEY`; the graphs do not change.
 
-When copying this example, also review the [dependency audit](../../docs/audits/dependency-advisories-2026-10-20.md).
-Its local `braces` security patch is applied by this workspace's pnpm configuration and must be
-carried into a standalone application's own dependency configuration until an upstream fix exists.
+| Ask                                     | What happens                                                                 |
+| --------------------------------------- | ---------------------------------------------------------------------------- |
+| "Brief me on heat pumps"                | Plans, delegates research to the `researcher` subagent, saves the draft      |
+| "Email the briefing to sam@example.com" | Pauses for approve / edit / reject before `send_briefing` runs               |
+| "Remember that I prefer bullet points"  | Saves to `/memories/preferences.md` — applies to all your conversations      |
+| "What do you remember about me?"        | Reads your preferences back                                                  |
+| "Start a deep dive on grid storage"     | Runs the `researcher` graph in the background, over HTTP on this same server |
+| "How is the deep dive going?"           | Checks on it; "Tell the deep dive to …" and "Cancel the deep dive" steer it  |
+
+## How it fits together
+
+| File                                                               | What it shows                                                                   |
+| ------------------------------------------------------------------ | ------------------------------------------------------------------------------- |
+| [`briefing-assistant-graph.ts`](./src/briefing-assistant-graph.ts) | The `createDeepAgent` export: backends, approval, sync and background subagents |
+| [`researcher-graph.ts`](./src/researcher-graph.ts)                 | The research agent, also served as its own graph for background deep dives      |
+| [`memory-namespace.ts`](./src/memory-namespace.ts)                 | One store namespace per signed-in user, from the server-stamped identity        |
+| [`auth.ts`](./src/auth.ts)                                         | Demo sign-in from an `x-user` header; threads are private to their owner        |
+| [`briefing-assistant.test.ts`](./src/briefing-assistant.test.ts)   | The workflow end to end through the official SDK, offline                       |
+| [`security.test.ts`](./src/security.test.ts)                       | What keeps one user's memory and deep dives away from another's                 |
+
+**Files.** Drafts under `/briefings/` are thread state — they belong to the conversation that wrote
+them. Preferences under `/memories/` live in skein's store under the signed-in user's namespace, so
+they follow that person into every conversation and no one else.
+
+**Sign-in.** `x-user` is a stand-in for real authentication; swap in a JWT or session check in
+`auth.ts` and nothing else changes. The example also denies the HTTP `/store` routes, so memory is
+reachable only through the graph's own namespace. Keep both thread ownership and store authorization
+when you replace it.
+
+**Deep dives** call back into the server at `SKEIN_URL` (default `http://127.0.0.1:2024`) with the
+caller's own identity, which is why the assistant is a graph factory. In production, forward or mint a
+caller-scoped credential rather than a shared service token.
+
+When copying this example, also review the
+[dependency audit](../../docs/audits/dependency-advisories-2026-10-20.md): its local `braces` security
+patch is applied by this workspace's pnpm configuration and must be carried into your own until an
+upstream fix exists.
