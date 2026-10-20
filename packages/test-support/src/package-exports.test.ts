@@ -55,8 +55,8 @@ const libraryPackages = publishablePackages.filter(
 describe("publishable package manifests", () => {
   it("finds every publishable package", () => {
     // Guards the discovery itself: a broken glob would silently make every case below vacuous.
-    expect(publishablePackages.length).toBe(23);
-    expect(libraryPackages.length).toBe(21);
+    expect(publishablePackages.length).toBe(24);
+    expect(libraryPackages.length).toBe(22);
   });
 
   // Ranges we *install* have to name a major, because npm resolves them at install time and a
@@ -110,7 +110,7 @@ describe("publishable package manifests", () => {
   it.each(
     libraryPackages.flatMap((pkg) =>
       Object.entries((pkg.manifest.exports ?? {}) as Record<string, Record<string, string>>)
-        .filter(([subpath]) => subpath !== ".")
+        .filter(([subpath]) => subpath !== "." && subpath !== "./package.json")
         .map(
           ([subpath, conditions]) =>
             [`${pkg.manifest.name as string}${subpath.slice(1)}`, subpath, conditions] as const,
@@ -132,7 +132,11 @@ describe("publishable package manifests", () => {
         (subpath) => subpath !== ".",
       ),
     );
-    expect(subpaths.sort()).toEqual(["./dev", "./errors"]);
+    expect(subpaths.sort()).toEqual(["./dev", "./errors", "./package.json"]);
+    const nxPackage = libraryPackages.find((pkg) => pkg.manifest.name === "@skein-js/nx");
+    expect((nxPackage?.manifest.exports as Record<string, unknown>)["./package.json"]).toBe(
+      "./package.json",
+    );
   });
 
   it.each(libraryPackages.map((pkg) => [pkg.manifest.name as string, pkg] as const))(

@@ -37,6 +37,11 @@ export interface ScaffoldOptions {
   /** npm-legal name written into the generated `package.json`. May differ from `projectName`. */
   readonly packageName: string;
   readonly provider: ModelProvider;
+  readonly linting: boolean;
+  readonly nodeVersion?: string;
+  readonly dependencyVersions?: Readonly<Record<string, string>>;
+  readonly tooling?: InheritedTooling;
+  readonly typescriptBase?: string;
   /** Chosen or detected. Affects the install command and the instructions we print — nothing else. */
   readonly packageManager: PackageManagerName;
   /**
@@ -94,4 +99,12 @@ export function isModelProvider(value: string): value is ModelProvider {
 
 export function isPackageManagerName(value: string): value is PackageManagerName {
   return (PACKAGE_MANAGERS as readonly string[]).includes(value);
+}
+
+/** Paths relative to the generated project; resolved by the entrypoint. */
+export interface InheritedTooling {
+  readonly root: string;
+  readonly eslintConfig?: string;
+  readonly prettierConfig?: string;
+  readonly prettierIgnore?: string;
 }

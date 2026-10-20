@@ -46,7 +46,7 @@ describe("templates.generated.ts", () => {
 
     expect(
       TEMPLATE_SOURCES,
-      "run `nx run create-skein-js:generate-templates` after editing a template",
+      "run `nx run scaffold:generate-templates` after editing a template",
     ).toEqual(onDisk);
   });
 });

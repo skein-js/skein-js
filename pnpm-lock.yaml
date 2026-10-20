@@ -392,7 +392,7 @@ importers:
         specifier: ^1.2.9
         version: 1.2.9(@opentelemetry/api@1.9.1)(openai@6.49.0(ws@8.21.0)(zod@3.25.76))(ws@8.21.0)
       '@langchain/google-genai':
-        specifier: ^2.2.0
+        specifier: ~2.2.0
         version: 2.2.0(@langchain/core@1.2.9(@opentelemetry/api@1.9.1)(openai@6.49.0(ws@8.21.0)(zod@3.25.76))(ws@8.21.0))
       '@langchain/langgraph':
         specifier: ^1.4.0
@@ -1011,6 +1011,9 @@ importers:
       commander:
         specifier: ~13.1.0
         version: 13.1.0
+      express:
+        specifier: ^5.2.1
+        version: 5.2.1
     optionalDependencies:
       vite:
         specifier: ^8.1.0
@@ -1114,13 +1117,10 @@ importers:
       commander:
         specifier: ~13.1.0
         version: 13.1.0
-      ejs:
-        specifier: ^6.0.1
-        version: 6.0.1
     devDependencies:
-      '@types/ejs':
-        specifier: ^3.1.5
-        version: 3.1.5
+      '@skein-js/scaffold':
+        specifier: workspace:*
+        version: link:../scaffold
 
   packages/langgraph:
     dependencies:
@@ -1168,6 +1168,22 @@ importers:
       '@types/better-sqlite3':
         specifier: ^7.6.13
         version: 7.6.13
+
+  packages/nx:
+    dependencies:
+      '@nx/devkit':
+        specifier: ^23.2.1
+        version: 23.2.1(nx@23.2.1(@swc/core@1.15.47(@swc/helpers@0.5.23)))
+      nx:
+        specifier: ^23.2.1
+        version: 23.2.1(@swc/core@1.15.47(@swc/helpers@0.5.23))
+      prettier:
+        specifier: ^3.9.6
+        version: 3.9.6
+    devDependencies:
+      '@skein-js/scaffold':
+        specifier: workspace:*
+        version: link:../scaffold
 
   packages/runtime:
     dependencies:
@@ -1239,6 +1255,37 @@ importers:
       '@skein-js/test-support':
         specifier: workspace:*
         version: link:../test-support
+
+  packages/scaffold:
+    dependencies:
+      ejs:
+        specifier: ^6.0.1
+        version: 6.0.1
+      picomatch:
+        specifier: ^4.0.7
+        version: 4.0.7
+      semver:
+        specifier: ^7.8.5
+        version: 7.8.5
+      tinyglobby:
+        specifier: ^0.2.17
+        version: 0.2.17
+      yaml:
+        specifier: ^2.9.0
+        version: 2.9.0
+      zod:
+        specifier: ^3.25.32
+        version: 3.25.76
+    devDependencies:
+      '@types/ejs':
+        specifier: ^3.1.5
+        version: 3.1.5
+      '@types/picomatch':
+        specifier: ^4.0.2
+        version: 4.0.3
+      '@types/semver':
+        specifier: ^7.7.1
+        version: 7.8.0
 
   packages/server-express:
     dependencies:
@@ -4601,6 +4648,9 @@ packages:
   '@types/pg@8.20.0':
     resolution: {integrity: sha512-bEPFOaMAHTEP1EzpvHTbmwR8UsFyHSKsRisLIHVMXnpNefSbGA1bD6CVy+qKjGSqmZqNqBDV2azOBo8TgkcVow==}
 
+  '@types/picomatch@4.0.3':
+    resolution: {integrity: sha512-iG0T6+nYJ9FAPmx9SsUlnwcq1ZVRuCXcVEvWnntoPlrOpwtSTKNDC9uVAxTsC3PUvJ+99n4RpAcNgBbHX3JSnQ==}
+
   '@types/qs@6.15.1':
     resolution: {integrity: sha512-GZHUBZR9hckSUhrxmp1nG6NwdpM9fCunJwyThLW1X3AyHgd9IlHb6VANpQQqDr2o/qQp6McZ3y/IA2rVzKzSbw==}
 
@@ -4614,6 +4664,9 @@ packages:
 
   '@types/react@19.2.15':
     resolution: {integrity: sha512-eRwcGNHve+E8qtEQSSRl6urh+rFop4v8gm6O8rGv25CodbvFdLjA1vVQ1KkiFE0w0UPOnb8tDiFKL5lp0rtY5Q==}
+
+  '@types/semver@7.8.0':
+    resolution: {integrity: sha512-1mAINjtQCXXeLkJ9ehXkwOcBpqtLxiVtKhpUf83DdRNdQKV0iXZpaHYqRr7nj+wvxuJzoAmAwXI+sCNMv1CzLQ==}
 
   '@types/send@1.2.1':
     resolution: {integrity: sha512-arsCikDvlU99zl1g69TcAB3mzZPpxgw0UQnaHeC1Nwb015xp8bknZv5rIfri9xTOcMuaVgvabfIRA7PSZVuZIQ==}
@@ -13145,6 +13198,8 @@ snapshots:
       pg-protocol: 1.15.0
       pg-types: 2.2.0
 
+  '@types/picomatch@4.0.3': {}
+
   '@types/qs@6.15.1': {}
 
   '@types/range-parser@1.2.7': {}
@@ -13156,6 +13211,8 @@ snapshots:
   '@types/react@19.2.15':
     dependencies:
       csstype: 3.2.3
+
+  '@types/semver@7.8.0': {}
 
   '@types/send@1.2.1':
     dependencies:
@@ -15430,10 +15487,6 @@ snapshots:
   fastq@1.20.1:
     dependencies:
       reusify: 1.1.0
-
-  fdir@6.5.0(picomatch@4.0.5):
-    optionalDependencies:
-      picomatch: 4.0.5
 
   fdir@6.5.0(picomatch@4.0.7):
     optionalDependencies:
@@ -18756,8 +18809,8 @@ snapshots:
 
   tinyglobby@0.2.17:
     dependencies:
-      fdir: 6.5.0(picomatch@4.0.5)
-      picomatch: 4.0.5
+      fdir: 6.5.0(picomatch@4.0.7)
+      picomatch: 4.0.7
 
   tinyrainbow@3.2.0: {}
 

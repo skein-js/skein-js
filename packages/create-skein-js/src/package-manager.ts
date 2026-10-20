@@ -2,7 +2,7 @@
 
 import { spawnSync } from "node:child_process";
 
-import { isPackageManagerName, type PackageManagerName } from "./scaffold-options.js";
+import { isPackageManagerName, type PackageManagerName } from "@skein-js/scaffold";
 
 /**
  * Which package manager invoked us, from `npm_config_user_agent` — npm, pnpm, yarn and bun all set

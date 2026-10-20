@@ -10,9 +10,11 @@
 // structured data (sorted dependency maps), not text, so it stays a builder.
 
 import { PROVIDER_DETAILS } from "./dependency-versions.js";
+import { RECOMMENDED_NODE_MAJOR } from "./node-policy.js";
 import { renderPackageManifest } from "./package-manifest.js";
 import { renderTemplate, type TemplateValues } from "./render-template.js";
 import type { GeneratedFile, ScaffoldOptions } from "./scaffold-options.js";
+import { buildTooling } from "./tooling.js";
 
 /** Spell a script for the chosen package manager (`npm run dev`, but `pnpm dev`). */
 function runCommand(options: ScaffoldOptions, script: string): string {
@@ -33,6 +35,14 @@ function templateValuesFor(options: ScaffoldOptions): TemplateValues {
 
   return {
     projectName: options.projectName,
+    linting: options.linting,
+    runTypecheck: runCommand(options, "typecheck"),
+    runTest: runCommand(options, "test"),
+    runLint: runCommand(options, "lint"),
+    runFormat: runCommand(options, "format"),
+    runFormatCheck: runCommand(options, "format:check"),
+    nodeMajor: (options.nodeVersion ?? RECOMMENDED_NODE_MAJOR).split(".")[0]!,
+    typescriptBase: options.typescriptBase ?? "",
     hasProvider: provider !== undefined,
     // Present but empty when there is no provider: only `{{#if hasProvider}}` blocks read them, and
     // a missing name is an error rather than a blank, which is what catches typos in a template.
@@ -80,6 +90,8 @@ export function buildProjectFiles(options: ScaffoldOptions): readonly GeneratedF
 
   const files: GeneratedFile[] = [
     { path: "package.json", contents: renderPackageManifest(options) },
+    { path: ".nvmrc", contents: (options.nodeVersion ?? RECOMMENDED_NODE_MAJOR) + "\n" },
+    ...buildTooling(options).files,
     fromTemplate("tsconfig.json", "tsconfig.json"),
     fromTemplate("langgraph.json", "langgraph.json"),
     fromTemplate("vitest.config.ts", "vitest.config.ts"),

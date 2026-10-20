@@ -41,6 +41,8 @@ the in-memory one is emitted as `dev:memory`. Both are always present either way
 ...plus an echo graph that runs with no credentials, a test for it, an optional model-backed ReAct
 agent, and a README explaining every file.
 
+Node 24 is recommended; engines support Node 22.12+ and 24.x. Root ESLint and Prettier are inherited independently.
+
 ## Options
 
 ```text
@@ -48,6 +50,9 @@ create-skein-js [directory]
 
   -m, --provider <name>   none | google | anthropic | openai   (default: prompted)
       --pm <name>         npm | pnpm | yarn | bun              (default: detected)
+      --storage <name>    memory | postgres | sqlite
+      --linting / --no-linting  ESLint and Prettier (default: enabled)
+      --no-workspace-update Leave registration manual
       --no-install        Skip installing dependencies             (else: prompted, default yes)
       --no-git            Skip initializing a git repository       (else: prompted)
   -y, --yes               Accept every default; never prompt
@@ -55,12 +60,12 @@ create-skein-js [directory]
 ```
 
 Everything is prompted when the terminal is interactive, and defaulted when it is not — so this is
-safe to run in a Dockerfile or a CI job without hanging. Interactively that means five questions:
+safe to run in a Dockerfile or a CI job without hanging. Interactive prompts include tooling (Y/n),
 directory, model provider, local development storage, whether to install, and whether to initialize a
 git repository. The last defaults to no inside an existing work tree, since nesting a repository in
 yours is never the intent — and whichever way it goes, the closing output says what git actually did.
 
-`--pm` stays a flag with no prompt: it is detected from `npm_config_user_agent`, so asking would be a
+`--pm` stays a flag with no prompt: workspace metadata takes precedence, then lockfiles and `npm_config_user_agent`, so asking would be a
 question whose answer is already known.
 
 npm needs `--` before flags; `pnpm create` and `npx` do not:
@@ -82,9 +87,9 @@ Scaffold into the directory you want and it works anywhere:
 npm create skein-js@latest apps/my-agent
 ```
 
-In an Nx workspace, add a `project.json` next to it to get `nx dev my-agent` — see the
-[scaffolding reference](https://skein-js.github.io/skein-js/scaffolding#nx-and-other-monorepos) for
-the file to drop in.
+In Nx 23.2.1 through 23.x, install `@skein-js/nx` and run
+`nx g @skein-js/nx:application --directory=apps/my-agent`. Installation stays manual.
+The ordinary CLI redirects before writing files in Nx workspaces.
 
 ## Docs
 

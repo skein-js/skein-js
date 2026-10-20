@@ -1,4 +1,7 @@
 {
+<%_ if (typescriptBase) { _%>
+  "extends": <%- JSON.stringify(typescriptBase) %>,
+<%_ } _%>
   "compilerOptions": {
     "target": "ES2022",
     "module": "ESNext",

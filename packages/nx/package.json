@@ -1,0 +1,57 @@
+{
+  "name": "@skein-js/nx",
+  "version": "0.19.0",
+  "description": "Generate a skein-js LangGraph application in an Nx workspace.",
+  "license": "Apache-2.0",
+  "author": "Maina Wycliffe <wmmaina7@gmail.com>",
+  "homepage": "https://skein-js.github.io/skein-js/scaffolding",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/skein-js/skein-js.git",
+    "directory": "packages/nx"
+  },
+  "bugs": {
+    "url": "https://github.com/skein-js/skein-js/issues"
+  },
+  "keywords": [
+    "nx",
+    "skein-js",
+    "langgraph",
+    "generator"
+  ],
+  "type": "module",
+  "main": "./dist/index.js",
+  "types": "./dist/index.d.ts",
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "import": "./dist/index.js",
+      "default": "./dist/index.js"
+    },
+    "./package.json": "./package.json"
+  },
+  "generators": "./generators.json",
+  "files": [
+    "dist",
+    "generators.json",
+    "LICENSE",
+    "README.md"
+  ],
+  "sideEffects": false,
+  "engines": {
+    "node": "^22.12.0 || ^24.0.0"
+  },
+  "dependencies": {
+    "@nx/devkit": "^23.2.1",
+    "prettier": "^3.9.6"
+  },
+  "peerDependencies": {
+    "nx": "^23.2.1"
+  },
+  "devDependencies": {
+    "@skein-js/scaffold": "workspace:*"
+  },
+  "publishConfig": {
+    "access": "public"
+  }
+}

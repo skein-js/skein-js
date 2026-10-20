@@ -10,7 +10,9 @@
 //   start         serve that bundle — the production entrypoint
 
 import { CORE_VERSIONS, PROVIDER_DETAILS, TOOLCHAIN_VERSIONS } from "./dependency-versions.js";
+import { SUPPORTED_NODE_RANGE } from "./node-policy.js";
 import type { ScaffoldOptions } from "./scaffold-options.js";
+import { buildTooling } from "./tooling.js";
 
 /** Sort keys so two manifests differing only in insertion order come out byte-identical. */
 function sortedByKey(entries: Record<string, string>): Record<string, string> {
@@ -68,6 +70,8 @@ function dependenciesFor(options: ScaffoldOptions): Record<string, string> {
 
   if (options.devStorage === "sqlite") {
     dependencies["@skein-js/local"] = options.skeinVersionRange;
+    dependencies["@langchain/langgraph-checkpoint"] =
+      CORE_VERSIONS["@langchain/langgraph-checkpoint"];
     dependencies["@langchain/langgraph-checkpoint-sqlite"] = "~1.0.4";
   }
 
@@ -103,9 +107,23 @@ export function renderPackageManifest(options: ScaffoldOptions): string {
     version: "0.1.0",
     private: true,
     type: "module",
-    scripts: scriptsFor(options),
-    dependencies: dependenciesFor(options),
-    devDependencies: devDependenciesFor(options),
+    engines: { node: SUPPORTED_NODE_RANGE },
+    scripts: { ...scriptsFor(options), ...buildTooling(options).scripts },
+    dependencies: Object.fromEntries(
+      Object.entries(dependenciesFor(options)).map(([name, version]) => [
+        name,
+        options.dependencyVersions?.[name] ?? version,
+      ]),
+    ),
+    devDependencies: sortedByKey({
+      ...Object.fromEntries(
+        Object.entries(devDependenciesFor(options)).map(([name, version]) => [
+          name,
+          options.dependencyVersions?.[name] ?? version,
+        ]),
+      ),
+      ...buildTooling(options).dependencies,
+    }),
   };
 
   return `${JSON.stringify(manifest, null, 2)}\n`;

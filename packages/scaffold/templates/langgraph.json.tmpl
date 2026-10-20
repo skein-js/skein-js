@@ -1,5 +1,5 @@
 {
-  "node_version": "24",
+  "node_version": "<%= nodeMajor %>",
   "graphs": {
     "echo": "./src/echo-graph.ts:graph"<% if (hasProvider) { %>,
     "agent": "./src/agent-graph.ts:graph"<% } %>

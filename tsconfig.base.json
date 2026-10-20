@@ -35,7 +35,9 @@
       "@skein-js/channels": ["packages/channels/src/index.ts"],
       "@skein-js/storage-sqlite": ["./packages/storage-sqlite/src/index.ts"],
       "@skein-js/local": ["./packages/local/src/index.ts"],
-      "@skein-js/example-local-workflow": ["./examples/local-workflow/src/index.ts"]
+      "@skein-js/example-local-workflow": ["./examples/local-workflow/src/index.ts"],
+      "@skein-js/scaffold": ["./packages/scaffold/src/index.ts"],
+      "@skein-js/nx": ["./packages/nx/src/index.ts"]
     }
   },
   "exclude": ["node_modules", "dist"]

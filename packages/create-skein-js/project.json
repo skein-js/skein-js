@@ -6,9 +6,8 @@
   "targets": {
     "build": {
       "executor": "nx:run-commands",
-      "dependsOn": ["generate-templates"],
       "options": {
-        "command": "tsup src/index.ts --format esm --dts --clean",
+        "command": "tsup --config tsup.config.ts",
         "cwd": "packages/create-skein-js"
       }
     },
@@ -21,14 +20,9 @@
     },
     "generate-templates": {
       "executor": "nx:run-commands",
-      "inputs": [
-        "{projectRoot}/templates/**/*.tmpl",
-        "{projectRoot}/scripts/generate-templates.mjs"
-      ],
-      "outputs": ["{projectRoot}/src/templates.generated.ts"],
+      "dependsOn": ["scaffold:generate-templates"],
       "options": {
-        "command": "node scripts/generate-templates.mjs",
-        "cwd": "packages/create-skein-js"
+        "command": "node -e \"void 0\""
       }
     },
     "test": {
@@ -37,7 +31,8 @@
         "^default",
         "{workspaceRoot}/examples/express-basic/package.json",
         "{workspaceRoot}/package.json"
-      ]
+      ],
+      "dependsOn": ["build"]
     }
   }
 }
