@@ -35,6 +35,19 @@ describe("describeNextSteps", () => {
     expect(installed).not.toContain("pnpm install");
   });
 
+  it("installs from the workspace root, never inside the project", () => {
+    const lines = describeNextSteps(optionsFor(), {
+      ...outcome,
+      installed: false,
+      workspaceRoot: ".",
+    });
+    const install = lines.findIndex((line) => line.includes("pnpm install"));
+    const cd = lines.findIndex((line) => line.includes("cd my-agent"));
+    expect(lines[install]).toContain("workspace root");
+    expect(install).toBeLessThan(cd);
+    expect(lines.filter((line) => line.includes("pnpm install"))).toHaveLength(1);
+  });
+
   it("omits `cd` when scaffolding into the current directory", () => {
     const here = describeNextSteps(optionsFor(), { ...outcome, relativeDirectory: "." }).join("\n");
     expect(here).not.toContain("cd ");

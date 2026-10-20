@@ -309,12 +309,18 @@ const owner = inherited[tool + "Config"] ? rootRequire : projectRequire;
 const manifestPath = owner.resolve(tool + "/package.json");
 const manifest = owner(tool + "/package.json");
 const entry = typeof manifest.bin === "string" ? manifest.bin : manifest.bin[tool];
+// ESLint resolves an explicit config's files/ignores globs against cwd, so an inherited root config
+// runs from the workspace root with this project's src as the target.
+const workspaceRoot = path.resolve(projectRoot, inherited.root);
+const lintFromRoot = command === "lint" && Boolean(inherited.eslintConfig);
 const args =
   command === "lint"
-    ? ["src", "--max-warnings=0"]
+    ? [
+        lintFromRoot ? path.relative(workspaceRoot, path.join(projectRoot, "src")) : "src",
+        "--max-warnings=0",
+      ]
     : [command === "format" ? "--write" : "--check", "."];
-if (command === "lint" && inherited.eslintConfig)
-  args.push("--config", path.resolve(projectRoot, inherited.eslintConfig));
+if (lintFromRoot) args.push("--config", path.resolve(projectRoot, inherited.eslintConfig));
 if (command !== "lint") {
   args.push("--ignore-path", ".prettierignore");
   if (inherited.prettierIgnore)
@@ -324,7 +330,7 @@ const result = spawnSync(
   process.execPath,
   [path.resolve(path.dirname(manifestPath), entry), ...args],
   {
-    cwd: projectRoot,
+    cwd: lintFromRoot ? workspaceRoot : projectRoot,
     stdio: "inherit",
   },
 );

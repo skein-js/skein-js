@@ -26,10 +26,15 @@ export function findWorkspace(target: string): WorkspaceSnapshot | undefined {
             ? readFileSync(absolute, "utf8")
             : undefined;
         },
-        packagePaths: globSync("**/package.json", {
-          cwd: root,
-          ignore: ["**/node_modules/**", "**/.git/**", "**/.skein/**"],
-        }),
+        listPackagePaths: (patterns) =>
+          patterns.length === 0
+            ? []
+            : globSync(
+                patterns.map(
+                  (pattern) => pattern.replace(/^\.\//, "").replace(/\/$/, "") + "/package.json",
+                ),
+                { cwd: root, ignore: ["**/node_modules/**", "**/.git/**", "**/.skein/**"] },
+              ),
       };
     }
     const parent = path.dirname(directory);

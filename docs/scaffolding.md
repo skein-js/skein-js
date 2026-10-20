@@ -167,8 +167,8 @@ configurations are inherited independently. Generated output, dependencies, runt
 
 The shared policy recommends **Node 24** with engines `^22.12.0 || ^24.0.0`. It derives `.nvmrc`
 and `langgraph.json.node_version` from the same selection. Compatible numeric workspace pins in
-`.nvmrc` or `.node-version` are honored. Unsupported pins fail before writing; unresolved aliases
-such as `lts/*` produce an explanation and fall back to Node 24. Review the policy when Node 26
+`.nvmrc` or `.node-version` are honored. Unsupported numeric pins fail before writing; unresolved
+aliases such as `lts/*` produce an explanation and fall back to Node 24. Review the policy when Node 26
 enters LTS in October 2026, after native SQLite and desktop CI gates pass.
 
 ## Nx and other monorepos
@@ -203,8 +203,11 @@ npm create skein-js@latest apps/my-agent
 
 The CLI retains that directory, detects the workspace and skips installation. Missing registration
 is prompted with a yes default; `--yes` accepts and `--no-workspace-update` leaves manual
-instructions. Existing globs, exclusions, YAML comments, versions and unrelated settings are preserved.
-Excluded paths, invalid metadata, duplicate names and package-manager conflicts fail before writing.
+instructions. Existing globs, exclusions, YAML comments, key order, versions and unrelated settings are
+preserved. A pnpm root without `pnpm-workspace.yaml` gets one containing its existing `package.json`
+workspace patterns and exclusions, since pnpm ignores `package.json` `workspaces`. Invalid declared
+workspaces are diagnosed even when another manifest field is invalid. Excluded paths, invalid root
+metadata, duplicate names and package-manager conflicts fail before writing.
 
 Workspace `packageManager` metadata takes precedence over lockfile detection. Compatible root or
 pnpm catalog ranges are reused, then unanimous compatible sibling ranges. Remaining dependencies use
