@@ -15,4 +15,6 @@ Use the workspace's installed Nx version and conventions. This skill covers the 
 
 The generated project runs `skein start` against its built artifact, not directly against TypeScript source. Preserve its build-to-start relationship and chosen storage: SQLite scaffolds need the SQLite pair and a writable file; Postgres/Redis configurations need their services. Set the target working directory so graph paths and the CLI's default `.skein/state.sqlite` resolve inside the intended app.
 
+For a config-driven app started from its project root, use `skein start -c .skein/build/langgraph.json` and retain the generated storage flags. Bare `skein start` works when the working directory is the artifact directory. An existing nested build is suggested in the missing-schema error; it is not selected automatically.
+
 The live SQLite database, including its `-wal` and `-shm` companions, is runtime state. Keep it outside cached outputs and build inputs; caching all of `.skein/` would capture the database. An embedding host supplies its own absolute application-data path and owns backend startup and shutdown. See [local deployment](https://skein-js.github.io/skein-js/local-deployment), [scaffolding](https://skein-js.github.io/skein-js/scaffolding), and [Nx run tasks](https://nx.dev/docs/features/run-tasks).
