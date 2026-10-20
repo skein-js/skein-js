@@ -51,7 +51,10 @@ describe("readBakedSchemas", () => {
     const message = missingSchemasError(root);
 
     expect(message).toContain(artifactDir);
-    expect(message).toContain("skein start -c .skein/build/langgraph.json");
+    expect(message).toContain(
+      "Use `-c .skein/build/langgraph.json` in your original `skein start` command",
+    );
+    expect(message).toContain("keeping its other options");
     expect(message).not.toContain("Run `skein build`");
   });
 
@@ -59,7 +62,7 @@ describe("readBakedSchemas", () => {
     const message = missingSchemasError(root);
 
     expect(message).toContain("Run `skein build`");
-    expect(message).not.toContain("skein start -c");
+    expect(message).not.toContain("-c ");
   });
 
   it.each(["langgraph.json", "schemas.json"])(
@@ -68,7 +71,7 @@ describe("readBakedSchemas", () => {
       const artifactDir = writeArtifact(root);
       fs.rmSync(path.join(artifactDir, missingFile));
 
-      expect(missingSchemasError(root)).not.toContain("skein start -c");
+      expect(missingSchemasError(root)).not.toContain("-c ");
     },
   );
 
@@ -80,7 +83,7 @@ describe("readBakedSchemas", () => {
       fs.rmSync(directoryPath);
       fs.mkdirSync(directoryPath);
 
-      expect(missingSchemasError(root)).not.toContain("skein start -c");
+      expect(missingSchemasError(root)).not.toContain("-c ");
     },
   );
 
@@ -94,7 +97,7 @@ describe("readBakedSchemas", () => {
 
     expect(message).toContain("Run `skein build`");
     expect(message).not.toContain("EACCES");
-    expect(message).not.toContain("skein start -c");
+    expect(message).not.toContain("-c ");
   });
 
   it("looks beside the selected config and formats the command relative to the working directory", () => {
@@ -104,7 +107,7 @@ describe("readBakedSchemas", () => {
     const message = missingSchemasError(configDir);
 
     expect(message).toContain(artifactDir);
-    expect(message).toContain("skein start -c apps/agent/.skein/build/langgraph.json");
+    expect(message).toContain("Use `-c apps/agent/.skein/build/langgraph.json`");
   });
 
   it("does not suggest an unrelated build in the working directory", () => {
@@ -112,26 +115,39 @@ describe("readBakedSchemas", () => {
     const configDir = path.join(root, "apps", "agent");
     fs.mkdirSync(configDir, { recursive: true });
 
-    expect(missingSchemasError(configDir)).not.toContain("skein start -c");
+    expect(missingSchemasError(configDir)).not.toContain("-c ");
   });
 
   it.each(["my agent", "agent's project", "agent $(printf expanded) `printf expanded`"])(
-    "prints a shell-safe command for %s",
+    "prints a shell-safe config option for %s while keeping the original SQLite flags",
     (directoryName) => {
       const configDir = path.join(root, "apps", directoryName);
       const artifactDir = writeArtifact(configDir);
       const message = missingSchemasError(configDir);
-      const command = message.match(/Run `(.*)` to serve it\./)?.[1];
-      expect(command).toBeDefined();
+      const configOption = message.match(/Use `(.*)` in your original `skein start` command/)?.[1];
+      expect(configOption).toBeDefined();
 
-      const shell = spawnSync("/bin/sh", ["-c", `skein() { printf '%s\\n' "$@"; }\n${command}`], {
-        cwd: root,
-        encoding: "utf8",
-      });
+      const shell = spawnSync(
+        "/bin/sh",
+        [
+          "-c",
+          `skein() { printf '%s\\n' "$@"; }\n` +
+            `skein start --store sqlite --queue sqlite --sqlite-path 'custom state.sqlite' --port 9000 ${configOption}`,
+        ],
+        { cwd: root, encoding: "utf8" },
+      );
 
       expect(shell.status).toBe(0);
       expect(shell.stdout.trimEnd().split("\n")).toEqual([
         "start",
+        "--store",
+        "sqlite",
+        "--queue",
+        "sqlite",
+        "--sqlite-path",
+        "custom state.sqlite",
+        "--port",
+        "9000",
         "-c",
         path.relative(root, path.join(artifactDir, "langgraph.json")),
       ]);

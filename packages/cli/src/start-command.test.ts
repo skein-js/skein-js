@@ -60,16 +60,26 @@ afterEach(() => {
 });
 
 describe("runStart artifact selection", () => {
-  it("reports the build hint and exits before constructing a runtime", async () => {
-    await runStart(startOptions(path.join(root, "langgraph.json")));
+  it.each(["postgres", "sqlite"] as const)(
+    "keeps the original %s command's options in the build guidance before runtime construction",
+    async (store) => {
+      await runStart({
+        ...startOptions(path.join(root, "langgraph.json")),
+        store,
+        queue: store === "sqlite" ? "sqlite" : "redis",
+        sqlitePath: store === "sqlite" ? path.join(root, "custom state.sqlite") : undefined,
+      });
 
-    expect(process.exitCode).toBe(1);
-    expect(errorMessages.join("\n")).toContain("skein start -c");
-    expect(errorMessages.join("\n")).toContain(
-      path.relative(process.cwd(), path.join(artifactDir, "langgraph.json")),
-    );
-    expect(runtime.buildRuntime).not.toHaveBeenCalled();
-  });
+      expect(process.exitCode).toBe(1);
+      expect(errorMessages.join("\n")).toContain("in your original `skein start` command");
+      expect(errorMessages.join("\n")).toContain("keeping its other options");
+      expect(errorMessages.join("\n")).not.toContain("Run `skein start");
+      expect(errorMessages.join("\n")).toContain(
+        path.relative(process.cwd(), path.join(artifactDir, "langgraph.json")),
+      );
+      expect(runtime.buildRuntime).not.toHaveBeenCalled();
+    },
+  );
 
   it.each(["missing", "invalid"])(
     "preserves the earlier error for a %s selected config",
@@ -82,7 +92,7 @@ describe("runStart artifact selection", () => {
 
       expect(process.exitCode).toBe(1);
       expect(errorMessages.join("\n")).toContain("SkeinConfigError");
-      expect(errorMessages.join("\n")).not.toContain("skein start -c");
+      expect(errorMessages.join("\n")).not.toContain("in your original `skein start` command");
       expect(runtime.buildRuntime).not.toHaveBeenCalled();
     },
   );
@@ -100,7 +110,7 @@ describe("runStart artifact selection", () => {
       expect.objectContaining({ configPath, schemas: { agent: {} } }),
     );
     expect(errorMessages.join("\n")).toContain("runtime construction reached");
-    expect(errorMessages.join("\n")).not.toContain("skein start -c");
+    expect(errorMessages.join("\n")).not.toContain("in your original `skein start` command");
   });
 
   it("preserves concurrency validation before checking for missing schemas", async () => {
@@ -110,7 +120,7 @@ describe("runStart artifact selection", () => {
 
     expect(process.exitCode).toBe(1);
     expect(errorMessages.join("\n")).toContain("SKEIN_RUN_CONCURRENCY");
-    expect(errorMessages.join("\n")).not.toContain("skein start -c");
+    expect(errorMessages.join("\n")).not.toContain("in your original `skein start` command");
     expect(runtime.buildRuntime).not.toHaveBeenCalled();
   });
 });

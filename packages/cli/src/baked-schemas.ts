@@ -33,7 +33,7 @@ function missingSchemasMessage(configDir: string, cwd: string): string {
     return (
       message +
       `Found a built artifact at ${JSON.stringify(path.dirname(builtConfig))}. ` +
-      `Run \`skein start -c ${configArgument}\` to serve it.`
+      `Use \`-c ${configArgument}\` in your original \`skein start\` command, keeping its other options.`
     );
   }
   return message + "Run `skein build` (or `skein up`), or use `skein dev` for a source project.";
