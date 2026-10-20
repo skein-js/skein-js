@@ -1,5 +1,10 @@
 # Deep Agents
 
+> [!WARNING]
+> **Experimental.** Deep Agents support is tested end to end against `deepagents` 1.15, but Deep
+> Agents itself moves quickly and this integration may change in a minor release. See
+> [what is covered](#what-is-covered) before relying on it in production.
+
 Serving a LangChain [Deep Agent](https://docs.langchain.com/oss/javascript/deepagents/overview) —
 planning, files, subagents, human approval — with skein.
 
@@ -47,9 +52,32 @@ export const graph = createDeepAgent({
 { "graphs": { "agent": "./src/agent.ts:graph" }, "auth": { "path": "./src/auth.ts:auth" } }
 ```
 
-`skein dev` serves it, with the same `langgraph.json` `langgraph dev` reads. A working version — with
-an offline scripted model, so it runs with no API key — is
-[`examples/deep-agent`](https://github.com/skein-js/skein-js/tree/main/examples/deep-agent).
+`skein dev` serves it, with the same `langgraph.json` `langgraph dev` reads. A working version is
+[`examples/deep-agent`](https://github.com/skein-js/skein-js/tree/main/examples/deep-agent): a research
+briefing assistant that plans, delegates research to a subagent, drafts briefings, remembers each
+user's preferences, asks before emailing, and runs deep dives in the background. It runs offline with
+a scripted model, so it needs no API key.
+
+## What is covered
+
+Tested end to end in the example, through the official `@langchain/langgraph-sdk` client:
+
+- a `createDeepAgent()` export loaded from an unchanged `langgraph.json`, including as a graph factory;
+- planning with `write_todos`, and files in thread state that persist across a thread's turns;
+- `StoreBackend` files shared across a user's threads and isolated between users;
+- a synchronous subagent streamed under its own namespace with `stream_subgraphs`;
+- approve / edit / reject on an `interruptOn` tool;
+- an async subagent started, checked, updated and cancelled over HTTP on the same server.
+
+Not covered, or deliberately out of scope:
+
+- **The URL-less async transport.** LangGraph Platform runs co-deployed async subagents in process;
+  skein needs an explicit `url`.
+- **Subgraph streaming on `/invoke`.** Use the run endpoints.
+- **Python Deep Agents.** skein loads TypeScript graphs; a Python agent can only be reached as a
+  separate Agent Protocol service.
+- **Version range.** Tested with `deepagents` 1.15 and `@langchain/langgraph` 1.4.10 or later. Pin
+  `deepagents` in your application.
 
 ## Files: thread state by default, the store for what outlives a thread
 
@@ -75,7 +103,7 @@ authenticated identity.
 ## Streaming subagents
 
 A synchronous subagent runs inside the `task` tool. Ask for subgraph frames and its progress streams
-alongside the supervisor's, under the tool call's namespace:
+alongside the main agent's, under the tool call's namespace:
 
 ```ts
 for await (const chunk of client.runs.stream(threadId, "agent", {
@@ -83,7 +111,7 @@ for await (const chunk of client.runs.stream(threadId, "agent", {
   streamMode: ["updates", "messages-tuple"],
   streamSubgraphs: true,
 })) {
-  chunk.event; // "updates" from the supervisor, "updates|tools:<id>" from the subagent
+  chunk.event; // "updates" from the main agent, "updates|tools:<id>" from the subagent
 }
 ```
 
@@ -107,12 +135,12 @@ pending action:
 
 ```ts
 createDeepAgent({
-  /* … */ interruptOn: { send_report: { allowedDecisions: ["approve", "edit", "reject"] } },
+  /* … */ interruptOn: { send_briefing: { allowedDecisions: ["approve", "edit", "reject"] } },
 });
 
 await client.runs.wait(threadId, "agent", {
   command: { resume: { decisions: [{ type: "approve" }] } },
-  // or { type: "edit", editedAction: { name: "send_report", args: { … } } }
+  // or { type: "edit", editedAction: { name: "send_briefing", args: { … } } }
   // or { type: "reject", message: "not this week" }
 });
 ```
@@ -122,7 +150,7 @@ See [human-in-the-loop](../human-in-the-loop.md).
 ## Async subagents
 
 An async subagent is another graph, started and polled over the Agent Protocol. Give it an explicit
-`url` and credentials scoped to the originating caller. Build the supervisor as a graph factory so
+`url` and credentials scoped to the originating caller. Build the main agent as a graph factory so
 upstream's async client is constructed with that caller's credentials. For the example's demo auth:
 
 ```ts
@@ -136,8 +164,8 @@ export function graph(config: RunnableConfig) {
   return createDeepAgent({
     subagents: [
       {
-        name: "background-researcher",
-        description: "Researches in the background.",
+        name: "deep-researcher",
+        description: "Runs a longer research investigation in the background.",
         graphId: "researcher",
         url: process.env.SKEIN_URL ?? "http://127.0.0.1:2024",
         headers,
@@ -154,8 +182,8 @@ runs. Keep receiving thread ownership checks in place; task identifiers are not 
 Every call is an ordinary route — thread create, run create, run get, thread state, a new run with
 `multitask_strategy: "interrupt"` to update, and cancel — so it works against any skein deployment. The
 URL-less, in-process transport LangGraph Platform offers is not recreated. Each started task is a
-background run, so give the server enough [run concurrency](../runs-and-redis.md#run-concurrency) for the supervisor
-and its children at once.
+background run, so give the server enough [run concurrency](../runs-and-redis.md#run-concurrency) for the
+main agent and its children at once.
 
 ## Shell and code execution
 
