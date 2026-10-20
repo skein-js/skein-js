@@ -57,20 +57,36 @@ export class MemoryRunQueue implements RunQueue {
 
     const delayMs = options.delayMs ?? 0;
     if (delayMs > 0) {
-      const timer = setTimeout(() => {
-        this.#delayed.delete(run.run_id);
-        this.#items.push({ ...run });
-        this.#waiters.shift()?.();
-      }, delayMs);
-      // Never hold the process open for a run that has not come due — a pending delay must not be
-      // what keeps `skein dev` (or a test) from exiting.
-      timer.unref?.();
-      this.#delayed.set(run.run_id, timer);
+      this.#holdUntil(run, Date.now() + delayMs);
       return;
     }
 
     this.#items.push({ ...run });
     this.#waiters.shift()?.(); // wake one parked consumer, if any
+  }
+
+  /**
+   * Make `run` visible once the wall clock reaches `dueAt`. Timers run on a monotonic clock and can
+   * fire a millisecond or so before `Date.now()` says the deadline has passed, so an early wake-up
+   * re-arms for the remainder: `after_seconds` is a floor, and a run must never start before it.
+   */
+  #holdUntil(run: QueuedRun, dueAt: number): void {
+    const timer = setTimeout(
+      () => {
+        if (Date.now() < dueAt) {
+          this.#holdUntil(run, dueAt);
+          return;
+        }
+        this.#delayed.delete(run.run_id);
+        this.#items.push({ ...run });
+        this.#waiters.shift()?.();
+      },
+      Math.max(dueAt - Date.now(), 1),
+    );
+    // Never hold the process open for a run that has not come due — a pending delay must not be
+    // what keeps `skein dev` (or a test) from exiting.
+    timer.unref?.();
+    this.#delayed.set(run.run_id, timer);
   }
 
   consume(process: RunProcessor, options: RunConsumerOptions = {}): RunConsumer {
