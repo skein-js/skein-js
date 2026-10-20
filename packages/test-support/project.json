@@ -79,6 +79,60 @@
         "command": "pnpm --package=node@22 --package=npm@11 dlx node scripts/local-consumer-smoke.mjs",
         "cwd": "."
       }
+    },
+    "pack-scaffolds": {
+      "executor": "nx:run-commands",
+      "dependsOn": [
+        {
+          "target": "build",
+          "projects": [
+            "server-nextjs",
+            "langgraph",
+            "create-skein-js",
+            "core",
+            "runtime-redis",
+            "server-fastify",
+            "config",
+            "agent-protocol",
+            "telemetry-otel",
+            "runtime",
+            "storage-postgres",
+            "cli",
+            "server-nestjs",
+            "local",
+            "storage-sqlite",
+            "server-fetch",
+            "nx",
+            "telemetry-langsmith",
+            "storage-memory",
+            "server-kit",
+            "telemetry-posthog",
+            "server-express",
+            "console",
+            "channels",
+            "example-local-workflow"
+          ]
+        }
+      ],
+      "cache": false,
+      "outputs": ["{workspaceRoot}/dist/scaffold-packs"],
+      "options": {
+        "command": "node scripts/scaffold-consumers.mjs pack"
+      }
+    },
+    "scaffold-consumers": {
+      "executor": "nx:run-commands",
+      "cache": false,
+      "options": {
+        "command": "node scripts/scaffold-consumers.mjs run"
+      }
+    },
+    "prepare-scaffold-managers": {
+      "executor": "nx:run-commands",
+      "cache": false,
+      "options": {
+        "command": "node scripts/scaffold-consumers.mjs prepare-managers"
+      }
     }
   }
 }

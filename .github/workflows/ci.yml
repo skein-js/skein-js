@@ -296,3 +296,61 @@ jobs:
 
       - name: Scaffold, install, and serve a run
         run: node scripts/scaffold-smoke.mjs
+
+  scaffold-pack:
+    name: pack current-commit scaffold artifacts
+    runs-on: ubuntu-latest
+    outputs:
+      matrix: ${{ steps.catalog.outputs.matrix }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: pnpm/action-setup@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: ${{ env.NODE_LTS }}
+          cache: pnpm
+      - run: pnpm install --frozen-lockfile
+      - run: pnpm exec nx run test-support:pack-scaffolds --output-style=stream
+      - id: catalog
+        run: echo "matrix=$(cat dist/scaffold-packs/matrix.json)" >> "$GITHUB_OUTPUT"
+      - uses: actions/upload-artifact@v4
+        with:
+          name: scaffold-packages
+          path: dist/scaffold-packs
+          if-no-files-found: error
+
+  scaffold-consumers:
+    name: scaffold consumer (${{ matrix.id }}, Node ${{ matrix.node }})
+    needs: scaffold-pack
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix: ${{ fromJSON(needs.scaffold-pack.outputs.matrix) }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: pnpm/action-setup@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: ${{ matrix.node }}
+          cache: pnpm
+      - uses: oven-sh/setup-bun@v2
+      - run: corepack enable && corepack prepare yarn@4.9.2 --activate
+      - run: pnpm install --frozen-lockfile
+      - uses: actions/download-artifact@v4
+        with:
+          name: scaffold-packages
+          path: dist/scaffold-packs
+      - name: Prepare pinned npm for packed consumers
+        run: pnpm exec nx run test-support:prepare-scaffold-managers --directory="${{ runner.temp }}/skein-scaffold-tools"
+      - name: Install and exercise consumer
+        env:
+          SKEIN_CONSUMER_NPM_CLI: ${{ runner.temp }}/skein-scaffold-tools/node_modules/npm/bin/npm-cli.js
+        run: |
+          set -o pipefail
+          pnpm exec nx run test-support:scaffold-consumers --case=${{ matrix.id }} --output-style=stream 2>&1 | tee scaffold-consumer.log
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: scaffold-log-${{ matrix.id }}
+          path: scaffold-consumer.log
+          if-no-files-found: error
