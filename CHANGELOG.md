@@ -1,3 +1,27 @@
+## 0.20.0 (2026-10-20)
+
+### 🚀 Features
+
+- **agent-protocol:** honour stream_subgraphs and host LangChain Deep Agents ([#50](https://github.com/skein-js/skein-js/issues/50))
+- **examples:** rework deep-agent into a research briefing assistant ([1eb847b](https://github.com/skein-js/skein-js/commit/1eb847b))
+- **scaffold:** support workspaces and Nx with default tooling ([5f3b41f](https://github.com/skein-js/skein-js/commit/5f3b41f))
+
+### 🩹 Fixes
+
+- **ci:** stabilize Redis teardown and SQLite test timing ([fc786cb](https://github.com/skein-js/skein-js/commit/fc786cb))
+- **ci:** preserve pinned pnpm when enabling Yarn ([d74d96d](https://github.com/skein-js/skein-js/commit/d74d96d))
+- **cli:** point start errors to built artifacts ([8532423](https://github.com/skein-js/skein-js/commit/8532423))
+- **cli:** keep start options in artifact guidance ([c7e42fb](https://github.com/skein-js/skein-js/commit/c7e42fb))
+- **docs:** let the dev server pre-bundle dependencies under esbuild 0.28 ([dfd8838](https://github.com/skein-js/skein-js/commit/dfd8838))
+- **scaffold:** preserve workspace metadata during generation ([2f2df4b](https://github.com/skein-js/skein-js/commit/2f2df4b))
+- **scaffold:** address workspace tooling and Nx review findings ([a276878](https://github.com/skein-js/skein-js/commit/a276878))
+- **scaffold:** retain tested tools for generated configs ([3bf566e](https://github.com/skein-js/skein-js/commit/3bf566e))
+- **storage-memory:** never deliver a delayed run before it is due ([976e145](https://github.com/skein-js/skein-js/commit/976e145))
+
+### ❤️ Thank You
+
+- Maina Wycliffe
+
 ## 0.19.0 (2026-10-19)
 
 ### 🚀 Features

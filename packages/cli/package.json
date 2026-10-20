@@ -1,6 +1,6 @@
 {
   "name": "skein-js",
-  "version": "0.19.0",
+  "version": "0.20.0",
   "description": "An open-source, self-hosted server runtime for LangGraph.js agents in TypeScript. A drop-in replacement for the LangGraph CLI (dev/up/build/dockerfile).",
   "license": "Apache-2.0",
   "author": "Maina Wycliffe <wmmaina7@gmail.com>",
