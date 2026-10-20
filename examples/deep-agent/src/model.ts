@@ -7,9 +7,9 @@
 
 import type { BaseChatModel } from "@langchain/core/language_models/chat_models";
 
-import { ScriptedChatModel } from "./scripted-model.js";
+import { ScriptedChatModel, type ScriptedRole } from "./scripted-model.js";
 
-export function selectModel(): BaseChatModel | string {
+export function selectModel(role: ScriptedRole): BaseChatModel | string {
   const configured = process.env["DEEP_AGENT_MODEL"];
-  return configured ? configured : new ScriptedChatModel({});
+  return configured ? configured : new ScriptedChatModel({ role });
 }
