@@ -4,6 +4,8 @@ Scaffold a [skein-js](https://github.com/skein-js/skein-js) project — a self-h
 [Agent Protocol](https://github.com/langchain-ai/agent-protocol) server for your
 [LangGraph.js](https://docs.langchain.com/oss/javascript/langgraph/overview) agents.
 
+📖 **Docs:** [Scaffolding a project](https://skein-js.github.io/skein-js/scaffolding)
+
 ```bash
 npm create skein-js@latest my-agent
 # or: pnpm create skein-js my-agent · yarn create skein-js my-agent · npx create-skein-js my-agent

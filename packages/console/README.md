@@ -4,6 +4,8 @@ The **skein console** — a web UI for a running [skein](https://github.com/skei
 assistants, threads, live runs, channel wiring and deliveries, interrupts, time travel, the store,
 and crons.
 
+📖 **Docs:** [The console](https://skein-js.github.io/skein-js/console)
+
 Served by the server itself, so it is same-origin: no CORS, no second process, no account, and it works
 with no internet connection.
 
@@ -19,7 +21,7 @@ schedule on the server:
 { "http": { "console": true } } // langgraph.json — or a path: "/admin/console"
 ```
 
-Full documentation: **[docs/console.md](../../docs/console.md)**.
+Full documentation: **[docs/console.md](https://skein-js.github.io/skein-js/console)**.
 
 ## Mounting it in your own server
 
@@ -41,7 +43,7 @@ app.use((req, res, next) => {
 **Compiled bytes and a resolver — nothing else.** The UI (React, shadcn/ui, the LangGraph SDK) is built
 to static files and embedded as string constants, so this package has **no runtime dependencies**, reads
 no files at runtime, and bundles cleanly into a consumer's server (see
-[docs/bundling.md](../../docs/bundling.md)).
+[docs/bundling.md](https://skein-js.github.io/skein-js/bundling)).
 
 | Export                                           | What it does                                             |
 | ------------------------------------------------ | -------------------------------------------------------- |

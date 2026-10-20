@@ -3,6 +3,8 @@
 Durable Agent Protocol resources and a run queue in one SQLite file. Requires Node 22 or 24 and
 `better-sqlite3`; no database service is needed.
 
+📖 **Docs:** [Local SQLite storage](https://skein-js.github.io/skein-js/storage#local-sqlite-storage) · [Local deployment](https://skein-js.github.io/skein-js/local-deployment)
+
 ```ts
 import { openSqliteStorage } from "@skein-js/storage-sqlite";
 

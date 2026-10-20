@@ -4,7 +4,9 @@
 
 > Shared, framework-agnostic building blocks for skein-js HTTP adapters.
 
-Part of **[skein-js](../../README.md)** — the open-source alternative to LangGraph Platform for TypeScript: a self-hosted [Agent Protocol](https://github.com/langchain-ai/agent-protocol) server for [LangGraph.js](https://github.com/langchain-ai/langgraphjs), and a drop-in replacement for the LangGraph CLI.
+Part of **[skein-js](https://github.com/skein-js/skein-js)** — the open-source alternative to LangGraph Platform for TypeScript: a self-hosted [Agent Protocol](https://github.com/langchain-ai/agent-protocol) server for [LangGraph.js](https://github.com/langchain-ai/langgraphjs), and a drop-in replacement for the LangGraph CLI.
+
+📖 **Docs:** [Building an adapter](https://skein-js.github.io/skein-js/building-an-adapter)
 
 This package is the common ground the framework adapters ([`@skein-js/express`](../server-express),
 [`@skein-js/fastify`](../server-fastify), [`@skein-js/nestjs`](../server-nestjs),
@@ -24,7 +26,7 @@ handler table.
 - **In-code embedding** — `embedInMemoryGraphs` / `graphMapToResolver`: build a `ProtocolDeps` around a
   compiled graph (or map of them) you already hold — **no `langgraph.json`, no CLI** — then pass
   `{ deps }` to any adapter. `overrides` swaps in production drivers/auth. See
-  [docs/embedding.md](../../docs/embedding.md).
+  [docs/embedding.md](https://skein-js.github.io/skein-js/embedding).
 - **LangGraph dev-state import** — `readLanggraphDevState` / `loadSnapshotIntoStore` /
   `describeSnapshot`, from the **`@skein-js/server-kit/dev` subpath**: read an existing
   `.langgraph_api/` directory and reconstruct skein's own `DevStateSnapshot`, so adopting skein carries
@@ -71,7 +73,7 @@ await server.listen(2024);
 ```
 
 Pass `overrides` to swap in production drivers or an auth engine while keeping the rest in-memory. See
-[docs/embedding.md](../../docs/embedding.md).
+[docs/embedding.md](https://skein-js.github.io/skein-js/embedding).
 
 ## API
 
@@ -103,7 +105,7 @@ Pass `overrides` to swap in production drivers or an auth engine while keeping t
   adapter has to remember it. Free when no logger is configured — it schedules nothing.
 - **`checkHeapHeadroom(): HeapHeadroom`** — the boot-time counterpart: compares V8's ceiling with the
   container's cgroup limit and warns when the automatic sizing does not fit (see
-  [deploy.md](../../docs/deploy.md)).
+  [deploy.md](https://skein-js.github.io/skein-js/deploy)).
 - **`describePoolPressure(runConcurrency, poolMax): string | undefined`** — warns when the worker can
   execute more runs at once than the Postgres pool can serve.
 - **`resolveMaxPageSize(explicit?, env?): number`** — the same chain for the store page bound:
@@ -133,7 +135,7 @@ Pass `overrides` to swap in production drivers or an auth engine while keeping t
   keeping them on the root barrel put a filesystem snapshot deserializer into every adapter's module
   graph. There is deliberately no root re-export — a re-export is still a static import. The
   `DevStateCounts` _type_ remains exported from the root, since `export type` is erased. See
-  [docs/bundling.md](../../docs/bundling.md).
+  [docs/bundling.md](https://skein-js.github.io/skein-js/bundling).
 
 - **CORS** — `corsFromHttpConfig` / `toCorsOptions` map a `langgraph.json` `http.cors` block to
   `cors`-style options; `allowedOrigin` / `corsResponseHeaders` / `applyNodeCors` / `sendNodePreflight`
@@ -147,8 +149,8 @@ Pass `overrides` to swap in production drivers or an auth engine while keeping t
 
 ## Learn more
 
-- [Building your own adapter](../../docs/building-an-adapter.md)
-- [skein-js overview](../../docs/index.md)
+- [Building your own adapter](https://skein-js.github.io/skein-js/building-an-adapter)
+- [skein-js overview](https://skein-js.github.io/skein-js/)
 
 ## License
 

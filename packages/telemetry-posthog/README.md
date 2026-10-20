@@ -5,7 +5,9 @@
 > See how your agents behave in production — usage, failures, latency, models, and token consumption
 > in PostHog.
 
-Part of **[skein-js](../../README.md)** — the open-source alternative to LangGraph Platform for TypeScript: a self-hosted [Agent Protocol](https://github.com/langchain-ai/agent-protocol) server for [LangGraph.js](https://github.com/langchain-ai/langgraphjs), and a drop-in replacement for the LangGraph CLI.
+Part of **[skein-js](https://github.com/skein-js/skein-js)** — the open-source alternative to LangGraph Platform for TypeScript: a self-hosted [Agent Protocol](https://github.com/langchain-ai/agent-protocol) server for [LangGraph.js](https://github.com/langchain-ai/langgraphjs), and a drop-in replacement for the LangGraph CLI.
+
+📖 **Docs:** [PostHog](https://skein-js.github.io/skein-js/observability#posthog)
 
 ## What's here
 
@@ -54,7 +56,7 @@ Using the CLI? Declare it in `langgraph.json` instead and `skein dev` / `skein s
 { "telemetry": { "posthog": { "host": "https://eu.i.posthog.com" } } }
 ```
 
-See [docs/observability.md](../../docs/observability.md).
+See [docs/observability.md](https://skein-js.github.io/skein-js/observability).
 
 ## Events
 
@@ -89,9 +91,9 @@ would drop the tail of every process.
 
 ## Learn more
 
-- [Observability](../../docs/observability.md) — traces, metrics, and writing your own sink
-- [Errors & logging](../../docs/errors-and-logging.md) — the other two reporting surfaces
-- [skein-js overview](../../docs/index.md)
+- [Observability](https://skein-js.github.io/skein-js/observability) — traces, metrics, and writing your own sink
+- [Errors & logging](https://skein-js.github.io/skein-js/errors-and-logging) — the other two reporting surfaces
+- [skein-js overview](https://skein-js.github.io/skein-js/)
 
 ## License
 

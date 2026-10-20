@@ -4,7 +4,9 @@
 
 > In-memory `SkeinStore` + run queue + event bus for development and tests.
 
-Part of **[skein-js](../../README.md)** — the open-source alternative to LangGraph Platform for TypeScript: a self-hosted [Agent Protocol](https://github.com/langchain-ai/agent-protocol) server for [LangGraph.js](https://github.com/langchain-ai/langgraphjs), and a drop-in replacement for the LangGraph CLI.
+Part of **[skein-js](https://github.com/skein-js/skein-js)** — the open-source alternative to LangGraph Platform for TypeScript: a self-hosted [Agent Protocol](https://github.com/langchain-ai/agent-protocol) server for [LangGraph.js](https://github.com/langchain-ai/langgraphjs), and a drop-in replacement for the LangGraph CLI.
+
+📖 **Docs:** [In-memory storage](https://skein-js.github.io/skein-js/storage#skein-js-storage-memory-dev-tests-—-and-the-redis-less-production-path)
 
 **Status:** 🚧 Pre-alpha — implemented; passes the shared `SkeinStore` conformance suite.
 
@@ -68,9 +70,9 @@ const runtime = createProtocolRuntime({
 - **`class MemorySkeinStore implements SkeinStore`** —
   `new MemorySkeinStore({ ttl?, threadTtl?, maxPageSize? })`. `ttl` is store-item expiry and
   `threadTtl` is thread expiry (`{ defaultTtl?, sweepIntervalMinutes? }`, minutes) — see
-  [docs/storage.md](../../docs/storage.md#thread-ttl). `maxPageSize` (default 1000) bounds every
+  [docs/storage.md](https://skein-js.github.io/skein-js/storage#thread-ttl). `maxPageSize` (default 1000) bounds every
   list/search, **including one with no `limit`** — see
-  [docs/storage.md](../../docs/storage.md#page-bound-skein_max_page_size). Exposes the four
+  [docs/storage.md](https://skein-js.github.io/skein-js/storage#page-bound-skein-max-page-size). Exposes the four
   repos (`assistants`, `threads`, `runs`, `store`) defined by [`SkeinStore`](../core). Plus two
   methods used by `skein dev`'s persistence:
   - `snapshot(): MemoryStoreSnapshot` — serialize all rows.
@@ -107,8 +109,8 @@ only Agent Protocol _resources_, never graph state.
 
 ## Learn more
 
-- [Storage](../../docs/storage.md) · [Runs & Redis](../../docs/runs-and-redis.md)
-- [skein-js overview](../../docs/index.md) · [Reuse-first architecture](../../docs/reuse.md) · [Root README](../../README.md)
+- [Storage](https://skein-js.github.io/skein-js/storage) · [Runs & Redis](https://skein-js.github.io/skein-js/runs-and-redis)
+- [skein-js overview](https://skein-js.github.io/skein-js/) · [Reuse-first architecture](https://github.com/skein-js/skein-js/blob/main/docs/reuse.md) · [Root README](https://github.com/skein-js/skein-js)
 
 ## License
 

@@ -4,7 +4,9 @@
 
 > Loads an unchanged `langgraph.json`, validates it, and resolves each `path:export` graph, its schemas, and the optional custom-auth module.
 
-Part of **[skein-js](../../README.md)** — the open-source alternative to LangGraph Platform for TypeScript: a self-hosted [Agent Protocol](https://github.com/langchain-ai/agent-protocol) server for [LangGraph.js](https://github.com/langchain-ai/langgraphjs), and a drop-in replacement for the LangGraph CLI.
+Part of **[skein-js](https://github.com/skein-js/skein-js)** — the open-source alternative to LangGraph Platform for TypeScript: a self-hosted [Agent Protocol](https://github.com/langchain-ai/agent-protocol) server for [LangGraph.js](https://github.com/langchain-ai/langgraphjs), and a drop-in replacement for the LangGraph CLI.
+
+📖 **Docs:** [`langgraph.json` fields skein honours](https://skein-js.github.io/skein-js/langgraph-cli-compat#langgraph-json-—-fields-we-honor)
 
 **Status:** 🚧 Pre-alpha — implemented: `langgraph.json` loading, `path:export` graph resolution, graph-schema introspection, env resolution, and custom-auth loading.
 
@@ -77,8 +79,8 @@ Reuses `@langchain/langgraph-api`'s `./schema` parser (`getStaticGraphSchema`, `
 
 ## Learn more
 
-- [LangGraph CLI compatibility](../../docs/langgraph-cli-compat.md) · [Storage](../../docs/storage.md)
-- [skein-js overview](../../docs/index.md) · [Reuse-first architecture](../../docs/reuse.md) · [Root README](../../README.md)
+- [LangGraph CLI compatibility](https://skein-js.github.io/skein-js/langgraph-cli-compat) · [Storage](https://skein-js.github.io/skein-js/storage)
+- [skein-js overview](https://skein-js.github.io/skein-js/) · [Reuse-first architecture](https://github.com/skein-js/skein-js/blob/main/docs/reuse.md) · [Root README](https://github.com/skein-js/skein-js)
 
 ## License
 

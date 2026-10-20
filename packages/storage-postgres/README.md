@@ -4,7 +4,9 @@
 
 > Production Postgres `SkeinStore` driver with **pgvector** semantic search.
 
-Part of **[skein-js](../../README.md)** — the open-source alternative to LangGraph Platform for TypeScript: a self-hosted [Agent Protocol](https://github.com/langchain-ai/agent-protocol) server for [LangGraph.js](https://github.com/langchain-ai/langgraphjs), and a drop-in replacement for the LangGraph CLI.
+Part of **[skein-js](https://github.com/skein-js/skein-js)** — the open-source alternative to LangGraph Platform for TypeScript: a self-hosted [Agent Protocol](https://github.com/langchain-ai/agent-protocol) server for [LangGraph.js](https://github.com/langchain-ai/langgraphjs), and a drop-in replacement for the LangGraph CLI.
+
+📖 **Docs:** [Postgres storage](https://skein-js.github.io/skein-js/storage#skein-js-storage-postgres-prod)
 
 **Status:** 🚧 Pre-alpha — implemented; passes the shared `SkeinStore` conformance suite (integration tests need Docker).
 
@@ -17,7 +19,7 @@ as the memory driver, so the two are provably interchangeable.
 - **Migrations** are applied by `store.migrate()` and tracked in a `skein_migrations` table.
   Idempotent, and serialized by a Postgres advisory lock, so several instances booting at once during
   a rolling deploy queue up rather than collide. The SQL is **compiled into the bundle**, not read
-  off disk, so this package bundles with zero externals ([docs/bundling.md](../../docs/bundling.md)).
+  off disk, so this package bundles with zero externals ([docs/bundling.md](https://skein-js.github.io/skein-js/bundling)).
   `migrations/*.sql` in this repo is the authoring source — run `pnpm migrations:generate` after
   editing one.
 - **Semantic store search** uses **pgvector** when a `store.index` (with an embedder) is configured
@@ -78,9 +80,9 @@ In practice you rarely call this yourself — `skein dev --store postgres` / `sk
 - **`interface PostgresSkeinStoreOptions`** — `{ index?, ttl?, threadTtl?, maxPageSize? }` plus the
   `PostgresPoolOptions` connection tuning (`poolMax`, `sslNoVerify`, `connectionTimeoutMs`,
   `idleTimeoutMs`, `statementTimeoutMs`). `maxPageSize` (default 1000) bounds every list/search,
-  **including one with no `limit`** — see [docs/storage.md](../../docs/storage.md#page-bound-skein_max_page_size).
+  **including one with no `limit`** — see [docs/storage.md](https://skein-js.github.io/skein-js/storage#page-bound-skein-max-page-size).
   `ttl` is store-item expiry; `threadTtl` (`{ defaultTtl?, sweepIntervalMinutes? }`, minutes) gives
-  threads a default lifetime — see [docs/storage.md](../../docs/storage.md#thread-ttl).
+  threads a default lifetime — see [docs/storage.md](https://skein-js.github.io/skein-js/storage#thread-ttl).
 - **`interface StoreIndexConfig`** — `{ dims: number; fields?: string[]; embed: EmbedFunction }`
   (`fields` default `["$"]` = embed the whole value as JSON).
 - **`type EmbedFunction`** — `(texts: string[]) => Promise<number[][]>`.
@@ -94,8 +96,8 @@ the pairing.)
 
 ## Learn more
 
-- [Storage](../../docs/storage.md) · [Testing](../../docs/testing.md)
-- [skein-js overview](../../docs/index.md) · [Reuse-first architecture](../../docs/reuse.md) · [Root README](../../README.md)
+- [Storage](https://skein-js.github.io/skein-js/storage) · [Testing](https://github.com/skein-js/skein-js/blob/main/docs/testing.md)
+- [skein-js overview](https://skein-js.github.io/skein-js/) · [Reuse-first architecture](https://github.com/skein-js/skein-js/blob/main/docs/reuse.md) · [Root README](https://github.com/skein-js/skein-js)
 
 ## License
 

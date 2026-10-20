@@ -4,7 +4,9 @@
 
 > Assembles a production `ProtocolDeps` (memory / Postgres / Redis) from a `langgraph.json`.
 
-Part of **[skein-js](../../README.md)** — the open-source alternative to LangGraph Platform for TypeScript: a self-hosted [Agent Protocol](https://github.com/langchain-ai/agent-protocol) server for [LangGraph.js](https://github.com/langchain-ai/langgraphjs), and a drop-in replacement for the LangGraph CLI.
+Part of **[skein-js](https://github.com/skein-js/skein-js)** — the open-source alternative to LangGraph Platform for TypeScript: a self-hosted [Agent Protocol](https://github.com/langchain-ai/agent-protocol) server for [LangGraph.js](https://github.com/langchain-ai/langgraphjs), and a drop-in replacement for the LangGraph CLI.
+
+📖 **Docs:** [Embedding](https://skein-js.github.io/skein-js/embedding#two-on-ramps) · [Deploy](https://skein-js.github.io/skein-js/deploy)
 
 **Status:** 🚧 Pre-alpha — implemented; the assembler behind `skein dev` and `skein up`.
 
@@ -50,7 +52,7 @@ A missing `POSTGRES_URI` / `REDIS_URI` throws `RuntimeConfigError`; if assembly 
 resources already created are disposed before rethrowing, so a failed build leaks nothing.
 
 This is the same environment contract the `skein build` image uses, so anything you learn here
-applies when you deploy it — see [deploy anywhere](../../docs/deploy.md) for the full variable table,
+applies when you deploy it — see [deploy anywhere](https://skein-js.github.io/skein-js/deploy) for the full variable table,
 pool sizing, and per-platform guides.
 
 Graph hot-reload (`reloadGraphs()`) works in every mode; `snapshotState`/`hydrateState` are present
@@ -85,7 +87,7 @@ Postgres is required (`POSTGRES_URI` or `postgresUri`). **Redis is optional** �
 limited to a **single instance** (the queue is process-local; streaming isn't fanned across instances).
 Options mirror the low-level knobs: `index` (pgvector), `ttl` (store items), `threadTtl` (threads),
 `poolMax`, `sslNoVerify`, and `overrides`
-for non-driver deps (`auth`/`logger`/…). See [docs/embedding.md](../../docs/embedding.md) for the full
+for non-driver deps (`auth`/`logger`/…). See [docs/embedding.md](https://skein-js.github.io/skein-js/embedding) for the full
 walkthrough.
 
 ## Install
@@ -135,8 +137,8 @@ back to naive text matching (identical to the memory driver).
 
 ## Learn more
 
-- [Storage](../../docs/storage.md) · [Runs & Redis](../../docs/runs-and-redis.md) · [LangGraph CLI compatibility](../../docs/langgraph-cli-compat.md)
-- [skein-js overview](../../docs/index.md) · [Reuse-first architecture](../../docs/reuse.md) · [Root README](../../README.md)
+- [Storage](https://skein-js.github.io/skein-js/storage) · [Runs & Redis](https://skein-js.github.io/skein-js/runs-and-redis) · [LangGraph CLI compatibility](https://skein-js.github.io/skein-js/langgraph-cli-compat)
+- [skein-js overview](https://skein-js.github.io/skein-js/) · [Reuse-first architecture](https://github.com/skein-js/skein-js/blob/main/docs/reuse.md) · [Root README](https://github.com/skein-js/skein-js)
 
 ## License
 

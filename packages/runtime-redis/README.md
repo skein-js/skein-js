@@ -4,7 +4,9 @@
 
 > Redis job queue (BullMQ) and cross-instance pub/sub streaming for skein-js.
 
-Part of **[skein-js](../../README.md)** — the open-source alternative to LangGraph Platform for TypeScript: a self-hosted [Agent Protocol](https://github.com/langchain-ai/agent-protocol) server for [LangGraph.js](https://github.com/langchain-ai/langgraphjs), and a drop-in replacement for the LangGraph CLI.
+Part of **[skein-js](https://github.com/skein-js/skein-js)** — the open-source alternative to LangGraph Platform for TypeScript: a self-hosted [Agent Protocol](https://github.com/langchain-ai/agent-protocol) server for [LangGraph.js](https://github.com/langchain-ai/langgraphjs), and a drop-in replacement for the LangGraph CLI.
+
+📖 **Docs:** [Runs & Redis](https://skein-js.github.io/skein-js/runs-and-redis#skein-js-redis-shared-servers)
 
 **Status:** 🚧 Pre-alpha — implemented (BullMQ queue + Redis Streams/pub-sub bus); integration tests need Docker.
 
@@ -62,7 +64,7 @@ You normally get these via `skein dev --queue redis` / `skein up` and
   **`RedisRunQueueOptions`** = `{ queueName?, attempts? }` (`queueName` default `"skein-runs"`, must
   not contain `:`; `attempts` default `1`). `consume`'s `options.concurrency` (driver default `1`)
   becomes the BullMQ `Worker`'s concurrency — the run worker always passes an explicit value, so in
-  practice this is [run concurrency](../../docs/runs-and-redis.md#run-concurrency) (default 10).
+  practice this is [run concurrency](https://skein-js.github.io/skein-js/runs-and-redis#run-concurrency) (default 10).
 - **`class RedisRunEventBus implements RunEventBus`** — `new RedisRunEventBus(url, options?)`.
   `publish(runId, frame)` · `close(runId)` · `subscribe(runId, afterSeq = 0)` · `dispose()`.
   **`RedisRunEventBusOptions`** = `{ keyPrefix?, streamTtlSeconds?, closedMarkerTtlSeconds?, closedCheckIntervalMs? }`
@@ -81,8 +83,8 @@ This package is the run **queue + pub/sub** — not a checkpointer. For Redis-ba
 
 ## Learn more
 
-- [Runs & Redis](../../docs/runs-and-redis.md) · [Streaming (SSE)](../../docs/streaming.md)
-- [skein-js overview](../../docs/index.md) · [Reuse-first architecture](../../docs/reuse.md) · [Root README](../../README.md)
+- [Runs & Redis](https://skein-js.github.io/skein-js/runs-and-redis) · [Streaming (SSE)](https://skein-js.github.io/skein-js/streaming)
+- [skein-js overview](https://skein-js.github.io/skein-js/) · [Reuse-first architecture](https://github.com/skein-js/skein-js/blob/main/docs/reuse.md) · [Root README](https://github.com/skein-js/skein-js)
 
 ## License
 

@@ -4,7 +4,9 @@
 
 > OpenTelemetry spans and metrics for skein-js runs — works with any OTLP backend.
 
-Part of **[skein-js](../../README.md)** — the open-source alternative to LangGraph Platform for TypeScript: a self-hosted [Agent Protocol](https://github.com/langchain-ai/agent-protocol) server for [LangGraph.js](https://github.com/langchain-ai/langgraphjs), and a drop-in replacement for the LangGraph CLI.
+Part of **[skein-js](https://github.com/skein-js/skein-js)** — the open-source alternative to LangGraph Platform for TypeScript: a self-hosted [Agent Protocol](https://github.com/langchain-ai/agent-protocol) server for [LangGraph.js](https://github.com/langchain-ai/langgraphjs), and a drop-in replacement for the LangGraph CLI.
+
+📖 **Docs:** [OpenTelemetry](https://skein-js.github.io/skein-js/observability#opentelemetry)
 
 ## What's here
 
@@ -47,7 +49,7 @@ Using the CLI? Declare it in `langgraph.json` instead:
 { "telemetry": { "otel": true } }
 ```
 
-See [docs/observability.md](../../docs/observability.md).
+See [docs/observability.md](https://skein-js.github.io/skein-js/observability).
 
 ## What it emits
 
@@ -88,9 +90,9 @@ see generations indented under the run in a trace waterfall.
 
 ## Learn more
 
-- [Observability](../../docs/observability.md) — traces, metrics, and writing your own sink
-- [Errors & logging](../../docs/errors-and-logging.md) — the other two reporting surfaces
-- [skein-js overview](../../docs/index.md)
+- [Observability](https://skein-js.github.io/skein-js/observability) — traces, metrics, and writing your own sink
+- [Errors & logging](https://skein-js.github.io/skein-js/errors-and-logging) — the other two reporting surfaces
+- [skein-js overview](https://skein-js.github.io/skein-js/)
 
 ## License
 

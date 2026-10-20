@@ -6,6 +6,8 @@ Native Web `Request`/`Response` transport for Skein. It is the production HTTP b
 Deno; Node framework adapters remain in `@skein-js/express`, `@skein-js/fastify`,
 `@skein-js/nestjs`, and `@skein-js/nextjs`.
 
+📖 **Docs:** [Fetch adapter for Bun & Deno](https://skein-js.github.io/skein-js/adapters#fetch-bun-deno) · [Deploy](https://skein-js.github.io/skein-js/deploy)
+
 ```ts
 import { createSkeinFetchServer, startBunServer } from "@skein-js/fetch";
 

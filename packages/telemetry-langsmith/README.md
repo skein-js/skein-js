@@ -4,7 +4,9 @@
 
 > LangSmith tracing for skein-js — run identity and thread grouping on every graph call.
 
-Part of **[skein-js](../../README.md)** — the open-source alternative to LangGraph Platform for TypeScript: a self-hosted [Agent Protocol](https://github.com/langchain-ai/agent-protocol) server for [LangGraph.js](https://github.com/langchain-ai/langgraphjs), and a drop-in replacement for the LangGraph CLI.
+Part of **[skein-js](https://github.com/skein-js/skein-js)** — the open-source alternative to LangGraph Platform for TypeScript: a self-hosted [Agent Protocol](https://github.com/langchain-ai/agent-protocol) server for [LangGraph.js](https://github.com/langchain-ai/langgraphjs), and a drop-in replacement for the LangGraph CLI.
+
+📖 **Docs:** [LangSmith](https://skein-js.github.io/skein-js/observability#langsmith)
 
 ## What's here
 
@@ -57,7 +59,7 @@ wire it up:
 ```
 
 With `LANGSMITH_API_KEY` set, even that is optional: the adapter is auto-detected. See
-[docs/observability.md](../../docs/observability.md).
+[docs/observability.md](https://skein-js.github.io/skein-js/observability).
 
 ## What lands in LangSmith
 
@@ -83,9 +85,9 @@ With `LANGSMITH_API_KEY` set, even that is optional: the adapter is auto-detecte
 
 ## Learn more
 
-- [Observability](../../docs/observability.md) — traces, metrics, and writing your own sink
-- [Errors & logging](../../docs/errors-and-logging.md) — the other two reporting surfaces
-- [skein-js overview](../../docs/index.md)
+- [Observability](https://skein-js.github.io/skein-js/observability) — traces, metrics, and writing your own sink
+- [Errors & logging](https://skein-js.github.io/skein-js/errors-and-logging) — the other two reporting surfaces
+- [skein-js overview](https://skein-js.github.io/skein-js/)
 
 ## License
 
