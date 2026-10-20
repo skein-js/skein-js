@@ -1003,12 +1003,18 @@ export function runSkeinStoreConformance(
           assistant_id: "a",
           // `checkpoint_id` (the time-travel fork target) rides the opaque kwargs blob — no dedicated
           // column/migration — so it must round-trip for a background/crash-recovered run to fork.
-          kwargs: { input: { messages: ["hi"] }, stream_mode: "values", checkpoint_id: "ckpt-7" },
+          kwargs: {
+            input: { messages: ["hi"] },
+            stream_mode: "values",
+            stream_subgraphs: true,
+            checkpoint_id: "ckpt-7",
+          },
         });
 
         expect(await store.runs.getKwargs(run.run_id)).toEqual({
           input: { messages: ["hi"] },
           stream_mode: "values",
+          stream_subgraphs: true,
           checkpoint_id: "ckpt-7",
         });
         expect(await store.runs.getKwargs("unknown")).toBeNull();

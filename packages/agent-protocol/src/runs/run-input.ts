@@ -123,6 +123,8 @@ export function toFactoryConfigurable(kwargs: RunKwargs): Record<string, unknown
 export interface GraphCallOptions {
   configurable: Record<string, unknown>;
   streamMode: StreamMode[];
+  /** Stream nested graph frames as namespace/mode/payload triples. */
+  subgraphs?: boolean;
   signal: AbortSignal;
   context?: unknown;
   recursionLimit?: number;
@@ -166,6 +168,7 @@ export function toGraphCallOptions(
     signal,
   };
   if (kwargs.context !== undefined) options.context = kwargs.context;
+  if (kwargs.stream_subgraphs === true) options.subgraphs = true;
   const recursionLimit = kwargs.config?.recursion_limit;
   if (typeof recursionLimit === "number") options.recursionLimit = recursionLimit;
   if (kwargs.interrupt_before !== undefined) options.interruptBefore = kwargs.interrupt_before;

@@ -225,5 +225,27 @@ export function runRunEventBusConformance(label: string, makeBus: RunEventBusFac
 
       expect((await collected).map((f) => f.seq)).toEqual([1, 2]);
     });
+
+    it("carries subgraph namespaces through live delivery, replay and resume unchanged", async () => {
+      const bus = await make();
+      const frames: RunFrame[] = [
+        { seq: 1, event: "updates", data: { root: true } },
+        { seq: 2, event: "updates", namespace: ["tools:call_1"], data: { child: true } },
+        {
+          seq: 3,
+          event: "messages",
+          namespace: ["tools:call_1", "model_request:m_2"],
+          data: ["token"],
+        },
+      ];
+      const live = collect(bus.subscribe("r"));
+      await new Promise((resolve) => setTimeout(resolve, 50));
+      for (const published of frames) await bus.publish("r", published);
+      await bus.close("r");
+
+      expect(await live).toEqual(frames);
+      expect(await collect(bus.subscribe("r"))).toEqual(frames);
+      expect(await collect(bus.subscribe("r", 1))).toEqual(frames.slice(1));
+    });
   });
 }

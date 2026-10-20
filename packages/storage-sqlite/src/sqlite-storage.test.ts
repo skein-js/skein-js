@@ -35,12 +35,28 @@ describe("durability and ownership", () => {
     const run = await storage.store.runs.create({
       thread_id: thread.thread_id,
       assistant_id: "agent",
-      kwargs: { input: { value: 1 }, queue_not_before: due },
+      kwargs: {
+        input: { value: 1 },
+        stream_subgraphs: true,
+        config: { configurable: { assistant_id: "legacy" } },
+        auth_user: {
+          identity: "alice",
+          display_name: "Alice",
+          is_authenticated: true,
+          permissions: [],
+        },
+        queue_not_before: due,
+      },
     });
     await storage.dispose();
     const reopened = await openSqliteStorage({ filename });
     try {
       expect((await reopened.store.runs.get(run.run_id))?.status).toBe("pending");
+      expect(await reopened.store.runs.getKwargs(run.run_id)).toMatchObject({
+        stream_subgraphs: true,
+        config: { configurable: { assistant_id: "legacy" } },
+        auth_user: { identity: "alice" },
+      });
       await reopened.queue.enqueue(run);
       expect(
         reopened.database

@@ -167,7 +167,8 @@ commands and host boundaries.
 Examples live in `examples/`: `chat-app` (flagship — research assistant + Next.js/shadcn UI),
 `triage-agent` (the console's workload — cron sweep, a durable run per item, idempotent re-sweeps,
 conditional HITL approval, store memory; runs offline with no API key),
-`migrated-langgraph` (drop-in proof), `gemini-chat` (model-backed e2e), `express-basic`
+`deep-agent` (a LangChain Deep Agent — per-user memory, streamed and async subagents, approval;
+runs offline with a scripted model), `migrated-langgraph` (drop-in proof), `gemini-chat` (model-backed e2e), `express-basic`
 (zero-setup), `react-usestream` (`useStream` harness). Each non-Express adapter ships a **standalone**
 example (a dedicated graph server) and an **embedded** one (graphs mounted alongside the app's own
 routes): `fastify-basic`/`fastify-app`, `nestjs-basic`/`nestjs-app`, and `nextjs-basic` (Pages Router,

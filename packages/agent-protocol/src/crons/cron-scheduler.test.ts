@@ -247,6 +247,21 @@ describe("cron scheduler", () => {
       expect(kwargs?.config).toEqual({ configurable: { model: "x" } });
     });
 
+    it("replays a stored stream_subgraphs into the run's kwargs", async () => {
+      // Through the shared `toKwargs`, like every other run field — a cron is honoured, not ignored.
+      const h = await harness();
+      await h.service.crons.create({
+        assistant_id: h.assistantId,
+        schedule: "0 * * * *",
+        stream_subgraphs: true,
+      });
+      h.advance(AN_HOUR_AND_A_BIT);
+      await h.scheduler.tickOnce();
+
+      const kwargs = await h.store.runs.getKwargs((h.queue.enqueued[0] as QueuedRun).run_id);
+      expect(kwargs?.stream_subgraphs).toBe(true);
+    });
+
     it("carries the stateless cron's thread disposition onto the run", async () => {
       const h = await harness();
       await h.service.crons.create({ assistant_id: h.assistantId, schedule: "0 * * * *" });

@@ -142,9 +142,8 @@ export interface RunOutcome {
 
 /**
  * Resolve an assistant's graph for this run. Delegates to the shared resolver (which attaches the
- * checkpointer and long-term store); the run-specific part is exposing the authenticated caller to a
- * graph *factory*, so a factory that branches on the principal sees the same `langgraph_auth_user` a
- * node reads — sanitized identically, so a client can't spoof it via its own configurable.
+ * checkpointer and long-term store); factories receive sanitized application config and the
+ * authenticated caller, matching the configuration exposed during execution.
  */
 async function resolveGraph(
   deps: ResolvedDeps,
@@ -264,6 +263,8 @@ export async function executeRun(deps: ResolvedDeps, exec: RunExecution): Promis
   // settling and the callback going out would lose the answer — the one thing the outbox must not lose.
   // Last write wins; a run has one answer.
   let declaredReply: { reply: unknown } | undefined;
+  // LangGraph already propagates nested custom writes without `subgraphs`. Preserve last-write-wins
+  // across all namespaces so changing the client's streaming selection cannot change the answer.
   const captureDeclaredReply = (body: RunFrameBody): void => {
     const found = readDeclaredReply(body.data);
     if (found) declaredReply = found;
@@ -498,7 +499,7 @@ export async function executeRun(deps: ResolvedDeps, exec: RunExecution): Promis
           },
         ) as AsyncIterable<GraphStreamEvent>;
         for await (const event of eventStream) {
-          const body = streamEventToFrameBody(event, runId, graphModes);
+          const body = streamEventToFrameBody(event, runId, graphModes, options.subgraphs === true);
           if (!body) continue;
           seq += 1;
           captureDeclaredReply(body);
@@ -509,7 +510,7 @@ export async function executeRun(deps: ResolvedDeps, exec: RunExecution): Promis
         const stream = await activeGraph.stream(input, options);
         for await (const chunk of stream) {
           seq += 1;
-          const body = chunkToFrameBody(chunk);
+          const body = chunkToFrameBody(chunk, options.subgraphs === true);
           captureDeclaredReply(body);
           await deps.bus.publish(runId, toRunFrame(seq, body));
           if (deps.logRunActivity) logToolActivity(body.data);

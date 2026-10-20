@@ -52,6 +52,26 @@ describe("toGraphInput", () => {
 });
 
 describe("toGraphCallOptions", () => {
+  it("enables subgraph streaming only for a literal true", () => {
+    const options = (kwargs: Parameters<typeof toGraphCallOptions>[0]) =>
+      toGraphCallOptions(kwargs, "t1", new AbortController().signal);
+    expect(options({ stream_subgraphs: true }).subgraphs).toBe(true);
+    expect(options({ stream_subgraphs: false })).not.toHaveProperty("subgraphs");
+    expect(options({})).not.toHaveProperty("subgraphs");
+    const malformed = { stream_subgraphs: "false" } as unknown as Parameters<
+      typeof toGraphCallOptions
+    >[0];
+    expect(options(malformed)).not.toHaveProperty("subgraphs");
+  });
+
+  it("preserves application-owned assistant and graph configurable keys", () => {
+    const configurable = { assistant_id: "application-assistant", graph_id: "application-graph" };
+    expect(
+      toGraphCallOptions({ config: { configurable } }, "t1", new AbortController().signal)
+        .configurable,
+    ).toEqual({ ...configurable, thread_id: "t1" });
+    expect(toFactoryConfigurable({ config: { configurable } })).toEqual(configurable);
+  });
   it("threads thread_id through configurable and always wins over caller config", () => {
     const signal = new AbortController().signal;
     const options = toGraphCallOptions(

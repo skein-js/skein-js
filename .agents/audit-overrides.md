@@ -29,3 +29,11 @@ is an internal record.
 - **B3** — `create-skein` and `@skein-js/nx` are permanent convenience APIs whose underlying workflows users can already assemble from existing Skein primitives.
 
 **Reason (user's words):** Yeah, it's [ossible but not intuitive - we didnot intend to stop plugins like this, we intended features that belong downstream, this belongs upstream
+
+## 2026-10-20 — Deep Agents support (issue #50): subgraph streaming + server-owned run identity
+
+- **B8** — Widening the exported `RunFrame.event` from `StreamMode | "error"` to `` StreamMode | "error" | `${StreamMode}|${string}` `` is source-breaking for consumers that narrow `frame.event` exhaustively (additive for `RunEventBus` implementers); an additive `namespace?: string[]` field was available instead.
+
+**Reason (user's words):** matches the SDK's AsSubgraph type and the wire format; ignoring unknown events is the safer failure
+
+**Resolved in this revision:** The widening was removed. `RunFrame.event` keeps its prior union; optional `namespace` metadata is encoded at the SSE boundary. The B8 override is no longer needed.

@@ -281,6 +281,7 @@ export default withMermaid(
               link: "/recipes/decoupled-channel-delivery",
             },
             { text: "Memory", link: "/recipes/memory" },
+            { text: "Deep Agents", link: "/recipes/deep-agents" },
             { text: "Authenticating requests", link: "/recipes/authentication" },
             { text: "Production", link: "/recipes/production" },
           ],

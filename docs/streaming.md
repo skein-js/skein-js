@@ -59,6 +59,37 @@ data: <json payload>
   around 60s, and the SDK's `stream_idle_reconnect: "auto"` has nothing to distinguish the two either.
   Tune it with `toSseEvents(..., { heartbeatMs })`; `0` writes only real frames.
 
+## Subgraphs and subagents
+
+A graph that runs another graph — a compiled subgraph added as a node, or a graph invoked from a
+tool, which is how [Deep Agents](./recipes/deep-agents.md) runs a subagent — streams only its own
+frames by default. Set `stream_subgraphs: true` on the run (`streamSubgraphs: true` in the JS SDK) to
+stream the inner graphs' frames too. Each is named after the mode and the namespace it came from:
+
+```
+event: updates                                      # the run's own graph
+event: updates|tools:6d1f…                          # a subagent run from a tool call
+event: messages|tools:6d1f…|model_request:9a2c…     # that subagent's model tokens
+```
+
+These are LangGraph Platform's names; `@langchain/langgraph-sdk` splits on `|` to tell supervisor
+and subagent streams apart. Joining a run (`Last-Event-ID` included) replays them unchanged, and a
+background or cron run keeps the flag.
+
+Without the flag you are not blind to subgraphs: `messages` mode already carries their model tokens
+(each tuple's metadata holds `langgraph_checkpoint_ns`), and `events` mode carries every nested event.
+What the flag adds is their `updates`, `values` and `custom` frames, and names a client can route on.
+With it on, the run's own model tokens are namespaced too (`messages|model_request:…`), as upstream —
+the root graph's frames are the ones with no `|`.
+
+Inside Skein, `RunFrame.event` remains the bare mode and `RunFrame.namespace` carries the optional
+subgraph path. Root frames omit the namespace. Event buses preserve both fields; SSE serialization
+combines them into the upstream event name shown above. Existing switches over `RunFrame.event`
+continue to work.
+
+Declared replies keep their existing last-write-wins behavior, including nested custom writes that
+LangGraph propagates. The client's `stream_subgraphs` setting does not change which reply is delivered.
+
 ## Slow clients and backpressure
 
 A stream is only as fast as the client reading it, and skein paces itself accordingly. Every adapter's

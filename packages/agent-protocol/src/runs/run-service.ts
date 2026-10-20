@@ -43,6 +43,8 @@ export interface CreateRunInput {
   config?: Config;
   context?: unknown;
   stream_mode?: StreamMode | StreamMode[];
+  /** Also stream frames emitted inside subgraphs, carrying `RunFrame.namespace` (`mode|<namespace>` over SSE). */
+  stream_subgraphs?: boolean;
   metadata?: Metadata;
   multitask_strategy?: MultitaskStrategy;
   interrupt_before?: string[] | "*";
@@ -277,6 +279,8 @@ export function toKwargs(
   if (input.config !== undefined) kwargs.config = input.config;
   if (input.context !== undefined) kwargs.context = input.context;
   if (input.stream_mode !== undefined) kwargs.stream_mode = input.stream_mode;
+  // Only the non-default is stored, like `delete_thread_on_completion` above.
+  if (input.stream_subgraphs === true) kwargs.stream_subgraphs = true;
   if (input.interrupt_before !== undefined) kwargs.interrupt_before = input.interrupt_before;
   if (input.interrupt_after !== undefined) kwargs.interrupt_after = input.interrupt_after;
   if (input.webhook !== undefined) kwargs.webhook = input.webhook;
