@@ -15,7 +15,7 @@
   "devDependencies": {
     "@types/node": "^22.10.0",
     "electron": "^44.0.0",
-    "@electron/packager": "^19.0.0",
+    "@electron/packager": "^20.3.0",
     "@electron/rebuild": "^4.0.0"
   },
   "main": "dist/main.js"
