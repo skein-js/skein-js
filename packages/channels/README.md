@@ -21,6 +21,8 @@ lifecycle around the graph. For example:
 Part of **[skein-js](https://github.com/skein-js/skein-js)**. Entirely optional: a deployment that
 configures no channel cannot tell this package exists.
 
+📖 **Docs:** [Workflows & channels](https://skein-js.github.io/skein-js/channels)
+
 ## Why workflows need channels
 
 LangGraph can express and persist the business process, but a provider connection still needs
@@ -169,8 +171,8 @@ be unambiguous; collisions fail at boot before they can merge thread identities 
 
 ## See also
 
-- [docs/channels.md](../../docs/channels.md) — the workflows and channels guide
-- [docs/webhooks.md](../../docs/webhooks.md) — the durable
+- [docs/channels.md](https://skein-js.github.io/skein-js/channels) — the workflows and channels guide
+- [docs/webhooks.md](https://skein-js.github.io/skein-js/webhooks) — the durable
   delivery this rides on
-- [docs/human-in-the-loop.md](../../docs/human-in-the-loop.md)
+- [docs/human-in-the-loop.md](https://skein-js.github.io/skein-js/human-in-the-loop)
   — why a reply hours later has to resume rather than restart

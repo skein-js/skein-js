@@ -3,10 +3,12 @@
 > The **LangGraph.js binding** for [`@skein-js/agent-protocol`](../agent-protocol) — presents a
 > compiled graph as the engine's `AgentGraph`.
 
-Part of **[skein-js](../../README.md)** — the open-source alternative to LangGraph Platform for
+Part of **[skein-js](https://github.com/skein-js/skein-js)** — the open-source alternative to LangGraph Platform for
 TypeScript: a self-hosted [Agent Protocol](https://github.com/langchain-ai/agent-protocol) server for
 [LangGraph.js](https://github.com/langchain-ai/langgraphjs), and a drop-in replacement for the
 LangGraph CLI.
+
+📖 **Docs:** [Embedding graphs](https://skein-js.github.io/skein-js/embedding) · [Building a runner](https://skein-js.github.io/skein-js/building-a-runner)
 
 **Status:** 🚧 Pre-alpha — implemented.
 
@@ -74,7 +76,7 @@ await createExpressServer({ deps }).listen(2024);
 
 Everything here is a thin adapter over `@langchain/langgraph` — `Command`, `BaseStore`,
 `copyCheckpoint`, `MemorySaver`. Nothing is reimplemented; see
-[docs/reuse.md](../../docs/reuse.md).
+[docs/reuse.md](https://github.com/skein-js/skein-js/blob/main/docs/reuse.md).
 
 ## License
 

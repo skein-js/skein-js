@@ -1,7 +1,9 @@
 # @skein-js/bench
 
 Private performance benchmarks for skein-js. Boots a real server, drives real SSE clients against it,
-and reports what it costs — in particular what it **keeps**. See [docs/performance.md](../../docs/performance.md).
+and reports what it costs — in particular what it **keeps**. See [docs/performance.md](https://skein-js.github.io/skein-js/performance).
+
+📖 **Docs:** [Performance — measuring it yourself](https://skein-js.github.io/skein-js/performance#measuring-it-yourself)
 
 Not published, and **not part of `pnpm test`**: this package ships no `vitest.config.ts`, so the
 `@nx/vite` plugin infers no `test` target for it and `nx run-many -t test` skips it entirely.

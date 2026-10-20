@@ -4,7 +4,9 @@
 
 > Fastify adapter for skein-js — mount the [Agent Protocol](https://github.com/langchain-ai/agent-protocol) as a Fastify plugin.
 
-Part of **[skein-js](../../README.md)** — the open-source alternative to LangGraph Platform for TypeScript: a self-hosted Agent Protocol server for [LangGraph.js](https://github.com/langchain-ai/langgraphjs), and a drop-in replacement for the LangGraph CLI.
+Part of **[skein-js](https://github.com/skein-js/skein-js)** — the open-source alternative to LangGraph Platform for TypeScript: a self-hosted Agent Protocol server for [LangGraph.js](https://github.com/langchain-ai/langgraphjs), and a drop-in replacement for the LangGraph CLI.
+
+📖 **Docs:** [Fastify adapter](https://skein-js.github.io/skein-js/adapters#fastify)
 
 A thin transport shim over the framework-agnostic [`@skein-js/agent-protocol`](../agent-protocol)
 handler table — it adds no protocol logic, exactly like [`@skein-js/express`](../server-express).
@@ -62,7 +64,7 @@ await app.register(skeinInvokePlugin, { prefix: "/agent", deps });
 ```
 
 Send `Accept: text/event-stream` to stream the steps instead. See
-[docs/serving-a-single-graph.md](../../docs/serving-a-single-graph.md).
+[docs/serving-a-single-graph.md](https://skein-js.github.io/skein-js/serving-a-single-graph).
 
 ## Streaming
 
@@ -94,7 +96,7 @@ pre-serialized frames the engine produced, tearing the run's subscription down o
   `{ fastify: { logger: true } }`.
 - **`createFastifyLogger(log)`** — bridge a specific pino instance (a child logger, say).
   **`createConsoleLogger()`** (re-exported from [`@skein-js/server-kit`](../server-kit)) gives plain
-  non-pino output. See [errors-and-logging.md](../../docs/errors-and-logging.md#logging).
+  non-pino output. See [errors-and-logging.md](https://skein-js.github.io/skein-js/errors-and-logging#logging).
 - **`skeinRoutes`** — the transport-neutral route table, re-exported for composing your own routing.
 - Low-level mappers: `toProtocolRequest`, `sendProtocolResponse`, `sendErrorResponse`.
 
@@ -106,7 +108,7 @@ pre-serialized frames the engine produced, tearing the run's subscription down o
 ## Learn more
 
 - [`@skein-js/express`](../server-express) — the reference adapter
-- [Building your own adapter](../../docs/building-an-adapter.md) · [skein-js overview](../../docs/index.md)
+- [Building your own adapter](https://skein-js.github.io/skein-js/building-an-adapter) · [skein-js overview](https://skein-js.github.io/skein-js/)
 
 ## License
 

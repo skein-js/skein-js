@@ -2,6 +2,8 @@
 
 Embed LangGraph.js agents with durable SQLite resources, checkpoints and queued work on Node 22/24.
 
+📖 **Docs:** [Local deployment](https://skein-js.github.io/skein-js/local-deployment#embed-agents)
+
 ```sh
 npm install @skein-js/local @langchain/langgraph @langchain/langgraph-checkpoint-sqlite@~1.0.4
 ```
@@ -39,5 +41,5 @@ in memory; reopening restores records and checkpoints, rather than a token trans
 attempts are recorded as failures and are not replayed automatically. Models and tools remain part
 of the application's graphs.
 
-See [local deployment](../../docs/local-deployment.md), [CLI](../../examples/local-cli/README.md),
+See [local deployment](https://skein-js.github.io/skein-js/local-deployment), [CLI](../../examples/local-cli/README.md),
 [Electron](../../examples/desktop-electron/README.md) and [Tauri](../../examples/desktop-tauri/README.md).
