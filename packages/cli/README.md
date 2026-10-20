@@ -76,8 +76,9 @@ skein start -c .skein/build/langgraph.json
 ```
 
 Bare `skein start` works from inside the artifact directory, where `langgraph.json` and `schemas.json`
-sit together. Artifact selection stays explicit; an existing `.skein/build` is suggested in the
-missing-schema error rather than selected automatically.
+sit together. When the missing-schema error suggests an existing `.skein/build`, use its `-c`
+argument in your original start command, keeping options such as `--store`, `--queue`, and
+`--sqlite-path`. Artifact selection stays explicit.
 
 `--npmrc <path>` (on `build`/`up`) mounts an `.npmrc` as a BuildKit secret so the image's dependency
 install can authenticate against a **private/authenticated npm registry** without baking a token into
