@@ -9,6 +9,14 @@ provides an Agent Protocol API, persistent conversations, streaming, background 
 Run it as a self-hosted server or embed it in desktop and terminal applications. It works with
 LangGraph.js and is an alternative to LangGraph Platform (now LangSmith Deployment).
 
+**What you can run:**
+
+- **LangGraph.js graphs** — any compiled graph or graph factory, from `createAgent` to a hand-built
+  `StateGraph`, named in an unchanged `langgraph.json`. Fully supported.
+- **LangChain Deep Agents** _(experimental)_ — a `createDeepAgent()` export with its planning, files,
+  per-user memory, approvals, and subagents streamed live or run in the background. See the
+  [Deep Agents recipe](./docs/recipes/deep-agents.md).
+
 Self-host your [LangGraph.js](https://docs.langchain.com/oss/javascript/langgraph/overview) agents with
 threads, streaming, long-term memory, human-in-the-loop, background work, and scheduling already
 built in. Run them on **your infrastructure** with Postgres and Redis — Cloud Run, Railway, Fly.io,
@@ -16,8 +24,9 @@ Render, AWS, Kubernetes, or a plain VPS — or on **your device** with SQLite. Y
 **no license key, no per-run bill**.
 
 **Works with:**
-[LangGraph.js](https://docs.langchain.com/oss/javascript/langgraph/overview) · LangGraph SDK ·
-[Agent Chat UI](https://github.com/langchain-ai/agent-chat-ui) · LangGraph Studio
+[LangGraph.js](https://docs.langchain.com/oss/javascript/langgraph/overview) ·
+[Deep Agents](https://docs.langchain.com/oss/javascript/deepagents/overview) _(experimental)_ ·
+LangGraph SDK · [Agent Chat UI](https://github.com/langchain-ai/agent-chat-ui) · LangGraph Studio
 
 **Fits your stack:** Express · Fastify · NestJS · Next.js · Bun · Deno · React · Vue · Svelte · Angular
 

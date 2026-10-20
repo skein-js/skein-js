@@ -4,12 +4,12 @@ layout: home
 # valuable string on the most-linked page, wasted. Containing "skein-js" also trips the `selfTitled`
 # branch in transformPageData, which drops the "| skein-js" suffix rather than repeating it.
 title: skein-js — LangGraph.js runtime for servers and local apps
-description: Self-host LangGraph.js agents in TypeScript. Choose Postgres/Redis servers or SQLite desktop and CLI apps with the same Agent Protocol.
+description: Self-host LangGraph.js agents and, experimentally, LangChain Deep Agents in TypeScript. Choose Postgres/Redis servers or SQLite desktop and CLI apps with the same Agent Protocol.
 
 hero:
   name: skein-js
   text: The self-hosted runtime for LangGraph.js agents
-  tagline: Build with LangGraph.js. Run on your servers or devices with the same Agent Protocol — your models, your database, your data.
+  tagline: Build with LangGraph.js — or, experimentally, LangChain Deep Agents. Run on your servers or devices with the same Agent Protocol — your models, your database, your data.
   # Each action goes somewhere distinct. A primary CTA that scrolls 200px down the page it is already
   # on is not a call to action — the 60-second command is in the first section regardless.
   actions:
@@ -68,16 +68,30 @@ features:
     details: Connect WhatsApp, email, Slack, GitHub or any webhook as an authenticated source or durable destination for a workflow.
     link: /channels
     linkText: Sources & destinations
+  - icon: 🧪
+    title: Deep Agents (experimental)
+    details: Serve a LangChain createDeepAgent() graph unchanged — planning, files, per-user memory, approvals, and subagents streamed live or run in the background.
+    link: /recipes/deep-agents
+    linkText: Deep Agents recipe
 ---
 
 **Works with:**
-[LangGraph.js](https://docs.langchain.com/oss/javascript/langgraph/overview) · LangGraph SDK ·
-[Agent Chat UI](https://github.com/langchain-ai/agent-chat-ui) · LangGraph Studio
+[LangGraph.js](https://docs.langchain.com/oss/javascript/langgraph/overview) ·
+[Deep Agents](https://docs.langchain.com/oss/javascript/deepagents/overview) _(experimental)_ ·
+LangGraph SDK · [Agent Chat UI](https://github.com/langchain-ai/agent-chat-ui) · LangGraph Studio
 
 **The relationship:** LangGraph.js defines and executes each agent graph. skein-js hosts those graphs
 and gives them an API, persistent conversations, streaming, background work, and a console. It is an
 open-source alternative to LangGraph Platform (now LangSmith Deployment), while continuing to use
 LangGraph.js for the agent itself.
+
+**What you can run:**
+
+- **LangGraph.js graphs** — any compiled graph or graph factory, from `createAgent` to a hand-built
+  `StateGraph`, named in an unchanged `langgraph.json`. Fully supported.
+- **LangChain Deep Agents** _(experimental)_ — a `createDeepAgent()` export runs as it is: planning,
+  files, per-user memory, approvals, and subagents streamed live or run in the background. It is
+  tested end to end but may change in a minor release; see the [Deep Agents recipe](./recipes/deep-agents.md).
 
 Choose a self-hosted server for shared access, or embed the same engine in a desktop app, CLI, or
 separate daemon with SQLite. Local deployment is an option alongside the server paths; it uses
