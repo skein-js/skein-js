@@ -1,7 +1,7 @@
+import type { ScaffoldOptions } from "@skein-js/scaffold";
 import { describe, expect, it } from "vitest";
 
 import { describeNextSteps } from "./next-steps.js";
-import type { ScaffoldOptions } from "./scaffold-options.js";
 
 function optionsFor(overrides: Partial<ScaffoldOptions> = {}): ScaffoldOptions {
   return {
@@ -10,6 +10,7 @@ function optionsFor(overrides: Partial<ScaffoldOptions> = {}): ScaffoldOptions {
     provider: "none",
     packageManager: "pnpm",
     devStorage: "memory",
+    linting: true,
     skeinVersionRange: "^0.14.0",
     ...overrides,
   };

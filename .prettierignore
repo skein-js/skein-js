@@ -16,4 +16,4 @@ tools/ai-migrations/
 # project, not source files of this workspace: `{{name}}` placeholders and `{{#if}}` blocks are not
 # valid in any language Prettier parses. The `.tmpl` suffix already keeps them out of the eslint,
 # tsc and vitest globs; this keeps them out of `nx format`.
-packages/create-skein-js/templates/
+packages/scaffold/templates/

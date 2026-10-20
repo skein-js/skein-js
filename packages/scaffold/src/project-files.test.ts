@@ -23,6 +23,7 @@ function optionsFor(provider: ScaffoldOptions["provider"]): ScaffoldOptions {
     provider,
     packageManager: "pnpm",
     devStorage: "memory",
+    linting: true,
     skeinVersionRange: "^0.14.0",
   };
 }
@@ -195,6 +196,7 @@ describe.each(everyProvider)("a project scaffolded with --provider %s", (provide
   it("emits files Prettier would not reformat", async () => {
     const parsers: Record<string, string> = {
       ".ts": "typescript",
+      ".mjs": "babel",
       ".json": "json",
       ".md": "markdown",
       ".yaml": "yaml",

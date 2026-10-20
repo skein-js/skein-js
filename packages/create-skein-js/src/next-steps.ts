@@ -3,10 +3,11 @@
 // Pure — it returns lines and the caller prints them — so what a user is told at the end of a
 // scaffold is a plain unit test rather than something only observable by running the binary.
 
+import { PROVIDER_DETAILS } from "@skein-js/scaffold";
+import type { ScaffoldOptions } from "@skein-js/scaffold";
+
 import { bold, cyan, dim, yellow } from "./colors.js";
-import { PROVIDER_DETAILS } from "./dependency-versions.js";
 import type { GitOutcome } from "./git.js";
-import type { ScaffoldOptions } from "./scaffold-options.js";
 
 /** What actually happened during the scaffold, which decides what still needs doing. */
 export interface ScaffoldOutcome {

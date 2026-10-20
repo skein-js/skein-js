@@ -62,7 +62,8 @@
     "@skein-js/fetch": "workspace:*",
     "@skein-js/runtime": "workspace:*",
     "@skein-js/server-kit": "workspace:*",
-    "commander": "~13.1.0"
+    "commander": "~13.1.0",
+    "express": "^5.2.1"
   },
   "optionalDependencies": {
     "vite": "^8.1.0"

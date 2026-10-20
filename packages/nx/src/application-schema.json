@@ -1,0 +1,34 @@
+{
+  "$schema": "https://json-schema.org/schema",
+  "cli": "nx",
+  "title": "Skein application",
+  "type": "object",
+  "properties": {
+    "directory": {
+      "type": "string",
+      "description": "Project directory relative to the workspace root.",
+      "$default": {
+        "$source": "argv",
+        "index": 0
+      },
+      "x-prompt": "Project directory"
+    },
+    "provider": {
+      "type": "string",
+      "enum": ["none", "google", "anthropic", "openai"],
+      "default": "none"
+    },
+    "storage": {
+      "type": "string",
+      "enum": ["memory", "postgres", "sqlite"],
+      "default": "memory"
+    },
+    "linting": {
+      "type": "boolean",
+      "default": true,
+      "description": "Set up ESLint and Prettier, inheriting existing workspace configuration."
+    }
+  },
+  "required": ["directory"],
+  "additionalProperties": false
+}

@@ -15,14 +15,7 @@ import path from "node:path";
 import { createInterface } from "node:readline/promises";
 
 import { Command, InvalidArgumentError } from "@commander-js/extra-typings";
-
-import { bold, dim, red } from "./colors.js";
-import { writeFilesToDisk } from "./file-tree-writer.js";
-import { initializeGitRepository, wouldNestInsideGitWorkTree } from "./git.js";
-import { describeNextSteps } from "./next-steps.js";
-import { resolvePackageManager, runPackageManagerInstall } from "./package-manager.js";
-import { buildProjectFiles } from "./project-files.js";
-import { canPrompt, promptChoice, promptConfirm, promptText } from "./prompt.js";
+import { buildProjectFiles, findWorkspace, inspectWorkspace } from "@skein-js/scaffold";
 import {
   DEV_STORAGES,
   isModelProvider,
@@ -32,7 +25,15 @@ import {
   type ModelProvider,
   type PackageManagerName,
   type ScaffoldOptions,
-} from "./scaffold-options.js";
+} from "@skein-js/scaffold";
+
+import { bold, dim, red } from "./colors.js";
+import { writeFilesToDisk } from "./file-tree-writer.js";
+import { initializeGitRepository, wouldNestInsideGitWorkTree } from "./git.js";
+import { describeNextSteps } from "./next-steps.js";
+import { resolvePackageManager, runPackageManagerInstall } from "./package-manager.js";
+import { canPrompt, promptChoice, promptConfirm, promptText } from "./prompt.js";
+import { resolveLinting } from "./resolve-linting.js";
 import { resolveSkeinVersionRange, scaffolderVersion } from "./skein-version.js";
 import { assertTargetDirectoryUsable } from "./target-directory.js";
 
@@ -87,6 +88,9 @@ const program = new Command()
   )
   .option("--storage <driver>", "Storage: memory | postgres | sqlite", parseStorage)
   .option("--pm <name>", "Package manager: npm | pnpm | yarn | bun", parsePackageManager)
+  .option("--linting", "Include ESLint and Prettier (default)")
+  .option("--no-linting", "Omit ESLint and Prettier")
+  .option("--no-workspace-update", "Leave workspace registration manual")
   .option("--no-install", "Skip installing dependencies")
   .option("--no-git", "Skip initializing a git repository")
   .option("-y, --yes", "Accept every default; never prompt", false)
@@ -117,7 +121,21 @@ const program = new Command()
           : "none");
 
       const targetDirectory = path.resolve(process.cwd(), projectName);
+      const workspace = findWorkspace(targetDirectory);
+      if (workspace?.read("nx.json") !== undefined) {
+        throw new Error(
+          "This is an Nx workspace. Run nx g @skein-js/nx:application --directory=" +
+            JSON.stringify(workspace.target) +
+            " (install @skein-js/nx first).",
+        );
+      }
       assertTargetDirectoryUsable(targetDirectory, { force: options.force });
+      const linting = await resolveLinting({
+        explicit:
+          program.getOptionValueSource("linting") === "cli" ? options.linting !== false : undefined,
+        interactive,
+        ask,
+      });
 
       const devStorage =
         options.storage ??
@@ -129,6 +147,7 @@ const program = new Command()
       // "assume yes" rather than "ask". Installing takes time, network and a `node_modules`, and git
       // writes a commit — neither is something to do to someone's disk without offering the choice.
       const install =
+        !workspace &&
         options.install &&
         (!interactive || (await promptConfirm(ask, "Install dependencies?", true)));
 
@@ -154,19 +173,56 @@ const program = new Command()
         projectName: resolvedName,
         packageName,
         provider,
+        linting,
         packageManager: options.pm ?? resolvePackageManager(process.env["npm_config_user_agent"]),
         devStorage,
         skeinVersionRange: resolveSkeinVersionRange(),
       };
 
-      writeFilesToDisk(targetDirectory, buildProjectFiles(scaffoldOptions));
+      const workspacePlan = workspace ? inspectWorkspace(workspace, scaffoldOptions) : undefined;
+      if (
+        workspacePlan?.packageManager &&
+        options.pm &&
+        workspacePlan.packageManager !== options.pm
+      )
+        throw new Error(
+          "--pm conflicts with workspace package manager " + workspacePlan.packageManager,
+        );
+      const updateWorkspace =
+        workspacePlan?.registration &&
+        options.workspaceUpdate &&
+        (!interactive ||
+          (await promptConfirm(ask, "Register the project in this workspace?", true)));
+      const resolvedOptions: ScaffoldOptions = {
+        ...scaffoldOptions,
+        ...workspacePlan?.options,
+        packageManager: workspacePlan?.packageManager ?? scaffoldOptions.packageManager,
+      };
+      const files = buildProjectFiles(resolvedOptions);
+      writeFilesToDisk(targetDirectory, files);
+      if (workspace && workspacePlan) {
+        if (updateWorkspace && workspacePlan.registration)
+          writeFilesToDisk(workspace.root, [workspacePlan.registration]);
+        for (const notice of workspacePlan.notices) process.stdout.write(notice + "\n");
+        process.stdout.write(
+          "Workspace detected; installation is manual. Run " +
+            resolvedOptions.packageManager +
+            " install from " +
+            workspace.root +
+            ".\n",
+        );
+        if (!workspacePlan.registered && !updateWorkspace)
+          process.stdout.write(
+            "Add " + workspace.target + " to the workspace package patterns before installing.\n",
+          );
+      }
 
       // Closed once every question has been asked, and before the slow work starts, so the install's
       // streamed output is not competing with an open readline.
       readline?.close();
 
       const installed =
-        install && runPackageManagerInstall(scaffoldOptions.packageManager, targetDirectory);
+        install && runPackageManagerInstall(resolvedOptions.packageManager, targetDirectory);
       if (install && !installed) {
         process.stdout.write(
           `\n${red("Install failed.")} ${dim("Your project is written — run it yourself below.")}\n`,
@@ -183,7 +239,7 @@ const program = new Command()
         ? initializeGitRepository(targetDirectory, { allowNested: interactive && alreadyInRepo })
         : undefined;
 
-      const lines = describeNextSteps(scaffoldOptions, {
+      const lines = describeNextSteps(resolvedOptions, {
         relativeDirectory: path.relative(process.cwd(), targetDirectory) || ".",
         installed,
         ...(gitOutcome ? { git: gitOutcome } : {}),

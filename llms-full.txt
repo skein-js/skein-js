@@ -75,6 +75,8 @@ That's it — an agent server on <http://localhost:2024>, with the console at
 <http://localhost:2024/console>. No API key, no database, no Docker: the graph it scaffolds runs on
 nothing but Node. Add a model when you want one (`--provider anthropic|openai|google`).
 
+Scaffolding enables ESLint and Prettier by default and recommends Node 24 (engines: Node 22.12+ or 24.x). In Nx 23.2.1 through 23.x, install `@skein-js/nx` and use `nx g @skein-js/nx:application --directory=apps/agent`. See [scaffolding](docs/scaffolding.md) for workspaces, inheritance and opt-outs.
+
 [**Your first agent**](./docs/your-first-agent.md) walks from here to deployed and teaches the
 LangGraph you need along the way. [Scaffolding reference](./docs/scaffolding.md) covers every flag.
 Using an AI coding agent? [Install the skein-js agent skills](./docs/agent-skills.md) for server or
@@ -2258,6 +2260,8 @@ create-skein-js [directory]
   -m, --provider <name>   none | google | anthropic | openai   (default: prompted, else none)
       --storage <name>    memory | postgres | sqlite          (default: prompted, else memory)
       --pm <name>         npm | pnpm | yarn | bun              (default: detected)
+      --linting / --no-linting  ESLint and Prettier (default: yes)
+      --no-workspace-update Leave workspace registration manual
       --no-install        Skip installing dependencies                (else: prompted, default yes)
       --no-git            Skip initializing a git repository          (else: prompted)
   -y, --yes               Accept every default; never prompt
@@ -2307,62 +2311,82 @@ Until the key is set, `agent` fails to load naming the variable it wants — a
   `create-skein-js@x.y.z` pins `skein-js@^x.y.z` — the scaffolder and the runtime it scaffolds are
   always the same release.
 
+## Tooling and Node versions
+
+ESLint and Prettier default to enabled in both entrypoints. The CLI asks **Y/n** interactively;
+`--linting` and `--no-linting` bypass that prompt. `--yes`, CI and non-TTY runs enable tooling.
+The Nx option `linting` defaults to `true`; use `--linting=false` to opt out.
+
+Projects provide `lint`, `format`, and `format:check`. Missing tooling uses recommended JavaScript
+and TypeScript ESLint rules and Prettier with `printWidth: 100`. Existing root ESLint and Prettier
+configurations are inherited independently. Generated output, dependencies, runtime state and package-manager lockfiles are ignored.
+
+The shared policy recommends **Node 24** with engines `^22.12.0 || ^24.0.0`. It derives `.nvmrc`
+and `langgraph.json.node_version` from the same selection. Compatible numeric workspace pins in
+`.nvmrc` or `.node-version` are honored. Unsupported pins fail before writing; unresolved aliases
+such as `lts/*` produce an explanation and fall back to Node 24. Review the policy when Node 26
+enters LTS in October 2026, after native SQLite and desktop CI gates pass.
+
 ## Nx and other monorepos
 
-Scaffold into whatever directory you want — the generated project is self-contained, so it works
-inside a workspace as-is:
+For Nx **23.2.1 through 23.x**, install the generator at the root:
+
+```bash
+pnpm add -D @skein-js/nx
+pnpm exec nx g @skein-js/nx:application --directory=apps/my-agent --storage=sqlite
+pnpm install
+pnpm exec nx dev apps-my-agent
+```
+
+Options are `directory` (required), `provider`, `storage`, and `linting`.
+The generator supports integrated workspaces (root dependencies) and package workspaces (application
+dependencies). It extends the TypeScript base, preserves root lifecycle scripts and leaves installation
+manual. Use `--dry-run` to preview without writing. This replaces issue #19's earlier decision to
+document manual wiring only; existing projects can retain their targets.
+
+Targets use existing `nx:run-commands`. `start` depends on `build`, live targets are uncached,
+and only `.skein/build` is a build output. SQLite state and WAL/SHM files stay outside cached
+inputs and outputs. Retain explicit artifact selection and storage flags, for example
+`skein start -c .skein/build/langgraph.json --store sqlite --queue sqlite`.
+When a diagnostic suggests a config, keep the original command's other options, including custom
+`--sqlite-path` settings.
+
+For npm, pnpm, Yarn, Bun, Turborepo or Lerna workspaces:
 
 ```bash
 npm create skein-js@latest apps/my-agent
 ```
 
-There is deliberately **no skein Nx plugin**. A generator collection would be permanent public API
-tracking Nx's release cadence, and it would buy you one file you can write once and own yourself.
-Here is that file — `apps/my-agent/project.json`:
+The CLI retains that directory, detects the workspace and skips installation. Missing registration
+is prompted with a yes default; `--yes` accepts and `--no-workspace-update` leaves manual
+instructions. Existing globs, exclusions, YAML comments, versions and unrelated settings are preserved.
+Excluded paths, invalid metadata, duplicate names and package-manager conflicts fail before writing.
 
-```json
-{
-  "name": "my-agent",
-  "projectType": "application",
-  "targets": {
-    "dev": {
-      "executor": "nx:run-commands",
-      "cache": false,
-      "options": { "command": "skein dev --port 2024", "cwd": "apps/my-agent" }
-    },
-    "build": {
-      "executor": "nx:run-commands",
-      "options": { "command": "skein build --artifact-only", "cwd": "apps/my-agent" }
-    },
-    "start": {
-      "executor": "nx:run-commands",
-      "cache": false,
-      "options": { "command": "skein start -c .skein/build/langgraph.json", "cwd": "apps/my-agent" }
-    },
-    "typecheck": {
-      "executor": "nx:run-commands",
-      "options": { "command": "tsc --noEmit", "cwd": "apps/my-agent" }
-    }
-  }
-}
+Workspace `packageManager` metadata takes precedence over lockfile detection. Compatible root or
+pnpm catalog ranges are reused, then unanimous compatible sibling ranges. Remaining dependencies use
+tested defaults and report differences. Integrated Nx workspaces reject root dependency conflicts
+without changing existing versions. In Nx workspaces the CLI directs you to the generator before writing.
+
+## Scaffold validation
+
+The internal `scripts/scaffold-cases.json` catalog drives 96 generation combinations and 30 installed
+consumers: every package-manager/storage and provider/storage pair, opt-outs, independent tooling
+inheritance, and both Nx layouts on Node 22.12 and 24.
+
+CI builds and packs the commit once and distributes tarballs. Consumers install outside the checkout,
+verify transitive Skein artifact hashes, run typechecking, tests, applicable lint/format checks and
+build, then send echo requests to development and artifact servers. Dummy keys allow provider graph
+building without model calls. SQLite always executes on Node. Required durable cases fail without Docker.
+The matrix pins npm 11.12.1 (including its tarball-override resolver fixes) and uses Yarn's node-modules linker. These checks also gate npm publication. Registry smoke tests and SQLite/desktop platform gates remain.
+
+```bash
+pnpm exec nx run test-support:pack-scaffolds
+pnpm exec nx run test-support:scaffold-consumers --case=standalone-npm-sqlite
 ```
 
-`dev` and `start` are marked `"cache": false` because a long-running server has no meaningful cached
-result. Explicit targets work on every Nx version, with no plugin to install and nothing to migrate.
-
-To share the workspace's TypeScript settings, replace the generated `tsconfig.json` with one that
-extends your base:
-
-```json
-{
-  "extends": "../../tsconfig.base.json",
-  "compilerOptions": { "noEmit": true, "types": ["node"] },
-  "include": ["src/**/*.ts"]
-}
-```
-
-The same approach works for Turborepo, pnpm workspaces, or plain npm workspaces — the project is
-just a package with a `langgraph.json` in it.
+The new `@skein-js/nx` package follows the fixed release group. Its tarball includes generator
+metadata, schema and declarations without a private runtime dependency. First publication uses the
+release workflow's existing bootstrap credentials; configure npm trusted publishing afterward.
 
 ## If you don't want the scaffolder
 

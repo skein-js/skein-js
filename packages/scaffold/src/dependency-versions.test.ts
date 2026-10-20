@@ -14,7 +14,6 @@ import { fileURLToPath } from "node:url";
 import { describe, expect, it } from "vitest";
 
 import { CORE_VERSIONS, PROVIDER_DETAILS, TOOLCHAIN_VERSIONS } from "./dependency-versions.js";
-import { resolveSkeinVersionRange } from "./skein-version.js";
 
 const packageRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
 const workspaceRoot = path.resolve(packageRoot, "../..");
@@ -49,12 +48,5 @@ describe("the versions a scaffolded project pins", () => {
     const root = readManifest("package.json");
     expect(TOOLCHAIN_VERSIONS["@types/node"]).toBe(root.devDependencies?.["@types/node"]);
     expect(TOOLCHAIN_VERSIONS["typescript"]).toBe(root.devDependencies?.["typescript"]);
-  });
-
-  // `nx release` versions packages/* as a fixed group, so the scaffolder's own version IS the
-  // runtime version it should pin. That identity is what lets us skip a registry lookup entirely.
-  it("derives the skein range from this package's own version", () => {
-    const own = readManifest("packages/create-skein-js/package.json");
-    expect(resolveSkeinVersionRange()).toBe(`^${own.version}`);
   });
 });

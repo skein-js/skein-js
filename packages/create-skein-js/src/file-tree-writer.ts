@@ -5,7 +5,7 @@
 import { existsSync, mkdirSync, writeFileSync } from "node:fs";
 import path from "node:path";
 
-import type { GeneratedFile } from "./scaffold-options.js";
+import type { GeneratedFile } from "@skein-js/scaffold";
 
 /** Reject any path that would escape the project root before we hand it to the filesystem. */
 function assertContainedPath(filePath: string): void {

@@ -16,6 +16,7 @@ import type { ModelProvider } from "./scaffold-options.js";
 export const CORE_VERSIONS = {
   "@langchain/core": "^1.2.9",
   "@langchain/langgraph": "^1.4.0",
+  "@langchain/langgraph-checkpoint": "^1.1.3",
   "@langchain/langgraph-sdk": "^1.9.0",
   // `createAgent` lives here, not in @langchain/langgraph: LangGraph v1 deprecated the
   // `createReactAgent` prebuilt and moved it to the `langchain` package.
@@ -28,6 +29,10 @@ export const TOOLCHAIN_VERSIONS = {
   "@types/node": "^22.10.0",
   typescript: "^5.7.2",
   vitest: "^4.1.9",
+  eslint: "^9.17.0",
+  "@eslint/js": "^9.17.0",
+  "typescript-eslint": "^8.18.1",
+  prettier: "^3.9.6",
 } as const;
 
 /** Everything that varies by model provider: the package, the class, and the env it reads. */
@@ -56,7 +61,9 @@ export interface ProviderDetails {
 export const PROVIDER_DETAILS: Record<Exclude<ModelProvider, "none">, ProviderDetails> = {
   google: {
     packageName: "@langchain/google-genai",
-    versionRange: "^2.2.0",
+    // 2.3.4 requires the unpublished core 1.2.19 (verified 2026-10-20).
+    // Stay on the example-tested minor until the installed matrix can validate the next one.
+    versionRange: "~2.2.0",
     modelClass: "ChatGoogleGenerativeAI",
     apiKeyEnvVar: "GOOGLE_API_KEY",
     consoleUrl: "https://aistudio.google.com/apikey",

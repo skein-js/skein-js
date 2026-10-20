@@ -2,7 +2,7 @@
 
 A LangGraph.js agent project served through Skein's existing Agent Protocol.
 
-Run `<%= runDev %>` on Node 22 or 24. The API is at http://localhost:2024 and the console at
+Run `<%= runDev %>` using the Node version in `.nvmrc`. The API is at http://localhost:2024 and the console at
 http://localhost:2024/console. SQLite persists resources, queued work and checkpoints in
 `.skein/state.sqlite`; select another location with `--sqlite-path /absolute/path/state.sqlite`.
 
@@ -29,3 +29,22 @@ The database stays outside `.skein/build`. Any Agent Protocol client, including
 
 See [local deployment](https://skein-js.github.io/skein-js/local-deployment) for embedding and
 packaging with Electron or Tauri.
+
+## Checks
+
+Use the Node version in `.nvmrc`.
+
+```sh
+<%= runTypecheck %>
+<%= runTest %>
+```
+<%_ if (linting) { _%>
+
+ESLint and Prettier are enabled. Existing workspace configurations are inherited when present.
+
+```sh
+<%= runLint %>
+<%= runFormat %>
+<%= runFormatCheck %>
+```
+<%_ } _%>

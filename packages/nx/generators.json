@@ -1,0 +1,9 @@
+{
+  "generators": {
+    "application": {
+      "factory": "./dist/index.js#generateApplication",
+      "schema": "./dist/application-schema.json",
+      "description": "Generate a skein-js LangGraph application."
+    }
+  }
+}

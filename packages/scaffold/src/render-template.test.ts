@@ -32,6 +32,7 @@ describe("renderTemplate", () => {
 
   describe("conditionals", () => {
     const withProvider = {
+      nodeMajor: "24",
       hasProvider: true,
       providerConsoleUrl: "https://x",
       apiKeyEnvVar: "K",
