@@ -149,6 +149,61 @@ the **real `@langchain/langgraph-sdk` client** as the wire-format oracle: if
 protocol is right. The [`examples/react-usestream`](https://github.com/skein-js/skein-js/tree/main/examples/react-usestream) app is the
 front-end signal for the SSE/`useStream` path.
 
+## Scaffold consumers
+
+The shared [`scripts/scaffold-cases.json`](https://github.com/skein-js/skein-js/blob/main/scripts/scaffold-cases.json)
+catalog drives the installed consumer matrix and coverage assertions in `scaffold:test`. The fast
+suite renders all **96** combinations of four providers, three storage choices, four package
+managers and tooling enabled/disabled. Separate tests cover prompts, flags, workspace registration,
+exclusions, invalid root metadata, dependency reuse, and Node pins, including rejection before writes.
+
+The **30 installed consumers** are curated rather than the full cross-product:
+
+| Group               | Cases | Coverage                                                                     |
+| ------------------- | ----: | ---------------------------------------------------------------------------- |
+| Standalone defaults |    12 | Every manager × storage and provider × storage pair on Node 24               |
+| CLI opt-outs        |     4 | Every manager and provider, with all storage choices represented             |
+| Generic workspaces  |     4 | One per manager; neither tool, ESLint only, Prettier only, or both inherited |
+| Nx defaults         |     8 | Both layouts × four inheritance profiles, on Node 22.12.0 and 24             |
+| Nx opt-outs         |     2 | Both layouts, with absent or existing root tooling                           |
+
+The Nx defaults cover every layout × Node, layout × inheritance, and Node × inheritance pair.
+Each layout includes every provider and storage choice individually. Assertions compare the
+catalog dimensions with the shared option enums and generator schema.
+
+CI builds and packs the commit once, then distributes tarballs to every consumer job. Each installs
+outside the checkout, checks transitive Skein artifact provenance, runs typecheck/tests and applicable
+lint/format checks, builds, and sends echo requests to development and artifact servers. Provider
+builds use dummy keys without model calls. SQLite executes on Node even when Bun installs packages.
+Dry-run immutability, generator discovery, declarations and private-runtime-dependency checks are included.
+Required Postgres/Redis cases fail if Docker is unavailable; the matrix runs every shard and retains
+logs. The reusable workflow also gates release publication.
+
+Local consumer runs need the Node version specified by the selected row, the selected manager, and
+Docker for memory/Postgres projects. CI uses npm 11.12.1, pnpm 9.15.0 and Yarn 4.9.2 with the
+node-modules linker; Bun comes from `setup-bun`. Keep manager-specific overrides/resolutions aligned
+with these versions. In particular, pnpm 9 reads `pnpm.overrides` from `package.json`; newer pnpm
+configuration layouts are not a reason to move the pinned consumer's settings.
+
+For a Node 24 npm/SQLite consumer, run:
+
+```bash
+pnpm exec nx run test-support:pack-scaffolds
+pnpm exec nx run test-support:prepare-scaffold-managers --directory=/tmp/skein-scaffold-tools
+SKEIN_CONSUMER_NPM_CLI=/tmp/skein-scaffold-tools/node_modules/npm/bin/npm-cli.js \
+  pnpm exec nx run test-support:scaffold-consumers --case=standalone-npm-sqlite
+```
+
+The pinned npm CLI is needed for the tarball-override resolver used by these fixtures. Normal
+workspace installs use the repository's frozen lockfile; fresh consumer fixtures intentionally create
+or update their own lockfiles after generation.
+
+The current inheritance fixtures use installed root tools and default formatting. They do not yet
+cover config-only roots, non-default inherited formatting in CLI output, workspace-library cache
+invalidation, or scaffolding directly onto a workspace root. Those are documented
+[current limitations](./scaffolding.md#current-workspace-limitations), with regression coverage to add
+when their code fixes land. Registry smoke tests and the separate SQLite/desktop platform gates remain.
+
 ## Testing memory and performance work
 
 Memory fixes are easy to "prove" and hard to test. The rule here is: **never assert on

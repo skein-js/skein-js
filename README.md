@@ -66,7 +66,10 @@ That's it — an agent server on <http://localhost:2024>, with the console at
 <http://localhost:2024/console>. No API key, no database, no Docker: the graph it scaffolds runs on
 nothing but Node. Add a model when you want one (`--provider anthropic|openai|google`).
 
-Scaffolding enables ESLint and Prettier by default and recommends Node 24 (engines: Node 22.12+ or 24.x). In Nx 23.2.1 through 23.x, install `@skein-js/nx` and use `nx g @skein-js/nx:application --directory=apps/agent`. See [scaffolding](docs/scaffolding.md) for workspaces, inheritance and opt-outs.
+Generated projects enable ESLint and Prettier by default and recommend Node 24 (engines:
+`^22.12.0 || ^24.0.0`). In Nx 23.2.1 through 23.x, install `@skein-js/nx` at the workspace root
+and use `nx g @skein-js/nx:application --directory=apps/agent`. See [scaffolding](docs/scaffolding.md)
+for workspace setup, inheritance, opt-outs and current limitations.
 
 [**Your first agent**](./docs/your-first-agent.md) walks from here to deployed and teaches the
 LangGraph you need along the way. [Scaffolding reference](./docs/scaffolding.md) covers every flag.

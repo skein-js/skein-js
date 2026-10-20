@@ -7,8 +7,9 @@ If you already have a LangGraph.js graph or a `langgraph.json`, you want
 [getting-started.md](./getting-started.md) instead: there is nothing to scaffold, and adopting skein
 is a one-line change.
 
-**Prerequisites:** Node ≥ 20 and a package manager. That's all — nothing in this guide needs an API
-key until you decide you want one, and nothing needs Docker until the last section.
+**Prerequisites:** Node 24 is recommended, with Node 22.12+ within 22.x also supported, and a package
+manager. Nothing in this guide needs an API key until you choose a model, and nothing needs Docker
+until deployment. For a workspace, start with the [monorepo guidance](./scaffolding.md#nx-and-other-monorepos).
 
 ## 1. Create the project
 
@@ -16,12 +17,15 @@ key until you decide you want one, and nothing needs Docker until the last secti
 npm create skein-js@latest my-agent
 ```
 
-`pnpm create skein-js my-agent` and `yarn create skein-js my-agent` do the same thing. Keep the
-`@latest`: without it, npm's cache can hand you an old copy of the scaffolder.
+`pnpm create skein-js@latest my-agent` and `yarn create skein-js@latest my-agent` do the same thing.
+Keep `@latest` to request the latest published scaffolder.
 
-It asks two questions — where to put the project, and which model provider you want. **Pick "None"
-for now.** You can add a model in a minute, and starting without one means nothing can go wrong
-before you have seen the thing work.
+Interactive runs ask about the model provider, ESLint and Prettier, local storage, dependency
+installation, and git initialization. **Pick "None" for the provider**, keep memory storage and
+ESLint/Prettier enabled, and accept dependency installation. The directory is already supplied above;
+it is prompted when omitted. `--yes` accepts defaults without prompting.
+
+You can add a model in a minute. The generated echo graph runs without credentials.
 
 Then:
 
@@ -45,7 +49,8 @@ your message and that reply, and it helps to have seen the loop close.
 
 ## 3. What you actually got
 
-Eleven files. The three that matter:
+The project includes tests, default ESLint/Prettier tooling, and a `.nvmrc` selecting a supported
+Node version. The three files to understand first:
 
 **`src/echo-graph.ts`** — your agent. We'll come back to it.
 

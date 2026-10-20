@@ -116,6 +116,29 @@ are **inferred** by the Nx plugins from `eslint.config.mjs` and `vitest.config.t
 --importPath=@skein-js/<name>`, then align the generated files to the `@skein-js/core` template. Do
 not create a package tree file-by-file.
 
+### Maintaining scaffolding and workspace guidance
+
+`packages/scaffold` owns the shared builders, Node policy and compiled templates used by
+`create-skein-js` and `@skein-js/nx`. Edit template sources, then run
+`pnpm exec nx run scaffold:generate-templates`; never hand-edit `templates.generated.ts`.
+Generated projects default to ESLint/Prettier and recommend Node 24, with engines
+`^22.12.0 || ^24.0.0`. Preserve explicit opt-outs, compatible workspace pins, root configuration,
+registration exclusions and existing dependency versions.
+
+- Scaffold into a new child directory in an existing workspace. Avoid `create-skein-js . --force`
+  at a workspace root; use the Nx generator for Nx applications.
+- Check tool dependencies separately from inherited ESLint/Prettier configuration. Root configs
+  currently require matching root packages; run `format` before checking CLI-generated files with
+  non-default root formatting. Workspace dependency installation stays manual at the root.
+- Graphs importing workspace libraries need dependency-aware cache inputs and build ordering.
+  Preserve SQLite/WAL/SHM exclusions and live-target caching settings. Verify that a library change
+  invalidates the application's cached build and checks.
+- Keep [scaffolding limitations](docs/scaffolding.md#current-workspace-limitations), package READMEs,
+  and installable `skills/` guidance aligned with behavior. When fixing a limitation, add its
+  regression coverage and update the documentation together. The [testing guide](docs/testing.md#scaffold-consumers)
+  describes the 96 generation cases and 30 installed consumers; green curated CI does not prove
+  cases outside those fixtures.
+
 ## Releasing
 
 Releases are cut with **`nx release`** (configured in [`nx.json`](./nx.json) as a _fixed_ group — every
