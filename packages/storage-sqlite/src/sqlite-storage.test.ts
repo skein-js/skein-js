@@ -67,6 +67,7 @@ describe("durability and ownership", () => {
       await reopened.dispose();
     }
   });
+  // 140 durable inserts plus reopening/recovery exceed the default 5s budget on Windows runners.
   it("fails every abandoned attempt beyond the page cap, preserving saved state and real interrupts", async () => {
     const storage = await open({ maxPageSize: 1 });
     const filename = storage.database.name;
@@ -96,7 +97,7 @@ describe("durability and ownership", () => {
     } finally {
       await reopened.dispose();
     }
-  });
+  }, 30_000);
   it("rejects a second owner and releases ownership on idempotent disposal", async () => {
     const storage = await open();
     await expect(openSqliteStorage({ filename: storage.database.name })).rejects.toThrow(/locked/);
