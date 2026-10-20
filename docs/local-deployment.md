@@ -166,7 +166,7 @@ lifecycle or desktop-specific protocol is introduced. The examples bind loopback
 port and use a per-launch bearer through existing auth, with `studioAuthDisabled: true`. Credentials
 are passed through environment/private bridges, rather than command-line arguments or saved files.
 
-The target matrix is Node 22/24, Electron 44 and Tauri 2 on Linux x64, Windows x64, and macOS ARM64/x64.
+The target matrix is Node 22/24/26, Electron 44 and Tauri 2 on Linux x64, Windows x64, and macOS ARM64/x64.
 Packaged consumer gates install tarballs outside the checkout and exercise native addon loading,
 writable data paths, streaming, approval resume and credential rejection. Platform support requires
 those gates to pass on the corresponding runner; a source build alone supplies no packaging evidence.

@@ -1,8 +1,8 @@
 import { satisfies } from "semver";
 
-/** Reviewed baseline: re-check Node 26 after its October 2026 LTS transition and native CI. */
+/** Keep the recommended production baseline separate from additional tested Node majors. */
 export const RECOMMENDED_NODE_MAJOR = "24";
-export const SUPPORTED_NODE_RANGE = "^22.12.0 || ^24.0.0";
+export const SUPPORTED_NODE_RANGE = "^22.12.0 || ^24.0.0 || ^26.0.0";
 
 /** Resolve a workspace version-manager value without consulting the network. */
 export function resolveNodeVersion(pin: string | undefined): { version: string; notice?: string } {

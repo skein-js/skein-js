@@ -12,13 +12,19 @@ describe("Node policy", () => {
       "utf8",
     );
     expect(workflow.match(/NODE_LTS: (\d+)/)?.[1]).toBe(RECOMMENDED_NODE_MAJOR);
-    expect(SUPPORTED_NODE_RANGE).toBe("^22.12.0 || ^24.0.0");
+    expect(SUPPORTED_NODE_RANGE).toBe("^22.12.0 || ^24.0.0 || ^26.0.0");
   });
-  it.each(["22", "22.12", "22.12.0", "v24.15.0", "24"])("honors compatible pin %s", (pin) => {
-    expect(resolveNodeVersion(pin).version).toBe(pin.replace(/^v/, ""));
-  });
-  it.each(["20", "22.11", "23", "25", "26"])("rejects unsupported pin %s", (pin) => {
+  it.each(["22", "22.12", "22.12.0", "v24.15.0", "24", "26", "26.0", "26.0.0", "v26.12.0"])(
+    "honors compatible pin %s",
+    (pin) => {
+      expect(resolveNodeVersion(pin).version).toBe(pin.replace(/^v/, ""));
+    },
+  );
+  it.each(["20", "22.11", "23", "25", "27"])("rejects unsupported pin %s", (pin) => {
     expect(() => resolveNodeVersion(pin)).toThrow(/unsupported/);
+  });
+  it("keeps Node 24 as the default", () => {
+    expect(resolveNodeVersion(undefined)).toEqual({ version: "24" });
   });
   it("explains unresolved aliases", () => {
     expect(resolveNodeVersion("lts/*")).toEqual({

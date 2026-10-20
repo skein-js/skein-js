@@ -12,7 +12,7 @@ description: Deploy skein-js with Postgres and Redis on your infrastructure, or 
 | **Shared server**     | Web/API clients and workers spanning instances        | Postgres for resources/checkpoints; Redis for a shared queue and streaming |
 | **Local application** | Desktop apps, CLI tools, daemons, or one Node process | One exclusively owned SQLite file through `@skein-js/local`                |
 
-For the SQLite option, follow [local deployment](./local-deployment.md). It supports Node 22/24;
+For the SQLite option, follow [local deployment](./local-deployment.md). It supports Node 22/24/26;
 Electron and Tauri hosts package the same engine and use the existing protocol. Models and tools
 remain application choices. The default `skein dev` continues to use memory drivers.
 

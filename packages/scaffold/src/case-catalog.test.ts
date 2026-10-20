@@ -10,12 +10,12 @@ import { buildProjectFiles } from "./project-files.js";
 import { MODEL_PROVIDERS, DEV_STORAGES, PACKAGE_MANAGERS } from "./scaffold-options.js";
 
 describe("scaffold case catalog", () => {
-  it("covers every option enum and keeps 30 installed cases", () => {
+  it("covers every option enum and keeps 33 installed cases", () => {
     expect(catalog.providers).toEqual(MODEL_PROVIDERS);
     expect(catalog.storages).toEqual(DEV_STORAGES);
     expect(catalog.packageManagers).toEqual(PACKAGE_MANAGERS);
-    expect(catalog.cases).toHaveLength(30);
-    expect(new Set(catalog.cases.map((row) => row.id)).size).toBe(30);
+    expect(catalog.cases).toHaveLength(33);
+    expect(new Set(catalog.cases.map((row) => row.id)).size).toBe(33);
   });
   it("covers installed interaction sets", () => {
     const defaults = catalog.cases.filter((row) => row.layout === "standalone" && row.linting);
@@ -26,7 +26,9 @@ describe("scaffold case catalog", () => {
     ) => new Set(rows.map((row) => row[a] + ":" + row[b]));
     expect(pairs(defaults, "packageManager", "storage").size).toBe(12);
     expect(pairs(defaults, "provider", "storage").size).toBe(12);
-    const nx = catalog.cases.filter((row) => row.entry === "nx" && row.linting);
+    const nx = catalog.cases.filter(
+      (row) => row.entry === "nx" && row.linting && row.node !== "26",
+    );
     expect(pairs(nx, "layout", "node").size).toBe(4);
     expect(pairs(nx, "layout", "tooling").size).toBe(8);
     expect(pairs(nx, "node", "tooling").size).toBe(8);
@@ -37,6 +39,21 @@ describe("scaffold case catalog", () => {
       expect(
         new Set(nx.filter((row) => row.layout === layout).map((row) => row.storage)).size,
       ).toBe(3);
+    }
+  });
+  it("adds Node 26 consumers without replacing the Node 22/24 cases", () => {
+    const additions = catalog.cases.filter((row) => row.node === "26");
+    expect(additions.map((row) => row.id)).toEqual([
+      "standalone-pnpm-sqlite-node26",
+      "nx-integrated-both-node26",
+      "nx-packages-neither-node26",
+    ]);
+    for (const row of additions) {
+      const original = catalog.cases.find(
+        (candidate) => candidate.id === row.id.replace(/-node26$/, ""),
+      );
+      expect(original).toBeDefined();
+      expect(row).toEqual({ ...original, id: row.id, node: "26" });
     }
   });
   it("covers each opt-out and workspace group", () => {
@@ -53,7 +70,7 @@ describe("scaffold case catalog", () => {
     expect(nxOptOuts).toHaveLength(2);
     expect(new Set(nxOptOuts.map((row) => row.layout)).size).toBe(2);
     expect(nxOptOuts.map((row) => row.tooling).sort()).toEqual(["both", "neither"]);
-    expect(new Set(catalog.cases.map((row) => row.node))).toEqual(new Set(["22.12.0", "24"]));
+    expect(new Set(catalog.cases.map((row) => row.node))).toEqual(new Set(["22.12.0", "24", "26"]));
   });
   it("keeps Nx schema defaults and enums aligned with the shared builders", () => {
     const schema = JSON.parse(
@@ -87,7 +104,7 @@ describe("scaffold case catalog", () => {
       expect(Boolean(manifest.scripts.lint)).toBe(options.linting);
       expect(Boolean(manifest.devDependencies.prettier)).toBe(options.linting);
       expect(files.find((file) => file.path === ".nvmrc")?.contents).toBe("24\n");
-      expect(manifest.engines.node).toBe("^22.12.0 || ^24.0.0");
+      expect(manifest.engines.node).toBe("^22.12.0 || ^24.0.0 || ^26.0.0");
       expect(manifest.scripts.start).toContain("-c .skein/build/langgraph.json");
       expect(new Set(files.map((file) => file.path)).size).toBe(files.length);
       const readme = files.find((file) => file.path === "README.md")!.contents;

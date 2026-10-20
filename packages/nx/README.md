@@ -14,7 +14,7 @@ Options: `directory` (required), `provider` (`none`, `google`, `anthropic`, `ope
 Use `--linting=false` to omit ESLint and Prettier or `--dry-run` to preview.
 
 Integrated and package workspaces are supported. Existing lifecycle scripts and root configuration
-are preserved. Installation stays manual. Node 24 is recommended; engines support `^22.12.0 || ^24.0.0`.
+are preserved. Installation stays manual. Node 24 is recommended; engines support `^22.12.0 || ^24.0.0 || ^26.0.0`.
 Compatible numeric workspace pins are honored; unsupported numeric pins fail before writing.
 Targets use existing Nx executors. Start depends on build, live targets are uncached, and only
 `.skein/build` is cached. SQLite state stays outside that output.

@@ -44,6 +44,8 @@ export default defineConfig(() => ({
     watch: false,
     globals: true,
     environment: "jsdom",
+    // Let jsdom own browser storage; Node 26's file-backed global can shadow it with undefined.
+    execArgv: ["--no-experimental-webstorage"],
     include: ["{src,tests}/**/*.{test,spec}.{ts,mts,tsx}"],
     reporters: ["default"],
     passWithNoTests: true,

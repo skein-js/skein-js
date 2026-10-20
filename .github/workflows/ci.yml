@@ -30,7 +30,7 @@ concurrency:
   cancel-in-progress: true
 
 env:
-  # Node 24 is the current Active LTS and the version `skein build` bakes into a production image.
+  # Node 24 remains the default version `skein build` bakes into a production image.
   # Testing on an older major than we ship is how a whole phase of Bun/Deno image defects went unseen.
   NODE_LTS: 24
 
@@ -39,8 +39,12 @@ jobs:
     uses: ./.github/workflows/local-deployment.yml
 
   check:
-    name: lint · typecheck · test · build
+    name: ${{ matrix.node == 24 && 'lint · typecheck · test · build' || 'lint · typecheck · test · build (Node 26)' }}
     runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        node: [24, 26]
     steps:
       - uses: actions/checkout@v4
 
@@ -49,7 +53,7 @@ jobs:
       - uses: pnpm/action-setup@v4
       - uses: actions/setup-node@v4
         with:
-          node-version: ${{ env.NODE_LTS }}
+          node-version: ${{ matrix.node }}
           cache: pnpm
 
       - run: pnpm install --frozen-lockfile
@@ -58,10 +62,10 @@ jobs:
       - uses: actions/cache@v4
         with:
           path: .nx/cache
-          key: nx-${{ runner.os }}-${{ hashFiles('pnpm-lock.yaml') }}-${{ github.sha }}
+          key: nx-${{ runner.os }}-node-${{ matrix.node }}-${{ hashFiles('pnpm-lock.yaml') }}-${{ github.sha }}
           restore-keys: |
-            nx-${{ runner.os }}-${{ hashFiles('pnpm-lock.yaml') }}-
-            nx-${{ runner.os }}-
+            nx-${{ runner.os }}-node-${{ matrix.node }}-${{ hashFiles('pnpm-lock.yaml') }}-
+            nx-${{ runner.os }}-node-${{ matrix.node }}-
 
       - name: Prettier
         run: pnpm format:check
@@ -70,14 +74,18 @@ jobs:
         run: pnpm exec nx run-many -t lint typecheck test build --output-style=stream
 
   integration:
-    name: integration tests (Testcontainers)
+    name: ${{ matrix.node == 24 && 'integration tests (Testcontainers)' || 'integration tests (Testcontainers, Node 26)' }}
     runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        node: [24, 26]
     steps:
       - uses: actions/checkout@v4
       - uses: pnpm/action-setup@v4
       - uses: actions/setup-node@v4
         with:
-          node-version: ${{ env.NODE_LTS }}
+          node-version: ${{ matrix.node }}
           cache: pnpm
 
       - run: pnpm install --frozen-lockfile
@@ -85,10 +93,10 @@ jobs:
       - uses: actions/cache@v4
         with:
           path: .nx/cache
-          key: nx-${{ runner.os }}-${{ hashFiles('pnpm-lock.yaml') }}-${{ github.sha }}
+          key: nx-${{ runner.os }}-node-${{ matrix.node }}-${{ hashFiles('pnpm-lock.yaml') }}-${{ github.sha }}
           restore-keys: |
-            nx-${{ runner.os }}-${{ hashFiles('pnpm-lock.yaml') }}-
-            nx-${{ runner.os }}-
+            nx-${{ runner.os }}-node-${{ matrix.node }}-${{ hashFiles('pnpm-lock.yaml') }}-
+            nx-${{ runner.os }}-node-${{ matrix.node }}-
 
       # ubuntu-latest ships Docker, which Testcontainers uses to spin up Postgres + Redis.
       - name: Integration tests
@@ -121,10 +129,10 @@ jobs:
       - uses: actions/cache@v4
         with:
           path: .nx/cache
-          key: nx-${{ runner.os }}-${{ hashFiles('pnpm-lock.yaml') }}-${{ github.sha }}
+          key: nx-${{ runner.os }}-node-${{ env.NODE_LTS }}-${{ hashFiles('pnpm-lock.yaml') }}-${{ github.sha }}
           restore-keys: |
-            nx-${{ runner.os }}-${{ hashFiles('pnpm-lock.yaml') }}-
-            nx-${{ runner.os }}-
+            nx-${{ runner.os }}-node-${{ env.NODE_LTS }}-${{ hashFiles('pnpm-lock.yaml') }}-
+            nx-${{ runner.os }}-node-${{ env.NODE_LTS }}-
 
       # The memory driver only: it needs no containers, and every bound gated here belongs to the
       # in-process bus or the SSE write path. `nx bench` depends on `build`, so this measures this
@@ -160,13 +168,25 @@ jobs:
   # what a shared runner can decide: co-tenancy moves timings, not pass/fail. The performance half
   # deliberately lives nowhere near CI — see docs/profiling.md for where it belongs and why.
   runtime-matrix:
-    name: protocol conformance (${{ matrix.runtime }})
+    name: protocol conformance (${{ matrix.label }})
     runs-on: ubuntu-latest
     strategy:
-      # Every runtime reports: one failure must not hide the other two's status.
+      # Every runtime and Node major reports independently.
       fail-fast: false
       matrix:
-        runtime: [node, bun, deno]
+        include:
+          - runtime: node
+            node: 24
+            label: node
+          - runtime: node
+            node: 26
+            label: node 26
+          - runtime: bun
+            node: 24
+            label: bun
+          - runtime: deno
+            node: 24
+            label: deno
     services:
       postgres:
         image: pgvector/pgvector:pg17
@@ -188,11 +208,10 @@ jobs:
       - uses: pnpm/action-setup@v4
       - uses: actions/setup-node@v4
         with:
-          node-version: ${{ env.NODE_LTS }}
+          node-version: ${{ matrix.node }}
           cache: pnpm
 
-      # The harness itself always runs on Node; only the SERVER changes runtime. These steps install the
-      # runtime under test and nothing else.
+      # Node rows run both the harness and server on the selected major. Bun/Deno retain a Node 24 host.
       - if: matrix.runtime == 'bun'
         uses: oven-sh/setup-bun@v2
       - if: matrix.runtime == 'deno'
@@ -216,19 +235,25 @@ jobs:
   # earns the job: it is what exercises the generated Dockerfile, its base image, its install step, and
   # the graph compatibility probe — where a malformed `deno eval` invocation was hiding.
   runtime-images:
-    name: production image (${{ matrix.runtime }})
+    name: production image (${{ matrix.label }})
     runs-on: ubuntu-latest
     strategy:
       fail-fast: false
       matrix:
         include:
           - runtime: node
+            label: node
+          - runtime: node
+            label: node 26
+            runtime-version: "--runtime-version 26"
           - runtime: bun
+            label: bun
           # Build-only: Deno's installer will not recurse into a vendored package's own `file:` deps, so
           # an image built from *unpublished* sources cannot boot. That is a property of substituting
           # local packages, not of the generated image — this runtime's serving behaviour is covered by
           # `runtime-matrix` above. Drop the flag once a prerelease is on npm.
           - runtime: deno
+            label: deno
             build-only: "--build-only"
     steps:
       - uses: actions/checkout@v4
@@ -246,6 +271,7 @@ jobs:
       - name: Image smoke
         run: >-
           node scripts/runtime-image-smoke.mjs --runtime ${{ matrix.runtime }}
+          ${{ matrix['runtime-version'] }}
           ${{ matrix['build-only'] }}
 
   # The job above builds a *committed* artifact, so it never runs the bundler. This one does: a real
@@ -334,8 +360,20 @@ jobs:
           node-version: ${{ matrix.node }}
           cache: pnpm
       - uses: oven-sh/setup-bun@v2
-      # Keep pnpm/action-setup's pinned pnpm binary; enabling every shim replaces it.
-      - run: corepack enable yarn && corepack prepare yarn@4.9.2 --activate
+      # Node 26 does not bundle Corepack. Its private bin directory also contains pnpm shims,
+      # so expose only Yarn and preserve pnpm/action-setup's pinned binary.
+      - name: Prepare Yarn without replacing pnpm
+        run: |
+          npm install --prefix "$RUNNER_TEMP/skein-corepack" --no-audit --no-fund corepack@0.34.0
+          mkdir -p "$RUNNER_TEMP/skein-yarn-bin"
+          node "$RUNNER_TEMP/skein-corepack/node_modules/corepack/dist/corepack.js" enable yarn --install-directory "$RUNNER_TEMP/skein-yarn-bin"
+          node "$RUNNER_TEMP/skein-corepack/node_modules/corepack/dist/corepack.js" prepare yarn@4.9.2 --activate
+          echo "$RUNNER_TEMP/skein-yarn-bin" >> "$GITHUB_PATH"
+      - name: Verify package managers
+        working-directory: ${{ runner.temp }}
+        run: |
+          test "$(pnpm --version)" = "9.15.0"
+          test "$(yarn --version)" = "4.9.2"
       - run: pnpm install --frozen-lockfile
       - uses: actions/download-artifact@v4
         with:

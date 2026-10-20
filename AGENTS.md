@@ -122,7 +122,7 @@ not create a package tree file-by-file.
 `create-skein-js` and `@skein-js/nx`. Edit template sources, then run
 `pnpm exec nx run scaffold:generate-templates`; never hand-edit `templates.generated.ts`.
 Generated projects default to ESLint/Prettier and recommend Node 24, with engines
-`^22.12.0 || ^24.0.0`. Preserve explicit opt-outs, compatible workspace pins, root configuration,
+`^22.12.0 || ^24.0.0 || ^26.0.0`. Preserve explicit opt-outs, compatible workspace pins, root configuration,
 registration exclusions and existing dependency versions.
 
 - Scaffold into a new child directory in an existing workspace. Avoid `create-skein-js . --force`
@@ -136,7 +136,7 @@ registration exclusions and existing dependency versions.
 - Keep [workspace tooling and caching](docs/scaffolding.md#workspace-tooling-and-caching), package READMEs,
   and installable `skills/` guidance aligned with behavior. When changing behavior, add its
   regression coverage and update the documentation together. The [testing guide](docs/testing.md#scaffold-consumers)
-  describes the 96 generation cases and 30 installed consumers; green curated CI does not prove
+  describes the 96 generation cases and 33 installed consumers; green curated CI does not prove
   cases outside those fixtures.
 
 ## Releasing

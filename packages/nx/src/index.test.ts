@@ -66,6 +66,15 @@ describe("application generator", () => {
       /not empty/,
     );
   });
+  it.each([".nvmrc", ".node-version"])("honors a Node 26 workspace pin in %s", async (filename) => {
+    const tree = createTreeWithEmptyWorkspace();
+    tree.write("tsconfig.base.json", "{}");
+    tree.write(filename, "26.12.0\n");
+    await generateApplication(tree, { directory: "apps/agent" });
+    expect(tree.read("apps/agent/.nvmrc")?.toString()).toBe("26.12.0\n");
+    expect(readJson(tree, "apps/agent/langgraph.json").node_version).toBe("26");
+    expect(tree.read(filename)?.toString()).toBe("26.12.0\n");
+  });
   it.each([".nvmrc", ".node-version"])(
     "rejects an unsupported workspace Node pin in %s without mutations",
     async (filename) => {

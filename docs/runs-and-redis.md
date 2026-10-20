@@ -67,7 +67,7 @@ same run twice. A delayed run is durable exactly as far as its driver is: see be
   due times across reopening; duplicate enqueue does not shorten a delay.
 - Claimed or executing attempts abandoned by a process become `ProcessLostError` failures. Skein
   does not replay their input or resume checkpoints automatically. The application decides.
-- Live stream frames stay in memory. This is a Node 22/24 option for local apps and single-owner
+- Live stream frames stay in memory. This is a Node 22/24/26 option for local apps and single-owner
   services, with no distributed worker support. See [local deployment](./local-deployment.md).
 
 ### `@skein-js/redis` (shared servers)

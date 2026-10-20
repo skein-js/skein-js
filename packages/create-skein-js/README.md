@@ -41,7 +41,7 @@ Both durable choices retain the memory alternative.
 ...plus an echo graph that runs with no credentials, a test for it, an optional model-backed ReAct
 agent, and a README explaining every file.
 
-Node 24 is recommended; generated engines support `^22.12.0 || ^24.0.0`. ESLint and Prettier default
+Node 24 is recommended; generated engines support `^22.12.0 || ^24.0.0 || ^26.0.0`. ESLint and Prettier default
 on, with `lint`, `format`, and `format:check` scripts. Root configurations are inherited independently;
 missing tool dependencies are added, and generated files follow inherited Prettier settings. See
 [workspace tooling](https://skein-js.github.io/skein-js/scaffolding).

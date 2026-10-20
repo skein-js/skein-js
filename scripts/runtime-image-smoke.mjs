@@ -10,7 +10,7 @@
 // on the host under Node whatever the target runtime is, so rebuilding it per runtime would add a step
 // that cannot differ between them. See that fixture's README.
 //
-// Usage: node scripts/runtime-image-smoke.mjs --runtime node|bun|deno [--keep]
+// Usage: node scripts/runtime-image-smoke.mjs --runtime node|bun|deno [--runtime-version 26] [--keep]
 
 import { execFileSync, spawnSync } from "node:child_process";
 import { cpSync, mkdirSync, readFileSync, rmSync, writeFileSync } from "node:fs";
@@ -32,6 +32,7 @@ for (let i = 2; i < process.argv.length; i += 1) {
   } else flags.add(arg.slice(2));
 }
 const runtime = args.get("runtime") ?? "node";
+const runtimeVersion = args.get("runtime-version");
 if (!["node", "bun", "deno"].includes(runtime)) {
   console.error(`unknown runtime "${runtime}" (expected node, bun, or deno)`);
   process.exit(2);
@@ -112,6 +113,7 @@ function assembleContext() {
     path.join(context, "langgraph.json"),
     "--runtime",
     runtime,
+    ...(runtimeVersion ? ["--runtime-version", runtimeVersion] : []),
     "-o",
     dockerfilePath,
   ]);
@@ -201,6 +203,23 @@ async function main() {
   console.log(`building ${tag} (the graph compatibility probe runs inside this build)`);
   execFileSync("docker", ["build", "--progress=plain", "-t", tag, context], { stdio: "inherit" });
   check("the image builds, including the graph compatibility probe", true);
+
+  if (runtime === "node") {
+    const expectedMajor = runtimeVersion?.split(".")[0] ?? "24";
+    const actualVersion = run("docker", [
+      "run",
+      "--rm",
+      "--entrypoint",
+      "node",
+      tag,
+      "--version",
+    ]).trim();
+    check(
+      "the image uses the requested Node major",
+      actualVersion.split(".")[0] === `v${expectedMajor}`,
+      `expected ${expectedMajor}, got ${actualVersion}`,
+    );
+  }
 
   if (flags.has("build-only")) {
     // Deno's installer does not recurse into a `file:` dependency's own `file:` dependencies, so a

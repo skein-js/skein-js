@@ -149,6 +149,20 @@ the **real `@langchain/langgraph-sdk` client** as the wire-format oracle: if
 protocol is right. The [`examples/react-usestream`](https://github.com/skein-js/skein-js/tree/main/examples/react-usestream) app is the
 front-end signal for the SSE/`useStream` path.
 
+## Node runtime coverage
+
+The main quality and Postgres/Redis integration jobs run on Node 24 and 26. Protocol conformance
+runs a real server on each Node major; production image checks verify the Node major inside the
+image. Node 24 remains the default for generated images, releases and desktop packaging.
+
+SQLite tests and clean packed consumers run on Node 22, 24 and 26 across Linux x64, Windows x64,
+macOS ARM64 and macOS x64. Native dependencies must be installed for the selected Node major;
+reusing a Node 24 `node_modules` directory on Node 26 can fail with a native ABI mismatch.
+Actions computation-cache archives are separated by Node major, and Nx also hashes `node --version`.
+Console test workers disable Node's Web Storage so jsdom supplies browser storage on both majors.
+The dated [local validation record](./local-deployment-validation.md) describes completed gates;
+adding a matrix entry does not by itself establish a passing platform result.
+
 ## Scaffold consumers
 
 The shared [`scripts/scaffold-cases.json`](https://github.com/skein-js/skein-js/blob/main/scripts/scaffold-cases.json)
@@ -157,7 +171,7 @@ suite renders all **96** combinations of four providers, three storage choices, 
 managers and tooling enabled/disabled. Separate tests cover prompts, flags, workspace registration,
 exclusions, invalid root metadata, dependency reuse, and Node pins, including rejection before writes.
 
-The **30 installed consumers** are curated rather than the full cross-product:
+The **33 installed consumers** are curated rather than the full cross-product:
 
 | Group               | Cases | Coverage                                                                     |
 | ------------------- | ----: | ---------------------------------------------------------------------------- |
@@ -166,8 +180,9 @@ The **30 installed consumers** are curated rather than the full cross-product:
 | Generic workspaces  |     4 | One per manager; neither tool, ESLint only, Prettier only, or both inherited |
 | Nx defaults         |     8 | Both layouts × four inheritance profiles, on Node 22.12.0 and 24             |
 | Nx opt-outs         |     2 | Both layouts, with absent or existing root tooling                           |
+| Node 26 additions   |     3 | Standalone pnpm/SQLite, integrated Nx/both tools, package-based Nx/no tools  |
 
-The Nx defaults cover every layout × Node, layout × inheritance, and Node × inheritance pair.
+The original Node 22/24 Nx defaults cover every layout × Node, layout × inheritance, and Node × inheritance pair.
 Each layout includes every provider and storage choice individually. Assertions compare the
 catalog dimensions with the shared option enums and generator schema.
 

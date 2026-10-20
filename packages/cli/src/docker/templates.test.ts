@@ -6,6 +6,12 @@ import { generateCompose } from "./compose.js";
 import { generateDockerfile } from "./dockerfile.js";
 
 describe("generateDockerfile", () => {
+  it.each([{ nodeVersion: "26" }, { runtime: "node" as const, runtimeVersion: "26.12.0" }])(
+    "generates a Node 26 image when explicitly selected: %j",
+    (selection) => {
+      expect(generateDockerfile({ ...selection, port: 8123 })).toContain("FROM node:26-slim");
+    },
+  );
   it("pins the base image to the config's node_version and appends dockerfile_lines before CMD", () => {
     const out = generateDockerfile({
       nodeVersion: "22",
