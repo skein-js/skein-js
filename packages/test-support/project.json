@@ -28,6 +28,7 @@
         "{workspaceRoot}/packages/*/package.json",
         "{workspaceRoot}/packages/agent-protocol/src/validation/schemas.ts",
         "{workspaceRoot}/pnpm-lock.yaml",
+        "{workspaceRoot}/patches/**/*",
         "{workspaceRoot}/scripts/pack-local-consumer.mjs",
         "{workspaceRoot}/packages/local/src/**/*",
         "{workspaceRoot}/packages/storage-sqlite/src/**/*",

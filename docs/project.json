@@ -13,6 +13,7 @@
         "sharedGlobals",
         "{workspaceRoot}/llms.txt",
         "{workspaceRoot}/llms-full.txt",
+        { "externalDependencies": ["vitepress", "vite", "esbuild"] },
         { "runtime": "git log -1 --format=%H -- docs llms.txt llms-full.txt" },
         { "runtime": "git rev-parse --is-shallow-repository" }
       ],

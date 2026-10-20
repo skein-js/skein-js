@@ -61,7 +61,7 @@
     "eslint-plugin-react-hooks": "5.0.0",
     "jsdom": "^27.1.0",
     "lucide-react": "^0.469.0",
-    "postcss": "^8.4.49",
+    "postcss": "^8.5.31",
     "react": "^19.0.0",
     "react-dom": "^19.0.0",
     "tailwind-merge": "^2.6.0",

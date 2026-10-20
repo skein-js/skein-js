@@ -39,6 +39,6 @@
     "@skein-js/storage-memory": "workspace:*",
     "@skein-js/test-support": "workspace:*",
     "express": "^5.2.1",
-    "testcontainers": "^10.16.0"
+    "testcontainers": "^11.14.0"
   }
 }
