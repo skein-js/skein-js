@@ -1,18 +1,8 @@
 name: Docs
 
 on:
-  push:
-    branches: [main]
-    # The site includes docs and the root LLM bundles copied by the build-end hook.
-    paths:
-      - "docs/**"
-      - "llms.txt"
-      - "llms-full.txt"
-      - "scripts/check-docs-seo.mjs"
-      - ".github/workflows/docs.yml"
-      - "package.json"
-      - "pnpm-lock.yaml"
-  workflow_dispatch:
+  # release.yml calls this only after a stable release successfully publishes to npm.
+  workflow_call:
 
 # One deploy at a time, and never cancel one mid-flight: a half-published Pages artifact is worse
 # than a slightly stale site.
@@ -38,6 +28,8 @@ jobs:
     steps:
       - uses: actions/checkout@v4
         with:
+          # Build the same commit as the caller's release, including on a retry.
+          ref: ${{ github.sha }}
           # `lastUpdated` in the VitePress config reads git history for each page's timestamp,
           # which a shallow clone doesn't have.
           fetch-depth: 0

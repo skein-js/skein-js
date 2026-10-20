@@ -155,8 +155,17 @@ pnpm release 0.3.0            # or: patch | minor | major
 [`.github/workflows/release.yml`](.github/workflows/release.yml) runs on `release: published` and
 publishes each changed, non-private package with provenance via npm OIDC trusted publishing.
 
+After a stable release successfully publishes to npm, the release workflow calls
+[`.github/workflows/docs.yml`](.github/workflows/docs.yml) to build and deploy the docs from the same
+release commit. Pushes to `main` and pull requests still run docs checks, but do not deploy the site.
+Pre-releases and manual Release dispatches do not deploy docs. Retry a failed docs deployment by
+re-running its job in the original release run, preserving the released commit; there is no standalone
+manual Docs trigger.
+
 Prerequisites: the git remote must point at `skein-js/skein-js` (Nx derives the release repo from
 `origin`), and `gh` must be authenticated (or `GITHUB_TOKEN` set) for the GitHub Release step.
+The `github-pages` environment must allow deployments from tags matching `v*`, alongside its existing
+deployment rules and protections.
 
 ## Package map
 

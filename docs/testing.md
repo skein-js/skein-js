@@ -269,6 +269,13 @@ the social image, deployment links, and current LLM assets. It runs in the docs 
 build tracks the root LLM bundles and relevant git history as inputs, so a cached build cannot
 retain an older copy or stale page timestamps. Docs CI fetches full history to match Pages.
 
+Docs checks run on pushes to `main` and pull requests. Deployment runs separately, after the release
+workflow's CI and npm publishing succeed for a stable published GitHub Release. It checks out that
+release's exact commit with full history and runs the same build and SEO checks before deploying.
+The `github-pages` environment must permit `v*` tags. Pre-releases and manual Release dispatches do
+not deploy docs; retry a failed deployment through its job in the original release run so the source
+commit stays the same.
+
 The checker also accepts a directory argument through `--args="/absolute/path/to/site"` for
 testing an isolated artifact. It verifies static output; live crawling and search indexing are
 properties of the deployed site. Regenerate the social image with `pnpm docs:og` after editing its
