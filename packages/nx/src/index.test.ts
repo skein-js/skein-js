@@ -18,6 +18,14 @@ describe("application generator", () => {
       expect(tree.exists("apps/agent/eslint.config.mjs")).toBe(true);
       expect(readJson(tree, "apps/agent/tsconfig.json").extends).toBe("../../tsconfig.base.json");
       const project = readProjectConfiguration(tree, "apps-agent");
+      for (const target of ["build", "typecheck", "test", "lint", "format:check"]) {
+        expect(project.targets?.[target]?.inputs).toContain("^default");
+        expect(project.targets?.[target]?.inputs).toContain(
+          "!{projectRoot}/**/*.{sqlite,sqlite3,db}-{wal,shm}",
+        );
+      }
+      for (const target of ["build", "typecheck", "test"])
+        expect(project.targets?.[target]?.dependsOn).toEqual(["^build"]);
       expect(project.targets?.start?.dependsOn).toEqual(["build"]);
       expect(project.targets?.dev?.cache).toBe(false);
       expect(project.targets?.build?.outputs).toEqual(["{projectRoot}/.skein/build"]);

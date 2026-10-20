@@ -227,8 +227,11 @@ export function inspectWorkspace(
     ]) ?? (manifest.prettier !== undefined ? "package.json" : undefined);
   const relative = (filename: string | undefined) =>
     filename ? path.posix.join(relativeRoot, filename) : undefined;
+  const rootVersions = { ...manifest.dependencies, ...manifest.devDependencies };
   const tooling = {
     root: relativeRoot,
+    rootEslint: defaults.linting && rootVersions.eslint !== undefined,
+    rootPrettier: defaults.linting && rootVersions.prettier !== undefined,
     eslintConfig: defaults.linting ? relative(eslintConfig) : undefined,
     prettierConfig: defaults.linting ? relative(prettierConfig) : undefined,
     prettierIgnore: relative(findConfig([".prettierignore"])),
@@ -237,7 +240,6 @@ export function inspectWorkspace(
     buildProjectFiles(defaults).find((file) => file.path === "package.json")!.contents,
   ) as { dependencies: Record<string, string>; devDependencies: Record<string, string> };
   const wanted = { ...baselineManifest.dependencies, ...baselineManifest.devDependencies };
-  const rootVersions = { ...manifest.dependencies, ...manifest.devDependencies };
   const positivePatterns = patterns.filter((pattern) => !pattern.startsWith("!"));
   const siblings = (
     positivePatterns.length ? (snapshot.listPackagePaths?.(positivePatterns) ?? []) : []

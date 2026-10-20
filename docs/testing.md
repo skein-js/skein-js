@@ -198,11 +198,12 @@ The pinned npm CLI is needed for the tarball-override resolver used by these fix
 workspace installs use the repository's frozen lockfile; fresh consumer fixtures intentionally create
 or update their own lockfiles after generation.
 
-The current inheritance fixtures use installed root tools and default formatting. They do not yet
-cover config-only roots, non-default inherited formatting in CLI output, workspace-library cache
-invalidation, or scaffolding directly onto a workspace root. Those are documented
-[current limitations](./scaffolding.md#current-workspace-limitations), with regression coverage to add
-when their code fixes land. Registry smoke tests and the separate SQLite/desktop platform gates remain.
+Inheritance fixtures cover config-only roots as well as root-declared tools, with non-default
+Prettier settings (`singleQuote: true`, `semi: false`, `printWidth: 80`). Both Nx layouts build an
+imported workspace library, warm the application cache, edit only the library source, and verify the
+rebuilt artifact contains the new value. CLI entrypoint regressions reject npm, pnpm, Nx, Turbo and
+Lerna workspace roots with `--force` without writes. These checks complement the 96 generation cases;
+registry smoke tests and the separate SQLite/desktop platform gates remain.
 
 ## Testing memory and performance work
 

@@ -9,13 +9,18 @@
 // dlx`'s 24-hour one) can serve a stale version of this package.
 //
 // Commander is used here for the same reason it is in packages/cli/src/index.ts — typed options and
-// a real `--help` — and it is the only runtime dependency, transitively included.
+// a real `--help`. Prettier formats generated files to match the destination workspace.
 
 import path from "node:path";
 import { createInterface } from "node:readline/promises";
 
 import { Command, InvalidArgumentError } from "@commander-js/extra-typings";
-import { buildProjectFiles, findWorkspace, inspectWorkspace } from "@skein-js/scaffold";
+import {
+  buildProjectFiles,
+  findWorkspace,
+  formatProjectFiles,
+  inspectWorkspace,
+} from "@skein-js/scaffold";
 import {
   DEV_STORAGES,
   isModelProvider,
@@ -122,6 +127,10 @@ const program = new Command()
 
       const targetDirectory = path.resolve(process.cwd(), projectName);
       const workspace = findWorkspace(targetDirectory);
+      if (workspace && !workspace.target)
+        throw new Error(
+          "Choose a new project directory inside the workspace; its root cannot be scaffolded.",
+        );
       if (workspace?.read("nx.json") !== undefined) {
         throw new Error(
           "This is an Nx workspace. Run nx g @skein-js/nx:application --directory=" +
@@ -198,7 +207,7 @@ const program = new Command()
         ...workspacePlan?.options,
         packageManager: workspacePlan?.packageManager ?? scaffoldOptions.packageManager,
       };
-      const files = buildProjectFiles(resolvedOptions);
+      const files = await formatProjectFiles(buildProjectFiles(resolvedOptions), targetDirectory);
       writeFilesToDisk(targetDirectory, files);
       if (workspace && workspacePlan) {
         if (updateWorkspace && workspacePlan.registration)

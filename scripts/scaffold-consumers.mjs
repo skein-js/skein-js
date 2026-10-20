@@ -7,6 +7,7 @@ import {
   mkdirSync,
   mkdtempSync,
   readFileSync,
+  readdirSync,
   realpathSync,
   writeFileSync,
 } from "node:fs";
@@ -14,7 +15,7 @@ import { createRequire } from "node:module";
 import { createServer } from "node:net";
 import { tmpdir } from "node:os";
 import path from "node:path";
-import { format } from "prettier";
+import { format, resolveConfig } from "prettier";
 
 import { packWorkspace, root, run, installConsumer } from "./pack-local-consumer.mjs";
 
@@ -43,6 +44,16 @@ if (mode === "prepare-managers") {
 function writeJson(filename, contents) {
   mkdirSync(path.dirname(filename), { recursive: true });
   writeFileSync(filename, JSON.stringify(contents, null, 2) + "\n");
+}
+async function writeFormattedFixture(filename, contents) {
+  writeFileSync(
+    filename,
+    await format(contents, {
+      printWidth: 100,
+      ...(await resolveConfig(filename)),
+      filepath: filename,
+    }),
+  );
 }
 if (mode === "pack") {
   const packed = packWorkspace(packDirectory);
@@ -129,10 +140,7 @@ async function substitute(directory, manager) {
     delete converted.overrides;
   }
   if (manager === "bun") converted.trustedDependencies = ["better-sqlite3", "esbuild", "nx"];
-  writeFileSync(
-    filename,
-    await format(JSON.stringify(converted), { filepath: filename, printWidth: 100 }),
-  );
+  await writeFormattedFixture(filename, JSON.stringify(converted));
 }
 function locatePackage(owner, name) {
   const resolver = createRequire(owner);
@@ -293,7 +301,7 @@ function scaffoldRoot(directory, row) {
   if (row.entry === "nx") manifest.devDependencies.nx = "23.2.1";
   if (["eslint", "both"].includes(row.tooling)) {
     Object.assign(manifest.devDependencies, {
-      eslint: "^9.17.0",
+      ...(row.tooling === "both" ? { eslint: "^9.17.0" } : {}),
       "@eslint/js": "^9.17.0",
       "typescript-eslint": "^8.18.1",
     });
@@ -303,8 +311,12 @@ function scaffoldRoot(directory, row) {
     );
   }
   if (["prettier", "both"].includes(row.tooling)) {
-    manifest.devDependencies.prettier = "^3.9.6";
-    writeJson(path.join(directory, ".prettierrc.json"), { printWidth: 100 });
+    if (row.tooling === "both") manifest.devDependencies.prettier = "^3.9.6";
+    writeJson(path.join(directory, ".prettierrc.json"), {
+      printWidth: 80,
+      singleQuote: true,
+      semi: false,
+    });
     writeFileSync(
       path.join(directory, ".prettierignore"),
       "node_modules/\n.skein/\n**/.skein/\n.nx/\n",
@@ -433,7 +445,7 @@ async function exerciseCase(row) {
       );
     }
     if (row.entry === "nx") {
-      writeFileSync(
+      await writeFormattedFixture(
         path.join(project, "src/plugin-types.ts"),
         'import type { generateApplication } from "@skein-js/nx";\n\nexport type ApplicationGenerator = typeof generateApplication;\n',
       );
@@ -443,30 +455,64 @@ async function exerciseCase(row) {
       const manifest = JSON.parse(readFileSync(manifestPath, "utf8"));
       for (const target of ["dev", "start"])
         manifest.scripts[target] += " --sqlite-path .skein/matrix.sqlite";
-      writeFileSync(
-        manifestPath,
-        await format(JSON.stringify(manifest), { filepath: manifestPath, printWidth: 100 }),
-      );
+      await writeFormattedFixture(manifestPath, JSON.stringify(manifest));
       if (row.entry === "nx") {
         const configurationPath = path.join(project, "project.json");
         const configuration = JSON.parse(readFileSync(configurationPath, "utf8"));
         for (const target of ["dev", "start"])
           configuration.targets[target].options.command = manifest.scripts[target];
-        writeFileSync(
-          configurationPath,
-          await format(JSON.stringify(configuration), {
-            filepath: configurationPath,
-            printWidth: 100,
-          }),
-        );
+        await writeFormattedFixture(configurationPath, JSON.stringify(configuration));
       }
     }
     const graphFile = path.join(project, "src/echo-graph.ts");
-    writeFileSync(
+    await writeFormattedFixture(
       graphFile,
       'if ("bun" in process.versions) throw new Error("Consumer graphs must execute on Node.");\n\n' +
         readFileSync(graphFile, "utf8"),
     );
+    const dependencyFixture = row.entry === "nx" && row.tooling === "neither" && row.linting;
+    const library = path.join(workspace, "libs/shared");
+    if (dependencyFixture) {
+      mkdirSync(path.join(library, "src"), { recursive: true });
+      writeJson(path.join(library, "package.json"), {
+        name: "consumer-shared",
+        private: true,
+        type: "module",
+      });
+      writeFileSync(
+        path.join(library, "src/index.js"),
+        'export const cacheSentinel = "workspace-cache-v1";\n',
+      );
+      writeFileSync(
+        path.join(library, "src/index.d.ts"),
+        "export declare const cacheSentinel: string;\n",
+      );
+      writeJson(path.join(library, "project.json"), {
+        name: "shared",
+        root: "libs/shared",
+        targets: {
+          build: {
+            executor: "nx:run-commands",
+            cache: true,
+            inputs: ["{projectRoot}/src/**/*"],
+            outputs: ["{projectRoot}/dist"],
+            options: {
+              cwd: "libs/shared",
+              command: `node -e "const fs = require('node:fs'); fs.mkdirSync('dist', { recursive: true }); for (const file of ['index.js', 'index.d.ts']) fs.copyFileSync('src/' + file, 'dist/' + file)"`,
+            },
+          },
+        },
+      });
+      const configurationPath = path.join(project, "project.json");
+      const configuration = JSON.parse(readFileSync(configurationPath, "utf8"));
+      configuration.implicitDependencies = ["shared"];
+      await writeFormattedFixture(configurationPath, JSON.stringify(configuration));
+      await writeFormattedFixture(
+        graphFile,
+        'import { cacheSentinel } from "../../../libs/shared/dist/index.js";\nexport const workspaceCacheSentinel = cacheSentinel;\n' +
+          readFileSync(graphFile, "utf8"),
+      );
+    }
     const installRoot = standalone ? project : workspace;
     if (manager === "yarn")
       writeFileSync(path.join(installRoot, ".yarnrc.yml"), "nodeLinker: node-modules\n");
@@ -488,6 +534,29 @@ async function exerciseCase(row) {
       "build",
     ])
       execute(target);
+    if (dependencyFixture) {
+      const assertArtifact = (sentinel) => {
+        const artifact = path.join(project, ".skein/build");
+        const contents = readdirSync(artifact, { recursive: true })
+          .map(String)
+          .filter((name) => /\.(?:m?js|json)$/.test(name))
+          .map((name) => readFileSync(path.join(artifact, name), "utf8"))
+          .join("\n");
+        if (!contents.includes(sentinel))
+          throw new Error("Build reused stale workspace dependency: " + sentinel);
+      };
+      assertArtifact("workspace-cache-v1");
+      // Warm the app cache, then change only a dependency source. Both its build ordering and
+      // the app's dependency inputs must work for the artifact to contain the new value.
+      execute("build");
+      writeFileSync(
+        path.join(library, "src/index.js"),
+        'export const cacheSentinel = "workspace-cache-v2";\n',
+      );
+      execute("build");
+      assertArtifact("workspace-cache-v2");
+      execute("test");
+    }
     if (row.storage !== "sqlite") {
       run("docker", ["info"], { stdio: "ignore" }); // Required; absence is a failure.
       const postgres = await unusedPort(),

@@ -175,9 +175,9 @@ Projects provide `lint`, `format`, and `format:check`. Missing tooling uses reco
 and TypeScript ESLint rules and Prettier with `printWidth: 100`. Existing root ESLint and Prettier
 configurations are inherited independently. Inherited tooling uses a generated `scripts/skein-tools.mjs`
 helper; a standalone project uses the commands shown above. Generated output, dependencies, runtime
-state and package-manager lockfiles are ignored. Install inherited tools at the workspace root and
-run `format` before `format:check` when the root uses different formatting settings; see the
-[current workspace limitations](#current-workspace-limitations).
+state and package-manager lockfiles are ignored. Missing tool dependencies are added independently
+of inherited configuration, and new files follow workspace formatting; see the
+[workspace tooling and caching](#workspace-tooling-and-caching).
 
 The shared policy recommends **Node 24** with engines `^22.12.0 || ^24.0.0`. It derives `.nvmrc`
 and `langgraph.json.node_version` from the same selection. Compatible numeric workspace pins in
@@ -230,23 +230,21 @@ tested defaults and report differences. Integrated Nx workspaces reject root dep
 without changing existing versions. For new child directories in Nx workspaces the CLI directs you
 to the generator before writing.
 
-### Current workspace limitations
+### Workspace tooling and caching
 
-- **Choose a new child directory.** Workspace discovery currently starts at the target's parent.
-  `create-skein-js . --force` at a workspace root bypasses the workspace checks and can replace root
-  files. Use `apps/my-agent` or another new directory, and use the Nx generator for Nx workspaces.
-- **Install inherited tools at the root.** A root ESLint or Prettier configuration currently makes
-  the generated helper resolve that tool from the root. A config file alone is insufficient: declare
-  the corresponding tool and any plugins in the root's development dependencies. For example, run
-  `npm install --save-dev prettier` or `pnpm add -Dw prettier` at the root when Prettier is missing.
-- **Apply inherited formatting after CLI generation.** The CLI writes its template formatting.
-  When the root uses settings such as `singleQuote: true` or `semi: false`, run the generated
-  `format` command before `format:check`. The Nx generator already applies inherited formatting.
-- **Add Nx inputs for imported workspace libraries.** Generated cached targets currently list the
-  application's inputs without dependency inputs. When importing another workspace project, append
-  the workspace's dependency input, such as `^default`, to the cached targets and add `^build` to
-  `build.dependsOn` when dependency build outputs are required. Retain the existing SQLite exclusions
-  and the `start` dependency on the application's build.
+Scaffold into a new child directory. The CLI rejects an existing workspace root, including with
+`create-skein-js . --force`, before writing files. Nx workspaces use the application generator.
+
+Configuration inheritance and tool dependencies are independent. Existing root ESLint and Prettier
+configurations stay untouched. A tool declared at the root is reused; otherwise the generated package
+gets the missing tool dependency (at the root for integrated Nx layouts). Plugins imported by a root
+configuration remain dependencies of that configuration. Install manually from the workspace root.
+Both entrypoints format new files with inherited Prettier settings, including `singleQuote` and `semi`.
+
+Cached Nx targets include `^default` dependency sources. Build, typecheck and test depend on `^build`,
+so imported workspace libraries build first and source edits invalidate the application's cache.
+Keep the workspace's dependency graph accurate and retain the generated SQLite/WAL/SHM exclusions.
+`start` depends on the application's build; live hosts remain uncached.
 
 ## Scaffold validation
 

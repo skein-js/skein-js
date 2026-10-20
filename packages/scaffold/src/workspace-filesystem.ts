@@ -7,7 +7,7 @@ import { hasWorkspaceMarker, type WorkspaceSnapshot } from "./workspace.js";
 
 /** Read only; never creates a directory or changes a workspace during discovery. */
 export function findWorkspace(target: string): WorkspaceSnapshot | undefined {
-  let directory = path.dirname(target);
+  let directory = path.resolve(target);
   while (true) {
     const read = (filename: string): string | undefined => {
       const absolute = path.join(directory, filename);

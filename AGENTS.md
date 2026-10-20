@@ -126,15 +126,15 @@ Generated projects default to ESLint/Prettier and recommend Node 24, with engine
 registration exclusions and existing dependency versions.
 
 - Scaffold into a new child directory in an existing workspace. Avoid `create-skein-js . --force`
-  at a workspace root; use the Nx generator for Nx applications.
+  at a workspace root: it is rejected before writes. Use the Nx generator for Nx applications.
 - Check tool dependencies separately from inherited ESLint/Prettier configuration. Root configs
-  currently require matching root packages; run `format` before checking CLI-generated files with
-  non-default root formatting. Workspace dependency installation stays manual at the root.
-- Graphs importing workspace libraries need dependency-aware cache inputs and build ordering.
+  reuse declared root tools and add missing tools to the generated dependency owner. Both entrypoints
+  must format new files using inherited settings. Workspace installation stays manual at the root.
+- Preserve generated `^default` dependency inputs and `^build` ordering for build/typecheck/test.
   Preserve SQLite/WAL/SHM exclusions and live-target caching settings. Verify that a library change
   invalidates the application's cached build and checks.
-- Keep [scaffolding limitations](docs/scaffolding.md#current-workspace-limitations), package READMEs,
-  and installable `skills/` guidance aligned with behavior. When fixing a limitation, add its
+- Keep [workspace tooling and caching](docs/scaffolding.md#workspace-tooling-and-caching), package READMEs,
+  and installable `skills/` guidance aligned with behavior. When changing behavior, add its
   regression coverage and update the documentation together. The [testing guide](docs/testing.md#scaffold-consumers)
   describes the 96 generation cases and 30 installed consumers; green curated CI does not prove
   cases outside those fixtures.

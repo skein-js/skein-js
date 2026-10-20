@@ -19,10 +19,11 @@ Compatible numeric workspace pins are honored; unsupported numeric pins fail bef
 Targets use existing Nx executors. Start depends on build, live targets are uncached, and only
 `.skein/build` is cached. SQLite state stays outside that output.
 
-Inherited ESLint and Prettier configurations currently require their tools at the workspace root.
-When importing another workspace library, add dependency inputs such as `^default` to cached targets
-and `^build` ordering where library build outputs are needed. Retain SQLite exclusions. See the
-[current limitations](https://skein-js.github.io/skein-js/scaffolding).
+Root ESLint/Prettier configurations and declared tool dependencies are inherited independently;
+missing tools are added to the appropriate dependency owner. New files follow inherited formatting.
+Cached targets include `^default` dependency sources, and build/typecheck/test depend on `^build`.
+Workspace-library edits invalidate application caches. Preserve these inputs, ordering and SQLite
+exclusions. See [workspace tooling](https://skein-js.github.io/skein-js/scaffolding).
 
 The named root export `generateApplication` accepts an Nx Tree and these options.
 The exact metadata export `@skein-js/nx/package.json` supports discovery.

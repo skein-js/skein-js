@@ -48,7 +48,8 @@
   },
   "dependencies": {
     "@commander-js/extra-typings": "~13.1.0",
-    "commander": "~13.1.0"
+    "commander": "~13.1.0",
+    "prettier": "^3.9.6"
   },
   "devDependencies": {
     "@skein-js/scaffold": "workspace:*"

@@ -1,8 +1,9 @@
 import { spawnSync } from "node:child_process";
-import { mkdtempSync, readFileSync, existsSync, writeFileSync, rmSync } from "node:fs";
+import { mkdtempSync, readFileSync, existsSync, writeFileSync, rmSync, readdirSync } from "node:fs";
 import { tmpdir } from "node:os";
 import path from "node:path";
 
+import { check, resolveConfig } from "prettier";
 import { afterEach, describe, expect, it } from "vitest";
 
 const directories: string[] = [];
@@ -11,12 +12,12 @@ function createRoot() {
   directories.push(directory);
   return directory;
 }
-function invoke(root: string, args: string[]) {
+function invoke(root: string, args: string[], target = "apps/agent") {
   return spawnSync(
     process.execPath,
     [
       path.resolve(import.meta.dirname, "../dist/index.js"),
-      "apps/agent",
+      target,
       "--no-install",
       "--no-git",
       ...args,
@@ -29,6 +30,52 @@ afterEach(() => {
     rmSync(directory, { recursive: true, force: true });
 });
 describe("headless entrypoint", () => {
+  it.each(["npm", "pnpm", "nx", "turbo", "lerna"])(
+    "rejects the %s workspace root even with --force without writes",
+    (kind) => {
+      const root = createRoot();
+      const manifest = JSON.stringify({
+        name: "keep-root",
+        ...(kind === "npm" ? { workspaces: ["apps/*"] } : {}),
+      });
+      writeFileSync(path.join(root, "package.json"), manifest);
+      const marker = kind === "pnpm" ? "pnpm-workspace.yaml" : kind + ".json";
+      if (kind !== "npm")
+        writeFileSync(path.join(root, marker), kind === "pnpm" ? "packages: []\n" : "{}");
+      const before = readdirSync(root).sort();
+      const result = invoke(root, ["--yes", "--force"], ".");
+      expect(result.status).toBe(1);
+      expect(result.stderr).toContain("root cannot be scaffolded");
+      expect(readdirSync(root).sort()).toEqual(before);
+      expect(readFileSync(path.join(root, "package.json"), "utf8")).toBe(manifest);
+    },
+  );
+  it("formats new files with inherited style without requiring a root Prettier dependency", async () => {
+    const root = createRoot();
+    const manifest = '{"workspaces":["apps/*"]}';
+    const config =
+      '{"singleQuote":true,"semi":false,"printWidth":80,"overrides":[{"files":"*.ts","options":{"tabWidth":4}}]}';
+    writeFileSync(path.join(root, "package.json"), manifest);
+    writeFileSync(path.join(root, ".prettierrc.json"), config);
+    const result = invoke(root, ["--yes"]);
+    expect(result.status, result.stderr).toBe(0);
+    const project = path.join(root, "apps/agent");
+    const generated = JSON.parse(readFileSync(path.join(project, "package.json"), "utf8"));
+    expect(generated.devDependencies.prettier).toBeDefined();
+    expect(existsSync(path.join(project, ".prettierrc.json"))).toBe(false);
+    for (const filename of readdirSync(project, { recursive: true })
+      .map(String)
+      .filter((name) => /\.(ts|mjs|json|md|yaml)$/.test(name)))
+      expect(
+        await check(readFileSync(path.join(project, filename), "utf8"), {
+          filepath: path.join(project, filename),
+          ...(await resolveConfig(path.join(project, filename))),
+        }),
+        filename,
+      ).toBe(true);
+    expect(readFileSync(path.join(root, ".prettierrc.json"), "utf8")).toBe(config);
+    expect(readFileSync(path.join(root, "package.json"), "utf8")).toBe(manifest);
+  });
   it.each([[], ["--yes"], ["--linting"], ["--no-linting"]].map((flags) => [flags] as const))(
     "resolves tooling flags %j",
     (flags) => {

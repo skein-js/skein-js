@@ -43,7 +43,8 @@ agent, and a README explaining every file.
 
 Node 24 is recommended; generated engines support `^22.12.0 || ^24.0.0`. ESLint and Prettier default
 on, with `lint`, `format`, and `format:check` scripts. Root configurations are inherited independently;
-see the [workspace limitations](https://skein-js.github.io/skein-js/scaffolding).
+missing tool dependencies are added, and generated files follow inherited Prettier settings. See
+[workspace tooling](https://skein-js.github.io/skein-js/scaffolding).
 
 ## Options
 
@@ -96,8 +97,8 @@ Existing patterns and exclusions are preserved, including when creating missing 
 
 In Nx 23.2.1 through 23.x, install `@skein-js/nx` at the root (`pnpm add -Dw @skein-js/nx`) and run
 `pnpm exec nx g @skein-js/nx:application --directory=apps/my-agent`. The CLI redirects for new child
-directories in Nx workspaces. Avoid `create-skein-js . --force` at a workspace root; see the
-[current limitations](https://skein-js.github.io/skein-js/scaffolding).
+directories in Nx workspaces. Workspace-root targets, including `create-skein-js . --force`, are
+rejected before writes. See [workspace tooling](https://skein-js.github.io/skein-js/scaffolding).
 
 ## Docs
 
