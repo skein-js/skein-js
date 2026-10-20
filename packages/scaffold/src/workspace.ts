@@ -230,8 +230,9 @@ export function inspectWorkspace(
   const rootVersions = { ...manifest.dependencies, ...manifest.devDependencies };
   const tooling = {
     root: relativeRoot,
-    rootEslint: defaults.linting && rootVersions.eslint !== undefined,
-    rootPrettier: defaults.linting && rootVersions.prettier !== undefined,
+    rootEslint: defaults.linting && Boolean(eslintConfig) && rootVersions.eslint !== undefined,
+    rootPrettier:
+      defaults.linting && Boolean(prettierConfig) && rootVersions.prettier !== undefined,
     eslintConfig: defaults.linting ? relative(eslintConfig) : undefined,
     prettierConfig: defaults.linting ? relative(prettierConfig) : undefined,
     prettierIgnore: relative(findConfig([".prettierignore"])),

@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 import { parse } from "yaml";
 
+import { TOOLCHAIN_VERSIONS } from "./dependency-versions.js";
 import { buildProjectFiles } from "./project-files.js";
 import type { ScaffoldOptions } from "./scaffold-options.js";
 import { hasWorkspaceMarker, inspectWorkspace } from "./workspace.js";
@@ -60,6 +61,24 @@ describe("workspace planning", () => {
     const before = { ...files };
     expect(() => inspect(files)).toThrow();
     expect(files).toEqual(before);
+  });
+  it("keeps tested tool ranges for new configurations when root versions conflict", () => {
+    const plan = inspect({
+      "package.json":
+        '{"workspaces":["apps/*"],"devDependencies":{"eslint":"^7.0.0","prettier":"^2.0.0"}}',
+    });
+    const files = buildProjectFiles({ ...defaults, ...plan.options });
+    const manifest = JSON.parse(files.find((file) => file.path === "package.json")!.contents);
+    expect(manifest.devDependencies.eslint).toBe(TOOLCHAIN_VERSIONS.eslint);
+    expect(manifest.devDependencies.prettier).toBe(TOOLCHAIN_VERSIONS.prettier);
+    expect(files.some((file) => file.path === "eslint.config.mjs")).toBe(true);
+    expect(files.some((file) => file.path === ".prettierrc.json")).toBe(true);
+    expect(plan.notices).toEqual(
+      expect.arrayContaining([
+        expect.stringContaining("eslint: workspace range ^7.0.0 differs"),
+        expect.stringContaining("prettier: workspace range ^2.0.0 differs"),
+      ]),
+    );
   });
   it("inherits each tool independently and honors a numeric Node pin", () => {
     const plan = inspect({
