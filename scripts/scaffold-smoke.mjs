@@ -199,6 +199,7 @@ async function smokeTest(provider, ownVersion) {
  */
 async function shipItSmokeTest(port, ownVersion) {
   if (!dockerIsAvailable()) {
+    if (process.env.CI) throw new Error("Docker is required for the durable registry smoke test.");
     process.stdout.write("\nNo Docker daemon; skipping the `start` half of the smoke test.\n");
     return;
   }

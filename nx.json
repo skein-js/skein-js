@@ -13,7 +13,16 @@
       "!{projectRoot}/tsconfig.spec.json",
       "!{projectRoot}/src/test-setup.[jt]s"
     ],
-    "sharedGlobals": ["{workspaceRoot}/tsconfig.base.json", "{workspaceRoot}/eslint.config.mjs"]
+    "sharedGlobals": [
+      "{workspaceRoot}/tsconfig.base.json",
+      "{workspaceRoot}/eslint.config.mjs",
+      {
+        "runtime": "node --version"
+      },
+      {
+        "env": "NODE_ENV"
+      }
+    ]
   },
   "release": {
     "projects": ["packages/*"],
