@@ -4,7 +4,6 @@
 // baked `schemas.json`, so the runtime never touches TypeScript or the schema worker. It shares the
 // engine + graceful-shutdown shape with `skein dev`; only the dev machinery is gone.
 
-import { existsSync, readFileSync } from "node:fs";
 import path from "node:path";
 
 import { loadConfig, type GraphSchemas, type SkeinRuntimeName } from "@skein-js/config";
@@ -25,6 +24,7 @@ import {
   resolveShutdownGraceMs,
 } from "@skein-js/server-kit";
 
+import { readBakedSchemas } from "./baked-schemas.js";
 import { printBanner } from "./banner.js";
 import { skeinCliVersion } from "./cli-version.js";
 import { mountConsole } from "./console-mount.js";
@@ -74,18 +74,6 @@ export interface StartCommandOptions {
 
 interface ProductionServer {
   close: () => Promise<void>;
-}
-
-/** Load the artifact's precomputed schemas (baked by `skein build`), keyed by graph id. */
-function readBakedSchemas(configDir: string): Record<string, GraphSchemas> {
-  const schemasFile = path.join(configDir, "schemas.json");
-  if (!existsSync(schemasFile)) {
-    throw new Error(
-      `no schemas.json next to the config — \`skein start\` expects a built artifact. ` +
-        `Run \`skein build\` (or \`skein up\`), or use \`skein dev\` for a source project.`,
-    );
-  }
-  return JSON.parse(readFileSync(schemasFile, "utf8")) as Record<string, GraphSchemas>;
 }
 
 export async function runStart(options: StartCommandOptions): Promise<void> {

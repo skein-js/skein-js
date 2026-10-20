@@ -68,6 +68,17 @@ LangGraph Studio — any Agent Protocol client works with only a URL change. See
 
 All commands take `-c, --config <path>` (default `langgraph.json`).
 
+To serve a local build from the project root, select the artifact's config explicitly:
+
+```bash
+skein build --artifact-only
+skein start -c .skein/build/langgraph.json
+```
+
+Bare `skein start` works from inside the artifact directory, where `langgraph.json` and `schemas.json`
+sit together. Artifact selection stays explicit; an existing `.skein/build` is suggested in the
+missing-schema error rather than selected automatically.
+
 `--npmrc <path>` (on `build`/`up`) mounts an `.npmrc` as a BuildKit secret so the image's dependency
 install can authenticate against a **private/authenticated npm registry** without baking a token into
 any layer. Public-registry builds don't need it.

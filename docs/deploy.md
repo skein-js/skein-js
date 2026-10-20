@@ -227,6 +227,18 @@ export POSTGRES_URI=postgres://… REDIS_URI=redis://…
 npx skein start                      # or: node node_modules/skein-js/dist/index.js start
 ```
 
+The bare command above runs inside the copied artifact directory. To serve a local build from the
+project root, select the artifact's config explicitly:
+
+```bash
+skein build --artifact-only
+skein start -c .skein/build/langgraph.json
+```
+
+`skein start` defaults to `langgraph.json` in the working directory. When that config has no adjacent
+schemas and a build exists in its directory's `.skein/build`, the error suggests the explicit `-c`
+command; it does not switch artifacts automatically.
+
 `skein start` also reads a conventional `.env` from the directory you run it in, as well as one beside
 the config it loads — so running your own build from the project root
 (`skein start -c .skein/build/langgraph.json`) picks up that project's `.env` without exporting

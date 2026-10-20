@@ -183,7 +183,7 @@ Here is that file — `apps/my-agent/project.json`:
     "start": {
       "executor": "nx:run-commands",
       "cache": false,
-      "options": { "command": "skein start", "cwd": "apps/my-agent" }
+      "options": { "command": "skein start -c .skein/build/langgraph.json", "cwd": "apps/my-agent" }
     },
     "typecheck": {
       "executor": "nx:run-commands",
