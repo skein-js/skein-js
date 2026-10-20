@@ -52,7 +52,7 @@ jobs:
         run: pnpm format:check
 
       # `docs` is an Nx project, so a broken link target or config change fails here rather than at
-      # deploy time (docs.yml only runs on push to main).
+      # deploy time (docs.yml is called after a stable release publishes to npm).
       - name: Build and verify the docs site
         run: pnpm exec nx run docs:check-seo --output-style=stream
 
