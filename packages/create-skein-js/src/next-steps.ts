@@ -19,6 +19,8 @@ export interface ScaffoldOutcome {
   readonly git?: GitOutcome;
   /** Set when the npm-legal package name had to differ from the directory name. */
   readonly renamedPackageTo?: string;
+  /** Workspace root, relative to where the command was run; installs then happen there, not in the project. */
+  readonly workspaceRoot?: string;
 }
 
 /** Spell a script for the chosen package manager (`npm run dev`, but `pnpm dev`). */
@@ -56,10 +58,17 @@ export function describeNextSteps(
     );
   }
 
+  // Inside a workspace the install belongs to the root: one in the project would create a nested
+  // lockfile and node_modules outside the workspace.
+  if (outcome.workspaceRoot !== undefined && !outcome.installed) {
+    lines.push(
+      `  ${cyan(`${options.packageManager} install`)}   ${dim(`— from the workspace root (${outcome.workspaceRoot})`)}`,
+    );
+  }
   if (outcome.relativeDirectory !== ".") {
     lines.push(`  ${cyan(`cd ${outcome.relativeDirectory}`)}`);
   }
-  if (!outcome.installed) {
+  if (outcome.workspaceRoot === undefined && !outcome.installed) {
     lines.push(`  ${cyan(`${options.packageManager} install`)}`);
   }
   // Listed as a *step*, in sequence and in color, rather than as a footnote after the URLs. Someone

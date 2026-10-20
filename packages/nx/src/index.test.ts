@@ -50,6 +50,39 @@ describe("application generator", () => {
       expect(tree.listChanges()).toEqual(before);
     },
   );
+  it("rejects a non-empty application directory", async () => {
+    const tree = createTreeWithEmptyWorkspace();
+    tree.write("tsconfig.base.json", "{}");
+    tree.write("apps/agent/notes.txt", "keep");
+    await expect(generateApplication(tree, { directory: "apps/agent" })).rejects.toThrow(
+      /not empty/,
+    );
+  });
+  it.each([".nvmrc", ".node-version"])(
+    "rejects an unsupported workspace Node pin in %s without mutations",
+    async (filename) => {
+      const tree = createTreeWithEmptyWorkspace();
+      tree.write("tsconfig.base.json", "{}");
+      tree.write(filename, "20\n");
+      const before = tree.listChanges();
+      await expect(generateApplication(tree, { directory: "apps/agent" })).rejects.toThrow(
+        /Node pin "20" is unsupported/,
+      );
+      expect(tree.listChanges()).toEqual(before);
+    },
+  );
+  it("migrates pnpm package patterns while preserving root metadata", async () => {
+    const tree = createTreeWithEmptyWorkspace();
+    tree.write("tsconfig.base.json", "{}");
+    const manifest =
+      '{"packageManager":"pnpm@9.15.0","workspaces":["apps/*","!apps/private/**"],"scripts":{"sentinel":"keep"}}';
+    tree.write("package.json", manifest);
+    await generateApplication(tree, { directory: "apps/agent" });
+    expect(tree.read("pnpm-workspace.yaml")?.toString()).toContain("apps/*");
+    expect(tree.read("pnpm-workspace.yaml")?.toString()).toContain("!apps/private/**");
+    expect(tree.read("pnpm-workspace.yaml")?.toString()).not.toContain("apps/agent");
+    expect(tree.read("package.json")?.toString()).toBe(manifest);
+  });
   it("rejects an unsupported host Nx version without mutations", async () => {
     const tree = createTreeWithEmptyWorkspace();
     tree.write("node_modules/nx/package.json", '{"version":"24.0.0"}');

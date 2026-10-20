@@ -32,7 +32,8 @@ export interface WorkspaceSnapshot {
   readonly root: string;
   readonly target: string;
   readonly read: (relativePath: string) => string | undefined;
-  readonly packagePaths?: readonly string[];
+  /** Lists `package.json` paths matching the workspace's positive package patterns. */
+  readonly listPackagePaths?: (patterns: readonly string[]) => readonly string[];
 }
 
 export interface WorkspacePlan {
@@ -52,6 +53,16 @@ function readManifest(contents: string, filename: string): z.infer<typeof manife
   }
 }
 
+/** Ignore malformed sibling metadata when looking for reusable dependency ranges. */
+function readManifestOrUndefined(contents: string): z.infer<typeof manifestSchema> | undefined {
+  try {
+    const parsed = manifestSchema.safeParse(JSON.parse(contents));
+    return parsed.success ? parsed.data : undefined;
+  } catch {
+    return undefined;
+  }
+}
+
 export function hasWorkspaceMarker(read: WorkspaceSnapshot["read"]): boolean {
   if (
     ["pnpm-workspace.yaml", "nx.json", "turbo.json", "lerna.json"].some(
@@ -60,7 +71,16 @@ export function hasWorkspaceMarker(read: WorkspaceSnapshot["read"]): boolean {
   )
     return true;
   const contents = read("package.json");
-  return contents !== undefined && readManifest(contents, "package.json").workspaces !== undefined;
+  if (contents === undefined) return false;
+  try {
+    const manifest: unknown = JSON.parse(contents);
+    // Detect the declaration independently of validation, so invalid workspaces still get diagnosed.
+    return (
+      typeof manifest === "object" && manifest !== null && Object.hasOwn(manifest, "workspaces")
+    );
+  } catch {
+    return false;
+  }
 }
 
 function matchDirectory(pattern: string, directory: string): boolean {
@@ -79,7 +99,19 @@ export function inspectWorkspace(
   if (!source) throw new Error("A workspace root must have package.json.");
   const manifest = readManifest(source, "package.json");
   const yamlSource = read("pnpm-workspace.yaml");
-  const document = yamlSource === undefined ? undefined : parseDocument(yamlSource);
+  const pnpmManaged = manifest.packageManager?.startsWith("pnpm@") ?? false;
+  const manifestPatterns = Array.isArray(manifest.workspaces)
+    ? manifest.workspaces
+    : (manifest.workspaces?.packages ?? []);
+  const creatingPnpmWorkspace = pnpmManaged && yamlSource === undefined;
+  // Migrate every package pattern, including exclusions, when creating pnpm's required YAML.
+  const document =
+    yamlSource !== undefined
+      ? parseDocument(yamlSource)
+      : pnpmManaged
+        ? parseDocument("")
+        : undefined;
+  if (creatingPnpmWorkspace) document!.set("packages", manifestPatterns);
   if (document?.errors.length)
     throw new Error("Invalid pnpm-workspace.yaml: " + document.errors.join("; "));
   const yaml = z
@@ -90,25 +122,24 @@ export function inspectWorkspace(
     })
     .passthrough()
     .parse(document?.toJS() ?? {});
-  const useYaml =
-    document && (!manifest.packageManager || manifest.packageManager.startsWith("pnpm@"));
-  const patterns = useYaml
-    ? (yaml.packages ?? [])
-    : Array.isArray(manifest.workspaces)
-      ? manifest.workspaces
-      : (manifest.workspaces?.packages ?? []);
+  const useYaml = document && (!manifest.packageManager || pnpmManaged);
+  const patterns = useYaml ? (yaml.packages ?? []) : manifestPatterns;
   if (
     patterns.some((pattern) => pattern.startsWith("!") && matchDirectory(pattern.slice(1), target))
   )
     throw new Error("The requested directory is excluded by a workspace pattern: " + target);
-  const registered = patterns.some(
+  const matchesPackagePattern = patterns.some(
     (pattern) => !pattern.startsWith("!") && matchDirectory(pattern, target),
   );
+  // Even a matching pattern needs to be written when pnpm has no workspace YAML yet.
+  const registered = matchesPackagePattern && !creatingPnpmWorkspace;
   let registration: GeneratedFile | undefined;
   if (!registered) {
     if (useYaml && document) {
-      if (!document.has("packages")) document.set("packages", []);
-      document.addIn(["packages"], target);
+      if (!matchesPackagePattern) {
+        if (!document.has("packages")) document.set("packages", []);
+        document.addIn(["packages"], target);
+      }
       registration = { path: "pnpm-workspace.yaml", contents: document.toString() };
     } else {
       const workspaces = Array.isArray(manifest.workspaces)
@@ -117,9 +148,11 @@ export function inspectWorkspace(
           ? { ...manifest.workspaces, packages: [...manifest.workspaces.packages, target] }
           : [target];
       const indentation = source.match(/\n([\t ]+)"/)?.[1] ?? "  ";
+      // Merge into the raw manifest so the user's key order survives the rewrite.
+      const raw = JSON.parse(source) as Record<string, unknown>;
       registration = {
         path: "package.json",
-        contents: JSON.stringify({ ...manifest, workspaces }, null, indentation) + "\n",
+        contents: JSON.stringify({ ...raw, workspaces }, null, indentation) + "\n",
       };
     }
   }
@@ -144,6 +177,8 @@ export function inspectWorkspace(
   }
   const node = resolveNodeVersion(read(".nvmrc") ?? read(".node-version"));
   const notices = node.notice ? [node.notice] : [];
+  if (yamlSource === undefined && pnpmManaged && manifest.workspaces !== undefined)
+    notices.push("pnpm ignores package.json workspaces; registering in pnpm-workspace.yaml.");
   const relativeRoot = path.posix.relative(target, ".") || ".";
   const findConfig = (names: readonly string[]) => names.find((name) => read(name) !== undefined);
   const eslintConfig = findConfig([
@@ -175,13 +210,20 @@ export function inspectWorkspace(
       ".prettierrc.json",
       ".prettierrc.yml",
       ".prettierrc.yaml",
+      ".prettierrc.json5",
+      ".prettierrc.toml",
       ".prettierrc.js",
       ".prettierrc.cjs",
       ".prettierrc.mjs",
+      ".prettierrc.ts",
+      ".prettierrc.cts",
+      ".prettierrc.mts",
       "prettier.config.js",
       "prettier.config.cjs",
       "prettier.config.mjs",
       "prettier.config.ts",
+      "prettier.config.cts",
+      "prettier.config.mts",
     ]) ?? (manifest.prettier !== undefined ? "package.json" : undefined);
   const relative = (filename: string | undefined) =>
     filename ? path.posix.join(relativeRoot, filename) : undefined;
@@ -196,7 +238,10 @@ export function inspectWorkspace(
   ) as { dependencies: Record<string, string>; devDependencies: Record<string, string> };
   const wanted = { ...baselineManifest.dependencies, ...baselineManifest.devDependencies };
   const rootVersions = { ...manifest.dependencies, ...manifest.devDependencies };
-  const siblings = (snapshot.packagePaths ?? [])
+  const positivePatterns = patterns.filter((pattern) => !pattern.startsWith("!"));
+  const siblings = (
+    positivePatterns.length ? (snapshot.listPackagePaths?.(positivePatterns) ?? []) : []
+  )
     .filter((filename) => {
       const directory = path.posix.dirname(filename);
       return (
@@ -209,13 +254,19 @@ export function inspectWorkspace(
         )
       );
     })
-    .map((filename) => readManifest(read(filename)!, filename));
+    .flatMap((filename) => {
+      const contents = read(filename);
+      const sibling = contents === undefined ? undefined : readManifestOrUndefined(contents);
+      return sibling ? [sibling] : [];
+    });
   if (siblings.some((sibling) => sibling.name === defaults.packageName))
     throw new Error("Workspace package name already exists: " + defaults.packageName);
+  // pnpm's default catalog may be spelled `catalog:` or `catalogs.default:`.
+  const defaultCatalog = yaml.catalog ?? yaml.catalogs?.["default"];
   const dependencyVersions: Record<string, string> = {};
   for (const [name, tested] of Object.entries(wanted)) {
     const rootRange = rootVersions[name];
-    const catalogRange = packageManager === "pnpm" ? yaml.catalog?.[name] : undefined;
+    const catalogRange = packageManager === "pnpm" ? defaultCatalog?.[name] : undefined;
     const candidates = rootRange
       ? [rootRange]
       : catalogRange
@@ -235,7 +286,7 @@ export function inspectWorkspace(
     const candidate = candidates[0]!;
     const resolved = candidate.startsWith("catalog:")
       ? candidate === "catalog:"
-        ? yaml.catalog?.[name]
+        ? defaultCatalog?.[name]
         : yaml.catalogs?.[candidate.slice(8)]?.[name]
       : candidate;
     if (resolved && validRange(resolved) && validRange(tested) && subset(resolved, tested))

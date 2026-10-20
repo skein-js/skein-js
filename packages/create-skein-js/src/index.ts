@@ -204,13 +204,6 @@ const program = new Command()
         if (updateWorkspace && workspacePlan.registration)
           writeFilesToDisk(workspace.root, [workspacePlan.registration]);
         for (const notice of workspacePlan.notices) process.stdout.write(notice + "\n");
-        process.stdout.write(
-          "Workspace detected; installation is manual. Run " +
-            resolvedOptions.packageManager +
-            " install from " +
-            workspace.root +
-            ".\n",
-        );
         if (!workspacePlan.registered && !updateWorkspace)
           process.stdout.write(
             "Add " + workspace.target + " to the workspace package patterns before installing.\n",
@@ -244,6 +237,9 @@ const program = new Command()
         installed,
         ...(gitOutcome ? { git: gitOutcome } : {}),
         renamedPackageTo: packageName === resolvedName ? undefined : packageName,
+        ...(workspace
+          ? { workspaceRoot: path.relative(process.cwd(), workspace.root) || "." }
+          : {}),
       });
       process.stdout.write(`${lines.join("\n")}\n`);
     } finally {

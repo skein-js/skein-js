@@ -56,11 +56,8 @@ export async function generateApplication(tree: Tree, options: ApplicationOption
   const projects = getProjects(tree);
   if (projects.has(name) || [...projects.values()].some((project) => project.root === directory))
     throw new Error("An Nx project already owns this name or directory: " + directory);
-  const existing: string[] = [];
-  visitNotIgnoredFiles(tree, ".", (filename) => {
-    if (filename.startsWith(directory + "/")) existing.push(filename);
-  });
-  if (existing.length) throw new Error("Application directory is not empty: " + directory);
+  if (tree.children(directory).length)
+    throw new Error("Application directory is not empty: " + directory);
   const defaults: ScaffoldOptions = {
     projectName: path.posix.basename(directory),
     packageName: name,
@@ -70,16 +67,20 @@ export async function generateApplication(tree: Tree, options: ApplicationOption
     packageManager: "pnpm",
     skeinVersionRange: "^" + version,
   };
-  const packagePaths: string[] = [];
-  visitNotIgnoredFiles(tree, ".", (filename) => {
-    if (filename.endsWith("/package.json")) packagePaths.push(filename);
-  });
+  // One walk, only when the workspace has package patterns; inspectWorkspace filters by pattern.
+  const listPackagePaths = () => {
+    const packagePaths: string[] = [];
+    visitNotIgnoredFiles(tree, ".", (filename) => {
+      if (filename.endsWith("/package.json")) packagePaths.push(filename);
+    });
+    return packagePaths;
+  };
   const workspace = inspectWorkspace(
     {
       root: tree.root,
       target: directory,
       read: (filename) => tree.read(filename)?.toString(),
-      packagePaths,
+      listPackagePaths,
     },
     defaults,
   );
