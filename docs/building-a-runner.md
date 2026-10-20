@@ -58,6 +58,19 @@ async *stream(input, options) {
 }
 ```
 
+If your agent runs nested agents, a client can ask for their frames with `stream_subgraphs`. Your
+`stream` then receives `options.subgraphs === true`, and may yield a **`[namespace, mode, data]`
+triple** — `namespace` a string array, one segment per nesting level, empty for your own frames:
+
+```ts
+function* streamNestedStep(step: unknown) {
+  yield [["researcher:1"], "updates", step]; // -> event: updates|researcher:1
+}
+```
+
+Ignore the option and keep yielding pairs if you have nothing nested; see
+[subgraphs and subagents](./streaming.md#subgraphs-and-subagents).
+
 Anything that is _not_ such a tuple is published as an `updates` payload.
 
 ### State: seven fields

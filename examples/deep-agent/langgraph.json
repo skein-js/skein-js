@@ -1,0 +1,11 @@
+{
+  "node_version": "24",
+  "graphs": {
+    "supervisor": "./src/supervisor-graph.ts:graph",
+    "researcher": "./src/researcher-graph.ts:graph"
+  },
+  "auth": {
+    "path": "./src/auth.ts:auth"
+  },
+  "env": ".env"
+}

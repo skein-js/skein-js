@@ -22,6 +22,8 @@ export interface ThreadStreamInput {
   config?: Config;
   context?: unknown;
   stream_mode?: StreamMode | StreamMode[];
+  /** Also stream frames emitted inside subgraphs, carrying `RunFrame.namespace` (`mode|<namespace>` over SSE). */
+  stream_subgraphs?: boolean;
   metadata?: Metadata;
 }
 
@@ -32,6 +34,8 @@ export interface CommandInput {
   /** Shorthand for `command.resume`. */
   resume?: unknown;
   stream_mode?: StreamMode | StreamMode[];
+  /** Also stream frames emitted inside subgraphs, carrying `RunFrame.namespace` (`mode|<namespace>` over SSE). */
+  stream_subgraphs?: boolean;
   config?: Config;
   context?: unknown;
   metadata?: Metadata;
@@ -121,6 +125,7 @@ export function createThreadStreamService(
         assistant_id: assistantId,
         command,
         stream_mode: input.stream_mode,
+        stream_subgraphs: input.stream_subgraphs,
         config: input.config,
         context: input.context,
         metadata: input.metadata,

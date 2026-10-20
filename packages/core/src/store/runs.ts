@@ -32,6 +32,11 @@ export interface RunKwargs {
   context?: unknown;
   /** Requested stream modes; the engine normalizes these to graph modes. */
   stream_mode?: StreamMode | StreamMode[];
+  /**
+   * Also stream frames emitted inside subgraphs — including a graph invoked from a tool, as Deep
+   * Agents runs a subagent — each carrying `RunFrame.namespace` and encoded as `mode|<namespace>` over SSE.
+   */
+  stream_subgraphs?: boolean;
   interrupt_before?: string[] | "*";
   interrupt_after?: string[] | "*";
   /**

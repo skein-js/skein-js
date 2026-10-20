@@ -27,13 +27,26 @@ export const SSE_HEADERS: Readonly<Record<string, string>> = {
  */
 const encodedFrames = new WeakMap<RunFrame, string>();
 
+/**
+ * The SSE `event:` value: the mode, then `|segment…` for a subgraph frame — upstream's naming. It is
+ * the one unescaped field (`data` is JSON), so line breaks are removed: a CR or LF would end the
+ * field and let the rest forge fields of its own — a fake `end`, or an `id:` that corrupts resume.
+ * The engine never produces one, but a frame reaching here may have crossed a third-party bus.
+ */
+function frameEventName(frame: RunFrame): string {
+  const name = frame.namespace?.length
+    ? `${frame.event}|${frame.namespace.join("|")}`
+    : frame.event;
+  return name.replace(/[\r\n]/g, "");
+}
+
 /** Serialize one frame as an SSE block: `id:` for reconnect, `event:` name, JSON `data:`. */
 export function encodeFrame(frame: RunFrame): string {
   const cached = encodedFrames.get(frame);
   if (cached !== undefined) return cached;
   // `serializeWireJson` (not bare `JSON.stringify`) so streamed LangChain messages reach the client
   // as `{ type: "ai", content }` — the shape `useStream` / Agent Chat UI read.
-  const encoded = `id: ${frame.seq}\nevent: ${frame.event}\ndata: ${serializeWireJson(frame.data)}\n\n`;
+  const encoded = `id: ${frame.seq}\nevent: ${frameEventName(frame)}\ndata: ${serializeWireJson(frame.data)}\n\n`;
   encodedFrames.set(frame, encoded);
   return encoded;
 }

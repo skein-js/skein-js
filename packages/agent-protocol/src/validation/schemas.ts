@@ -48,6 +48,7 @@ export const runCreateSchema = z
     config: configSchema.optional(),
     context: z.unknown().optional(),
     stream_mode: streamModeSchema.optional(),
+    stream_subgraphs: z.boolean().optional(),
     metadata: z.record(z.unknown()).optional(),
     multitask_strategy: multitaskStrategySchema.optional(),
     interrupt_before: interruptWhenSchema.optional(),
@@ -124,13 +125,12 @@ export const runCreateSchema = z
      * can see they were considered — and so the schema-parity guard in `@skein-js/test-support` counts
      * them as known rather than as newly-missing.
      *
-     * `stream_subgraphs` / `stream_resumable`: skein streams the root graph's frames and resumability
-     * comes from the event bus + `Last-Event-ID`, not from a per-run flag.
+     * `stream_resumable`: resumability comes from the event bus + `Last-Event-ID`, not from a per-run
+     * flag.
      * `feedback_keys`: a LangSmith-scoring concern with no skein equivalent.
      * `checkpoint_during` / `durability`: LangGraph checkpoint-write tuning skein does not expose.
      * `langsmith_tracer`: the SDK's own tracing passthrough — skein traces via its `TelemetrySink`.
      */
-    stream_subgraphs: z.boolean().optional(),
     stream_resumable: z.boolean().optional(),
     feedback_keys: z.array(z.string()).optional(),
     checkpoint_during: z.boolean().optional(),
@@ -184,6 +184,7 @@ export const threadStreamSchema = z
     config: configSchema.optional(),
     context: z.unknown().optional(),
     stream_mode: streamModeSchema.optional(),
+    stream_subgraphs: z.boolean().optional(),
     metadata: z.record(z.unknown()).optional(),
   })
   .passthrough();
@@ -195,6 +196,7 @@ export const commandBodySchema = z
     command: commandSchema.optional(),
     resume: z.unknown().optional(),
     stream_mode: streamModeSchema.optional(),
+    stream_subgraphs: z.boolean().optional(),
     config: configSchema.optional(),
     context: z.unknown().optional(),
     metadata: z.record(z.unknown()).optional(),
@@ -527,6 +529,7 @@ const cronRunPayloadSchema = z.object({
   config: configSchema.optional(),
   context: z.unknown().optional(),
   stream_mode: streamModeSchema.optional(),
+  stream_subgraphs: z.boolean().optional(),
   multitask_strategy: multitaskStrategySchema.optional(),
   interrupt_before: interruptWhenSchema.optional(),
   interrupt_after: interruptWhenSchema.optional(),
@@ -550,7 +553,6 @@ const cronRunPayloadSchema = z.object({
    */
   checkpoint_during: z.boolean().optional(),
   durability: z.string().optional(),
-  stream_subgraphs: z.boolean().optional(),
   stream_resumable: z.boolean().optional(),
   /**
    * Also accepted and ignored, and for a sharper reason than the rest: a cron's `schedule` *is* its

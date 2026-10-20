@@ -10,6 +10,37 @@ describe("encodeFrame", () => {
     );
   });
 
+  it("encodes the namespace only in the SSE event name", () => {
+    const frame: RunFrame = {
+      seq: 2,
+      event: "updates",
+      namespace: ["tools:1", "worker:2"],
+      data: 1,
+    };
+    expect(encodeFrame(frame)).toBe("id: 2\nevent: updates|tools:1|worker:2\ndata: 1\n\n");
+    expect(frame.event).toBe("updates");
+    expect(encodeFrame({ seq: 3, event: "updates", namespace: [], data: 1 })).toContain(
+      "event: updates\n",
+    );
+  });
+
+  it("cannot be made to forge SSE fields through a namespace from an unvalidated bus", () => {
+    // A third-party bus delivers whatever it stored; the encoder is the last line of defence for the
+    // one field that is not JSON-escaped.
+    const frame: RunFrame = {
+      seq: 7,
+      event: "updates",
+      namespace: ["tools:1\r\ndata: {}\n\nevent: end\nid: 999"],
+      data: 1,
+    };
+    const lines = encodeFrame(frame).split("\n");
+    expect(lines.filter((line) => line.startsWith("event: "))).toEqual([
+      "event: updates|tools:1data: {}event: endid: 999",
+    ]);
+    expect(lines.filter((line) => line.startsWith("id: "))).toEqual(["id: 7"]);
+    expect(encodeFrame(frame).split("\n\n")).toHaveLength(2); // one block, then the trailing blank
+  });
+
   it("keeps a multi-line stack inside one SSE block", () => {
     // SSE delimits on a blank line, so a raw newline in the payload would split one frame into two
     // and desynchronize the client. JSON.stringify escapes them — pinned, because `exposeErrorStacks`

@@ -40,6 +40,10 @@ layer that OSS does not provide.
 **Rule of thumb:** if a `@langchain/*` package already does it, we depend on it (as a
 `peerDependency` where the consumer should own the version). We do not fork or vendor it.
 
+Subgraph SSE event naming (`mode|<namespace>`) follows `@langchain/langgraph-api`'s `streamState`.
+That helper is not a public export, so Skein mirrors only its wire encoding. Deep Agents itself
+remains an upstream dependency used directly by application graphs.
+
 ## What skein-js rebuilds (the gap)
 
 `@langchain/langgraph-api` is explicitly an **in-memory dev server** ("in-memory mode,

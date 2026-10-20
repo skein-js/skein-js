@@ -1,0 +1,11 @@
+{
+  "extends": "../../tsconfig.base.json",
+  "compilerOptions": {
+    "noEmit": true,
+    // An application, not a library: no declarations, so `createDeepAgent`'s deeply inferred graph
+    // type never has to be nameable from outside this package.
+    "declaration": false,
+    "types": ["node"]
+  },
+  "include": ["src/**/*.ts"]
+}

@@ -19,6 +19,7 @@ import type { ProtocolContext } from "../context.js";
 import { agentCommand } from "../graphs/agent-command.js";
 import { requireAgentCapability, type AgentGraph } from "../graphs/agent-graph.js";
 import { loadGraphOrThrow } from "../graphs/load-graph.js";
+import { toFactoryConfigurable } from "../runs/run-input.js";
 
 import { copyCheckpointHistory, pruneThreadCheckpointsToLatest } from "./checkpoint-history.js";
 import {
@@ -224,9 +225,24 @@ export function createThreadService(ctx: ProtocolContext): ThreadService {
     if (latest) {
       const assistant = await deps.store.assistants.get(latest.assistant_id);
       if (assistant) {
+        // Rebuild the factory with the run's own sanitized config — what the engine built it from —
+        // so its shape matches the checkpoints it wrote. That also means server-owned keys
+        // (`thread_id`, `checkpoint_*`, `__*`) are stripped here as they were for the run itself.
+        //
+        // The principal is the *requester's*, never the last run's: building as whoever ran last
+        // would let any reader of the thread construct the graph — and run any factory-time side
+        // effect — under someone else's identity. No auth means no principal, as for a run.
         return buildGraph(assistant.graph_id, async () => {
-          const kwargs = await deps.store.runs.getKwargs(latest.run_id);
-          return kwargs?.config?.configurable;
+          const {
+            auth_user: _lastRunPrincipal,
+            auth_scopes: _lastRunScopes,
+            ...runConfig
+          } = (await deps.store.runs.getKwargs(latest.run_id)) ?? {};
+          return toFactoryConfigurable({
+            ...runConfig,
+            ...(ctx.authUser ? { auth_user: ctx.authUser } : {}),
+            ...(ctx.authUser && ctx.authScopes ? { auth_scopes: ctx.authScopes } : {}),
+          });
         });
       }
     }

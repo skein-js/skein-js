@@ -16,6 +16,12 @@ export interface RunFrame {
   seq: number;
   /** Frame kind: a LangGraph stream mode, or `"error"` for a failed run. */
   event: StreamMode | "error";
+  /**
+   * Subgraph checkpoint namespace, one segment per nesting level. Absent for root frames.
+   * SSE adapters encode a namespaced frame as `event|segment|…`, matching the LangGraph SDK.
+   * Event buses must preserve this field through live delivery and replay.
+   */
+  namespace?: string[];
   /** Serializable payload for this frame. */
   data: unknown;
 }

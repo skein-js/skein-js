@@ -65,6 +65,11 @@ export interface AgentGraph {
   /**
    * REQUIRED. Run the agent, yielding one chunk per step. A `[mode, data]` tuple is unwrapped into
    * that stream mode (`chunkToFrameBody`); anything else is published as an `updates` payload.
+   *
+   * When the run asks for subgraph frames, `options.subgraphs` is `true` and a `[namespace, mode,
+   * data]` triple is unwrapped too — `namespace` a string array, one segment per nesting level —
+   * into a mode frame with a separate namespace. SSE serialization names it `mode|segment|…`.
+   * An agent with no subgraphs can ignore the option.
    */
   stream(
     input: unknown,

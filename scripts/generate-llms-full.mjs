@@ -56,6 +56,7 @@ const DOCS = [
   "docs/recipes/coupled-channel.md",
   "docs/recipes/decoupled-channel-delivery.md",
   "docs/recipes/memory.md",
+  "docs/recipes/deep-agents.md",
   "docs/recipes/authentication.md",
   "docs/recipes/production.md",
   "docs/building-an-adapter.md",

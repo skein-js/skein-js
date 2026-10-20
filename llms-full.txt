@@ -7518,6 +7518,37 @@ data: <json payload>
   around 60s, and the SDK's `stream_idle_reconnect: "auto"` has nothing to distinguish the two either.
   Tune it with `toSseEvents(..., { heartbeatMs })`; `0` writes only real frames.
 
+## Subgraphs and subagents
+
+A graph that runs another graph — a compiled subgraph added as a node, or a graph invoked from a
+tool, which is how [Deep Agents](./recipes/deep-agents.md) runs a subagent — streams only its own
+frames by default. Set `stream_subgraphs: true` on the run (`streamSubgraphs: true` in the JS SDK) to
+stream the inner graphs' frames too. Each is named after the mode and the namespace it came from:
+
+```
+event: updates                                      # the run's own graph
+event: updates|tools:6d1f…                          # a subagent run from a tool call
+event: messages|tools:6d1f…|model_request:9a2c…     # that subagent's model tokens
+```
+
+These are LangGraph Platform's names; `@langchain/langgraph-sdk` splits on `|` to tell supervisor
+and subagent streams apart. Joining a run (`Last-Event-ID` included) replays them unchanged, and a
+background or cron run keeps the flag.
+
+Without the flag you are not blind to subgraphs: `messages` mode already carries their model tokens
+(each tuple's metadata holds `langgraph_checkpoint_ns`), and `events` mode carries every nested event.
+What the flag adds is their `updates`, `values` and `custom` frames, and names a client can route on.
+With it on, the run's own model tokens are namespaced too (`messages|model_request:…`), as upstream —
+the root graph's frames are the ones with no `|`.
+
+Inside Skein, `RunFrame.event` remains the bare mode and `RunFrame.namespace` carries the optional
+subgraph path. Root frames omit the namespace. Event buses preserve both fields; SSE serialization
+combines them into the upstream event name shown above. Existing switches over `RunFrame.event`
+continue to work.
+
+Declared replies keep their existing last-write-wins behavior, including nested custom writes that
+LangGraph propagates. The client's `stream_subgraphs` setting does not change which reply is delivered.
+
 ## Slow clients and backpressure
 
 A stream is only as fast as the client reading it, and skein paces itself accordingly. Every adapter's
@@ -9923,6 +9954,7 @@ pnpm --filter @skein-js/example-triage-agent seed   # register the schedule + sw
 | [Coupled WhatsApp workflow](./coupled-channel.md)          | A workflow with the same provider as source and destination                 |
 | [Cross-provider workflow](./decoupled-channel-delivery.md) | Email source → LangGraph workflow → allowlisted WhatsApp/email destinations |
 | [Memory](./memory.md)                                      | `getStore()`, semantic search, and the dedup trap                           |
+| [Deep Agents](./deep-agents.md)                            | Files, per-user memory, streamed subagents, approval and async subagents    |
 | [Authenticating requests](./authentication.md)             | Better Auth, Clerk, Supabase, Firebase, OIDC/JWT, and authorization policy  |
 | [Production](./production.md)                              | Auth, run-completion webhooks, durable storage and deploying                |
 | [Local apps and SQLite](../local-deployment.md)            | Desktop, CLI, and daemon hosts with one owned database file                 |
@@ -9934,6 +9966,7 @@ pnpm --filter @skein-js/example-triage-agent seed   # register the schedule + sw
 | [`triage-agent`](https://github.com/skein-js/skein-js/tree/main/examples/triage-agent)             | Crons, background runs, idempotency, HITL, memory, time travel                  |
 | [`decoupled-delivery`](https://github.com/skein-js/skein-js/tree/main/examples/decoupled-delivery) | Routed channels: email source → approval workflow → WhatsApp/email destinations |
 | [`chat-app`](https://github.com/skein-js/skein-js/tree/main/examples/chat-app)                     | Full-stack chat: streaming, thinking, tool cards, HITL, memory                  |
+| [`deep-agent`](https://github.com/skein-js/skein-js/tree/main/examples/deep-agent)                 | A Deep Agent: files, per-user memory, streamed and async subagents, approval    |
 | [`invoke-endpoint`](https://github.com/skein-js/skein-js/tree/main/examples/invoke-endpoint)       | Non-chat graphs as plain HTTP endpoints                                         |
 | [`embed-graph`](https://github.com/skein-js/skein-js/tree/main/examples/embed-graph)               | A graph you already have, served with no `langgraph.json`                       |
 | [`migrated-langgraph`](https://github.com/skein-js/skein-js/tree/main/examples/migrated-langgraph) | The drop-in proof — a stock LangGraph project under `skein dev`                 |
@@ -10610,7 +10643,9 @@ The same items are reachable over the `/store/items` HTTP endpoints.
 Working versions: [`chat-app`](https://github.com/skein-js/skein-js/tree/main/examples/chat-app) (recalls
 a user across sessions) and
 [`triage-agent`](https://github.com/skein-js/skein-js/tree/main/examples/triage-agent) (reads your
-conventions back into the prompt).
+conventions back into the prompt), and
+[`deep-agent`](https://github.com/skein-js/skein-js/tree/main/examples/deep-agent) (a Deep Agent's
+`/memories/` files, one namespace per user).
 
 > [!WARNING]
 > **Read this before writing a dedup rule**
@@ -10645,6 +10680,184 @@ Long-term memory is the one repo you can swap without implementing the other fiv
 at a LangGraph `BaseStore` (including `PostgresStore`, which brings hybrid text+vector search skein's own
 driver lacks) or a skein `StoreRepo`. Details:
 [storage.md](../storage.md#bringing-your-own-store-storeadapter).
+
+
+---
+
+<!-- source: docs/recipes/deep-agents.md -->
+
+# Deep Agents
+
+Serving a LangChain [Deep Agent](https://docs.langchain.com/oss/javascript/deepagents/overview) —
+planning, files, subagents, human approval — with skein.
+
+`createDeepAgent()` returns a compiled LangGraph graph, so there is nothing to adapt: export it, name it
+in `langgraph.json`, and skein supplies the checkpointer, the store, streaming and interrupt/resume
+around it. There is no `@skein-js/deepagents` package; depend on `deepagents` directly.
+
+```ts
+// src/agent.ts
+import {
+  CompositeBackend,
+  createDeepAgent,
+  StateBackend,
+  StoreBackend,
+  type StoreBackendContext,
+} from "deepagents";
+
+function memoryNamespace({ config }: StoreBackendContext): string[] {
+  const userId = config?.configurable?.langgraph_auth_user_id;
+  if (typeof userId !== "string" || userId.length === 0) {
+    throw new Error("Durable memory requires an authenticated user.");
+  }
+  const component = userId.replace(
+    /[^A-Za-z0-9\-_.@+:]/g,
+    (character) => `~${character.codePointAt(0)!.toString(16)}~`,
+  );
+  return ["memories", component];
+}
+
+export const graph = createDeepAgent({
+  model: "google-genai:gemini-2.5-flash",
+  systemPrompt: "You are a careful research assistant.",
+  backend: new CompositeBackend(new StateBackend(), {
+    "/memories/": new StoreBackend({
+      namespace: memoryNamespace,
+    }),
+  }),
+  subagents: [
+    { name: "researcher", description: "Answers one question.", systemPrompt: "Be brief." },
+  ],
+});
+```
+
+```json
+{ "graphs": { "agent": "./src/agent.ts:graph" }, "auth": { "path": "./src/auth.ts:auth" } }
+```
+
+`skein dev` serves it, with the same `langgraph.json` `langgraph dev` reads. A working version — with
+an offline scripted model, so it runs with no API key — is
+[`examples/deep-agent`](https://github.com/skein-js/skein-js/tree/main/examples/deep-agent).
+
+## Files: thread state by default, the store for what outlives a thread
+
+- **`StateBackend`** keeps files in the thread's state. They survive every turn of that thread and
+  vanish with it. Deep Agents also writes its own scratch (offloaded tool results, history) to the
+  default backend, so state is the right default.
+- **`StoreBackend`** keeps files in skein's store — memory under `skein dev`, SQLite or Postgres in
+  production — so they are shared across threads. Mount it on a prefix with `CompositeBackend`.
+
+**Give `StoreBackend` an explicit `namespace` on a shared server.** Its default uses assistant
+identity when available and otherwise a shared `filesystem` namespace; neither isolates users.
+Build it from `langgraph_auth_user_id`: skein stamps that from your [`auth`](./authentication.md) handler and strips it from anything a client sends, so it cannot
+be spoofed. With no `auth` configured it is absent — fail rather than pool everyone together. Namespace
+components accept only letters, digits and `-_.@+:~`, so encode identities that may contain anything
+else. [Memory](./memory.md) covers the store itself.
+
+Secure the HTTP store routes separately: graph backend namespacing does not authorize `/store/items`.
+The example denies HTTP store access with `.on("store", () => false)` while retaining the graph's
+injected store. Applications needing that HTTP API must scope every store action through `auth`.
+Legacy `assistant_id` and `graph_id` configurable values remain application-owned; do not use them as
+authenticated identity.
+
+## Streaming subagents
+
+A synchronous subagent runs inside the `task` tool. Ask for subgraph frames and its progress streams
+alongside the supervisor's, under the tool call's namespace:
+
+```ts
+for await (const chunk of client.runs.stream(threadId, "agent", {
+  input,
+  streamMode: ["updates", "messages-tuple"],
+  streamSubgraphs: true,
+})) {
+  chunk.event; // "updates" from the supervisor, "updates|tools:<id>" from the subagent
+}
+```
+
+The SDK's UI helpers route on these names. See [subgraphs and subagents](../streaming.md#subgraphs-and-subagents).
+
+## Planning
+
+`write_todos` comes from LangChain's todo-list middleware. Deep Agents adds it only for some model
+profiles, so pass it yourself when you rely on planning:
+
+```ts
+import { todoListMiddleware } from "langchain";
+
+createDeepAgent({ /* … */ middleware: [todoListMiddleware()] });
+```
+
+## Human approval
+
+`interruptOn` pauses before a tool runs; the run ends `interrupted`. Resume it with a decision per
+pending action:
+
+```ts
+createDeepAgent({
+  /* … */ interruptOn: { send_report: { allowedDecisions: ["approve", "edit", "reject"] } },
+});
+
+await client.runs.wait(threadId, "agent", {
+  command: { resume: { decisions: [{ type: "approve" }] } },
+  // or { type: "edit", editedAction: { name: "send_report", args: { … } } }
+  // or { type: "reject", message: "not this week" }
+});
+```
+
+See [human-in-the-loop](../human-in-the-loop.md).
+
+## Async subagents
+
+An async subagent is another graph, started and polled over the Agent Protocol. Give it an explicit
+`url` and credentials scoped to the originating caller. Build the supervisor as a graph factory so
+upstream's async client is constructed with that caller's credentials. For the example's demo auth:
+
+```ts
+import type { RunnableConfig } from "@langchain/core/runnables";
+import { createDeepAgent } from "deepagents";
+
+export function graph(config: RunnableConfig) {
+  const userId = config.configurable?.langgraph_auth_user_id;
+  // An empty identity is rejected by the demo auth handler, including on an unbound factory.
+  const headers = { "x-user": typeof userId === "string" ? userId : "" };
+  return createDeepAgent({
+    subagents: [
+      {
+        name: "background-researcher",
+        description: "Researches in the background.",
+        graphId: "researcher",
+        url: process.env.SKEIN_URL ?? "http://127.0.0.1:2024",
+        headers,
+      },
+    ],
+  });
+}
+```
+
+In production, mint or forward a caller-scoped credential your auth handler verifies. A shared
+service credential would give user-supplied `asyncTasks` records authority over other callers' child
+runs. Keep receiving thread ownership checks in place; task identifiers are not authorization.
+
+Every call is an ordinary route — thread create, run create, run get, thread state, a new run with
+`multitask_strategy: "interrupt"` to update, and cancel — so it works against any skein deployment. The
+URL-less, in-process transport LangGraph Platform offers is not recreated. Each started task is a
+background run, so give the server enough [run concurrency](../runs-and-redis.md#run-concurrency) for the supervisor
+and its children at once.
+
+## Shell and code execution
+
+Use a remote sandbox provider for anything that executes commands. **Never use `LocalShellBackend` or
+`FilesystemBackend` on a shared server**: both act directly on the host skein runs on, with that
+process's permissions, for whoever can reach the agent. State and store backends need no sandbox.
+
+## Dependency security
+
+This workspace applies a local patch for the unpatched `braces` nesting advisory in Deep Agents'
+glob dependency. Applications copying this example must audit their own lockfiles and apply the
+patch in their own package-manager configuration; workspace patches do not propagate through a
+published package or an exported artifact. See the [dependency audit](../audits/dependency-advisories-2026-10-20.md)
+for the patch, compatibility details, and current scan results.
 
 
 ---
@@ -11672,6 +11885,19 @@ async *stream(input, options) {
   }
 }
 ```
+
+If your agent runs nested agents, a client can ask for their frames with `stream_subgraphs`. Your
+`stream` then receives `options.subgraphs === true`, and may yield a **`[namespace, mode, data]`
+triple** — `namespace` a string array, one segment per nesting level, empty for your own frames:
+
+```ts
+function* streamNestedStep(step: unknown) {
+  yield [["researcher:1"], "updates", step]; // -> event: updates|researcher:1
+}
+```
+
+Ignore the option and keep yielding pairs if you have nothing nested; see
+[subgraphs and subagents](./streaming.md#subgraphs-and-subagents).
 
 Anything that is _not_ such a tuple is published as an `updates` payload.
 
@@ -13334,6 +13560,10 @@ layer that OSS does not provide.
 
 **Rule of thumb:** if a `@langchain/*` package already does it, we depend on it (as a
 `peerDependency` where the consumer should own the version). We do not fork or vendor it.
+
+Subgraph SSE event naming (`mode|<namespace>`) follows `@langchain/langgraph-api`'s `streamState`.
+That helper is not a public export, so Skein mirrors only its wire encoding. Deep Agents itself
+remains an upstream dependency used directly by application graphs.
 
 ## What skein-js rebuilds (the gap)
 

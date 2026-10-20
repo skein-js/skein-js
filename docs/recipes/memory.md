@@ -25,7 +25,9 @@ The same items are reachable over the `/store/items` HTTP endpoints.
 Working versions: [`chat-app`](https://github.com/skein-js/skein-js/tree/main/examples/chat-app) (recalls
 a user across sessions) and
 [`triage-agent`](https://github.com/skein-js/skein-js/tree/main/examples/triage-agent) (reads your
-conventions back into the prompt).
+conventions back into the prompt), and
+[`deep-agent`](https://github.com/skein-js/skein-js/tree/main/examples/deep-agent) (a Deep Agent's
+`/memories/` files, one namespace per user).
 
 > [!WARNING]
 > **Read this before writing a dedup rule**
