@@ -17,8 +17,8 @@ Upstream references: [LangGraph.js overview](https://docs.langchain.com/oss/java
 - [Building blocks](https://github.com/skein-js/skein-js/blob/main/docs/building-blocks.md): What an agent is made of, told as the story of what reality adds to a model-and-a-prompt — tools, control flow, concurrent messages, checkpoints and threads, long-term memory, approvals, streaming, deferred work, versioned config, telemetry and durability — and which of those are yours, LangGraph's, or skein's.
 - [LangGraph essentials](https://github.com/skein-js/skein-js/blob/main/docs/langgraph-essentials.md): The shallow dive on LangGraph itself — state and channels, reducers, nodes, edges, `.compile()`, prebuilt agents, tools, `interrupt()`, subgraphs, stream modes, and why you must let skein inject the checkpointer and store rather than constructing your own. Links out to the LangChain docs per concept.
 - [Recipes](https://github.com/skein-js/skein-js/blob/main/docs/recipes/index.md): Task snippets — coupled WhatsApp replies, decoupled email-to-WhatsApp routing, human-in-the-loop, memory, authentication providers, webhooks, and deploy.
-- [Overview & architecture](https://github.com/skein-js/skein-js/blob/main/docs/index.md): The problem skein solves, what the Agent Protocol is, and how skein is built.
-- [README](https://github.com/skein-js/skein-js/blob/main/README.md): The project landing page — principles, quick start, package tour.
+- [Overview](https://github.com/skein-js/skein-js/blob/main/docs/index.md): What skein is, why it exists, key features, and how to start or choose a deployment.
+- [README](https://github.com/skein-js/skein-js/blob/main/README.md): The project introduction — purpose, key features, quick start, deployment paths, and links to guides and examples.
 
 ## Guides
 
