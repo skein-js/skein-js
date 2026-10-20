@@ -1,3 +1,13 @@
+## 0.21.0 (2026-10-20)
+
+### 🚀 Features
+
+- **runtime:** add Node 26 compatibility and CI coverage ([3c8c8a9](https://github.com/skein-js/skein-js/commit/3c8c8a9))
+
+### ❤️ Thank You
+
+- Maina Wycliffe
+
 ## 0.20.0 (2026-10-20)
 
 ### 🚀 Features
