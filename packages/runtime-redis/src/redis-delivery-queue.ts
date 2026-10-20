@@ -146,15 +146,16 @@ export class RedisDeliveryQueue implements DeliveryQueue {
     return {
       close: async (force = false) => {
         this.#workers.delete(worker);
-        await worker.close(force);
         if (!force) await settleBullConnection(worker);
+        await worker.close(force);
       },
     };
   }
 
   /** Release the queue's own connection. Consumers are closed through their {@link DeliveryConsumer}. */
   async dispose(): Promise<void> {
-    await this.#queue.close();
+    // An unused queue can still be handshaking; settle before closing to avoid orphaned rejections.
     await settleBullConnection(this.#queue);
+    await this.#queue.close();
   }
 }

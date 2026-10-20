@@ -37,7 +37,7 @@ async function waitFor(predicate: () => boolean, timeoutMs = 2000): Promise<void
  * The behavioral contract every {@link RunQueue} driver must satisfy — memory, SQLite, and
  * `@skein-js/redis` run the same suite, so the run worker behaves identically whichever it has.
  * At the *driver's* default concurrency of 1 (what `consume()` uses when passed no options), a
- * single consumer delivers runs in enqueue order. The run worker passes a higher value by default,
+ * single consumer delivers immediate runs in enqueue order. The run worker passes a higher value by default,
  * above which no ordering across runs is guaranteed — see `DEFAULT_RUN_CONCURRENCY`.
  *
  * @example
@@ -122,13 +122,13 @@ export function runRunQueueConformance(label: string, makeQueue: RunQueueFactory
       const delayMs = 400;
       const notBefore = Date.now() + delayMs;
       await queue.enqueue({ run_id: "later", thread_id: "t" }, { delayMs });
-      // An undelayed run enqueued *after* it still goes first — the delay is a visibility time, not a
-      // position in the queue.
+      // Enqueuing the immediate run can cross the delayed run's deadline on a slow driver. Either
+      // delivery order is valid once both runs are eligible; only the delayed run's floor matters.
       await queue.enqueue({ run_id: "now", thread_id: "t" });
 
-      await waitFor(() => received.includes("later"), 4000);
+      await waitFor(() => received.length === 2, 4000);
       await consumer.close();
-      expect(received).toEqual(["now", "later"]);
+      expect([...received].sort()).toEqual(["later", "now"]);
       // Measure when the processor starts. A busy runner may not wake the test's polling timer
       // until both jobs have correctly run, after the deadline has passed.
       expect(delayedRunStartedAt).toBeGreaterThanOrEqual(notBefore);

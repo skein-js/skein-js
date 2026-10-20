@@ -26,6 +26,11 @@ Runner: **[Vitest](https://vitest.dev)** across the whole workspace. Integration
 Most code is pure by [design](./code-practices.md), so most tests need no infrastructure.
 Inject fakes for collaborators; assert on returned data.
 
+The `local` and `example-local-workflow` test targets also exercise real SQLite files, graph steps,
+and checkpoint reopening without Docker. They use a bounded 30-second default per test because
+these operations can exceed Vitest's five-second default on Windows CI. Explicit test-specific
+bounds, such as the subprocess crash test's ten seconds, still apply.
+
 ```ts
 import { describe, it, expect } from "vitest";
 import { toSSEFrame } from "./sse-frame.js";
@@ -115,6 +120,9 @@ crash recovery follow each driver's contract.
 Queue delay conformance uses real clocks, including Redis's clock. Record the delivery time inside
 the processor and compare it with the earliest allowed time. A busy runner may wake a test's polling
 timer after the deadline, so an assertion that a delayed job is still absent can reject valid delivery.
+Enqueuing a subsequent immediate job can also cross the deadline: wait for both deliveries, assert
+their exact membership, and check the delayed processor's start time without requiring an order
+between them. Ordinary immediate jobs retain their separate FIFO conformance test.
 
 **Adding a `SkeinStore` method means adding conformance cases in the same commit.** Without them the
 drivers drift on exactly the details nothing else checks — ordering, tie-breaking, and what an omitted
