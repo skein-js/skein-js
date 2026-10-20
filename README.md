@@ -158,21 +158,22 @@ restart — state is restored from `.skein/`. Already have a LangGraph project? 
 
 Your graph is the product. skein-js handles the production plumbing around it:
 
-| The concept              | What skein-js gives you                                                                                                                                 |
-| ------------------------ | ------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| **Threads**              | Conversations that persist, addressable by your own key — a ticket id, a phone number. [→](./docs/threads.md)                                           |
-| **Runs**                 | Wait for it, stream it, or queue it in the background — plus what happens when a second message lands mid-run. [→](./docs/runs.md)                      |
-| **Streaming**            | SSE with reconnect and replay, a real `streamEvents` mode, Redis fan-out across instances. [→](./docs/streaming.md)                                     |
-| **Human-in-the-loop**    | `interrupt()` parks a run on a checkpoint holding no connection. Resume hours later, from any client. [→](./docs/human-in-the-loop.md)                  |
-| **Time travel**          | Fork from any past checkpoint and run forward — the machinery behind "edit and resubmit". [→](./docs/threads.md)                                        |
-| **Long-term memory**     | A store reachable via `getStore()` inside a node, with semantic search and TTL. [→](./docs/memory.md)                                                   |
-| **Assistants**           | The same graph configured per tenant or per experiment, versioned, with one-call rollback. [→](./docs/assistants.md)                                    |
-| **Scheduled work**       | Crons that fire exactly once across instances, no leader election. [→](./docs/crons.md)                                                                 |
-| **Background jobs**      | Queue a run, get an id back, hear the result on a signed webhook. [→](./docs/background-jobs.md)                                                        |
-| **Durable execution**    | Postgres/Redis for shared deployments or SQLite for one local owner, with callbacks committed with the run. [→](./docs/storage.md)                      |
-| **Local applications**   | Embed the same Agent Protocol engine with SQLite resources, checkpoints, and queued work. [→](./docs/local-deployment.md)                               |
-| **Workflows & channels** | Bring authenticated provider events into LangGraph, then deliver workflow outcomes to the source or an allowlisted destination. [→](./docs/channels.md) |
-| **Observability**        | LangSmith, PostHog and OpenTelemetry sinks — or your own. [→](./docs/observability.md)                                                                  |
+| The concept                      | What skein-js gives you                                                                                                                                       |
+| -------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| **Threads**                      | Conversations that persist, addressable by your own key — a ticket id, a phone number. [→](./docs/threads.md)                                                 |
+| **Runs**                         | Wait for it, stream it, or queue it in the background — plus what happens when a second message lands mid-run. [→](./docs/runs.md)                            |
+| **Streaming**                    | SSE with reconnect and replay, a real `streamEvents` mode, Redis fan-out across instances. [→](./docs/streaming.md)                                           |
+| **Human-in-the-loop**            | `interrupt()` parks a run on a checkpoint holding no connection. Resume hours later, from any client. [→](./docs/human-in-the-loop.md)                        |
+| **Time travel**                  | Fork from any past checkpoint and run forward — the machinery behind "edit and resubmit". [→](./docs/threads.md)                                              |
+| **Long-term memory**             | A store reachable via `getStore()` inside a node, with semantic search and TTL. [→](./docs/memory.md)                                                         |
+| **Assistants**                   | The same graph configured per tenant or per experiment, versioned, with one-call rollback. [→](./docs/assistants.md)                                          |
+| **Scheduled work**               | Crons that fire exactly once across instances, no leader election. [→](./docs/crons.md)                                                                       |
+| **Background jobs**              | Queue a run, get an id back, hear the result on a signed webhook. [→](./docs/background-jobs.md)                                                              |
+| **Durable execution**            | Postgres/Redis for shared deployments or SQLite for one local owner, with callbacks committed with the run. [→](./docs/storage.md)                            |
+| **Local applications**           | Embed the same Agent Protocol engine with SQLite resources, checkpoints, and queued work. [→](./docs/local-deployment.md)                                     |
+| **Workflows & channels**         | Bring authenticated provider events into LangGraph, then deliver workflow outcomes to the source or an allowlisted destination. [→](./docs/channels.md)       |
+| **Observability**                | LangSmith, PostHog and OpenTelemetry sinks — or your own. [→](./docs/observability.md)                                                                        |
+| **Deep Agents** _(experimental)_ | Serve a LangChain `createDeepAgent` graph unchanged — files, per-user memory, approval, streamed and background subagents. [→](./docs/recipes/deep-agents.md) |
 
 Can skein do X? [**The features page**](./docs/features.md) answers it in one line per capability,
 including what _isn't_ built.

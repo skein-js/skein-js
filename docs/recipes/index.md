@@ -24,23 +24,23 @@ pnpm --filter @skein-js/example-triage-agent seed   # register the schedule + sw
 | [Coupled WhatsApp workflow](./coupled-channel.md)          | A workflow with the same provider as source and destination                 |
 | [Cross-provider workflow](./decoupled-channel-delivery.md) | Email source → LangGraph workflow → allowlisted WhatsApp/email destinations |
 | [Memory](./memory.md)                                      | `getStore()`, semantic search, and the dedup trap                           |
-| [Deep Agents](./deep-agents.md)                            | Files, per-user memory, streamed subagents, approval and async subagents    |
+| [Deep Agents](./deep-agents.md) _(experimental)_           | Files, per-user memory, streamed subagents, approval and async subagents    |
 | [Authenticating requests](./authentication.md)             | Better Auth, Clerk, Supabase, Firebase, OIDC/JWT, and authorization policy  |
 | [Production](./production.md)                              | Auth, run-completion webhooks, durable storage and deploying                |
 | [Local apps and SQLite](../local-deployment.md)            | Desktop, CLI, and daemon hosts with one owned database file                 |
 
 ## Which example shows what
 
-| Example                                                                                            | Shows                                                                           |
-| -------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------- |
-| [`triage-agent`](https://github.com/skein-js/skein-js/tree/main/examples/triage-agent)             | Crons, background runs, idempotency, HITL, memory, time travel                  |
-| [`decoupled-delivery`](https://github.com/skein-js/skein-js/tree/main/examples/decoupled-delivery) | Routed channels: email source → approval workflow → WhatsApp/email destinations |
-| [`chat-app`](https://github.com/skein-js/skein-js/tree/main/examples/chat-app)                     | Full-stack chat: streaming, thinking, tool cards, HITL, memory                  |
-| [`deep-agent`](https://github.com/skein-js/skein-js/tree/main/examples/deep-agent)                 | A Deep Agent: files, per-user memory, streamed and async subagents, approval    |
-| [`invoke-endpoint`](https://github.com/skein-js/skein-js/tree/main/examples/invoke-endpoint)       | Non-chat graphs as plain HTTP endpoints                                         |
-| [`embed-graph`](https://github.com/skein-js/skein-js/tree/main/examples/embed-graph)               | A graph you already have, served with no `langgraph.json`                       |
-| [`migrated-langgraph`](https://github.com/skein-js/skein-js/tree/main/examples/migrated-langgraph) | The drop-in proof — a stock LangGraph project under `skein dev`                 |
-| [`react-usestream`](https://github.com/skein-js/skein-js/tree/main/examples/react-usestream)       | A minimal `useStream` frontend against any skein server                         |
-| [Daybook — Electron](https://github.com/skein-js/skein-js/tree/main/examples/desktop-electron)     | Meeting context tools, streaming, recap review, and Markdown revisions          |
-| [Reading Room — Tauri](https://github.com/skein-js/skein-js/tree/main/examples/desktop-tauri)      | Local documents, library tools, source excerpts, and reviewed reading briefs    |
-| [Dayplan — CLI](https://github.com/skein-js/skein-js/tree/main/examples/local-cli)                 | Local task files, previous plans, and approval before saving                    |
+| Example                                                                                            | Shows                                                                                    |
+| -------------------------------------------------------------------------------------------------- | ---------------------------------------------------------------------------------------- |
+| [`triage-agent`](https://github.com/skein-js/skein-js/tree/main/examples/triage-agent)             | Crons, background runs, idempotency, HITL, memory, time travel                           |
+| [`decoupled-delivery`](https://github.com/skein-js/skein-js/tree/main/examples/decoupled-delivery) | Routed channels: email source → approval workflow → WhatsApp/email destinations          |
+| [`chat-app`](https://github.com/skein-js/skein-js/tree/main/examples/chat-app)                     | Full-stack chat: streaming, thinking, tool cards, HITL, memory                           |
+| [`deep-agent`](https://github.com/skein-js/skein-js/tree/main/examples/deep-agent)                 | Research briefing assistant on Deep Agents _(experimental)_: memory, subagents, approval |
+| [`invoke-endpoint`](https://github.com/skein-js/skein-js/tree/main/examples/invoke-endpoint)       | Non-chat graphs as plain HTTP endpoints                                                  |
+| [`embed-graph`](https://github.com/skein-js/skein-js/tree/main/examples/embed-graph)               | A graph you already have, served with no `langgraph.json`                                |
+| [`migrated-langgraph`](https://github.com/skein-js/skein-js/tree/main/examples/migrated-langgraph) | The drop-in proof — a stock LangGraph project under `skein dev`                          |
+| [`react-usestream`](https://github.com/skein-js/skein-js/tree/main/examples/react-usestream)       | A minimal `useStream` frontend against any skein server                                  |
+| [Daybook — Electron](https://github.com/skein-js/skein-js/tree/main/examples/desktop-electron)     | Meeting context tools, streaming, recap review, and Markdown revisions                   |
+| [Reading Room — Tauri](https://github.com/skein-js/skein-js/tree/main/examples/desktop-tauri)      | Local documents, library tools, source excerpts, and reviewed reading briefs             |
+| [Dayplan — CLI](https://github.com/skein-js/skein-js/tree/main/examples/local-cli)                 | Local task files, previous plans, and approval before saving                             |

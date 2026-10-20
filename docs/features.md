@@ -1,40 +1,42 @@
 # Features
 
 What skein-js can do, in one page. Find the row that matches what you're trying to build, then follow
-the link. ✅ ships today · ⚠️ preview · 🗺️ planned.
+the link. ✅ ships today · ⚠️ preview · 🧪 experimental (works, may change in a minor release) · 🗺️ planned.
 
 Comparing against LangGraph Platform specifically? [roadmap.md](./roadmap.md) has the same ground
 organised by parity instead.
 
 ## Run agents
 
-| Capability                                                                              | Status | What it gets you                                                                   |
-| --------------------------------------------------------------------------------------- | ------ | ---------------------------------------------------------------------------------- |
-| [Background jobs](./background-jobs.md)                                                 | ✅     | Fire-and-forget work: hand skein a job, get an id back, hear the result by webhook |
-| [Background runs](./runs.md)                                                            | ✅     | Return immediately, let the graph keep working, join the stream later              |
-| [Wait / stream runs](./runs.md)                                                         | ✅     | Hold the connection for the answer, or stream tokens as they're produced           |
-| [Stateless & batch runs](./runs.md)                                                     | ✅     | One-shot calls with no conversation to keep; up to 100 runs per request            |
-| [Multitask / double-texting](./runs.md#multitask-what-happens-to-the-run-already-going) | ✅     | Decide what a second message does to the run already going — all four strategies   |
-| [Cancel & rollback](./runs.md#cancelling)                                               | ✅     | Stop a run, keeping its writes or discarding them                                  |
-| [Run timeouts](./runs.md#bound-a-runaway-run)                                           | ✅     | Bound a graph that hangs, instead of losing a worker slot                          |
-| [Idempotent run creation](./agent-protocol.md#idempotent-run-creation-idempotency-key)  | ✅     | A retrying caller can't start the same run twice. No LangGraph Platform equivalent |
-| [Cron schedules](./crons.md)                                                            | ✅     | Fire a graph on a schedule, exactly once across instances, no leader election      |
-| [A graph as a plain endpoint](./serving-a-single-graph.md)                              | ✅     | `POST /invoke/:graph_id` — body in, final state out, no threads or runs            |
+| Capability                                                                              | Status          | What it gets you                                                                                                                   |
+| --------------------------------------------------------------------------------------- | --------------- | ---------------------------------------------------------------------------------------------------------------------------------- |
+| [Background jobs](./background-jobs.md)                                                 | ✅              | Fire-and-forget work: hand skein a job, get an id back, hear the result by webhook                                                 |
+| [Background runs](./runs.md)                                                            | ✅              | Return immediately, let the graph keep working, join the stream later                                                              |
+| [Wait / stream runs](./runs.md)                                                         | ✅              | Hold the connection for the answer, or stream tokens as they're produced                                                           |
+| [Stateless & batch runs](./runs.md)                                                     | ✅              | One-shot calls with no conversation to keep; up to 100 runs per request                                                            |
+| [Multitask / double-texting](./runs.md#multitask-what-happens-to-the-run-already-going) | ✅              | Decide what a second message does to the run already going — all four strategies                                                   |
+| [Cancel & rollback](./runs.md#cancelling)                                               | ✅              | Stop a run, keeping its writes or discarding them                                                                                  |
+| [Run timeouts](./runs.md#bound-a-runaway-run)                                           | ✅              | Bound a graph that hangs, instead of losing a worker slot                                                                          |
+| [Idempotent run creation](./agent-protocol.md#idempotent-run-creation-idempotency-key)  | ✅              | A retrying caller can't start the same run twice. No LangGraph Platform equivalent                                                 |
+| [Cron schedules](./crons.md)                                                            | ✅              | Fire a graph on a schedule, exactly once across instances, no leader election                                                      |
+| [A graph as a plain endpoint](./serving-a-single-graph.md)                              | ✅              | `POST /invoke/:graph_id` — body in, final state out, no threads or runs                                                            |
+| [Deep Agents](./recipes/deep-agents.md)                                                 | 🧪 experimental | Serve a LangChain `createDeepAgent` graph — files, per-user memory, approval, and subagents streamed live or run in the background |
 
 ## Hold a conversation
 
-| Capability                                                            | Status | What it gets you                                                                      |
-| --------------------------------------------------------------------- | ------ | ------------------------------------------------------------------------------------- |
-| [State, context & persistence](./state-and-context.md)                | ✅     | What the agent knows, what's only for this run, and what survives a restart           |
-| [Threads](./threads.md)                                               | ✅     | Conversations that persist, addressable by your own key (a ticket id, a phone number) |
-| [Streaming (SSE)](./streaming.md)                                     | ✅     | Tokens, tool calls and reasoning as they happen — including a true `events` mode      |
-| [Reconnect & join](./streaming.md)                                    | ✅     | Resume a dropped stream, or tail the same run from a second client                    |
-| [Human-in-the-loop](./human-in-the-loop.md)                           | ✅     | Pause for approval and resume hours later, from anywhere                              |
-| [Time travel](./threads.md#time-travel-re-run-a-turn-a-different-way) | ✅     | Fork from any past checkpoint and run forward — "edit and resubmit"                   |
-| [Thread state & history](./threads.md#read-the-state)                 | ✅     | Read, patch, page, copy or prune a conversation's state                               |
-| [Thread TTL](./storage.md#thread-ttl)                                 | ✅     | Expire conversations automatically. LangGraph OSS ignores `ttl`; skein doesn't        |
-| [Assistants & versioning](./assistants.md)                            | ✅     | Ship a prompt change without redeploying, and roll it back in one call                |
-| [`useStream` and friends](./react-sdk.md)                             | ✅     | The LangChain client ecosystem works unchanged — React, Vue, Svelte, Angular          |
+| Capability                                                            | Status | What it gets you                                                                       |
+| --------------------------------------------------------------------- | ------ | -------------------------------------------------------------------------------------- |
+| [State, context & persistence](./state-and-context.md)                | ✅     | What the agent knows, what's only for this run, and what survives a restart            |
+| [Threads](./threads.md)                                               | ✅     | Conversations that persist, addressable by your own key (a ticket id, a phone number)  |
+| [Streaming (SSE)](./streaming.md)                                     | ✅     | Tokens, tool calls and reasoning as they happen — including a true `events` mode       |
+| [Reconnect & join](./streaming.md)                                    | ✅     | Resume a dropped stream, or tail the same run from a second client                     |
+| [Subgraph streaming](./streaming.md#subgraphs-and-subagents)          | ✅     | `stream_subgraphs` streams nested graphs and subagents under `mode\|<namespace>` names |
+| [Human-in-the-loop](./human-in-the-loop.md)                           | ✅     | Pause for approval and resume hours later, from anywhere                               |
+| [Time travel](./threads.md#time-travel-re-run-a-turn-a-different-way) | ✅     | Fork from any past checkpoint and run forward — "edit and resubmit"                    |
+| [Thread state & history](./threads.md#read-the-state)                 | ✅     | Read, patch, page, copy or prune a conversation's state                                |
+| [Thread TTL](./storage.md#thread-ttl)                                 | ✅     | Expire conversations automatically. LangGraph OSS ignores `ttl`; skein doesn't         |
+| [Assistants & versioning](./assistants.md)                            | ✅     | Ship a prompt change without redeploying, and roll it back in one call                 |
+| [`useStream` and friends](./react-sdk.md)                             | ✅     | The LangChain client ecosystem works unchanged — React, Vue, Svelte, Angular           |
 
 ## Remember things
 
