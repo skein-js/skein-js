@@ -8,7 +8,7 @@ Scaffold a [skein-js](https://github.com/skein-js/skein-js) project — a self-h
 
 ```bash
 npm create skein-js@latest my-agent
-# or: pnpm create skein-js my-agent · yarn create skein-js my-agent · npx create-skein-js my-agent
+# or: pnpm create skein-js@latest my-agent · yarn create skein-js@latest my-agent · npx create-skein-js@latest my-agent
 ```
 
 ```text
@@ -20,8 +20,7 @@ npm run dev     →  http://localhost:2024           the Agent Protocol API
 No database, no Docker, and no API key — `echo` answers your first request immediately. With
 `--provider` you also get a model-backed graph, and setting its key is listed as a step.
 
-> Keep the `@latest`. Without it, npm's npx cache (and `pnpm dlx`'s 24-hour one) can serve a stale
-> version of this package.
+> Keep `@latest` to request the latest published scaffolder instead of relying on a cached version.
 
 ## What you get
 
@@ -35,13 +34,16 @@ A `langgraph.json` project driven by the `skein` CLI — the same lifecycle you 
 | `build`        | Bundle the graphs to plain JavaScript in `.skein/build`                |
 | `start`        | Serve that bundle — the production entrypoint                          |
 
-Choosing Postgres at the storage prompt swaps the last two: `dev` becomes the durable spelling and
-the in-memory one is emitted as `dev:memory`. Both are always present either way.
+Choosing Postgres at the storage prompt makes `dev` use Postgres/Redis and emits `dev:memory`
+as the alternative. SQLite emits `dev` and `start` with the SQLite store/queue pair and omits Compose.
+Both durable choices retain the memory alternative.
 
 ...plus an echo graph that runs with no credentials, a test for it, an optional model-backed ReAct
 agent, and a README explaining every file.
 
-Node 24 is recommended; engines support Node 22.12+ and 24.x. Root ESLint and Prettier are inherited independently.
+Node 24 is recommended; generated engines support `^22.12.0 || ^24.0.0`. ESLint and Prettier default
+on, with `lint`, `format`, and `format:check` scripts. Root configurations are inherited independently;
+see the [workspace limitations](https://skein-js.github.io/skein-js/scaffolding).
 
 ## Options
 
@@ -65,14 +67,15 @@ directory, model provider, local development storage, whether to install, and wh
 git repository. The last defaults to no inside an existing work tree, since nesting a repository in
 yours is never the intent — and whichever way it goes, the closing output says what git actually did.
 
-`--pm` stays a flag with no prompt: workspace metadata takes precedence, then lockfiles and `npm_config_user_agent`, so asking would be a
-question whose answer is already known.
+`--pm` selects the manager for a standalone project. In a workspace, `packageManager` metadata
+and lockfiles determine the manager; a conflicting explicit `--pm` fails before writing. Otherwise
+the invoking manager's `npm_config_user_agent` is used, with npm as the fallback.
 
 npm needs `--` before flags; `pnpm create` and `npx` do not:
 
 ```bash
 npm create skein-js@latest my-agent -- --provider anthropic
-pnpm create skein-js my-agent --provider anthropic
+pnpm create skein-js@latest my-agent --provider anthropic
 ```
 
 With a provider you get a second graph — a ReAct agent with a live weather tool. Setting its API key
@@ -81,15 +84,20 @@ the keyless `echo` graph keeps serving.
 
 ## Monorepos
 
-Scaffold into the directory you want and it works anywhere:
+Choose a new child directory from your workspace root:
 
 ```bash
 npm create skein-js@latest apps/my-agent
 ```
 
-In Nx 23.2.1 through 23.x, install `@skein-js/nx` and run
-`nx g @skein-js/nx:application --directory=apps/my-agent`. Installation stays manual.
-The ordinary CLI redirects before writing files in Nx workspaces.
+Workspace generation leaves installation manual, even with `--yes`. Accept registration or use
+`--no-workspace-update` and register the package yourself, then install from the workspace root.
+Existing patterns and exclusions are preserved, including when creating missing pnpm workspace YAML.
+
+In Nx 23.2.1 through 23.x, install `@skein-js/nx` at the root (`pnpm add -Dw @skein-js/nx`) and run
+`pnpm exec nx g @skein-js/nx:application --directory=apps/my-agent`. The CLI redirects for new child
+directories in Nx workspaces. Avoid `create-skein-js . --force` at a workspace root; see the
+[current limitations](https://skein-js.github.io/skein-js/scaffolding).
 
 ## Docs
 

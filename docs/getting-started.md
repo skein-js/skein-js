@@ -17,7 +17,8 @@ remain the same.
 
 ## Prerequisites
 
-- **Node ≥ 20** and a package manager (`pnpm`/`npm`).
+- **New projects (Path A):** Node 24 is recommended. Generated engines support `^22.12.0 || ^24.0.0`.
+- **Existing graphs (Paths B and C):** Node ≥ 20 and a package manager (`pnpm`/`npm`).
 - **Node 22 or 24** when selecting SQLite; desktop examples build with Node 24.
 - For Paths B and C, a
   **[LangGraph.js graph](https://docs.langchain.com/oss/javascript/langgraph/graph-api)** — a
@@ -34,7 +35,8 @@ npm run dev            # → http://localhost:2024, console at /console
 ```
 
 You get a `langgraph.json`, a keyless echo graph you can edit, a test, and the whole
-`dev` → `build` → `start` lifecycle wired up. Nothing needs an API key or a database to run.
+`dev` → `build` → `start` lifecycle wired up. ESLint and Prettier are enabled by default;
+`--no-linting` opts out. The default memory development server needs no API key or database.
 
 [**Your first agent**](./your-first-agent.md) walks through it end to end — what each generated file
 does, the four LangGraph concepts you need, adding a model and a tool, then deploying.

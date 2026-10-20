@@ -11,7 +11,7 @@ Upstream references: [LangGraph.js overview](https://docs.langchain.com/oss/java
 - [Why skein-js](https://github.com/skein-js/skein-js/blob/main/docs/why.md): The motivation — how teams end up needing an agent backend, the four real options (build it, LangGraph Platform, aegra, skein), the licensing detail, why leaving is deliberately one word, and who this isn't for.
 - [Your first agent](https://github.com/skein-js/skein-js/blob/main/docs/your-first-agent.md): From an empty directory to a deployed agent, assuming no LangGraph experience — scaffold, the four LangGraph concepts, add a model and a tool, ship.
 - [Getting started](https://github.com/skein-js/skein-js/blob/main/docs/getting-started.md): Guided walkthrough from zero to a running server, then to production (all three on-ramps).
-- [Scaffolding a project](https://github.com/skein-js/skein-js/blob/main/docs/scaffolding.md): `npm create skein-js@latest` — what it generates, every flag, monorepo use, and how to write the same files by hand.
+- [Scaffolding a project](https://github.com/skein-js/skein-js/blob/main/docs/scaffolding.md): `npm create skein-js@latest` — default ESLint/Prettier, supported Node versions, workspace registration, the Nx generator, current limitations, and the equivalent files by hand.
 - [Agent skills](https://github.com/skein-js/skein-js/blob/main/docs/agent-skills.md): Installable guidance for server and local application setup, SQLite embedding, and Nx/Turborepo task and cache integration.
 - [Using skein-js](https://github.com/skein-js/skein-js/blob/main/docs/using-skein.md): Terse consumer/agent cheat-sheet — install, the `{ config } | { deps }` seam, mount on each framework, call it.
 - [Building blocks](https://github.com/skein-js/skein-js/blob/main/docs/building-blocks.md): What an agent is made of, told as the story of what reality adds to a model-and-a-prompt — tools, control flow, concurrent messages, checkpoints and threads, long-term memory, approvals, streaming, deferred work, versioned config, telemetry and durability — and which of those are yours, LangGraph's, or skein's.
@@ -74,7 +74,8 @@ Upstream references: [LangGraph.js overview](https://docs.langchain.com/oss/java
 - [@skein-js/storage-postgres](https://github.com/skein-js/skein-js/tree/main/packages/storage-postgres#readme): Postgres `SkeinStore` + pgvector; reuses `PostgresSaver`.
 - [@skein-js/redis](https://github.com/skein-js/skein-js/tree/main/packages/runtime-redis#readme): Redis run queue + cross-instance pub/sub streaming.
 - [skein-js (CLI)](https://github.com/skein-js/skein-js/tree/main/packages/cli#readme): The drop-in CLI — `dev` / `up` / `build` / `dockerfile` / `import-langgraph`.
-- [create-skein-js](https://github.com/skein-js/skein-js/tree/main/packages/create-skein-js#readme): The scaffolder — `npm create skein-js@latest my-agent`. Run once, never installed.
+- [create-skein-js](https://github.com/skein-js/skein-js/tree/main/packages/create-skein-js#readme): The scaffolder — `npm create skein-js@latest my-agent`. Default ESLint/Prettier and Node 24 guidance; run once instead of adding it as a project dependency.
+- [@skein-js/nx](https://github.com/skein-js/skein-js/tree/main/packages/nx): The application generator for Nx 23.2.1 through 23.x, with integrated/package layouts, storage choices, and default tooling.
 
 ## Examples
 

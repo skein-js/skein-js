@@ -14,13 +14,16 @@ npm create skein-js@latest my-agent
 ```
 
 ```bash
-pnpm create skein-js my-agent
-yarn create skein-js my-agent
-npx create-skein-js my-agent
+pnpm create skein-js@latest my-agent
+yarn create skein-js@latest my-agent
+npx create-skein-js@latest my-agent
 ```
 
-**Keep the `@latest`.** Without it, npm's npx cache — and `pnpm dlx`'s 24-hour cache — can serve a
-stale copy of the scaffolder.
+**Keep the `@latest`** to request the latest published scaffolder instead of relying on a cached
+version. Node 24 is recommended; generated projects support `^22.12.0 || ^24.0.0`.
+
+For an existing workspace, choose a new child directory such as `apps/my-agent`. Use the
+[Nx generator](#nx-and-other-monorepos) in Nx workspaces.
 
 ## What it generates
 
@@ -33,6 +36,10 @@ my-agent/
 ├── langgraph.json          Points skein at your graphs; the LangGraph CLI's format
 ├── package.json            The skein CLI lifecycle as scripts
 ├── tsconfig.json           Strict, ESM, bundler resolution
+├── .nvmrc                  Recommended Node version, or a compatible workspace pin
+├── eslint.config.mjs       Recommended rules, unless inherited or tooling is disabled
+├── .prettierrc.json         printWidth: 100, unless inherited or tooling is disabled
+├── .prettierignore          Generated output, runtime state, dependencies and lockfiles
 ├── vitest.config.ts
 ├── compose.dev.yaml        Postgres + Redis — what `start` needs
 ├── .env                    Ready to use, gitignored — never overwritten if one already exists
@@ -55,7 +62,10 @@ The scripts are the whole skein CLI lifecycle:
 | `build`        | `skein build --artifact-only`                     | Graphs → plain JavaScript in `.skein/build`                 |
 | `start`        | `skein start -c .skein/build/langgraph.json`      | Serve that build — the production entrypoint                |
 | `typecheck`    | `tsc --noEmit`                                    |                                                             |
-| `test`         | `vitest run`                                      |                                                             |
+| `test`         | `vitest run`                                      | Run the generated echo graph test                           |
+| `lint`         | `eslint src --max-warnings=0`                     | ESLint, enabled by default                                  |
+| `format`       | `prettier --write .`                              | Apply formatting, enabled by default                        |
+| `format:check` | `prettier --check .`                              | Check formatting, enabled by default                        |
 
 Those are the default memory scripts. Pick Postgres and `dev` becomes the Postgres/Redis command,
 with the in-memory alternative emitted as `dev:memory` instead of `dev:postgres`.
@@ -94,7 +104,7 @@ SQLite projects install `@skein-js/local`, LangGraph, and its SQLite saver. Both
 select `--store sqlite --queue sqlite`, with the database at `.skein/state.sqlite`; `dev:memory`
 keeps the memory alternative. There is no Compose file, service-start script, or Postgres/Redis
 environment configuration. Graphs still build to `.skein/build` and the database stays outside it.
-Use Node 22/24. See [local deployment](./local-deployment.md) for embedding and desktop examples.
+Use Node 24 or Node 22.12+ within 22.x. See [local deployment](./local-deployment.md) for embedding and desktop examples.
 
 ## Options
 
@@ -118,7 +128,7 @@ create-skein-js [directory]
 
 ```bash
 npm create skein-js@latest my-agent -- --provider anthropic
-pnpm create skein-js my-agent --provider anthropic
+pnpm create skein-js@latest my-agent --provider anthropic
 ```
 
 ### `--provider`
@@ -163,7 +173,11 @@ The Nx option `linting` defaults to `true`; use `--linting=false` to opt out.
 
 Projects provide `lint`, `format`, and `format:check`. Missing tooling uses recommended JavaScript
 and TypeScript ESLint rules and Prettier with `printWidth: 100`. Existing root ESLint and Prettier
-configurations are inherited independently. Generated output, dependencies, runtime state and package-manager lockfiles are ignored.
+configurations are inherited independently. Inherited tooling uses a generated `scripts/skein-tools.mjs`
+helper; a standalone project uses the commands shown above. Generated output, dependencies, runtime
+state and package-manager lockfiles are ignored. Install inherited tools at the workspace root and
+run `format` before `format:check` when the root uses different formatting settings; see the
+[current workspace limitations](#current-workspace-limitations).
 
 The shared policy recommends **Node 24** with engines `^22.12.0 || ^24.0.0`. It derives `.nvmrc`
 and `langgraph.json.node_version` from the same selection. Compatible numeric workspace pins in
@@ -176,7 +190,7 @@ enters LTS in October 2026, after native SQLite and desktop CI gates pass.
 For Nx **23.2.1 through 23.x**, install the generator at the root:
 
 ```bash
-pnpm add -D @skein-js/nx
+pnpm add -Dw @skein-js/nx
 pnpm exec nx g @skein-js/nx:application --directory=apps/my-agent --storage=sqlite
 pnpm install
 pnpm exec nx dev apps-my-agent
@@ -201,7 +215,8 @@ For npm, pnpm, Yarn, Bun, Turborepo or Lerna workspaces:
 npm create skein-js@latest apps/my-agent
 ```
 
-The CLI retains that directory, detects the workspace and skips installation. Missing registration
+The CLI retains that directory, detects the workspace and skips installation, including with `--yes`.
+Install dependencies from the workspace root after generation. Missing registration
 is prompted with a yes default; `--yes` accepts and `--no-workspace-update` leaves manual
 instructions. Existing globs, exclusions, YAML comments, key order, versions and unrelated settings are
 preserved. A pnpm root without `pnpm-workspace.yaml` gets one containing its existing `package.json`
@@ -212,7 +227,26 @@ metadata, duplicate names and package-manager conflicts fail before writing.
 Workspace `packageManager` metadata takes precedence over lockfile detection. Compatible root or
 pnpm catalog ranges are reused, then unanimous compatible sibling ranges. Remaining dependencies use
 tested defaults and report differences. Integrated Nx workspaces reject root dependency conflicts
-without changing existing versions. In Nx workspaces the CLI directs you to the generator before writing.
+without changing existing versions. For new child directories in Nx workspaces the CLI directs you
+to the generator before writing.
+
+### Current workspace limitations
+
+- **Choose a new child directory.** Workspace discovery currently starts at the target's parent.
+  `create-skein-js . --force` at a workspace root bypasses the workspace checks and can replace root
+  files. Use `apps/my-agent` or another new directory, and use the Nx generator for Nx workspaces.
+- **Install inherited tools at the root.** A root ESLint or Prettier configuration currently makes
+  the generated helper resolve that tool from the root. A config file alone is insufficient: declare
+  the corresponding tool and any plugins in the root's development dependencies. For example, run
+  `npm install --save-dev prettier` or `pnpm add -Dw prettier` at the root when Prettier is missing.
+- **Apply inherited formatting after CLI generation.** The CLI writes its template formatting.
+  When the root uses settings such as `singleQuote: true` or `semi: false`, run the generated
+  `format` command before `format:check`. The Nx generator already applies inherited formatting.
+- **Add Nx inputs for imported workspace libraries.** Generated cached targets currently list the
+  application's inputs without dependency inputs. When importing another workspace project, append
+  the workspace's dependency input, such as `^default`, to the cached targets and add `^build` to
+  `build.dependsOn` when dependency build outputs are required. Retain the existing SQLite exclusions
+  and the `start` dependency on the application's build.
 
 ## Scaffold validation
 
@@ -224,16 +258,26 @@ CI builds and packs the commit once and distributes tarballs. Consumers install 
 verify transitive Skein artifact hashes, run typechecking, tests, applicable lint/format checks and
 build, then send echo requests to development and artifact servers. Dummy keys allow provider graph
 building without model calls. SQLite always executes on Node. Required durable cases fail without Docker.
-The matrix pins npm 11.12.1 (including its tarball-override resolver fixes) and uses Yarn's node-modules linker. These checks also gate npm publication. Registry smoke tests and SQLite/desktop platform gates remain.
-
-```bash
-pnpm exec nx run test-support:pack-scaffolds
-pnpm exec nx run test-support:scaffold-consumers --case=standalone-npm-sqlite
-```
+CI pins npm 11.12.1, pnpm 9.15.0 and Yarn 4.9.2; Bun is provisioned by `setup-bun`. Yarn consumers
+use its node-modules linker. These checks also gate npm publication. Registry smoke tests and
+SQLite/desktop platform gates remain. The curated cases cover the presence of inherited tooling;
+they do not yet cover every limitation listed above. See the contributor
+[scaffold validation guide](./testing.md#scaffold-consumers) for local commands and coverage details.
 
 The new `@skein-js/nx` package follows the fixed release group. Its tarball includes generator
-metadata, schema and declarations without a private runtime dependency. First publication uses the
-release workflow's existing bootstrap credentials; configure npm trusted publishing afterward.
+metadata, schema and declarations without a private runtime dependency.
+
+### First publication
+
+Publishing runs through `.github/workflows/release.yml` after the reusable CI gate. Before the first
+release containing `@skein-js/nx`, maintainers must verify that the workflow's optional `NPM_TOKEN`
+bootstrap credential is configured and authorized to create that package. Passing consumer tests
+does not verify registry permissions.
+
+After the package exists, configure its npm trusted publisher for repository `skein-js/skein-js`
+and workflow `release.yml`, allowing direct `npm publish` as used by the workflow. Remove the
+bootstrap token once every published package has a working trusted publisher. See npm's
+[trusted publishing documentation](https://docs.npmjs.com/trusted-publishers/).
 
 ## If you don't want the scaffolder
 
