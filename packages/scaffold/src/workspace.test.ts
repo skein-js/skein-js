@@ -71,7 +71,7 @@ describe("workspace planning", () => {
     const manifest = JSON.parse(files.find((file) => file.path === "package.json")!.contents);
     expect(files.some((file) => file.path === "eslint.config.mjs")).toBe(false);
     expect(files.some((file) => file.path === ".prettierrc.json")).toBe(true);
-    expect(manifest.devDependencies.eslint).toBeUndefined();
+    expect(manifest.devDependencies.eslint).toBeDefined();
     expect(manifest.devDependencies.prettier).toBeDefined();
     expect(files.find((file) => file.path === ".nvmrc")?.contents).toBe("22.12.0\n");
     expect(

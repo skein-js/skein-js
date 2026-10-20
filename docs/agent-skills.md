@@ -21,10 +21,9 @@ files out of build caches while preserving the application's build artifacts. Mo
 credentials, and decisions to retry or resume remain application choices. Start with the
 [local deployment guide](./local-deployment.md) and its Electron, Tauri, and CLI examples.
 
-Workspace guidance also covers root-owned tool dependencies, formatting inherited configuration,
-and safe child-directory generation. Nx guidance checks imported workspace libraries in cache inputs
-and build ordering. See the [current workspace limitations](./scaffolding.md#current-workspace-limitations)
-for the cases that still require manual configuration.
+Workspace guidance covers independent configuration and tool dependency inheritance, generated
+formatting, and safe child-directory generation. Nx guidance preserves dependency cache inputs and
+build ordering. See [workspace tooling and caching](./scaffolding.md#workspace-tooling-and-caching).
 
 ## Find and install a skill
 

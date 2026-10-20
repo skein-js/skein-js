@@ -14,12 +14,12 @@ import {
 import {
   buildProjectFiles,
   inspectWorkspace,
+  formatProjectFiles,
   toPackageName,
   type DevStorage,
   type ModelProvider,
   type ScaffoldOptions,
 } from "@skein-js/scaffold";
-import { format, resolveConfig } from "prettier";
 
 import { version } from "../package.json";
 
@@ -153,6 +153,7 @@ export async function generateApplication(tree: Tree, options: ApplicationOption
       options: { command, cwd: directory },
       cache: ["build", "typecheck", "test", "lint", "format:check"].includes(target),
       inputs: [
+        "^default",
         "{projectRoot}/**/*",
         "!{projectRoot}/.skein/**/*",
         "!{projectRoot}/**/*.{sqlite,sqlite3,db}",
@@ -169,6 +170,7 @@ export async function generateApplication(tree: Tree, options: ApplicationOption
         "{workspaceRoot}/" + base,
       ],
       ...(target === "build" ? { outputs: ["{projectRoot}/.skein/build"] } : {}),
+      ...(["build", "typecheck", "test"].includes(target) ? { dependsOn: ["^build"] } : {}),
       ...(target === "start" ? { dependsOn: ["build"] } : {}),
     };
   }
@@ -179,20 +181,15 @@ export async function generateApplication(tree: Tree, options: ApplicationOption
     targets,
   });
   // Format only this application's generated files; root configuration stays untouched.
-  const inheritedFormat = await resolveConfig(path.join(tree.root, directory, "project.json"));
-  for (const change of tree.listChanges()) {
-    if (change.type === "DELETE" || !change.content || !change.path.startsWith(directory + "/"))
-      continue;
-    if (!/\.(?:json|ts|mjs|md|yaml)$/.test(change.path)) continue;
-    tree.write(
-      change.path,
-      await format(change.content.toString(), {
-        printWidth: 100,
-        ...inheritedFormat,
-        filepath: change.path,
-      }),
+  const generated = tree
+    .listChanges()
+    .flatMap((change) =>
+      change.type !== "DELETE" && change.content && change.path.startsWith(directory + "/")
+        ? [{ path: change.path.slice(directory.length + 1), contents: change.content.toString() }]
+        : [],
     );
-  }
+  for (const file of await formatProjectFiles(generated, path.join(tree.root, directory)))
+    tree.write(directory + "/" + file.path, file.contents);
   for (const notice of workspace.notices) logger.warn(notice);
   logger.info(
     "Generated " + name + ". Run " + resolved.packageManager + " install from the workspace root.",

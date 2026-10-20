@@ -5,3 +5,4 @@ export * from "./package-manifest.js";
 export * from "./node-policy.js";
 export * from "./workspace.js";
 export * from "./workspace-filesystem.js";
+export * from "./format-project-files.js";

@@ -105,6 +105,8 @@ export function isPackageManagerName(value: string): value is PackageManagerName
 export interface InheritedTooling {
   readonly root: string;
   readonly eslintConfig?: string;
+  readonly rootEslint?: boolean;
+  readonly rootPrettier?: boolean;
   readonly prettierConfig?: string;
   readonly prettierIgnore?: string;
 }

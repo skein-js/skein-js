@@ -5,6 +5,8 @@ import path from "node:path";
 const projectRoot = path.resolve(import.meta.dirname, "..");
 const inherited = {
   root: <%- JSON.stringify(inheritedRoot) %>,
+  rootEslint: <%- JSON.stringify(rootEslint) %>,
+  rootPrettier: <%- JSON.stringify(rootPrettier) %>,
   eslintConfig: <%- JSON.stringify(inheritedEslintConfig) %>,
   prettierConfig: <%- JSON.stringify(inheritedPrettierConfig) %>,
   prettierIgnore: <%- JSON.stringify(inheritedPrettierIgnore) %>,
@@ -14,7 +16,9 @@ const rootRequire = createRequire(path.resolve(projectRoot, inherited.root, "pac
 const command = process.argv[2];
 if (!["lint", "format", "check"].includes(command)) throw new Error("Unknown tooling command");
 const tool = command === "lint" ? "eslint" : "prettier";
-const owner = inherited[tool + "Config"] ? rootRequire : projectRequire;
+const owner = inherited[tool === "eslint" ? "rootEslint" : "rootPrettier"]
+  ? rootRequire
+  : projectRequire;
 const manifestPath = owner.resolve(tool + "/package.json");
 const manifest = owner(tool + "/package.json");
 const entry = typeof manifest.bin === "string" ? manifest.bin : manifest.bin[tool];
