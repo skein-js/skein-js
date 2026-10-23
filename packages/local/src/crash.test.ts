@@ -83,7 +83,11 @@ it("retains a real graph checkpoint after SIGKILL without replaying its input", 
       await local.dispose();
     }
   } finally {
-    if (child.exitCode === null && child.signalCode === null) child.kill("SIGKILL");
+    if (child.exitCode === null && child.signalCode === null) {
+      const exited = once(child, "exit");
+      child.kill("SIGKILL");
+      await exited;
+    }
     await rm(directory, { recursive: true, force: true });
   }
-}, 10_000);
+});

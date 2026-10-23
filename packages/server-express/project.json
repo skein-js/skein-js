@@ -37,6 +37,7 @@
     },
     "typecheck-browser": {
       "executor": "nx:run-commands",
+      "dependsOn": ["^build"],
       "options": {
         "command": "tsc --noEmit -p tsconfig.browser.json",
         "cwd": "packages/server-express"
