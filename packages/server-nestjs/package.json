@@ -59,6 +59,7 @@
     "@nestjs/platform-express": "^11.0.0",
     "@skein-js/langgraph": "workspace:*",
     "@skein-js/storage-memory": "workspace:*",
+    "@skein-js/test-support": "workspace:^",
     "reflect-metadata": "^0.2.2",
     "rxjs": "^7.8.1"
   },

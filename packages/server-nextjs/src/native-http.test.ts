@@ -1,0 +1,62 @@
+import { loadConfigHttpHandler } from "@skein-js/server-kit";
+import { expect, it } from "vitest";
+
+import { createEchoDeps, startEchoServer } from "./__fixtures__/echo-server.js";
+
+it.each(["app", "pages"] as const)(
+  "%s serves native responses before protocol routes and preserves fallthrough JSON",
+  async (router) => {
+    void router;
+    const deps = createEchoDeps();
+    deps.httpHandler = await loadConfigHttpHandler(
+      { graphs: {}, http: { app: "./app.ts:app" } },
+      {
+        configDir: "/fixture",
+        importModule: async () => ({
+          app: async (request: Request) => {
+            const path = new URL(request.url).pathname;
+            if (path === "/info")
+              return new Response("custom info", {
+                status: 201,
+                headers: { "content-type": "text/plain" },
+              });
+            if (path === "/custom")
+              return new Response(JSON.stringify(await request.json()), {
+                headers: { "content-type": "application/json" },
+              });
+            if (path === "/asset")
+              return new Response(new Uint8Array([0, 255, 42]), {
+                headers: { "content-type": "application/octet-stream" },
+              });
+            await request.text();
+            return new Response("missing", { status: 404 });
+          },
+        }),
+      },
+    );
+    const running = await startEchoServer({ deps, router });
+    try {
+      const info = await fetch(`${running.baseUrl}/info`);
+      expect(info.status).toBe(201);
+      expect(await info.text()).toBe("custom info");
+      const custom = await fetch(`${running.baseUrl}/custom`, {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: '{ "message": "native" }',
+      });
+      expect(custom.status).toBe(200);
+      expect(await custom.json()).toEqual({ message: "native" });
+      const asset = await fetch(`${running.baseUrl}/asset`);
+      expect([...new Uint8Array(await asset.arrayBuffer())]).toEqual([0, 255, 42]);
+      const thread = await fetch(`${running.baseUrl}/threads`, {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: '{ "metadata": { "from": "fallback" } }',
+      });
+      expect(thread.status).toBe(200);
+      expect(await thread.json()).toMatchObject({ metadata: { from: "fallback" } });
+    } finally {
+      await running.close();
+    }
+  },
+);

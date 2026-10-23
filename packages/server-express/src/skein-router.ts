@@ -56,6 +56,7 @@ export async function skeinRouter(options: SkeinRouterOptions): Promise<SkeinRou
     routes: options.routes ?? routes,
     // The resolved logger, so transport faults and engine failures land in the same place.
     logger,
+    handleRequest: runtime.handleRequest,
     // Explicit option wins; otherwise fall back to the config's `http.cors`, else off.
     cors: options.cors ?? cors ?? false,
     ...(options.json ? { json: options.json } : {}),

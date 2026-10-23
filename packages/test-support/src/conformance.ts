@@ -531,6 +531,56 @@ export function runSkeinStoreConformance(
     });
 
     describe("runs", () => {
+      describe("optional immutable results", () => {
+        it("preserves first output through concurrent writes and defensive reads", async () => {
+          const store = await makeStore();
+          if (!store.runs.recordResult && !store.runs.getResult) return;
+          expect(typeof store.runs.recordResult).toBe("function");
+          expect(typeof store.runs.getResult).toBe("function");
+          const thread_id = await seedThread(store);
+          const run = await store.runs.create({ thread_id, assistant_id: "a" });
+          const first = { values: { answer: ["original"] }, reply: { text: "reply" } };
+          await store.runs.recordResult!(run.run_id, first);
+          first.values.answer[0] = "mutated input";
+          await Promise.all(
+            Array.from({ length: 12 }, () =>
+              store.runs.recordResult!(run.run_id, { values: { answer: "replacement" } }),
+            ),
+          );
+          const found = await store.runs.getResult!(run.run_id);
+          expect(found).toEqual({ values: { answer: ["original"] }, reply: { text: "reply" } });
+          (found!.values as { answer: string[] }).answer[0] = "mutated read";
+          expect((await store.runs.getResult!(run.run_id))!.values).toEqual({
+            answer: ["original"],
+          });
+          expect(await store.runs.get(run.run_id)).not.toHaveProperty("result");
+        });
+        it("erases results with runs and thread cascades, rejecting late resurrection", async () => {
+          const store = await makeStore();
+          if (!store.runs.recordResult || !store.runs.getResult) return;
+          const thread_id = await seedThread(store);
+          const first = await store.runs.create({ thread_id, assistant_id: "a" });
+          const second = await store.runs.create({ thread_id, assistant_id: "a" });
+          for (const run of [first, second])
+            await store.runs.recordResult(run.run_id, { values: { value: "saved" } });
+          await store.runs.delete(first.run_id);
+          await store.runs.recordResult(first.run_id, { values: { value: "late" } });
+          expect(await store.runs.getResult(first.run_id)).toBeNull();
+          await store.threads.delete(thread_id);
+          await store.runs.recordResult(second.run_id, { values: { value: "late" } });
+          expect(await store.runs.getResult(second.run_id)).toBeNull();
+        });
+        it("returns null for a run without output and an unknown run", async () => {
+          const store = await makeStore();
+          if (!store.runs.recordResult || !store.runs.getResult) return;
+          const thread_id = await seedThread(store);
+          const run = await store.runs.create({ thread_id, assistant_id: "a" });
+          expect(await store.runs.getResult(run.run_id)).toBeNull();
+          await store.runs.recordResult(run.run_id, { values: { value: "saved" } });
+          await store.runs.delete(run.run_id);
+          expect(await store.runs.getResult(run.run_id)).toBeNull();
+        });
+      });
       const seedThread = async (store: SkeinStore): Promise<string> =>
         (await store.threads.create()).thread_id;
 

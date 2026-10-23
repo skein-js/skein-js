@@ -19,6 +19,8 @@ import {
   sendNodePreflight,
   sendNodeResponse,
   routeMatcherFor,
+  readNativeNodeRequest,
+  sendNativeResponse,
   stripBasePath,
   type CorsSetting,
   type Logger,
@@ -104,6 +106,23 @@ export function createSkeinPagesHandler(options: SkeinPagesHandlerOptions): Skei
     if (cors) applyNodeCors(req.headers, res, cors);
 
     // The resolved table, so a group disabled by `http.disable_*` 404s here instead of being served.
+    if (resolved.runtime.handleRequest)
+      try {
+        const native = await readNativeNodeRequest(
+          req,
+          `${url.origin}${skeinPathname}${url.search}`,
+          undefined,
+          resolved.runtime.handleRequest,
+        );
+        const response = native ? await resolved.runtime.handleRequest(native) : undefined;
+        if (response) {
+          await sendNativeResponse(response, res);
+          return;
+        }
+      } catch (error) {
+        sendNodeError(error, res, loggerFor(resolved), "skein Next.js");
+        return;
+      }
     const match = routeMatcherFor(resolved.routes)(req.method ?? "GET", skeinPathname);
     if (!match) {
       res.writeHead(404, { "content-type": "application/json" });
@@ -127,6 +146,10 @@ export function createSkeinPagesHandler(options: SkeinPagesHandlerOptions): Skei
         signal: disconnected.signal,
       };
       const invoke = resolved.runtime.handlers[match.binding.handler];
+      if (!invoke) {
+        res.writeHead(404).end();
+        return;
+      }
       const response = await invoke(
         match.binding.foldThreadIdIntoBody ? copyThreadIdIntoBody(request) : request,
       );

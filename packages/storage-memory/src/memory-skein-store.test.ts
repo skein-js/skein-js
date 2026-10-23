@@ -1,4 +1,4 @@
-import { runSkeinStoreConformance } from "@skein-js/test-support";
+import { runSkeinStoreConformance, runStoreOptionsConformance } from "@skein-js/test-support";
 import { describe, expect, it } from "vitest";
 
 import { MemorySkeinStore } from "./memory-skein-store.js";
@@ -6,6 +6,22 @@ import { MemorySkeinStore } from "./memory-skein-store.js";
 // The whole point of the memory driver in this slice: prove it satisfies the shared SkeinStore
 // contract. Postgres will run this exact suite later, making the two interchangeable.
 runSkeinStoreConformance("memory", (options) => new MemorySkeinStore(options));
+
+it("round-trips run results without importing orphan or overwriting existing output", async () => {
+  const source = new MemorySkeinStore();
+  const thread = await source.threads.create();
+  const run = await source.runs.create({ thread_id: thread.thread_id, assistant_id: "graph" });
+  await source.runs.recordResult!(run.run_id, { values: { answer: "original" } });
+  const snapshot = source.snapshot();
+  snapshot.runResults!.push(["orphan", { values: { answer: "orphan" } }]);
+  const target = new MemorySkeinStore();
+  target.hydrate(snapshot);
+  expect(await target.runs.getResult!(run.run_id)).toEqual({ values: { answer: "original" } });
+  expect(await target.runs.getResult!("orphan")).toBeNull();
+  snapshot.runResults![0]![1] = { values: { answer: "replacement" } };
+  await target.restore(snapshot);
+  expect(await target.runs.getResult!(run.run_id)).toEqual({ values: { answer: "original" } });
+});
 
 // TTL config (default_ttl / refresh_on_read) can't be exercised by the config-less conformance
 // factory, so cover it here against the memory driver directly. The Postgres equivalents run in the
@@ -107,3 +123,5 @@ describe("collection pagination", () => {
     ).resolves.toEqual([["users", "2"]]);
   });
 });
+
+runStoreOptionsConformance("memory", (ttl) => new MemorySkeinStore({ ttl }));

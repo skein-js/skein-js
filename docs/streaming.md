@@ -151,3 +151,37 @@ The entire LangChain client surface — the vanilla SDK, the [`useStream`](./rea
 React hook, and Agent Chat UI — consumes **SSE**. The protocol's optional WebSocket upgrade
 buys bidirectional framing we don't need for v1, so it is deferred (see
 [roadmap.md](./roadmap.md)). **Deferring WebSocket does not affect the React SDK.**
+
+## Thread event subscriptions
+
+The thread protocol separates execution from observation. Submit `{ id, method: "run.start",
+params: { assistant_id, input } }` to `/threads/{id}/commands`, then observe
+`POST /threads/{id}/stream/events` with `{ channels: ["values", "messages", "lifecycle", "input"] }`.
+Reopening that subscription executes nothing. Commands return JSON envelopes; legacy command bodies
+retain their SSE response. The LangGraph binding uses the public `streamEvents(..., { version: "v3" })`
+path for protocol runs, including graph-defined transformers and custom channels.
+
+Subscriptions stay open across turns and receive idle heartbeat comments. Channel, namespace-prefix
+and depth filters are reader-specific; static namespace segments also match their runtime `:task-id`
+suffixes. The bus assigns sequence numbers before filtering, so reconnect cursors work across runs.
+Request `since` to replay after a cursor; an invalid retained-history boundary requires state
+restoration and a fresh subscription. With no cursor, the current state is the initial baseline.
+
+`MemoryThreadEventBus` bounds each payload history to 10,000 entries, retaining at most 50 payload
+histories. `RedisThreadEventBus` uses capped streams (approximately 10,000 entries) with a one-hour
+payload expiry. Sequence and deletion-generation records survive payload expiry. Deleting a thread
+clears payloads and closes its readers; execution captures its generation so a late publisher cannot
+repopulate history after deletion or ID reuse. Release the Redis bus with `dispose()` when assembling
+infrastructure by hand; runtime assemblers own that cleanup automatically.
+
+Legacy `GET /threads/{id}/stream` joins one run by default. Pass explicit `stream_modes` to follow
+legacy frames and optional `thread_state` events across turns. This default differs from Agent Server;
+see the [compatibility matrix](./langgraph-compatibility.md) for the verification scope.
+
+A subscription without `since` replays retained events so late selectors can recover custom
+channels and media, then receives a current state baseline and live events. An explicit `since`
+resumes after that publication sequence. Sequences span runs; payload expiry does not reset them.
+Expired or future explicit cursors return `thread_cursor_expired` and require state restoration.
+Memory and Redis buses use independent reader cursors and reject publications from a deleted
+thread incarnation, including after an explicit thread-ID reuse. SQLite's event bus is process-local;
+its state and run records remain durable across restart.

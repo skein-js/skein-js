@@ -39,6 +39,7 @@ Upstream references: [LangGraph.js overview](https://docs.langchain.com/oss/java
 - [Workflows and channels](https://github.com/skein-js/skein-js/blob/main/docs/channels.md): Connect authenticated provider sources and durable destinations through a LangGraph workflow.
 - [Streaming](https://github.com/skein-js/skein-js/blob/main/docs/streaming.md): LangGraph stream modes mapped onto Agent Protocol SSE, with cross-instance fan-out.
 - [Errors & logging](https://github.com/skein-js/skein-js/blob/main/docs/errors-and-logging.md): What happens when a graph throws — the `RunError` payload, `exposeErrorStacks`, the `Logger` interface, and the `skein dev` failure block.
+- [LangGraph compatibility](https://github.com/skein-js/skein-js/blob/main/docs/langgraph-compatibility.md): Dated verification scope and intentional Agent Server differences.
 - [React SDK / useStream](https://github.com/skein-js/skein-js/blob/main/docs/react-sdk.md): Frontend compatibility — `@langchain/langgraph-sdk` and `useStream` over SSE.
 - [Storage](https://github.com/skein-js/skein-js/blob/main/docs/storage.md): `SkeinStore`, memory/SQLite/Postgres selection, pgvector semantic search, upstream checkpointers, and `getStore()` in a graph.
 - [Runs & Redis](https://github.com/skein-js/skein-js/blob/main/docs/runs-and-redis.md): The run engine, the queue, and cross-instance streaming with Redis.

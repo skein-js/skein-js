@@ -9,6 +9,8 @@ import type { LanggraphJson } from "@skein-js/config";
 export interface ManifestRewrites {
   /** graph id → rewritten spec, e.g. `"./graphs/agent.js:graph"`. */
   graphs: Record<string, string>;
+  httpApp?: string;
+  ui?: Record<string, string>;
   /** Rewritten `auth.path`, e.g. `"./auth.js:default"` — only when the config declared auth. */
   auth?: string;
   /** Rewritten `store.index.embed`, e.g. `"./embed.js:embed"` — only for a custom-function path. */
@@ -33,6 +35,8 @@ export function buildProductionConfig(
   const config: LanggraphJson = structuredClone(source);
 
   config.graphs = { ...rewrites.graphs };
+  if (rewrites.httpApp && config.http) config.http = { ...config.http, app: rewrites.httpApp };
+  if (rewrites.ui) config.ui = { ...rewrites.ui };
 
   if (rewrites.auth && config.auth) {
     config.auth = { ...config.auth, path: rewrites.auth };

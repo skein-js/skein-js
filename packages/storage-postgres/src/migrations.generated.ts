@@ -473,6 +473,22 @@ CREATE INDEX deliveries_expires_at_idx
   WHERE status IN ('delivered', 'dead');
 `;
 
+const MIGRATION_0012_STORE_WRITE_OPTIONS = `-- Up Migration
+ALTER TABLE store_items ADD COLUMN IF NOT EXISTS index_fields jsonb;
+`;
+
+const MIGRATION_0013_THREAD_RETENTION = `-- Up Migration
+ALTER TABLE threads ADD COLUMN IF NOT EXISTS ttl_strategy text;
+ALTER TABLE threads ADD COLUMN IF NOT EXISTS ttl_pinned boolean NOT NULL DEFAULT false;
+-- Older rows do not distinguish explicit pins from unconfigured retention. Preserve their pins.
+UPDATE threads SET ttl_pinned = true WHERE ttl_minutes IS NULL;
+`;
+
+const MIGRATION_0014_RUN_RESULTS = `-- Up Migration
+-- Immutable per-run output for protocol consumers; excluded from ordinary Run projections.
+ALTER TABLE runs ADD COLUMN IF NOT EXISTS result JSONB;
+`;
+
 /** Every migration, oldest first. Order is the contract — never reorder or rename. */
 export const SKEIN_MIGRATIONS: readonly SkeinMigration[] = [
   { name: "0001_init", up: MIGRATION_0001_INIT },
@@ -520,4 +536,7 @@ export const SKEIN_MIGRATIONS: readonly SkeinMigration[] = [
   },
   { name: "0010_idempotency", up: MIGRATION_0010_IDEMPOTENCY },
   { name: "0011_deliveries", up: MIGRATION_0011_DELIVERIES },
+  { name: "0012_store_write_options", up: MIGRATION_0012_STORE_WRITE_OPTIONS },
+  { name: "0013_thread_retention", up: MIGRATION_0013_THREAD_RETENTION },
+  { name: "0014_run_results", up: MIGRATION_0014_RUN_RESULTS },
 ];

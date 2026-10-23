@@ -1,9 +1,20 @@
-import { MemorySaver, type CompiledGraph } from "@langchain/langgraph";
+import {
+  Annotation,
+  DeltaChannel,
+  StateGraph,
+  MemorySaver,
+  emptyCheckpoint,
+  type CompiledGraph,
+} from "@langchain/langgraph";
 import { describe, expect, it } from "vitest";
 
 import { echoGraph } from "../__fixtures__/graphs.js";
 
-import { copyCheckpointHistory, rollbackThreadCheckpointsTo } from "./checkpoint-history.js";
+import {
+  copyCheckpointHistory,
+  pruneThreadCheckpointsToLatest,
+  rollbackThreadCheckpointsTo,
+} from "./checkpoint-history.js";
 
 // Bind a fresh MemorySaver to the echo graph and drive it, so tests build real checkpoint history.
 function graphWithSaver(): { graph: CompiledGraph<string>; saver: MemorySaver } {
@@ -69,4 +80,66 @@ describe("copyCheckpointHistory", () => {
 
     expect((await graph.getState(at("target"))).values).toEqual({ value: "echo: hi" });
   });
+});
+
+describe("checkpoint namespaces", () => {
+  it("keeps root and child checkpoints and pending task writes when pruning and copying", async () => {
+    const saver = new MemorySaver();
+    const first = emptyCheckpoint();
+    const root = { ...emptyCheckpoint(), id: "root-current" };
+    const child = { ...emptyCheckpoint(), id: "child-current" };
+    const metadata = { source: "loop" as const, step: 1, parents: {} };
+    await saver.put({ configurable: { thread_id: "source", checkpoint_ns: "" } }, first, metadata);
+    await saver.put(
+      { configurable: { thread_id: "source", checkpoint_ns: "child:task" } },
+      child,
+      metadata,
+    );
+    await saver.put(
+      { configurable: { thread_id: "source", checkpoint_ns: "", checkpoint_id: first.id } },
+      root,
+      { ...metadata, parents: { "child:task": child.id } },
+    );
+    const atChild = {
+      configurable: { thread_id: "source", checkpoint_ns: "child:task", checkpoint_id: child.id },
+    };
+    await saver.putWrites(atChild, [["answer", "pending"]], "task");
+    expect(await pruneThreadCheckpointsToLatest(saver, "source")).toBe(true);
+    expect((await saver.getTuple(at("source")))?.checkpoint.id).toBe(root.id);
+    expect((await saver.getTuple(atChild))?.pendingWrites).toEqual([["task", "answer", "pending"]]);
+    await copyCheckpointHistory(saver, "source", "copy");
+    expect(
+      (await saver.getTuple({ configurable: { ...atChild.configurable, thread_id: "copy" } }))
+        ?.pendingWrites,
+    ).toEqual([["task", "answer", "pending"]]);
+    expect((await saver.getTuple(at("copy")))?.checkpoint.id).toBe(root.id);
+  });
+});
+
+it("keeps the ancestor writes needed to reconstruct delta channels through prune and copy", async () => {
+  const saver = new MemorySaver();
+  const state = Annotation.Root({
+    items: new DeltaChannel<string[], string>((items, writes) => [...items, ...writes]),
+  });
+  const graph = new StateGraph(state)
+    .addNode("append", () => ({ items: "node" }))
+    .addEdge("__start__", "append")
+    .addEdge("append", "__end__")
+    .compile({ checkpointer: saver });
+  await graph.invoke({ items: "first" }, at("delta"));
+  await graph.invoke({ items: "second" }, at("delta"));
+  const before = (await graph.getState(at("delta"))).values;
+  await pruneThreadCheckpointsToLatest(saver, "delta");
+  expect((await graph.getState(at("delta"))).values).toEqual(before);
+  await copyCheckpointHistory(saver, "delta", "delta-copy");
+  expect((await graph.getState(at("delta-copy"))).values).toEqual(before);
+  await graph.invoke({ items: "third" }, at("delta-copy"));
+  expect((await graph.getState(at("delta-copy"))).values.items).toEqual([
+    "first",
+    "node",
+    "second",
+    "node",
+    "third",
+    "node",
+  ]);
 });

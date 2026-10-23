@@ -1,5 +1,5 @@
 import { Annotation, StateGraph } from "@langchain/langgraph";
-import { embedInMemoryGraphs } from "@skein-js/server-kit";
+import { embedInMemoryGraphs, loadConfigHttpHandler } from "@skein-js/server-kit";
 import { describe, expect, it, vi } from "vitest";
 
 import {
@@ -172,6 +172,74 @@ it("completes terminal stream joins with a fresh completion marker and buffered 
     );
     expect(response.status).toBe(200);
     expect(await response.text()).toContain('"retained":true');
+  } finally {
+    await server.close();
+  }
+});
+
+it("dispatches native Fetch applications before protocol routing without consuming fallthrough bodies", async () => {
+  const deps = embedInMemoryGraphs({ echo: graph });
+  deps.httpHandler = await loadConfigHttpHandler(
+    { graphs: {}, http: { app: "./app.ts:app" } },
+    {
+      configDir: "/fixture",
+      importModule: async () => ({
+        app: async (request: Request) => {
+          if (new URL(request.url).pathname === "/info")
+            return new Response("custom", { status: 201 });
+          await request.text();
+          return new Response("missing", { status: 404 });
+        },
+      }),
+    },
+  );
+  const server = await createSkeinFetchServer({ deps });
+  try {
+    const custom = await server.fetch(new Request("http://localhost/info"));
+    expect(custom.status).toBe(201);
+    expect(await custom.text()).toBe("custom");
+    const thread = await server.fetch(
+      new Request("http://localhost/threads", {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ metadata: { from: "fallback" } }),
+      }),
+    );
+    expect(thread.status).toBe(200);
+    expect(await thread.json()).toMatchObject({ metadata: { from: "fallback" } });
+  } finally {
+    await server.close();
+  }
+});
+
+it("keeps protocol JSON readable after native authentication inspects its body", async () => {
+  const deps = embedInMemoryGraphs(
+    { echo: graph },
+    {
+      auth: {
+        enabled: true,
+        studioAuthDisabled: true,
+        authenticate: async (request) => {
+          expect(await request.json()).toEqual({ metadata: { from: "auth" } });
+          return undefined;
+        },
+        authorize: async ({ value }) => ({ value }),
+        matchesFilters: () => true,
+      },
+    },
+  );
+  deps.httpHandler = async () => undefined;
+  const server = await createSkeinFetchServer({ deps });
+  try {
+    const thread = await server.fetch(
+      new Request("http://localhost/threads", {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ metadata: { from: "auth" } }),
+      }),
+    );
+    expect(thread.status).toBe(200);
+    expect(await thread.json()).toMatchObject({ metadata: { from: "auth" } });
   } finally {
     await server.close();
   }

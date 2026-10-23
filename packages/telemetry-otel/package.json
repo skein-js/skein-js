@@ -1,7 +1,7 @@
 {
   "name": "@skein-js/otel",
   "version": "0.21.0",
-  "description": "OpenTelemetry spans and metrics for skein-js runs — works with any OTLP backend.",
+  "description": "OpenTelemetry spans and metrics for skein-js runs \u2014 works with any OTLP backend.",
   "license": "Apache-2.0",
   "author": "Maina Wycliffe <wmmaina7@gmail.com>",
   "homepage": "https://github.com/skein-js/skein-js/tree/main/packages/telemetry-otel#readme",
@@ -48,15 +48,26 @@
     "@skein-js/core": "workspace:*"
   },
   "peerDependencies": {
-    "@opentelemetry/api": ">=1.9.0"
+    "@opentelemetry/api": ">=1.9.0",
+    "@opentelemetry/exporter-prometheus": "^0.222.0",
+    "@opentelemetry/otlp-transformer": "^0.222.0"
   },
   "peerDependenciesMeta": {
     "@opentelemetry/api": {
       "optional": true
+    },
+    "@opentelemetry/exporter-prometheus": {
+      "optional": true
+    },
+    "@opentelemetry/otlp-transformer": {
+      "optional": true
     }
   },
   "devDependencies": {
-    "@opentelemetry/api": "^1.9.0"
+    "@opentelemetry/api": "^1.9.0",
+    "@opentelemetry/exporter-prometheus": "^0.222.0",
+    "@opentelemetry/otlp-transformer": "^0.222.0",
+    "@opentelemetry/sdk-metrics": "^2.11.0"
   },
   "publishConfig": {
     "access": "public"

@@ -24,8 +24,10 @@ image died on `ERR_MODULE_NOT_FOUND` inside its own probe:
 - **`pnpm-workspace.yaml` sits at the fixture root** so vite's `searchForWorkspaceRoot` stops here
   instead of walking up into the skein repo.
 
-`apps/app/package.json` declares `date-fns` at an exact version and nothing else. It is deliberately
+`apps/app/package.json` declares `date-fns` and React at exact versions. It is deliberately
 **not** a workspace package — the root `pnpm install` never sees it — so `build-image-smoke.mjs`
 installs it into the fixture itself before building. Declaring the dependency where it is actually
 imported is what keeps it safe: a `pnpm dedupe`, a depcheck pass, or anyone pruning an unused entry
 from a shared manifest cannot silently break this job. Nothing here is published or built by Nx.
+
+The fixture also contains a UI component registry and a Fetch application. The smoke runs the built image with an explicitly installed SQLite driver, verifies UI bootstrap and assets, custom route dispatch, OpenAPI and docs, and checks that source files are absent. The generated production install omits optional development compilers.

@@ -119,17 +119,16 @@ describe("cron handlers", () => {
     expect(response.headers?.["x-pagination-total"]).toBe("2");
   });
 
-  it("accepts and ignores a select projection", async () => {
+  it("applies a select projection after authorization", async () => {
     const { handlers, assistantId } = await handlersWithAssistant();
     await createCron(handlers, assistantId);
 
     const response = await handlers.searchCrons(request({ body: { select: ["cron_id", "now"] } }));
 
-    // Validated (a typo would 400) but not applied — skein always returns the full row.
+    // A projection returns exactly the selected fields; the stored row stays complete.
     expect(response.status).toBe(200);
-    expect((response.kind === "json" ? (response.body as unknown[]) : [])[0]).toHaveProperty(
-      "schedule",
-    );
+    const rows = response.kind === "json" ? (response.body as object[]) : [];
+    expect(Object.keys(rows[0]!)).toEqual(["cron_id"]);
   });
 
   it("400s an unknown select field rather than ignoring it silently", async () => {

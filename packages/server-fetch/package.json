@@ -48,7 +48,8 @@
     "@langchain/langgraph": "^1.4.0"
   },
   "devDependencies": {
-    "@langchain/langgraph": "^1.4.0"
+    "@langchain/langgraph": "^1.4.0",
+    "@skein-js/test-support": "workspace:^"
   },
   "publishConfig": {
     "access": "public"

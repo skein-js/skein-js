@@ -15,6 +15,7 @@ import type { DefaultValues, Interrupt, Metadata, Thread, ThreadStatus } from ".
  * early would make a thread with an in-flight run read as absent while that run was still writing to it.
  */
 export interface ThreadTtlConfig {
+  strategy?: "delete" | "keep_latest";
   /** Default thread lifetime in minutes when a create passes no `ttl`. */
   defaultTtl?: number;
   /** Sweeper cadence in minutes. Defaults to 60. */
@@ -31,6 +32,7 @@ export interface ThreadCreate {
    * so no TTL ever expires it.
    */
   ttl?: number | null;
+  ttlStrategy?: "delete" | "keep_latest";
 }
 
 /** Partial update; omitted fields are left unchanged. */
@@ -39,6 +41,7 @@ export interface ThreadUpdate {
   status?: ThreadStatus;
   /** New lifetime in minutes; `null` clears the expiry so no TTL removes this thread. */
   ttl?: number | null;
+  ttlStrategy?: "delete" | "keep_latest";
   /** Latest graph state values mirrored onto the thread row. */
   values?: DefaultValues;
   /** Pending human-in-the-loop interrupts, mirrored from the graph state onto the thread row. */
@@ -68,6 +71,8 @@ export interface ThreadSearchQuery {
    * Both drivers apply it with the same containment semantics as `metadata`.
    */
   enforcedMetadata?: Metadata;
+  /** Exclude rows containing any of these metadata subsets, before pagination. */
+  excludeMetadata?: Metadata | Metadata[];
   /** Match threads whose mirrored graph values contain every one of these key/value pairs. */
   values?: DefaultValues;
   /** Restrict to threads in this status. */
@@ -77,12 +82,14 @@ export interface ThreadSearchQuery {
   limit?: number;
   offset?: number;
   /** Sort key; defaults to `created_at`. */
-  sortBy?: "thread_id" | "status" | "created_at" | "updated_at";
+  sortBy?: "thread_id" | "status" | "created_at" | "updated_at" | "state_updated_at";
   /** Sort direction; defaults to `desc`. */
   sortOrder?: "asc" | "desc";
 }
 
 export interface ThreadRepo {
+  /** Optional retention capability; existing custom drivers retain deletion-only expiry. */
+  getTtl?(threadId: string): Promise<{ ttl?: number | null; strategy: "delete" | "keep_latest" }>;
   list(): Promise<Thread[]>;
   /** Filtered + paginated listing backing `POST /threads/search`. */
   search(query: ThreadSearchQuery): Promise<Thread[]>;

@@ -52,13 +52,30 @@
     "express": ">=4.18.0"
   },
   "devDependencies": {
+    "@angular/common": "21",
+    "@angular/compiler": "21",
+    "@angular/core": "21",
+    "@angular/platform-browser": "21",
+    "@langchain/angular": "1.2.6",
     "@langchain/core": "^1.2.9",
     "@langchain/langgraph": "^1.4.0",
+    "@langchain/langgraph-sdk": "1.12.6",
+    "@langchain/react": "1.2.6",
+    "@langchain/svelte": "1.2.6",
+    "@langchain/vue": "1.2.6",
+    "@playwright/test": "1.61.1",
     "@skein-js/langgraph": "workspace:*",
+    "@skein-js/redis": "workspace:^",
     "@skein-js/storage-memory": "workspace:*",
+    "@skein-js/test-support": "workspace:^",
     "@types/cors": "^2.8.17",
     "@types/express": "^5.0.0",
-    "express": "^5.2.1"
+    "esbuild": "0.28.2",
+    "express": "^5.2.1",
+    "react": "19",
+    "react-dom": "19",
+    "svelte": "5",
+    "vue": "3"
   },
   "publishConfig": {
     "access": "public"

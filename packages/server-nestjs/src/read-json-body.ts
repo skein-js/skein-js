@@ -6,7 +6,11 @@ import type { IncomingMessage } from "node:http";
 import { SkeinHttpError } from "@skein-js/core";
 
 /** The Node request the middlewares read (an Express request is structurally compatible). */
-export type NestRequest = IncomingMessage & { originalUrl?: string; body?: unknown };
+export type NestRequest = IncomingMessage & {
+  originalUrl?: string;
+  body?: unknown;
+  rawBody?: Uint8Array;
+};
 
 /**
  * Return the parsed request body. Uses the body the host's global parser already attached; if that is
@@ -40,6 +44,7 @@ export async function readJsonBody(req: NestRequest, retainRawBody = false): Pro
  * hand a channel something that looks right and cannot be verified.
  */
 async function readRawBody(req: NestRequest): Promise<string> {
+  if (req.rawBody) return new TextDecoder().decode(req.rawBody);
   if (req.body !== undefined) {
     throw SkeinHttpError.badRequest(
       "This route needs the unparsed request body, but a body parser has already consumed it. " +

@@ -93,7 +93,9 @@ export function resolveConsoleAsset(
   }
 
   const requested = pathWithinMount.replace(/^\/+/, "");
-  const file = requested === "" ? "index.html" : requested;
+  // Preserve the old icon URL while sharing the docs' smaller vector mark.
+  const file =
+    requested === "" ? "index.html" : requested === "favicon.ico" ? "favicon.svg" : requested;
   const asset = Object.prototype.hasOwnProperty.call(CONSOLE_ASSETS, file)
     ? CONSOLE_ASSETS[file]
     : undefined;

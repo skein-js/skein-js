@@ -17,6 +17,8 @@ import {
   type Run,
   type RunCreate,
   type RunRepo,
+  type RunResult,
+  serializeWireJson,
   type RunKwargs,
   type Cron,
   type CronRepo,
@@ -67,10 +69,21 @@ export class SqliteSkeinStore implements SkeinStore {
       const query = JSON.parse(String(queryText));
       return Number(
         ["graph_id", "name", "status", "assistant_id", "thread_id", "enabled"].every(
-          (key) => query[key] === undefined || row[key] === query[key],
+          (key) =>
+            query[key] === undefined ||
+            (key === "name" && query.nameMatch === "substring"
+              ? String(row[key]).toLowerCase().includes(String(query[key]).toLowerCase())
+              : row[key] === query[key]),
         ) &&
           (query.ids === undefined || query.ids.includes(row.thread_id)) &&
           isMetadataSubset(row.metadata, query.metadata) &&
+          !(
+            Array.isArray(query.excludeMetadata)
+              ? query.excludeMetadata
+              : query.excludeMetadata
+                ? [query.excludeMetadata]
+                : []
+          ).some((excluded: Record<string, unknown>) => isMetadataSubset(row.metadata, excluded)) &&
           isMetadataSubset(row.metadata, query.enforcedMetadata) &&
           isMetadataSubset(row.values, query.values),
       );
@@ -232,13 +245,42 @@ export class SqliteSkeinStore implements SkeinStore {
       });
     },
   };
-  private threadExpiry(id: string, minutes?: number | null): void {
-    const resolved = minutes === undefined ? this.options.threadTtl?.defaultTtl : minutes;
+  private threadRetention(id: string): { ttl?: number | null; strategy: "delete" | "keep_latest" } {
+    const row = this.database
+      .prepare("SELECT ttl_minutes,ttl_strategy,ttl_pinned FROM skein_threads WHERE key=?")
+      .get(id) as
+      | {
+          ttl_minutes: number | null;
+          ttl_strategy: "delete" | "keep_latest" | null;
+          ttl_pinned: number;
+        }
+      | undefined;
+    return {
+      ttl: row?.ttl_pinned ? null : (row?.ttl_minutes ?? this.options.threadTtl?.defaultTtl),
+      strategy: row?.ttl_strategy ?? this.options.threadTtl?.strategy ?? "delete",
+    };
+  }
+  private threadExpiry(
+    id: string,
+    minutes?: number | null,
+    strategy?: "delete" | "keep_latest",
+  ): void {
+    const current = this.threadRetention(id);
+    const resolved = minutes === undefined ? current.ttl : minutes;
     this.database
-      .prepare("UPDATE skein_threads SET expires_at=? WHERE key=?")
-      .run(resolved == null ? null : Date.now() + resolved * 60_000, id);
+      .prepare(
+        "UPDATE skein_threads SET expires_at=?,ttl_minutes=?,ttl_pinned=?,ttl_strategy=? WHERE key=?",
+      )
+      .run(
+        resolved == null ? null : Date.now() + resolved * 60_000,
+        resolved ?? null,
+        resolved === null ? 1 : 0,
+        strategy ?? current.strategy,
+        id,
+      );
   }
   readonly threads: ThreadRepo = {
+    getTtl: async (id) => this.threadRetention(id),
     get: async (id) => this.get("threads", id),
     list: async () => this.search("threads", "thread_id", { sortOrder: "asc" }),
     search: async (query) => this.search("threads", "thread_id", query),
@@ -257,7 +299,7 @@ export class SqliteSkeinStore implements SkeinStore {
           updated_at: at,
           state_updated_at: at,
         });
-        this.threadExpiry(id, input.ttl);
+        this.threadExpiry(id, input.ttl, input.ttlStrategy);
         return row;
       })(),
     update: async (id, patch) =>
@@ -276,7 +318,12 @@ export class SqliteSkeinStore implements SkeinStore {
           state_updated_at: patch.values !== undefined ? at : existing.state_updated_at,
           ...(error == null ? {} : { error }),
         });
-        if (patch.ttl !== undefined) this.threadExpiry(id, patch.ttl);
+        if (
+          patch.ttl !== undefined ||
+          patch.ttlStrategy !== undefined ||
+          (patch.values !== undefined && this.threadRetention(id).strategy === "keep_latest")
+        )
+          this.threadExpiry(id, patch.ttl, patch.ttlStrategy);
         return row;
       })(),
     copy: async (id) =>
@@ -299,9 +346,13 @@ export class SqliteSkeinStore implements SkeinStore {
       (
         this.database
           .prepare(
-            "SELECT key FROM skein_threads WHERE expires_at<=? ORDER BY expires_at,key LIMIT ?",
+            "SELECT key FROM skein_threads WHERE expires_at<=? AND (COALESCE(ttl_strategy,?) != 'keep_latest' OR NOT EXISTS (SELECT 1 FROM skein_runs WHERE thread_id=skein_threads.key AND status IN ('pending','running'))) ORDER BY expires_at,key LIMIT ?",
           )
-          .all(Date.parse(query.now), this.limit(query.limit)) as { key: string }[]
+          .all(
+            Date.parse(query.now),
+            this.options.threadTtl?.strategy ?? "delete",
+            this.limit(query.limit),
+          ) as { key: string }[]
       ).map((row) => row.key),
   };
   private createRun(input: RunCreate): Run {
@@ -351,6 +402,17 @@ export class SqliteSkeinStore implements SkeinStore {
     });
   }
   readonly runs: RunRepo = {
+    recordResult: async (id, result) => {
+      if (this.get("runs", id))
+        this.database
+          .prepare("UPDATE skein_runs SET result=? WHERE key=? AND result IS NULL")
+          .run(serializeWireJson(result), id);
+    },
+    getResult: async (id) => {
+      const row = this.database.prepare("SELECT result FROM skein_runs WHERE key=?").get(id) as
+        { result: string | null } | undefined;
+      return row?.result ? (JSON.parse(row.result) as RunResult) : null;
+    },
     get: async (id) => this.get("runs", id),
     listByThread: async (id, query) =>
       this.rows(
@@ -512,14 +574,18 @@ export class SqliteSkeinStore implements SkeinStore {
     },
   };
   readonly store: StoreRepo = {
-    get: async (namespace, key) =>
+    get: async (namespace, key, options) =>
       this.database.transaction(() => {
         const id = pairKey(namespace, key);
         this.database
           .prepare("DELETE FROM skein_items WHERE key=? AND expires_at<=?")
           .run(id, Date.now());
         const item = this.get<Item>("items", id);
-        if (item && this.options.ttl && this.options.ttl.refreshOnRead !== false) {
+        if (
+          item &&
+          (options?.refreshTtl ??
+            (this.options.ttl !== undefined && this.options.ttl.refreshOnRead !== false))
+        ) {
           this.database
             .prepare(
               "UPDATE skein_items SET expires_at=? + ttl_minutes*60000 WHERE key=? AND ttl_minutes IS NOT NULL",
@@ -529,6 +595,8 @@ export class SqliteSkeinStore implements SkeinStore {
         return item;
       })(),
     put: async (namespace, key, value, options) =>
+      this.store.putWithOptions!(namespace, key, value, options),
+    putWithOptions: async (namespace, key, value, options) =>
       this.database.transaction(() => {
         const id = pairKey(namespace, key);
         const at = nowIso();
@@ -540,29 +608,55 @@ export class SqliteSkeinStore implements SkeinStore {
           createdAt: existing?.createdAt ?? at,
           updatedAt: at,
         });
-        const minutes = options?.ttl ?? this.options.ttl?.defaultTtl ?? null;
+        const minutes =
+          options?.ttl === undefined ? (this.options.ttl?.defaultTtl ?? null) : options.ttl;
         this.database
-          .prepare("UPDATE skein_items SET expires_at=?,ttl_minutes=? WHERE key=?")
-          .run(minutes == null ? null : Date.now() + minutes * 60_000, minutes, id);
+          .prepare("UPDATE skein_items SET expires_at=?,ttl_minutes=?,index_fields=? WHERE key=?")
+          .run(
+            minutes == null ? null : Date.now() + minutes * 60_000,
+            minutes,
+            options?.index === undefined ? null : json(options.index),
+            id,
+          );
         return row;
       })(),
     delete: async (namespace, key) => this.delete("items", pairKey(namespace, key)),
     search: async (query) => {
       // Capture the original filter: JSON serialization would erase explicit undefined operands.
-      this.database.function("skein_search_item", (bodyText) => {
+      this.database.function("skein_search_item", (bodyText, indexText) => {
         const item = JSON.parse(String(bodyText));
+        const index =
+          indexText == null ? undefined : (JSON.parse(String(indexText)) as false | string[]);
+        const indexed =
+          index && !index.includes("$")
+            ? Object.fromEntries(index.map((field) => [field, item.value[field]]))
+            : item.value;
         return Number(
           (!query.prefix || matchesNamespacePrefix(item.namespace, query.prefix)) &&
             matchesItemFilter(item.value, query.filter) &&
-            (!query.query || json(item.value).toLowerCase().includes(query.query.toLowerCase())),
+            (!query.query ||
+              (index !== false &&
+                index?.length !== 0 &&
+                json(indexed).toLowerCase().includes(query.query.toLowerCase()))),
         );
       });
       const rows = this.rows<SearchItem>(
-        "SELECT body FROM skein_items WHERE (expires_at IS NULL OR expires_at>?) AND skein_search_item(body) ORDER BY rowid LIMIT ? OFFSET ?",
+        "SELECT body FROM skein_items WHERE (expires_at IS NULL OR expires_at>?) AND skein_search_item(body,index_fields) ORDER BY rowid LIMIT ? OFFSET ?",
         Date.now(),
         this.limit(query.limit),
         query.offset ?? 0,
       );
+      if (
+        query.refreshTtl ??
+        (this.options.ttl !== undefined && this.options.ttl.refreshOnRead !== false)
+      ) {
+        this.database.transaction(() => {
+          const refresh = this.database.prepare(
+            "UPDATE skein_items SET expires_at=? + ttl_minutes*60000 WHERE key=? AND ttl_minutes IS NOT NULL",
+          );
+          for (const row of rows) refresh.run(Date.now(), pairKey(row.namespace, row.key));
+        })();
+      }
       return query.query ? rows.map((row) => ({ ...row, score: 1 })) : rows;
     },
     listNamespaces: async (query) => {

@@ -43,6 +43,8 @@ import {
   type RunFinalization,
   type RunKwargs,
   type RunRepo,
+  type RunResult,
+  serializeWireJson,
   type RunStatus,
   type SearchItem,
   DEFAULT_MAX_PAGE_SIZE,
@@ -54,6 +56,7 @@ import {
   type SkeinStore,
   type SkeinStoreSnapshot,
   type StorePutOptions,
+  type StoreItemWriteOptions,
   type StoreRepo,
   type StoreSearchQuery,
   type StoreTtlConfig,
@@ -603,7 +606,11 @@ function assistantSearchWhere(query: AssistantSearchQuery): { where: string; par
   }
   if (query.name !== undefined) {
     params.push(query.name);
-    clauses.push(`name = $${params.length}`);
+    clauses.push(
+      query.nameMatch === "substring"
+        ? `strpos(lower(name), lower($${params.length})) > 0`
+        : `name = $${params.length}`,
+    );
   }
   if (query.metadata && Object.keys(query.metadata).length > 0) {
     params.push(JSON.stringify(query.metadata));
@@ -623,6 +630,14 @@ function threadSearchWhere(query: ThreadSearchQuery): { where: string; params: u
   if (query.metadata && Object.keys(query.metadata).length > 0) {
     params.push(JSON.stringify(query.metadata));
     clauses.push(`metadata @> $${params.length}::jsonb`);
+  }
+  for (const excluded of Array.isArray(query.excludeMetadata)
+    ? query.excludeMetadata
+    : query.excludeMetadata
+      ? [query.excludeMetadata]
+      : []) {
+    params.push(JSON.stringify(excluded));
+    clauses.push(`NOT (metadata @> $${params.length}::jsonb)`);
   }
   // A second containment clause rather than one merged object, so a caller's filter and the
   // server's scoping can name the same key and correctly match nothing. Uses `threads_metadata_idx`
@@ -1224,6 +1239,8 @@ export class PostgresSkeinStore implements SkeinStore {
    */
   async restore(snapshot: SkeinStoreSnapshot): Promise<void> {
     const kwargsByRun = new Map(snapshot.runKwargs);
+    const itemOptions = new Map(snapshot.itemOptions ?? []);
+    const threadRetention = new Map(snapshot.threadRetention ?? []);
 
     // Embed store items in ONE batch, outside the transaction (an external embedder shouldn't hold a
     // client, and one call beats N). A failure is non-fatal: we warn and import the items without a
@@ -1232,10 +1249,18 @@ export class PostgresSkeinStore implements SkeinStore {
     if (this.#index !== undefined && snapshot.items.length > 0) {
       const { dims, fields } = this.#index;
       try {
-        const vectors = await this.#index.embed(
-          snapshot.items.map(([, item]) => textForValue(item.value, fields)),
-        );
-        snapshot.items.forEach(([id], index) => {
+        const candidates = snapshot.items.filter(([id]) => {
+          const index = itemOptions.get(id)?.index;
+          return index !== false && index?.length !== 0;
+        });
+        const vectors = candidates.length
+          ? await this.#index.embed(
+              candidates.map(([id, item]) =>
+                textForValue(item.value, itemOptions.get(id)?.index || fields),
+              ),
+            )
+          : [];
+        candidates.forEach(([id], index) => {
           const vector = vectors[index];
           if (vector && vector.length === dims) embeddingByItem.set(id, toVectorLiteral(vector));
         });
@@ -1302,10 +1327,11 @@ export class PostgresSkeinStore implements SkeinStore {
         );
       }
       for (const [, thread] of snapshot.threads) {
+        const policy = threadRetention.get(thread.thread_id);
         await client.query(
           `INSERT INTO threads
-             (thread_id, status, metadata, values, interrupts, error, created_at, updated_at, state_updated_at)
-           VALUES ($1, $2, $3::jsonb, $4::jsonb, $5::jsonb, $6, $7, $8, $9)
+             (thread_id, status, metadata, values, interrupts, error, created_at, updated_at, state_updated_at, ttl_minutes, expires_at, ttl_strategy, ttl_pinned)
+           VALUES ($1, $2, $3::jsonb, $4::jsonb, $5::jsonb, $6, $7, $8, $9, $10, $11, $12, $13)
            ON CONFLICT (thread_id) DO NOTHING`,
           [
             thread.thread_id,
@@ -1317,6 +1343,10 @@ export class PostgresSkeinStore implements SkeinStore {
             thread.created_at,
             thread.updated_at,
             thread.state_updated_at ?? thread.updated_at,
+            policy?.ttl ?? null,
+            policy?.expiresAt == null ? null : new Date(policy.expiresAt),
+            policy?.strategy ?? null,
+            policy?.ttl === null,
           ],
         );
       }
@@ -1344,6 +1374,12 @@ export class PostgresSkeinStore implements SkeinStore {
             run.updated_at,
           ],
         );
+      }
+      for (const [runId, result] of snapshot.runResults ?? []) {
+        await client.query("UPDATE runs SET result=$2::jsonb WHERE run_id=$1 AND result IS NULL", [
+          runId,
+          serializeWireJson(result),
+        ]);
       }
       // After threads, since a thread cron FK-references one. A cron whose thread is not part of
       // this import is skipped rather than aborting the transaction, exactly like runs above.
@@ -1380,13 +1416,19 @@ export class PostgresSkeinStore implements SkeinStore {
         );
       }
       for (const [id, item] of snapshot.items) {
+        const settings = itemOptions.get(id);
+        const retention = [
+          settings?.ttlMinutes ?? null,
+          settings?.expiresAt == null ? null : new Date(settings.expiresAt),
+          settings?.index === undefined ? null : JSON.stringify(settings.index),
+        ];
         // The `embedding` column only exists when a store index is configured (see migrate());
         // without one, insert the pgvector-free row so a stock Postgres never sees the column.
         const query =
           this.#index !== undefined
             ? {
-                text: `INSERT INTO store_items (namespace, key, value, embedding, created_at, updated_at)
-                       VALUES ($1::text[], $2, $3::jsonb, $4::vector, $5, $6)
+                text: `INSERT INTO store_items (namespace, key, value, embedding, created_at, updated_at, ttl_minutes, expires_at, index_fields)
+                       VALUES ($1::text[], $2, $3::jsonb, $4::vector, $5, $6, $7, $8, $9::jsonb)
                        ON CONFLICT (namespace, key) DO NOTHING`,
                 values: [
                   item.namespace,
@@ -1395,11 +1437,12 @@ export class PostgresSkeinStore implements SkeinStore {
                   embeddingByItem.get(id) ?? null,
                   item.createdAt,
                   item.updatedAt,
+                  ...retention,
                 ],
               }
             : {
-                text: `INSERT INTO store_items (namespace, key, value, created_at, updated_at)
-                       VALUES ($1::text[], $2, $3::jsonb, $4, $5)
+                text: `INSERT INTO store_items (namespace, key, value, created_at, updated_at, ttl_minutes, expires_at, index_fields)
+                       VALUES ($1::text[], $2, $3::jsonb, $4, $5, $6, $7, $8::jsonb)
                        ON CONFLICT (namespace, key) DO NOTHING`,
                 values: [
                   item.namespace,
@@ -1407,6 +1450,7 @@ export class PostgresSkeinStore implements SkeinStore {
                   JSON.stringify(item.value),
                   item.createdAt,
                   item.updatedAt,
+                  ...retention,
                 ],
               };
         await client.query(query.text, query.values);
@@ -1633,6 +1677,18 @@ export class PostgresSkeinStore implements SkeinStore {
   };
 
   readonly threads: ThreadRepo = {
+    getTtl: async (threadId) => {
+      const { rows } = await this.#pool.query<{
+        ttl_minutes: number | null;
+        ttl_strategy: "delete" | "keep_latest" | null;
+        ttl_pinned: boolean;
+      }>("SELECT ttl_minutes,ttl_strategy,ttl_pinned FROM threads WHERE thread_id=$1", [threadId]);
+      const row = rows[0];
+      return {
+        ttl: row?.ttl_pinned ? null : (row?.ttl_minutes ?? this.#threadTtl?.defaultTtl),
+        strategy: row?.ttl_strategy ?? this.#threadTtl?.strategy ?? "delete",
+      };
+    },
     list: async () => {
       const { rows } = await this.#pool.query<ThreadRow>(
         `SELECT ${THREAD_COLUMNS} FROM threads ORDER BY created_at, thread_id LIMIT $1`,
@@ -1643,7 +1699,13 @@ export class PostgresSkeinStore implements SkeinStore {
     search: async (query) => {
       const { where, params } = threadSearchWhere(query);
       // Whitelist the sort column — it is interpolated, never parameterized.
-      const sortColumns = new Set(["thread_id", "status", "created_at", "updated_at"]);
+      const sortColumns = new Set([
+        "thread_id",
+        "status",
+        "created_at",
+        "updated_at",
+        "state_updated_at",
+      ]);
       const sortBy = sortColumns.has(query.sortBy ?? "") ? query.sortBy : "created_at";
       const direction = query.sortOrder === "asc" ? "ASC" : "DESC";
       params.push(query.offset ?? 0);
@@ -1685,9 +1747,16 @@ export class PostgresSkeinStore implements SkeinStore {
         input?.ttl === undefined ? (this.#threadTtl?.defaultTtl ?? null) : input.ttl;
       try {
         const { rows } = await this.#pool.query<ThreadRow>(
-          `INSERT INTO threads (thread_id, status, metadata, ttl_minutes, expires_at)
-           VALUES ($1, $2, $3::jsonb, $4, ${expiresAtSql("$4")}) RETURNING ${THREAD_COLUMNS}`,
-          [threadId, input?.status ?? "idle", JSON.stringify(input?.metadata ?? {}), ttlMinutes],
+          `INSERT INTO threads (thread_id, status, metadata, ttl_minutes, expires_at, ttl_strategy, ttl_pinned)
+           VALUES ($1, $2, $3::jsonb, $4, ${expiresAtSql("$4")}, $5, $6) RETURNING ${THREAD_COLUMNS}`,
+          [
+            threadId,
+            input?.status ?? "idle",
+            JSON.stringify(input?.metadata ?? {}),
+            ttlMinutes,
+            input?.ttlStrategy ?? null,
+            input?.ttl === null,
+          ],
         );
         return rowToThread(rows[0] as ThreadRow);
       } catch (error) {
@@ -1708,8 +1777,14 @@ export class PostgresSkeinStore implements SkeinStore {
            values = COALESCE($4::jsonb, values),
            interrupts = COALESCE($5::jsonb, interrupts),
            error = CASE WHEN $6::boolean THEN $7::text ELSE error END,
-           ttl_minutes = CASE WHEN $8::boolean THEN $9::double precision ELSE ttl_minutes END,
-           expires_at = CASE WHEN $8::boolean THEN ${expiresAtSql("$9")} ELSE expires_at END,
+           ttl_minutes = CASE WHEN $8::boolean THEN $9::double precision
+             WHEN $4::jsonb IS NOT NULL AND COALESCE($10,ttl_strategy,$11)='keep_latest' AND NOT ttl_pinned THEN COALESCE(ttl_minutes,$12::double precision) ELSE ttl_minutes END,
+           ttl_strategy = COALESCE($10,ttl_strategy),
+           ttl_pinned = CASE WHEN $8::boolean THEN $9::double precision IS NULL ELSE ttl_pinned END,
+           expires_at = CASE WHEN $8::boolean THEN ${expiresAtSql("$9")}
+             WHEN $4::jsonb IS NOT NULL AND COALESCE($10,ttl_strategy,$11)='keep_latest' THEN
+               CASE WHEN ttl_pinned THEN NULL ELSE ${expiresAtSql("COALESCE(ttl_minutes,$12::double precision)")} END
+             ELSE expires_at END,
            updated_at = now(),
            state_updated_at = CASE WHEN $4::jsonb IS NOT NULL THEN now() ELSE state_updated_at END
          WHERE thread_id = $1 RETURNING ${THREAD_COLUMNS}`,
@@ -1727,6 +1802,9 @@ export class PostgresSkeinStore implements SkeinStore {
           // thread, a number restarts its clock from now.
           patch.ttl !== undefined,
           patch.ttl ?? null,
+          patch.ttlStrategy ?? null,
+          this.#threadTtl?.strategy ?? "delete",
+          this.#threadTtl?.defaultTtl ?? null,
         ],
       );
       if (!rows[0]) throw SkeinHttpError.notFound(`Thread "${threadId}" not found.`);
@@ -1754,9 +1832,11 @@ export class PostgresSkeinStore implements SkeinStore {
       const { rows } = await this.#pool.query<{ thread_id: string }>(
         `SELECT thread_id FROM threads
          WHERE expires_at IS NOT NULL AND expires_at <= $1::timestamptz
+           AND (COALESCE(ttl_strategy,$3) <> 'keep_latest' OR NOT EXISTS
+             (SELECT 1 FROM runs WHERE runs.thread_id = threads.thread_id AND runs.status IN ('pending','running')))
          ORDER BY expires_at ASC, thread_id ASC
          LIMIT $2`,
-        [now, this.#pageLimit(limit)],
+        [now, this.#pageLimit(limit), this.#threadTtl?.strategy ?? "delete"],
       );
       return rows.map((row) => row.thread_id);
     },
@@ -1767,6 +1847,19 @@ export class PostgresSkeinStore implements SkeinStore {
   };
 
   readonly runs: RunRepo = {
+    recordResult: async (runId, result) => {
+      await this.#pool.query(
+        "UPDATE runs SET result=$2::jsonb WHERE run_id=$1 AND result IS NULL",
+        [runId, serializeWireJson(result)],
+      );
+    },
+    getResult: async (runId) => {
+      const { rows } = await this.#pool.query<{ result: RunResult | null }>(
+        "SELECT result FROM runs WHERE run_id=$1",
+        [runId],
+      );
+      return rows[0]?.result ?? null;
+    },
     get: async (runId) => {
       const { rows } = await this.#pool.query<RunRow>(
         `SELECT ${RUN_COLUMNS} FROM runs WHERE run_id = $1`,
@@ -2270,12 +2363,12 @@ export class PostgresSkeinStore implements SkeinStore {
   };
 
   readonly store: StoreRepo = {
-    get: async (namespace, key) => {
+    get: async (namespace, key, options) => {
       // Only when TTL is configured (and refresh-on-read isn't disabled) does a live read extend the
       // item's expiry. Doing it as an `UPDATE ... RETURNING` both refreshes and filters out an
       // already-expired row in one round trip. With no TTL configured we take the plain SELECT path so
       // a read-heavy store never pays for a write on every get.
-      if (this.#ttl !== undefined && this.#ttl.refreshOnRead !== false) {
+      if (options?.refreshTtl ?? (this.#ttl !== undefined && this.#ttl.refreshOnRead !== false)) {
         const { rows } = await this.#pool.query<ItemRow>(
           `UPDATE store_items
              SET expires_at = CASE WHEN ttl_minutes IS NOT NULL
@@ -2294,32 +2387,50 @@ export class PostgresSkeinStore implements SkeinStore {
       );
       return rows[0] ? rowToItem(rows[0]) : null;
     },
-    put: async (namespace, key, value, options?: StorePutOptions) => {
+    put: async (namespace, key, value, options?: StorePutOptions) =>
+      this.store.putWithOptions!(namespace, key, value, options),
+    putWithOptions: async (namespace, key, value, options?: StoreItemWriteOptions) => {
       // A per-put ttl (minutes) wins; otherwise the configured default (null = never expires).
-      const ttlMinutes = options?.ttl ?? this.#ttl?.defaultTtl ?? null;
+      const ttlMinutes = options?.ttl === undefined ? (this.#ttl?.defaultTtl ?? null) : options.ttl;
       // The `embedding` column only exists when a store index is configured (see migrate()); a
       // pgvector-free deployment writes the row without it, so a stock Postgres never sees `vector`.
       if (this.#index !== undefined) {
-        const embedding = await this.#embed(textForValue(value, this.#index.fields));
+        const embedding =
+          options?.index === false || options?.index?.length === 0
+            ? null
+            : await this.#embed(textForValue(value, options?.index ?? this.#index.fields));
         const { rows } = await this.#pool.query<ItemRow>(
-          `INSERT INTO store_items (namespace, key, value, embedding, ttl_minutes, expires_at)
-           VALUES ($1::text[], $2, $3::jsonb, $4::vector, $5, ${expiresAtSql("$5")})
+          `INSERT INTO store_items (namespace, key, value, embedding, ttl_minutes, expires_at, index_fields)
+           VALUES ($1::text[], $2, $3::jsonb, $4::vector, $5, ${expiresAtSql("$5")}, $6::jsonb)
            ON CONFLICT (namespace, key)
-           DO UPDATE SET value = EXCLUDED.value, embedding = EXCLUDED.embedding,
+           DO UPDATE SET value = EXCLUDED.value, embedding = EXCLUDED.embedding, index_fields = EXCLUDED.index_fields,
              ttl_minutes = EXCLUDED.ttl_minutes, expires_at = EXCLUDED.expires_at, updated_at = now()
            RETURNING namespace, key, value, created_at, updated_at`,
-          [namespace, key, JSON.stringify(value), embedding, ttlMinutes],
+          [
+            namespace,
+            key,
+            JSON.stringify(value),
+            embedding,
+            ttlMinutes,
+            options?.index === undefined ? null : JSON.stringify(options.index),
+          ],
         );
         return rowToItem(rows[0] as ItemRow);
       }
       const { rows } = await this.#pool.query<ItemRow>(
-        `INSERT INTO store_items (namespace, key, value, ttl_minutes, expires_at)
-         VALUES ($1::text[], $2, $3::jsonb, $4, ${expiresAtSql("$4")})
+        `INSERT INTO store_items (namespace, key, value, ttl_minutes, expires_at, index_fields)
+         VALUES ($1::text[], $2, $3::jsonb, $4, ${expiresAtSql("$4")}, $5::jsonb)
          ON CONFLICT (namespace, key)
-         DO UPDATE SET value = EXCLUDED.value, ttl_minutes = EXCLUDED.ttl_minutes,
+         DO UPDATE SET value = EXCLUDED.value, index_fields = EXCLUDED.index_fields, ttl_minutes = EXCLUDED.ttl_minutes,
            expires_at = EXCLUDED.expires_at, updated_at = now()
          RETURNING namespace, key, value, created_at, updated_at`,
-        [namespace, key, JSON.stringify(value), ttlMinutes],
+        [
+          namespace,
+          key,
+          JSON.stringify(value),
+          ttlMinutes,
+          options?.index === undefined ? null : JSON.stringify(options.index),
+        ],
       );
       return rowToItem(rows[0] as ItemRow);
     },
@@ -2329,7 +2440,21 @@ export class PostgresSkeinStore implements SkeinStore {
         key,
       ]);
     },
-    search: async (query: StoreSearchQuery) => this.#search(query),
+    search: async (query: StoreSearchQuery) => {
+      const items = await this.#search(query);
+      if (
+        items.length &&
+        (query.refreshTtl ?? (this.#ttl !== undefined && this.#ttl.refreshOnRead !== false))
+      ) {
+        await this.#pool.query(
+          `UPDATE store_items AS items SET expires_at = now() + ttl_minutes * interval '1 minute'
+          FROM jsonb_to_recordset($1::jsonb) AS targets(namespace text[], key text)
+          WHERE items.namespace = targets.namespace AND items.key = targets.key AND ttl_minutes IS NOT NULL AND ${NOT_EXPIRED}`,
+          [JSON.stringify(items.map(({ namespace, key }) => ({ namespace, key })))],
+        );
+      }
+      return items;
+    },
     listNamespaces: async (query) => {
       const params: unknown[] = [];
       const conditions = [NOT_EXPIRED];
@@ -2599,18 +2724,24 @@ export class PostgresSkeinStore implements SkeinStore {
     }
 
     const { rows } = await this.#pool.query<ItemRow>(
-      `SELECT namespace, key, value, created_at, updated_at FROM store_items ${clause}
+      `SELECT namespace, key, value, created_at, updated_at, index_fields FROM store_items ${clause}
        ORDER BY created_at, key ${pagination}`,
       params,
     );
 
-    let items: SearchItem[] = rows.map((row) => rowToItem(row));
+    let items: SearchItem[] = rows
+      .filter((row) => {
+        if (query.query === undefined) return true;
+        const index = (row as ItemRow & { index_fields?: false | string[] }).index_fields;
+        if (index === false || index?.length === 0) return false;
+        return textForValue(row.value, index || undefined)
+          .toLowerCase()
+          .includes(query.query.toLowerCase());
+      })
+      .map((row) => rowToItem(row));
     if (query.query === undefined) return items;
 
-    const needle = query.query.toLowerCase();
-    items = items
-      .filter((item) => JSON.stringify(item.value).toLowerCase().includes(needle))
-      .map((item) => ({ ...item, score: 1 }));
+    items = items.map((item) => ({ ...item, score: 1 }));
     const offset = query.offset ?? 0;
     return items.slice(offset, offset + this.#pageLimit(query.limit));
   }

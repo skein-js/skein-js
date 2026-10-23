@@ -56,6 +56,8 @@ export function storedRollbackPlan(kwargs: RunKwargs): RollbackPlan | undefined 
 }
 
 export interface ProtocolContext {
+  /** Open thread subscriptions, shared by request contexts and closed at runtime shutdown. */
+  threadStreams?: Set<AbortController>;
   deps: ResolvedDeps;
   control: RunControlRegistry;
   /** Per-thread lock closing the create-guard's check-then-insert race. */
@@ -88,6 +90,7 @@ export interface ProtocolContext {
 export function createContext(deps: ProtocolDeps): ProtocolContext {
   return {
     deps: resolveDeps(deps),
+    threadStreams: new Set(),
     control: new RunControlRegistry(),
     locks: new ThreadLocks(),
     executionLocks: new ThreadLocks(),

@@ -18,6 +18,8 @@ const STREAM_MODES: readonly StreamMode[] = [
   "custom",
   "events",
   "debug",
+  "tasks",
+  "checkpoints",
 ];
 
 function isStreamMode(value: unknown): value is StreamMode {

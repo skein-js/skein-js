@@ -16,3 +16,5 @@ export {
   withSessionAdvisoryLock,
   type WithSessionAdvisoryLockOptions,
 } from "./run-migrations.js";
+
+export { inspectPostgresThreadStorage } from "./thread-storage.js";

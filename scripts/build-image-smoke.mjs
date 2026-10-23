@@ -24,6 +24,7 @@ const artifactDir = path.join(projectDir, ".skein", "build");
 const manifestPath = path.join(artifactDir, "package.json");
 const skeinCli = path.join(repoRoot, "packages/cli/dist/index.js");
 const tag = "skein-build-smoke";
+let runningContainer;
 
 const flags = new Set(
   process.argv
@@ -49,11 +50,13 @@ function useVendoredPackages() {
   const vendored = vendorLocalPackages(path.join(artifactDir, "vendor"), "tarball");
   const manifest = JSON.parse(readFileSync(manifestPath, "utf8"));
   manifest.dependencies["skein-js"] = `file:vendor/${vendored.get("skein-js")}`;
+  manifest.dependencies["@skein-js/local"] = `file:vendor/${vendored.get("@skein-js/local")}`;
+  manifest.dependencies["@langchain/langgraph-checkpoint-sqlite"] = "~1.0.4";
   // Every other `@skein-js/*` is reached through `skein-js`'s own published cross-references; an
   // override is what redirects them at the local tarball.
   manifest.overrides = Object.fromEntries(
     [...vendored.keys()]
-      .filter((name) => name !== "skein-js")
+      .filter((name) => !["skein-js", "@skein-js/local"].includes(name))
       .map((name) => [name, `file:vendor/${vendored.get(name)}`]),
   );
   writeFileSync(manifestPath, `${JSON.stringify(manifest, null, 2)}\n`);
@@ -62,6 +65,7 @@ function useVendoredPackages() {
 }
 
 function cleanup() {
+  if (runningContainer) spawnSync("docker", ["rm", "-f", runningContainer], { stdio: "ignore" });
   if (flags.has("keep")) {
     console.log(`\n--keep: left image ${tag} and ${artifactDir} in place.`);
     return;
@@ -71,7 +75,7 @@ function cleanup() {
   rmSync(path.join(projectDir, "node_modules"), { recursive: true, force: true });
 }
 
-function main() {
+async function main() {
   console.log("\n=== build smoke: skein build → docker build ===\n");
 
   if (!existsSync(skeinCli)) {
@@ -118,12 +122,93 @@ function main() {
   });
   check("the image builds, including the graph compatibility probe", true);
 
+  runningContainer = execFileSync(
+    "docker",
+    [
+      "run",
+      "-d",
+      "-p",
+      "127.0.0.1::2024",
+      "--entrypoint",
+      "node",
+      tag,
+      "/app/node_modules/skein-js/dist/index.js",
+      "start",
+      "--store",
+      "sqlite",
+      "--queue",
+      "sqlite",
+      "--sqlite-path",
+      "/tmp/compatibility.sqlite",
+      "--host",
+      "0.0.0.0",
+      "--port",
+      "2024",
+    ],
+    { encoding: "utf8" },
+  ).trim();
+  const binding = execFileSync("docker", ["port", runningContainer, "2024"], {
+    encoding: "utf8",
+  }).trim();
+  const url = `http://${binding}`;
+  let ready = false;
+  for (let attempt = 0; attempt < 60; attempt++) {
+    try {
+      if ((await fetch(`${url}/ok`)).ok) {
+        ready = true;
+        break;
+      }
+    } catch {}
+    await new Promise((resolve) => setTimeout(resolve, 500));
+  }
+  if (!ready)
+    throw new Error(
+      `Production image did not start: ${execFileSync("docker", ["logs", runningContainer], { encoding: "utf8" })}`,
+    );
+  check(
+    "production image serves the compiled custom application",
+    (await (await fetch(`${url}/custom-app`)).text()) === "compiled custom app",
+  );
+  const bootstrap = await fetch(`${url}/ui/agent`, {
+    method: "POST",
+    headers: { "content-type": "application/json" },
+    body: JSON.stringify({ name: "card" }),
+  });
+  const html = await bootstrap.text();
+  check(
+    "production image serves the compiled UI bootstrap",
+    bootstrap.ok && html.includes("__LGUI_agent.render"),
+  );
+  const source = /<script src="([^"]+)"/.exec(html)?.[1];
+  check(
+    "production image serves the compiled UI asset",
+    Boolean(source) && (await fetch(source)).ok,
+  );
+  const spec = await (await fetch(`${url}/openapi.json`)).json();
+  check(
+    "production image exposes actual route discovery",
+    Boolean(spec.paths["/threads/{thread_id}/stream/events"]) &&
+      Boolean(spec.paths["/threads/{thread_id}/storage"]),
+  );
+  check(
+    "production image serves offline API docs",
+    (await (await fetch(`${url}/docs`)).text()).includes("Skein Agent Server API"),
+  );
+  execFileSync("docker", [
+    "exec",
+    runningContainer,
+    "sh",
+    "-c",
+    "test ! -e /app/src/ui.tsx && test ! -e /app/src/http-app.ts",
+  ]);
+  check("production image needs no source files", true);
+
   console.log(`\n${checks - failures.length}/${checks} checks passed`);
   if (failures.length > 0) process.exitCode = 1;
 }
 
 try {
-  main();
+  await main();
 } catch (error) {
   console.error(`\nbuild smoke failed: ${error.message}`);
   process.exitCode = 1;

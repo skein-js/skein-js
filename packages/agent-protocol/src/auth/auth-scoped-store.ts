@@ -67,6 +67,16 @@ export function createAuthScopedStore(
 
   if (resource === "threads") {
     const threads: ThreadRepo = {
+      ...(inner.threads.getTtl
+        ? {
+            getTtl: async (threadId: string) => {
+              const thread = await inner.threads.get(threadId);
+              if (!thread || !matches(thread.metadata))
+                throw SkeinHttpError.notFound(`Thread "${threadId}" not found.`);
+              return inner.threads.getTtl!(threadId);
+            },
+          }
+        : {}),
       // `listExpired` is inherited **unfiltered**, for the same reason `listActiveRuns` is below: it is
       // TTL-sweeper machinery, not a user-facing read, and a filtered version would hide an expired
       // thread from the very loop that has to collect it. Nothing leaks — this decorator is only ever
@@ -169,6 +179,27 @@ export function createAuthScopedStore(
 
     const runs: RunRepo = {
       ...inner.runs,
+      ...(inner.runs.getResult
+        ? {
+            getResult: async (runId: string) => {
+              const run = await inner.runs.get(runId);
+              return run && matches(run.metadata) ? inner.runs.getResult!(runId) : null;
+            },
+          }
+        : {}),
+      ...(inner.runs.recordResult
+        ? {
+            recordResult: async (
+              runId: string,
+              result: Parameters<NonNullable<RunRepo["recordResult"]>>[1],
+            ) => {
+              const run = await inner.runs.get(runId);
+              if (!run || !matches(run.metadata))
+                throw SkeinHttpError.notFound(`Run "${runId}" not found.`);
+              await inner.runs.recordResult!(runId, result);
+            },
+          }
+        : {}),
       get: async (runId) => {
         const run = await inner.runs.get(runId);
         return run && matches(run.metadata) ? run : null;

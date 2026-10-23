@@ -101,12 +101,12 @@ const IDLE_TICK = Symbol("idle-tick");
  * adapters, and taking them out of this unit-testable `AsyncIterable` — to save ~570 ns/frame, about 0.4%
  * of one core at 6,900 frames/s. Don't, without new numbers.
  */
-async function* withIdleTicks(
-  frames: AsyncIterable<RunFrame>,
+async function* withIdleTicks<T>(
+  frames: AsyncIterable<T>,
   heartbeatMs: number,
-): AsyncIterable<RunFrame | typeof IDLE_TICK> {
+): AsyncIterable<T | typeof IDLE_TICK> {
   const iterator = frames[Symbol.asyncIterator]();
-  let pending: Promise<IteratorResult<RunFrame>> | undefined;
+  let pending: Promise<IteratorResult<T>> | undefined;
   try {
     for (;;) {
       pending ??= iterator.next();
@@ -114,7 +114,7 @@ async function* withIdleTicks(
       const idle = new Promise<typeof IDLE_TICK>((resolve) => {
         timer = setTimeout(() => resolve(IDLE_TICK), heartbeatMs);
       });
-      let settled: IteratorResult<RunFrame> | typeof IDLE_TICK;
+      let settled: IteratorResult<T> | typeof IDLE_TICK;
       try {
         settled = await Promise.race([pending, idle]);
       } finally {
@@ -178,4 +178,11 @@ export function parseAfterSeq(lastEventId: string | undefined): number {
   if (lastEventId === undefined) return 0;
   const parsed = Number.parseInt(lastEventId, 10);
   return Number.isInteger(parsed) && parsed > 0 ? parsed : 0;
+}
+
+/** Keep a thread subscription alive while it waits between turns. */
+export async function* withSseHeartbeats(events: AsyncIterable<string>): AsyncIterable<string> {
+  for await (const event of withIdleTicks(events, DEFAULT_SSE_HEARTBEAT_MS)) {
+    yield event === IDLE_TICK ? SSE_HEARTBEAT : event;
+  }
 }

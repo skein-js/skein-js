@@ -164,7 +164,9 @@ describe("matchSkeinRoute — routes the official SDK calls", () => {
   it("does NOT alias POST /stream/events onto the run-creating thread stream", () => {
     // The v2 transport POSTs a *subscription* there and reopens it on every reconnect, while
     // `postThreadStream` starts a run — aliasing them would turn one subscribe into several runs.
-    expect(matchSkeinRoute("post", "/threads/t-1/stream/events")).toBeUndefined();
+    expect(matchSkeinRoute("post", "/threads/t-1/stream/events")?.binding.handler).toBe(
+      "postThreadEvents",
+    );
   });
 
   it("serves thread history on both verbs", () => {

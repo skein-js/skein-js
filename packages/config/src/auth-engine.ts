@@ -16,6 +16,7 @@ import { parseGraphSpec, type ModuleImporter } from "./graph-spec.js";
 /** The `auth` block from a parsed `langgraph.json` (see `langgraphJsonSchema`). */
 export interface AuthConfig {
   path: string;
+  openapi?: AuthEngine["openapi"];
   disable_studio_auth?: boolean;
   /** Skein-only: allow a rotating dev UI key under `skein dev`; ignored in production. */
   dev_ui_access?: boolean;
@@ -205,9 +206,10 @@ export async function loadAuthEngine(
   // Imported here, not at module scope: this line is only reached when a `langgraph.json` declares an
   // `auth` block, so a deployment without one never loads `@langchain/langgraph-api`.
   const { isAuthMatching } = await import("@langchain/langgraph-api/auth");
-  return createAuthEngine(
+  const engine = createAuthEngine(
     exported["~handlerCache"],
     auth.disable_studio_auth ?? true,
     isAuthMatching,
   );
+  return auth.openapi ? { ...engine, openapi: auth.openapi } : engine;
 }

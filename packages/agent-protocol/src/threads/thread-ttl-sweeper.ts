@@ -10,6 +10,8 @@
 // The driver picks *which* threads are due (an indexed read of `expires_at`); the service performs the
 // deletion. Neither half can do the other's job.
 
+import type { ThreadRepo } from "@skein-js/core";
+
 import type { Logger } from "../deps.js";
 
 import type { ThreadService } from "./thread-service.js";
@@ -27,11 +29,15 @@ const SWEEP_BATCH_SIZE = 100;
 
 export interface ThreadTtlSweeperDeps {
   store: {
-    threads: { listExpired(query: { now: string; limit: number }): Promise<string[]> };
+    threads: {
+      listExpired(query: { now: string; limit: number }): Promise<string[]>;
+      getTtl?: ThreadRepo["getTtl"];
+    };
+    runs?: { hasActiveRun(threadId: string): Promise<boolean> };
     /** The driver's own page bound, which caps a batch below {@link SWEEP_BATCH_SIZE}. */
     maxPageSize?: number;
   };
-  threads: Pick<ThreadService, "delete">;
+  threads: Pick<ThreadService, "delete"> & Partial<Pick<ThreadService, "prune" | "patch">>;
   logger: Logger;
   /** Injected so tests can drive time; defaults to the wall clock. */
   clock?: () => Date;
@@ -79,7 +85,16 @@ export function createThreadTtlSweeper(
     let collected = 0;
     for (const threadId of expired) {
       try {
-        await deps.threads.delete(threadId);
+        const policy = await deps.store.threads.getTtl?.(threadId);
+        if (policy?.strategy === "keep_latest") {
+          if (!deps.threads.prune || !deps.threads.patch)
+            throw new Error("keep_latest TTL requires thread pruning and patch services.");
+          if (await deps.store.runs?.hasActiveRun(threadId)) continue;
+          await deps.threads.prune({ threadIds: [threadId], strategy: "keep_latest" });
+          if (await deps.store.runs?.hasActiveRun(threadId)) continue;
+          // Rearm the scan; state writes refresh this window independently. Empty histories stay idle.
+          await deps.threads.patch(threadId, { ttl: policy.ttl ?? null });
+        } else await deps.threads.delete(threadId);
         collected += 1;
       } catch (error) {
         // One thread failing must not abandon the rest of the batch — it would block every thread

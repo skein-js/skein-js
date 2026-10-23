@@ -10,10 +10,15 @@ import {
   type Metadata,
   type StreamMode,
   type Thread,
+  type ThreadEventFilter,
+  type ThreadCommandSuccess,
+  type ThreadCommandError,
 } from "@skein-js/core";
 
 import type { ProtocolContext } from "../context.js";
 import type { CreateRunInput, RunService, StartedStream } from "../runs/run-service.js";
+
+import { createThreadProtocolService } from "./thread-protocol-service.js";
 
 /** Body for `POST /threads/{id}/stream` — a run request without the thread id (it's in the path). */
 export interface ThreadStreamInput {
@@ -45,6 +50,21 @@ export interface ThreadStreamService {
   stream(threadId: string, input: ThreadStreamInput): Promise<StartedStream>;
   joinStream(threadId: string, afterSeq?: number): Promise<StartedStream>;
   command(threadId: string, input: CommandInput): Promise<StartedStream>;
+  subscribe?(
+    threadId: string,
+    filter: ThreadEventFilter,
+    signal?: AbortSignal,
+  ): Promise<AsyncIterable<string>>;
+  follow?(
+    threadId: string,
+    modes: readonly string[],
+    since?: number,
+    signal?: AbortSignal,
+  ): Promise<AsyncIterable<string>>;
+  protocolCommand?(
+    threadId: string,
+    body: unknown,
+  ): Promise<ThreadCommandSuccess | ThreadCommandError>;
 }
 
 export function createThreadStreamService(
@@ -52,6 +72,7 @@ export function createThreadStreamService(
   runs: RunService,
 ): ThreadStreamService {
   const { deps } = ctx;
+  const protocol = createThreadProtocolService(ctx, runs);
 
   const requireThread = async (threadId: string) => {
     const thread = await deps.store.threads.get(threadId);
@@ -74,6 +95,9 @@ export function createThreadStreamService(
   };
 
   return {
+    subscribe: protocol.subscribe,
+    follow: protocol.follow,
+    protocolCommand: protocol.command,
     async stream(threadId, input) {
       await requireThread(threadId);
       return runs.createStream({ ...input, thread_id: threadId });

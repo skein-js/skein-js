@@ -1,6 +1,7 @@
 import {
   type ConformanceStoreOptions,
   runSkeinStoreConformance,
+  runStoreOptionsConformance,
   startPostgres,
   type StartedResource,
 } from "@skein-js/test-support";
@@ -25,6 +26,7 @@ beforeAll(async () => {
 afterAll(async () => {
   for (const bounded of storesByPageBound.values()) await bounded.close();
   await store?.close();
+  for (const optionStore of storesWithTtl) await optionStore.close();
   await pg?.stop();
 });
 
@@ -40,4 +42,12 @@ runSkeinStoreConformance("postgres", async (options?: ConformanceStoreOptions) =
   const bounded = await PostgresSkeinStore.connect(pg.url, { maxPageSize });
   storesByPageBound.set(maxPageSize, bounded);
   return bounded;
+});
+
+const storesWithTtl: PostgresSkeinStore[] = [];
+runStoreOptionsConformance("postgres", async (ttl) => {
+  await store.truncateAll();
+  const configured = await PostgresSkeinStore.connect(pg.url, { ttl });
+  storesWithTtl.push(configured);
+  return configured;
 });

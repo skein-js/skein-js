@@ -15,9 +15,10 @@ import {
   type ProtocolHandlers,
 } from "../create-handlers.js";
 import { createProtocolServiceFromContext } from "../service.js";
+import { isThreadCommandEnvelope } from "../threads/thread-protocol-service.js";
 
 import { createAuthScopedStore } from "./auth-scoped-store.js";
-import { resolveAuthContext } from "./authenticate-request.js";
+import { isProtocolAuthExempt, resolveAuthContext } from "./authenticate-request.js";
 import { authValue, rewrittenStoreTarget, ROUTE_AUTHZ, withStoreTarget } from "./route-authz.js";
 
 /**
@@ -38,15 +39,12 @@ export function createAuthorizingHandlers(
   const wrapped = {} as ProtocolHandlers;
   for (const name of names) {
     const baseHandler = baseHandlers[name];
+    if (!baseHandler) continue;
     // `GET /info` is served unauthenticated, matching `@langchain/langgraph-api`, whose auth middleware
     // opens with an explicit `if (c.req.path === "/info") return next()`. It is a *capability
     // handshake*: Studio and monitoring clients probe it before they have credentials, so 401-ing it
     // would break connecting to an auth-enabled skein server that `langgraph dev` would have answered.
     // It exposes no thread, run, or store content — only versions and which resources are served.
-    if (name === "getServerInfo") {
-      wrapped[name] = baseHandler;
-      continue;
-    }
     // The channel route is exempted here for the **opposite** reason to `getServerInfo`, and the
     // difference matters enough to spell out: `/info` is exempt because it exposes nothing, whereas
     // this route *creates runs*.
@@ -66,7 +64,7 @@ export function createAuthorizingHandlers(
     // being exhaustive gives an entry, not a call site. `packages/channels/src/pipeline` owns that
     // obligation and pins it adversarially — a forged `x-auth-scheme` must 401, and a denying
     // `@auth.on.threads` handler must 403 with no run created.
-    if (name === "handleInboundEvent") {
+    if (isProtocolAuthExempt(name)) {
       wrapped[name] = baseHandler;
       continue;
     }
@@ -75,7 +73,14 @@ export function createAuthorizingHandlers(
       const authContext: AuthContext | undefined = await resolveAuthContext(engine, req);
       // The handler name is passed so store routes get their `namespace` normalized to the shape the
       // SDK declares, server-derived rather than taken from the body — see `authValue`.
-      const value = authValue(req, name);
+      const commandBody =
+        name === "postThreadCommands" && isThreadCommandEnvelope(req.body)
+          ? (req.body as { params?: unknown }).params
+          : undefined;
+      const value = authValue(
+        commandBody && typeof commandBody === "object" ? { ...req, body: commandBody } : req,
+        name,
+      );
       // The server's own reading, captured before the handler runs, so a rewrite can be told from it. The
       // namespace is **copied**: aliasing the array made an *in-place* rewrite
       // (`value.namespace[0] = identity`) invisible — and worse, inconsistently so, since for
@@ -87,9 +92,22 @@ export function createAuthorizingHandlers(
         namespace: Array.isArray(namespaceValue) ? [...(namespaceValue as string[])] : undefined,
         key: value["key"],
       };
+      const commandMethod =
+        name === "postThreadCommands" && isThreadCommandEnvelope(req.body)
+          ? (req.body as { method?: unknown }).method
+          : undefined;
+      const action =
+        commandMethod === "state.fork"
+          ? "update"
+          : typeof commandMethod === "string" &&
+              (commandMethod.startsWith("state.") ||
+                commandMethod === "agent.getTree" ||
+                commandMethod.startsWith("subscription."))
+            ? "read"
+            : route.action;
       const primary = await engine.authorize({
         resource: route.resource,
-        action: route.action,
+        action,
         value,
         context: authContext,
       });
@@ -141,9 +159,26 @@ export function createAuthorizingHandlers(
             })
           : undefined;
       const filters = primary.filters ?? fallback?.filters;
+      const forkFilters = [];
+      if (commandMethod === "state.fork") {
+        for (const forkAction of ["read", "create", "create_run"] as const) {
+          const permission = await engine.authorize({
+            resource: "threads",
+            action: forkAction,
+            value,
+            context: authContext,
+          });
+          if (permission.filters) forkFilters.push(permission.filters);
+        }
+      }
+      let scopedStore = filters
+        ? createAuthScopedStore(context.deps.store, engine, filters, route.resource)
+        : context.deps.store;
+      for (const forkFilter of forkFilters)
+        scopedStore = createAuthScopedStore(scopedStore, engine, forkFilter, "threads");
 
       // Fast path: nothing request-specific to inject — reuse the shared, once-built handler table.
-      if (!filters && !authContext) return baseHandler(scopedRequest);
+      if (!filters && !authContext && forkFilters.length === 0) return baseHandler(scopedRequest);
 
       // Otherwise dispatch through a per-request context carrying the authenticated caller (so the run
       // service stamps it onto the run → `configurable.langgraph_auth_user`) and, when the handler
@@ -154,16 +189,16 @@ export function createAuthorizingHandlers(
         ...context,
         authUser: authContext?.user,
         authScopes: authContext?.scopes,
-        deps: filters
-          ? {
-              ...context.deps,
-              store: createAuthScopedStore(context.deps.store, engine, filters, route.resource),
-            }
-          : context.deps,
+        deps:
+          scopedStore === context.deps.store
+            ? context.deps
+            : { ...context.deps, store: scopedStore },
       };
-      return createProtocolHandlers(createProtocolServiceFromContext(requestContext), extras)[name](
-        scopedRequest,
-      );
+      const handler = createProtocolHandlers(
+        createProtocolServiceFromContext(requestContext),
+        extras,
+      )[name];
+      return handler!(scopedRequest);
     };
   }
   return wrapped;

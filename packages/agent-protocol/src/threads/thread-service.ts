@@ -3,6 +3,8 @@
 // values/status. Deleting a thread first aborts any run still executing on it, so an in-flight run
 // can't write to a thread that's about to disappear.
 
+import { randomUUID } from "node:crypto";
+
 import {
   isSkeinHttpError,
   isTerminalRunStatus,
@@ -13,13 +15,16 @@ import {
   type ThreadCreate,
   type ThreadSearchQuery,
   type ThreadState,
+  type ThreadStorage,
 } from "@skein-js/core";
 
 import type { ProtocolContext } from "../context.js";
 import { agentCommand } from "../graphs/agent-command.js";
 import { requireAgentCapability, type AgentGraph } from "../graphs/agent-graph.js";
 import { loadGraphOrThrow } from "../graphs/load-graph.js";
+import { readA2aOrigin } from "../interop/a2a-origin.js";
 import { toFactoryConfigurable } from "../runs/run-input.js";
+import { withThreadExecution } from "../runs/thread-locks.js";
 
 import { copyCheckpointHistory, pruneThreadCheckpointsToLatest } from "./checkpoint-history.js";
 import {
@@ -69,15 +74,23 @@ export interface CreateThreadInput {
    * `null` pins the thread so no TTL collects it; omitted takes the configured default.
    */
   ttl?: number | null;
+  ttlStrategy?: "delete" | "keep_latest";
 }
 
 export interface PatchThreadInput {
   metadata?: Metadata;
   /** Change the thread's lifetime (minutes), or `null` to pin it. Omitted leaves the expiry alone. */
   ttl?: number | null;
+  ttlStrategy?: "delete" | "keep_latest";
 }
 
 export interface HistoryOptions {
+  checkpoint?: {
+    checkpoint_id?: string;
+    checkpoint_ns?: string | null;
+    checkpoint_map?: Record<string, unknown> | null;
+  };
+  subgraphs?: boolean;
   /** Checkpoints to return, newest first. Defaults to {@link DEFAULT_THREAD_HISTORY_LIMIT}. */
   limit?: number;
   /**
@@ -125,6 +138,7 @@ export interface PruneThreadsInput {
 }
 
 export interface ThreadService {
+  getStorage?(threadId: string): Promise<ThreadStorage>;
   create(input?: CreateThreadInput): Promise<Thread>;
   get(threadId: string): Promise<Thread>;
   list(): Promise<Thread[]>;
@@ -143,7 +157,10 @@ export interface ThreadService {
   delete(threadId: string): Promise<void>;
   history(threadId: string, options?: HistoryOptions): Promise<ThreadState[]>;
   /** The thread's current state snapshot — `GET /threads/{id}/state`, what `useStream` hydrates from. */
-  getState(threadId: string): Promise<ThreadState>;
+  getState(
+    threadId: string,
+    options?: Pick<HistoryOptions, "checkpoint" | "subgraphs">,
+  ): Promise<ThreadState>;
   /**
    * State at a specific checkpoint (time travel) — `GET /threads/{id}/state/{checkpoint_id}` and its
    * body-shaped sibling `POST /threads/{id}/state/checkpoint`.
@@ -151,7 +168,12 @@ export interface ThreadService {
    * `checkpointNs` selects a **subgraph**'s namespace and defaults to the root graph (`""`). It scopes
    * *within* the already-resolved thread, so unlike `thread_id` it is safe to take from the client.
    */
-  getStateAt(threadId: string, checkpointId: string, checkpointNs?: string): Promise<ThreadState>;
+  getStateAt(
+    threadId: string,
+    checkpointId: string,
+    checkpointNs?: string,
+    options?: Pick<HistoryOptions, "checkpoint" | "subgraphs">,
+  ): Promise<ThreadState>;
   /**
    * Update (fork) thread state at a checkpoint — `POST /threads/{id}/state`. Writes a new checkpoint
    * via `graph.updateState`, mirrors it onto the thread row, and returns the new checkpoint pointer.
@@ -283,7 +305,13 @@ export function createThreadService(ctx: ProtocolContext): ThreadService {
     // of the loop afterwards therefore saves nothing at all: the heap has already taken the whole
     // history. The `break` stays as a backstop for a checkpointer that ignores the option.
     for await (const snapshot of requireAgentCapability(graph, "getStateHistory").getStateHistory(
-      { configurable: { thread_id: threadId } },
+      {
+        configurable: {
+          ...options?.checkpoint,
+          thread_id: threadId,
+          checkpoint_ns: options?.checkpoint?.checkpoint_ns ?? "",
+        },
+      },
       {
         limit,
         ...(options?.before ? { before: options.before } : {}),
@@ -377,6 +405,7 @@ export function createThreadService(ctx: ProtocolContext): ThreadService {
     // settles (`deleteCheckpointsOfDeletedThread`).
     await deps.checkpointer.deleteThread(threadId);
     await deps.store.threads.delete(threadId);
+    await deps.threadBus?.deleteThread(threadId);
     // Erasure has to reach the idempotency records too. A recorded response outlives its run by
     // design — that is what makes a replay possible — and for `POST /runs/wait` that response *is*
     // the graph's final state. Without this, deleting a thread would leave a full copy of the
@@ -405,6 +434,8 @@ export function createThreadService(ctx: ProtocolContext): ThreadService {
   return {
     async create(input) {
       const { ifExists, supersteps, ...create } = input ?? {};
+      if (create.ttlStrategy === "keep_latest" && !deps.store.threads.getTtl)
+        throw SkeinHttpError.unprocessable("This thread driver does not support keep_latest TTL.");
       const seeding = supersteps !== undefined && supersteps.length > 0;
       // Resolved BEFORE the insert, so a bad request cannot leave a thread behind — see
       // `requireSuperstepGraph`. Same ordering rule the run service follows with `assistant_id`.
@@ -415,8 +446,20 @@ export function createThreadService(ctx: ProtocolContext): ThreadService {
       // one — a thread belonging to another principal still reads as absent rather than being handed
       // back here.
       let thread: Thread;
+      const generation = create.thread_id
+        ? await deps.threadBus?.generation(create.thread_id)
+        : undefined;
       try {
         thread = await deps.store.threads.create(create as unknown as ThreadCreate);
+        await deps.threadBus?.publish(
+          thread.thread_id,
+          {
+            kind: "state",
+            operation: "created",
+            thread,
+          },
+          generation,
+        );
       } catch (error) {
         if (
           create.thread_id !== undefined &&
@@ -478,8 +521,25 @@ export function createThreadService(ctx: ProtocolContext): ThreadService {
           busyThreadIds.push(threadId);
           continue;
         }
-        if (await pruneThreadCheckpointsToLatest(deps.checkpointer, threadId, deps.cloneCheckpoint))
-          prunedCount += 1;
+        await withThreadExecution(
+          ctx.executionLocks,
+          deps.threadExecutionGate,
+          threadId,
+          async () => {
+            if (await deps.store.runs.hasActiveRun(threadId)) {
+              busyThreadIds.push(threadId);
+              return;
+            }
+            if (
+              await pruneThreadCheckpointsToLatest(
+                deps.checkpointer,
+                threadId,
+                deps.cloneCheckpoint,
+              )
+            )
+              prunedCount += 1;
+          },
+        );
       }
       if (busyThreadIds.length > 0) {
         // Logged rather than silent: the count already tells the caller these were not pruned, but an
@@ -494,12 +554,15 @@ export function createThreadService(ctx: ProtocolContext): ThreadService {
 
     async patch(threadId, patch) {
       await requireThread(threadId);
+      if (patch.ttlStrategy === "keep_latest" && !deps.store.threads.getTtl)
+        throw SkeinHttpError.unprocessable("This thread driver does not support keep_latest TTL.");
       // `ttl` is tri-state and must stay that way through this layer: spreading it unconditionally
       // would turn an omitted `ttl` into `undefined`, which the driver reads as "leave it" — the same
       // outcome by luck, but a `null` (pin the thread) has to survive, so the key is only set when the
       // caller actually mentioned it.
       return deps.store.threads.update(threadId, {
         metadata: patch.metadata,
+        ...(patch.ttlStrategy !== undefined ? { ttlStrategy: patch.ttlStrategy } : {}),
         ...(patch.ttl !== undefined ? { ttl: patch.ttl } : {}),
       });
     },
@@ -520,17 +583,61 @@ export function createThreadService(ctx: ProtocolContext): ThreadService {
       // a phantom active run that no worker drives and no engine finalizes, permanently blocking new
       // runs on the copy (hasActiveRun) and pinning its thread status to busy.
       const sourceRuns = await deps.store.runs.listByThread(threadId);
+      const copiedRunIds = new Map(
+        sourceRuns
+          .filter((run) => isTerminalRunStatus(run.status))
+          .map((run) => [run.run_id, randomUUID()]),
+      );
       for (const run of [...sourceRuns].sort((a, b) => a.created_at.localeCompare(b.created_at))) {
         if (!isTerminalRunStatus(run.status)) continue;
-        const kwargs = await deps.store.runs.getKwargs(run.run_id);
-        await deps.store.runs.create({
+        let kwargs = await deps.store.runs.getKwargs(run.run_id);
+        const origin = readA2aOrigin(kwargs);
+        if (origin && kwargs)
+          kwargs = {
+            ...kwargs,
+            a2a_origin: {
+              ...origin,
+              ...(origin.rootId
+                ? { rootId: copiedRunIds.get(origin.rootId) ?? origin.rootId }
+                : {}),
+              ...(origin.expectedRunId
+                ? { expectedRunId: copiedRunIds.get(origin.expectedRunId) ?? origin.expectedRunId }
+                : {}),
+              ...(origin.checkpoint
+                ? { checkpoint: { ...origin.checkpoint, thread_id: copy.thread_id } }
+                : {}),
+            },
+          } as typeof kwargs;
+        const metadata = { ...run.metadata };
+        const rootId = metadata["skein_a2a_root"];
+        if (typeof rootId === "string")
+          metadata["skein_a2a_root"] = copiedRunIds.get(rootId) ?? rootId;
+        const original = metadata["skein_a2a_message"];
+        if (origin && original && typeof original === "object")
+          metadata["skein_a2a_message"] = {
+            ...original,
+            contextId: copy.thread_id,
+            taskId: metadata["skein_a2a_root"] ?? copiedRunIds.get(run.run_id),
+          };
+        const created = await deps.store.runs.create({
+          run_id: copiedRunIds.get(run.run_id),
           thread_id: copy.thread_id,
           assistant_id: run.assistant_id,
           status: run.status,
-          metadata: run.metadata,
+          metadata,
           multitask_strategy: run.multitask_strategy,
           ...(kwargs ? { kwargs } : {}),
         });
+        if (deps.store.runs.getResult && deps.store.runs.recordResult) {
+          const result = await deps.store.runs.getResult(run.run_id);
+          if (result)
+            await deps.store.runs.recordResult(created.run_id, {
+              ...result,
+              ...(result.checkpoint
+                ? { checkpoint: { ...result.checkpoint, thread_id: copy.thread_id } }
+                : {}),
+            });
+        }
       }
       // The copy has no run of its own in flight, so a source that was mid-run ("busy") must not
       // carry that status over — reset it to idle so the copy isn't stuck looking active.
@@ -544,7 +651,15 @@ export function createThreadService(ctx: ProtocolContext): ThreadService {
 
     history: readHistory,
 
-    async getState(threadId) {
+    async getStorage(threadId) {
+      await requireThread(threadId);
+      if (!deps.inspectThreadStorage)
+        throw SkeinHttpError.notImplemented(
+          "This checkpointer does not expose stored-byte accounting.",
+        );
+      return deps.inspectThreadStorage(threadId);
+    },
+    async getState(threadId, options) {
       // History is the richer source (it carries the checkpoint pointer and parent link), so use it
       // when the agent has it. But `getState` is a *required* capability and `getStateHistory` is
       // not, so an agent that implements only the required tier must still be able to serve this
@@ -552,25 +667,38 @@ export function createThreadService(ctx: ProtocolContext): ThreadService {
       // insufficient for `GET /threads/{id}/state` and contradict what `AgentGraph` promises.
       const graph = await loadThreadGraph(threadId);
       if (!graph) return emptyThreadState(threadId);
-      if (graph.getStateHistory) {
+      if (graph.getStateHistory && !options?.checkpoint && !options?.subgraphs) {
         const [current] = await readHistory(threadId, { limit: 1 }, graph);
         return current ?? emptyThreadState(threadId);
       }
-      const snapshot = await graph.getState({ configurable: { thread_id: threadId } });
+      const snapshot = await graph.getState(
+        {
+          configurable: {
+            ...options?.checkpoint,
+            thread_id: threadId,
+            checkpoint_ns: options?.checkpoint?.checkpoint_ns ?? "",
+          },
+        },
+        options?.subgraphs ? { subgraphs: true } : undefined,
+      );
       return snapshotToThreadState(snapshot);
     },
 
-    async getStateAt(threadId, checkpointId, checkpointNs = "") {
+    async getStateAt(threadId, checkpointId, checkpointNs = "", options) {
       const graph = await loadThreadGraph(threadId);
       if (!graph) return emptyThreadState(threadId);
       // An unknown checkpoint yields an empty snapshot from LangGraph rather than throwing.
-      const snapshot = await graph.getState({
-        configurable: {
-          thread_id: threadId,
-          checkpoint_ns: checkpointNs,
-          checkpoint_id: checkpointId,
+      const snapshot = await graph.getState(
+        {
+          configurable: {
+            ...options?.checkpoint,
+            thread_id: threadId,
+            checkpoint_ns: checkpointNs,
+            checkpoint_id: checkpointId,
+          },
         },
-      });
+        options?.subgraphs ? { subgraphs: true } : undefined,
+      );
       return snapshotToThreadState(snapshot);
     },
 

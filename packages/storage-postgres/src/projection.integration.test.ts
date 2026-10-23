@@ -58,9 +58,9 @@ function projected(columns: string): string[] {
 describe("query projections match the schema", () => {
   it.each([
     // [table, projection, the columns deliberately omitted and why]
-    ["runs", RUN_COLUMNS, ["kwargs"]],
+    ["runs", RUN_COLUMNS, ["kwargs", "result"]],
     ["crons", CRON_COLUMNS, ["auth"]],
-    ["threads", THREAD_COLUMNS, ["ttl_minutes", "expires_at"]],
+    ["threads", THREAD_COLUMNS, ["ttl_minutes", "expires_at", "ttl_strategy", "ttl_pinned"]],
     // Nothing omitted: every delivery column is read back, including the payload. A delivery is only
     // ever read to send it or to show an operator why it failed, so there is no wide list to protect.
     ["deliveries", DELIVERY_COLUMNS, []],

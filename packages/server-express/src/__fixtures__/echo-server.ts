@@ -20,7 +20,12 @@ import {
 } from "@skein-js/agent-protocol";
 import type { AuthEngine } from "@skein-js/core";
 import { cloneLangGraphCheckpoint, langGraphResolver, SkeinBaseStore } from "@skein-js/langgraph";
-import { MemoryRunEventBus, MemoryRunQueue, MemorySkeinStore } from "@skein-js/storage-memory";
+import {
+  MemoryRunEventBus,
+  MemoryThreadEventBus,
+  MemoryRunQueue,
+  MemorySkeinStore,
+} from "@skein-js/storage-memory";
 import type { CorsOptions } from "cors";
 
 import { createExpressServer, type SkeinExpressServer } from "../create-express-server.js";
@@ -86,6 +91,7 @@ export function createEchoDeps(auth?: AuthEngine): ProtocolDeps {
     graphs: langGraphResolver(createEchoResolver()),
     queue: new MemoryRunQueue(),
     bus: new MemoryRunEventBus(),
+    threadBus: new MemoryThreadEventBus(),
     checkpointer: new MemorySaver(),
     // The LangGraph binding: wraps the resolver so the engine's command envelope becomes a `Command`
     // (HITL resume), bridges long-term memory in for `getStore()`, supplies the throwaway saver

@@ -91,6 +91,39 @@ describe("authorizing handlers", () => {
     await runtime.service.assistants.registerGraphAssistants();
   });
 
+  it("creates and patches keep_latest TTL with ownership filters", async () => {
+    const response = await runtime.handlers.createThread(
+      asUser("alice", {
+        method: "POST",
+        body: { ttl: { ttl: 5, strategy: "keep_latest" } },
+      }),
+    );
+    expect(response.kind).toBe("json");
+    if (response.kind !== "json") throw new Error("Expected JSON");
+    const threadId = (response.body as { thread_id: string }).thread_id;
+    expect(await runtime.service.threads.get(threadId)).toMatchObject({
+      metadata: { owner: "alice" },
+    });
+    const patched = await runtime.handlers.patchThread(
+      asUser("alice", {
+        method: "PATCH",
+        params: { thread_id: threadId },
+        body: { ttl: { ttl: 10, strategy: "keep_latest" } },
+      }),
+    );
+    expect(patched.status).toBe(200);
+    await expectStatus(
+      runtime.handlers.patchThread(
+        asUser("bob", {
+          method: "PATCH",
+          params: { thread_id: threadId },
+          body: { ttl: { ttl: 15, strategy: "keep_latest" } },
+        }),
+      ),
+      404,
+    );
+  });
+
   it("rejects a request with no credentials as 401", async () => {
     await expectStatus(runtime.handlers.createThread(makeReq({ method: "POST", body: {} })), 401);
   });
@@ -934,5 +967,78 @@ describe("auth payload is server-derived, not caller-supplied", () => {
     );
 
     expect(seen).toEqual(["alice", "memories"]);
+  });
+});
+
+describe("thread protocol authorization", () => {
+  it("uses read authorization for state commands and create_run for execution commands", async () => {
+    const runtime = createProtocolRuntime(
+      createFixtureDeps({
+        auth: fakeEngine({ deny: (_resource, action) => action === "create_run" }),
+      }),
+    );
+    const created = await runtime.handlers.createThread(
+      asUser("alice", { method: "POST", body: {} }),
+    );
+    const threadId = (created as { body: { thread_id: string } }).body.thread_id;
+    const request = (method: string) =>
+      asUser("alice", {
+        method: "POST",
+        params: { thread_id: threadId },
+        body: { id: 7, method, params: { namespace: [] } },
+      });
+    expect(await runtime.handlers.postThreadCommands(request("state.get"))).toMatchObject({
+      kind: "json",
+      body: { type: "success", id: 7, result: { values: {} } },
+    });
+    await expectStatus(runtime.handlers.postThreadCommands(request("run.start")), 403);
+    expect(await runtime.service.runs.listByThread(threadId)).toHaveLength(0);
+  });
+
+  it("checks run visibility independently for replay and live delivery", async () => {
+    const deps = createFixtureDeps({ auth: fakeEngine() });
+    const runtime = createProtocolRuntime(deps);
+    const thread = await deps.store.threads.create({ metadata: { owner: "alice" } });
+    const visible = await deps.store.runs.create({
+      thread_id: thread.thread_id,
+      assistant_id: "echo",
+      metadata: { owner: "alice" },
+    });
+    const hidden = await deps.store.runs.create({
+      thread_id: thread.thread_id,
+      assistant_id: "echo",
+      metadata: { owner: "bob" },
+    });
+    const publish = (runId: string, secret: string) =>
+      deps.threadBus!.publish(thread.thread_id, {
+        kind: "protocol",
+        runId,
+        event: {
+          type: "event",
+          method: "values",
+          params: { namespace: [], timestamp: 0, data: { secret } },
+        },
+      });
+    await publish(hidden.run_id, "hidden replay");
+    await publish(visible.run_id, "visible replay");
+    const controller = new AbortController();
+    const response = await runtime.handlers.postThreadEvents!(
+      asUser("alice", {
+        method: "POST",
+        params: { thread_id: thread.thread_id },
+        body: { channels: ["values"], since: 0 },
+        signal: controller.signal,
+      }),
+    );
+    if (response.kind !== "sse") throw new Error("Expected SSE");
+    const iterator = response.events[Symbol.asyncIterator]();
+    await iterator.next();
+    expect((await iterator.next()).value).toContain("visible replay");
+    const waiting = iterator.next();
+    await publish(hidden.run_id, "hidden live");
+    await publish(visible.run_id, "visible live");
+    expect((await waiting).value).toContain("visible live");
+    controller.abort();
+    await iterator.return?.();
   });
 });

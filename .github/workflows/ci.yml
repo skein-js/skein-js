@@ -102,6 +102,28 @@ jobs:
       - name: Integration tests
         run: pnpm exec nx run-many -t test-integration --output-style=stream
 
+  compatibility:
+    name: official frontend SDKs and packed consumers
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: pnpm/action-setup@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: ${{ env.NODE_LTS }}
+          cache: pnpm
+
+      - run: pnpm install --frozen-lockfile
+
+      - name: Install Chromium
+        run: pnpm exec nx run server-express:prepare-browser
+
+      - name: Four official frontend SDKs
+        run: pnpm exec nx run server-express:test-browser --output-style=stream
+
+      - name: Packed SDK, MCP and A2A consumers
+        run: pnpm exec nx run test-support:test-compatibility-consumer --output-style=stream
+
   # Runs `packages/bench` for its **bounds**, never for its numbers.
   #
   # Same principle as `runtime-matrix` below: co-tenancy on a shared runner moves timings, not pass/fail.
@@ -298,7 +320,7 @@ jobs:
         run: pnpm exec nx run-many -t build --output-style=stream
 
       - name: Build smoke
-        run: node scripts/build-image-smoke.mjs
+        run: pnpm exec nx run test-support:test-build-image --output-style=stream
 
   # The on-ramp is a promise to strangers ("one command gets you a running agent"), and it can rot
   # without anything in this repo changing — a released dependency moves and the starter no longer

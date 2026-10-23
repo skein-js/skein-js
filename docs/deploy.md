@@ -632,3 +632,15 @@ Two notes specific to the container:
   and under `skein dev`; see [embedding.md](./embedding.md#going-to-production).
 - `PG_POOL_MAX` is per pool and skein opens **three** per instance, so budget three times your setting against
   the database's own connection cap — per replica.
+
+## Compatibility assets and diagnostics
+
+`skein build` includes configured graph UI assets and `http.app` exports in the production artifact.
+Ship the whole artifact; production does not need TypeScript sources or the development UI compiler.
+The build-image gate runs the generated image and checks custom routes, UI bootstrap/assets,
+OpenAPI and docs. See [configuration compatibility](./langgraph-cli-compat.md#graph-ui-and-custom-http-applications).
+
+Use Redis thread events for reconnect across API instances. SQLite and memory event replay are
+process-local, even when SQLite resource rows and checkpoints persist. Monitoring remains host-owned:
+configure an OpenTelemetry reader before exposing `/metrics`, and use the storage endpoint for exact
+checkpoint payload accounting. See [diagnostics](./observability.md#http-diagnostics).

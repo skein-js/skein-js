@@ -7,7 +7,7 @@
     "build": {
       "executor": "nx:run-commands",
       "options": {
-        "command": "tsup src/index.ts --format esm --dts --clean --external vite",
+        "command": "tsup src/index.ts --format esm --dts --clean --external vite --external @langchain/langgraph-ui",
         "cwd": "packages/cli"
       }
     },

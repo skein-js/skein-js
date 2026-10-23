@@ -11,6 +11,7 @@ import {
   type ProtocolHandlers,
   type RouteBinding,
 } from "@skein-js/agent-protocol";
+import { readNativeNodeRequest, sendNativeResponse } from "@skein-js/server-kit";
 import cors, { type CorsOptions } from "cors";
 import express from "express";
 import type { Request, Response, Router } from "express";
@@ -24,6 +25,7 @@ import { toProtocolRequest } from "./to-protocol-request.js";
 export { skeinRoutes } from "@skein-js/agent-protocol";
 
 export interface HandlerRouterOptions {
+  handleRequest?: (request: globalThis.Request) => Promise<globalThis.Response | undefined>;
   /** Structured logger for unexpected (non-`SkeinHttpError`) faults. */
   logger?: Logger;
   /**
@@ -113,10 +115,47 @@ export function createHandlerRouter(
     });
   }
 
-  router.use(express.json(options.json ?? {}));
+  const rawBodies = new WeakMap<object, Uint8Array>();
+  router.use(
+    express.json({
+      ...options.json,
+      ...(options.handleRequest
+        ? {
+            verify: (req: object, _res: object, body: Buffer) => {
+              rawBodies.set(req, body);
+            },
+          }
+        : {}),
+    }),
+  );
+  if (options.handleRequest)
+    router.use(async (req, res, next) => {
+      const disconnected = new AbortController();
+      const close = () => disconnected.abort();
+      res.once("close", close);
+      try {
+        if (rawBodies.has(req)) Object.assign(req, { rawBody: rawBodies.get(req) });
+        const native = await readNativeNodeRequest(
+          req,
+          `${req.protocol}://${req.get("host") ?? "localhost"}${req.url}`,
+          disconnected.signal,
+          options.handleRequest!,
+        );
+        const response = native ? await options.handleRequest!(native) : undefined;
+        if (response) {
+          await sendNativeResponse(response, res);
+          return;
+        }
+        res.removeListener("close", close);
+        next();
+      } catch (error) {
+        sendErrorResponse(error, res, options.logger);
+      }
+    });
 
   for (const binding of options.routes ?? skeinRoutes) {
     const invoke = handlers[binding.handler];
+    if (!invoke) continue;
     router[binding.method](binding.path, async (req: Request, res: Response) => {
       // Signals a client that went away, so a run created with `on_disconnect: "cancel"` stops instead
       // of running to completion for a response nobody will read. Registered before the response is

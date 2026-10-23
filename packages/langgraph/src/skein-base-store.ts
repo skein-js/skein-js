@@ -28,6 +28,8 @@ import {
   type StoreNamespaceQuery,
   type StoreRepo,
   type StoreSearchQuery,
+  type StoreReadOptions,
+  type StoreItemWriteOptions,
 } from "@skein-js/core";
 
 // `@langchain/langgraph` re-exports `Item` but not `SearchItem`; it's structurally an item + score.
@@ -86,8 +88,16 @@ export class SkeinBaseStore extends BaseStore {
     super();
   }
 
-  override async get(namespace: string[], key: string): Promise<LangGraphItem | null> {
-    const item = await this.repo.get(namespace, key);
+  override async get(
+    namespace: string[],
+    key: string,
+    options?: StoreReadOptions,
+  ): Promise<LangGraphItem | null> {
+    if (options?.refreshTtl !== undefined && !this.repo.putWithOptions)
+      throw SkeinHttpError.unprocessable(
+        "The configured store does not support per-operation TTL options.",
+      );
+    const item = await this.repo.get(namespace, key, options);
     return item ? toLangGraphItem(item) : null;
   }
 
@@ -95,8 +105,32 @@ export class SkeinBaseStore extends BaseStore {
     namespace: string[],
     key: string,
     value: Record<string, unknown>,
+    index?: false | string[],
+    options?: { ttl?: number | null },
   ): Promise<void> {
-    await this.repo.put(namespace, key, value);
+    const write: StoreItemWriteOptions = { ...options, index };
+    if (this.repo.putWithOptions) await this.repo.putWithOptions(namespace, key, value, write);
+    else {
+      if (index !== undefined || options?.ttl === null)
+        throw SkeinHttpError.unprocessable(
+          "The configured store does not support requested write options.",
+        );
+      await this.repo.put(namespace, key, value, options as { ttl?: number });
+    }
+  }
+
+  async sweepExpiredItems(): Promise<number> {
+    return this.repo.sweepExpired();
+  }
+
+  /** The inverse bridge can recognize the additive option-aware operation. */
+  async putWithOptions(
+    namespace: string[],
+    key: string,
+    value: Record<string, unknown>,
+    options?: StoreItemWriteOptions,
+  ): Promise<void> {
+    await this.put(namespace, key, value, options?.index, options);
   }
 
   override async delete(namespace: string[], key: string): Promise<void> {
@@ -105,12 +139,25 @@ export class SkeinBaseStore extends BaseStore {
 
   override async search(
     namespacePrefix: string[],
-    options?: { filter?: Record<string, unknown>; limit?: number; offset?: number; query?: string },
+    options?: {
+      filter?: Record<string, unknown>;
+      limit?: number;
+      offset?: number;
+      query?: string;
+      refreshTtl?: boolean;
+    },
   ): Promise<LangGraphSearchItem[]> {
     // Match LangGraph BaseStore's contract: search defaults to at most 10 results. (The base class
     // injects this before dispatching to batch; we override the convenience methods, so apply it
     // here.) Without it a no-limit search would return every item under the prefix.
     const query: StoreSearchQuery = { prefix: namespacePrefix, limit: options?.limit ?? 10 };
+    if (options?.refreshTtl !== undefined) {
+      if (!this.repo.putWithOptions)
+        throw SkeinHttpError.unprocessable(
+          "The configured store does not support per-operation TTL options.",
+        );
+      query.refreshTtl = options.refreshTtl;
+    }
     if (options?.query !== undefined) query.query = options.query;
     if (options?.offset !== undefined) query.offset = options.offset;
     // Validated, not cast. This path has no schema in front of it — a graph node's `filter` reaches
@@ -157,11 +204,21 @@ export class SkeinBaseStore extends BaseStore {
       // A null value is a delete, per LangGraph's PutOperation contract.
       return put.value === null
         ? this.delete(put.namespace, put.key)
-        : this.put(put.namespace, put.key, put.value);
+        : this.put(
+            put.namespace,
+            put.key,
+            put.value,
+            put.index,
+            (put as PutOperation & { options?: { ttl?: number | null }; ttl?: number | null })
+              .options ??
+              ("ttl" in put
+                ? { ttl: (put as PutOperation & { ttl?: number | null }).ttl }
+                : undefined),
+          );
     }
     if ("key" in operation) {
       const get = operation as GetOperation;
-      return this.get(get.namespace, get.key);
+      return this.get(get.namespace, get.key, get as GetOperation & StoreReadOptions);
     }
     return this.listNamespaces(namespaceQueryFromListOperation(operation));
   }

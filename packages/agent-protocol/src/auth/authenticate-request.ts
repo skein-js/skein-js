@@ -4,7 +4,7 @@
 
 import type { AuthContext, AuthEngine, AuthUser } from "@skein-js/core";
 
-import type { ProtocolRequest } from "../create-handlers.js";
+import type { ProtocolHandlers, ProtocolRequest } from "../create-handlers.js";
 
 import { synthesizeRequest } from "./route-authz.js";
 
@@ -25,8 +25,21 @@ export async function resolveAuthContext(
   engine: AuthEngine,
   req: ProtocolRequest,
 ): Promise<AuthContext | undefined> {
-  if (!engine.studioAuthDisabled && req.headers["x-auth-scheme"] === "langsmith") {
+  return resolveNativeAuthContext(engine, synthesizeRequest(req));
+}
+
+/** Same authentication rule for Fetch applications before framework/protocol dispatch. */
+export async function resolveNativeAuthContext(
+  engine: AuthEngine,
+  request: Request,
+): Promise<AuthContext | undefined> {
+  if (!engine.studioAuthDisabled && request.headers.get("x-auth-scheme") === "langsmith") {
     return { user: STUDIO_USER, scopes: [] };
   }
-  return engine.authenticate(synthesizeRequest(req));
+  return engine.authenticate(request);
+}
+
+/** Public handshakes and provider-signed callbacks retain their own authentication rules. */
+export function isProtocolAuthExempt(handler: keyof ProtocolHandlers): boolean {
+  return handler === "getServerInfo" || handler === "handleInboundEvent";
 }

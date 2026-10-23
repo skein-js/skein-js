@@ -259,6 +259,7 @@ export default withMermaid(
             { text: "Agent skills", link: "/agent-skills" },
             { text: "Framework adapters", link: "/adapters" },
             { text: "Frontend SDKs & useStream", link: "/react-sdk" },
+            { text: "LangGraph compatibility", link: "/langgraph-compatibility" },
             {
               // The default path is the three entries above. These four are alternatives — a different
               // on-ramp, or a smaller surface — and listing them as peers made "Build" read as five

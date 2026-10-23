@@ -24,9 +24,15 @@ import {
 } from "@skein-js/config";
 import type { GraphSchemas as ConfigGraphSchemas } from "@skein-js/config";
 import type { TelemetrySink } from "@skein-js/core";
-import { cloneLangGraphCheckpoint, langGraphResolver, SkeinBaseStore } from "@skein-js/langgraph";
+import {
+  inspectMemoryThreadStorage,
+  cloneLangGraphCheckpoint,
+  langGraphResolver,
+  SkeinBaseStore,
+} from "@skein-js/langgraph";
 import type { EmbeddedSqliteRuntime, embedSqliteGraphs } from "@skein-js/local";
 import {
+  loadConfigHttpHandler,
   corsFromHttpConfig,
   loadReloadableInMemoryRuntime,
   resolveIdempotency,
@@ -38,7 +44,12 @@ import {
   resolveMemoryBusLimits,
   type DevStateSnapshot,
 } from "@skein-js/server-kit";
-import { MemoryRunEventBus, MemoryRunQueue, MemorySkeinStore } from "@skein-js/storage-memory";
+import {
+  MemoryRunEventBus,
+  MemoryThreadEventBus,
+  MemoryRunQueue,
+  MemorySkeinStore,
+} from "@skein-js/storage-memory";
 import type { StoreIndexConfig } from "@skein-js/storage-postgres";
 import type { CorsOptions } from "cors";
 
@@ -359,14 +370,17 @@ export async function buildRuntime(options: BuildRuntimeOptions): Promise<SkeinR
     // teardown) lives in `connectPostgresStore` — reused by `embedPostgresGraphs`.
     // `threadExecutionGate` comes with the Postgres store: it is the cross-instance per-thread
     // execution claim, and the memory driver has no second instance to coordinate with.
+    const memoryCheckpointer = new MemorySaver();
     const {
       store: skeinStore,
       checkpointer,
+      inspectThreadStorage,
       threadExecutionGate,
     } = localRuntime
       ? {
           store: localRuntime.deps.store,
           checkpointer: localRuntime.deps.checkpointer,
+          inspectThreadStorage: localRuntime.deps.inspectThreadStorage,
           threadExecutionGate: undefined,
         }
       : store === "postgres"
@@ -389,7 +403,9 @@ export async function buildRuntime(options: BuildRuntimeOptions): Promise<SkeinR
               ...(threadTtl ? { threadTtl } : {}),
               maxPageSize: resolveMaxPageSize(),
             }),
-            checkpointer: new MemorySaver(),
+            checkpointer: memoryCheckpointer,
+            inspectThreadStorage: (threadId: string) =>
+              inspectMemoryThreadStorage(memoryCheckpointer, threadId),
           };
 
     // When TTL is configured, sweep expired store items on a background interval (memory or postgres).
@@ -410,12 +426,14 @@ export async function buildRuntime(options: BuildRuntimeOptions): Promise<SkeinR
     const {
       queue: runQueue,
       bus,
+      threadBus,
       abortChannel,
       deliveryQueue,
     } = localRuntime
       ? {
           queue: localRuntime.deps.queue,
           bus: localRuntime.deps.bus,
+          threadBus: localRuntime.deps.threadBus,
           abortChannel: undefined,
           deliveryQueue: undefined,
         }
@@ -428,6 +446,7 @@ export async function buildRuntime(options: BuildRuntimeOptions): Promise<SkeinR
         : {
             queue: new MemoryRunQueue(),
             bus: new MemoryRunEventBus(resolveMemoryBusLimits()),
+            threadBus: new MemoryThreadEventBus(),
             // No delivery queue on the memory path: the delivery worker polls the outbox instead. That
             // retains due times in the durable store and recovers expired leases after restart.
             deliveryQueue: undefined,
@@ -442,13 +461,19 @@ export async function buildRuntime(options: BuildRuntimeOptions): Promise<SkeinR
     });
 
     const deps: ProtocolDeps = {
+      httpHandler: await loadConfigHttpHandler(first.config, {
+        configDir: first.configDir,
+        importModule,
+      }),
       store: skeinStore,
       ...(storeItems ? { storeItems } : {}),
       // From `langgraph.json`, so always LangGraph graphs — see `langGraphResolver`.
       graphs: langGraphResolver(resolver),
       queue: runQueue,
       bus,
+      threadBus,
       checkpointer,
+      ...(inspectThreadStorage ? { inspectThreadStorage } : {}),
       storeBridge: (repo) => new SkeinBaseStore(repo),
       // Throwaway saver for `POST /invoke/:graph_id` — see `ProtocolDeps.ephemeralCheckpointer`.
       ephemeralCheckpointer: () => new MemorySaver(),
@@ -480,7 +505,13 @@ export async function buildRuntime(options: BuildRuntimeOptions): Promise<SkeinR
         ...(importModule ? { importModule } : {}),
       }),
       reloadGraphs: async () => {
-        reroute((await loadConfig({ configPath, importModule, staticSchemas: schemas })).graphs);
+        const next = await loadConfig({ configPath, importModule, staticSchemas: schemas });
+        const httpHandler = await loadConfigHttpHandler(next.config, {
+          configDir: next.configDir,
+          importModule,
+        });
+        reroute(next.graphs);
+        deps.httpHandler = httpHandler;
       },
       dispose: async () => {
         // Telemetry first: drain what the run just produced before the drivers underneath it go.

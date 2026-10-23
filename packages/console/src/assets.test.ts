@@ -54,6 +54,10 @@ describe("resolveConsoleAsset", () => {
     if (resolved.kind !== "asset") return;
     expect(resolved.asset.file).toBe("index.html");
     expect(resolved.asset.contentType).toBe("text/html; charset=utf-8");
+    expect(resolveConsoleAsset("/favicon.ico")).toMatchObject({
+      kind: "asset",
+      asset: { file: "favicon.svg", contentType: "image/svg+xml" },
+    });
   });
 
   it("redirects a bare mount path to its slashed form", () => {
