@@ -24,6 +24,7 @@ import {
 import { MemorySkeinStore } from "@skein-js/storage-memory";
 import type { CorsOptions } from "cors";
 
+import { loadConfigHttpHandler } from "./config-http-handler.js";
 import { corsFromHttpConfig, routesFromHttpConfig } from "./cors-config.js";
 import {
   hydrateCheckpointer,
@@ -81,6 +82,7 @@ export async function loadInMemoryRuntime(
   });
   const deps = embedInMemoryGraphs(toGraphResolver(graphs));
   deps.auth = await loadAuthEngine(config.auth, { configDir, importModule });
+  deps.httpHandler = await loadConfigHttpHandler(config, { configDir, importModule });
   return {
     deps,
     channels: await loadChannels(config.skein?.channels, {
@@ -184,6 +186,10 @@ export async function loadReloadableInMemoryRuntime(
     store,
     checkpointer,
     auth: await loadAuthEngine(first.config.auth, { configDir: first.configDir, importModule }),
+    httpHandler: await loadConfigHttpHandler(first.config, {
+      configDir: first.configDir,
+      importModule,
+    }),
     // Present only when configured — its presence is what starts the thread TTL sweeper.
     ...(threadTtl ? { threadTtl } : {}),
     // Unlike `threadTtl`, absence here means *defaults*, not *off*: the header is honoured either way.
@@ -208,7 +214,13 @@ export async function loadReloadableInMemoryRuntime(
     config: first.config,
     configDir: first.configDir,
     reloadGraphs: async () => {
-      current = (await loadConfig({ configPath, importModule, staticSchemas })).graphs;
+      const next = await loadConfig({ configPath, importModule, staticSchemas });
+      const httpHandler = await loadConfigHttpHandler(next.config, {
+        configDir: next.configDir,
+        importModule,
+      });
+      current = next.graphs;
+      deps.httpHandler = httpHandler;
     },
     snapshotState: () => ({
       version: 1,

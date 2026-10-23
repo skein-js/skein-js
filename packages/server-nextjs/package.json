@@ -54,6 +54,7 @@
     "@langchain/langgraph": "^1.4.0",
     "@skein-js/langgraph": "workspace:*",
     "@skein-js/storage-memory": "workspace:*",
+    "@skein-js/test-support": "workspace:^",
     "next": "^15.5.28"
   },
   "publishConfig": {

@@ -29,7 +29,9 @@ import {
 
 import { toStoredRollbackPlan, type ProtocolContext, type RollbackPlan } from "../context.js";
 import { remainingQueueAttempts } from "../deliveries/delivery-config.js";
+import { a2aKwargs } from "../interop/a2a-origin.js";
 import { rollbackThreadCheckpointsTo } from "../threads/checkpoint-history.js";
+import { threadProtocolKwargs } from "../threads/thread-protocol-run.js";
 
 import { startRunExecution } from "./run-execution.js";
 import { withThreadExecution } from "./thread-locks.js";
@@ -45,6 +47,10 @@ export interface CreateRunInput {
   stream_mode?: StreamMode | StreamMode[];
   /** Also stream frames emitted inside subgraphs, carrying `RunFrame.namespace` (`mode|<namespace>` over SSE). */
   stream_subgraphs?: boolean;
+  durability?: "sync" | "async" | "exit";
+  /** @deprecated Use durability. Explicit true maps to async, false to exit. */
+  checkpoint_during?: boolean;
+  checkpoint?: RunKwargs["checkpoint"];
   metadata?: Metadata;
   multitask_strategy?: MultitaskStrategy;
   interrupt_before?: string[] | "*";
@@ -270,7 +276,8 @@ export function toKwargs(
   authUser?: AuthUser,
   authScopes?: string[],
 ): RunKwargs {
-  const kwargs: RunKwargs = {};
+  const kwargs: RunKwargs & ReturnType<typeof threadProtocolKwargs> = {};
+  Object.assign(kwargs, threadProtocolKwargs(input), a2aKwargs(input));
   // Only the non-default is stored: `keep` is what an absent flag already means, and kwargs are
   // written on every run.
   if (ownsThread && input.on_completion === "delete") kwargs.delete_thread_on_completion = true;
@@ -285,7 +292,31 @@ export function toKwargs(
   if (input.interrupt_after !== undefined) kwargs.interrupt_after = input.interrupt_after;
   if (input.webhook !== undefined) kwargs.webhook = input.webhook;
   // Server-owned fork target: taken from the validated top-level field, never from client config.
-  if (input.checkpoint_id !== undefined) kwargs.checkpoint_id = input.checkpoint_id;
+  const configurable = input.config?.configurable;
+  const configCheckpoint =
+    configurable && typeof configurable === "object"
+      ? {
+          ...(typeof configurable["checkpoint_id"] === "string"
+            ? { checkpoint_id: configurable["checkpoint_id"] }
+            : {}),
+          ...(typeof configurable["checkpoint_ns"] === "string"
+            ? { checkpoint_ns: configurable["checkpoint_ns"] }
+            : {}),
+          ...(configurable["checkpoint_map"] &&
+          typeof configurable["checkpoint_map"] === "object" &&
+          !Array.isArray(configurable["checkpoint_map"]) &&
+          Object.values(configurable["checkpoint_map"]).every((value) => typeof value === "string")
+            ? { checkpoint_map: configurable["checkpoint_map"] as Record<string, unknown> }
+            : {}),
+        }
+      : undefined;
+  const checkpoint = input.checkpoint ?? configCheckpoint;
+  if (checkpoint !== undefined) kwargs.checkpoint = checkpoint;
+  const checkpointId = input.checkpoint_id ?? checkpoint?.checkpoint_id;
+  if (checkpointId !== undefined) kwargs.checkpoint_id = checkpointId;
+  if (input.durability !== undefined) kwargs.durability = input.durability;
+  else if (input.checkpoint_during !== undefined)
+    kwargs.durability = input.checkpoint_during ? "async" : "exit";
   // Scopes only ride along with a principal; storing them alone would be meaningless.
   if (authUser !== undefined) {
     kwargs.auth_user = authUser;
@@ -362,8 +393,15 @@ export function createRunService(ctx: ProtocolContext): RunService {
   const ensureThread = async (threadId: string): Promise<Thread> => {
     const existing = await deps.store.threads.get(threadId);
     if (existing) return existing;
+    const generation = await deps.threadBus?.generation(threadId);
     try {
-      return await deps.store.threads.create({ thread_id: threadId });
+      const thread = await deps.store.threads.create({ thread_id: threadId });
+      await deps.threadBus?.publish(
+        threadId,
+        { kind: "state", operation: "created", thread },
+        generation,
+      );
+      return thread;
     } catch (error) {
       if (isSkeinHttpError(error) && error.status === 409) {
         const raced = await deps.store.threads.get(threadId);

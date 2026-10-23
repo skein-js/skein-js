@@ -18,7 +18,7 @@ import type { AssistantRepo } from "./assistants.js";
 import type { CronRepo } from "./crons.js";
 import type { DeliveryRepo } from "./deliveries.js";
 import type { IdempotencyRepo } from "./idempotency.js";
-import type { RunKwargs, RunRepo } from "./runs.js";
+import type { RunKwargs, RunRepo, RunResult } from "./runs.js";
 import type { StoreRepo } from "./store-items.js";
 import type { ThreadRepo } from "./threads.js";
 
@@ -92,9 +92,20 @@ export interface SkeinStoreSnapshot {
   assistants: [string, Assistant][];
   assistantVersions: [string, AssistantVersion][];
   threads: [string, Thread][];
+  threadRetention?: [
+    string,
+    { ttl?: number | null; strategy: "delete" | "keep_latest"; expiresAt?: number | null },
+  ][];
   runs: [string, Run][];
   runKwargs: [string, RunKwargs][];
+  /** Optional immutable results; orphan entries are ignored and existing results never overwritten. */
+  runResults?: [string, RunResult][];
   items: [string, Item][];
+  /** Optional retention/index settings, preserving older snapshot compatibility. */
+  itemOptions?: [
+    string,
+    { index?: false | string[]; ttlMinutes?: number | null; expiresAt?: number | null },
+  ][];
   /**
    * Optional so a snapshot written by an older skein still loads — the same tolerance
    * `assistantVersions` gets. This is also what gives `skein dev` cron persistence across restarts
@@ -111,7 +122,7 @@ export interface SkeinStoreSnapshot {
   // rows would replay a response naming runs the reloaded store no longer has.
   //
   // Deliveries are absent for the same reason, and one sharper one: a snapshot is a transfer format
-  // that gets written to disk, so carrying them would put every run's whole final state into
-  // `.skein/` — and restoring one would POST to a URL from a previous `skein dev` session on the
+  // that gets written to disk. A2A run results can carry final state, but never delivery intent:
+  // restoring a delivery would POST to a URL from a previous `skein dev` session on the
   // next boot, announcing a run the reloaded store may no longer have.
 }

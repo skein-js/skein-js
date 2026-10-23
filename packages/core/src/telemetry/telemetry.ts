@@ -100,7 +100,19 @@ export type RunTelemetryEvent = RunStartedEvent | RunFinishedEvent;
  * buffer and flush instead. {@link flush} is called on shutdown precisely so a buffering sink can
  * be the well-behaved default.
  */
+/** An HTTP response measurement with a route template/handler name, never resource identifiers. */
+export interface HttpTelemetryEvent {
+  type: "request.finished";
+  method: string;
+  route: string;
+  status: number;
+  durationMs: number;
+}
+
 export interface TelemetrySink {
+  onHttpEvent?(event: HttpTelemetryEvent): void;
+  /** Optional host-owned metric collection. Implement exactly one collector per runtime. */
+  collectMetrics?(format: "prometheus" | "json"): Promise<{ body: string; contentType: string }>;
   /** Identifies the sink in log lines when one of its methods throws. */
   readonly name: string;
   /**
@@ -218,8 +230,25 @@ export function combineTelemetrySinks(
     );
   };
 
+  const collectors = active.filter((sink) => sink.collectMetrics);
   return {
     name,
+    ...(collectors.length
+      ? {
+          collectMetrics: async (format: "prometheus" | "json") => {
+            if (collectors.length !== 1)
+              throw new Error("Configure exactly one metrics collector per runtime.");
+            return collectors[0]!.collectMetrics!(format);
+          },
+        }
+      : {}),
+    ...(active.some((sink) => sink.onHttpEvent)
+      ? {
+          onHttpEvent: (event: HttpTelemetryEvent) => {
+            for (const sink of active) guard(sink.name, report, () => sink.onHttpEvent?.(event));
+          },
+        }
+      : {}),
     onRunEvent(event) {
       for (const sink of active) {
         guard(sink.name, report, () => sink.onRunEvent?.(event));

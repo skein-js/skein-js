@@ -44,6 +44,7 @@ const DOCS = [
   "docs/streaming.md",
   "docs/errors-and-logging.md",
   "docs/react-sdk.md",
+  "docs/langgraph-compatibility.md",
   "docs/storage.md",
   "docs/memory.md",
   "docs/runs-and-redis.md",

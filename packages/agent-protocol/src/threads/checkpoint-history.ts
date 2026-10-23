@@ -2,7 +2,7 @@
 // on the checkpointer beyond a normal run: copying a thread's history to a new id (`POST
 // /threads/{id}/copy`), and rolling a thread back to an earlier checkpoint (`multitask_strategy:
 // "rollback"`). Both keep to the `BaseCheckpointSaver` surface (`list`/`put`/`putWrites`/
-// `deleteThread`); skein keys checkpoints by `thread_id` only (namespace `""`).
+// `deleteThread`), preserving each checkpoint namespace.
 
 import type { ThreadCheckpointer, ThreadCheckpointTuple } from "../graphs/thread-checkpointer.js";
 
@@ -17,6 +17,53 @@ import type { ThreadCheckpointer, ThreadCheckpointTuple } from "../graphs/thread
 export type CloneCheckpoint = (checkpoint: unknown) => unknown;
 
 const passThrough: CloneCheckpoint = (checkpoint) => checkpoint;
+
+function checkpointNamespace(tuple: ThreadCheckpointTuple): string {
+  return String(tuple.config.configurable?.["checkpoint_ns"] ?? "");
+}
+
+/** Retain explicit cross-namespace pointers, including pointers carried by pending task writes. */
+function referencedCheckpoints(
+  tuples: ThreadCheckpointTuple[],
+  seeds: ThreadCheckpointTuple[],
+): ThreadCheckpointTuple[] {
+  const byCoordinate = new Map(
+    tuples.map((tuple) => [`${checkpointNamespace(tuple)}\0${tuple.checkpoint.id}`, tuple]),
+  );
+  const kept = new Set(seeds);
+  const visited = new WeakSet<object>();
+  const visit = (value: unknown): void => {
+    if (typeof value !== "object" || value === null || visited.has(value)) return;
+    visited.add(value);
+    const record = value as Record<string, unknown>;
+    const add = (namespace: string, id: string) => {
+      const tuple = byCoordinate.get(`${namespace}\0${id}`);
+      if (tuple && !kept.has(tuple)) {
+        kept.add(tuple);
+        visit(tuple);
+      }
+    };
+    if (typeof record["checkpoint_id"] === "string")
+      add(String(record["checkpoint_ns"] ?? ""), record["checkpoint_id"]);
+    for (const field of ["checkpoint_map", "parents"]) {
+      const coordinates = record[field];
+      if (coordinates && typeof coordinates === "object") {
+        for (const [namespace, id] of Object.entries(coordinates))
+          if (typeof id === "string") add(namespace, id);
+      }
+    }
+    // Delta channels reconstruct values from ancestor writes until their next full snapshot.
+    // These are dependencies of the current state, just like explicit child coordinates.
+    const counters = (record["metadata"] as Record<string, unknown> | undefined)?.[
+      "counters_since_delta_snapshot"
+    ];
+    if (counters && typeof counters === "object" && Object.keys(counters).length)
+      visit(record["parentConfig"]);
+    for (const [key, child] of Object.entries(record)) if (key !== "parentConfig") visit(child);
+  };
+  for (const tuple of seeds) visit(tuple);
+  return tuples.filter((tuple) => kept.has(tuple));
+}
 
 /**
  * Write `tuples` (oldest-first) under `targetId`. Each checkpoint is re-put with its parent link, and
@@ -118,17 +165,36 @@ export async function pruneThreadCheckpointsToLatest(
   threadId: string,
   cloneCheckpoint: CloneCheckpoint = passThrough,
 ): Promise<boolean> {
-  // Two tuples, not the whole history: all this needs is the keeper plus the answer to "is there more
-  // than one?". Draining the history would re-introduce the unbounded read `rollbackThreadCheckpointsTo`
-  // documents as a statement-timeout hazard — on the very operation a user reaches for *because* a thread
-  // got large.
-  const tuples = await listCheckpoints(checkpointer, threadId, 2);
-  if (tuples.length <= 1) return false;
+  // Cross-namespace references can name older child tips; inspect their coordinates before pruning.
+  const tuples = await listCheckpoints(checkpointer, threadId);
+  const latestByNamespace = new Map<string, ThreadCheckpointTuple>();
+  for (const tuple of tuples) {
+    const namespace = checkpointNamespace(tuple);
+    if (!latestByNamespace.has(namespace)) latestByNamespace.set(namespace, tuple);
+  }
+  const keep = referencedCheckpoints(tuples, [...latestByNamespace.values()]);
+  if (keep.length === tuples.length) return false;
 
   // Dropping `parentConfig` is what re-roots the keeper: `replayCheckpoints` derives the parent link
   // from it, so an absent one produces the same root `put` it already uses for the oldest tuple in a
   // chain — and its pending-writes handling comes along for free.
-  const { parentConfig: _removedAncestor, ...rootedLatest } = tuples[0]!; // newest-first; length > 1
+  const coordinates = new Set(
+    keep.map((tuple) => `${checkpointNamespace(tuple)}\0${tuple.checkpoint.id}`),
+  );
+  const rootedKeep = keep
+    .map((tuple) => {
+      const parent = tuple.parentConfig?.configurable;
+      if (
+        parent &&
+        coordinates.has(
+          `${String(parent["checkpoint_ns"] ?? "")}\0${String(parent["checkpoint_id"])}`,
+        )
+      )
+        return tuple;
+      const { parentConfig: _removedAncestor, ...rooted } = tuple;
+      return rooted;
+    })
+    .reverse();
 
   // Written under a scratch thread id *before* the delete, so the keeper exists in two places for the
   // duration of the destructive step. Without it, a `put` that fails after `deleteThread` — a statement
@@ -136,10 +202,10 @@ export async function pruneThreadCheckpointsToLatest(
   // **zero** checkpoints: its current state gone, not just its history, on a bulk endpoint that can be
   // pointed at a thousand threads. The insurance copy is removed on the way out.
   const scratchThreadId = `${threadId}::skein-prune`;
-  await replayCheckpoints(checkpointer, scratchThreadId, [rootedLatest], cloneCheckpoint);
+  await replayCheckpoints(checkpointer, scratchThreadId, rootedKeep, cloneCheckpoint);
   try {
     await checkpointer.deleteThread(threadId);
-    await replayCheckpoints(checkpointer, threadId, [rootedLatest], cloneCheckpoint);
+    await replayCheckpoints(checkpointer, threadId, rootedKeep, cloneCheckpoint);
   } catch (error) {
     // The scratch copy is deliberately left behind here: it is the only remaining copy of the state, and
     // the id is derived from the thread's own so an operator can find it. Recover with
@@ -178,7 +244,11 @@ export async function rollbackThreadCheckpointsTo(
   }
 
   const tuples = await listCheckpoints(checkpointer, threadId);
-  const byId = new Map(tuples.map((tuple) => [tuple.checkpoint.id, tuple]));
+  const byId = new Map(
+    tuples
+      .filter((tuple) => checkpointNamespace(tuple) === "")
+      .map((tuple) => [tuple.checkpoint.id, tuple]),
+  );
   if (!byId.has(baseCheckpointId)) return; // base already gone — don't touch valid history
 
   // Walk parent links from the base to the root: the checkpoints that predate the displaced run.
@@ -192,6 +262,19 @@ export async function rollbackThreadCheckpointsTo(
     cursor = tuple.parentConfig?.configurable?.checkpoint_id as string | undefined;
   }
 
+  // Child snapshots can be newer than the root that scheduled them. Explicit pointers retain those;
+  // otherwise only child history preceding the rollback tip survives.
+  const base = byId.get(baseCheckpointId)!;
+  const timestamp = (base.checkpoint as unknown as { ts?: string }).ts;
+  for (const tuple of tuples) {
+    const childTimestamp = (tuple.checkpoint as unknown as { ts?: string }).ts;
+    if (checkpointNamespace(tuple) && timestamp && childTimestamp && childTimestamp <= timestamp)
+      keep.push(tuple);
+  }
+  const retained = referencedCheckpoints(tuples, keep).reverse();
+  const scratchThreadId = `${threadId}::skein-rollback`;
+  await replayCheckpoints(checkpointer, scratchThreadId, retained, cloneCheckpoint);
   await checkpointer.deleteThread(threadId);
-  await replayCheckpoints(checkpointer, threadId, keep.reverse(), cloneCheckpoint);
+  await replayCheckpoints(checkpointer, threadId, retained, cloneCheckpoint);
+  await checkpointer.deleteThread(scratchThreadId).catch(() => undefined);
 }

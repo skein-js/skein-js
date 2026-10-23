@@ -304,3 +304,31 @@ HTML source.
 | `nx test <project>` / `nx test-integration <project>` | A single project.                                                                         |
 | `pnpm affected`                                       | Only projects affected by your changes.                                                   |
 | `pnpm nx test storage-sqlite`                         | SQLite conformance, retention, real-file reopening, and subprocess crash tests; no Docker |
+
+## Compatibility regression gates
+
+The thread-protocol HTTP suite uses the official JavaScript SDK. The Express integration target
+adds two API instances, a real Redis queue and independent Redis thread buses, then interrupts the
+proxy connection and asserts that reconnect delivers one queued graph execution. Thread-bus
+conformance checks ordering, independent readers, cancellation, replay, deletion generations and
+cursor expiry. Payload retention is bounded separately from sequence state.
+
+The A2A suite uses the official SDK over HTTP against memory and a real SQLite file. It compares an
+earlier task’s artifact after later turns, pruning and reopening, then exercises interrupt/resume.
+The immutable run-result conformance cases cover defensive copies, first-write semantics and
+run/thread deletion on every bundled driver; subprocess SIGKILL tests cover SQLite writes before
+and after the terminal status commit. MCP uses its official client and stateless transport.
+
+Run `nx run server-express:test-browser` for the pinned React/Angular/Vue/Svelte 1.2.6 Chromium
+matrix. It uses native SDK HTTP, a real proxy-forced disconnect, multiple turns, restoration,
+interrupt/resume, subgraphs, transformer channels, scoped media bytes and cancellation.
+`nx run server-express:prepare-browser` installs the matching Playwright Chromium browser and its
+Linux system dependencies. The CI compatibility job runs this browser matrix and the packed consumer
+on Node 24. The compatibility matrix records Svelte's root media-selector limitation and Vue's
+`toRaw` workaround for media asset access.
+
+`nx run test-support:test-compatibility-consumer` packs the local packages, installs a fresh npm
+consumer outside the workspace and exercises SDK 1.12.6, legacy 1.9.25/1.9.31, MCP and A2A against
+an actual HTTP server without an application transport shim. `nx run test-support:test-build-image`
+runs real build → artifact → generated production image, checking custom app, compiled UI assets,
+OpenAPI and docs without source files. These gates complement the existing runtime matrix.

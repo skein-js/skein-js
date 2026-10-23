@@ -125,6 +125,7 @@ export interface GraphCallOptions {
   streamMode: StreamMode[];
   /** Stream nested graph frames as namespace/mode/payload triples. */
   subgraphs?: boolean;
+  durability?: "sync" | "async" | "exit";
   signal: AbortSignal;
   context?: unknown;
   recursionLimit?: number;
@@ -158,6 +159,12 @@ export function toGraphCallOptions(
     configurable: withAuthUser(
       {
         ...sanitizeConfigurable(kwargs.config?.configurable),
+        ...(kwargs.checkpoint?.checkpoint_ns != null
+          ? { checkpoint_ns: kwargs.checkpoint.checkpoint_ns }
+          : {}),
+        ...(kwargs.checkpoint?.checkpoint_map != null
+          ? { checkpoint_map: kwargs.checkpoint.checkpoint_map }
+          : {}),
         thread_id: threadId,
         ...(kwargs.checkpoint_id !== undefined ? { checkpoint_id: kwargs.checkpoint_id } : {}),
       },
@@ -167,6 +174,7 @@ export function toGraphCallOptions(
     streamMode: toGraphStreamModes(kwargs.stream_mode),
     signal,
   };
+  if (kwargs.durability !== undefined) options.durability = kwargs.durability;
   if (kwargs.context !== undefined) options.context = kwargs.context;
   if (kwargs.stream_subgraphs === true) options.subgraphs = true;
   const recursionLimit = kwargs.config?.recursion_limit;

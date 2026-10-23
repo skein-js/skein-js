@@ -7,9 +7,17 @@ import { SkeinHttpError } from "@skein-js/core";
 import type { DeliveryConsumer } from "@skein-js/core";
 
 import { createAuthScopedStore } from "./auth/auth-scoped-store.js";
-import { resolveAuthContext } from "./auth/authenticate-request.js";
+import {
+  isProtocolAuthExempt,
+  resolveAuthContext,
+  resolveNativeAuthContext,
+} from "./auth/authenticate-request.js";
 import { createAuthorizingHandlers } from "./auth/authorizing-handlers.js";
 import { authValue, ROUTE_AUTHZ } from "./auth/route-authz.js";
+import { createRouteMatcher, skeinRoutes, type RouteBinding } from "./http/routes.js";
+import { instrumentHttpHandlers } from "./meta/http-telemetry.js";
+import { apiDocsHtml, createOpenApiDocument } from "./meta/openapi.js";
+
 import { createContext } from "./context.js";
 import {
   createProtocolHandlers,
@@ -44,6 +52,8 @@ import {
 
 /** Options for {@link createProtocolRuntime}. */
 export interface ProtocolRuntimeOptions {
+  /** Actual mounted route table, including disabled groups and configured extensions. */
+  routes?: readonly RouteBinding[];
   /** Tuning for the background run worker (max concurrency, shutdown grace period). */
   worker?: RunWorkerOptions;
   /** Tuning for the cron scheduler (tick interval, batch size, or `enabled: false` to switch it off). */
@@ -75,6 +85,8 @@ export interface ProtocolRuntimeOptions {
 
 /** The wired engine: the service, the handler table, the background worker, and the cron scheduler. */
 export interface ProtocolRuntime {
+  /** Native responses for custom apps/assets, before protocol routing. Optional for older runtimes. */
+  handleRequest?: (request: Request) => Promise<Response | undefined>;
   /** High-level operations over assistants / threads / runs / crons / store. */
   service: ProtocolService;
   /** The transport-neutral HTTP handler table an adapter dispatches requests into. */
@@ -138,7 +150,20 @@ export function createProtocolRuntime(
   const service = createProtocolServiceFromContext(context);
   // When an auth engine is injected, every request is authenticated + authorized through one
   // transport-neutral seam; without it, the handler table is unchanged (unauthenticated, as before).
-  const handlerExtras = options.handlers ?? {};
+  const handlerExtras = { ...options.handlers };
+  const mountedRoutes = options.routes ?? skeinRoutes;
+  const matchAuthExemptRoute = createRouteMatcher(
+    mountedRoutes.filter((route) => isProtocolAuthExempt(route.handler)),
+  );
+  handlerExtras.getOpenApi ??= async () => ({
+    kind: "json",
+    status: 200,
+    body: createOpenApiDocument(mountedRoutes, handlers, deps.auth, deps.serverVersion),
+  });
+  handlerExtras.handleMcp ??= async (request) =>
+    (await import("./interop/mcp.js")).createMcpHandler(() => handlers)(request);
+  handlerExtras.handleA2a ??= async (request) =>
+    (await import("./interop/a2a.js")).createA2aHandler(context, () => handlers)(request);
   const authorized = deps.auth
     ? createAuthorizingHandlers(context, deps.auth, handlerExtras)
     : createProtocolHandlers(service, handlerExtras);
@@ -152,7 +177,7 @@ export function createProtocolRuntime(
   // It reads the *base* store deliberately, not the per-request auth-scoped one: the scope string
   // already carries the principal, so a second ownership filter would only be able to disagree.
   const authEngine = deps.auth;
-  const handlers = createIdempotentHandlers(authorized, {
+  const idempotentHandlers = createIdempotentHandlers(authorized, {
     store: context.deps.store,
     clock: context.deps.clock,
     logger: context.deps.logger,
@@ -208,6 +233,7 @@ export function createProtocolRuntime(
         }
       : {}),
   });
+  const handlers = instrumentHttpHandlers(idempotentHandlers, context.deps.telemetry);
   const worker = createRunWorker(context, options.worker);
   const scheduler = createCronScheduler(context, options.scheduler);
   // Always built, NOT gated on `checkpointer.ttl` being configured. A per-thread `ttl` on
@@ -306,6 +332,67 @@ export function createProtocolRuntime(
   if (deps.abortChannel) context.control.useAbortChannel(deps.abortChannel, deps.logger);
 
   return {
+    handleRequest: Object.assign(
+      async (request: Request) => {
+        const docs =
+          request.method === "GET" &&
+          new URL(request.url).pathname === "/docs" &&
+          mountedRoutes.some((route) => route.handler === "getOpenApi");
+        const metrics =
+          request.method === "GET" &&
+          new URL(request.url).pathname === "/metrics" &&
+          mountedRoutes.some((route) => route.group === "meta");
+        if (!deps.httpHandler && !docs && !metrics) return undefined;
+        if (deps.auth && !matchAuthExemptRoute(request.method, new URL(request.url).pathname)) {
+          const authenticatedRequest = request.clone();
+          try {
+            await resolveNativeAuthContext(deps.auth, authenticatedRequest);
+          } finally {
+            void authenticatedRequest.body?.cancel().catch(() => undefined);
+          }
+        }
+        const custom = await deps.httpHandler?.(request);
+        if (custom) return custom;
+        if (metrics) {
+          const collector = context.deps.telemetry.collectMetrics;
+          if (!collector)
+            throw SkeinHttpError.notImplemented(
+              "Metrics require a host-owned collector on a telemetry sink.",
+            );
+          const url = new URL(request.url);
+          const requested = url.searchParams.get("format");
+          if (requested !== null && requested !== "json" && requested !== "prometheus")
+            throw SkeinHttpError.badRequest("Unknown metrics format.");
+          const format =
+            requested === "json" ||
+            (requested === null && request.headers.get("accept")?.includes("application/json"))
+              ? "json"
+              : "prometheus";
+          let collected;
+          try {
+            collected = await collector(format);
+          } catch (error) {
+            throw new SkeinHttpError(503, "Metric collection failed.", { cause: error });
+          }
+          return new Response(collected.body, {
+            headers: { "content-type": collected.contentType },
+          });
+        }
+        return docs
+          ? new Response(apiDocsHtml(), { headers: { "content-type": "text/html; charset=utf-8" } })
+          : undefined;
+      },
+      {
+        // Internal transport hint: diagnostics must not consume an unrelated host request's body.
+        [Symbol.for("@skein-js/native-request-matcher")]: (method: string, url: string) =>
+          Boolean(deps.httpHandler) ||
+          (method === "GET" &&
+            ((new URL(url).pathname === "/docs" &&
+              mountedRoutes.some((route) => route.handler === "getOpenApi")) ||
+              (new URL(url).pathname === "/metrics" &&
+                mountedRoutes.some((route) => route.group === "meta")))),
+      },
+    ),
     service,
     handlers,
     scheduler,
@@ -333,6 +420,7 @@ export function createProtocolRuntime(
         // stops with the other sweepers so a torn-down store never has a loop still writing into it.
         await idempotencySweeper.stop();
         await worker.stop();
+        for (const stream of context.threadStreams ?? []) stream.abort();
         // AFTER the worker, deliberately: draining runs are still recording deliveries, and stopping
         // the delivery worker first would leave that last batch sitting until the next process boots.
         // Its own `stop()` waits out an in-flight POST, so this cannot cut one off mid-flight.

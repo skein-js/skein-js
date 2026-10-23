@@ -27,6 +27,8 @@ import { resolveRunTimeoutMs } from "./run-timeout.js";
 import { resolveShutdownGraceMs } from "./shutdown-grace.js";
 
 export interface SkeinRuntimeCommonOptions {
+  /** Override the mounted protocol route inventory, including discovery. */
+  routes?: readonly RouteBinding[];
   /**
    * Where skein reports itself: failed runs, webhook delivery failures, background-run summaries, and
    * the adapter's own transport faults. It reaches **the run engine**, not just the transport — this
@@ -197,7 +199,7 @@ export async function resolveRuntimeDeps(
   return {
     deps: loaded.deps,
     cors: loaded.cors,
-    routes: loaded.routes,
+    routes: options.routes ?? loaded.routes,
     ...(loaded.channels ? { channels: loaded.channels } : {}),
     logger,
   };
@@ -268,7 +270,9 @@ export async function resolveProtocolRuntime(
     deps.webhookDispatcher = channelSurface.wrapDispatcher(inner) as typeof inner;
   }
 
+  const mountedRoutes = channelSurface ? [...routes, ...channelSurface.routes] : routes;
   const runtime = createProtocolRuntime(deps, {
+    routes: mountedRoutes,
     ...(channelSurface ? { handlers: channelSurface.handlers } : {}),
     worker: {
       ...options.worker,
@@ -343,7 +347,7 @@ export async function resolveProtocolRuntime(
     // Channel routes are *appended*, never declared in `skeinRoutes`: they exist only when a channel
     // is configured, which is what makes the feature undetectable to a deployment that never wanted
     // it — strictly stronger than an `http.disable_*` flag, and it needs no `RouteGroup` to express.
-    routes: channelSurface ? [...routes, ...channelSurface.routes] : routes,
+    routes: mountedRoutes,
     logger,
   };
 }

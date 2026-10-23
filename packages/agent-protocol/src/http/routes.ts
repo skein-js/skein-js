@@ -14,7 +14,8 @@ export type HttpMethod = "get" | "post" | "put" | "patch" | "delete";
  * `/threads/{id}/runs/...` is `runs`, not `threads`, and `disable_runs` removes it exactly as
  * `langgraph dev` would.
  */
-export type RouteGroup = "assistants" | "threads" | "runs" | "crons" | "store" | "meta";
+export type RouteGroup =
+  "assistants" | "threads" | "runs" | "crons" | "store" | "meta" | "mcp" | "a2a";
 
 /**
  * One route. `HandlerName` defaults to a member of the protocol handler table; a surface mounted
@@ -57,6 +58,18 @@ export interface RouteBinding<HandlerName = keyof ProtocolHandlers> {
 
 /** The route table, ordered most-specific-first within each method so literals win over params. */
 export const skeinRoutes: readonly RouteBinding[] = [
+  { method: "get", path: "/openapi.json", handler: "getOpenApi", group: "meta" },
+  {
+    method: "get",
+    path: "/threads/:thread_id/storage",
+    handler: "getThreadStorage",
+    group: "threads",
+  },
+  { method: "post", path: "/a2a/:assistant_id", handler: "handleA2a", group: "a2a" },
+  { method: "get", path: "/.well-known/agent-card.json", handler: "handleA2a", group: "a2a" },
+  { method: "post", path: "/mcp", handler: "handleMcp", group: "mcp" },
+  { method: "get", path: "/mcp", handler: "handleMcp", group: "mcp" },
+  { method: "delete", path: "/mcp", handler: "handleMcp", group: "mcp" },
   // assistants — literals (search/count) before `:assistant_id`, and nested paths before the bare id.
   { method: "post", path: "/assistants/search", handler: "searchAssistants", group: "assistants" },
   { method: "post", path: "/assistants/count", handler: "countAssistants", group: "assistants" },
@@ -257,6 +270,12 @@ export const skeinRoutes: readonly RouteBinding[] = [
   { method: "get", path: "/runs/:run_id/stream", handler: "joinRunStream", group: "runs" },
 
   // thread streaming / commands
+  {
+    method: "post",
+    path: "/threads/:thread_id/stream/events",
+    handler: "postThreadEvents",
+    group: "runs",
+  },
   {
     method: "post",
     path: "/threads/:thread_id/stream",

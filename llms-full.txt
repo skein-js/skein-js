@@ -2168,10 +2168,12 @@ it but is never required.
     "disable_runs": false,
     "disable_crons": false, // skein-only: also stops the scheduler, not just the routes
     "disable_store": false,
-    "disable_meta": false, // turns off GET /info; never the /ok health probe
+    "disable_meta": false, // turns off /info, /openapi.json, /docs and /metrics; never /ok
     "console": false, // skein-only: serve the console at /console (or a path). Off unless set;
     //                   `skein dev` serves it anyway. See docs/console.md.
-    // `http.app` (custom user routes) is still accepted and ignored
+    "app": "./src/http-app.ts:app", // Fetch function or exported Hono/Fetch application
+    "disable_mcp": false,
+    "disable_a2a": false,
   },
 
   // custom authentication + authorization (see below)
@@ -2199,21 +2201,21 @@ it but is never required.
 
 ### How each field maps into skein-js
 
-| `langgraph.json` field | skein-js wiring                                                                                                                                                                                                                                                                                                                                                                                                                                    |
-| ---------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `graphs`               | [`@skein-js/config`](./storage.md) resolves each `path:export`, loading a compiled graph or `makeGraph` factory. Drives `/agents` introspection + run execution.                                                                                                                                                                                                                                                                                   |
-| `node_version`         | Used by `skein build` / `skein dockerfile` base image selection. Defaults to Node 24 LTS when omitted; an explicit value is honoured verbatim, including an older one.                                                                                                                                                                                                                                                                             |
-| `skein.runtime`        | Native production server and pinned official image: `node`, `bun`, or `deno`. Bun/Deno use `@skein-js/fetch` with `Bun.serve`/`Deno.serve`, never Express compatibility.                                                                                                                                                                                                                                                                           |
-| `skein.idempotency`    | Retention for `Idempotency-Key` records. Tuning only — the header is honoured either way. See [below](#idempotency-skeinidempotency).                                                                                                                                                                                                                                                                                                              |
-| `skein.webhooks`       | How run-completion callbacks are retried and bounded. Tuning only — a run carrying a `webhook` owes a callback either way. See [below](#webhooks-skeinwebhooks).                                                                                                                                                                                                                                                                                   |
-| `env`                  | Loaded into `process.env` at boot (dev) / baked into the image (build).                                                                                                                                                                                                                                                                                                                                                                            |
-| `store`                | `store.index.{embed,dims,fields,hnsw}` configures pgvector semantic search on the Postgres driver (`hnsw: true` opts into the approximate index); `store.ttl.{default_ttl,refresh_on_read,sweep_interval_minutes}` expires items. `store.adapter` is a **skein extension** — `path:export` to your own LangGraph `BaseStore` (e.g. `PostgresStore`, `MongoDBStore`), which then serves the whole `/store` surface. See [storage.md](./storage.md). |
-| `checkpointer`         | `"default"` → `PostgresSaver`; dev falls back to an in-memory `MemorySaver`.                                                                                                                                                                                                                                                                                                                                                                       |
-| `http`                 | `http.cors` maps to the adapter's CORS options; the `disable_*` flags remove that resource's routes before mounting, so it 404s from the host app as under `langgraph dev`. `http.console` is skein-only — it serves the [console](./console.md) at `/console` (off unless set; `skein dev` serves it regardless). `http.app` is still accepted and ignored.                                                                                       |
-| `auth`                 | `auth.path` loads an `Auth` from `@langchain/langgraph-sdk/auth`; every request is authenticated + authorized. The CLI requires credentials for Studio regardless of `disable_studio_auth`; `auth.dev_ui_access: true` or loopback `skein dev --dev-ui-access` provides a temporary key for Studio and the console. The setting is stripped from production builds.                                                                                |
-| `telemetry`            | **skein extension.** Builds the telemetry sinks runs report to — see [observability.md](./observability.md). Unknown to `langgraph dev`, which ignores it.                                                                                                                                                                                                                                                                                         |
-| `dependencies`         | **skein extension on the JS side** (LangGraph's schema has it for Python only). Extra packages `skein build` pins into the artifact — see below.                                                                                                                                                                                                                                                                                                   |
-| `dockerfile_lines`     | Appended by `skein dockerfile` / `skein build`.                                                                                                                                                                                                                                                                                                                                                                                                    |
+| `langgraph.json` field | skein-js wiring                                                                                                                                                                                                                                                                                                                                                                                                                                                               |
+| ---------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `graphs`               | [`@skein-js/config`](./storage.md) resolves each `path:export`, loading a compiled graph or `makeGraph` factory. Drives `/agents` introspection + run execution.                                                                                                                                                                                                                                                                                                              |
+| `node_version`         | Used by `skein build` / `skein dockerfile` base image selection. Defaults to Node 24 LTS when omitted; an explicit value is honoured verbatim, including an older one.                                                                                                                                                                                                                                                                                                        |
+| `skein.runtime`        | Native production server and pinned official image: `node`, `bun`, or `deno`. Bun/Deno use `@skein-js/fetch` with `Bun.serve`/`Deno.serve`, never Express compatibility.                                                                                                                                                                                                                                                                                                      |
+| `skein.idempotency`    | Retention for `Idempotency-Key` records. Tuning only — the header is honoured either way. See [below](#idempotency-skeinidempotency).                                                                                                                                                                                                                                                                                                                                         |
+| `skein.webhooks`       | How run-completion callbacks are retried and bounded. Tuning only — a run carrying a `webhook` owes a callback either way. See [below](#webhooks-skeinwebhooks).                                                                                                                                                                                                                                                                                                              |
+| `env`                  | Loaded into `process.env` at boot (dev) / baked into the image (build).                                                                                                                                                                                                                                                                                                                                                                                                       |
+| `store`                | `store.index.{embed,dims,fields,hnsw}` configures pgvector semantic search on the Postgres driver (`hnsw: true` opts into the approximate index); `store.ttl.{default_ttl,refresh_on_read,sweep_interval_minutes}` expires items. `store.adapter` is a **skein extension** — `path:export` to your own LangGraph `BaseStore` (e.g. `PostgresStore`, `MongoDBStore`), which then serves the whole `/store` surface. See [storage.md](./storage.md).                            |
+| `checkpointer`         | `"default"` → `PostgresSaver`; dev falls back to an in-memory `MemorySaver`.                                                                                                                                                                                                                                                                                                                                                                                                  |
+| `http`                 | `http.cors` maps to the adapter's CORS options; the `disable_*` flags remove that resource's routes before mounting, so it 404s from the host app as under `langgraph dev`. `http.console` is skein-only — it serves the [console](./console.md) at `/console` (off unless set; `skein dev` serves it regardless). `http.app` loads an exported Fetch/Hono application before protocol dispatch; a 404 falls through. Authentication runs before custom application dispatch. |
+| `auth`                 | `auth.path` loads an `Auth` from `@langchain/langgraph-sdk/auth`; every request is authenticated + authorized. The CLI requires credentials for Studio regardless of `disable_studio_auth`; `auth.dev_ui_access: true` or loopback `skein dev --dev-ui-access` provides a temporary key for Studio and the console. The setting is stripped from production builds.                                                                                                           |
+| `telemetry`            | **skein extension.** Builds the telemetry sinks runs report to — see [observability.md](./observability.md). Unknown to `langgraph dev`, which ignores it.                                                                                                                                                                                                                                                                                                                    |
+| `dependencies`         | **skein extension on the JS side** (LangGraph's schema has it for Python only). Extra packages `skein build` pins into the artifact — see below.                                                                                                                                                                                                                                                                                                                              |
+| `dockerfile_lines`     | Appended by `skein dockerfile` / `skein build`.                                                                                                                                                                                                                                                                                                                                                                                                                               |
 
 **`dependencies` means something different here.** In LangGraph it is a Python-only field, required
 and used to drive `pip install`; the JS schema has no such field, because `langgraph build` copies
@@ -2431,6 +2433,35 @@ an imported run still fires its completion webhook.
 > don't need to migrate checkpoints at all: point skein at the **same `POSTGRES_URI`** and it shares
 > the exact same checkpoint tables. `skein import-langgraph --store postgres` is for moving an
 > in-memory `langgraph dev` (including one run in production) onto a durable skein deployment.
+
+## Graph UI and custom HTTP applications
+
+Standard `ui` and `ui_config` use the public `@langchain/langgraph-ui` build/watch API. For example:
+
+```json
+{
+  "graphs": { "agent": "./src/agent.ts:graph" },
+  "ui": { "agent": "./src/ui.tsx" },
+  "ui_config": { "shared": ["react", "react-dom"] },
+  "http": { "app": "./src/http-app.ts:app" }
+}
+```
+
+A UI source exports a default component registry. Development watches the sources; `skein build`
+compiles assets, schemas and the custom application into the artifact. Production serves
+`POST /ui/{agent}` bootstrap HTML and `GET /ui/{agent}/{asset}` from those compiled assets without
+loading the UI compiler or project sources. Application exports may be a Fetch function or an object
+with `fetch(request)`, including Hono. They return a standard `Response`; a 404 continues to UI and
+Agent Protocol routes, with the original request body available even if the app read its copy.
+All five adapters share this behavior, including mounted path prefixes.
+
+Deployment authentication runs before custom routes and UI dispatch, preserving the mounted
+protocol routes’ existing exemptions: the `/info` handshake is public, and channel callbacks use
+provider-signature verification. When rendering external UI
+scripts or styles in a browser, use credentials the browser can supply on asset requests (such as
+same-origin cookies), or explicitly allow those asset paths in the deployment's auth policy.
+`auth.openapi` may describe that existing policy using standard `securitySchemes` and `security`;
+it does not change authentication or authorization.
 
 
 ---
@@ -3370,8 +3401,8 @@ LangGraph SDK sends them): `{ limit?, before?, metadata? }`. It returns at most 
 so a long thread's full history is one of the largest single responses skein can produce. Page back
 through it with `before` (a checkpoint config carrying `checkpoint_id`, or a bare `checkpoint_id`) — the
 bound is exclusive, so pass the last checkpoint you received — and narrow it with `metadata`, which
-becomes the checkpointer's filter. Only the `checkpoint_id` reaches the checkpointer: the thread scope is
-server-owned, so a `thread_id` in `before.configurable` is dropped rather than honoured.
+becomes the checkpointer's filter. Checkpoint IDs, namespaces and checkpoint maps reach the checkpointer; the thread scope remains
+server-owned, so a `thread_id` in `before.configurable` is dropped.
 
 A `?limit=` query param is still accepted for hand-rolled callers, but it is _clamped_ to 1000 rather
 than rejected (a query string has no schema to 400 from). The body wins if both are present.
@@ -3394,14 +3425,13 @@ _branch_ from any past checkpoint:
 - `GET /threads/{id}/state/{checkpoint_id}` reads the state snapshot at a specific checkpoint, and
   `POST /threads/{id}/state/checkpoint` reads the same thing with the pointer in the body. Both exist
   because the SDK picks between them by argument _type_: `threads.getState(id, "ckpt-1")` takes the
-  `GET`, while `threads.getState(id, { checkpoint_id, checkpoint_ns })` takes the `POST`. Only
-  `checkpoint_id` is read from the pointer either way. A pointer with no id reads the tip rather than
-  404ing, and `subgraphs` is accepted and ignored on both.
+  `GET`, while `threads.getState(id, { checkpoint_id, checkpoint_ns })` takes the `POST`. The body pointer preserves `checkpoint_id`, `checkpoint_ns` and `checkpoint_map`. A namespace-only
+  pointer reads that namespace’s current state. `subgraphs: true` includes recursive task state;
+  the GET routes accept `?subgraphs=true`.
 - Run creation accepts a top-level **`checkpoint_id`** to start a run from a chosen checkpoint instead
-  of the thread tip. This is **server-validated and server-injected** — it is _not_ read from the
-  client's `config.configurable` (which strips it), so a client can never redirect a run to an arbitrary
-  checkpoint. It rides the LangGraph checkpointer, so no extra storage is involved; thread copy is the
-  coarser, whole-history cousin.
+  of the thread tip. A full `checkpoint` pointer or validated `config.configurable` checkpoint coordinates also work.
+  An explicit top-level ID wins. The server always supplies the owning thread ID. Coordinates
+  survive queued execution, so the worker branches from the same checkpoint the caller selected.
 
 ### Runs — stateless / ephemeral
 
@@ -3647,8 +3677,8 @@ same default the SDK sends for `store.listNamespaces`. A query `limit` above 100
 rejected, matching every other query-string limit here. Truncation is not signalled on the response
 (only assistant search carries `x-pagination-total`), so page until you receive fewer rows than you
 asked for. `status` on `runs.list` **is** honoured, filtered in the driver so it pages the filtered set;
-`select` on `runs.list` and `refresh_ttl` on `store.searchItems` are still accepted and **ignored**
-(refresh-on-read is a deployment setting, `store.ttl.refresh_on_read`, not a per-request one).
+`select` on `runs.list` remains accepted without projection. Store reads and searches honor
+`refresh_ttl` as a per-request override of `store.ttl.refresh_on_read`.
 
 ### Thread streaming (SSE)
 
@@ -3657,15 +3687,31 @@ asked for. `status` on `runs.list` **is** honoured, filtered in the driver so it
 | `POST` | `/threads/{thread_id}/stream`        | ✅  |
 | `GET`  | `/threads/{thread_id}/stream`        | ✅  |
 | `GET`  | `/threads/{thread_id}/stream/events` | ✅  |
+| `POST` | `/threads/{thread_id}/stream/events` | ✅  |
 | `POST` | `/threads/{thread_id}/commands`      | ✅  |
 
-`GET /stream/events` is a synonym for `GET /stream`: `client.threads.joinStream()` asks for the
-latter, the SDK's v2 agent-server transport reads from the former.
+`POST /threads/{thread_id}/stream/events` subscribes to the thread event protocol. Its body
+contains `channels`, optional namespace prefixes, `depth`, and an optional numeric `since` cursor.
+It never creates a thread or run. Without a cursor it sends a current state baseline followed by live
+events; with a cursor it replays retained events after that sequence and then follows live events.
+An expired or future cursor reports `thread_cursor_expired`; restore state and subscribe afresh.
 
-The v2 transport as a whole is **not** supported — its `POST /stream/events` is a subscription
-(`{ channels, ... }`, carrying no `assistant_id`) rather than a run-create, and `/commands` expects a
-protocol command envelope skein does not implement. Use the run endpoints, which is what `useStream`
-does by default.
+`POST /commands` recognizes `{ id, method, params }` envelopes and answers correlated JSON
+success/error responses. Implemented methods are `run.start`, `input.respond`, `agent.getTree`,
+`state.get`, `state.listCheckpoints`, and `state.fork`. Run commands enqueue through the existing
+worker; a subscription or reconnect never invokes the graph. Existing resume/goto/update bodies
+continue to return legacy SSE. State reads require read permission, run starts require `create_run`,
+and forks also require state-write and destination-creation permission.
+
+`GET /stream/events` remains an alias for `GET /stream`. Without parameters these join one run
+and finish with it, preserving Skein's established default. Explicit `stream_modes` (repeated or
+comma-separated, including `thread_state`) opts into a thread stream that stays open across turns.
+Its SSE event IDs are thread-wide cursors, rather than per-run frame IDs.
+
+Thread subscriptions require `ProtocolDeps.threadBus`; the built-in runtime assemblers provide it.
+Memory replay is process-local. Redis replay is shared between API replicas and workers. Neither
+publisher stores subscriber credentials or subscription filters: authorization and filtering happen
+for each reader during replay and live delivery. See the [tested compatibility matrix](./langgraph-compatibility.md).
 
 > The protocol also describes a WebSocket upgrade for bidirectional streaming. That is
 > **post-MVP** — SSE covers the full client UX (see [streaming.md](./streaming.md)).
@@ -3871,6 +3917,68 @@ thread itself is gated.
 
 - Agent Protocol repo + OpenAPI — <https://github.com/langchain-ai/agent-protocol>
 - aegra's Agent Protocol implementation (Python prior art) — <https://github.com/aegra/aegra>
+
+### Execution, search and retention options
+
+Run requests preserve `durability: "sync" | "async" | "exit"` through the queue. It takes precedence
+over deprecated `checkpoint_during`; explicit `true` maps to `async`, explicit `false` to `exit`, and
+omission keeps LangGraph’s default. Legacy SSE also recognizes `tasks` and `checkpoints` modes.
+
+Thread search supports `exclude_metadata` (one nonempty object or a nonempty list, excluding any
+matching subset), `sort_by: "state_updated_at"`, `select`, and up to ten named `extract` paths.
+Extraction accepts roots `values`, `metadata`, `config`, and `interrupts`, dot properties and array
+indices such as `values.messages[-1].content`; absent values become `null`. Filters run before
+pagination; projection and extraction run after authorization. Assistant and cron search support
+`select`. HTTP assistant name matching is case-insensitive substring matching; direct repository
+calls retain exact matching unless `nameMatch: "substring"` is requested.
+
+Store writes accept `index: false | string[]` and `ttl: null` for an explicit no-expiry item.
+`GET /store/items?refresh_ttl=false` and store search `refresh_ttl` control sliding expiry per read.
+Custom stores that cannot honor requested indexing or TTL controls fail explicitly.
+
+Thread TTL objects accept `strategy: "keep_latest"` with their TTL minutes. The sweeper retains the
+thread and current checkpoint in every retained namespace, including referenced child checkpoints
+and pending writes. State updates refresh that window; active runs are skipped. `delete` remains
+the default strategy and explicit `ttl: null` pins a thread. See [storage](./storage.md).
+
+### MCP and A2A
+
+`/mcp` uses the official MCP SDK’s stateless Streamable HTTP transport. Tools list authorized
+assistants and their input schemas. Calling a tool creates a run through the same authorized run
+service; cancellation uses the existing run cancellation machinery.
+
+`POST /a2a/{assistant_id}` uses the official A2A SDK’s JSON-RPC handlers and legacy codecs.
+Discovery is `GET /.well-known/agent-card.json?assistant_id=...`; `DEFAULT_A2A_ASSISTANT_ID` supplies
+an omitted assistant and `LANGGRAPH_API_URL` supplies the public origin. Supported method families
+are `SendMessage`, `SendStreamingMessage`, `GetTask`, `CancelTask`, `ListTasks`,
+`GetExtendedAgentCard` and the four legacy send/stream/get/cancel names.
+
+An A2A context maps to a thread. Each new task starts a queued run; a continuation keeps the first
+run’s task ID. Final output is captured before terminal status on existing run rows, independently
+of checkpoint pruning and event replay. Optional `RunRepo.recordResult/getResult` support is
+required before A2A admits work; ordinary Agent Protocol runs remain usable with older drivers.
+Resume checks the saved checkpoint under the existing execution lease and rejects stale tasks.
+Cancellation status takes precedence over a computed output.
+
+History defaults to the context. The advertised history-scope extension accepts `task` in
+`configuration.historyScope` for sends, in `params.historyScope` for reads/listing, or through
+`LangGraph-A2A-History-Scope`. Length is bounded to ten, after scope. Streaming omits response
+history. Assistant `metadata.a2a.input_modes`/`output_modes` customize nonempty advertised MIME
+lists. File parts preserve bytes or URLs, MIME and filenames through standard content blocks.
+
+Skein advertises HTTP/SSE, history scope and streaming. It does not advertise A2UI, task push
+notifications or subscription-to-task support. These unsupported methods fail explicitly. Dedicated
+frontend browser and packed-package gates validate clients separately from these transport tests.
+`http.disable_mcp` and `http.disable_a2a` remove their route groups.
+
+### Discovery and storage diagnostics
+
+`GET /openapi.json` and `/docs` describe the mounted route table and request schemas, including
+configured route groups and deployment-supplied authentication descriptions. `/metrics` exposes
+host-owned OpenTelemetry collection (501 when unavailable). Authorized
+`GET /threads/{thread_id}/storage` returns concrete saver payload counts and bytes, or 501 for a
+custom saver without an inspector. These routes use the common adapter/runtime paths; see
+[diagnostics](./observability.md#http-diagnostics) for measurement boundaries.
 
 
 ---
@@ -6648,6 +6756,40 @@ React hook, and Agent Chat UI — consumes **SSE**. The protocol's optional WebS
 buys bidirectional framing we don't need for v1, so it is deferred (see
 [roadmap.md](./roadmap.md)). **Deferring WebSocket does not affect the React SDK.**
 
+## Thread event subscriptions
+
+The thread protocol separates execution from observation. Submit `{ id, method: "run.start",
+params: { assistant_id, input } }` to `/threads/{id}/commands`, then observe
+`POST /threads/{id}/stream/events` with `{ channels: ["values", "messages", "lifecycle", "input"] }`.
+Reopening that subscription executes nothing. Commands return JSON envelopes; legacy command bodies
+retain their SSE response. The LangGraph binding uses the public `streamEvents(..., { version: "v3" })`
+path for protocol runs, including graph-defined transformers and custom channels.
+
+Subscriptions stay open across turns and receive idle heartbeat comments. Channel, namespace-prefix
+and depth filters are reader-specific; static namespace segments also match their runtime `:task-id`
+suffixes. The bus assigns sequence numbers before filtering, so reconnect cursors work across runs.
+Request `since` to replay after a cursor; an invalid retained-history boundary requires state
+restoration and a fresh subscription. With no cursor, the current state is the initial baseline.
+
+`MemoryThreadEventBus` bounds each payload history to 10,000 entries, retaining at most 50 payload
+histories. `RedisThreadEventBus` uses capped streams (approximately 10,000 entries) with a one-hour
+payload expiry. Sequence and deletion-generation records survive payload expiry. Deleting a thread
+clears payloads and closes its readers; execution captures its generation so a late publisher cannot
+repopulate history after deletion or ID reuse. Release the Redis bus with `dispose()` when assembling
+infrastructure by hand; runtime assemblers own that cleanup automatically.
+
+Legacy `GET /threads/{id}/stream` joins one run by default. Pass explicit `stream_modes` to follow
+legacy frames and optional `thread_state` events across turns. This default differs from Agent Server;
+see the [compatibility matrix](./langgraph-compatibility.md) for the verification scope.
+
+A subscription without `since` replays retained events so late selectors can recover custom
+channels and media, then receives a current state baseline and live events. An explicit `since`
+resumes after that publication sequence. Sequences span runs; payload expiry does not reset them.
+Expired or future explicit cursors return `thread_cursor_expired` and require state restoration.
+Memory and Redis buses use independent reader cursors and reject publications from a deleted
+thread incarnation, including after an explicit thread-ID reuse. SQLite's event bus is process-local;
+its state and run records remain durable across restart.
+
 
 ---
 
@@ -7009,10 +7151,11 @@ Verified against `@langchain/langgraph-api` and `@langchain/langgraph-sdk`:
 
 # Frontend SDKs / `useStream` compatibility
 
-A core promise of skein-js: **your existing frontend code keeps working by changing only the
-API URL.** That includes the React streaming hook, which is the most common way LangGraph
-apps render agent output — and the Vue, Svelte and Angular bindings, which wrap the same SDK
-and therefore work the same way ([see below](#not-just-react--vue-svelte-and-angular)).
+Skein supports the run-based JavaScript SDK and the legacy React hook from
+`@langchain/langgraph-sdk/react`. The newer `@langchain/react`, `@langchain/vue`,
+`@langchain/svelte`, and `@langchain/angular` packages use a separate thread event protocol.
+Versions 1.2.6 pass the dedicated browser matrix with the media workarounds described below; each
+package is tested independently. See the [compatibility matrix](./langgraph-compatibility.md).
 
 **What this gives you:** point
 [`useStream`](https://reference.langchain.com/javascript/langchain-langgraph-sdk/react/useStream) at a
@@ -7040,32 +7183,31 @@ streaming.
 
 ## The clients skein-js must satisfy
 
-| Client                 | Package                           | How it talks to skein-js                                         |
-| ---------------------- | --------------------------------- | ---------------------------------------------------------------- |
-| Vanilla JS SDK         | `@langchain/langgraph-sdk`        | `client.threads.*`, `client.runs.stream()`, `client.runs.wait()` |
-| **React hook**         | `@langchain/langgraph-sdk/react`  | **`useStream({ apiUrl, assistantId })`** over SSE                |
-| Vue / Svelte / Angular | `@langchain/{vue,svelte,angular}` | Same SSE path — see below                                        |
-| Agent Chat UI          | (built on `useStream`)            | Same SSE path                                                    |
-| LangGraph Studio       | —                                 | Agent Protocol HTTP                                              |
+| Client                 | Package                                 | How it talks to skein-js                                                       |
+| ---------------------- | --------------------------------------- | ------------------------------------------------------------------------------ |
+| Vanilla JS SDK         | `@langchain/langgraph-sdk`              | `client.threads.*`, `client.runs.stream()`, `client.runs.wait()`               |
+| **React hook**         | `@langchain/langgraph-sdk/react`        | **`useStream({ apiUrl, assistantId })`** over SSE                              |
+| New framework bindings | `@langchain/{react,vue,svelte,angular}` | Thread event subscriptions and command envelopes; see the compatibility matrix |
+| Agent Chat UI          | (built on `useStream`)                  | Same SSE path                                                                  |
+| LangGraph Studio       | —                                       | Agent Protocol HTTP                                                            |
 
 ## Not just React — Vue, Svelte and Angular
 
-**Nothing in skein-js is React-specific.** LangChain publishes first-party bindings for four
-frameworks, and each one is a thin wrapper over the _same_ `@langchain/langgraph-sdk` — all four
-declare an identical pinned dependency on it. They therefore issue identical Agent Protocol requests
-and read identical SSE frames, so every one of them works against a skein-js server by pointing its
-`apiUrl` at it, exactly as `useStream` does.
+LangChain publishes first-party bindings for four frameworks. Their current releases subscribe to
+`POST /threads/{thread_id}/stream/events` and send protocol command envelopes to `/commands`.
+This differs from the run-based endpoints used by the legacy React hook. A subscription must never
+start a run, including when the client reconnects.
 
 | Framework | Package                                                                                        | Entry points                                    | Peer range    |
 | --------- | ---------------------------------------------------------------------------------------------- | ----------------------------------------------- | ------------- |
 | React     | [`@langchain/react`](https://github.com/langchain-ai/langgraphjs/tree/main/libs/sdk-react)     | `useStream`, `StreamProvider`                   | React 18 · 19 |
 | Vue       | [`@langchain/vue`](https://github.com/langchain-ai/langgraphjs/tree/main/libs/sdk-vue)         | `useStream`, `provideStream`, `LangChainPlugin` | Vue 3         |
-| Svelte    | [`@langchain/svelte`](https://github.com/langchain-ai/langgraphjs/tree/main/libs/sdk-svelte)   | `provideStream`, `getStream`                    | Svelte 5      |
+| Svelte    | [`@langchain/svelte`](https://github.com/langchain-ai/langgraphjs/tree/main/libs/sdk-svelte)   | `useStream`, `provideStream`, `getStream`       | Svelte 5      |
 | Angular   | [`@langchain/angular`](https://github.com/langchain-ai/langgraphjs/tree/main/libs/sdk-angular) | `injectStream`, the `inject*` family            | Angular 18–21 |
 
-Each follows its own idiom — a React hook, a Vue composable, Svelte context, Angular DI — over one
-shared streaming core, so everything on this page transfers unchanged: submit a turn, read messages
-off the returned stream, render a pending `interrupt`, resume with a `command`.
+Each follows its own idiom — a React hook, a Vue composable, Svelte context, Angular DI — over a
+shared streaming core. The examples below use the legacy React API; consult the newer bindings'
+documentation for their current API shapes.
 
 **Mind the package names.** These are `@langchain/<framework>` packages, _not_ subpaths of the SDK —
 `@langchain/langgraph-sdk/vue` does not resolve, and the SDK's own README links to them by monorepo
@@ -7073,10 +7215,10 @@ path, which is easy to misread as a subpath. `@langchain/langgraph-sdk/react` st
 the example below uses; the dedicated packages are the newer home and the only place the non-React
 bindings live.
 
-skein-js ships no Vue, Svelte or Angular example, and the runtime matrix in
-[`ci.yml`](https://github.com/skein-js/skein-js/blob/main/.github/workflows/ci.yml) does not exercise
-them. The compatibility is structural — same SDK, same wire — rather than separately tested, and
-`useStream` is what the [verification harness](#verification-harness) covers.
+skein-js ships no standalone Vue, Svelte or Angular example. The dedicated compatibility CI job
+exercises all four framework packages in Chromium, separately from the runtime matrix and legacy
+`useStream` coverage. The [compatibility matrix](./langgraph-compatibility.md) records tested versions
+and features.
 
 ## `useStream` against skein-js
 
@@ -7124,10 +7266,10 @@ does not affect the React SDK.
 
 ## Verification harness
 
-[`examples/react-usestream`](https://github.com/skein-js/skein-js/tree/main/examples/react-usestream) is a minimal Next.js app wired to
-`useStream` and pointed at a placeholder skein-js URL. Once the server lands, it is the
-front-end signal that the SSE wiring satisfies the React SDK — token-by-token streaming in
-a real browser. See [testing.md](https://github.com/skein-js/skein-js/blob/main/docs/testing.md).
+[`examples/react-usestream`](https://github.com/skein-js/skein-js/tree/main/examples/react-usestream)
+is a minimal Next.js app using the legacy hook. The dedicated browser target exercises current
+framework packages over real HTTP, and the packed consumer checks both current and legacy clients
+outside the workspace. See [testing.md](./testing.md#compatibility-regression-gates).
 
 ## References
 
@@ -7139,6 +7281,101 @@ a real browser. See [testing.md](https://github.com/skein-js/skein-js/blob/main/
 - Vue bindings — <https://github.com/langchain-ai/langgraphjs/tree/main/libs/sdk-vue>
 - Svelte bindings — <https://github.com/langchain-ai/langgraphjs/tree/main/libs/sdk-svelte>
 - Angular bindings — <https://github.com/langchain-ai/langgraphjs/tree/main/libs/sdk-angular>
+
+## Dedicated framework packages
+
+The dedicated `@langchain/react`, `@langchain/angular`, `@langchain/vue`, and `@langchain/svelte`
+packages use the thread event protocol. Versions **1.2.6** are exercised in Chromium against Skein
+with their native HTTP transport, including multiple turns, restoration, interrupts, subgraphs,
+custom transformer channels, scoped media, forced reconnect and cancellation. Reopening a
+subscription never starts another graph execution. See the [compatibility matrix](./langgraph-compatibility.md)
+for the exact server, SDK and backend evidence.
+
+Svelte 1.2.6 has an upstream limitation: its root `useImages` selector returns an empty projection.
+Scoped media selectors are covered; target the subgraph namespace containing the media. This is a
+client selector limitation, even when the server sends valid root media events. React, Angular and
+Vue root media selectors also pass the browser checks.
+
+Vue 1.2.6 wraps media asset instances in reactive proxies. Reading an asset's `blob` directly can
+throw a private-field error; unwrap it with Vue's public `toRaw` first. The browser gate verifies the
+actual MIME type and bytes with this workaround:
+
+```ts
+import { toRaw } from "vue";
+
+const blob = await toRaw(images.value[0]).blob;
+```
+
+
+---
+
+<!-- source: docs/langgraph-compatibility.md -->
+
+# LangGraph Agent Server compatibility
+
+Baseline investigated on **22 October 2026**. A shared dependency or a route with a similar name
+does not establish compatibility: the official client must exercise the behavior end to end.
+
+| Surface                                           | Baseline                                      | Compatibility work                                                                                   |
+| ------------------------------------------------- | --------------------------------------------- | ---------------------------------------------------------------------------------------------------- |
+| Run-based JavaScript SDK and legacy React hook    | Supported                                     | Retain coverage for SDK 1.9.25 and 1.9.31                                                            |
+| Thread event protocol                             | Not yet supported                             | SDK 1.12.6; protocol 0.0.20; subscriptions, commands, reconnect and restoration                      |
+| Dedicated React, Angular, Vue and Svelte bindings | Not yet verified                              | Test each package at 1.2.6 in a real browser                                                         |
+| Thread-wide legacy stream                         | Joins one run                                 | Add explicit `stream_modes` following without changing the existing default                          |
+| Execution and checkpoint options                  | Partial                                       | Durability, task/checkpoint modes, recursive and namespaced state/history                            |
+| Search and retention                              | Partial                                       | Projection, exclusion, extraction, state timestamps, per-operation store options and keep-latest TTL |
+| MCP and A2A endpoints                             | Not implemented                               | Official transport SDKs over the existing authorized services                                        |
+| Graph UI assets and `http.app`                    | Accepted configuration without implementation | Development loading and standalone production artifacts                                              |
+| OpenAPI and `/docs`                               | Not implemented                               | Describe actual enabled routes and authentication                                                    |
+| `/metrics` and thread storage reporting           | Not implemented                               | Existing OTel instrumentation and exact saver-backed payload accounting                              |
+
+The versions above are **implementation targets**, not a claim that all of their features have
+passed. The implementation updates this matrix with the corresponding test evidence.
+
+## Intentional differences
+
+- HTTP/SSE is the supported transport target; WebSockets and gRPC remain outside the compatibility
+  program.
+- Stateless runs keep their threads by default. Request `on_completion: "delete"` to remove them.
+- Store ordering filters compare numbers only.
+- Local SQLite persists resources and checkpoints; event replay is process-local and is lost on
+  restart.
+- Skein adds idempotent run creation and durable, signed, retried webhook delivery. LangGraph also
+  supports ordinary run-completion webhooks.
+- Managed hosting, billing, evaluations and application identity policy remain outside Skein.
+
+See [the frontend guide](./react-sdk.md), [protocol reference](./agent-protocol.md),
+[CLI compatibility](./langgraph-cli-compat.md), and
+[issue #62](https://github.com/skein-js/skein-js/issues/62).
+
+## Implementation evidence, 23 October 2026
+
+The workspace exercises LangGraph.js **1.4.7**; the clean packed consumer pins **1.4.12**.
+The thread-protocol binding uses public `streamEvents({ version: "v3" })` and requires that runtime
+capability. The existing legacy execution path remains available for older graphs and custom agents.
+
+| Scope                                                                      | Versions and backends exercised                                                                        | Evidence                                                                                                                                          |
+| -------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------ | ------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Thread subscriptions, commands, restoration, multiple turns and interrupts | JavaScript SDK 1.12.6 / protocol 0.0.20; Express + memory                                              | Official client HTTP tests in `thread-protocol.test.ts`                                                                                           |
+| Reconnect across API instances, one queued execution                       | SDK 1.12.6; Express + real Redis queue and thread buses                                                | `thread-protocol.integration.test.ts`, including a proxy-forced reconnect                                                                         |
+| Legacy protocol and adapters                                               | Packed SDK 1.9.25 / 1.9.31 clients and legacy protocol tests; Express, Fastify, Fetch, NestJS, Next.js | Existing adapter suites retained; dedicated framework browser coverage is listed separately below                                                 |
+| Store indexing, nullable write TTL and per-read refresh                    | Memory, SQLite and real Postgres                                                                       | Shared store-options conformance; real SQLite reopen                                                                                              |
+| MCP discovery and execution                                                | Official MCP SDK 1.32.1; stateless Streamable HTTP                                                     | Official client transport test; shared MCP/A2A HTTP checks across all five adapters                                                               |
+| A2A output retention and interrupts                                        | Official A2A SDK 1.3.0; memory and reopened SQLite                                                     | Official client over HTTP; first-task output survives another turn and checkpoint pruning                                                         |
+| Dedicated frontend bindings                                                | React/Angular/Vue/Svelte 1.2.6, SDK 1.12.6, Chromium; Express + memory                                 | Native HTTP streaming, restoration, interrupts, cancellation, multiple turns, subgraphs, custom channels, scoped media and proxy-forced reconnect |
+| Compiled UI and custom applications                                        | Public UI compiler 1.4.2; generated Node 24 production image + SQLite                                  | Real build → artifact → image; UI bootstrap/assets, Fetch app, OpenAPI and docs without sources or optional UI compiler                           |
+| Diagnostics                                                                | Memory, SQLite and real Postgres saver payloads; standard OTel metric reader                           | Actual buffer/blob/datum accounting; Prometheus and OTLP JSON serializers; explicit unsupported-capability errors                                 |
+
+A separate packed consumer installs Skein tarballs outside the workspace and exercises SDK 1.12.6,
+legacy SDKs 1.9.25 and 1.9.31, official MCP and A2A clients, and diagnostics over native HTTP with no
+application transport shim. That gate passes. These checks establish the listed behavior only;
+release also requires the full Nx quality gates. Svelte 1.2.6's root `useImages` selector returns an empty
+projection in its own implementation; scoped media selectors pass. Root media from React, Angular
+and Vue was also exercised while validating graph-scope message namespaces. Vue 1.2.6 media assets
+require `toRaw(asset)` before accessing `blob`, because its reactive proxy breaks private fields.
+The browser gate checks actual media bytes with that public Vue workaround. These client limitations
+are tracked separately from server media delivery. Development UI watches currently follow the
+upstream watcher’s process lifetime; applications own process shutdown.
 
 
 ---
@@ -7287,7 +7524,7 @@ async function remember(state) {
 
 This is what makes skein a faithful drop-in: LangGraph Platform auto-provides a store to graphs, so
 a graph that calls `getStore()` runs unchanged on skein. The bridge is `SkeinBaseStore` in
-[`@skein-js/agent-protocol`](https://github.com/skein-js/skein-js/tree/main/packages/agent-protocol), attached in the run engine the same way the
+[`@skein-js/langgraph`](https://github.com/skein-js/skein-js/tree/main/packages/langgraph), attached in the run engine the same way the
 checkpointer is. Semantic `search` uses pgvector on the Postgres driver and a naive scan on memory —
 both come from the same `StoreRepo`, so behavior matches.
 
@@ -7386,7 +7623,7 @@ so the same `langgraph.json` works under both. Durations in **minutes**:
 - `default_ttl` — lifetime applied to a thread created without its own `ttl`. `POST /threads` accepts a
   per-thread `ttl` (minutes) that overrides it, and an explicit `null` **pins** the thread so no TTL
   ever collects it. `PATCH /threads/{id}` can change or clear it later; a new value restarts the clock.
-- `strategy` — only `"delete"` is implemented, and it is the only thing a thread could expire into.
+- `strategy` — `"delete"` (default) removes the expired thread; `"keep_latest"` retains current state, referenced namespace checkpoints and necessary ancestor writes.
 - `sweep_interval_minutes` (default `60`) — how often the sweeper runs.
 
 **Expiry means "may be collected", not "gone"** — the one place this deliberately differs from store
@@ -7409,7 +7646,7 @@ The sweeper runs whether or not `checkpointer.ttl` is set, because a per-thread 
 collect. With neither configured nor requested, nothing has an expiry and each sweep is one indexed
 read that finds nothing.
 
-With no `checkpointer.ttl` set, no sweeper runs and threads live until something deletes them.
+Threads without a configured or per-thread TTL live until explicitly deleted.
 
 > Note this goes **past** LangGraph OSS rather than catching up to it: the open-source
 > `@langchain/langgraph-api` accepts `ttl` on thread create and silently drops it — thread expiry is a
@@ -7609,6 +7846,40 @@ It assembles resources, the queue, and the upstream saver with one file owner. S
 [`@skein-js/storage-sqlite`](./local-deployment.md) implements the full resource store and a persisted
 run queue in one exclusively owned file. `@skein-js/local` assembles it with LangGraph's SQLite saver.
 Unclaimed work persists; abandoned attempts become failures without automatic input replay.
+
+## Per-operation indexing and retention
+
+The bundled memory, SQLite and Postgres stores implement optional `StoreRepo.putWithOptions`:
+
+```ts
+await store.putWithOptions!(namespace, key, value, { index: ["title"], ttl: null });
+await store.get(namespace, key, { refreshTtl: false });
+await store.search({ prefix: namespace, query: "meeting", refreshTtl: true });
+```
+
+`index: false` stores the item without making it a text/vector search candidate. A field list limits
+indexed content; `$` includes the whole value. Exact key reads still return the complete item.
+An explicit nullable TTL disables the configured default for that write. Existing `put` and its
+`ttl?: number` options remain source compatible. Unsupported custom stores reject requested
+advanced controls. The LangGraph bridge forwards indexing, write TTL and read/search refresh
+options, including batch operations. An external BaseStore must expose the corresponding controls;
+Skein does not emulate persistent expiry with process-local timers.
+
+Thread TTL retains deletion as the default. An opt-in `keep_latest` strategy prunes old history
+without deleting the thread, root checkpoint, referenced child state or pending writes. The retention
+window slides when state changes; the sweep skips an active run and rearms its next check after
+pruning. A null TTL pins the thread. The SQLite and Postgres migrations preserve existing pins:
+older rows without a recorded TTL remain pinned rather than acquiring an unexpected expiry.
+
+Pruning and rollback use LangGraph’s public saver methods. A scratch copy is written before erasure;
+if replay fails, its ID is included in the error for recovery. These operations require the same
+thread execution gate as state writes. They preserve namespace coordinates when copying history.
+
+Checkpoint pruning retains current root/child namespaces, explicit checkpoint references and
+pending writes. Delta channels may also require ancestor writes until a full snapshot; those
+necessary ancestors remain readable after prune and copy. `keep_latest` removes expendable history,
+not checkpoint data required to reconstruct current state. Exact payload accounting is available at
+`GET /threads/{thread_id}/storage`; see [diagnostics](./observability.md#http-diagnostics).
 
 
 ---
@@ -8796,7 +9067,7 @@ traffic groups per conversation instead of collapsing into one distinct id. Over
 pnpm add @skein-js/otel @opentelemetry/api
 ```
 
-`@skein-js/otel` depends on the OTel **API only** — never the SDK, never an exporter. Your app owns
+`@skein-js/otel` records through the OTel **API** without creating an SDK or exporter. Optional HTTP metric collection uses official serializers. Your app owns
 the SDK and decides where data goes, exactly as it already does for the rest of your service. That's
 why one small package covers every OTLP backend. If no SDK is registered, the API's no-op
 implementation takes over and this costs almost nothing.
@@ -8959,6 +9230,34 @@ configuration.
 - [Errors & logging](./errors-and-logging.md) — the other two reporting surfaces
 - [Runs & Redis](./runs-and-redis.md) — the run engine these events come from
 - [Deploy](./deploy.md) — running skein in production
+
+## HTTP diagnostics
+
+`GET /openapi.json` describes the actual mounted routes and request validators. `GET /docs` serves
+an offline API reference using that document. Disabled route groups are omitted, and disabling the
+meta group removes both endpoints and `/metrics`. Deployment-provided `auth.openapi` security
+schemes describe existing authentication; custom policy remains in the host.
+
+`GET /metrics` collects an explicitly supplied host metric reader. With `createOtelTelemetry`, pass
+`metricReader` already registered on your `MeterProvider`; install the optional official
+`@opentelemetry/exporter-prometheus@^0.222.0` and/or
+`@opentelemetry/otlp-transformer@^0.222.0` serializers for the formats you expose. The default response
+is Prometheus text; `?format=json` (or an Accept header for JSON) returns standard OTLP JSON. Skein
+owns neither provider lifetime nor exporter/backend selection. A deployment without a collector
+returns 501; collection failures return 503.
+
+Alongside existing run/queue instruments, the sink records `skein.worker.active_runs`,
+`skein.http.requests`, and `skein.http.duration`. HTTP duration measures handler response latency;
+stream consumption may continue afterwards. HTTP dimensions contain method, handler and status,
+without thread IDs, caller IDs or credentials. Internal MCP/A2A service calls do not count as
+additional HTTP requests.
+
+Authorized `GET /threads/{thread_id}/storage` reports exact stored saver payload sizes: checkpoints,
+channel versions, pending writes and their total. Memory sums encoded buffers, SQLite uses stored
+blob lengths, and Postgres measures stored JSONB and BYTEA datums, including database compression,
+in one snapshot. Inline channel values count in checkpoint bytes. Counts exclude indexes, table/page overhead and filesystem
+allocation; this is payload accounting rather than a disk-space estimate. Custom savers without an
+inspector return 501.
 
 
 ---
@@ -11743,6 +12042,18 @@ Two notes specific to the container:
 - `PG_POOL_MAX` is per pool and skein opens **three** per instance, so budget three times your setting against
   the database's own connection cap — per replica.
 
+## Compatibility assets and diagnostics
+
+`skein build` includes configured graph UI assets and `http.app` exports in the production artifact.
+Ship the whole artifact; production does not need TypeScript sources or the development UI compiler.
+The build-image gate runs the generated image and checks custom routes, UI bootstrap/assets,
+OpenAPI and docs. See [configuration compatibility](./langgraph-cli-compat.md#graph-ui-and-custom-http-applications).
+
+Use Redis thread events for reconnect across API instances. SQLite and memory event replay are
+process-local, even when SQLite resource rows and checkpoints persist. Monitoring remains host-owned:
+configure an OpenTelemetry reader before exposing `/metrics`, and use the storage endpoint for exact
+checkpoint payload accounting. See [diagnostics](./observability.md#http-diagnostics).
+
 
 ---
 
@@ -12676,4 +12987,10 @@ for Python — is skein-js's actual product:
 See [code-practices.md](./code-practices.md) for how we keep the code we _do_ write small
 and neat, and [storage.md](./storage.md) / [runs-and-redis.md](./runs-and-redis.md) for the
 rebuilt pieces in detail.
+
+Thread protocol execution delegates to LangGraph’s public `streamEvents({version: "v3"})`;
+subscription and reconnect do not invoke a graph. The legacy graph stream remains available for
+run-based clients. MCP and A2A use their official SDKs for transport and canonical serialization,
+while Skein’s existing authorization, run admission, queue, persistence and cancellation remain the
+execution authority. A2A results live on run rows rather than in a second task database.
 

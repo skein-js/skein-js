@@ -77,3 +77,9 @@ for Python — is skein-js's actual product:
 See [code-practices.md](./code-practices.md) for how we keep the code we _do_ write small
 and neat, and [storage.md](./storage.md) / [runs-and-redis.md](./runs-and-redis.md) for the
 rebuilt pieces in detail.
+
+Thread protocol execution delegates to LangGraph’s public `streamEvents({version: "v3"})`;
+subscription and reconnect do not invoke a graph. The legacy graph stream remains available for
+run-based clients. MCP and A2A use their official SDKs for transport and canonical serialization,
+while Skein’s existing authorization, run admission, queue, persistence and cancellation remain the
+execution authority. A2A results live on run rows rather than in a second task database.

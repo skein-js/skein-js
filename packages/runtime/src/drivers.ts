@@ -11,6 +11,7 @@ import type { ProtocolDeps, WebhookDeliveryConfig } from "@skein-js/agent-protoc
 import {
   RedisRunAbortChannel,
   RedisRunEventBus,
+  RedisThreadEventBus,
   RedisDeliveryQueue,
   RedisRunQueue,
   type RedisRunEventBusOptions,
@@ -18,6 +19,7 @@ import {
 import {
   CHECKPOINTER_MIGRATIONS_LOCK,
   createPostgresPool,
+  inspectPostgresThreadStorage,
   createPostgresThreadExecutionGate,
   PostgresSkeinStore,
   withSessionAdvisoryLock,
@@ -170,7 +172,9 @@ export async function connectPostgresStore(args: {
   /** Max runs executing at once — sizes the execution-gate pool. See `threadGatePoolMax`. */
   runConcurrency: number;
   disposers: Disposer[];
-}): Promise<Pick<ProtocolDeps, "store" | "checkpointer" | "threadExecutionGate">> {
+}): Promise<
+  Pick<ProtocolDeps, "store" | "checkpointer" | "threadExecutionGate" | "inspectThreadStorage">
+> {
   const { url, index, ttl, threadTtl, connectionOptions, maxPageSize, runConcurrency, disposers } =
     args;
   const store = await PostgresSkeinStore.connect(url, {
@@ -212,7 +216,8 @@ export async function connectPostgresStore(args: {
     await setupPool.end();
   }
 
-  const checkpointer = new PostgresSaver(createPostgresPool(url, connectionOptions));
+  const saverPool = createPostgresPool(url, connectionOptions);
+  const checkpointer = new PostgresSaver(saverPool);
   disposers.push(() => checkpointer.end());
 
   // Per-thread execution serialization across instances, on its **own** pool: every executing run holds
@@ -226,6 +231,7 @@ export async function connectPostgresStore(args: {
   return {
     store,
     checkpointer,
+    inspectThreadStorage: (threadId: string) => inspectPostgresThreadStorage(saverPool, threadId),
     threadExecutionGate: createPostgresThreadExecutionGate(gatePool, {
       warn: (message, meta) => console.warn(`skein: ${message}`, meta ?? ""),
     }),
@@ -290,7 +296,7 @@ export function connectRedisQueue(args: {
   disposers: Disposer[];
   /** The retry policy, so the queue's own backoff is sized from `skein.webhooks` rather than guessed. */
   webhooks?: WebhookDeliveryConfig;
-}): Pick<ProtocolDeps, "queue" | "bus" | "abortChannel" | "deliveryQueue"> {
+}): Pick<ProtocolDeps, "queue" | "bus" | "threadBus" | "abortChannel" | "deliveryQueue"> {
   const { url, disposers } = args;
   const queue = new RedisRunQueue(url);
   disposers.push(() => queue.dispose());
@@ -305,13 +311,15 @@ export function connectRedisQueue(args: {
   disposers.push(() => deliveryQueue.dispose());
   const bus = new RedisRunEventBus(url, redisEventBusOptions());
   disposers.push(() => bus.dispose());
+  const threadBus = new RedisThreadEventBus(url);
+  disposers.push(() => threadBus.dispose());
   const abortChannel = new RedisRunAbortChannel(url, {
     // Reported, not thrown: losing the abort channel degrades cancellation to per-instance, which must
     // not take the process down or fail the request that triggered it.
     onError: (error) => console.warn("skein: run abort channel error", error),
   });
   disposers.push(() => abortChannel.dispose());
-  return { queue, bus, abortChannel, deliveryQueue };
+  return { queue, bus, threadBus, abortChannel, deliveryQueue };
 }
 
 /**

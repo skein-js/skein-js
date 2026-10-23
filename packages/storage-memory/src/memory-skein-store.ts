@@ -50,11 +50,14 @@ import {
   type RunFinalization,
   type RunKwargs,
   type RunRepo,
+  type RunResult,
+  serializeWireJson,
   type RunStatus,
   type SearchItem,
   type SkeinStore,
   type SkeinStoreSnapshot,
   type StorePutOptions,
+  type StoreItemWriteOptions,
   type StoreRepo,
   type StoreSearchQuery,
   type StoreTtlConfig,
@@ -181,6 +184,7 @@ export class MemorySkeinStore implements SkeinStore {
   readonly #threads = new Map<string, Thread>();
   readonly #runs = new Map<string, Run>();
   // The opaque execution payload lives beside the run row (it is not part of the wire `Run`).
+  readonly #runResults = new Map<string, RunResult>();
   readonly #runKwargs = new Map<string, RunKwargs>();
   readonly #crons = new Map<string, Cron>();
   // The principal a cron's fired runs execute as — beside the row, never on the wire (see `CronAuth`).
@@ -192,6 +196,7 @@ export class MemorySkeinStore implements SkeinStore {
   readonly #items = new Map<string, Item>();
   // Item expiry lives beside the item (never on the wire `Item`), keyed the same way as #items:
   // `expiresAt` is epoch-ms (null = never expires), `ttlMinutes` is what a refresh-on-read extends by.
+  readonly #itemIndexes = new Map<string, false | string[]>();
   readonly #itemExpiry = new Map<string, { expiresAt: number | null; ttlMinutes: number | null }>();
   readonly #ttl?: StoreTtlConfig;
   // Recorded `Idempotency-Key` responses, keyed by `idempotencyKey(scope, key)`. Deliberately absent
@@ -205,6 +210,10 @@ export class MemorySkeinStore implements SkeinStore {
    * Thread expiry, epoch-ms, for threads that have one. Kept beside the row rather than on it — the
    * wire `Thread` has no expiry field, and inventing one would diverge from the SDK's shape.
    */
+  readonly #threadRetention = new Map<
+    string,
+    { ttl?: number | null; strategy: "delete" | "keep_latest" }
+  >();
   readonly #threadExpiry = new Map<string, number>();
   readonly #threadTtl?: ThreadTtlConfig;
 
@@ -224,8 +233,18 @@ export class MemorySkeinStore implements SkeinStore {
    * Record (or clear) a thread's expiry. `null` pins the thread; `undefined` falls back to the
    * configured default, so a create that says nothing still expires under a configured TTL.
    */
-  #setThreadExpiry(threadId: string, ttlMinutes: number | null | undefined): void {
-    const minutes = ttlMinutes === undefined ? this.#threadTtl?.defaultTtl : ttlMinutes;
+  #setThreadExpiry(
+    threadId: string,
+    ttlMinutes: number | null | undefined,
+    strategy?: "delete" | "keep_latest",
+  ): void {
+    const current = this.#threadRetention.get(threadId);
+    const minutes =
+      ttlMinutes === undefined ? (current ? current.ttl : this.#threadTtl?.defaultTtl) : ttlMinutes;
+    this.#threadRetention.set(threadId, {
+      ttl: minutes,
+      strategy: strategy ?? current?.strategy ?? this.#threadTtl?.strategy ?? "delete",
+    });
     if (minutes === null || minutes === undefined) {
       this.#threadExpiry.delete(threadId);
       return;
@@ -276,8 +295,8 @@ export class MemorySkeinStore implements SkeinStore {
    * Extend a live item's expiry on read when TTL is configured and `refresh_on_read` isn't disabled
    * (it defaults on). With no configured TTL we never refresh, matching the Postgres driver.
    */
-  #maybeRefresh(id: string): void {
-    if (this.#ttl === undefined || this.#ttl.refreshOnRead === false) return;
+  #maybeRefresh(id: string, refresh?: boolean): void {
+    if (!(refresh ?? (this.#ttl !== undefined && this.#ttl.refreshOnRead !== false))) return;
     const entry = this.#itemExpiry.get(id);
     if (entry?.ttlMinutes != null) {
       this.#itemExpiry.set(id, { ...entry, expiresAt: Date.now() + entry.ttlMinutes * 60_000 });
@@ -350,6 +369,13 @@ export class MemorySkeinStore implements SkeinStore {
         (!query.ids || query.ids.includes(thread.thread_id)) &&
         (!query.status || thread.status === query.status) &&
         isMetadataSubset(thread.metadata, query.metadata) &&
+        !(
+          Array.isArray(query.excludeMetadata)
+            ? query.excludeMetadata
+            : query.excludeMetadata
+              ? [query.excludeMetadata]
+              : []
+        ).some((excluded) => isMetadataSubset(thread.metadata, excluded)) &&
         // The server's own scoping, AND-ed with the caller's filter — see `enforcedMetadata`.
         isMetadataSubset(thread.metadata, query.enforcedMetadata) &&
         isMetadataSubset(thread.values, query.values),
@@ -371,7 +397,10 @@ export class MemorySkeinStore implements SkeinStore {
     const matched = [...this.#assistants.values()].filter(
       (assistant) =>
         (query.graph_id === undefined || assistant.graph_id === query.graph_id) &&
-        (query.name === undefined || assistant.name === query.name) &&
+        (query.name === undefined ||
+          (query.nameMatch === "substring"
+            ? assistant.name.toLowerCase().includes(query.name.toLowerCase())
+            : assistant.name === query.name)) &&
         isMetadataSubset(assistant.metadata, query.metadata),
     );
     const sortBy = query.sortBy ?? "created_at";
@@ -490,6 +519,13 @@ export class MemorySkeinStore implements SkeinStore {
   };
 
   readonly threads: ThreadRepo = {
+    getTtl: async (threadId) =>
+      clone(
+        this.#threadRetention.get(threadId) ?? {
+          ttl: this.#threadTtl?.defaultTtl,
+          strategy: this.#threadTtl?.strategy ?? "delete",
+        },
+      ),
     list: async () =>
       clonePage(
         sortByCreatedAtThenId([...this.#threads.values()], (row) => row.thread_id),
@@ -519,7 +555,7 @@ export class MemorySkeinStore implements SkeinStore {
         values: {} as Record<string, unknown>,
         interrupts: {},
       };
-      this.#setThreadExpiry(threadId, input?.ttl);
+      this.#setThreadExpiry(threadId, input?.ttl, input?.ttlStrategy);
       return write(this.#threads, thread.thread_id, thread);
     },
     update: async (threadId, patch: ThreadUpdate) => {
@@ -540,7 +576,14 @@ export class MemorySkeinStore implements SkeinStore {
         state_updated_at: patch.values !== undefined ? at : existing.state_updated_at,
         ...(error == null ? {} : { error }),
       };
-      if (patch.ttl !== undefined) this.#setThreadExpiry(threadId, patch.ttl);
+      if (
+        patch.ttl !== undefined ||
+        patch.ttlStrategy !== undefined ||
+        (patch.values !== undefined &&
+          (this.#threadRetention.get(threadId)?.strategy ?? this.#threadTtl?.strategy) ===
+            "keep_latest")
+      )
+        this.#setThreadExpiry(threadId, patch.ttl, patch.ttlStrategy);
       return write(this.#threads, threadId, updated);
     },
     copy: async (threadId) => {
@@ -562,7 +605,15 @@ export class MemorySkeinStore implements SkeinStore {
     listExpired: async ({ now, limit }) => {
       const cutoff = Date.parse(now);
       return [...this.#threadExpiry]
-        .filter(([threadId, expiresAt]) => expiresAt <= cutoff && this.#threads.has(threadId))
+        .filter(
+          ([threadId, expiresAt]) =>
+            expiresAt <= cutoff &&
+            this.#threads.has(threadId) &&
+            (this.#threadRetention.get(threadId)?.strategy !== "keep_latest" ||
+              ![...this.#runs.values()].some(
+                (run) => run.thread_id === threadId && !isTerminalRunStatus(run.status),
+              )),
+        )
         .sort(([, a], [, b]) => a - b)
         .slice(0, Math.min(limit, this.#maxPageSize))
         .map(([threadId]) => threadId);
@@ -570,11 +621,13 @@ export class MemorySkeinStore implements SkeinStore {
     delete: async (threadId) => {
       this.#threads.delete(threadId);
       this.#threadExpiry.delete(threadId);
+      this.#threadRetention.delete(threadId);
       // Cascade: a deleted thread's runs (and their kwargs) go with it.
       for (const [runId, run] of this.#runs) {
         if (run.thread_id === threadId) {
           this.#runs.delete(runId);
           this.#runKwargs.delete(runId);
+          this.#runResults.delete(runId);
         }
       }
       // Thread crons go too, mirroring the Postgres driver's `ON DELETE CASCADE`. This is what makes
@@ -590,6 +643,11 @@ export class MemorySkeinStore implements SkeinStore {
   };
 
   readonly runs: RunRepo = {
+    recordResult: async (runId, result) => {
+      if (this.#runs.has(runId) && !this.#runResults.has(runId))
+        this.#runResults.set(runId, JSON.parse(serializeWireJson(result)) as RunResult);
+    },
+    getResult: async (runId) => (this.#runs.has(runId) ? readOne(this.#runResults, runId) : null),
     get: async (runId) => readOne(this.#runs, runId),
     listByThread: async (threadId, query) => {
       // The status filter is applied *before* paging, so `limit`/`offset` page the filtered set —
@@ -698,6 +756,7 @@ export class MemorySkeinStore implements SkeinStore {
     delete: async (runId) => {
       this.#runs.delete(runId);
       this.#runKwargs.delete(runId);
+      this.#runResults.delete(runId);
     },
     getKwargs: async (runId) => {
       const found = this.#runKwargs.get(runId);
@@ -1051,7 +1110,7 @@ export class MemorySkeinStore implements SkeinStore {
   };
 
   readonly store: StoreRepo = {
-    get: async (namespace, key) => {
+    get: async (namespace, key, options) => {
       const id = itemKey(namespace, key);
       const found = this.#items.get(id);
       if (!found) return null;
@@ -1061,10 +1120,12 @@ export class MemorySkeinStore implements SkeinStore {
         this.#itemExpiry.delete(id);
         return null;
       }
-      this.#maybeRefresh(id);
+      this.#maybeRefresh(id, options?.refreshTtl);
       return clone(found);
     },
-    put: async (namespace, key, value, options?: StorePutOptions) => {
+    put: async (namespace, key, value, options?: StorePutOptions) =>
+      this.store.putWithOptions!(namespace, key, value, options),
+    putWithOptions: async (namespace, key, value, options?: StoreItemWriteOptions) => {
       const id = itemKey(namespace, key);
       const at = nowIso();
       const existing = this.#items.get(id);
@@ -1078,13 +1139,19 @@ export class MemorySkeinStore implements SkeinStore {
       const stored = clone(item);
       this.#items.set(id, stored);
       // A per-put ttl wins; otherwise the configured default (null = never expires).
-      this.#setExpiry(id, options?.ttl ?? this.#ttl?.defaultTtl ?? null);
+      this.#setExpiry(
+        id,
+        options?.ttl === undefined ? (this.#ttl?.defaultTtl ?? null) : options.ttl,
+      );
+      if (options?.index === undefined) this.#itemIndexes.delete(id);
+      else this.#itemIndexes.set(id, clone(options.index));
       return clone(stored);
     },
     delete: async (namespace, key) => {
       const id = itemKey(namespace, key);
       this.#items.delete(id);
       this.#itemExpiry.delete(id);
+      this.#itemIndexes.delete(id);
     },
     search: async (query: StoreSearchQuery) => {
       const needle = query.query?.toLowerCase();
@@ -1095,10 +1162,22 @@ export class MemorySkeinStore implements SkeinStore {
         .filter((item) => hasPrefix(item.namespace, query.prefix))
         .filter((item) => matchesItemFilter(item.value, query.filter))
         .filter((item) =>
-          needle ? JSON.stringify(item.value).toLowerCase().includes(needle) : true,
+          needle
+            ? (() => {
+                const index = this.#itemIndexes.get(itemKey(item.namespace, item.key));
+                if (index === false || index?.length === 0) return false;
+                const indexed =
+                  index && !index.includes("$")
+                    ? Object.fromEntries(index.map((field) => [field, item.value[field]]))
+                    : item.value;
+                return JSON.stringify(indexed).toLowerCase().includes(needle);
+              })()
+            : true,
         );
 
       const page = clonePage(matches, query.offset ?? 0, this.#pageLimit(query.limit));
+      for (const item of page)
+        this.#maybeRefresh(itemKey(item.namespace, item.key), query.refreshTtl);
       // Naive relevance: any query is an exact-substring hit, so score 1 (pgvector does the real
       // semantic ranking in the Postgres driver).
       if (needle) for (const item of page) item.score = 1;
@@ -1238,9 +1317,21 @@ export class MemorySkeinStore implements SkeinStore {
       assistants: entries(this.#assistants),
       assistantVersions: entries(this.#assistantVersions),
       threads: entries(this.#threads),
+      threadRetention: [...this.#threadRetention].map(([id, policy]) => [
+        id,
+        { ...policy, expiresAt: this.#threadExpiry.get(id) ?? null },
+      ]),
       runs: entries(this.#runs),
       runKwargs: entries(this.#runKwargs),
+      runResults: entries(this.#runResults),
       items: entries(this.#items),
+      itemOptions: [...this.#items.keys()].map((id) => [
+        id,
+        {
+          ...(this.#itemIndexes.has(id) ? { index: clone(this.#itemIndexes.get(id)!) } : {}),
+          ...this.#itemExpiry.get(id),
+        },
+      ]),
       // This is what gives `skein dev` cron persistence across restarts for free. `#cronAuth` is
       // deliberately not persisted: a snapshot is written to disk, and a caller's permission scopes
       // are not something to leave in `.skein/`.
@@ -1259,6 +1350,10 @@ export class MemorySkeinStore implements SkeinStore {
     fill(this.#threads, snapshot.threads);
     fill(this.#runs, snapshot.runs);
     fill(this.#runKwargs, snapshot.runKwargs);
+    fill(
+      this.#runResults,
+      (snapshot.runResults ?? []).filter(([id]) => this.#runs.has(id)),
+    );
     fill(this.#items, snapshot.items);
     fill(this.#crons, snapshot.crons ?? []);
     // A restored cron starts its claim sequence from zero — the token only has to be consistent
@@ -1271,7 +1366,13 @@ export class MemorySkeinStore implements SkeinStore {
     // invented deadline or a thread that can never expire. Matches `#itemExpiry` below, which is
     // cleared for the same reason.
     this.#threadExpiry.clear();
+    this.#threadRetention.clear();
     for (const threadId of this.#threads.keys()) this.#setThreadExpiry(threadId, undefined);
+    for (const [id, policy] of snapshot.threadRetention ?? []) {
+      this.#threadRetention.set(id, { ttl: policy.ttl, strategy: policy.strategy });
+      if (policy.expiresAt != null) this.#threadExpiry.set(id, policy.expiresAt);
+      else this.#threadExpiry.delete(id);
+    }
     // Credentials are deliberately not in the snapshot — it is written to `.skein/` on disk. So a
     // restored cron keeps its `user_id` but loses the principal behind it, and the scheduler refuses
     // to fire that combination rather than running it unowned (see `fireCron`). On an
@@ -1288,8 +1389,14 @@ export class MemorySkeinStore implements SkeinStore {
         );
       }
     }
-    // Item expiry is not persisted; a restored item won't expire until it is written again.
+    // Older snapshots have no item options; their items retain the previous no-expiry behavior.
     this.#itemExpiry.clear();
+    this.#itemIndexes.clear();
+    for (const [id, options] of snapshot.itemOptions ?? []) {
+      if (options.index !== undefined) this.#itemIndexes.set(id, clone(options.index));
+      if (options.expiresAt != null && options.ttlMinutes != null)
+        this.#itemExpiry.set(id, { expiresAt: options.expiresAt, ttlMinutes: options.ttlMinutes });
+    }
   }
 
   /**
@@ -1305,10 +1412,28 @@ export class MemorySkeinStore implements SkeinStore {
     };
     add(this.#assistants, snapshot.assistants);
     add(this.#assistantVersions, snapshot.assistantVersions ?? []);
+    const newThreadIds = new Set(
+      snapshot.threads.filter(([id]) => !this.#threads.has(id)).map(([id]) => id),
+    );
     add(this.#threads, snapshot.threads);
+    for (const [id, policy] of snapshot.threadRetention ?? []) {
+      if (!newThreadIds.has(id)) continue;
+      this.#threadRetention.set(id, { ttl: policy.ttl, strategy: policy.strategy });
+      if (policy.expiresAt != null) this.#threadExpiry.set(id, policy.expiresAt);
+    }
     add(this.#runs, snapshot.runs);
     add(this.#runKwargs, snapshot.runKwargs);
+    for (const [id, result] of snapshot.runResults ?? []) await this.runs.recordResult!(id, result);
+    const newItemIds = new Set(
+      snapshot.items.filter(([id]) => !this.#items.has(id)).map(([id]) => id),
+    );
     add(this.#items, snapshot.items);
+    for (const [id, options] of snapshot.itemOptions ?? []) {
+      if (!newItemIds.has(id)) continue;
+      if (options.index !== undefined) this.#itemIndexes.set(id, clone(options.index));
+      if (options.expiresAt != null && options.ttlMinutes != null)
+        this.#itemExpiry.set(id, { expiresAt: options.expiresAt, ttlMinutes: options.ttlMinutes });
+    }
     // Crons go in after threads, since a thread cron references one. A cron whose thread is absent
     // from the import is skipped rather than restored dangling — the same rule the Postgres driver's
     // foreign key enforces for it, and what `runs` already does there.

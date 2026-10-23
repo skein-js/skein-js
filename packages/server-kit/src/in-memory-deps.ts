@@ -9,11 +9,17 @@ import { MemorySaver } from "@langchain/langgraph";
 import type { GraphResolver, ProtocolDeps } from "@skein-js/agent-protocol";
 import {
   cloneLangGraphCheckpoint,
+  inspectMemoryThreadStorage,
   normalizeEmbeddableGraphs,
   type EmbeddableGraph,
   SkeinBaseStore,
 } from "@skein-js/langgraph";
-import { MemoryRunEventBus, MemoryRunQueue, MemorySkeinStore } from "@skein-js/storage-memory";
+import {
+  MemoryRunEventBus,
+  MemoryThreadEventBus,
+  MemoryRunQueue,
+  MemorySkeinStore,
+} from "@skein-js/storage-memory";
 
 import { resolveMaxPageSize } from "./max-page-size.js";
 import { resolveMemoryBusLimits } from "./memory-bus-limits.js";
@@ -49,6 +55,7 @@ export function embedInMemoryGraphs(
   // `resolveWebhooks(undefined)` answers `undefined` unless the environment actually configures
   // something, so a host that sets nothing keeps exactly the deps it had before this existed.
   const webhooks = resolveWebhooks(undefined);
+  const checkpointer = overrides.checkpointer ?? new MemorySaver();
   return {
     // `maxPageSize` resolved for the same reason as the bus limits below: an embedded host's
     // `SKEIN_MAX_PAGE_SIZE` has to reach the driver that applies it.
@@ -58,7 +65,14 @@ export function embedInMemoryGraphs(
     // Resolved rather than defaulted, so `SKEIN_MEMORY_BUS_*` reaches an embedded host too — this is
     // the driver set a long-lived single-process deployment actually runs on.
     bus: new MemoryRunEventBus(resolveMemoryBusLimits()),
-    checkpointer: new MemorySaver(),
+    threadBus: new MemoryThreadEventBus(),
+    checkpointer,
+    ...(checkpointer instanceof MemorySaver
+      ? {
+          inspectThreadStorage: (threadId: string) =>
+            inspectMemoryThreadStorage(checkpointer, threadId),
+        }
+      : {}),
     // Bridges long-term memory into a LangGraph `BaseStore` so nodes reach it via `getStore()`. A
     // function on deps rather than an import inside the engine — see `ProtocolDeps.storeBridge`.
     storeBridge: (store) => new SkeinBaseStore(store),

@@ -16,6 +16,8 @@ import {
 } from "@skein-js/agent-protocol";
 import {
   applyNodeCors,
+  readNativeNodeRequest,
+  sendNativeResponse,
   sendNodeError,
   sendNodePreflight,
   sendNodeResponse,
@@ -97,6 +99,26 @@ export class SkeinMiddleware implements NestMiddleware {
       return;
     }
 
+    if (this.resolved.runtime.handleRequest)
+      try {
+        const controller = new AbortController();
+        const native = await readNativeNodeRequest(
+          req,
+          `${url.origin}${skeinPathname}${url.search}`,
+          controller.signal,
+          this.resolved.runtime.handleRequest,
+        );
+        if (native) res.once("close", () => controller.abort());
+        const response = native ? await this.resolved.runtime.handleRequest(native) : undefined;
+        if (response) {
+          if (cors) applyNodeCors(req.headers, res, cors);
+          await sendNativeResponse(response, res);
+          return;
+        }
+      } catch (error) {
+        sendNodeError(error, res, this.logger ?? undefined, "skein NestJS");
+        return;
+      }
     const match = this.matchRoute(method, skeinPathname);
     if (!match) {
       next();
@@ -116,6 +138,10 @@ export class SkeinMiddleware implements NestMiddleware {
         signal: disconnected.signal,
       };
       const invoke = this.resolved.runtime.handlers[match.binding.handler];
+      if (!invoke) {
+        res.writeHead(404).end();
+        return;
+      }
       const response = await invoke(
         match.binding.foldThreadIdIntoBody ? copyThreadIdIntoBody(request) : request,
       );

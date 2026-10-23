@@ -6,6 +6,8 @@
 import { MAX_NAMESPACE_DEPTH, storeItemFilterProblem } from "@skein-js/core";
 import { z } from "zod";
 
+import { EXTRACT_PATH } from "../search/project-search-row.js";
+
 const commandSchema = z
   .object({
     resume: z.unknown().optional(),
@@ -35,7 +37,7 @@ const interruptWhenSchema = z.union([z.array(z.string()), z.literal("*")]);
 const checkpointSchema = z.object({
   checkpoint_id: z.string().optional(),
   checkpoint_ns: z.string().nullish(),
-  checkpoint_map: z.record(z.unknown()).nullish(),
+  checkpoint_map: z.record(z.string()).nullish(),
 });
 
 /** `POST /runs/wait`, `POST /runs/stream`, `POST /threads/{id}/runs`. */
@@ -84,7 +86,7 @@ export const runCreateSchema = z
     on_completion: z.enum(["delete", "keep"]).optional(),
     /** Time travel: fork this run from a prior checkpoint instead of the thread tip. */
     checkpoint_id: z.string().optional(),
-    /** Time travel: full checkpoint pointer to fork from (its `checkpoint_id` is what matters). */
+    /** Time travel: full checkpoint pointer, preserving namespace and map coordinates. */
     checkpoint: checkpointSchema.optional(),
     /**
      * What to do when the named thread does not exist. `reject` (the default, and LangGraph's) 404s;
@@ -128,13 +130,12 @@ export const runCreateSchema = z
      * `stream_resumable`: resumability comes from the event bus + `Last-Event-ID`, not from a per-run
      * flag.
      * `feedback_keys`: a LangSmith-scoring concern with no skein equivalent.
-     * `checkpoint_during` / `durability`: LangGraph checkpoint-write tuning skein does not expose.
      * `langsmith_tracer`: the SDK's own tracing passthrough — skein traces via its `TelemetrySink`.
      */
     stream_resumable: z.boolean().optional(),
     feedback_keys: z.array(z.string()).optional(),
     checkpoint_during: z.boolean().optional(),
-    durability: z.string().optional(),
+    durability: z.enum(["sync", "async", "exit"]).optional(),
     langsmith_tracer: z.record(z.unknown()).optional(),
   })
   .passthrough();
@@ -248,7 +249,7 @@ const threadTtlSchema = z
     z.number().positive().max(MAX_THREAD_TTL_MINUTES),
     z.object({
       ttl: z.number().positive().max(MAX_THREAD_TTL_MINUTES),
-      strategy: z.literal("delete").optional(),
+      strategy: z.enum(["delete", "keep_latest"]).optional(),
     }),
   ])
   .nullable();
@@ -280,8 +281,37 @@ export const threadPatchSchema = z
   .passthrough();
 
 /** `POST /threads/search`. `limit` is capped so a client can't request an unbounded page. */
+const metadataExclusionSchema = z
+  .record(z.unknown())
+  .refine((metadata) => Object.keys(metadata).length > 0, "Metadata exclusion must contain a key.");
+
 export const threadSearchSchema = z
   .object({
+    exclude_metadata: z
+      .union([metadataExclusionSchema, z.array(metadataExclusionSchema).min(1)])
+      .optional(),
+    select: z
+      .array(
+        z.enum([
+          "thread_id",
+          "created_at",
+          "updated_at",
+          "state_updated_at",
+          "metadata",
+          "config",
+          "status",
+          "values",
+          "interrupts",
+        ]),
+      )
+      .optional(),
+    extract: z
+      .record(z.string().max(1024).regex(EXTRACT_PATH))
+      .refine(
+        (extract) => Object.keys(extract).length <= 10,
+        "At most ten extract aliases are allowed.",
+      )
+      .optional(),
     metadata: z.record(z.unknown()).optional(),
     values: z.record(z.unknown()).optional(),
     status: threadStatusSchema.optional(),
@@ -291,7 +321,9 @@ export const threadSearchSchema = z
     // too — the drivers resolve it to a page rather than to every row.
     limit: z.number().int().positive().max(1000).optional(),
     offset: z.number().int().nonnegative().optional(),
-    sort_by: z.enum(["thread_id", "status", "created_at", "updated_at"]).optional(),
+    sort_by: z
+      .enum(["thread_id", "status", "created_at", "updated_at", "state_updated_at"])
+      .optional(),
     sort_order: z.enum(["asc", "desc"]).optional(),
   })
   .passthrough();
@@ -355,6 +387,22 @@ export const assistantUpdateSchema = z
 /** `POST /assistants/search`. `limit` is capped so a client can't request an unbounded page. */
 export const assistantSearchSchema = z
   .object({
+    select: z
+      .array(
+        z.enum([
+          "assistant_id",
+          "graph_id",
+          "name",
+          "description",
+          "config",
+          "context",
+          "created_at",
+          "updated_at",
+          "metadata",
+          "version",
+        ]),
+      )
+      .optional(),
     graph_id: z.string().optional(),
     name: z.string().optional(),
     metadata: z.record(z.unknown()).optional(),
@@ -397,7 +445,8 @@ export const storePutSchema = z
     key: z.string().min(1),
     value: z.record(z.unknown()),
     /** Optional item lifetime in minutes; overrides the configured `store.ttl.default_ttl`. */
-    ttl: z.number().positive().optional(),
+    ttl: z.number().positive().nullable().optional(),
+    index: z.union([z.literal(false), z.array(z.string())]).optional(),
   })
   .passthrough();
 
@@ -431,8 +480,7 @@ export const threadStateCheckpointSchema = z
  * instead means a real client's limit is silently dropped, which is how this endpoint came to drain a
  * thread's entire checkpoint history.
  *
- * `checkpoint` is accepted and ignored: `getStateHistory` has no equivalent option, and rejecting a
- * field the SDK always sends would 400 every call.
+ * `checkpoint` selects validated checkpoint coordinates for the history read.
  */
 export const threadHistorySchema = z
   .object({
@@ -450,12 +498,12 @@ export const threadHistorySchema = z
     before: z
       .union([
         z.string().min(1),
-        z.object({ configurable: z.object({ checkpoint_id: z.string().min(1) }) }),
+        z.object({ configurable: checkpointSchema.extend({ checkpoint_id: z.string().min(1) }) }),
       ])
       .optional(),
     /** Keep only checkpoints whose metadata matches — `getStateHistory`'s `filter`. */
     metadata: z.record(z.unknown()).optional(),
-    checkpoint: z.record(z.unknown()).optional(),
+    checkpoint: checkpointSchema.optional(),
   })
   .optional();
 
@@ -487,11 +535,7 @@ export const storeSearchSchema = z
     filter: storeFilterSchema.optional(),
     limit: z.number().int().positive().max(1000).optional(),
     offset: z.number().int().nonnegative().optional(),
-    /**
-     * Accepted and ignored: refresh-on-read is configured once via `langgraph.json`'s
-     * `store.ttl.refresh_on_read`, not per request. Named rather than merely passed through so
-     * `sdk-body-parity.test.ts` can see that the SDK sends it.
-     */
+    /** Override configured refresh-on-read for this operation. */
     refresh_ttl: z.boolean().nullable().optional(),
   })
   .passthrough();
@@ -552,7 +596,7 @@ const cronRunPayloadSchema = z.object({
    * than swallowed by `.passthrough()` so a reader can see they were considered.
    */
   checkpoint_during: z.boolean().optional(),
-  durability: z.string().optional(),
+  durability: z.enum(["sync", "async", "exit"]).optional(),
   stream_resumable: z.boolean().optional(),
   /**
    * Also accepted and ignored, and for a sharper reason than the rest: a cron's `schedule` *is* its
@@ -639,10 +683,7 @@ export const cronSearchSchema = z
       .optional(),
     sort_order: z.enum(["asc", "desc"]).optional(),
     /**
-     * Field projection. Validated so a typo is a 400 rather than silence, then ignored: skein always
-     * returns the full `Cron`. Projection saves nothing on a row this small, and the SDK's enum
-     * includes a pseudo-field (`now`) whose server-side meaning LangGraph does not document —
-     * inventing semantics for it would be worse than honestly not implementing it.
+     * Field projection is applied after authorization and pagination.
      */
     select: z
       .array(

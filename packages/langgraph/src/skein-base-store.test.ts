@@ -1,5 +1,6 @@
+import { fromBaseStore } from "@skein-js/agent-protocol";
 import { MemorySkeinStore } from "@skein-js/storage-memory";
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 
 import { SkeinBaseStore } from "./skein-base-store.js";
 
@@ -142,4 +143,37 @@ describe("SkeinBaseStore", () => {
 
     expect(page).toEqual([["users", "2"]]);
   });
+});
+
+it("preserves write/index and read refresh controls through both store bridges", async () => {
+  const source = new MemorySkeinStore({ ttl: { defaultTtl: 60, refreshOnRead: true } });
+  const querySpy = vi.spyOn(source.store, "search");
+  const readSpy = vi.spyOn(source.store, "get");
+  const adapted = fromBaseStore(new SkeinBaseStore(source.store));
+  await adapted.putWithOptions!(
+    ["notes"],
+    "hidden",
+    { title: "needle" },
+    { index: false, ttl: null },
+  );
+  await adapted.putWithOptions!(
+    ["notes"],
+    "visible",
+    { title: "needle", secret: "hidden" },
+    { index: ["title"] },
+  );
+  readSpy.mockClear();
+  expect(
+    (await adapted.search({ prefix: ["notes"], query: "needle" })).map((item) => item.key),
+  ).toEqual(["visible"]);
+  expect(querySpy).toHaveBeenLastCalledWith(expect.objectContaining({ refreshTtl: false }));
+  expect(readSpy).toHaveBeenLastCalledWith(["notes"], "visible", undefined);
+  await adapted.get(["notes"], "hidden", { refreshTtl: false });
+  expect(readSpy).toHaveBeenLastCalledWith(["notes"], "hidden", { refreshTtl: false });
+  expect(await adapted.search({ prefix: ["notes"], query: "hidden" })).toEqual([]);
+  const retained = source
+    .snapshot()
+    .itemOptions!.find(([id]) => id === JSON.stringify([["notes"], "hidden"]));
+  expect(retained?.[1]).toMatchObject({ index: false });
+  expect(retained?.[1].expiresAt).toBeUndefined();
 });

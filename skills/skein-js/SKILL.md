@@ -31,3 +31,22 @@ For a normal model and tool loop, prefer LangChain's `createAgent`; use a custom
 In a workspace, use a new child directory, preserve root configuration, and leave dependency installation at the root. Root tool declarations are reused independently of configuration inheritance; missing tool dependencies are added to the generated package. New files follow inherited Prettier settings. Workspace-root targets are rejected before writes, including with `--force`. See [workspace tooling](https://skein-js.github.io/skein-js/scaffolding).
 
 For an Nx or Turborepo workspace, use the matching skein-js workspace skill if installed. Otherwise follow the workspace's existing task conventions and [monorepo guidance](https://skein-js.github.io/skein-js/scaffolding#nx-and-other-monorepos).
+
+## Protocol and hosting compatibility
+
+Use the dated [Agent Server matrix](https://skein-js.github.io/skein-js/langgraph-compatibility)
+when choosing clients. Legacy SDK React and dedicated framework packages use different streaming
+contracts. Modern thread subscriptions are separate from run commands: reconnect only reopens the
+subscription. Prefer the official HTTP/SSE SDK and preserve server-owned run admission/cancellation.
+Redis enables cross-instance event replay; SQLite replay is process-local.
+
+Standard `ui`/`ui_config` and Fetch/Hono `http.app` exports are supported. Let `skein build` compile
+UI/custom-app assets and deploy the whole artifact. Custom apps run after common authentication and
+fall through on 404. Browser-injected UI assets need credentials available to browser asset requests
+or an explicit deployment policy permitting those assets. See the configuration compatibility guide.
+
+MCP and A2A reuse authorized run services; do not add another scheduler or task database. For custom
+stores, A2A requires immutable run-result persistence. Diagnostics are `/openapi.json`, `/docs`,
+`/metrics`, and `/threads/{thread_id}/storage`. Metrics require a host-owned collector, and custom
+savers without concrete byte inspectors return 501. Never estimate stored bytes or silently ignore
+requested indexing, explicit no-expiry TTL, or per-read refresh controls.

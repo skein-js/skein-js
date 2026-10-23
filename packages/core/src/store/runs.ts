@@ -5,6 +5,9 @@ import type { AuthUser } from "../auth/auth.js";
 import type { RunError } from "../errors/run-error.js";
 import type {
   Config,
+  Checkpoint,
+  DefaultValues,
+  Interrupt,
   Metadata,
   MultitaskStrategy,
   Run,
@@ -37,6 +40,14 @@ export interface RunKwargs {
    * Agents runs a subagent — each carrying `RunFrame.namespace` and encoded as `mode|<namespace>` over SSE.
    */
   stream_subgraphs?: boolean;
+  /** Checkpoint write policy, delegated to the graph runtime. */
+  durability?: "sync" | "async" | "exit";
+  /** Full validated checkpoint coordinates, independent of this run's thread identity. */
+  checkpoint?: {
+    checkpoint_id?: string;
+    checkpoint_ns?: string | null;
+    checkpoint_map?: Record<string, unknown> | null;
+  };
   interrupt_before?: string[] | "*";
   interrupt_after?: string[] | "*";
   /**
@@ -163,7 +174,19 @@ export type GuardedRunCreate =
   | { readonly refused: "thread_busy" }
   | { readonly refused: "thread_status_mismatch"; readonly status: ThreadStatus };
 
+/** Immutable, wire-normalized execution output, stored independently of checkpoint retention. */
+export interface RunResult {
+  values: DefaultValues;
+  interrupts?: Record<string, Interrupt[]>;
+  reply?: unknown;
+  checkpoint?: Checkpoint;
+}
+
 export interface RunRepo {
+  /** First write wins atomically. Unknown/deleted runs are no-ops; inputs are defensively copied. */
+  recordResult?(runId: string, result: RunResult): Promise<void>;
+  /** Defensive copy, or null for unknown runs or results not yet recorded. Excluded from Run wire. */
+  getResult?(runId: string): Promise<RunResult | null>;
   get(runId: string): Promise<Run | null>;
   listByThread(threadId: string, query?: RunListQuery): Promise<Run[]>;
   create(input: RunCreate): Promise<Run>;

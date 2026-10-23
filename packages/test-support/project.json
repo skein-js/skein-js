@@ -133,6 +133,24 @@
       "options": {
         "command": "node scripts/scaffold-consumers.mjs prepare-managers"
       }
+    },
+    "test-compatibility-consumer": {
+      "executor": "nx:run-commands",
+      "cache": false,
+      "dependsOn": ["server-express:build", "runtime:build", "cli:build", "telemetry-otel:build"],
+      "options": {
+        "command": "node scripts/compatibility-consumer-smoke.mjs",
+        "cwd": "."
+      }
+    },
+    "test-build-image": {
+      "executor": "nx:run-commands",
+      "cache": false,
+      "dependsOn": ["cli:build"],
+      "options": {
+        "command": "node scripts/build-image-smoke.mjs",
+        "cwd": "."
+      }
     }
   }
 }

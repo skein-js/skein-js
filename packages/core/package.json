@@ -47,5 +47,8 @@
   },
   "publishConfig": {
     "access": "public"
+  },
+  "dependencies": {
+    "@langchain/protocol": "0.0.20"
   }
 }

@@ -11,6 +11,7 @@
 
 import { Command, type CommandParams } from "@langchain/langgraph";
 import { agentCommandPayload, isAgentCommand, type AgentGraph } from "@skein-js/agent-protocol";
+import type { ThreadProtocolEvent } from "@skein-js/core";
 
 /**
  * Whether `value` is a LangGraph compiled graph, as opposed to some other `AgentGraph`.
@@ -82,6 +83,49 @@ export function langGraphAgent(compiled: AgentGraph): AgentGraph {
   if (streamEvents) {
     wrapped.streamEvents = function (this: AgentGraph, input: unknown, options?: unknown) {
       return streamEvents.call(this, toGraphInput(input), options);
+    };
+    wrapped.streamProtocol = async function* (this: AgentGraph, input: unknown, options?: unknown) {
+      // v3 uses private fields: a prototype clone does not carry the runtime's private brand.
+      // withConfig creates a real graph instance; only this call's attachments are copied onto it.
+      const configurable = compiled as AgentGraph & {
+        withConfig?: (config: Record<string, unknown>) => AgentGraph;
+      };
+      const target = configurable.withConfig?.({}) ?? this;
+      if (target !== this) {
+        for (const key of ["checkpointer", "store"] as const) {
+          if (key in this)
+            Object.assign(target, { [key]: (this as unknown as Record<string, unknown>)[key] });
+        }
+      }
+      const events = (await streamEvents.call(target, toGraphInput(input), {
+        ...(typeof options === "object" && options !== null ? options : {}),
+        version: "v3",
+      })) as AsyncIterable<ThreadProtocolEvent>;
+      for await (const original of events) {
+        // Agent Server message namespaces identify the graph scope; the emitting node is separate.
+        const node = original.method === "messages" ? original.params.node : undefined;
+        const event =
+          original.method === "messages" &&
+          node &&
+          original.params.namespace.at(-1)?.split(":")[0] === node
+            ? {
+                ...original,
+                params: { ...original.params, namespace: original.params.namespace.slice(0, -1) },
+              }
+            : original;
+        // LangGraph's named transformer channels precede the Agent Server's custom envelope.
+        // Preserve their payload and metadata while speaking the protocol consumed by SDK clients.
+        yield event.method.startsWith("custom:")
+          ? ({
+              ...event,
+              method: "custom",
+              params: {
+                ...event.params,
+                data: { name: event.method.slice(7), payload: event.params.data },
+              },
+            } as ThreadProtocolEvent)
+          : event;
+      }
     };
   }
   if (invoke) {

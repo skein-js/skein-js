@@ -11,6 +11,7 @@ import {
   toGraphStreamModes,
   wantsEventsMode,
 } from "./run-input.js";
+import { toKwargs } from "./run-service.js";
 
 describe("normalizeModes", () => {
   it("defaults to values when nothing is requested", () => {
@@ -274,5 +275,57 @@ describe("toFactoryConfigurable", () => {
     expect(
       toFactoryConfigurable({ checkpoint_id: "server-fork", config: { configurable: { a: 1 } } }),
     ).toEqual({ a: 1 });
+  });
+});
+
+it("forwards durability and full validated checkpoint coordinates", () => {
+  const options = toGraphCallOptions(
+    {
+      durability: "sync",
+      checkpoint: { checkpoint_ns: "child:task", checkpoint_map: { "": "root" } },
+      checkpoint_id: "child-tip",
+    },
+    "thread",
+    new AbortController().signal,
+  );
+  expect(options).toMatchObject({
+    durability: "sync",
+    configurable: {
+      thread_id: "thread",
+      checkpoint_ns: "child:task",
+      checkpoint_map: { "": "root" },
+      checkpoint_id: "child-tip",
+    },
+  });
+});
+
+it("persists explicit durability before deprecated checkpoint_during", () => {
+  expect(
+    toKwargs({ assistant_id: "graph", durability: "sync", checkpoint_during: false }, false)
+      .durability,
+  ).toBe("sync");
+  expect(toKwargs({ assistant_id: "graph", checkpoint_during: true }, false).durability).toBe(
+    "async",
+  );
+  expect(toKwargs({ assistant_id: "graph", checkpoint_during: false }, false).durability).toBe(
+    "exit",
+  );
+  expect(toKwargs({ assistant_id: "graph" }, false)).not.toHaveProperty("durability");
+  expect(
+    toKwargs(
+      {
+        assistant_id: "graph",
+        config: {
+          configurable: {
+            checkpoint_id: "tip",
+            checkpoint_ns: "child:1",
+            checkpoint_map: { "": "root" },
+          },
+        },
+      },
+      false,
+    ),
+  ).toMatchObject({
+    checkpoint: { checkpoint_id: "tip", checkpoint_ns: "child:1", checkpoint_map: { "": "root" } },
   });
 });

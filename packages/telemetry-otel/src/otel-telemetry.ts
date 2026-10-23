@@ -1,6 +1,7 @@
 // OpenTelemetry spans and metrics for skein runs.
 //
-// This package depends on the OTel **API only** — never the SDK, never an exporter. That is the
+// Recording depends on the OTel **API only**. Optional metric collection uses official serializers,
+// without creating an SDK, exporter, or listening port. That is the
 // whole reason one small package covers Datadog, Grafana, Honeycomb, Jaeger, New Relic, Sentry, and
 // anything else that speaks OTLP: the host owns the SDK, the resource, and where data goes, exactly
 // as it already does for the rest of its service. If no SDK is registered the API's no-op
@@ -13,6 +14,8 @@
 //
 // The sink's `withRunContext` hook makes the run span active while LangGraph executes, so LangChain,
 // model, and tool instrumentation can parent its spans correctly across async callbacks.
+
+import { collectOtelMetrics } from "./collect-metrics.js";
 
 import type { RunTelemetryContext, RunTelemetryEvent, TelemetrySink } from "@skein-js/core";
 
@@ -42,6 +45,10 @@ interface OtelHistogram {
 }
 
 interface OtelMeter {
+  createUpDownCounter?(
+    name: string,
+    options?: { description?: string; unit?: string },
+  ): OtelCounter;
   createCounter(name: string, options?: { description?: string; unit?: string }): OtelCounter;
   createHistogram(name: string, options?: { description?: string; unit?: string }): OtelHistogram;
 }
@@ -60,6 +67,8 @@ export interface OtelApiLike {
 }
 
 export interface OtelTelemetryOptions {
+  /** A reader already registered with the host's MeterProvider. Its lifecycle remains host-owned. */
+  metricReader?: { collect(): Promise<{ resourceMetrics: unknown; errors?: unknown[] }> };
   /**
    * Instrumentation scope name, as it appears on every span and metric. Defaults to
    * `"@skein-js/otel"`; change it if you want skein's spans attributed to your own service scope.
@@ -211,6 +220,10 @@ export function createOtelTelemetry(options: OtelTelemetryOptions = {}): Telemet
     return { runCounter, durationHistogram, queueHistogram, frameHistogram };
   };
 
+  const workerRuns = new Map<string, string>();
+  let workerActive: OtelCounter | undefined;
+  let httpCounter: OtelCounter | undefined;
+  let httpDuration: OtelHistogram | undefined;
   const inFlight = new Map<string, OtelSpan>();
 
   handlers.emit = (event: RunTelemetryEvent): void => {
@@ -229,6 +242,18 @@ export function createOtelTelemetry(options: OtelTelemetryOptions = {}): Telemet
           startTime: event.startedAt,
         }),
       );
+      if (
+        wantMetrics &&
+        active.meter &&
+        (event.context.trigger === "background" || event.context.trigger === "cron")
+      ) {
+        workerActive ??= active.meter.createUpDownCounter?.("skein.worker.active_runs", {
+          description: "Background runs currently executing.",
+          unit: "{run}",
+        });
+        workerActive?.add(1, { "skein.graph.id": event.context.graphId });
+        workerRuns.set(event.context.runId, event.context.graphId);
+      }
       if (wantMetrics && active.meter && event.queuedMs !== undefined) {
         instruments(active.meter).queueHistogram.record(
           event.queuedMs,
@@ -241,6 +266,11 @@ export function createOtelTelemetry(options: OtelTelemetryOptions = {}): Telemet
     const span = inFlight.get(event.context.runId);
     inFlight.delete(event.context.runId);
 
+    const workerGraph = workerRuns.get(event.context.runId);
+    if (workerGraph !== undefined) {
+      workerActive?.add(-1, { "skein.graph.id": workerGraph });
+      workerRuns.delete(event.context.runId);
+    }
     if (span) {
       span.setAttribute("skein.run.status", event.status);
       span.setAttribute("skein.run.frames", event.frameCount);
@@ -276,6 +306,34 @@ export function createOtelTelemetry(options: OtelTelemetryOptions = {}): Telemet
 
   return {
     name: "otel",
+    ...(options.metricReader
+      ? {
+          collectMetrics: (format: "prometheus" | "json") =>
+            collectOtelMetrics(options.metricReader!, format),
+        }
+      : {}),
+    onHttpEvent(event) {
+      if (!wantMetrics) return;
+      const record = (resolved: OtelApiLike | undefined) => {
+        if (!resolved?.meter) return;
+        httpCounter ??= resolved.meter.createCounter("skein.http.requests", {
+          description: "HTTP requests by handler, method and status.",
+        });
+        httpDuration ??= resolved.meter.createHistogram("skein.http.duration", {
+          description: "HTTP handler response latency.",
+          unit: "ms",
+        });
+        const attributes = {
+          "http.request.method": event.method,
+          "http.route": event.route,
+          "http.response.status_code": event.status,
+        };
+        httpCounter.add(1, attributes);
+        httpDuration.record(event.durationMs, attributes);
+      };
+      if (api) record(api);
+      else void apiReady.then(record);
+    },
 
     onRunEvent(event: RunTelemetryEvent) {
       // Still importing `@opentelemetry/api`: hold the event rather than drop it.
@@ -307,6 +365,9 @@ export function createOtelTelemetry(options: OtelTelemetryOptions = {}): Telemet
         }
       }
       inFlight.clear();
+      for (const graphId of workerRuns.values())
+        workerActive?.add(-1, { "skein.graph.id": graphId });
+      workerRuns.clear();
       // Flushing the exporter is the host's job — it owns the SDK, and calling `shutdown()` on a
       // provider we don't own would tear down telemetry for their whole service, not just ours.
     },

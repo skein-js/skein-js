@@ -96,6 +96,8 @@ export function corsFromHttpConfig(http: unknown): CorsOptions | undefined {
 
 /** The `http.disable_*` flag that switches off each route group. */
 const DISABLE_FLAGS: Record<string, RouteGroup> = {
+  disable_mcp: "mcp",
+  disable_a2a: "a2a",
   disable_assistants: "assistants",
   disable_threads: "threads",
   disable_runs: "runs",
