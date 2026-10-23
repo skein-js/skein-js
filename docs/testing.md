@@ -28,8 +28,9 @@ Inject fakes for collaborators; assert on returned data.
 
 The `local` and `example-local-workflow` test targets also exercise real SQLite files, graph steps,
 and checkpoint reopening without Docker. They use a bounded 30-second default per test because
-these operations can exceed Vitest's five-second default on Windows CI. Explicit test-specific
-bounds, such as the subprocess crash test's ten seconds, still apply.
+these operations can exceed Vitest's five-second default on Windows CI. The subprocess crash test
+uses the same budget for child startup, checkpointing, forced termination and reopening; it waits
+for the child to exit before removing its SQLite files.
 
 ```ts
 import { describe, it, expect } from "vitest";
