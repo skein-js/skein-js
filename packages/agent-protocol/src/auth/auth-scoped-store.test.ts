@@ -36,6 +36,60 @@ async function scopedRuns() {
 }
 
 describe("createAuthScopedStore", () => {
+  it("retains optional TTL reads only for owned threads and supporting drivers", async () => {
+    const inner = new MemorySkeinStore();
+    const scoped = createAuthScopedStore(inner, ownerEngine, { owner: "alice" }, "threads");
+    const owned = await inner.threads.create({
+      metadata: { owner: "alice" },
+      ttl: 5,
+      ttlStrategy: "keep_latest",
+    });
+    const foreign = await inner.threads.create({
+      metadata: { owner: "bob" },
+      ttl: 7,
+      ttlStrategy: "keep_latest",
+    });
+    expect(scoped.threads.getTtl).toBeTypeOf("function");
+    expect(await scoped.threads.getTtl!(owned.thread_id)).toEqual({
+      ttl: 5,
+      strategy: "keep_latest",
+    });
+    await expect(scoped.threads.getTtl!(foreign.thread_id)).rejects.toMatchObject({ status: 404 });
+    await expect(scoped.threads.getTtl!("missing")).rejects.toMatchObject({ status: 404 });
+    const { getTtl: _ttl, ...legacyThreads } = inner.threads;
+    const legacy = createAuthScopedStore(
+      { ...inner, threads: legacyThreads },
+      ownerEngine,
+      { owner: "alice" },
+      "threads",
+    );
+    expect(legacy.threads.getTtl).toBeUndefined();
+  });
+
+  it("scopes immutable result reads/writes and preserves missing capabilities", async () => {
+    const { inner, scoped, run } = await scopedRuns();
+    await scoped.runs.recordResult!(run.run_id, { values: { answer: "mine" } });
+    expect(await scoped.runs.getResult!(run.run_id)).toEqual({ values: { answer: "mine" } });
+    const foreign = await inner.runs.create({
+      thread_id: run.thread_id,
+      assistant_id: "a",
+      metadata: { owner: "bob" },
+    });
+    await inner.runs.recordResult!(foreign.run_id, { values: { answer: "secret" } });
+    expect(await scoped.runs.getResult!(foreign.run_id)).toBeNull();
+    await expect(
+      scoped.runs.recordResult!(foreign.run_id, { values: { answer: "replace" } }),
+    ).rejects.toMatchObject({ status: 404 });
+    const { recordResult: _write, getResult: _read, ...legacyRuns } = inner.runs;
+    const legacy = createAuthScopedStore(
+      { ...inner, runs: legacyRuns },
+      ownerEngine,
+      { owner: "alice" },
+      "threads",
+    );
+    expect(legacy.runs.recordResult).toBeUndefined();
+    expect(legacy.runs.getResult).toBeUndefined();
+  });
   // Which run reads are ownership-filtered and which are deliberately not is a boundary, and a perf pass
   // already crossed it once (`joinStream` was moved off the filtered `listByThread` onto `listActiveRuns`
   // + `latestForThread`). These pin the boundary from both sides so the next such move is deliberate.

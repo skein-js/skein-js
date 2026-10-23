@@ -152,6 +152,7 @@ async function deleteCheckpointsOfDeletedThread(ctx: ProtocolContext, run: Run):
   try {
     if (await deps.store.threads.get(run.thread_id)) return;
     await deps.checkpointer.deleteThread(run.thread_id);
+    await deps.threadBus?.deleteThread(run.thread_id);
   } catch (error) {
     deps.logger.warn(
       `run ${run.run_id}: could not delete checkpoints it wrote after thread ${run.thread_id} was deleted`,
@@ -196,6 +197,7 @@ async function deleteThreadIfRunOwnedIt(
   }
   try {
     await deps.store.threads.delete(run.thread_id);
+    await deps.threadBus?.deleteThread(run.thread_id);
   } catch (error) {
     deps.logger.warn(
       `run ${run.run_id}: could not delete its stateless thread ${run.thread_id} on completion`,

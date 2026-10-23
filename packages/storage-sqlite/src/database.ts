@@ -33,6 +33,12 @@ CREATE TRIGGER skein_delete_run_jobs AFTER DELETE ON skein_runs BEGIN
  DELETE FROM skein_run_jobs WHERE run_id = OLD.key;
 END;
 `,
+  `ALTER TABLE skein_items ADD COLUMN index_fields TEXT;
+ALTER TABLE skein_threads ADD COLUMN ttl_minutes REAL;
+ALTER TABLE skein_threads ADD COLUMN ttl_strategy TEXT;
+ALTER TABLE skein_threads ADD COLUMN ttl_pinned INTEGER NOT NULL DEFAULT 0;
+UPDATE skein_threads SET ttl_pinned=1 WHERE expires_at IS NULL;`,
+  `ALTER TABLE skein_runs ADD COLUMN result TEXT CHECK(result IS NULL OR json_valid(result));`,
 ];
 
 export function migrateDatabase(database: Database): void {

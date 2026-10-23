@@ -1,3 +1,5 @@
+import { Command, type CommandParams } from "@langchain/langgraph";
+import type { ThreadProtocolEvent } from "@skein-js/core";
 // A fixture-local stand-in for `@skein-js/langgraph`'s `langGraphAgent`.
 //
 // The fixture graphs are real LangGraph graphs, so a run that resumes has to hand them a real
@@ -8,8 +10,6 @@
 // So the fixtures do what any binding does, in a few lines against `@langchain/langgraph` directly.
 // If this file and `langGraphAgent` ever disagree, the fixtures stop reflecting production — the
 // interrupt/resume tests in `thread-stream-service.test.ts` are what catch that.
-
-import { Command, type CommandParams } from "@langchain/langgraph";
 
 import { agentCommandPayload, isAgentCommand, type AgentCommand } from "../graphs/agent-command.js";
 import type { AgentGraph } from "../graphs/agent-graph.js";
@@ -48,6 +48,24 @@ function buildFixtureAgent(compiled: AgentGraph): AgentGraph {
   if (streamEvents) {
     wrapped.streamEvents = function (this: AgentGraph, input: unknown, options?: unknown) {
       return streamEvents.call(this, toGraphInput(input), options);
+    };
+    wrapped.streamProtocol = async function (this: AgentGraph, input: unknown, options?: unknown) {
+      // v3 uses private fields: a prototype clone does not carry the runtime's private brand.
+      // withConfig creates a real graph instance; only this call's attachments are copied onto it.
+      const configurable = compiled as AgentGraph & {
+        withConfig?: (config: Record<string, unknown>) => AgentGraph;
+      };
+      const target = configurable.withConfig?.({}) ?? this;
+      if (target !== this) {
+        for (const key of ["checkpointer", "store"] as const) {
+          if (key in this)
+            Object.assign(target, { [key]: (this as unknown as Record<string, unknown>)[key] });
+        }
+      }
+      return (await streamEvents.call(target, toGraphInput(input), {
+        ...(typeof options === "object" && options !== null ? options : {}),
+        version: "v3",
+      })) as AsyncIterable<ThreadProtocolEvent>;
     };
   }
   if (invoke) {

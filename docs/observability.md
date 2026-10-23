@@ -153,7 +153,7 @@ traffic groups per conversation instead of collapsing into one distinct id. Over
 pnpm add @skein-js/otel @opentelemetry/api
 ```
 
-`@skein-js/otel` depends on the OTel **API only** — never the SDK, never an exporter. Your app owns
+`@skein-js/otel` records through the OTel **API** without creating an SDK or exporter. Optional HTTP metric collection uses official serializers. Your app owns
 the SDK and decides where data goes, exactly as it already does for the rest of your service. That's
 why one small package covers every OTLP backend. If no SDK is registered, the API's no-op
 implementation takes over and this costs almost nothing.
@@ -316,3 +316,31 @@ configuration.
 - [Errors & logging](./errors-and-logging.md) — the other two reporting surfaces
 - [Runs & Redis](./runs-and-redis.md) — the run engine these events come from
 - [Deploy](./deploy.md) — running skein in production
+
+## HTTP diagnostics
+
+`GET /openapi.json` describes the actual mounted routes and request validators. `GET /docs` serves
+an offline API reference using that document. Disabled route groups are omitted, and disabling the
+meta group removes both endpoints and `/metrics`. Deployment-provided `auth.openapi` security
+schemes describe existing authentication; custom policy remains in the host.
+
+`GET /metrics` collects an explicitly supplied host metric reader. With `createOtelTelemetry`, pass
+`metricReader` already registered on your `MeterProvider`; install the optional official
+`@opentelemetry/exporter-prometheus@^0.222.0` and/or
+`@opentelemetry/otlp-transformer@^0.222.0` serializers for the formats you expose. The default response
+is Prometheus text; `?format=json` (or an Accept header for JSON) returns standard OTLP JSON. Skein
+owns neither provider lifetime nor exporter/backend selection. A deployment without a collector
+returns 501; collection failures return 503.
+
+Alongside existing run/queue instruments, the sink records `skein.worker.active_runs`,
+`skein.http.requests`, and `skein.http.duration`. HTTP duration measures handler response latency;
+stream consumption may continue afterwards. HTTP dimensions contain method, handler and status,
+without thread IDs, caller IDs or credentials. Internal MCP/A2A service calls do not count as
+additional HTTP requests.
+
+Authorized `GET /threads/{thread_id}/storage` reports exact stored saver payload sizes: checkpoints,
+channel versions, pending writes and their total. Memory sums encoded buffers, SQLite uses stored
+blob lengths, and Postgres measures stored JSONB and BYTEA datums, including database compression,
+in one snapshot. Inline channel values count in checkpoint bytes. Counts exclude indexes, table/page overhead and filesystem
+allocation; this is payload accounting rather than a disk-space estimate. Custom savers without an
+inspector return 501.

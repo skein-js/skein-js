@@ -199,3 +199,29 @@ describe("runtime wiring", () => {
     }
   });
 });
+
+it("prunes an expired keep_latest thread and refreshes its window on state writes", async () => {
+  const store = new MemorySkeinStore({
+    threadTtl: { defaultTtl: 40 / 60_000, strategy: "keep_latest" },
+  });
+  const deps = { ...createFixtureDeps(), store };
+  const service = createProtocolServiceFromContext(createContext(deps));
+  await service.assistants.registerGraphAssistants();
+  const thread = await service.threads.create();
+  await service.runs.createWait({
+    thread_id: thread.thread_id,
+    assistant_id: "echo",
+    input: { value: "keep" },
+  });
+  const before = await service.threads.history(thread.thread_id);
+  expect(before.length).toBeGreaterThan(1);
+  const sweeper = createThreadTtlSweeper({ store, threads: service.threads, logger: silentLogger });
+  await wait(120);
+  expect(await sweeper.sweepOnce()).toBe(1);
+  expect(await service.threads.history(thread.thread_id)).toHaveLength(1);
+  expect(await store.threads.get(thread.thread_id)).not.toBeNull();
+  expect((await service.threads.getState(thread.thread_id)).values).toEqual(before[0]?.values);
+  expect(
+    await store.threads.listExpired({ now: new Date().toISOString(), limit: 10 }),
+  ).toHaveLength(0);
+});

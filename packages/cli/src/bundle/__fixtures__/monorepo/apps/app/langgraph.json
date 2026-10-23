@@ -3,5 +3,14 @@
   "graphs": {
     "agent": "./src/graph.ts:graph"
   },
-  "dependencies": [".", "@fixture/by-name"]
+  "dependencies": [".", "@fixture/by-name"],
+  "http": {
+    "app": "./src/http-app.ts:app"
+  },
+  "ui": {
+    "agent": "./src/ui.tsx"
+  },
+  "ui_config": {
+    "shared": ["react", "react-dom"]
+  }
 }

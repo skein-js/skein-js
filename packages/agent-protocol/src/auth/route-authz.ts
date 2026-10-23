@@ -50,6 +50,9 @@ export interface RouteAuthz {
 
 /** Every handler's resource + action. Keyed by handler name so it stays in lockstep with the table. */
 export const ROUTE_AUTHZ: Record<keyof ProtocolHandlers, RouteAuthz> = {
+  getOpenApi: { resource: "assistants", action: "read" },
+  handleA2a: { resource: "assistants", action: "read" },
+  handleMcp: { resource: "assistants", action: "read" },
   // channels — an inbound event creates a run on a thread, so it authorizes exactly as every other
   // run-creating route does. The crons precedent: the principal comes from somewhere other than a
   // bearer token, but what it is allowed to do is the same question.
@@ -79,6 +82,7 @@ export const ROUTE_AUTHZ: Record<keyof ProtocolHandlers, RouteAuthz> = {
   // threads
   createThread: { resource: "threads", action: "create" },
   copyThread: { resource: "threads", action: "create" },
+  getThreadStorage: { resource: "threads", action: "read" },
   getThread: { resource: "threads", action: "read" },
   getThreadState: { resource: "threads", action: "read" },
   getThreadStateAtCheckpoint: { resource: "threads", action: "read" },
@@ -141,6 +145,7 @@ export const ROUTE_AUTHZ: Record<keyof ProtocolHandlers, RouteAuthz> = {
   postThreadStream: { resource: "threads", action: "create_run" },
   getThreadStream: { resource: "threads", action: "read" },
   postThreadCommands: { resource: "threads", action: "create_run" },
+  postThreadEvents: { resource: "threads", action: "read" },
 
   // meta — the capability handshake. `createAuthorizingHandlers` serves this one **unauthenticated**,
   // matching `@langchain/langgraph-api` (whose auth middleware skips `/info` explicitly): clients probe

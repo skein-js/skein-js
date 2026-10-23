@@ -10,7 +10,7 @@ import type { StoreTtlConfig, ThreadTtlConfig } from "@skein-js/core";
 /** The raw `checkpointer.ttl` block as `langgraph.json` spells it. */
 export interface RawThreadTtl {
   default_ttl?: number;
-  strategy?: "delete";
+  strategy?: "delete" | "keep_latest";
   sweep_interval_minutes?: number;
 }
 
@@ -18,12 +18,12 @@ export interface RawThreadTtl {
  * Map the raw block to {@link ThreadTtlConfig}, or `undefined` when nothing is set — so threads never
  * expire unless asked to, and no sweeper is started.
  *
- * `strategy` is read only to be validated by the config schema: `"delete"` is the only thing an
- * expired thread can become, so there is nothing for the drivers to branch on.
+ * Deletion stays the default; keep_latest is explicit so existing deployments retain their policy.
  */
 export function resolveThreadTtl(raw: RawThreadTtl | undefined): ThreadTtlConfig | undefined {
   if (!raw) return undefined;
   const ttl: ThreadTtlConfig = {};
+  if (raw.strategy === "keep_latest") ttl.strategy = raw.strategy;
   if (typeof raw.default_ttl === "number") ttl.defaultTtl = raw.default_ttl;
   if (typeof raw.sweep_interval_minutes === "number") {
     ttl.sweepIntervalMinutes = raw.sweep_interval_minutes;

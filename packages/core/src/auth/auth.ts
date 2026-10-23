@@ -65,6 +65,11 @@ export type AuthFilters = Record<string, AuthFilterValue>;
  * allowed (the default, so `skein dev` stays frictionless).
  */
 export interface AuthEngine {
+  /** Optional standard OpenAPI description supplied by the deployment; never an authorization rule. */
+  readonly openapi?: {
+    securitySchemes?: Record<string, Record<string, unknown>>;
+    security?: Record<string, string[]>[];
+  };
   /** True when a `langgraph.json` `auth.path` was loaded; false disables the whole gate. */
   readonly enabled: boolean;
   /** When true, studio traffic must present real credentials like any other client. */

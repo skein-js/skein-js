@@ -14,10 +14,20 @@ import {
 } from "@skein-js/agent-protocol";
 import {
   resolveProtocolRuntime,
+  sendNativeResponse,
+  toNativeRequest,
+  stripBasePath,
+  withNativePath,
   type CorsOptions,
   type SkeinRuntimeOptions,
 } from "@skein-js/server-kit";
-import type { FastifyInstance, FastifyPluginAsync, HTTPMethods } from "fastify";
+import type {
+  FastifyInstance,
+  FastifyPluginAsync,
+  HTTPMethods,
+  FastifyRequest,
+  FastifyReply,
+} from "fastify";
 
 import { sendErrorResponse } from "./error-response.js";
 import { createFastifyLogger } from "./fastify-logger.js";
@@ -27,7 +37,10 @@ import { toProtocolRequest } from "./to-protocol-request.js";
 /** Options for `skeinPlugin` — the same `{ config } | { deps }` seam every skein adapter accepts. */
 export type SkeinPluginOptions = SkeinRuntimeOptions;
 
+const nativeRawBodies = new WeakMap<object, Uint8Array>();
+
 export interface HandlerRoutesOptions {
+  handleRequest?: (request: Request) => Promise<Response | undefined>;
   /** Structured logger for unexpected (non-`SkeinHttpError`) faults. */
   logger?: Logger;
   /**
@@ -104,7 +117,16 @@ export async function prepareSkeinContext(
       .filter((route) => route.retainRawBody)
       .map((route) => route.path),
   );
-  if (rawBodyPaths.size > 0) {
+  if (options.handleRequest) {
+    try {
+      fastify.addContentTypeParser("*", { parseAs: "buffer" }, (req, body, done) => {
+        nativeRawBodies.set(req, typeof body === "string" ? Buffer.from(body) : body);
+        done(null, wantsRawBody(req.url) ? body.toString() : body);
+      });
+    } catch {
+      /* Another skein surface registered this parser. */
+    }
+  } else if (rawBodyPaths.size > 0) {
     try {
       fastify.addContentTypeParser("*", { parseAs: "string" }, (_req, body, done) => {
         done(null, typeof body === "string" ? body : body.toString());
@@ -134,6 +156,7 @@ export async function prepareSkeinContext(
 
   fastify.addContentTypeParser("application/json", { parseAs: "string" }, (req, body, done) => {
     const raw = typeof body === "string" ? body : body.toString();
+    if (options.handleRequest) nativeRawBodies.set(req, Buffer.from(raw));
     // A channel verifies a signature over these bytes; parsing them first makes that impossible.
     if (wantsRawBody(req.url)) {
       done(null, raw);
@@ -163,9 +186,37 @@ export async function registerSkeinHandlers(
   options: HandlerRoutesOptions = {},
 ): Promise<void> {
   await prepareSkeinContext(fastify, options);
+  const dispatchNative = async (req: FastifyRequest, reply: FastifyReply) => {
+    if (!options.handleRequest) return false;
+    const controller = new AbortController();
+    reply.raw.once("close", () => controller.abort());
+    const request = { ...toProtocolRequest(req), signal: controller.signal };
+    const url = new URL(request.url);
+    url.pathname = stripBasePath(url.pathname, fastify.prefix) ?? url.pathname;
+    const response = await options.handleRequest(
+      withNativePath(toNativeRequest(request, nativeRawBodies.get(req)), url.pathname),
+    );
+    if (!response) return false;
+    reply.hijack();
+    await sendNativeResponse(response, reply.raw);
+    return true;
+  };
+  if (options.handleRequest)
+    fastify.route({
+      method: ["GET", "POST", "PUT", "PATCH", "DELETE", "HEAD"],
+      url: "/*",
+      handler: async (req, reply) => {
+        try {
+          if (!(await dispatchNative(req, reply))) return reply.callNotFound();
+        } catch (error) {
+          return sendErrorResponse(error, reply, options.logger);
+        }
+      },
+    });
 
   for (const binding of options.routes ?? skeinRoutes) {
     const invoke = handlers[binding.handler];
+    if (!invoke) continue;
     fastify.route({
       method: HTTP_METHOD_TO_FASTIFY[binding.method],
       url: binding.path,
@@ -175,6 +226,7 @@ export async function registerSkeinHandlers(
         const disconnected = new AbortController();
         reply.raw.once("close", () => disconnected.abort(new Error("client disconnected")));
         try {
+          if (await dispatchNative(req, reply)) return;
           const request = { ...toProtocolRequest(req), signal: disconnected.signal };
           const response = await invoke(
             binding.foldThreadIdIntoBody ? copyThreadIdIntoBody(request) : request,
@@ -209,6 +261,7 @@ export const skeinPlugin: FastifyPluginAsync<SkeinPluginOptions> = async (fastif
   );
   await registerSkeinHandlers(fastify, runtime.handlers, {
     routes,
+    handleRequest: runtime.handleRequest,
     // The resolved logger, not `options.logger` — so the transport's fault logging and the engine's
     // always agree on where output goes.
     logger,

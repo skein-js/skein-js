@@ -7,7 +7,14 @@
 //
 // Everything here drives a real compiled graph through the real binding.
 
-import { Annotation, interrupt, StateGraph } from "@langchain/langgraph";
+import {
+  Annotation,
+  interrupt,
+  MemorySaver,
+  StateGraph,
+  StreamChannel,
+  type StreamTransformer,
+} from "@langchain/langgraph";
 import { agentCommand, type AgentGraph } from "@skein-js/agent-protocol";
 import { describe, expect, it } from "vitest";
 
@@ -33,6 +40,57 @@ async function drain(stream: AsyncIterable<unknown> | Promise<AsyncIterable<unkn
 }
 
 describe("langGraphAgent", () => {
+  it("serializes upstream transformer channels as Agent Protocol custom envelopes", async () => {
+    const factory = (): StreamTransformer => {
+      const progress = StreamChannel.remote("progress");
+      return {
+        init: () => ({ progress }),
+        process: (event) => {
+          if (event.method === "values") progress.push({ phase: "saved" });
+          return true;
+        },
+      };
+    };
+    const compiled = new StateGraph(State)
+      .addNode("step", () => ({ value: "custom" }))
+      .addEdge("__start__", "step")
+      .compile()
+      .withConfig<readonly [typeof factory]>({ streamTransformers: [factory] });
+    const events = await drain(langGraphAgent(compiled).streamProtocol!({ value: "start" }, {}));
+    expect(events).toContainEqual(
+      expect.objectContaining({
+        method: "custom",
+        params: expect.objectContaining({
+          data: { name: "progress", payload: { phase: "saved" } },
+        }),
+      }),
+    );
+  });
+  it("streams v3 once through a branded graph with the per-call checkpointer", async () => {
+    let executions = 0;
+    const compiled = new StateGraph(State)
+      .addNode("step", () => {
+        executions++;
+        return { value: "protocol output" };
+      })
+      .addEdge("__start__", "step")
+      .compile();
+    const bound = langGraphAgent(compiled);
+    const saver = new MemorySaver();
+    const perCall = Object.assign(Object.create(bound), { checkpointer: saver }) as AgentGraph;
+    const events = await drain(
+      perCall.streamProtocol!({ value: "in" }, { configurable: { thread_id: "protocol-binding" } }),
+    );
+    expect(executions).toBe(1);
+    expect(events).toContainEqual(
+      expect.objectContaining({
+        method: "values",
+        params: expect.objectContaining({ data: { value: "protocol output" } }),
+      }),
+    );
+    expect(await saver.getTuple({ configurable: { thread_id: "protocol-binding" } })).toBeDefined();
+    expect(compiled.checkpointer).toBeUndefined();
+  });
   it("translates a command envelope into a real Command, so resume reaches the graph", async () => {
     // A stand-in graph that reports what its `stream` was actually handed. Using a spy rather than a
     // real run keeps the assertion on the *translation*, which is the part that regressed.

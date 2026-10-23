@@ -70,6 +70,7 @@ export async function createFastifyServer(
       // configured channel's routes were never mounted. `skeinPlugin` next door always passed it,
       // which is why only the standalone server was affected.
       routes,
+      handleRequest: runtime.handleRequest,
       logger,
       // Explicit option wins; otherwise fall back to the config's `http.cors`, else off.
       cors: options.cors ?? cors ?? false,

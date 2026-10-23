@@ -15,9 +15,15 @@ import {
   type StoreItemFilter,
 } from "@skein-js/core";
 
+import { transferA2aOrigin } from "./interop/a2a-origin.js";
 import type { CancelRunOptions, CreateRunInput } from "./runs/run-service.js";
+import { projectSearchRow } from "./search/project-search-row.js";
 import type { ProtocolService } from "./service.js";
 import { parseAfterSeq, toSseEvents } from "./sse/sse.js";
+import {
+  isThreadCommandEnvelope,
+  threadEventFilterSchema,
+} from "./threads/thread-protocol-service.js";
 import type { CommandInput, ThreadStreamInput } from "./threads/thread-stream-service.js";
 import { parse, requireParam } from "./validation/parse.js";
 import {
@@ -81,6 +87,8 @@ export type ProtocolResponse =
 export type ProtocolHandler = (req: ProtocolRequest) => Promise<ProtocolResponse>;
 
 export interface ProtocolHandlers {
+  handleMcp?: ProtocolHandler;
+  handleA2a?: ProtocolHandler;
   // assistants
   getAssistant: ProtocolHandler;
   searchAssistants: ProtocolHandler;
@@ -96,6 +104,7 @@ export interface ProtocolHandlers {
   // threads
   createThread: ProtocolHandler;
   getThread: ProtocolHandler;
+  getThreadStorage?: ProtocolHandler;
   listThreads: ProtocolHandler;
   countThreads: ProtocolHandler;
   pruneThreads: ProtocolHandler;
@@ -135,8 +144,11 @@ export interface ProtocolHandlers {
   postThreadStream: ProtocolHandler;
   getThreadStream: ProtocolHandler;
   postThreadCommands: ProtocolHandler;
+  /** Pure thread event subscriptions; optional for existing custom handler tables. */
+  postThreadEvents?: ProtocolHandler;
   // meta
   getServerInfo: ProtocolHandler;
+  getOpenApi?: ProtocolHandler;
   /** Console-only inventory of configured channel routes. Returns 404 when none are configured. */
   listChannels: ProtocolHandler;
   /**
@@ -326,7 +338,7 @@ function cancelOnDisconnectQuery(value: string | string[] | undefined): boolean 
  * is a different instruction from "say nothing and take the configured default".
  */
 function threadTtlMinutes(
-  ttl: number | { ttl: number; strategy?: "delete" } | null | undefined,
+  ttl: number | { ttl: number; strategy?: "delete" | "keep_latest" } | null | undefined,
 ): number | null | undefined {
   if (ttl === undefined || ttl === null) return ttl;
   return typeof ttl === "number" ? ttl : ttl.ttl;
@@ -379,11 +391,20 @@ function cancelOptionsFrom(req: ProtocolRequest): CancelRunOptions {
  * caller is more likely to send the bare checkpoint id, so accept both — and forward *only* the id, so
  * the thread scope stays server-owned.
  */
-function historyBefore(before: string | { configurable: { checkpoint_id: string } }): {
-  configurable: { checkpoint_id: string };
-} {
-  const checkpointId = typeof before === "string" ? before : before.configurable.checkpoint_id;
-  return { configurable: { checkpoint_id: checkpointId } };
+function historyBefore(
+  before:
+    | string
+    | {
+        configurable: {
+          checkpoint_id: string;
+          checkpoint_ns?: string | null;
+          checkpoint_map?: Record<string, unknown> | null;
+        };
+      },
+): { configurable: Record<string, unknown> } {
+  return {
+    configurable: typeof before === "string" ? { checkpoint_id: before } : before.configurable,
+  };
 }
 
 /**
@@ -407,6 +428,9 @@ function runLocationHeaders(threadId: string, runId: string): Record<string, str
  * install. Making the service carry it would drag the dependency into every server.
  */
 export interface ProtocolHandlerExtras {
+  getOpenApi?: ProtocolHandler;
+  handleMcp?: ProtocolHandler;
+  handleA2a?: ProtocolHandler;
   /** The channel pipeline, when channels are configured. Absent leaves the route answering 404. */
   handleInboundEvent?: ProtocolHandler;
   /** A sanitized runtime inventory for operator tooling. Absent means no inventory route is mounted. */
@@ -441,6 +465,9 @@ export function createProtocolHandlers(
     parseAfterSeq(req.headers["last-event-id"]);
 
   return {
+    ...(extras.getOpenApi ? { getOpenApi: extras.getOpenApi } : {}),
+    ...(extras.handleMcp ? { handleMcp: extras.handleMcp } : {}),
+    ...(extras.handleA2a ? { handleA2a: extras.handleA2a } : {}),
     // --- assistants ---------------------------------------------------------------------------
     getAssistant: async (req) =>
       json(await service.assistants.get(requireParam(req.params, "assistant_id"))),
@@ -450,6 +477,7 @@ export function createProtocolHandlers(
       const query = {
         graph_id: body.graph_id,
         name: body.name,
+        nameMatch: "substring" as const,
         metadata: body.metadata,
         limit: body.limit,
         offset: body.offset,
@@ -460,7 +488,11 @@ export function createProtocolHandlers(
         service.assistants.search(query),
         service.assistants.count(query),
       ]);
-      return json(assistants, 200, { "x-pagination-total": String(total) });
+      return json(
+        assistants.map((assistant) => projectSearchRow(assistant, body.select)),
+        200,
+        { "x-pagination-total": String(total) },
+      );
     },
 
     countAssistants: async (req) => {
@@ -469,6 +501,7 @@ export function createProtocolHandlers(
         await service.assistants.count({
           graph_id: body.graph_id,
           name: body.name,
+          nameMatch: "substring",
           metadata: body.metadata,
         }),
       );
@@ -549,7 +582,14 @@ export function createProtocolHandlers(
           thread_id: body.thread_id,
           metadata: body.metadata,
           ifExists: body.if_exists,
-          ...(body.ttl !== undefined ? { ttl: threadTtlMinutes(body.ttl) } : {}),
+          ...(body.ttl !== undefined
+            ? {
+                ttl: threadTtlMinutes(body.ttl),
+                ...(typeof body.ttl === "object" && body.ttl !== null
+                  ? { ttlStrategy: body.ttl.strategy }
+                  : {}),
+              }
+            : {}),
           ...(body.supersteps
             ? {
                 supersteps: body.supersteps.map((superstep) => ({
@@ -565,23 +605,28 @@ export function createProtocolHandlers(
       );
     },
 
+    getThreadStorage: async (req) => {
+      if (!service.threads.getStorage)
+        throw SkeinHttpError.notImplemented("This service does not expose storage accounting.");
+      return json(await service.threads.getStorage(requireParam(req.params, "thread_id")));
+    },
     getThread: async (req) =>
       json(await service.threads.get(requireParam(req.params, "thread_id"))),
 
     listThreads: async (req) => {
       const body = parse(threadSearchSchema, req.body ?? {});
-      return json(
-        await service.threads.search({
-          metadata: body.metadata,
-          values: body.values,
-          status: body.status,
-          ids: body.ids,
-          limit: body.limit,
-          offset: body.offset,
-          sortBy: body.sort_by,
-          sortOrder: body.sort_order,
-        }),
-      );
+      const threads = await service.threads.search({
+        metadata: body.metadata,
+        excludeMetadata: body.exclude_metadata,
+        values: body.values,
+        status: body.status,
+        ids: body.ids,
+        limit: body.limit,
+        offset: body.offset,
+        sortBy: body.sort_by,
+        sortOrder: body.sort_order,
+      });
+      return json(threads.map((thread) => projectSearchRow(thread, body.select, body.extract)));
     },
 
     countThreads: async (req) => {
@@ -589,6 +634,7 @@ export function createProtocolHandlers(
       return json(
         await service.threads.count({
           metadata: body.metadata,
+          excludeMetadata: body.exclude_metadata,
           values: body.values,
           status: body.status,
           ids: body.ids,
@@ -614,7 +660,14 @@ export function createProtocolHandlers(
       return json(
         await service.threads.patch(requireParam(req.params, "thread_id"), {
           metadata: body.metadata,
-          ...(body.ttl !== undefined ? { ttl: threadTtlMinutes(body.ttl) } : {}),
+          ...(body.ttl !== undefined
+            ? {
+                ttl: threadTtlMinutes(body.ttl),
+                ...(typeof body.ttl === "object" && body.ttl !== null
+                  ? { ttlStrategy: body.ttl.strategy }
+                  : {}),
+              }
+            : {}),
         }),
       );
     },
@@ -635,12 +688,17 @@ export function createProtocolHandlers(
           ...(limit !== undefined ? { limit } : {}),
           ...(body.before ? { before: historyBefore(body.before) } : {}),
           ...(body.metadata ? { filter: body.metadata } : {}),
+          ...(body.checkpoint ? { checkpoint: body.checkpoint } : {}),
         }),
       );
     },
 
     getThreadState: async (req) =>
-      json(await service.threads.getState(requireParam(req.params, "thread_id"))),
+      json(
+        await service.threads.getState(requireParam(req.params, "thread_id"), {
+          subgraphs: req.query["subgraphs"] === "true",
+        }),
+      ),
 
     getThreadStateAtCheckpoint: async (req) =>
       json(
@@ -665,8 +723,12 @@ export function createProtocolHandlers(
               threadId,
               checkpointId,
               body.checkpoint?.checkpoint_ns ?? undefined,
+              { checkpoint: body.checkpoint ?? undefined, subgraphs: body.subgraphs },
             )
-          : await service.threads.getState(threadId),
+          : await service.threads.getState(threadId, {
+              checkpoint: body.checkpoint ?? undefined,
+              subgraphs: body.subgraphs,
+            }),
       );
     },
 
@@ -704,14 +766,14 @@ export function createProtocolHandlers(
     createBackgroundRun: async (req) => {
       const run = await service.runs.createBackground(
         requireParam(req.params, "thread_id"),
-        parse(runCreateSchema, req.body) as CreateRunInput,
+        transferA2aOrigin(req.body, parse(runCreateSchema, req.body)) as CreateRunInput,
       );
       return json(run, 200, runLocationHeaders(run.thread_id, run.run_id));
     },
 
     createStatelessRun: async (req) => {
       const run = await service.runs.createStatelessBackground(
-        parse(runCreateSchema, req.body) as CreateRunInput,
+        transferA2aOrigin(req.body, parse(runCreateSchema, req.body)) as CreateRunInput,
       );
       return json(run, 200, runLocationHeaders(run.thread_id, run.run_id));
     },
@@ -894,7 +956,11 @@ export function createProtocolHandlers(
         service.crons.search(body),
         service.crons.count(body),
       ]);
-      return json(crons, 200, { "x-pagination-total": String(total) });
+      return json(
+        crons.map((cron) => projectSearchRow(cron, body.select)),
+        200,
+        { "x-pagination-total": String(total) },
+      );
     },
 
     // Answers a **bare integer**, not `{ count }` — matching the OpenAPI spec and what the SDK's
@@ -917,6 +983,19 @@ export function createProtocolHandlers(
     },
 
     // --- thread streaming / commands ----------------------------------------------------------
+    postThreadEvents: async (req) => {
+      if (!service.threadStream.subscribe)
+        throw SkeinHttpError.unprocessable("Thread subscriptions are unavailable.");
+      return {
+        kind: "sse",
+        status: 200,
+        events: await service.threadStream.subscribe(
+          requireParam(req.params, "thread_id"),
+          parse(threadEventFilterSchema, req.body),
+          req.signal,
+        ),
+      };
+    },
     postThreadStream: async (req) => {
       const started = await service.threadStream.stream(
         requireParam(req.params, "thread_id"),
@@ -926,6 +1005,24 @@ export function createProtocolHandlers(
     },
 
     getThreadStream: async (req) => {
+      if (req.query["stream_modes"] !== undefined) {
+        if (!service.threadStream.follow)
+          throw SkeinHttpError.unprocessable("Thread subscriptions are unavailable.");
+        const requested = req.query["stream_modes"];
+        const modes = (Array.isArray(requested) ? requested : [requested!]).flatMap((mode) =>
+          mode.split(","),
+        );
+        return {
+          kind: "sse",
+          status: 200,
+          events: await service.threadStream.follow(
+            requireParam(req.params, "thread_id"),
+            modes,
+            req.headers["last-event-id"] === undefined ? undefined : afterSeqFrom(req),
+            req.signal,
+          ),
+        };
+      }
       const started = await service.threadStream.joinStream(
         requireParam(req.params, "thread_id"),
         afterSeqFrom(req),
@@ -934,6 +1031,16 @@ export function createProtocolHandlers(
     },
 
     postThreadCommands: async (req) => {
+      if (isThreadCommandEnvelope(req.body)) {
+        if (!service.threadStream.protocolCommand)
+          throw SkeinHttpError.unprocessable("Thread commands are unavailable.");
+        return json(
+          await service.threadStream.protocolCommand(
+            requireParam(req.params, "thread_id"),
+            req.body,
+          ),
+        );
+      }
       const started = await service.threadStream.command(
         requireParam(req.params, "thread_id"),
         parse(commandBodySchema, req.body ?? {}) as CommandInput,
@@ -958,14 +1065,32 @@ export function createProtocolHandlers(
       const body = parse(storePutSchema, req.body);
       return json(
         storeItemBody(
-          await service.store.put(body.namespace, body.key, body.value, { ttl: body.ttl }),
+          await (
+            service.store.putWithOptions ??
+            ((namespace, key, value, options) => {
+              if (options?.ttl === null || options?.index !== undefined)
+                throw SkeinHttpError.unprocessable("Store write options are unavailable.");
+              return service.store.put(namespace, key, value, { ttl: options?.ttl ?? undefined });
+            })
+          )(body.namespace, body.key, body.value, { ttl: body.ttl, index: body.index }),
         ),
       );
     },
 
     getStoreItem: async (req) => {
       const { namespace, key } = requireStoreItemTarget(req);
-      return json(storeItemBody(await service.store.get(namespace, key)));
+      const refresh = req.query["refresh_ttl"];
+      if (refresh !== undefined && refresh !== "true" && refresh !== "false")
+        throw SkeinHttpError.badRequest("refresh_ttl must be true or false.");
+      return json(
+        storeItemBody(
+          await service.store.get(
+            namespace,
+            key,
+            refresh === undefined ? undefined : { refreshTtl: refresh === "true" },
+          ),
+        ),
+      );
     },
 
     // Body first, then query: the SDK's `deleteItem` sends a JSON body (`{ namespace, key }`, namespace
@@ -980,6 +1105,7 @@ export function createProtocolHandlers(
     searchStoreItems: async (req) => {
       const body = parse(storeSearchSchema, req.body ?? {});
       const items = await service.store.search({
+        refreshTtl: body.refresh_ttl ?? undefined,
         prefix: body.namespace_prefix,
         query: body.query,
         filter: body.filter as StoreItemFilter | undefined,

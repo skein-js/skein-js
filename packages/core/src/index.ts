@@ -81,11 +81,14 @@ export type {
   RunCreateGuard,
   RunFinalization,
   RunKwargs,
+  RunResult,
   RunListQuery,
   RunRepo,
   SkeinStore,
   SkeinStoreSnapshot,
   StorePutOptions,
+  StoreItemWriteOptions,
+  StoreReadOptions,
   StoreRepo,
   StoreSearchQuery,
   StoreTtlConfig,
@@ -149,6 +152,13 @@ export type {
 } from "./queue/delivery-queue.js";
 
 // Run queue + streaming pub/sub contract.
+export type { ThreadEvent, ThreadEventInput, ThreadEventBus } from "./queue/thread-event-bus.js";
+export type { Event as ThreadProtocolEvent } from "@langchain/protocol";
+export type {
+  EventStreamRequest as ThreadEventFilter,
+  CommandResponse as ThreadCommandSuccess,
+  ErrorResponse as ThreadCommandError,
+} from "@langchain/protocol";
 export type {
   EnqueueOptions,
   QueuedRun,
@@ -183,6 +193,7 @@ export type {
   RunStartedEvent,
   RunTelemetryContext,
   RunTelemetryEvent,
+  HttpTelemetryEvent,
   RunTrigger,
   TelemetrySink,
   TelemetrySinkErrorReporter,
@@ -199,3 +210,5 @@ export type {
   AuthUser,
 } from "./auth/auth.js";
 export type { SkeinHttpErrorOptions } from "./errors/skein-http-error.js";
+
+export type { ThreadStorage } from "./wire/thread-storage.js";

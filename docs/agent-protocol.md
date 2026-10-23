@@ -112,8 +112,8 @@ LangGraph SDK sends them): `{ limit?, before?, metadata? }`. It returns at most 
 so a long thread's full history is one of the largest single responses skein can produce. Page back
 through it with `before` (a checkpoint config carrying `checkpoint_id`, or a bare `checkpoint_id`) — the
 bound is exclusive, so pass the last checkpoint you received — and narrow it with `metadata`, which
-becomes the checkpointer's filter. Only the `checkpoint_id` reaches the checkpointer: the thread scope is
-server-owned, so a `thread_id` in `before.configurable` is dropped rather than honoured.
+becomes the checkpointer's filter. Checkpoint IDs, namespaces and checkpoint maps reach the checkpointer; the thread scope remains
+server-owned, so a `thread_id` in `before.configurable` is dropped.
 
 A `?limit=` query param is still accepted for hand-rolled callers, but it is _clamped_ to 1000 rather
 than rejected (a query string has no schema to 400 from). The body wins if both are present.
@@ -136,14 +136,13 @@ _branch_ from any past checkpoint:
 - `GET /threads/{id}/state/{checkpoint_id}` reads the state snapshot at a specific checkpoint, and
   `POST /threads/{id}/state/checkpoint` reads the same thing with the pointer in the body. Both exist
   because the SDK picks between them by argument _type_: `threads.getState(id, "ckpt-1")` takes the
-  `GET`, while `threads.getState(id, { checkpoint_id, checkpoint_ns })` takes the `POST`. Only
-  `checkpoint_id` is read from the pointer either way. A pointer with no id reads the tip rather than
-  404ing, and `subgraphs` is accepted and ignored on both.
+  `GET`, while `threads.getState(id, { checkpoint_id, checkpoint_ns })` takes the `POST`. The body pointer preserves `checkpoint_id`, `checkpoint_ns` and `checkpoint_map`. A namespace-only
+  pointer reads that namespace’s current state. `subgraphs: true` includes recursive task state;
+  the GET routes accept `?subgraphs=true`.
 - Run creation accepts a top-level **`checkpoint_id`** to start a run from a chosen checkpoint instead
-  of the thread tip. This is **server-validated and server-injected** — it is _not_ read from the
-  client's `config.configurable` (which strips it), so a client can never redirect a run to an arbitrary
-  checkpoint. It rides the LangGraph checkpointer, so no extra storage is involved; thread copy is the
-  coarser, whole-history cousin.
+  of the thread tip. A full `checkpoint` pointer or validated `config.configurable` checkpoint coordinates also work.
+  An explicit top-level ID wins. The server always supplies the owning thread ID. Coordinates
+  survive queued execution, so the worker branches from the same checkpoint the caller selected.
 
 ### Runs — stateless / ephemeral
 
@@ -389,8 +388,8 @@ same default the SDK sends for `store.listNamespaces`. A query `limit` above 100
 rejected, matching every other query-string limit here. Truncation is not signalled on the response
 (only assistant search carries `x-pagination-total`), so page until you receive fewer rows than you
 asked for. `status` on `runs.list` **is** honoured, filtered in the driver so it pages the filtered set;
-`select` on `runs.list` and `refresh_ttl` on `store.searchItems` are still accepted and **ignored**
-(refresh-on-read is a deployment setting, `store.ttl.refresh_on_read`, not a per-request one).
+`select` on `runs.list` remains accepted without projection. Store reads and searches honor
+`refresh_ttl` as a per-request override of `store.ttl.refresh_on_read`.
 
 ### Thread streaming (SSE)
 
@@ -399,15 +398,31 @@ asked for. `status` on `runs.list` **is** honoured, filtered in the driver so it
 | `POST` | `/threads/{thread_id}/stream`        | ✅  |
 | `GET`  | `/threads/{thread_id}/stream`        | ✅  |
 | `GET`  | `/threads/{thread_id}/stream/events` | ✅  |
+| `POST` | `/threads/{thread_id}/stream/events` | ✅  |
 | `POST` | `/threads/{thread_id}/commands`      | ✅  |
 
-`GET /stream/events` is a synonym for `GET /stream`: `client.threads.joinStream()` asks for the
-latter, the SDK's v2 agent-server transport reads from the former.
+`POST /threads/{thread_id}/stream/events` subscribes to the thread event protocol. Its body
+contains `channels`, optional namespace prefixes, `depth`, and an optional numeric `since` cursor.
+It never creates a thread or run. Without a cursor it sends a current state baseline followed by live
+events; with a cursor it replays retained events after that sequence and then follows live events.
+An expired or future cursor reports `thread_cursor_expired`; restore state and subscribe afresh.
 
-The v2 transport as a whole is **not** supported — its `POST /stream/events` is a subscription
-(`{ channels, ... }`, carrying no `assistant_id`) rather than a run-create, and `/commands` expects a
-protocol command envelope skein does not implement. Use the run endpoints, which is what `useStream`
-does by default.
+`POST /commands` recognizes `{ id, method, params }` envelopes and answers correlated JSON
+success/error responses. Implemented methods are `run.start`, `input.respond`, `agent.getTree`,
+`state.get`, `state.listCheckpoints`, and `state.fork`. Run commands enqueue through the existing
+worker; a subscription or reconnect never invokes the graph. Existing resume/goto/update bodies
+continue to return legacy SSE. State reads require read permission, run starts require `create_run`,
+and forks also require state-write and destination-creation permission.
+
+`GET /stream/events` remains an alias for `GET /stream`. Without parameters these join one run
+and finish with it, preserving Skein's established default. Explicit `stream_modes` (repeated or
+comma-separated, including `thread_state`) opts into a thread stream that stays open across turns.
+Its SSE event IDs are thread-wide cursors, rather than per-run frame IDs.
+
+Thread subscriptions require `ProtocolDeps.threadBus`; the built-in runtime assemblers provide it.
+Memory replay is process-local. Redis replay is shared between API replicas and workers. Neither
+publisher stores subscriber credentials or subscription filters: authorization and filtering happen
+for each reader during replay and live delivery. See the [tested compatibility matrix](./langgraph-compatibility.md).
 
 > The protocol also describes a WebSocket upgrade for bidirectional streaming. That is
 > **post-MVP** — SSE covers the full client UX (see [streaming.md](./streaming.md)).
@@ -613,3 +628,65 @@ thread itself is gated.
 
 - Agent Protocol repo + OpenAPI — <https://github.com/langchain-ai/agent-protocol>
 - aegra's Agent Protocol implementation (Python prior art) — <https://github.com/aegra/aegra>
+
+### Execution, search and retention options
+
+Run requests preserve `durability: "sync" | "async" | "exit"` through the queue. It takes precedence
+over deprecated `checkpoint_during`; explicit `true` maps to `async`, explicit `false` to `exit`, and
+omission keeps LangGraph’s default. Legacy SSE also recognizes `tasks` and `checkpoints` modes.
+
+Thread search supports `exclude_metadata` (one nonempty object or a nonempty list, excluding any
+matching subset), `sort_by: "state_updated_at"`, `select`, and up to ten named `extract` paths.
+Extraction accepts roots `values`, `metadata`, `config`, and `interrupts`, dot properties and array
+indices such as `values.messages[-1].content`; absent values become `null`. Filters run before
+pagination; projection and extraction run after authorization. Assistant and cron search support
+`select`. HTTP assistant name matching is case-insensitive substring matching; direct repository
+calls retain exact matching unless `nameMatch: "substring"` is requested.
+
+Store writes accept `index: false | string[]` and `ttl: null` for an explicit no-expiry item.
+`GET /store/items?refresh_ttl=false` and store search `refresh_ttl` control sliding expiry per read.
+Custom stores that cannot honor requested indexing or TTL controls fail explicitly.
+
+Thread TTL objects accept `strategy: "keep_latest"` with their TTL minutes. The sweeper retains the
+thread and current checkpoint in every retained namespace, including referenced child checkpoints
+and pending writes. State updates refresh that window; active runs are skipped. `delete` remains
+the default strategy and explicit `ttl: null` pins a thread. See [storage](./storage.md).
+
+### MCP and A2A
+
+`/mcp` uses the official MCP SDK’s stateless Streamable HTTP transport. Tools list authorized
+assistants and their input schemas. Calling a tool creates a run through the same authorized run
+service; cancellation uses the existing run cancellation machinery.
+
+`POST /a2a/{assistant_id}` uses the official A2A SDK’s JSON-RPC handlers and legacy codecs.
+Discovery is `GET /.well-known/agent-card.json?assistant_id=...`; `DEFAULT_A2A_ASSISTANT_ID` supplies
+an omitted assistant and `LANGGRAPH_API_URL` supplies the public origin. Supported method families
+are `SendMessage`, `SendStreamingMessage`, `GetTask`, `CancelTask`, `ListTasks`,
+`GetExtendedAgentCard` and the four legacy send/stream/get/cancel names.
+
+An A2A context maps to a thread. Each new task starts a queued run; a continuation keeps the first
+run’s task ID. Final output is captured before terminal status on existing run rows, independently
+of checkpoint pruning and event replay. Optional `RunRepo.recordResult/getResult` support is
+required before A2A admits work; ordinary Agent Protocol runs remain usable with older drivers.
+Resume checks the saved checkpoint under the existing execution lease and rejects stale tasks.
+Cancellation status takes precedence over a computed output.
+
+History defaults to the context. The advertised history-scope extension accepts `task` in
+`configuration.historyScope` for sends, in `params.historyScope` for reads/listing, or through
+`LangGraph-A2A-History-Scope`. Length is bounded to ten, after scope. Streaming omits response
+history. Assistant `metadata.a2a.input_modes`/`output_modes` customize nonempty advertised MIME
+lists. File parts preserve bytes or URLs, MIME and filenames through standard content blocks.
+
+Skein advertises HTTP/SSE, history scope and streaming. It does not advertise A2UI, task push
+notifications or subscription-to-task support. These unsupported methods fail explicitly. Dedicated
+frontend browser and packed-package gates validate clients separately from these transport tests.
+`http.disable_mcp` and `http.disable_a2a` remove their route groups.
+
+### Discovery and storage diagnostics
+
+`GET /openapi.json` and `/docs` describe the mounted route table and request schemas, including
+configured route groups and deployment-supplied authentication descriptions. `/metrics` exposes
+host-owned OpenTelemetry collection (501 when unavailable). Authorized
+`GET /threads/{thread_id}/storage` returns concrete saver payload counts and bytes, or 501 for a
+custom saver without an inspector. These routes use the common adapter/runtime paths; see
+[diagnostics](./observability.md#http-diagnostics) for measurement boundaries.

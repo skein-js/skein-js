@@ -12,6 +12,8 @@ import {
   type GraphSchema,
   type RunAbortChannel,
   type RunEventBus,
+  type ThreadEventBus,
+  type ThreadStorage,
   type RunQueue,
   type SkeinStore,
   type StoreRepo,
@@ -143,6 +145,10 @@ export interface Logger {
 
 /** Everything the engine, services, and handlers need — all injected, no globals. */
 export interface ProtocolDeps {
+  /** Optional Fetch application/static surface. Undefined falls through to protocol routing. */
+  httpHandler?: (request: Request) => Promise<Response | undefined>;
+  /** Concrete saver accounting; omitted for unsupported custom savers. */
+  inspectThreadStorage?: (threadId: string) => Promise<ThreadStorage> | ThreadStorage;
   /**
    * Protocol resource rows (assistants, threads, runs, store items). Its `store` repo is also
    * bridged into each graph run as a LangGraph `BaseStore` (see `SkeinBaseStore`), so graph nodes
@@ -170,6 +176,8 @@ export interface ProtocolDeps {
   queue: RunQueue;
   /** Fans run frames out to streaming clients (replay + live-tail). */
   bus: RunEventBus;
+  /** Optional thread-wide replay and live events. Existing run buses remain unchanged. */
+  threadBus?: ThreadEventBus;
   /**
    * Carries run-abort requests between instances, so a cancel routed to one replica stops a run
    * executing on another. Absent means single-process cancellation — correct and complete for one

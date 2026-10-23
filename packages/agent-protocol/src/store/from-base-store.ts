@@ -41,6 +41,8 @@ import {
   type SearchItem,
   type StoreNamespaceQuery,
   type StorePutOptions,
+  type StoreReadOptions,
+  type StoreItemWriteOptions,
   type StoreRepo,
   type StoreSearchQuery,
 } from "@skein-js/core";
@@ -99,12 +101,24 @@ export interface FromBaseStoreOptions {
  * the same five methods — which is the honest contract, since nothing here does an `instanceof`.
  */
 export interface BaseStoreLike {
-  get(namespace: string[], key: string): Promise<StoredItem | null>;
+  get(namespace: string[], key: string, options?: StoreReadOptions): Promise<StoredItem | null>;
+  putWithOptions?(
+    namespace: string[],
+    key: string,
+    value: Record<string, unknown>,
+    options?: StoreItemWriteOptions,
+  ): Promise<void>;
   put(namespace: string[], key: string, value: Record<string, unknown>): Promise<void>;
   delete(namespace: string[], key: string): Promise<void>;
   search(
     prefix: string[],
-    options?: { limit?: number; offset?: number; filter?: Record<string, unknown>; query?: string },
+    options?: {
+      limit?: number;
+      offset?: number;
+      filter?: Record<string, unknown>;
+      query?: string;
+      refreshTtl?: boolean;
+    },
   ): Promise<StoredSearchItem[]>;
   listNamespaces(options?: {
     limit?: number;
@@ -145,7 +159,7 @@ type TtlAwarePut = (
   key: string,
   value: Record<string, unknown>,
   index?: false | string[],
-  options?: { ttl?: number },
+  options?: { ttl?: number | null },
 ) => Promise<void>;
 
 /**
@@ -216,7 +230,8 @@ function matchesTextQuery(item: Item, needle: string): boolean {
 export function fromBaseStore(store: BaseStoreLike, options?: FromBaseStoreOptions): StoreRepo {
   const maxPageSize = requireValidMaxPageSize(options?.maxPageSize ?? DEFAULT_MAX_PAGE_SIZE);
   const scanLimit = options?.scanLimit ?? defaultAdapterScanLimit(maxPageSize);
-  const ttlSupported = supportsStoreTtl(store);
+  const optionAware = typeof store.putWithOptions === "function";
+  const ttlSupported = supportsStoreTtl(store) || optionAware;
 
   // Checked here, not only at config load: a `defaultTtl` this store cannot honour would otherwise be
   // discarded on every write by the same code that refuses an explicit per-item `ttl`, which is the
@@ -293,6 +308,7 @@ export function fromBaseStore(store: BaseStoreLike, options?: FromBaseStoreOptio
         const page = await store.search(prefix, {
           limit: SOURCE_PAGE_SIZE,
           offset,
+          refreshTtl: false,
           ...(query !== undefined ? { query } : {}),
         });
         scanned += page.length;
@@ -310,14 +326,33 @@ export function fromBaseStore(store: BaseStoreLike, options?: FromBaseStoreOptio
     return { kept, sourceScored };
   };
 
-  return {
-    get: async (namespace, key) => {
-      const item = await store.get(namespace, key);
+  const requireReadOptions = (options?: StoreReadOptions) => {
+    if (options?.refreshTtl !== undefined && ttlSupported && !optionAware)
+      throw SkeinHttpError.unprocessable(
+        "This BaseStore does not expose per-item TTL refresh controls.",
+      );
+  };
+  const refreshPage = async (items: SearchItem[], refreshTtl?: boolean) => {
+    if (optionAware)
+      for (const item of items)
+        await store.get(
+          item.namespace,
+          item.key,
+          refreshTtl === undefined ? undefined : { refreshTtl },
+        );
+    return items;
+  };
+  const repo: StoreRepo = {
+    get: async (namespace, key, readOptions) => {
+      requireReadOptions(readOptions);
+      const item = await store.get(namespace, key, readOptions);
       return item ? toWireItem(item) : null;
     },
 
-    put: async (namespace, key, value, putOptions?: StorePutOptions) => {
-      if (putOptions?.ttl !== undefined && !ttlSupported) {
+    put: async (namespace, key, value, putOptions?: StorePutOptions) =>
+      repo.putWithOptions!(namespace, key, value, putOptions),
+    putWithOptions: async (namespace, key, value, putOptions?: StoreItemWriteOptions) => {
+      if (typeof putOptions?.ttl === "number" && !ttlSupported) {
         // A 400, not a bare `Error`: the caller asked for something this deployment cannot do, and a 500
         // would read as "skein broke" rather than "drop the `ttl` or use a store that can expire items".
         throw SkeinHttpError.badRequest(
@@ -326,11 +361,16 @@ export function fromBaseStore(store: BaseStoreLike, options?: FromBaseStoreOptio
         );
       }
       // An explicit per-item `ttl` wins over the configured default, matching both bundled drivers.
-      const ttl = putOptions?.ttl ?? options?.defaultTtl;
-      if (ttl !== undefined) {
-        await (store.put as TtlAwarePut)(namespace, key, value, undefined, { ttl });
+      const ttl = putOptions?.ttl === undefined ? options?.defaultTtl : putOptions.ttl;
+      if (ttl === null && ttlSupported && !optionAware)
+        throw SkeinHttpError.unprocessable(
+          "This BaseStore does not expose explicit no-expiry writes.",
+        );
+      if (optionAware) await store.putWithOptions!(namespace, key, value, { ...putOptions, ttl });
+      else if (ttl !== undefined) {
+        await (store.put as TtlAwarePut)(namespace, key, value, putOptions?.index, { ttl });
       } else {
-        await store.put(namespace, key, value);
+        await (store.put as TtlAwarePut)(namespace, key, value, putOptions?.index);
       }
       const written = await store.get(namespace, key);
       // Racy by construction — see the class doc. A concurrent delete leaves nothing to read back, and
@@ -354,6 +394,7 @@ export function fromBaseStore(store: BaseStoreLike, options?: FromBaseStoreOptio
     },
 
     search: async (query: StoreSearchQuery) => {
+      requireReadOptions(query);
       const limit = pageLimit(query.limit);
       const offset = query.offset ?? 0;
       const prefix = query.prefix;
@@ -383,14 +424,15 @@ export function fromBaseStore(store: BaseStoreLike, options?: FromBaseStoreOptio
       // semantic result this adapter exists to reach.
       if (query.query !== undefined && !sourceScored) {
         const needle = query.query;
-        return (
+        return refreshPage(
           kept
             .filter((item) => matchesTextQuery(item, needle))
             // `score: 1` on a naive hit, matching both bundled drivers: a text match is not ranked, so
             // every hit is equally good, and omitting the field would make an adapted store the only one
             // whose text search answers without a score.
             .map((item) => ({ ...item, score: 1 }))
-            .slice(offset, offset + limit)
+            .slice(offset, offset + limit),
+          query.refreshTtl,
         );
       }
 
@@ -399,7 +441,7 @@ export function fromBaseStore(store: BaseStoreLike, options?: FromBaseStoreOptio
       // similarities in one embedding space, so they compare across namespaces and one sort restores the
       // global order. Descending, and a stable sort leaves a single-prefix search in the order it came.
       if (sourceScored) kept.sort((a, b) => (b.score ?? 0) - (a.score ?? 0));
-      return kept.slice(offset, offset + limit);
+      return refreshPage(kept.slice(offset, offset + limit), query.refreshTtl);
     },
 
     listNamespaces: async (query?: StoreNamespaceQuery) => {
@@ -420,8 +462,9 @@ export function fromBaseStore(store: BaseStoreLike, options?: FromBaseStoreOptio
     sweepExpired: async () => {
       // Capability-detected. A store that cannot expire items has nothing to sweep, and `store.ttl` is
       // refused at startup against such a store, so zero is the honest answer rather than a silent lie.
-      if (!ttlSupported) return 0;
+      if (!supportsStoreTtl(store)) return 0;
       return (store as unknown as SweepingStore).sweepExpiredItems();
     },
   };
+  return repo;
 }

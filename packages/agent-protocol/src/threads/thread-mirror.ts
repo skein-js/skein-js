@@ -60,7 +60,7 @@ export function snapshotToThreadUpdate(
 }
 
 /** The checkpoint coordinates carried in a snapshot's `configurable`, or null if not checkpointed. */
-function toCheckpoint(config: AgentStateSnapshot["config"] | undefined): Checkpoint | null {
+export function toCheckpoint(config: AgentStateSnapshot["config"] | undefined): Checkpoint | null {
   const configurable = config?.configurable;
   if (!configurable) return null;
   const threadId = configurable["thread_id"];
@@ -99,8 +99,8 @@ function toThreadTask(task: AgentStateTask): ThreadTask {
     result: task.result,
     error: toTaskError(task.error),
     interrupts: [...(task.interrupts ?? [])],
-    checkpoint: null,
-    state: null,
+    checkpoint: task.state && !("values" in task.state) ? toCheckpoint(task.state) : null,
+    state: task.state && "values" in task.state ? snapshotToThreadState(task.state) : null,
   };
 }
 

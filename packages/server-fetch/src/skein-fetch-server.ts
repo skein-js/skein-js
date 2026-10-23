@@ -11,6 +11,7 @@ import {
   corsResponseHeaders,
   resolveProtocolRuntime,
   stripBasePath,
+  withNativePath,
   type CorsSetting,
   type Logger,
   type ResolvedProtocolRuntime,
@@ -250,6 +251,36 @@ function createFetchHandler(
     const extraHeaders = cors
       ? corsResponseHeaders(request.headers.get("origin") ?? undefined, cors)
       : {};
+    // Avoid teeing ordinary protocol bodies when only diagnostics use native routing.
+    const nativeMatcher = (
+      resolved.runtime.handleRequest as unknown as
+        Record<symbol, ((method: string, url: string) => boolean) | undefined> | undefined
+    )?.[Symbol.for("@skein-js/native-request-matcher")];
+    if (
+      resolved.runtime.handleRequest &&
+      nativeMatcher?.(request.method, `${url.origin}${skeinPathname}${url.search}`) !== false
+    ) {
+      const nativeRequest = withNativePath(request, skeinPathname);
+      let native: Response | undefined;
+      try {
+        native = await resolved.runtime.handleRequest?.(nativeRequest);
+        if (native) {
+          const headers = new Headers(native.headers);
+          for (const [key, value] of Object.entries(extraHeaders)) headers.set(key, value);
+          return new Response(native.body, {
+            status: native.status,
+            statusText: native.statusText,
+            headers,
+          });
+        }
+      } catch (error) {
+        void request.body?.cancel().catch(() => undefined);
+        return errorResponse(error, extraHeaders, resolved.logger);
+      } finally {
+        // Release the unused tee branch; awaiting cancellation would wait for the active reader.
+        void (native ? request : nativeRequest).body?.cancel().catch(() => undefined);
+      }
+    }
     const match = matchRoute(request.method, skeinPathname);
     if (!match) {
       return new Response(JSON.stringify({ status: 404, message: "Not Found" }), {
@@ -268,6 +299,7 @@ function createFetchHandler(
         match.binding.retainRawBody ?? false,
       );
       const invoke = resolved.runtime.handlers[match.binding.handler];
+      if (!invoke) return new Response("Not found", { status: 404, headers: extraHeaders });
       const response = await invoke(
         match.binding.foldThreadIdIntoBody
           ? copyThreadIdIntoBody(protocolRequest)

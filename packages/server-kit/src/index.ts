@@ -149,3 +149,12 @@ export type {
   RuntimeMemorySnapshot,
   RuntimeSignalSubscription,
 } from "./runtime-capabilities.js";
+
+export { loadConfigHttpHandler } from "./config-http-handler.js";
+
+export {
+  toNativeRequest,
+  readNativeNodeRequest,
+  sendNativeResponse,
+  withNativePath,
+} from "./native-http.js";

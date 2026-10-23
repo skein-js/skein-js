@@ -16,12 +16,13 @@ import {
   SkeinHttpError,
   toRunError,
   type DefaultValues,
-  type Interrupt,
   type Delivery,
   type Metadata,
   type Run,
   type RunError,
+  type RunFrame,
   type RunKwargs,
+  type RunResult,
   type RunStatus,
   type RunTelemetryContext,
   type RunTrigger,
@@ -40,6 +41,7 @@ import {
   type AgentStateSnapshot,
 } from "../graphs/agent-graph.js";
 import { resolveCompiledGraph } from "../graphs/resolve-compiled-graph.js";
+import { readA2aOrigin, verifyA2aResume } from "../interop/a2a-origin.js";
 import {
   chunkToFrameBody,
   streamEventToFrameBody,
@@ -51,7 +53,9 @@ import {
   collectInterrupts,
   runStatusForSnapshot,
   snapshotToThreadUpdate,
+  toCheckpoint,
 } from "../threads/thread-mirror.js";
+import { isThreadProtocolRun } from "../threads/thread-protocol-run.js";
 
 import type { AbortReason, RunControl } from "./cancellation.js";
 import { readDeclaredReply } from "./declared-reply.js";
@@ -119,25 +123,9 @@ function abortedStatus(reason: AbortReason | null): RunStatus {
 }
 
 /** The settled result of a run — its terminal status and the graph's final state values. */
-export interface RunOutcome {
+export interface RunOutcome extends RunResult {
   status: RunStatus;
-  values: DefaultValues;
-  /**
-   * Why the run failed, for a `error`/`timeout` status. The same payload published on the `error`
-   * frame and persisted on the run row, so a caller that never subscribed (wait, the background
-   * worker) can still report the failure.
-   */
   error?: RunError;
-  /**
-   * The questions a run that ended `interrupted` is waiting on, keyed by task.
-   *
-   * Part of the outcome rather than read back afterwards because the snapshot holding them is only in
-   * scope while the run settles — and because a second read could observe a thread that has since
-   * moved on.
-   */
-  interrupts?: Record<string, Interrupt[]>;
-  /** What the graph declared should be sent back, via `replyWith` on the custom stream. */
-  reply?: unknown;
 }
 
 /**
@@ -252,7 +240,12 @@ export async function executeRun(deps: ResolvedDeps, exec: RunExecution): Promis
   const { run, kwargs, control } = exec;
   const runId = run.run_id;
   const threadId = run.thread_id;
+  const threadGeneration = await deps.threadBus?.generation(threadId);
   let seq = 0;
+  const publishFrame = async (frame: RunFrame) => {
+    await deps.bus.publish(runId, frame);
+    await deps.threadBus?.publish(threadId, { kind: "run", runId, frame }, threadGeneration);
+  };
   // Captured for the run-completion webhook fired in `finally`. `started` gates the webhook to runs
   // that actually executed (a run cancelled while still pending never fires one, matching the worker).
   let started = false;
@@ -325,15 +318,12 @@ export async function executeRun(deps: ResolvedDeps, exec: RunExecution): Promis
    */
   const settleRun = async (
     status: RunStatus,
-    settled: {
-      values: DefaultValues;
-      error?: RunError;
-      /** Pending interrupts, for a run that parked on one. See `BuildDeliveryPayloadInput`. */
-      interrupts?: Record<string, Interrupt[]>;
-      /** The graph's declared reply, if it wrote one. See `BuildDeliveryPayloadInput`. */
-      reply?: unknown;
-    },
+    settled: RunResult & { error?: RunError },
   ): Promise<RunStatus> => {
+    if (readA2aOrigin(kwargs) && deps.store.runs.recordResult) {
+      const { error: _error, ...result } = settled;
+      await deps.store.runs.recordResult(runId, result);
+    }
     const recordDelivery = deps.store.runs.finalizeWithDelivery;
     // No webhook, no outbox in this driver, or a run that never executed: the pre-outbox path, which
     // for the last case means no callback at all — matching today, where `started` gates the fire.
@@ -471,6 +461,7 @@ export async function executeRun(deps: ResolvedDeps, exec: RunExecution): Promis
       });
     }
 
+    await verifyA2aResume(deps, threadId, runId, readA2aOrigin(kwargs));
     graph = await resolveGraph(deps, assistant.graph_id, kwargs);
     const activeGraph = graph;
     const input = toGraphInput(kwargs);
@@ -483,7 +474,42 @@ export async function executeRun(deps: ResolvedDeps, exec: RunExecution): Promis
     };
 
     await withRunTelemetryContext(deps, telemetryContext, async () => {
-      if (wantsEventsMode(kwargs.stream_mode)) {
+      if (isThreadProtocolRun(kwargs)) {
+        await deps.threadBus?.publish(
+          threadId,
+          {
+            kind: "protocol",
+            runId,
+            event: {
+              type: "event",
+              method: "lifecycle",
+              params: {
+                namespace: [],
+                timestamp: Date.now(),
+                data: { event: "started", graph_name: assistant.graph_id },
+              },
+            },
+          },
+          threadGeneration,
+        );
+        const events = await requireAgentCapability(activeGraph, "streamProtocol").streamProtocol(
+          input,
+          {
+            ...options,
+            runId,
+          },
+        );
+        for await (const event of events) {
+          if (control.signal.aborted) break;
+          // Root termination follows the persisted run outcome, including cancellation races.
+          if (event.method === "lifecycle" && event.params.namespace.length === 0) continue;
+          await deps.threadBus?.publish(
+            threadId,
+            { kind: "protocol", runId, event },
+            threadGeneration,
+          );
+        }
+      } else if (wantsEventsMode(kwargs.stream_mode)) {
         // True `events` mode: drive the graph via `streamEvents` and demux each event — internal
         // `on_chain_stream` chunks become mode frames, everything else becomes an `events` frame.
         // `runId` tags the root run so the demux can tell this run's stream chunks from a subgraph's.
@@ -503,7 +529,7 @@ export async function executeRun(deps: ResolvedDeps, exec: RunExecution): Promis
           if (!body) continue;
           seq += 1;
           captureDeclaredReply(body);
-          await deps.bus.publish(runId, toRunFrame(seq, body));
+          await publishFrame(toRunFrame(seq, body));
           if (deps.logRunActivity) logToolActivity(body.data);
         }
       } else {
@@ -512,7 +538,7 @@ export async function executeRun(deps: ResolvedDeps, exec: RunExecution): Promis
           seq += 1;
           const body = chunkToFrameBody(chunk, options.subgraphs === true);
           captureDeclaredReply(body);
-          await deps.bus.publish(runId, toRunFrame(seq, body));
+          await publishFrame(toRunFrame(seq, body));
           if (deps.logRunActivity) logToolActivity(body.data);
         }
       }
@@ -545,10 +571,12 @@ export async function executeRun(deps: ResolvedDeps, exec: RunExecution): Promis
       configurable: { thread_id: threadId },
     });
     const computed = runStatusForSnapshot(snapshot);
+    const checkpoint = toCheckpoint(snapshot.config);
     // The snapshot is already in hand, so the questions cost nothing extra to carry — no second read
     // of the thread, and no window in which the run settles before they are captured.
     const finalStatus = await settleRun(computed, {
       values: snapshot.values as DefaultValues,
+      ...(checkpoint ? { checkpoint } : {}),
       interrupts: collectInterrupts(snapshot),
       ...(declaredReply ? { reply: declaredReply.reply } : {}),
     });
@@ -567,6 +595,7 @@ export async function executeRun(deps: ResolvedDeps, exec: RunExecution): Promis
     outcome = {
       status: finalStatus,
       values: snapshot.values as DefaultValues,
+      ...(checkpoint ? { checkpoint } : {}),
       interrupts: collectInterrupts(snapshot),
       ...(declaredReply ? { reply: declaredReply.reply } : {}),
     };
@@ -602,7 +631,7 @@ export async function executeRun(deps: ResolvedDeps, exec: RunExecution): Promis
     // serves the frame, the run row, and the returned outcome, so they can never disagree.
     const wireError = toRunError(error, { includeStack: deps.exposeErrorStacks === true });
     seq += 1;
-    await deps.bus.publish(runId, { seq, event: "error", data: wireError });
+    await publishFrame({ seq, event: "error", data: wireError });
     const finalStatus = await settleRun("error", { values: {} as DefaultValues, error: wireError });
     if (finalStatus === "error") await mirrorThreadError(deps, threadId, wireError.message);
     // ALWAYS logged, ungated by `logRunActivity`: a run that fails silently is the whole problem
@@ -663,6 +692,44 @@ export async function executeRun(deps: ResolvedDeps, exec: RunExecution): Promis
     }
     // Always close the bus so every subscriber's iterator completes and emits the terminal event.
     await deps.bus.close(runId);
+    if (deps.threadBus && started) {
+      const thread = await deps.store.threads.get(threadId);
+      if (thread) {
+        await deps.threadBus.publish(
+          threadId,
+          { kind: "state", operation: "updated", thread },
+          threadGeneration,
+        );
+        if (isThreadProtocolRun(kwargs)) {
+          const status = outcome.status;
+          await deps.threadBus.publish(
+            threadId,
+            {
+              kind: "protocol",
+              runId,
+              event: {
+                type: "event",
+                method: "lifecycle",
+                params: {
+                  namespace: [],
+                  timestamp: Date.now(),
+                  data: {
+                    event:
+                      status === "success"
+                        ? "completed"
+                        : status === "interrupted"
+                          ? "interrupted"
+                          : "failed",
+                    ...(outcome.error ? { error: outcome.error.message } : {}),
+                  },
+                },
+              },
+            },
+            threadGeneration,
+          );
+        }
+      }
+    }
     // Run-completion webhook: the first attempt, made inline so a healthy receiver still hears within
     // milliseconds rather than at the next worker tick. A failure is logged and recorded, never
     // propagated — it must not fail or delay the run.

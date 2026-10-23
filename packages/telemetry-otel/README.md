@@ -12,7 +12,7 @@ Part of **[skein-js](https://github.com/skein-js/skein-js)** — the open-source
 
 One `skein.run` span per run, plus a run counter and a duration histogram.
 
-This package depends on the OpenTelemetry **API only** — never the SDK, never an exporter. That is
+This package records through the OpenTelemetry **API** without creating an SDK or exporter. That is
 the whole reason one small package covers **Datadog, Grafana, Honeycomb, Jaeger, New Relic, Sentry**
 and anything else that speaks OTLP: your app owns the SDK, the resource, and where data goes, exactly
 as it already does for the rest of your service. skein just contributes spans and metrics to it.
@@ -97,3 +97,14 @@ see generations indented under the run in a trace waterfall.
 ## License
 
 [Apache-2.0](../../LICENSE)
+
+## Optional HTTP collection
+
+Pass a host-owned `metricReader` to `createOtelTelemetry({ metricReader })` to expose `/metrics`.
+Install `@opentelemetry/exporter-prometheus@^0.222.0` for Prometheus serialization and
+`@opentelemetry/otlp-transformer@^0.222.0` for `?format=json` OTLP JSON. The reader must already be
+registered with your provider; Skein does not start an exporter or another listening port, and sink
+shutdown leaves the provider alive. Without a collector the endpoint returns 501.
+
+The sink also measures HTTP handler response latency and requests, and active background workers.
+See the [diagnostics guide](https://skein-js.github.io/skein-js/observability#http-diagnostics).

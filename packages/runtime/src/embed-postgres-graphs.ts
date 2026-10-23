@@ -20,7 +20,7 @@ import {
   resolveWebhooks,
   type EmbeddableGraph,
 } from "@skein-js/server-kit";
-import { MemoryRunEventBus, MemoryRunQueue } from "@skein-js/storage-memory";
+import { MemoryRunEventBus, MemoryThreadEventBus, MemoryRunQueue } from "@skein-js/storage-memory";
 import type { StoreIndexConfig } from "@skein-js/storage-postgres";
 
 import {
@@ -171,19 +171,20 @@ export async function embedPostgresGraphs(
         : {}),
     };
 
-    const { store, checkpointer } = await connectPostgresStore({
-      // A blank explicit URI is treated as "not provided" so it falls through to `requireEnv` and gets
-      // the actionable RuntimeConfigError, rather than an opaque `pg` error from connecting to "".
-      url: blankToUndefined(options.postgresUri) ?? requireEnv("POSTGRES_URI", "postgres"),
-      index: options.index,
-      ttl: options.ttl,
-      threadTtl: options.threadTtl,
-      connectionOptions,
-      // Validates an explicit value the same way the env path validates SKEIN_MAX_PAGE_SIZE.
-      maxPageSize: resolveMaxPageSize(options.maxPageSize),
-      runConcurrency: resolveRunConcurrency(),
-      disposers,
-    });
+    const { store, checkpointer, inspectThreadStorage, threadExecutionGate } =
+      await connectPostgresStore({
+        // A blank explicit URI is treated as "not provided" so it falls through to `requireEnv` and gets
+        // the actionable RuntimeConfigError, rather than an opaque `pg` error from connecting to "".
+        url: blankToUndefined(options.postgresUri) ?? requireEnv("POSTGRES_URI", "postgres"),
+        index: options.index,
+        ttl: options.ttl,
+        threadTtl: options.threadTtl,
+        connectionOptions,
+        // Validates an explicit value the same way the env path validates SKEIN_MAX_PAGE_SIZE.
+        maxPageSize: resolveMaxPageSize(options.maxPageSize),
+        runConcurrency: resolveRunConcurrency(),
+        disposers,
+      });
     // Pointed at whichever store the items actually live in. `overrides.storeItems` is a bring-your-own
     // long-term store (docs/storage.md), and aimed at the driver's own repo the sweeper would tidy an
     // empty table forever while the adapted one grew — the same mistake `buildRuntime` avoids.
@@ -213,7 +214,7 @@ export async function embedPostgresGraphs(
     // follows the docs sends **unsigned** callbacks and cannot tell — an explicit `overrides.webhooks`
     // still wins, since it is spread last onto `deps`.
     const webhooks = options.overrides?.webhooks ?? resolveWebhooks(undefined);
-    const { queue, bus, deliveryQueue } = redisUrl
+    const { queue, bus, threadBus, deliveryQueue, abortChannel } = redisUrl
       ? connectRedisQueue({
           url: redisUrl,
           disposers,
@@ -222,10 +223,12 @@ export async function embedPostgresGraphs(
       : {
           queue: new MemoryRunQueue(),
           bus: new MemoryRunEventBus(resolveMemoryBusLimits()),
+          threadBus: new MemoryThreadEventBus(),
           // Without Redis there is nowhere durable to hold a retry, so the delivery worker polls the
           // outbox instead. Callbacks are still never *lost* — the row is written in the run's
           // transaction — but a retry still waiting when the process exits does not survive it.
           deliveryQueue: undefined,
+          abortChannel: undefined,
         };
 
     const deps: ProtocolDeps = {
@@ -233,7 +236,11 @@ export async function embedPostgresGraphs(
       graphs: normalizeEmbeddableGraphs(graphs),
       queue,
       bus,
+      threadBus,
       checkpointer,
+      inspectThreadStorage,
+      ...(threadExecutionGate ? { threadExecutionGate } : {}),
+      ...(abortChannel ? { abortChannel } : {}),
       storeBridge: (repo) => new SkeinBaseStore(repo),
       // Throwaway saver for `POST /invoke/:graph_id` — see `ProtocolDeps.ephemeralCheckpointer`.
       ephemeralCheckpointer: () => new MemorySaver(),

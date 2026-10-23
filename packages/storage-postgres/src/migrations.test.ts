@@ -72,6 +72,9 @@ describe("SKEIN_MIGRATIONS", () => {
       "0009_drop_redundant_version_index",
       "0010_idempotency",
       "0011_deliveries",
+      "0012_store_write_options",
+      "0013_thread_retention",
+      "0014_run_results",
     ]);
   });
 

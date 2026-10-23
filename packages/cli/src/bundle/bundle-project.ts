@@ -7,7 +7,7 @@
 // Published `node_modules` packages stay external (recorded + pinned into the artifact package.json).
 
 import { existsSync, readFileSync } from "node:fs";
-import { mkdir, rm, writeFile } from "node:fs/promises";
+import { mkdir, readFile, rm, writeFile } from "node:fs/promises";
 import { createRequire, isBuiltin } from "node:module";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
@@ -307,6 +307,13 @@ export async function bundleProject(options: BundleProjectOptions): Promise<Buil
     input[entryKey] = spec.sourceFile;
     rewrites.graphs[graphId] = `./${entryKey}.js:${spec.exportSymbol}`;
   }
+  if (config.http?.app !== undefined) {
+    if (typeof config.http.app !== "string")
+      throw new Error("http.app must be a path:export string.");
+    const appSpec = parseGraphSpec(config.http.app, configDir);
+    input["http-app"] = appSpec.sourceFile;
+    rewrites.httpApp = `./http-app.js:${appSpec.exportSymbol}`;
+  }
   if (config.auth?.path) {
     const spec = parseGraphSpec(config.auth.path, configDir);
     input["auth"] = spec.sourceFile;
@@ -430,6 +437,21 @@ export async function bundleProject(options: BundleProjectOptions): Promise<Buil
     assertEveryImportIsPinned(bundle, dependencies);
 
     await mkdir(outDir, { recursive: true });
+    if (config.ui && Object.keys(config.ui).length) {
+      const { build: buildUi } = await import("@langchain/langgraph-ui");
+      const output = path.join(outDir, "ui");
+      await buildUi({ cwd: configDir, defs: config.ui, config: config.ui_config, output });
+      const manifest = JSON.parse(
+        await readFile(path.join(output, "schemas.json"), "utf8"),
+      ) as Record<string, { assets: string[] }>;
+      rewrites.ui = Object.fromEntries(
+        Object.keys(config.ui).map((graphId) => {
+          const entry = manifest[graphId]?.assets.find((asset) => asset.endsWith(".js"));
+          if (!entry) throw new Error(`UI build produced no JavaScript for "${graphId}".`);
+          return [graphId, `./ui/public/${graphId}/${entry}`];
+        }),
+      );
+    }
     const productionConfig = buildProductionConfig(config, rewrites);
     await Promise.all([
       writeFile(

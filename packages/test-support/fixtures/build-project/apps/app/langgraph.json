@@ -2,5 +2,11 @@
   "node_version": "24",
   "graphs": {
     "agent": "./src/graph.ts:graph"
+  },
+  "ui": {
+    "agent": "./src/ui.tsx"
+  },
+  "http": {
+    "app": "./src/http-app.ts:app"
   }
 }

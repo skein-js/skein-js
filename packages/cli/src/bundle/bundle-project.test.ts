@@ -1,6 +1,7 @@
-import { mkdir, readdir, readFile, rm, writeFile } from "node:fs/promises";
+import { cp, mkdtemp, mkdir, readdir, readFile, rm, writeFile } from "node:fs/promises";
 import { isBuiltin } from "node:module";
 import path from "node:path";
+import { tmpdir } from "node:os";
 import { fileURLToPath } from "node:url";
 
 import { requireAgentCapability } from "@skein-js/agent-protocol";
@@ -110,6 +111,45 @@ async function bareImportsInArtifact(): Promise<string[]> {
 }
 
 describe("bundleProject", () => {
+  it("serves compiled UI and custom HTTP exports from an isolated artifact without source files", async () => {
+    const directory = await mkdtemp(path.join(tmpdir(), "skein-http-artifact-"));
+    try {
+      await cp(outDir, directory, { recursive: true });
+      const production = JSON.parse(await readFile(path.join(directory, "langgraph.json"), "utf8"));
+      expect(production.http.app).toBe("./http-app.js:app");
+      expect(production.ui.agent).toMatch(/^\.\/ui\/public\/agent\/.+\.js$/);
+      const runtime = await buildRuntime({
+        configPath: path.join(directory, "langgraph.json"),
+        store: "memory",
+        queue: "memory",
+        schemas: JSON.parse(await readFile(path.join(directory, "schemas.json"), "utf8")),
+      });
+      try {
+        const custom = await runtime.deps.httpHandler!(
+          new Request("http://localhost/custom", { method: "POST", body: "payload" }),
+        );
+        expect(await custom!.text()).toBe("built application: payload");
+        const bootstrap = await runtime.deps.httpHandler!(
+          new Request("http://localhost/ui/agent", {
+            method: "POST",
+            headers: { "content-type": "application/json" },
+            body: JSON.stringify({ name: "notice" }),
+          }),
+        );
+        expect(bootstrap!.headers.get("content-type")).toContain("text/html");
+        const html = await bootstrap!.text();
+        expect(html).toContain("__LGUI_agent.render");
+        const source = /<script src="([^"]+)"/.exec(html)![1]!;
+        const asset = await runtime.deps.httpHandler!(new Request(source));
+        expect(asset!.headers.get("content-type")).toBe("text/javascript");
+        expect(await asset!.text()).toContain("notice");
+      } finally {
+        await runtime.dispose();
+      }
+    } finally {
+      await rm(directory, { recursive: true, force: true });
+    }
+  });
   it("inlines workspace aliases and externalizes/pins npm deps", async () => {
     expect(artifact.graphIds).toEqual(["agent"]);
 

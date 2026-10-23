@@ -8,8 +8,10 @@ import {
   SkeinBaseStore,
   type EmbeddableGraph,
 } from "@skein-js/langgraph";
-import { MemoryRunEventBus } from "@skein-js/storage-memory";
+import { MemoryRunEventBus, MemoryThreadEventBus } from "@skein-js/storage-memory";
 import { openSqliteStorage } from "@skein-js/storage-sqlite";
+
+import { inspectSqliteThreadStorage } from "./thread-storage.js";
 
 export interface EmbedSqliteGraphsOptions {
   sqlitePath: string;
@@ -57,7 +59,9 @@ export async function embedSqliteGraphs(
       store,
       queue: storage.queue,
       bus: new MemoryRunEventBus(),
+      threadBus: new MemoryThreadEventBus(),
       checkpointer,
+      inspectThreadStorage: (threadId) => inspectSqliteThreadStorage(storage.database, threadId),
       graphs: normalizeEmbeddableGraphs(graphs),
       storeBridge: (items) => new SkeinBaseStore(items),
       cloneCheckpoint: cloneLangGraphCheckpoint,

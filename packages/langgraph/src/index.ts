@@ -26,3 +26,5 @@ export {
   normalizeEmbeddableGraphs,
   type EmbeddableGraph,
 } from "./embeddable-graphs.js";
+
+export { inspectMemoryThreadStorage } from "./memory-thread-storage.js";

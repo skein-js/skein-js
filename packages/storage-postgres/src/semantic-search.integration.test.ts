@@ -35,6 +35,22 @@ afterAll(async () => {
 });
 
 describe("PostgresSkeinStore semantic search (pgvector)", () => {
+  it("honors per-item index fields and removes disabled embeddings on overwrite", async () => {
+    await store.truncateAll();
+    await store.store.putWithOptions!(
+      ["docs"],
+      "selected",
+      { text: "car", alternate: "cat" },
+      { index: ["alternate"] },
+    );
+    await store.store.put(["docs"], "default", { text: "car" });
+    expect((await store.store.search({ query: "cat", limit: 1 }))[0]?.key).toBe("selected");
+    await store.store.putWithOptions!(["docs"], "selected", { text: "cat" }, { index: false });
+    expect((await store.store.search({ query: "cat" })).map((item) => item.key)).toEqual([
+      "default",
+    ]);
+    expect((await store.store.get(["docs"], "selected"))?.value).toEqual({ text: "cat" });
+  });
   it("ranks items by embedding proximity to the query", async () => {
     await store.truncateAll();
     await store.store.put(["docs"], "a", { text: "a fluffy cat" });

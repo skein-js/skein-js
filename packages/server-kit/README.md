@@ -10,7 +10,7 @@ Part of **[skein-js](https://github.com/skein-js/skein-js)** — the open-source
 
 This package is the common ground the framework adapters ([`@skein-js/express`](../server-express),
 [`@skein-js/fastify`](../server-fastify), [`@skein-js/nestjs`](../server-nestjs),
-[`@skein-js/nextjs`](../server-nextjs)) stand on — so no adapter has to depend on another (or on
+[`@skein-js/nextjs`](../server-nextjs), and [`@skein-js/fetch`](../server-fetch)) stand on — so no adapter has to depend on another (or on
 Express) just to reuse it. It holds the framework-agnostic pieces (runtime assembly, dev-state import,
 CORS, and the Node-`http` transport the Node-based adapters share); each adapter still writes only the
 thin request/response shim its framework needs over the [`@skein-js/agent-protocol`](../agent-protocol)
@@ -31,6 +31,11 @@ handler table.
   `describeSnapshot`, from the **`@skein-js/server-kit/dev` subpath**: read an existing
   `.langgraph_api/` directory and reconstruct skein's own `DevStateSnapshot`, so adopting skein carries
   all local state over losslessly.
+- **Native HTTP and graph UI** — `loadConfigHttpHandler` loads exported Fetch/Hono applications
+  from `http.app` and graph UI from `ui`/`ui_config`. A 404 falls through with the original request
+  body preserved. `withNativePath`, `readNativeNodeRequest`, and `sendNativeResponse` share mounting
+  and streaming behavior across adapters; production assets are compiled by `skein build`. See
+  [CLI compatibility](https://skein-js.github.io/skein-js/langgraph-cli-compat#graph-ui-and-custom-http-applications).
 - **CORS** — `corsFromHttpConfig` / `toCorsOptions` map a `langgraph.json` `http.cors` block to
   `cors`-style `CorsOptions`; `allowedOrigin` / `corsResponseHeaders` / `applyNodeCors` /
   `sendNodePreflight` derive CORS headers for the adapters without a CORS middleware of their own

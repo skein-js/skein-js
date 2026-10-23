@@ -58,7 +58,7 @@ const checkpointerTtlSchema = z
     /** Default thread lifetime in minutes when a create passes no `ttl`. */
     default_ttl: z.number().optional(),
     /** What expiry does. Only `"delete"` is implemented. */
-    strategy: z.literal("delete").optional(),
+    strategy: z.enum(["delete", "keep_latest"]).optional(),
     /** How often the background sweeper runs, in minutes (default 60). */
     sweep_interval_minutes: z.number().optional(),
   })
@@ -289,9 +289,17 @@ export const langgraphJsonSchema = z
      * route toggles. Still `.passthrough()`, so a key skein does not implement yet (`http.app`) is
      * carried rather than rejected — a `langgraph.json` must keep loading under both CLIs.
      */
+    ui: z.record(z.string()).optional(),
+    ui_config: z
+      .object({ shared: z.array(z.string()).optional() })
+      .passthrough()
+      .optional(),
     http: z
       .object({
+        app: z.unknown().optional(),
         cors: z.object({}).passthrough().optional(),
+        disable_mcp: z.unknown().optional(),
+        disable_a2a: z.unknown().optional(),
         // Declared as `unknown`, not `boolean`. This block used to be opaque
         // (`z.object({}).passthrough()`), so a config carrying a hand-written `"true"` string — or a
         // `"${DISABLE_RUNS}"` written by someone expecting env substitution — loaded fine.
@@ -340,6 +348,12 @@ export const langgraphJsonSchema = z
         path: z.string(),
         disable_studio_auth: z.boolean().optional().default(true),
         dev_ui_access: z.boolean().optional(),
+        openapi: z
+          .object({
+            securitySchemes: z.record(z.record(z.unknown())).optional(),
+            security: z.array(z.record(z.array(z.string()))).optional(),
+          })
+          .optional(),
       })
       .passthrough()
       .optional(),

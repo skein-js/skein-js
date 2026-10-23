@@ -3,7 +3,12 @@
 // working engine.
 
 import { copyCheckpoint, MemorySaver } from "@langchain/langgraph";
-import { MemoryRunEventBus, MemoryRunQueue, MemorySkeinStore } from "@skein-js/storage-memory";
+import {
+  MemoryRunEventBus,
+  MemoryThreadEventBus,
+  MemoryRunQueue,
+  MemorySkeinStore,
+} from "@skein-js/storage-memory";
 
 import type { GraphResolver, GraphSchemas, ProtocolDeps, ResolvedGraph } from "../deps.js";
 
@@ -34,6 +39,7 @@ export function createFixtureDeps(overrides: Partial<ProtocolDeps> = {}): Protoc
     graphs: createFixtureResolver(),
     queue: new MemoryRunQueue(),
     bus: new MemoryRunEventBus(),
+    threadBus: new MemoryThreadEventBus(),
     checkpointer: new MemorySaver(),
     // Mirrors what every on-ramp wires (`ProtocolDeps.storeBridge`), so these fixtures exercise the
     // same `getStore()` path a real server does — with a fixture-local bridge, because depending on

@@ -43,7 +43,7 @@ beforeAll(async () => {
     );
     if (!route) return new Response("not found", { status: 404 });
 
-    const response = await handlers[route[2]]({
+    const response = await handlers[route[2]]!({
       method: route[0].toLowerCase(),
       url: url.toString(),
       params: {},

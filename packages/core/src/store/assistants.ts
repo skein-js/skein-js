@@ -34,6 +34,8 @@ export interface AssistantSearchQuery {
   graph_id?: string;
   /** Restrict to assistants with this exact name. */
   name?: string;
+  /** Direct repository calls retain exact matching by default. */
+  nameMatch?: "exact" | "substring";
   /** Match assistants whose metadata contains every one of these key/value pairs (subset match). */
   metadata?: Metadata;
   limit?: number;

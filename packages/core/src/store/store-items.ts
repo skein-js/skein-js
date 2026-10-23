@@ -6,7 +6,12 @@ import type { Item, SearchItem } from "../wire/wire.js";
 import type { StoreItemFilter } from "./item-filter.js";
 import type { StoreNamespaceQuery } from "./namespace-match.js";
 
-export interface StoreSearchQuery {
+export interface StoreReadOptions {
+  /** Override refresh-on-read for this operation. */
+  refreshTtl?: boolean;
+}
+
+export interface StoreSearchQuery extends StoreReadOptions {
   /** Restrict to items under this namespace prefix. */
   prefix?: string[];
   /** Natural-language query for semantic search (naive scan in the memory driver). */
@@ -42,8 +47,20 @@ export interface StorePutOptions {
   ttl?: number;
 }
 
+/** Additive write operation: explicit null disables expiry, false disables indexing. */
+export interface StoreItemWriteOptions {
+  ttl?: number | null;
+  index?: false | string[];
+}
+
 export interface StoreRepo {
-  get(namespace: string[], key: string): Promise<Item | null>;
+  get(namespace: string[], key: string, options?: StoreReadOptions): Promise<Item | null>;
+  putWithOptions?(
+    namespace: string[],
+    key: string,
+    value: Record<string, unknown>,
+    options?: StoreItemWriteOptions,
+  ): Promise<Item>;
   put(
     namespace: string[],
     key: string,

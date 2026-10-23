@@ -145,7 +145,7 @@ async function remember(state) {
 
 This is what makes skein a faithful drop-in: LangGraph Platform auto-provides a store to graphs, so
 a graph that calls `getStore()` runs unchanged on skein. The bridge is `SkeinBaseStore` in
-[`@skein-js/agent-protocol`](https://github.com/skein-js/skein-js/tree/main/packages/agent-protocol), attached in the run engine the same way the
+[`@skein-js/langgraph`](https://github.com/skein-js/skein-js/tree/main/packages/langgraph), attached in the run engine the same way the
 checkpointer is. Semantic `search` uses pgvector on the Postgres driver and a naive scan on memory —
 both come from the same `StoreRepo`, so behavior matches.
 
@@ -244,7 +244,7 @@ so the same `langgraph.json` works under both. Durations in **minutes**:
 - `default_ttl` — lifetime applied to a thread created without its own `ttl`. `POST /threads` accepts a
   per-thread `ttl` (minutes) that overrides it, and an explicit `null` **pins** the thread so no TTL
   ever collects it. `PATCH /threads/{id}` can change or clear it later; a new value restarts the clock.
-- `strategy` — only `"delete"` is implemented, and it is the only thing a thread could expire into.
+- `strategy` — `"delete"` (default) removes the expired thread; `"keep_latest"` retains current state, referenced namespace checkpoints and necessary ancestor writes.
 - `sweep_interval_minutes` (default `60`) — how often the sweeper runs.
 
 **Expiry means "may be collected", not "gone"** — the one place this deliberately differs from store
@@ -267,7 +267,7 @@ The sweeper runs whether or not `checkpointer.ttl` is set, because a per-thread 
 collect. With neither configured nor requested, nothing has an expiry and each sweep is one indexed
 read that finds nothing.
 
-With no `checkpointer.ttl` set, no sweeper runs and threads live until something deletes them.
+Threads without a configured or per-thread TTL live until explicitly deleted.
 
 > Note this goes **past** LangGraph OSS rather than catching up to it: the open-source
 > `@langchain/langgraph-api` accepts `ttl` on thread create and silently drops it — thread expiry is a
@@ -467,3 +467,37 @@ It assembles resources, the queue, and the upstream saver with one file owner. S
 [`@skein-js/storage-sqlite`](./local-deployment.md) implements the full resource store and a persisted
 run queue in one exclusively owned file. `@skein-js/local` assembles it with LangGraph's SQLite saver.
 Unclaimed work persists; abandoned attempts become failures without automatic input replay.
+
+## Per-operation indexing and retention
+
+The bundled memory, SQLite and Postgres stores implement optional `StoreRepo.putWithOptions`:
+
+```ts
+await store.putWithOptions!(namespace, key, value, { index: ["title"], ttl: null });
+await store.get(namespace, key, { refreshTtl: false });
+await store.search({ prefix: namespace, query: "meeting", refreshTtl: true });
+```
+
+`index: false` stores the item without making it a text/vector search candidate. A field list limits
+indexed content; `$` includes the whole value. Exact key reads still return the complete item.
+An explicit nullable TTL disables the configured default for that write. Existing `put` and its
+`ttl?: number` options remain source compatible. Unsupported custom stores reject requested
+advanced controls. The LangGraph bridge forwards indexing, write TTL and read/search refresh
+options, including batch operations. An external BaseStore must expose the corresponding controls;
+Skein does not emulate persistent expiry with process-local timers.
+
+Thread TTL retains deletion as the default. An opt-in `keep_latest` strategy prunes old history
+without deleting the thread, root checkpoint, referenced child state or pending writes. The retention
+window slides when state changes; the sweep skips an active run and rearms its next check after
+pruning. A null TTL pins the thread. The SQLite and Postgres migrations preserve existing pins:
+older rows without a recorded TTL remain pinned rather than acquiring an unexpected expiry.
+
+Pruning and rollback use LangGraph’s public saver methods. A scratch copy is written before erasure;
+if replay fails, its ID is included in the error for recovery. These operations require the same
+thread execution gate as state writes. They preserve namespace coordinates when copying history.
+
+Checkpoint pruning retains current root/child namespaces, explicit checkpoint references and
+pending writes. Delta channels may also require ancestor writes until a full snapshot; those
+necessary ancestors remain readable after prune and copy. `keep_latest` removes expendable history,
+not checkpoint data required to reconstruct current state. Exact payload accounting is available at
+`GET /threads/{thread_id}/storage`; see [diagnostics](./observability.md#http-diagnostics).

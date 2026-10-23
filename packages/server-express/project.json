@@ -16,6 +16,39 @@
       "options": {
         "command": "tsc --noEmit",
         "cwd": "packages/server-express"
+      },
+      "dependsOn": ["^build", "typecheck-browser"]
+    },
+    "test-integration": {
+      "executor": "nx:run-commands",
+      "options": {
+        "command": "vitest run --config vitest.integration.config.ts",
+        "cwd": "packages/server-express"
+      }
+    },
+    "test-browser": {
+      "executor": "nx:run-commands",
+      "cache": false,
+      "dependsOn": ["^build"],
+      "options": {
+        "command": "vitest run --config vitest.browser.config.ts",
+        "cwd": "packages/server-express"
+      }
+    },
+    "typecheck-browser": {
+      "executor": "nx:run-commands",
+      "dependsOn": ["^build"],
+      "options": {
+        "command": "tsc --noEmit -p tsconfig.browser.json",
+        "cwd": "packages/server-express"
+      }
+    },
+    "prepare-browser": {
+      "executor": "nx:run-commands",
+      "cache": false,
+      "options": {
+        "command": "pnpm exec playwright install --with-deps chromium",
+        "cwd": "packages/server-express"
       }
     }
   }

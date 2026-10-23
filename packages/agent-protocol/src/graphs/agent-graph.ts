@@ -15,7 +15,12 @@
 // second interface behind it — a runtime is not a seam skein has evidence for, and an optional method
 // is the smallest thing that expresses "this agent cannot do that".
 
-import { SkeinHttpError, type Checkpoint, type Interrupt } from "@skein-js/core";
+import {
+  SkeinHttpError,
+  type Checkpoint,
+  type Interrupt,
+  type ThreadProtocolEvent,
+} from "@skein-js/core";
 
 /**
  * A snapshot of one thread's state, as the runtime reports it.
@@ -50,6 +55,8 @@ export interface AgentStateTask {
   /** Interrupts this task raised, keyed onto the thread by task id. */
   readonly interrupts: readonly Interrupt[];
   readonly result?: unknown;
+  /** Nested snapshot when requested with subgraphs, otherwise its checkpoint configuration. */
+  readonly state?: AgentStateSnapshot | { configurable?: Record<string, unknown> };
 }
 
 /**
@@ -80,7 +87,10 @@ export interface AgentGraph {
    * REQUIRED. The thread's authoritative state after a run. skein classifies the terminal status from
    * `next` and mirrors `values` + interrupts onto the thread row.
    */
-  getState(config: { configurable?: Record<string, unknown> }): Promise<AgentStateSnapshot>;
+  getState(
+    config: { configurable?: Record<string, unknown> },
+    options?: { subgraphs?: boolean },
+  ): Promise<AgentStateSnapshot>;
 
   /** `GET`/`POST /threads/{id}/history`. Newest first; `limit` must bound at the source. */
   getStateHistory?(
@@ -103,6 +113,12 @@ export interface AgentGraph {
 
   /** The `events` stream mode. Its payload is the runtime's own contract with its clients. */
   streamEvents?(input: unknown, options?: unknown): AsyncIterable<unknown>;
+
+  /** Thread protocol events from one execution; separate from legacy `streamEvents` v2. */
+  streamProtocol?(
+    input: unknown,
+    options?: unknown,
+  ): AsyncIterable<ThreadProtocolEvent> | Promise<AsyncIterable<ThreadProtocolEvent>>;
 
   /** `POST /invoke/{graph_id}` — the simplified, thread-free surface. */
   invoke?(input: unknown, options?: unknown): Promise<unknown>;

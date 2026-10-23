@@ -2,7 +2,11 @@ import { mkdtemp, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 
-import { runSkeinStoreConformance, runRunQueueConformance } from "@skein-js/test-support";
+import {
+  runSkeinStoreConformance,
+  runRunQueueConformance,
+  runStoreOptionsConformance,
+} from "@skein-js/test-support";
 import { afterEach, describe, expect, it } from "vitest";
 
 import { openSqliteStorage, type SqliteStorage, type SqliteStorageOptions } from "./index.js";
@@ -231,6 +235,51 @@ it("repairs a failed attempt's busy thread without cancelling its queued backlog
         .prepare("SELECT due_at,status FROM skein_run_jobs WHERE run_id=?")
         .get(pending.run_id),
     ).toEqual({ due_at: Date.parse(due), status: "waiting" });
+  } finally {
+    await reopened.dispose();
+  }
+});
+
+runStoreOptionsConformance("sqlite", async (ttl) => (await open({ ttl })).store);
+
+it("reopens per-item indexing, no-expiry writes and thread retention policy", async () => {
+  const storage = await open({ ttl: { defaultTtl: 60 }, threadTtl: { defaultTtl: 60 } });
+  const filename = storage.database.name;
+  await storage.store.store.putWithOptions!(
+    ["notes"],
+    "private",
+    { secret: "needle" },
+    { index: false, ttl: null },
+  );
+  await storage.store.store.putWithOptions!(
+    ["notes"],
+    "title",
+    { title: "needle", secret: "hidden" },
+    { index: ["title"] },
+  );
+  const thread = await storage.store.threads.create({ ttl: 5, ttlStrategy: "keep_latest" });
+  await storage.dispose();
+  const reopened = await openSqliteStorage({
+    filename,
+    ttl: { defaultTtl: 60 },
+    threadTtl: { defaultTtl: 60 },
+  });
+  try {
+    expect(
+      (await reopened.store.store.search({ prefix: ["notes"], query: "needle" })).map(
+        (item) => item.key,
+      ),
+    ).toEqual(["title"]);
+    expect(await reopened.store.store.search({ prefix: ["notes"], query: "hidden" })).toEqual([]);
+    expect(
+      reopened.database
+        .prepare("SELECT expires_at FROM skein_items WHERE json_extract(body,'$.key')='private'")
+        .get(),
+    ).toEqual({ expires_at: null });
+    expect(await reopened.store.threads.getTtl!(thread.thread_id)).toEqual({
+      ttl: 5,
+      strategy: "keep_latest",
+    });
   } finally {
     await reopened.dispose();
   }
