@@ -15,6 +15,7 @@ import {
   type StoreItemFilter,
 } from "@skein-js/core";
 
+import { markRequestAdmission } from "./idempotency/admission-input.js";
 import { transferA2aOrigin } from "./interop/a2a-origin.js";
 import type { CancelRunOptions, CreateRunInput } from "./runs/run-service.js";
 import { projectSearchRow } from "./search/project-search-row.js";
@@ -766,7 +767,10 @@ export function createProtocolHandlers(
     createBackgroundRun: async (req) => {
       const run = await service.runs.createBackground(
         requireParam(req.params, "thread_id"),
-        transferA2aOrigin(req.body, parse(runCreateSchema, req.body)) as CreateRunInput,
+        markRequestAdmission(
+          req,
+          transferA2aOrigin(req.body, parse(runCreateSchema, req.body)),
+        ) as CreateRunInput,
       );
       return json(run, 200, runLocationHeaders(run.thread_id, run.run_id));
     },

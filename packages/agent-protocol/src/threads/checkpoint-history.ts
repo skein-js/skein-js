@@ -76,8 +76,10 @@ async function replayCheckpoints(
   targetId: string,
   tuples: ThreadCheckpointTuple[],
   cloneCheckpoint: CloneCheckpoint,
+  signal?: AbortSignal,
 ): Promise<void> {
   for (const tuple of tuples) {
+    signal?.throwIfAborted();
     const ns = (tuple.config.configurable?.checkpoint_ns as string | undefined) ?? "";
     const parentId = tuple.parentConfig?.configurable?.checkpoint_id as string | undefined;
     const putConfig = {
@@ -105,6 +107,7 @@ async function replayCheckpoints(
         byTask.set(taskId, writes);
       }
       for (const [taskId, writes] of byTask) {
+        signal?.throwIfAborted();
         await checkpointer.putWrites(writeConfig, writes, taskId);
       }
     }
@@ -140,17 +143,21 @@ async function replaceCheckpointHistory(
   operation: "prune" | "rollback",
   tuples: ThreadCheckpointTuple[],
   cloneCheckpoint: CloneCheckpoint,
+  signal?: AbortSignal,
 ): Promise<void> {
   let scratchThreadId: string;
   do {
+    signal?.throwIfAborted();
     scratchThreadId = `${threadId}::skein-${operation}:${randomUUID()}`;
   } while ((await listCheckpoints(checkpointer, scratchThreadId, 1)).length > 0);
 
   // Save before erasure, and retain this copy if replacing the original fails.
-  await replayCheckpoints(checkpointer, scratchThreadId, tuples, cloneCheckpoint);
+  signal?.throwIfAborted();
+  await replayCheckpoints(checkpointer, scratchThreadId, tuples, cloneCheckpoint, signal);
   try {
+    signal?.throwIfAborted();
     await checkpointer.deleteThread(threadId);
-    await replayCheckpoints(checkpointer, threadId, tuples, cloneCheckpoint);
+    await replayCheckpoints(checkpointer, threadId, tuples, cloneCheckpoint, signal);
   } catch (error) {
     throw new Error(
       `${operation === "prune" ? "pruning" : "rolling back"} thread "${threadId}" failed; ` +
@@ -159,6 +166,7 @@ async function replaceCheckpointHistory(
     );
   }
   // A cleanup failure must not turn a successful replacement into an apparent failed operation.
+  signal?.throwIfAborted();
   await checkpointer.deleteThread(scratchThreadId).catch(() => undefined);
 }
 
@@ -195,6 +203,7 @@ export async function pruneThreadCheckpointsToLatest(
   checkpointer: ThreadCheckpointer,
   threadId: string,
   cloneCheckpoint: CloneCheckpoint = passThrough,
+  signal?: AbortSignal,
 ): Promise<boolean> {
   // Cross-namespace references can name older child tips; inspect their coordinates before pruning.
   const tuples = await listCheckpoints(checkpointer, threadId);
@@ -227,7 +236,14 @@ export async function pruneThreadCheckpointsToLatest(
     })
     .reverse();
 
-  await replaceCheckpointHistory(checkpointer, threadId, "prune", rootedKeep, cloneCheckpoint);
+  await replaceCheckpointHistory(
+    checkpointer,
+    threadId,
+    "prune",
+    rootedKeep,
+    cloneCheckpoint,
+    signal,
+  );
   return true;
 }
 
@@ -246,7 +262,9 @@ export async function rollbackThreadCheckpointsTo(
   threadId: string,
   baseCheckpointId: string | undefined,
   cloneCheckpoint: CloneCheckpoint = passThrough,
+  signal?: AbortSignal,
 ): Promise<void> {
+  signal?.throwIfAborted();
   if (baseCheckpointId === undefined) {
     await checkpointer.deleteThread(threadId);
     return;
@@ -281,5 +299,12 @@ export async function rollbackThreadCheckpointsTo(
       keep.push(tuple);
   }
   const retained = referencedCheckpoints(tuples, keep).reverse();
-  await replaceCheckpointHistory(checkpointer, threadId, "rollback", retained, cloneCheckpoint);
+  await replaceCheckpointHistory(
+    checkpointer,
+    threadId,
+    "rollback",
+    retained,
+    cloneCheckpoint,
+    signal,
+  );
 }

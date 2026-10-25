@@ -14,6 +14,7 @@
 
 import type { Assistant, AssistantVersion, Cron, Item, Run, Thread } from "../wire/wire.js";
 
+import type { AdmissionRepo } from "./admission.js";
 import type { AssistantRepo } from "./assistants.js";
 import type { CronRepo } from "./crons.js";
 import type { DeliveryRepo } from "./deliveries.js";
@@ -23,6 +24,7 @@ import type { StoreRepo } from "./store-items.js";
 import type { ThreadRepo } from "./threads.js";
 
 export * from "./assistants.js";
+export * from "./admission.js";
 export * from "./crons.js";
 export * from "./deliveries.js";
 export * from "./idempotency.js";
@@ -34,6 +36,8 @@ export * from "./threads.js";
 
 /** The single persistence seam for Agent Protocol resources. One implementation per driver. */
 export interface SkeinStore {
+  /** Atomic native admission and its recoverable execution intent. */
+  admission?: AdmissionRepo;
   assistants: AssistantRepo;
   threads: ThreadRepo;
   runs: RunRepo;
@@ -122,7 +126,7 @@ export interface SkeinStoreSnapshot {
   // rows would replay a response naming runs the reloaded store no longer has.
   //
   // Deliveries are absent for the same reason, and one sharper one: a snapshot is a transfer format
-  // that gets written to disk. A2A run results can carry final state, but never delivery intent:
+  // that gets written to disk. Retained run results can carry final state, but never delivery intent:
   // restoring a delivery would POST to a URL from a previous `skein dev` session on the
   // next boot, announcing a run the reloaded store may no longer have.
 }

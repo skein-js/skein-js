@@ -50,7 +50,10 @@ export interface ChannelDestinationDelivery {
 }
 
 type ChannelSource = Pick<Channel, "name" | "verify" | "parseEvent">;
-type DestinationCallback = (delivery: ChannelDestinationDelivery) => Promise<void>;
+type DestinationCallback = (
+  delivery: ChannelDestinationDelivery,
+  context?: Parameters<NonNullable<Channel["deliver"]>>[2],
+) => Promise<void>;
 
 /** Declare one graph-selected delivery without performing its external side effect in the graph. */
 export function declareChannelDestinationDelivery(
@@ -87,21 +90,23 @@ export function composeRoutedChannel(
         },
       };
     },
-    async deliver(outcome) {
+    async deliver(outcome, _target, context) {
       const intent = readDestinationIntent(outcome.reply);
       if (!intent) return;
       const destination = destinationSnapshot.get(intent.destination);
       if (!destination) {
         throw new Error(`No channel destination named "${intent.destination}" is configured.`);
       }
-      await destination({
+      const delivery = {
         runId: outcome.runId,
         threadId: outcome.threadId,
         status: outcome.status,
         ...(outcome.interrupts ? { interrupts: outcome.interrupts } : {}),
         target: intent.target,
         payload: intent.payload,
-      });
+      };
+      if (context) await destination(delivery, context);
+      else await destination(delivery);
     },
   };
 }

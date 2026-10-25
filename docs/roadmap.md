@@ -24,6 +24,10 @@ and an open alternative to the second.
 
 **Protocol surface**
 
+Native embedded callers and optional BullMQ access share authorized admission, strict resume,
+retained results and the existing outbox. See [native access](./native-access.md) and its
+[reproducible validation](./native-access-validation.md). This adds no A2A/MCP features.
+
 | Capability                                 | Status | Notes                                                                                                                                |
 | ------------------------------------------ | ------ | ------------------------------------------------------------------------------------------------------------------------------------ |
 | Assistants / threads / runs / store        | ✅     | Routes _and_ request bodies, guarded against SDK drift                                                                               |

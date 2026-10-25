@@ -11,6 +11,7 @@
 // target happens to be the sender; a GitHub webhook, a Stripe dispute and an inbound email are the
 // same pipeline without that property. The moment those names appear in this file, those stop fitting.
 
+import type { DeliveryAttempt } from "@skein-js/agent-protocol";
 import type { Interrupt, RunStatus } from "@skein-js/core";
 
 /**
@@ -188,7 +189,11 @@ export interface Channel {
    * Send the answer. **Durable** — routed through the delivery outbox, so it is retried, recorded and
    * replayable, and survives the process dying mid-run.
    */
-  deliver?(outcome: RunOutcomeForChannel, target: ReplyTarget): Promise<void>;
+  deliver?(
+    outcome: RunOutcomeForChannel,
+    target: ReplyTarget,
+    context?: Pick<DeliveryAttempt, "deliveryId" | "attempt">,
+  ): Promise<void>;
 
   readonly signals?: SignalSubscription;
 

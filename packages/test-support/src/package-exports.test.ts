@@ -55,8 +55,8 @@ const libraryPackages = publishablePackages.filter(
 describe("publishable package manifests", () => {
   it("finds every publishable package", () => {
     // Guards the discovery itself: a broken glob would silently make every case below vacuous.
-    expect(publishablePackages.length).toBe(24);
-    expect(libraryPackages.length).toBe(22);
+    expect(publishablePackages.length).toBe(25);
+    expect(libraryPackages.length).toBe(23);
   });
 
   // Ranges we *install* have to name a major, because npm resolves them at install time and a

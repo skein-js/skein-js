@@ -83,7 +83,7 @@ describe("createPostgresThreadExecutionGate", () => {
     const crashing = createPostgresPool(pg.url, {});
     const survivor = createPostgresPool(pg.url, {});
     try {
-      await createPostgresThreadExecutionGate(crashing).acquire("thread-1");
+      const lost = await createPostgresThreadExecutionGate(crashing).acquire("thread-1");
 
       // Killed from the server side, which is what a crashed instance actually looks like to Postgres —
       // and, unlike `pool.end()`, it does not wait for the lock-holding client to be checked back in
@@ -99,13 +99,13 @@ describe("createPostgresThreadExecutionGate", () => {
         [high, low],
       );
       expect(rows.length).toBe(1);
+      await expect.poll(() => lost.signal?.aborted).toBe(true);
+      await lost.release();
 
       const lease = await createPostgresThreadExecutionGate(survivor).acquire("thread-1");
       await lease.release();
     } finally {
-      // `crashing` still has the (now dead) client checked out, so `end()` would wait for a release that
-      // never comes. Destroying the pool's idle clients and abandoning it is what a crashed process does.
-      crashing.removeAllListeners();
+      await crashing.end();
       await survivor.end();
     }
   });

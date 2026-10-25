@@ -211,17 +211,23 @@ describe("authorization scopes the request it authorized", () => {
    * lives outside any `node_modules` that resolves `@langchain/langgraph-sdk`, and the seam is there
    * precisely so a caller can supply modules it already holds.
    */
-  const withOwnershipAuth = async () => {
+  const withOwnershipAuth = async (
+    channelSource = echoChannel,
+    ownerFor: (identity: string) => string | Promise<string> = (identity) => identity,
+  ) => {
     const configPath = await project(
       {
         auth: { path: "./auth.ts:auth" },
         skein: { channels: { twilio: { path: "./channel.ts:channel", assistant: "support" } } },
       },
-      echoChannel,
+      channelSource,
     );
     const auth = new Auth()
       .authenticate(() => ({ identity: "unused-by-channels", permissions: [] }))
-      .on("threads", ({ user }) => ({ owner: user.identity }));
+      .on("threads", async ({ user }) => {
+        expect(user.permissions).toEqual([]);
+        return { owner: await ownerFor(user.identity) };
+      });
     const configDir = path.dirname(configPath);
     return resolveProtocolRuntime({
       config: configPath,
@@ -241,6 +247,55 @@ describe("authorization scopes the request it authorized", () => {
       params: {},
       query: {},
     });
+
+  it("keeps concurrent verified principals isolated and protects identity fields from metadata", async () => {
+    const source = echoChannel.replace(
+      '{ identity: "channel:twilio:+254" }',
+      '{ identity: request.headers["x-user"], metadata: {identity:"forged",permissions:["admin"],is_authenticated:false} }',
+    );
+    const resolved = await withOwnershipAuth(source, async (identity) => {
+      await new Promise((resolve) => setTimeout(resolve, identity === "alice" ? 30 : 1));
+      return identity;
+    });
+    try {
+      const submit = (identity: string) =>
+        resolved.runtime.handlers.handleInboundEvent({
+          method: "POST",
+          url: "http://127.0.0.1:2024/channels/twilio",
+          headers: {
+            "x-secret": "shh",
+            "x-user": identity,
+            "content-type": "application/x-www-form-urlencoded",
+          },
+          body: `From=${identity}&Body=hello&MessageSid=${identity}`,
+          params: {},
+          query: {},
+        });
+      await Promise.all([submit("alice"), submit("bob")]);
+      const threads = await resolved.runtime.service.threads.search({});
+      expect(threads.map((thread) => thread.metadata?.["owner"]).sort()).toEqual(["alice", "bob"]);
+      for (const thread of threads) {
+        const run = (await resolved.runtime.service.runs.listByThread(thread.thread_id))[0]!;
+        expect(run.metadata?.["owner"]).toBe(thread.metadata?.["owner"]);
+      }
+    } finally {
+      await resolved.runtime.worker.stop();
+    }
+  });
+
+  it("reauthorizes recorded resources before replaying a provider receipt", async () => {
+    let revoked = false;
+    const resolved = await withOwnershipAuth(echoChannel, (identity) =>
+      revoked ? "new-owner" : identity,
+    );
+    try {
+      expect((await deliver(resolved)).status).toBe(202);
+      revoked = true;
+      await expect(deliver(resolved)).rejects.toMatchObject({ status: 404 });
+    } finally {
+      await resolved.runtime.worker.stop();
+    }
+  });
 
   it("stamps the handler's ownership filters onto the thread", async () => {
     // Without this the thread exists but no filtered read can match it — the caller's own

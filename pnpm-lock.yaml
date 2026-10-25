@@ -978,6 +978,31 @@ importers:
         specifier: ^11.14.0
         version: 11.14.0
 
+  packages/bullmq:
+    dependencies:
+      '@skein-js/agent-protocol':
+        specifier: workspace:*
+        version: link:../agent-protocol
+      '@skein-js/core':
+        specifier: workspace:*
+        version: link:../core
+      bullmq:
+        specifier: ^5.0.0
+        version: 5.80.2
+      zod:
+        specifier: ^3.25.76
+        version: 3.25.76
+    devDependencies:
+      '@skein-js/storage-memory':
+        specifier: workspace:*
+        version: link:../storage-memory
+      '@skein-js/test-support':
+        specifier: workspace:*
+        version: link:../test-support
+      ioredis:
+        specifier: ^5.4.0
+        version: 5.10.1
+
   packages/channels:
     dependencies:
       '@skein-js/agent-protocol':

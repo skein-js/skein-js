@@ -39,6 +39,13 @@ ALTER TABLE skein_threads ADD COLUMN ttl_strategy TEXT;
 ALTER TABLE skein_threads ADD COLUMN ttl_pinned INTEGER NOT NULL DEFAULT 0;
 UPDATE skein_threads SET ttl_pinned=1 WHERE expires_at IS NULL;`,
   `ALTER TABLE skein_runs ADD COLUMN result TEXT CHECK(result IS NULL OR json_valid(result));`,
+  `CREATE TABLE skein_native_resumes (expected_run_id TEXT PRIMARY KEY REFERENCES skein_runs(key) ON DELETE CASCADE,
+run_id TEXT NOT NULL REFERENCES skein_runs(key) ON DELETE CASCADE);
+CREATE TABLE skein_native_dispatch (run_id TEXT PRIMARY KEY REFERENCES skein_runs(key) ON DELETE CASCADE,
+thread_id TEXT NOT NULL, kind TEXT NOT NULL, action TEXT, not_before TEXT NOT NULL, token TEXT,
+lease_until TEXT, dispatched INTEGER NOT NULL DEFAULT 0);
+CREATE INDEX skein_native_dispatch_due ON skein_native_dispatch(lease_until,run_id) WHERE kind='cancel' AND dispatched=0;
+CREATE INDEX skein_runs_inflight ON skein_runs(key) WHERE status IN ('pending','running');`,
 ];
 
 export function migrateDatabase(database: Database): void {

@@ -1,6 +1,8 @@
 import type { DeliveryCreate, SkeinStore, StoreItemFilter, Thread } from "@skein-js/core";
 import { describe, expect, it } from "vitest";
 
+import { runNativeConformance } from "./native-conformance.js";
+
 /** Driver-agnostic knobs the conformance suite needs to set on the store it is handed. */
 export interface ConformanceStoreOptions {
   /**
@@ -52,6 +54,7 @@ export function runSkeinStoreConformance(
 ): void {
   const canExpire = capabilities?.expiry ?? true;
   describe(`SkeinStore conformance — ${label}`, () => {
+    runNativeConformance(makeStore);
     describe("assistants", () => {
       it("creates an assistant, defaulting name to the graph id and version to 1", async () => {
         const store = await makeStore();

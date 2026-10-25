@@ -9,6 +9,7 @@
 
 import type {
   ProtocolDeps,
+  ProtocolContext,
   ProtocolHandlerExtras,
   ProtocolRequest,
   ProtocolResponse,
@@ -17,14 +18,16 @@ import type {
   RouteAuthz,
   WebhookDispatcher,
 } from "@skein-js/agent-protocol";
-import {
-  createAuthScopedStore,
-  createContext,
-  createProtocolServiceFromContext,
-} from "@skein-js/agent-protocol";
+import { createAuthScopedStore, createProtocolServiceFromContext } from "@skein-js/agent-protocol";
 import { SkeinConfigError } from "@skein-js/config";
 import type { LoadedChannel } from "@skein-js/config";
-import { SkeinHttpError, type AuthContext, type AuthFilters, type Metadata } from "@skein-js/core";
+import {
+  SkeinHttpError,
+  type AdmissionKey,
+  type AuthContext,
+  type AuthFilters,
+  type Metadata,
+} from "@skein-js/core";
 
 /**
  * The outbox dispatcher, as this module composes it.
@@ -38,7 +41,7 @@ type Dispatcher = WebhookDispatcher;
 /** What the channel surface adds to a runtime: routes to mount, and the handler they dispatch into. */
 export interface ResolvedChannels {
   routes: readonly RouteBinding[];
-  handlers: ProtocolHandlerExtras;
+  handlers(context: ProtocolContext): ProtocolHandlerExtras;
   /**
    * Wrap the deployment's delivery dispatcher so a channel's replies ride the outbox.
    *
@@ -53,15 +56,6 @@ export interface ResolveChannelsInput {
   /** Graph ids this deployment serves, for validating each channel's `assistant` at boot. */
   graphIds: readonly string[];
   deps: ProtocolDeps;
-  /**
-   * The runtime's service, read lazily.
-   *
-   * A getter rather than the value, because of an ordering knot: the handler this builds has to be
-   * handed to `createProtocolRuntime`, and the service only exists once that call returns. Routes do
-   * not have the problem — the registry needs only config and modules — so only the request path
-   * defers, and by the time a request arrives the runtime is long since built.
-   */
-  service(): ProtocolService;
 }
 
 /**
@@ -94,7 +88,6 @@ export async function resolveChannels(
     graphIds: input.graphIds,
   });
 
-  const pipelineDeps = buildPipelineDeps(input.deps, input.service);
   const channelInventory = registry.names.map((routeName) => {
     const registered = registry.get(routeName);
     if (!registered) throw new Error(`Channel registry lost configured route "${routeName}".`);
@@ -118,7 +111,7 @@ export async function resolveChannels(
         inner,
         logger: input.deps.logger ?? console,
       }),
-    handlers: {
+    handlers: (context) => ({
       listChannels: async (): Promise<ProtocolResponse> => ({
         kind: "json",
         status: 200,
@@ -138,10 +131,13 @@ export async function resolveChannels(
             headers: req.headers,
             ...(typeof req.body === "string" ? { text: req.body } : {}),
           },
-          pipelineDeps,
+          buildPipelineDeps(context, [
+            registered.config.assistant,
+            ...(registered.config.allowedAssistants ?? []),
+          ]),
         );
       },
-    },
+    }),
   };
 }
 
@@ -151,10 +147,13 @@ export async function resolveChannels(
  * Built here rather than inside `@skein-js/channels` so that package never has to know how a runtime
  * was assembled — it takes an interface, and this is the only place that knows the answer.
  */
-function buildPipelineDeps(deps: ProtocolDeps, service: () => ProtocolService) {
+function buildPipelineDeps(context: ProtocolContext, allowedAssistants: readonly string[]) {
+  const deps = context.deps;
+  const service = () => createProtocolServiceFromContext(context);
   // Set by `authorize` and read by `scopedService`, both of which run once per request inside a single
   // `handleInboundEvent` call — the pipeline awaits authorization before it touches either.
   let requestFilters: AuthFilters | undefined;
+  let verifiedContext: AuthContext | undefined;
 
   /**
    * The service this request runs as.
@@ -166,11 +165,15 @@ function buildPipelineDeps(deps: ProtocolDeps, service: () => ProtocolService) {
    * `configurable.langgraph_auth_user` — and, when the handler returned ownership filters, a store
    * scoped by them.
    */
-  const scopedService = (authContext: AuthContext | undefined): ProtocolService => {
-    if (!authContext && !requestFilters) return service();
-    const base = createContext(deps);
+  const scopedService = (
+    authContext: AuthContext | undefined,
+    admission?: AdmissionKey,
+  ): ProtocolService => {
+    if (!authContext && !requestFilters && !admission) return service();
+    const base = context;
     return createProtocolServiceFromContext({
       ...base,
+      ...(admission && deps.store.admission ? { admission } : {}),
       ...(authContext?.user ? { authUser: authContext.user } : {}),
       ...(authContext?.scopes ? { authScopes: authContext.scopes } : {}),
       deps:
@@ -184,7 +187,71 @@ function buildPipelineDeps(deps: ProtocolDeps, service: () => ProtocolService) {
   };
 
   return {
-    ...(deps.store.idempotency ? { idempotency: deps.store.idempotency } : {}),
+    ...(deps.store.idempotency
+      ? {
+          idempotency: {
+            ...deps.store.idempotency,
+            claim: async (input: Parameters<typeof deps.store.idempotency.claim>[0]) => {
+              const authorizeRecorded = async (record: { run_id?: string; thread_id?: string }) => {
+                const run = record.run_id ? await deps.store.runs.get(record.run_id) : null;
+                if (run) {
+                  const assistant = await deps.store.assistants.get(run.assistant_id);
+                  if (
+                    !allowedAssistants.includes(run.assistant_id) &&
+                    !(assistant && allowedAssistants.includes(assistant.graph_id))
+                  )
+                    throw SkeinHttpError.forbidden(
+                      "Recorded assistant is outside the channel allowlist.",
+                      { code: "assistant_not_allowed" },
+                    );
+                }
+                if (!deps.auth) return;
+                const threadId = run?.thread_id ?? record.thread_id;
+                const decision = await deps.auth.authorize({
+                  resource: "threads",
+                  action: "create_run",
+                  context: verifiedContext,
+                  value: {
+                    ...(threadId ? { thread_id: threadId } : {}),
+                    ...(run ? { run_id: run.run_id, assistant_id: run.assistant_id } : {}),
+                  },
+                });
+                const store = decision.filters
+                  ? createAuthScopedStore(deps.store, deps.auth, decision.filters, "threads")
+                  : deps.store;
+                if (threadId && !(await store.threads.get(threadId)))
+                  throw SkeinHttpError.notFound("Thread not found.");
+                if (record.run_id && !(await store.runs.get(record.run_id)))
+                  throw SkeinHttpError.notFound("Run not found.");
+              };
+              // A committed acceptance remains recoverable when the provider response was never recorded.
+              const accepted = deps.store.admission
+                ? await deps.store.idempotency.get(`admission ${input.scope}`, input.key)
+                : null;
+              if (
+                accepted &&
+                accepted.expires_at > input.now &&
+                accepted.fingerprint === input.fingerprint &&
+                accepted.run_id
+              ) {
+                await authorizeRecorded(accepted);
+                return {
+                  claimed: false,
+                  record: {
+                    ...accepted,
+                    scope: input.scope,
+                    response: { status: 202, body: { run_id: accepted.run_id } },
+                  },
+                };
+              }
+              const result = await deps.store.idempotency.claim(input);
+              if (!result.claimed && result.record.status === "done")
+                await authorizeRecorded(result.record);
+              return result;
+            },
+          },
+        }
+      : {}),
     clock: () => (deps.clock ? deps.clock() : new Date()),
     logger: deps.logger ?? console,
     // Straight off the run event bus — the same stream `runs.joinStream` serves, without the HTTP
@@ -194,6 +261,7 @@ function buildPipelineDeps(deps: ProtocolDeps, service: () => ProtocolService) {
     authorize: async (
       principal: { identity: string; permissions?: string[]; metadata?: Record<string, unknown> },
       authz: RouteAuthz,
+      value?: unknown,
     ): Promise<AuthContext | undefined> => {
       // No Auth block: the deployment authorizes nothing, and the channel's signature is the whole
       // check — which is the same posture every other route has on such a server.
@@ -203,18 +271,19 @@ function buildPipelineDeps(deps: ProtocolDeps, service: () => ProtocolService) {
       // provider metadata rides along the way a JWT's claims would.
       const context: AuthContext = {
         user: {
+          ...(principal.metadata ?? {}),
           identity: principal.identity,
           display_name: principal.identity,
           is_authenticated: true,
           permissions: principal.permissions ?? [],
-          ...(principal.metadata ?? {}),
         },
         scopes: principal.permissions ?? [],
       };
+      verifiedContext = context;
       const decision = await deps.auth.authorize({
         resource: authz.resource,
         action: authz.action,
-        value: {},
+        value: value ?? {},
         context,
       });
       // The ownership filters the handler returned are what actually scope this request. Discarding
@@ -239,13 +308,14 @@ function buildPipelineDeps(deps: ProtocolDeps, service: () => ProtocolService) {
     },
 
     threadStatus: async (threadId: string) => {
-      const thread = await service()
+      const thread = await scopedService(undefined)
         .threads.get(threadId)
         .catch(() => null);
       return thread?.status ?? null;
     },
 
     createRun: async (input: {
+      admission?: AdmissionKey;
       threadId: string;
       assistantId: string;
       input?: unknown;
@@ -262,16 +332,19 @@ function buildPipelineDeps(deps: ProtocolDeps, service: () => ProtocolService) {
       // this to drop to raw `fetch`.
       // The scoped service, so the run is stamped with the authenticated caller and the graph sees
       // `configurable.langgraph_auth_user` — the same thing every other run-creating route gives it.
-      const run = await scopedService(input.authContext).runs.createBackground(input.threadId, {
-        assistant_id: input.assistantId,
-        ...(input.input !== undefined ? { input: input.input } : {}),
-        ...(input.command ? { command: input.command } : {}),
-        ...(input.ifThreadStatus ? { if_thread_status: [...input.ifThreadStatus] } : {}),
-        ...(input.multitaskStrategy ? { multitask_strategy: input.multitaskStrategy } : {}),
-        ...(input.metadata ? { metadata: input.metadata } : {}),
-        ...(input.webhook ? { webhook: input.webhook } : {}),
-        stream_mode: [...input.streamMode] as never,
-      });
+      const run = await scopedService(input.authContext, input.admission).runs.createBackground(
+        input.threadId,
+        {
+          assistant_id: input.assistantId,
+          ...(input.input !== undefined ? { input: input.input } : {}),
+          ...(input.command ? { command: input.command } : {}),
+          ...(input.ifThreadStatus ? { if_thread_status: [...input.ifThreadStatus] } : {}),
+          ...(input.multitaskStrategy ? { multitask_strategy: input.multitaskStrategy } : {}),
+          ...(input.metadata ? { metadata: input.metadata } : {}),
+          ...(input.webhook ? { webhook: input.webhook } : {}),
+          stream_mode: [...input.streamMode] as never,
+        },
+      );
       return { runId: run.run_id };
     },
   };

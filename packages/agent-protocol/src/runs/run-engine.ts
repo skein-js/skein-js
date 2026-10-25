@@ -44,6 +44,8 @@ import {
 } from "../graphs/agent-graph.js";
 import { resolveCompiledGraph } from "../graphs/resolve-compiled-graph.js";
 import { readA2aOrigin, verifyA2aResume } from "../interop/a2a-origin.js";
+import { readNativeOrigin } from "../native/native-origin.js";
+import { settleNativeRun } from "../native/native-outcome.js";
 import {
   chunkToFrameBody,
   streamEventToFrameBody,
@@ -62,6 +64,7 @@ import { isThreadProtocolRun } from "../threads/thread-protocol-run.js";
 
 import type { AbortReason, RunControl } from "./cancellation.js";
 import { readDeclaredReply } from "./declared-reply.js";
+import { verifyResumeTarget } from "./resume-target.js";
 import { RUN_FAILURE_REPORT_KIND, toError, type RunFailureReport } from "./run-failure.js";
 import {
   toFactoryConfigurable,
@@ -331,6 +334,14 @@ export async function executeRun(deps: ResolvedDeps, exec: RunExecution): Promis
     status: RunStatus,
     settled: RunResult & { error?: RunError },
   ): Promise<RunStatus> => {
+    if (readNativeOrigin(kwargs)) {
+      const { error, ...result } = settled;
+      return settleNativeRun(deps, run, {
+        status: status as Exclude<RunStatus, "pending" | "running">,
+        result,
+        ...(error ? { error } : {}),
+      });
+    }
     if (readA2aOrigin(kwargs) && deps.store.runs.recordResult) {
       const { error: _error, ...result } = settled;
       await deps.store.runs.recordResult(runId, result);
@@ -415,10 +426,18 @@ export async function executeRun(deps: ResolvedDeps, exec: RunExecution): Promis
   };
 
   // Arm the optional wall-clock timeout; it aborts this run's signal with reason "timeout".
+  const nativeOrigin = readNativeOrigin(kwargs);
+  const remainingBudget = nativeOrigin?.deadlineAt
+    ? Math.max(0, Date.parse(nativeOrigin.deadlineAt) - deps.clock().getTime())
+    : undefined;
+  const timeoutBudget =
+    remainingBudget === undefined
+      ? deps.runTimeoutMs
+      : Math.min(deps.runTimeoutMs ?? Infinity, remainingBudget);
   const timer =
-    deps.runTimeoutMs !== undefined
-      ? setTimeout(() => control.abort("timeout"), deps.runTimeoutMs)
-      : undefined;
+    timeoutBudget === undefined
+      ? undefined
+      : setTimeout(() => control.abort("timeout"), timeoutBudget);
 
   try {
     // Cancelled before we even started (e.g. the worker was slow to pick it up): honor it.
@@ -429,7 +448,12 @@ export async function executeRun(deps: ResolvedDeps, exec: RunExecution): Promis
     }
 
     // pending -> running: run row first (the concurrency source of truth), then the thread mirror.
-    await deps.store.runs.setStatus(runId, "running");
+    const running = await deps.store.runs.setStatus(runId, "running");
+    // A cancellation can win between the initial read and this conditional transition.
+    if (running && isTerminalRunStatus(running.status)) {
+      outcome = { status: running.status, values: {} as DefaultValues };
+      return outcome;
+    }
     started = true;
     const runningThread = await mirrorThreadStatus(deps, threadId, "busy");
     // Thread-only metadata leaves single-run SSE framing and its sequence numbers unchanged.
@@ -486,6 +510,16 @@ export async function executeRun(deps: ResolvedDeps, exec: RunExecution): Promis
     }
 
     await verifyA2aResume(deps, threadId, runId, readA2aOrigin(kwargs));
+    if (nativeOrigin?.expected)
+      await verifyResumeTarget(deps, threadId, runId, {
+        expectedRunId: nativeOrigin.expected.runId,
+        checkpoint: nativeOrigin.expected.checkpoint,
+        interruptIds: nativeOrigin.expected.interruptIds,
+      });
+    if (remainingBudget !== undefined && remainingBudget <= 0) {
+      control.abort("timeout");
+      throw new Error("Native execution deadline expired before invocation.");
+    }
     graph = await resolveGraph(deps, assistant.graph_id, kwargs);
     const activeGraph = graph;
     const input = toGraphInput(kwargs);
@@ -498,6 +532,7 @@ export async function executeRun(deps: ResolvedDeps, exec: RunExecution): Promis
     };
 
     await withRunTelemetryContext(deps, telemetryContext, async () => {
+      control.signal.throwIfAborted();
       if (isThreadProtocolRun(kwargs)) {
         await deps.threadBus?.publish(
           threadId,
@@ -516,6 +551,7 @@ export async function executeRun(deps: ResolvedDeps, exec: RunExecution): Promis
           },
           threadGeneration,
         );
+        control.signal.throwIfAborted();
         const events = await requireAgentCapability(activeGraph, "streamProtocol").streamProtocol(
           input,
           {
@@ -788,7 +824,9 @@ export async function executeRun(deps: ResolvedDeps, exec: RunExecution): Promis
     // left is to attempt it; if this process dies first, its lease expires and a worker takes over.
     // Without one, this is the pre-outbox path verbatim: one POST, logged on failure, gone if it
     // fails.
-    const deliver = deliverRecorded(deps, recordedDelivery) ?? deliverOnce(deps, exec, outcome);
+    const deliver = readNativeOrigin(kwargs)
+      ? undefined
+      : (deliverRecorded(deps, recordedDelivery) ?? deliverOnce(deps, exec, outcome));
     if (deliver) {
       // Handed to the caller rather than awaited here, when the caller asks for it. This `finally` runs
       // inside the thread's execution lock, so awaiting a hung target here blocks every other run on

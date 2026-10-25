@@ -241,11 +241,9 @@ export async function resolveProtocolRuntime(
   // environment become the worker's settings, so Express/Fastify/NestJS/Next.js and `skein dev`/`start`
   // can't drift.
   // Built before the runtime because its handler has to be injected into it, and resolved with a
-  // lazy service getter because the service does not exist until that call returns. Absent — and the
-  // package never even imported — when no channel is configured.
+  // context binder because services and cancellation must share the canonical runtime context.
+  // The package is imported only when a channel is configured.
   //
-  // `runtimeRef` is filled immediately below; nothing can dispatch a request before then.
-  const runtimeRef: { current?: ProtocolRuntime } = {};
   const channelSurface = channels
     ? await (
         await import("./channels-runtime.js")
@@ -253,11 +251,6 @@ export async function resolveProtocolRuntime(
         channels,
         graphIds: deps.graphs.ids,
         deps,
-        service: () => {
-          const current = runtimeRef.current;
-          if (!current) throw new Error("channel pipeline used before the runtime was assembled");
-          return current.service;
-        },
       })
     : undefined;
 
@@ -287,7 +280,6 @@ export async function resolveProtocolRuntime(
       enabled: options.scheduler?.enabled ?? routes.some((route) => route.group === "crons"),
     },
   });
-  runtimeRef.current = runtime;
   await runtime.service.assistants.registerGraphAssistants();
   if (options.warm) {
     await Promise.all(

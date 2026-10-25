@@ -16,7 +16,7 @@ import type {
   ThreadStatus,
 } from "../wire/wire.js";
 
-import type { FinalizedRun, RunFinalization } from "./deliveries.js";
+import type { Delivery, DeliveryCreate, FinalizedRun, RunFinalization } from "./deliveries.js";
 import type { Pagination } from "./pagination.js";
 
 /**
@@ -25,6 +25,8 @@ import type { Pagination } from "./pagination.js";
  * up later, or a run reclaimed after a crash, can be reconstructed from just its `run_id`.
  */
 export interface RunKwargs {
+  /** Server-owned minimal lifecycle obligation, also usable before a graph ever executes. */
+  terminal_delivery?: DeliveryCreate;
   /** Server-owned background intent and original absolute queue eligibility time. */
   queue_not_before?: string;
   /** Graph input for a fresh turn. Absent when the run is a resume (see {@link command}). */
@@ -182,7 +184,22 @@ export interface RunResult {
   checkpoint?: Checkpoint;
 }
 
+/** Atomic terminal accounting; output and delivery are independently optional. Deliveries start pending at attempt zero. */
+export interface RunSettlement {
+  status: Exclude<RunStatus, "pending" | "running">;
+  error?: RunError;
+  result?: RunResult;
+  delivery?: DeliveryCreate;
+}
+
+export interface SettledRun {
+  run: Run | null;
+  delivery?: Delivery;
+}
+
 export interface RunRepo {
+  /** First terminal status wins. Result is write-once; an identified delivery is inserted once. */
+  settle?(runId: string, settlement: RunSettlement): Promise<SettledRun>;
   /** First write wins atomically. Unknown/deleted runs are no-ops; inputs are defensively copied. */
   recordResult?(runId: string, result: RunResult): Promise<void>;
   /** Defensive copy, or null for unknown runs or results not yet recorded. Excluded from Run wire. */
@@ -239,6 +256,10 @@ export interface RunRepo {
    * fires} lands first wins. Splitting the error into a second write would reopen a window where a
    * run reads as `error` with no explanation, or where a racing cancel takes the status while the
    * error lands on top of it.
+   *
+   * Stores with admission must refuse terminal -> running for admission-owned runs, returning the
+   * effective row unchanged. This atomic guard prevents a recovered job from undoing cancellation.
+   * Other transitions and legacy, unowned runs retain their existing semantics.
    */
   setStatus(runId: string, status: RunStatus, error?: RunError): Promise<Run>;
   delete(runId: string): Promise<void>;

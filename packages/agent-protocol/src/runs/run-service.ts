@@ -2,6 +2,8 @@
 // the one engine (`executeRun`) so behavior can't drift between them — wait awaits the outcome,
 // stream subscribes to the bus while the engine runs inline, background enqueues for a worker.
 
+import { randomUUID } from "node:crypto";
+
 import {
   isSkeinHttpError,
   isTerminalRunStatus,
@@ -22,6 +24,7 @@ import {
   type RunListQuery,
   type RunStatus,
   type RunTrigger,
+  type RunAdmission,
   type StreamMode,
   type Thread,
   type ThreadStatus,
@@ -29,7 +32,19 @@ import {
 
 import { toStoredRollbackPlan, type ProtocolContext, type RollbackPlan } from "../context.js";
 import { remainingQueueAttempts } from "../deliveries/delivery-config.js";
+import { readInputAdmission } from "../idempotency/admission-input.js";
 import { a2aKwargs } from "../interop/a2a-origin.js";
+import {
+  nativeKwargs,
+  readNativeOrigin,
+  isRecoveringCancellation,
+  readAdmissionSignal,
+} from "../native/native-origin.js";
+import {
+  nativeDelivery,
+  scheduleNativeOutcome,
+  settleNativeRun,
+} from "../native/native-outcome.js";
 import { rollbackThreadCheckpointsTo } from "../threads/checkpoint-history.js";
 import { threadProtocolKwargs } from "../threads/thread-protocol-run.js";
 
@@ -277,10 +292,11 @@ export function toKwargs(
   authScopes?: string[],
 ): RunKwargs {
   const kwargs: RunKwargs & ReturnType<typeof threadProtocolKwargs> = {};
-  Object.assign(kwargs, threadProtocolKwargs(input), a2aKwargs(input));
+  Object.assign(kwargs, threadProtocolKwargs(input), a2aKwargs(input), nativeKwargs(input));
   // Only the non-default is stored: `keep` is what an absent flag already means, and kwargs are
   // written on every run.
-  if (ownsThread && input.on_completion === "delete") kwargs.delete_thread_on_completion = true;
+  if ((ownsThread || readNativeOrigin(kwargs)?.ownsThread) && input.on_completion === "delete")
+    kwargs.delete_thread_on_completion = true;
   if (input.input !== undefined) kwargs.input = input.input;
   if (input.command !== undefined) kwargs.command = input.command;
   if (input.config !== undefined) kwargs.config = input.config;
@@ -327,6 +343,8 @@ export function toKwargs(
 
 export function createRunService(ctx: ProtocolContext): RunService {
   const { deps, control, locks, runBaseCheckpoints, authUser, authScopes } = ctx;
+  const admissionReplays = new WeakSet<Run>();
+  const admittedRuns = new WeakSet<Run>();
 
   /**
    * The checkpoint tip a run started from — the in-process note first, then the run's persisted kwargs.
@@ -439,6 +457,14 @@ export function createRunService(ctx: ProtocolContext): RunService {
   // guard immediately, while the execution lock still holds the displacing run until this one stops.
   const cancelActiveRun = async (run: Run, reason: "interrupt" | "rollback"): Promise<void> => {
     const terminal: RunStatus = reason === "interrupt" ? "interrupted" : "cancelled";
+    if (readNativeOrigin(await deps.store.runs.getKwargs(run.run_id))) {
+      await settleNativeRun(deps, run, {
+        status: reason === "interrupt" ? "interrupted" : "cancelled",
+      });
+      if (run.status === "pending") await deps.bus.close(run.run_id);
+      control.abort(run.run_id, reason);
+      return;
+    }
     if (run.status === "pending") {
       await deps.store.runs.setStatus(run.run_id, terminal);
       await deps.bus.close(run.run_id);
@@ -460,6 +486,19 @@ export function createRunService(ctx: ProtocolContext): RunService {
   ): Promise<Run> => {
     return locks.run(threadId, async () => {
       const strategy = input.multitask_strategy ?? "reject";
+      const native = readNativeOrigin(kwargs);
+      const admissionKey = native?.admission ?? ctx.admission ?? readInputAdmission(input);
+      const displacements: NonNullable<RunAdmission["displacements"]>[number][] = [];
+      const displace = async (run: Run, reason: "interrupt" | "rollback") => {
+        if (!admissionKey) return cancelActiveRun(run, reason);
+        const origin = readNativeOrigin(await deps.store.runs.getKwargs(run.run_id));
+        const status = reason === "interrupt" ? "interrupted" : "cancelled";
+        const delivery = origin ? nativeDelivery(deps, { ...run, status }, origin) : undefined;
+        displacements.push({
+          runId: run.run_id,
+          settlement: { status, ...(delivery ? { delivery } : {}) },
+        });
+      };
 
       // A thread-status precondition, when the caller sent one, is applied at whichever insert the
       // chosen strategy reaches — never as a path of its own. Short-circuiting here instead would skip
@@ -469,6 +508,63 @@ export function createRunService(ctx: ProtocolContext): RunService {
         create: RunCreate,
         requireNoActiveRun: boolean,
       ): Promise<Run | "thread_busy"> => {
+        if (admissionKey) {
+          const signal = readAdmissionSignal(input);
+          signal?.throwIfAborted();
+          if (!deps.store.admission)
+            throw SkeinHttpError.notImplemented("Atomic native admission is unavailable.");
+          if (!kwargs.queue_not_before)
+            throw SkeinHttpError.unprocessable(
+              "Atomic admission context requires a background run.",
+            );
+          const identified = { ...create, run_id: create.run_id ?? randomUUID() };
+          const template = native
+            ? nativeDelivery(
+                deps,
+                {
+                  run_id: identified.run_id,
+                  thread_id: create.thread_id,
+                  assistant_id: create.assistant_id,
+                  status: "pending",
+                  created_at: admissionKey.now,
+                  updated_at: admissionKey.now,
+                  metadata: create.metadata ?? {},
+                  multitask_strategy: create.multitask_strategy ?? null,
+                },
+                native,
+              )
+            : undefined;
+          const admittedCreate = template
+            ? { ...identified, kwargs: { ...identified.kwargs, terminal_delivery: template } }
+            : identified;
+          const receipt = await deps.store.admission.admitRun({
+            ...(signal ? { signal } : {}),
+            ...admissionKey,
+            run: admittedCreate,
+            guard: {
+              requireNoActiveRun,
+              ...(input.if_thread_status ? { threadStatusIn: input.if_thread_status } : {}),
+            },
+            ...(native?.expected ? { expectedRunId: native.expected.runId } : {}),
+            displacements,
+          });
+          signal?.throwIfAborted();
+          const run = await deps.store.runs.get(receipt.runId);
+          if (!run) throw SkeinHttpError.notFound("Accepted run was deleted.");
+          if (receipt.runId === admittedCreate.run_id) {
+            admittedRuns.add(run);
+            for (const displaced of displacements) {
+              control.abort(displaced.runId, strategy === "rollback" ? "rollback" : "interrupt");
+              const deliveryId = displaced.settlement.delivery?.delivery_id;
+              if (deliveryId)
+                await scheduleNativeOutcome(
+                  deps,
+                  (await deps.store.deliveries?.get(deliveryId)) ?? undefined,
+                );
+            }
+          } else admissionReplays.add(run);
+          return run;
+        }
         if (!input.if_thread_status) {
           if (!requireNoActiveRun) return deps.store.runs.create(create);
           return (await deps.store.runs.createIfThreadIdle(create)) ?? "thread_busy";
@@ -532,7 +628,7 @@ export function createRunService(ctx: ProtocolContext): RunService {
       let rollbackPlan: RollbackPlan | undefined;
       if (active.length > 0) {
         if (strategy === "interrupt") {
-          for (const run of active) await cancelActiveRun(run, "interrupt");
+          for (const run of active) await displace(run, "interrupt");
         } else if (strategy === "rollback") {
           // Capture the running run's base checkpoint *before* aborting — the engine clears its
           // in-process note once the run settles. A displaced run with no recorded base never wrote
@@ -543,7 +639,7 @@ export function createRunService(ctx: ProtocolContext): RunService {
             if (base.recorded) revertToCheckpoint = { baseCheckpointId: base.checkpointId };
           }
           rollbackPlan = { revertToCheckpoint, displacedRunIds: active.map((run) => run.run_id) };
-          for (const run of active) await cancelActiveRun(run, "rollback");
+          for (const run of active) await displace(run, "rollback");
         }
         // enqueue: fall through and create the pending run; the per-thread execution lock
         // (startRunExecution) makes it wait behind the active run.
@@ -619,7 +715,7 @@ export function createRunService(ctx: ProtocolContext): RunService {
       assistant.assistant_id,
       kwargs,
     );
-    await stampGraphOnThread(thread, assistant);
+    if (!admissionReplays.has(run)) await stampGraphOnThread(thread, assistant);
     return { run, kwargs };
   };
 
@@ -631,9 +727,14 @@ export function createRunService(ctx: ProtocolContext): RunService {
    * kept in this process would be lost the moment the request that created it returned.
    */
   const enqueueBackgroundRun = async (run: Run, afterSeconds?: number): Promise<Run> => {
+    if (admissionReplays.has(run)) return run;
+    const stored = admittedRuns.has(run) ? await deps.store.runs.getKwargs(run.run_id) : null;
+    const delayMs = stored?.queue_not_before
+      ? Math.max(0, Date.parse(stored.queue_not_before) - deps.clock().getTime())
+      : Math.max(0, afterSeconds ?? 0) * 1000;
     await deps.queue.enqueue(
       { run_id: run.run_id, thread_id: run.thread_id },
-      afterSeconds !== undefined && afterSeconds > 0 ? { delayMs: afterSeconds * 1000 } : undefined,
+      delayMs > 0 ? { delayMs } : undefined,
     );
     return run;
   };
@@ -709,17 +810,23 @@ export function createRunService(ctx: ProtocolContext): RunService {
     baseCheckpointId: string | undefined,
   ): Promise<void> => {
     try {
-      await withThreadExecution(ctx.executionLocks, deps.threadExecutionGate, run.thread_id, () =>
-        rollbackThreadCheckpointsTo(
-          deps.checkpointer,
-          run.thread_id,
-          baseCheckpointId,
-          deps.cloneCheckpoint,
-        ),
+      await withThreadExecution(
+        ctx.executionLocks,
+        deps.threadExecutionGate,
+        run.thread_id,
+        async (leaseSignal) => {
+          await rollbackThreadCheckpointsTo(
+            deps.checkpointer,
+            run.thread_id,
+            baseCheckpointId,
+            deps.cloneCheckpoint,
+            leaseSignal,
+          );
+          leaseSignal?.throwIfAborted();
+          // The row goes last, under the same claim, so a failed revert leaves its writes explained.
+          await deps.store.runs.delete(run.run_id);
+        },
       );
-      // The row goes last, so a failed revert above leaves the run visible and its writes explained
-      // rather than a deleted run and an unexplained thread.
-      await deps.store.runs.delete(run.run_id);
     } catch (error) {
       deps.logger.error(
         `run ${run.run_id}: cancel requested action=rollback, but discarding its writes failed — ` +
@@ -736,7 +843,11 @@ export function createRunService(ctx: ProtocolContext): RunService {
     // run, so the plan would otherwise be orphaned in the map (it's applied in startRunExecution).
     ctx.rollbackPlans.delete(runId);
     // Idempotent: cancelling a finished run is a no-op.
-    if (isTerminalRunStatus(run.status)) return run;
+    if (
+      isTerminalRunStatus(run.status) &&
+      !(isRecoveringCancellation(options) && run.status === "cancelled")
+    )
+      return run;
 
     // Read before the abort: the engine clears its in-process note as the run settles, so reading it
     // afterwards could find nothing and the revert would wipe the thread instead of trimming it.
@@ -748,8 +859,14 @@ export function createRunService(ctx: ProtocolContext): RunService {
     // Both branches mark the row terminal (the engine won't overwrite it) and free the thread; a
     // pending run additionally has its bus closed here, since no engine will do it. `abort` is a no-op
     // when the run is not executing in this process.
-    await deps.store.runs.setStatus(runId, "cancelled");
-    await deps.store.threads.update(run.thread_id, { status: "idle" });
+    if (readNativeOrigin(await deps.store.runs.getKwargs(runId)))
+      await settleNativeRun(deps, run, { status: "cancelled" });
+    else if (!isTerminalRunStatus(run.status)) await deps.store.runs.setStatus(runId, "cancelled");
+    if (
+      !isRecoveringCancellation(options) ||
+      (await deps.store.runs.latestForThread(run.thread_id))?.run_id === runId
+    )
+      await deps.store.threads.update(run.thread_id, { status: "idle" });
     if (run.status === "pending") await deps.bus.close(runId);
     control.abort(runId, rollingBack ? "rollback" : "cancel");
 

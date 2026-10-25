@@ -21,7 +21,8 @@ const local = await embedSqliteGraphs(
 const runtime = createProtocolRuntime(local.deps);
 await runtime.service.assistants.registerGraphAssistants();
 runtime.worker.start();
-// Use runtime.service or pass local.deps to an existing HTTP adapter.
+// Use runtime.createNativeClient({sourceId, allowedAssistants}) for receipt-based native work.
+// The existing runtime.service and HTTP adapters remain available.
 await runtime.worker.stop();
 await local.dispose();
 ```

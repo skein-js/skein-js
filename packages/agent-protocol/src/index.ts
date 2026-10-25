@@ -5,6 +5,15 @@
 // Recommended entry point: service + handlers + worker over one shared context.
 export { createProtocolRuntime } from "./runtime.js";
 export type { ProtocolRuntime, ProtocolRuntimeOptions } from "./runtime.js";
+export type {
+  NativeClient,
+  NativeSourceOptions,
+  NativeCallOptions,
+  NativeStartInput,
+  NativeResumeInput,
+  NativeResumeTarget,
+  NativeCancellation,
+} from "./native/native-client.js";
 
 // The framework-agnostic service (embed directly), and the advanced shared-context building blocks.
 export { createContext } from "./context.js";

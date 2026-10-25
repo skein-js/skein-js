@@ -1,5 +1,5 @@
 import type { Run } from "@skein-js/core";
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 
 import { collect, createFixtureDeps } from "../__fixtures__/deps.js";
 import { createContext } from "../context.js";
@@ -19,6 +19,35 @@ async function serviceWithAssistants(deps = createFixtureDeps()) {
 }
 
 describe("cancellation", () => {
+  it("stops rollback cancellation when its execution lease is lost during the checkpoint read", async () => {
+    const lost = new AbortController();
+    const release = vi.fn(async () => undefined);
+    const deps = createFixtureDeps({
+      threadExecutionGate: { acquire: async () => ({ signal: lost.signal, release }) },
+    });
+    const service = await serviceWithAssistants(deps);
+    const thread = await service.threads.create();
+    const run = await deps.store.runs.create({
+      thread_id: thread.thread_id,
+      assistant_id: "echo",
+      kwargs: { base_checkpoint_id: "base" },
+    });
+    vi.spyOn(deps.checkpointer, "list").mockImplementation(async function* (config) {
+      if (config.configurable?.["thread_id"] === thread.thread_id) {
+        lost.abort(new Error("rollback lease lost"));
+        yield { config: { configurable: {} }, checkpoint: { id: "base" } };
+      }
+    });
+    const erase = vi.spyOn(deps.checkpointer, "deleteThread");
+    const put = vi.spyOn(deps.checkpointer, "put");
+    expect((await service.runs.cancel(run.run_id, { action: "rollback", wait: true })).status).toBe(
+      "cancelled",
+    );
+    expect(erase).not.toHaveBeenCalled();
+    expect(put).not.toHaveBeenCalled();
+    expect(await deps.store.runs.get(run.run_id)).not.toBeNull();
+    expect(release).toHaveBeenCalledOnce();
+  });
   it("cancels a running stream: terminal cancelled, thread freed, stream completes", async () => {
     const service = await serviceWithAssistants();
     const { runId, frames } = await service.runs.createStream({ assistant_id: "slow", input: {} });

@@ -44,6 +44,12 @@
         "cwd": "."
       }
     },
+    "test-native-consumer": {
+      "executor": "nx:run-commands",
+      "cache": false,
+      "dependsOn": ["local:build", "bullmq:build", "runtime:build", "server-express:build"],
+      "options": { "command": "node scripts/native-consumer-smoke.mjs", "cwd": "." }
+    },
     "test-local-electron": {
       "executor": "nx:run-commands",
       "cache": false,

@@ -44,6 +44,8 @@ import {
   type RunKwargs,
   type RunRepo,
   type RunResult,
+  type RunSettlement,
+  type SettledRun,
   serializeWireJson,
   type RunStatus,
   type SearchItem,
@@ -70,6 +72,7 @@ import {
 } from "@skein-js/core";
 import { Pool, type PoolClient } from "pg";
 
+import { createPostgresAdmission, settlePostgresRun } from "./native-admission.js";
 import { acquireSessionAdvisoryLock, applySkeinMigrations } from "./run-migrations.js";
 
 /** Computes embeddings for a batch of texts — injected so tests use a deterministic fake. */
@@ -508,11 +511,12 @@ async function insertDelivery(
   runId: string,
   runStatus: RunStatus,
   input: DeliveryCreate,
+  claimed = true,
 ): Promise<Delivery> {
   const { rows } = await executor.query<DeliveryRow>(
     `INSERT INTO deliveries (delivery_id, run_id, thread_id, url, payload, payload_truncated,
                              run_status, status, attempt, next_attempt_at, expires_at)
-     VALUES ($1, $2, $3, $4, $5::jsonb, $6, $7, 'delivering', 1, $8::timestamptz, $9::timestamptz)
+     VALUES ($1, $2, $3, $4, $5::jsonb, $6, $7, $10, $11, $8::timestamptz, $9::timestamptz)
      RETURNING ${DELIVERY_COLUMNS}`,
     [
       input.delivery_id ?? randomUUID(),
@@ -524,6 +528,8 @@ async function insertDelivery(
       runStatus,
       input.next_attempt_at,
       input.expires_at,
+      claimed ? "delivering" : "pending",
+      claimed ? 1 : 0,
     ],
   );
   return rowToDelivery(rows[0] as DeliveryRow);
@@ -978,6 +984,33 @@ function itemFilterSql(filter: StoreItemFilter, params: unknown[]): string[] {
 
 /** Postgres `SkeinStore`. Construct with {@link PostgresSkeinStore.connect}, run {@link migrate}. */
 export class PostgresSkeinStore implements SkeinStore {
+  readonly admission = createPostgresAdmission({
+    pageLimit: (limit) => this.#pageLimit(limit),
+    transaction: (operation, signal) => this.#withTransaction(operation, signal),
+    insertRun,
+    settle: (client, id, final) => this.#settle(client, id, final),
+  });
+
+  #settle(client: PoolClient, runId: string, final: RunSettlement): Promise<SettledRun> {
+    return settlePostgresRun(client, runId, final, {
+      insertDelivery: (connection, id, status, input) =>
+        insertDelivery(connection, id, status, input, false),
+      readRun: async (connection, id) => {
+        const { rows } = await connection.query<RunRow>(
+          `SELECT ${RUN_COLUMNS} FROM runs WHERE run_id=$1`,
+          [id],
+        );
+        return rows[0] ? rowToRun(rows[0]) : null;
+      },
+      readDelivery: async (connection, id) => {
+        const { rows } = await connection.query<DeliveryRow>(
+          `SELECT ${DELIVERY_COLUMNS} FROM deliveries WHERE delivery_id=$1`,
+          [id],
+        );
+        return rows[0] ? rowToDelivery(rows[0]) : null;
+      },
+    });
+  }
   readonly #pool: Pool;
   readonly #index?: StoreIndexConfig;
   readonly #ttl?: StoreTtlConfig;
@@ -1022,11 +1055,16 @@ export class PostgresSkeinStore implements SkeinStore {
   }
 
   /** Run `work` inside a transaction, committing on success and rolling back on any error. */
-  async #withTransaction<T>(work: (client: PoolClient) => Promise<T>): Promise<T> {
+  async #withTransaction<T>(
+    work: (client: PoolClient) => Promise<T>,
+    signal?: AbortSignal,
+  ): Promise<T> {
     const client = await this.#pool.connect();
     try {
+      signal?.throwIfAborted();
       await client.query("BEGIN");
       const result = await work(client);
+      signal?.throwIfAborted();
       await client.query("COMMIT");
       return result;
     } catch (error) {
@@ -1238,7 +1276,20 @@ export class PostgresSkeinStore implements SkeinStore {
    * (`loadSnapshotIntoStore` in `@skein-js/server-kit/dev` feature-detects it — see the importer).
    */
   async restore(snapshot: SkeinStoreSnapshot): Promise<void> {
-    const kwargsByRun = new Map(snapshot.runKwargs);
+    const kwargsByRun = new Map(
+      snapshot.runKwargs.map(([id, kwargs]) => {
+        const {
+          native_origin: _origin,
+          terminal_delivery: _delivery,
+          webhook,
+          ...rest
+        } = kwargs as RunKwargs & { native_origin?: unknown };
+        return [
+          id,
+          _origin || _delivery ? rest : { ...rest, ...(webhook ? { webhook } : {}) },
+        ] as const;
+      }),
+    );
     const itemOptions = new Map(snapshot.itemOptions ?? []);
     const threadRetention = new Map(snapshot.threadRetention ?? []);
 
@@ -1847,6 +1898,7 @@ export class PostgresSkeinStore implements SkeinStore {
   };
 
   readonly runs: RunRepo = {
+    settle: (id, final) => this.#withTransaction((client) => this.#settle(client, id, final)),
     recordResult: async (runId, result) => {
       await this.#pool.query(
         "UPDATE runs SET result=$2::jsonb WHERE run_id=$1 AND result IS NULL",
@@ -1973,10 +2025,15 @@ export class PostgresSkeinStore implements SkeinStore {
       // always describes its current status. Status and error move in the same single write; see
       // the `RunRepo.setStatus` contract for why they must not be split.
       const { rows } = await this.#pool.query<RunRow>(
-        `UPDATE runs SET status = $2, error = $3::jsonb, updated_at = now() WHERE run_id = $1 RETURNING ${RUN_COLUMNS}`,
+        `UPDATE runs SET status = $2, error = $3::jsonb, updated_at = now() WHERE run_id = $1
+AND ($2 <> 'running' OR status IN ('pending','running') OR NOT EXISTS(SELECT 1 FROM native_dispatches WHERE native_dispatches.run_id=runs.run_id)) RETURNING ${RUN_COLUMNS}`,
         [runId, status, error === undefined ? null : JSON.stringify(error)],
       );
-      if (!rows[0]) throw SkeinHttpError.notFound(`Run "${runId}" not found.`);
+      if (!rows[0]) {
+        const effective = await this.runs.get(runId);
+        if (effective) return effective;
+        throw SkeinHttpError.notFound(`Run "${runId}" not found.`);
+      }
       return rowToRun(rows[0]);
     },
     delete: async (runId) => {

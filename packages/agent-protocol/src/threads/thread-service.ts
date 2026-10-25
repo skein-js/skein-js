@@ -525,7 +525,7 @@ export function createThreadService(ctx: ProtocolContext): ThreadService {
           ctx.executionLocks,
           deps.threadExecutionGate,
           threadId,
-          async () => {
+          async (leaseSignal) => {
             if (await deps.store.runs.hasActiveRun(threadId)) {
               busyThreadIds.push(threadId);
               return;
@@ -535,6 +535,7 @@ export function createThreadService(ctx: ProtocolContext): ThreadService {
                 deps.checkpointer,
                 threadId,
                 deps.cloneCheckpoint,
+                leaseSignal,
               )
             )
               prunedCount += 1;
@@ -591,6 +592,15 @@ export function createThreadService(ctx: ProtocolContext): ThreadService {
       for (const run of [...sourceRuns].sort((a, b) => a.created_at.localeCompare(b.created_at))) {
         if (!isTerminalRunStatus(run.status)) continue;
         let kwargs = await deps.store.runs.getKwargs(run.run_id);
+        if (kwargs) {
+          const {
+            native_origin: _native,
+            terminal_delivery: _delivery,
+            webhook,
+            ...copied
+          } = kwargs as typeof kwargs & { native_origin?: unknown };
+          kwargs = _native || _delivery ? copied : { ...copied, ...(webhook ? { webhook } : {}) };
+        }
         const origin = readA2aOrigin(kwargs);
         if (origin && kwargs)
           kwargs = {
@@ -703,59 +713,77 @@ export function createThreadService(ctx: ProtocolContext): ThreadService {
     },
 
     async updateState(threadId, input) {
-      const generation = await deps.threadBus?.generation(threadId);
-      // Ownership-gate first: loadThreadGraph 404s an unknown/foreign thread (via requireThread) before
-      // any activity check, so a non-owned thread reads as absent (never a 409-vs-404 activity oracle),
-      // and 422s a thread that has never produced a graph.
-      const graph = await loadThreadGraph(threadId);
-      if (!graph) {
-        throw SkeinHttpError.unprocessable(`Thread "${threadId}" has no graph to update state on.`);
-      }
-      // Forking rewrites the checkpoint tip, so it must not race a run mid-write (LangGraph 409).
-      if (await deps.store.runs.hasActiveRun(threadId)) {
+      await requireThread(threadId);
+      if (await deps.store.runs.hasActiveRun(threadId))
         throw SkeinHttpError.conflict(
           `Thread "${threadId}" is busy; wait for its active run to finish before updating state.`,
         );
-      }
-      // Server-owned identity is forced LAST so a client-supplied `checkpoint` object can never
-      // redirect the write to another thread — belt-and-suspenders with checkpointSchema, which
-      // already strips unknown keys. Only checkpoint_id/ns/map are honored from the client.
-      const configurable: Record<string, unknown> = {
-        checkpoint_ns: "",
-        ...(input.checkpoint ?? {}),
-        ...(input.checkpoint_id !== undefined ? { checkpoint_id: input.checkpoint_id } : {}),
-        thread_id: threadId,
-      };
-      const nextConfig = await requireAgentCapability(graph, "updateState").updateState(
-        { configurable },
-        input.values,
-        input.as_node,
-      );
-      // Mirror the fork tip (values + interrupts/status) onto the thread row so a plain
-      // `GET /threads/{id}` and `useStream` reflect the branch, as LangGraph does post-update.
-      const snapshot = await graph.getState({ configurable: { thread_id: threadId } });
-      const updated = await deps.store.threads.update(
+      return withThreadExecution(
+        ctx.executionLocks,
+        deps.threadExecutionGate,
         threadId,
-        snapshotToThreadUpdate(snapshot, runStatusForSnapshot(snapshot)),
-      );
-      await deps.threadBus?.publish(
-        threadId,
-        {
-          kind: "state",
-          operation: "updated",
-          thread: updated,
-          state: snapshotToThreadState(snapshot),
+        async (leaseSignal) => {
+          leaseSignal?.throwIfAborted();
+          const generation = await deps.threadBus?.generation(threadId);
+          // Ownership-gate first: loadThreadGraph 404s an unknown/foreign thread (via requireThread) before
+          // any activity check, so a non-owned thread reads as absent (never a 409-vs-404 activity oracle),
+          // and 422s a thread that has never produced a graph.
+          const graph = await loadThreadGraph(threadId);
+          if (!graph) {
+            throw SkeinHttpError.unprocessable(
+              `Thread "${threadId}" has no graph to update state on.`,
+            );
+          }
+          // Forking rewrites the checkpoint tip, so it must not race a run mid-write (LangGraph 409).
+          if (await deps.store.runs.hasActiveRun(threadId)) {
+            throw SkeinHttpError.conflict(
+              `Thread "${threadId}" is busy; wait for its active run to finish before updating state.`,
+            );
+          }
+          // Server-owned identity is forced LAST so a client-supplied `checkpoint` object can never
+          // redirect the write to another thread — belt-and-suspenders with checkpointSchema, which
+          // already strips unknown keys. Only checkpoint_id/ns/map are honored from the client.
+          const configurable: Record<string, unknown> = {
+            checkpoint_ns: "",
+            ...(input.checkpoint ?? {}),
+            ...(input.checkpoint_id !== undefined ? { checkpoint_id: input.checkpoint_id } : {}),
+            thread_id: threadId,
+          };
+          leaseSignal?.throwIfAborted();
+          const nextConfig = await requireAgentCapability(graph, "updateState").updateState(
+            { configurable },
+            input.values,
+            input.as_node,
+          );
+          leaseSignal?.throwIfAborted();
+          // Mirror the fork tip (values + interrupts/status) onto the thread row so a plain
+          // `GET /threads/{id}` and `useStream` reflect the branch, as LangGraph does post-update.
+          const snapshot = await graph.getState({ configurable: { thread_id: threadId } });
+          leaseSignal?.throwIfAborted();
+          const updated = await deps.store.threads.update(
+            threadId,
+            snapshotToThreadUpdate(snapshot, runStatusForSnapshot(snapshot)),
+          );
+          await deps.threadBus?.publish(
+            threadId,
+            {
+              kind: "state",
+              operation: "updated",
+              thread: updated,
+              state: snapshotToThreadState(snapshot),
+            },
+            generation,
+          );
+          const next = (nextConfig.configurable ?? {}) as Record<string, unknown>;
+          const checkpoint: Checkpoint = {
+            thread_id: threadId,
+            checkpoint_ns: (next["checkpoint_ns"] as string | undefined) ?? "",
+            checkpoint_id: next["checkpoint_id"] as string | undefined,
+            checkpoint_map: next["checkpoint_map"] as Record<string, unknown> | undefined,
+          };
+          return { checkpoint };
         },
-        generation,
       );
-      const next = (nextConfig.configurable ?? {}) as Record<string, unknown>;
-      const checkpoint: Checkpoint = {
-        thread_id: threadId,
-        checkpoint_ns: (next["checkpoint_ns"] as string | undefined) ?? "",
-        checkpoint_id: next["checkpoint_id"] as string | undefined,
-        checkpoint_map: next["checkpoint_map"] as Record<string, unknown> | undefined,
-      };
-      return { checkpoint };
     },
   };
 }

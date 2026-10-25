@@ -13,7 +13,7 @@
 // integration anyone will ever write, which is the whole reason this exists.
 
 import { ROUTE_AUTHZ, type ProtocolResponse, type RouteAuthz } from "@skein-js/agent-protocol";
-import { SkeinHttpError, type AuthContext, type Metadata } from "@skein-js/core";
+import { SkeinHttpError, type AdmissionKey, type AuthContext, type Metadata } from "@skein-js/core";
 
 import type { Channel, ChannelPrincipal, InboundEvent } from "../channel/channel.js";
 import {
@@ -33,6 +33,7 @@ import { fanOutRunSignals, type RunFrames } from "./signals.js";
 export interface PipelineDeps extends IdempotencyDeps {
   /** Creates the run. The service, not HTTP — the pipeline runs in-process. */
   createRun(input: {
+    admission?: AdmissionKey;
     threadId: string;
     assistantId: string;
     input?: unknown;
@@ -59,7 +60,11 @@ export interface PipelineDeps extends IdempotencyDeps {
    * `ProtocolDeps` and this package must not depend on how a server assembled it. Returns the context
    * to run as, or throws the deployment's own 403.
    */
-  authorize(principal: ChannelPrincipal, authz: RouteAuthz): Promise<AuthContext | undefined>;
+  authorize(
+    principal: ChannelPrincipal,
+    authz: RouteAuthz,
+    value?: unknown,
+  ): Promise<AuthContext | undefined>;
   logger: { warn(message: string, error?: unknown): void };
   clock(): Date;
   /**
@@ -97,12 +102,14 @@ export async function handleInboundEvent(
   //    exempt from `createAuthorizingHandlers` (it authenticates by signature, not by bearer token —
   //    see the note there), so nothing type-checks that it authorizes at all. Passing the table's own
   //    row through is what keeps the two from drifting apart silently.
-  const authContext = await deps.authorize(principal, ROUTE_AUTHZ.handleInboundEvent);
-
   // 3. Parse. The one genuinely provider-specific step.
   const outcome = await channel.parseEvent(request);
-  if (outcome.kind === "ignore") return { kind: "json", status: 204, body: undefined };
+  if (outcome.kind === "ignore") {
+    await deps.authorize(principal, ROUTE_AUTHZ.handleInboundEvent);
+    return { kind: "json", status: 204, body: undefined };
+  }
   if (outcome.kind === "respond") {
+    await deps.authorize(principal, ROUTE_AUTHZ.handleInboundEvent);
     return {
       kind: "json",
       status: outcome.status,
@@ -113,6 +120,12 @@ export async function handleInboundEvent(
 
   const event = outcome.event;
   const assistantId = resolveAssistant(event, registered);
+  const resolvedThreadId = event.threadId ?? threadIdForChannelKey(channel.name, event.threadKey);
+  const authContext = await deps.authorize(principal, ROUTE_AUTHZ.handleInboundEvent, {
+    ...event,
+    thread_id: resolvedThreadId,
+    assistant_id: assistantId,
+  });
 
   // 4. Claim the provider's event id **before** deciding start-versus-resume.
   //
@@ -177,7 +190,9 @@ export async function handleInboundEvent(
       deps,
       channel,
       authContext,
+      claim.admission,
     );
+    created = { runId };
 
     // 7. Acknowledge **after enqueueing, never after the run completes.** Slack gives you three
     //    seconds before it retries and shows the user an error; Twilio times out comparably. This is
@@ -224,10 +239,12 @@ async function createWithPlan(
   deps: PipelineDeps,
   channel: Channel,
   authContext: AuthContext | undefined,
+  admission?: AdmissionKey,
 ): Promise<{ runId: string }> {
   const attempt = async (): Promise<{ runId: string }> => {
     const plan = await resolveRunPlan(event, threadId, deps);
     return deps.createRun({
+      ...(admission ? { admission } : {}),
       threadId,
       assistantId,
       ...plan.run,
