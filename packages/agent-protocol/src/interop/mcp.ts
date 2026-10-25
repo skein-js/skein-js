@@ -1,4 +1,3 @@
-import { internalProtocolHandlers } from "../meta/http-telemetry.js";
 import { Server } from "@modelcontextprotocol/sdk/server/index.js";
 import { WebStandardStreamableHTTPServerTransport } from "@modelcontextprotocol/sdk/server/webStandardStreamableHttp.js";
 import {
@@ -9,6 +8,7 @@ import {
 import { serializeWireJson, SkeinHttpError, type Assistant } from "@skein-js/core";
 
 import type { ProtocolHandler, ProtocolHandlers, ProtocolResponse } from "../create-handlers.js";
+import { internalProtocolHandlers } from "../meta/http-telemetry.js";
 
 function jsonBody(response: ProtocolResponse): unknown {
   if (response.kind !== "json") throw new Error("Expected a JSON service response.");

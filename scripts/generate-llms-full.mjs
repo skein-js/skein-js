@@ -29,6 +29,7 @@ const DOCS = [
   "docs/local-deployment.md",
   "docs/local-deployment-validation.md",
   "docs/native-access.md",
+  "docs/native-access-security.md",
   "docs/native-access-validation.md",
   "docs/serving-a-single-graph.md",
   "docs/agent-protocol.md",

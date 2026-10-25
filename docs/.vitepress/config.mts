@@ -311,6 +311,7 @@ export default withMermaid(
             { text: "Webhooks & delivery", link: "/webhooks" },
             { text: "Workflows & channels", link: "/channels" },
             { text: "Native access & BullMQ", link: "/native-access" },
+            { text: "Native access security", link: "/native-access-security" },
           ],
         },
         {

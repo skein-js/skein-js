@@ -25,6 +25,15 @@ bounded BullMQ attempts/backoff. Job return values acknowledge admission; durabl
 `eventId` equal to the outbox delivery ID. Persist receiver deduplication independently of broker job
 retention. `result.get` and `state.get` support bounded digest-checked chunks; native results stay whole.
 
+`projectResult` projects outcomes and `result.get`, not full `run.get` metadata or `state.get` snapshots.
+Reject unwanted raw queries in the host's `authenticate`/`route` callbacks. Redis readers can inspect
+job inputs and return values outside native authorization; configure credentials, ACLs, TLS and job
+retention. Skein deletion does not purge external broker copies.
+
+The [runnable approval example](https://github.com/skein-js/skein-js/tree/main/examples/native-transports)
+shows explicit lifecycle, a host-bound principal, projected results, chunk verification and durable
+receiver deduplication. See [security and operations](https://github.com/skein-js/skein-js/blob/main/docs/native-access-security.md).
+
 Read [native access and BullMQ](https://github.com/skein-js/skein-js/blob/main/docs/native-access.md)
 for setup, message formats, ownership, errors and reconciliation. Run the external packed consumers
 with `pnpm exec nx run test-support:test-native-consumer`.

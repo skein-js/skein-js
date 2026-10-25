@@ -1,7 +1,7 @@
 import { cp, mkdtemp, mkdir, readdir, readFile, rm, writeFile } from "node:fs/promises";
 import { isBuiltin } from "node:module";
-import path from "node:path";
 import { tmpdir } from "node:os";
+import path from "node:path";
 import { fileURLToPath } from "node:url";
 
 import { requireAgentCapability } from "@skein-js/agent-protocol";

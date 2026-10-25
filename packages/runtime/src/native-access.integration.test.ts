@@ -15,6 +15,148 @@ afterAll(async () => {
   await Promise.allSettled([postgres?.stop(), redis?.stop()]);
 });
 
+it("rejects an old child checkpoint map on real Postgres without replaying preparation", async () => {
+  const state = Annotation.Root({ answer: Annotation<string> });
+  let preparations = 0;
+  const child = new StateGraph(state)
+    .addNode("prepare", () => {
+      preparations++;
+      return {};
+    })
+    .addNode("ask", () => ({ answer: interrupt("approve?") }))
+    .addEdge("__start__", "prepare")
+    .addEdge("prepare", "ask")
+    .addEdge("ask", "__end__")
+    .compile();
+  const graph = new StateGraph(state)
+    .addNode("child", child)
+    .addEdge("__start__", "child")
+    .addEdge("child", "__end__")
+    .compile();
+  const assembly = await embedPostgresGraphs(
+    { nestedMap: graph },
+    { postgresUri: postgres.url, redisUri: redis.url },
+  );
+  const runtime = createProtocolRuntime(assembly.deps, { scheduler: { enabled: false } });
+  try {
+    await runtime.service.assistants.registerGraphAssistants();
+    const client = runtime.createNativeClient({
+      sourceId: "nested-map",
+      allowedAssistants: ["nestedMap"],
+    });
+    runtime.worker.start();
+    const first = await client.start({ assistant_id: "nestedMap", input: {} });
+    await expect
+      .poll(async () => (await client.getRun(first.runId)).status, { timeout: 10_000 })
+      .toBe("interrupted");
+    const checkpoint = (await client.getState(first.threadId)).checkpoint;
+    const history = [];
+    for await (const tuple of assembly.deps.checkpointer.list({
+      configurable: { thread_id: first.threadId },
+    }))
+      history.push(tuple);
+    const namespace = history.find((tuple) => tuple.config.configurable?.["checkpoint_ns"])!.config
+      .configurable!["checkpoint_ns"] as string;
+    const current = (await assembly.deps.checkpointer.getTuple({
+      configurable: { thread_id: first.threadId, checkpoint_ns: namespace },
+    }))!;
+    const earlier = history.find(
+      (tuple) =>
+        tuple.config.configurable?.["checkpoint_ns"] === namespace &&
+        tuple.checkpoint.id !== current.checkpoint.id,
+    )!;
+    await expect(
+      client.resume({
+        assistant_id: "nestedMap",
+        thread_id: first.threadId,
+        expected: {
+          runId: first.runId,
+          checkpoint: { ...checkpoint, checkpoint_map: { [namespace]: earlier.checkpoint.id } },
+        },
+        resume: "approve",
+      }),
+    ).rejects.toMatchObject({ code: "stale_resume" });
+    const answer = await client.resume({
+      assistant_id: "nestedMap",
+      thread_id: first.threadId,
+      expected: { runId: first.runId, checkpoint },
+      resume: "approve",
+    });
+    await expect
+      .poll(async () => (await client.getRun(answer.runId)).status, { timeout: 10_000 })
+      .toBe("success");
+    expect(preparations).toBe(1);
+  } finally {
+    await runtime.worker.stop();
+    await assembly.dispose();
+  }
+}, 30_000);
+
+it("stops HTTP-origin execution after Redis accepts a cancellation publish without delivering it", async () => {
+  let entered!: () => void;
+  const started = new Promise<void>((resolve) => {
+    entered = resolve;
+  });
+  let stopped = false;
+  const state = Annotation.Root({ answer: Annotation<string> });
+  const graph = new StateGraph(state)
+    .addNode("wait", async (_state, config) => {
+      entered();
+      await new Promise<void>((_resolve, reject) => {
+        config.signal!.addEventListener(
+          "abort",
+          () => {
+            stopped = true;
+            reject(new Error("cancelled"));
+          },
+          { once: true },
+        );
+      });
+      return { answer: "unexpected" };
+    })
+    .addEdge("__start__", "wait")
+    .addEdge("wait", "__end__")
+    .compile();
+  const assemblies = await Promise.all(
+    [0, 1].map(() =>
+      embedPostgresGraphs({ lostAbort: graph }, { postgresUri: postgres.url, redisUri: redis.url }),
+    ),
+  );
+  // A disconnected subscriber misses a successful Redis PUBLISH. Retrying publication cannot prove
+  // delivery; durable status observation on the execution owner is necessary.
+  const ownerChannel = assemblies[0]!.deps.abortChannel!;
+  assemblies[0]!.deps.abortChannel = {
+    requestAbort: (request) => ownerChannel.requestAbort(request),
+    subscribe: () => ({ close: async () => undefined }),
+  };
+  const owner = createProtocolRuntime(assemblies[0]!.deps, { scheduler: { enabled: false } });
+  const receiver = createProtocolRuntime(assemblies[1]!.deps, { scheduler: { enabled: false } });
+  try {
+    await owner.service.assistants.registerGraphAssistants();
+    const thread = await owner.service.threads.create();
+    const run = await owner.service.runs.createBackground(thread.thread_id, {
+      assistant_id: "lostAbort",
+      input: {},
+    });
+    owner.worker.start();
+    await started;
+    const client = receiver.createNativeClient({
+      sourceId: "cross-instance",
+      allowedAssistants: ["lostAbort"],
+    });
+    const cancelled = await client.cancel(run.run_id, {
+      idempotencyKey: "lost-publish",
+      wait: true,
+    });
+    expect(cancelled).toMatchObject({ status: "cancelled", stopped: true });
+    expect(stopped).toBe(true);
+    expect(await client.getReceipt("lost-publish")).toEqual(cancelled.receipt);
+  } finally {
+    await Promise.all([owner.worker.stop(), receiver.worker.stop()]);
+    await Promise.all(assemblies.map((assembly) => assembly.dispose()));
+  }
+}, 30_000);
+
 it("two replicas reserve one answer and recover admission after producer enqueue failure", async () => {
   const state = Annotation.Root({ answer: Annotation<string> });
   const graph = new StateGraph(state)

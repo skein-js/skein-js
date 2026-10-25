@@ -87,4 +87,34 @@ The A2A wrapper also now maps only stale-target conflicts from shared validation
 infrastructure failures rather than misclassifying storage outages as stale answers. Both cases have
 regression coverage.
 
-The PR closes #64 and workstreams #65–#70. BullMQ/ioredis 6 compatibility remains #47.
+## Goal and security audit follow-up
+
+The later audit reproduced five gaps with executable probes: a runtime resume checkpoint override,
+state target changes during authorization, stop confirmation after swallowed rollback failure,
+cancel dispatch acknowledgement after failed publication, and expiration during authorization.
+Permanent native regressions now reject the override, freeze state resolution under the execution
+lease, require positive stop proof, retain failed publication for retry and recheck admission deadlines.
+They also exercise missed successful publications and native rollback receipt retention.
+An additional probe reproduced a forged child `checkpoint_map` that replayed a preparation node
+despite a correct root checkpoint. Native validation now checks every supplied namespace's current
+tip at both boundaries. Memory tests include two levels of subgraphs, valid official nested pointers,
+missing/foreign/stale coordinates and a map changed after admission. SQLite reopen and real Postgres
+tests also reject the older child pointer and resume the original root without replaying preparation.
+
+The real Postgres/Redis test cancels a service/HTTP-origin run from another replica while the owner's
+pub/sub subscriber misses publication. Durable status observation stops execution, then the remote
+execution gate confirms it. Existing third-party capability and ordinary cancellation behavior remain
+covered. No new public method, interface requirement or configuration key was needed for these fixes.
+
+The maintained `examples/native-transports` project is generated through Nx and imports public package
+roots. Its integration target runs built entrypoints as separate processes, reopens SQLite, makes a
+real HTTP request, exercises BullMQ start/resume/result retrieval, restarts both backend and receiver,
+and verifies receipts/results and the durable event inbox. It complements the externally installed
+packed consumers; it does not establish external adoption.
+
+See [security and operations](./native-access-security.md) for the authority and data-retention review,
+projection limits, cancellation observation cost and the remaining Zod dependency advisory. Compatible
+dependency patches reduce the production audit from ten advisories to one high advisory; no claim of
+a clean audit is made.
+
+The PR addresses #64 and workstreams #65–#70. BullMQ/ioredis 6 compatibility remains #47.

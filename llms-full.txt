@@ -136,6 +136,9 @@ For AI tools, [llms.txt](./llms.txt) indexes the docs and [llms-full.txt](./llms
 Start with [triage-agent](./examples/triage-agent) for background work, schedules, and approvals
 without an API key, or [chat-app](./examples/chat-app) for a research assistant with a Next.js UI.
 The [examples directory](./examples) also includes framework integrations, migration, and local apps.
+For durable embedded calls and external command queues, use the
+[native/BullMQ approval example](./examples/native-transports) and
+[security guide](./docs/native-access-security.md).
 
 ## Contributing & feedback
 
@@ -3104,6 +3107,10 @@ that survives retries. It uses the same assistants, threads, authorization, run 
 as HTTP. The optional `@skein-js/bullmq` package connects external command and outcome queues to
 that client. It does not replace Skein's internal execution or delivery queues.
 
+The [runnable approval example](https://github.com/skein-js/skein-js/tree/main/examples/native-transports)
+includes an embedded SQLite client and an HTTP/BullMQ backend with a durable outcome inbox.
+Read [security and operations](./native-access-security.md) before exposing a producer to real data.
+
 ## Embedded applications
 
 ```ts
@@ -3194,6 +3201,11 @@ Only one admitted resume can consume an expected interrupted run/checkpoint. Adm
 validate it under the thread execution lease. A stale target returns `stale_resume`; fetch current
 state before submitting a new answer. Checkpoint updates use the same lease. Resuming an already
 accepted key recovers its receipt even after execution advanced the checkpoint.
+Separate checkpoint, status and concurrency overrides are rejected at runtime. Strict resume
+validates every supplied `checkpoint_map` namespace against its current checkpoint before admission
+and invocation; a current root ID cannot authorize an older nested checkpoint. Native state reads
+hold the execution lease and can wait behind active work. Retry `native_state_changed` if a target
+changes during authorization or lease acquisition.
 
 Cancellation returns `{ receipt, status, stopped }`. A terminal status records the authoritative
 decision; `stopped` separately confirms execution has stopped. Without waiting, a remote execution
@@ -3234,6 +3246,9 @@ its lease expires, so a lost queue job can be reconstructed with the same run ID
 skipped under the execution lease before checkpoint effects. Ordinary inline runs and unrelated
 producers' rows are not adopted. Explicit cancellation, displacement, deletion and shutdown grace
 expiry broadcast abort requests even when a local registration is only waiting for a remote executor.
+Failed cancellation publication remains recoverable. Eligible execution owners also observe durable
+terminal status to stop after a missed pub/sub notification. Native rollback preserves the admitted
+run and receipt; explicit resource deletion still removes them.
 
 ## BullMQ access transport
 
@@ -3278,6 +3293,10 @@ Workers own their blocking connection and are closed by `stop`; borrowed queues/
 open. Keep the outcome queue name and Redis prefix stable across restart. Host-controlled
 authentication, routing, deadlines, destinations and output projection are functions/configuration,
 not authority accepted from message fields. HTTP remains available independently.
+`projectResult` covers outcomes and `result.get`; `state.get` and `run.get` remain full authorized
+reads. Deny raw operations in the host's existing callbacks if a producer should see only projections.
+Redis credentials also grant access to stored job payloads/return values; configure ACLs, TLS and
+separate retention for those copies. See [the security guide](./native-access-security.md).
 
 The adapter owns the following versioned wire format, exposed as `BullMqCommand`:
 
@@ -3358,6 +3377,124 @@ and a SQLite daemon killed and reopened without HTTP. See [the implementation ev
 Existing MCP and A2A endpoints keep their protocol-specific identity, state and transport behavior.
 This boundary adds no protocol endpoints, SDK dependency, workflow engine, artifact service or
 exactly-once external-effect guarantee.
+
+
+---
+
+<!-- source: docs/native-access-security.md -->
+
+# Native access security and operations
+
+Native and BullMQ access compose existing authorization, admission, execution and outbox guarantees.
+The host supplies verified identity and policy. Start with the
+[runnable approval example](https://github.com/skein-js/skein-js/tree/main/examples/native-transports)
+and the [API guide](./native-access.md).
+
+## Authority at the boundary
+
+Construct native clients in trusted code. Keep `sourceId`, `allowedAssistants` and `outcomeTarget`
+stable and outside caller-controlled input. With authentication enabled, supply verified
+`authContext` on every operation. A principal, scopes or destination in metadata or a queue payload
+does not authenticate anyone. Receipt replay and reads recheck current authorization and ownership.
+
+For BullMQ, `authenticate(job)` must verify the producer using the host's credential arrangement or
+bind a queue restricted to one trusted backend to a server-owned principal. Trusting `job.data.userId`
+would let a producer impersonate another user. The example uses one trusted backend and loopback HTTP
+with a demonstration token. Replace that identity policy for deployment. Authentication-disabled
+deployments preserve existing unauthenticated behavior.
+
+An allowlist accepts assistant or graph IDs and limits operations for that source. It does **not**
+partition data inside a shared thread: other authorized assistants/transports may have written its
+checkpoints. Use separate threads and ownership rules for data isolation. Revocation prevents future
+authorized reads; it cannot retract values already returned or copied to Redis.
+
+Strict resume accepts the expected interrupted run/checkpoint, optional interrupt IDs and answer.
+Runtime validation rejects separate checkpoint, status or concurrency overrides, including JSON
+fields TypeScript excludes. The execution lease protects validation and invocation; atomic reservation
+prevents replicas consuming the same interrupt.
+Each supplied `checkpoint_map` entry must also name the current checkpoint in that namespace for the
+authorized thread. A valid root ID cannot redirect a child to an older checkpoint. This check runs
+at admission and before invocation, using the existing checkpointer contract without interpreting
+LangGraph's internal metadata. Valid nested coordinates retain LangGraph's own execution semantics.
+
+Native state reads authorize a resolved target, then hold the execution lease while constructing
+its graph and reading checkpoints. They can wait behind execution. `native_state_changed` asks the
+caller to retry if the target changes during authorization or lease acquisition. Pending admissions
+cannot switch the graph mid-read. Factories retain the selected run's sanitized configuration and
+use the **requesting** principal.
+
+## Projection and broker storage
+
+`projectResult` applies to outcomes and `result.get`. It does not redact `state.get` snapshots or
+`run.get` metadata. Reject raw query operations in `authenticate` or `route` when a producer must
+see only projected output; both existing callbacks can throw `SkeinHttpError`. Apply corresponding
+policy to HTTP and other sources available to that principal. Native `getResult` returns the whole
+retained result and belongs behind the host's trust boundary.
+
+BullMQ stores inputs and return values in Redis. Queue names/prefixes organize keys; they are not
+tenant access controls. Redis readers can inspect values without Skein authorization. Restrict
+credentials, network access and ACLs, and configure TLS. Avoid secrets in commands/results; use
+application-managed encryption when needed. Follow
+[BullMQ's production guidance](https://docs.bullmq.io/guide/going-to-production) and
+[Redis security guidance](https://redis.io/docs/latest/operate/oss_and_stack/management/security/).
+
+Set retention for completed/failed commands, query return values, outcomes and receiver inboxes.
+Skein run/thread deletion and outbox expiry do **not** erase external copies. Automatic job removal
+does not replace receiver deduplication: persist `eventId` with application database effects before
+acknowledging. Keep destination queue identity stable across restart so existing outbox obligations
+continue reaching it.
+
+Chunk digests detect changes between reads; they do not authenticate the broker or encrypt output.
+Each chunk request reauthorizes. Bound total reassembly size for your application, verify offsets,
+size and digest, and restart retrieval on a changed digest. Truncated outcomes leave whole retained
+results available through reconciliation.
+
+## Cancellation, recovery and resource use
+
+Acknowledgement, terminal status and confirmed execution stop are separate facts. `wait: true`
+reports `stopped: true` after acquiring valid execution rights. A failed stop check returns retryable
+`execution_stop_unconfirmed` (503) while
+the accepted receipt remains recoverable. Waiting can queue behind other work on that thread.
+If an abort channel is configured without a cross-instance execution gate, waiting cancellation is
+rejected before admission with `execution_stop_unsupported` (501); a local mutex cannot prove remote
+execution stopped. Supported Postgres assembly supplies both capabilities.
+Tools must honor abort signals; status changes cannot undo arbitrary external effects.
+
+Redis pub/sub has [at-most-once delivery](https://redis.io/docs/latest/develop/pubsub/). Recovery
+retries failed cancellation publication before acknowledging its intent. Successful publication
+cannot prove reception. Native executions, and executions with both an abort channel and atomic
+admission capability, also observe durable status once per second with one read in flight per
+execution. For N active eligible executions, budget approximately N reads/second. Read failures are
+logged and retried. Observed terminal status aborts local control without rebroadcasting. Ordinary
+single-process runs without these capabilities retain their existing path.
+
+Native rollback retains the admitted run, receipt and stored result for reconciliation. Explicit
+deletion still removes them. Cleanup does not revert a later run that advanced the thread. Legacy
+runs retain established rollback deletion behavior.
+
+Expired trusted `deadlineAt` is rejected after authorization and immediately before admission. Once
+accepted, the original deadline/route remain authoritative. Execution uses the earlier of remaining
+budget and configured timeout. This is cooperative admission cancellation, not a database clock
+fence or a promise to stop external effects at an exact instant.
+
+Memory is process-local. SQLite requires one file owner, records process loss as failure and never
+automatically replays abandoned input. Postgres recovery leases bounded batches of owned dispatches
+and reconstructs lost queue jobs with original run IDs. It does not adopt unrelated runs. Observe
+dispatch warnings, outbox depth, failed jobs, capacity and receiver lag; reconcile by receipt/run ID.
+
+## Dependency review
+
+The October 25, 2026 review updated compatible Vite, body-parser, follow-redirects and multer patches.
+The production dependency audit fell from ten advisories to one high advisory:
+[Zod collection validation resource consumption](https://github.com/advisories/GHSA-mrhx-c7xc-m3w5).
+The published fix is Zod 4.6.6; this workspace and LangChain dependencies use Zod 3. A forced
+transitive major replacement is not a compatible fix. This PR does not claim a clean dependency audit.
+
+Enforce request byte limits, **pre-validation** collection limits and rate/concurrency budgets at
+host boundaries, including user-facing bridges into native calls. Array `.max()` inside an affected
+validator is not sufficient early rejection. BullMQ's message cap helps bound input but is not a
+general resource-exhaustion guarantee. A compatible upstream fix or separately reviewed Zod migration
+remains required; audit the actual deployed lockfile again.
 
 
 ---
@@ -3448,7 +3585,37 @@ The A2A wrapper also now maps only stale-target conflicts from shared validation
 infrastructure failures rather than misclassifying storage outages as stale answers. Both cases have
 regression coverage.
 
-The PR closes #64 and workstreams #65–#70. BullMQ/ioredis 6 compatibility remains #47.
+## Goal and security audit follow-up
+
+The later audit reproduced five gaps with executable probes: a runtime resume checkpoint override,
+state target changes during authorization, stop confirmation after swallowed rollback failure,
+cancel dispatch acknowledgement after failed publication, and expiration during authorization.
+Permanent native regressions now reject the override, freeze state resolution under the execution
+lease, require positive stop proof, retain failed publication for retry and recheck admission deadlines.
+They also exercise missed successful publications and native rollback receipt retention.
+An additional probe reproduced a forged child `checkpoint_map` that replayed a preparation node
+despite a correct root checkpoint. Native validation now checks every supplied namespace's current
+tip at both boundaries. Memory tests include two levels of subgraphs, valid official nested pointers,
+missing/foreign/stale coordinates and a map changed after admission. SQLite reopen and real Postgres
+tests also reject the older child pointer and resume the original root without replaying preparation.
+
+The real Postgres/Redis test cancels a service/HTTP-origin run from another replica while the owner's
+pub/sub subscriber misses publication. Durable status observation stops execution, then the remote
+execution gate confirms it. Existing third-party capability and ordinary cancellation behavior remain
+covered. No new public method, interface requirement or configuration key was needed for these fixes.
+
+The maintained `examples/native-transports` project is generated through Nx and imports public package
+roots. Its integration target runs built entrypoints as separate processes, reopens SQLite, makes a
+real HTTP request, exercises BullMQ start/resume/result retrieval, restarts both backend and receiver,
+and verifies receipts/results and the durable event inbox. It complements the externally installed
+packed consumers; it does not establish external adoption.
+
+See [security and operations](./native-access-security.md) for the authority and data-retention review,
+projection limits, cancellation observation cost and the remaining Zod dependency advisory. Compatible
+dependency patches reduce the production audit from ten advisories to one high advisory; no claim of
+a clean audit is made.
+
+The PR addresses #64 and workstreams #65–#70. BullMQ/ioredis 6 compatibility remains #47.
 
 
 ---

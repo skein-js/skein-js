@@ -147,6 +147,7 @@ function chunk(
 }
 
 const transientCodes = new Set([
+  "native_state_changed",
   "execution_lease_lost",
   "thread_busy",
   "thread_status_mismatch",

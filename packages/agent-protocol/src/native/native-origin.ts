@@ -1,4 +1,4 @@
-import type { AdmissionKey, RunKwargs } from "@skein-js/core";
+import { SkeinHttpError, type AdmissionKey, type RunKwargs } from "@skein-js/core";
 
 import type { CancelRunOptions } from "../runs/run-service.js";
 
@@ -13,6 +13,43 @@ export interface NativeOrigin {
   deadlineAt?: string;
   ownsThread?: boolean;
   expected?: NativeResumeTarget;
+}
+export function assertNativeDeadline(deadlineAt: string | undefined, now: Date): void {
+  if (deadlineAt && Date.parse(deadlineAt) <= now.getTime())
+    throw SkeinHttpError.unprocessable("The command's admission deadline has expired.", {
+      code: "deadline_expired",
+    });
+}
+/** Carry the absolute budget through driver lock waits, using the existing pre-COMMIT signal. */
+export function createNativeAdmissionDeadline(
+  deadlineAt: string | undefined,
+  clock: () => Date,
+  parent?: AbortSignal,
+) {
+  if (!deadlineAt) return { signal: parent, dispose: () => undefined };
+  const controller = new AbortController();
+  let timer: ReturnType<typeof setTimeout> | undefined;
+  const arm = () => {
+    const remaining = Date.parse(deadlineAt) - clock().getTime();
+    if (remaining <= 0) {
+      controller.abort(
+        SkeinHttpError.unprocessable("The command's admission deadline has expired.", {
+          code: "deadline_expired",
+        }),
+      );
+      return;
+    }
+    // Long absolute deadlines must not overflow Node's timer range.
+    timer = setTimeout(arm, Math.min(remaining, 2_147_483_647));
+    timer.unref();
+  };
+  arm();
+  return {
+    signal: parent ? AbortSignal.any([parent, controller.signal]) : controller.signal,
+    dispose: () => {
+      if (timer) clearTimeout(timer);
+    },
+  };
 }
 const NATIVE_ORIGIN = Symbol("native-origin");
 const ADMISSION_SIGNAL = Symbol("admission-signal");

@@ -2,9 +2,9 @@ import { SkeinHttpError, type AuthEngine } from "@skein-js/core";
 import { expect, it, vi } from "vitest";
 
 import { createFixtureDeps } from "../__fixtures__/deps.js";
-import { createProtocolRuntime } from "../runtime.js";
-import { skeinRoutes } from "../http/routes.js";
 import type { ProtocolRequest } from "../create-handlers.js";
+import { skeinRoutes } from "../http/routes.js";
+import { createProtocolRuntime } from "../runtime.js";
 
 it("authenticates before a custom Fetch application and leaves the body available", async () => {
   const httpHandler = vi.fn(async (request: Request) => new Response(await request.text()));

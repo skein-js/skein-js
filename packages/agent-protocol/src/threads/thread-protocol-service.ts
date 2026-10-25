@@ -18,8 +18,8 @@ import type { CreateRunInput, RunService } from "../runs/run-service.js";
 import { withSseHeartbeats } from "../sse/sse.js";
 import { runCreateSchema } from "../validation/schemas.js";
 
-import { markThreadProtocolRun } from "./thread-protocol-run.js";
 import { encodeThreadFollowEvent } from "./thread-follow-event.js";
+import { markThreadProtocolRun } from "./thread-protocol-run.js";
 import { createThreadService } from "./thread-service.js";
 
 export const threadEventFilterSchema = z.object({
