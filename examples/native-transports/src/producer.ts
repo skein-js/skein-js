@@ -25,7 +25,7 @@ const insert = inbox.prepare(
 );
 const connection = connectRedis();
 const commands = new Queue(commandQueueName, { connection });
-const events = new QueueEvents(commandQueueName, { connection });
+const events = new QueueEvents(commandQueueName, { connection, lastEventId: "0-0" });
 const receiver = new Worker<BullMqOutcome>(
   outcomeQueueName,
   async (job) => {

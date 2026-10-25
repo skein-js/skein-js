@@ -36,7 +36,7 @@ const redis = new URL(process.env.REDIS_URI);
 const connection = { host: redis.hostname, port: Number(redis.port), maxRetriesPerRequest: null };
 const commands = new Queue(`commands-${randomUUID()}`, { connection });
 const outcomes = new Queue(`outcomes-${randomUUID()}`, { connection });
-const events = new QueueEvents(commands.name, { connection });
+const events = new QueueEvents(commands.name, { connection, lastEventId: "0-0" });
 const transport = createBullMqTransport({
   commandQueue: commands.name,
   outcomeQueue: outcomes,
