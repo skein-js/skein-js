@@ -1,7 +1,7 @@
 # `nextjs-app` example
 
 A **full-stack Next.js app**: the Agent Protocol is served **same-origin** from an App Router
-catch-all route, and a [`useStream`](https://github.com/langchain-ai/langgraphjs/tree/main/libs/sdk) chat UI
+catch-all route, and a [`useStream`](https://github.com/langchain-ai/langgraphjs/tree/main/libs/sdk-react) chat UI
 talks to it — one app, one process, **no CORS**. This is the flagship for
 [`@skein-js/nextjs`](../../packages/server-nextjs) (the App Router half; see
 [`nextjs-basic`](../nextjs-basic) for the Pages Router).
@@ -28,6 +28,9 @@ const thread = useStream({ apiUrl, assistantId: "echo" });
 
 Graphs are statically imported and passed via `{ deps }` (see [`lib/skein-deps.ts`](./lib/skein-deps.ts))
 so Next bundles them for `next build` / `next start`.
+
+The frontend uses `@langchain/react` 1.2.7 and SDK 1.12.7. The hook subscribes to thread events,
+starts turns through commands, and resumes interrupts with `thread.respond(...)`.
 
 ## How to run
 

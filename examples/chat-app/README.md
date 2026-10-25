@@ -44,6 +44,9 @@ agent, not just print its final string:
 > [`buildPromptWithMemories`](./src/research-tools.ts)); equally valid: expose recall as a tool the
 > model calls, use a library like `langmem`, or skip memory entirely.
 
+The frontend uses `@langchain/react` 1.2.7 and SDK 1.12.7. The hook subscribes to thread events,
+starts turns through commands, and resumes interrupts with `thread.respond(...)`.
+
 ## How to run
 
 Get a Gemini Developer API key from <https://aistudio.google.com/apikey>.

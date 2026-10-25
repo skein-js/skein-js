@@ -1,6 +1,6 @@
 "use client";
 
-import { useStream } from "@langchain/langgraph-sdk/react";
+import { useStream } from "@langchain/react";
 import { useState } from "react";
 
 /**
@@ -118,7 +118,7 @@ export default function Page() {
         onSubmit={(e) => {
           e.preventDefault();
           if (!input.trim()) return;
-          thread.submit({ messages: [{ type: "human", content: input }] });
+          thread.submit({ messages: [{ role: "user", content: input }] });
           setInput("");
         }}
         style={{ display: "flex", gap: 8, marginTop: 12 }}

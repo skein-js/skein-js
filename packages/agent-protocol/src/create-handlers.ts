@@ -1005,10 +1005,11 @@ export function createProtocolHandlers(
     },
 
     getThreadStream: async (req) => {
-      if (req.query["stream_modes"] !== undefined) {
+      // `stream_mode` is what the official SDK's `threads.joinStream` sends.
+      if (req.query["stream_mode"] !== undefined) {
         if (!service.threadStream.follow)
           throw SkeinHttpError.unprocessable("Thread subscriptions are unavailable.");
-        const requested = req.query["stream_modes"];
+        const requested = req.query["stream_mode"];
         const modes = (Array.isArray(requested) ? requested : [requested!]).flatMap((mode) =>
           mode.split(","),
         );

@@ -30,8 +30,10 @@ it("applies exclusion before paging and projection/extraction after selection", 
   );
   expect(response).toMatchObject({
     kind: "json",
-    body: [{ thread_id: thread.thread_id, last: "last", missing: null }],
+    body: [{ thread_id: thread.thread_id, extracted: { last: "last", missing: null } }],
   });
   if (response.kind === "json")
-    expect(response.body).toEqual([{ thread_id: thread.thread_id, last: "last", missing: null }]);
+    expect(response.body).toEqual([
+      { thread_id: thread.thread_id, extracted: { last: "last", missing: null } },
+    ]);
 });

@@ -14,14 +14,23 @@ describe("search projection", () => {
         last: "values.messages[-1].text",
         absent: "metadata.absent",
       }),
-    ).toEqual({ thread_id: "one", last: "last", absent: null });
+    ).toEqual({ thread_id: "one", extracted: { last: "last", absent: null } });
     expect(row.metadata).toEqual({ label: "private" });
   });
   it("accepts only supported data paths and never traverses prototypes", () => {
     expect(EXTRACT_PATH.test("values.messages[-1].text")).toBe(true);
     expect(EXTRACT_PATH.test("values.messages.map(() => process.env)")).toBe(false);
     expect(projectSearchRow({ values: {} }, [], { inherited: "values.constructor" })).toEqual({
-      inherited: null,
+      extracted: { inherited: null },
     });
+  });
+  it("keeps aliases separate from selected fields, including thread identity", () => {
+    const row = { thread_id: "original", metadata: { label: "alias" } };
+    expect(projectSearchRow(row, ["thread_id"], { thread_id: "metadata.label" })).toEqual({
+      thread_id: "original",
+      extracted: { thread_id: "alias" },
+    });
+    expect(projectSearchRow(row, ["thread_id"])).toEqual({ thread_id: "original" });
+    expect(row).toEqual({ thread_id: "original", metadata: { label: "alias" } });
   });
 });

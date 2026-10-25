@@ -75,11 +75,19 @@ const entries: Record<string, string> = {
   svelte: `import {mount} from 'svelte'; import App from './Harness.svelte'; mount(App,{target:document.getElementById('app')}); ${expose} ${mediaProbe}`,
 };
 
+// Exercise the current React SDK installed by the frontend example alongside the pinned matrix.
+entries["react-current"] = entries["react"]!;
+
 beforeAll(async () => {
   const bundles = new Map<string, string>();
   for (const [name, entry] of Object.entries(entries)) {
     const bundled = await build({
-      stdin: { contents: entry, resolveDir: resolve("."), sourcefile: `${name}-harness.js` },
+      stdin: {
+        contents: entry,
+        resolveDir:
+          name === "react-current" ? resolve("../../examples/react-usestream") : resolve("."),
+        sourcefile: `${name}-harness.js`,
+      },
       bundle: true,
       write: false,
       format: "esm",
@@ -113,6 +121,29 @@ beforeAll(async () => {
       ],
     });
     bundles.set(name, bundled.outputFiles[0]!.text);
+  }
+  // Bundle the actual example pages, resolving SDK imports from each example's dependencies.
+  for (const name of ["react-usestream", "nextjs-app", "chat-app"]) {
+    const exampleRoot = resolve("../../examples", name);
+    const bundled = await build({
+      stdin: {
+        contents: `import {createElement} from 'react'; import {createRoot} from 'react-dom/client'; import Page from './app/page'; createRoot(document.getElementById('app')).render(createElement(Page));`,
+        resolveDir: exampleRoot,
+      },
+      tsconfig: resolve(exampleRoot, "tsconfig.json"),
+      bundle: true,
+      write: false,
+      format: "esm",
+      platform: "browser",
+      jsx: "automatic",
+      define: {
+        "process.env.NODE_ENV": '"production"',
+        "process.env.NEXT_PUBLIC_SKEIN_URL": "location.origin",
+        "process.env.NEXT_PUBLIC_SKEIN_ASSISTANT_ID": '"echo"',
+        "process.env.NEXT_PUBLIC_SKEIN_API_KEY": "undefined",
+      },
+    });
+    bundles.set(`example-${name}`, bundled.outputFiles[0]!.text);
   }
   const deps = createEchoDeps();
   threadBus = deps.threadBus!;
@@ -168,8 +199,8 @@ beforeAll(async () => {
     .withConfig<readonly [typeof createProgressTransformer]>({
       streamTransformers: [createProgressTransformer],
     });
-  const extras = { slow, nested, media: mediaGraph };
   const base = createEchoResolver();
+  const extras = { slow, nested, media: mediaGraph, agent: await base.load("echo") };
   deps.graphs = langGraphResolver({
     ids: [...base.ids, ...Object.keys(extras)],
     load: async (id) =>
@@ -194,7 +225,7 @@ beforeAll(async () => {
   server = await startEchoServer({ deps });
   proxy = createServer((incoming, outgoing) => {
     const upstream = proxyRequest(
-      new URL(incoming.url ?? "/", server.baseUrl),
+      new URL((incoming.url ?? "/").replace(/^\/api\//, "/"), server.baseUrl),
       { method: incoming.method, headers: incoming.headers },
       (response) => {
         outgoing.writeHead(response.statusCode ?? 500, response.headers);
@@ -215,6 +246,35 @@ afterAll(async () => {
   if (proxy) await new Promise<void>((resolve) => proxy.close(() => resolve()));
   await server?.close();
 });
+
+it.each(["react-usestream", "nextjs-app", "chat-app"])(
+  "%s example renders multiple turns with its installed current React SDK",
+  async (example) => {
+    const page = await browser.newPage();
+    const failures: string[] = [];
+    page.on("pageerror", (error) => failures.push(error.message));
+    try {
+      await page.goto(`${browserUrl}/harness?framework=example-${example}`);
+      const input = page.locator("input, textarea");
+      for (const message of ["first", "second"]) {
+        await input.fill(message);
+        await page.getByRole("button", { name: "Send", exact: true }).click();
+        await expect
+          .poll(() => page.getByText(`echo: ${message}`, { exact: true }).count())
+          .toBe(1);
+      }
+      if (example === "chat-app") {
+        await page.getByRole("button", { name: "New chat", exact: true }).click();
+        await expect.poll(() => page.getByTestId("assistant-message").count()).toBe(0);
+        await page.getByTitle("first", { exact: true }).click();
+        await expect.poll(() => page.getByText("echo: second", { exact: true }).count()).toBe(1);
+      }
+      expect(failures).toEqual([]);
+    } finally {
+      await page.close();
+    }
+  },
+);
 
 it.each(Object.keys(entries))(
   "%s streams multiple turns, restores state and resumes an interrupt over native HTTP",

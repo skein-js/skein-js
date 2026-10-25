@@ -1,28 +1,29 @@
 # Frontend SDKs / `useStream` compatibility
 
-Skein supports the run-based JavaScript SDK and the legacy React hook from
-`@langchain/langgraph-sdk/react`. The newer `@langchain/react`, `@langchain/vue`,
+Skein supports the run-based JavaScript SDK, the legacy React hook from
+`@langchain/langgraph-sdk/react`, and the dedicated framework packages. The `@langchain/react`, `@langchain/vue`,
 `@langchain/svelte`, and `@langchain/angular` packages use a separate thread event protocol.
-Versions 1.2.6 pass the dedicated browser matrix with the media workarounds described below; each
-package is tested independently. See the [compatibility matrix](./langgraph-compatibility.md).
+The browser matrix covers each framework at 1.2.6 and React at 1.2.7, with the media workarounds
+described below. The React examples use `@langchain/react` 1.2.7 and the current JavaScript client
+1.12.7; legacy SDK coverage remains separate. See the [compatibility matrix](./langgraph-compatibility.md).
 
 **What this gives you:** point
-[`useStream`](https://reference.langchain.com/javascript/langchain-langgraph-sdk/react/useStream) at a
+[`useStream`](https://reference.langchain.com/javascript/langchain-react/useStream) at a
 skein-js server and you get the whole rich chat UX for free — live token streaming, model
 **thinking**, structured **tool-result cards**, and **human-in-the-loop** interrupt/resume — with no
 custom SDK and no bespoke wire format. You send a turn with `thread.submit(...)`, read live state off
 `thread.messages`, and when a graph node pauses with `interrupt()` you render an approval card off
-`thread.interrupt` and resume with a `command`. The flagship [`chat-app`](https://github.com/skein-js/skein-js/tree/main/examples/chat-app)
+`thread.interrupt` and resume with `thread.respond(...)`. The flagship [`chat-app`](https://github.com/skein-js/skein-js/tree/main/examples/chat-app)
 example builds all of this; [`react-usestream`](https://github.com/skein-js/skein-js/tree/main/examples/react-usestream) is the minimal
 copy-paste starting point.
 
 ```tsx
 // send a turn — thread.messages updates live as tokens stream in
-thread.submit({ messages: [{ type: "human", content: input }] });
+void thread.submit({ messages: [{ role: "user", content: input }] });
 
 // a pending interrupt (e.g. "approve this booking?") surfaces here; resume with a command
 if (thread.interrupt) {
-  thread.submit(undefined, { command: { resume: { approved: true } } });
+  void thread.respond({ approved: true });
 }
 ```
 
@@ -35,7 +36,8 @@ streaming.
 | Client                 | Package                                 | How it talks to skein-js                                                       |
 | ---------------------- | --------------------------------------- | ------------------------------------------------------------------------------ |
 | Vanilla JS SDK         | `@langchain/langgraph-sdk`              | `client.threads.*`, `client.runs.stream()`, `client.runs.wait()`               |
-| **React hook**         | `@langchain/langgraph-sdk/react`        | **`useStream({ apiUrl, assistantId })`** over SSE                              |
+| **React hook**         | `@langchain/react`                      | **`useStream({ apiUrl, assistantId })`** over thread SSE and commands          |
+| Legacy React hook      | `@langchain/langgraph-sdk/react`        | Run-based SSE; retained compatibility coverage                                 |
 | New framework bindings | `@langchain/{react,vue,svelte,angular}` | Thread event subscriptions and command envelopes; see the compatibility matrix |
 | Agent Chat UI          | (built on `useStream`)                  | Same SSE path                                                                  |
 | LangGraph Studio       | —                                       | Agent Protocol HTTP                                                            |
@@ -55,14 +57,12 @@ start a run, including when the client reconnects.
 | Angular   | [`@langchain/angular`](https://github.com/langchain-ai/langgraphjs/tree/main/libs/sdk-angular) | `injectStream`, the `inject*` family            | Angular 18–21 |
 
 Each follows its own idiom — a React hook, a Vue composable, Svelte context, Angular DI — over a
-shared streaming core. The examples below use the legacy React API; consult the newer bindings'
-documentation for their current API shapes.
+shared streaming core. The React examples below use the dedicated package.
 
 **Mind the package names.** These are `@langchain/<framework>` packages, _not_ subpaths of the SDK —
 `@langchain/langgraph-sdk/vue` does not resolve, and the SDK's own README links to them by monorepo
-path, which is easy to misread as a subpath. `@langchain/langgraph-sdk/react` still exists and is what
-the example below uses; the dedicated packages are the newer home and the only place the non-React
-bindings live.
+path, which is easy to misread as a subpath. `@langchain/langgraph-sdk/react` still exists for legacy clients; new applications should use the
+dedicated packages shown here.
 
 skein-js ships no standalone Vue, Svelte or Angular example. The dedicated compatibility CI job
 exercises all four framework packages in Chromium, separately from the runtime matrix and legacy
@@ -73,7 +73,7 @@ and features.
 
 ```tsx
 "use client";
-import { useStream } from "@langchain/langgraph-sdk/react";
+import { useStream } from "@langchain/react";
 
 export function Chat() {
   const thread = useStream({
@@ -86,7 +86,7 @@ export function Chat() {
       {thread.messages.map((m) => (
         <div key={m.id}>{typeof m.content === "string" ? m.content : ""}</div>
       ))}
-      <button onClick={() => thread.submit({ messages: [{ type: "human", content: "hello" }] })}>
+      <button onClick={() => thread.submit({ messages: [{ role: "user", content: "hello" }] })}>
         Send
       </button>
     </div>
@@ -95,16 +95,13 @@ export function Chat() {
 ```
 
 The only difference from a LangGraph Platform setup is that `apiUrl` points at a skein-js
-server. `useStream` opens an SSE connection to `/runs/stream` (or the thread stream) and
-renders `messages` / `values` / `custom` events as they arrive — exactly the frames skein-js
-produces (see [streaming.md](./streaming.md)).
+server. The dedicated hook subscribes to `POST /threads/{thread_id}/stream/events` and dispatches
+turns through `POST /threads/{thread_id}/commands`. Subscriptions stay open across turns, and
+reconnecting or restoring an existing thread never starts a run. The legacy hook instead uses
+run-based streaming endpoints (see [streaming.md](./streaming.md)).
 
-**Closing the tab cancels the run.** `useStream` sends `on_disconnect: "cancel"` on every submit unless
-the stream is resumable, in which case it sends `"continue"`. skein honours that, so navigating away or
-closing the tab settles the in-flight run as `cancelled` rather than letting it finish in the
-background — LangGraph's behaviour, and usually the one you want, since nobody is left to read the
-result. Pass `onDisconnect: "continue"` to `submit()` to keep the run going, or set
-`reconnectOnMount` / a resumable stream so the client can rejoin it instead.
+Call `thread.stop()` to cancel the active run. Unmounting or reopening a thread subscription is
+separate from execution; use the explicit stop action when the user intends to cancel.
 
 ## Why it works over SSE
 
@@ -116,14 +113,14 @@ does not affect the React SDK.
 ## Verification harness
 
 [`examples/react-usestream`](https://github.com/skein-js/skein-js/tree/main/examples/react-usestream)
-is a minimal Next.js app using the legacy hook. The dedicated browser target exercises current
+is a minimal Next.js app using `@langchain/react` 1.2.7. The dedicated browser target exercises current
 framework packages over real HTTP, and the packed consumer checks both current and legacy clients
 outside the workspace. See [testing.md](./testing.md#compatibility-regression-gates).
 
 ## References
 
 - LangGraph JS SDK — <https://github.com/langchain-ai/langgraphjs/tree/main/libs/sdk>
-- `useStream` API reference — <https://reference.langchain.com/javascript/langchain-langgraph-sdk/react/useStream>
+- `useStream` API reference — <https://reference.langchain.com/javascript/langchain-react/useStream>
 - LangGraph streaming — <https://docs.langchain.com/oss/javascript/langgraph/streaming>
 - Agent Chat UI — <https://github.com/langchain-ai/agent-chat-ui>
 - React bindings — <https://github.com/langchain-ai/langgraphjs/tree/main/libs/sdk-react>

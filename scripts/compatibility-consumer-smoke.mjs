@@ -64,6 +64,21 @@ try {
       const threadId=stream.threadId; await stream.close();
       stream=client.threads.stream(threadId,{assistantId:'agent'});
       await client.threads.getState(threadId); assert.equal(executions,1); await stream.close();
+      const stopped=new AbortController();
+      const follower=client.threads.joinStream(threadId,{streamMode:['lifecycle','state_update'],lastEventId:'0',signal:stopped.signal})[Symbol.asyncIterator]();
+      try {
+        const started=(await follower.next()).value;
+        const done=(await follower.next()).value;
+        const updated=(await follower.next()).value;
+        assert.equal(started.event,'metadata');assert.equal(started.data.attempt,1);
+        assert.equal(done.event,'metadata');assert.deepEqual(done.data,{status:'run_done',run_id:started.data.run_id});
+        assert.equal(updated.event,'state_update');assert.equal(updated.data.thread_id,threadId);
+        assert.equal(updated.data.state.values.messages.at(-1).content,'echo: modern');
+        assert.equal(executions,1);
+      } finally {stopped.abort();await follower.return().catch(()=>{});}
+      const projected=await client.threads.search({select:['thread_id'],extract:{thread_id:'values.messages[-1].content',last:'values.messages[-1].content'}});
+      const selected=projected.find(row=>row.thread_id===threadId);
+      assert.deepEqual(selected.extracted,{thread_id:'echo: modern',last:'echo: modern'});
       for(const Legacy of [Legacy25,Legacy31]) {
         const old=new Legacy({apiUrl:url});const thread=await old.threads.create();
         const output=await old.runs.wait(thread.thread_id,'agent',{input:{messages:[{role:'user',content:'legacy'}]}});

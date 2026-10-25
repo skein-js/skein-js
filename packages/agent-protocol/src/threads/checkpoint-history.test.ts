@@ -6,7 +6,7 @@ import {
   emptyCheckpoint,
   type CompiledGraph,
 } from "@langchain/langgraph";
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 
 import { echoGraph } from "../__fixtures__/graphs.js";
 
@@ -80,6 +80,68 @@ describe("copyCheckpointHistory", () => {
 
     expect((await graph.getState(at("target"))).values).toEqual({ value: "echo: hi" });
   });
+});
+
+describe("checkpoint maintenance isolation", () => {
+  it.each(["rollback", "prune"] as const)(
+    "%s preserves real threads whose IDs match the old scratch coordinate",
+    async (operation) => {
+      const { graph, saver } = graphWithSaver();
+      const source = "maintenance-owner";
+      const other = `${source}::skein-${operation}`;
+      await graph.invoke({ value: "first" }, at(source));
+      const base = (await saver.getTuple(at(source)))!.checkpoint.id;
+      await graph.invoke({ value: "second" }, at(source));
+      await graph.invoke({ value: "another owner's state" }, at(other));
+      const before = [];
+      for await (const tuple of saver.list(at(other))) before.push(tuple);
+
+      if (operation === "rollback") await rollbackThreadCheckpointsTo(saver, source, base);
+      else await pruneThreadCheckpointsToLatest(saver, source);
+
+      const after = [];
+      for await (const tuple of saver.list(at(other))) after.push(tuple);
+      expect(after).toEqual(before);
+      expect((await graph.getState(at(other))).values).toEqual({
+        value: "echo: another owner's state",
+      });
+      expect((await graph.getState(at(source))).values).toEqual({
+        value: operation === "rollback" ? "echo: first" : "echo: second",
+      });
+    },
+  );
+  it.each(["rollback", "prune"] as const)(
+    "%s retains a discoverable, recoverable backup when replay fails",
+    async (operation) => {
+      const { graph, saver } = graphWithSaver();
+      const source = "failed-maintenance";
+      await graph.invoke({ value: "first" }, at(source));
+      const base = (await saver.getTuple(at(source)))!.checkpoint.id;
+      await graph.invoke({ value: "second" }, at(source));
+      const put = saver.put.bind(saver);
+      const failing = vi.spyOn(saver, "put").mockImplementation((...args) => {
+        if (args[0].configurable?.thread_id === source) throw new Error("Replay unavailable");
+        return put(...args);
+      });
+      let failure: unknown;
+      try {
+        if (operation === "rollback") await rollbackThreadCheckpointsTo(saver, source, base);
+        else await pruneThreadCheckpointsToLatest(saver, source);
+      } catch (error) {
+        failure = error;
+      } finally {
+        failing.mockRestore();
+      }
+      expect(failure).toBeInstanceOf(Error);
+      const scratch = /survives under "([^"]+)"/.exec((failure as Error).message)?.[1];
+      expect(scratch).toBeTruthy();
+      expect(scratch).not.toBe(`${source}::skein-${operation}`);
+      await copyCheckpointHistory(saver, scratch!, "recovered");
+      expect((await graph.getState(at("recovered"))).values).toEqual({
+        value: operation === "rollback" ? "echo: first" : "echo: second",
+      });
+    },
+  );
 });
 
 describe("checkpoint namespaces", () => {

@@ -131,12 +131,12 @@ for await (const event of client.runs.stream(thread.thread_id, "agent", {
 The `useStream` React hook streams over the same server — point it at your URL:
 
 ```tsx
-import { useStream } from "@langchain/langgraph-sdk/react";
+import { useStream } from "@langchain/react";
 
 function Chat() {
   const thread = useStream({ apiUrl: "http://localhost:2024", assistantId: "agent" });
   return (
-    <button onClick={() => thread.submit({ messages: [{ type: "human", content: "hi" }] })}>
+    <button onClick={() => thread.submit({ messages: [{ role: "user", content: "hi" }] })}>
       Send
     </button>
   );

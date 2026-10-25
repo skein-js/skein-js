@@ -29,8 +29,12 @@ export function projectSearchRow(
       : Object.fromEntries(Object.entries(row).filter(([key]) => select.includes(key)));
   return {
     ...selected,
-    ...Object.fromEntries(
-      Object.entries(extract ?? {}).map(([alias, path]) => [alias, extractValue(row, path)]),
-    ),
+    ...(extract === undefined
+      ? {}
+      : {
+          extracted: Object.fromEntries(
+            Object.entries(extract).map(([alias, path]) => [alias, extractValue(row, path)]),
+          ),
+        }),
   };
 }

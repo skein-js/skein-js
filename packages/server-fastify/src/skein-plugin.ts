@@ -186,15 +186,24 @@ export async function registerSkeinHandlers(
   options: HandlerRoutesOptions = {},
 ): Promise<void> {
   await prepareSkeinContext(fastify, options);
+  // Avoid building native requests for ordinary protocol bodies when only diagnostics use native routing.
+  const nativeMatcher = (
+    options.handleRequest as unknown as
+      Record<symbol, ((method: string, url: string) => boolean) | undefined> | undefined
+  )?.[Symbol.for("@skein-js/native-request-matcher")];
   const dispatchNative = async (req: FastifyRequest, reply: FastifyReply) => {
     if (!options.handleRequest) return false;
-    const controller = new AbortController();
-    reply.raw.once("close", () => controller.abort());
-    const request = { ...toProtocolRequest(req), signal: controller.signal };
+    const request = toProtocolRequest(req);
     const url = new URL(request.url);
     url.pathname = stripBasePath(url.pathname, fastify.prefix) ?? url.pathname;
+    if (nativeMatcher?.(request.method, url.href) === false) return false;
+    const controller = new AbortController();
+    reply.raw.once("close", () => controller.abort());
     const response = await options.handleRequest(
-      withNativePath(toNativeRequest(request, nativeRawBodies.get(req)), url.pathname),
+      withNativePath(
+        toNativeRequest({ ...request, signal: controller.signal }, nativeRawBodies.get(req)),
+        url.pathname,
+      ),
     );
     if (!response) return false;
     reply.hijack();

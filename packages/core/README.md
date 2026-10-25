@@ -34,6 +34,9 @@ them. Everything downstream imports it:
 - **`SkeinStore`** — the persistence interface for protocol resources (`assistants` / `threads` /
   `runs` / `store`), including the `hasActiveRun` concurrency guard and `isTerminalRunStatus`.
 - **`RunQueue` / `RunEventBus` / `RunFrame`** — the background-run queue and streaming pub/sub seams.
+- **`ThreadEventBus` / `ThreadEvent`** — ordered thread publications across runs. Custom buses must
+  preserve optional `runId`, `lifecycle`, and `state` fields on state events: these carry per-run
+  visibility, run boundaries, and the captured state used by legacy thread-follow subscriptions.
 - **`AuthEngine`** — the authentication + authorization contract (LangGraph-style custom auth),
   consulted per request by the engine when present.
 - **`SkeinHttpError`** — the typed edge error carrying an HTTP status.

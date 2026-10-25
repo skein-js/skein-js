@@ -492,8 +492,11 @@ window slides when state changes; the sweep skips an active run and rearms its n
 pruning. A null TTL pins the thread. The SQLite and Postgres migrations preserve existing pins:
 older rows without a recorded TTL remain pinned rather than acquiring an unexpected expiry.
 
-Pruning and rollback use LangGraph’s public saver methods. A scratch copy is written before erasure;
-if replay fails, its ID is included in the error for recovery. These operations require the same
+Pruning and rollback use LangGraph’s public saver methods. A scratch copy is written under a random,
+operation-specific ID, checked for existing checkpoints, before erasure. Fixed names such as
+`<thread>::skein-rollback` and `<thread>::skein-prune` are never used as scratch IDs because they may
+belong to real threads. If replay fails, the backup's actual ID is included in the error for operator
+recovery; retain that copy until recovery is complete. These operations require the same
 thread execution gate as state writes. They preserve namespace coordinates when copying history.
 
 Checkpoint pruning retains current root/child namespaces, explicit checkpoint references and

@@ -1022,12 +1022,12 @@ for await (const event of client.runs.stream(thread.thread_id, "agent", {
 The `useStream` React hook streams over the same server — point it at your URL:
 
 ```tsx
-import { useStream } from "@langchain/langgraph-sdk/react";
+import { useStream } from "@langchain/react";
 
 function Chat() {
   const thread = useStream({ apiUrl: "http://localhost:2024", assistantId: "agent" });
   return (
-    <button onClick={() => thread.submit({ messages: [{ type: "human", content: "hi" }] })}>
+    <button onClick={() => thread.submit({ messages: [{ role: "user", content: "hi" }] })}>
       Send
     </button>
   );
@@ -1425,6 +1425,10 @@ see [langgraph-cli-compat.md](./langgraph-cli-compat.md) for every field it acce
 - [Getting started](./getting-started.md) — the paths for when you already have a graph
 - [LangGraph CLI compatibility](./langgraph-cli-compat.md) — every `langgraph.json` field
 
+The generated JavaScript client dependency follows the runnable examples: currently
+`@langchain/langgraph-sdk` `^1.12.7`. React frontends use the dedicated `@langchain/react`
+package; see [the frontend guide](./react-sdk.md) for thread subscriptions and interrupt responses.
+
 
 ---
 
@@ -1690,10 +1694,10 @@ for await (const ev of client.runs.stream(thread.thread_id, "agent", { input }))
 ```
 
 ```tsx
-// Browser — @langchain/langgraph-sdk/react useStream (SSE)
-import { useStream } from "@langchain/langgraph-sdk/react";
+// Browser — @langchain/react useStream (SSE)
+import { useStream } from "@langchain/react";
 const thread = useStream({ apiUrl: "http://localhost:2024", assistantId: "agent" });
-thread.submit({ messages: [{ type: "human", content: "hello" }] });
+thread.submit({ messages: [{ role: "user", content: "hello" }] });
 ```
 
 `assistantId` defaults to the `graph_id`. See [react-sdk.md](./react-sdk.md),
@@ -3702,11 +3706,19 @@ success/error responses. Implemented methods are `run.start`, `input.respond`, `
 worker; a subscription or reconnect never invokes the graph. Existing resume/goto/update bodies
 continue to return legacy SSE. State reads require read permission, run starts require `create_run`,
 and forks also require state-write and destination-creation permission.
+`state.fork` verifies the source checkpoint in the configured saver before copying; custom-agent
+snapshots do not need a `createdAt` timestamp to identify a valid stored checkpoint.
 
 `GET /stream/events` remains an alias for `GET /stream`. Without parameters these join one run
-and finish with it, preserving Skein's established default. Explicit `stream_modes` (repeated or
-comma-separated, including `thread_state`) opts into a thread stream that stays open across turns.
-Its SSE event IDs are thread-wide cursors, rather than per-run frame IDs.
+and finish with it, preserving Skein's established default. Explicit `stream_mode` (repeated or
+comma-separated; what the SDK's `threads.joinStream` sends) opts into a thread stream that stays
+open across turns. `run_modes` includes every run frame and completion metadata. `lifecycle`
+emits only `metadata` events: `{ run_id, attempt: 1 }` when execution starts and
+`{ status: "run_done", run_id }` when it ends. `state_update` emits
+`{ thread_id, state }`, where `state` is the full checkpoint snapshot captured when the run ends
+or state is updated directly. Replay preserves each historical snapshot. Individual frame modes
+and the Skein-specific `thread_state` thread-row events remain supported. SSE event IDs are thread-wide cursors, rather than
+per-run frame IDs. Without `Last-Event-ID` it starts with live events; with one it replays after it.
 
 Thread subscriptions require `ProtocolDeps.threadBus`; the built-in runtime assemblers provide it.
 Memory replay is process-local. Redis replay is shared between API replicas and workers. Neither
@@ -3927,7 +3939,9 @@ omission keeps LangGraph’s default. Legacy SSE also recognizes `tasks` and `ch
 Thread search supports `exclude_metadata` (one nonempty object or a nonempty list, excluding any
 matching subset), `sort_by: "state_updated_at"`, `select`, and up to ten named `extract` paths.
 Extraction accepts roots `values`, `metadata`, `config`, and `interrupts`, dot properties and array
-indices such as `values.messages[-1].content`; absent values become `null`. Filters run before
+indices such as `values.messages[-1].content`; absent values become `null`. Extracted aliases are
+returned in an `extracted` object, alongside selected fields, and cannot overwrite thread identity.
+Filters run before
 pagination; projection and extraction run after authorization. Assistant and cron search support
 `select`. HTTP assistant name matching is case-insensitive substring matching; direct repository
 calls retain exact matching unless `nameMatch: "substring"` is requested.
@@ -6778,8 +6792,13 @@ clears payloads and closes its readers; execution captures its generation so a l
 repopulate history after deletion or ID reuse. Release the Redis bus with `dispose()` when assembling
 infrastructure by hand; runtime assemblers own that cleanup automatically.
 
-Legacy `GET /threads/{id}/stream` joins one run by default. Pass explicit `stream_modes` to follow
-legacy frames and optional `thread_state` events across turns. This default differs from Agent Server;
+Legacy `GET /threads/{id}/stream` joins one run by default. Pass explicit `stream_mode` to follow
+events across turns. The official categories are `run_modes` (run frames plus completion metadata),
+`lifecycle` (start/end `metadata` events), and `state_update` (`{ thread_id, state }` checkpoint
+snapshots after execution or direct state updates). Recorded snapshots are replayed without
+substituting a later thread state. Individual frame modes and optional `thread_state` thread-row
+events remain available. The stream starts with live events unless
+`Last-Event-ID` resumes after an earlier one. This default differs from Agent Server;
 see the [compatibility matrix](./langgraph-compatibility.md) for the verification scope.
 
 A subscription without `since` replays retained events so late selectors can recover custom
@@ -7151,29 +7170,30 @@ Verified against `@langchain/langgraph-api` and `@langchain/langgraph-sdk`:
 
 # Frontend SDKs / `useStream` compatibility
 
-Skein supports the run-based JavaScript SDK and the legacy React hook from
-`@langchain/langgraph-sdk/react`. The newer `@langchain/react`, `@langchain/vue`,
+Skein supports the run-based JavaScript SDK, the legacy React hook from
+`@langchain/langgraph-sdk/react`, and the dedicated framework packages. The `@langchain/react`, `@langchain/vue`,
 `@langchain/svelte`, and `@langchain/angular` packages use a separate thread event protocol.
-Versions 1.2.6 pass the dedicated browser matrix with the media workarounds described below; each
-package is tested independently. See the [compatibility matrix](./langgraph-compatibility.md).
+The browser matrix covers each framework at 1.2.6 and React at 1.2.7, with the media workarounds
+described below. The React examples use `@langchain/react` 1.2.7 and the current JavaScript client
+1.12.7; legacy SDK coverage remains separate. See the [compatibility matrix](./langgraph-compatibility.md).
 
 **What this gives you:** point
-[`useStream`](https://reference.langchain.com/javascript/langchain-langgraph-sdk/react/useStream) at a
+[`useStream`](https://reference.langchain.com/javascript/langchain-react/useStream) at a
 skein-js server and you get the whole rich chat UX for free — live token streaming, model
 **thinking**, structured **tool-result cards**, and **human-in-the-loop** interrupt/resume — with no
 custom SDK and no bespoke wire format. You send a turn with `thread.submit(...)`, read live state off
 `thread.messages`, and when a graph node pauses with `interrupt()` you render an approval card off
-`thread.interrupt` and resume with a `command`. The flagship [`chat-app`](https://github.com/skein-js/skein-js/tree/main/examples/chat-app)
+`thread.interrupt` and resume with `thread.respond(...)`. The flagship [`chat-app`](https://github.com/skein-js/skein-js/tree/main/examples/chat-app)
 example builds all of this; [`react-usestream`](https://github.com/skein-js/skein-js/tree/main/examples/react-usestream) is the minimal
 copy-paste starting point.
 
 ```tsx
 // send a turn — thread.messages updates live as tokens stream in
-thread.submit({ messages: [{ type: "human", content: input }] });
+void thread.submit({ messages: [{ role: "user", content: input }] });
 
 // a pending interrupt (e.g. "approve this booking?") surfaces here; resume with a command
 if (thread.interrupt) {
-  thread.submit(undefined, { command: { resume: { approved: true } } });
+  void thread.respond({ approved: true });
 }
 ```
 
@@ -7186,7 +7206,8 @@ streaming.
 | Client                 | Package                                 | How it talks to skein-js                                                       |
 | ---------------------- | --------------------------------------- | ------------------------------------------------------------------------------ |
 | Vanilla JS SDK         | `@langchain/langgraph-sdk`              | `client.threads.*`, `client.runs.stream()`, `client.runs.wait()`               |
-| **React hook**         | `@langchain/langgraph-sdk/react`        | **`useStream({ apiUrl, assistantId })`** over SSE                              |
+| **React hook**         | `@langchain/react`                      | **`useStream({ apiUrl, assistantId })`** over thread SSE and commands          |
+| Legacy React hook      | `@langchain/langgraph-sdk/react`        | Run-based SSE; retained compatibility coverage                                 |
 | New framework bindings | `@langchain/{react,vue,svelte,angular}` | Thread event subscriptions and command envelopes; see the compatibility matrix |
 | Agent Chat UI          | (built on `useStream`)                  | Same SSE path                                                                  |
 | LangGraph Studio       | —                                       | Agent Protocol HTTP                                                            |
@@ -7206,14 +7227,12 @@ start a run, including when the client reconnects.
 | Angular   | [`@langchain/angular`](https://github.com/langchain-ai/langgraphjs/tree/main/libs/sdk-angular) | `injectStream`, the `inject*` family            | Angular 18–21 |
 
 Each follows its own idiom — a React hook, a Vue composable, Svelte context, Angular DI — over a
-shared streaming core. The examples below use the legacy React API; consult the newer bindings'
-documentation for their current API shapes.
+shared streaming core. The React examples below use the dedicated package.
 
 **Mind the package names.** These are `@langchain/<framework>` packages, _not_ subpaths of the SDK —
 `@langchain/langgraph-sdk/vue` does not resolve, and the SDK's own README links to them by monorepo
-path, which is easy to misread as a subpath. `@langchain/langgraph-sdk/react` still exists and is what
-the example below uses; the dedicated packages are the newer home and the only place the non-React
-bindings live.
+path, which is easy to misread as a subpath. `@langchain/langgraph-sdk/react` still exists for legacy clients; new applications should use the
+dedicated packages shown here.
 
 skein-js ships no standalone Vue, Svelte or Angular example. The dedicated compatibility CI job
 exercises all four framework packages in Chromium, separately from the runtime matrix and legacy
@@ -7224,7 +7243,7 @@ and features.
 
 ```tsx
 "use client";
-import { useStream } from "@langchain/langgraph-sdk/react";
+import { useStream } from "@langchain/react";
 
 export function Chat() {
   const thread = useStream({
@@ -7237,7 +7256,7 @@ export function Chat() {
       {thread.messages.map((m) => (
         <div key={m.id}>{typeof m.content === "string" ? m.content : ""}</div>
       ))}
-      <button onClick={() => thread.submit({ messages: [{ type: "human", content: "hello" }] })}>
+      <button onClick={() => thread.submit({ messages: [{ role: "user", content: "hello" }] })}>
         Send
       </button>
     </div>
@@ -7246,16 +7265,13 @@ export function Chat() {
 ```
 
 The only difference from a LangGraph Platform setup is that `apiUrl` points at a skein-js
-server. `useStream` opens an SSE connection to `/runs/stream` (or the thread stream) and
-renders `messages` / `values` / `custom` events as they arrive — exactly the frames skein-js
-produces (see [streaming.md](./streaming.md)).
+server. The dedicated hook subscribes to `POST /threads/{thread_id}/stream/events` and dispatches
+turns through `POST /threads/{thread_id}/commands`. Subscriptions stay open across turns, and
+reconnecting or restoring an existing thread never starts a run. The legacy hook instead uses
+run-based streaming endpoints (see [streaming.md](./streaming.md)).
 
-**Closing the tab cancels the run.** `useStream` sends `on_disconnect: "cancel"` on every submit unless
-the stream is resumable, in which case it sends `"continue"`. skein honours that, so navigating away or
-closing the tab settles the in-flight run as `cancelled` rather than letting it finish in the
-background — LangGraph's behaviour, and usually the one you want, since nobody is left to read the
-result. Pass `onDisconnect: "continue"` to `submit()` to keep the run going, or set
-`reconnectOnMount` / a resumable stream so the client can rejoin it instead.
+Call `thread.stop()` to cancel the active run. Unmounting or reopening a thread subscription is
+separate from execution; use the explicit stop action when the user intends to cancel.
 
 ## Why it works over SSE
 
@@ -7267,14 +7283,14 @@ does not affect the React SDK.
 ## Verification harness
 
 [`examples/react-usestream`](https://github.com/skein-js/skein-js/tree/main/examples/react-usestream)
-is a minimal Next.js app using the legacy hook. The dedicated browser target exercises current
+is a minimal Next.js app using `@langchain/react` 1.2.7. The dedicated browser target exercises current
 framework packages over real HTTP, and the packed consumer checks both current and legacy clients
 outside the workspace. See [testing.md](./testing.md#compatibility-regression-gates).
 
 ## References
 
 - LangGraph JS SDK — <https://github.com/langchain-ai/langgraphjs/tree/main/libs/sdk>
-- `useStream` API reference — <https://reference.langchain.com/javascript/langchain-langgraph-sdk/react/useStream>
+- `useStream` API reference — <https://reference.langchain.com/javascript/langchain-react/useStream>
 - LangGraph streaming — <https://docs.langchain.com/oss/javascript/langgraph/streaming>
 - Agent Chat UI — <https://github.com/langchain-ai/agent-chat-ui>
 - React bindings — <https://github.com/langchain-ai/langgraphjs/tree/main/libs/sdk-react>
@@ -7321,13 +7337,18 @@ does not establish compatibility: the official client must exercise the behavior
 | Run-based JavaScript SDK and legacy React hook    | Supported                                     | Retain coverage for SDK 1.9.25 and 1.9.31                                                            |
 | Thread event protocol                             | Not yet supported                             | SDK 1.12.6; protocol 0.0.20; subscriptions, commands, reconnect and restoration                      |
 | Dedicated React, Angular, Vue and Svelte bindings | Not yet verified                              | Test each package at 1.2.6 in a real browser                                                         |
-| Thread-wide legacy stream                         | Joins one run                                 | Add explicit `stream_modes` following without changing the existing default                          |
+| Thread-wide legacy stream                         | Joins one run                                 | Add explicit `stream_mode` following without changing the existing default                           |
 | Execution and checkpoint options                  | Partial                                       | Durability, task/checkpoint modes, recursive and namespaced state/history                            |
 | Search and retention                              | Partial                                       | Projection, exclusion, extraction, state timestamps, per-operation store options and keep-latest TTL |
 | MCP and A2A endpoints                             | Not implemented                               | Official transport SDKs over the existing authorized services                                        |
 | Graph UI assets and `http.app`                    | Accepted configuration without implementation | Development loading and standalone production artifacts                                              |
 | OpenAPI and `/docs`                               | Not implemented                               | Describe actual enabled routes and authentication                                                    |
 | `/metrics` and thread storage reporting           | Not implemented                               | Existing OTel instrumentation and exact saver-backed payload accounting                              |
+
+Explicit legacy thread following supports the SDK's `run_modes`, `lifecycle`, and `state_update`
+categories, including per-run completion metadata and immutable checkpoint snapshots on replay.
+Search extraction returns aliases inside `extracted`; checkpoint forks validate saver coordinates
+without requiring optional custom-agent timestamps.
 
 The versions above are **implementation targets**, not a claim that all of their features have
 passed. The implementation updates this matrix with the corresponding test evidence.
@@ -7376,6 +7397,13 @@ require `toRaw(asset)` before accessing `blob`, because its reactive proxy break
 The browser gate checks actual media bytes with that public Vue workaround. These client limitations
 are tracked separately from server media delivery. Development UI watches currently follow the
 upstream watcher’s process lifetime; applications own process shutdown.
+
+## Frontend example refresh, 25 October 2026
+
+The React examples (`chat-app`, `nextjs-app`, and `react-usestream`) use `@langchain/react` 1.2.7.
+Example JavaScript clients require SDK 1.12.7. The browser matrix also runs the React package
+installed by `react-usestream`, alongside the pinned 1.2.6 framework packages and SDK 1.12.6.
+Legacy SDK 1.9.25 and 1.9.31 coverage remains in the packed consumer.
 
 
 ---
@@ -7871,8 +7899,11 @@ window slides when state changes; the sweep skips an active run and rearms its n
 pruning. A null TTL pins the thread. The SQLite and Postgres migrations preserve existing pins:
 older rows without a recorded TTL remain pinned rather than acquiring an unexpected expiry.
 
-Pruning and rollback use LangGraph’s public saver methods. A scratch copy is written before erasure;
-if replay fails, its ID is included in the error for recovery. These operations require the same
+Pruning and rollback use LangGraph’s public saver methods. A scratch copy is written under a random,
+operation-specific ID, checked for existing checkpoints, before erasure. Fixed names such as
+`<thread>::skein-rollback` and `<thread>::skein-prune` are never used as scratch IDs because they may
+belong to real threads. If replay fails, the backup's actual ID is included in the error for operator
+recovery; retain that copy until recovery is complete. These operations require the same
 thread execution gate as state writes. They preserve namespace coordinates when copying history.
 
 Checkpoint pruning retains current root/child namespaces, explicit checkpoint references and
@@ -12944,7 +12975,7 @@ layer that OSS does not provide.
 | **Agent Protocol dev server** | **`@langchain/langgraph-api`** (MIT)         | Reuse its public exports: `./schema` (the `langgraph.json` parser), `./auth`'s pure `isAuthMatching` (so our ownership-filter `$eq`/`$contains` semantics match), `./experimental/embed` (store-search embeddings). Its Zod schemas + in-memory handler logic (MIT) are the reference we adapt for the durable drivers.             |
 | CLI + config semantics        | `@langchain/langgraph-cli`                   | Reference for `langgraph.json` fields and `dev/up/build/dockerfile` behavior we mirror.                                                                                                                                                                                                                                             |
 | Wire types + JS client        | `@langchain/langgraph-sdk`                   | **Reuse the SDK's TypeScript types** for Thread/Run/Assistant/etc. as our wire contract instead of regenerating; also our conformance oracle.                                                                                                                                                                                       |
-| React streaming               | `@langchain/langgraph-sdk/react`             | `useStream` — a target client we satisfy, not something we build. (`sdk-vue`, `sdk-svelte`, `sdk-angular` exist too.)                                                                                                                                                                                                               |
+| React streaming               | `@langchain/react`                           | `useStream` — a target client we satisfy, not something we build. The dedicated Vue, Svelte and Angular packages share the thread event protocol; legacy React remains tested.                                                                                                                                                      |
 | Chat UI                       | `langgraph-ui` / Agent Chat UI               | Interop target for smoke tests.                                                                                                                                                                                                                                                                                                     |
 
 **Rule of thumb:** if a `@langchain/*` package already does it, we depend on it (as a

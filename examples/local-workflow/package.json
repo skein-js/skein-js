@@ -10,7 +10,7 @@
     "@skein-js/agent-protocol": "workspace:*",
     "@skein-js/express": "workspace:*",
     "@skein-js/core": "workspace:*",
-    "@langchain/langgraph-sdk": "^1.9.0",
+    "@langchain/langgraph-sdk": "^1.12.7",
     "@langchain/core": "^1.2.9",
     "@langchain/google": "0.2.0",
     "langchain": "^1.5.0",

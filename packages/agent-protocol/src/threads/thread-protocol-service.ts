@@ -15,10 +15,11 @@ import { requireAgentCapability } from "../graphs/agent-graph.js";
 import { resolveCompiledGraph } from "../graphs/resolve-compiled-graph.js";
 import { toFactoryConfigurable } from "../runs/run-input.js";
 import type { CreateRunInput, RunService } from "../runs/run-service.js";
-import { encodeFrame, withSseHeartbeats } from "../sse/sse.js";
+import { withSseHeartbeats } from "../sse/sse.js";
 import { runCreateSchema } from "../validation/schemas.js";
 
 import { markThreadProtocolRun } from "./thread-protocol-run.js";
+import { encodeThreadFollowEvent } from "./thread-follow-event.js";
 import { createThreadService } from "./thread-service.js";
 
 export const threadEventFilterSchema = z.object({
@@ -140,7 +141,12 @@ export function createThreadProtocolService(ctx: ProtocolContext, runs: RunServi
       signal?: AbortSignal,
     ): Promise<AsyncIterable<string>> {
       await threads.get(threadId);
-      const connection = await connect(threadId, since, signal);
+      // Without a cursor, start at the tail: earlier runs' frames are history, not live events.
+      const connection = await connect(
+        threadId,
+        since ?? (await requireBus().latestSequence(threadId)),
+        signal,
+      );
       return withSseHeartbeats(
         (async function* () {
           try {
@@ -149,13 +155,9 @@ export function createThreadProtocolService(ctx: ProtocolContext, runs: RunServi
             for await (const entry of connection.source) {
               if (!(await connection.isCurrent()) || !(await deps.store.threads.get(threadId)))
                 return;
-              if (entry.kind === "state") {
-                if (modes.includes("thread_state"))
-                  yield `id: ${entry.seq}\nevent: thread_state\ndata: ${serializeWireJson(entry.thread)}\n\n`;
-              } else if (await deps.store.runs.get(entry.runId)) {
-                if (entry.kind === "run" && modes.includes(entry.frame.event))
-                  yield encodeFrame({ ...entry.frame, seq: entry.seq });
-              }
+              if (entry.kind === "protocol") continue;
+              if (entry.runId && !(await deps.store.runs.get(entry.runId))) continue;
+              yield* encodeThreadFollowEvent(entry, modes);
             }
           } finally {
             connection.close();
@@ -265,8 +267,13 @@ export function createThreadProtocolService(ctx: ProtocolContext, runs: RunServi
           }
           case "state.fork": {
             const checkpointId = z.string().min(1).parse(params["checkpoint_id"]);
-            const state = await threads.getStateAt(threadId, checkpointId);
-            if (!state.checkpoint.checkpoint_id)
+            await threads.get(threadId);
+            // Agent snapshots may omit timestamps, and LangGraph echoes even nonexistent IDs.
+            // Read the stored coordinate after authorizing the source thread instead.
+            const checkpoint = await deps.checkpointer.getTuple({
+              configurable: { thread_id: threadId, checkpoint_ns: "", checkpoint_id: checkpointId },
+            });
+            if (checkpoint?.checkpoint.id !== checkpointId)
               return {
                 type: "error",
                 id,

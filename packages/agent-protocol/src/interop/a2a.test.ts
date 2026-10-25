@@ -225,3 +225,34 @@ it("does not expose a computed artifact when cancellation wins result settlement
     await runtime.worker.stop();
   }
 });
+
+it("lists tasks without artifacts unless the caller asks for them", async () => {
+  const runtime = createProtocolRuntime(createFixtureDeps());
+  await runtime.service.assistants.registerGraphAssistants();
+  runtime.worker.start();
+  const rpc = (id: number, method: string, params: Record<string, unknown>) =>
+    runtime.handlers.handleA2a!({
+      method: "POST",
+      url: "http://localhost/a2a/echo",
+      params: { assistant_id: "echo" },
+      query: {},
+      headers: {},
+      body: { jsonrpc: "2.0", id, method, params },
+    });
+  try {
+    await rpc(1, "SendMessage", {
+      message: { messageId: "listed", role: "ROLE_USER", parts: [{ data: { value: "hi" } }] },
+    });
+    const artifactsOf = (response: Awaited<ReturnType<typeof rpc>>) =>
+      response.kind === "json"
+        ? (
+            response.body as { result: { tasks: Array<{ artifacts?: unknown[] }> } }
+          ).result.tasks.map((task) => task.artifacts ?? [])
+        : [];
+    expect(artifactsOf(await rpc(2, "ListTasks", {}))).toEqual([[]]);
+    const [included] = artifactsOf(await rpc(3, "ListTasks", { includeArtifacts: true }));
+    expect(included).toHaveLength(1);
+  } finally {
+    await runtime.worker.stop();
+  }
+});

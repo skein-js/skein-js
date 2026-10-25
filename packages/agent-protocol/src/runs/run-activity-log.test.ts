@@ -111,7 +111,9 @@ describe("run failure logging", () => {
     };
 
     // The graph throws before the success path's own `getState`, so this counts only the report's.
-    expect(await countGetState(createFixtureDeps())).toBe(0);
+    expect(await countGetState(createFixtureDeps({ threadBus: undefined }))).toBe(0);
+    // Thread replay needs a final snapshot even without logging. Logging reuses that same read.
+    expect(await countGetState(createFixtureDeps())).toBe(1);
     expect(await countGetState(createFixtureDeps({ logger: capturingLogger() }))).toBe(1);
   });
 

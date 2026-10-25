@@ -1,4 +1,4 @@
-import type { AuthEngine, AuthFilters, Metadata } from "@skein-js/core";
+import type { AuthEngine, AuthFilters, Metadata, ThreadState } from "@skein-js/core";
 import { describe, expect, it } from "vitest";
 
 import { createFixtureDeps } from "../__fixtures__/deps.js";
@@ -14,6 +14,81 @@ const ownerEngine = {
     ...filters,
   }),
 } as unknown as AuthEngine;
+
+it("filters run visibility for lifecycle and captured state during replay and live delivery", async () => {
+  const deps = createFixtureDeps();
+  const thread = await deps.store.threads.create({ metadata: { owner: "alice" } });
+  const mine = await deps.store.runs.create({
+    thread_id: thread.thread_id,
+    assistant_id: "echo",
+    metadata: { owner: "alice" },
+  });
+  const theirs = await deps.store.runs.create({
+    thread_id: thread.thread_id,
+    assistant_id: "echo",
+    metadata: { owner: "bob" },
+  });
+  const publish = async (runId: string, value: string) => {
+    await deps.threadBus!.publish(thread.thread_id, {
+      kind: "state",
+      operation: "updated",
+      thread,
+      runId,
+      lifecycle: "start",
+    });
+    const state: ThreadState = {
+      values: { value },
+      next: [],
+      checkpoint: {
+        thread_id: thread.thread_id,
+        checkpoint_ns: "",
+        checkpoint_id: null,
+        checkpoint_map: null,
+      },
+      metadata: {},
+      created_at: null,
+      parent_checkpoint: null,
+      tasks: [],
+    };
+    await deps.threadBus!.publish(thread.thread_id, {
+      kind: "state",
+      operation: "updated",
+      thread,
+      runId,
+      state,
+    });
+  };
+  await publish(theirs.run_id, "hidden replay");
+  await publish(mine.run_id, "visible replay");
+  const service = createProtocolServiceFromContext(
+    createContext({
+      ...deps,
+      store: createAuthScopedStore(deps.store, ownerEngine, { owner: "alice" }, "threads"),
+    }),
+  );
+  const stopped = new AbortController();
+  const iterator = (
+    await service.threadStream.follow!(
+      thread.thread_id,
+      ["lifecycle", "state_update"],
+      0,
+      stopped.signal,
+    )
+  )[Symbol.asyncIterator]();
+  try {
+    await iterator.next();
+    expect((await iterator.next()).value).toContain(mine.run_id);
+    expect((await iterator.next()).value).toContain("visible replay");
+    const reading = iterator.next();
+    await publish(theirs.run_id, "hidden live");
+    await publish(mine.run_id, "visible live");
+    expect((await reading).value).toContain(mine.run_id);
+    expect((await iterator.next()).value).toContain("visible live");
+  } finally {
+    stopped.abort();
+    await iterator.return?.();
+  }
+});
 
 it("filters namespaces and caller visibility during replay and live delivery", async () => {
   const deps = createFixtureDeps();
@@ -129,6 +204,72 @@ describe("thread command envelopes", () => {
       }),
     ).toMatchObject({ type: "error", id: 8, error: "not_supported" });
     expect(await deps.store.runs.listByThread(thread.thread_id)).toEqual([]);
+  });
+
+  it("refuses to fork from an unknown checkpoint without copying the thread", async () => {
+    const deps = createFixtureDeps();
+    const service = createProtocolServiceFromContext(createContext(deps));
+    await service.assistants.registerGraphAssistants();
+    const thread = await service.threads.create();
+    await service.runs.createWait({
+      thread_id: thread.thread_id,
+      assistant_id: "echo",
+      input: { value: "hi" },
+    });
+    const threadsBefore = (await deps.store.threads.list()).length;
+
+    expect(
+      await service.threadStream.protocolCommand!(thread.thread_id, {
+        id: 9,
+        method: "state.fork",
+        params: { checkpoint_id: "does-not-exist" },
+      }),
+    ).toMatchObject({ type: "error", id: 9, error: "no_such_checkpoint" });
+    expect(await deps.store.threads.list()).toHaveLength(threadsBefore);
+  });
+
+  it("forks a stored checkpoint from a custom agent whose snapshot omits createdAt", async () => {
+    const deps = createFixtureDeps();
+    const load = deps.graphs.load;
+    deps.graphs.load = async (id) => {
+      const graph = await load(id);
+      if (typeof graph === "function") throw new Error("Expected fixture agent.");
+      const custom = Object.create(graph) as typeof graph;
+      custom.getState = async function (config, options) {
+        const { createdAt: _timestamp, ...snapshot } = await graph.getState.call(
+          this,
+          config,
+          options,
+        );
+        return snapshot;
+      };
+      return custom;
+    };
+    const service = createProtocolServiceFromContext(createContext(deps));
+    await service.assistants.registerGraphAssistants();
+    const thread = await service.threads.create();
+    await service.runs.createWait({
+      thread_id: thread.thread_id,
+      assistant_id: "echo",
+      input: { value: "saved" },
+    });
+    const checkpoint = (await deps.checkpointer.getTuple({
+      configurable: { thread_id: thread.thread_id, checkpoint_ns: "" },
+    }))!.checkpoint;
+    expect(
+      (await service.threads.getStateAt(thread.thread_id, checkpoint.id)).created_at,
+    ).toBeNull();
+    expect(
+      await service.threadStream.protocolCommand!(thread.thread_id, {
+        id: 10,
+        method: "state.fork",
+        params: { checkpoint_id: checkpoint.id, assistant_id: "echo", input: { value: "forked" } },
+      }),
+    ).toMatchObject({
+      type: "success",
+      id: 10,
+      result: { thread_id: expect.any(String), run_id: expect.any(String) },
+    });
   });
 });
 
