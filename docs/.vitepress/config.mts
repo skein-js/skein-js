@@ -310,6 +310,7 @@ export default withMermaid(
             { text: "Crons", link: "/crons" },
             { text: "Webhooks & delivery", link: "/webhooks" },
             { text: "Workflows & channels", link: "/channels" },
+            { text: "Native access & BullMQ", link: "/native-access" },
           ],
         },
         {

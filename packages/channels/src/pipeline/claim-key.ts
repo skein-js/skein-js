@@ -3,7 +3,7 @@
 import { createHash } from "node:crypto";
 
 import type { ProtocolResponse } from "@skein-js/agent-protocol";
-import type { IdempotencyRepo } from "@skein-js/core";
+import type { AdmissionKey, IdempotencyRepo } from "@skein-js/core";
 
 import type { ChannelPrincipal, InboundEvent } from "../channel/channel.js";
 
@@ -28,6 +28,7 @@ export interface ClaimInput {
 export type ClaimOutcome =
   | {
       kind: "claimed";
+      admission?: AdmissionKey;
       record(response: ProtocolResponse, ids: { runId: string; threadId: string }): Promise<void>;
       release(): Promise<void>;
     }
@@ -101,6 +102,13 @@ export async function claimEventKey(
 
   return {
     kind: "claimed",
+    admission: {
+      scope: `admission ${scope}`,
+      key,
+      fingerprint,
+      now: now.toISOString(),
+      expiresAt: new Date(now.getTime() + (deps.retentionMs ?? DEFAULT_RETENTION_MS)).toISOString(),
+    },
     record: async (response, ids) => {
       await repo.record(scope, key, claimId, {
         status: response.kind === "json" ? response.status : 202,

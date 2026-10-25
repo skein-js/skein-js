@@ -68,6 +68,12 @@ export function wrapChannelDispatcher(options: WrapDispatcherOptions): Dispatche
       );
     }
 
-    await channel.deliver(outcome, target.replyTo);
+    const deliveryContext = attempt as { deliveryId?: string; attempt?: number } | undefined;
+    if (deliveryContext?.deliveryId !== undefined && deliveryContext.attempt !== undefined)
+      await channel.deliver(outcome, target.replyTo, {
+        deliveryId: deliveryContext.deliveryId,
+        attempt: deliveryContext.attempt,
+      });
+    else await channel.deliver(outcome, target.replyTo);
   };
 }

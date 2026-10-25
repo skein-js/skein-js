@@ -16,6 +16,11 @@ by injecting a [`ProtocolDeps`](#the-injected-contract-protocoldeps).
 
 ## Contents
 
+For embedded callers and external queues, `createProtocolRuntime(deps).createNativeClient(...)`
+composes authorization, atomic admission, strict resume, cancellation and retained results.
+See [native access](https://github.com/skein-js/skein-js/blob/main/docs/native-access.md) and the optional
+[`@skein-js/bullmq`](../bullmq) transport. Existing service and HTTP APIs remain available.
+
 - [What it does](#what-it-does)
 - [Install](#install)
 - [Usage](#usage)

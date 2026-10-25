@@ -179,6 +179,16 @@ export function createAuthScopedStore(
 
     const runs: RunRepo = {
       ...inner.runs,
+      ...(inner.runs.settle
+        ? {
+            settle: async (runId: string, final: Parameters<NonNullable<RunRepo["settle"]>>[1]) => {
+              const run = await inner.runs.get(runId);
+              if (!run || !matches(run.metadata))
+                throw SkeinHttpError.notFound(`Run "${runId}" not found.`);
+              return inner.runs.settle!(runId, final);
+            },
+          }
+        : {}),
       ...(inner.runs.getResult
         ? {
             getResult: async (runId: string) => {
@@ -292,6 +302,31 @@ export function createAuthScopedStore(
       ...inner,
       threads,
       runs,
+      ...(inner.admission
+        ? {
+            admission: {
+              ...inner.admission,
+              admitRun: async (
+                input: Parameters<NonNullable<SkeinStore["admission"]>["admitRun"]>[0],
+              ) => {
+                const thread = await threads.get(input.run.thread_id);
+                if (!thread)
+                  throw SkeinHttpError.notFound(`Thread "${input.run.thread_id}" not found.`);
+                return inner.admission!.admitRun({
+                  ...input,
+                  run: { ...input.run, metadata: stamp(input.run.metadata) },
+                });
+              },
+              admitCancel: async (
+                input: Parameters<NonNullable<SkeinStore["admission"]>["admitCancel"]>[0],
+              ) => {
+                const run = await runs.get(input.runId);
+                if (!run) throw SkeinHttpError.notFound(`Run "${input.runId}" not found.`);
+                return inner.admission!.admitCancel(input);
+              },
+            },
+          }
+        : {}),
       maxPageSize: inner.maxPageSize,
       durable: inner.durable,
     };

@@ -54,7 +54,7 @@ export interface Delivery {
    */
   run_status: RunStatus;
   status: DeliveryStatus;
-  /** Attempts started, counting from 1. Reported to the receiver so it can see a retry as a retry. */
+  /** Attempts started; zero before the first asynchronous attempt, then counted from one. */
   attempt: number;
   /**
    * When this delivery next becomes claimable.
@@ -80,10 +80,11 @@ export interface Delivery {
  * `run_id` and `run_status` are absent by design: the driver stamps both from the transaction it just
  * committed, so they cannot disagree with the row that was actually written.
  *
- * The created row is **already claimed** — `delivering`, `attempt: 1`, leased until
+ * With `finalizeWithDelivery`, the created row is **already claimed** — `delivering`, `attempt: 1`, leased until
  * {@link next_attempt_at}. The run engine attempts the first delivery inline, exactly as it does
  * today, so a healthy receiver still hears within milliseconds rather than at the next worker tick.
  * If that process dies before it can report the outcome, the lease expires and a worker takes over.
+ * `RunRepo.settle` instead creates a pending row at attempt zero, due at `next_attempt_at`.
  */
 export interface DeliveryCreate {
   /** Server-assigned when omitted. Stable across every retry — the receiver's dedup key. */

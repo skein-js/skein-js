@@ -39,7 +39,7 @@ the HTTP and streaming API around your graphs.
   [Background jobs](./docs/background-jobs.md) · [Schedules](./docs/crons.md)
 - **Channels and durable callbacks.** Connect authenticated events from your systems to a graph and
   deliver its outcome to an allowed destination. Inspect and replay webhook deliveries.
-  [Channels](./docs/channels.md) · [Webhooks](./docs/webhooks.md)
+  [Channels](./docs/channels.md) · [Webhooks](./docs/webhooks.md) · [Native access and BullMQ](./docs/native-access.md)
 - **Console and observability.** Test graphs, inspect conversations, and manage approvals in your own
   console. Connect LangSmith, PostHog, or OpenTelemetry for tracing and analytics.
   [Console](./docs/console.md) · [Observability](./docs/observability.md)

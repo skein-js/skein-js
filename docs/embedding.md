@@ -39,6 +39,10 @@ listener; your host owns startup and stops its runtime before disposing storage.
 
 ## The whole thing
 
+For receipt-based access without HTTP, use the runtime's supported
+[native client](./native-access.md). It adds authorized atomic admission, strict resume targets and
+retained results for embedded callers. The optional BullMQ access adapter uses the same boundary.
+
 ```ts
 import { createExpressServer } from "@skein-js/express";
 import { embedInMemoryGraphs } from "@skein-js/server-kit";

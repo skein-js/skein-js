@@ -8,6 +8,12 @@
 import { randomUUID } from "node:crypto";
 
 import {
+  type AdmissionRepo,
+  type AdmissionKey,
+  type AdmissionReceipt,
+  type DispatchClaim,
+  type RunSettlement,
+  type SettledRun,
   compareNamespaces,
   DEFAULT_MAX_PAGE_SIZE,
   requireValidMaxPageSize,
@@ -175,8 +181,224 @@ function idempotencyKey(scope: string, key: string): string {
   return JSON.stringify([scope, key]);
 }
 
+function snapshotRunKwargs(kwargs: RunKwargs): RunKwargs {
+  const {
+    native_origin: _origin,
+    terminal_delivery: _delivery,
+    webhook,
+    ...rest
+  } = kwargs as RunKwargs & { native_origin?: unknown };
+  return _origin || _delivery ? rest : { ...rest, ...(webhook ? { webhook } : {}) };
+}
+
 /** In-process SkeinStore for development and tests. */
 export class MemorySkeinStore implements SkeinStore {
+  readonly #dispatches = new Map<
+    string,
+    DispatchClaim & { leaseUntil?: string; dispatched?: boolean }
+  >();
+  readonly #resumeReservations = new Map<string, string>();
+  readonly #admittedRunIds = new Set<string>();
+
+  #forgetAdmission(runId: string): void {
+    this.#admittedRunIds.delete(runId);
+    this.#dispatches.delete(runId);
+    for (const [expected, admitted] of this.#resumeReservations)
+      if (expected === runId || admitted === runId) this.#resumeReservations.delete(expected);
+  }
+
+  #replayAdmission(input: AdmissionKey): AdmissionReceipt | undefined {
+    const record = this.#idempotency.get(idempotencyKey(input.scope, input.key));
+    if (!record || record.expires_at <= input.now) return;
+    if (record.fingerprint !== input.fingerprint)
+      throw SkeinHttpError.conflict("The operation key was already used for different input.", {
+        code: "idempotency_key_reused",
+      });
+    if (!record.run_id || !record.thread_id)
+      throw SkeinHttpError.conflict("Admission is in progress.", {
+        code: "idempotency_key_in_flight",
+      });
+    return { idempotencyKey: input.key, runId: record.run_id, threadId: record.thread_id };
+  }
+
+  #recordAdmission(input: AdmissionKey, run: Run): AdmissionReceipt {
+    const receipt = { idempotencyKey: input.key, runId: run.run_id, threadId: run.thread_id };
+    write(this.#idempotency, idempotencyKey(input.scope, input.key), {
+      key: input.key,
+      scope: input.scope,
+      fingerprint: input.fingerprint,
+      claim_id: randomUUID(),
+      status: "done",
+      response: { status: 202, body: receipt },
+      run_id: run.run_id,
+      thread_id: run.thread_id,
+      created_at: input.now,
+      updated_at: input.now,
+      expires_at: input.expiresAt,
+    });
+    return receipt;
+  }
+
+  #dispatch(run: Run, kind: "run" | "cancel", action?: "interrupt" | "rollback"): void {
+    this.#admittedRunIds.add(run.run_id);
+    this.#dispatches.set(run.run_id, {
+      runId: run.run_id,
+      threadId: run.thread_id,
+      token: "",
+      kind,
+      notBefore:
+        kind === "run" ? (this.#runKwargs.get(run.run_id)?.queue_not_before ?? nowIso()) : nowIso(),
+      ...(action ? { action } : {}),
+    });
+  }
+
+  #settle(runId: string, input: RunSettlement): SettledRun {
+    const final = JSON.parse(serializeWireJson(input)) as RunSettlement;
+    const normalized = final.result;
+    const preparedDelivery = final.delivery;
+    const existing = this.#runs.get(runId);
+    let run = existing;
+    if (run && !isTerminalRunStatus(run.status)) {
+      const { error: _previous, ...rest } = run;
+      run = write(this.#runs, runId, {
+        ...rest,
+        status: final.status,
+        updated_at: nowIso(),
+        ...(final.error ? { error: final.error } : {}),
+      });
+    }
+    if (run && run.status === final.status && normalized && !this.#runResults.has(runId))
+      this.#runResults.set(runId, normalized);
+    const delivery = preparedDelivery
+      ? ((preparedDelivery.delivery_id
+          ? readOne(this.#deliveries, preparedDelivery.delivery_id)
+          : null) ??
+        this.#insertDelivery(runId, run?.status ?? final.status, preparedDelivery, false))
+      : undefined;
+    return { run: run ? clone(run) : null, ...(delivery ? { delivery } : {}) };
+  }
+
+  readonly admission: AdmissionRepo = {
+    admitRun: async (input) => {
+      input.signal?.throwIfAborted();
+      const replay = this.#replayAdmission(input);
+      if (replay) return replay;
+      // Serialize before mutating any map, so a rejected payload cannot partially commit.
+      const prepared = JSON.parse(serializeWireJson(input.run)) as RunCreate;
+      if (prepared.run_id && this.#runs.has(prepared.run_id))
+        throw SkeinHttpError.conflict("Run already exists.");
+      const thread = this.#threads.get(prepared.thread_id);
+      if (!thread) throw SkeinHttpError.notFound("Thread not found.");
+      if (input.guard.threadStatusIn && !input.guard.threadStatusIn.includes(thread.status))
+        throw SkeinHttpError.conflict("Thread status changed.", { code: "thread_status_mismatch" });
+      const active = [...this.#runs.values()].filter(
+        (run) => run.thread_id === thread.thread_id && !isTerminalRunStatus(run.status),
+      );
+      const displaced = JSON.parse(serializeWireJson(input.displacements ?? [])) as NonNullable<
+        typeof input.displacements
+      >;
+      if (
+        displaced.length &&
+        (active.length !== displaced.length ||
+          active.some((run) => !displaced.some((item) => item.runId === run.run_id)))
+      )
+        throw SkeinHttpError.conflict("Active runs changed.", { code: "thread_busy" });
+      if (input.guard.requireNoActiveRun && active.length)
+        throw SkeinHttpError.conflict("Thread is busy.", { code: "thread_busy" });
+      if (input.expectedRunId) {
+        const expected = this.#runs.get(input.expectedRunId);
+        const reservation = this.#resumeReservations.get(input.expectedRunId);
+        if (reservation && !this.#runs.has(reservation))
+          this.#resumeReservations.delete(input.expectedRunId);
+        if (
+          expected?.thread_id !== thread.thread_id ||
+          expected.status !== "interrupted" ||
+          this.#resumeReservations.has(input.expectedRunId)
+        )
+          throw SkeinHttpError.conflict("Resume target was consumed or changed.", {
+            code: "stale_resume",
+          });
+      }
+      for (const item of displaced) {
+        if (item.settlement.result) serializeWireJson(item.settlement.result);
+        if (item.settlement.delivery) serializeWireJson(item.settlement.delivery);
+      }
+      input.signal?.throwIfAborted();
+      for (const item of displaced) {
+        const settled = this.#settle(item.runId, item.settlement);
+        if (settled.run)
+          this.#dispatch(
+            settled.run,
+            "cancel",
+            prepared.multitask_strategy === "rollback" ? "rollback" : "interrupt",
+          );
+      }
+      const run = this.#createRun(prepared);
+      if (input.expectedRunId) this.#resumeReservations.set(input.expectedRunId, run.run_id);
+      this.#dispatch(run, "run");
+      return this.#recordAdmission(input, run);
+    },
+    admitCancel: async (input) => {
+      const replay = this.#replayAdmission(input);
+      if (replay) return replay;
+      const existing = this.#runs.get(input.runId);
+      if (!existing) throw SkeinHttpError.notFound("Run not found.");
+      if (input.delivery) serializeWireJson(input.delivery);
+      if (!isTerminalRunStatus(existing.status)) {
+        const settled = this.#settle(input.runId, {
+          status: "cancelled",
+          ...(input.delivery ? { delivery: input.delivery } : {}),
+        });
+        this.#dispatch(settled.run!, "cancel", input.action);
+      }
+      return this.#recordAdmission(input, this.#runs.get(input.runId)!);
+    },
+    claimDispatches: async (query) => {
+      const claimed: DispatchClaim[] = [];
+      for (const [runId, intent] of this.#dispatches) {
+        const run = this.#runs.get(runId);
+        if (!run) {
+          this.#dispatches.delete(runId);
+          continue;
+        }
+        if (
+          (intent.kind === "run" && isTerminalRunStatus(run.status)) ||
+          (intent.kind === "cancel" && intent.dispatched)
+        ) {
+          this.#dispatches.delete(runId);
+          continue;
+        }
+        if (intent.leaseUntil && intent.leaseUntil > query.now) continue;
+        if (claimed.length >= Math.max(1, Math.min(this.#pageLimit(query.limit), 1000))) break;
+        intent.token = randomUUID();
+        intent.leaseUntil = query.leaseUntil;
+        claimed.push(clone(intent));
+      }
+      return claimed;
+    },
+    markDispatched: async (runId, token) => {
+      const intent = this.#dispatches.get(runId);
+      if (intent?.token === token) intent.dispatched = true;
+    },
+  };
+
+  #createRun(input: RunCreate): Run {
+    const at = nowIso();
+    const run: Run = {
+      run_id: input.run_id ?? randomUUID(),
+      thread_id: input.thread_id,
+      assistant_id: input.assistant_id,
+      created_at: at,
+      updated_at: at,
+      status: input.status ?? "pending",
+      metadata: input.metadata ?? {},
+      multitask_strategy: input.multitask_strategy ?? null,
+    };
+    if (this.#runs.has(run.run_id)) throw SkeinHttpError.conflict("Run already exists.");
+    const stored = write(this.#runs, run.run_id, run);
+    if (input.kwargs) this.#runKwargs.set(run.run_id, clone(input.kwargs));
+    return stored;
+  }
   readonly #assistants = new Map<string, Assistant>();
   // Immutable version snapshots, keyed by `versionKey(assistant_id, version)`. The live #assistants
   // row always mirrors the currently-active version; this map is the append-only history.
@@ -628,6 +850,7 @@ export class MemorySkeinStore implements SkeinStore {
           this.#runs.delete(runId);
           this.#runKwargs.delete(runId);
           this.#runResults.delete(runId);
+          this.#forgetAdmission(runId);
         }
       }
       // Thread crons go too, mirroring the Postgres driver's `ON DELETE CASCADE`. This is what makes
@@ -643,6 +866,7 @@ export class MemorySkeinStore implements SkeinStore {
   };
 
   readonly runs: RunRepo = {
+    settle: async (id, final) => this.#settle(id, final),
     recordResult: async (runId, result) => {
       if (this.#runs.has(runId) && !this.#runResults.has(runId))
         this.#runResults.set(runId, JSON.parse(serializeWireJson(result)) as RunResult);
@@ -684,22 +908,7 @@ export class MemorySkeinStore implements SkeinStore {
       }
       return latest ? clone(latest) : null;
     },
-    create: async (input: RunCreate) => {
-      const at = nowIso();
-      const run: Run = {
-        run_id: input.run_id ?? randomUUID(),
-        thread_id: input.thread_id,
-        assistant_id: input.assistant_id,
-        created_at: at,
-        updated_at: at,
-        status: input.status ?? "pending",
-        metadata: input.metadata ?? {},
-        multitask_strategy: input.multitask_strategy ?? null,
-      };
-      const stored = write(this.#runs, run.run_id, run);
-      if (input.kwargs) this.#runKwargs.set(run.run_id, clone(input.kwargs));
-      return stored;
-    },
+    create: async (input: RunCreate) => this.#createRun(input),
     // Atomic here for free, and deliberately written to stay that way: the scan and the insert both run
     // to completion in a single event-loop turn (nothing here suspends, and `create`'s own body has no
     // `await`), so no other caller can interleave between them. Adding an `await` above the write would
@@ -742,6 +951,12 @@ export class MemorySkeinStore implements SkeinStore {
     setStatus: async (runId, status: RunStatus, error?: RunError) => {
       const existing = this.#runs.get(runId);
       if (!existing) throw SkeinHttpError.notFound(`Run "${runId}" not found.`);
+      if (
+        status === "running" &&
+        this.#admittedRunIds.has(runId) &&
+        isTerminalRunStatus(existing.status)
+      )
+        return clone(existing);
       // `error` is authoritative on every call, so a stale one is dropped rather than merged. The
       // conditional spread (over `error: undefined`) keeps the key genuinely absent on a run that
       // did not fail, matching the Postgres driver's NULL column.
@@ -757,6 +972,7 @@ export class MemorySkeinStore implements SkeinStore {
       this.#runs.delete(runId);
       this.#runKwargs.delete(runId);
       this.#runResults.delete(runId);
+      this.#forgetAdmission(runId);
     },
     getKwargs: async (runId) => {
       const found = this.#runKwargs.get(runId);
@@ -829,7 +1045,12 @@ export class MemorySkeinStore implements SkeinStore {
    * suspend — that is what keeps `finalizeWithDelivery` indivisible in this driver, exactly as a
    * single transaction is in Postgres. Same discipline as {@link #claimCron}.
    */
-  #insertDelivery(runId: string, runStatus: RunStatus, input: DeliveryCreate): Delivery {
+  #insertDelivery(
+    runId: string,
+    runStatus: RunStatus,
+    input: DeliveryCreate,
+    claimed = true,
+  ): Delivery {
     const at = nowIso();
     // `delivering` / `attempt: 1`, not `pending`: the engine attempts the first delivery inline, and
     // a row that started life pending would be picked up by a worker and delivered a second time.
@@ -841,8 +1062,8 @@ export class MemorySkeinStore implements SkeinStore {
       payload: input.payload ?? null,
       payload_truncated: input.payload_truncated ?? false,
       run_status: runStatus,
-      status: "delivering",
-      attempt: 1,
+      status: claimed ? "delivering" : "pending",
+      attempt: claimed ? 1 : 0,
       next_attempt_at: input.next_attempt_at,
       last_error: null,
       created_at: at,
@@ -1322,7 +1543,7 @@ export class MemorySkeinStore implements SkeinStore {
         { ...policy, expiresAt: this.#threadExpiry.get(id) ?? null },
       ]),
       runs: entries(this.#runs),
-      runKwargs: entries(this.#runKwargs),
+      runKwargs: entries(this.#runKwargs).map(([id, kwargs]) => [id, snapshotRunKwargs(kwargs)]),
       runResults: entries(this.#runResults),
       items: entries(this.#items),
       itemOptions: [...this.#items.keys()].map((id) => [
@@ -1349,7 +1570,13 @@ export class MemorySkeinStore implements SkeinStore {
     fill(this.#assistantVersions, snapshot.assistantVersions ?? []);
     fill(this.#threads, snapshot.threads);
     fill(this.#runs, snapshot.runs);
-    fill(this.#runKwargs, snapshot.runKwargs);
+    fill(
+      this.#runKwargs,
+      snapshot.runKwargs.map(([id, kwargs]) => [id, snapshotRunKwargs(kwargs)]),
+    );
+    this.#dispatches.clear();
+    this.#admittedRunIds.clear();
+    this.#resumeReservations.clear();
     fill(
       this.#runResults,
       (snapshot.runResults ?? []).filter(([id]) => this.#runs.has(id)),
@@ -1422,7 +1649,10 @@ export class MemorySkeinStore implements SkeinStore {
       if (policy.expiresAt != null) this.#threadExpiry.set(id, policy.expiresAt);
     }
     add(this.#runs, snapshot.runs);
-    add(this.#runKwargs, snapshot.runKwargs);
+    add(
+      this.#runKwargs,
+      snapshot.runKwargs.map(([id, kwargs]) => [id, snapshotRunKwargs(kwargs)]),
+    );
     for (const [id, result] of snapshot.runResults ?? []) await this.runs.recordResult!(id, result);
     const newItemIds = new Set(
       snapshot.items.filter(([id]) => !this.#items.has(id)).map(([id]) => id),

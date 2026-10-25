@@ -37,7 +37,8 @@
       "@skein-js/local": ["./packages/local/src/index.ts"],
       "@skein-js/example-local-workflow": ["./examples/local-workflow/src/index.ts"],
       "@skein-js/scaffold": ["./packages/scaffold/src/index.ts"],
-      "@skein-js/nx": ["./packages/nx/src/index.ts"]
+      "@skein-js/nx": ["./packages/nx/src/index.ts"],
+      "@skein-js/bullmq": ["./packages/bullmq/src/index.ts"]
     }
   },
   "exclude": ["node_modules", "dist"]

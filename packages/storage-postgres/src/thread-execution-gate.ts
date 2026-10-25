@@ -70,8 +70,10 @@ export function createPostgresThreadExecutionGate(
       // primitive. So the lease is marked dead and `release` becomes a no-op query-wise — issuing an
       // unlock on a dead socket would only throw.
       let connectionLost = false;
+      const ownership = new AbortController();
       const onClientError = (error: Error): void => {
         connectionLost = true;
+        ownership.abort(error);
         logger?.warn(
           `thread execution claim for "${threadId}" lost its connection; Postgres has already freed ` +
             `the lock, and the thread is claimable again`,
@@ -96,6 +98,7 @@ export function createPostgresThreadExecutionGate(
 
       let released = false;
       return {
+        signal: ownership.signal,
         release: async () => {
           if (released) return;
           released = true;

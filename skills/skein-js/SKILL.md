@@ -34,6 +34,21 @@ For an Nx or Turborepo workspace, use the matching skein-js workspace skill if i
 
 ## Protocol and hosting compatibility
 
+For retryable native work, use `createProtocolRuntime(deps).createNativeClient` with a stable trusted
+`sourceId` and required `allowedAssistants`. Pass host-verified `authContext` on every call when auth
+is enabled; graph/broker metadata never grants authority. Preserve returned receipt keys, reconcile
+via `getRun`/`getReceipt`/`getResult`, and resume with the expected interrupted run/checkpoint.
+`cancel` reports status separately from confirmed stop; use `wait: true` when shutdown must be complete.
+An optional source `outcomeTarget` enables complete durable terminal outcomes. SQLite process loss
+records failure and an owed outcome without replaying abandoned input. See
+[native access](https://skein-js.github.io/skein-js/native-access).
+
+For external BullMQ commands/outcomes, compose the optional `@skein-js/bullmq` factory's dispatcher,
+bind its stable `outcomeTarget` on the native source, and explicitly `start`/`stop` consumption.
+Keep caller verification, routing, deadlines and projection host-controlled. Persist receiver event
+deduplication independently of BullMQ job retention. Retrieve missed/large output with authorized
+`result.get` chunks and verify their digest. Preserve Skein's internal execution/delivery queues.
+
 Use the dated [Agent Server matrix](https://skein-js.github.io/skein-js/langgraph-compatibility)
 when choosing clients. Legacy SDK React and dedicated framework packages use different streaming
 contracts. Modern thread subscriptions are separate from run commands: reconnect only reopens the

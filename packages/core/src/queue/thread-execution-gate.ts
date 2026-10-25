@@ -17,6 +17,8 @@
  * the duration of.
  */
 export interface ThreadExecutionLease {
+  /** Aborted when ownership is lost, independently of normal release. */
+  readonly signal?: AbortSignal;
   release(): Promise<void>;
 }
 

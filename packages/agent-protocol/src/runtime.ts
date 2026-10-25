@@ -14,11 +14,7 @@ import {
 } from "./auth/authenticate-request.js";
 import { createAuthorizingHandlers } from "./auth/authorizing-handlers.js";
 import { authValue, ROUTE_AUTHZ } from "./auth/route-authz.js";
-import { createRouteMatcher, skeinRoutes, type RouteBinding } from "./http/routes.js";
-import { instrumentHttpHandlers } from "./meta/http-telemetry.js";
-import { apiDocsHtml, createOpenApiDocument } from "./meta/openapi.js";
-
-import { createContext } from "./context.js";
+import { createContext, type ProtocolContext } from "./context.js";
 import {
   createProtocolHandlers,
   type ProtocolHandlerExtras,
@@ -36,12 +32,18 @@ import {
   type DeliveryWorkerOptions,
 } from "./deliveries/delivery-worker.js";
 import type { ProtocolDeps } from "./deps.js";
+import { createRouteMatcher, skeinRoutes, type RouteBinding } from "./http/routes.js";
 import {
   createIdempotencySweeper,
   type IdempotencySweeper,
   type IdempotencySweeperOptions,
 } from "./idempotency/idempotency-sweeper.js";
 import { createIdempotentHandlers } from "./idempotency/idempotent-handlers.js";
+import { instrumentHttpHandlers } from "./meta/http-telemetry.js";
+import { apiDocsHtml, createOpenApiDocument } from "./meta/openapi.js";
+import { createNativeClientFromContext } from "./native/create-native-client.js";
+import type { NativeClient, NativeSourceOptions } from "./native/native-client.js";
+import { createNativeRecovery } from "./native/native-recovery.js";
 import { createRunWorker, type RunWorker, type RunWorkerOptions } from "./runs/run-worker.js";
 import { createProtocolServiceFromContext, type ProtocolService } from "./service.js";
 import {
@@ -80,11 +82,12 @@ export interface ProtocolRuntimeOptions {
    * Injected rather than assembled here, because `@skein-js/channels` is optional: a deployment that
    * configures no channel must not have to install it, so the engine cannot import it.
    */
-  handlers?: ProtocolHandlerExtras;
+  handlers?: ProtocolHandlerExtras | ((context: ProtocolContext) => ProtocolHandlerExtras);
 }
 
 /** The wired engine: the service, the handler table, the background worker, and the cron scheduler. */
 export interface ProtocolRuntime {
+  createNativeClient?: (source: NativeSourceOptions) => NativeClient;
   /** Native responses for custom apps/assets, before protocol routing. Optional for older runtimes. */
   handleRequest?: (request: Request) => Promise<Response | undefined>;
   /** High-level operations over assistants / threads / runs / crons / store. */
@@ -142,15 +145,18 @@ export interface ProtocolRuntime {
 export function createProtocolRuntime(
   deps: ProtocolDeps,
   options: ProtocolRuntimeOptions = {},
-): ProtocolRuntime {
+): ProtocolRuntime & { createNativeClient(source: NativeSourceOptions): NativeClient } {
   // Resolved before the context is built, so `GET /info` reports what this server actually serves
   // rather than what the engine can do in principle.
   const cronsEnabled = options.scheduler?.enabled ?? deps.cronsEnabled ?? true;
   const context = createContext({ ...deps, cronsEnabled });
   const service = createProtocolServiceFromContext(context);
+  const nativeRecovery = createNativeRecovery(context);
   // When an auth engine is injected, every request is authenticated + authorized through one
   // transport-neutral seam; without it, the handler table is unchanged (unauthenticated, as before).
-  const handlerExtras = { ...options.handlers };
+  const handlerExtras = {
+    ...(typeof options.handlers === "function" ? options.handlers(context) : options.handlers),
+  };
   const mountedRoutes = options.routes ?? skeinRoutes;
   const matchAuthExemptRoute = createRouteMatcher(
     mountedRoutes.filter((route) => isProtocolAuthExempt(route.handler)),
@@ -394,6 +400,7 @@ export function createProtocolRuntime(
       },
     ),
     service,
+    createNativeClient: (source) => createNativeClientFromContext(context, source),
     handlers,
     scheduler,
     threadTtlSweeper,
@@ -405,6 +412,7 @@ export function createProtocolRuntime(
       },
       start: () => {
         worker.start();
+        nativeRecovery.start();
         scheduler.start();
         threadTtlSweeper.start();
         idempotencySweeper.start();
@@ -412,6 +420,7 @@ export function createProtocolRuntime(
         deliveryConsumer ??= consumeDeliveries();
       },
       stop: async () => {
+        await nativeRecovery.stop();
         await scheduler.stop();
         // Before the worker drains: a sweep deletes threads, and doing that while runs are still
         // settling would race the very rows they are writing.

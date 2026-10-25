@@ -124,6 +124,9 @@ jobs:
       - name: Packed SDK, MCP and A2A consumers
         run: pnpm exec nx run test-support:test-compatibility-consumer --output-style=stream
 
+      - name: Packed native and BullMQ consumers
+        run: pnpm exec nx run test-support:test-native-consumer --output-style=stream
+
   # Runs `packages/bench` for its **bounds**, never for its numbers.
   #
   # Same principle as `runtime-matrix` below: co-tenancy on a shared runner moves timings, not pass/fail.

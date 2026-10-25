@@ -4,8 +4,8 @@
 // genuine graph error.
 //
 // The registry itself is per-process — it holds `AbortController`s, which cannot leave one. What crosses
-// instances is the *request*: when a `RunAbortChannel` is configured, an abort for a run this process is
-// not executing is republished on it, so it reaches whichever instance is. See `RunAbortChannel`.
+// instances is the *request*: when a `RunAbortChannel` is configured, explicit aborts are broadcast
+// so they reach every executor or recovery waiter for that run. See `RunAbortChannel`.
 
 import type { RunAbortChannel } from "@skein-js/core";
 
@@ -32,6 +32,7 @@ export interface RunControl {
 }
 
 interface ControlEntry {
+  registrations: number;
   controller: AbortController;
   reason: { current: AbortReason | null };
   abort(reason: AbortReason): void;
@@ -40,7 +41,8 @@ interface ControlEntry {
 export class RunControlRegistry {
   readonly #entries = new Map<string, ControlEntry>();
   /**
-   * Where an abort for a run this process is not executing goes. Set once by the runtime when a
+   * Where explicit abort requests go. A local registration may only be a recovery waiter, so it
+   * cannot prove this process holds execution rights. Set once by the runtime when a
    * `RunAbortChannel` is configured; absent means single-process, which is the default and was the only
    * behaviour before.
    */
@@ -48,7 +50,7 @@ export class RunControlRegistry {
   #logger?: Logger;
 
   /**
-   * Broadcast aborts that miss locally onto `channel`, so they reach the instance that is executing the
+   * Broadcast explicit aborts onto `channel`, so they reach the instance that is executing the
    * run. Called by the runtime during assembly, before any run starts.
    */
   useAbortChannel(channel: RunAbortChannel, logger?: Logger): void {
@@ -58,6 +60,11 @@ export class RunControlRegistry {
 
   /** Start tracking a run and return its abort signal + reason box. */
   register(runId: string): RunControl {
+    const existing = this.#entries.get(runId);
+    if (existing) {
+      existing.registrations++;
+      return { signal: existing.controller.signal, reason: existing.reason, abort: existing.abort };
+    }
     const controller = new AbortController();
     const reason: { current: AbortReason | null } = { current: null };
     const abort = (next: AbortReason): void => {
@@ -65,27 +72,24 @@ export class RunControlRegistry {
       if (reason.current === null) reason.current = next;
       controller.abort();
     };
-    this.#entries.set(runId, { controller, reason, abort });
+    this.#entries.set(runId, { registrations: 1, controller, reason, abort });
     return { signal: controller.signal, reason, abort };
   }
 
   /**
    * Abort a tracked run with a reason. Returns whether it was aborted **here** — false means this
-   * process is not executing it.
+   * process has no registration for it.
    *
-   * A false also publishes the request on the abort channel, when one is configured: "not executing
-   * here" is exactly the multi-instance case, so the request is forwarded rather than dropped. Published
+   * Always publishes on the configured abort channel: a local registration may be waiting behind a
+   * remote executor. This includes shutdown's grace-expiry aborts, which must reach that owner too. Published
    * fire-and-forget — the caller has already marked the run terminal in the store, so a publish failure
    * costs promptness, not correctness, and must not fail the cancel that triggered it.
    */
   abort(runId: string, reason: AbortReason): boolean {
     const entry = this.#entries.get(runId);
-    if (!entry) {
-      this.#forwardAbort(runId, reason);
-      return false;
-    }
-    entry.abort(reason);
-    return true;
+    entry?.abort(reason);
+    this.#forwardAbort(runId, reason);
+    return entry !== undefined;
   }
 
   /**
@@ -107,10 +111,11 @@ export class RunControlRegistry {
 
   /** Stop tracking a run once it has settled. */
   clear(runId: string): void {
-    this.#entries.delete(runId);
+    const entry = this.#entries.get(runId);
+    if (entry && --entry.registrations === 0) this.#entries.delete(runId);
   }
 
-  /** Whether a run is currently being tracked (i.e. executing). */
+  /** Whether a run has an executing or waiting registration. */
   isTracking(runId: string): boolean {
     return this.#entries.has(runId);
   }

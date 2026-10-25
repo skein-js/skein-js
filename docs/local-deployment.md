@@ -34,13 +34,17 @@ const runtime = createProtocolRuntime(local.deps);
 await runtime.service.assistants.registerGraphAssistants();
 runtime.worker.start();
 
-// Use runtime.service, or give local.deps to an existing framework adapter.
+// For authorized receipt-based work, use runtime.createNativeClient({sourceId, allowedAssistants}).
+// Use runtime.service for trusted administration, or give local.deps to a framework adapter.
 // The host stops its worker/adapter before disposing owned resources.
 await runtime.worker.stop();
 await local.dispose();
 ```
 
 The helper starts no assistants, workers, listener, application process or global signal handler.
+See [native access](./native-access.md) for durable receipts, retained results and strict resume
+without HTTP. Native process-loss outcomes use the existing outbox; SQLite still never automatically
+replays an abandoned execution.
 It owns storage and a small item-expiry timer. The existing protocol runtime owns the scheduler,
 thread-retention sweep, idempotency sweep and delivery worker. An adapter manages that runtime's
 lifecycle through its existing APIs. `dispose()` is idempotent.

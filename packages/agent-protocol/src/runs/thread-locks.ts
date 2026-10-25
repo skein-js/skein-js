@@ -46,7 +46,7 @@ export async function withThreadExecution<T>(
   locks: ThreadLocks,
   gate: ThreadExecutionGate | undefined,
   threadId: string,
-  task: () => Promise<T>,
+  task: (leaseSignal?: AbortSignal) => Promise<T>,
 ): Promise<T> {
   return locks.run(threadId, async () => {
     if (!gate) return task();
@@ -59,7 +59,8 @@ export async function withThreadExecution<T>(
       throw new Error(`could not claim thread "${threadId}" for execution`, { cause: error });
     }
     try {
-      return await task();
+      lease.signal?.throwIfAborted();
+      return await task(lease.signal);
     } finally {
       await lease.release();
     }

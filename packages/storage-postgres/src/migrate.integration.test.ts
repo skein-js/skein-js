@@ -89,6 +89,7 @@ describe("applySkeinMigrations", () => {
       "0012_store_write_options",
       "0013_thread_retention",
       "0014_run_results",
+      "0015_native_admission",
     ]);
 
     expect((await readLedger(pool)).map((row) => row.name)).toEqual([
@@ -106,6 +107,7 @@ describe("applySkeinMigrations", () => {
       "0012_store_write_options",
       "0013_thread_retention",
       "0014_run_results",
+      "0015_native_admission",
     ]);
 
     for (const table of [
@@ -329,6 +331,7 @@ describe("applySkeinMigrations", () => {
       "0012_store_write_options",
       "0013_thread_retention",
       "0014_run_results",
+      "0015_native_admission",
     ]);
 
     const ledger = await readLedger(pool);
@@ -347,6 +350,7 @@ describe("applySkeinMigrations", () => {
       "0012_store_write_options",
       "0013_thread_retention",
       "0014_run_results",
+      "0015_native_admission",
     ]);
     // The pre-existing row is untouched, so 0001_init was not re-applied.
     expect(ledger[0]).toEqual(legacyRow);
@@ -427,11 +431,57 @@ describe("applySkeinMigrations", () => {
       "0012_store_write_options",
       "0013_thread_retention",
       "0014_run_results",
+      "0015_native_admission",
     ]);
   });
 });
 
 describe("PostgresSkeinStore.migrate", () => {
+  it("upgrades populated result/outbox tables from the merged runtime without rewriting them", async () => {
+    const url = await createScratchDatabase("migrate_native_populated");
+    const pool = new Pool({ connectionString: url });
+    openPools.push(pool);
+    await pool.query(LEGACY_LEDGER_DDL);
+    for (const migration of SKEIN_MIGRATIONS.slice(0, -1)) {
+      for (const statement of migration.statements ?? [migration.up]) await pool.query(statement);
+      await pool.query("INSERT INTO skein_migrations(name,run_on) VALUES($1,now())", [
+        migration.name,
+      ]);
+    }
+    await pool.query("INSERT INTO threads(thread_id,status) VALUES('existing-thread','idle')");
+    await pool.query(
+      "INSERT INTO runs(run_id,thread_id,assistant_id,status,result) VALUES('existing-run','existing-thread','agent','success',$1::jsonb)",
+      [JSON.stringify({ values: { answer: "retained" } })],
+    );
+    await pool.query(
+      "INSERT INTO deliveries(delivery_id,run_id,thread_id,url,payload,run_status,status,next_attempt_at,expires_at) VALUES('existing-delivery','existing-run','existing-thread','https://receiver.example/old',$1::jsonb,'success','pending',now(),now()+interval '1 day')",
+      [JSON.stringify({ answer: "owed" })],
+    );
+    expect(await applySkeinMigrations(pool)).toEqual(["0015_native_admission"]);
+    const store = await PostgresSkeinStore.connect(url);
+    try {
+      expect(await store.runs.getResult!("existing-run")).toEqual({
+        values: { answer: "retained" },
+      });
+      expect(await store.deliveries.get("existing-delivery")).toMatchObject({
+        payload: { answer: "owed" },
+        run_status: "success",
+      });
+      expect(
+        await store.admission.admitRun({
+          scope: "upgrade",
+          key: "first",
+          fingerprint: "one",
+          now: new Date().toISOString(),
+          expiresAt: new Date(Date.now() + 60000).toISOString(),
+          run: { thread_id: "existing-thread", assistant_id: "agent" },
+          guard: { requireNoActiveRun: true },
+        }),
+      ).toMatchObject({ threadId: "existing-thread" });
+    } finally {
+      await store.close();
+    }
+  });
   it("migrates on its own pool and leaves the store usable", async () => {
     const url = await createScratchDatabase("migrate_store_smoke");
     const store = await PostgresSkeinStore.connect(url);

@@ -256,10 +256,14 @@ describe("authorization — the guard nothing else enforces", () => {
 
     await handleInboundEvent(registeredOf(channelOf()), request, depsOf({ authorize }).deps);
 
-    expect(authorize).toHaveBeenCalledWith(expect.anything(), {
-      resource: "threads",
-      action: "create_run",
-    });
+    expect(authorize).toHaveBeenCalledWith(
+      expect.anything(),
+      {
+        resource: "threads",
+        action: "create_run",
+      },
+      expect.objectContaining({ assistant_id: "support", thread_id: expect.any(String) }),
+    );
   });
 
   it("creates no run when the deployment's Auth block denies", async () => {

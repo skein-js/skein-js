@@ -263,7 +263,7 @@ describe("heap pressure monitor lifecycle", () => {
     clears.mockRestore();
   });
 
-  it("schedules nothing when the monitor is disabled", async () => {
+  it("schedules only admission recovery when the monitor is disabled", async () => {
     process.env["SKEIN_HEAP_WARN_PERCENT"] = "0";
     const timers = vi.spyOn(globalThis, "setInterval");
 
@@ -272,7 +272,8 @@ describe("heap pressure monitor lifecycle", () => {
       logger: silentLogger(),
     });
 
-    expect(timers).not.toHaveBeenCalled();
+    expect(timers).toHaveBeenCalledTimes(1);
+    expect(timers).toHaveBeenCalledWith(expect.any(Function), 1000);
     await runtime.worker.stop();
     timers.mockRestore();
   });

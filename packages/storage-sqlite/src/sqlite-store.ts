@@ -1,6 +1,12 @@
 import { randomUUID } from "node:crypto";
 
 import {
+  type AdmissionRepo,
+  type AdmissionKey,
+  type AdmissionReceipt,
+  type DispatchClaim,
+  type RunSettlement,
+  type SettledRun,
   DEFAULT_MAX_PAGE_SIZE,
   requireValidMaxPageSize,
   isMetadataSubset,
@@ -37,6 +43,8 @@ import {
 } from "@skein-js/core";
 import type { Database } from "better-sqlite3";
 
+import { insertDelivery } from "./insert-delivery.js";
+
 type Table =
   | "assistants"
   | "assistant_versions"
@@ -52,6 +60,187 @@ const json = (value: unknown): string => JSON.stringify(value);
 
 /** JSON resources retain the wire shape; indexed generated columns carry relational constraints. */
 export class SqliteSkeinStore implements SkeinStore {
+  private replayAdmission(input: AdmissionKey): AdmissionReceipt | undefined {
+    const record = this.get<IdempotencyRecord>("idempotency", pairKey(input.scope, input.key));
+    if (!record || record.expires_at <= input.now) return;
+    if (record.fingerprint !== input.fingerprint)
+      throw SkeinHttpError.conflict("The operation key was already used for different input.", {
+        code: "idempotency_key_reused",
+      });
+    if (!record.run_id || !record.thread_id)
+      throw SkeinHttpError.conflict("Admission is in progress.", {
+        code: "idempotency_key_in_flight",
+      });
+    return { idempotencyKey: input.key, runId: record.run_id, threadId: record.thread_id };
+  }
+
+  private recordAdmission(input: AdmissionKey, run: Run): AdmissionReceipt {
+    const receipt = { idempotencyKey: input.key, runId: run.run_id, threadId: run.thread_id };
+    this.write<IdempotencyRecord>("idempotency", pairKey(input.scope, input.key), {
+      key: input.key,
+      scope: input.scope,
+      fingerprint: input.fingerprint,
+      claim_id: randomUUID(),
+      status: "done",
+      response: { status: 202, body: receipt },
+      run_id: run.run_id,
+      thread_id: run.thread_id,
+      created_at: input.now,
+      updated_at: input.now,
+      expires_at: input.expiresAt,
+    });
+    return receipt;
+  }
+
+  private dispatch(run: Run, kind: "run" | "cancel", action?: "interrupt" | "rollback"): void {
+    const kwargs = this.database
+      .prepare("SELECT kwargs FROM skein_runs WHERE key=?")
+      .get(run.run_id) as { kwargs: string | null };
+    const notBefore =
+      kind === "run" && kwargs.kwargs
+        ? ((JSON.parse(kwargs.kwargs) as RunKwargs).queue_not_before ?? nowIso())
+        : nowIso();
+    this.database
+      .prepare(
+        `INSERT INTO skein_native_dispatch(run_id,thread_id,kind,action,not_before)
+VALUES(?,?,?,?,?) ON CONFLICT(run_id) DO UPDATE SET kind=excluded.kind,action=excluded.action,not_before=excluded.not_before,token=NULL,lease_until=NULL,dispatched=0`,
+      )
+      .run(run.run_id, run.thread_id, kind, action ?? null, notBefore);
+  }
+
+  private settleRun(id: string, final: RunSettlement): SettledRun {
+    const result = final.result === undefined ? undefined : serializeWireJson(final.result);
+    if (final.delivery) serializeWireJson(final.delivery);
+    const existing = this.get<Run>("runs", id);
+    const run =
+      existing && !isTerminalRunStatus(existing.status)
+        ? this.setRunStatus(id, final.status, final.error)
+        : existing;
+    if (run?.status === final.status && result !== undefined)
+      this.database
+        .prepare("UPDATE skein_runs SET result=? WHERE key=? AND result IS NULL")
+        .run(result, id);
+    const delivery = final.delivery
+      ? ((final.delivery.delivery_id
+          ? this.get<Delivery>("deliveries", final.delivery.delivery_id)
+          : null) ??
+        insertDelivery(this.database, id, run?.status ?? final.status, final.delivery, false))
+      : undefined;
+    return { run, ...(delivery ? { delivery } : {}) };
+  }
+
+  readonly admission: AdmissionRepo = {
+    admitRun: async (input) =>
+      this.database.transaction(() => {
+        input.signal?.throwIfAborted();
+        const replay = this.replayAdmission(input);
+        if (replay) return replay;
+        const prepared = JSON.parse(serializeWireJson(input.run)) as RunCreate;
+        const thread = this.require<Thread>("threads", prepared.thread_id);
+        if (input.guard.threadStatusIn && !input.guard.threadStatusIn.includes(thread.status))
+          throw SkeinHttpError.conflict("Thread status changed.", {
+            code: "thread_status_mismatch",
+          });
+        const active = this.rows<Run>(
+          "SELECT body FROM skein_runs WHERE thread_id=? AND status IN ('pending','running')",
+          thread.thread_id,
+        );
+        const displaced = input.displacements ?? [];
+        if (
+          displaced.length &&
+          (active.length !== displaced.length ||
+            active.some((run) => !displaced.some((item) => item.runId === run.run_id)))
+        )
+          throw SkeinHttpError.conflict("Active runs changed.", { code: "thread_busy" });
+        if (input.guard.requireNoActiveRun && active.length)
+          throw SkeinHttpError.conflict("Thread is busy.", { code: "thread_busy" });
+        if (input.expectedRunId) {
+          const expected = this.get<Run>("runs", input.expectedRunId);
+          if (
+            expected?.thread_id !== thread.thread_id ||
+            expected.status !== "interrupted" ||
+            this.database
+              .prepare("SELECT 1 FROM skein_native_resumes WHERE expected_run_id=?")
+              .get(input.expectedRunId)
+          )
+            throw SkeinHttpError.conflict("Resume target was consumed or changed.", {
+              code: "stale_resume",
+            });
+        }
+        for (const item of displaced) {
+          input.signal?.throwIfAborted();
+          const settled = this.settleRun(item.runId, item.settlement);
+          if (settled.run)
+            this.dispatch(
+              settled.run,
+              "cancel",
+              prepared.multitask_strategy === "rollback" ? "rollback" : "interrupt",
+            );
+        }
+        input.signal?.throwIfAborted();
+        const run = this.createRun(prepared);
+        if (input.expectedRunId)
+          this.database
+            .prepare("INSERT INTO skein_native_resumes(expected_run_id,run_id) VALUES (?,?)")
+            .run(input.expectedRunId, run.run_id);
+        this.dispatch(run, "run");
+        const receipt = this.recordAdmission(input, run);
+        input.signal?.throwIfAborted();
+        return receipt;
+      })(),
+    admitCancel: async (input) =>
+      this.database.transaction(() => {
+        const replay = this.replayAdmission(input);
+        if (replay) return replay;
+        const existing = this.require<Run>("runs", input.runId);
+        if (!isTerminalRunStatus(existing.status)) {
+          const settled = this.settleRun(input.runId, {
+            status: "cancelled",
+            ...(input.delivery ? { delivery: input.delivery } : {}),
+          });
+          this.dispatch(settled.run!, "cancel", input.action);
+        }
+        return this.recordAdmission(input, this.require<Run>("runs", input.runId));
+      })(),
+    claimDispatches: async (query) =>
+      this.database.transaction(() => {
+        type DispatchRow = Omit<DispatchClaim, "token" | "action"> & {
+          action: DispatchClaim["action"] | null;
+        };
+        const limit = Math.max(1, Math.min(this.limit(query.limit), 1000));
+        const rows = this.database
+          .prepare(
+            `SELECT d.run_id AS runId,d.thread_id AS threadId,d.kind,d.action,d.not_before AS notBefore
+FROM skein_native_dispatch d WHERE d.kind='cancel' AND d.dispatched=0
+AND (d.lease_until IS NULL OR d.lease_until<=?) ORDER BY d.lease_until,d.run_id LIMIT ?`,
+          )
+          .all(query.now, limit) as DispatchRow[];
+        if (rows.length < limit)
+          rows.push(
+            ...(this.database
+              .prepare(
+                `SELECT d.run_id AS runId,d.thread_id AS threadId,d.kind,d.action,d.not_before AS notBefore
+FROM skein_runs r JOIN skein_native_dispatch d ON d.run_id=r.key
+WHERE r.status IN ('pending','running') AND d.kind='run'
+AND (d.lease_until IS NULL OR d.lease_until<=?) ORDER BY r.key LIMIT ?`,
+              )
+              .all(query.now, limit - rows.length) as DispatchRow[]),
+          );
+        return rows.map((row) => {
+          const token = randomUUID();
+          this.database
+            .prepare("UPDATE skein_native_dispatch SET token=?,lease_until=? WHERE run_id=?")
+            .run(token, query.leaseUntil, row.runId);
+          const { action, ...rest } = row;
+          return { ...rest, token, ...(action ? { action } : {}) };
+        });
+      })(),
+    markDispatched: async (runId, token) => {
+      this.database
+        .prepare("UPDATE skein_native_dispatch SET dispatched=1 WHERE run_id=? AND token=?")
+        .run(runId, token);
+    },
+  };
   readonly durable = true;
   readonly maxPageSize: number;
   constructor(
@@ -393,7 +582,14 @@ export class SqliteSkeinStore implements SkeinStore {
     );
   }
   private setRunStatus(id: string, status: Run["status"], error?: Run["error"]): Run {
-    const { error: _previous, ...existing } = this.require<Run>("runs", id);
+    const current = this.require<Run>("runs", id);
+    if (
+      status === "running" &&
+      isTerminalRunStatus(current.status) &&
+      this.database.prepare("SELECT 1 FROM skein_native_dispatch WHERE run_id=?").get(id)
+    )
+      return current;
+    const { error: _previous, ...existing } = current;
     return this.write("runs", id, {
       ...existing,
       status,
@@ -402,6 +598,7 @@ export class SqliteSkeinStore implements SkeinStore {
     });
   }
   readonly runs: RunRepo = {
+    settle: async (id, final) => this.database.transaction(() => this.settleRun(id, final))(),
     recordResult: async (id, result) => {
       if (this.get("runs", id))
         this.database
@@ -735,24 +932,7 @@ export class SqliteSkeinStore implements SkeinStore {
         .run(now).changes,
   };
   private insertDelivery(runId: string, status: Run["status"], input: DeliveryCreate): Delivery {
-    const at = nowIso();
-    const id = input.delivery_id ?? randomUUID();
-    return this.insert<Delivery>("deliveries", id, {
-      delivery_id: id,
-      run_id: runId,
-      thread_id: input.thread_id,
-      url: input.url,
-      payload: input.payload ?? null,
-      payload_truncated: input.payload_truncated ?? false,
-      run_status: status,
-      status: "delivering",
-      attempt: 1,
-      next_attempt_at: input.next_attempt_at,
-      last_error: null,
-      created_at: at,
-      updated_at: at,
-      expires_at: input.expires_at,
-    });
+    return insertDelivery(this.database, runId, status, input);
   }
   private dueDeliveries(now: string, limit?: number): Delivery[] {
     return this.rows(

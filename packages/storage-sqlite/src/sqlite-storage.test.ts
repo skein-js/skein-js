@@ -31,6 +31,40 @@ runSkeinStoreConformance("sqlite", async (options) => (await open(options)).stor
 runRunQueueConformance("sqlite", async () => (await open()).queue);
 
 describe("durability and ownership", () => {
+  it("upgrades a populated version-3 file and preserves immutable results", async () => {
+    const storage = await open();
+    const filename = storage.database.name;
+    const thread = await storage.store.threads.create();
+    const run = await storage.store.runs.create({
+      thread_id: thread.thread_id,
+      assistant_id: "agent",
+      status: "success",
+    });
+    await storage.store.runs.recordResult!(run.run_id, { values: { answer: "retained" } });
+    storage.database.exec(
+      "DROP TABLE skein_native_resumes; DROP TABLE skein_native_dispatch; DROP INDEX skein_runs_inflight; DELETE FROM skein_migrations WHERE version=4",
+    );
+    await storage.dispose();
+    const reopened = await openSqliteStorage({ filename });
+    try {
+      expect(await reopened.store.runs.getResult!(run.run_id)).toEqual({
+        values: { answer: "retained" },
+      });
+      expect(
+        await reopened.store.admission!.admitRun({
+          scope: "upgrade",
+          key: "first",
+          fingerprint: "one",
+          now: new Date().toISOString(),
+          expiresAt: new Date(Date.now() + 60000).toISOString(),
+          run: { thread_id: thread.thread_id, assistant_id: "agent" },
+          guard: { requireNoActiveRun: true },
+        }),
+      ).toMatchObject({ threadId: thread.thread_id });
+    } finally {
+      await reopened.dispose();
+    }
+  });
   it("commits run intent and original due time together before enqueue", async () => {
     const storage = await open();
     const filename = storage.database.name;

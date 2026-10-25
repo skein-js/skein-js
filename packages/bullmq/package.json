@@ -1,0 +1,49 @@
+{
+  "name": "@skein-js/bullmq",
+  "version": "0.21.0",
+  "description": "Optional BullMQ command and outcome transport for Skein agents.",
+  "license": "Apache-2.0",
+  "homepage": "https://github.com/skein-js/skein-js/tree/main/packages/bullmq#readme",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/skein-js/skein-js.git",
+    "directory": "packages/bullmq"
+  },
+  "bugs": {
+    "url": "https://github.com/skein-js/skein-js/issues"
+  },
+  "type": "module",
+  "main": "./dist/index.js",
+  "module": "./dist/index.js",
+  "types": "./dist/index.d.ts",
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "import": "./dist/index.js",
+      "default": "./dist/index.js"
+    }
+  },
+  "files": [
+    "dist",
+    "LICENSE",
+    "README.md"
+  ],
+  "sideEffects": false,
+  "engines": {
+    "node": ">=20"
+  },
+  "dependencies": {
+    "@skein-js/agent-protocol": "workspace:*",
+    "@skein-js/core": "workspace:*",
+    "bullmq": "^5.0.0",
+    "zod": "^3.25.76"
+  },
+  "devDependencies": {
+    "@skein-js/test-support": "workspace:*",
+    "@skein-js/storage-memory": "workspace:*",
+    "ioredis": "^5.4.0"
+  },
+  "publishConfig": {
+    "access": "public"
+  }
+}

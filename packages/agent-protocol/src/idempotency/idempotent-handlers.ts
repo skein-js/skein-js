@@ -22,6 +22,7 @@ import type {
 } from "../create-handlers.js";
 import type { Clock, Logger } from "../deps.js";
 
+import { bindRequestAdmission } from "./admission-input.js";
 import { idempotencyScope, requestFingerprint } from "./fingerprint.js";
 import type { IdempotencyConfig } from "./idempotency-config.js";
 
@@ -199,14 +200,42 @@ export function createIdempotentHandlers(
       }
 
       let response: ProtocolResponse;
+      if (name === "createBackgroundRun" && options.store.admission)
+        bindRequestAdmission(req, {
+          scope: `admission ${scope}`,
+          key,
+          fingerprint,
+          now: new Date(now).toISOString(),
+          expiresAt: new Date(now + retentionMs).toISOString(),
+        });
       try {
         response = await handlers[name](req);
       } catch (error) {
-        // Failures are deliberately never recorded — pinning a transient 503 for the whole retention
-        // would make a momentary outage permanent for that key, and every retry for the next day
-        // would replay the failure instead of trying again.
-        await release(options, scope, key, claimId);
-        throw error;
+        const accepted =
+          name === "createBackgroundRun" && options.store.admission
+            ? await options.store.idempotency.get(`admission ${scope}`, key)
+            : null;
+        if (accepted?.run_id) {
+          await options.authorizeReplay?.(req, name, accepted.thread_id);
+          const run = await options.store.runs.get(accepted.run_id);
+          if (run)
+            response = {
+              kind: "json",
+              status: 200,
+              body: run,
+              headers: { "content-location": `/threads/${run.thread_id}/runs/${run.run_id}` },
+            };
+          else {
+            await release(options, scope, key, claimId);
+            throw error;
+          }
+        } else {
+          // Failures are deliberately never recorded — pinning a transient 503 for the whole retention
+          // would make a momentary outage permanent for that key, and every retry for the next day
+          // would replay the failure instead of trying again.
+          await release(options, scope, key, claimId);
+          throw error;
+        }
       }
 
       if (response.kind !== "json" || response.status >= 300) {

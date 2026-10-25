@@ -75,6 +75,7 @@ describe("SKEIN_MIGRATIONS", () => {
       "0012_store_write_options",
       "0013_thread_retention",
       "0014_run_results",
+      "0015_native_admission",
     ]);
   });
 

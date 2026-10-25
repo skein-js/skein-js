@@ -68,6 +68,25 @@ describe("wrapChannelDispatcher", () => {
     expect(deliver).not.toHaveBeenCalled();
   });
 
+  it("forwards only the stable delivery ID and attempt to destination callbacks", async () => {
+    const deliver = vi.fn().mockResolvedValue(undefined);
+    const dispatch = wrapChannelDispatcher({
+      registry: registryOf({ name: "twilio", verify: vi.fn(), parseEvent: vi.fn(), deliver }),
+      inner: vi.fn(),
+      logger: { warn: vi.fn() },
+    });
+    await dispatch(toChannelDeliveryUrl({ channelName: "twilio", replyTo: "sender" }), settled, {
+      deliveryId: "stable",
+      attempt: 3,
+      headers: { secret: "private" },
+      body: "signed bytes",
+    });
+    expect(deliver).toHaveBeenCalledWith(expect.objectContaining({ runId: "run-1" }), "sender", {
+      deliveryId: "stable",
+      attempt: 3,
+    });
+  });
+
   it("routes a channel target to the channel, with the reply resolved", async () => {
     const deliver = vi.fn().mockResolvedValue(undefined);
     const dispatch = wrapChannelDispatcher({

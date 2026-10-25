@@ -55,15 +55,28 @@ describe("RunControlRegistry with an abort channel", () => {
     expect(channel.published).toEqual([{ run_id: "run-elsewhere", reason: "cancel" }]);
   });
 
-  it("does not publish an abort it handled locally", async () => {
+  it("publishes even when a local registration may only be a recovery waiter", async () => {
     const channel = createLoopbackChannel();
     const ctx = createContext(createFixtureDeps());
     ctx.control.useAbortChannel(channel);
     ctx.control.register("run-here");
 
     expect(ctx.control.abort("run-here", "cancel")).toBe(true);
-    // The executor is this process; broadcasting would be pure noise on every cancel.
-    expect(channel.published).toEqual([]);
+    expect(channel.published).toEqual([{ run_id: "run-here", reason: "cancel" }]);
+  });
+
+  it("shares cancellation across duplicate local registrations until both clear", () => {
+    const ctx = createContext(createFixtureDeps());
+    const executing = ctx.control.register("recovered");
+    const waiting = ctx.control.register("recovered");
+    ctx.control.clear("recovered");
+    expect(ctx.control.isTracking("recovered")).toBe(true);
+    expect(ctx.control.abort("recovered", "cancel")).toBe(true);
+    expect(executing.signal.aborted).toBe(true);
+    expect(waiting.signal.aborted).toBe(true);
+    expect(executing.reason.current).toBe("cancel");
+    ctx.control.clear("recovered");
+    expect(ctx.control.isTracking("recovered")).toBe(false);
   });
 
   it("never re-publishes a request that arrived from a peer", async () => {
@@ -105,7 +118,16 @@ describe("two runtimes sharing one abort channel", () => {
     const channel = createLoopbackChannel();
     const deps = createFixtureDeps(); // one store/queue/bus, as two replicas would share
     const executing = createProtocolRuntime({ ...deps, abortChannel: channel });
-    const receiving = createProtocolRuntime({ ...deps, abortChannel: channel });
+    let receivingContext!: ReturnType<typeof createContext>;
+    const receiving = createProtocolRuntime(
+      { ...deps, abortChannel: channel },
+      {
+        handlers: (context) => {
+          receivingContext = context;
+          return {};
+        },
+      },
+    );
     await executing.service.assistants.registerGraphAssistants();
 
     const thread = await executing.service.threads.create();
@@ -116,6 +138,10 @@ describe("two runtimes sharing one abort channel", () => {
       input: {},
     });
     await waitFor(async () => (await deps.store.runs.get(runId))?.status === "running");
+
+    // Recovery can register this run on B while it waits for A's execution gate. Presence in the
+    // registry cannot suppress the broadcast to the actual owner.
+    const waiter = receivingContext.control.register(runId);
 
     // Instance B receives the cancel. It is not executing the run, so its only route to stopping it is
     // the channel.
@@ -135,6 +161,8 @@ describe("two runtimes sharing one abort channel", () => {
     ).resolves.toBe("graph stopped");
     expect((await deps.store.runs.get(runId))?.status).toBe("cancelled");
     expect(await deps.store.runs.hasActiveRun(thread.thread_id)).toBe(false);
+    expect(waiter.signal.aborted).toBe(true);
+    receivingContext.control.clear(runId);
 
     await executing.worker.stop();
     await receiving.worker.stop();

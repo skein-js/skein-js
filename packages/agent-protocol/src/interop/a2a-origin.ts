@@ -1,6 +1,7 @@
-import { SkeinHttpError, type Checkpoint, type RunKwargs } from "@skein-js/core";
+import { isSkeinHttpError, SkeinHttpError, type Checkpoint, type RunKwargs } from "@skein-js/core";
 
 import type { ResolvedDeps } from "../deps.js";
+import { verifyResumeTarget } from "../runs/resume-target.js";
 
 interface A2aOrigin {
   rootId?: string;
@@ -33,18 +34,13 @@ export async function verifyA2aResume(
   origin?: A2aOrigin,
 ): Promise<void> {
   if (!origin?.expectedRunId) return;
-  const runs = (await deps.store.runs.listByThread(threadId))
-    .filter((run) => run.run_id !== runId)
-    .sort((a, b) => b.created_at.localeCompare(a.created_at) || b.run_id.localeCompare(a.run_id));
-  const checkpoint = origin.checkpoint;
-  const current = await deps.checkpointer.getTuple({
-    configurable: { thread_id: threadId, checkpoint_ns: checkpoint?.checkpoint_ns ?? "" },
-  });
-  if (
-    runs[0]?.run_id !== origin.expectedRunId ||
-    runs[0].status !== "interrupted" ||
-    !checkpoint?.checkpoint_id ||
-    current?.checkpoint.id !== checkpoint.checkpoint_id
-  )
-    throw SkeinHttpError.conflict("A2A task no longer owns the interrupted checkpoint.");
+  try {
+    await verifyResumeTarget(deps, threadId, runId, origin);
+  } catch (cause) {
+    if (isSkeinHttpError(cause) && cause.code === "stale_resume")
+      throw SkeinHttpError.conflict("A2A task no longer owns the interrupted checkpoint.", {
+        cause,
+      });
+    throw cause;
+  }
 }

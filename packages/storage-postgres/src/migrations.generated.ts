@@ -489,6 +489,25 @@ const MIGRATION_0014_RUN_RESULTS = `-- Up Migration
 ALTER TABLE runs ADD COLUMN IF NOT EXISTS result JSONB;
 `;
 
+const MIGRATION_0015_NATIVE_ADMISSION = `-- Up Migration
+
+CREATE TABLE native_resume_reservations (
+  expected_run_id text PRIMARY KEY REFERENCES runs(run_id) ON DELETE CASCADE,
+  run_id text NOT NULL REFERENCES runs(run_id) ON DELETE CASCADE
+);
+CREATE TABLE native_dispatches (
+  run_id text PRIMARY KEY REFERENCES runs(run_id) ON DELETE CASCADE,
+  thread_id text NOT NULL,
+  kind text NOT NULL CHECK (kind IN ('run','cancel')),
+  action text,
+  not_before timestamptz NOT NULL,
+  token uuid,
+  lease_until timestamptz,
+  dispatched boolean NOT NULL DEFAULT false
+);
+CREATE INDEX native_dispatches_due ON native_dispatches(lease_until,run_id) WHERE kind='cancel' AND NOT dispatched;
+`;
+
 /** Every migration, oldest first. Order is the contract — never reorder or rename. */
 export const SKEIN_MIGRATIONS: readonly SkeinMigration[] = [
   { name: "0001_init", up: MIGRATION_0001_INIT },
@@ -539,4 +558,5 @@ export const SKEIN_MIGRATIONS: readonly SkeinMigration[] = [
   { name: "0012_store_write_options", up: MIGRATION_0012_STORE_WRITE_OPTIONS },
   { name: "0013_thread_retention", up: MIGRATION_0013_THREAD_RETENTION },
   { name: "0014_run_results", up: MIGRATION_0014_RUN_RESULTS },
+  { name: "0015_native_admission", up: MIGRATION_0015_NATIVE_ADMISSION },
 ];

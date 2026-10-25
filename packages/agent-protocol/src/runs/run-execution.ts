@@ -4,7 +4,7 @@
 // `rollback` plan once the displaced run has released the lock, registers the run's cancellation
 // control, and records its base checkpoint for a future rollback.
 
-import type { RunKwargs, Run, RunTrigger } from "@skein-js/core";
+import { isTerminalRunStatus, type RunKwargs, type Run, type RunTrigger } from "@skein-js/core";
 
 import { storedRollbackPlan, type ProtocolContext } from "../context.js";
 import { rollbackThreadCheckpointsTo } from "../threads/checkpoint-history.js";
@@ -36,6 +36,9 @@ export async function startRunExecution(
   // Set by the engine while it holds the lock, awaited in the `finally` below. Declared out here
   // because the engine hands it over from its own `finally`, which runs on the failure path too.
   let deliverWebhook: (() => Promise<void>) | undefined;
+  let removeLeaseListener: (() => void) | undefined;
+  let executionLeaseLost = false;
+  let engineStarted = false;
   try {
     // Serialize per thread: a second run on a busy thread blocks here until the active run's
     // execution (below) settles and releases the claim — giving enqueue its ordering and letting an
@@ -45,7 +48,24 @@ export async function startRunExecution(
       executionLocks,
       deps.threadExecutionGate,
       threadId,
-      async () => {
+      async (leaseSignal) => {
+        if (leaseSignal) {
+          const abortForLostLease = () => {
+            executionLeaseLost = true;
+            runControl.abort("cancel");
+          };
+          leaseSignal.addEventListener("abort", abortForLostLease, { once: true });
+          removeLeaseListener = () => leaseSignal.removeEventListener("abort", abortForLostLease);
+          leaseSignal.throwIfAborted();
+        }
+        // A recovered job may wait behind its original execution or a cancellation. Reread while
+        // holding the execution claim, before rollback can remove another run's checkpoints.
+        const current = await deps.store.runs.get(runId);
+        leaseSignal?.throwIfAborted();
+        if (!current || isTerminalRunStatus(current.status)) {
+          rollbackPlans.delete(runId);
+          return { status: current?.status ?? "cancelled", values: {} };
+        }
         // A `rollback` run drops the displaced run's writes now that it has settled (we hold the lock
         // it released), then removes its row so the run "never happened". Best-effort on the checkpoint
         // side — a failure to revert must not strand the new run.
@@ -57,6 +77,7 @@ export async function startRunExecution(
         const plan = rollbackPlans.get(runId) ?? storedRollbackPlan(kwargs);
         if (plan) {
           rollbackPlans.delete(runId);
+          leaseSignal?.throwIfAborted();
           if (plan.revertToCheckpoint !== false) {
             try {
               await rollbackThreadCheckpointsTo(
@@ -64,6 +85,7 @@ export async function startRunExecution(
                 threadId,
                 plan.revertToCheckpoint.baseCheckpointId,
                 deps.cloneCheckpoint,
+                leaseSignal,
               );
             } catch (error) {
               // `error`, not `warn`: the run continues on state that should have been reverted, so the
@@ -79,7 +101,9 @@ export async function startRunExecution(
               );
             }
           }
+          leaseSignal?.throwIfAborted();
           for (const displacedId of plan.displacedRunIds) {
+            leaseSignal?.throwIfAborted();
             try {
               await deps.store.runs.delete(displacedId);
             } catch {
@@ -87,7 +111,8 @@ export async function startRunExecution(
             }
           }
         }
-
+        leaseSignal?.throwIfAborted();
+        engineStarted = true;
         return await executeRun(deps, {
           run,
           kwargs,
@@ -118,6 +143,7 @@ export async function startRunExecution(
 
     return outcome;
   } finally {
+    removeLeaseListener?.();
     // Outside the lock, deliberately: inside it, a webhook target that takes 30s to answer made every
     // other run on this thread wait 30s behind it, and held the finished run's full graph state alive
     // for the duration.
@@ -133,8 +159,10 @@ export async function startRunExecution(
     if (deliverWebhook) await deliverWebhook();
     control.clear(runId);
     runBaseCheckpoints.delete(runId);
-    await deleteThreadIfRunOwnedIt(ctx, run, kwargs);
-    if (runControl.reason.current === "cancel") await deleteCheckpointsOfDeletedThread(ctx, run);
+    if (engineStarted && !executionLeaseLost) {
+      await deleteThreadIfRunOwnedIt(ctx, run, kwargs);
+      if (runControl.reason.current === "cancel") await deleteCheckpointsOfDeletedThread(ctx, run);
+    }
   }
 }
 

@@ -68,11 +68,11 @@ export function redactWebhookUrl(url: string): string {
 }
 
 /**
- * A delivery target skein minted rather than one a caller supplied — today, a channel reply.
+ * A delivery target the host minted: channel replies and the supported BullMQ access adapter.
  *
  * Recognised by scheme, which is safe **only because** the run-create schema restricts `webhook` to
  * `http`/`https`. If that restriction is ever relaxed, this becomes a way to bypass both guards above.
  */
 function isServerDerivedTarget(url: string): boolean {
-  return url.startsWith("skein+channel://");
+  return url.startsWith("skein+channel://") || url.startsWith("skein-bullmq://");
 }

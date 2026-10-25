@@ -3,7 +3,7 @@
 // in the same process — inline or on the worker), and the per-thread locks. Built once and threaded
 // through, so there is exactly one of each per runtime.
 
-import type { AuthUser, RunKwargs } from "@skein-js/core";
+import type { AdmissionKey, AuthUser, RunKwargs } from "@skein-js/core";
 
 import { resolveDeps, type ProtocolDeps, type ResolvedDeps } from "./deps.js";
 import { RunControlRegistry } from "./runs/cancellation.js";
@@ -56,6 +56,8 @@ export function storedRollbackPlan(kwargs: RunKwargs): RollbackPlan | undefined 
 }
 
 export interface ProtocolContext {
+  /** Trusted background-admission identity on an operation-local context, never the canonical one. */
+  readonly admission?: AdmissionKey;
   /** Open thread subscriptions, shared by request contexts and closed at runtime shutdown. */
   threadStreams?: Set<AbortController>;
   deps: ResolvedDeps;
