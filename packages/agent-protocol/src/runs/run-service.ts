@@ -35,6 +35,7 @@ import { remainingQueueAttempts } from "../deliveries/delivery-config.js";
 import { readInputAdmission } from "../idempotency/admission-input.js";
 import { a2aKwargs } from "../interop/a2a-origin.js";
 import {
+  assertNativeDeadline,
   nativeKwargs,
   readNativeOrigin,
   isRecoveringCancellation,
@@ -537,6 +538,7 @@ export function createRunService(ctx: ProtocolContext): RunService {
           const admittedCreate = template
             ? { ...identified, kwargs: { ...identified.kwargs, terminal_delivery: template } }
             : identified;
+          assertNativeDeadline(native?.deadlineAt, deps.clock());
           const receipt = await deps.store.admission.admitRun({
             ...(signal ? { signal } : {}),
             ...admissionKey,
@@ -815,6 +817,13 @@ export function createRunService(ctx: ProtocolContext): RunService {
         deps.threadExecutionGate,
         run.thread_id,
         async (leaseSignal) => {
+          const native = readNativeOrigin(await deps.store.runs.getKwargs(run.run_id));
+          // A retried native cleanup must not undo a later run's writes.
+          if (
+            native &&
+            (await deps.store.runs.latestForThread(run.thread_id))?.run_id !== run.run_id
+          )
+            return;
           await rollbackThreadCheckpointsTo(
             deps.checkpointer,
             run.thread_id,
@@ -824,7 +833,7 @@ export function createRunService(ctx: ProtocolContext): RunService {
           );
           leaseSignal?.throwIfAborted();
           // The row goes last, under the same claim, so a failed revert leaves its writes explained.
-          await deps.store.runs.delete(run.run_id);
+          if (!native) await deps.store.runs.delete(run.run_id);
         },
       );
     } catch (error) {

@@ -1,4 +1,3 @@
-import { internalProtocolHandlers } from "../meta/http-telemetry.js";
 import {
   AgentCard,
   Message,
@@ -40,6 +39,7 @@ import type {
   ProtocolRequest,
   ProtocolResponse,
 } from "../create-handlers.js";
+import { internalProtocolHandlers } from "../meta/http-telemetry.js";
 import { withThreadExecution } from "../runs/thread-locks.js";
 import { createProtocolServiceFromContext } from "../service.js";
 

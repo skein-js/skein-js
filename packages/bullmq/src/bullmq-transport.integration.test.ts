@@ -6,7 +6,7 @@ import {
   type ThreadCheckpointer,
   type NativeClient,
 } from "@skein-js/agent-protocol";
-import type { AdmissionReceipt } from "@skein-js/core";
+import { SkeinHttpError, type AdmissionReceipt } from "@skein-js/core";
 import { MemorySkeinStore, MemoryRunQueue, MemoryRunEventBus } from "@skein-js/storage-memory";
 import { startRedis, type StartedResource } from "@skein-js/test-support";
 import { Queue, QueueEvents } from "bullmq";
@@ -115,6 +115,28 @@ async function fixture(cap = 2048) {
 }
 
 describe("BullMQ native access over Redis", () => {
+  it("retries a state read whose target changed during authorization", async () => {
+    const f = await fixture();
+    try {
+      const receipt = await f.client.start({ assistant_id: "agent", input: {} });
+      const read = vi
+        .spyOn(f.client, "getState")
+        .mockRejectedValueOnce(
+          SkeinHttpError.conflict("Target changed.", { code: "native_state_changed" }),
+        );
+      await f.transport.start(f.client);
+      const result = (await f.send({
+        version: 1,
+        commandId: "read-state",
+        operation: "state.get",
+        threadId: receipt.threadId,
+      })) as BullMqChunk;
+      expect(result.encoding).toBe("base64");
+      expect(read).toHaveBeenCalledTimes(2);
+    } finally {
+      await f.close();
+    }
+  });
   it("keeps original command meaning when a host router mutates its input or changes its route", async () => {
     const f = await fixture();
     let selected = "agent";

@@ -26,14 +26,16 @@ export function createNativeRecovery(context: ProtocolContext) {
         const run = await context.deps.store.runs.get(claim.runId);
         if (!run) continue;
         if (claim.kind === "cancel") {
-          context.control.abort(
-            run.run_id,
+          const reason =
             run.status === "interrupted"
               ? "interrupt"
               : claim.action === "rollback"
                 ? "rollback"
-                : "cancel",
-          );
+                : "cancel";
+          context.control.applyRemoteAbort(run.run_id, reason);
+          // Unlike legacy best-effort cancellation, a recoverable intent must not be ACKed on a
+          // failed publication. The owner also observes durable status if a successful publish was lost.
+          await context.deps.abortChannel?.requestAbort({ run_id: run.run_id, reason });
           await context.deps.bus.close(run.run_id);
           if (run.status === "cancelled")
             await createProtocolServiceFromContext(context).runs.cancel(

@@ -10,6 +10,10 @@ that survives retries. It uses the same assistants, threads, authorization, run 
 as HTTP. The optional `@skein-js/bullmq` package connects external command and outcome queues to
 that client. It does not replace Skein's internal execution or delivery queues.
 
+The [runnable approval example](https://github.com/skein-js/skein-js/tree/main/examples/native-transports)
+includes an embedded SQLite client and an HTTP/BullMQ backend with a durable outcome inbox.
+Read [security and operations](./native-access-security.md) before exposing a producer to real data.
+
 ## Embedded applications
 
 ```ts
@@ -100,6 +104,11 @@ Only one admitted resume can consume an expected interrupted run/checkpoint. Adm
 validate it under the thread execution lease. A stale target returns `stale_resume`; fetch current
 state before submitting a new answer. Checkpoint updates use the same lease. Resuming an already
 accepted key recovers its receipt even after execution advanced the checkpoint.
+Separate checkpoint, status and concurrency overrides are rejected at runtime. Strict resume
+validates every supplied `checkpoint_map` namespace against its current checkpoint before admission
+and invocation; a current root ID cannot authorize an older nested checkpoint. Native state reads
+hold the execution lease and can wait behind active work. Retry `native_state_changed` if a target
+changes during authorization or lease acquisition.
 
 Cancellation returns `{ receipt, status, stopped }`. A terminal status records the authoritative
 decision; `stopped` separately confirms execution has stopped. Without waiting, a remote execution
@@ -140,6 +149,9 @@ its lease expires, so a lost queue job can be reconstructed with the same run ID
 skipped under the execution lease before checkpoint effects. Ordinary inline runs and unrelated
 producers' rows are not adopted. Explicit cancellation, displacement, deletion and shutdown grace
 expiry broadcast abort requests even when a local registration is only waiting for a remote executor.
+Failed cancellation publication remains recoverable. Eligible execution owners also observe durable
+terminal status to stop after a missed pub/sub notification. Native rollback preserves the admitted
+run and receipt; explicit resource deletion still removes them.
 
 ## BullMQ access transport
 
@@ -184,6 +196,10 @@ Workers own their blocking connection and are closed by `stop`; borrowed queues/
 open. Keep the outcome queue name and Redis prefix stable across restart. Host-controlled
 authentication, routing, deadlines, destinations and output projection are functions/configuration,
 not authority accepted from message fields. HTTP remains available independently.
+`projectResult` covers outcomes and `result.get`; `state.get` and `run.get` remain full authorized
+reads. Deny raw operations in the host's existing callbacks if a producer should see only projections.
+Redis credentials also grant access to stored job payloads/return values; configure ACLs, TLS and
+separate retention for those copies. See [the security guide](./native-access-security.md).
 
 The adapter owns the following versioned wire format, exposed as `BullMqCommand`:
 

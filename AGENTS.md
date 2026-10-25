@@ -199,7 +199,8 @@ in `local-workflow`. Normal runs select Vertex AI, Gemini API, OpenAI, Anthropic
 are limited to tests and packaging gates. See [local deployment](docs/local-deployment.md) for start
 commands and host boundaries.
 
-Examples live in `examples/`: `chat-app` (flagship — research assistant + Next.js/shadcn UI),
+Examples live in `examples/`: `native-transports` (native SQLite admission and an HTTP/BullMQ approval
+backend with a durable outcome receiver), `chat-app` (flagship — research assistant + Next.js/shadcn UI),
 `triage-agent` (the console's workload — cron sweep, a durable run per item, idempotent re-sweeps,
 conditional HITL approval, store memory; runs offline with no API key),
 `deep-agent` (experimental Deep Agents support — a research briefing assistant with per-user memory,

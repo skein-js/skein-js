@@ -42,6 +42,11 @@ via `getRun`/`getReceipt`/`getResult`, and resume with the expected interrupted 
 An optional source `outcomeTarget` enables complete durable terminal outcomes. SQLite process loss
 records failure and an owed outcome without replaying abandoned input. See
 [native access](https://skein-js.github.io/skein-js/native-access).
+Native state reads hold the execution lease and can wait behind active work; retry
+`native_state_changed`. Use the [native/BullMQ example](https://github.com/skein-js/skein-js/tree/main/examples/native-transports)
+for maintained host wiring, and read the [security guide](https://skein-js.github.io/skein-js/native-access-security).
+Projection covers outcomes/result queries only: raw run/state queries need separate host policy.
+Broker credentials expose retained payloads/return values; configure Redis ACLs/TLS and retention.
 
 For external BullMQ commands/outcomes, compose the optional `@skein-js/bullmq` factory's dispatcher,
 bind its stable `outcomeTarget` on the native source, and explicitly `start`/`stop` consumption.

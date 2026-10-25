@@ -44,8 +44,10 @@ import {
 } from "../graphs/agent-graph.js";
 import { resolveCompiledGraph } from "../graphs/resolve-compiled-graph.js";
 import { readA2aOrigin, verifyA2aResume } from "../interop/a2a-origin.js";
+import { observeDurableCancellation } from "../native/native-cancellation.js";
 import { readNativeOrigin } from "../native/native-origin.js";
 import { settleNativeRun } from "../native/native-outcome.js";
+import { verifyNativeResumeTarget } from "../native/native-resume-target.js";
 import {
   chunkToFrameBody,
   streamEventToFrameBody,
@@ -64,7 +66,6 @@ import { isThreadProtocolRun } from "../threads/thread-protocol-run.js";
 
 import type { AbortReason, RunControl } from "./cancellation.js";
 import { readDeclaredReply } from "./declared-reply.js";
-import { verifyResumeTarget } from "./resume-target.js";
 import { RUN_FAILURE_REPORT_KIND, toError, type RunFailureReport } from "./run-failure.js";
 import {
   toFactoryConfigurable,
@@ -427,6 +428,10 @@ export async function executeRun(deps: ResolvedDeps, exec: RunExecution): Promis
 
   // Arm the optional wall-clock timeout; it aborts this run's signal with reason "timeout".
   const nativeOrigin = readNativeOrigin(kwargs);
+  const stopCancellationObservation =
+    nativeOrigin || (deps.abortChannel && deps.store.admission)
+      ? observeDurableCancellation(deps, runId, control)
+      : undefined;
   const remainingBudget = nativeOrigin?.deadlineAt
     ? Math.max(0, Date.parse(nativeOrigin.deadlineAt) - deps.clock().getTime())
     : undefined;
@@ -511,11 +516,7 @@ export async function executeRun(deps: ResolvedDeps, exec: RunExecution): Promis
 
     await verifyA2aResume(deps, threadId, runId, readA2aOrigin(kwargs));
     if (nativeOrigin?.expected)
-      await verifyResumeTarget(deps, threadId, runId, {
-        expectedRunId: nativeOrigin.expected.runId,
-        checkpoint: nativeOrigin.expected.checkpoint,
-        interruptIds: nativeOrigin.expected.interruptIds,
-      });
+      await verifyNativeResumeTarget(deps, threadId, runId, nativeOrigin.expected, control.signal);
     if (remainingBudget !== undefined && remainingBudget <= 0) {
       control.abort("timeout");
       throw new Error("Native execution deadline expired before invocation.");
@@ -731,6 +732,7 @@ export async function executeRun(deps: ResolvedDeps, exec: RunExecution): Promis
     return outcome;
   } finally {
     if (timer !== undefined) clearTimeout(timer);
+    await stopCancellationObservation?.();
     // Close the telemetry span the `try` opened, BEFORE anything here that can reject. `bus.close`
     // can (a Redis blip), and a rejection escaping this block would skip the event — leaving a
     // span-based sink holding an unclosed span for a run that is definitively over. Enough of those

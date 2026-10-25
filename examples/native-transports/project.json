@@ -1,0 +1,59 @@
+{
+  "$schema": "../../node_modules/nx/schemas/project-schema.json",
+  "name": "example-native-transports",
+  "sourceRoot": "examples/native-transports/src",
+  "projectType": "application",
+  "targets": {
+    "build": {
+      "executor": "nx:run-commands",
+      "outputs": ["{projectRoot}/dist"],
+      "options": {
+        "command": "tsup",
+        "cwd": "examples/native-transports"
+      }
+    },
+    "typecheck": {
+      "executor": "nx:run-commands",
+      "options": {
+        "command": "tsc --noEmit",
+        "cwd": "examples/native-transports"
+      }
+    },
+    "embedded": {
+      "executor": "nx:run-commands",
+      "dependsOn": ["build"],
+      "cache": false,
+      "options": {
+        "command": "node dist/embedded.js",
+        "cwd": "examples/native-transports"
+      }
+    },
+    "backend": {
+      "executor": "nx:run-commands",
+      "dependsOn": ["build"],
+      "cache": false,
+      "options": {
+        "command": "node dist/backend.js",
+        "cwd": "examples/native-transports"
+      }
+    },
+    "producer": {
+      "executor": "nx:run-commands",
+      "dependsOn": ["build"],
+      "cache": false,
+      "options": {
+        "command": "node dist/producer.js",
+        "cwd": "examples/native-transports"
+      }
+    },
+    "test-integration": {
+      "executor": "nx:run-commands",
+      "dependsOn": ["build"],
+      "cache": false,
+      "options": {
+        "command": "vitest run --config vitest.integration.config.ts",
+        "cwd": "examples/native-transports"
+      }
+    }
+  }
+}

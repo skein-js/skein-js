@@ -7,6 +7,7 @@
 import { isTerminalRunStatus, type RunKwargs, type Run, type RunTrigger } from "@skein-js/core";
 
 import { storedRollbackPlan, type ProtocolContext } from "../context.js";
+import { readNativeOrigin } from "../native/native-origin.js";
 import { rollbackThreadCheckpointsTo } from "../threads/checkpoint-history.js";
 
 import { executeRun, type RunOutcome } from "./run-engine.js";
@@ -105,7 +106,10 @@ export async function startRunExecution(
           for (const displacedId of plan.displacedRunIds) {
             leaseSignal?.throwIfAborted();
             try {
-              await deps.store.runs.delete(displacedId);
+              // Native receipts/results remain reconcilable after rollback. Explicit deletion still
+              // removes them; legacy runs keep their established rollback deletion behavior.
+              if (!readNativeOrigin(await deps.store.runs.getKwargs(displacedId)))
+                await deps.store.runs.delete(displacedId);
             } catch {
               // already gone — nothing to do
             }

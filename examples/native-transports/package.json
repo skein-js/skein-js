@@ -1,0 +1,23 @@
+{
+  "name": "@skein-js/example-native-transports",
+  "version": "0.0.0",
+  "private": true,
+  "type": "module",
+  "description": "Durable native and BullMQ approval access with SQLite, HTTP, retained results and a deduplicating outcome receiver.",
+  "engines": {
+    "node": ">=24"
+  },
+  "devDependencies": {
+    "@skein-js/test-support": "workspace:*"
+  },
+  "dependencies": {
+    "@langchain/langgraph": "^1.4.0",
+    "@skein-js/agent-protocol": "workspace:*",
+    "@skein-js/bullmq": "workspace:*",
+    "@skein-js/core": "workspace:*",
+    "@skein-js/express": "workspace:*",
+    "@skein-js/local": "workspace:*",
+    "bullmq": "^5.80.2",
+    "ioredis": "^5.10.1"
+  }
+}

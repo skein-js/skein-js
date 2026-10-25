@@ -12,7 +12,6 @@ import { z } from "zod";
 import { createAuthScopedStore } from "../auth/auth-scoped-store.js";
 import type { ProtocolContext } from "../context.js";
 import { canonicalJson } from "../crypto/canonical-json.js";
-import { verifyResumeTarget } from "../runs/resume-target.js";
 import type { CreateRunInput } from "../runs/run-service.js";
 import { withThreadExecution } from "../runs/thread-locks.js";
 import { createProtocolServiceFromContext } from "../service.js";
@@ -24,8 +23,16 @@ import type {
   NativeSourceOptions,
   NativeStartInput,
 } from "./native-client.js";
-import { markNativeInput, markRecoveringCancellation, type NativeOrigin } from "./native-origin.js";
+import {
+  assertNativeDeadline,
+  createNativeAdmissionDeadline,
+  markNativeInput,
+  markRecoveringCancellation,
+  type NativeOrigin,
+} from "./native-origin.js";
 import { nativeDelivery } from "./native-outcome.js";
+import { verifyNativeResumeTarget } from "./native-resume-target.js";
+import { readNativeState } from "./native-state.js";
 
 const sourceSchema = z
   .object({
@@ -211,10 +218,7 @@ export function createNativeClientFromContext(
     admissionSignal?: AbortSignal,
   ): Promise<AdmissionReceipt> => {
     requireAdmission();
-    if (origin.deadlineAt && Date.parse(origin.deadlineAt) <= deps.clock().getTime())
-      throw SkeinHttpError.unprocessable("The command's execution deadline has expired.", {
-        code: "deadline_expired",
-      });
+    assertNativeDeadline(origin.deadlineAt, deps.clock());
     const input = parse(runCreateSchema, raw) as CreateRunInput;
     await allowAssistant(input.assistant_id);
     if (!(await deps.store.assistants.get(input.assistant_id)))
@@ -224,19 +228,21 @@ export function createNativeClientFromContext(
     const scoped = await authorize("create_run", { ...input, thread_id: threadId }, options);
     const service = createProtocolServiceFromContext(scoped);
     admissionSignal?.throwIfAborted();
-    if (!input.thread_id || input.if_not_exists === "create")
-      await service.threads.create({
-        thread_id: threadId,
-        metadata: input.metadata,
-        ifExists: "do_nothing",
-      });
+    assertNativeDeadline(origin.deadlineAt, deps.clock());
+    const deadline = createNativeAdmissionDeadline(origin.deadlineAt, deps.clock, admissionSignal);
     try {
+      if (!input.thread_id || input.if_not_exists === "create")
+        await service.threads.create({
+          thread_id: threadId,
+          metadata: input.metadata,
+          ifExists: "do_nothing",
+        });
       const run = await service.runs.createBackground(
         threadId,
         markNativeInput(
           { ...input, ...(origin.outcomeTarget ? { webhook: origin.outcomeTarget } : {}) },
           { ...origin, ownsThread: input.thread_id === undefined },
-          admissionSignal,
+          deadline.signal,
         ),
       );
       return { idempotencyKey: origin.admission.key, threadId: run.thread_id, runId: run.run_id };
@@ -250,6 +256,8 @@ export function createNativeClientFromContext(
       );
       if (accepted) return accepted;
       throw error;
+    } finally {
+      deadline.dispose();
     }
   };
   return {
@@ -285,7 +293,19 @@ export function createNativeClientFromContext(
         throw SkeinHttpError.badRequest("Invalid native operation.", {
           code: "invalid_native_input",
         });
-      if (!("resume" in input) || "webhook" in input || "command" in input || "input" in input)
+      if (
+        !("resume" in input) ||
+        [
+          "webhook",
+          "command",
+          "input",
+          "checkpoint",
+          "checkpoint_id",
+          "if_thread_status",
+          "multitask_strategy",
+          "if_not_exists",
+        ].some((field) => field in input)
+      )
         throw SkeinHttpError.badRequest(
           "Resume requires a resume value; outcomes belong to source configuration.",
           { code: "invalid_native_input" },
@@ -319,11 +339,7 @@ export function createNativeClientFromContext(
         run.thread_id,
         async (leaseSignal) => {
           try {
-            await verifyResumeTarget(deps, run.thread_id, "", {
-              expectedRunId: expected.runId,
-              checkpoint: expected.checkpoint,
-              interruptIds: expected.interruptIds,
-            });
+            await verifyNativeResumeTarget(deps, run.thread_id, "", expected, leaseSignal);
             leaseSignal?.throwIfAborted();
             const { expected: _expected, resume, ...rest } = input;
             return await start(
@@ -374,6 +390,13 @@ export function createNativeClientFromContext(
         options,
       );
       const { run, scoped } = await ownedRun(runId, "update", options);
+      if (options.wait && deps.abortChannel && !deps.threadExecutionGate)
+        throw SkeinHttpError.notImplemented(
+          "Remote execution stop requires a thread execution gate.",
+          {
+            code: "execution_stop_unsupported",
+          },
+        );
       const admission = admissionKey(
         { operation: "cancel", runId, action: options.action ?? "interrupt" },
         options,
@@ -381,10 +404,7 @@ export function createNativeClientFromContext(
       const prior = await lookup(admission.key, options, "update", admission.fingerprint);
       let receipt = prior;
       if (!receipt) {
-        if (options.deadlineAt && Date.parse(options.deadlineAt) <= deps.clock().getTime())
-          throw SkeinHttpError.unprocessable("The command's admission deadline has expired.", {
-            code: "deadline_expired",
-          });
+        assertNativeDeadline(options.deadlineAt, deps.clock());
         const origin = (await import("./native-origin.js")).readNativeOrigin(
           await deps.store.runs.getKwargs(runId),
         );
@@ -392,6 +412,7 @@ export function createNativeClientFromContext(
           ? nativeDelivery(deps, { ...run, status: "cancelled" }, origin)
           : undefined;
         requireAdmission();
+        assertNativeDeadline(options.deadlineAt, deps.clock());
         receipt = await scoped.deps.store.admission!.admitCancel({
           ...admission,
           runId,
@@ -402,15 +423,28 @@ export function createNativeClientFromContext(
       const service = createProtocolServiceFromContext(scoped);
       const latest = await service.runs.cancel(
         runId,
-        markRecoveringCancellation({ action: options.action, wait: options.wait }),
+        markRecoveringCancellation({ action: options.action, wait: false }),
       );
-      if (options.wait && latest.status !== "cancelled")
-        await withThreadExecution(
-          context.executionLocks,
-          deps.threadExecutionGate,
-          run.thread_id,
-          async () => undefined,
-        );
+      // A best-effort rollback may have swallowed a gate failure. The requested wait is not proof.
+      if (options.wait) {
+        try {
+          await withThreadExecution(
+            context.executionLocks,
+            deps.threadExecutionGate,
+            run.thread_id,
+            async () => undefined,
+          );
+        } catch (error) {
+          throw new SkeinHttpError(
+            503,
+            "Cancellation was admitted, but execution stop could not be confirmed.",
+            {
+              code: "execution_stop_unconfirmed",
+              cause: error,
+            },
+          );
+        }
+      }
       const stopped =
         options.wait === true ||
         (!deps.threadExecutionGate && !deps.abortChannel && !context.control.isTracking(runId));
@@ -420,23 +454,9 @@ export function createNativeClientFromContext(
       (await ownedRun(runId, "read", optionsFor(callOptions))).run,
     getState: async (threadId, callOptions) => {
       const options = optionsFor(callOptions);
-      const thread = await deps.store.threads.get(threadId);
-      if (!thread) throw SkeinHttpError.notFound("Thread not found.");
-      const latest = await deps.store.runs.latestForThread(threadId);
-      const assistantId =
-        latest?.assistant_id ??
-        (typeof thread.metadata?.["graph_id"] === "string"
-          ? thread.metadata["graph_id"]
-          : undefined);
-      const scoped = await authorize(
-        "read",
-        { thread_id: threadId, ...(assistantId ? { assistant_id: assistantId } : {}) },
-        options,
+      return readNativeState(context, threadId, allowAssistant, (target) =>
+        authorize("read", target, options),
       );
-      const service = createProtocolServiceFromContext(scoped);
-      await service.threads.get(threadId);
-      if (assistantId) await allowAssistant(assistantId);
-      return service.threads.getState(threadId);
     },
     getResult: async (runId, callOptions) => {
       const { run, scoped } = await ownedRun(runId, "read", optionsFor(callOptions));
