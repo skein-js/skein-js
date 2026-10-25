@@ -8,13 +8,18 @@ does not establish compatibility: the official client must exercise the behavior
 | Run-based JavaScript SDK and legacy React hook    | Supported                                     | Retain coverage for SDK 1.9.25 and 1.9.31                                                            |
 | Thread event protocol                             | Not yet supported                             | SDK 1.12.6; protocol 0.0.20; subscriptions, commands, reconnect and restoration                      |
 | Dedicated React, Angular, Vue and Svelte bindings | Not yet verified                              | Test each package at 1.2.6 in a real browser                                                         |
-| Thread-wide legacy stream                         | Joins one run                                 | Add explicit `stream_modes` following without changing the existing default                          |
+| Thread-wide legacy stream                         | Joins one run                                 | Add explicit `stream_mode` following without changing the existing default                           |
 | Execution and checkpoint options                  | Partial                                       | Durability, task/checkpoint modes, recursive and namespaced state/history                            |
 | Search and retention                              | Partial                                       | Projection, exclusion, extraction, state timestamps, per-operation store options and keep-latest TTL |
 | MCP and A2A endpoints                             | Not implemented                               | Official transport SDKs over the existing authorized services                                        |
 | Graph UI assets and `http.app`                    | Accepted configuration without implementation | Development loading and standalone production artifacts                                              |
 | OpenAPI and `/docs`                               | Not implemented                               | Describe actual enabled routes and authentication                                                    |
 | `/metrics` and thread storage reporting           | Not implemented                               | Existing OTel instrumentation and exact saver-backed payload accounting                              |
+
+Explicit legacy thread following supports the SDK's `run_modes`, `lifecycle`, and `state_update`
+categories, including per-run completion metadata and immutable checkpoint snapshots on replay.
+Search extraction returns aliases inside `extracted`; checkpoint forks validate saver coordinates
+without requiring optional custom-agent timestamps.
 
 The versions above are **implementation targets**, not a claim that all of their features have
 passed. The implementation updates this matrix with the corresponding test evidence.
@@ -63,3 +68,10 @@ require `toRaw(asset)` before accessing `blob`, because its reactive proxy break
 The browser gate checks actual media bytes with that public Vue workaround. These client limitations
 are tracked separately from server media delivery. Development UI watches currently follow the
 upstream watcher’s process lifetime; applications own process shutdown.
+
+## Frontend example refresh, 25 October 2026
+
+The React examples (`chat-app`, `nextjs-app`, and `react-usestream`) use `@langchain/react` 1.2.7.
+Example JavaScript clients require SDK 1.12.7. The browser matrix also runs the React package
+installed by `react-usestream`, alongside the pinned 1.2.6 framework packages and SDK 1.12.6.
+Legacy SDK 1.9.25 and 1.9.31 coverage remains in the packed consumer.

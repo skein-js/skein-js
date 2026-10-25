@@ -332,14 +332,19 @@ export function fromBaseStore(store: BaseStoreLike, options?: FromBaseStoreOptio
         "This BaseStore does not expose per-item TTL refresh controls.",
       );
   };
+  // Scans skip refresh, so only the returned page gets the store's refresh-on-read — unless the caller
+  // opted out, in which case there is nothing to do.
   const refreshPage = async (items: SearchItem[], refreshTtl?: boolean) => {
-    if (optionAware)
-      for (const item of items)
-        await store.get(
-          item.namespace,
-          item.key,
-          refreshTtl === undefined ? undefined : { refreshTtl },
-        );
+    if (optionAware && refreshTtl !== false)
+      await Promise.all(
+        items.map((item) =>
+          store.get(
+            item.namespace,
+            item.key,
+            refreshTtl === undefined ? undefined : { refreshTtl },
+          ),
+        ),
+      );
     return items;
   };
   const repo: StoreRepo = {

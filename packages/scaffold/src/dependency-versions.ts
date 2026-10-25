@@ -17,7 +17,7 @@ export const CORE_VERSIONS = {
   "@langchain/core": "^1.2.9",
   "@langchain/langgraph": "^1.4.0",
   "@langchain/langgraph-checkpoint": "^1.1.3",
-  "@langchain/langgraph-sdk": "^1.9.0",
+  "@langchain/langgraph-sdk": "^1.12.7",
   // `createAgent` lives here, not in @langchain/langgraph: LangGraph v1 deprecated the
   // `createReactAgent` prebuilt and moved it to the `langchain` package.
   langchain: "^1.5.0",

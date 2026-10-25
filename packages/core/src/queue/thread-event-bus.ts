@@ -1,6 +1,6 @@
 import type { Event } from "@langchain/protocol";
 
-import type { Thread } from "../wire/wire.js";
+import type { Thread, ThreadState } from "../wire/wire.js";
 
 import type { RunFrame } from "./queue.js";
 
@@ -8,7 +8,17 @@ import type { RunFrame } from "./queue.js";
 export type ThreadEvent = { seq: number } & (
   | { kind: "protocol"; runId: string; event: Event }
   | { kind: "run"; runId: string; frame: RunFrame }
-  | { kind: "state"; operation: "created" | "updated"; thread: Thread }
+  | {
+      kind: "state";
+      operation: "created" | "updated";
+      thread: Thread;
+      /** Run visibility applies when this state change was published by an execution. */
+      runId?: string;
+      /** Run boundaries projected as Agent Server's legacy metadata events. */
+      lifecycle?: "start" | "end";
+      /** Captured at publication so replay never substitutes a later turn's state. */
+      state?: ThreadState;
+    }
 );
 
 /** The publisher supplies content; only the bus assigns ordering and reconnect identities. */

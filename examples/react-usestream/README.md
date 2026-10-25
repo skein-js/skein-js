@@ -1,10 +1,11 @@
 # `react-usestream` example
 
 The **frontend harness**: a minimal Next.js app that streams from **any** skein-js server using
-[`@langchain/langgraph-sdk/react`](https://github.com/langchain-ai/langgraphjs/tree/main/libs/sdk)'s
+[`@langchain/react`](https://github.com/langchain-ai/langgraphjs/tree/main/libs/sdk-react)'s
 `useStream` hook. Point it at a backend, send a message, and watch the reply stream in
 token-by-token in a real browser.
 
+Uses `@langchain/react` 1.2.7 with the thread event protocol.
 See [`../../docs/react-sdk.md`](../../docs/react-sdk.md).
 
 ## What you'll learn
@@ -44,5 +45,5 @@ Open <http://localhost:3005>, send a message, and watch the reply stream in toke
 ## What to look at
 
 - [`app/page.tsx`](./app/page.tsx) — the entire `useStream` wiring:
-  `useStream({ apiUrl, assistantId })`, then `thread.submit({ messages: [{ type: "human", content }] })`
+  `useStream({ apiUrl, assistantId })`, then `thread.submit({ messages: [{ role: "user", content }] })`
   to send a turn and render `thread.messages` as tokens stream in.

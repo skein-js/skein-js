@@ -1,6 +1,6 @@
 "use client";
 
-import { useStream } from "@langchain/langgraph-sdk/react";
+import { useStream } from "@langchain/react";
 import { ArrowUp, Loader2, Square } from "lucide-react";
 import { useEffect, useRef, useState } from "react";
 import Markdown from "react-markdown";
@@ -30,7 +30,7 @@ const EXAMPLE_PROMPTS = [
 
 export default function Page() {
   const [input, setInput] = useState("");
-  const [threadId, setThreadId] = useState<string | undefined>(undefined);
+  const [threadId, setThreadId] = useState<string | null>(null);
   const [chats, setChats] = useState<ChatSummary[]>([]);
   // The first message of a brand-new chat, remembered until its thread id arrives (→ becomes the title).
   const pendingTitle = useRef<string | null>(null);
@@ -78,14 +78,13 @@ export default function Page() {
       pendingTitle.current = trimmed; // titles the thread once onThreadId fires
       awaitingNewThread.current = true;
     }
-    thread.submit({ messages: [{ type: "human", content: trimmed }] });
+    thread.submit({ messages: [{ role: "user", content: trimmed }] });
     setInput("");
   }
 
-  // Resume a paused (interrupted) run with the user's decision. Passing a `command.resume` value is
-  // what makes `interrupt()` return in the graph — the human-in-the-loop half of the loop.
+  // Resume the pending interrupt with the user's decision through the SDK's input.respond command.
   function resolveApproval(approved: boolean) {
-    thread.submit(undefined, { command: { resume: { approved } } });
+    void thread.respond({ approved });
   }
 
   // Leave the current conversation. Stop any in-flight run first so it doesn't keep streaming into a
@@ -98,7 +97,7 @@ export default function Page() {
 
   function newChat() {
     leaveCurrentThread();
-    setThreadId(undefined);
+    setThreadId(null);
     setInput("");
   }
 
@@ -154,9 +153,8 @@ export default function Page() {
 
             {messages.map((message, index) => {
               const role = roleOf(message);
-              // Stable key from the SDK's message metadata, so a message that streams in id-less then
-              // gains an id doesn't remount (which would reset ThinkingBlock's collapse state).
-              const key = thread.getMessagesMetadata(message, index)?.messageId ?? `msg-${index}`;
+              // The SDK assigns IDs to optimistic messages and preserves them in server echoes.
+              const key = message.id ?? `msg-${index}`;
 
               if (role === "human") {
                 return (

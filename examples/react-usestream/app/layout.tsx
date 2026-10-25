@@ -2,7 +2,7 @@ import type { ReactNode } from "react";
 
 export const metadata = {
   title: "skein-js · useStream harness",
-  description: "Streams from a skein-js server via @langchain/langgraph-sdk/react useStream.",
+  description: "Streams from a skein-js server via @langchain/react useStream.",
 };
 
 export default function RootLayout({ children }: { children: ReactNode }) {

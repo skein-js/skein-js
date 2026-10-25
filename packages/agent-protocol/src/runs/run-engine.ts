@@ -27,6 +27,8 @@ import {
   type RunTelemetryContext,
   type RunTrigger,
   type ThreadStatus,
+  type ThreadState,
+  type Thread,
   type ThreadUpdate,
 } from "@skein-js/core";
 
@@ -53,6 +55,7 @@ import {
   collectInterrupts,
   runStatusForSnapshot,
   snapshotToThreadUpdate,
+  snapshotToThreadState,
   toCheckpoint,
 } from "../threads/thread-mirror.js";
 import { isThreadProtocolRun } from "../threads/thread-protocol-run.js";
@@ -169,7 +172,7 @@ async function mirrorThread(
   deps: ResolvedDeps,
   threadId: string,
   patch: ThreadUpdate,
-): Promise<void> {
+): Promise<Thread | undefined> {
   const thread = await deps.store.threads.get(threadId);
   if (!thread) return;
   // When leaving the error state, drop a stale error left behind by a prior failed run, so a
@@ -185,15 +188,15 @@ async function mirrorThread(
       effective = { ...effective, metadata: cleared };
     }
   }
-  await deps.store.threads.update(threadId, effective);
+  return deps.store.threads.update(threadId, effective);
 }
 
 async function mirrorThreadStatus(
   deps: ResolvedDeps,
   threadId: string,
   status: ThreadStatus,
-): Promise<void> {
-  await mirrorThread(deps, threadId, { status });
+): Promise<Thread | undefined> {
+  return mirrorThread(deps, threadId, { status });
 }
 
 /**
@@ -214,20 +217,18 @@ async function mirrorThreadError(
 }
 
 /**
- * Name the node(s) the graph died in, for the failure report. Entirely best-effort: it re-reads the
- * state after the throw, and a graph that failed before it started (or whose state read also fails)
- * simply yields nothing. Reporting must never turn one failure into two.
+ * Read the final snapshot for failure reporting and thread replay. Entirely best-effort: a graph
+ * that failed before it started (or whose state read also fails) simply yields nothing.
  */
-async function readFailingNodes(
+async function readRunSnapshot(
   graph: AgentGraph | undefined,
   threadId: string,
-): Promise<string[]> {
-  if (!graph) return [];
+): Promise<AgentStateSnapshot | undefined> {
+  if (!graph) return undefined;
   try {
-    const snapshot = await graph.getState({ configurable: { thread_id: threadId } });
-    return describeFailingNodes(snapshot);
+    return await graph.getState({ configurable: { thread_id: threadId } });
   } catch {
-    return [];
+    return undefined;
   }
 }
 
@@ -264,6 +265,16 @@ export async function executeRun(deps: ResolvedDeps, exec: RunExecution): Promis
   };
   // Hoisted out of the `try` so the catch can take a post-mortem snapshot to name the failing node.
   let graph: AgentGraph | undefined;
+  let completedState: ThreadState | undefined;
+  let lastSnapshot: AgentStateSnapshot | undefined;
+  let snapshotRead = false;
+  const captureSnapshot = async () => {
+    if (!snapshotRead) {
+      snapshotRead = true;
+      lastSnapshot = await readRunSnapshot(graph, threadId);
+    }
+    return lastSnapshot;
+  };
   // Telemetry, all hoisted so the `finally` can close the span the `try` opened. The context needs
   // the assistant's graph id, so it only exists once the assistant has loaded — and `run.finished`
   // is gated on it, so the two events are always emitted as a pair. A run that fails its
@@ -420,7 +431,20 @@ export async function executeRun(deps: ResolvedDeps, exec: RunExecution): Promis
     // pending -> running: run row first (the concurrency source of truth), then the thread mirror.
     await deps.store.runs.setStatus(runId, "running");
     started = true;
-    await mirrorThreadStatus(deps, threadId, "busy");
+    const runningThread = await mirrorThreadStatus(deps, threadId, "busy");
+    // Thread-only metadata leaves single-run SSE framing and its sequence numbers unchanged.
+    if (runningThread)
+      await deps.threadBus?.publish(
+        threadId,
+        {
+          kind: "state",
+          operation: "updated",
+          thread: runningThread,
+          runId,
+          lifecycle: "start",
+        },
+        threadGeneration,
+      );
     // Record the thread's checkpoint tip *before* this run writes anything, so a later `rollback` run
     // knows the state to revert to. Only record on a *successful* read: a genuine `undefined` (fresh
     // thread, no checkpoints) means "revert to empty", but a failed read is *unknown* — recording
@@ -570,6 +594,9 @@ export async function executeRun(deps: ResolvedDeps, exec: RunExecution): Promis
     const snapshot: AgentStateSnapshot = await activeGraph.getState({
       configurable: { thread_id: threadId },
     });
+    lastSnapshot = snapshot;
+    snapshotRead = true;
+    if (deps.threadBus) completedState = snapshotToThreadState(snapshot);
     const computed = runStatusForSnapshot(snapshot);
     const checkpoint = toCheckpoint(snapshot.config);
     // The snapshot is already in hand, so the questions cost nothing extra to carry — no second read
@@ -648,7 +675,8 @@ export async function executeRun(deps: ResolvedDeps, exec: RunExecution): Promis
     // trace-only sink (LangSmith contributes metadata and no `onRunEvent`) would otherwise pay a
     // checkpointer round trip per failure to build a field nothing reads.
     if (reportingLogger || deps.telemetryWantsRunEvents) {
-      failingNodes = await readFailingNodes(graph, threadId);
+      const snapshot = await captureSnapshot();
+      failingNodes = snapshot ? describeFailingNodes(snapshot) : [];
     }
     if (reportingLogger) {
       deps.logger.error(`Graph run failed: ${wireError.message}`, {
@@ -695,9 +723,30 @@ export async function executeRun(deps: ResolvedDeps, exec: RunExecution): Promis
     if (deps.threadBus && started) {
       const thread = await deps.store.threads.get(threadId);
       if (thread) {
+        if (!completedState && graph) {
+          const snapshot = await captureSnapshot();
+          if (snapshot) completedState = snapshotToThreadState(snapshot);
+        }
         await deps.threadBus.publish(
           threadId,
-          { kind: "state", operation: "updated", thread },
+          {
+            kind: "state",
+            operation: "updated",
+            thread,
+            runId,
+            lifecycle: "end",
+          },
+          threadGeneration,
+        );
+        await deps.threadBus.publish(
+          threadId,
+          {
+            kind: "state",
+            operation: "updated",
+            thread,
+            runId,
+            ...(completedState ? { state: completedState } : {}),
+          },
           threadGeneration,
         );
         if (isThreadProtocolRun(kwargs)) {

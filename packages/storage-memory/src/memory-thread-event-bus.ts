@@ -17,6 +17,8 @@ interface ThreadHistory {
 /** Bounded payload replay; high-water marks live until the runtime is released. */
 export class MemoryThreadEventBus implements ThreadEventBus {
   readonly #threads = new Map<string, ThreadHistory>();
+  /** Histories holding payloads, least recently published first — the eviction order. */
+  readonly #retained = new Set<ThreadHistory>();
 
   #history(threadId: string): ThreadHistory {
     let history = this.#threads.get(threadId);
@@ -48,15 +50,13 @@ export class MemoryThreadEventBus implements ThreadEventBus {
     history.entries.push(entry);
     if (history.entries.length > 10_000) history.entries.shift();
     // Keep at most 50 payload histories. Eviction retains the cursor and active reader registrations.
-    const retained = [...this.#threads.values()].filter(
-      (candidate) => candidate.entries.length > 0,
-    );
-    if (retained.length > 50) {
-      const oldest = retained.find((candidate) => candidate !== history);
-      if (oldest) {
-        oldest.entries = [];
-        for (const wake of oldest.readers) wake();
-      }
+    this.#retained.delete(history);
+    this.#retained.add(history);
+    if (this.#retained.size > 50) {
+      const [oldest] = this.#retained;
+      this.#retained.delete(oldest!);
+      oldest!.entries = [];
+      for (const wake of oldest!.readers) wake();
     }
     for (const wake of history.readers) wake();
     return structuredClone(entry);
@@ -142,6 +142,7 @@ export class MemoryThreadEventBus implements ThreadEventBus {
     history.deleted = true;
     history.generation++;
     history.entries = [];
+    this.#retained.delete(history);
     for (const wake of history.readers) wake();
   }
 }

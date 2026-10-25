@@ -413,11 +413,19 @@ success/error responses. Implemented methods are `run.start`, `input.respond`, `
 worker; a subscription or reconnect never invokes the graph. Existing resume/goto/update bodies
 continue to return legacy SSE. State reads require read permission, run starts require `create_run`,
 and forks also require state-write and destination-creation permission.
+`state.fork` verifies the source checkpoint in the configured saver before copying; custom-agent
+snapshots do not need a `createdAt` timestamp to identify a valid stored checkpoint.
 
 `GET /stream/events` remains an alias for `GET /stream`. Without parameters these join one run
-and finish with it, preserving Skein's established default. Explicit `stream_modes` (repeated or
-comma-separated, including `thread_state`) opts into a thread stream that stays open across turns.
-Its SSE event IDs are thread-wide cursors, rather than per-run frame IDs.
+and finish with it, preserving Skein's established default. Explicit `stream_mode` (repeated or
+comma-separated; what the SDK's `threads.joinStream` sends) opts into a thread stream that stays
+open across turns. `run_modes` includes every run frame and completion metadata. `lifecycle`
+emits only `metadata` events: `{ run_id, attempt: 1 }` when execution starts and
+`{ status: "run_done", run_id }` when it ends. `state_update` emits
+`{ thread_id, state }`, where `state` is the full checkpoint snapshot captured when the run ends
+or state is updated directly. Replay preserves each historical snapshot. Individual frame modes
+and the Skein-specific `thread_state` thread-row events remain supported. SSE event IDs are thread-wide cursors, rather than
+per-run frame IDs. Without `Last-Event-ID` it starts with live events; with one it replays after it.
 
 Thread subscriptions require `ProtocolDeps.threadBus`; the built-in runtime assemblers provide it.
 Memory replay is process-local. Redis replay is shared between API replicas and workers. Neither
@@ -638,7 +646,9 @@ omission keeps LangGraph’s default. Legacy SSE also recognizes `tasks` and `ch
 Thread search supports `exclude_metadata` (one nonempty object or a nonempty list, excluding any
 matching subset), `sort_by: "state_updated_at"`, `select`, and up to ten named `extract` paths.
 Extraction accepts roots `values`, `metadata`, `config`, and `interrupts`, dot properties and array
-indices such as `values.messages[-1].content`; absent values become `null`. Filters run before
+indices such as `values.messages[-1].content`; absent values become `null`. Extracted aliases are
+returned in an `extracted` object, alongside selected fields, and cannot overwrite thread identity.
+Filters run before
 pagination; projection and extraction run after authorization. Assistant and cron search support
 `select`. HTTP assistant name matching is case-insensitive substring matching; direct repository
 calls retain exact matching unless `nameMatch: "substring"` is requested.

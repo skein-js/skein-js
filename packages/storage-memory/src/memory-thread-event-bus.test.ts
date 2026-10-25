@@ -28,6 +28,20 @@ describe("thread event retention", () => {
     expect((await next).value.seq).toBe(2);
     await iterator.return?.();
   });
+  it("evicts the least recently published history, not a thread that is still publishing", async () => {
+    const bus = new MemoryThreadEventBus();
+    const publish = (threadId: string) =>
+      bus.publish(threadId, {
+        kind: "run",
+        runId: "run",
+        frame: { seq: 0, event: "values", data: {} },
+      });
+    for (let index = 0; index < 50; index++) await publish(`thread-${index}`);
+    await publish("thread-0");
+    await publish("thread-50");
+    expect(await bus.replayCursor("thread-0")).toBe(0);
+    expect(await bus.replayCursor("thread-1")).toBe(1);
+  });
   it("reports a replay gap after payload trimming without resetting its sequence", async () => {
     const bus = new MemoryThreadEventBus();
     for (let i = 0; i < 10_001; i++)

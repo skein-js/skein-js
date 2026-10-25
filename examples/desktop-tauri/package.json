@@ -10,7 +10,7 @@
     "@skein-js/agent-protocol": "workspace:*",
     "@skein-js/example-local-workflow": "workspace:*",
     "@tauri-apps/api": "^2.0.0",
-    "@langchain/langgraph-sdk": "^1.9.0",
+    "@langchain/langgraph-sdk": "^1.12.7",
     "@langchain/core": "^1.2.9"
   },
   "devDependencies": {

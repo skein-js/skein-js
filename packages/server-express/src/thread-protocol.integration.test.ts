@@ -95,6 +95,33 @@ it("reconnects the official SDK through another API instance while one queued gr
     expect(replicaSubscriptions).toBeGreaterThan(0);
     expect(executions).toBe(1);
     expect(await client.runs.list(stream.threadId)).toHaveLength(1);
+    const stopped = new AbortController();
+    const follower = new Client({ apiUrl: second.baseUrl }).threads
+      .joinStream(stream.threadId, {
+        streamMode: ["lifecycle", "state_update"],
+        lastEventId: "0",
+        signal: stopped.signal,
+      })
+      [Symbol.asyncIterator]();
+    try {
+      const started = (await follower.next()).value;
+      const finished = (await follower.next()).value;
+      const updated = (await follower.next()).value;
+      expect(started).toMatchObject({ event: "metadata", data: { attempt: 1 } });
+      expect(finished).toMatchObject({
+        event: "metadata",
+        data: { run_id: started.data.run_id, status: "run_done" },
+      });
+      expect(updated).toMatchObject({
+        event: "state_update",
+        data: { thread_id: stream.threadId, state: { checkpoint: { thread_id: stream.threadId } } },
+      });
+      expect(updated.data.state.values.messages.at(-1).content).toBe("one execution");
+      expect(executions).toBe(1);
+    } finally {
+      stopped.abort();
+      await follower.return(undefined).catch(() => undefined);
+    }
   } finally {
     release();
     await stream.close();

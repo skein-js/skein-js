@@ -76,6 +76,38 @@ async function serviceOnPostgres() {
 }
 
 describe("time travel — postgres store + PostgresSaver checkpointer", () => {
+  it("prunes a thread without overwriting another thread at the former scratch ID", async () => {
+    const { service } = await serviceOnPostgres();
+    const source = await service.threads.create();
+    const victim = await service.threads.create({
+      thread_id: `${source.thread_id}::skein-prune`,
+      metadata: { owner: "another-user" },
+    });
+    for (const [threadId, value] of [
+      [source.thread_id, "first"],
+      [source.thread_id, "latest"],
+      [victim.thread_id, "private"],
+    ]) {
+      await service.runs.createWait({
+        thread_id: threadId!,
+        assistant_id: "echo",
+        input: { value },
+      });
+    }
+    const victimHistory = await service.threads.history(victim.thread_id);
+    expect(victimHistory.length).toBeGreaterThan(0);
+
+    await service.threads.prune({ threadIds: [source.thread_id], strategy: "keep_latest" });
+
+    expect(await service.threads.history(victim.thread_id)).toEqual(victimHistory);
+    expect((await service.threads.getState(victim.thread_id)).values).toEqual({
+      value: "echo: private",
+    });
+    expect((await service.threads.getState(source.thread_id)).values).toEqual({
+      value: "echo: latest",
+    });
+  });
+
   it("forks state at a checkpoint, reads the past, and forks a run from it", async () => {
     const { service, store } = await serviceOnPostgres();
     const thread = await service.threads.create();

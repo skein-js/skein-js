@@ -327,3 +327,7 @@ see [langgraph-cli-compat.md](./langgraph-cli-compat.md) for every field it acce
 - [Your first agent](./your-first-agent.md) — the guided version of all of this
 - [Getting started](./getting-started.md) — the paths for when you already have a graph
 - [LangGraph CLI compatibility](./langgraph-cli-compat.md) — every `langgraph.json` field
+
+The generated JavaScript client dependency follows the runnable examples: currently
+`@langchain/langgraph-sdk` `^1.12.7`. React frontends use the dedicated `@langchain/react`
+package; see [the frontend guide](./react-sdk.md) for thread subscriptions and interrupt responses.

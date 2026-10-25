@@ -208,10 +208,10 @@ for await (const ev of client.runs.stream(thread.thread_id, "agent", { input }))
 ```
 
 ```tsx
-// Browser — @langchain/langgraph-sdk/react useStream (SSE)
-import { useStream } from "@langchain/langgraph-sdk/react";
+// Browser — @langchain/react useStream (SSE)
+import { useStream } from "@langchain/react";
 const thread = useStream({ apiUrl: "http://localhost:2024", assistantId: "agent" });
-thread.submit({ messages: [{ type: "human", content: "hello" }] });
+thread.submit({ messages: [{ role: "user", content: "hello" }] });
 ```
 
 `assistantId` defaults to the `graph_id`. See [react-sdk.md](./react-sdk.md),

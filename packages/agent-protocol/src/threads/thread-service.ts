@@ -703,6 +703,7 @@ export function createThreadService(ctx: ProtocolContext): ThreadService {
     },
 
     async updateState(threadId, input) {
+      const generation = await deps.threadBus?.generation(threadId);
       // Ownership-gate first: loadThreadGraph 404s an unknown/foreign thread (via requireThread) before
       // any activity check, so a non-owned thread reads as absent (never a 409-vs-404 activity oracle),
       // and 422s a thread that has never produced a graph.
@@ -733,9 +734,19 @@ export function createThreadService(ctx: ProtocolContext): ThreadService {
       // Mirror the fork tip (values + interrupts/status) onto the thread row so a plain
       // `GET /threads/{id}` and `useStream` reflect the branch, as LangGraph does post-update.
       const snapshot = await graph.getState({ configurable: { thread_id: threadId } });
-      await deps.store.threads.update(
+      const updated = await deps.store.threads.update(
         threadId,
         snapshotToThreadUpdate(snapshot, runStatusForSnapshot(snapshot)),
+      );
+      await deps.threadBus?.publish(
+        threadId,
+        {
+          kind: "state",
+          operation: "updated",
+          thread: updated,
+          state: snapshotToThreadState(snapshot),
+        },
+        generation,
       );
       const next = (nextConfig.configurable ?? {}) as Record<string, unknown>;
       const checkpoint: Checkpoint = {

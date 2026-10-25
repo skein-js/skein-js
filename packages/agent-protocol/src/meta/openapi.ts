@@ -79,7 +79,7 @@ export function createOpenApiDocument(
       parameters.push({ name: "Last-Event-ID", in: "header", schema: { type: "string" } });
     if (route.handler === "getThreadStream")
       parameters.push({
-        name: "stream_modes",
+        name: "stream_mode",
         in: "query",
         schema: { type: "array", items: { type: "string" } },
         style: "form",

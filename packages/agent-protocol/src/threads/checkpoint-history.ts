@@ -4,6 +4,8 @@
 // "rollback"`). Both keep to the `BaseCheckpointSaver` surface (`list`/`put`/`putWrites`/
 // `deleteThread`), preserving each checkpoint namespace.
 
+import { randomUUID } from "node:crypto";
+
 import type { ThreadCheckpointer, ThreadCheckpointTuple } from "../graphs/thread-checkpointer.js";
 
 /**
@@ -131,6 +133,35 @@ async function listCheckpoints(
   return tuples;
 }
 
+/** Preserve a recoverable copy without using a predictable, potentially real thread ID. */
+async function replaceCheckpointHistory(
+  checkpointer: ThreadCheckpointer,
+  threadId: string,
+  operation: "prune" | "rollback",
+  tuples: ThreadCheckpointTuple[],
+  cloneCheckpoint: CloneCheckpoint,
+): Promise<void> {
+  let scratchThreadId: string;
+  do {
+    scratchThreadId = `${threadId}::skein-${operation}:${randomUUID()}`;
+  } while ((await listCheckpoints(checkpointer, scratchThreadId, 1)).length > 0);
+
+  // Save before erasure, and retain this copy if replacing the original fails.
+  await replayCheckpoints(checkpointer, scratchThreadId, tuples, cloneCheckpoint);
+  try {
+    await checkpointer.deleteThread(threadId);
+    await replayCheckpoints(checkpointer, threadId, tuples, cloneCheckpoint);
+  } catch (error) {
+    throw new Error(
+      `${operation === "prune" ? "pruning" : "rolling back"} thread "${threadId}" failed; ` +
+        `its checkpoint backup survives under "${scratchThreadId}"`,
+      { cause: error },
+    );
+  }
+  // A cleanup failure must not turn a successful replacement into an apparent failed operation.
+  await checkpointer.deleteThread(scratchThreadId).catch(() => undefined);
+}
+
 /**
  * Replay every checkpoint of `sourceId` under `targetId` so a copied thread carries the same graph
  * history. Checkpoints are keyed only by `thread_id`, so the source id is simply swapped. Oldest-first
@@ -196,29 +227,7 @@ export async function pruneThreadCheckpointsToLatest(
     })
     .reverse();
 
-  // Written under a scratch thread id *before* the delete, so the keeper exists in two places for the
-  // duration of the destructive step. Without it, a `put` that fails after `deleteThread` — a statement
-  // timeout, a pool exhaustion, a serialization error on a large checkpoint — leaves the thread with
-  // **zero** checkpoints: its current state gone, not just its history, on a bulk endpoint that can be
-  // pointed at a thousand threads. The insurance copy is removed on the way out.
-  const scratchThreadId = `${threadId}::skein-prune`;
-  await replayCheckpoints(checkpointer, scratchThreadId, rootedKeep, cloneCheckpoint);
-  try {
-    await checkpointer.deleteThread(threadId);
-    await replayCheckpoints(checkpointer, threadId, rootedKeep, cloneCheckpoint);
-  } catch (error) {
-    // The scratch copy is deliberately left behind here: it is the only remaining copy of the state, and
-    // the id is derived from the thread's own so an operator can find it. Recover with
-    // `copyCheckpointHistory(checkpointer, "<thread>::skein-prune", "<thread>")`.
-    throw new Error(
-      `pruning thread "${threadId}" failed after its checkpoints were deleted; the kept checkpoint ` +
-        `survives under "${scratchThreadId}"`,
-      { cause: error },
-    );
-  }
-  // Best-effort: the prune has already succeeded, so a leftover scratch thread is clutter rather than a
-  // failure — and reporting it as one would make a successful prune look broken.
-  await checkpointer.deleteThread(scratchThreadId).catch(() => undefined);
+  await replaceCheckpointHistory(checkpointer, threadId, "prune", rootedKeep, cloneCheckpoint);
   return true;
 }
 
@@ -272,9 +281,5 @@ export async function rollbackThreadCheckpointsTo(
       keep.push(tuple);
   }
   const retained = referencedCheckpoints(tuples, keep).reverse();
-  const scratchThreadId = `${threadId}::skein-rollback`;
-  await replayCheckpoints(checkpointer, scratchThreadId, retained, cloneCheckpoint);
-  await checkpointer.deleteThread(threadId);
-  await replayCheckpoints(checkpointer, threadId, retained, cloneCheckpoint);
-  await checkpointer.deleteThread(scratchThreadId).catch(() => undefined);
+  await replaceCheckpointHistory(checkpointer, threadId, "rollback", retained, cloneCheckpoint);
 }

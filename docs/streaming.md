@@ -174,8 +174,13 @@ clears payloads and closes its readers; execution captures its generation so a l
 repopulate history after deletion or ID reuse. Release the Redis bus with `dispose()` when assembling
 infrastructure by hand; runtime assemblers own that cleanup automatically.
 
-Legacy `GET /threads/{id}/stream` joins one run by default. Pass explicit `stream_modes` to follow
-legacy frames and optional `thread_state` events across turns. This default differs from Agent Server;
+Legacy `GET /threads/{id}/stream` joins one run by default. Pass explicit `stream_mode` to follow
+events across turns. The official categories are `run_modes` (run frames plus completion metadata),
+`lifecycle` (start/end `metadata` events), and `state_update` (`{ thread_id, state }` checkpoint
+snapshots after execution or direct state updates). Recorded snapshots are replayed without
+substituting a later thread state. Individual frame modes and optional `thread_state` thread-row
+events remain available. The stream starts with live events unless
+`Last-Event-ID` resumes after an earlier one. This default differs from Agent Server;
 see the [compatibility matrix](./langgraph-compatibility.md) for the verification scope.
 
 A subscription without `since` replays retained events so late selectors can recover custom

@@ -50,3 +50,13 @@ stores, A2A requires immutable run-result persistence. Diagnostics are `/openapi
 `/metrics`, and `/threads/{thread_id}/storage`. Metrics require a host-owned collector, and custom
 savers without concrete byte inspectors return 501. Never estimate stored bytes or silently ignore
 requested indexing, explicit no-expiry TTL, or per-read refresh controls.
+
+### Browser clients
+
+For new React frontends, install `@langchain/react` (tested at 1.2.7) and its
+`@langchain/core` peer. Import `useStream` from `@langchain/react`, point `apiUrl` and
+`assistantId` at Skein, submit user messages with `{ role: "user", content }`, and resume
+interrupts with `thread.respond(value)`. The dedicated hook uses thread event subscriptions
+and command envelopes; restoring or reconnecting a subscription must never submit another turn.
+The legacy `@langchain/langgraph-sdk/react` hook remains supported for existing apps.
+See `docs/react-sdk.md` and the three React examples for current usage.

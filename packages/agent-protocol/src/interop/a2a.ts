@@ -581,15 +581,12 @@ export function createA2aHandler(
           }
         const tasks: Task[] = [];
         for (const thread of threads)
-          for (const run of await listRuns(thread.thread_id))
-            if (
-              run.assistant_id === assistantId &&
-              run.metadata?.["skein_a2a"] &&
-              readA2aOrigin(await context.deps.store.runs.getKwargs(run.run_id))?.rootId ===
-                undefined &&
-              readA2aOrigin(await context.deps.store.runs.getKwargs(run.run_id))
-            )
+          for (const run of await listRuns(thread.thread_id)) {
+            if (run.assistant_id !== assistantId || !run.metadata?.["skein_a2a"]) continue;
+            const origin = readA2aOrigin(await context.deps.store.runs.getKwargs(run.run_id));
+            if (origin && origin.rootId === undefined)
               tasks.push(await taskFor(run.run_id, input.historyLength));
+          }
         const after = input.statusTimestampAfter
           ? Date.parse(input.statusTimestampAfter)
           : undefined;
@@ -606,7 +603,8 @@ export function createA2aHandler(
               (b.status?.timestamp ?? "").localeCompare(a.status?.timestamp ?? "") ||
               b.id.localeCompare(a.id),
           );
-        if (input.includeArtifacts === false) for (const task of matching) task.artifacts = [];
+        // The A2A spec defaults `includeArtifacts` to false to keep listings small.
+        if (input.includeArtifacts !== true) for (const task of matching) task.artifacts = [];
         const offset = input.pageToken ? Number(input.pageToken) : 0;
         const pageSize = Math.min(input.pageSize ?? 50, 1000);
         if (!Number.isSafeInteger(offset) || offset < 0 || pageSize < 1)
