@@ -24,13 +24,17 @@ afterAll(async () => {
   await redis?.stop();
 });
 
-async function fixture(cap = 2048) {
+async function fixture(cap = 2048, eventsAutorun = true) {
   const url = new URL(redis.url);
   const connection = { host: url.hostname, port: Number(url.port), maxRetriesPerRequest: null };
   const name = `native-${randomUUID()}`;
   const commands = new Queue(`${name}-commands`, { connection });
   const outcomes = new Queue(`${name}-outcomes`, { connection });
-  const events = new QueueEvents(commands.name, { connection });
+  const events = new QueueEvents(commands.name, {
+    connection,
+    autorun: eventsAutorun,
+    lastEventId: "0-0",
+  });
   const store = new MemorySkeinStore();
   const states = new Map<string, unknown>();
   const graph: AgentGraph = {
@@ -238,6 +242,57 @@ describe("BullMQ native access over Redis", () => {
       expect((await f.outcomes.getJob(truncatedId))!.data.outcome).toBeUndefined();
     } finally {
       await f.close();
+    }
+  });
+  it("observes admission completed before the command event loop starts", async () => {
+    const f = await fixture(2048, false);
+    const borrowed = new Redis(redis.url, { maxRetriesPerRequest: null });
+    const access = createBullMqTransport({
+      commandQueue: f.commands.name,
+      outcomeQueue: f.outcomes,
+      connection: borrowed,
+      authenticate: async () => ({}),
+    });
+    let eventsRunning: Promise<void> | undefined;
+    try {
+      // A ready Redis connection does not mean QueueEvents has issued its first stream read.
+      await f.events.waitUntilReady();
+      const job = await f.commands.add("skein.command.v1", {
+        version: 1,
+        commandId: "waiter-startup",
+        operation: "start",
+        input: { assistant_id: "agent", input: {} },
+      });
+      let notifyPendingCheck!: () => void;
+      const pendingChecked = new Promise<void>((resolve) => {
+        notifyPendingCheck = resolve;
+      });
+      const scripts = Reflect.get(job, "scripts") as {
+        isFinished(jobId: string, returnValue: boolean): Promise<[number, string]>;
+      };
+      const isFinished = scripts.isFinished.bind(scripts);
+      vi.spyOn(scripts, "isFinished").mockImplementation(async (...args) => {
+        const result = await isFinished(...args);
+        expect(result[0]).toBe(0);
+        notifyPendingCheck();
+        return result;
+      });
+      const waiting = job.waitUntilFinished(f.events, 10_000);
+      await pendingChecked;
+      await access.start(f.client);
+      await expect.poll(() => job.getState()).toBe("completed");
+      // The initial status poll saw pending, but completion precedes the first event read.
+      eventsRunning = f.events.run();
+      const receipt = await waiting;
+      expect(receipt).toEqual(await f.client.getReceipt("waiter-startup"));
+      expect((await f.client.getRun(receipt.runId)).status).toBe("pending");
+      await access.stop();
+      expect(await borrowed.ping()).toBe("PONG");
+    } finally {
+      await access.stop();
+      await borrowed.quit();
+      await f.close();
+      await eventsRunning;
     }
   });
   it("preserves a borrowed ioredis 5 connection after stopping its worker", async () => {

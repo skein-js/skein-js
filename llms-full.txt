@@ -3339,6 +3339,10 @@ BullMQ handles retries according to the producer's bounded `attempts`/`backoff`.
 authorization, stale answers and unsupported capabilities fail with `UnrecoverableError`; its JSON
 message includes the stable code and status. Admission contention, pending results and infrastructure
 failures use normal retry behavior. Default BullMQ attempts remain one unless the producer sets them.
+For command acknowledgement waiters, start `QueueEvents` with a retained cursor such as
+`lastEventId: "0-0"`, as the runnable example does. Connection readiness alone does not prove that
+event consumption has begun; a fast completion can otherwise fall between the waiter's status check
+and its first stream read. If acknowledgement times out, recover admission by its stable command key.
 
 Each run/state/result request reauthorizes and returns a base64 byte chunk with SHA-256 `digest`, `offset`,
 `nextOffset` and `totalBytes`. Start at offset zero, then supply the returned digest and next offset.
