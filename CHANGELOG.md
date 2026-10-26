@@ -1,3 +1,29 @@
+## 0.22.0 (2026-10-26)
+
+### 🚀 Features
+
+- **console:** make execution and operations understandable ([#73](https://github.com/skein-js/skein-js/pull/73))
+- **redis:** support BullMQ 6 and ioredis 6 with compatibility gates ([c544ce6](https://github.com/skein-js/skein-js/commit/c544ce6))
+- **runtime:** add LangGraph Agent Server compatibility ([#62](https://github.com/skein-js/skein-js/issues/62))
+- **runtime:** add reliable native and BullMQ access ([7513728](https://github.com/skein-js/skein-js/commit/7513728))
+- **runtime:** dispatch available thread partitions without waiting ([a668aeb](https://github.com/skein-js/skein-js/commit/a668aeb))
+
+### 🩹 Fixes
+
+- **bullmq:** retain events while command waiters start ([443a3c0](https://github.com/skein-js/skein-js/commit/443a3c0))
+- **bullmq:** preserve borrowed inputs across major upgrades ([c8dcd6d](https://github.com/skein-js/skein-js/commit/c8dcd6d))
+- **ci:** align Hono lockfile and validate built docs ([04faf3d](https://github.com/skein-js/skein-js/commit/04faf3d))
+- **ci:** order browser typechecks and honor crash test timeout ([b848544](https://github.com/skein-js/skein-js/commit/b848544))
+- **compatibility:** address audit findings and refresh SDK examples ([a2e1a8e](https://github.com/skein-js/skein-js/commit/a2e1a8e))
+- **console:** keep navigation and composer within the viewport ([#74](https://github.com/skein-js/skein-js/pull/74))
+- **postgres:** retain claim error handling through release ([3658252](https://github.com/skein-js/skein-js/commit/3658252))
+- **redis:** preserve native retry backoff during partition dispatch ([b5186dc](https://github.com/skein-js/skein-js/commit/b5186dc))
+- **runtime:** close native admission and recovery gaps ([031255a](https://github.com/skein-js/skein-js/commit/031255a))
+
+### ❤️ Thank You
+
+- Maina Wycliffe @mainawycliffe
+
 ## 0.21.0 (2026-10-20)
 
 ### 🚀 Features
