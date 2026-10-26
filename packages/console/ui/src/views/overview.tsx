@@ -1,6 +1,7 @@
 // What is this server, and what is it doing right now.
 
 import { ArrowUpRight, RefreshCw } from "lucide-react";
+import { useState } from "react";
 
 import { createConsoleClient, fetchServerInfo } from "@/api";
 import { Button } from "@/components/ui/button";
@@ -19,20 +20,35 @@ import { useAsync } from "@/use-async";
 import { Async, IdLink, Json, Panel, StatusBadge, Timestamp } from "./parts";
 
 export function OverviewView() {
-  const client = createConsoleClient();
+  const [client] = useState(() => createConsoleClient());
 
   const info = useAsync((signal) => fetchServerInfo(signal), []);
   const counts = useAsync(async (signal) => {
     // Counted rather than measured off a page of results: `search` with a limit tells you how many
     // rows came back, which is a different number and quietly caps at the page size.
-    const [assistants, threads, crons, waiting] = await Promise.all([
+    const results = await Promise.allSettled([
       client.assistants.count({ signal }),
       client.threads.count({ signal }),
       client.crons.count({ signal }),
       // The number that actually needs a person. Everything else here is inventory.
       client.threads.count({ status: "interrupted", signal }),
+      client.threads.count({ status: "error", signal }),
     ]);
-    return { assistants, threads, crons, waiting };
+    const [assistants, threads, crons, waiting, failed] = results.map((result) =>
+      result.status === "fulfilled" ? result.value : undefined,
+    );
+    return {
+      assistants,
+      threads,
+      crons,
+      waiting,
+      failed,
+      errors: results
+        .filter((result) => result.status === "rejected")
+        .map((result) =>
+          result.reason instanceof Error ? result.reason.message : String(result.reason),
+        ),
+    };
   }, []);
   const recent = useAsync(
     (signal) =>
@@ -42,7 +58,7 @@ export function OverviewView() {
 
   return (
     <>
-      <div className="mb-4 grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
+      <div className="mb-4 grid gap-4 sm:grid-cols-2 xl:grid-cols-5">
         {/* First, and the only one that can be urgent: these threads are parked on `interrupt()` and
             will stay parked until a person answers. A console that makes you hunt for them is a
             console that lets work sit. */}
@@ -52,11 +68,43 @@ export function OverviewView() {
           to="threads?status=interrupted"
           highlight={(counts.data?.waiting ?? 0) > 0}
         />
+        <Counter
+          label="Threads with errors"
+          value={counts.data?.failed}
+          to="threads?status=error"
+        />
         <Counter label="Threads" value={counts.data?.threads} to="threads" />
-        <Counter label="Graphs" value={counts.data?.assistants} to="assistants" />
+        <Counter label="Assistants" value={counts.data?.assistants} to="assistants" />
         <Counter label="Schedules" value={counts.data?.crons} to="crons" />
       </div>
 
+      <div className="mb-4 flex flex-wrap items-center justify-between gap-2">
+        <p className="help">
+          Snapshot{" "}
+          {recent.fetchedAt ? (
+            <Timestamp value={new Date(recent.fetchedAt).toISOString()} />
+          ) : (
+            "loading…"
+          )}
+          . Refresh to read the latest server state.
+        </p>
+        <Button
+          variant="outline"
+          size="sm"
+          onClick={() => {
+            counts.reload();
+            recent.reload();
+            info.reload();
+          }}
+        >
+          Refresh overview
+        </Button>
+      </div>
+      {counts.data?.errors.length ? (
+        <p className="action-error mb-4" role="alert">
+          Some counts are unavailable: {counts.data.errors.join("; ")}
+        </p>
+      ) : null}
       <Panel
         title="Recent threads (latest 10)"
         actions={
@@ -99,9 +147,14 @@ export function OverviewView() {
         </Async>
       </Panel>
 
-      <Panel title="Server" padded>
-        <Async state={info}>{(data) => <Json value={data} />}</Async>
-      </Panel>
+      <details>
+        <summary className="mb-3 cursor-pointer text-sm text-muted-foreground">
+          Server capabilities and version
+        </summary>
+        <Panel title="Server" padded>
+          <Async state={info}>{(data) => <Json value={data} />}</Async>
+        </Panel>
+      </details>
     </>
   );
 }

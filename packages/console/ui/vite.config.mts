@@ -14,7 +14,11 @@ import { defineConfig } from "vite";
 // There is no SSR and no server runtime: `vite build` emits plain static files, which is exactly what
 // lets the generator compile them into a JS module the skein server can serve. Routing is hash-based
 // (src/router.ts), so a deep link never reaches the server and no adapter needs a history fallback.
-export default defineConfig(() => ({
+export default defineConfig(({ command }) => ({
+  // Nx evaluates project plugins in development too. Production assets must resolve the
+  // production React/Markdown exports regardless of the graph worker's environment.
+  define: command === "build" ? { "process.env.NODE_ENV": JSON.stringify("production") } : {},
+  oxc: { jsx: { development: command !== "build" } },
   root: import.meta.dirname,
   cacheDir: "../../../node_modules/.vite/packages/console/ui",
   base: "./",
@@ -24,7 +28,10 @@ export default defineConfig(() => ({
   // The shadcn/ui convention: components are vendored into src/components/ui and import each other
   // (and `@/lib/utils`) through this alias. Declared here as well as in tsconfig.json because the two
   // resolvers are separate — TypeScript's paths type-check the imports, this one bundles them.
-  resolve: { alias: { "@": new URL("./src", import.meta.url).pathname } },
+  resolve: {
+    conditions: ["module", "browser", command === "build" ? "production" : "development"],
+    alias: { "@": new URL("./src", import.meta.url).pathname },
+  },
   build: {
     outDir: "dist",
     emptyOutDir: true,

@@ -100,6 +100,25 @@ describe("native admission", () => {
       code: "receipt_unavailable",
     });
   });
+  it("honors an inherited execution duration while retaining the admitted native outcome", async () => {
+    const deps = createFixtureDeps();
+    const runtime = createProtocolRuntime(deps, { scheduler: { enabled: false } });
+    runtimes.push(runtime);
+    await runtime.service.assistants.registerGraphAssistants();
+    const client = runtime.createNativeClient({
+      sourceId: "duration",
+      allowedAssistants: ["slow"],
+    });
+    const receipt = await client.start(
+      { assistant_id: "slow", input: {}, timeout_ms: 20 },
+      { idempotencyKey: "duration" },
+    );
+    runtime.worker.start();
+    await expect.poll(async () => (await client.getRun(receipt.runId)).status).toBe("timeout");
+    expect(await client.getReceipt("duration")).toMatchObject({ runId: receipt.runId });
+    expect(await deps.store.runs.getKwargs(receipt.runId)).toMatchObject({ timeout_ms: 20 });
+  });
+
   it.each(["throwing", "slow"])("records complete native %s outcomes", async (assistantId) => {
     const deps = createFixtureDeps({ runTimeoutMs: 25 });
     const runtime = createProtocolRuntime(deps, { scheduler: { enabled: false } });
@@ -225,7 +244,7 @@ describe("native admission", () => {
     ).toMatchObject({ status: "cancelled", stopped: true });
   });
   it("resumes exactly one expected interrupt, replays admission and rejects stale answers", async () => {
-    const { client, runtime } = await fixture();
+    const { client, runtime, deps } = await fixture();
     runtime.worker.start();
     const first = await client.start({ assistant_id: "interrupting", input: {} });
     await expect.poll(async () => (await client.getRun(first.runId)).status).toBe("interrupted");
@@ -236,6 +255,7 @@ describe("native admission", () => {
       thread_id: first.threadId,
       expected: { runId: first.runId, checkpoint: state.checkpoint! },
       resume: "approved",
+      timeout_ms: 1000,
     };
     const [a, b] = await Promise.allSettled([
       client.resume(input, { idempotencyKey: "answer-a" }),
@@ -247,6 +267,9 @@ describe("native admission", () => {
     await expect
       .poll(async () => (await client.getRun(accepted.value.runId)).status)
       .toBe("success");
+    expect(await deps.store.runs.getKwargs(accepted.value.runId)).toMatchObject({
+      timeout_ms: 1000,
+    });
     expect((await client.getResult(accepted.value.runId)).values).toMatchObject({
       value: "resumed: approved",
     });

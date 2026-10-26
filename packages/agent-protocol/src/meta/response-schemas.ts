@@ -19,6 +19,9 @@ const assistant = z
   .passthrough();
 const thread = z
   .object({
+    ttl: z.number().nullable().optional(),
+    expires_at: timestamp.nullable().optional(),
+    ttl_strategy: z.enum(["delete", "keep_latest"]).optional(),
     thread_id: z.string(),
     created_at: timestamp,
     updated_at: timestamp,
@@ -68,6 +71,8 @@ const cron = z
   .passthrough();
 const item = z
   .object({
+    ttl: z.number().nullable().optional(),
+    expires_at: timestamp.nullable().optional(),
     namespace: z.array(z.string()),
     key: z.string(),
     value: metadata,

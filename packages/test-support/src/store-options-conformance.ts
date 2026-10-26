@@ -8,6 +8,33 @@ export function runStoreOptionsConformance(
 ): void {
   const pause = (ms: number) => new Promise<void>((resolve) => setTimeout(resolve, ms));
   describe(`${label} store operation options`, () => {
+    it("projects saved retention and refreshed expiry consistently on get and search", async () => {
+      const store = await factory({ defaultTtl: 60, refreshOnRead: false });
+      const written = await store.store.put(["retention"], "item", { value: true }, { ttl: 30 });
+      expect(written.ttl).toBe(30);
+      expect(Date.parse(written.expiresAt!)).toBeGreaterThan(Date.now());
+      const passive = await store.store.get(["retention"], "item", { refreshTtl: false });
+      expect(passive?.expiresAt).toBe(written.expiresAt);
+      await pause(20);
+      const refreshed = await store.store.search({ prefix: ["retention"], refreshTtl: true });
+      expect(Date.parse(refreshed[0]!.expiresAt!)).toBeGreaterThan(Date.parse(written.expiresAt!));
+      expect((await store.store.get(["retention"], "item", { refreshTtl: false }))?.expiresAt).toBe(
+        refreshed[0]!.expiresAt,
+      );
+      const pinned = await store.store.putWithOptions!(["retention"], "pinned", {}, { ttl: null });
+      expect(pinned).toMatchObject({ ttl: null, expiresAt: null });
+      const thread = await store.threads.create({ ttl: 30, ttlStrategy: "keep_latest" });
+      expect(thread).toMatchObject({ ttl: 30, ttl_strategy: "keep_latest" });
+      expect(Date.parse(thread.expires_at!)).toBeGreaterThan(Date.now());
+      expect((await store.threads.search({ ids: [thread.thread_id] }))[0]?.expires_at).toBe(
+        thread.expires_at,
+      );
+      expect(await store.threads.update(thread.thread_id, { ttl: null })).toMatchObject({
+        ttl: null,
+        expires_at: null,
+      });
+    });
+
     it("keeps explicit no-expiry writes under a configured default TTL", async () => {
       const repo = (await factory({ defaultTtl: 40 / 60_000 })).store;
       await repo.putWithOptions!(["options"], "pinned", { value: true }, { ttl: null });

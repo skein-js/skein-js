@@ -11,6 +11,34 @@
       "options": {
         "command": "tsc --noEmit -p tsconfig.app.json",
         "cwd": "packages/console/ui"
+      },
+      "dependsOn": ["typecheck-browser"]
+    },
+    "test-browser": {
+      "executor": "nx:run-commands",
+      "cache": false,
+      "dependsOn": [
+        "console:build",
+        "server-express:build",
+        "langgraph:build",
+        "storage-memory:build"
+      ],
+      "options": {
+        "command": "vitest run --config vitest.browser.config.ts",
+        "cwd": "packages/console/ui"
+      }
+    },
+    "typecheck-browser": {
+      "executor": "nx:run-commands",
+      "dependsOn": [
+        "console:build",
+        "server-express:build",
+        "langgraph:build",
+        "storage-memory:build"
+      ],
+      "options": {
+        "command": "tsc --noEmit -p tsconfig.browser.json",
+        "cwd": "packages/console/ui"
       }
     }
   }

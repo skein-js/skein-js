@@ -504,3 +504,14 @@ pending writes. Delta channels may also require ancestor writes until a full sna
 necessary ancestors remain readable after prune and copy. `keep_latest` removes expendable history,
 not checkpoint data required to reconstruct current state. Exact payload accounting is available at
 `GET /threads/{thread_id}/storage`; see [diagnostics](./observability.md#http-diagnostics).
+
+### Retention readback
+
+Bundled memory, SQLite, and Postgres drivers enrich thread resources with optional `ttl` (minutes),
+`expires_at`, and `ttl_strategy`. Store `Item` and `SearchItem` resources expose optional `ttl` and
+`expiresAt` in repository results; HTTP responses serialize expiry as `expires_at`. An absent field
+means the driver cannot report it; `null` means known no expiry. Thread expiry means eligible for
+sweeping, rather than a promise of immediate deletion. Refresh-enabled reads return the new expiry.
+
+These fields reuse existing storage columns, require no migration, and add no required custom-driver
+methods. Passive tools can use `refreshTtl: false` to inspect without extending a sliding lifetime.

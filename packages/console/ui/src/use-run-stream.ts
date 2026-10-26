@@ -65,7 +65,7 @@ export function useRunStream(threadId: string, runId: string, enabled = true): R
           ...previous,
           phase: previous.phase === "connecting" ? "streaming" : previous.phase,
           frames: overflow > 0 ? combined.slice(overflow) : combined,
-          dropped: previous.dropped + overflow,
+          dropped: Math.max(0, sequence.current - Math.min(combined.length, MAX_FRAMES)),
         };
       });
     };
@@ -83,11 +83,14 @@ export function useRunStream(threadId: string, runId: string, enabled = true): R
           // started by something else entirely — watching must never be destructive.
           cancelOnDisconnect: false,
         })) {
+          if (controller.signal.aborted) break;
           pending.current.push({
             seq: sequence.current++,
             event: String(chunk.event),
             data: chunk.data,
           });
+          if (pending.current.length > MAX_FRAMES)
+            pending.current = pending.current.slice(-MAX_FRAMES);
           scheduleFlush();
         }
         if (!controller.signal.aborted) {

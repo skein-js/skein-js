@@ -1,23 +1,20 @@
-// The console shell.
-//
-// Two header rows, the way Vercel's dashboard is laid out: identity and connection on top, section
-// tabs with an underline indicator below. It scales better than a single crowded bar — the top row
-// answers "which server am I on", the bottom answers "what am I looking at" — and it leaves the
-// content area unbroken.
-
 import {
   Bot,
   Clock,
   Database,
   LayoutDashboard,
+  Menu,
   MessagesSquare,
   Radio,
+  Sparkles,
   Terminal,
 } from "lucide-react";
-import { useEffect } from "react";
+import { useEffect, useState } from "react";
 
 import knot from "@/assets/skein-knot.svg?url";
 import { ThemeToggle } from "@/components/theme-toggle";
+import { Button } from "@/components/ui/button";
+import { ConfirmationProvider, Dialog } from "@/components/ui/dialog";
 import { cn } from "@/lib/utils";
 import { routeHref, useRoute } from "@/router";
 import { AssistantsView } from "@/views/assistants";
@@ -29,72 +26,177 @@ import { OverviewView } from "@/views/overview";
 import { StoreView } from "@/views/store";
 import { ThreadsView } from "@/views/threads";
 
-// Playground first, and it is where an empty hash lands: the first question anyone has about a
-// server is "does my graph work?", and every other view answers a question you only have later.
 const NAV = [
-  { path: "playground", label: "Playground", Icon: Terminal },
-  { path: "overview", label: "Overview", Icon: LayoutDashboard },
-  { path: "assistants", label: "Assistants", Icon: Bot },
-  { path: "threads", label: "Threads", Icon: MessagesSquare },
-  { path: "channels", label: "Channels", Icon: Radio },
-  { path: "store", label: "Store", Icon: Database },
-  { path: "crons", label: "Crons", Icon: Clock },
+  {
+    group: "Build",
+    path: "playground",
+    label: "Playground",
+    Icon: Terminal,
+    description: "Run an Assistant and follow what happens, one step at a time.",
+  },
+  {
+    group: "Build",
+    path: "assistants",
+    label: "Assistants",
+    Icon: Bot,
+    description: "Configure your graphs, inspect their inputs, and manage saved versions.",
+  },
+  {
+    group: "Inspect",
+    path: "threads",
+    label: "Threads",
+    Icon: MessagesSquare,
+    description: "A thread keeps state and history across runs. Find one to inspect or continue.",
+  },
+  {
+    group: "Operate",
+    path: "overview",
+    label: "Overview",
+    Icon: LayoutDashboard,
+    description: "See what needs your attention and review recent activity on this server.",
+  },
+  {
+    group: "Operate",
+    path: "channels",
+    label: "Channels",
+    Icon: Radio,
+    description: "Inspect the source and destination wiring configured by your application.",
+  },
+  {
+    group: "Operate",
+    path: "store",
+    label: "Store",
+    Icon: Database,
+    description: "Browse and manage the long-term memory your graphs share across threads.",
+  },
+  {
+    group: "Operate",
+    path: "crons",
+    label: "Schedules",
+    Icon: Clock,
+    description: "Run an Assistant on a recurring schedule, with a fresh or existing thread.",
+  },
 ] as const;
 
 export function App() {
-  const { segments, query, navigate } = useRoute();
-  const section = segments[0] ?? "";
+  return (
+    <ConfirmationProvider>
+      <ConsoleShell />
+    </ConfirmationProvider>
+  );
+}
 
-  // Redirect rather than render the playground at two URLs: one canonical path per view keeps the
-  // active-tab indicator honest and makes a copied link mean one thing.
+function ConsoleShell() {
+  const { segments, query, navigate } = useRoute();
+  const [mobileNavigation, setMobileNavigation] = useState(false);
+  const section = segments[0] ?? "";
+  const current = NAV.find((entry) => entry.path === section);
   useEffect(() => {
     if (section === "") navigate("playground");
   }, [section, navigate]);
-
-  return (
-    <div className="min-h-screen bg-background text-foreground">
-      <header className="sticky top-0 z-40 border-b bg-background/80 backdrop-blur-md">
-        <div className="mx-auto flex h-14 max-w-[1280px] items-center gap-3 px-5">
-          <a href={routeHref("")} className="flex items-center gap-2">
-            <img src={knot} alt="" className="size-5" />
-            <span className="text-[15px] font-semibold tracking-tight">skein</span>
-            <span className="text-muted-foreground/40">/</span>
-            <span className="text-[15px] text-muted-foreground">console</span>
-          </a>
-          <div className="ml-auto flex items-center gap-1.5">
-            <ConnectionBadge />
-            <ThemeToggle />
-          </div>
-        </div>
-        <nav className="mx-auto flex max-w-[1280px] gap-0.5 overflow-x-auto px-3">
-          {NAV.map(({ path, label, Icon }) => {
-            const active = section === path;
-            return (
+  const navigation = (
+    <nav aria-label="Console navigation" className="space-y-7">
+      {["Build", "Inspect", "Operate"].map((group) => (
+        <div key={group}>
+          <p className="mb-2 px-3 text-[11px] font-semibold uppercase tracking-[0.12em] text-muted-foreground">
+            {group}
+          </p>
+          <div className="space-y-1">
+            {NAV.filter((entry) => entry.group === group).map(({ path, label, Icon }) => (
               <a
                 key={path}
                 href={routeHref(path)}
+                aria-current={section === path ? "page" : undefined}
+                onClick={() => setMobileNavigation(false)}
                 className={cn(
-                  "relative flex items-center gap-1.5 px-2.5 pb-2.5 pt-1 text-[13px] transition-colors",
-                  active ? "text-foreground" : "text-muted-foreground hover:text-foreground",
+                  "flex items-center gap-3 rounded-lg px-3 py-2.5 text-sm transition-colors",
+                  section === path
+                    ? "bg-accent font-semibold text-accent-foreground"
+                    : "text-muted-foreground hover:bg-muted hover:text-foreground",
                 )}
               >
-                <span className="flex items-center gap-1.5 rounded-md px-1.5 py-1 hover:bg-accent">
-                  <Icon className="size-3.5" aria-hidden />
-                  {label}
-                </span>
-                {/* The underline sits on the header's own border, so the active tab reads as
-                    continuous with the page below it rather than as a floating pill. */}
-                {active ? (
-                  <span className="absolute inset-x-0 -bottom-px h-px bg-foreground" />
-                ) : null}
+                <Icon className="size-4" aria-hidden />
+                {label}
               </a>
-            );
-          })}
-        </nav>
-      </header>
-      <main className="mx-auto w-full max-w-[1280px] px-5 py-6">
-        <Body segments={segments} query={query} />
-      </main>
+            ))}
+          </div>
+        </div>
+      ))}
+    </nav>
+  );
+  return (
+    <div className="min-h-dvh bg-background text-foreground">
+      <a
+        href="#console-content"
+        onClick={(event) => {
+          event.preventDefault();
+          document.getElementById("console-content")?.focus();
+        }}
+        className="sr-only focus:not-sr-only focus:fixed focus:left-4 focus:top-4 focus:z-[60] focus:rounded-lg focus:bg-card focus:p-3"
+      >
+        Skip to content
+      </a>
+      <aside className="fixed inset-y-0 left-0 z-40 hidden w-[232px] flex-col border-r bg-card px-4 py-6 md:flex">
+        <a href={routeHref("playground")} className="mb-10 flex items-center gap-2.5 px-3">
+          <img src={knot} className="size-7" alt="" />
+          <span className="text-xl font-semibold tracking-tight">
+            skein<span className="ml-2 text-xs font-normal text-muted-foreground">console</span>
+          </span>
+        </a>
+        {navigation}
+        <div className="mt-auto rounded-xl border bg-muted/50 p-3">
+          <Sparkles className="mb-2 size-4 text-primary" aria-hidden />
+          <p className="text-xs font-medium">Your graphs. Your infrastructure.</p>
+          <p className="mt-1 text-xs leading-relaxed text-muted-foreground">
+            Test, understand, and operate your agents in one place.
+          </p>
+        </div>
+      </aside>
+      <Dialog
+        open={mobileNavigation}
+        onOpenChange={setMobileNavigation}
+        title="skein console"
+        description="Navigate your agent workspace."
+        side
+      >
+        {navigation}
+      </Dialog>
+      <div className="min-w-0 md:ml-[232px]">
+        <header className="sticky top-0 z-30 flex min-h-16 items-center gap-3 border-b bg-card/95 px-4 backdrop-blur-md sm:px-6">
+          <Button
+            variant="ghost"
+            size="icon"
+            className="md:hidden"
+            aria-label="Open navigation"
+            onClick={() => setMobileNavigation(true)}
+          >
+            <Menu className="size-5" />
+          </Button>
+          <span className="text-xs text-muted-foreground">Workspace</span>
+          <span className="text-border">/</span>
+          <span className="text-sm font-medium">{current?.label ?? "Console"}</span>
+          <div className="ml-auto flex min-w-0 items-center gap-2">
+            <ConnectionBadge />
+            <ThemeToggle />
+          </div>
+        </header>
+        <main
+          id="console-content"
+          tabIndex={-1}
+          className="mx-auto w-full min-w-0 max-w-[1800px] p-4 outline-none sm:p-6"
+        >
+          <div className="mb-6">
+            <div className="mb-1 text-[11px] font-medium uppercase tracking-[0.12em] text-primary">
+              {current?.group ?? "Workspace"}
+            </div>
+            <h1 className="text-2xl font-semibold">{current?.label ?? "Console"}</h1>
+            <p className="mt-1 max-w-3xl text-sm leading-relaxed text-muted-foreground">
+              {current?.description}
+            </p>
+          </div>
+          <Body segments={segments} query={query} />
+        </main>
+      </div>
     </div>
   );
 }
@@ -136,5 +238,3 @@ function Body({ segments, query }: { segments: readonly string[]; query: URLSear
       );
   }
 }
-
-export default App;

@@ -39,7 +39,7 @@ export function bind(deps: ProtocolDeps) {
     allowedAssistants: ["agent"],
     outcomeTarget: transport.outcomeTarget,
   });
-  const input: NativeStartInput = { assistant_id: "agent", input: {} };
+  const input: NativeStartInput = { assistant_id: "agent", input: {}, timeout_ms: 1000 };
   const command: BullMqCommand = { version: 1, commandId: "one", operation: "start", input };
   const resume: NativeResumeInput = {
     assistant_id: "agent",
@@ -54,6 +54,7 @@ export function bind(deps: ProtocolDeps) {
       },
     },
     resume: "approve",
+    timeout_ms: 1000,
   };
   void command;
   void resume;

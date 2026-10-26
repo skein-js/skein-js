@@ -173,7 +173,11 @@ async function main() {
   if (runtime === "deno") mkdirSync(denoHome, { recursive: true });
 
   // Small, fast frames for the correctness pass — the burst check below turns the volume up.
-  const primary = startServer(2610, { MATRIX_FRAMES: "25", MATRIX_FRAME_BYTES: "256" });
+  const primary = startServer(2610, {
+    MATRIX_FRAMES: "25",
+    MATRIX_FRAME_BYTES: "256",
+    MATRIX_FPS: "500",
+  });
   await waitForReady(2610, primary);
   const client = new Client({ apiUrl: "http://127.0.0.1:2610" });
 
@@ -224,6 +228,45 @@ async function main() {
     "offset pages rather than repeating the first page",
     offset.every((run) => !limited.some((first) => first.run_id === run.run_id)),
   );
+
+  console.log("retention readback and persistent execution timeouts");
+  const retained = await client.threads.create({ ttl: 30 });
+  check(
+    "thread TTL is visible",
+    retained.ttl === 30 && Number.isFinite(Date.parse(retained.expires_at)),
+  );
+  const handshake = await (await fetch("http://127.0.0.1:2610/info")).json();
+  check("per-run timeout capability is explicit", handshake.flags.per_run_timeout === true);
+  await client.store.putItem(["retention", runtime], "expiring", { value: true }, { ttl: 30 });
+  const retainedItem = await client.store.getItem(["retention", runtime], "expiring", {
+    refreshTtl: false,
+  });
+  check(
+    "store expiry is visible through the SDK",
+    retainedItem.ttl === 30 && Number.isFinite(Date.parse(retainedItem.expires_at)),
+  );
+  const invalidTimeout = await fetch("http://127.0.0.1:2610/runs", {
+    method: "POST",
+    headers: { "content-type": "application/json" },
+    body: JSON.stringify({ assistant_id: assistantId, timeout_ms: 0, input: {} }),
+  });
+  check("invalid execution timeout is rejected", invalidTimeout.status === 400);
+  const timeoutClient = new Client({
+    apiUrl: "http://127.0.0.1:2610",
+    onRequest: (_url, init) =>
+      init.method === "POST"
+        ? { ...init, body: JSON.stringify({ ...JSON.parse(init.body), timeout_ms: 5 }) }
+        : init,
+  });
+  const timedRun = await timeoutClient.runs.create(null, assistantId, {
+    input: { messages: [{ role: "human", content: "timeout" }] },
+  });
+  let timedStatus = timedRun.status;
+  for (let attempt = 0; attempt < 100 && !TERMINAL.includes(timedStatus); attempt += 1) {
+    await sleep(20);
+    timedStatus = (await client.runs.get(timedRun.thread_id, timedRun.run_id)).status;
+  }
+  check("requested execution timeout settles as timeout", timedStatus === "timeout", timedStatus);
 
   console.log("store");
   await client.store.putItem(["runtime", runtime], "key", { value: 1 });

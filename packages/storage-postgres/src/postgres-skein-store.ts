@@ -324,6 +324,10 @@ interface ThreadRow {
   created_at: Date;
   updated_at: Date;
   state_updated_at: Date;
+  ttl_minutes: number | null;
+  expires_at: Date | null;
+  ttl_strategy: "delete" | "keep_latest" | null;
+  ttl_pinned: boolean;
 }
 
 interface RunRow {
@@ -344,6 +348,8 @@ interface ItemRow {
   value: Record<string, unknown>;
   created_at: Date;
   updated_at: Date;
+  ttl_minutes: number | null;
+  expires_at: Date | null;
 }
 
 interface DeliveryRow {
@@ -429,7 +435,7 @@ export const DELIVERY_COLUMNS =
 
 /** `"values"` is quoted because unquoted `values` is a SQL keyword in a select list. */
 export const THREAD_COLUMNS =
-  'thread_id, status, metadata, "values", interrupts, error, created_at, updated_at, state_updated_at';
+  'thread_id, status, metadata, "values", interrupts, error, created_at, updated_at, state_updated_at, ttl_minutes, expires_at, ttl_strategy, ttl_pinned';
 
 function rowToAssistant(row: AssistantRow): Assistant {
   return {
@@ -681,12 +687,15 @@ function rowToAssistantVersion(row: AssistantVersionRow): AssistantVersion {
   } as AssistantVersion;
 }
 
-function rowToThread(row: ThreadRow): Thread {
+function rowToThread(row: ThreadRow, defaults?: ThreadTtlConfig): Thread {
   return {
     thread_id: row.thread_id,
     created_at: toIsoString(row.created_at),
     updated_at: toIsoString(row.updated_at),
     state_updated_at: toIsoString(row.state_updated_at),
+    ttl: row.ttl_pinned ? null : (row.ttl_minutes ?? defaults?.defaultTtl ?? null),
+    expires_at: row.expires_at == null ? null : toIsoString(row.expires_at),
+    ttl_strategy: row.ttl_strategy ?? defaults?.strategy ?? "delete",
     metadata: row.metadata,
     status: row.status,
     values: row.values,
@@ -788,6 +797,8 @@ function cronSearchWhere(query: CronSearchQuery): { where: string; params: unkno
 
 function rowToItem(row: ItemRow, score?: number): SearchItem {
   const item: Item = {
+    ttl: row.ttl_minutes,
+    expiresAt: row.expires_at == null ? null : toIsoString(row.expires_at),
     namespace: row.namespace,
     key: row.key,
     value: row.value,
@@ -1745,7 +1756,7 @@ export class PostgresSkeinStore implements SkeinStore {
         `SELECT ${THREAD_COLUMNS} FROM threads ORDER BY created_at, thread_id LIMIT $1`,
         [this.#pageLimit(undefined)],
       );
-      return rows.map(rowToThread);
+      return rows.map((row) => rowToThread(row, this.#threadTtl));
     },
     search: async (query) => {
       const { where, params } = threadSearchWhere(query);
@@ -1771,7 +1782,7 @@ export class PostgresSkeinStore implements SkeinStore {
         `SELECT ${THREAD_COLUMNS} FROM threads ${where} ORDER BY ${sortBy} ${direction}, thread_id ${direction} OFFSET ${offsetParam} ${limitClause}`,
         params,
       );
-      return rows.map(rowToThread);
+      return rows.map((row) => rowToThread(row, this.#threadTtl));
     },
     count: async (query) => {
       const { where, params } = threadSearchWhere(query);
@@ -1788,7 +1799,7 @@ export class PostgresSkeinStore implements SkeinStore {
         `SELECT ${THREAD_COLUMNS} FROM threads WHERE thread_id = $1`,
         [threadId],
       );
-      return rows[0] ? rowToThread(rows[0]) : null;
+      return rows[0] ? rowToThread(rows[0], this.#threadTtl) : null;
     },
     create: async (input?: ThreadCreate) => {
       const threadId = input?.thread_id ?? randomUUID();
@@ -1809,7 +1820,7 @@ export class PostgresSkeinStore implements SkeinStore {
             input?.ttl === null,
           ],
         );
-        return rowToThread(rows[0] as ThreadRow);
+        return rowToThread(rows[0] as ThreadRow, this.#threadTtl);
       } catch (error) {
         // A duplicate id is a typed 409, matching the memory driver and every other create here —
         // the service turns it into if_exists handling. Without this the raw `pg` unique violation
@@ -1859,7 +1870,7 @@ export class PostgresSkeinStore implements SkeinStore {
         ],
       );
       if (!rows[0]) throw SkeinHttpError.notFound(`Thread "${threadId}" not found.`);
-      return rowToThread(rows[0]);
+      return rowToThread(rows[0], this.#threadTtl);
     },
     copy: async (threadId) => {
       // Duplicate the row under a fresh id and timestamps; checkpoint history is copied separately
@@ -1874,7 +1885,7 @@ export class PostgresSkeinStore implements SkeinStore {
         [randomUUID(), threadId, this.#threadTtl?.defaultTtl ?? null],
       );
       if (!rows[0]) throw SkeinHttpError.notFound(`Thread "${threadId}" not found.`);
-      return rowToThread(rows[0]);
+      return rowToThread(rows[0], this.#threadTtl);
     },
     listExpired: async ({ now, limit }) => {
       // Ids only: the sweeper deletes each through the thread service so an in-flight run is aborted
@@ -2432,13 +2443,13 @@ AND ($2 <> 'running' OR status IN ('pending','running') OR NOT EXISTS(SELECT 1 F
                                    THEN now() + ttl_minutes * interval '1 minute'
                                    ELSE expires_at END
            WHERE namespace = $1::text[] AND key = $2 AND ${NOT_EXPIRED}
-           RETURNING namespace, key, value, created_at, updated_at`,
+           RETURNING namespace, key, value, created_at, updated_at, ttl_minutes, expires_at`,
           [namespace, key],
         );
         return rows[0] ? rowToItem(rows[0]) : null;
       }
       const { rows } = await this.#pool.query<ItemRow>(
-        `SELECT namespace, key, value, created_at, updated_at FROM store_items
+        `SELECT namespace, key, value, created_at, updated_at, ttl_minutes, expires_at FROM store_items
          WHERE namespace = $1::text[] AND key = $2 AND ${NOT_EXPIRED}`,
         [namespace, key],
       );
@@ -2462,7 +2473,7 @@ AND ($2 <> 'running' OR status IN ('pending','running') OR NOT EXISTS(SELECT 1 F
            ON CONFLICT (namespace, key)
            DO UPDATE SET value = EXCLUDED.value, embedding = EXCLUDED.embedding, index_fields = EXCLUDED.index_fields,
              ttl_minutes = EXCLUDED.ttl_minutes, expires_at = EXCLUDED.expires_at, updated_at = now()
-           RETURNING namespace, key, value, created_at, updated_at`,
+           RETURNING namespace, key, value, created_at, updated_at, ttl_minutes, expires_at`,
           [
             namespace,
             key,
@@ -2480,7 +2491,7 @@ AND ($2 <> 'running' OR status IN ('pending','running') OR NOT EXISTS(SELECT 1 F
          ON CONFLICT (namespace, key)
          DO UPDATE SET value = EXCLUDED.value, index_fields = EXCLUDED.index_fields, ttl_minutes = EXCLUDED.ttl_minutes,
            expires_at = EXCLUDED.expires_at, updated_at = now()
-         RETURNING namespace, key, value, created_at, updated_at`,
+         RETURNING namespace, key, value, created_at, updated_at, ttl_minutes, expires_at`,
         [
           namespace,
           key,
@@ -2503,12 +2514,27 @@ AND ($2 <> 'running' OR status IN ('pending','running') OR NOT EXISTS(SELECT 1 F
         items.length &&
         (query.refreshTtl ?? (this.#ttl !== undefined && this.#ttl.refreshOnRead !== false))
       ) {
-        await this.#pool.query(
+        const refreshed = await this.#pool.query<{
+          namespace: string[];
+          key: string;
+          expires_at: Date;
+        }>(
           `UPDATE store_items AS items SET expires_at = now() + ttl_minutes * interval '1 minute'
           FROM jsonb_to_recordset($1::jsonb) AS targets(namespace text[], key text)
-          WHERE items.namespace = targets.namespace AND items.key = targets.key AND ttl_minutes IS NOT NULL AND ${NOT_EXPIRED}`,
+          WHERE items.namespace = targets.namespace AND items.key = targets.key AND ttl_minutes IS NOT NULL AND ${NOT_EXPIRED}
+          RETURNING items.namespace, items.key, items.expires_at`,
           [JSON.stringify(items.map(({ namespace, key }) => ({ namespace, key })))],
         );
+        const expiryByKey = new Map(
+          refreshed.rows.map((row) => [
+            JSON.stringify([row.namespace, row.key]),
+            toIsoString(row.expires_at),
+          ]),
+        );
+        return items.map((item) => ({
+          ...item,
+          expiresAt: expiryByKey.get(JSON.stringify([item.namespace, item.key])) ?? item.expiresAt,
+        }));
       }
       return items;
     },
@@ -2746,7 +2772,7 @@ AND ($2 <> 'running' OR status IN ('pending','running') OR NOT EXISTS(SELECT 1 F
       params.push(this.#pageLimit(query.limit));
       const limitClause = `LIMIT $${params.length}`;
       const { rows } = await this.#pool.query<ItemRow & { score: number }>(
-        `SELECT namespace, key, value, created_at, updated_at, 1 - (embedding <=> $1::vector) AS score
+        `SELECT namespace, key, value, created_at, updated_at, ttl_minutes, expires_at, 1 - (embedding <=> $1::vector) AS score
          FROM store_items WHERE ${where}
          ORDER BY embedding <=> $1::vector OFFSET ${offsetParam} ${limitClause}`,
         params,
@@ -2781,7 +2807,7 @@ AND ($2 <> 'running' OR status IN ('pending','running') OR NOT EXISTS(SELECT 1 F
     }
 
     const { rows } = await this.#pool.query<ItemRow>(
-      `SELECT namespace, key, value, created_at, updated_at, index_fields FROM store_items ${clause}
+      `SELECT namespace, key, value, created_at, updated_at, ttl_minutes, expires_at, index_fields FROM store_items ${clause}
        ORDER BY created_at, key ${pagination}`,
       params,
     );

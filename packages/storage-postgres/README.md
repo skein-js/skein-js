@@ -106,3 +106,9 @@ the pairing.)
 The thread execution gate also supplies optional `tryAcquire(threadId)`: it returns the existing
 session-owned lease, or `undefined` when the thread or gate pool is busy. It does not enqueue a pool
 waiter. Backend failures reject; lease-loss signals and idempotent release match blocking acquisition.
+
+Retention readback is included on ordinary resource projections: threads optionally report `ttl`
+(minutes), `expires_at`, and `ttl_strategy`; store items/search results report `ttl` and `expiresAt`
+(`expires_at` over HTTP). `null` means known no expiry; absent metadata means unavailable. Reads
+that refresh TTL return the updated expiry. Passive inspection can request `refreshTtl: false`.
+Thread expiry marks eligibility for sweeping, which may be deferred while work is active.

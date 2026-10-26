@@ -178,3 +178,9 @@ from `@langchain/langgraph-sdk` via [`@skein-js/core`](../core).
 ## License
 
 [Apache-2.0](../../LICENSE)
+
+Run creation accepts optional `timeout_ms` (integer 1–2,147,483,647 milliseconds), persisted for
+queued execution and inherited by native start/resume inputs. Its clock starts when execution begins
+and is bounded by `runTimeoutMs` and any native deadline. It uses the existing cancellation and
+terminal `timeout` path. `/info.flags.per_run_timeout` advertises support. Thread and store response
+schemas also expose optional retention metadata; see [the API reference](../../docs/agent-protocol.md).

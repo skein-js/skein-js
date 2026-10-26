@@ -20,14 +20,19 @@ import { routeHref } from "@/router";
 import { useAsync } from "@/use-async";
 import { usePagedRows } from "@/use-paged-rows";
 
+import { CreateAssistant, DeleteAssistant, RestoreAssistantVersion } from "./assistant-actions";
 import { Async, IdLink, Json, Pagination, Panel, Timestamp } from "./parts";
 
 export function AssistantsView({ assistantId }: { assistantId?: string }) {
-  return assistantId ? <AssistantDetail assistantId={assistantId} /> : <AssistantList />;
+  return assistantId ? (
+    <AssistantDetail key={assistantId} assistantId={assistantId} />
+  ) : (
+    <AssistantList />
+  );
 }
 
 function AssistantList() {
-  const client = createConsoleClient();
+  const [client] = useState(() => createConsoleClient({}));
   const assistants = usePagedRows(
     (offset, limit, signal) => client.assistants.search({ offset, limit, signal }),
     "assistants",
@@ -36,7 +41,13 @@ function AssistantList() {
   );
 
   return (
-    <Panel title="Assistants" count={assistants.total ?? assistants.rows?.length}>
+    <Panel
+      title="Assistants"
+      count={assistants.total ?? assistants.rows?.length}
+      actions={
+        <CreateAssistant graphIds={assistants.rows?.map((assistant) => assistant.graph_id) ?? []} />
+      }
+    >
       <Async
         state={{ ...assistants, data: assistants.rows }}
         empty="No assistants. Declare a graph in langgraph.json."
@@ -101,7 +112,7 @@ function AssistantList() {
 }
 
 function AssistantDetail({ assistantId }: { assistantId: string }) {
-  const client = createConsoleClient();
+  const [client] = useState(() => createConsoleClient({}));
   const assistant = useAsync(
     (signal) => client.assistants.get(assistantId, { signal }),
     [assistantId],
@@ -131,9 +142,14 @@ function AssistantDetail({ assistantId }: { assistantId: string }) {
         Assistants
       </a>
 
-      <Panel title="Assistant" padded>
-        <Async state={assistant}>{(data) => <Json value={data} />}</Async>
-      </Panel>
+      <details className="mb-4">
+        <summary className="mb-3 cursor-pointer text-sm text-muted-foreground">
+          Assistant record and identifiers
+        </summary>
+        <Panel title="Assistant" padded>
+          <Async state={assistant}>{(data) => <Json value={data} />}</Async>
+        </Panel>
+      </details>
 
       {assistant.data ? (
         <AssistantEditor
@@ -148,14 +164,18 @@ function AssistantDetail({ assistantId }: { assistantId: string }) {
         />
       ) : null}
 
-      <Panel title="Graph" padded>
-        <Async state={graph}>{(data) => <Json value={data} />}</Async>
-      </Panel>
+      <details className="mb-4">
+        <summary className="mb-3 cursor-pointer text-sm font-medium">
+          Graph structure and schemas
+        </summary>
+        <Panel title="Graph" padded>
+          <Async state={graph}>{(data) => <Json value={data} />}</Async>
+        </Panel>
 
-      <Panel title="Schemas" padded>
-        <Async state={schemas}>{(data) => <Json value={data} />}</Async>
-      </Panel>
-
+        <Panel title="Schemas" padded>
+          <Async state={schemas}>{(data) => <Json value={data} />}</Async>
+        </Panel>
+      </details>
       <Panel title="Versions" count={versions.rows?.length}>
         <Async state={{ ...versions, data: versions.rows }} empty="No version history.">
           {(rows) => (
@@ -165,6 +185,7 @@ function AssistantDetail({ assistantId }: { assistantId: string }) {
                   <TableHead>Version</TableHead>
                   <TableHead>Name</TableHead>
                   <TableHead>Created</TableHead>
+                  <TableHead>Configuration</TableHead>
                 </TableRow>
               </TableHeader>
               <TableBody>
@@ -179,6 +200,18 @@ function AssistantDetail({ assistantId }: { assistantId: string }) {
                     <TableCell>
                       <Timestamp value={version.created_at} />
                     </TableCell>
+                    <TableCell>
+                      <RestoreAssistantVersion
+                        version={version}
+                        current={assistant.data?.version ?? 0}
+                        onSaved={() => {
+                          assistant.reload();
+                          graph.reload();
+                          schemas.reload();
+                          versions.reload();
+                        }}
+                      />
+                    </TableCell>
                   </TableRow>
                 ))}
               </TableBody>
@@ -192,6 +225,7 @@ function AssistantDetail({ assistantId }: { assistantId: string }) {
           onNext={versions.next}
         />
       </Panel>
+      {assistant.data && <DeleteAssistant assistant={assistant.data} />}
     </>
   );
 }
@@ -213,7 +247,7 @@ export function describeAssistant(assistant: unknown): string | undefined {
 }
 
 function AssistantEditor({ assistant, onSaved }: { assistant: Assistant; onSaved: () => void }) {
-  const client = createConsoleClient();
+  const [client] = useState(() => createConsoleClient({}));
   const existing = assistant as Assistant & { description?: string; context?: unknown };
   const initial = {
     graphId: assistant.graph_id,

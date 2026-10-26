@@ -24,6 +24,8 @@ export interface ServerInfo {
   /** Always `"js"` — this is the TypeScript server. */
   context: "js";
   flags: {
+    /** Run creation supports a persistent, execution-relative timeout_ms. */
+    per_run_timeout?: boolean;
     /** Full assistants CRUD + versioning is served. */
     assistants: boolean;
     /** Scheduled runs — the crons resource and the scheduler. False when `disable_crons` is set. */
@@ -87,6 +89,7 @@ export function createMetaService(
           : {}),
         context: "js",
         flags: {
+          per_run_timeout: true,
           assistants: true,
           crons: deps.cronsEnabled !== false,
           langsmith: langsmithTracingEnabled(env),

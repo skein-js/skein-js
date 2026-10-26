@@ -4,8 +4,7 @@ import * as React from "react";
 
 import { cn } from "@/lib/utils";
 
-// Sized down from stock shadcn: an operations console is dense, and 36px controls next to 13px body
-// text read as a consumer app rather than a tool. Heights here are 32/28/24.
+// Standard controls are 36px; compact table actions are 32px.
 const buttonVariants = cva(
   "inline-flex items-center justify-center gap-1.5 whitespace-nowrap rounded-md text-[13px] font-medium transition-colors focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring disabled:pointer-events-none disabled:opacity-50 [&_svg]:pointer-events-none [&_svg]:shrink-0",
   {
@@ -16,9 +15,9 @@ const buttonVariants = cva(
         ghost: "text-muted-foreground hover:bg-accent hover:text-foreground",
       },
       size: {
-        default: "h-8 px-3",
-        sm: "h-7 rounded-md px-2.5 text-xs",
-        icon: "size-7",
+        default: "h-9 px-3.5",
+        sm: "h-8 rounded-md px-3 text-xs",
+        icon: "size-9",
       },
     },
     defaultVariants: { variant: "default", size: "default" },

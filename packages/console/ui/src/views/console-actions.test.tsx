@@ -204,6 +204,10 @@ describe("console mutations", () => {
         "delivery-1",
       ),
     );
-    await waitFor(() => expect(deliveryClient.listRunDeliveries).toHaveBeenCalledTimes(2));
+    await waitFor(() =>
+      expect(
+        deliveryClient.listRunDeliveries.mock.calls.filter((call) => call[2] === 0),
+      ).toHaveLength(2),
+    );
   });
 });

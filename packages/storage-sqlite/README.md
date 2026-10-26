@@ -43,3 +43,9 @@ The queue implements the optional `RunQueue.consumePartitioned` capability used 
 Busy thread heads remain pending while independent threads use free execution slots. Returning `false`
 from the callback defers without acknowledging or spending a failure attempt; `true` acknowledges.
 Original delay floors, deduplication and existing driver failure/recovery behavior still apply.
+
+Retention readback is included on ordinary resource projections: threads optionally report `ttl`
+(minutes), `expires_at`, and `ttl_strategy`; store items/search results report `ttl` and `expiresAt`
+(`expires_at` over HTTP). `null` means known no expiry; absent metadata means unavailable. Reads
+that refresh TTL return the updated expiry. Passive inspection can request `refreshTtl: false`.
+Thread expiry marks eligibility for sweeping, which may be deferred while work is active.

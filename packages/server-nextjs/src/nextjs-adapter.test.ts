@@ -18,6 +18,48 @@ function conformanceSuite(router: "app" | "pages"): void {
       running = undefined;
     });
 
+    it("returns retention metadata and validates per-run timeout over HTTP", async () => {
+      running = await startEchoServer({ router });
+      const request = async (path: string, method: string, body?: unknown) =>
+        fetch(`${running!.baseUrl}${path}`, {
+          method,
+          headers: jsonHeaders,
+          ...(body === undefined ? {} : { body: JSON.stringify(body) }),
+        });
+      const created = await request("/threads", "POST", { ttl: 30 });
+      const thread = (await created.json()) as {
+        thread_id: string;
+        ttl: number;
+        expires_at: string;
+      };
+      expect(thread.ttl).toBe(30);
+      expect(Date.parse(thread.expires_at)).toBeGreaterThan(Date.now());
+      await request("/store/items", "PUT", {
+        namespace: ["retention"],
+        key: "one",
+        value: { value: true },
+        ttl: 30,
+      });
+      const item = await (
+        await request("/store/items?namespace=retention&key=one&refresh_ttl=false", "GET")
+      ).json();
+      expect(item).toMatchObject({ ttl: 30, expires_at: expect.any(String) });
+      const info = (await (await request("/info", "GET")).json()) as {
+        flags: { per_run_timeout?: boolean };
+      };
+      expect(info.flags.per_run_timeout).toBe(true);
+      for (const path of [
+        `/threads/${thread.thread_id}/runs`,
+        `/threads/${thread.thread_id}/runs/wait`,
+        `/threads/${thread.thread_id}/runs/stream`,
+        "/runs",
+      ]) {
+        expect(
+          (await request(path, "POST", { assistant_id: "echo", timeout_ms: 0, input: {} })).status,
+        ).toBe(400);
+      }
+    });
+
     it("serves JSON: round-trips a thread and lists the graph-seeded assistant", async () => {
       running = await startEchoServer({ router });
       const { baseUrl } = running;

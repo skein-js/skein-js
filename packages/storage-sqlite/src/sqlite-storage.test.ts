@@ -31,6 +31,33 @@ afterEach(async () => {
 runSkeinStoreConformance("sqlite", async (options) => (await open(options)).store);
 runRunQueueConformance("sqlite", async () => (await open()).queue);
 
+it("retains projected expiry and queued execution budgets after reopening the file", async () => {
+  const storage = await open();
+  const thread = await storage.store.threads.create({ ttl: 30, ttlStrategy: "keep_latest" });
+  const item = await storage.store.store.put(["retention"], "item", { value: true }, { ttl: 15 });
+  const run = await storage.store.runs.create({
+    thread_id: thread.thread_id,
+    assistant_id: "agent",
+    kwargs: { timeout_ms: 25, queue_not_before: new Date(Date.now() + 60000).toISOString() },
+  });
+  const filename = storage.database.name;
+  await storage.dispose();
+  const reopened = await openSqliteStorage({ filename });
+  try {
+    expect(await reopened.store.threads.get(thread.thread_id)).toMatchObject({
+      ttl: 30,
+      ttl_strategy: "keep_latest",
+      expires_at: thread.expires_at,
+    });
+    expect(
+      await reopened.store.store.get(["retention"], "item", { refreshTtl: false }),
+    ).toMatchObject({ ttl: 15, expiresAt: item.expiresAt });
+    expect(await reopened.store.runs.getKwargs(run.run_id)).toMatchObject({ timeout_ms: 25 });
+  } finally {
+    await reopened.dispose();
+  }
+});
+
 describe("durability and ownership", () => {
   it("preserves an unclaimed delayed job's original sequence and due time through deferral and reopening", async () => {
     const storage = await open();

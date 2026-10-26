@@ -43,6 +43,7 @@ const checkpointSchema = z.object({
 /** `POST /runs/wait`, `POST /runs/stream`, `POST /threads/{id}/runs`. */
 export const runCreateSchema = z
   .object({
+    timeout_ms: z.number().int().min(1).max(2_147_483_647).optional(),
     assistant_id: z.string().min(1),
     thread_id: z.string().min(1).optional(),
     input: z.unknown().optional(),
