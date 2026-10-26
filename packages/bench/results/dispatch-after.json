@@ -1,0 +1,100 @@
+{
+  "commit": "47b6bbc8f6f30b4996df31b1d273764a5279ecb6",
+  "node": "v24.15.0",
+  "results": [
+    {
+      "scenario": "hot-thread",
+      "iteration": 0,
+      "coldStartP50Ms": 223,
+      "coldStartP95Ms": 271,
+      "coldStartP99Ms": 274,
+      "runsPerSecond": 6.892095627826836,
+      "occupiedSlots": 8
+    },
+    {
+      "scenario": "hot-thread",
+      "iteration": 1,
+      "coldStartP50Ms": 205,
+      "coldStartP95Ms": 236,
+      "coldStartP99Ms": 237,
+      "runsPerSecond": 6.905481225722918,
+      "occupiedSlots": 8
+    },
+    {
+      "scenario": "hot-thread",
+      "iteration": 2,
+      "coldStartP50Ms": 201,
+      "coldStartP95Ms": 238,
+      "coldStartP99Ms": 240,
+      "runsPerSecond": 7.014467338886453,
+      "occupiedSlots": 8
+    },
+    {
+      "scenario": "hot-thread",
+      "iteration": 3,
+      "coldStartP50Ms": 187,
+      "coldStartP95Ms": 241,
+      "coldStartP99Ms": 245,
+      "runsPerSecond": 6.929406669553919,
+      "occupiedSlots": 8
+    },
+    {
+      "scenario": "hot-thread",
+      "iteration": 4,
+      "coldStartP50Ms": 200,
+      "coldStartP95Ms": 234,
+      "coldStartP99Ms": 237,
+      "runsPerSecond": 6.918918918918919,
+      "occupiedSlots": 8
+    },
+    {
+      "scenario": "independent-threads",
+      "iteration": 0,
+      "coldStartP50Ms": 336,
+      "coldStartP95Ms": 392,
+      "coldStartP99Ms": 395,
+      "runsPerSecond": 166.66666666666666,
+      "occupiedSlots": 8
+    },
+    {
+      "scenario": "independent-threads",
+      "iteration": 1,
+      "coldStartP50Ms": 291,
+      "coldStartP95Ms": 376,
+      "coldStartP99Ms": 379,
+      "runsPerSecond": 170.66666666666666,
+      "occupiedSlots": 8
+    },
+    {
+      "scenario": "independent-threads",
+      "iteration": 2,
+      "coldStartP50Ms": 287,
+      "coldStartP95Ms": 397,
+      "coldStartP99Ms": 402,
+      "runsPerSecond": 162.0253164556962,
+      "occupiedSlots": 8
+    },
+    {
+      "scenario": "independent-threads",
+      "iteration": 3,
+      "coldStartP50Ms": 282,
+      "coldStartP95Ms": 367,
+      "coldStartP99Ms": 374,
+      "runsPerSecond": 173.44173441734418,
+      "occupiedSlots": 8
+    },
+    {
+      "scenario": "independent-threads",
+      "iteration": 4,
+      "coldStartP50Ms": 291,
+      "coldStartP95Ms": 390,
+      "coldStartP99Ms": 394,
+      "runsPerSecond": 167.10182767624022,
+      "occupiedSlots": 8
+    }
+  ],
+  "dependencies": {
+    "bullmq": "5.80.2",
+    "ioredis": "5.10.1"
+  }
+}

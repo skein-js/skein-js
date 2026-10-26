@@ -115,3 +115,10 @@ only Agent Protocol _resources_, never graph state.
 ## License
 
 [Apache-2.0](../../LICENSE)
+
+## Thread dispatch
+
+The queue implements the optional `RunQueue.consumePartitioned` capability used by the run worker.
+Busy thread heads remain pending while independent threads use free execution slots. Returning `false`
+from the callback defers without acknowledging or spending a failure attempt; `true` acknowledges.
+Original delay floors, deduplication and existing driver failure/recovery behavior still apply.

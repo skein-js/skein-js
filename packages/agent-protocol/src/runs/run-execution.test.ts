@@ -5,6 +5,38 @@ import { createContext } from "../context.js";
 
 import { startRunExecution } from "./run-execution.js";
 
+it("reuses a preclaimed lease and rereads terminal status before rollback effects", async () => {
+  const acquire = vi.fn(async () => {
+    throw new Error("Must not reacquire");
+  });
+  const deps = createFixtureDeps({ threadExecutionGate: { acquire } });
+  const ctx = createContext(deps);
+  const thread = await deps.store.threads.create();
+  const run = await deps.store.runs.create({ thread_id: thread.thread_id, assistant_id: "echo" });
+  await deps.store.runs.setStatus(run.run_id, "cancelled");
+  const release = vi.fn(async () => undefined);
+  const load = vi.spyOn(deps.graphs, "load");
+  expect((await startRunExecution(ctx, run, {}, {}, { release })).status).toBe("cancelled");
+  expect(load).not.toHaveBeenCalled();
+  expect(acquire).not.toHaveBeenCalled();
+  expect(release).toHaveBeenCalledOnce();
+});
+
+it("releases an already lost preclaimed lease without invoking a graph", async () => {
+  const deps = createFixtureDeps();
+  const ctx = createContext(deps);
+  const thread = await deps.store.threads.create();
+  const run = await deps.store.runs.create({ thread_id: thread.thread_id, assistant_id: "echo" });
+  const release = vi.fn(async () => undefined);
+  const load = vi.spyOn(deps.graphs, "load");
+  const lost = AbortSignal.abort(new Error("Claim lost"));
+  await expect(startRunExecution(ctx, run, {}, {}, { release, signal: lost })).rejects.toThrow(
+    "Claim lost",
+  );
+  expect(load).not.toHaveBeenCalled();
+  expect(release).toHaveBeenCalledOnce();
+});
+
 it("skips a recovered terminal run before reapplying its persisted rollback", async () => {
   const deps = createFixtureDeps();
   const context = createContext(deps);

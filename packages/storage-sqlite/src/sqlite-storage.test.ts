@@ -2,6 +2,7 @@ import { mkdtemp, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 
+import { runPartitionedRunQueueConformance } from "@skein-js/test-support";
 import {
   runSkeinStoreConformance,
   runRunQueueConformance,
@@ -31,6 +32,47 @@ runSkeinStoreConformance("sqlite", async (options) => (await open(options)).stor
 runRunQueueConformance("sqlite", async () => (await open()).queue);
 
 describe("durability and ownership", () => {
+  it("preserves an unclaimed delayed job's original sequence and due time through deferral and reopening", async () => {
+    const storage = await open();
+    const filename = storage.database.name;
+    const thread = await storage.store.threads.create();
+    const due = new Date(Date.now() + 100).toISOString();
+    const run = await storage.store.runs.create({
+      thread_id: thread.thread_id,
+      assistant_id: "agent",
+      kwargs: { queue_not_before: due },
+    });
+    const original = storage.database
+      .prepare("SELECT sequence,due_at FROM skein_run_jobs WHERE run_id=?")
+      .get(run.run_id);
+    let probed = false;
+    const first = storage.queue.consumePartitioned!(async () => {
+      probed = true;
+      return false;
+    });
+    await expect.poll(() => probed).toBe(true);
+    await first.close();
+    expect(
+      storage.database
+        .prepare("SELECT sequence,due_at FROM skein_run_jobs WHERE run_id=?")
+        .get(run.run_id),
+    ).toEqual(original);
+    await storage.dispose();
+    const reopened = await openSqliteStorage({ filename });
+    let consumer;
+    try {
+      expect((await reopened.store.runs.get(run.run_id))?.status).toBe("pending");
+      const handled: string[] = [];
+      consumer = reopened.queue.consumePartitioned!(async (queued) => {
+        handled.push(queued.run_id);
+        return true;
+      });
+      await expect.poll(() => handled).toEqual([run.run_id]);
+    } finally {
+      await consumer?.close();
+      await reopened.dispose();
+    }
+  });
   it("upgrades a populated version-3 file and preserves immutable results", async () => {
     const storage = await open();
     const filename = storage.database.name;
@@ -318,3 +360,5 @@ it("reopens per-item indexing, no-expiry writes and thread retention policy", as
     await reopened.dispose();
   }
 });
+
+runPartitionedRunQueueConformance("sqlite", async () => (await open()).queue);

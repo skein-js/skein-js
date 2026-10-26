@@ -28,6 +28,40 @@ function twoInstances() {
 }
 
 describe("createPostgresThreadExecutionGate", () => {
+  it("does not wait for an occupied thread and permits an independent claim", async () => {
+    const { gates, close } = twoInstances();
+    const held = await gates[0]!.acquire("busy-try");
+    try {
+      expect(await gates[1]!.tryAcquire!("busy-try")).toBeUndefined();
+      const cold = await gates[1]!.tryAcquire!("cold-try");
+      expect(cold).toBeDefined();
+      await cold!.release();
+      await held.release();
+      const next = await gates[1]!.tryAcquire!("busy-try");
+      expect(next).toBeDefined();
+      await next!.release();
+      await next!.release();
+    } finally {
+      await held.release();
+      await close();
+    }
+  });
+
+  it("returns busy without enqueueing a waiter when the claim pool is exhausted", async () => {
+    const pool = createPostgresPool(pg.url, { poolMax: 1 });
+    const gate = createPostgresThreadExecutionGate(pool);
+    const held = await gate.acquire("pool-held");
+    try {
+      expect(await gate.tryAcquire!("another-thread")).toBeUndefined();
+      expect(pool.waitingCount).toBe(0);
+    } finally {
+      await held.release();
+    }
+    const next = await gate.tryAcquire!("another-thread");
+    expect(next).toBeDefined();
+    await next!.release();
+    await pool.end();
+  });
   it("serializes two instances claiming the same thread", async () => {
     const { gates, close } = twoInstances();
     try {
@@ -77,38 +111,41 @@ describe("createPostgresThreadExecutionGate", () => {
     }
   });
 
-  it("frees a thread when the holding instance's connection dies", async () => {
-    // The property that makes a session lock the right primitive: a crashed instance releases its
-    // threads immediately, with no TTL to wait out and no lease to expire mid-run.
-    const crashing = createPostgresPool(pg.url, {});
-    const survivor = createPostgresPool(pg.url, {});
-    try {
-      const lost = await createPostgresThreadExecutionGate(crashing).acquire("thread-1");
+  it.each(["acquire", "tryAcquire"] as const)(
+    "frees a %s claim when its connection dies",
+    async (method) => {
+      // The property that makes a session lock the right primitive: a crashed instance releases its
+      // threads immediately, with no TTL to wait out and no lease to expire mid-run.
+      const crashing = createPostgresPool(pg.url, {});
+      const survivor = createPostgresPool(pg.url, {});
+      try {
+        const lost = (await createPostgresThreadExecutionGate(crashing)[method]!("thread-1"))!;
 
-      // Killed from the server side, which is what a crashed instance actually looks like to Postgres —
-      // and, unlike `pool.end()`, it does not wait for the lock-holding client to be checked back in
-      // (it never is; the gate holds it deliberately). Scoped to *this thread's* key so a test running
-      // in parallel against the same container is untouched: an advisory lock's 64-bit key appears in
-      // `pg_locks` split across `classid` (high 32 bits) and `objid` (low 32).
-      const key = threadLockKey("thread-1");
-      const high = Number(BigInt.asIntN(32, key >> 32n));
-      const low = Number(BigInt.asUintN(32, key));
-      const { rows } = await survivor.query<{ killed: boolean }>(
-        `SELECT pg_terminate_backend(pid) AS killed FROM pg_locks
+        // Killed from the server side, which is what a crashed instance actually looks like to Postgres —
+        // and, unlike `pool.end()`, it does not wait for the lock-holding client to be checked back in
+        // (it never is; the gate holds it deliberately). Scoped to *this thread's* key so a test running
+        // in parallel against the same container is untouched: an advisory lock's 64-bit key appears in
+        // `pg_locks` split across `classid` (high 32 bits) and `objid` (low 32).
+        const key = threadLockKey("thread-1");
+        const high = Number(BigInt.asIntN(32, key >> 32n));
+        const low = Number(BigInt.asUintN(32, key));
+        const { rows } = await survivor.query<{ killed: boolean }>(
+          `SELECT pg_terminate_backend(pid) AS killed FROM pg_locks
           WHERE locktype = 'advisory' AND granted AND classid = $1 AND objid = $2`,
-        [high, low],
-      );
-      expect(rows.length).toBe(1);
-      await expect.poll(() => lost.signal?.aborted).toBe(true);
-      await lost.release();
+          [high, low],
+        );
+        expect(rows.length).toBe(1);
+        await expect.poll(() => lost.signal?.aborted).toBe(true);
+        await lost.release();
 
-      const lease = await createPostgresThreadExecutionGate(survivor).acquire("thread-1");
-      await lease.release();
-    } finally {
-      await crashing.end();
-      await survivor.end();
-    }
-  });
+        const lease = await createPostgresThreadExecutionGate(survivor).acquire("thread-1");
+        await lease.release();
+      } finally {
+        await crashing.end();
+        await survivor.end();
+      }
+    },
+  );
 
   it("is idempotent on release", async () => {
     const { gates, close } = twoInstances();

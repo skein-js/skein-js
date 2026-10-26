@@ -16,6 +16,7 @@ import type { ProtocolContext } from "../context.js";
 import type { Logger } from "../deps.js";
 
 import { startRunExecution } from "./run-execution.js";
+import { tryAcquireThreadExecution } from "./thread-locks.js";
 
 /**
  * Queued runs one worker executes at once when nothing is configured. Matches the LangGraph CLI's
@@ -37,9 +38,9 @@ export interface RunWorkerOptions {
   /**
    * Max queued runs this worker executes at once. Default {@link DEFAULT_RUN_CONCURRENCY}.
    * Per-thread ordering does not depend on this: `startRunExecution` serializes by `thread_id` at
-   * every value. The trade-off is head-of-line blocking — a run waiting on a busy thread's lock
-   * still holds a slot, so a burst of `multitask_strategy: "enqueue"` runs on one thread can occupy
-   * the worker. See docs/runs-and-redis.md.
+   * every value. Bundled queues skip busy threads without holding execution slots. Injected queues
+   * or gates without the optional partitioned/nonblocking capabilities retain blocking dispatch.
+   * See docs/runs-and-redis.md.
    */
   maxConcurrency?: number;
   /**
@@ -120,23 +121,43 @@ export function createRunWorker(ctx: ProtocolContext, options: RunWorkerOptions 
   // status. `inFlight` only names them — awaiting is the difference between `stop()` meaning
   // "signalled" and meaning "settled".
   const running = new Set<Promise<unknown>>();
+  let stopping = false;
 
-  const executeQueuedRun = (queued: QueuedRun): Promise<void> => {
-    const task = executeOne(queued);
+  const executeQueuedRun = (queued: QueuedRun, partitioned = false): Promise<boolean> => {
+    const task = executeOne(queued, partitioned);
     running.add(task);
     return task.finally(() => running.delete(task));
   };
 
-  const executeOne = async (queued: QueuedRun): Promise<void> => {
+  const executeOne = async (queued: QueuedRun, partitioned: boolean): Promise<boolean> => {
     const run = await deps.store.runs.get(queued.run_id);
     // Skip a run that vanished (thread deleted) or was already finalized (cancelled while queued).
     // Such a run never reaches startRunExecution, so drop any rollback plan it carried rather than
     // leak it in the map.
     if (!run || isTerminalRunStatus(run.status)) {
       ctx.rollbackPlans.delete(queued.run_id);
-      return;
+      return true;
     }
     const kwargs = (await deps.store.runs.getKwargs(queued.run_id)) ?? {};
+    const claimStartedAt = Date.now();
+    let lease;
+    try {
+      lease = partitioned
+        ? await tryAcquireThreadExecution(
+            ctx.executionLocks,
+            deps.threadExecutionGate,
+            run.thread_id,
+          )
+        : undefined;
+    } catch (error) {
+      logRunLifecycle(deps.logger, run, "error", claimStartedAt, Date.now(), toRunError(error));
+      throw error;
+    }
+    if (partitioned && !lease) return false;
+    if (partitioned && stopping) {
+      await lease!.release();
+      return false;
+    }
     inFlight.add(queued.run_id);
     // Wall-clock timing for the human-facing summary, so queue/exec durations line up with the
     // store-stamped `run.created_at`. Defaults to `error` so a run whose execution *throws* (not just
@@ -150,17 +171,24 @@ export function createRunWorker(ctx: ProtocolContext, options: RunWorkerOptions 
       // `queuedAtMs` is the run's `created_at` — the same instant `run_queue_ms` measures from, so
       // the log summary and the telemetry event report one number, not two that nearly agree.
       const queuedAtMs = Date.parse(run.created_at);
-      const outcome = await startRunExecution(ctx, run, kwargs, {
-        // A cron-fired run is a queued run in every mechanical respect, but its latency profile is
-        // not: it waited on a clock, not on a caller, so a scheduled fleet's queue time would
-        // otherwise skew the percentiles operators watch for interactive traffic. Read from the run
-        // row (stamped at fire time) rather than carried through the queue, so a run recovered on
-        // another instance still reports honestly.
-        trigger: run.metadata?.["cron_id"] === undefined ? "background" : "cron",
-        ...(Number.isNaN(queuedAtMs) ? {} : { queuedAtMs }),
-      });
+      const outcome = await startRunExecution(
+        ctx,
+        run,
+        kwargs,
+        {
+          // A cron-fired run is a queued run in every mechanical respect, but its latency profile is
+          // not: it waited on a clock, not on a caller, so a scheduled fleet's queue time would
+          // otherwise skew the percentiles operators watch for interactive traffic. Read from the run
+          // row (stamped at fire time) rather than carried through the queue, so a run recovered on
+          // another instance still reports honestly.
+          trigger: run.metadata?.["cron_id"] === undefined ? "background" : "cron",
+          ...(Number.isNaN(queuedAtMs) ? {} : { queuedAtMs }),
+        },
+        lease,
+      );
       status = outcome.status;
       failure = outcome.error;
+      return true;
     } catch (error) {
       // `executeRun` swallows graph errors, so a throw here is a store/precondition failure. It used
       // to vanish into the queue's retry with no trace; record it before letting it propagate.
@@ -181,11 +209,20 @@ export function createRunWorker(ctx: ProtocolContext, options: RunWorkerOptions 
 
     start() {
       if (consumer) return;
-      consumer = deps.queue.consume(executeQueuedRun, { concurrency: maxConcurrency });
+      stopping = false;
+      const options = { concurrency: maxConcurrency };
+      consumer =
+        deps.queue.consumePartitioned &&
+        (!deps.threadExecutionGate || deps.threadExecutionGate.tryAcquire)
+          ? deps.queue.consumePartitioned((queued) => executeQueuedRun(queued, true), options)
+          : deps.queue.consume(async (queued) => {
+              await executeQueuedRun(queued);
+            }, options);
     },
 
     async stop() {
       if (!consumer) return;
+      stopping = true;
       const active = consumer;
       consumer = undefined;
 

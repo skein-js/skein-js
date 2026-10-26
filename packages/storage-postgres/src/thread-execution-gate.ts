@@ -54,90 +54,113 @@ export function createPostgresThreadExecutionGate(
   pool: Pool,
   logger?: { warn(message: string, meta?: unknown): void },
 ): ThreadExecutionGate {
-  return {
-    async acquire(threadId: string): Promise<ThreadExecutionLease> {
-      const key = threadLockKey(threadId);
-      const client = await pool.connect();
+  const claim = async (
+    threadId: string,
+    wait: boolean,
+  ): Promise<ThreadExecutionLease | undefined> => {
+    if (
+      !wait &&
+      (pool.waitingCount > 0 ||
+        (pool.idleCount === 0 && pool.totalCount >= (pool.options.max ?? 10)))
+    )
+      return undefined;
+    const key = threadLockKey(threadId);
+    const client = await pool.connect();
 
-      // A checked-out client is on its own for socket errors: `pg`'s pool attaches its error handler
-      // only while a client is *idle*, and this one is deliberately held for the whole run. So if the
-      // backend dies under us — a failover, an admin `pg_terminate_backend`, an idle-session timeout —
-      // the client emits `error` with nobody listening, and Node turns an unhandled `'error'` event
-      // into a **process crash**. One listener turns that into a logged, recoverable event.
-      //
-      // Losing the connection is not a failure of the claim, it is the claim *ending*: Postgres frees
-      // a session advisory lock when the session goes, which is the property that makes this the right
-      // primitive. So the lease is marked dead and `release` becomes a no-op query-wise — issuing an
-      // unlock on a dead socket would only throw.
-      let connectionLost = false;
-      const ownership = new AbortController();
-      const onClientError = (error: Error): void => {
-        connectionLost = true;
-        ownership.abort(error);
-        logger?.warn(
-          `thread execution claim for "${threadId}" lost its connection; Postgres has already freed ` +
-            `the lock, and the thread is claimable again`,
-          error,
-        );
-      };
-      client.on("error", onClientError);
+    // A checked-out client is on its own for socket errors: `pg`'s pool attaches its error handler
+    // only while a client is *idle*, and this one is deliberately held for the whole run. So if the
+    // backend dies under us — a failover, an admin `pg_terminate_backend`, an idle-session timeout —
+    // the client emits `error` with nobody listening, and Node turns an unhandled `'error'` event
+    // into a **process crash**. One listener turns that into a logged, recoverable event.
+    //
+    // Losing the connection is not a failure of the claim, it is the claim *ending*: Postgres frees
+    // a session advisory lock when the session goes, which is the property that makes this the right
+    // primitive. So the lease is marked dead and `release` becomes a no-op query-wise — issuing an
+    // unlock on a dead socket would only throw.
+    let connectionLost = false;
+    const ownership = new AbortController();
+    const onClientError = (error: Error): void => {
+      connectionLost = true;
+      ownership.abort(error);
+      logger?.warn(
+        `thread execution claim for "${threadId}" lost its connection; Postgres has already freed ` +
+          `the lock, and the thread is claimable again`,
+        error,
+      );
+    };
+    client.on("error", onClientError);
 
-      try {
-        // Exempt from any configured `statement_timeout`. This statement *blocks* until the lock is
-        // free, which is the point — under a 30s timeout an `enqueue` run waiting behind a legitimately
-        // long peer would be cancelled with `57014` rather than waiting its turn.
+    try {
+      // Exempt from any configured `statement_timeout`. This statement *blocks* until the lock is
+      // free, which is the point — under a 30s timeout an `enqueue` run waiting behind a legitimately
+      // long peer would be cancelled with `57014` rather than waiting its turn.
+      if (wait) {
         await client.query("SET statement_timeout = 0");
         await client.query("SELECT pg_advisory_lock($1)", [key.toString()]);
-      } catch (error) {
-        // Destroyed, not released: this client may carry `statement_timeout = 0`, and it may or may not
-        // hold the lock. Ending the session is the only way to be sure of both.
-        client.off("error", onClientError);
-        client.release(true);
-        throw error;
-      }
-
-      let released = false;
-      return {
-        signal: ownership.signal,
-        release: async () => {
-          if (released) return;
-          released = true;
-          // Removed on every path: `pg` hands the same client object out again after `release()`, so a
-          // listener left behind would accumulate one per claim and log another claim's failure.
+      } else {
+        const result = await client.query<{ claimed: boolean }>(
+          "SELECT pg_try_advisory_lock($1) AS claimed",
+          [key.toString()],
+        );
+        if (!result.rows[0]?.claimed) {
           client.off("error", onClientError);
-          // The socket is already gone, and with it the session and its lock. Destroy the husk rather
-          // than querying a dead connection, which would throw and route us through the failure branch
-          // below to warn about a lock that Postgres has in fact already released.
-          if (connectionLost) {
-            client.release(true);
-            return;
-          }
-          try {
-            // Unlock explicitly so a waiting peer proceeds immediately rather than when the socket tears
-            // down, then undo the session-scoped `statement_timeout` this connection set. Both have to
-            // succeed for the client to be safe to reuse: a client returned still carrying
-            // `statement_timeout = 0` would silently exempt whatever query picked it up next.
-            await client.query("SELECT pg_advisory_unlock($1)", [key.toString()]);
-            await client.query("RESET statement_timeout");
-            // Returned to the pool, not destroyed. Destroying meant a brand-new backend connection —
-            // TCP, TLS, auth — for *every* run, purely for lock bookkeeping: at 100 runs/minute that is
-            // 100 connections/minute of churn a managed Postgres or PgBouncer notices, on the run-start
-            // path.
-            client.release();
-          } catch (error) {
-            // Either statement failed, so the session's state is unknown: it may still hold the lock, or
-            // still be exempt from the timeout. Destroy it — ending the session frees the lock and
-            // discards the setting — and say so, because a lock leaked to the socket's teardown stalls
-            // every later run on this thread until then.
-            client.release(true);
-            logger?.warn(
-              `thread execution claim for "${threadId}" could not be released cleanly; its connection ` +
-                `was discarded to free the lock`,
-              error,
-            );
-          }
-        },
-      };
-    },
+          client.release();
+          return undefined;
+        }
+      }
+    } catch (error) {
+      // Destroyed, not released: this client may carry `statement_timeout = 0`, and it may or may not
+      // hold the lock. Ending the session is the only way to be sure of both.
+      client.off("error", onClientError);
+      client.release(true);
+      throw error;
+    }
+
+    let released = false;
+    return {
+      signal: ownership.signal,
+      release: async () => {
+        if (released) return;
+        released = true;
+        // Removed on every path: `pg` hands the same client object out again after `release()`, so a
+        // listener left behind would accumulate one per claim and log another claim's failure.
+        client.off("error", onClientError);
+        // The socket is already gone, and with it the session and its lock. Destroy the husk rather
+        // than querying a dead connection, which would throw and route us through the failure branch
+        // below to warn about a lock that Postgres has in fact already released.
+        if (connectionLost) {
+          client.release(true);
+          return;
+        }
+        try {
+          // Unlock explicitly so a waiting peer proceeds immediately rather than when the socket tears
+          // down, then undo the session-scoped `statement_timeout` this connection set. Both have to
+          // succeed for the client to be safe to reuse: a client returned still carrying
+          // `statement_timeout = 0` would silently exempt whatever query picked it up next.
+          await client.query("SELECT pg_advisory_unlock($1)", [key.toString()]);
+          await client.query("RESET statement_timeout");
+          // Returned to the pool, not destroyed. Destroying meant a brand-new backend connection —
+          // TCP, TLS, auth — for *every* run, purely for lock bookkeeping: at 100 runs/minute that is
+          // 100 connections/minute of churn a managed Postgres or PgBouncer notices, on the run-start
+          // path.
+          client.release();
+        } catch (error) {
+          // Either statement failed, so the session's state is unknown: it may still hold the lock, or
+          // still be exempt from the timeout. Destroy it — ending the session frees the lock and
+          // discards the setting — and say so, because a lock leaked to the socket's teardown stalls
+          // every later run on this thread until then.
+          client.release(true);
+          logger?.warn(
+            `thread execution claim for "${threadId}" could not be released cleanly; its connection ` +
+              `was discarded to free the lock`,
+            error,
+          );
+        }
+      },
+    };
+  };
+  return {
+    acquire: async (threadId) => (await claim(threadId, true))!,
+    tryAcquire: (threadId) => claim(threadId, false),
   };
 }

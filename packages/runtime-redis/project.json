@@ -23,7 +23,8 @@
       "options": {
         "command": "vitest run --config vitest.integration.config.ts",
         "cwd": "packages/runtime-redis"
-      }
+      },
+      "dependsOn": ["build"]
     }
   }
 }

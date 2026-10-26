@@ -15,6 +15,7 @@ import type {
 import { Queue, Worker } from "bullmq";
 
 import { settleBullConnection } from "./redis-connection.js";
+import { createRedisRunPartitions } from "./redis-run-partitions.js";
 
 const JOB_NAME = "run";
 
@@ -37,6 +38,7 @@ export class RedisRunQueue implements RunQueue {
   readonly #queueName: string;
   readonly #attempts: number;
   readonly #workers = new Set<Worker<QueuedRun>>();
+  #partitions?: ReturnType<typeof createRedisRunPartitions>;
 
   constructor(url: string, options: RedisRunQueueOptions = {}) {
     this.#url = url;
@@ -84,7 +86,26 @@ export class RedisRunQueue implements RunQueue {
   }
 
   consume(process: RunProcessor, options: RunConsumerOptions = {}): RunConsumer {
-    const worker = new Worker<QueuedRun>(this.#queueName, (job) => process(job.data), {
+    return this.#consume((job) => process(job.data), options);
+  }
+
+  consumePartitioned(
+    tryProcess: (run: QueuedRun) => Promise<boolean>,
+    options: RunConsumerOptions = {},
+  ): RunConsumer {
+    const partitions = (this.#partitions ??= createRedisRunPartitions(
+      this.#url,
+      this.#queueName,
+      this.#queue,
+    ));
+    return this.#consume((job, token) => partitions.process(job, token, tryProcess), options);
+  }
+
+  #consume(
+    process: ConstructorParameters<typeof Worker<QueuedRun>>[1],
+    options: RunConsumerOptions,
+  ): RunConsumer {
+    const worker = new Worker<QueuedRun>(this.#queueName, process, {
       connection: { url: this.#url },
       concurrency: options.concurrency ?? 1,
     });
@@ -111,6 +132,7 @@ export class RedisRunQueue implements RunQueue {
       }),
     );
     this.#workers.clear();
+    await this.#partitions?.dispose();
     await settleBullConnection(this.#queue);
     await this.#queue.close();
   }

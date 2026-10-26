@@ -57,7 +57,7 @@ You normally get these via `skein dev --queue redis` / `skein up` and
 ## API
 
 - **`class RedisRunQueue implements RunQueue`** — `new RedisRunQueue(url, options?)`.
-  `enqueue(run, options?)` · `consume(process, options?)` → `RunConsumer` · `dispose()`.
+  `enqueue(run, options?)` · `consume(process, options?)` · `consumePartitioned(tryProcess, options?)` → `RunConsumer` · `dispose()`.
   `options.delayMs` (the run-create `after_seconds`) becomes BullMQ's native `delay`, so the run is
   held in Redis and outlives the process that scheduled it — the durable half of the memory
   driver's timer.
@@ -89,3 +89,12 @@ This package is the run **queue + pub/sub** — not a checkpointer. For Redis-ba
 ## License
 
 [Apache-2.0](../../LICENSE)
+
+## Partitioned dispatch
+
+The run worker selects `consumePartitioned` when the execution gate supports non-blocking claims.
+A callback returning `false` leaves the run at its thread's head and frees capacity for other threads;
+`true` acknowledges it, and throws retain BullMQ's ordinary failure policy. BullMQ remains responsible
+for job identity, delay, retry and stalled recovery. Internal Redis partition metadata survives worker
+restart and is reconciled without reading BullMQ private keys. Upgrade all workers together for the
+new utilization behavior; existing jobs are accepted without a queue flush.

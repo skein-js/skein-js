@@ -4,7 +4,13 @@
 // `rollback` plan once the displaced run has released the lock, registers the run's cancellation
 // control, and records its base checkpoint for a future rollback.
 
-import { isTerminalRunStatus, type RunKwargs, type Run, type RunTrigger } from "@skein-js/core";
+import {
+  isTerminalRunStatus,
+  type RunKwargs,
+  type Run,
+  type RunTrigger,
+  type ThreadExecutionLease,
+} from "@skein-js/core";
 
 import { storedRollbackPlan, type ProtocolContext } from "../context.js";
 import { readNativeOrigin } from "../native/native-origin.js";
@@ -25,6 +31,7 @@ export async function startRunExecution(
   run: Run,
   kwargs: RunKwargs,
   origin: RunExecutionOrigin = {},
+  executionLease?: ThreadExecutionLease,
 ): Promise<RunOutcome> {
   const { deps, control, executionLocks, runBaseCheckpoints, rollbackPlans } = ctx;
   const runId = run.run_id;
@@ -40,110 +47,117 @@ export async function startRunExecution(
   let removeLeaseListener: (() => void) | undefined;
   let executionLeaseLost = false;
   let engineStarted = false;
+  const withClaim = async (
+    task: (signal?: AbortSignal) => Promise<RunOutcome>,
+  ): Promise<RunOutcome> => {
+    if (!executionLease)
+      return withThreadExecution(executionLocks, deps.threadExecutionGate, threadId, task);
+    try {
+      executionLease.signal?.throwIfAborted();
+      return await task(executionLease.signal);
+    } finally {
+      await executionLease.release();
+    }
+  };
   try {
     // Serialize per thread: a second run on a busy thread blocks here until the active run's
     // execution (below) settles and releases the claim — giving enqueue its ordering and letting an
     // interrupt/rollback run start only after the run it displaced has fully stopped. With a
     // `threadExecutionGate` configured that claim spans instances; without one it is this process'.
-    const outcome = await withThreadExecution(
-      executionLocks,
-      deps.threadExecutionGate,
-      threadId,
-      async (leaseSignal) => {
-        if (leaseSignal) {
-          const abortForLostLease = () => {
-            executionLeaseLost = true;
-            runControl.abort("cancel");
-          };
-          leaseSignal.addEventListener("abort", abortForLostLease, { once: true });
-          removeLeaseListener = () => leaseSignal.removeEventListener("abort", abortForLostLease);
-          leaseSignal.throwIfAborted();
-        }
-        // A recovered job may wait behind its original execution or a cancellation. Reread while
-        // holding the execution claim, before rollback can remove another run's checkpoints.
-        const current = await deps.store.runs.get(runId);
+    const outcome = await withClaim(async (leaseSignal) => {
+      if (leaseSignal) {
+        const abortForLostLease = () => {
+          executionLeaseLost = true;
+          runControl.abort("cancel");
+        };
+        leaseSignal.addEventListener("abort", abortForLostLease, { once: true });
+        removeLeaseListener = () => leaseSignal.removeEventListener("abort", abortForLostLease);
+        leaseSignal.throwIfAborted();
+      }
+      // A recovered job may wait behind its original execution or a cancellation. Reread while
+      // holding the execution claim, before rollback can remove another run's checkpoints.
+      const current = await deps.store.runs.get(runId);
+      leaseSignal?.throwIfAborted();
+      if (!current || isTerminalRunStatus(current.status)) {
+        rollbackPlans.delete(runId);
+        return { status: current?.status ?? "cancelled", values: {} };
+      }
+      // A `rollback` run drops the displaced run's writes now that it has settled (we hold the lock
+      // it released), then removes its row so the run "never happened". Best-effort on the checkpoint
+      // side — a failure to revert must not strand the new run.
+      //
+      // The in-process note first, then the run's own kwargs: the latter is what makes this work when the
+      // instance that *created* this run is not the one executing it, and what makes a crash-recovered
+      // run still clean up. Re-applying is safe — reverting to the same base twice lands on the same
+      // history, and deleting an already-deleted row is tolerated below.
+      const plan = rollbackPlans.get(runId) ?? storedRollbackPlan(kwargs);
+      if (plan) {
+        rollbackPlans.delete(runId);
         leaseSignal?.throwIfAborted();
-        if (!current || isTerminalRunStatus(current.status)) {
-          rollbackPlans.delete(runId);
-          return { status: current?.status ?? "cancelled", values: {} };
+        if (plan.revertToCheckpoint !== false) {
+          try {
+            await rollbackThreadCheckpointsTo(
+              deps.checkpointer,
+              threadId,
+              plan.revertToCheckpoint.baseCheckpointId,
+              deps.cloneCheckpoint,
+              leaseSignal,
+            );
+          } catch (error) {
+            // `error`, not `warn`: the run continues on state that should have been reverted, so the
+            // displaced run's writes are still in the thread's history. That is a correctness outcome,
+            // not a slow path — and it became reachable in ordinary operation once a statement timeout
+            // arrived, because reading a large thread's checkpoint history is one unbounded query.
+            // Nothing is destroyed (the read precedes the delete), but the caller has to know.
+            deps.logger.error(
+              `run ${runId}: rollback of the displaced run's writes failed — this run is continuing ` +
+                `on state that was not reverted. On a very large thread, raise ` +
+                `PG_STATEMENT_TIMEOUT_MS or use a different multitask_strategy.`,
+              error,
+            );
+          }
         }
-        // A `rollback` run drops the displaced run's writes now that it has settled (we hold the lock
-        // it released), then removes its row so the run "never happened". Best-effort on the checkpoint
-        // side — a failure to revert must not strand the new run.
-        //
-        // The in-process note first, then the run's own kwargs: the latter is what makes this work when the
-        // instance that *created* this run is not the one executing it, and what makes a crash-recovered
-        // run still clean up. Re-applying is safe — reverting to the same base twice lands on the same
-        // history, and deleting an already-deleted row is tolerated below.
-        const plan = rollbackPlans.get(runId) ?? storedRollbackPlan(kwargs);
-        if (plan) {
-          rollbackPlans.delete(runId);
+        leaseSignal?.throwIfAborted();
+        for (const displacedId of plan.displacedRunIds) {
           leaseSignal?.throwIfAborted();
-          if (plan.revertToCheckpoint !== false) {
-            try {
-              await rollbackThreadCheckpointsTo(
-                deps.checkpointer,
-                threadId,
-                plan.revertToCheckpoint.baseCheckpointId,
-                deps.cloneCheckpoint,
-                leaseSignal,
-              );
-            } catch (error) {
-              // `error`, not `warn`: the run continues on state that should have been reverted, so the
-              // displaced run's writes are still in the thread's history. That is a correctness outcome,
-              // not a slow path — and it became reachable in ordinary operation once a statement timeout
-              // arrived, because reading a large thread's checkpoint history is one unbounded query.
-              // Nothing is destroyed (the read precedes the delete), but the caller has to know.
-              deps.logger.error(
-                `run ${runId}: rollback of the displaced run's writes failed — this run is continuing ` +
-                  `on state that was not reverted. On a very large thread, raise ` +
-                  `PG_STATEMENT_TIMEOUT_MS or use a different multitask_strategy.`,
+          try {
+            // Native receipts/results remain reconcilable after rollback. Explicit deletion still
+            // removes them; legacy runs keep their established rollback deletion behavior.
+            if (!readNativeOrigin(await deps.store.runs.getKwargs(displacedId)))
+              await deps.store.runs.delete(displacedId);
+          } catch {
+            // already gone — nothing to do
+          }
+        }
+      }
+      leaseSignal?.throwIfAborted();
+      engineStarted = true;
+      return await executeRun(deps, {
+        run,
+        kwargs,
+        control: runControl,
+        // Noted in-process *and* persisted onto the run. The map is the fast path for a displacement
+        // decided in this process; the persisted copy is what a *different* instance reads when it is
+        // the one displacing this run. Persisting is best-effort — failing a run because a bookkeeping
+        // write failed would be a much worse outcome than a rollback that declines to revert.
+        recordBaseCheckpoint: (base) => {
+          runBaseCheckpoints.set(runId, base);
+          void deps.store.runs
+            .recordBaseCheckpoint(runId, base ?? null)
+            .catch((error: unknown) =>
+              deps.logger.warn(
+                `run ${runId}: could not persist its base checkpoint; a rollback decided on another ` +
+                  `instance will not revert this run's writes`,
                 error,
-              );
-            }
-          }
-          leaseSignal?.throwIfAborted();
-          for (const displacedId of plan.displacedRunIds) {
-            leaseSignal?.throwIfAborted();
-            try {
-              // Native receipts/results remain reconcilable after rollback. Explicit deletion still
-              // removes them; legacy runs keep their established rollback deletion behavior.
-              if (!readNativeOrigin(await deps.store.runs.getKwargs(displacedId)))
-                await deps.store.runs.delete(displacedId);
-            } catch {
-              // already gone — nothing to do
-            }
-          }
-        }
-        leaseSignal?.throwIfAborted();
-        engineStarted = true;
-        return await executeRun(deps, {
-          run,
-          kwargs,
-          control: runControl,
-          // Noted in-process *and* persisted onto the run. The map is the fast path for a displacement
-          // decided in this process; the persisted copy is what a *different* instance reads when it is
-          // the one displacing this run. Persisting is best-effort — failing a run because a bookkeeping
-          // write failed would be a much worse outcome than a rollback that declines to revert.
-          recordBaseCheckpoint: (base) => {
-            runBaseCheckpoints.set(runId, base);
-            void deps.store.runs
-              .recordBaseCheckpoint(runId, base ?? null)
-              .catch((error: unknown) =>
-                deps.logger.warn(
-                  `run ${runId}: could not persist its base checkpoint; a rollback decided on another ` +
-                    `instance will not revert this run's writes`,
-                  error,
-                ),
-              );
-          },
-          deferWebhook: (deliver) => {
-            deliverWebhook = deliver;
-          },
-          ...origin,
-        });
-      },
-    );
+              ),
+            );
+        },
+        deferWebhook: (deliver) => {
+          deliverWebhook = deliver;
+        },
+        ...origin,
+      });
+    });
 
     return outcome;
   } finally {
