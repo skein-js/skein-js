@@ -38,7 +38,10 @@ it("rejects stale nested checkpoint maps after SQLite reopen and resumes the ori
       { idempotencyKey: "first" },
     );
     runtime.worker.start();
-    await expect.poll(async () => (await client.getRun(first.runId)).status).toBe("interrupted");
+    for await (const _frame of await runtime.service.runs.join(first.runId)) {
+      // Wait for persisted completion within the suite's real-file test budget.
+    }
+    expect((await client.getRun(first.runId)).status).toBe("interrupted");
     await runtime.worker.stop();
     const checkpoint = (await client.getState(first.threadId)).checkpoint;
     const history = [];
@@ -79,7 +82,10 @@ it("rejects stale nested checkpoint maps after SQLite reopen and resumes the ori
       resume: "approve",
     });
     runtime.worker.start();
-    await expect.poll(async () => (await client.getRun(answer.runId)).status).toBe("success");
+    for await (const _frame of await runtime.service.runs.join(answer.runId)) {
+      // Nested checkpoint writes can outlast expect.poll's default one second on Windows.
+    }
+    expect((await client.getRun(answer.runId)).status).toBe("success");
     expect(preparations).toBe(1);
     expect((await client.getResult(answer.runId)).values).toEqual({ answer: "approve" });
   } finally {
