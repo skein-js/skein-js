@@ -1,6 +1,11 @@
 // The Postgres execution gate against a real server. These are the assertions that cannot be made with
 // a stub: an advisory lock only serializes across *connections*, so proving it takes two of them.
 
+import { fork } from "node:child_process";
+import { once } from "node:events";
+import { connect, createServer, type Socket } from "node:net";
+import { fileURLToPath } from "node:url";
+
 import { INFLIGHT_RUN_STATUSES, TERMINAL_RUN_STATUSES } from "@skein-js/core";
 import { startPostgres, type StartedResource } from "@skein-js/test-support";
 import type { Pool } from "pg";
@@ -28,6 +33,69 @@ function twoInstances() {
 }
 
 describe("createPostgresThreadExecutionGate", () => {
+  it.each(["acquire", "tryAcquire"])(
+    "survives a disconnect while releasing a claim from %s",
+    async (method) => {
+      const destination = new URL(pg.url);
+      const sockets = new Set<Socket>();
+      let disconnected = false;
+      const proxy = createServer((incoming) => {
+        const upstream = connect(Number(destination.port), destination.hostname);
+        sockets.add(incoming);
+        sockets.add(upstream);
+        let observed = Buffer.alloc(0);
+        incoming.on("data", (chunk: Buffer) => {
+          observed = Buffer.concat([observed, chunk]);
+          if (observed.includes("pg_advisory_unlock")) {
+            // A real network loss while the unmodified driver awaits its cleanup query. Killing a
+            // backend through SQL sends a FATAL response first and misses this socket-error path.
+            disconnected = true;
+            incoming.destroy();
+            upstream.destroy();
+          } else {
+            upstream.write(chunk);
+            observed = observed.subarray(Math.max(0, observed.length - 256));
+          }
+        });
+        upstream.pipe(incoming);
+        incoming.on("error", () => upstream.destroy());
+        upstream.on("error", () => incoming.destroy());
+        incoming.on("close", () => upstream.destroy());
+        upstream.on("close", () => incoming.destroy());
+      });
+      proxy.listen(0, "127.0.0.1");
+      await once(proxy, "listening");
+      const address = proxy.address();
+      if (!address || typeof address === "string") throw new Error("Proxy did not bind a TCP port");
+      const url = new URL(pg.url);
+      url.hostname = "127.0.0.1";
+      url.port = String(address.port);
+      const child = fork(
+        fileURLToPath(new URL("./__fixtures__/gate-release-disconnect.mjs", import.meta.url)),
+        [method],
+        {
+          env: { ...process.env, POSTGRES_URI: url.toString() },
+          stdio: ["ignore", "ignore", "pipe", "ipc"],
+        },
+      );
+      let errors = "";
+      child.stderr!.on("data", (chunk) => {
+        errors += String(chunk);
+      });
+      const exited = once(child, "exit", { signal: AbortSignal.timeout(10_000) });
+      try {
+        const [code] = await exited;
+        expect(disconnected).toBe(true);
+        expect(code, errors).toBe(0);
+      } finally {
+        child.kill("SIGKILL");
+        await exited.catch(() => undefined);
+        for (const socket of sockets) socket.destroy();
+        await new Promise<void>((resolve) => proxy.close(() => resolve()));
+      }
+    },
+  );
+
   it("does not wait for an occupied thread and permits an independent claim", async () => {
     const { gates, close } = twoInstances();
     const held = await gates[0]!.acquire("busy-try");
