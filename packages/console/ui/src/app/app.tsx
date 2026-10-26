@@ -1,12 +1,12 @@
 import {
   Bot,
+  BookOpen,
   Clock,
   Database,
   LayoutDashboard,
   Menu,
   MessagesSquare,
   Radio,
-  Sparkles,
   Terminal,
 } from "lucide-react";
 import { useEffect, useState } from "react";
@@ -90,6 +90,7 @@ function ConsoleShell() {
   const { segments, query, navigate } = useRoute();
   const [mobileNavigation, setMobileNavigation] = useState(false);
   const section = segments[0] ?? "";
+  const playground = section === "" || section === "playground";
   const current = NAV.find((entry) => entry.path === section);
   useEffect(() => {
     if (section === "") navigate("playground");
@@ -125,7 +126,7 @@ function ConsoleShell() {
     </nav>
   );
   return (
-    <div className="min-h-dvh bg-background text-foreground">
+    <div className="h-dvh overflow-hidden bg-background text-foreground">
       <a
         href="#console-content"
         onClick={(event) => {
@@ -143,14 +144,16 @@ function ConsoleShell() {
             skein<span className="ml-2 text-xs font-normal text-muted-foreground">console</span>
           </span>
         </a>
-        {navigation}
-        <div className="mt-auto rounded-xl border bg-muted/50 p-3">
-          <Sparkles className="mb-2 size-4 text-primary" aria-hidden />
-          <p className="text-xs font-medium">Your graphs. Your infrastructure.</p>
-          <p className="mt-1 text-xs leading-relaxed text-muted-foreground">
-            Test, understand, and operate your agents in one place.
-          </p>
-        </div>
+        <div className="min-h-0 flex-1 overflow-y-auto">{navigation}</div>
+        <a
+          href="https://skein-js.github.io/skein-js/console"
+          target="_blank"
+          rel="noreferrer"
+          className="mt-6 flex shrink-0 items-center gap-2 border-t px-3 pt-4 text-xs text-muted-foreground hover:text-primary"
+        >
+          <BookOpen className="size-4" aria-hidden />
+          Console guide ↗
+        </a>
       </aside>
       <Dialog
         open={mobileNavigation}
@@ -161,8 +164,8 @@ function ConsoleShell() {
       >
         {navigation}
       </Dialog>
-      <div className="min-w-0 md:ml-[232px]">
-        <header className="sticky top-0 z-30 flex min-h-16 items-center gap-3 border-b bg-card/95 px-4 backdrop-blur-md sm:px-6">
+      <div className="flex h-full min-w-0 flex-col md:ml-[232px]">
+        <header className="relative z-30 flex min-h-16 shrink-0 items-center gap-3 border-b bg-card/95 px-4 backdrop-blur-md sm:px-6">
           <Button
             variant="ghost"
             size="icon"
@@ -183,12 +186,17 @@ function ConsoleShell() {
         <main
           id="console-content"
           tabIndex={-1}
-          className="mx-auto w-full min-w-0 max-w-[1800px] p-4 outline-none sm:p-6"
+          className={cn(
+            "mx-auto min-h-0 w-full min-w-0 max-w-[1800px] flex-1 p-4 outline-none",
+            playground ? "flex flex-col overflow-hidden" : "overflow-y-auto sm:p-6",
+          )}
         >
-          <div className="mb-6">
-            <div className="mb-1 text-[11px] font-medium uppercase tracking-[0.12em] text-primary">
-              {current?.group ?? "Workspace"}
-            </div>
+          <div className={cn("shrink-0", playground ? "mb-3" : "mb-4")}>
+            {!playground && (
+              <div className="mb-1 text-[11px] font-medium uppercase tracking-[0.12em] text-primary">
+                {current?.group ?? "Workspace"}
+              </div>
+            )}
             <h1 className="text-2xl font-semibold">{current?.label ?? "Console"}</h1>
             <p className="mt-1 max-w-3xl text-sm leading-relaxed text-muted-foreground">
               {current?.description}

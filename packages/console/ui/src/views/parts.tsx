@@ -101,6 +101,7 @@ export function Pagination({
   hasNext,
   total,
   loading,
+  compact = false,
   onPrevious,
   onNext,
 }: {
@@ -109,12 +110,15 @@ export function Pagination({
   hasNext: boolean;
   total?: number;
   loading: boolean;
+  compact?: boolean;
   onPrevious: () => void;
   onNext: () => void;
 }) {
   const range = count === 0 ? "0" : `${offset + 1}–${offset + count}`;
   return (
-    <div className="flex items-center justify-end gap-3 border-t px-4 py-2 text-xs text-muted-foreground">
+    <div
+      className={`flex shrink-0 items-center justify-end gap-3 text-xs text-muted-foreground ${compact ? "pb-0.5" : "border-t px-4 py-2"}`}
+    >
       <span aria-live="polite">
         {range}
         {total === undefined ? "" : ` of ${total}`}

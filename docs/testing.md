@@ -364,4 +364,13 @@ through a real HTTP adapter. Playwright exercises tool/token output, nonboolean 
 failures and preserved drafts, cancellation, observer closure, resource operations, and responsive
 light/dark layouts at 390, 768, 1280, and 1600px. Chromium is installed in CI's compatibility job.
 `console-ui:typecheck-browser` checks the fixture and tests. Screenshots are written under
-`dist/console-screenshots`; failures capture the page and its accessible text.
+`dist/console-screenshots`; failures capture the page and its accessible text. The `docs/` subdirectory
+covers every main page plus Assistant, Thread, and Run details in both themes. Its `details/`
+subdirectory captures state, runs, metadata/retention, checkpoint/time travel, raw events, and
+deliveries. Fixtures include configured channels and an intentional callback failure, without
+contacting external services.
+
+Short-window coverage checks the entire composer and sidebar footer remain in the viewport at
+1440×760, 1280×640, 768×900, and 390×844. Long output and interrupt requests scroll inside the
+conversation region; expanded run options scroll inside the composer. Resource-page checks also
+assert the document itself does not grow beyond the viewport.
