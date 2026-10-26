@@ -50,6 +50,9 @@ export function runPartitionedRunQueueConformance(label: string, makeQueue: RunQ
         handled.push(run.run_id);
         return true;
       });
+      // Establish processor startup separately from dispatch progress. Redis opens worker
+      // connections asynchronously; their handshake is not part of this busy-partition contract.
+      await expect.poll(() => attempts, { timeout: 4000 }).toBeGreaterThanOrEqual(1);
       await expect.poll(() => handled.includes("cold")).toBe(true);
       await expect.poll(() => attempts).toBeGreaterThanOrEqual(3);
       expect(handled).toEqual(["cold"]);
@@ -114,6 +117,33 @@ export function runPartitionedRunQueueConformance(label: string, makeQueue: RunQ
       await expect.poll(() => handled.length).toBe(2);
       expect([...handled].sort()).toEqual(["delayed", "immediate"]);
       expect(startedAt).toBeGreaterThanOrEqual(notBefore);
+    });
+
+    it("shares partition exclusion between independent consumers of the same queue", async () => {
+      const queue = await make();
+      await queue.enqueue({ run_id: "head", thread_id: "hot" });
+      await queue.enqueue({ run_id: "tail", thread_id: "hot" });
+      await queue.enqueue({ run_id: "cold", thread_id: "cold" });
+      let release!: () => void;
+      const held = new Promise<void>((resolve) => {
+        release = resolve;
+      });
+      const started: string[] = [];
+      const process = async (run: QueuedRun) => {
+        started.push(run.run_id);
+        if (run.run_id === "head") await held;
+        return true;
+      };
+      consume(queue, process);
+      try {
+        await expect.poll(() => started).toEqual(["head"]);
+        consume(queue, process);
+        await expect.poll(() => started.includes("cold")).toBe(true);
+        expect(started).not.toContain("tail");
+      } finally {
+        release();
+      }
+      await expect.poll(() => started, { timeout: 4000 }).toEqual(["head", "cold", "tail"]);
     });
 
     it("leaves a deferred run available after graceful close", async () => {
