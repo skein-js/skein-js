@@ -25,6 +25,8 @@ import type { Pagination } from "./pagination.js";
  * up later, or a run reclaimed after a crash, can be reconstructed from just its `run_id`.
  */
 export interface RunKwargs {
+  /** Execution duration in milliseconds, starting when execution begins; host limits still apply. */
+  timeout_ms?: number;
   /** Server-owned minimal lifecycle obligation, also usable before a graph ever executes. */
   terminal_delivery?: DeliveryCreate;
   /** Server-owned background intent and original absolute queue eligibility time. */

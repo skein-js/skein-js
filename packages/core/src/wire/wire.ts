@@ -4,7 +4,14 @@
 // Everything in skein-js that touches the wire imports the protocol types from `@skein-js/core`,
 // never from the SDK directly, so there is a single seam to pin the protocol version.
 
-import type { Cron, Run as SdkRun } from "@langchain/langgraph-sdk";
+import type {
+  Cron,
+  DefaultValues,
+  Thread as SdkThread,
+  Item as SdkItem,
+  SearchItem as SdkSearchItem,
+  Run as SdkRun,
+} from "@langchain/langgraph-sdk";
 
 import type { RunError } from "../errors/run-error.js";
 
@@ -19,15 +26,27 @@ export type {
   DefaultValues,
   GraphSchema,
   Interrupt,
-  Item,
   Metadata,
-  SearchItem,
   StreamMode,
-  Thread,
   ThreadState,
   ThreadStatus,
   ThreadTask,
 } from "@langchain/langgraph-sdk";
+
+/** Effective retention in minutes. Absent is unavailable; null means known no expiry. */
+export type Thread<ValuesType = DefaultValues, TInterruptValue = unknown> = SdkThread<
+  ValuesType,
+  TInterruptValue
+> & {
+  ttl?: number | null;
+  /** Eligible for sweeping at this time; collection may happen later. */
+  expires_at?: string | null;
+  ttl_strategy?: "delete" | "keep_latest";
+};
+
+/** Optional retention metadata; custom stores may omit it. */
+export type Item = SdkItem & { ttl?: number | null; expiresAt?: string | null };
+export type SearchItem = SdkSearchItem & { ttl?: number | null; expiresAt?: string | null };
 
 // The two create-response shapes, re-exported so a client typed against them still compiles.
 // skein answers *every* cron endpoint with the full `Cron`, which satisfies both structurally: they
@@ -86,7 +105,7 @@ export type CronSelectField =
 //    frame carries. It is absent on every run that did not fail, so an SDK client that never reads
 //    it is unaffected. Its `stack` is populated only when the server sets `exposeErrorStacks`.
 //
-// These are the only two places skein steps outside the SDK oracle on purpose. Because of them,
+// These run fields, along with the optional retention projections above, extend the SDK oracle.
 // `Run` is re-exported reshaped rather than passed through verbatim, so every run row skein
 // constructs carries both.
 export type RunStatus = SdkRun["status"] | "cancelled";

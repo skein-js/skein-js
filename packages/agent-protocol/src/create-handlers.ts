@@ -191,8 +191,13 @@ const empty = (status = 204): ProtocolResponse => ({ kind: "empty", status });
  * transform. The client is the wire authority, so `Item` stays the domain type and converts here.
  */
 function storeItemBody(item: SearchItem): Record<string, unknown> {
-  const { createdAt, updatedAt, ...rest } = item;
-  return { ...rest, created_at: createdAt, updated_at: updatedAt };
+  const { createdAt, updatedAt, expiresAt, ...rest } = item;
+  return {
+    ...rest,
+    created_at: createdAt,
+    updated_at: updatedAt,
+    ...(expiresAt === undefined ? {} : { expires_at: expiresAt }),
+  };
 }
 
 /** A single query value: the first entry if repeated, else the string, else undefined. */

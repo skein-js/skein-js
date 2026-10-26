@@ -119,6 +119,7 @@ try {
       thread_id: thread.thread_id,
       expected: { runId: first.run_id, checkpoint: state.checkpoint },
       resume: "approve",
+      timeout_ms: 1000,
     },
   };
   const accepted = await send(command);
@@ -128,6 +129,7 @@ try {
     () => client.getRun(accepted.receipt.runId, call),
     (run) => run.status === "success",
   );
+  assert.equal((await embedded.deps.store.runs.getKwargs(accepted.receipt.runId)).timeout_ms, 1000);
   const pieces = [];
   let offset = 0,
     digest;

@@ -21,6 +21,8 @@ export default tseslint.config(
       // that — so without this, a developer who has run `pnpm docs:build` fails `pnpm lint` on a
       // vendored MiniSearch bundle.
       "docs/.vitepress/cache/**",
+      // VitePress server-rendering intermediates are generated during the parallel docs build.
+      "docs/.vitepress/.temp/**",
       // VitePress bundles `config.mts` to a throwaway `config.mts.timestamp-<ms>-<hash>.mjs` beside
       // it and unlinks it moments later. `*.config.*` above does not match that name (nothing
       // precedes `config.`), so a `lint` running concurrently with `build` — which is every

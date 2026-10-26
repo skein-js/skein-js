@@ -106,6 +106,25 @@ settles as `timeout`.
 default would turn slow-but-working into killed — the exact failure the timeout exists to prevent.
 Pick a number from your own graphs' worst honest case.
 
+Individual run creation requests can additionally supply `timeout_ms`, an integer from 1 through
+2,147,483,647 milliseconds. The duration starts at execution, so a queued delay does not consume it.
+The effective limit is the smallest of this duration, the deployment limit, and any remaining native
+deadline. Native start/resume and BullMQ command inputs inherit the same field. Omit it for the
+existing deployment behavior. `GET /info.flags.per_run_timeout: true` confirms support.
+
+The installed LangGraph SDK does not serialize this additional field. Use a submission-scoped
+`onRequest` hook to add it to the prepared run body, or send the wire request directly:
+
+```ts
+await fetch(`${url}/threads/${threadId}/runs`, {
+  method: "POST",
+  headers: { "content-type": "application/json" },
+  body: JSON.stringify({ assistant_id: "research", input: {}, timeout_ms: 30_000 }),
+});
+```
+
+The console exposes this control under **Advanced run options** after capability confirmation.
+
 ## Start a run later
 
 `afterSeconds` holds a run before it starts — capped at 86400 (a day); for anything longer use a

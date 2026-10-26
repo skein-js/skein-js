@@ -1,140 +1,188 @@
-// A single run: what it is, what it is doing, and the two things you can do to it.
-//
-// The event tail is the point of this view. Everything else in the console is a snapshot; this is the
-// one place you watch a graph think, live, and it works identically on a finished run because the
-// server replays what it persisted.
-
+import type { Message } from "@langchain/langgraph-sdk";
 import { ArrowLeft, Ban, RotateCcw, Trash2 } from "lucide-react";
-import { useState } from "react";
+import { useEffect, useState } from "react";
 
 import { createConsoleClient } from "@/api";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
+import { useConfirmation } from "@/components/ui/dialog";
+import { Tabs } from "@/components/ui/tabs";
 import { routeHref } from "@/router";
 import { useAsync } from "@/use-async";
 import { useRunStream, type RunFrame } from "@/use-run-stream";
 
+import { ActivityFeed } from "./activity";
 import { Async, Json, Panel, StatusBadge } from "./parts";
 import { RunDeliveries } from "./run-deliveries";
+import { Transcript } from "./transcript";
 
 export function RunView({ threadId, runId }: { threadId: string; runId: string }) {
-  const client = createConsoleClient();
+  const [client] = useState(() => createConsoleClient({}));
+  const confirm = useConfirmation();
+  const [tab, setTab] = useState<"activity" | "events" | "deliveries" | "details">("activity");
   const [action, setAction] = useState<{ error?: Error; busy?: boolean }>({});
   const run = useAsync((signal) => client.runs.get(threadId, runId, { signal }), [threadId, runId]);
   const stream = useRunStream(threadId, runId);
-
+  const reloadRun = run.reload;
+  useEffect(() => {
+    if (stream.phase === "ended" || stream.phase === "error") reloadRun();
+  }, [stream.phase, reloadRun]);
+  const latestValues = [...stream.frames].reverse().find((frame) => frame.event === "values")
+    ?.data as { messages?: Message[] } | undefined;
+  const failure = run.data as typeof run.data & { error?: { message?: string } };
   const inFlight = run.data?.status === "pending" || run.data?.status === "running";
-
-  /** Run a mutation, then re-read the run — the console shows server state, not optimistic state. */
-  const perform = async (mutate: () => Promise<void>, after: "reload" | "leave") => {
+  const perform = async (kind: "cancel" | "rollback" | "delete") => {
+    if (
+      !(await confirm({
+        title: `${kind === "delete" ? "Delete" : kind === "rollback" ? "Roll back" : "Stop"} this run?`,
+        description:
+          kind === "delete"
+            ? "This permanently removes the run record."
+            : kind === "rollback"
+              ? "This stops execution and discards this run's checkpoint writes and record."
+              : "This stops execution and keeps completed checkpoint writes.",
+        confirmLabel:
+          kind === "delete" ? "Delete run" : kind === "rollback" ? "Roll back run" : "Stop run",
+      }))
+    )
+      return;
     setAction({ busy: true });
     try {
-      await mutate();
+      if (kind === "delete") await client.runs.delete(threadId, runId);
+      else
+        await client.runs.cancel(
+          threadId,
+          runId,
+          true,
+          kind === "rollback" ? "rollback" : "interrupt",
+        );
       setAction({});
-      if (after === "leave") window.location.hash = routeHref(`threads/${threadId}`);
+      if (kind !== "cancel") window.location.hash = routeHref(`threads/${threadId}`);
       else run.reload();
     } catch (error) {
       setAction({ error: error instanceof Error ? error : new Error(String(error)) });
     }
   };
-
   return (
     <>
-      <div className="mb-4 flex items-center gap-3">
-        <a
-          href={routeHref(`threads/${threadId}`)}
-          className="inline-flex items-center gap-1.5 text-sm text-muted-foreground hover:text-foreground"
-        >
-          <ArrowLeft className="size-3.5" aria-hidden />
-          Thread
-        </a>
-        <span className="font-mono text-xs text-muted-foreground">{runId}</span>
-        {run.data ? <StatusBadge status={run.data.status} /> : null}
-      </div>
-
-      {action.error ? (
-        <div className="mb-4 rounded-md border border-status-error/40 p-3 font-mono text-xs text-status-error">
-          {action.error.message}
+      <a
+        href={routeHref(`threads/${threadId}`)}
+        className="mb-4 inline-flex items-center gap-2 text-sm text-primary"
+      >
+        <ArrowLeft className="size-4" />
+        Back to thread
+      </a>
+      <div className="mb-4 flex flex-wrap items-center gap-3">
+        <div className="min-w-0 flex-1">
+          <p className="text-xs text-muted-foreground">Run · one execution of an Assistant</p>
+          <p className="break-all font-mono text-xs">{runId}</p>
+          {run.data && <p className="help mt-1">Assistant: {run.data.assistant_id}</p>}
         </div>
-      ) : null}
-
-      <Panel
-        title="Run"
-        padded
-        actions={
-          <>
-            <Button
-              variant="outline"
-              size="sm"
-              disabled={!inFlight || action.busy}
-              // `interrupt` stops the run where it is and settles it as `cancelled`.
-              onClick={() => {
-                if (window.confirm(`Cancel run ${runId}? Its current execution will stop.`))
-                  void perform(
-                    () => client.runs.cancel(threadId, runId, false, "interrupt"),
-                    "reload",
-                  );
-              }}
-            >
-              <Ban className="size-3.5" />
-              Cancel
-            </Button>
-            <Button
-              variant="outline"
-              size="sm"
-              disabled={!inFlight || action.busy}
-              // `rollback` additionally discards the checkpoints this run wrote, so the thread returns
-              // to the state it had before the run started. Destructive, hence the separate control.
-              onClick={() => {
-                if (window.confirm(`Rollback run ${runId}? Its checkpoints will be discarded.`))
-                  void perform(
-                    () => client.runs.cancel(threadId, runId, false, "rollback"),
-                    "reload",
-                  );
-              }}
-            >
-              <RotateCcw className="size-3.5" />
-              Rollback
-            </Button>
-            <Button
-              variant="ghost"
-              size="sm"
-              disabled={inFlight || action.busy}
-              onClick={() => {
-                if (window.confirm(`Delete run ${runId}? This cannot be undone.`))
-                  void perform(() => client.runs.delete(threadId, runId), "leave");
-              }}
-            >
-              <Trash2 className="size-3.5" />
-              Delete
-            </Button>
-          </>
-        }
-      >
-        <Async state={run}>{(data) => <Json value={data} />}</Async>
-      </Panel>
-
-      <RunDeliveries threadId={threadId} runId={runId} />
-
-      <Panel
-        title="Event stream"
-        count={stream.frames.length}
-        actions={<StreamPhase phase={stream.phase} dropped={stream.dropped} />}
-      >
-        {stream.error ? (
-          <div className="p-4 font-mono text-xs text-status-error">{stream.error.message}</div>
-        ) : stream.frames.length === 0 ? (
-          <div className="p-8 text-center text-sm text-muted-foreground">
-            {stream.phase === "connecting" ? "Waiting for the first frame…" : "No frames."}
-          </div>
-        ) : (
-          <ol className="divide-y">
-            {stream.frames.map((frame) => (
-              <FrameRow key={frame.seq} frame={frame} />
-            ))}
-          </ol>
-        )}
-      </Panel>
+        {run.data && <StatusBadge status={run.data.status} />}
+        <Button
+          variant="outline"
+          size="sm"
+          disabled={!inFlight || action.busy}
+          onClick={() => void perform("cancel")}
+        >
+          <Ban className="size-3.5" />
+          Stop
+        </Button>
+        <Button
+          variant="outline"
+          size="sm"
+          disabled={!inFlight || action.busy}
+          onClick={() => void perform("rollback")}
+        >
+          <RotateCcw className="size-3.5" />
+          Roll back
+        </Button>
+        <Button
+          variant="ghost"
+          size="sm"
+          disabled={inFlight || action.busy}
+          onClick={() => void perform("delete")}
+        >
+          <Trash2 className="size-3.5" />
+          Delete
+        </Button>
+      </div>
+      {action.error && (
+        <p className="action-error mb-4" role="alert">
+          {action.error.message}
+        </p>
+      )}
+      <div className="mb-4 rounded-lg border bg-card p-4">
+        <p className="font-medium">
+          {inFlight
+            ? "Execution is in progress"
+            : run.data
+              ? `Execution status: ${run.data.status}`
+              : "Loading run status…"}
+        </p>
+        <p className="help mt-1">
+          {stream.phase === "error"
+            ? "The observer disconnected. This does not mean the run stopped. Refresh its status or reopen the stream."
+            : stream.phase === "ended"
+              ? "The event connection ended. The execution status above is read from the server."
+              : "Following reported events. Leaving this view keeps the run executing."}
+        </p>
+        <div className="mt-2 flex items-center gap-3">
+          <StreamPhase phase={stream.phase} dropped={stream.dropped} />
+          <Button variant="ghost" size="sm" onClick={run.reload}>
+            Refresh status
+          </Button>
+        </div>
+      </div>
+      <div className="overflow-hidden rounded-xl border bg-card">
+        <Tabs
+          value={tab}
+          onChange={setTab}
+          label="Run inspection"
+          tabs={[
+            { value: "activity", label: "Activity" },
+            { value: "events", label: "Raw events" },
+            { value: "deliveries", label: "Deliveries" },
+            { value: "details", label: "Details" },
+          ]}
+        />
+        <div className="min-w-0 p-4">
+          {tab === "activity" && (
+            <div className="space-y-6">
+              {failure?.error?.message && (
+                <p className="action-error" role="alert">
+                  {failure.error.message}
+                </p>
+              )}
+              {latestValues?.messages?.length ? (
+                <Transcript messages={latestValues.messages} />
+              ) : null}
+              <ActivityFeed frames={stream.frames} dropped={stream.dropped} />
+            </div>
+          )}
+          {tab === "events" && (
+            <Panel title="Event stream" count={stream.frames.length}>
+              {stream.error ? (
+                <p className="action-error">{stream.error.message}</p>
+              ) : stream.frames.length ? (
+                <ol className="divide-y">
+                  {stream.frames.map((frame) => (
+                    <FrameRow key={frame.seq} frame={frame} />
+                  ))}
+                </ol>
+              ) : (
+                <p className="p-6 text-sm text-muted-foreground">
+                  {stream.phase === "connecting"
+                    ? "Waiting for the first event…"
+                    : "No retained events."}
+                </p>
+              )}
+            </Panel>
+          )}
+          {tab === "deliveries" && <RunDeliveries threadId={threadId} runId={runId} />}
+          {tab === "details" && <Async state={run}>{(record) => <Json value={record} />}</Async>}
+        </div>
+      </div>
     </>
   );
 }

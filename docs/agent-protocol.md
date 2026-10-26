@@ -639,6 +639,19 @@ thread itself is gated.
 
 ### Execution, search and retention options
 
+Run creation accepts optional `timeout_ms`: integer milliseconds from **1** through **2,147,483,647**.
+It is persisted with the run, including queued, native start/resume, and BullMQ command inputs.
+The duration begins when execution starts, so queue delay does not consume it. The effective budget
+is the minimum of this duration, the deployment's run limit, and any remaining native deadline.
+Timeouts follow the same cancellation and terminal `timeout` settlement path as deployment limits.
+`GET /info` optionally reports `flags.per_run_timeout: true` when supported. No new configuration
+key or endpoint is needed; omission preserves existing behavior.
+
+Thread responses optionally include `ttl`, `expires_at`, and `ttl_strategy`; store item/search
+responses optionally include `ttl` and `expires_at`. Durations are minutes. Missing means unavailable;
+`null` means known no expiry. Refresh-enabled store reads return the updated expiry. These are
+optional projections, preserving compatibility with custom drivers.
+
 Run requests preserve `durability: "sync" | "async" | "exit"` through the queue. It takes precedence
 over deprecated `checkpoint_during`; explicit `true` maps to `async`, explicit `false` to `exit`, and
 omission keeps LangGraph’s default. Legacy SSE also recognizes `tasks` and `checkpoints` modes.

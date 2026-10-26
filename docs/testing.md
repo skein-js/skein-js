@@ -356,3 +356,12 @@ The native consumer also retains a pnpm lockfile while upgrading only the applic
 v6, then typechecks and exercises the borrowed queue across the independently resolved majors.
 Postgres gate subprocesses use a TCP proxy to disconnect during unlock, covering a socket failure
 that a server-side SQL termination response does not exercise.
+
+### Console browser regression suite
+
+`nx run console-ui:test-browser` builds the static console and serves deterministic LangGraph graphs
+through a real HTTP adapter. Playwright exercises tool/token output, nonboolean interrupt/resume,
+failures and preserved drafts, cancellation, observer closure, resource operations, and responsive
+light/dark layouts at 390, 768, 1280, and 1600px. Chromium is installed in CI's compatibility job.
+`console-ui:typecheck-browser` checks the fixture and tests. Screenshots are written under
+`dist/console-screenshots`; failures capture the page and its accessible text.

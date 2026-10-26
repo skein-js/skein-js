@@ -168,6 +168,16 @@
         "command": "node scripts/redis-compatibility.mjs",
         "cwd": "."
       }
+    },
+    "test-runtime-conformance": {
+      "executor": "nx:run-commands",
+      "cache": false,
+      "dependsOn": ["cli:build"],
+      "options": {
+        "command": "node packages/test-support/scripts/runtime-conformance.mjs --runtime {args.runtime}",
+        "cwd": ".",
+        "forwardAllArgs": false
+      }
     }
   }
 }

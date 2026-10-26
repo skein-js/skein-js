@@ -5,6 +5,7 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import {
+  createConsoleClient,
   createSkeinConsoleClient,
   resolveApiKey,
   resolveApiUrl,
@@ -179,5 +180,69 @@ describe("skein console client", () => {
       `${window.location.origin}/threads/thread%2Fone/runs/run%2Ftwo/deliveries/delivery%2Fthree/replay`,
     );
     expect(fetchMock.mock.calls[1]?.[1]).toEqual(expect.objectContaining({ method: "POST" }));
+  });
+});
+
+describe("submission-scoped SDK options", () => {
+  it("adds duration, completion and a key only to the prepared run submission", async () => {
+    setApiKey("secret");
+    const request = vi.fn().mockImplementation(
+      async () =>
+        new Response(JSON.stringify({ run_id: "run", thread_id: "thread" }), {
+          headers: { "content-type": "application/json" },
+        }),
+    );
+    vi.stubGlobal("fetch", request);
+    const client = createConsoleClient({
+      executionTimeoutMs: 125,
+      idempotencyKey: "request-key",
+      completion: "keep",
+    });
+    await client.runs.create(null, "research", {
+      input: { prompt: "hello" },
+      afterSeconds: 2,
+      multitaskStrategy: "enqueue",
+      streamMode: ["updates"],
+    });
+    const init = request.mock.calls[0]![1] as RequestInit;
+    expect(JSON.parse(String(init.body))).toMatchObject({
+      assistant_id: "research",
+      timeout_ms: 125,
+      on_completion: "keep",
+      after_seconds: 2,
+      multitask_strategy: "enqueue",
+      stream_mode: ["updates"],
+    });
+    expect(new Headers(init.headers).get("Idempotency-Key")).toBe("request-key");
+    expect(new Headers(init.headers).get("x-api-key")).toBe("secret");
+    await client.threads.create();
+    const threadRequest = request.mock.calls[1]![1] as RequestInit;
+    expect(JSON.parse(String(threadRequest.body))).not.toHaveProperty("timeout_ms");
+    expect(new Headers(threadRequest.headers).has("Idempotency-Key")).toBe(false);
+  });
+
+  it("serializes each batch option through the authenticated BaseClient without retrying ambiguous failures", async () => {
+    setApiKey("secret");
+    const request = vi.fn().mockResolvedValue(new Response("partial admission", { status: 500 }));
+    vi.stubGlobal("fetch", request);
+    const payload = [
+      {
+        assistant_id: "research",
+        input: {},
+        timeout_ms: 10,
+        after_seconds: 1,
+        on_completion: "delete",
+        multitask_strategy: "rollback",
+        stream_mode: ["updates"],
+      },
+    ];
+    await expect(
+      createSkeinConsoleClient().createBatchRuns(payload, "batch-key"),
+    ).rejects.toThrow();
+    expect(request).toHaveBeenCalledTimes(1);
+    const init = request.mock.calls[0]![1] as RequestInit;
+    expect(JSON.parse(String(init.body))).toEqual(payload);
+    expect(new Headers(init.headers).get("Idempotency-Key")).toBe("batch-key");
+    expect(new Headers(init.headers).get("x-api-key")).toBe("secret");
   });
 });

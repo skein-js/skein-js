@@ -416,7 +416,7 @@ export class MemorySkeinStore implements SkeinStore {
   // reason `runs.kwargs` is a column rather than part of the wire `Run`.
   readonly #cronSeq = new Map<string, number>();
   readonly #items = new Map<string, Item>();
-  // Item expiry lives beside the item (never on the wire `Item`), keyed the same way as #items:
+  // Item expiry lives beside the stored value and is projected onto reads, keyed as #items:
   // `expiresAt` is epoch-ms (null = never expires), `ttlMinutes` is what a refresh-on-read extends by.
   readonly #itemIndexes = new Map<string, false | string[]>();
   readonly #itemExpiry = new Map<string, { expiresAt: number | null; ttlMinutes: number | null }>();
@@ -430,7 +430,7 @@ export class MemorySkeinStore implements SkeinStore {
 
   /**
    * Thread expiry, epoch-ms, for threads that have one. Kept beside the row rather than on it — the
-   * wire `Thread` has no expiry field, and inventing one would diverge from the SDK's shape.
+   * projection is enriched from the authoritative map on each read.
    */
   readonly #threadRetention = new Map<
     string,
@@ -523,6 +523,26 @@ export class MemorySkeinStore implements SkeinStore {
     if (entry?.ttlMinutes != null) {
       this.#itemExpiry.set(id, { ...entry, expiresAt: Date.now() + entry.ttlMinutes * 60_000 });
     }
+  }
+
+  #projectThread(thread: Thread): Thread {
+    const retention = this.#threadRetention.get(thread.thread_id);
+    const expires = this.#threadExpiry.get(thread.thread_id);
+    return clone({
+      ...thread,
+      ttl: retention?.ttl ?? null,
+      ttl_strategy: retention?.strategy ?? this.#threadTtl?.strategy ?? "delete",
+      expires_at: expires === undefined ? null : new Date(expires).toISOString(),
+    });
+  }
+
+  #projectItem<T extends Item>(item: T): T {
+    const expiry = this.#itemExpiry.get(itemKey(item.namespace, item.key));
+    return clone({
+      ...item,
+      ttl: expiry?.ttlMinutes ?? null,
+      expiresAt: expiry?.expiresAt == null ? null : new Date(expiry.expiresAt).toISOString(),
+    });
   }
 
   /** Advance the claim token for a cron, so any in-flight claim holding the old one loses. */
@@ -753,11 +773,16 @@ export class MemorySkeinStore implements SkeinStore {
         sortByCreatedAtThenId([...this.#threads.values()], (row) => row.thread_id),
         0,
         this.#pageLimit(undefined),
-      ),
+      ).map((thread) => this.#projectThread(thread)),
     search: async (query: ThreadSearchQuery) =>
-      clonePage(this.#matchingThreads(query), query.offset ?? 0, this.#pageLimit(query.limit)),
+      clonePage(this.#matchingThreads(query), query.offset ?? 0, this.#pageLimit(query.limit)).map(
+        (thread) => this.#projectThread(thread),
+      ),
     count: async (query: ThreadSearchQuery) => this.#matchingThreads(query).length,
-    get: async (threadId) => readOne(this.#threads, threadId),
+    get: async (threadId) => {
+      const thread = readOne(this.#threads, threadId);
+      return thread ? this.#projectThread(thread) : null;
+    },
     create: async (input?: ThreadCreate) => {
       const threadId = input?.thread_id ?? randomUUID();
       // Reject a duplicate id (matches the Postgres driver): the service turns this 409 into
@@ -778,7 +803,7 @@ export class MemorySkeinStore implements SkeinStore {
         interrupts: {},
       };
       this.#setThreadExpiry(threadId, input?.ttl, input?.ttlStrategy);
-      return write(this.#threads, thread.thread_id, thread);
+      return this.#projectThread(write(this.#threads, thread.thread_id, thread));
     },
     update: async (threadId, patch: ThreadUpdate) => {
       const existing = this.#threads.get(threadId);
@@ -806,7 +831,7 @@ export class MemorySkeinStore implements SkeinStore {
             "keep_latest")
       )
         this.#setThreadExpiry(threadId, patch.ttl, patch.ttlStrategy);
-      return write(this.#threads, threadId, updated);
+      return this.#projectThread(write(this.#threads, threadId, updated));
     },
     copy: async (threadId) => {
       const existing = this.#threads.get(threadId);
@@ -822,7 +847,7 @@ export class MemorySkeinStore implements SkeinStore {
       // A copy is a new thread, so it starts its own clock under the configured default rather than
       // inheriting the original's remaining lifetime.
       this.#setThreadExpiry(copy.thread_id, undefined);
-      return write(this.#threads, copy.thread_id, copy);
+      return this.#projectThread(write(this.#threads, copy.thread_id, copy));
     },
     listExpired: async ({ now, limit }) => {
       const cutoff = Date.parse(now);
@@ -1342,7 +1367,7 @@ export class MemorySkeinStore implements SkeinStore {
         return null;
       }
       this.#maybeRefresh(id, options?.refreshTtl);
-      return clone(found);
+      return this.#projectItem(found);
     },
     put: async (namespace, key, value, options?: StorePutOptions) =>
       this.store.putWithOptions!(namespace, key, value, options),
@@ -1366,7 +1391,7 @@ export class MemorySkeinStore implements SkeinStore {
       );
       if (options?.index === undefined) this.#itemIndexes.delete(id);
       else this.#itemIndexes.set(id, clone(options.index));
-      return clone(stored);
+      return this.#projectItem(stored);
     },
     delete: async (namespace, key) => {
       const id = itemKey(namespace, key);
@@ -1402,7 +1427,7 @@ export class MemorySkeinStore implements SkeinStore {
       // Naive relevance: any query is an exact-substring hit, so score 1 (pgvector does the real
       // semantic ranking in the Postgres driver).
       if (needle) for (const item of page) item.score = 1;
-      return page;
+      return page.map((item) => this.#projectItem(item));
     },
     listNamespaces: async (query) => {
       // Key by JSON.stringify (not join) so distinct namespaces whose segments contain the

@@ -118,3 +118,13 @@ describe("validation", () => {
     expect(parsed.checkpoint).toEqual({ checkpoint_id: "c1" });
   });
 });
+
+describe("per-run execution timeout", () => {
+  it.each([0, -1, 1.5, 2147483648, "100", null])("rejects invalid timeout %s", (timeout_ms) => {
+    expect(runCreateSchema.safeParse({ assistant_id: "graph", timeout_ms }).success).toBe(false);
+  });
+  it("preserves a validated timeout and omission", () => {
+    expect(runCreateSchema.parse({ assistant_id: "graph", timeout_ms: 25 }).timeout_ms).toBe(25);
+    expect(runCreateSchema.parse({ assistant_id: "graph" })).not.toHaveProperty("timeout_ms");
+  });
+});

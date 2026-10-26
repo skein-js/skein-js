@@ -119,3 +119,9 @@ in [`@skein-js/agent-protocol`](../agent-protocol) — never a reimplemented run
 ## License
 
 [Apache-2.0](../../LICENSE)
+
+The existing `Thread` type preserves its generic parameters and adds optional retention readback:
+`ttl` (minutes), `expires_at`, and `ttl_strategy`. `Item` and `SearchItem` add optional `ttl` and
+`expiresAt`. Missing means unavailable; `null` means known no expiry. `RunKwargs.timeout_ms` carries
+an optional execution duration in milliseconds through persistence. No storage methods are required
+for these additive projections.

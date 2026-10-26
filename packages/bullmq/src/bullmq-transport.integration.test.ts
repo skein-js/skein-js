@@ -159,6 +159,30 @@ describe("BullMQ native access over Redis", () => {
     },
   );
 
+  it("forwards execution duration from a BullMQ start command into persisted run kwargs", async () => {
+    const f = await fixture();
+    try {
+      await f.transport.start(f.client);
+      const receipt = (await f.send({
+        version: 1,
+        commandId: "duration",
+        operation: "start",
+        input: { assistant_id: "agent", input: {}, timeout_ms: 250 },
+      })) as AdmissionReceipt;
+      expect(await f.store.runs.getKwargs(receipt.runId)).toMatchObject({ timeout_ms: 250 });
+      await expect(
+        f.send({
+          version: 1,
+          commandId: "invalid-duration",
+          operation: "start",
+          input: { assistant_id: "agent", timeout_ms: 0 },
+        }),
+      ).rejects.toThrow();
+    } finally {
+      await f.close();
+    }
+  });
+
   it("retries a state read whose target changed during authorization", async () => {
     const f = await fixture();
     try {

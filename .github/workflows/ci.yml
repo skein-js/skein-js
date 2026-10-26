@@ -151,6 +151,19 @@ jobs:
       - name: Install Chromium
         run: pnpm exec nx run server-express:prepare-browser
 
+      - name: Console workflows and responsive layouts
+        run: pnpm exec nx run console-ui:test-browser --output-style=stream
+
+      - name: Upload console browser evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: console-browser-evidence
+          path: |
+            dist/console-screenshots
+            dist/console-failure.png
+          if-no-files-found: warn
+
       - name: Four official frontend SDKs
         run: pnpm exec nx run server-express:test-browser --output-style=stream
 
@@ -287,7 +300,7 @@ jobs:
         env:
           POSTGRES_URI: postgresql://postgres:skein@127.0.0.1:5432/skein
           REDIS_URI: redis://127.0.0.1:6379
-        run: node packages/test-support/scripts/runtime-conformance.mjs --runtime ${{ matrix.runtime }}
+        run: pnpm exec nx run test-support:test-runtime-conformance --runtime=${{ matrix.runtime }} --output-style=stream
 
   # Builds the real production image per runtime and runs it under the 512Mi shape. The build alone
   # earns the job: it is what exercises the generated Dockerfile, its base image, its install step, and

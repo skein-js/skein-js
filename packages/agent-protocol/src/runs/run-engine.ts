@@ -435,10 +435,10 @@ export async function executeRun(deps: ResolvedDeps, exec: RunExecution): Promis
   const remainingBudget = nativeOrigin?.deadlineAt
     ? Math.max(0, Date.parse(nativeOrigin.deadlineAt) - deps.clock().getTime())
     : undefined;
-  const timeoutBudget =
-    remainingBudget === undefined
-      ? deps.runTimeoutMs
-      : Math.min(deps.runTimeoutMs ?? Infinity, remainingBudget);
+  const budgets = [deps.runTimeoutMs, kwargs.timeout_ms, remainingBudget].filter(
+    (budget): budget is number => budget !== undefined,
+  );
+  const timeoutBudget = budgets.length ? Math.min(...budgets) : undefined;
   const timer =
     timeoutBudget === undefined
       ? undefined

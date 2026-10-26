@@ -9,111 +9,199 @@
 // then says which it picked and why — a mode that changes under you with nothing on screen explaining
 // it is worse than the wrong mode.
 
-import type { Message } from "@langchain/langgraph-sdk";
-import { CornerDownLeft, Loader2, Plus, Square } from "lucide-react";
+import type { Message, Run } from "@langchain/langgraph-sdk";
+import { MessageTupleManager, toMessageDict } from "@langchain/langgraph-sdk/ui";
+import { CornerDownLeft, PanelRightClose, PanelRightOpen, Plus, Square } from "lucide-react";
 import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 
-import { createConsoleClient } from "@/api";
+import { createConsoleClient, createSkeinConsoleClient, fetchServerInfo } from "@/api";
 import { GraphDiagram } from "@/components/graph-diagram";
 import { Button } from "@/components/ui/button";
+import { Dialog } from "@/components/ui/dialog";
+import { Tabs } from "@/components/ui/tabs";
 import type { GraphEdge, GraphNode } from "@/graph-layout";
 import { acceptsMessages, inputSchemaOf, sampleInputFor } from "@/graph-schema";
 import { cn } from "@/lib/utils";
 import { routeHref } from "@/router";
 import { useAsync } from "@/use-async";
+import { useFrameBuffer } from "@/use-frame-buffer";
 import { usePagedRows } from "@/use-paged-rows";
+import { useRunStream } from "@/use-run-stream";
 
-import { describeAssistant } from "./assistants";
+import { ActivityFeed, describeExecution } from "./activity";
 import { InterruptPanel, pendingInterrupts } from "./interrupts";
 import { Async, Json, Pagination, Panel } from "./parts";
+import { DEFAULT_RUN_OPTIONS, parseRunOptions, RunOptionsForm } from "./run-options";
+import { Transcript } from "./transcript";
 
 type InputMode = "chat" | "json";
 
 export function ChatView({ threadId }: { threadId?: string }) {
-  const client = createConsoleClient();
+  const [client] = useState(() => createConsoleClient({}));
   const assistants = usePagedRows(
     (offset, limit, signal) => client.assistants.search({ offset, limit, signal }),
     "playground-assistants",
     25,
     (signal) => client.assistants.count({ signal }),
   );
-  const [assistantId, setAssistantId] = useState<string | undefined>();
-  useEffect(() => {
-    if (!assistantId && assistants.rows?.[0]) setAssistantId(assistants.rows[0].assistant_id);
-  }, [assistantId, assistants.rows]);
-  const selected = assistantId;
-
+  const [selection, setSelection] = useState<{
+    assistantId: string;
+    threadId?: string;
+    sessionKey?: string;
+  }>();
+  const restored = useAsync(
+    async (signal) => {
+      if (!threadId) return undefined;
+      const [latest, thread] = await Promise.all([
+        client.runs.list(threadId, { limit: 1, signal }),
+        client.threads.get(threadId, { signal }),
+      ]);
+      return {
+        run: latest[0],
+        assistantId:
+          latest[0]?.assistant_id ??
+          (typeof thread.metadata?.assistant_id === "string"
+            ? thread.metadata.assistant_id
+            : undefined),
+      };
+    },
+    [threadId],
+  );
+  // An owned submission updates selection before the hash event arrives. Keep the same
+  // session through both renders; an external route change starts a different session.
+  const [previousThreadId, setPreviousThreadId] = useState(threadId);
+  if (previousThreadId !== threadId) {
+    setPreviousThreadId(threadId);
+    if (selection?.threadId !== threadId) setSelection(undefined);
+  }
+  const knownSelection = selection?.assistantId;
+  const selected =
+    knownSelection ?? (threadId ? restored.data?.assistantId : assistants.rows?.[0]?.assistant_id);
+  const sessionKey = selection?.sessionKey ?? threadId ?? "new";
   return (
-    <div className="grid gap-4 lg:grid-cols-[200px_minmax(0,1fr)]">
-      <aside>
-        <Panel title="Graph">
-          <Async state={{ ...assistants, data: assistants.rows }} empty="No graphs registered.">
-            {(rows) => (
-              <ul className="p-1">
-                {rows.map((assistant) => (
-                  <li key={assistant.assistant_id}>
-                    <button
-                      type="button"
-                      onClick={() => setAssistantId(assistant.assistant_id)}
-                      title={describeAssistant(assistant)}
-                      className={cn(
-                        "w-full rounded-md px-2.5 py-1.5 text-left transition-colors",
-                        assistant.assistant_id === selected
-                          ? "bg-accent text-foreground"
-                          : "text-muted-foreground hover:bg-accent hover:text-foreground",
-                      )}
-                    >
-                      <span className="block truncate font-mono text-xs">{assistant.graph_id}</span>
-                      {describeAssistant(assistant) ? (
-                        <span className="mt-0.5 block truncate text-[11px] text-muted-foreground">
-                          {describeAssistant(assistant)}
-                        </span>
-                      ) : null}
-                    </button>
-                  </li>
-                ))}
-              </ul>
-            )}
-          </Async>
-          <Pagination
-            {...assistants}
-            count={assistants.rows?.length ?? 0}
-            onPrevious={assistants.previous}
-            onNext={assistants.next}
-          />
-        </Panel>
-      </aside>
-
-      {selected ? (
-        // Keyed by graph so switching one remounts the session: the previous graph's mode, drafts and
-        // transcript must not survive the switch.
-        <Session key={selected} assistantId={selected} threadId={threadId} />
+    <div className="min-w-0">
+      <div className="mb-4 flex flex-wrap items-end gap-3">
+        <label className="field-label w-full min-w-0 sm:w-auto sm:flex-1 sm:max-w-sm">
+          Assistant
+          <select
+            className="field"
+            value={selected ?? ""}
+            onChange={(event) => {
+              setSelection({ assistantId: event.target.value, threadId });
+            }}
+          >
+            <option value="" disabled>
+              Select an Assistant
+            </option>
+            {selected &&
+              !assistants.rows?.some((assistant) => assistant.assistant_id === selected) && (
+                <option value={selected}>{selected} · current Assistant</option>
+              )}
+            {assistants.rows?.map((assistant) => (
+              <option key={assistant.assistant_id} value={assistant.assistant_id}>
+                {assistant.name || assistant.graph_id} · {assistant.graph_id}
+              </option>
+            ))}
+          </select>
+        </label>
+        <span className="help pb-2">An Assistant is a saved configuration of a graph.</span>
+      </div>
+      {(assistants.error || assistants.loading || !assistants.rows?.length) && (
+        <Async
+          state={{ ...assistants, data: assistants.rows }}
+          empty="No Assistants registered. Add a graph to langgraph.json to get started."
+        >
+          {() => null}
+        </Async>
+      )}
+      {(assistants.hasNext || assistants.offset > 0) && (
+        <Pagination
+          {...assistants}
+          count={assistants.rows?.length ?? 0}
+          onPrevious={assistants.previous}
+          onNext={assistants.next}
+        />
+      )}
+      {restored.error && !knownSelection && (
+        <p className="action-error" role="alert">
+          Unable to identify this thread&apos;s Assistant: {restored.error.message}. Select one
+          explicitly before continuing.
+        </p>
+      )}
+      {selected && (knownSelection || !threadId || !restored.loading) ? (
+        <Session
+          key={`${selected}:${sessionKey}`}
+          assistantId={selected}
+          threadId={threadId}
+          initialRun={restored.data?.run}
+          onThreadCreated={(id) =>
+            setSelection({ assistantId: selected, threadId: id, sessionKey })
+          }
+          onNewThread={() => setSelection({ assistantId: selected, sessionKey: "new" })}
+        />
       ) : (
-        <Panel title="Playground" padded>
-          <p className="text-[13px] text-muted-foreground">Pick a graph to start.</p>
+        <Panel title="Get started" padded>
+          <p className="text-sm text-muted-foreground">
+            Select an Assistant above to run your graph.
+          </p>
         </Panel>
       )}
     </div>
   );
 }
 
-function Session({ assistantId, threadId }: { assistantId: string; threadId?: string }) {
-  const client = createConsoleClient();
-  const [mode, setMode] = useState<InputMode | undefined>();
+function Session({
+  assistantId,
+  threadId,
+  initialRun,
+  onThreadCreated,
+  onNewThread,
+}: {
+  assistantId: string;
+  threadId?: string;
+  initialRun?: Run;
+  onThreadCreated: (id: string) => void;
+  onNewThread: () => void;
+}) {
+  const [client] = useState(() => createConsoleClient({}));
+  const capabilities = useAsync((signal) => fetchServerInfo(signal), []);
+  const [options, setOptions] = useState(DEFAULT_RUN_OPTIONS);
+  const [batchRuns, setBatchRuns] = useState<{ run_id: string; thread_id: string }[]>([]);
+  const [requestedMode, setMode] = useState<InputMode | undefined>();
   /**
    * One draft per mode.
    *
    * A single shared draft meant the JSON template seeded for a non-chat graph was still sitting in the
    * box after switching to Chat — so the first thing you sent a chatbot was a state object.
    */
-  const [drafts, setDrafts] = useState<Record<InputMode, string>>({ chat: "", json: "" });
+  const [drafts, setDrafts] = useState<Partial<Record<InputMode, string>>>({ chat: "" });
   const [messages, setMessages] = useState<Message[]>([]);
   const [values, setValues] = useState<unknown>();
   const [running, setRunning] = useState(false);
+  const [submitted, setSubmitted] = useState(false);
+  const restoreActivity = useRef(Boolean(threadId));
+  const observeHistory = restoreActivity.current && !submitted && Boolean(initialRun);
+  const history = useRunStream(threadId ?? "", initialRun?.run_id ?? "", observeHistory);
   const [error, setError] = useState<Error | undefined>();
   const [activeNode, setActiveNode] = useState<string | undefined>();
   const [visited, setVisited] = useState<ReadonlySet<string>>(new Set());
+  const {
+    frames,
+    dropped,
+    append: appendFrame,
+    clear: clearFrames,
+    flush: flushFrames,
+  } = useFrameBuffer();
+  const [terminalStatus, setTerminalStatus] = useState<string>();
+  const [inspector, setInspector] = useState<"activity" | "graph" | "state">("activity");
+  const [inspectorOpen, setInspectorOpen] = useState(true);
+  const [drawerOpen, setDrawerOpen] = useState(false);
+  const transcript = useRef<HTMLDivElement>(null);
+  const followOutput = useRef(true);
+  const messageChunks = useRef(new MessageTupleManager());
+  const [runIdentity, setRunIdentity] = useState<{ threadId: string; runId: string }>();
   const abort = useRef<AbortController | undefined>(undefined);
+  useEffect(() => () => abort.current?.abort(), []);
   const bottom = useRef<HTMLDivElement>(null);
   /**
    * The thread this session talks to, in a ref rather than read from the route: the route updates a
@@ -150,23 +238,9 @@ function Session({ assistantId, threadId }: { assistantId: string; threadId?: st
     [schemas.data],
   );
 
-  // If the schema arrives after someone already picked Chat, take it back — with the reason visible
-  // in the row below, not silently.
-  useEffect(() => {
-    if (!chatSupported && mode === "chat") setMode("json");
-  }, [chatSupported, mode]);
-
-  useEffect(() => {
-    if (mode !== undefined || schemas.data === undefined) return;
-    const chat = acceptsMessages(schemas.data);
-    setMode(chat ? "chat" : "json");
-    // Seed the JSON draft only — the chat box is for prose and must open empty.
-    if (!chat) {
-      setDrafts((current) =>
-        current.json === "" ? { ...current, json: sampleInputFor(schemas.data) } : current,
-      );
-    }
-  }, [schemas.data, mode]);
+  const mode = !chatSupported
+    ? "json"
+    : (requestedMode ?? (schemas.data === undefined ? undefined : "chat"));
 
   const thread = useAsync(
     async (signal) =>
@@ -195,10 +269,11 @@ function Session({ assistantId, threadId }: { assistantId: string; threadId?: st
   }, [threadId]);
 
   useEffect(() => {
-    bottom.current?.scrollIntoView({ behavior: "smooth", block: "end" });
-  }, [messages, running]);
+    if (followOutput.current && transcript.current)
+      transcript.current.scrollTop = transcript.current.scrollHeight;
+  }, [messages, running, history.frames]);
 
-  const draft = mode ? drafts[mode] : "";
+  const draft = mode ? (drafts[mode] ?? (mode === "json" ? sampleInputFor(schemas.data) : "")) : "";
   const setDraft = useCallback(
     (value: string) => setDrafts((current) => (mode ? { ...current, [mode]: value } : current)),
     [mode],
@@ -207,46 +282,152 @@ function Session({ assistantId, threadId }: { assistantId: string; threadId?: st
   const send = useCallback(async () => {
     if (draft.trim() === "" || running || mode === undefined) return;
     setError(undefined);
+    setSubmitted(true);
     setRunning(true);
     setVisited(new Set());
     setActiveNode(undefined);
+    clearFrames();
+    setTerminalStatus(undefined);
+    setRunIdentity(undefined);
+    setBatchRuns([]);
+    messageChunks.current.clear();
     const controller = new AbortController();
     abort.current = controller;
+    let observedStatus: string | undefined;
+    let reportedFailure = false;
 
     try {
+      const parsedOptions = parseRunOptions(options);
+      if (
+        parsedOptions.timeoutMs !== undefined &&
+        capabilities.data?.flags?.per_run_timeout !== true
+      )
+        throw new Error("This server has not confirmed execution timeout support.");
+      const submissionClient = createConsoleClient({
+        executionTimeoutMs: parsedOptions.timeoutMs,
+        idempotencyKey: parsedOptions.idempotencyKey,
+        completion: options.target === "stateless" ? options.completion : undefined,
+      });
       let input: Record<string, unknown>;
       if (mode === "chat") {
-        setMessages((previous) => [...previous, { type: "human", content: draft } as Message]);
-        input = { messages: [{ role: "human", content: draft }] };
+        const id = parsedOptions.idempotencyKey
+          ? `console-${parsedOptions.idempotencyKey}`
+          : crypto.randomUUID();
+        setMessages((previous) => [...previous, { id, type: "human", content: draft } as Message]);
+        input = { messages: [{ id, role: "human", content: draft }] };
       } else {
-        input = JSON.parse(draft) as Record<string, unknown>;
+        const parsed: unknown = JSON.parse(draft);
+        if (options.target === "batch") {
+          if (
+            !Array.isArray(parsed) ||
+            !parsed.length ||
+            parsed.length > 100 ||
+            parsed.some((entry) => !entry || typeof entry !== "object" || Array.isArray(entry))
+          )
+            throw new Error("Batch input must be an array of 1–100 JSON objects.");
+          const rows = await createSkeinConsoleClient().createBatchRuns(
+            parsed.map((entry) => ({
+              assistant_id: assistantId,
+              input: entry,
+              stream_mode: options.capture,
+              after_seconds: parsedOptions.afterSeconds,
+              on_completion: options.completion,
+              multitask_strategy: options.multitask,
+              ...(parsedOptions.timeoutMs === undefined
+                ? {}
+                : { timeout_ms: parsedOptions.timeoutMs }),
+            })),
+            parsedOptions.idempotencyKey,
+            controller.signal,
+          );
+          setBatchRuns(rows);
+          setTerminalStatus("submitted");
+          setDrafts((current) => (current.json === draft ? { ...current, json: "" } : current));
+          return;
+        }
+        if (!parsed || typeof parsed !== "object" || Array.isArray(parsed))
+          throw new Error("Graph input must be a JSON object.");
+        input = parsed as Record<string, unknown>;
       }
-      setDraft("");
 
       // The thread is created on first send rather than on mount, so opening the playground and
       // walking away does not litter the thread list with empties.
-      let target = activeThread.current;
+      let target = options.target === "stateless" ? null : options.threadId || activeThread.current;
       if (target === undefined) {
         const created = await client.threads.create({ metadata: { source: "console-playground" } });
         target = created.thread_id;
-        // Ref first, URL second: the ref is what the next send reads.
         activeThread.current = target;
-        window.location.hash = routeHref(`playground/${target}`);
+        onThreadCreated(target);
+        window.location.hash = routeHref(`playground/${encodeURIComponent(target)}`);
       }
-
-      for await (const chunk of client.runs.stream(target, assistantId, {
+      if (target && target !== activeThread.current) {
+        activeThread.current = target;
+        onThreadCreated(target);
+        window.location.hash = routeHref(`playground/${encodeURIComponent(target)}`);
+      }
+      const payload = {
         input,
-        // `updates` names the node each step came from — the only frame that says *where* the run is.
-        streamMode: ["values", "messages", "updates"],
-        // Stop has to stop the *run*, not just this reader. The engine's default on disconnect is
-        // `continue`, so aborting the signal alone left the graph executing (and calling models)
-        // behind a UI that had gone back to idle.
-        onDisconnect: "cancel",
+        streamMode: options.capture,
+        multitaskStrategy: options.multitask,
+        afterSeconds: parsedOptions.afterSeconds,
+        onDisconnect: "cancel" as const,
+        onRunCreated: ({ run_id, thread_id }: { run_id: string; thread_id?: string }) => {
+          const resolvedThread = thread_id ?? target;
+          if (resolvedThread) setRunIdentity({ threadId: resolvedThread, runId: run_id });
+        },
         signal: controller.signal,
-        // No cast: `onDisconnect` is a typed field the SDK forwards as `on_disconnect`. Casting here
-        // would have turned a checked field into a silently-dropped one — the exact failure mode that
-        // made the sweep's `Idempotency-Key` vanish.
-      })) {
+      };
+      const background = Boolean(
+        parsedOptions.afterSeconds ||
+        parsedOptions.idempotencyKey ||
+        options.target === "stateless",
+      );
+      const createdRun = background
+        ? await submissionClient.runs.create(target ?? null, assistantId, payload)
+        : undefined;
+      if (createdRun) {
+        target = createdRun.thread_id;
+        setRunIdentity({ threadId: target, runId: createdRun.run_id });
+        onThreadCreated(target);
+        {
+          activeThread.current = target;
+          window.location.hash = routeHref(`playground/${encodeURIComponent(target)}`);
+        }
+      }
+      const chunks = createdRun
+        ? submissionClient.runs.joinStream(target ?? null, createdRun.run_id, {
+            signal: controller.signal,
+            cancelOnDisconnect: false,
+          })
+        : target === null
+          ? submissionClient.runs.stream(null, assistantId, {
+              input,
+              streamMode: options.capture,
+              onDisconnect: "cancel",
+              signal: controller.signal,
+            })
+          : submissionClient.runs.stream(target, assistantId, payload);
+
+      for await (const chunk of chunks) {
+        if (controller.signal.aborted) break;
+        appendFrame(String(chunk.event), chunk.data);
+        if (String(chunk.event) === "messages" || String(chunk.event) === "messages-tuple") {
+          const tuple = chunk.data as unknown as [Message, Record<string, unknown>];
+          if (Array.isArray(tuple) && tuple[0]) {
+            const id = messageChunks.current.add(tuple[0], tuple[1]);
+            const assembled = messageChunks.current.get(id)?.chunk;
+            if (assembled) {
+              const message = toMessageDict(assembled);
+              setMessages((previous) => {
+                const index = previous.findIndex((item) => item.id === message.id);
+                return index < 0
+                  ? [...previous, message]
+                  : previous.map((item, position) => (position === index ? message : item));
+              });
+            }
+          }
+          continue;
+        }
         if (chunk.event === "values") {
           const next = chunk.data as { messages?: Message[] } | undefined;
           setValues(chunk.data);
@@ -265,6 +446,7 @@ function Session({ assistantId, threadId }: { assistantId: string; threadId?: st
         // A run that throws does not reject this loop — it reports itself as a frame and the stream
         // ends normally. Ignoring these is why a failed run looked like nothing happening at all.
         if (chunk.event === "error") {
+          reportedFailure = true;
           setError(new Error(describeRunFailure(chunk.data)));
           continue;
         }
@@ -273,211 +455,489 @@ function Session({ assistantId, threadId }: { assistantId: string; threadId?: st
         const frame = chunk as { event: string; data?: { status?: string } };
         if (frame.event === "end") {
           const status = frame.data?.status;
-          if (status !== undefined && status !== "success" && status !== "interrupted") {
+          observedStatus = status;
+          setTerminalStatus(status);
+          if (
+            !reportedFailure &&
+            status !== undefined &&
+            status !== "success" &&
+            status !== "interrupted" &&
+            status !== "cancelled"
+          ) {
             setError(new Error(`Run ended with status "${status}".`));
           }
         }
       }
-      thread.reload();
+      if (!controller.signal.aborted) {
+        if (
+          !reportedFailure &&
+          (observedStatus === "success" || observedStatus === "interrupted")
+        ) {
+          setDrafts((current) =>
+            (current[mode] ?? draft) === draft ? { ...current, [mode]: "" } : current,
+          );
+        } else if (!reportedFailure && observedStatus === undefined) {
+          setError(
+            new Error(
+              "Observation ended before a final status was received. Inspect the thread before submitting again; the run may still be executing.",
+            ),
+          );
+        }
+      }
     } catch (caught) {
       if (!controller.signal.aborted) {
-        setError(caught instanceof Error ? caught : new Error(String(caught)));
+        setError(
+          new Error(
+            `${caught instanceof Error ? caught.message : String(caught)}${options.target === "batch" ? " A failed batch may already have created some runs. Inspect Threads before submitting again." : ""}`,
+          ),
+        );
       }
     } finally {
+      flushFrames();
       ranUntil.current = Date.now();
       setRunning(false);
-      setActiveNode(undefined);
       abort.current = undefined;
+      thread.reload();
     }
-  }, [assistantId, client, draft, mode, running, setDraft, thread]);
+  }, [
+    assistantId,
+    client,
+    draft,
+    mode,
+    running,
+    thread,
+    options,
+    capabilities.data,
+    onThreadCreated,
+    appendFrame,
+    clearFrames,
+    flushFrames,
+  ]);
 
   const interrupts = pendingInterrupts(thread.data);
   const structure = graph.data as { nodes?: GraphNode[]; edges?: GraphEdge[] } | undefined;
 
+  const displayedFrames = observeHistory ? history.frames : frames;
+  const displayedDropped = observeHistory ? history.dropped : dropped;
+  const observedEnd = observeHistory
+    ? ([...history.frames].reverse().find((frame) => frame.event === "end")?.data as
+        { status?: string } | undefined)
+    : undefined;
+  const observedStatus = observeHistory
+    ? (observedEnd?.status ?? initialRun?.status)
+    : terminalStatus;
+  const observingInFlight =
+    observeHistory &&
+    !observedEnd &&
+    (initialRun?.status === "running" || initialRun?.status === "pending");
+  const observedValues = observeHistory
+    ? [...history.frames].reverse().find((frame) => frame.event === "values")?.data
+    : undefined;
+  const displayedValues = observedValues ?? values;
+  const displayedMessages = observeHistory
+    ? ((observedValues as { messages?: Message[] } | undefined)?.messages ?? messages)
+    : messages;
+  const observedFailure = observeHistory
+    ? [...history.frames].reverse().find((frame) => frame.event === "error")?.data
+    : undefined;
+  const observedNodes = useMemo(
+    () =>
+      new Set(
+        displayedFrames
+          .filter((frame) => frame.event === "updates")
+          .flatMap((frame) =>
+            Object.keys(frame.data ?? {}).filter((name) => name !== "__interrupt__"),
+          ),
+      ),
+    [displayedFrames],
+  );
+  const executionRunning = running || observingInFlight;
+  const cancellableRun =
+    runIdentity ??
+    (observingInFlight && threadId && initialRun
+      ? { threadId, runId: initialRun.run_id }
+      : undefined);
+
+  const summary =
+    terminalStatus === "submitted"
+      ? {
+          title: "Batch submitted",
+          description:
+            "Open a run below to follow its execution. Batch runs continue in the background.",
+          tone: "text-status-running",
+        }
+      : options.target === "stateless" && observedStatus === "success"
+        ? {
+            title: "Run completed",
+            description:
+              options.completion === "delete"
+                ? "Review the captured output. The generated thread was deleted as requested. Send another input to start a fresh run."
+                : "Review the output or inspect the generated thread. Each stateless submission starts fresh.",
+            tone: "text-status-success",
+          }
+        : describeExecution({
+            running: executionRunning,
+            status: observedStatus,
+            lastNode: activeNode ?? [...observedNodes].at(-1),
+            pending: interrupts.length,
+            error:
+              error ??
+              (observedFailure ? new Error(describeRunFailure(observedFailure)) : undefined),
+          });
+  const inspectorBody = (
+    <>
+      <Tabs
+        label="Execution inspector"
+        value={inspector}
+        onChange={setInspector}
+        tabs={[
+          { value: "activity", label: "Activity" },
+          { value: "graph", label: "Graph" },
+          { value: "state", label: "State" },
+        ]}
+      />
+      <div className="min-h-0 flex-1 overflow-auto p-4">
+        {inspector === "activity" ? (
+          <ActivityFeed frames={displayedFrames} dropped={displayedDropped} />
+        ) : inspector === "graph" ? (
+          structure?.nodes?.length ? (
+            <>
+              <p className="help mb-4">
+                Highlighted nodes have reported output. The diagram does not predict which node is
+                executing now.
+              </p>
+              <GraphDiagram
+                nodes={structure.nodes}
+                edges={structure.edges ?? []}
+                visited={observeHistory ? observedNodes : visited}
+              />
+            </>
+          ) : (
+            <p className="help">Graph structure is unavailable for this Assistant.</p>
+          )
+        ) : displayedValues === undefined ? (
+          <p className="help">State appears after the graph reports it.</p>
+        ) : (
+          <Json value={displayedValues} />
+        )}
+      </div>
+    </>
+  );
   return (
-    <div className="min-w-0 flex flex-col">
-      {/* One row that says what mode you are in, why, and what the run is doing. This used to be a
-          bare two-button toggle with nothing on screen explaining either choice. */}
-      <div className="mb-3 flex flex-wrap items-center gap-x-3 gap-y-2">
-        <div className="flex rounded-md border p-0.5">
-          {(["chat", "json"] as const).map((value) => {
-            const disabled = value === "chat" && !chatSupported;
-            return (
-              <button
-                key={value}
-                type="button"
-                disabled={disabled}
-                title={
-                  disabled
-                    ? "This graph has no `messages` channel, so it cannot be chatted with."
-                    : undefined
-                }
-                onClick={() => setMode(value)}
-                className={cn(
-                  "rounded px-2 py-1 text-xs transition-colors",
-                  mode === value
-                    ? "bg-accent font-medium text-foreground"
-                    : "text-muted-foreground hover:text-foreground",
-                  disabled && "cursor-not-allowed opacity-40 hover:text-muted-foreground",
-                )}
-              >
-                {value === "chat" ? "Chat" : "JSON"}
-              </button>
-            );
-          })}
+    <div className="flex min-h-[calc(100dvh-17rem)] min-w-0 flex-col overflow-hidden rounded-xl border bg-card shadow-sm">
+      <div className="flex flex-wrap items-center gap-3 border-b px-4 py-3">
+        <div className="flex rounded-lg bg-muted p-1">
+          {(["chat", "json"] as const).map((value) => (
+            <button
+              type="button"
+              key={value}
+              aria-pressed={mode === value}
+              disabled={
+                running || (value === "chat" && (!chatSupported || options.target === "batch"))
+              }
+              onClick={() => setMode(value)}
+              title={
+                value === "chat" && !chatSupported
+                  ? "This graph expects structured input instead of messages."
+                  : undefined
+              }
+              className={cn(
+                "rounded-md px-3 py-1 text-sm",
+                mode === value ? "bg-card font-medium shadow-sm" : "text-muted-foreground",
+              )}
+            >
+              {value === "chat" ? "Chat" : "JSON"}
+            </button>
+          ))}
         </div>
-
-        <p className="text-xs text-muted-foreground">
-          {mode === "chat" ? (
-            <>
-              takes <code className="font-mono text-foreground">messages</code> — talk to it
-            </>
-          ) : inputKeys.length > 0 ? (
-            <>
-              input:{" "}
-              {inputKeys.map((key, index) => (
-                <span key={key}>
-                  {index > 0 ? ", " : ""}
-                  <code className="font-mono text-foreground">{key}</code>
-                </span>
-              ))}
-            </>
-          ) : null}
+        <p className="help flex-1">
+          {mode === "chat"
+            ? "This graph accepts messages."
+            : `Structured input${inputKeys.length ? `: ${inputKeys.join(", ")}` : ". Loading input schema…"}`}
         </p>
-
-        <div className="ml-auto flex items-center gap-2">
-          {running ? (
-            <span className="flex items-center gap-1.5 text-xs text-status-running">
-              <Loader2 className="size-3 animate-spin" aria-hidden />
-              {activeNode ?? "starting"}
-            </span>
-          ) : null}
-          {threadId ? (
+        {threadId &&
+          !(
+            options.target === "stateless" &&
+            options.completion === "delete" &&
+            observedStatus === "success"
+          ) && (
             <a
               href={routeHref(`threads/${threadId}`)}
-              className="font-mono text-xs text-muted-foreground underline-offset-4 hover:underline"
+              className="text-xs text-primary"
               title={threadId}
             >
-              {threadId.slice(0, 8)}…
+              Inspect thread ↗
             </a>
-          ) : null}
-          <Button
-            variant="outline"
-            size="sm"
-            onClick={() => {
-              // Clear the ref too, or the next send silently continues the old conversation.
-              activeThread.current = undefined;
-              window.location.hash = routeHref("playground");
-              setMessages([]);
-              setValues(undefined);
-              setVisited(new Set());
-              setError(undefined);
-            }}
-          >
-            <Plus className="size-3.5" />
-            New thread
-          </Button>
+          )}
+        <Button
+          variant="outline"
+          size="sm"
+          disabled={running}
+          onClick={() => {
+            activeThread.current = undefined;
+            onNewThread();
+            window.location.hash = routeHref("playground");
+            setMessages([]);
+            setValues(undefined);
+            setVisited(new Set());
+            clearFrames();
+            setError(undefined);
+            setTerminalStatus(undefined);
+            setSubmitted(true);
+          }}
+        >
+          {" "}
+          <Plus className="size-3.5" />
+          New thread
+        </Button>
+        <Button
+          variant="ghost"
+          size="icon"
+          className="hidden lg:inline-flex"
+          aria-label={inspectorOpen ? "Hide inspector" : "Show inspector"}
+          aria-expanded={inspectorOpen}
+          onClick={() => setInspectorOpen(!inspectorOpen)}
+        >
+          {inspectorOpen ? (
+            <PanelRightClose className="size-4" />
+          ) : (
+            <PanelRightOpen className="size-4" />
+          )}
+        </Button>
+        <Button
+          variant="outline"
+          size="sm"
+          className="lg:hidden"
+          onClick={() => setDrawerOpen(true)}
+        >
+          Inspect activity
+        </Button>
+      </div>
+      <div
+        className="flex items-start gap-3 border-b bg-muted/40 px-4 py-3"
+        role="status"
+        aria-live="polite"
+      >
+        <span
+          className={cn(
+            "mt-1.5 size-2 shrink-0 rounded-full",
+            running
+              ? "bg-status-running motion-safe:animate-pulse"
+              : interrupts.length
+                ? "bg-status-interrupted"
+                : "bg-primary",
+          )}
+        />
+        <div className="min-w-0">
+          <p className={cn("text-sm font-semibold", summary.tone)}>{summary.title}</p>
+          <p className="mt-0.5 text-xs leading-relaxed text-muted-foreground">
+            {summary.description}
+          </p>
         </div>
       </div>
-
-      <div className="flex min-w-0 gap-4">
-        {structure?.nodes?.length ? (
-          // Hugs its content rather than stretching: a five-node graph inside a full-height panel was
-          // mostly empty space, which reads as "something failed to load".
-          <div className="hidden w-48 shrink-0 self-start rounded-lg border bg-card p-3 xl:block">
-            <div className="mb-2 text-[11px] uppercase tracking-wide text-muted-foreground">
-              Graph
-            </div>
-            <GraphDiagram
-              nodes={structure.nodes}
-              edges={structure.edges ?? []}
-              activeNode={running ? activeNode : undefined}
-              visited={visited}
-            />
-          </div>
-        ) : null}
-
-        <div className="flex min-w-0 min-h-[20rem] flex-1 flex-col overflow-hidden rounded-lg border bg-card">
-          <div className="flex min-w-0 flex-1 flex-col overflow-y-auto p-4">
+      {batchRuns.length > 0 && (
+        <div className="border-b p-4">
+          <p className="mb-2 text-sm font-medium">Created {batchRuns.length} runs</p>
+          {batchRuns.map((run) => (
+            <a
+              key={run.run_id}
+              className="mr-4 inline-block text-xs text-primary underline"
+              href={routeHref(`threads/${run.thread_id}/runs/${run.run_id}`)}
+            >
+              {run.run_id.slice(0, 8)} ↗
+            </a>
+          ))}
+        </div>
+      )}
+      <div className="flex min-h-0 min-w-0 flex-1">
+        <div className="flex min-w-0 flex-1 flex-col">
+          <div
+            ref={transcript}
+            role="region"
+            aria-label="Conversation output"
+            tabIndex={0}
+            className="max-h-[calc(100dvh-30rem)] min-h-72 flex-1 overflow-y-auto p-4 sm:p-6"
+            onScroll={(event) => {
+              const element = event.currentTarget;
+              followOutput.current =
+                element.scrollHeight - element.scrollTop - element.clientHeight < 80;
+            }}
+          >
             {mode === "chat" ? (
-              messages.length === 0 && !running ? (
-                <Hint>Send a message below and the graph&apos;s reply appears here.</Hint>
+              displayedMessages.length === 0 ? (
+                <Hint>
+                  Send a message to see your Assistant&apos;s response and follow its reported
+                  steps.
+                </Hint>
               ) : (
-                <ol className="min-w-0 space-y-3">
-                  {messages.map((message, index) => (
-                    <Bubble key={messageKey(message, index)} message={message} />
-                  ))}
-                </ol>
+                <Transcript messages={displayedMessages} />
               )
-            ) : values === undefined && !running ? (
+            ) : displayedValues === undefined ? (
               <Hint>
-                The editor below is pre-filled with this graph&apos;s input shape. Fill in the
-                values and send — the resulting state shows up here.
+                Edit the schema-based input below, then run it. The resulting state will appear
+                here.
               </Hint>
             ) : (
-              <Json value={values} />
+              <Json value={displayedValues} />
             )}
             <div ref={bottom} />
           </div>
-        </div>
-      </div>
-
-      {interrupts.length > 0 && threadId ? (
-        <div className="mt-4">
-          <InterruptPanel
-            threadId={threadId}
-            assistantId={assistantId}
-            interrupts={interrupts}
-            onResumed={() => thread.reload()}
-          />
-        </div>
-      ) : null}
-
-      {error ? (
-        <div className="mt-3 rounded-md border border-status-error/40 bg-status-error/5 p-3 font-mono text-xs text-status-error">
-          {error.message}
-        </div>
-      ) : null}
-
-      <form
-        className="mt-3 flex items-end gap-2"
-        onSubmit={(event) => {
-          event.preventDefault();
-          void send();
-        }}
-      >
-        <textarea
-          value={draft}
-          onChange={(event) => setDraft(event.target.value)}
-          onKeyDown={(event) => {
-            // Enter sends in chat. Not in JSON, where newlines are the point and sending on Enter
-            // would fire a half-typed object on every line break.
-            if (event.key === "Enter" && !event.shiftKey && mode === "chat") {
+          {threadId && (
+            <div className="px-4">
+              <InterruptPanel
+                threadId={threadId}
+                assistantId={assistantId}
+                interrupts={interrupts}
+                onResumed={() => thread.reload()}
+                onRunCreated={(run) =>
+                  setRunIdentity({ threadId: run.thread_id, runId: run.run_id })
+                }
+                onObserving={(observing) => {
+                  setRunning(observing);
+                  if (observing) {
+                    setSubmitted(true);
+                    setRunIdentity(undefined);
+                    setError(undefined);
+                    setTerminalStatus(undefined);
+                  } else {
+                    ranUntil.current = Date.now();
+                    thread.reload();
+                  }
+                }}
+                onFrame={(event, payload) => {
+                  appendFrame(event, payload);
+                  if (event === "values") {
+                    setValues(payload);
+                    const next = payload as { messages?: Message[] };
+                    if (next?.messages) setMessages(next.messages);
+                  } else if (event === "updates") {
+                    const nodes = Object.keys((payload ?? {}) as Record<string, unknown>);
+                    setActiveNode(nodes.at(-1));
+                    setVisited((previous) => new Set([...previous, ...nodes]));
+                  } else if (event === "end") {
+                    setTerminalStatus((payload as { status?: string })?.status);
+                  } else if (event === "error") {
+                    setError(new Error(describeRunFailure(payload)));
+                  }
+                }}
+              />
+            </div>
+          )}
+          {observeHistory && history.error && (
+            <p role="alert" className="m-4 action-error">
+              The observer disconnected. The last server status was {initialRun?.status}. Inspect
+              the run before submitting again.
+            </p>
+          )}
+          {error && (
+            <div className="m-4 action-error" role="alert">
+              {error.message}
+            </div>
+          )}
+          <form
+            className="sticky bottom-0 border-t bg-card p-4"
+            onSubmit={(event) => {
               event.preventDefault();
               void send();
-            }
-          }}
-          rows={mode === "json" ? 8 : 2}
-          spellCheck={mode !== "json"}
-          placeholder={mode === "json" ? '{ "…": … }' : "Message the graph…"}
-          className={cn(
-            "flex-1 resize-y rounded-lg border bg-card px-3 py-2 text-[13px] outline-none",
-            "placeholder:text-muted-foreground focus-visible:ring-1 focus-visible:ring-ring",
-            mode === "json" && "font-mono text-xs",
-          )}
-        />
-        {running ? (
-          <Button type="button" variant="outline" onClick={() => abort.current?.abort()}>
-            <Square className="size-3.5" />
-            Stop
-          </Button>
-        ) : (
-          <Button type="submit" disabled={draft.trim() === ""}>
-            <CornerDownLeft className="size-3.5" />
-            Send
-          </Button>
+            }}
+          >
+            <RunOptionsForm
+              value={options}
+              onChange={setOptions}
+              timeoutSupported={capabilities.data?.flags?.per_run_timeout === true}
+              disabled={running}
+              jsonMode={mode === "json"}
+            />
+            <label className="sr-only" htmlFor="graph-input">
+              {mode === "json" ? "Graph input (JSON)" : "Message"}
+            </label>
+            <textarea
+              id="graph-input"
+              value={draft}
+              onChange={(event) => setDraft(event.target.value)}
+              onKeyDown={(event) => {
+                if (
+                  !event.nativeEvent.isComposing &&
+                  event.key === "Enter" &&
+                  ((mode === "chat" && !event.shiftKey) || event.metaKey || event.ctrlKey)
+                ) {
+                  event.preventDefault();
+                  void send();
+                }
+              }}
+              rows={mode === "json" ? 6 : 2}
+              spellCheck={mode !== "json"}
+              placeholder={
+                mode === "json" ? "Enter graph input as JSON…" : "Message your Assistant…"
+              }
+              className={cn("field resize-y", mode === "json" && "font-mono text-xs")}
+            />
+            <div className="mt-3 flex items-center justify-between gap-3">
+              <span className="help">
+                {mode === "chat"
+                  ? "Enter to send · Shift + Enter for a new line"
+                  : "Ctrl / ⌘ + Enter to run"}
+              </span>
+              {executionRunning ? (
+                <Button
+                  type="button"
+                  variant="outline"
+                  disabled={!cancellableRun}
+                  title={
+                    !cancellableRun ? "Waiting for the server to identify this run." : undefined
+                  }
+                  onClick={async () => {
+                    try {
+                      if (cancellableRun)
+                        await createConsoleClient({}).runs.cancel(
+                          cancellableRun.threadId,
+                          cancellableRun.runId,
+                          true,
+                          "interrupt",
+                        );
+                      abort.current?.abort();
+                      setTerminalStatus("cancelled");
+                      setSubmitted(true);
+                    } catch (caught) {
+                      setError(caught instanceof Error ? caught : new Error(String(caught)));
+                    }
+                  }}
+                >
+                  <Square className="size-3.5" />
+                  {cancellableRun ? "Stop run" : "Submitting run…"}
+                </Button>
+              ) : (
+                <Button
+                  type="submit"
+                  disabled={
+                    !mode || draft.trim() === "" || interrupts.length > 0 || observingInFlight
+                  }
+                >
+                  <CornerDownLeft className="size-3.5" />
+                  {mode === "json" ? "Run input" : "Send message"}
+                </Button>
+              )}
+            </div>
+          </form>
+        </div>
+        {inspectorOpen && (
+          <aside
+            aria-label="Execution inspector"
+            className="hidden w-80 shrink-0 flex-col border-l bg-muted/20 lg:flex"
+          >
+            {inspectorBody}
+          </aside>
         )}
-      </form>
+      </div>
+      <Dialog
+        open={drawerOpen}
+        onOpenChange={setDrawerOpen}
+        title="Execution inspector"
+        description="Inspect reported activity, graph structure, and current state."
+        side
+      >
+        {inspectorBody}
+      </Dialog>
     </div>
   );
 }
@@ -506,68 +966,4 @@ function describeRunFailure(data: unknown): string {
     if (name) return name;
   }
   return `Run failed: ${JSON.stringify(data)}`;
-}
-
-/** Messages carry an `id` once persisted; a streaming one may not, so index is the fallback. */
-function messageKey(message: Message, index: number): string {
-  return (message as { id?: string }).id ?? `index-${index}`;
-}
-
-function Bubble({ message }: { message: Message }) {
-  // `type` is the SDK's discriminant ("human"/"ai"/"tool"); `role` is what the OpenAI-shaped wire
-  // format uses. A thread can hold either depending on how the graph wrote it, so read both.
-  const shape = message as { type?: string; role?: string };
-  const role = shape.type ?? shape.role ?? "unknown";
-  const human = role === "human" || role === "user";
-  return (
-    <li className={cn("flex min-w-0", human ? "justify-end" : "justify-start")}>
-      <div
-        className={cn(
-          "min-w-0 max-w-[80%] rounded-lg px-3 py-2 text-[13px] leading-relaxed",
-          human ? "bg-primary text-primary-foreground" : "border bg-muted/40",
-        )}
-      >
-        {!human ? (
-          <div className="mb-1 font-mono text-[11px] uppercase tracking-wide text-muted-foreground">
-            {role}
-          </div>
-        ) : null}
-        <Content content={message.content} />
-      </div>
-    </li>
-  );
-}
-
-/**
- * Message content is a string, or an array of typed blocks (text, tool calls, images). Render the
- * text and show the rest as JSON rather than silently dropping it — a tool call the console hides is
- * a tool call you debug twice.
- */
-function Content({ content }: { content: Message["content"] }) {
-  if (typeof content === "string") {
-    return <span className="block max-w-full overflow-x-auto whitespace-pre-wrap">{content}</span>;
-  }
-  if (!Array.isArray(content)) return <Json value={content} />;
-  return (
-    <div className="min-w-0 space-y-1.5">
-      {content.map((block, index) => {
-        if (typeof block === "string") {
-          return (
-            <span key={index} className="block max-w-full overflow-x-auto whitespace-pre-wrap">
-              {block}
-            </span>
-          );
-        }
-        const typed = block as { type?: string; text?: string };
-        if (typed.type === "text" && typeof typed.text === "string") {
-          return (
-            <span key={index} className="block max-w-full overflow-x-auto whitespace-pre-wrap">
-              {typed.text}
-            </span>
-          );
-        }
-        return <Json key={index} value={block} />;
-      })}
-    </div>
-  );
 }

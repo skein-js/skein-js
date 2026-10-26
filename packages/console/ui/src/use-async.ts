@@ -3,7 +3,7 @@
 // show what the server says *now*, and a stale-while-revalidate layer is the wrong default when the
 // user is watching a run change state.
 
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 
 export interface AsyncState<T> {
   data?: T;
@@ -35,21 +35,32 @@ export function useAsync<T>(
     loading: boolean;
     fetchedAt?: number;
   }>({ loading: true });
+  const previousDependencies = useRef<readonly unknown[] | undefined>(undefined);
   const [reloadToken, setReloadToken] = useState(0);
 
   useEffect(() => {
     const controller = new AbortController();
-    setState((previous) => ({ ...previous, loading: true }));
-    load(controller.signal)
+    const changed =
+      previousDependencies.current === undefined ||
+      deps.some(
+        (dependency, index) => !Object.is(dependency, previousDependencies.current?.[index]),
+      );
+    previousDependencies.current = deps;
+    setState((previous) =>
+      changed ? { loading: true } : { ...previous, error: undefined, loading: true },
+    );
+    Promise.resolve()
+      .then(() => load(controller.signal))
       .then((data) => {
         if (!controller.signal.aborted) setState({ data, loading: false, fetchedAt: Date.now() });
       })
       .catch((error: unknown) => {
         if (controller.signal.aborted) return;
-        setState({
+        setState((previous) => ({
+          ...previous,
           error: error instanceof Error ? error : new Error(String(error)),
           loading: false,
-        });
+        }));
       });
     return () => controller.abort();
     // `load` is intentionally not a dependency: callers pass an inline closure, which would make it a

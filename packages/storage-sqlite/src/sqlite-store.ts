@@ -468,11 +468,45 @@ AND (d.lease_until IS NULL OR d.lease_until<=?) ORDER BY r.key LIMIT ?`,
         id,
       );
   }
+  private projectThread(thread: Thread): Thread {
+    const expiry = this.database
+      .prepare("SELECT expires_at FROM skein_threads WHERE key=?")
+      .get(thread.thread_id) as { expires_at: number | null };
+    const retention = this.threadRetention(thread.thread_id);
+    return {
+      ...thread,
+      ttl: retention.ttl ?? null,
+      ttl_strategy: retention.strategy,
+      expires_at: expiry.expires_at == null ? null : new Date(expiry.expires_at).toISOString(),
+    };
+  }
+  private projectItem<T extends Item>(item: T): T {
+    const expiry = this.database
+      .prepare("SELECT expires_at,ttl_minutes FROM skein_items WHERE key=?")
+      .get(pairKey(item.namespace, item.key)) as {
+      expires_at: number | null;
+      ttl_minutes: number | null;
+    };
+    return {
+      ...item,
+      ttl: expiry.ttl_minutes,
+      expiresAt: expiry.expires_at == null ? null : new Date(expiry.expires_at).toISOString(),
+    };
+  }
   readonly threads: ThreadRepo = {
     getTtl: async (id) => this.threadRetention(id),
-    get: async (id) => this.get("threads", id),
-    list: async () => this.search("threads", "thread_id", { sortOrder: "asc" }),
-    search: async (query) => this.search("threads", "thread_id", query),
+    get: async (id) => {
+      const thread = this.get<Thread>("threads", id);
+      return thread ? this.projectThread(thread) : null;
+    },
+    list: async () =>
+      this.search<Thread>("threads", "thread_id", { sortOrder: "asc" }).map((thread) =>
+        this.projectThread(thread),
+      ),
+    search: async (query) =>
+      this.search<Thread>("threads", "thread_id", query).map((thread) =>
+        this.projectThread(thread),
+      ),
     count: async (query) => this.count("threads", query),
     create: async (input = {}) =>
       this.database.transaction(() => {
@@ -489,7 +523,7 @@ AND (d.lease_until IS NULL OR d.lease_until<=?) ORDER BY r.key LIMIT ?`,
           state_updated_at: at,
         });
         this.threadExpiry(id, input.ttl, input.ttlStrategy);
-        return row;
+        return this.projectThread(row);
       })(),
     update: async (id, patch) =>
       this.database.transaction(() => {
@@ -513,7 +547,7 @@ AND (d.lease_until IS NULL OR d.lease_until<=?) ORDER BY r.key LIMIT ?`,
           (patch.values !== undefined && this.threadRetention(id).strategy === "keep_latest")
         )
           this.threadExpiry(id, patch.ttl, patch.ttlStrategy);
-        return row;
+        return this.projectThread(row);
       })(),
     copy: async (id) =>
       this.database.transaction(() => {
@@ -528,7 +562,7 @@ AND (d.lease_until IS NULL OR d.lease_until<=?) ORDER BY r.key LIMIT ?`,
           state_updated_at: at,
         });
         this.threadExpiry(copiedId);
-        return row;
+        return this.projectThread(row);
       })(),
     delete: async (id) => this.delete("threads", id),
     listExpired: async (query) =>
@@ -789,7 +823,7 @@ AND (d.lease_until IS NULL OR d.lease_until<=?) ORDER BY r.key LIMIT ?`,
             )
             .run(Date.now(), id);
         }
-        return item;
+        return item ? this.projectItem(item) : null;
       })(),
     put: async (namespace, key, value, options) =>
       this.store.putWithOptions!(namespace, key, value, options),
@@ -815,7 +849,7 @@ AND (d.lease_until IS NULL OR d.lease_until<=?) ORDER BY r.key LIMIT ?`,
             options?.index === undefined ? null : json(options.index),
             id,
           );
-        return row;
+        return this.projectItem(row);
       })(),
     delete: async (namespace, key) => this.delete("items", pairKey(namespace, key)),
     search: async (query) => {
@@ -854,7 +888,8 @@ AND (d.lease_until IS NULL OR d.lease_until<=?) ORDER BY r.key LIMIT ?`,
           for (const row of rows) refresh.run(Date.now(), pairKey(row.namespace, row.key));
         })();
       }
-      return query.query ? rows.map((row) => ({ ...row, score: 1 })) : rows;
+      const projected = rows.map((row) => this.projectItem(row));
+      return query.query ? projected.map((row) => ({ ...row, score: 1 })) : projected;
     },
     listNamespaces: async (query) => {
       // Deduplicate/truncate before paging. Hex ordering of UTF-8 segments matches namespace order.

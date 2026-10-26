@@ -54,6 +54,8 @@ import { withThreadExecution } from "./thread-locks.js";
 
 /** A run request as it arrives from any of the run endpoints (already validated). */
 export interface CreateRunInput {
+  /** Optional execution duration, milliseconds (1..2147483647); bounded by the host limit. */
+  timeout_ms?: number;
   thread_id?: string;
   assistant_id: string;
   input?: unknown;
@@ -298,6 +300,7 @@ export function toKwargs(
   // written on every run.
   if ((ownsThread || readNativeOrigin(kwargs)?.ownsThread) && input.on_completion === "delete")
     kwargs.delete_thread_on_completion = true;
+  if (input.timeout_ms !== undefined) kwargs.timeout_ms = input.timeout_ms;
   if (input.input !== undefined) kwargs.input = input.input;
   if (input.command !== undefined) kwargs.command = input.command;
   if (input.config !== undefined) kwargs.config = input.config;

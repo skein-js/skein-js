@@ -24,7 +24,7 @@ export function Panel({
 }) {
   return (
     <section className="mb-4 overflow-hidden rounded-lg border bg-card">
-      <header className="flex h-11 items-center gap-2 border-b px-4">
+      <header className="flex min-h-11 flex-wrap items-center gap-2 border-b px-4 py-2">
         <h2 className="text-[13px] font-medium">{title}</h2>
         {count !== undefined ? (
           <span className="rounded bg-muted px-1.5 py-0.5 text-[11px] tabular-nums text-muted-foreground">
@@ -53,16 +53,29 @@ export function Async<T>({
 }) {
   if (state.error) {
     return (
-      <div className="flex items-start gap-2 p-4 text-[13px] text-status-error">
-        <AlertCircle className="mt-0.5 size-3.5 shrink-0" aria-hidden />
-        <span className="font-mono text-xs">{state.error.message}</span>
-      </div>
+      <>
+        <div role="alert" className="flex items-start gap-2 p-4 text-[13px] text-status-error">
+          <AlertCircle className="mt-0.5 size-3.5 shrink-0" aria-hidden />
+          <div className="min-w-0 flex-1">
+            <p className="mb-1 font-medium">
+              {state.data === undefined
+                ? "Unable to load this section"
+                : "Refresh failed · showing the last successful read"}
+            </p>
+            <p className="break-words text-xs">{state.error.message}</p>
+            <Button className="mt-3" variant="outline" size="sm" onClick={state.reload}>
+              Try again
+            </Button>
+          </div>
+        </div>
+        {state.data !== undefined && children(state.data)}
+      </>
     );
   }
   if (state.loading && state.data === undefined) {
     return (
       <div className="flex items-center justify-center gap-2 py-12 text-[13px] text-muted-foreground">
-        <Loader2 className="size-3.5 animate-spin" aria-hidden />
+        <Loader2 className="size-3.5 motion-safe:animate-spin" aria-hidden />
         Loading
       </div>
     );

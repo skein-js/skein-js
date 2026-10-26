@@ -244,3 +244,36 @@ it("keeps protocol JSON readable after native authentication inspects its body",
     await server.close();
   }
 });
+
+it("projects retention and validates execution timeout through Fetch", async () => {
+  const server = await createSkeinFetchServer({ deps: embedInMemoryGraphs({ echo: graph }) });
+  const request = (path: string, method: string, body?: unknown) =>
+    server.fetch(
+      new Request(`http://localhost${path}`, {
+        method,
+        headers: { "content-type": "application/json" },
+        ...(body === undefined ? {} : { body: JSON.stringify(body) }),
+      }),
+    );
+  try {
+    const thread = await (await request("/threads", "POST", { ttl: 30 })).json();
+    expect(thread).toMatchObject({ ttl: 30, expires_at: expect.any(String) });
+    await request("/store/items", "PUT", {
+      namespace: ["retention"],
+      key: "one",
+      value: { value: true },
+      ttl: 30,
+    });
+    expect(
+      await (
+        await request("/store/items?namespace=retention&key=one&refresh_ttl=false", "GET")
+      ).json(),
+    ).toMatchObject({ ttl: 30, expires_at: expect.any(String) });
+    expect((await request("/runs", "POST", { assistant_id: "echo", timeout_ms: 0 })).status).toBe(
+      400,
+    );
+    expect((await (await request("/info", "GET")).json()).flags.per_run_timeout).toBe(true);
+  } finally {
+    await server.close();
+  }
+});

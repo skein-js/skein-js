@@ -61,7 +61,8 @@ The UI is the `console-ui` Nx project in [`ui/`](./ui):
 ```bash
 nx serve console-ui     # Vite dev server with HMR (point it at a running skein via ?baseUrl=)
 nx build console        # build the SPA → compile assets in → bundle the package
-nx test console         # resolver contract + size budget
+nx test console         # resolver contract + 1 MiB asset budget
+nx run console-ui:test-browser # real HTTP graphs, resource actions, responsive layouts
 ```
 
 `src/assets.generated.ts` is generated, not committed. `build`, `typecheck` and `test` all depend on the
@@ -71,3 +72,13 @@ The console is a **client** and holds no server-side state. It uses the Agent Pr
 official LangGraph SDK, plus two narrow skein operator endpoints for sanitized channel inventory and
 run-delivery tracking. The Channels tab is read-only; code and `langgraph.json` stay the source of
 truth. Delivery destinations are redacted before rendering, and replay requires confirmation.
+
+The sidebar groups Build, Inspect, and Operate workflows. Playground leads with a conversation or
+schema-based JSON input, a visible execution summary, and Activity/Graph/State inspection. Assistant
+versions, thread copy/pruning/retention, store creation/expiry, advanced runs, and schedules use the
+existing SDK API. Failed drafts remain editable; observers never cancel execution when closed.
+
+Passive store inspection requests `refreshTtl: false`. Unsupported custom adapters require an
+explicit normal-read choice. Per-run timeout input is enabled only when `/info.flags.per_run_timeout`
+is `true`. Delayed/keyed runs use background submission followed by observation; ambiguous failures
+and failed batches are never automatically resubmitted. A batch may have partially created runs.

@@ -4551,6 +4551,19 @@ thread itself is gated.
 
 ### Execution, search and retention options
 
+Run creation accepts optional `timeout_ms`: integer milliseconds from **1** through **2,147,483,647**.
+It is persisted with the run, including queued, native start/resume, and BullMQ command inputs.
+The duration begins when execution starts, so queue delay does not consume it. The effective budget
+is the minimum of this duration, the deployment's run limit, and any remaining native deadline.
+Timeouts follow the same cancellation and terminal `timeout` settlement path as deployment limits.
+`GET /info` optionally reports `flags.per_run_timeout: true` when supported. No new configuration
+key or endpoint is needed; omission preserves existing behavior.
+
+Thread responses optionally include `ttl`, `expires_at`, and `ttl_strategy`; store item/search
+responses optionally include `ttl` and `expires_at`. Durations are minutes. Missing means unavailable;
+`null` means known no expiry. Refresh-enabled store reads return the updated expiry. These are
+optional projections, preserving compatibility with custom drivers.
+
 Run requests preserve `durability: "sync" | "async" | "exit"` through the queue. It takes precedence
 over deprecated `checkpoint_during`; explicit `true` maps to `async`, explicit `false` to `exit`, and
 omission keeps LangGraph’s default. Legacy SSE also recognizes `tasks` and `checkpoints` modes.
@@ -5755,6 +5768,25 @@ settles as `timeout`.
 **Off by default, deliberately.** A legitimate research or multi-step tool run takes minutes, so a
 default would turn slow-but-working into killed — the exact failure the timeout exists to prevent.
 Pick a number from your own graphs' worst honest case.
+
+Individual run creation requests can additionally supply `timeout_ms`, an integer from 1 through
+2,147,483,647 milliseconds. The duration starts at execution, so a queued delay does not consume it.
+The effective limit is the smallest of this duration, the deployment limit, and any remaining native
+deadline. Native start/resume and BullMQ command inputs inherit the same field. Omit it for the
+existing deployment behavior. `GET /info.flags.per_run_timeout: true` confirms support.
+
+The installed LangGraph SDK does not serialize this additional field. Use a submission-scoped
+`onRequest` hook to add it to the prepared run body, or send the wire request directly:
+
+```ts
+await fetch(`${url}/threads/${threadId}/runs`, {
+  method: "POST",
+  headers: { "content-type": "application/json" },
+  body: JSON.stringify({ assistant_id: "research", input: {}, timeout_ms: 30_000 }),
+});
+```
+
+The console exposes this control under **Advanced run options** after capability confirmation.
 
 ## Start a run later
 
@@ -8530,6 +8562,17 @@ necessary ancestors remain readable after prune and copy. `keep_latest` removes 
 not checkpoint data required to reconstruct current state. Exact payload accounting is available at
 `GET /threads/{thread_id}/storage`; see [diagnostics](./observability.md#http-diagnostics).
 
+### Retention readback
+
+Bundled memory, SQLite, and Postgres drivers enrich thread resources with optional `ttl` (minutes),
+`expires_at`, and `ttl_strategy`. Store `Item` and `SearchItem` resources expose optional `ttl` and
+`expiresAt` in repository results; HTTP responses serialize expiry as `expires_at`. An absent field
+means the driver cannot report it; `null` means known no expiry. Thread expiry means eligible for
+sweeping, rather than a promise of immediate deletion. Refresh-enabled reads return the new expiry.
+
+These fields reuse existing storage columns, require no migration, and add no required custom-driver
+methods. Passive tools can use `refreshTtl: false` to inspect without extending a sliding lifetime.
+
 
 ---
 
@@ -9236,7 +9279,9 @@ The console is a **client** and stores nothing of its own. Most screens use the 
 Protocol through the real [`@langchain/langgraph-sdk`](./react-sdk.md). Two small skein extensions
 cover operational state the upstream SDK does not model: a sanitized channel inventory and a run's
 durable delivery attempts. The console subclasses the SDK's transport for these calls, so connection,
-authentication, retries and errors still behave like the rest of the client.
+authentication and errors use the SDK transport. Run submissions disable automatic retries. A narrow
+batch serializer normalizes options the installed SDK does not serialize; a submission-scoped request
+hook supplies `timeout_ms` without changing the shared SDK client.
 
 That is a deliberate constraint, not a coincidence. If a view cannot be built, it means the API is
 missing something, and we would rather feel that here than paper over it with a bespoke endpoint. (One
@@ -9314,225 +9359,187 @@ Two things worth knowing before you enable it on a public host:
 
 ## What it shows
 
-Seven tabs, plus three views that live inside them rather than in the nav — runs open from a thread,
-and interrupts and time travel are panels on the thread and playground.
-
-| View            | What it is for                                                                                                                                                                              |
-| --------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| **Playground**  | Pick a graph and run it: a chat transcript for graphs with a `messages` channel, a JSON editor for everything else. Streams live, and surfaces interrupts inline. This is the landing page. |
-| **Overview**    | **Waiting for you** (threads parked on `interrupt()`, linking straight to the filtered list), counts, recent threads, and the `GET /info` capability handshake.                             |
-| **Assistants**  | Every registered graph, its schemas, graph JSON, version history, and an editor for existing assistant settings.                                                                            |
-| **Threads**     | Filter by status (`#/threads?status=interrupted` is a shareable link); per thread: state, runs, checkpoints, and pending interrupts.                                                        |
-| **Runs**        | Live SSE tail, delivery status and safe replay controls, cancel, rollback, delete. Works on finished runs too.                                                                              |
-| **Channels**    | The effective inbound routes, provider identity, graph routing allowlist, and outbound support that booted from `skein.channels`. Read-only.                                                |
-| **Interrupts**  | The "Waiting for you" panel: approve, reject, or resume with any JSON value.                                                                                                                |
-| **Time travel** | Open a past checkpoint, edit its state, fork it, and run forward — from the fork or from the original.                                                                                      |
-| **Store**       | Namespace listing by prefix, item search with a `filter` and semantic `query`, edit values, delete.                                                                                         |
-| **Crons**       | Schedules with their next occurrence, pause/resume, create, delete.                                                                                                                         |
-
-Opening the console lands on the **playground**, because the first question anyone has about a server
-is whether their graph works; everything else answers a question you only have later.
-
-Collection views support forward and backward pagination, including servers configured with a
-smaller `SKEIN_MAX_PAGE_SIZE`. Each page advances by the rows returned, so the server cap does not
-hide or skip later records. Counts are shown where the protocol provides them.
-
-Routing is on the URL **hash** (`#/threads/abc`), so deep links never reach the server and the console
-needs no SPA history fallback on any adapter. An unknown route renders a "no such view" page rather
-than a blank one.
+The sidebar groups work by purpose: **Build** (Playground, Assistants), **Inspect** (Threads), and
+**Operate** (Overview, Channels, Store, Schedules). Playground remains the landing page; existing
+hash links, including `#/crons`, still work. Navigation becomes a drawer on phones. The Playground
+inspector becomes a drawer below 1024px. Light, dark, and system themes share the same labeled status
+colors; teal marks primary actions and selection.
 
 ### The playground
 
 <div class="light-only">
 
-![The console playground: a graph picker, the live graph diagram with the visited node highlighted, and a chat transcript](/images/console/playground-light.png)
+![Playground with a conversation, execution summary, and reported activity](/images/console/playground-light.png)
 
 </div>
 <div class="dark-only">
 
-![The console playground: a graph picker, the live graph diagram with the visited node highlighted, and a chat transcript](/images/console/playground-dark.png)
+![Playground in dark mode with a conversation and Activity inspector](/images/console/playground-dark.png)
 
 </div>
 
-Three things are happening in that screenshot.
+Choose an **Assistant**, a saved graph configuration, then use **Chat** for a graph with a `messages`
+channel or **JSON** for structured input. The input schema explains the selected mode and supplies a
+JSON example. Each mode keeps its own draft. Threads are created only on submission; validation and
+request failures preserve the draft.
 
-**The mode picked itself.** The console reads `GET /assistants/:id/schemas` and offers **Chat** only
-when the graph has a `messages` channel. For a graph that takes structured input the Chat tab is
-disabled with the reason on hover, and the **JSON** editor opens pre-filled with a type-correct
-sample built from the graph's own input schema — `$ref`, `anyOf` and `enum` resolved — so you are
-editing a template rather than guessing the shape. Each mode keeps its own draft.
+The execution summary explains what was observed and what to do next. Reopening a thread restores
+its latest run's retained activity through an observer that never cancels execution. **Activity** shows reported
+node output, tool calls and results, pauses, and failures. **Graph** highlights nodes that reported
+output; this does not establish which node is executing now. **State** shows the latest reported
+values. The connection badge describes server reachability separately from execution. Markdown is
+rendered without raw HTML, and remote images open only after an explicit click. Reading earlier
+output keeps your scroll position.
 
-**The diagram is live.** Nodes light up as `updates` frames arrive and stay shaded once visited, and
-conditional edges are dashed. It is the graph the server reports, not a drawing, so it is a useful
-check that the server loaded what you think it did. (It appears on wide viewports, and only here —
-the Assistants tab shows the same graph as JSON.)
+**Stop run** sends server cancellation. An observer, such as the run detail page, closes its stream
+without cancelling execution. An interrupted run displays its originating task and requested value;
+**Send true**, **Send false**, and the editable response submit their literal values. A resumed run
+is followed until its terminal event.
 
-**Stop actually stops it.** The stream is opened with `onDisconnect: "cancel"`, so the button
-cancels the run server-side rather than just closing your eyes. The thread is created lazily on the
-first send and tagged `metadata.source = "console-playground"`, which is how you tell your own
-traffic from the console's later.
+**Advanced run options** are collapsed initially:
+
+- Run on this thread, an explicit existing thread, a fresh stateless thread, or a batch of **1–100
+  JSON objects** for the selected Assistant.
+- Delay execution in seconds; choose reject, enqueue, interrupt, or rollback when the thread is busy.
+- Set an execution timeout in integer milliseconds, subject to the deployment limit. This control
+  requires positive confirmation of `/info.flags.per_run_timeout`; discovery failure leaves ordinary
+  operations available.
+- Supply an idempotency key, choose completion retention for generated threads, and select captured
+  stream modes.
+
+Delayed and keyed submissions are created in the background, then observed. Closing observation
+leaves these runs running. A disconnect or ambiguous failure never automatically resubmits input.
+Inspect the thread before trying again. A failed batch may already have created some runs.
 
 ### Overview
 
 <div class="light-only">
 
-![The console overview: counts, what is waiting for a human, and recent threads](/images/console/overview-light.png)
+![Overview prioritizing threads waiting for input and errors](/images/console/overview-light.png)
 
 </div>
 <div class="dark-only">
 
-![The console overview: counts, what is waiting for a human, and recent threads](/images/console/overview-dark.png)
+![Overview with server counts, freshness, and recent activity in dark mode](/images/console/overview-dark.png)
 
 </div>
 
-The counts come from the dedicated `count` endpoints rather than from the length of a page, so
-"1,204 threads" means 1,204. **Waiting for you** is the one that changes how you work: it is a
-`threads.count({ status: "interrupted" })`, and it links to the filtered list.
+Start with threads **waiting for you** or reporting errors, then inspect counts and recent activity.
+Freshness labels describe the last successful read. Lists refresh explicitly; only observed runs
+stream live. Unavailable counts and failed reads remain visible. Recent activity is bounded to
+recent threads because the protocol has no global run search.
+
+### Assistants
+
+Create an Assistant from a registered graph, edit its name/config/context/metadata, preview a saved
+version, or restore it using `setLatest`. Deletion keeps threads by default; cascading deletion is an
+explicit choice. Assistants registered from graph configuration return at server startup. Deleting
+one does not remove the graph from `langgraph.json`.
 
 ### Threads, and what is waiting on you
 
 <div class="light-only">
 
-![The threads list filtered to interrupted](/images/console/threads-light.png)
+![Paged thread inspection with status filters](/images/console/threads-light.png)
 
 </div>
 <div class="dark-only">
 
-![The threads list filtered to interrupted](/images/console/threads-dark.png)
+![Paged thread inspection in dark mode](/images/console/threads-dark.png)
 
 </div>
 
-Five status filters — `all`, `interrupted`, `busy`, `idle`, `error` — and the filter lives in the
-URL, so `#/threads?status=interrupted` is a link you can paste to someone. An unrecognised status
-falls back to `all`.
+Filter by status or recorded graph metadata, open an exact ID, and page through results. Older
+threads without a recorded graph may be absent from a graph-filtered result. A thread has focused
+**Conversation**, **Runs**, **State**, **Checkpoints**, and **Details** tabs. Structured graphs default
+to State. The Assistant is resolved from the latest run, then metadata, then explicit selection.
 
-Open a thread and the interrupt panel is the first thing on it:
+Copy or delete a thread, trim its checkpoints with `keep_latest`, edit metadata, and inspect/change
+retention. Select threads on the current page to prune or delete them. Results report affected and
+unchanged/skipped counts rather than assuming every selection changed. Retention is in minutes;
+`null` means known no expiry, while missing readback means unavailable. Thread expiry marks
+eligibility for background cleanup, which can be deferred by active work.
 
 <div class="light-only">
 
-![A thread paused on an interrupt, with approve, reject and a free-text resume value](/images/console/interrupts-light.png)
+![An interrupt request and an exact editable JSON response](/images/console/interrupts-light.png)
 
 </div>
 <div class="dark-only">
 
-![A thread paused on an interrupt, with approve, reject and a free-text resume value](/images/console/interrupts-dark.png)
+![An interrupt request and response controls in dark mode](/images/console/interrupts-dark.png)
 
 </div>
 
-**Approve** and **Reject** resume with literal `true` and `false`. The free-text box resumes with
-whatever you type, parsed as JSON when it parses and passed as a plain string when it does not — so
-both `approve` and `"approve"` do what you meant. The assistant is inferred from the thread's most
-recent run; a thread with no runs cannot be resumed from here and says so.
-
 ### Runs
 
-A run page tails the SSE stream, and works on runs that finished hours ago because the server
-replays what it persisted. Watching is **non-destructive** — the console joins with
-`cancelOnDisconnect: false`, so closing the tab never cancels somebody's run.
+Run details separate **Activity**, **Raw events**, **Deliveries**, and **Details**. The event buffer
+retains 500 frames and reports dropped history. Server execution state and observer connection state
+are labeled separately. Closing the observer never cancels the run. Explicit cancel, rollback, and
+delete actions explain their effects in keyboard-accessible confirmation dialogs.
 
-The buffer holds the most recent 500 frames and tells you when it dropped earlier ones rather than
-silently truncating. Each frame collapses to one line; click to expand the payload. **Cancel** and
-**Rollback** are enabled only while the run is in flight, **Delete** only when it is not.
-
-The **Deliveries** panel tracks every durable callback the run created: lifecycle status, attempt
-count, last error, next retry, and timestamps. A dead delivery can be replayed after confirmation;
-the console then reloads the server's list rather than trusting an optimistic state. Delivery is
-at-least-once, so the receiver must deduplicate by the stable delivery id.
-
-Destination display is deliberately redacted. For HTTP callbacks it shows only the host and whether
-a non-root path exists; webhook paths, queries and userinfo often are credentials. For a
-channel reply it shows the channel name but never its opaque reply target.
+Deliveries show lifecycle status, attempts, last errors, next retries, and server timestamps. Dead
+deliveries can be replayed after confirmation. Delivery is at-least-once: receivers must deduplicate
+by the stable delivery ID. Destinations show only the host/path presence or channel name; credentials,
+queries, paths, and opaque reply targets remain redacted.
 
 ### Channels
 
-The Channels tab answers “what did this server actually mount?” It reads `GET /channels`, which only
-exists when `skein.channels` configured at least one route, and shows:
-
-- the `POST /channels/{route_name}` path to give a provider;
-- the channel's provider identity and default assistant;
-- the bounded `allowed_assistants` routing set; and
-- whether the channel implements outbound delivery.
-
-It is an inventory, not an editor: `langgraph.json` and the channel module remain the source of truth,
-and changes take effect after restart. Module paths, `public_url`, provider credentials and raw
-configuration are never returned. With custom auth, the inventory uses `assistants:read`; inbound
-provider requests continue to authenticate through the channel's own signature verification.
-
-To test the whole flow, send a real or fixture provider event to the copied inbound path, open the
-thread and run it created, then inspect Deliveries. That keeps source routing and destination tracking
-connected without pretending they are the same concern.
+Channels is a read-only inventory of effective inbound routes, provider identity, default Assistant,
+allowed Assistants, and outbound delivery support. It uses `GET /channels`, which is absent when no
+channels are configured. Code and `langgraph.json` remain the source of truth; changes require a
+restart. Provider credentials and module configuration are not returned. Custom authorization uses
+`assistants:read`; inbound provider events still use channel signature verification.
 
 ### Time travel
 
-Every checkpoint is addressable, and the checkpoint panel gives you three separate things to do,
-which are easy to conflate:
-
-| Action                      | What it does                                                  |
-| --------------------------- | ------------------------------------------------------------- |
-| **Fork here**               | Writes your edited values to a new checkpoint. Nothing runs.  |
-| **Fork and run**            | Writes the edit, then runs forward from the fork.             |
-| **Run from here unchanged** | Runs forward from the original checkpoint. No write, no edit. |
-
-> **A note on editing state at a checkpoint:** values you write go through the graph's _reducers_. A
-> channel that appends (a message list, say) will add what you write rather than replace it. The
-> console says so inline, because this surprises everyone once.
+Checkpoints support **Fork here** (write edited values), **Fork and run**, and **Run from here
+unchanged**. Edits go through graph reducers, so an append channel adds values instead of replacing
+its history. Review the displayed checkpoint and reducer warning before running forward.
 
 ### The store
 
 <div class="light-only">
 
-![The store browser: namespace prefix search, a filter, and the items in a namespace](/images/console/store-light.png)
+![Store namespaces, item details, and retention readback](/images/console/store-light.png)
 
 </div>
 <div class="dark-only">
 
-![The store browser: namespace prefix search, a filter, and the items in a namespace](/images/console/store-dark.png)
+![Store namespaces and item retention in dark mode](/images/console/store-dark.png)
 
 </div>
 
-Search by namespace prefix, narrow with a `filter` (a JSON object matched against item values), and
-if the store is index-backed, rank by semantic `query`. Items show their key, value, last-updated
-time and — for a semantic search — the similarity score. Clicking a namespace drills into it.
+Browse namespaces, filter item values with JSON, and use semantic queries when the deployment
+supports them. Open individual items, create values, edit JSON, or delete items. Saving is an
+**upsert**: it replaces any value at the same namespace/key and resets expiry using the chosen
+lifetime or deployment default. Retention and expiry are shown when the store reports them.
 
-The search applies on submit rather than per keystroke, and invalid filter JSON tells you so with an
-example instead of returning nothing.
+Passive inspection sends `refreshTtl: false` so browsing does not extend sliding expiry. If a custom
+adapter rejects per-read TTL controls, the console explains this and offers **Load using normal
+reads**, which may refresh expiry. It never silently falls back.
 
 ### Crons
 
-Schedules with their assistant, expression, timezone, target thread (or `stateless`), and next
-occurrence. Pause and resume without deleting, which is the fastest way to stop a noisy schedule
-while you look at it.
+The navigation label is **Schedules**; the URL remains `#/crons`. Create stateless or existing-thread
+schedules with five-field cron expressions, a timezone, optional end time, and applicable completion
+retention. For example, `0 9 * * 1-5` runs at 09:00 on weekdays in the chosen timezone. Scheduling
+resolution is one minute. An enabled schedule with no future match is dormant and shows **no
+upcoming run**. Pause/resume without deleting. Editing scheduling fields preserves the saved run
+payload; it does not replace input or Assistant configuration.
 
-The next-occurrence column counts forwards — `in 2h`, `in 3d`, `in 14mo` — and names the states a
-schedule can be in: `paused` when it is disabled, and `no upcoming run` when it is enabled but its
-expression will never fire again. That last one is the case the column exists for; it otherwise looks
-identical to a healthy schedule. A schedule already past due but not yet fired reads in the other
-direction (`2m ago`) — brief while a tick is pending, and a sign the scheduler is stuck if it grows.
+## Boundaries
 
-Creating one takes an assistant, a 5-field expression and an input. Sub-minute schedules are a
-[deliberate non-goal](./crons.md#semantics), and the form says so rather than failing at submit.
-
-## What it deliberately does not do
-
-The console is a window onto a running server, not an admin tool, and a few of its limits are worth
-knowing before you reach for it:
-
-- **Nothing refreshes itself.** Every list loads on mount and has a Refresh button; only the run
-  stream is live. A console that polls is a console that lies about when it last looked.
-- **Lists are paged.** Previous/Next controls show the current range. Checkpoint history pages by
-  checkpoint; the overview intentionally shows only the latest ten threads.
-- **Destructive actions confirm.** Cancelling, rolling back or deleting a run, deleting a schedule
-  or store item, and replaying a delivery each describe the consequence before sending a request.
-- **Existing records can be edited.** Assistant settings, thread metadata and store item JSON values
-  use the same [API](./agent-protocol.md) and authorization as other clients. The console does not
-  create assistants or store items, copy or prune threads, or change an assistant's latest version.
-  Assistant metadata updates merge keys, so the editor rejects removed keys. Saving a store item
-  resets its expiry to the server default; the editor shows this and asks before writing.
+Lists are paged and refresh on demand. Global run search, graph editing, and separate authentication
+or permission management are outside this console. Every operation uses the server's existing
+authorization. Destructive resource changes and delivery replay use accessible dialogs with focus
+restoration. The foreign-server confirmation at boot remains a browser confirmation, before any
+application data is requested; saved API keys stay bound to the server where they were entered.
 
 ## Mounting it yourself
 
 The console is route bindings and bytes, so any adapter can serve it. It is not a dependency of the
-adapters on purpose — the compiled UI is about 956 KiB, and mounting the protocol should not cost that.
+adapters on purpose — the compiled UI stays under 1 MiB, and mounting the protocol should not cost that.
 
 ```ts
 import { consoleAssetHeaders, resolveConsoleRequest } from "@skein-js/console";
@@ -9562,8 +9569,7 @@ choice is remembered), which is also how you would host the bundle statically.
 
 ## How it is built
 
-The UI is a static Vite + React SPA ([shadcn/ui](https://ui.shadcn.com), light/dark with a
-system-aware toggle), built by the `console-ui` Nx project. `nx serve console-ui` is the HMR dev loop.
+The UI is a static Vite + React SPA (Tailwind, Radix dialogs, and system-aware light/dark themes), built by the `console-ui` Nx project. `nx serve console-ui` is the HMR dev loop.
 
 `nx build console` then chains: build the SPA → compile its files into `src/assets.generated.ts` as
 string constants → bundle. That last step is why the package can be a _library_: skein forbids reading
@@ -9571,6 +9577,10 @@ package-relative files at runtime, because bundlers rewrite `import.meta.url` to
 (see [bundling.md](./bundling.md)). `@skein-js/storage-postgres` solved the same problem for its SQL;
 the console does it for HTML, JS and CSS. A test pins the total size so the CLI's install cost cannot
 drift upward unnoticed.
+
+Run `nx run console-ui:test-browser` for real-HTTP deterministic graph scenarios, operation flows,
+and responsive light/dark screenshots. It runs in CI alongside the unit tests. The asset test retains
+a **1 MiB** uncompressed ceiling; the published package still has zero runtime dependencies.
 
 
 ---

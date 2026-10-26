@@ -3,6 +3,7 @@ import { useState } from "react";
 
 import { createSkeinConsoleClient, type DeliverySummary } from "@/api";
 import { Button } from "@/components/ui/button";
+import { useConfirmation } from "@/components/ui/dialog";
 import {
   Table,
   TableBody,
@@ -17,7 +18,8 @@ import { usePagedRows } from "@/use-paged-rows";
 import { Async, Pagination, Panel, ShortId, StatusBadge, Timestamp } from "./parts";
 
 export function RunDeliveries({ threadId, runId }: { threadId: string; runId: string }) {
-  const client = createSkeinConsoleClient();
+  const [client] = useState(() => createSkeinConsoleClient());
+  const confirm = useConfirmation();
   const deliveries = usePagedRows(
     async (offset, limit, signal) =>
       (await client.listRunDeliveries(threadId, runId, offset, limit, signal)).deliveries,
@@ -28,9 +30,12 @@ export function RunDeliveries({ threadId, runId }: { threadId: string; runId: st
 
   const replayDelivery = async (delivery: DeliverySummary) => {
     if (
-      !window.confirm(
-        `Replay delivery ${delivery.delivery_id}?\n\nThis may send the callback more than once. Webhook receivers should deduplicate by delivery id; channel destinations should use their stable run id.`,
-      )
+      !(await confirm({
+        title: `Replay delivery ${delivery.delivery_id}?`,
+        description:
+          "This may send the callback more than once. Receivers should deduplicate by delivery ID or stable run ID.",
+        confirmLabel: "Replay delivery",
+      }))
     )
       return;
     setReplay({ deliveryId: delivery.delivery_id });

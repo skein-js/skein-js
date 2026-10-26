@@ -13,6 +13,7 @@
 // directory with its last segment removed: `/console/` → `/`, `/api/console/` → `/api`. That is the
 // only coupling between this bundle and where a server chooses to mount it.
 
+import type { Run } from "@langchain/langgraph-sdk";
 import { BaseClient, Client } from "@langchain/langgraph-sdk/client";
 
 const BASE_URL_STORAGE_KEY = "skein-console:baseUrl";
@@ -110,9 +111,45 @@ export function setApiKey(key: string | undefined): void {
  * The console is meant to be pressure on the wire contract: if the SDK cannot express a view, that is
  * a gap in the server, and we want to feel it here rather than paper over it with a bespoke request.
  */
-export function createConsoleClient(): Client {
+export function createConsoleClient(submission?: {
+  executionTimeoutMs?: number;
+  idempotencyKey?: string;
+  completion?: "keep" | "delete";
+}): Client {
   const apiKey = resolveApiKey();
-  return new Client({ apiUrl: resolveApiUrl(), ...(apiKey ? { apiKey } : {}) });
+  return new Client({
+    apiUrl: resolveApiUrl(),
+    ...(apiKey ? { apiKey } : {}),
+    ...(submission
+      ? {
+          callerOptions: { maxRetries: 0 },
+          onRequest: (url: URL, init: RequestInit) => {
+            if (init.method !== "POST" || !/\/runs(?:\/(?:stream|wait|batch))?$/.test(url.pathname))
+              return init;
+            const headers = new Headers(init.headers);
+            if (submission.idempotencyKey)
+              headers.set("Idempotency-Key", submission.idempotencyKey);
+            if (submission.executionTimeoutMs === undefined && submission.completion === undefined)
+              return { ...init, headers };
+            const payload = JSON.parse(String(init.body));
+            const extend = (request: Record<string, unknown>) => ({
+              ...request,
+              ...(submission.executionTimeoutMs === undefined
+                ? {}
+                : { timeout_ms: submission.executionTimeoutMs }),
+              ...(submission.completion === undefined
+                ? {}
+                : { on_completion: submission.completion }),
+            });
+            return {
+              ...init,
+              headers,
+              body: JSON.stringify(Array.isArray(payload) ? payload.map(extend) : extend(payload)),
+            };
+          },
+        }
+      : {}),
+  });
 }
 
 export interface ChannelSummary {
@@ -142,6 +179,19 @@ export interface DeliverySummary {
 
 /** Skein extensions not yet represented by the upstream SDK's resource clients. */
 class SkeinConsoleClient extends BaseClient {
+  createBatchRuns(
+    payloads: Record<string, unknown>[],
+    idempotencyKey?: string,
+    signal?: AbortSignal,
+  ): Promise<Run[]> {
+    return this.fetch("/runs/batch", {
+      method: "POST",
+      json: payloads,
+      ...(idempotencyKey ? { headers: { "Idempotency-Key": idempotencyKey } } : {}),
+      signal,
+    });
+  }
+
   async listChannels(signal?: AbortSignal): Promise<{ channels: ChannelSummary[] }> {
     try {
       return await this.fetch("/channels", { signal });
@@ -183,7 +233,11 @@ class SkeinConsoleClient extends BaseClient {
 /** An authenticated SDK client for the console's small skein-specific operator surface. */
 export function createSkeinConsoleClient(): SkeinConsoleClient {
   const apiKey = resolveApiKey();
-  return new SkeinConsoleClient({ apiUrl: resolveApiUrl(), ...(apiKey ? { apiKey } : {}) });
+  return new SkeinConsoleClient({
+    callerOptions: { maxRetries: 0 },
+    apiUrl: resolveApiUrl(),
+    ...(apiKey ? { apiKey } : {}),
+  });
 }
 
 /** `GET /info` — the capability handshake. The SDK exposes no accessor for it, so: a plain fetch. */

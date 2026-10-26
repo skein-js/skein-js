@@ -23,7 +23,7 @@ import { useAsync } from "@/use-async";
 import { Async, Empty, Panel } from "./parts";
 
 export function ChannelsView() {
-  const client = createSkeinConsoleClient();
+  const [client] = useState(() => createSkeinConsoleClient());
   const inventory = useAsync((signal) => client.listChannels(signal), []);
   const [query, setQuery] = useState("");
   const [copied, setCopied] = useState<string>();
@@ -42,14 +42,15 @@ export function ChannelsView() {
     <>
       <div className="mb-5 flex flex-col gap-3 sm:flex-row sm:items-end sm:justify-between">
         <div>
-          <h1 className="text-lg font-semibold tracking-tight">Channels</h1>
           <p className="mt-1 max-w-2xl text-[13px] text-muted-foreground">
             Verify the source routes this server mounted and where each one enters your graphs.
             Delivery attempts are tracked on the run they belong to.
           </p>
         </div>
         <Button variant="outline" size="sm" onClick={inventory.reload} disabled={inventory.loading}>
-          <RefreshCw className={inventory.loading ? "size-3.5 animate-spin" : "size-3.5"} />
+          <RefreshCw
+            className={inventory.loading ? "size-3.5 motion-safe:animate-spin" : "size-3.5"}
+          />
           Refresh
         </Button>
       </div>
