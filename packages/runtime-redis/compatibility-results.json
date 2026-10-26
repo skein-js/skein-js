@@ -1,7 +1,7 @@
 {
   "date": "2026-10-26",
-  "sourceBase": "d9030e2",
-  "source": "Working tree containing the compatibility implementation committed with this record. Node 26 used an isolated checkout and native dependency installation.",
+  "sourceBase": "0dd69ea",
+  "source": "Working tree containing PR #72 review corrections and expanded regressions committed with this record. Node 26 used an isolated checkout and native dependency installation. The packed upgrade separately verifies the current BullMQ 6 host against the retained adapter version.",
   "runs": [
     {
       "node": "v24.15.0",
@@ -29,7 +29,11 @@
           "bullmqClient": "5.10.1"
         }
       ],
-      "passed": true
+      "passed": true,
+      "packedUpgrade": {
+        "host": "6.4.2",
+        "adapter": "5.80.2"
+      }
     },
     {
       "node": "v24.15.0",
@@ -57,7 +61,75 @@
           "bullmqClient": "5.10.1"
         }
       ],
-      "passed": true
+      "passed": true,
+      "packedUpgrade": {
+        "host": "6.4.2",
+        "adapter": "5.80.2"
+      }
+    },
+    {
+      "node": "v24.15.0",
+      "requested": {
+        "bullmq": "6.4.1",
+        "ioredis": "5.10.1"
+      },
+      "resolved": [
+        {
+          "project": "packages/runtime-redis",
+          "bullmq": "6.4.1",
+          "ioredis": "5.10.1",
+          "bullmqClient": "5.10.1"
+        },
+        {
+          "project": "packages/bullmq",
+          "bullmq": "6.4.1",
+          "ioredis": "5.10.1",
+          "bullmqClient": "5.10.1"
+        },
+        {
+          "project": "examples/native-transports",
+          "bullmq": "6.4.1",
+          "ioredis": "5.10.1",
+          "bullmqClient": "5.10.1"
+        }
+      ],
+      "passed": true,
+      "packedUpgrade": {
+        "host": "6.4.1",
+        "adapter": "6.4.1"
+      }
+    },
+    {
+      "node": "v24.15.0",
+      "requested": {
+        "bullmq": "6.4.1",
+        "ioredis": "6.0.0"
+      },
+      "resolved": [
+        {
+          "project": "packages/runtime-redis",
+          "bullmq": "6.4.1",
+          "ioredis": "6.0.0",
+          "bullmqClient": "6.0.0"
+        },
+        {
+          "project": "packages/bullmq",
+          "bullmq": "6.4.1",
+          "ioredis": "6.0.0",
+          "bullmqClient": "6.0.0"
+        },
+        {
+          "project": "examples/native-transports",
+          "bullmq": "6.4.1",
+          "ioredis": "6.0.0",
+          "bullmqClient": "6.0.0"
+        }
+      ],
+      "passed": true,
+      "packedUpgrade": {
+        "host": "6.4.1",
+        "adapter": "6.4.1"
+      }
     },
     {
       "node": "v24.15.0",
@@ -85,63 +157,11 @@
           "bullmqClient": "6.0.0"
         }
       ],
-      "passed": true
-    },
-    {
-      "node": "v24.15.0",
-      "requested": {
-        "bullmq": "6.4.1",
-        "ioredis": "5.10.1"
-      },
-      "resolved": [
-        {
-          "project": "packages/runtime-redis",
-          "bullmq": "6.4.1",
-          "ioredis": "5.10.1",
-          "bullmqClient": "5.10.1"
-        },
-        {
-          "project": "packages/bullmq",
-          "bullmq": "6.4.1",
-          "ioredis": "5.10.1",
-          "bullmqClient": "5.10.1"
-        },
-        {
-          "project": "examples/native-transports",
-          "bullmq": "6.4.1",
-          "ioredis": "5.10.1",
-          "bullmqClient": "5.10.1"
-        }
-      ],
-      "passed": true
-    },
-    {
-      "node": "v24.15.0",
-      "requested": {
-        "bullmq": "6.4.1",
-        "ioredis": "6.0.0"
-      },
-      "resolved": [
-        {
-          "project": "packages/runtime-redis",
-          "bullmq": "6.4.1",
-          "ioredis": "6.0.0",
-          "bullmqClient": "6.0.0"
-        },
-        {
-          "project": "packages/bullmq",
-          "bullmq": "6.4.1",
-          "ioredis": "6.0.0",
-          "bullmqClient": "6.0.0"
-        },
-        {
-          "project": "examples/native-transports",
-          "bullmq": "6.4.1",
-          "ioredis": "6.0.0",
-          "bullmqClient": "6.0.0"
-        }
-      ],
-      "passed": true
+      "passed": true,
+      "packedUpgrade": {
+        "host": "6.0.0",
+        "adapter": "6.0.0"
+      }
     },
     {
       "node": "v26.12.1",
@@ -169,7 +189,11 @@
           "bullmqClient": "5.10.1"
         }
       ],
-      "passed": true
+      "passed": true,
+      "packedUpgrade": {
+        "host": "6.4.2",
+        "adapter": "5.80.2"
+      }
     },
     {
       "node": "v26.12.1",
@@ -197,7 +221,11 @@
           "bullmqClient": "5.10.1"
         }
       ],
-      "passed": true
+      "passed": true,
+      "packedUpgrade": {
+        "host": "6.4.2",
+        "adapter": "5.80.2"
+      }
     },
     {
       "node": "v26.12.1",
@@ -225,7 +253,11 @@
           "bullmqClient": "5.10.1"
         }
       ],
-      "passed": true
+      "passed": true,
+      "packedUpgrade": {
+        "host": "6.4.1",
+        "adapter": "6.4.1"
+      }
     },
     {
       "node": "v26.12.1",
@@ -253,7 +285,11 @@
           "bullmqClient": "6.0.0"
         }
       ],
-      "passed": true
+      "passed": true,
+      "packedUpgrade": {
+        "host": "6.4.1",
+        "adapter": "6.4.1"
+      }
     }
   ]
 }

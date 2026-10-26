@@ -10,7 +10,7 @@ import { SkeinHttpError, type AdmissionReceipt } from "@skein-js/core";
 import { MemorySkeinStore, MemoryRunQueue, MemoryRunEventBus } from "@skein-js/storage-memory";
 import { startRedis, type StartedResource } from "@skein-js/test-support";
 import { Queue, QueueEvents } from "bullmq";
-import Redis from "ioredis";
+import Redis, { Cluster } from "ioredis";
 import { afterAll, beforeAll, describe, expect, it, vi } from "vitest";
 
 import { createBullMqTransport } from "./bullmq-transport.js";
@@ -24,10 +24,10 @@ afterAll(async () => {
   await redis?.stop();
 });
 
-async function fixture(cap = 2048, eventsAutorun = true) {
-  const url = new URL(redis.url);
+async function fixture(cap = 2048, eventsAutorun = true, resource = redis) {
+  const url = new URL(resource.url);
   const connection = { host: url.hostname, port: Number(url.port), maxRetriesPerRequest: null };
-  const name = `native-${randomUUID()}`;
+  const name = `{native-${randomUUID()}}`;
   const commands = new Queue(`${name}-commands`, { connection });
   const outcomes = new Queue(`${name}-outcomes`, { connection });
   const events = new QueueEvents(commands.name, {
@@ -119,6 +119,46 @@ async function fixture(cap = 2048, eventsAutorun = true) {
 }
 
 describe("BullMQ native access over Redis", () => {
+  it.each([
+    [
+      "oversized input",
+      { input: { assistant_id: "agent", input: { padding: "x".repeat(2048) } } },
+      "message_too_large",
+    ],
+    [
+      "caller-supplied authority",
+      {
+        input: { assistant_id: "agent", input: {} },
+        authContext: { user: { identity: "administrator" } },
+      },
+      "invalid_bullmq_command",
+    ],
+  ] as const)(
+    "rejects %s before native admission and without retrying",
+    async (_label, fields, code) => {
+      const f = await fixture(1024);
+      const admit = vi.spyOn(f.client, "start");
+      try {
+        await f.transport.start(f.client);
+        await expect(
+          f.send({
+            version: 1,
+            commandId: "invalid",
+            operation: "start",
+            ...fields,
+          }),
+        ).rejects.toThrow(code);
+        expect(admit).not.toHaveBeenCalled();
+        expect(await f.store.threads.search({})).toEqual([]);
+        const failed = await f.commands.getJobs(["failed"]);
+        expect(failed).toHaveLength(1);
+        expect(failed[0]!.attemptsMade).toBe(1);
+      } finally {
+        await f.close();
+      }
+    },
+  );
+
   it("retries a state read whose target changed during authorization", async () => {
     const f = await fixture();
     try {
@@ -323,6 +363,42 @@ describe("BullMQ native access over Redis", () => {
       await access.stop();
       await borrowed.quit();
       await f.close();
+    }
+  });
+  it("accepts commands over a borrowed Redis Cluster and leaves it usable after stop", async () => {
+    const cluster = await startRedis({ cluster: true });
+    const url = new URL(cluster.url);
+    const node = { host: url.hostname, port: Number(url.port) };
+    const borrowed = new Cluster([node], {
+      // The single-node cluster advertises its container address; the host uses the mapped port.
+      natMap: { "127.0.0.1:6379": node },
+      redisOptions: { maxRetriesPerRequest: null },
+    });
+    const f = await fixture(2048, true, cluster);
+    const access = createBullMqTransport({
+      commandQueue: f.commands.name,
+      outcomeQueue: f.outcomes,
+      connection: borrowed,
+      authenticate: async () => ({}),
+    });
+    try {
+      await access.start(f.client);
+      expect(
+        await f.send({
+          version: 1,
+          commandId: "borrowed-cluster",
+          operation: "start",
+          input: { assistant_id: "agent", input: {} },
+        }),
+      ).toHaveProperty("runId");
+      await access.stop();
+      expect(await borrowed.ping()).toBe("PONG");
+      expect(await f.outcomes.add("still-open", {})).toHaveProperty("id");
+    } finally {
+      await access.stop();
+      await borrowed.quit();
+      await f.close();
+      await cluster.stop();
     }
   });
   it("consumes only after explicit start, acknowledges acceptance, and deduplicates after job removal", async () => {

@@ -109,6 +109,57 @@ try {
       REDIS_URI: `redis://${redis.getHost()}:${redis.getMappedPort(6379)}`,
     },
   });
+  // Retain a real pnpm lockfile across a host-only BullMQ major upgrade. Unlike the aligned matrix,
+  // this can leave the adapter on v5 while its borrowed outcome Queue is produced by host v6.
+  const upgrade = path.join(directory, "upgrade");
+  const upgradeManifest = installConsumer(
+    upgrade,
+    {
+      name: "skein-bullmq-upgrade-proof",
+      version: "1.0.0",
+      private: true,
+      type: "module",
+      dependencies: {
+        "@skein-js/agent-protocol": "*",
+        "@skein-js/bullmq": "*",
+        bullmq: "5.80.2",
+        ioredis: ioredisVersion,
+      },
+      devDependencies: { typescript: "^5.7.2", "@types/node": "^22" },
+    },
+    packed,
+  );
+  upgradeManifest.pnpm = { overrides: upgradeManifest.overrides };
+  delete upgradeManifest.overrides;
+  await writeFile(path.join(upgrade, "package.json"), JSON.stringify(upgradeManifest, null, 2));
+  copyTree(path.join(root, "scripts/fixtures/native-consumers"), upgrade);
+  const typecheckUpgrade = () =>
+    run(
+      "pnpm",
+      [
+        "exec",
+        "tsc",
+        "--noEmit",
+        "--strict",
+        "--skipLibCheck",
+        "--module",
+        "NodeNext",
+        "--moduleResolution",
+        "NodeNext",
+        "--target",
+        "ES2022",
+        "types.ts",
+      ],
+      { cwd: upgrade },
+    );
+  run("pnpm", ["install", "--ignore-scripts"], { cwd: upgrade });
+  typecheckUpgrade();
+  run("pnpm", ["add", "bullmq@^6.0.0", "--ignore-scripts"], { cwd: upgrade });
+  typecheckUpgrade();
+  run(process.execPath, ["queue-upgrade.mjs"], {
+    cwd: upgrade,
+    env: { ...process.env, REDIS_URI: `redis://${redis.getHost()}:${redis.getMappedPort(6379)}` },
+  });
 } finally {
   await Promise.allSettled([postgres?.stop(), redis?.stop()]);
   await rm(directory, { recursive: true, force: true });

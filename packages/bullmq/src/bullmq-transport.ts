@@ -15,17 +15,24 @@ import {
   type RunResult,
 } from "@skein-js/core";
 import { Worker, UnrecoverableError, type ConnectionOptions, type Job, type Queue } from "bullmq";
-import type { Redis } from "ioredis";
+import type { Cluster, Redis } from "ioredis";
 import { z } from "zod";
 
 import type { BullMqChunk, BullMqCommand, BullMqOutcome } from "./messages.js";
 
-export interface BullMqTransportOptions {
+/** The adapter publishes outcomes; the host owns every other queue operation and its lifetime. */
+interface OutcomeQueueTarget {
+  readonly name: string;
+  readonly opts: { readonly prefix?: string };
+  add(name: string, outcome: unknown, options: { jobId: string }): Promise<unknown>;
+}
+
+export interface BullMqTransportOptions<OutcomeQueue extends OutcomeQueueTarget = Queue> {
   commandQueue: string;
   /** Borrowed queue. The adapter never closes it or its connection. */
-  outcomeQueue: Queue;
+  outcomeQueue: OutcomeQueue;
   /** A borrowed supported ioredis connection or BullMQ connection options. */
-  connection: ConnectionOptions | Redis;
+  connection: ConnectionOptions | Redis | Cluster;
   prefix?: string;
   concurrency?: number;
   maxMessageBytes?: number;
@@ -172,7 +179,14 @@ function classify(error: unknown): never {
 }
 
 /** Optional access transport. Skein's own execution and delivery queues remain in charge. */
-export function createBullMqTransport(options: BullMqTransportOptions): BullMqTransport {
+export function createBullMqTransport<OutcomeQueue extends OutcomeQueueTarget>(
+  options: BullMqTransportOptions<OutcomeQueue>,
+): BullMqTransport;
+// Keep the original signature last so Parameters<typeof createBullMqTransport> retains its Queue.
+export function createBullMqTransport(options: BullMqTransportOptions): BullMqTransport;
+export function createBullMqTransport(
+  options: BullMqTransportOptions<OutcomeQueueTarget>,
+): BullMqTransport {
   const cap = options.maxMessageBytes ?? DEFAULT_MAX_PAYLOAD_BYTES;
   if (!Number.isSafeInteger(cap) || cap < 1024 || cap > DEFAULT_MAX_PAYLOAD_BYTES)
     throw new Error("maxMessageBytes must be between 1024 and the existing payload limit.");
