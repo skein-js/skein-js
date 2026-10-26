@@ -1,6 +1,6 @@
 {
   "name": "@skein-js/bullmq",
-  "version": "0.21.0",
+  "version": "0.23.0",
   "description": "Optional BullMQ command and outcome transport for Skein agents.",
   "license": "Apache-2.0",
   "homepage": "https://github.com/skein-js/skein-js/tree/main/packages/bullmq#readme",

@@ -1,6 +1,6 @@
 {
   "name": "@skein-js/runtime",
-  "version": "0.21.0",
+  "version": "0.23.0",
   "description": "Assembles skein-js ProtocolDeps from langgraph.json + selected drivers (memory/Postgres/Redis).",
   "license": "Apache-2.0",
   "author": "Maina Wycliffe <wmmaina7@gmail.com>",
@@ -54,7 +54,7 @@
   "peerDependencies": {
     "@langchain/langgraph": "^1.4.0",
     "@langchain/langgraph-checkpoint-postgres": "^1.0.4",
-    "@skein-js/local": "0.21.0"
+    "@skein-js/local": "0.23.0"
   },
   "devDependencies": {
     "@langchain/core": "^1.2.9",
