@@ -255,8 +255,13 @@ outcomes. Native `getResult` always returns the whole result. `maxMessageBytes` 
 existing 256 KiB payload cap and can be reduced to 1 KiB. The supported dependency majors are BullMQ 5/6 and ioredis 5/6. The
 [validation record](./native-access-validation.md#bullmq-and-ioredis-compatibility) describes the installed
 consumer matrix. In mixed BullMQ 5/ioredis 6 installations, pass connection options to BullMQ queues
-and workers so BullMQ retains its own client; the Skein transport also accepts a borrowed ioredis 6
-client. No casts are needed in application code.
+and workers so BullMQ retains its own client; the Skein transport also accepts borrowed ioredis 6
+`Redis` and `Cluster` clients. No casts are needed in application code.
+
+The adapter uses the borrowed outcome queue's publishing operations, so an application's BullMQ
+major upgrade can retain a different supported version inside the adapter. For explicitly typed
+options, use `BullMqTransportOptions<typeof outcomes>` to retain the application's full Queue type;
+existing `BullMqTransportOptions` annotations keep their original default.
 
 ## Custom drivers and verification
 

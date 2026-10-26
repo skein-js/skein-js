@@ -160,3 +160,35 @@ pnpm exec nx run test-support:test-redis-compatibility --bullmq=6.4.1 --ioredis=
 ```
 
 See [the testing guide](./testing.md#redis-dependency-compatibility) for matrix lifecycle and artifacts.
+
+### Review regressions
+
+The follow-up review reproduced a scheduling error with an existing BullMQ job: a 2,500 ms native
+retry backoff was shortened to about 1,000 ms by partition reconciliation. Promotion now consumes a
+marker for a specific Skein-parked dequeue attempt, leaving genuine retries to BullMQ. The regression
+checks the original backoff floor and successor order against real Redis.
+
+A fresh packed pnpm consumer also reproduced a declaration failure for a borrowed ioredis 6 `Cluster`
+with BullMQ 5. The additive connection input now covers both `Redis` and `Cluster`. Packed declaration
+checks and a real single-node Redis Cluster test cover command admission and borrowed-client/queue
+ownership after shutdown; the latter does not claim cluster failover coverage.
+
+A host-only BullMQ major upgrade exposed another declaration problem: pnpm can retain the adapter's
+v5 dependency while the application's borrowed outcome queue is v6. The adapter now requires only
+the queue's publishing operations, while `BullMqTransportOptions` keeps its original complete Queue
+type as the default. A packed consumer retains its pnpm lockfile through the major upgrade, then
+typechecks and exercises command acknowledgements, outcome publication and borrowed-client ownership
+across the installed versions.
+
+Additional regressions exercise two consumers sharing a partition, legacy queue fallback,
+cancellation during claim acquisition, both execution paths losing ownership during checkpoint
+reads/graph loading, and permanent rejection of oversized commands or caller-supplied authority
+before native admission. LangGraph still owns graph execution, commands and checkpoint handling;
+the review adds no graph runtime or wire fields. The production dependency audit still reports the
+previously documented Zod advisory, so this is not a clean dependency-security audit.
+
+Review of the modified Postgres gate also reproduced a pre-existing process-crash path: a TCP drop
+during an unlock query emitted an unhandled client error after the gate had detached its listener.
+The listener now stays attached through cleanup and is removed immediately before pool handoff or
+discard. Subprocess tests fault the actual TCP connection during release for both claim methods;
+both exited unsuccessfully before the fix and cleanly afterward.

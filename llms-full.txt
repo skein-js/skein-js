@@ -3352,8 +3352,13 @@ outcomes. Native `getResult` always returns the whole result. `maxMessageBytes` 
 existing 256 KiB payload cap and can be reduced to 1 KiB. The supported dependency majors are BullMQ 5/6 and ioredis 5/6. The
 [validation record](./native-access-validation.md#bullmq-and-ioredis-compatibility) describes the installed
 consumer matrix. In mixed BullMQ 5/ioredis 6 installations, pass connection options to BullMQ queues
-and workers so BullMQ retains its own client; the Skein transport also accepts a borrowed ioredis 6
-client. No casts are needed in application code.
+and workers so BullMQ retains its own client; the Skein transport also accepts borrowed ioredis 6
+`Redis` and `Cluster` clients. No casts are needed in application code.
+
+The adapter uses the borrowed outcome queue's publishing operations, so an application's BullMQ
+major upgrade can retain a different supported version inside the adapter. For explicitly typed
+options, use `BullMqTransportOptions<typeof outcomes>` to retain the application's full Queue type;
+existing `BullMqTransportOptions` annotations keep their original default.
 
 ## Custom drivers and verification
 
@@ -3665,6 +3670,38 @@ pnpm exec nx run test-support:test-redis-compatibility --bullmq=6.4.1 --ioredis=
 ```
 
 See [the testing guide](./testing.md#redis-dependency-compatibility) for matrix lifecycle and artifacts.
+
+### Review regressions
+
+The follow-up review reproduced a scheduling error with an existing BullMQ job: a 2,500 ms native
+retry backoff was shortened to about 1,000 ms by partition reconciliation. Promotion now consumes a
+marker for a specific Skein-parked dequeue attempt, leaving genuine retries to BullMQ. The regression
+checks the original backoff floor and successor order against real Redis.
+
+A fresh packed pnpm consumer also reproduced a declaration failure for a borrowed ioredis 6 `Cluster`
+with BullMQ 5. The additive connection input now covers both `Redis` and `Cluster`. Packed declaration
+checks and a real single-node Redis Cluster test cover command admission and borrowed-client/queue
+ownership after shutdown; the latter does not claim cluster failover coverage.
+
+A host-only BullMQ major upgrade exposed another declaration problem: pnpm can retain the adapter's
+v5 dependency while the application's borrowed outcome queue is v6. The adapter now requires only
+the queue's publishing operations, while `BullMqTransportOptions` keeps its original complete Queue
+type as the default. A packed consumer retains its pnpm lockfile through the major upgrade, then
+typechecks and exercises command acknowledgements, outcome publication and borrowed-client ownership
+across the installed versions.
+
+Additional regressions exercise two consumers sharing a partition, legacy queue fallback,
+cancellation during claim acquisition, both execution paths losing ownership during checkpoint
+reads/graph loading, and permanent rejection of oversized commands or caller-supplied authority
+before native admission. LangGraph still owns graph execution, commands and checkpoint handling;
+the review adds no graph runtime or wire fields. The production dependency audit still reports the
+previously documented Zod advisory, so this is not a clean dependency-security audit.
+
+Review of the modified Postgres gate also reproduced a pre-existing process-crash path: a TCP drop
+during an unlock query emitted an unhandled client error after the gate had detached its listener.
+The listener now stays attached through cleanup and is removed immediately before pool handoff or
+discard. Subprocess tests fault the actual TCP connection during release for both claim methods;
+both exited unsuccessfully before the fix and cleanly afterward.
 
 
 ---
@@ -8894,7 +8931,8 @@ a run and `false` when execution never started. A false result retains identity 
 
 Redis continues using BullMQ jobs, delay floors, retries and stalled-job recovery. Internal partition
 metadata registers jobs when first eligible, parks followers, and promotes the next head after
-settlement. Busy heads retry after 50 ms; followers have a 60-second parking backstop. A bounded sweep
+settlement. Promotion applies only to Skein-parked attempts; native BullMQ retry backoff remains in
+force. Busy heads retry after 50 ms; followers have a 60-second parking backstop. A bounded sweep
 reconciles up to 100 partitions per second after crashes or removals. Registration never promotes a
 run before its original `after_seconds` delay. Empty metadata is removed. Existing queued jobs register
 lazily, so an upgrade does not require flushing the queue. Coordinate worker upgrades to obtain the
@@ -12937,19 +12975,20 @@ start, including the initial enqueue phase. Only exclusivity and concurrency bou
 On 26 October 2026, Node 24.15.0 with BullMQ 5.80.2, ioredis 5.10.1, Redis 7 and Postgres 16 produced
 these medians of five repetitions on the same macOS host. The benchmark harness was added before
 changing dispatch. Raw samples are committed under `packages/bench/results/dispatch-baseline.json`
-and `dispatch-after.json`.
+and `dispatch-after.json`. The latter was refreshed after review corrections; its dirty-worktree
+marker distinguishes the measured source from the recorded parent commit.
 
 | Scenario / metric                   |   Before | Partitioned dispatch |
 | ----------------------------------- | -------: | -------------------: |
-| Hot backlog: cold start p50         | 7,624 ms |               201 ms |
-| Hot backlog: cold start p95         | 7,792 ms |               238 ms |
-| Hot backlog: cold start p99         | 7,792 ms |               240 ms |
-| Hot backlog: total runs/second      |     7.11 |                 6.92 |
-| Independent control: start p95      |   384 ms |               390 ms |
-| Independent control: runs/second    |   164.52 |               167.10 |
+| Hot backlog: cold start p50         | 7,624 ms |               191 ms |
+| Hot backlog: cold start p95         | 7,792 ms |               248 ms |
+| Hot backlog: cold start p99         | 7,792 ms |               250 ms |
+| Hot backlog: total runs/second      |     7.11 |                 7.06 |
+| Independent control: start p95      |   384 ms |               382 ms |
+| Independent control: runs/second    |   164.52 |               166.67 |
 | Peak occupied slots, both scenarios |        8 |                    8 |
 
-Cold-thread p95 improves about 33-fold. Total throughput in the hot scenario remains constrained
+Cold-thread p95 improves about 31-fold. Total throughput in the hot scenario remains constrained
 by the same serialized chain of 32 hot runs; partitioned dispatch lets independent work start while
 that chain proceeds. Both workloads fill the configured capacity at their peak. These measurements
 are evidence for this workload, not throughput or latency guarantees for other machines or graphs.

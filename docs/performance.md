@@ -249,19 +249,20 @@ start, including the initial enqueue phase. Only exclusivity and concurrency bou
 On 26 October 2026, Node 24.15.0 with BullMQ 5.80.2, ioredis 5.10.1, Redis 7 and Postgres 16 produced
 these medians of five repetitions on the same macOS host. The benchmark harness was added before
 changing dispatch. Raw samples are committed under `packages/bench/results/dispatch-baseline.json`
-and `dispatch-after.json`.
+and `dispatch-after.json`. The latter was refreshed after review corrections; its dirty-worktree
+marker distinguishes the measured source from the recorded parent commit.
 
 | Scenario / metric                   |   Before | Partitioned dispatch |
 | ----------------------------------- | -------: | -------------------: |
-| Hot backlog: cold start p50         | 7,624 ms |               201 ms |
-| Hot backlog: cold start p95         | 7,792 ms |               238 ms |
-| Hot backlog: cold start p99         | 7,792 ms |               240 ms |
-| Hot backlog: total runs/second      |     7.11 |                 6.92 |
-| Independent control: start p95      |   384 ms |               390 ms |
-| Independent control: runs/second    |   164.52 |               167.10 |
+| Hot backlog: cold start p50         | 7,624 ms |               191 ms |
+| Hot backlog: cold start p95         | 7,792 ms |               248 ms |
+| Hot backlog: cold start p99         | 7,792 ms |               250 ms |
+| Hot backlog: total runs/second      |     7.11 |                 7.06 |
+| Independent control: start p95      |   384 ms |               382 ms |
+| Independent control: runs/second    |   164.52 |               166.67 |
 | Peak occupied slots, both scenarios |        8 |                    8 |
 
-Cold-thread p95 improves about 33-fold. Total throughput in the hot scenario remains constrained
+Cold-thread p95 improves about 31-fold. Total throughput in the hot scenario remains constrained
 by the same serialized chain of 32 hot runs; partitioned dispatch lets independent work start while
 that chain proceeds. Both workloads fill the configured capacity at their peak. These measurements
 are evidence for this workload, not throughput or latency guarantees for other machines or graphs.
