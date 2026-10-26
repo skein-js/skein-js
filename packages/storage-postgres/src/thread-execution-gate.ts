@@ -89,6 +89,13 @@ export function createPostgresThreadExecutionGate(
       );
     };
     client.on("error", onClientError);
+    const releaseClient = (destroy = false): void => {
+      // Keep the listener through awaited cleanup queries. A socket error there otherwise crashes
+      // the process before its rejected query can reach our catch. The pool installs its own idle
+      // handler synchronously when the client is returned (or discarded).
+      client.off("error", onClientError);
+      client.release(destroy);
+    };
 
     try {
       // Exempt from any configured `statement_timeout`. This statement *blocks* until the lock is
@@ -103,16 +110,14 @@ export function createPostgresThreadExecutionGate(
           [key.toString()],
         );
         if (!result.rows[0]?.claimed) {
-          client.off("error", onClientError);
-          client.release();
+          releaseClient();
           return undefined;
         }
       }
     } catch (error) {
       // Destroyed, not released: this client may carry `statement_timeout = 0`, and it may or may not
       // hold the lock. Ending the session is the only way to be sure of both.
-      client.off("error", onClientError);
-      client.release(true);
+      releaseClient(true);
       throw error;
     }
 
@@ -122,14 +127,11 @@ export function createPostgresThreadExecutionGate(
       release: async () => {
         if (released) return;
         released = true;
-        // Removed on every path: `pg` hands the same client object out again after `release()`, so a
-        // listener left behind would accumulate one per claim and log another claim's failure.
-        client.off("error", onClientError);
         // The socket is already gone, and with it the session and its lock. Destroy the husk rather
         // than querying a dead connection, which would throw and route us through the failure branch
         // below to warn about a lock that Postgres has in fact already released.
         if (connectionLost) {
-          client.release(true);
+          releaseClient(true);
           return;
         }
         try {
@@ -143,13 +145,13 @@ export function createPostgresThreadExecutionGate(
           // TCP, TLS, auth — for *every* run, purely for lock bookkeeping: at 100 runs/minute that is
           // 100 connections/minute of churn a managed Postgres or PgBouncer notices, on the run-start
           // path.
-          client.release();
+          releaseClient();
         } catch (error) {
           // Either statement failed, so the session's state is unknown: it may still hold the lock, or
           // still be exempt from the timeout. Destroy it — ending the session frees the lock and
           // discards the setting — and say so, because a lock leaked to the socket's teardown stalls
           // every later run on this thread until then.
-          client.release(true);
+          releaseClient(true);
           logger?.warn(
             `thread execution claim for "${threadId}" could not be released cleanly; its connection ` +
               `was discarded to free the lock`,
