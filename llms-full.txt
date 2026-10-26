@@ -5674,9 +5674,8 @@ Things worth knowing before you pick:
   people — but work _is_ scheduled on the thread.
 - **The 422 is `thread_busy`.** Handle it distinctly from an ordinary validation failure: the
   client's move is to retry or to switch strategy, not to fix the request.
-- **`enqueue` is not strict FIFO** unless you run at concurrency 1. Several queued runs on one thread
-  are dequeued together and race for the thread. See
-  [head-of-line blocking](./runs-and-redis.md#head-of-line-blocking).
+- **`enqueue` is not strict FIFO** unless you run at concurrency 1. Concurrent workers can observe
+  queued runs in different orders. See [thread dispatch](./runs-and-redis.md#dispatch-by-thread).
 - **It's decided atomically**, so two instances racing the same thread cannot both win. You don't need
   a lock of your own.
 
@@ -8876,6 +8875,8 @@ PaaS config.
 
 **Per-thread ordering is unaffected.** Two runs on the same thread are serialized by the engine's
 execution lock at _every_ concurrency, so the per-thread guard above holds regardless.
+
+<span id="head-of-line-blocking"></span>
 
 ### Dispatch by thread
 
@@ -12499,7 +12500,7 @@ Each instance executes up to **10** queued runs at once. Set `SKEIN_RUN_CONCURRE
 LangGraph-compatible `N_JOBS_PER_WORKER`) to change it. Every in-flight run draws from both pools
 above, so `concurrency × instances` is the number to budget against the connection cap. Prefer more
 instances over higher concurrency when runs are CPU-bound. See
-[runs-and-redis.md](./runs-and-redis.md#run-concurrency) for head-of-line-blocking behavior.
+[runs-and-redis.md](./runs-and-redis.md#dispatch-by-thread) for thread partitioning and custom-driver fallback.
 
 The environment variable is validated even when the flag is also passed, so a typo fails the boot
 loudly instead of silently reverting to the default.

@@ -156,6 +156,8 @@ PaaS config.
 **Per-thread ordering is unaffected.** Two runs on the same thread are serialized by the engine's
 execution lock at _every_ concurrency, so the per-thread guard above holds regardless.
 
+<span id="head-of-line-blocking"></span>
+
 ### Dispatch by thread
 
 Bundled memory, SQLite and Redis queues retain a busy thread's pending head while dispatching work

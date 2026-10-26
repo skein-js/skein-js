@@ -61,9 +61,8 @@ Things worth knowing before you pick:
   people — but work _is_ scheduled on the thread.
 - **The 422 is `thread_busy`.** Handle it distinctly from an ordinary validation failure: the
   client's move is to retry or to switch strategy, not to fix the request.
-- **`enqueue` is not strict FIFO** unless you run at concurrency 1. Several queued runs on one thread
-  are dequeued together and race for the thread. See
-  [head-of-line blocking](./runs-and-redis.md#head-of-line-blocking).
+- **`enqueue` is not strict FIFO** unless you run at concurrency 1. Concurrent workers can observe
+  queued runs in different orders. See [thread dispatch](./runs-and-redis.md#dispatch-by-thread).
 - **It's decided atomically**, so two instances racing the same thread cannot both win. You don't need
   a lock of your own.
 
