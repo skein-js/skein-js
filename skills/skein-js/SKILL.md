@@ -89,4 +89,7 @@ Preserve the execution claim, original delay floors and SQLite's no-replay recov
 BullMQ and ioredis 5/6 compatibility is covered independently for internal Redis drivers and the
 external native adapter. When mixing BullMQ 5 with application ioredis 6, use connection options for
 upstream BullMQ queues/workers and lend the supported client to `createBullMqTransport` if desired.
-The transport never closes a borrowed connection or outcome queue.
+Borrowed `Redis` and `Cluster` clients are accepted. The transport never closes a borrowed connection
+or outcome queue.
+When annotating options around an application-owned outcome queue, use
+`BullMqTransportOptions<typeof outcomeQueue>` so an independent BullMQ major upgrade retains its type.

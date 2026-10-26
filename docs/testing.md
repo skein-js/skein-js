@@ -348,4 +348,11 @@ CI crosses BullMQ 5.80.2/6.4.1, ioredis 5.10.1/6.0.0 and Node 24/26, plus a Node
 leg. Existing queue conformance remains; opt-in partitioned conformance additionally covers busy-head
 retention, independent-thread progress, deduplication, delay floors and close/failure semantics for
 memory, SQLite and Redis. The killed-worker case uses BullMQ's public manual stalled checker with
-the real production lock duration; no runtime timing option is exposed for testing.
+the real production lock duration; no runtime timing option is exposed for testing. Regression cases
+also preserve native retry backoff, share partition exclusion across consumers, exercise cancellation
+and lease loss during claim acquisition/execution, and check borrowed Redis Cluster ownership against
+a real single-node cluster. Packed declarations cover both `Redis` and `Cluster` inputs.
+The native consumer also retains a pnpm lockfile while upgrading only the application's BullMQ to
+v6, then typechecks and exercises the borrowed queue across the independently resolved majors.
+Postgres gate subprocesses use a TCP proxy to disconnect during unlock, covering a socket failure
+that a server-side SQL termination response does not exercise.

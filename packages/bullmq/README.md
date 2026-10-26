@@ -39,7 +39,11 @@ for setup, message formats, ownership, errors and reconciliation. Run the extern
 with `pnpm exec nx run test-support:test-native-consumer`.
 
 The package supplies its runtime ioredis dependency, including when BullMQ 6 resolves ioredis through
-its optional peer. The adapter accepts connection options or a borrowed supported ioredis client.
+its optional peer. The adapter accepts connection options or a borrowed supported ioredis `Redis` or
+`Cluster` client.
 For mixed BullMQ 5/ioredis 6 installs, give upstream BullMQ queues and workers connection options so
 they use BullMQ's own client; the maintained example demonstrates this without application casts.
 The adapter keeps borrowed clients and the outcome queue usable after `stop()`.
+Borrowed outcome queues can come from a different supported BullMQ major than the adapter's worker.
+Use `BullMqTransportOptions<typeof outcomeQueue>` when explicitly annotating options for that queue;
+existing annotations retain the full upstream Queue type by default.

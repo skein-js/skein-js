@@ -174,7 +174,8 @@ a run and `false` when execution never started. A false result retains identity 
 
 Redis continues using BullMQ jobs, delay floors, retries and stalled-job recovery. Internal partition
 metadata registers jobs when first eligible, parks followers, and promotes the next head after
-settlement. Busy heads retry after 50 ms; followers have a 60-second parking backstop. A bounded sweep
+settlement. Promotion applies only to Skein-parked attempts; native BullMQ retry backoff remains in
+force. Busy heads retry after 50 ms; followers have a 60-second parking backstop. A bounded sweep
 reconciles up to 100 partitions per second after crashes or removals. Registration never promotes a
 run before its original `after_seconds` delay. Empty metadata is removed. Existing queued jobs register
 lazily, so an upgrade does not require flushing the queue. Coordinate worker upgrades to obtain the

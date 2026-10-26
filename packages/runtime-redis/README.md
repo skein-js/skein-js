@@ -95,7 +95,8 @@ This package is the run **queue + pub/sub** — not a checkpointer. For Redis-ba
 The run worker selects `consumePartitioned` when the execution gate supports non-blocking claims.
 A callback returning `false` leaves the run at its thread's head and frees capacity for other threads;
 `true` acknowledges it, and throws retain BullMQ's ordinary failure policy. BullMQ remains responsible
-for job identity, delay, retry and stalled recovery. Internal Redis partition metadata survives worker
+for job identity, delay, retry backoff and stalled recovery. Only Skein-parked attempts are promoted;
+reconciliation never promotes a genuine retry ahead of its backoff. Internal Redis partition metadata survives worker
 restart and is reconciled without reading BullMQ private keys. Upgrade all workers together for the
 new utilization behavior; existing jobs are accepted without a queue flush.
 
