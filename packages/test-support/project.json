@@ -48,7 +48,10 @@
       "executor": "nx:run-commands",
       "cache": false,
       "dependsOn": ["local:build", "bullmq:build", "runtime:build", "server-express:build"],
-      "options": { "command": "node scripts/native-consumer-smoke.mjs", "cwd": "." }
+      "options": {
+        "command": "node scripts/native-consumer-smoke.mjs",
+        "cwd": "."
+      }
     },
     "test-local-electron": {
       "executor": "nx:run-commands",
@@ -155,6 +158,14 @@
       "dependsOn": ["cli:build"],
       "options": {
         "command": "node scripts/build-image-smoke.mjs",
+        "cwd": "."
+      }
+    },
+    "test-redis-compatibility": {
+      "executor": "nx:run-commands",
+      "cache": false,
+      "options": {
+        "command": "node scripts/redis-compatibility.mjs",
         "cwd": "."
       }
     }

@@ -3265,7 +3265,7 @@ const outcomes = new Queue("agent-outcomes", { connection });
 const access = createBullMqTransport({
   commandQueue: "agent-commands",
   outcomeQueue: outcomes, // borrowed
-  connection, // options or borrowed ioredis 5 connection
+  connection, // options or borrowed supported ioredis connection
   authenticate: async (job) => ({ authContext: await verifyQueueCaller(job) }),
   // route: command => mapToAllowedGraph(command),
   // projectResult: (result, runId) => applicationProjection(result, runId),
@@ -3349,8 +3349,11 @@ Each run/state/result request reauthorizes and returns a base64 byte chunk with 
 Concatenate decoded bytes and verify the digest before parsing JSON. `result_digest_mismatch` means
 the value/projection changed; restart retrieval. No HTTP is needed to reconcile missed or truncated
 outcomes. Native `getResult` always returns the whole result. `maxMessageBytes` defaults to the
-existing 256 KiB payload cap and can be reduced to 1 KiB. The tested dependency majors are BullMQ 5
-and ioredis 5; wider version compatibility remains a separate concern.
+existing 256 KiB payload cap and can be reduced to 1 KiB. The supported dependency majors are BullMQ 5/6 and ioredis 5/6. The
+[validation record](./native-access-validation.md#bullmq-and-ioredis-compatibility) describes the installed
+consumer matrix. In mixed BullMQ 5/ioredis 6 installations, pass connection options to BullMQ queues
+and workers so BullMQ retains its own client; the Skein transport also accepts a borrowed ioredis 6
+client. No casts are needed in application code.
 
 ## Custom drivers and verification
 
@@ -3619,7 +3622,49 @@ projection limits, cancellation observation cost and the remaining Zod dependenc
 dependency patches reduce the production audit from ten advisories to one high advisory; no claim of
 a clean audit is made.
 
-The PR addresses #64 and workstreams #65–#70. BullMQ/ioredis 6 compatibility remains #47.
+The original native-access PR addresses #64 and workstreams #65–#70. The compatibility follow-up
+for #47 is recorded below.
+
+## BullMQ and ioredis compatibility
+
+On 26 October 2026, the following uncached installations passed locally on Node 24.15.0 and
+Node 26.12.1. Node 26 ran in an isolated checkout with its own native dependencies. The
+[raw dependency-resolution records](https://github.com/skein-js/skein-js/blob/main/packages/runtime-redis/compatibility-results.json)
+are committed alongside the implementation; CI repeats the same nine legs on Linux.
+
+| BullMQ | Direct ioredis | Node 24 | Node 26                             |
+| ------ | -------------- | ------- | ----------------------------------- |
+| 5.80.2 | 5.10.1         | Pass    | Pass                                |
+| 5.80.2 | 6.0.0          | Pass    | Pass                                |
+| 6.4.1  | 5.10.1         | Pass    | Pass                                |
+| 6.4.1  | 6.0.0          | Pass    | Pass                                |
+| 6.0.0  | 6.0.0          | Pass    | Minimum-release leg runs on Node 24 |
+
+Each leg selects only the three direct dependency owners: Redis, the native BullMQ adapter and its
+maintained example. BullMQ 5 retains its own ioredis 5.10.1 dependency even when the application's
+direct client is ioredis 6. The runner asserts those resolved versions and restores manifests, the
+lockfile and installed links after each selection.
+
+The gates include lint/typecheck/unit/build, Redis and runtime integration, external command/outcome
+behavior, native example subprocesses and an externally installed npm consumer. The consumer
+typechecks a borrowed client without application casts, performs HTTP/BullMQ admission, strict resume,
+receipt/result reconciliation, cancellation and digest-checked retrieval, and confirms that stopping
+the adapter leaves its borrowed client and outcome queue usable. Redis coverage includes delivery
+retries, pub/sub replay, thread events, abort publication and unused/startup/shutdown ownership.
+
+Two compatibility adaptations are exercised: sorted-set indexes use string wire arguments accepted
+by both ioredis majors, and the adapter's existing connection input additively accepts the directly
+installed Redis client type. BullMQ 5's nominal connector types are adapted at the vendor boundary;
+the application does not need a cast. The deterministic acknowledgement-startup regression uses
+BullMQ 6's public backend status operation and retains its v5 barrier.
+
+Run a selection with:
+
+```sh
+pnpm exec nx run test-support:test-redis-compatibility --bullmq=6.4.1 --ioredis=6.0.0
+```
+
+See [the testing guide](./testing.md#redis-dependency-compatibility) for matrix lifecycle and artifacts.
 
 
 ---

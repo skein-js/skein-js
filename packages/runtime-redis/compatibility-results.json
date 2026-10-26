@@ -1,0 +1,259 @@
+{
+  "date": "2026-10-26",
+  "sourceBase": "d9030e2",
+  "source": "Working tree containing the compatibility implementation committed with this record. Node 26 used an isolated checkout and native dependency installation.",
+  "runs": [
+    {
+      "node": "v24.15.0",
+      "requested": {
+        "bullmq": "5.80.2",
+        "ioredis": "5.10.1"
+      },
+      "resolved": [
+        {
+          "project": "packages/runtime-redis",
+          "bullmq": "5.80.2",
+          "ioredis": "5.10.1",
+          "bullmqClient": "5.10.1"
+        },
+        {
+          "project": "packages/bullmq",
+          "bullmq": "5.80.2",
+          "ioredis": "5.10.1",
+          "bullmqClient": "5.10.1"
+        },
+        {
+          "project": "examples/native-transports",
+          "bullmq": "5.80.2",
+          "ioredis": "5.10.1",
+          "bullmqClient": "5.10.1"
+        }
+      ],
+      "passed": true
+    },
+    {
+      "node": "v24.15.0",
+      "requested": {
+        "bullmq": "5.80.2",
+        "ioredis": "6.0.0"
+      },
+      "resolved": [
+        {
+          "project": "packages/runtime-redis",
+          "bullmq": "5.80.2",
+          "ioredis": "6.0.0",
+          "bullmqClient": "5.10.1"
+        },
+        {
+          "project": "packages/bullmq",
+          "bullmq": "5.80.2",
+          "ioredis": "6.0.0",
+          "bullmqClient": "5.10.1"
+        },
+        {
+          "project": "examples/native-transports",
+          "bullmq": "5.80.2",
+          "ioredis": "6.0.0",
+          "bullmqClient": "5.10.1"
+        }
+      ],
+      "passed": true
+    },
+    {
+      "node": "v24.15.0",
+      "requested": {
+        "bullmq": "6.0.0",
+        "ioredis": "6.0.0"
+      },
+      "resolved": [
+        {
+          "project": "packages/runtime-redis",
+          "bullmq": "6.0.0",
+          "ioredis": "6.0.0",
+          "bullmqClient": "6.0.0"
+        },
+        {
+          "project": "packages/bullmq",
+          "bullmq": "6.0.0",
+          "ioredis": "6.0.0",
+          "bullmqClient": "6.0.0"
+        },
+        {
+          "project": "examples/native-transports",
+          "bullmq": "6.0.0",
+          "ioredis": "6.0.0",
+          "bullmqClient": "6.0.0"
+        }
+      ],
+      "passed": true
+    },
+    {
+      "node": "v24.15.0",
+      "requested": {
+        "bullmq": "6.4.1",
+        "ioredis": "5.10.1"
+      },
+      "resolved": [
+        {
+          "project": "packages/runtime-redis",
+          "bullmq": "6.4.1",
+          "ioredis": "5.10.1",
+          "bullmqClient": "5.10.1"
+        },
+        {
+          "project": "packages/bullmq",
+          "bullmq": "6.4.1",
+          "ioredis": "5.10.1",
+          "bullmqClient": "5.10.1"
+        },
+        {
+          "project": "examples/native-transports",
+          "bullmq": "6.4.1",
+          "ioredis": "5.10.1",
+          "bullmqClient": "5.10.1"
+        }
+      ],
+      "passed": true
+    },
+    {
+      "node": "v24.15.0",
+      "requested": {
+        "bullmq": "6.4.1",
+        "ioredis": "6.0.0"
+      },
+      "resolved": [
+        {
+          "project": "packages/runtime-redis",
+          "bullmq": "6.4.1",
+          "ioredis": "6.0.0",
+          "bullmqClient": "6.0.0"
+        },
+        {
+          "project": "packages/bullmq",
+          "bullmq": "6.4.1",
+          "ioredis": "6.0.0",
+          "bullmqClient": "6.0.0"
+        },
+        {
+          "project": "examples/native-transports",
+          "bullmq": "6.4.1",
+          "ioredis": "6.0.0",
+          "bullmqClient": "6.0.0"
+        }
+      ],
+      "passed": true
+    },
+    {
+      "node": "v26.12.1",
+      "requested": {
+        "bullmq": "5.80.2",
+        "ioredis": "5.10.1"
+      },
+      "resolved": [
+        {
+          "project": "packages/runtime-redis",
+          "bullmq": "5.80.2",
+          "ioredis": "5.10.1",
+          "bullmqClient": "5.10.1"
+        },
+        {
+          "project": "packages/bullmq",
+          "bullmq": "5.80.2",
+          "ioredis": "5.10.1",
+          "bullmqClient": "5.10.1"
+        },
+        {
+          "project": "examples/native-transports",
+          "bullmq": "5.80.2",
+          "ioredis": "5.10.1",
+          "bullmqClient": "5.10.1"
+        }
+      ],
+      "passed": true
+    },
+    {
+      "node": "v26.12.1",
+      "requested": {
+        "bullmq": "5.80.2",
+        "ioredis": "6.0.0"
+      },
+      "resolved": [
+        {
+          "project": "packages/runtime-redis",
+          "bullmq": "5.80.2",
+          "ioredis": "6.0.0",
+          "bullmqClient": "5.10.1"
+        },
+        {
+          "project": "packages/bullmq",
+          "bullmq": "5.80.2",
+          "ioredis": "6.0.0",
+          "bullmqClient": "5.10.1"
+        },
+        {
+          "project": "examples/native-transports",
+          "bullmq": "5.80.2",
+          "ioredis": "6.0.0",
+          "bullmqClient": "5.10.1"
+        }
+      ],
+      "passed": true
+    },
+    {
+      "node": "v26.12.1",
+      "requested": {
+        "bullmq": "6.4.1",
+        "ioredis": "5.10.1"
+      },
+      "resolved": [
+        {
+          "project": "packages/runtime-redis",
+          "bullmq": "6.4.1",
+          "ioredis": "5.10.1",
+          "bullmqClient": "5.10.1"
+        },
+        {
+          "project": "packages/bullmq",
+          "bullmq": "6.4.1",
+          "ioredis": "5.10.1",
+          "bullmqClient": "5.10.1"
+        },
+        {
+          "project": "examples/native-transports",
+          "bullmq": "6.4.1",
+          "ioredis": "5.10.1",
+          "bullmqClient": "5.10.1"
+        }
+      ],
+      "passed": true
+    },
+    {
+      "node": "v26.12.1",
+      "requested": {
+        "bullmq": "6.4.1",
+        "ioredis": "6.0.0"
+      },
+      "resolved": [
+        {
+          "project": "packages/runtime-redis",
+          "bullmq": "6.4.1",
+          "ioredis": "6.0.0",
+          "bullmqClient": "6.0.0"
+        },
+        {
+          "project": "packages/bullmq",
+          "bullmq": "6.4.1",
+          "ioredis": "6.0.0",
+          "bullmqClient": "6.0.0"
+        },
+        {
+          "project": "examples/native-transports",
+          "bullmq": "6.4.1",
+          "ioredis": "6.0.0",
+          "bullmqClient": "6.0.0"
+        }
+      ],
+      "passed": true
+    }
+  ]
+}

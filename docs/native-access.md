@@ -168,7 +168,7 @@ const outcomes = new Queue("agent-outcomes", { connection });
 const access = createBullMqTransport({
   commandQueue: "agent-commands",
   outcomeQueue: outcomes, // borrowed
-  connection, // options or borrowed ioredis 5 connection
+  connection, // options or borrowed supported ioredis connection
   authenticate: async (job) => ({ authContext: await verifyQueueCaller(job) }),
   // route: command => mapToAllowedGraph(command),
   // projectResult: (result, runId) => applicationProjection(result, runId),
@@ -252,8 +252,11 @@ Each run/state/result request reauthorizes and returns a base64 byte chunk with 
 Concatenate decoded bytes and verify the digest before parsing JSON. `result_digest_mismatch` means
 the value/projection changed; restart retrieval. No HTTP is needed to reconcile missed or truncated
 outcomes. Native `getResult` always returns the whole result. `maxMessageBytes` defaults to the
-existing 256 KiB payload cap and can be reduced to 1 KiB. The tested dependency majors are BullMQ 5
-and ioredis 5; wider version compatibility remains a separate concern.
+existing 256 KiB payload cap and can be reduced to 1 KiB. The supported dependency majors are BullMQ 5/6 and ioredis 5/6. The
+[validation record](./native-access-validation.md#bullmq-and-ioredis-compatibility) describes the installed
+consumer matrix. In mixed BullMQ 5/ioredis 6 installations, pass connection options to BullMQ queues
+and workers so BullMQ retains its own client; the Skein transport also accepts a borrowed ioredis 6
+client. No casts are needed in application code.
 
 ## Custom drivers and verification
 

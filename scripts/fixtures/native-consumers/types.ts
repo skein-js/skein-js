@@ -7,11 +7,12 @@ import {
 } from "@skein-js/agent-protocol";
 import { createBullMqTransport, type BullMqCommand } from "@skein-js/bullmq";
 import { Queue } from "bullmq";
+import { Redis } from "ioredis";
 export function bind(deps: ProtocolDeps) {
   const transport = createBullMqTransport({
     commandQueue: "commands",
-    outcomeQueue: new Queue("outcomes"),
-    connection: { host: "localhost" },
+    outcomeQueue: new Queue("outcomes", { connection: { host: "localhost" } }),
+    connection: new Redis({ lazyConnect: true, maxRetriesPerRequest: null }),
     authenticate: async () => ({}),
   });
   const runtime = createProtocolRuntime({

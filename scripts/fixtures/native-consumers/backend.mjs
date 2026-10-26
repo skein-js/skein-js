@@ -2,6 +2,7 @@ import assert from "node:assert/strict";
 import { randomUUID, createHash } from "node:crypto";
 import { resolve } from "node:path";
 import { Queue, QueueEvents } from "bullmq";
+import { Redis } from "ioredis";
 import { createBullMqTransport } from "@skein-js/bullmq";
 import { embedPostgresGraphs } from "@skein-js/runtime";
 import { createExpressServer } from "@skein-js/express";
@@ -37,10 +38,11 @@ const connection = { host: redis.hostname, port: Number(redis.port), maxRetriesP
 const commands = new Queue(`commands-${randomUUID()}`, { connection });
 const outcomes = new Queue(`outcomes-${randomUUID()}`, { connection });
 const events = new QueueEvents(commands.name, { connection, lastEventId: "0-0" });
+const borrowed = new Redis(process.env.REDIS_URI, { maxRetriesPerRequest: null });
 const transport = createBullMqTransport({
   commandQueue: commands.name,
   outcomeQueue: outcomes,
-  connection,
+  connection: borrowed,
   maxMessageBytes: 2048,
   // This queue is restricted to one trusted producer by the deployment's Redis ACL. Authority is host-bound.
   authenticate: async () => ({ authContext: identity }),
@@ -206,7 +208,10 @@ try {
   );
 } finally {
   await transport.stop();
+  assert.equal(await borrowed.ping(), "PONG");
+  await outcomes.add("still-borrowed", { ok: true });
   await server.close();
   await embedded.dispose();
   await Promise.all([commands.close(), outcomes.close(), events.close()]);
+  await borrowed.quit();
 }

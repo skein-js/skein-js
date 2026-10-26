@@ -17,7 +17,7 @@
     "@skein-js/core": "workspace:*",
     "@skein-js/express": "workspace:*",
     "@skein-js/local": "workspace:*",
-    "bullmq": "^5.80.2",
-    "ioredis": "^5.10.1"
+    "bullmq": "^5.80.2 || ^6.0.0",
+    "ioredis": "^5.10.1 || ^6.0.0"
   }
 }

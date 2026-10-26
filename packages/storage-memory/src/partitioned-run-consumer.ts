@@ -51,7 +51,7 @@ export function consumePartitionedMemoryRuns(
           running.delete(task);
           if (busy && consuming) {
             const timer = setTimeout(() => releaseThread(run.thread_id), 50);
-            timer.unref();
+            timer.unref?.();
             deferred.set(run.thread_id, timer);
           } else releaseThread(run.thread_id);
           wake();

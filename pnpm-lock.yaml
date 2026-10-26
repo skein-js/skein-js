@@ -658,10 +658,10 @@ importers:
         specifier: workspace:*
         version: link:../../packages/local
       bullmq:
-        specifier: ^5.80.2
+        specifier: ^5.80.2 || ^6.0.0
         version: 5.80.2
       ioredis:
-        specifier: ^5.10.1
+        specifier: ^5.10.1 || ^6.0.0
         version: 5.10.1
     devDependencies:
       '@skein-js/test-support':
@@ -1021,8 +1021,11 @@ importers:
         specifier: workspace:*
         version: link:../core
       bullmq:
-        specifier: ^5.0.0
+        specifier: ^5.0.0 || ^6.0.0
         version: 5.80.2
+      ioredis:
+        specifier: ^5.4.0 || ^6.0.0
+        version: 5.10.1
       zod:
         specifier: ^3.25.76
         version: 3.25.76
@@ -1033,9 +1036,6 @@ importers:
       '@skein-js/test-support':
         specifier: workspace:*
         version: link:../test-support
-      ioredis:
-        specifier: ^5.4.0
-        version: 5.10.1
 
   packages/channels:
     dependencies:
@@ -1338,10 +1338,10 @@ importers:
         specifier: workspace:*
         version: link:../core
       bullmq:
-        specifier: ^5.0.0
+        specifier: ^5.0.0 || ^6.0.0
         version: 5.80.2
       ioredis:
-        specifier: ^5.4.0
+        specifier: ^5.4.0 || ^6.0.0
         version: 5.10.1
     devDependencies:
       '@skein-js/test-support':

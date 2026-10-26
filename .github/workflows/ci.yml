@@ -102,6 +102,39 @@ jobs:
       - name: Integration tests
         run: pnpm exec nx run-many -t test-integration --output-style=stream
 
+  redis-compatibility:
+    name: Redis compatibility (Node ${{ matrix.node }}, BullMQ ${{ matrix.bullmq }}, ioredis ${{ matrix.ioredis }})
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        node: [24, 26]
+        bullmq: ["5.80.2", "6.4.1"]
+        ioredis: ["5.10.1", "6.0.0"]
+        include:
+          - node: 24
+            bullmq: "6.0.0"
+            ioredis: "6.0.0"
+    steps:
+      - uses: actions/checkout@v4
+      - uses: pnpm/action-setup@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: ${{ matrix.node }}
+          cache: pnpm
+      - run: pnpm install --frozen-lockfile
+      - name: Check installed dependency combination and packed consumers
+        run: |
+          set -o pipefail
+          pnpm exec nx run test-support:test-redis-compatibility --bullmq=${{ matrix.bullmq }} --ioredis=${{ matrix.ioredis }} --output-style=stream 2>&1 | tee redis-compatibility.log
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: redis-node-${{ matrix.node }}-bullmq-${{ matrix.bullmq }}-ioredis-${{ matrix.ioredis }}
+          path: |
+            dist/redis-compatibility/*.json
+            redis-compatibility.log
+
   compatibility:
     name: official frontend SDKs and packed consumers
     runs-on: ubuntu-latest

@@ -98,3 +98,8 @@ The example target boots real Redis, runs the built entrypoints in separate proc
 embedded storage, calls real HTTP, restarts backend and receiver, and checks stable receipts, results
 and durable outcome deduplication. Packed consumers also cover Postgres, process crashes, stale
 answers, chunking and package installation outside the workspace.
+
+The example supports the tested BullMQ 5/6 and ioredis 5/6 combinations. BullMQ queues/workers receive
+connection options and own their clients. The backend lends a separate ioredis client to Skein's
+transport and closes it after the transport stops. This also avoids nominal connector-type conflicts
+when BullMQ 5 retains its own ioredis 5 dependency alongside application ioredis 6.

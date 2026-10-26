@@ -15,6 +15,7 @@ import {
   type RunResult,
 } from "@skein-js/core";
 import { Worker, UnrecoverableError, type ConnectionOptions, type Job, type Queue } from "bullmq";
+import type { Redis } from "ioredis";
 import { z } from "zod";
 
 import type { BullMqChunk, BullMqCommand, BullMqOutcome } from "./messages.js";
@@ -23,8 +24,8 @@ export interface BullMqTransportOptions {
   commandQueue: string;
   /** Borrowed queue. The adapter never closes it or its connection. */
   outcomeQueue: Queue;
-  /** A borrowed ioredis 5 connection or BullMQ connection options. */
-  connection: ConnectionOptions;
+  /** A borrowed supported ioredis connection or BullMQ connection options. */
+  connection: ConnectionOptions | Redis;
   prefix?: string;
   concurrency?: number;
   maxMessageBytes?: number;
@@ -285,7 +286,9 @@ export function createBullMqTransport(options: BullMqTransportOptions): BullMqTr
       if (worker) return;
       starting = (async () => {
         const owned = new Worker(options.commandQueue, (job) => processCommand(client, job), {
-          connection: options.connection,
+          // BullMQ 5's type names its own ioredis 5 connector class. Keep borrowed client support
+          // across the tested ioredis majors without requiring casts at the application's boundary.
+          connection: options.connection as ConnectionOptions,
           ...(options.prefix ? { prefix: options.prefix } : {}),
           concurrency: options.concurrency ?? 1,
           autorun: false,

@@ -12,7 +12,10 @@ export const commandId = process.env["SKEIN_COMMAND_ID"] ?? "approval-demo-1";
 export const token = process.env["SKEIN_EXAMPLE_TOKEN"] ?? "local-example";
 
 export function connectRedis() {
-  return new Redis(process.env["REDIS_URI"] ?? "redis://127.0.0.1:6379", {
-    maxRetriesPerRequest: null,
-  });
+  const { url, ...options } = resolveRedisConnectionOptions();
+  return new Redis(url, options);
+}
+
+export function resolveRedisConnectionOptions() {
+  return { url: process.env["REDIS_URI"] ?? "redis://127.0.0.1:6379", maxRetriesPerRequest: null };
 }

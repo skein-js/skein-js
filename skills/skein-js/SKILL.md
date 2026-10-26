@@ -85,3 +85,8 @@ Bundled memory, SQLite and Redis queues dispatch by thread: an occupied executio
 consume a background execution slot. Keep `maxConcurrency` sized for real work. Custom queues/gates
 can opt into `consumePartitioned`/`tryAcquire`; older implementations retain blocking dispatch.
 Preserve the execution claim, original delay floors and SQLite's no-replay recovery contract.
+
+BullMQ and ioredis 5/6 compatibility is covered independently for internal Redis drivers and the
+external native adapter. When mixing BullMQ 5 with application ioredis 6, use connection options for
+upstream BullMQ queues/workers and lend the supported client to `createBullMqTransport` if desired.
+The transport never closes a borrowed connection or outcome queue.
