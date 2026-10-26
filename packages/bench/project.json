@@ -26,6 +26,15 @@
         "command": "node --expose-gc dist/main.js",
         "cwd": "packages/bench"
       }
+    },
+    "dispatch": {
+      "executor": "nx:run-commands",
+      "dependsOn": ["build"],
+      "cache": false,
+      "options": {
+        "command": "node dist/dispatch-main.js",
+        "cwd": "packages/bench"
+      }
     }
   }
 }

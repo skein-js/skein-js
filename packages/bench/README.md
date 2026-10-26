@@ -98,3 +98,12 @@ bounds exist to prevent.
 
 Keep the workload deterministic: no model calls, no network, fixed frame sizes and counts. Two runs of
 the same scenario must allocate identically, or a diff against a stored baseline means nothing.
+
+## Thread dispatch
+
+Run `pnpm exec nx run bench:dispatch --args="--output results/dispatch.json"` with Docker available.
+Two Node processes share Postgres and Redis, each with four worker slots. Five repetitions compare
+32 queued 250 ms runs on one thread followed by 32 independent 25 ms runs against an independent-thread
+control. The JSON report records cold-thread start percentiles, overall throughput and peak occupied
+slots. Compare the same harness, dependency versions and machine before and after a dispatch change.
+Timings are measurements, never CI pass/fail thresholds; concurrency and exclusivity are checked.

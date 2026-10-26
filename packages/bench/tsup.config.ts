@@ -6,7 +6,7 @@ import { defineConfig } from "tsup";
 // published `@skein-js/*` packages, express, pg, ioredis — stays external and resolves from
 // node_modules as usual.
 export default defineConfig({
-  entry: ["src/main.ts"],
+  entry: ["src/main.ts", "src/dispatch-main.ts", "src/dispatch-worker.ts"],
   format: ["esm"],
   target: "node20",
   clean: true,
