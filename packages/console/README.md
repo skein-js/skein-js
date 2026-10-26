@@ -73,6 +73,8 @@ official LangGraph SDK, plus two narrow skein operator endpoints for sanitized c
 run-delivery tracking. The Channels tab is read-only; code and `langgraph.json` stay the source of
 truth. Delivery destinations are redacted before rendering, and replay requires confirmation.
 
+The window-filling shell keeps navigation fixed and resource scrolling inside the main pane.
+Playground docks its composer below scrolling conversation output and interrupt requests.
 The sidebar groups Build, Inspect, and Operate workflows. Playground leads with a conversation or
 schema-based JSON input, a visible execution summary, and Activity/Graph/State inspection. Assistant
 versions, thread copy/pruning/retention, store creation/expiry, advanced runs, and schedules use the

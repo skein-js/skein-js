@@ -79,9 +79,9 @@ export function ChatView({ threadId }: { threadId?: string }) {
     knownSelection ?? (threadId ? restored.data?.assistantId : assistants.rows?.[0]?.assistant_id);
   const sessionKey = selection?.sessionKey ?? threadId ?? "new";
   return (
-    <div className="min-w-0">
-      <div className="mb-4 flex flex-wrap items-end gap-3">
-        <label className="field-label w-full min-w-0 sm:w-auto sm:flex-1 sm:max-w-sm">
+    <div className="flex min-h-0 min-w-0 flex-1 flex-col">
+      <div className="mb-4 flex shrink-0 flex-wrap items-end gap-3">
+        <label className="field-label w-full min-w-0 sm:w-auto sm:flex-1 sm:max-w-xs">
           Assistant
           <select
             className="field"
@@ -105,6 +105,15 @@ export function ChatView({ threadId }: { threadId?: string }) {
           </select>
         </label>
         <span className="help pb-2">An Assistant is a saved configuration of a graph.</span>
+        {(assistants.hasNext || assistants.offset > 0) && (
+          <Pagination
+            {...assistants}
+            compact
+            count={assistants.rows?.length ?? 0}
+            onPrevious={assistants.previous}
+            onNext={assistants.next}
+          />
+        )}
       </div>
       {(assistants.error || assistants.loading || !assistants.rows?.length) && (
         <Async
@@ -113,14 +122,6 @@ export function ChatView({ threadId }: { threadId?: string }) {
         >
           {() => null}
         </Async>
-      )}
-      {(assistants.hasNext || assistants.offset > 0) && (
-        <Pagination
-          {...assistants}
-          count={assistants.rows?.length ?? 0}
-          onPrevious={assistants.previous}
-          onNext={assistants.next}
-        />
       )}
       {restored.error && !knownSelection && (
         <p className="action-error" role="alert">
@@ -624,8 +625,8 @@ function Session({
     </>
   );
   return (
-    <div className="flex min-h-[calc(100dvh-17rem)] min-w-0 flex-col overflow-hidden rounded-xl border bg-card shadow-sm">
-      <div className="flex flex-wrap items-center gap-3 border-b px-4 py-3">
+    <div className="flex min-h-0 min-w-0 flex-1 flex-col overflow-hidden rounded-xl border bg-card shadow-sm">
+      <div className="flex shrink-0 flex-wrap items-center gap-2 border-b px-4 py-3 sm:gap-3">
         <div className="flex rounded-lg bg-muted p-1">
           {(["chat", "json"] as const).map((value) => (
             <button
@@ -650,7 +651,7 @@ function Session({
             </button>
           ))}
         </div>
-        <p className="help flex-1">
+        <p className="help order-last basis-full sm:order-none sm:basis-auto sm:flex-1">
           {mode === undefined
             ? schemas.error
               ? "Choose an input mode; the graph schema is unavailable."
@@ -694,7 +695,7 @@ function Session({
         >
           {" "}
           <Plus className="size-3.5" />
-          New thread
+          <span className="sr-only sm:not-sr-only">New thread</span>
         </Button>
         <Button
           variant="ghost"
@@ -712,33 +713,16 @@ function Session({
         </Button>
         <Button
           variant="outline"
-          size="sm"
+          size="icon"
           className="lg:hidden"
+          aria-label="Inspect activity"
           onClick={() => setDrawerOpen(true)}
         >
-          Inspect activity
+          <PanelRightOpen className="size-4" />
         </Button>
       </div>
-      {schemas.error && (
-        <div role="alert" className="m-4 action-error">
-          <p className="font-medium">Input schema unavailable</p>
-          <p className="mt-1 text-xs">
-            {schemas.error.message}. Select Chat or JSON explicitly, or choose a different
-            Assistant.
-          </p>
-          <Button
-            className="mt-3"
-            variant="outline"
-            size="sm"
-            disabled={schemas.loading}
-            onClick={schemas.reload}
-          >
-            Retry schema
-          </Button>
-        </div>
-      )}
       <div
-        className="flex items-start gap-3 border-b bg-muted/40 px-4 py-3"
+        className="flex shrink-0 items-start gap-3 border-b bg-muted/40 px-4 py-3"
         role="status"
         aria-live="polite"
       >
@@ -774,92 +758,112 @@ function Session({
         </div>
       )}
       <div className="flex min-h-0 min-w-0 flex-1">
-        <div className="flex min-w-0 flex-1 flex-col">
+        <div className="flex min-h-0 min-w-0 flex-1 flex-col">
           <div
             ref={transcript}
             role="region"
             aria-label="Conversation output"
             tabIndex={0}
-            className="max-h-[calc(100dvh-30rem)] min-h-72 flex-1 overflow-y-auto p-4 sm:p-6"
+            className="min-h-0 flex-1 overflow-y-auto"
             onScroll={(event) => {
               const element = event.currentTarget;
               followOutput.current =
                 element.scrollHeight - element.scrollTop - element.clientHeight < 80;
             }}
           >
-            {mode === "chat" ? (
-              displayedMessages.length === 0 ? (
+            <div className="p-4 sm:p-6">
+              {schemas.error && (
+                <div role="alert" className="mb-4 action-error">
+                  <p className="font-medium">Input schema unavailable</p>
+                  <p className="mt-1 text-xs">
+                    {schemas.error.message}. Select Chat or JSON explicitly, or choose a different
+                    Assistant.
+                  </p>
+                  <Button
+                    className="mt-3"
+                    variant="outline"
+                    size="sm"
+                    disabled={schemas.loading}
+                    onClick={schemas.reload}
+                  >
+                    Retry schema
+                  </Button>
+                </div>
+              )}
+              {mode === "chat" ? (
+                displayedMessages.length === 0 ? (
+                  <Hint>
+                    Send a message to see your Assistant&apos;s response and follow its reported
+                    steps.
+                  </Hint>
+                ) : (
+                  <Transcript messages={displayedMessages} />
+                )
+              ) : displayedValues === undefined ? (
                 <Hint>
-                  Send a message to see your Assistant&apos;s response and follow its reported
-                  steps.
+                  Edit the schema-based input below, then run it. The resulting state will appear
+                  here.
                 </Hint>
               ) : (
-                <Transcript messages={displayedMessages} />
-              )
-            ) : displayedValues === undefined ? (
-              <Hint>
-                Edit the schema-based input below, then run it. The resulting state will appear
-                here.
-              </Hint>
-            ) : (
-              <Json value={displayedValues} />
-            )}
-            <div ref={bottom} />
+                <Json value={displayedValues} />
+              )}
+              {threadId && (
+                <div className="mt-6">
+                  <InterruptPanel
+                    threadId={threadId}
+                    assistantId={assistantId}
+                    interrupts={interrupts}
+                    onResumed={() => thread.reload()}
+                    onRunCreated={(run) =>
+                      setRunIdentity({ threadId: run.thread_id, runId: run.run_id })
+                    }
+                    onObserving={(observing) => {
+                      setRunning(observing);
+                      if (observing) {
+                        setSubmitted(true);
+                        setRunIdentity(undefined);
+                        setError(undefined);
+                        setTerminalStatus(undefined);
+                      } else {
+                        ranUntil.current = Date.now();
+                        thread.reload();
+                      }
+                    }}
+                    onFrame={(event, payload) => {
+                      appendFrame(event, payload);
+                      if (event === "values") {
+                        setValues(payload);
+                        const next = payload as { messages?: Message[] };
+                        if (next?.messages) setMessages(next.messages);
+                      } else if (event === "updates") {
+                        const nodes = Object.keys((payload ?? {}) as Record<string, unknown>);
+                        setActiveNode(nodes.at(-1));
+                        setVisited((previous) => new Set([...previous, ...nodes]));
+                      } else if (event === "end") {
+                        setTerminalStatus((payload as { status?: string })?.status);
+                      } else if (event === "error") {
+                        setError(new Error(describeRunFailure(payload)));
+                      }
+                    }}
+                  />
+                </div>
+              )}
+              {observeHistory && history.error && (
+                <p role="alert" className="mt-4 action-error">
+                  The observer disconnected. The last server status was {initialRun?.status}.
+                  Inspect the run before submitting again.
+                </p>
+              )}
+              {error && (
+                <div className="mt-4 action-error" role="alert">
+                  {error.message}
+                </div>
+              )}
+              <div ref={bottom} />
+            </div>
           </div>
-          {threadId && (
-            <div className="px-4">
-              <InterruptPanel
-                threadId={threadId}
-                assistantId={assistantId}
-                interrupts={interrupts}
-                onResumed={() => thread.reload()}
-                onRunCreated={(run) =>
-                  setRunIdentity({ threadId: run.thread_id, runId: run.run_id })
-                }
-                onObserving={(observing) => {
-                  setRunning(observing);
-                  if (observing) {
-                    setSubmitted(true);
-                    setRunIdentity(undefined);
-                    setError(undefined);
-                    setTerminalStatus(undefined);
-                  } else {
-                    ranUntil.current = Date.now();
-                    thread.reload();
-                  }
-                }}
-                onFrame={(event, payload) => {
-                  appendFrame(event, payload);
-                  if (event === "values") {
-                    setValues(payload);
-                    const next = payload as { messages?: Message[] };
-                    if (next?.messages) setMessages(next.messages);
-                  } else if (event === "updates") {
-                    const nodes = Object.keys((payload ?? {}) as Record<string, unknown>);
-                    setActiveNode(nodes.at(-1));
-                    setVisited((previous) => new Set([...previous, ...nodes]));
-                  } else if (event === "end") {
-                    setTerminalStatus((payload as { status?: string })?.status);
-                  } else if (event === "error") {
-                    setError(new Error(describeRunFailure(payload)));
-                  }
-                }}
-              />
-            </div>
-          )}
-          {observeHistory && history.error && (
-            <p role="alert" className="m-4 action-error">
-              The observer disconnected. The last server status was {initialRun?.status}. Inspect
-              the run before submitting again.
-            </p>
-          )}
-          {error && (
-            <div className="m-4 action-error" role="alert">
-              {error.message}
-            </div>
-          )}
           <form
-            className="sticky bottom-0 border-t bg-card p-4"
+            className="relative max-h-full shrink-0 overflow-y-auto border-t bg-card p-4"
             onSubmit={(event) => {
               event.preventDefault();
               void send();
@@ -894,7 +898,7 @@ function Session({
               placeholder={
                 mode === "json" ? "Enter graph input as JSON…" : "Message your Assistant…"
               }
-              className={cn("field resize-y", mode === "json" && "font-mono text-xs")}
+              className={cn("field block resize-y", mode === "json" && "font-mono text-xs")}
             />
             <div className="mt-3 flex items-center justify-between gap-3">
               <span className="help">

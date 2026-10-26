@@ -20,11 +20,15 @@ async function newPage(options: Parameters<Browser["newPage"]>[0] = {}) {
   return page;
 }
 afterEach(async (context) => {
-  if (context.task.result?.state !== "fail") return;
+  if (!browser || context.task.result?.state !== "fail") return;
   for (const browserContext of browser.contexts())
     for (const page of browserContext.pages()) {
       console.error("Failed page:", await page.locator("body").innerText());
-      await page.screenshot({ path: resolve("../../../dist/console-failure.png"), fullPage: true });
+      await page.screenshot({
+        animations: "disabled",
+        path: resolve("../../../dist/console-failure.png"),
+        fullPage: true,
+      });
     }
 });
 async function openAssistant(page: Page, assistant: string) {
@@ -155,6 +159,7 @@ it("renders light and dark themes at all planned sizes without page overflow and
         await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth),
       ).toBe(true);
       await page.screenshot({
+        animations: "disabled",
         path: resolve(directory, `playground-${theme}-${width}.png`),
         fullPage: true,
       });
@@ -509,6 +514,20 @@ it("captures current documentation screens in light and dark themes", async () =
     .fill("Prepare the document for review.");
   await page.getByRole("button", { name: "Send message", exact: true }).click();
   await expect(page.getByText("Needs your input", { exact: true })).toBeVisible();
+  await client.assistants.update("research", {
+    name: "Library research",
+    description: "Find documents, inspect evidence, and prepare a reviewed summary.",
+  });
+  const run = await client.runs.create(null, "research", {
+    input: { messages: [{ role: "human", content: "Prepare a summary for the review callback." }] },
+    webhook: "https://callbacks.example.test/research-complete",
+  });
+  await expect
+    .poll(async () => (await client.runs.get(run.thread_id, run.run_id)).status)
+    .toBe("success");
+  await expect
+    .poll(async () => (await fixture.store.deliveries!.listByRun(run.run_id))[0]?.last_error)
+    .toContain("HTTP 503");
   for (const theme of ["light", "dark"]) {
     await page.evaluate((value) => localStorage.setItem("skein-console:theme", value), theme);
     for (const [name, route] of [
@@ -517,20 +536,95 @@ it("captures current documentation screens in light and dark themes", async () =
       ["threads", "threads?status=interrupted"],
       ["interrupts", `playground/${interrupted}`],
       ["store", "store"],
+      ["assistants", "assistants"],
+      ["assistant-detail", "assistants/research"],
+      ["thread-detail", `threads/${conversation}`],
+      ["run", `threads/${run.thread_id}/runs/${run.run_id}`],
+      ["channels", "channels"],
+      ["schedules", "crons"],
     ]) {
       await page.goto(`${fixture.url}/console/#/${route}`);
       await page.reload();
       await expect(page.getByRole("heading", { level: 1 })).toBeVisible();
       if (name === "playground")
-        await expect(
-          page.getByRole("heading", { name: "Research complete", exact: true }),
-        ).toBeVisible();
+        await expect(page.getByText("Run completed", { exact: true })).toBeVisible();
       if (name === "interrupts")
         await expect(page.getByRole("button", { name: "Resume", exact: true })).toBeVisible();
       if (name === "store")
         await expect(page.getByRole("button", { name: "draft", exact: true })).toBeVisible();
       if (name === "threads") await expect(page.getByRole("checkbox").first()).toBeVisible();
-      await page.screenshot({ path: resolve(directory, `${name}-${theme}.png`), fullPage: true });
+      if (name === "assistants")
+        await expect(
+          page.getByRole("button", { name: "New Assistant", exact: true }),
+        ).toBeVisible();
+      if (name === "assistant-detail")
+        await expect(
+          page.getByRole("button", { name: "Save assistant", exact: true }),
+        ).toBeVisible();
+      if (name === "thread-detail")
+        await expect(page.getByRole("tab", { name: "Conversation", exact: true })).toHaveAttribute(
+          "aria-selected",
+          "true",
+        );
+      if (name === "run")
+        await expect(page.getByText("Execution status: success", { exact: true })).toBeVisible();
+      if (name === "channels")
+        await expect(
+          page.getByRole("cell", { name: "library", exact: false }).first(),
+        ).toBeVisible();
+      if (name === "schedules")
+        await expect(page.getByRole("button", { name: "New schedule", exact: true })).toBeVisible();
+      if (name === "playground" || name === "interrupts")
+        await page
+          .getByRole("region", { name: "Conversation output", exact: true })
+          .evaluate((element) => {
+            element.scrollTop = element.scrollHeight;
+          });
+      await page.screenshot({
+        animations: "disabled",
+        path: resolve(directory, `${name}-${theme}.png`),
+        fullPage: true,
+      });
+    }
+    const detailDirectory = resolve(directory, "details");
+    await mkdir(detailDirectory, { recursive: true });
+    await page.goto(`${fixture.url}/console/#/threads/${conversation}`);
+    for (const tab of ["State", "Runs", "Details", "Checkpoints"]) {
+      await page.getByRole("tab", { name: tab, exact: true }).click();
+      if (tab === "Details")
+        await expect(
+          page.getByRole("button", { name: "Save retention", exact: true }),
+        ).toBeVisible();
+      if (tab === "Checkpoints")
+        await expect(page.getByRole("button", { name: "Open", exact: true }).first()).toBeVisible();
+      await page.screenshot({
+        animations: "disabled",
+        path: resolve(detailDirectory, `thread-${tab.toLowerCase()}-${theme}.png`),
+        fullPage: true,
+      });
+    }
+    await page.getByRole("button", { name: "Open", exact: true }).first().click();
+    await expect(page.getByRole("button", { name: "Fork here", exact: true })).toBeVisible();
+    await page.screenshot({
+      animations: "disabled",
+      path: resolve(detailDirectory, `time-travel-${theme}.png`),
+      fullPage: true,
+    });
+    await page.goto(`${fixture.url}/console/#/threads/${run.thread_id}/runs/${run.run_id}`);
+    for (const tab of ["Raw events", "Deliveries", "Details"]) {
+      await page.getByRole("tab", { name: tab, exact: true }).click();
+      if (tab === "Deliveries")
+        await expect(
+          page.getByText(/Fixture callback receiver returned HTTP 503/).first(),
+        ).toBeVisible();
+      await page.screenshot({
+        animations: "disabled",
+        path: resolve(
+          detailDirectory,
+          `run-${tab.toLowerCase().replaceAll(" ", "-")}-${theme}.png`,
+        ),
+        fullPage: true,
+      });
     }
   }
   await page.close();
@@ -557,7 +651,11 @@ it("keeps resource layouts within the viewport with readable theme contrast", as
         await page.goto(`${fixture.url}/console/#/${route}`);
         await expect(page.getByRole("heading", { level: 1 })).toBeVisible();
         expect(
-          await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth),
+          await page.evaluate(
+            () =>
+              document.documentElement.scrollWidth <= window.innerWidth &&
+              document.documentElement.scrollHeight <= window.innerHeight,
+          ),
           `${theme}/${width}/${route}`,
         ).toBe(true);
       }
@@ -633,5 +731,86 @@ it("creates threads lazily and keeps ordinary submissions available when capabil
   await page.reload();
   await expect(page.getByText("Output reported · answer", { exact: true })).toBeVisible();
   await expect(page.getByText("Run completed", { exact: true })).toBeVisible();
+  await page.close();
+});
+
+it("keeps the sidebar and composer inside short viewports while output and advanced controls scroll", async () => {
+  const directory = resolve("../../../dist/console-screenshots/viewport");
+  await mkdir(directory, { recursive: true });
+  const page = await newPage();
+  await openAssistant(page, "research");
+  await page
+    .getByRole("textbox", { name: "Message", exact: true })
+    .fill("Long conversation\n\n".repeat(80));
+  await page.getByRole("button", { name: "Send message", exact: true }).click();
+  await expect(page.getByText("Run completed", { exact: true })).toBeVisible();
+  const output = page.getByRole("region", { name: "Conversation output", exact: true });
+  for (const viewport of [
+    { width: 1440, height: 760 },
+    { width: 1280, height: 640 },
+    { width: 768, height: 900 },
+    { width: 390, height: 844 },
+  ]) {
+    await page.setViewportSize(viewport);
+    await expect(page.getByRole("textbox", { name: "Message", exact: true })).toBeInViewport({
+      ratio: 1,
+    });
+    await expect(page.getByRole("button", { name: "Send message", exact: true })).toBeInViewport({
+      ratio: 1,
+    });
+    expect(
+      await page.evaluate(() => document.documentElement.scrollHeight <= window.innerHeight),
+      JSON.stringify(viewport),
+    ).toBe(true);
+    expect(await output.evaluate((element) => element.clientHeight)).toBeGreaterThan(0);
+    if (viewport.width >= 768)
+      await expect(page.getByRole("link", { name: "Console guide ↗", exact: true })).toBeInViewport(
+        { ratio: 1 },
+      );
+    await page.screenshot({
+      animations: "disabled",
+      path: resolve(directory, `playground-${viewport.width}x${viewport.height}.png`),
+      fullPage: true,
+    });
+  }
+  await page.setViewportSize({ width: 1280, height: 640 });
+  await page.getByText("Advanced run options", { exact: true }).click();
+  await page.getByLabel("Idempotency key (optional)", { exact: true }).fill("viewport-proof");
+  await page.getByRole("button", { name: "Send message", exact: true }).scrollIntoViewIfNeeded();
+  await expect(page.getByRole("button", { name: "Send message", exact: true })).toBeInViewport({
+    ratio: 1,
+  });
+  expect(
+    await page.evaluate(() => document.documentElement.scrollHeight <= window.innerHeight),
+  ).toBe(true);
+  await page.screenshot({
+    animations: "disabled",
+    path: resolve(directory, "advanced-1280x640.png"),
+    fullPage: true,
+  });
+  await page.getByText("Advanced run options", { exact: true }).click();
+  await openAssistant(page, "approval");
+  await page
+    .getByRole("textbox", { name: "Message", exact: true })
+    .fill("Review in a short window");
+  await page.getByRole("button", { name: "Send message", exact: true }).click();
+  await expect(page.getByText("Needs your input", { exact: true })).toBeVisible();
+  await page
+    .getByRole("textbox", { name: "Resume value (JSON)", exact: true })
+    .scrollIntoViewIfNeeded();
+  await expect(
+    page.getByRole("textbox", { name: "Resume value (JSON)", exact: true }),
+  ).toBeInViewport({ ratio: 1 });
+  await expect(page.getByRole("textbox", { name: "Message", exact: true })).toBeInViewport({
+    ratio: 1,
+  });
+  expect(
+    await page.evaluate(() => document.documentElement.scrollHeight <= window.innerHeight),
+  ).toBe(true);
+  await page.screenshot({
+    animations: "disabled",
+    path: resolve(directory, "interrupt-1280x640.png"),
+    fullPage: true,
+  });
   await page.close();
 });

@@ -87,6 +87,26 @@ export async function startConsoleFixture(mountPath = "/console") {
   const store = new MemorySkeinStore({ maxPageSize: 3 });
   const server = await createExpressServer({
     scheduler: { enabled: false },
+    channels: {
+      library: {
+        assistant: "research",
+        allowedAssistants: ["research", "approval"],
+        module: {
+          name: "webhook",
+          verify: () => ({ identity: "console-fixture" }),
+          parseEvent: () => ({ kind: "ignore" }),
+          deliver: async () => undefined,
+        },
+      },
+      review: {
+        assistant: "approval",
+        module: {
+          name: "email",
+          verify: () => ({ identity: "console-fixture" }),
+          parseEvent: () => ({ kind: "ignore" }),
+        },
+      },
+    },
     deps: {
       store,
       graphs: langGraphResolver(resolver),
@@ -97,6 +117,10 @@ export async function startConsoleFixture(mountPath = "/console") {
       storeBridge: (repo) => new SkeinBaseStore(repo),
       ephemeralCheckpointer: () => new MemorySaver(),
       cloneCheckpoint: cloneLangGraphCheckpoint,
+      webhooks: { retries: { maxAttempts: 1 } },
+      webhookDispatcher: async () => {
+        throw new Error("Fixture callback receiver returned HTTP 503");
+      },
     },
   });
   const assetRoot = resolve(dirname(fileURLToPath(import.meta.url)), "../dist");

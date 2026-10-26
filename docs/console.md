@@ -95,6 +95,11 @@ hash links, including `#/crons`, still work. Navigation becomes a drawer on phon
 inspector becomes a drawer below 1024px. Light, dark, and system themes share the same labeled status
 colors; teal marks primary actions and selection.
 
+The shell fills the browser window. Navigation stays in place while resource pages scroll in the
+main pane. In Playground, conversation output and interrupt requests scroll together above a docked
+composer; expanding advanced options scrolls within the composer. The inspector has its own scroll
+area. This keeps the input controls reachable in short desktop windows and on phones.
+
 ### The playground
 
 <div class="light-only">
@@ -162,10 +167,32 @@ recent threads because the protocol has no global run search.
 
 ### Assistants
 
+<div class="light-only">
+
+![Assistant configurations, registered graphs, and saved versions](/images/console/assistants-light.png)
+
+</div>
+<div class="dark-only">
+
+![Assistant configurations, registered graphs, and saved versions in dark mode](/images/console/assistants-dark.png)
+
+</div>
+
 Create an Assistant from a registered graph, edit its name/config/context/metadata, preview a saved
 version, or restore it using `setLatest`. Deletion keeps threads by default; cascading deletion is an
 explicit choice. Assistants registered from graph configuration return at server startup. Deleting
 one does not remove the graph from `langgraph.json`.
+
+<div class="light-only">
+
+![Editing an Assistant's saved configuration](/images/console/assistant-detail-light.png)
+
+</div>
+<div class="dark-only">
+
+![Editing an Assistant's saved configuration in dark mode](/images/console/assistant-detail-dark.png)
+
+</div>
 
 ### Threads, and what is waiting on you
 
@@ -184,6 +211,17 @@ Filter by status or recorded graph metadata, open an exact ID, and page through 
 threads without a recorded graph may be absent from a graph-filtered result. A thread has focused
 **Conversation**, **Runs**, **State**, **Checkpoints**, and **Details** tabs. Structured graphs default
 to State. The Assistant is resolved from the latest run, then metadata, then explicit selection.
+
+<div class="light-only">
+
+![Thread conversation with focused inspection tabs](/images/console/thread-detail-light.png)
+
+</div>
+<div class="dark-only">
+
+![Thread conversation with focused inspection tabs in dark mode](/images/console/thread-detail-dark.png)
+
+</div>
 
 Copy or delete a thread, trim its checkpoints with `keep_latest`, edit metadata, and inspect/change
 retention. Select threads on the current page to prune or delete them. Results report affected and
@@ -204,6 +242,17 @@ eligibility for background cleanup, which can be deferred by active work.
 
 ### Runs
 
+<div class="light-only">
+
+![Run inspection with execution status, conversation output, and activity tabs](/images/console/run-light.png)
+
+</div>
+<div class="dark-only">
+
+![Run inspection with execution status, conversation output, and activity tabs in dark mode](/images/console/run-dark.png)
+
+</div>
+
 Run details separate **Activity**, **Raw events**, **Deliveries**, and **Details**. The event buffer
 retains 500 frames and reports dropped history. Server execution state and observer connection state
 are labeled separately. Closing the observer never cancels the run. Explicit cancel, rollback, and
@@ -215,6 +264,17 @@ by the stable delivery ID. Destinations show only the host/path presence or chan
 queries, paths, and opaque reply targets remain redacted.
 
 ### Channels
+
+<div class="light-only">
+
+![Read-only channel routes, graph routing, and outbound delivery support](/images/console/channels-light.png)
+
+</div>
+<div class="dark-only">
+
+![Read-only channel routes, graph routing, and outbound delivery support in dark mode](/images/console/channels-dark.png)
+
+</div>
 
 Channels is a read-only inventory of effective inbound routes, provider identity, default Assistant,
 allowed Assistants, and outbound delivery support. It uses `GET /channels`, which is absent when no
@@ -251,6 +311,17 @@ adapter rejects per-read TTL controls, the console explains this and offers **Lo
 reads**, which may refresh expiry. It never silently falls back.
 
 ### Crons
+
+<div class="light-only">
+
+![Schedules with timezone, thread scope, next occurrence, and pause controls](/images/console/schedules-light.png)
+
+</div>
+<div class="dark-only">
+
+![Schedules with timezone, thread scope, next occurrence, and pause controls in dark mode](/images/console/schedules-dark.png)
+
+</div>
 
 The navigation label is **Schedules**; the URL remains `#/crons`. Create stateless or existing-thread
 schedules with five-field cron expressions, a timezone, optional end time, and applicable completion
