@@ -1,6 +1,7 @@
 import { fork } from "node:child_process";
 import { execFileSync } from "node:child_process";
 import { mkdir, writeFile } from "node:fs/promises";
+import { createRequire } from "node:module";
 import { dirname } from "node:path";
 import { fileURLToPath } from "node:url";
 
@@ -154,13 +155,20 @@ try {
     }
   }
   await mkdir(dirname(output), { recursive: true });
+  const runtimeRequire = createRequire(import.meta.resolve("@skein-js/runtime"));
+  const queueRequire = createRequire(runtimeRequire.resolve("@skein-js/redis"));
   await writeFile(
     output,
     JSON.stringify(
       {
         commit: execFileSync("git", ["rev-parse", "HEAD"], { encoding: "utf8" }).trim(),
+        dirty: execFileSync("git", ["status", "--porcelain"], { encoding: "utf8" }).trim() !== "",
         node: process.version,
         results,
+        dependencies: {
+          bullmq: (queueRequire("bullmq/package.json") as { version: string }).version,
+          ioredis: (queueRequire("ioredis/package.json") as { version: string }).version,
+        },
       },
       null,
       2,
