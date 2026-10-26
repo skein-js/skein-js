@@ -83,6 +83,78 @@ it("uses legacy consumption when an injected gate only supports blocking acquisi
   expect(partitioned).not.toHaveBeenCalled();
 });
 
+it("executes through the blocking gate when an injected queue lacks partitioned consumption", async () => {
+  const acquire = vi.fn(async () => ({ release }));
+  const release = vi.fn(async () => undefined);
+  const tryAcquire = vi.fn(async () => {
+    throw new Error("Must use the legacy claim");
+  });
+  const deps = createFixtureDeps({ threadExecutionGate: { acquire, tryAcquire } });
+  const original = deps.queue;
+  const consume = vi.fn(original.consume.bind(original));
+  deps.queue = { enqueue: original.enqueue.bind(original), consume };
+  const ctx = createContext(deps);
+  const service = createProtocolServiceFromContext(ctx);
+  await service.assistants.registerGraphAssistants();
+  const thread = await service.threads.create();
+  const run = await service.runs.createBackground(thread.thread_id, {
+    assistant_id: "echo",
+    input: {},
+  });
+  const worker = createRunWorker(ctx);
+  worker.start();
+  try {
+    await waitFor(async () => (await service.runs.get(run.run_id)).status === "success");
+  } finally {
+    await worker.stop();
+  }
+  expect(consume).toHaveBeenCalledOnce();
+  expect(acquire).toHaveBeenCalledWith(thread.thread_id);
+  expect(release).toHaveBeenCalledOnce();
+  expect(tryAcquire).not.toHaveBeenCalled();
+});
+
+it("does not execute a run cancelled while its nonblocking claim is acquiring", async () => {
+  let entered = false;
+  let finishClaim!: (lease: { release(): Promise<void> }) => void;
+  const claim = new Promise<{ release(): Promise<void> }>((resolve) => {
+    finishClaim = resolve;
+  });
+  const release = vi.fn(async () => undefined);
+  const deps = createFixtureDeps({
+    threadExecutionGate: {
+      acquire: vi.fn(),
+      tryAcquire: async () => {
+        entered = true;
+        return claim;
+      },
+    },
+  });
+  const ctx = createContext(deps);
+  const service = createProtocolServiceFromContext(ctx);
+  await service.assistants.registerGraphAssistants();
+  const thread = await service.threads.create();
+  const run = await service.runs.createBackground(thread.thread_id, {
+    assistant_id: "echo",
+    input: {},
+  });
+  const load = vi.spyOn(deps.graphs, "load");
+  const worker = createRunWorker(ctx);
+  worker.start();
+  try {
+    await waitFor(async () => entered);
+    expect((await service.runs.cancel(run.run_id)).status).toBe("cancelled");
+    finishClaim({ release });
+    await waitFor(async () => release.mock.calls.length === 1 && worker.inFlightRunCount === 0);
+  } finally {
+    finishClaim({ release });
+    await worker.stop();
+  }
+  expect((await service.runs.get(run.run_id)).status).toBe("cancelled");
+  expect(load).not.toHaveBeenCalled();
+  expect(release).toHaveBeenCalledOnce();
+});
+
 it("defers a claim that finishes acquiring after shutdown begins", async () => {
   let entered = false;
   let finishClaim!: (lease: { release(): Promise<void> }) => void;

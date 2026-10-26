@@ -36,6 +36,99 @@ runRunQueueConformance(
 );
 
 describe("RedisRunQueue (BullMQ)", () => {
+  it("preserves retry backoff after a parked successor becomes head across instances", async () => {
+    const queueName = `skein-test-${randomUUID()}`;
+    const first = new RedisRunQueue(redis.url, { queueName });
+    const second = new RedisRunQueue(redis.url, { queueName });
+    const producer = new Queue(queueName, { connection: { url: redis.url } });
+    await first.enqueue({ run_id: "head", thread_id: "t" });
+    await producer.add(
+      "run",
+      { run_id: "tail", thread_id: "t" },
+      {
+        jobId: "run-tail",
+        attempts: 2,
+        backoff: { type: "fixed", delay: 2500 },
+        removeOnComplete: true,
+      },
+    );
+    let release!: () => void;
+    const held = new Promise<void>((resolve) => {
+      release = resolve;
+    });
+    let entered = false;
+    let failedAt = 0;
+    let retriedAt = 0;
+    const handled: string[] = [];
+    const process = async (run: { run_id: string }) => {
+      if (run.run_id === "head") {
+        entered = true;
+        await held;
+      } else if (!failedAt) {
+        failedAt = Date.now();
+        throw new Error("Retain the successor's native backoff");
+      } else retriedAt = Date.now();
+      handled.push(run.run_id);
+      return true;
+    };
+    const owner = first.consumePartitioned(process);
+    let peer: ReturnType<RedisRunQueue["consumePartitioned"]> | undefined;
+    try {
+      await waitFor(() => entered);
+      peer = second.consumePartitioned(process);
+      await expect
+        .poll(async () => (await producer.getJob("run-tail"))?.getState(), { timeout: 4000 })
+        .toBe("delayed");
+      release();
+      await waitFor(() => handled.length === 2, 8000);
+      expect(handled).toEqual(["head", "tail"]);
+      expect(retriedAt - failedAt).toBeGreaterThanOrEqual(2500);
+    } finally {
+      release();
+      await Promise.all([owner.close(), peer?.close()]);
+      await Promise.all([first.dispose(), second.dispose(), producer.close()]);
+    }
+  });
+
+  it("preserves a queued head's BullMQ retry backoff before its parked successor", async () => {
+    const queueName = `skein-test-${randomUUID()}`;
+    const queue = new RedisRunQueue(redis.url, { queueName });
+    const producer = new Queue(queueName, { connection: { url: redis.url } });
+    // A job written before the worker upgrade retains its original native retry policy.
+    await producer.add(
+      "run",
+      { run_id: "head", thread_id: "t" },
+      {
+        jobId: "run-head",
+        attempts: 2,
+        backoff: { type: "fixed", delay: 2500 },
+        removeOnComplete: true,
+      },
+    );
+    await queue.enqueue({ run_id: "tail", thread_id: "t" });
+    let failedAt = 0;
+    let retriedAt = 0;
+    const handled: string[] = [];
+    const consumer = queue.consumePartitioned(async (run) => {
+      if (run.run_id === "head" && !failedAt) {
+        failedAt = Date.now();
+        throw new Error("Retry after the original backoff");
+      }
+      if (run.run_id === "head") retriedAt = Date.now();
+      handled.push(run.run_id);
+      return true;
+    });
+    try {
+      await waitFor(() => handled.length === 2, 8000);
+      expect(handled).toEqual(["head", "tail"]);
+      expect(retriedAt - failedAt).toBeGreaterThanOrEqual(2500);
+    } finally {
+      await consumer.close();
+      await queue.dispose();
+      await producer.close();
+    }
+  });
+
   it("preserves job identity and failure attempts across repeated busy deferrals", async () => {
     const queueName = `skein-test-${randomUUID()}`;
     const queue = new RedisRunQueue(redis.url, { queueName, attempts: 2 });

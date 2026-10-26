@@ -13,17 +13,34 @@ if not redis.call('ZSCORE', KEYS[3], ARGV[1]) then
   redis.call('ZADD', KEYS[3], redis.call('INCR', KEYS[2]), ARGV[1])
 end
 redis.call('ZADD', KEYS[1], 'NX', ARGV[2], KEYS[3])
-return redis.call('ZRANGE', KEYS[3], 0, 0)[1]
+local head = redis.call('ZRANGE', KEYS[3], 0, 0)[1]
+if head == ARGV[1] then redis.call('HDEL', KEYS[4], ARGV[1]) end
+return head
 `;
 const REMOVE = `
 redis.call('ZREM', KEYS[3], ARGV[1])
+redis.call('HDEL', KEYS[4], ARGV[1])
 local head = redis.call('ZRANGE', KEYS[3], 0, 0)[1]
 if not head then
-  redis.call('DEL', KEYS[3])
+  redis.call('DEL', KEYS[3], KEYS[4])
   redis.call('ZREM', KEYS[1], KEYS[3])
   if redis.call('ZCARD', KEYS[1]) == 0 then redis.call('DEL', KEYS[1], KEYS[2]) end
 end
 return head
+`;
+const RECORD_PARKED = `
+if redis.call('ZSCORE', KEYS[1], ARGV[1]) then
+  local previous = redis.call('HGET', KEYS[2], ARGV[1])
+  if not previous or tonumber(previous) <= tonumber(ARGV[2]) then
+    redis.call('HSET', KEYS[2], ARGV[1], ARGV[2])
+  end
+end
+`;
+const TAKE_PARKED = `
+if redis.call('HGET', KEYS[1], ARGV[1]) == ARGV[2] then
+  return redis.call('HDEL', KEYS[1], ARGV[1])
+end
+return 0
 `;
 
 /** Internal partition order survives worker restart without inspecting any BullMQ Redis keys. */
@@ -39,7 +56,7 @@ export function createRedisRunPartitions(url: string, queueName: string, queue: 
   let disposed = false;
 
   const remove = async (partition: string, jobId: string): Promise<void> => {
-    await client.eval(REMOVE, 3, registry, sequence, partition, jobId);
+    await client.eval(REMOVE, 4, registry, sequence, partition, `${partition}:parked`, jobId);
   };
   const advance = async (partition: string): Promise<void> => {
     // Bound stale-head cleanup too: the next sweep resumes if many failed/removed jobs accumulated.
@@ -52,8 +69,20 @@ export function createRedisRunPartitions(url: string, queueName: string, queue: 
         await remove(partition, head);
         continue;
       }
-      // Registration only happens after the original delay elapsed. Promotion cannot shorten it.
-      if (state === "delayed") await job!.promote().catch(() => undefined);
+      // Only Skein's parked followers may be promoted. A delayed head can instead be in native
+      // retry backoff. Consume the attempt marker atomically so competing reconcilers cannot issue
+      // a second promotion after the first one has already let the head execute and fail.
+      if (
+        state === "delayed" &&
+        (await client.eval(
+          TAKE_PARKED,
+          1,
+          `${partition}:parked`,
+          head,
+          String(job!.attemptsStarted),
+        )) === 1
+      )
+        await job!.promote().catch(() => undefined);
       return;
     }
   };
@@ -82,15 +111,29 @@ export function createRedisRunPartitions(url: string, queueName: string, queue: 
       const partition = partitionFor(job.data.thread_id);
       const head = await client.eval(
         REGISTER,
-        3,
+        4,
         registry,
         sequence,
         partition,
+        `${partition}:parked`,
         job.id!,
         Date.now(),
       );
       if (head !== job.id) {
         await job.moveToDelayed(Date.now() + 60_000, token);
+        // Record only a successful native delay transition, and bind it to this dequeue attempt.
+        // A failed hint write leaves the 60-second native backstop; it must not turn an already
+        // delayed job into a processor failure or leave a stale marker for a later genuine retry.
+        await client
+          .eval(
+            RECORD_PARKED,
+            2,
+            partition,
+            `${partition}:parked`,
+            job.id!,
+            String(job.attemptsStarted),
+          )
+          .catch(() => undefined);
         throw new DelayedError();
       }
       if ((await tryProcess(job.data)) === false) {
