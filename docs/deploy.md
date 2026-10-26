@@ -464,7 +464,7 @@ Each instance executes up to **10** queued runs at once. Set `SKEIN_RUN_CONCURRE
 LangGraph-compatible `N_JOBS_PER_WORKER`) to change it. Every in-flight run draws from both pools
 above, so `concurrency × instances` is the number to budget against the connection cap. Prefer more
 instances over higher concurrency when runs are CPU-bound. See
-[runs-and-redis.md](./runs-and-redis.md#run-concurrency) for head-of-line-blocking behavior.
+[runs-and-redis.md](./runs-and-redis.md#dispatch-by-thread) for thread partitioning and custom-driver fallback.
 
 The environment variable is validated even when the flag is also passed, so a typo fails the boot
 loudly instead of silently reverting to the default.
