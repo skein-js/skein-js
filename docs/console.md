@@ -111,7 +111,8 @@ colors; teal marks primary actions and selection.
 Choose an **Assistant**, a saved graph configuration, then use **Chat** for a graph with a `messages`
 channel or **JSON** for structured input. The input schema explains the selected mode and supplies a
 JSON example. Each mode keeps its own draft. Threads are created only on submission; validation and
-request failures preserve the draft.
+request failures preserve the draft. If schema discovery fails, its error remains visible and you
+can select Chat or JSON explicitly or retry discovery.
 
 The execution summary explains what was observed and what to do next. Reopening a thread restores
 its latest run's retained activity through an observer that never cancels execution. **Activity** shows reported

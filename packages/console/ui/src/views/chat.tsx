@@ -651,9 +651,15 @@ function Session({
           ))}
         </div>
         <p className="help flex-1">
-          {mode === "chat"
-            ? "This graph accepts messages."
-            : `Structured input${inputKeys.length ? `: ${inputKeys.join(", ")}` : ". Loading input schema…"}`}
+          {mode === undefined
+            ? schemas.error
+              ? "Choose an input mode; the graph schema is unavailable."
+              : "Loading input schema…"
+            : mode === "chat"
+              ? schemas.error
+                ? "Chat mode selected manually."
+                : "This graph accepts messages."
+              : `Structured input${inputKeys.length ? `: ${inputKeys.join(", ")}` : ". Submit a JSON object."}`}
         </p>
         {threadId &&
           !(
@@ -713,6 +719,24 @@ function Session({
           Inspect activity
         </Button>
       </div>
+      {schemas.error && (
+        <div role="alert" className="m-4 action-error">
+          <p className="font-medium">Input schema unavailable</p>
+          <p className="mt-1 text-xs">
+            {schemas.error.message}. Select Chat or JSON explicitly, or choose a different
+            Assistant.
+          </p>
+          <Button
+            className="mt-3"
+            variant="outline"
+            size="sm"
+            disabled={schemas.loading}
+            onClick={schemas.reload}
+          >
+            Retry schema
+          </Button>
+        </div>
+      )}
       <div
         className="flex items-start gap-3 border-b bg-muted/40 px-4 py-3"
         role="status"

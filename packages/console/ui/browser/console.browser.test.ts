@@ -606,6 +606,9 @@ it("creates threads lazily and keeps ordinary submissions available when capabil
   await page.route(/\/info$/, (route) =>
     route.fulfill({ status: 503, body: "Capability discovery unavailable" }),
   );
+  await page.route(/\/assistants\/[^/]+\/schemas$/, (route) =>
+    route.fulfill({ status: 503, body: "Schema discovery unavailable" }),
+  );
   const count = await client.threads.count();
   await page.goto(`${fixture.url}/console/#/playground`);
   await expect(page.getByRole("combobox", { name: "Assistant", exact: true })).toBeVisible();
@@ -616,6 +619,8 @@ it("creates threads lazily and keeps ordinary submissions available when capabil
   }
   await page.getByRole("combobox", { name: "Assistant", exact: true }).selectOption("research");
   await expect(page.getByRole("button", { name: "Send message", exact: true })).toBeVisible();
+  await expect(page.getByText("Input schema unavailable", { exact: true })).toBeVisible();
+  await page.getByRole("button", { name: "Chat", exact: true }).click();
   expect(await client.threads.count()).toBe(count);
   await page.getByText("Advanced run options", { exact: true }).click();
   await expect(page.getByLabel("Execution timeout (milliseconds)", { exact: true })).toBeDisabled();
