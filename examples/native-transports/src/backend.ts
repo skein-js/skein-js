@@ -8,7 +8,14 @@ import { embedSqliteGraphs, type EmbeddedSqliteRuntime } from "@skein-js/local";
 import { Queue } from "bullmq";
 
 import { approvalGraph } from "./approval.js";
-import { commandQueueName, connectRedis, outcomeQueueName, sqlitePath, token } from "./settings.js";
+import {
+  commandQueueName,
+  connectRedis,
+  outcomeQueueName,
+  resolveRedisConnectionOptions,
+  sqlitePath,
+  token,
+} from "./settings.js";
 
 // This example has one host-controlled principal. The command queue must be restricted to that
 // trusted backend producer. Browser/end-user claims in job payloads are never authentication.
@@ -39,7 +46,7 @@ const auth: AuthEngine = {
 await mkdir(dirname(sqlitePath), { recursive: true });
 const connection = connectRedis();
 const outcomes = new Queue(outcomeQueueName, {
-  connection,
+  connection: resolveRedisConnectionOptions(),
   defaultJobOptions: { removeOnComplete: 100, removeOnFail: 100 },
 });
 const transport = createBullMqTransport({

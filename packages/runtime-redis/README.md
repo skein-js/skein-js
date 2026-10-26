@@ -98,3 +98,10 @@ A callback returning `false` leaves the run at its thread's head and frees capac
 for job identity, delay, retry and stalled recovery. Internal Redis partition metadata survives worker
 restart and is reconciled without reading BullMQ private keys. Upgrade all workers together for the
 new utilization behavior; existing jobs are accepted without a queue flush.
+
+## Dependency compatibility
+
+BullMQ 5/6 and ioredis 5/6 are supported through bounded dependency ranges. CI checks all four
+combinations on Node 24 and 26, plus BullMQ 6.0.0 on Node 24. The matrix verifies actual direct
+resolutions without replacing BullMQ 5's own pinned ioredis client. Queue/delivery behavior, stream
+replay, thread events, abort publication, startup/shutdown and packed native consumers are exercised.

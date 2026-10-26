@@ -267,7 +267,10 @@ describe("BullMQ native access over Redis", () => {
       const pendingChecked = new Promise<void>((resolve) => {
         notifyPendingCheck = resolve;
       });
-      const scripts = Reflect.get(job, "scripts") as {
+      // v6 moved the finished-status operation behind its public backend. v5's existing fixture
+      // uses the job's script façade. Both barriers observe the actual pending result before start.
+      const getBackend = Reflect.get(f.commands, "getBackend") as (() => unknown) | undefined;
+      const scripts = (getBackend ? getBackend.call(f.commands) : Reflect.get(job, "scripts")) as {
         isFinished(jobId: string, returnValue: boolean): Promise<[number, string]>;
       };
       const isFinished = scripts.isFinished.bind(scripts);
@@ -295,7 +298,7 @@ describe("BullMQ native access over Redis", () => {
       await eventsRunning;
     }
   });
-  it("preserves a borrowed ioredis 5 connection after stopping its worker", async () => {
+  it("preserves a borrowed ioredis connection after stopping its worker", async () => {
     const f = await fixture();
     const borrowed = new Redis(redis.url, { maxRetriesPerRequest: null });
     const access = createBullMqTransport({

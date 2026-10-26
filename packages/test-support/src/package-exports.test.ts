@@ -19,6 +19,30 @@ import { describe, expect, it } from "vitest";
 
 const packagesDir = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "../..");
 
+function isBoundedDependencyRange(range: string): boolean {
+  const bounded = /^[~^]?\d+\.\d+\.\d+(?:-[\w.]+)?$/;
+  return (
+    range === "workspace:*" || range.split(/\s*\|\|\s*/).every((branch) => bounded.test(branch))
+  );
+}
+
+it.each(["^5.0.0 || ^6.0.0", "5.80.2 || 6.4.1", "~6.0.0", "workspace:*"])(
+  "accepts the bounded dependency range %s",
+  (range) => expect(isBoundedDependencyRange(range)).toBe(true),
+);
+it.each([
+  ">=5.0.0",
+  "*",
+  "latest",
+  "5 || 6",
+  "^5.0.0 || >=6.0.0",
+  "^5.0.0 || *",
+  "workspace:* || ^6.0.0",
+  "^5.0.0 ||",
+])("rejects the unbounded dependency range %s", (range) =>
+  expect(isBoundedDependencyRange(range)).toBe(false),
+);
+
 /**
  * Applications, not libraries: they have no exports and their entry runs a command on import. Both
  * are published, but the library export contract below deliberately does not apply — see
@@ -69,21 +93,22 @@ describe("publishable package manifests", () => {
   // `peerDependencies` are deliberately exempt: there the *host* chooses the version and a wide
   // range is the point — an adapter that pinned `express` to one major would be the bug.
   it.each(publishablePackages.map((pkg) => [pkg.manifest.name as string, pkg] as const))(
-    "%s pins a major for every dependency it installs",
+    "%s bounds every dependency major it installs",
     (_name, pkg) => {
-      // An allowlist of shapes, not a denylist of one. `>=` is merely how this happened to be
-      // written; `*`, `>5.0.0`, `latest` and `5 || 6` all admit an untested major just as freely,
-      // and a guard that named only the spelling it had already seen would not have caught them.
-      const allowed = /^(?:workspace:\*|[~^]?\d+\.\d+\.\d+(?:-[\w.]+)?)$/;
+      // Require full bounded versions in every OR branch. This checks range shape; the dependency
+      // matrix supplies the evidence for the advertised major combinations. Wildcards, comparisons,
+      // tags and bare major expressions remain rejected.
       const installed = {
         ...((pkg.manifest.dependencies ?? {}) as Record<string, string>),
         ...((pkg.manifest.optionalDependencies ?? {}) as Record<string, string>),
       };
-      const unbounded = Object.entries(installed).filter(([, range]) => !allowed.test(range));
+      const unbounded = Object.entries(installed).filter(
+        ([, range]) => !isBoundedDependencyRange(range),
+      );
 
       expect(
         unbounded,
-        "use `^x.y.z` (or an exact version) for anything installed rather than brought by the host",
+        "use bounded `^x.y.z`/exact versions, optionally joined by ||, for installed dependencies",
       ).toEqual([]);
     },
   );

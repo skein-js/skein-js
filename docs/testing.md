@@ -333,3 +333,19 @@ consumer outside the workspace and exercises SDK 1.12.6, legacy 1.9.25/1.9.31, M
 an actual HTTP server without an application transport shim. `nx run test-support:test-build-image`
 runs real build → artifact → generated production image, checking custom app, compiled UI assets,
 OpenAPI and docs without source files. These gates complement the existing runtime matrix.
+
+## Redis dependency compatibility
+
+Run `pnpm exec nx run test-support:test-redis-compatibility --bullmq=6.4.1 --ioredis=6.0.0` with Docker
+available. Use a disposable checkout and run one selection at a time: the uncached target temporarily
+selects exact direct dependencies for Redis, the BullMQ adapter and the native example, verifies
+actual resolutions, builds/typechecks/tests them, runs integration targets, and exercises an external
+packed consumer with borrowed-client type and ownership checks. It restores original manifests,
+lockfile and installed links in `finally`. It preserves BullMQ's own transitive client dependencies.
+Reports are written to `dist/redis-compatibility/`. CI uploads each leg's report and log.
+
+CI crosses BullMQ 5.80.2/6.4.1, ioredis 5.10.1/6.0.0 and Node 24/26, plus a Node 24 minimum-BullMQ-6.0.0
+leg. Existing queue conformance remains; opt-in partitioned conformance additionally covers busy-head
+retention, independent-thread progress, deduplication, delay floors and close/failure semantics for
+memory, SQLite and Redis. The killed-worker case uses BullMQ's public manual stalled checker with
+the real production lock duration; no runtime timing option is exposed for testing.

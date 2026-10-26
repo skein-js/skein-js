@@ -98,7 +98,7 @@ export class RedisRunQueue implements RunQueue {
       this.#queueName,
       this.#queue,
     ));
-    return this.#consume((job, token) => partitions.process(job, token, tryProcess), options);
+    return this.#consume((job, token) => partitions.dispatchRun(job, token, tryProcess), options);
   }
 
   #consume(

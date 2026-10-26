@@ -10,7 +10,7 @@ import { Queue, QueueEvents, Worker } from "bullmq";
 import {
   commandId,
   commandQueueName,
-  connectRedis,
+  resolveRedisConnectionOptions,
   outcomeQueueName,
   receiverPath,
 } from "./settings.js";
@@ -23,7 +23,7 @@ inbox.exec(
 const insert = inbox.prepare(
   "INSERT INTO outcomes VALUES (?, ?, ?) ON CONFLICT(event_id) DO NOTHING",
 );
-const connection = connectRedis();
+const connection = resolveRedisConnectionOptions();
 const commands = new Queue(commandQueueName, { connection });
 const events = new QueueEvents(commandQueueName, { connection, lastEventId: "0-0" });
 const receiver = new Worker<BullMqOutcome>(
@@ -126,6 +126,5 @@ try {
   await receiver.close();
   await events.close();
   await commands.close();
-  await connection.quit();
   inbox.close();
 }

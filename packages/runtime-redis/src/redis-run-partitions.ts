@@ -44,7 +44,7 @@ export function createRedisRunPartitions(url: string, queueName: string, queue: 
   const advance = async (partition: string): Promise<void> => {
     // Bound stale-head cleanup too: the next sweep resumes if many failed/removed jobs accumulated.
     for (let index = 0; index < 100; index++) {
-      const [head] = await client.zrange(partition, 0, 0);
+      const [head] = await client.zrange(partition, "0", "0");
       if (!head) return;
       const job = await queue.getJob(head);
       const state = job ? await job.getState() : "unknown";
@@ -58,7 +58,7 @@ export function createRedisRunPartitions(url: string, queueName: string, queue: 
     }
   };
   const sweep = async (): Promise<void> => {
-    for (const partition of await client.zrange(registry, 0, 99)) {
+    for (const partition of await client.zrange(registry, "0", "99")) {
       await client.zadd(registry, "XX", Date.now(), partition);
       await advance(partition);
     }
@@ -74,7 +74,7 @@ export function createRedisRunPartitions(url: string, queueName: string, queue: 
   timer.unref();
 
   return {
-    async process(
+    async dispatchRun(
       job: Job<QueuedRun>,
       token: string | undefined,
       tryProcess: (run: QueuedRun) => Promise<boolean>,

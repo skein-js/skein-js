@@ -35,13 +35,13 @@
   "dependencies": {
     "@skein-js/agent-protocol": "workspace:*",
     "@skein-js/core": "workspace:*",
-    "bullmq": "^5.0.0",
-    "zod": "^3.25.76"
+    "bullmq": "^5.0.0 || ^6.0.0",
+    "zod": "^3.25.76",
+    "ioredis": "^5.4.0 || ^6.0.0"
   },
   "devDependencies": {
     "@skein-js/test-support": "workspace:*",
-    "@skein-js/storage-memory": "workspace:*",
-    "ioredis": "^5.4.0"
+    "@skein-js/storage-memory": "workspace:*"
   },
   "publishConfig": {
     "access": "public"
