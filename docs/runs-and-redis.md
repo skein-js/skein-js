@@ -156,17 +156,30 @@ PaaS config.
 **Per-thread ordering is unaffected.** Two runs on the same thread are serialized by the engine's
 execution lock at _every_ concurrency, so the per-thread guard above holds regardless.
 
-### Head-of-line blocking
+### Dispatch by thread
 
-A run waiting on a busy thread's execution claim still occupies a slot. So N queued runs on the _same_
-thread occupy N slots with N−1 merely waiting, and other threads wait behind them. This is a
-**utilization** limit, not a correctness one — the claim keeps the runs correctly serialized either way.
-Two things bound it:
+Bundled memory, SQLite and Redis queues retain a busy thread's pending head while dispatching work
+for independent threads. A busy execution claim does not hold a worker execution slot or spend a
+processor-failure attempt. The execution claim remains responsible for serialization, including
+against inline runs and other instances. The default `multitask_strategy` remains `"reject"`;
+`"enqueue"` is the strategy that builds a thread backlog.
 
-- It needs an explicit opt-in. The default `multitask_strategy` is `"reject"`, and a pending run
-  counts as active — so a second background run on a busy thread is rejected before it can queue.
-  Only `multitask_strategy: "enqueue"` piles runs up on one thread.
-- The worst case degrades to serial execution. No deadlock, no dropped run.
+The worker uses the optional `RunQueue.consumePartitioned` and, when a backend gate is configured,
+`ThreadExecutionGate.tryAcquire` capabilities. Existing third-party queues or gates without either
+capability retain ordinary blocking dispatch. `tryAcquire` returns a lease or `undefined` for a busy
+thread/capacity; backend errors still reject. A partitioned processor returns `true` only after handling
+a run and `false` when execution never started. A false result retains identity and ordering position.
+
+Redis continues using BullMQ jobs, delay floors, retries and stalled-job recovery. Internal partition
+metadata registers jobs when first eligible, parks followers, and promotes the next head after
+settlement. Busy heads retry after 50 ms; followers have a 60-second parking backstop. A bounded sweep
+reconciles up to 100 partitions per second after crashes or removals. Registration never promotes a
+run before its original `after_seconds` delay. Empty metadata is removed. Existing queued jobs register
+lazily, so an upgrade does not require flushing the queue. Coordinate worker upgrades to obtain the
+new dispatch behavior throughout the deployment; the execution claim remains the safety boundary.
+
+SQLite keeps the original job sequence and due time, with no schema migration. Abandoned attempts
+still fail without automatic replay. Deferred work is not a new recovery policy.
 
 Relatedly, **ordering across background `"enqueue"` runs is not guaranteed above concurrency 1**:
 several are dequeued at once and race for the thread's claim. This matches LangGraph at

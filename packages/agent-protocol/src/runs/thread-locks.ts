@@ -11,6 +11,25 @@ import type { ThreadExecutionGate, ThreadExecutionLease } from "@skein-js/core";
 export class ThreadLocks {
   readonly #tails = new Map<string, Promise<unknown>>();
 
+  /** Reserve an idle key synchronously, including against existing blocking waiters. */
+  tryAcquire(key: string): ThreadExecutionLease | undefined {
+    if (this.#tails.has(key)) return undefined;
+    let unlock!: () => void;
+    const tail = new Promise<void>((resolve) => {
+      unlock = resolve;
+    });
+    this.#tails.set(key, tail);
+    let released = false;
+    return {
+      release: async () => {
+        if (released) return;
+        released = true;
+        if (this.#tails.get(key) === tail) this.#tails.delete(key);
+        unlock();
+      },
+    };
+  }
+
   /** Run `task` after any in-flight task for `key` has settled, serializing access per key. */
   async run<T>(key: string, task: () => Promise<T>): Promise<T> {
     const previous = this.#tails.get(key) ?? Promise.resolve();
@@ -28,6 +47,41 @@ export class ThreadLocks {
       // Drop the entry once this task is the last in line, so the map doesn't grow unbounded.
       if (this.#tails.get(key) === tail) this.#tails.delete(key);
     }
+  }
+}
+
+/** One composite local/backend lease; the execution wrapper must not acquire it again. */
+export async function tryAcquireThreadExecution(
+  locks: ThreadLocks,
+  gate: ThreadExecutionGate | undefined,
+  threadId: string,
+): Promise<ThreadExecutionLease | undefined> {
+  const local = locks.tryAcquire(threadId);
+  if (!local) return undefined;
+  try {
+    if (gate && !gate.tryAcquire)
+      throw new Error("Execution gate does not support nonblocking claims");
+    const remote = await gate?.tryAcquire?.(threadId);
+    if (gate && !remote) {
+      await local.release();
+      return undefined;
+    }
+    let released = false;
+    return {
+      ...(remote?.signal ? { signal: remote.signal } : {}),
+      release: async () => {
+        if (released) return;
+        released = true;
+        try {
+          await remote?.release();
+        } finally {
+          await local.release();
+        }
+      },
+    };
+  } catch (error) {
+    await local.release();
+    throw new Error(`could not claim thread "${threadId}" for execution`, { cause: error });
   }
 }
 

@@ -75,8 +75,8 @@ The compatibility program for [#62](https://github.com/skein-js/skein-js/issues/
 A phase is complete only with its listed conformance, consumer and production-build checks. The matrix records the browser, backend and build evidence for each surface.
 
 - ✅ **MCP/A2A**, **compiled graph UI and custom applications**, **OpenAPI/docs and diagnostics** — see the [dated compatibility matrix](./langgraph-compatibility.md)
-- 🗺️ **Per-thread partitioned dispatch.** A run waiting on a busy thread's execution claim still
-  holds a worker slot. Purely about utilization — the claim already makes ordering safe.
+- ✅ **Per-thread partitioned dispatch.** Bundled queues skip occupied execution claims so independent
+  threads can use available worker slots. [Details](./runs-and-redis.md#dispatch-by-thread).
 - 🗺️ **`POST /runs/search`** — cross-thread run search; today runs list per thread.
 
 ## Non-goals

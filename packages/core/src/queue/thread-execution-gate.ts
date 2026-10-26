@@ -44,4 +44,10 @@ export interface ThreadExecutionGate {
    * to that run rather than proceeding unguarded, because proceeding is the unsafe direction.
    */
   acquire(threadId: string): Promise<ThreadExecutionLease>;
+  /**
+   * Claim without waiting for an occupied thread or exhausted claim capacity. `undefined` is busy;
+   * infrastructure failures reject. A returned lease has the same lifetime and ownership contract
+   * as `acquire`. Optional: workers fall back to blocking consumption for older gates.
+   */
+  tryAcquire?(threadId: string): Promise<ThreadExecutionLease | undefined>;
 }

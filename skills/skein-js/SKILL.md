@@ -80,3 +80,8 @@ interrupts with `thread.respond(value)`. The dedicated hook uses thread event su
 and command envelopes; restoring or reconnecting a subscription must never submit another turn.
 The legacy `@langchain/langgraph-sdk/react` hook remains supported for existing apps.
 See `docs/react-sdk.md` and the three React examples for current usage.
+
+Bundled memory, SQLite and Redis queues dispatch by thread: an occupied execution claim does not
+consume a background execution slot. Keep `maxConcurrency` sized for real work. Custom queues/gates
+can opt into `consumePartitioned`/`tryAcquire`; older implementations retain blocking dispatch.
+Preserve the execution claim, original delay floors and SQLite's no-replay recovery contract.

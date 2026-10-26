@@ -36,3 +36,10 @@ remain eligible for the existing retry worker.
 This driver provides memory-style text/filter search. It does not provide semantic/vector indexing,
 a distributed worker queue, or browser/Bun/Deno support. It does not construct LangGraph checkpoints;
 use [@skein-js/local](../local/README.md) for the supported shared-connection assembly.
+
+## Thread dispatch
+
+The queue implements the optional `RunQueue.consumePartitioned` capability used by the run worker.
+Busy thread heads remain pending while independent threads use free execution slots. Returning `false`
+from the callback defers without acknowledging or spending a failure attempt; `true` acknowledges.
+Original delay floors, deduplication and existing driver failure/recovery behavior still apply.

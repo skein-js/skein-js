@@ -1,4 +1,5 @@
 import type { RunFrame } from "@skein-js/core";
+import { runPartitionedRunQueueConformance } from "@skein-js/test-support";
 import { runRunEventBusConformance, runRunQueueConformance } from "@skein-js/test-support";
 import { describe, expect, it } from "vitest";
 
@@ -343,3 +344,5 @@ describe("MemoryRunEventBus bounds", () => {
     expect((await collect(bus.subscribe("r", 1))).map((f) => f.seq)).toEqual([2, 3]);
   });
 });
+
+runPartitionedRunQueueConformance("memory", () => new MemoryRunQueue());

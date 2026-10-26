@@ -13,6 +13,8 @@ import type {
   RunQueue,
 } from "@skein-js/core";
 
+import { consumePartitionedMemoryRuns } from "./partitioned-run-consumer.js";
+
 /**
  * In-memory FIFO of background runs, drained by a single-process consumer — all `skein dev` needs.
  * `@skein-js/redis` (BullMQ) provides the durable, cross-instance version; the run worker talks
@@ -32,6 +34,7 @@ export class MemoryRunQueue implements RunQueue {
    * concurrently with the first.
    */
   readonly #active = new Set<string>();
+  readonly #claimedThreads = new Set<string>();
   /**
    * Runs waiting out an `after_seconds` delay, by run id — the local stand-in for BullMQ's delayed set.
    *
@@ -95,6 +98,20 @@ export class MemoryRunQueue implements RunQueue {
       this.#waiters,
       this.#active,
       process,
+      options.concurrency ?? 1,
+    );
+  }
+
+  consumePartitioned(
+    tryProcess: (run: QueuedRun) => Promise<boolean>,
+    options: RunConsumerOptions = {},
+  ): RunConsumer {
+    return consumePartitionedMemoryRuns(
+      this.#items,
+      this.#waiters,
+      this.#active,
+      this.#claimedThreads,
+      tryProcess,
       options.concurrency ?? 1,
     );
   }

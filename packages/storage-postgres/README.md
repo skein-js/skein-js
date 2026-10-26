@@ -102,3 +102,7 @@ the pairing.)
 ## License
 
 [Apache-2.0](../../LICENSE)
+
+The thread execution gate also supplies optional `tryAcquire(threadId)`: it returns the existing
+session-owned lease, or `undefined` when the thread or gate pool is busy. It does not enqueue a pool
+waiter. Backend failures reject; lease-loss signals and idempotent release match blocking acquisition.

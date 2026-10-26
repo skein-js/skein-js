@@ -4,7 +4,42 @@
 import type { ThreadExecutionGate } from "@skein-js/core";
 import { describe, expect, it, vi } from "vitest";
 
-import { ThreadLocks, withThreadExecution } from "./thread-locks.js";
+import { ThreadLocks, tryAcquireThreadExecution, withThreadExecution } from "./thread-locks.js";
+
+it("nonblocking claims respect local holders and release against blocking waiters", async () => {
+  const locks = new ThreadLocks();
+  const held = await tryAcquireThreadExecution(locks, undefined, "t");
+  expect(held).toBeDefined();
+  expect(await tryAcquireThreadExecution(locks, undefined, "t")).toBeUndefined();
+  let entered = false;
+  const waiting = locks.run("t", async () => {
+    entered = true;
+  });
+  expect(entered).toBe(false);
+  await held!.release();
+  await waiting;
+  expect(entered).toBe(true);
+  const next = await tryAcquireThreadExecution(locks, undefined, "t");
+  expect(next).toBeDefined();
+  await next!.release();
+});
+
+it("releases a local reservation on backend contention or failure", async () => {
+  const locks = new ThreadLocks();
+  const gate: ThreadExecutionGate = {
+    acquire: vi.fn(),
+    tryAcquire: async () => undefined,
+  };
+  expect(await tryAcquireThreadExecution(locks, gate, "t")).toBeUndefined();
+  gate.tryAcquire = async () => {
+    throw new Error("backend lost");
+  };
+  await expect(tryAcquireThreadExecution(locks, gate, "t")).rejects.toThrow("could not claim");
+  const recovered = await tryAcquireThreadExecution(locks, undefined, "t");
+  expect(recovered).toBeDefined();
+  await recovered!.release();
+  expect(gate.acquire).not.toHaveBeenCalled();
+});
 
 /** A gate recording acquire/release order, so the ordering assertions read off one log. */
 function recordingGate(log: string[]): ThreadExecutionGate {

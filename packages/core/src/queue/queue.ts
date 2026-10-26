@@ -83,6 +83,17 @@ export interface RunQueue {
   enqueue(run: QueuedRun, options?: EnqueueOptions): Promise<void>;
   /** Start draining the queue, running each job through `process`. Returns a handle to stop. */
   consume(process: RunProcessor, options?: RunConsumerOptions): RunConsumer;
+  /**
+   * Consume available thread partitions. `true` acknowledges a handled run; `false` means execution
+   * did not start and retains the run at its partition's head without spending failure attempts.
+   * Throws follow the driver's ordinary failure policy. Busy partitions must not prevent other
+   * threads from using available capacity. Original not-before times and deduplication still apply.
+   * Optional so existing third-party queues retain the ordinary consumption path.
+   */
+  consumePartitioned?(
+    tryProcess: (run: QueuedRun) => Promise<boolean>,
+    options?: RunConsumerOptions,
+  ): RunConsumer;
 }
 
 /** Fan-out of {@link RunFrame}s from the executing worker to subscribed clients. */

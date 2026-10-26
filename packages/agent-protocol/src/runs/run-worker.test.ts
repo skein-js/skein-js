@@ -1,4 +1,4 @@
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 
 import { createFixtureDeps } from "../__fixtures__/deps.js";
 import { createContext } from "../context.js";
@@ -11,6 +11,112 @@ interface CapturedLine {
   message: string;
   meta?: unknown;
 }
+
+it("finishes an independent run while a queued thread's backend claim is busy", async () => {
+  let available = false;
+  let releases = 0;
+  const acquire = vi.fn(async () => {
+    throw new Error("Must not wait");
+  });
+  const logger = capturingLogger();
+  const deps = createFixtureDeps({
+    logger,
+    threadExecutionGate: {
+      acquire,
+      tryAcquire: async (threadId) =>
+        threadId === busyThread && !available
+          ? undefined
+          : {
+              release: async () => {
+                releases++;
+              },
+            },
+    },
+  });
+  const ctx = createContext(deps);
+  const service = createProtocolServiceFromContext(ctx);
+  await service.assistants.registerGraphAssistants();
+  const busyThread = (await service.threads.create()).thread_id;
+  const cold = await service.threads.create();
+  const head = await service.runs.createBackground(busyThread, {
+    assistant_id: "echo",
+    input: { value: "one" },
+  });
+  const tail = await service.runs.createBackground(busyThread, {
+    assistant_id: "echo",
+    input: { value: "two" },
+    multitask_strategy: "enqueue",
+  });
+  const independent = await service.runs.createBackground(cold.thread_id, {
+    assistant_id: "echo",
+    input: { value: "cold" },
+  });
+  const worker = createRunWorker(ctx, { maxConcurrency: 1 });
+  worker.start();
+  try {
+    await waitFor(async () => (await service.runs.get(independent.run_id)).status === "success");
+    expect((await service.runs.get(head.run_id)).status).toBe("pending");
+    expect((await service.runs.get(tail.run_id)).status).toBe("pending");
+    expect(worker.inFlightRunCount).toBe(0);
+    expect(logger.errors).toEqual([]);
+    available = true;
+    await waitFor(async () => (await service.runs.get(tail.run_id)).status === "success");
+    expect((await service.runs.get(head.run_id)).status).toBe("success");
+    expect(releases).toBe(3);
+    expect(acquire).not.toHaveBeenCalled();
+  } finally {
+    available = true;
+    await worker.stop();
+  }
+});
+
+it("uses legacy consumption when an injected gate only supports blocking acquisition", async () => {
+  const deps = createFixtureDeps({
+    threadExecutionGate: { acquire: async () => ({ release: async () => undefined }) },
+  });
+  const consume = vi.spyOn(deps.queue, "consume");
+  const partitioned = vi.spyOn(deps.queue, "consumePartitioned");
+  const worker = createRunWorker(createContext(deps));
+  worker.start();
+  await worker.stop();
+  expect(consume).toHaveBeenCalledOnce();
+  expect(partitioned).not.toHaveBeenCalled();
+});
+
+it("defers a claim that finishes acquiring after shutdown begins", async () => {
+  let entered = false;
+  let finishClaim!: (lease: { release(): Promise<void> }) => void;
+  const claim = new Promise<{ release(): Promise<void> }>((resolve) => {
+    finishClaim = resolve;
+  });
+  const release = vi.fn(async () => undefined);
+  const deps = createFixtureDeps({
+    threadExecutionGate: {
+      acquire: vi.fn(),
+      tryAcquire: async () => {
+        entered = true;
+        return claim;
+      },
+    },
+  });
+  const ctx = createContext(deps);
+  const service = createProtocolServiceFromContext(ctx);
+  await service.assistants.registerGraphAssistants();
+  const thread = await service.threads.create();
+  const run = await service.runs.createBackground(thread.thread_id, {
+    assistant_id: "echo",
+    input: {},
+  });
+  const worker = createRunWorker(ctx, { maxConcurrency: 1 });
+  worker.start();
+  await waitFor(async () => entered);
+  const stopped = worker.stop();
+  finishClaim({ release });
+  await stopped;
+  expect(release).toHaveBeenCalledOnce();
+  expect((await service.runs.get(run.run_id)).status).toBe("pending");
+  expect(worker.inFlightRunCount).toBe(0);
+});
 
 /** A logger that records every `info` and `error` call's message + meta for assertions. */
 function capturingLogger(): Logger & { infos: CapturedLine[]; errors: CapturedLine[] } {
