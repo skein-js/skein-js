@@ -310,7 +310,11 @@ HTML source.
 
 Global run search shares filter, bound, ownership, copy and pagination cases across memory,
 Postgres and SQLite. Driver-specific tests pin genuine stored timestamp ties, including Unicode
-run-ID ordering. Postgres integration checks index catalogs and `EXPLAIN`; SQLite checks upgrade,
+run-ID ordering. Postgres integration checks index catalogs, `EXPLAIN`, and upgrades with long identifiers accepted
+by the previous schema. Historical indexes must preserve those identifiers; assistant equality uses
+a hash index, and timestamp ties are sorted by run ID outside the creation-time index prefix.
+Invalid timezone offsets must return 400 through each adapter for all four time filters.
+SQLite checks upgrade,
 reopening and query plans without Docker. HTTP conformance covers every adapter and disabled routes.
 When changing SQL migrations, run `nx run storage-postgres:generate-migrations` and the Postgres
 `test-integration` target; the build does not regenerate the compiled migration asset.

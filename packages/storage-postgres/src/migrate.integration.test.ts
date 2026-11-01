@@ -3,6 +3,8 @@
 // tests assert the ledger table shape, the migration names, and that an already-applied migration is
 // never re-run. Needs Docker (Testcontainers); see docs/testing.md.
 
+import { randomBytes } from "node:crypto";
+
 import { startPostgres, type StartedResource } from "@skein-js/test-support";
 import { Pool } from "pg";
 import { afterAll, afterEach, beforeAll, describe, expect, it } from "vitest";
@@ -214,14 +216,13 @@ describe("applySkeinMigrations", () => {
     // backwards and stops — a Seq Scan, or a sort over every run of the thread, would defeat the point.
     const pool = await connectScratch("migrate_latest_run_index_used");
     await applySkeinMigrations(pool);
-    await pool.query(`INSERT INTO threads (thread_id) VALUES ('t-1'), ('t-2')`);
-    for (let index = 0; index < 2000; index += 1) {
-      await pool.query(
-        `INSERT INTO runs (run_id, thread_id, assistant_id, created_at)
-           VALUES ($1, $2, 'a', now() - ($3 || ' seconds')::interval)`,
-        [`r-${index}`, index % 2 === 0 ? "t-1" : "t-2", index],
-      );
-    }
+    // Many threads make this a selective lookup. With half the table in one thread, the planner
+    // can legitimately prefer a historical creation-time index and stop after a couple of rows.
+    await pool.query(`INSERT INTO threads (thread_id)
+      SELECT 't-'||ordinal FROM generate_series(0,99) ordinal`);
+    await pool.query(`INSERT INTO runs (run_id, thread_id, assistant_id, created_at)
+      SELECT 'r-'||ordinal,'t-'||(ordinal%100),'a',now()-(ordinal*interval '1 second')
+      FROM generate_series(0,19999) ordinal`);
     await pool.query("ANALYZE runs");
 
     const { rows } = await pool.query<{ "QUERY PLAN": string }>(
@@ -442,6 +443,68 @@ describe("applySkeinMigrations", () => {
 });
 
 describe("PostgresSkeinStore.migrate", () => {
+  it("upgrades long legacy run identifiers and preserves subsequent writes and search", async () => {
+    const url = await createScratchDatabase("migrate_search_long_identifiers");
+    const pool = new Pool({ connectionString: url });
+    openPools.push(pool);
+    const searchMigration = SKEIN_MIGRATIONS.findIndex(
+      (migration) => migration.name === "0016_run_search",
+    );
+    expect(searchMigration).toBeGreaterThan(0);
+    await applySkeinMigrations(pool, { migrations: SKEIN_MIGRATIONS.slice(0, searchMigration) });
+    const store = await PostgresSkeinStore.connect(url);
+    try {
+      const thread = await store.threads.create();
+      // Random hex avoids compression hiding btree tuple-size failures. The near-limit run ID fits
+      // the existing primary key; terminal rows never entered the legacy inflight composite index.
+      const identifiers = [
+        {
+          assistant_id: randomBytes(1000).toString("hex"),
+          run_id: randomBytes(500).toString("hex"),
+        },
+        { assistant_id: "agent", run_id: randomBytes(1344).toString("hex") },
+        { assistant_id: randomBytes(2500).toString("hex"), run_id: "long-assistant" },
+      ];
+      for (const identifiersForRun of identifiers)
+        await store.runs.create({
+          ...identifiersForRun,
+          thread_id: thread.thread_id,
+          status: "success",
+          metadata: { owner: "alice" },
+        });
+      // Genuine stored ties exercise the query's ID sort after the creation-time index prefix.
+      await pool.query("UPDATE runs SET created_at=$1,updated_at=$1", ["2026-11-01T00:00:00Z"]);
+      const before = await Promise.all(identifiers.map(({ run_id }) => store.runs.get(run_id)));
+      expect(await applySkeinMigrations(pool)).toEqual(["0016_run_search"]);
+      await store.migrate();
+      expect(await applySkeinMigrations(pool)).toEqual([]);
+      expect(await Promise.all(identifiers.map(({ run_id }) => store.runs.get(run_id)))).toEqual(
+        before,
+      );
+      const found = await store.runs.search!({ enforcedMetadata: { owner: "alice" }, limit: 2 });
+      const next = await store.runs.search!({ offset: 2 });
+      expect([...found, ...next].map((run) => run.run_id)).toEqual(
+        identifiers
+          .map(({ run_id }) => run_id)
+          .sort()
+          .reverse(),
+      );
+      const longAssistant = identifiers[2]!.assistant_id;
+      expect(await store.runs.search!({ assistantId: longAssistant })).toMatchObject([
+        { run_id: "long-assistant" },
+      ]);
+      const inserted = await store.runs.create({
+        thread_id: thread.thread_id,
+        assistant_id: longAssistant,
+        run_id: randomBytes(1344).toString("hex"),
+        status: "success",
+      });
+      expect(await store.runs.get(inserted.run_id)).toEqual(inserted);
+      expect(await store.runs.search!({ assistantId: longAssistant })).toHaveLength(2);
+    } finally {
+      await store.close();
+    }
+  });
   it("upgrades populated result/outbox tables from the merged runtime without rewriting them", async () => {
     const url = await createScratchDatabase("migrate_native_populated");
     const pool = new Pool({ connectionString: url });

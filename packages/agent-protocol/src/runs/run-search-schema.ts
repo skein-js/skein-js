@@ -5,6 +5,9 @@ import { z } from "zod";
 const timestamp = z
   .string()
   .datetime({ offset: true })
+  // Zod checks the ISO syntax but accepts out-of-range offsets. Refuse those before toISOString
+  // can throw, so malformed timestamps become boundary errors instead of server failures.
+  .refine((value) => Number.isFinite(Date.parse(value)), "Invalid datetime")
   .transform((value) => new Date(value).toISOString());
 export const runSearchSchema = z
   .object({

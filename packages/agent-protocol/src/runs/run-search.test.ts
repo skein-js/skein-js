@@ -42,6 +42,18 @@ describe("run search boundary", () => {
       status: 400,
     });
   });
+  it.each(
+    ["created_after", "created_before", "updated_after", "updated_before"].flatMap((field) =>
+      ["+24:00", "-24:00", "+03:99", "+99:99"].map((offset) => ({
+        [field]: `2026-11-01T00:00:00${offset}`,
+      })),
+    ),
+  )("rejects unparseable timezone offsets with a boundary error: %j", async (body) => {
+    const runtime = createProtocolRuntime(createFixtureDeps());
+    await expect(runtime.handlers.searchRuns!({ ...request, body })).rejects.toMatchObject({
+      status: 400,
+    });
+  });
   it("accepts equal half-open boundaries as an empty window", async () => {
     const runtime = createProtocolRuntime(createFixtureDeps());
     expect(

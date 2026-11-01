@@ -277,10 +277,11 @@ describe("runs_inflight_created_at_idx", () => {
       // and the plan says nothing either way — which is exactly how the negated form's failure to match
       // stayed invisible.
       await client.query("SET enable_seqscan = off");
-      // Historical status search now offers a valid bitmap alternative on this small table.
-      // Isolate ordered-scan predicate eligibility, not the cost ranking of equivalent plans.
+      // Historical indexes also offer bitmap and prefix-sort alternatives on this small table.
+      // Isolate fully ordered scans to test predicate eligibility, not equivalent-plan costs.
       await client.query("SET enable_bitmapscan = off");
       await client.query("SET enable_sort = off");
+      await client.query("SET enable_incremental_sort = off");
       const { rows } = await client.query<{ "QUERY PLAN": string }>(`EXPLAIN ${sql}`, params);
       return rows.map((row) => row["QUERY PLAN"]).join("\n");
     } finally {

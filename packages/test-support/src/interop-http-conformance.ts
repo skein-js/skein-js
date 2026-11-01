@@ -88,6 +88,10 @@ export function runInteropHttpConformance(
         },
       });
       expect((await post("/runs/search", { status: "failed" })).status).toBe(400);
+      for (const field of ["created_after", "created_before", "updated_after", "updated_before"])
+        expect((await post("/runs/search", { [field]: "2026-11-01T00:00:00+24:00" })).status).toBe(
+          400,
+        );
     } finally {
       await server.close();
     }

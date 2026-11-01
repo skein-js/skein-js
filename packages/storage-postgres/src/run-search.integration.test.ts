@@ -48,7 +48,8 @@ it("retains inflight indexes and provides indexed historical status/ownership se
   const thread = await store.threads.create();
   await pool.query(
     `INSERT INTO runs(run_id,thread_id,assistant_id,status,metadata,kwargs,created_at)
-    SELECT 'run-'||ordinal,$1,'agent',CASE WHEN ordinal%100=0 THEN 'error' ELSE 'success' END,
+    SELECT 'run-'||ordinal,$1,CASE WHEN ordinal%100=0 THEN 'agent' ELSE 'other' END,
+      CASE WHEN ordinal%100=0 THEN 'error' ELSE 'success' END,
       jsonb_build_object('owner',CASE WHEN ordinal%100=0 THEN 'alice' ELSE 'bob' END),
       '{"input":"private"}'::jsonb,now()-(ordinal*interval '1 second') FROM generate_series(1,5000) ordinal`,
     [thread.thread_id],
@@ -62,7 +63,7 @@ it("retains inflight indexes and provides indexed historical status/ownership se
       "runs_inflight_created_at_idx",
       "runs_search_created_at_idx",
       "runs_search_status_created_at_idx",
-      "runs_search_assistant_created_at_idx",
+      "runs_search_assistant_idx",
       "runs_search_updated_at_idx",
       "runs_search_metadata_idx",
     ]),
@@ -71,6 +72,10 @@ it("retains inflight indexes and provides indexed historical status/ownership se
     `EXPLAIN SELECT run_id FROM runs WHERE status='error' ORDER BY created_at DESC,run_id COLLATE "C" DESC LIMIT 2`,
   );
   expect(JSON.stringify(plan.rows)).toContain("runs_search_status_created_at_idx");
+  const assistantPlan = await pool.query(
+    "EXPLAIN SELECT run_id FROM runs WHERE assistant_id='agent'",
+  );
+  expect(JSON.stringify(assistantPlan.rows)).toContain("runs_search_assistant_idx");
   const found = await store.runs.search!({
     status: "error",
     enforcedMetadata: { owner: "alice" },
