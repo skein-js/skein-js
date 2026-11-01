@@ -370,6 +370,12 @@ subdirectory captures state, runs, metadata/retention, checkpoint/time travel, r
 deliveries. Fixtures include configured channels and an intentional callback failure, without
 contacting external services.
 
+`nx run console-ui:record-demo` records a paced, silent Chromium walkthrough using the same offline
+fixture. It writes `dist/console-recordings/console-walkthrough.webm`; copy the reviewed recording to
+`docs/videos/console-walkthrough.webm` to refresh the embedded console demo. The recording target is
+uncached, asserts the navigation and draft-restoration steps, and stays separate from regression
+tests so ordinary test runs do not regenerate documentation media.
+
 Workspace regressions cover Threads-to-Playground links, separate Chat/JSON drafts through reloads,
 foreground runs surviving navigation without resubmission, capped-page and URL/tab restoration,
 keyboard panel associations, and visible missing-run errors. A prefixed fixture proxies the protocol

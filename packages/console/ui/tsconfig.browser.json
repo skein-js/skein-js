@@ -5,5 +5,5 @@
     "lib": ["ES2023", "DOM", "DOM.Iterable"],
     "noEmit": true
   },
-  "include": ["browser/**/*.ts", "vitest.browser.config.ts"]
+  "include": ["browser/**/*.ts", "vitest.browser.config.ts", "vitest.recording.config.ts"]
 }

@@ -9293,6 +9293,17 @@ activity" fans out over threads. See [roadmap](./roadmap.md).)
 It ships as [`@skein-js/console`](https://github.com/skein-js/skein-js/tree/main/packages/console): the compiled UI plus a resolver, with **no
 runtime dependencies**.
 
+## Watch the console walkthrough
+
+This silent recording follows a message from Playground into thread inspection, returns with an
+unsent draft intact, and reopens the conversation from Threads and Recent threads. It uses the
+offline demo graphs. Use the player's fullscreen control for a closer view.
+
+<video controls playsinline preload="none" aria-label="Console walkthrough: run an Assistant, inspect its thread, and return to an unsent draft" poster="/images/console/playground-light.png" style="width: 100%; border-radius: 12px">
+  <source src="./videos/console-walkthrough.webm" type="video/webm">
+  Your browser cannot play this video.
+</video>
+
 ## Running it
 
 `skein dev` serves it by default and prints the URL:
