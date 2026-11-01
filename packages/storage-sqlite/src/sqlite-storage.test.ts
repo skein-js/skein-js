@@ -205,13 +205,15 @@ describe("durability and ownership", () => {
       await reopened.dispose();
     }
   }, 30_000);
+  // The competing open includes SQLite's 5s busy wait; durable writes and reopening also need
+  // headroom on loaded macOS/Windows runners. Keep every ownership/disposal assertion intact.
   it("rejects a second owner and releases ownership on idempotent disposal", async () => {
     const storage = await open();
     await expect(openSqliteStorage({ filename: storage.database.name })).rejects.toThrow(/locked/);
     await Promise.all([storage.dispose(), storage.dispose()]);
     const reopened = await openSqliteStorage({ filename: storage.database.name });
     await reopened.dispose();
-  }, 10_000);
+  }, 30_000);
   it("rolls back cron advancement if run admission fails", async () => {
     const storage = await open();
     const cron = await storage.store.crons.create({
