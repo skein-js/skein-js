@@ -43,6 +43,21 @@ pnpm test
 New DB/queue behavior needs container-backed tests (`*.integration.test.ts`), and new storage
 drivers must pass the shared `SkeinStore` conformance suite. See the deep guides below.
 
+## Developing the console
+
+The UI is a static Vite + React SPA (Tailwind, Radix dialogs, and system-aware light/dark themes), built by the `console-ui` Nx project. `nx serve console-ui` is the HMR dev loop.
+
+`nx build console` then chains: build the SPA → compile its files into `src/assets.generated.ts` as
+string constants → bundle. That last step is why the package can be a _library_: skein forbids reading
+package-relative files at runtime, because bundlers rewrite `import.meta.url` to the output location
+(see [bundling guide](./docs/bundling.md)). `@skein-js/storage-postgres` solved the same problem for its SQL;
+the console does it for HTML, JS and CSS. A test pins the total size so the CLI's install cost cannot
+drift upward unnoticed.
+
+Run `nx run console-ui:test-browser` for real-HTTP deterministic graph scenarios, operation flows,
+and responsive light/dark screenshots. It runs in CI alongside the unit tests. The asset test retains
+a **1 MiB** uncompressed ceiling; the published package still has zero runtime dependencies.
+
 ## The deep contributor guide
 
 [**`AGENTS.md`**](./AGENTS.md) is the canonical, detailed guide for working in this repo — it's
