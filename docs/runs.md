@@ -38,6 +38,51 @@ they need a process that stays alive — which is why they don't work on serverl
 Streaming is its own topic — the stream modes, reconnecting mid-stream, and joining from a second
 client are in [streaming.md](./streaming.md).
 
+## Search runs across threads
+
+`POST /runs/search` returns run rows across threads without enumerating every thread. For example,
+find currently failed runs updated in the last hour using your deployment's normal auth headers:
+
+```ts
+const response = await fetch(`${apiUrl}/runs/search`, {
+  method: "POST",
+  headers: { "content-type": "application/json", ...authHeaders },
+  body: JSON.stringify({
+    status: "error",
+    updated_after: new Date(Date.now() - 60 * 60 * 1000).toISOString(),
+    limit: 100,
+    offset: 0,
+  }),
+});
+if (!response.ok) throw new Error(`Run search failed: ${response.status}`);
+const runs = await response.json();
+```
+
+| Field                             | Meaning                                                                                            |
+| --------------------------------- | -------------------------------------------------------------------------------------------------- |
+| `status`                          | One run status: `pending`, `running`, `success`, `error`, `timeout`, `interrupted`, or `cancelled` |
+| `assistant_id`, `thread_id`       | Exact identifiers; combine them with any other filter                                              |
+| `created_after`, `created_before` | Creation-time window: inclusive lower bound, exclusive upper bound                                 |
+| `updated_after`, `updated_before` | Last-update window with the same half-open bounds                                                  |
+| `limit`, `offset`                 | Default 100 and 0; limit must be 1–1000, offset a nonnegative integer                              |
+
+Timestamps must include a timezone and are normalized to UTC. Invalid values or inverted windows
+return 400; equal bounds select no rows. Results are ordered by stored `created_at DESC`, then
+`run_id DESC`. A deployment's lower page cap still applies. To traverse pages, increase the offset by
+the number returned and stop on an empty page. The response is a plain `Run[]`, without execution
+kwargs, retained results, or a total count. Existing thread-scoped listing keeps its behavior.
+
+Search authorizes through `threads:search` and matches the ownership metadata stamped on each run.
+All filters, including server-enforced ownership, run inside the storage query before pagination.
+Custom auth engines should express access through the declared ownership filters. If a stricter
+custom `matchesFilters` callback rejects a returned row, the entire request returns 501; Skein does
+not expose that row or silently shorten the page. Custom stores without `RunRepo.search` also return 501. All bundled stores implement it.
+
+The tested SDK versions 1.9.25 and 1.12.6 do not expose `client.runs.search()`. Use HTTP as above; the endpoint and
+its shared validator appear automatically in the deployment's generated `/docs` reference.
+Programmatic store/service queries use the exported `RunSearchQuery` with camel-case identifiers and
+time bounds (`assistantId`, `threadId`, `createdAfter`, `createdBefore`, `updatedAfter`, `updatedBefore`).
+
 ## Multitask: what happens to the run already going
 
 Send a second message before the first finishes ("double-texting") and something has to give. Pass

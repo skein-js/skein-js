@@ -3,6 +3,7 @@ import { z, type ZodTypeAny } from "zod";
 
 import type { ProtocolHandlers, ProtocolResponse } from "../create-handlers.js";
 import * as wire from "../meta/response-schemas.js";
+import { runSearchSchema } from "../runs/run-search-schema.js";
 import {
   threadEventFilterSchema,
   threadCommandEnvelopeSchema,
@@ -133,6 +134,7 @@ export const operationContracts = {
   createBackgroundRun: createJsonContract(wire.run, schemas.runCreateSchema),
   createStatelessRun: createJsonContract(wire.run, schemas.runCreateSchema),
   createRunBatch: createJsonContract(z.array(wire.run), schemas.runBatchCreateSchema),
+  searchRuns: createJsonContract(z.array(wire.run), runSearchSchema),
   getRun: createJsonContract(wire.run),
   listRunDeliveries: {
     ...createJsonContract(

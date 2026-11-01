@@ -268,8 +268,8 @@ describe("threadLockKey", () => {
 });
 
 describe("runs_inflight_created_at_idx", () => {
-  /** The plan Postgres chooses for `sql`, with sequential scans disabled. */
-  async function planWithoutSeqScan(pool: Pool, sql: string, params: unknown[] = []) {
+  /** Isolate whether `sql` can use an ordered index scan with the partial predicate. */
+  async function planForOrderedIndexScan(pool: Pool, sql: string, params: unknown[] = []) {
     const client = await pool.connect();
     try {
       // Disabling seq scans isolates the question this test is about: *can* the planner match the query
@@ -277,6 +277,11 @@ describe("runs_inflight_created_at_idx", () => {
       // and the plan says nothing either way — which is exactly how the negated form's failure to match
       // stayed invisible.
       await client.query("SET enable_seqscan = off");
+      // Historical indexes also offer bitmap and prefix-sort alternatives on this small table.
+      // Isolate fully ordered scans to test predicate eligibility, not equivalent-plan costs.
+      await client.query("SET enable_bitmapscan = off");
+      await client.query("SET enable_sort = off");
+      await client.query("SET enable_incremental_sort = off");
       const { rows } = await client.query<{ "QUERY PLAN": string }>(`EXPLAIN ${sql}`, params);
       return rows.map((row) => row["QUERY PLAN"]).join("\n");
     } finally {
@@ -297,7 +302,7 @@ describe("runs_inflight_created_at_idx", () => {
       await pool.query("ANALYZE runs");
 
       // What `listActiveRuns` now sends: a literal list, built from INFLIGHT_RUN_STATUSES.
-      const positive = await planWithoutSeqScan(
+      const positive = await planForOrderedIndexScan(
         pool,
         `SELECT * FROM runs WHERE status IN (${INFLIGHT_RUN_STATUSES.map((s) => `'${s}'`).join(", ")})
            ORDER BY created_at, run_id LIMIT 1000`,
@@ -307,7 +312,7 @@ describe("runs_inflight_created_at_idx", () => {
       // What it sent before, and why migration 0006 was dead weight: the planner cannot prove a negated,
       // parameterized filter implies the index predicate, so it cannot use the index *even when a
       // sequential scan is off the table*. This is the assertion that pins the coupling.
-      const negated = await planWithoutSeqScan(
+      const negated = await planForOrderedIndexScan(
         pool,
         `SELECT * FROM runs WHERE NOT (status = ANY($1::text[]))
            ORDER BY created_at, run_id LIMIT 1000`,

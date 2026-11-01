@@ -49,3 +49,11 @@ Retention readback is included on ordinary resource projections: threads optiona
 (`expires_at` over HTTP). `null` means known no expiry; absent metadata means unavailable. Reads
 that refresh TTL return the updated expiry. Passive inspection can request `refreshTtl: false`.
 Thread expiry marks eligibility for sweeping, which may be deferred while work is active.
+
+## Cross-thread run search
+
+`RunSearchQuery` describes the optional `RunRepo.search` capability, implemented by all bundled
+stores. It filters status, assistant/thread IDs, creation/update windows and server-enforced
+ownership before bounded pagination, returning existing run rows ordered newest first. Direct
+queries use camel-case fields; `POST /runs/search` uses snake-case fields and returns 501 for a
+custom driver without the capability. See [run search](../../docs/runs.md#search-runs-across-threads).

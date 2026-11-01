@@ -99,7 +99,7 @@ export interface RunningServer {
 /** Boot the echo server on an ephemeral loopback port. `cors` is off unless explicitly enabled. */
 export async function startEchoServer(
   options: {
-    disable?: { docs?: boolean; meta?: boolean };
+    disable?: { docs?: boolean; meta?: boolean; runs?: boolean };
     cors?: boolean | CorsOptions;
     auth?: AuthEngine;
     deps?: ProtocolDeps;

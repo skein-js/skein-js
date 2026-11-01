@@ -508,6 +508,25 @@ CREATE TABLE native_dispatches (
 CREATE INDEX native_dispatches_due ON native_dispatches(lease_until,run_id) WHERE kind='cancel' AND NOT dispatched;
 `;
 
+const MIGRATION_0016_RUN_SEARCH = `-- Up Migration
+-- skein:concurrent
+-- Historical search cannot use the existing inflight-only index. Keep that small queue index;
+-- these cover global paging, status/assistant selection, time windows, and ownership containment.
+-- Do not duplicate variable-length run IDs in these btrees: IDs that fit the existing primary key
+-- can exceed the tuple limit when combined with other columns. The query sorts equal timestamps
+-- by run_id after using the creation-time prefix. Hash equality indexes accept long assistant IDs
+-- without combining them with a run ID or adding a new identifier-length restriction.
+CREATE INDEX CONCURRENTLY IF NOT EXISTS runs_search_created_at_idx
+  ON runs (created_at DESC);
+CREATE INDEX CONCURRENTLY IF NOT EXISTS runs_search_status_created_at_idx
+  ON runs (status, created_at DESC);
+CREATE INDEX CONCURRENTLY IF NOT EXISTS runs_search_assistant_idx
+  ON runs USING hash (assistant_id);
+CREATE INDEX CONCURRENTLY IF NOT EXISTS runs_search_updated_at_idx ON runs (updated_at);
+CREATE INDEX CONCURRENTLY IF NOT EXISTS runs_search_metadata_idx
+  ON runs USING gin (metadata jsonb_path_ops);
+`;
+
 /** Every migration, oldest first. Order is the contract — never reorder or rename. */
 export const SKEIN_MIGRATIONS: readonly SkeinMigration[] = [
   { name: "0001_init", up: MIGRATION_0001_INIT },
@@ -559,4 +578,19 @@ export const SKEIN_MIGRATIONS: readonly SkeinMigration[] = [
   { name: "0013_thread_retention", up: MIGRATION_0013_THREAD_RETENTION },
   { name: "0014_run_results", up: MIGRATION_0014_RUN_RESULTS },
   { name: "0015_native_admission", up: MIGRATION_0015_NATIVE_ADMISSION },
+  {
+    name: "0016_run_search",
+    up: MIGRATION_0016_RUN_SEARCH,
+    statements: [
+      `CREATE INDEX CONCURRENTLY IF NOT EXISTS runs_search_created_at_idx
+  ON runs (created_at DESC)`,
+      `CREATE INDEX CONCURRENTLY IF NOT EXISTS runs_search_status_created_at_idx
+  ON runs (status, created_at DESC)`,
+      `CREATE INDEX CONCURRENTLY IF NOT EXISTS runs_search_assistant_idx
+  ON runs USING hash (assistant_id)`,
+      `CREATE INDEX CONCURRENTLY IF NOT EXISTS runs_search_updated_at_idx ON runs (updated_at)`,
+      `CREATE INDEX CONCURRENTLY IF NOT EXISTS runs_search_metadata_idx
+  ON runs USING gin (metadata jsonb_path_ops)`,
+    ],
+  },
 ];

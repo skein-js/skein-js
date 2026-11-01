@@ -3,8 +3,7 @@ import { describe, expect, it } from "vitest";
 
 import { MemorySkeinStore } from "./memory-skein-store.js";
 
-// The whole point of the memory driver in this slice: prove it satisfies the shared SkeinStore
-// contract. Postgres will run this exact suite later, making the two interchangeable.
+// Memory, Postgres and SQLite run the same SkeinStore conformance contract.
 runSkeinStoreConformance("memory", (options) => new MemorySkeinStore(options));
 
 it("round-trips run results without importing orphan or overwriting existing output", async () => {
@@ -125,3 +124,20 @@ describe("collection pagination", () => {
 });
 
 runStoreOptionsConformance("memory", (ttl) => new MemorySkeinStore({ ttl }));
+
+it("searches timestamp ties in binary run-id order without changing existing thread listing", async () => {
+  const store = new MemorySkeinStore();
+  const thread = await store.threads.create();
+  for (const run_id of ["a", "\uE000", "😀"])
+    await store.runs.create({ thread_id: thread.thread_id, assistant_id: "agent", run_id });
+  const snapshot = store.snapshot();
+  for (const [, run] of snapshot.runs) run.created_at = "2026-11-01T00:00:00.000Z";
+  const restored = new MemorySkeinStore();
+  restored.hydrate(snapshot);
+  expect((await restored.runs.search!({})).map((run) => run.run_id)).toEqual(["😀", "\uE000", "a"]);
+  expect((await restored.runs.listByThread(thread.thread_id)).map((run) => run.run_id)).toEqual([
+    "a",
+    "\uE000",
+    "😀",
+  ]);
+});

@@ -6,7 +6,7 @@ export function runInteropHttpConformance(
   name: string,
   start: (options?: {
     auth?: AuthEngine;
-    disable?: { docs?: boolean; meta?: boolean };
+    disable?: { docs?: boolean; meta?: boolean; runs?: boolean };
   }) => Promise<{ baseUrl: string; close(): Promise<void> }>,
 ): void {
   for (const disabled of [
@@ -39,6 +39,81 @@ export function runInteropHttpConformance(
       }
     });
   }
+
+  it(`${name} searches completed runs through the shared HTTP contract`, async () => {
+    const server = await start();
+    const post = (path: string, body: unknown) =>
+      fetch(server.baseUrl + path, {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify(body),
+      });
+    try {
+      const thread = (await (await post("/threads", {})).json()) as { thread_id: string };
+      expect(
+        (
+          await post("/threads/" + thread.thread_id + "/runs/wait", {
+            assistant_id: "echo",
+            input: { messages: [{ role: "user", content: "search" }] },
+          })
+        ).status,
+      ).toBe(200);
+      const response = await post("/runs/search", {
+        status: "success",
+        assistant_id: "echo",
+        thread_id: thread.thread_id,
+        limit: 1,
+      });
+      expect(response.status).toBe(200);
+      const runs = (await response.json()) as Record<string, unknown>[];
+      expect(runs).toMatchObject([
+        { thread_id: thread.thread_id, assistant_id: "echo", status: "success" },
+      ]);
+      expect(runs[0]).not.toHaveProperty("kwargs");
+      expect(runs[0]).not.toHaveProperty("result");
+      const spec = (await (await fetch(server.baseUrl + "/openapi.json")).json()) as {
+        paths: Record<string, unknown>;
+      };
+      expect(spec.paths["/runs/search"]).toMatchObject({
+        post: {
+          requestBody: {
+            content: {
+              "application/json": {
+                schema: {
+                  properties: expect.objectContaining({ updated_after: expect.anything() }),
+                },
+              },
+            },
+          },
+        },
+      });
+      expect((await post("/runs/search", { status: "failed" })).status).toBe(400);
+      for (const field of ["created_after", "created_before", "updated_after", "updated_before"])
+        expect((await post("/runs/search", { [field]: "2026-11-01T00:00:00+24:00" })).status).toBe(
+          400,
+        );
+    } finally {
+      await server.close();
+    }
+    const disabled = await start({ disable: { runs: true } });
+    try {
+      expect(
+        (
+          await fetch(disabled.baseUrl + "/runs/search", {
+            method: "POST",
+            headers: { "content-type": "application/json" },
+            body: "{}",
+          })
+        ).status,
+      ).toBe(404);
+      const spec = (await (await fetch(disabled.baseUrl + "/openapi.json")).json()) as {
+        paths: Record<string, unknown>;
+      };
+      expect(spec.paths).not.toHaveProperty("/runs/search");
+    } finally {
+      await disabled.close();
+    }
+  });
 
   it(`${name} authenticates discovery and interop routes before dispatch`, async () => {
     const auth: AuthEngine = {

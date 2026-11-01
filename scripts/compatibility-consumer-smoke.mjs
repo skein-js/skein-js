@@ -18,6 +18,9 @@ try {
       type: "module",
       dependencies: {
         "skein-js": "*",
+        "@skein-js/core": "*",
+        "@skein-js/agent-protocol": "*",
+        typescript: "5.9.3",
         "@skein-js/local": "*",
         "@langchain/langgraph-checkpoint-sqlite": "~1.0.4",
         "@skein-js/express": "*",
@@ -101,6 +104,12 @@ try {
       const spec=await (await fetch(url+'/openapi.json')).json();assert(spec.paths['/threads/{thread_id}/stream/events']);
       assert((await (await fetch(url+'/docs')).text()).includes('Skein Agent Server API'));
       const sizes=await (await fetch(url+'/threads/'+threadId+'/storage')).json();assert(sizes.total_bytes>0);
+      const searched=await fetch(url+'/runs/search',{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify({status:'success',thread_id:threadId,limit:1})});
+      assert.equal(searched.status,200);const runs=await searched.json();
+      assert.equal(runs.length,1);assert.equal(runs[0].thread_id,threadId);
+      assert(!('kwargs' in runs[0]));assert(!('result' in runs[0]));
+      assert(spec.paths['/runs/search'].post.requestBody.content['application/json'].schema.properties.updated_after);
+
       console.log('PACKED_COMPATIBILITY_OK');
     } finally {await stream?.close();await mcp.close();await server.close();}
     // Exercise the real published CLI paths: injected dependencies must retain config route flags.
@@ -146,6 +155,39 @@ try {
   `,
   );
   run(process.execPath, ["proof.mjs"], { cwd: consumer, env: { ...process.env, NODE_PATH: "" } });
+  await writeFile(
+    path.join(consumer, "contracts.ts"),
+    String.raw`
+    import type { RunRepo,RunSearchQuery,SkeinStore } from '@skein-js/core';
+    import type { RunService,ProtocolHandlers } from '@skein-js/agent-protocol';
+    declare const store:SkeinStore;
+    const query:RunSearchQuery={status:'error',assistantId:'agent',threadId:'thread',createdAfter:'2026-11-01T00:00:00.000Z',createdBefore:'2026-11-02T00:00:00.000Z',updatedAfter:'2026-11-01T00:00:00.000Z',updatedBefore:'2026-11-02T00:00:00.000Z',limit:1,offset:0,enforcedMetadata:{owner:'alice'}};
+    await store.runs.search?.(query);
+    declare const legacyRepository:Omit<RunRepo,'search'>;
+    const repository:RunRepo=legacyRepository;
+    declare const legacyService:Omit<RunService,'search'>;
+    const service:RunService=legacyService;
+    declare const legacyHandlers:Omit<ProtocolHandlers,'searchRuns'>;
+    const handlers:ProtocolHandlers=legacyHandlers;
+  `,
+  );
+  run(
+    process.execPath,
+    [
+      "node_modules/typescript/bin/tsc",
+      "--noEmit",
+      "--strict",
+      "--target",
+      "ES2022",
+      "--module",
+      "NodeNext",
+      "--moduleResolution",
+      "NodeNext",
+      "--skipLibCheck",
+      "contracts.ts",
+    ],
+    { cwd: consumer },
+  );
 } finally {
   await rm(directory, { recursive: true, force: true });
 }

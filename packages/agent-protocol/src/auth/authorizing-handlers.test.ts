@@ -1042,3 +1042,75 @@ describe("thread protocol authorization", () => {
     await iterator.return?.();
   });
 });
+
+it.each<AuthFilters>([
+  { owner: { $eq: "alice" } },
+  { groups: { $contains: ["readers", "writers"] } },
+])("searches only owned run pages using declared filters %j", async (filters) => {
+  const store = new MemorySkeinStore({ maxPageSize: 2 });
+  for (let index = 0; index < 6; index++) {
+    const owner = index % 2 === 0 ? "alice" : "bob";
+    const thread = await store.threads.create({ metadata: { owner } });
+    await store.runs.create({
+      thread_id: thread.thread_id,
+      assistant_id: "echo",
+      status: "error",
+      metadata: { owner, groups: owner === "alice" ? ["readers", "writers"] : ["other"] },
+    });
+  }
+  const runtime = createProtocolRuntime(
+    createFixtureDeps({ store, auth: fakeEngine({ filterFor: () => filters }) }),
+  );
+  const first = await runtime.handlers.searchRuns!(
+    asUser("alice", { method: "POST", body: { limit: 2, enforcedMetadata: { owner: "bob" } } }),
+  );
+  const next = await runtime.handlers.searchRuns!(
+    asUser("alice", { method: "POST", body: { limit: 2, offset: 2 } }),
+  );
+  expect(first).toMatchObject({
+    kind: "json",
+    status: 200,
+    body: [
+      expect.objectContaining({ metadata: expect.objectContaining({ owner: "alice" }) }),
+      expect.objectContaining({ metadata: expect.objectContaining({ owner: "alice" }) }),
+    ],
+  });
+  expect(next).toMatchObject({
+    kind: "json",
+    body: [expect.objectContaining({ metadata: expect.objectContaining({ owner: "alice" }) })],
+  });
+  await expectStatus(runtime.handlers.searchRuns!(makeReq({ method: "POST", body: {} })), 401);
+  const denied = createProtocolRuntime(
+    createFixtureDeps({
+      store,
+      auth: fakeEngine({
+        deny: (resource, action) => resource === "threads" && action === "search",
+      }),
+    }),
+  );
+  await expectStatus(
+    denied.handlers.searchRuns!(asUser("alice", { method: "POST", body: {} })),
+    403,
+  );
+});
+
+it("fails the entire run search when a custom matcher is stricter than its declared filters", async () => {
+  const store = new MemorySkeinStore();
+  const thread = await store.threads.create();
+  await store.runs.create({
+    thread_id: thread.thread_id,
+    assistant_id: "echo",
+    metadata: { owner: "alice", confidential: true },
+  });
+  const engine = fakeEngine();
+  const auth: AuthEngine = {
+    ...engine,
+    matchesFilters: (metadata, filters) =>
+      engine.matchesFilters(metadata, filters) && metadata?.["confidential"] !== true,
+  };
+  const runtime = createProtocolRuntime(createFixtureDeps({ store, auth }));
+  await expectStatus(
+    runtime.handlers.searchRuns!(asUser("alice", { method: "POST", body: {} })),
+    501,
+  );
+});

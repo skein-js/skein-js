@@ -179,6 +179,25 @@ export function createAuthScopedStore(
 
     const runs: RunRepo = {
       ...inner.runs,
+      ...(inner.runs.search
+        ? {
+            search: async (query) => {
+              // Caller constraints cannot replace deployment ownership, including on direct scoped calls.
+              const { enforcedMetadata: _fromCaller, ...requested } = query;
+              const found = await inner.runs.search!({
+                ...requested,
+                ...(ownershipMetadata ? { enforcedMetadata: ownershipMetadata } : {}),
+              });
+              // Custom matchers may be stricter than their declarative filters. Fail the whole request
+              // rather than leak a row or return a short page whose offset no longer describes ownership.
+              if (found.some((run) => !matches(run.metadata)))
+                throw SkeinHttpError.notImplemented(
+                  "Run search cannot express this authorization matcher's additional restrictions. Return declarative ownership filters.",
+                );
+              return found;
+            },
+          }
+        : {}),
       ...(inner.runs.settle
         ? {
             settle: async (runId: string, final: Parameters<NonNullable<RunRepo["settle"]>>[1]) => {

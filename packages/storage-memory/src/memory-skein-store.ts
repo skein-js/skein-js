@@ -75,6 +75,8 @@ import {
   type ThreadUpdate,
 } from "@skein-js/core";
 
+import { compareRunCreation } from "./compare-run-creation.js";
+
 /**
  * Timestamps are ISO 8601 in UTC (`toISOString`, always `…Z`), and this driver **compares them as
  * strings** — due-ness, expiry and ordering are all lexicographic.
@@ -891,6 +893,25 @@ export class MemorySkeinStore implements SkeinStore {
   };
 
   readonly runs: RunRepo = {
+    search: async (query) => {
+      const matched = [...this.#runs.values()].filter(
+        (run) =>
+          (query.status === undefined || run.status === query.status) &&
+          (query.assistantId === undefined || run.assistant_id === query.assistantId) &&
+          (query.threadId === undefined || run.thread_id === query.threadId) &&
+          (query.createdAfter === undefined || run.created_at >= query.createdAfter) &&
+          (query.createdBefore === undefined || run.created_at < query.createdBefore) &&
+          (query.updatedAfter === undefined || run.updated_at >= query.updatedAfter) &&
+          (query.updatedBefore === undefined || run.updated_at < query.updatedBefore) &&
+          isMetadataSubset(run.metadata, query.enforcedMetadata),
+      );
+      matched.sort(compareRunCreation);
+      return clonePage(
+        matched,
+        query.offset ?? 0,
+        this.#pageLimit(Math.min(query.limit ?? 100, DEFAULT_MAX_PAGE_SIZE)),
+      );
+    },
     settle: async (id, final) => this.#settle(id, final),
     recordResult: async (runId, result) => {
       if (this.#runs.has(runId) && !this.#runResults.has(runId))

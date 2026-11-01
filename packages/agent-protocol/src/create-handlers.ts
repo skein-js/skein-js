@@ -20,6 +20,7 @@ import {
 } from "./http/operation-contracts.js";
 import { markRequestAdmission } from "./idempotency/admission-input.js";
 import { transferA2aOrigin } from "./interop/a2a-origin.js";
+import { createRunSearchHandler } from "./runs/run-search-handler.js";
 import type { CreateRunInput } from "./runs/run-service.js";
 import { projectSearchRow } from "./search/project-search-row.js";
 import type { ProtocolService } from "./service.js";
@@ -90,6 +91,8 @@ export interface ProtocolHandlers {
   getThreadStateAtCheckpointFromBody: ProtocolHandler;
   updateThreadState: ProtocolHandler;
   // runs
+  /** Optional for existing custom handler tables. */
+  searchRuns?: ProtocolHandler;
   createWaitRun: ProtocolHandler;
   createStreamRun: ProtocolHandler;
   createBackgroundRun: ProtocolHandler;
@@ -672,6 +675,8 @@ export function createProtocolHandlers(
     // --- runs ---------------------------------------------------------------------------------
     // `req.signal` is what makes `on_disconnect` work; an adapter that cannot observe disconnects
     // omits it and the run simply runs to completion (`"continue"`, the default).
+    searchRuns: createRunSearchHandler(service.runs),
+
     createWaitRun: async (req) => {
       const { runId, threadId, result } = await service.runs.createWait(
         parse(operationContracts.createWaitRun.body, req.body) as CreateRunInput,

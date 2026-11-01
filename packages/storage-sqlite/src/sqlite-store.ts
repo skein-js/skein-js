@@ -632,6 +632,34 @@ AND (d.lease_until IS NULL OR d.lease_until<=?) ORDER BY r.key LIMIT ?`,
     });
   }
   readonly runs: RunRepo = {
+    search: async (query) => {
+      const clauses = ["skein_matches(body,?)"];
+      const parameters: (string | number | null)[] = [
+        json({ enforcedMetadata: query.enforcedMetadata }),
+      ];
+      for (const [column, value, operator] of [
+        ["status", query.status, "="],
+        ["thread_id", query.threadId, "="],
+        ["json_extract(body,'$.assistant_id')", query.assistantId, "="],
+        ["json_extract(body,'$.created_at')", query.createdAfter, ">="],
+        ["json_extract(body,'$.created_at')", query.createdBefore, "<"],
+        ["json_extract(body,'$.updated_at')", query.updatedAfter, ">="],
+        ["json_extract(body,'$.updated_at')", query.updatedBefore, "<"],
+      ] as const) {
+        if (value === undefined) continue;
+        clauses.push(`${column} ${operator} ?`);
+        parameters.push(value);
+      }
+      parameters.push(
+        this.limit(Math.min(query.limit ?? 100, DEFAULT_MAX_PAGE_SIZE)),
+        query.offset ?? 0,
+      );
+      return this.rows<Run>(
+        `SELECT body FROM skein_runs WHERE ${clauses.join(" AND ")}
+        ORDER BY json_extract(body,'$.created_at') DESC,key DESC LIMIT ? OFFSET ?`,
+        ...parameters,
+      );
+    },
     settle: async (id, final) => this.database.transaction(() => this.settleRun(id, final))(),
     recordResult: async (id, result) => {
       if (this.get("runs", id))

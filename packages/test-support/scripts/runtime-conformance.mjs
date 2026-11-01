@@ -229,6 +229,44 @@ async function main() {
     offset.every((run) => !limited.some((first) => first.run_id === run.run_id)),
   );
 
+  // Cross-thread search is a Skein extension; the tested SDKs do not provide a method for it.
+  const search = async (offset) => {
+    const response = await fetch("http://127.0.0.1:2610/runs/search", {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({
+        assistant_id: assistantId,
+        thread_id: thread.thread_id,
+        status: "success",
+        updated_after: new Date(Date.now() - 3600000).toISOString(),
+        limit: 2,
+        offset,
+      }),
+    });
+    return { status: response.status, rows: await response.json() };
+  };
+  const searched = await search(0);
+  const searchedNext = await search(2);
+  check(
+    "cross-thread search filters and pages retained runs",
+    searched.status === 200 &&
+      Array.isArray(searched.rows) &&
+      searched.rows.length === 2 &&
+      searched.rows.every(
+        (run) =>
+          run.thread_id === thread.thread_id &&
+          run.status === "success" &&
+          !("kwargs" in run) &&
+          !("result" in run),
+      ),
+  );
+  check(
+    "cross-thread search offsets do not repeat the first page",
+    Array.isArray(searchedNext.rows) &&
+      searchedNext.rows.length === 2 &&
+      searchedNext.rows.every((run) => !searched.rows.some((first) => first.run_id === run.run_id)),
+  );
+
   console.log("retention readback and persistent execution timeouts");
   const retained = await client.threads.create({ ttl: 30 });
   check(
