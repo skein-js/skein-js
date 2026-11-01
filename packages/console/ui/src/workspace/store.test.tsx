@@ -166,27 +166,40 @@ it("hydrates before mounting editors under StrictMode and keeps selector subscri
   expect(renders).toBe(before);
 });
 
-it("isolates provider memory under StrictMode", async () => {
-  const stores: WorkspaceStore[] = [];
+it.each([
+  ["First workspace", "Second workspace"],
+  ["Second workspace", "First workspace"],
+])("isolates provider memory under StrictMode (%s first)", async (firstLabel, secondLabel) => {
+  const stores = new Map<string, WorkspaceStore>();
   function Editor({ label }: { label: string }) {
     const store = useWorkspaceStore();
     const draft = useWorkspace((state) => state?.drafts.editor?.chat ?? "");
-    if (store && !stores.includes(store)) stores.push(store);
+    // Providers hydrate independently, so capture their identity rather than their render order.
+    if (store) stores.set(label, store);
     return <input aria-label={label} value={draft} readOnly />;
   }
   render(
     <StrictMode>
       <WorkspaceProvider>
-        <Editor label="First workspace" />
+        <Editor label={firstLabel} />
       </WorkspaceProvider>
       <WorkspaceProvider>
-        <Editor label="Second workspace" />
+        <Editor label={secondLabel} />
       </WorkspaceProvider>
     </StrictMode>,
   );
-  await screen.findByLabelText("Second workspace");
-  expect(stores).toHaveLength(2);
-  act(() => stores[0]!.getState().updateDraft("editor", { chat: "Only the first provider" }));
+  await Promise.all([
+    screen.findByLabelText("First workspace"),
+    screen.findByLabelText("Second workspace"),
+  ]);
+  expect(stores.size).toBe(2);
+  expect(stores.get("First workspace")).not.toBe(stores.get("Second workspace"));
+  act(() =>
+    stores
+      .get("First workspace")!
+      .getState()
+      .updateDraft("editor", { chat: "Only the first provider" }),
+  );
   expect((screen.getByLabelText("First workspace") as HTMLInputElement).value).toBe(
     "Only the first provider",
   );
