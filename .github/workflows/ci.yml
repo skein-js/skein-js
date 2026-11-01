@@ -23,6 +23,11 @@ on:
       - "LICENSE"
   # Callable by release.yml so a publish runs these exact checks on the released commit.
   workflow_call:
+    inputs:
+      source_ref:
+        description: Commit to check; defaults to the triggering commit
+        required: false
+        type: string
 
 # A newer push to the same ref cancels an in-flight run — no point finishing stale checks.
 concurrency:
@@ -37,6 +42,8 @@ env:
 jobs:
   local-deployment:
     uses: ./.github/workflows/local-deployment.yml
+    with:
+      source_ref: ${{ inputs.source_ref || github.sha }}
 
   check:
     name: ${{ matrix.node == 24 && 'lint · typecheck · test · build' || 'lint · typecheck · test · build (Node 26)' }}
@@ -47,6 +54,8 @@ jobs:
         node: [24, 26]
     steps:
       - uses: actions/checkout@v4
+        with:
+          ref: ${{ inputs.source_ref || github.sha }}
 
       # pnpm before setup-node, so setup-node's pnpm store cache has a package manager to key on.
       # The version comes from package.json's `packageManager` field.
@@ -62,7 +71,7 @@ jobs:
       - uses: actions/cache@v4
         with:
           path: .nx/cache
-          key: nx-${{ runner.os }}-node-${{ matrix.node }}-${{ hashFiles('pnpm-lock.yaml') }}-${{ github.sha }}
+          key: nx-${{ runner.os }}-node-${{ matrix.node }}-${{ hashFiles('pnpm-lock.yaml') }}-${{ inputs.source_ref || github.sha }}
           restore-keys: |
             nx-${{ runner.os }}-node-${{ matrix.node }}-${{ hashFiles('pnpm-lock.yaml') }}-
             nx-${{ runner.os }}-node-${{ matrix.node }}-
@@ -82,6 +91,8 @@ jobs:
         node: [24, 26]
     steps:
       - uses: actions/checkout@v4
+        with:
+          ref: ${{ inputs.source_ref || github.sha }}
       - uses: pnpm/action-setup@v4
       - uses: actions/setup-node@v4
         with:
@@ -93,7 +104,7 @@ jobs:
       - uses: actions/cache@v4
         with:
           path: .nx/cache
-          key: nx-${{ runner.os }}-node-${{ matrix.node }}-${{ hashFiles('pnpm-lock.yaml') }}-${{ github.sha }}
+          key: nx-${{ runner.os }}-node-${{ matrix.node }}-${{ hashFiles('pnpm-lock.yaml') }}-${{ inputs.source_ref || github.sha }}
           restore-keys: |
             nx-${{ runner.os }}-node-${{ matrix.node }}-${{ hashFiles('pnpm-lock.yaml') }}-
             nx-${{ runner.os }}-node-${{ matrix.node }}-
@@ -117,6 +128,8 @@ jobs:
             ioredis: "6.0.0"
     steps:
       - uses: actions/checkout@v4
+        with:
+          ref: ${{ inputs.source_ref || github.sha }}
       - uses: pnpm/action-setup@v4
       - uses: actions/setup-node@v4
         with:
@@ -140,6 +153,8 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
+        with:
+          ref: ${{ inputs.source_ref || github.sha }}
       - uses: pnpm/action-setup@v4
       - uses: actions/setup-node@v4
         with:
@@ -189,6 +204,8 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
+        with:
+          ref: ${{ inputs.source_ref || github.sha }}
       - uses: pnpm/action-setup@v4
       - uses: actions/setup-node@v4
         with:
@@ -200,7 +217,7 @@ jobs:
       - uses: actions/cache@v4
         with:
           path: .nx/cache
-          key: nx-${{ runner.os }}-node-${{ env.NODE_LTS }}-${{ hashFiles('pnpm-lock.yaml') }}-${{ github.sha }}
+          key: nx-${{ runner.os }}-node-${{ env.NODE_LTS }}-${{ hashFiles('pnpm-lock.yaml') }}-${{ inputs.source_ref || github.sha }}
           restore-keys: |
             nx-${{ runner.os }}-node-${{ env.NODE_LTS }}-${{ hashFiles('pnpm-lock.yaml') }}-
             nx-${{ runner.os }}-node-${{ env.NODE_LTS }}-
@@ -276,6 +293,8 @@ jobs:
           --health-timeout 5s --health-retries 20
     steps:
       - uses: actions/checkout@v4
+        with:
+          ref: ${{ inputs.source_ref || github.sha }}
       - uses: pnpm/action-setup@v4
       - uses: actions/setup-node@v4
         with:
@@ -328,6 +347,8 @@ jobs:
             build-only: "--build-only"
     steps:
       - uses: actions/checkout@v4
+        with:
+          ref: ${{ inputs.source_ref || github.sha }}
       - uses: pnpm/action-setup@v4
       - uses: actions/setup-node@v4
         with:
@@ -357,6 +378,8 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
+        with:
+          ref: ${{ inputs.source_ref || github.sha }}
       - uses: pnpm/action-setup@v4
       - uses: actions/setup-node@v4
         with:
@@ -380,6 +403,8 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
+        with:
+          ref: ${{ inputs.source_ref || github.sha }}
       - uses: pnpm/action-setup@v4
       - uses: actions/setup-node@v4
         with:
@@ -401,6 +426,8 @@ jobs:
       matrix: ${{ steps.catalog.outputs.matrix }}
     steps:
       - uses: actions/checkout@v4
+        with:
+          ref: ${{ inputs.source_ref || github.sha }}
       - uses: pnpm/action-setup@v4
       - uses: actions/setup-node@v4
         with:
@@ -425,6 +452,8 @@ jobs:
       matrix: ${{ fromJSON(needs.scaffold-pack.outputs.matrix) }}
     steps:
       - uses: actions/checkout@v4
+        with:
+          ref: ${{ inputs.source_ref || github.sha }}
       - uses: pnpm/action-setup@v4
       - uses: actions/setup-node@v4
         with:

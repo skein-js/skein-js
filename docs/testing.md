@@ -286,11 +286,18 @@ build tracks the root LLM bundles and relevant git history as inputs, so a cache
 retain an older copy or stale page timestamps. Docs CI fetches full history to match Pages.
 
 Docs checks run on pushes to `main` and pull requests. Deployment runs separately, after the release
-workflow's CI and npm publishing succeed for a stable published GitHub Release. It checks out that
-release's exact commit with full history and runs the same build and SEO checks before deploying.
-The `github-pages` environment must permit `v*` tags. Pre-releases and manual Release dispatches do
-not deploy docs; retry a failed deployment through its job in the original release run so the source
-commit stays the same.
+workflow's CI, npm publishing, and GitHub release finalization succeed. Beta/RC milestones also use
+npm `latest` and normal GitHub releases. Deployment checks out the release's exact commit with full
+history and runs the same build and SEO checks before deploying. The `github-pages` environment must
+permit `v*` tags and `main` (for recovery dispatches).
+
+To recover an existing release using the fixed workflow on `main`, dispatch Release with its required
+`release_tag` input; see [releasing](../AGENTS.md#releasing). CI, publishing, and docs all receive the
+resolved tag commit rather than the workflow's current branch. Retry failed jobs in that run so the
+source stays the same. The private `test-support` suite executes the publishing shell against a fake
+registry to check beta promotion, private-package exclusion, partial retries, and failed `latest`
+verification, and guards source propagation and the publishing/finalization/deployment dependency
+chain. Workflow files are explicit Nx test inputs so edits invalidate that coverage.
 
 The checker also accepts a directory argument through `--args="/absolute/path/to/site"` for
 testing an isolated artifact. It verifies static output; live crawling and search indexing are

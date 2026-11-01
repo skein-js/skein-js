@@ -52,7 +52,7 @@ jobs:
         run: pnpm format:check
 
       # `docs` is an Nx project, so a broken link target or config change fails here rather than at
-      # deploy time (docs.yml is called after a stable release publishes to npm).
+      # deploy time (docs.yml is called after the selected release publishes to npm).
       - name: Build and verify the docs site
         run: pnpm exec nx run docs:check-seo --output-style=stream
 
@@ -88,7 +88,7 @@ jobs:
       - name: Check documentation links
         uses: lycheeverse/lychee-action@v2
         with:
-          # Pages only updates on stable releases. Check our page URLs against this checkout's
+          # Pages only updates after release publication. Check our page URLs against this checkout's
           # built HTML so unreleased pages work and fragments use VitePress's actual heading IDs.
           args: >-
             --root-dir ${{ github.workspace }}

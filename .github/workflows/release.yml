@@ -9,28 +9,83 @@ name: Release
 on:
   release:
     types: [published]
-  workflow_dispatch: # manual publish recovery; retry docs through the original release run
+  workflow_dispatch:
+    inputs:
+      release_tag:
+        description: Existing published release tag to publish or recover
+        required: true
+        type: string
+
+# Serialize releases so a retry cannot race another version's npm latest pointers.
+concurrency:
+  group: release
+  cancel-in-progress: false
 
 permissions:
   contents: read
   id-token: write # required for OIDC trusted publishing + provenance
 
 jobs:
+  resolve-release:
+    runs-on: ubuntu-latest
+    outputs:
+      sha: ${{ steps.commit.outputs.sha }}
+      tag: ${{ steps.release.outputs.tag }}
+    steps:
+      - name: Validate published release
+        id: release
+        env:
+          GH_TOKEN: ${{ github.token }}
+          GH_REPO: ${{ github.repository }}
+          RELEASE_TAG: ${{ github.event.release.tag_name || inputs.release_tag }}
+        run: |
+          set -euo pipefail
+          if [[ ! "$RELEASE_TAG" =~ ^v[0-9]+\.[0-9]+\.[0-9]+(-[0-9A-Za-z.-]+)?$ ]]; then
+            echo "Expected a version tag such as v1.0.0-beta.0" >&2
+            exit 1
+          fi
+          test "$(gh release view "$RELEASE_TAG" --json isDraft --jq .isDraft)" = false
+          printf 'tag=%s\n' "$RELEASE_TAG" >> "$GITHUB_OUTPUT"
+      - uses: actions/checkout@v4
+        with:
+          # Resolve the immutable tag, never target_commitish (which can be a moving branch).
+          ref: refs/tags/${{ steps.release.outputs.tag }}
+      - name: Resolve release commit and verify package versions
+        id: commit
+        env:
+          RELEASE_TAG: ${{ steps.release.outputs.tag }}
+        run: |
+          set -euo pipefail
+          node --input-type=module <<'NODE'
+          import { readdirSync, readFileSync } from 'node:fs';
+          const expected = process.env.RELEASE_TAG.slice(1);
+          for (const directory of readdirSync('packages')) {
+            const manifest = JSON.parse(readFileSync(`packages/${directory}/package.json`, 'utf8'));
+            if (manifest.version !== expected) throw new Error(`${manifest.name}: expected ${expected}, got ${manifest.version}`);
+          }
+          NODE
+          printf 'sha=%s\n' "$(git rev-parse HEAD)" >> "$GITHUB_OUTPUT"
+
   # Gate: run the same checks CI runs (ci.yml, reused via workflow_call) on the released commit before
   # publishing. Running them here — rather than polling for the push-triggered run — means the gate
   # never depends on that run still existing (concurrency can cancel it) and can't be tripped by a
   # transient checks-API hiccup. Some duplicated compute for a far more reliable gate.
   ci:
     name: CI
+    needs: resolve-release
     uses: ./.github/workflows/ci.yml
+    with:
+      source_ref: ${{ needs.resolve-release.outputs.sha }}
     permissions:
       contents: read
 
   publish:
-    needs: ci
+    needs: [resolve-release, ci]
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
+        with:
+          ref: ${{ needs.resolve-release.outputs.sha }}
 
       - uses: pnpm/action-setup@v4
       - uses: actions/setup-node@v4
@@ -40,9 +95,9 @@ jobs:
           node-version: 24
 
       # OIDC trusted publishing requires npm >= 11.5.1; the Node 22 bundle ships an older npm (10.9.2).
-      # Pin npm 11, NOT @latest: npm 12 requires Node >= 22.22.2 (newer than the Node pinned above), so
-      # `npm@latest` fails EBADENGINE here. npm 11.5.1+ already supports OIDC trusted publishing + provenance.
-      - run: npm install -g npm@11
+      # Stay on npm 11; 11.21+ also supports authenticated dist-tag repair on partial retries.
+      # Retagging an existing version needs the trusted publisher's optional dist-tag permission.
+      - run: npm install -g 'npm@^11.21.0'
       - run: pnpm install --frozen-lockfile
 
       # Build the packages (packing needs the built dist/); typecheck as a cheap extra gate. The full
@@ -64,7 +119,8 @@ jobs:
 
       # Pack with pnpm (rewrites workspace:* → the real version) so npm can publish a correct tarball;
       # publish with npm (OIDC + provenance). Private packages and already-published versions are
-      # skipped, so a re-run after a partial failure is safe.
+      # reused, so a re-run after a partial failure is safe. Beta/RC version suffixes are our
+      # v1 milestones: every release is explicitly published to the recommended latest channel.
       - name: Pack and publish changed packages
         run: |
           set -euo pipefail
@@ -78,7 +134,11 @@ jobs:
               echo "skip $name (private)"; continue
             fi
             if npm view "$name@$version" version >/dev/null 2>&1; then
-              echo "skip $name@$version (already on npm)"; continue
+              echo "reuse $name@$version (already on npm)"
+              if [ "$(npm view "$name" dist-tags.latest)" != "$version" ]; then
+                npm dist-tag add "$name@$version" latest
+              fi
+              continue
             fi
             echo "pack $name@$version"
             (cd "$dir" && pnpm pack --pack-destination "$RUNNER_TEMP/tarballs")
@@ -86,14 +146,39 @@ jobs:
           shopt -s nullglob
           for tgz in "$RUNNER_TEMP"/tarballs/*.tgz; do
             echo "publish $tgz"
-            npm publish "$tgz" --access public --provenance
+            npm publish "$tgz" --access public --provenance --tag latest
+          done
+      - name: Verify every public package is the recommended version
+        run: |
+          set -euo pipefail
+          for manifest in packages/*/package.json; do
+            name=$(node -p "require('./$manifest').name")
+            version=$(node -p "require('./$manifest').version")
+            private=$(node -p "require('./$manifest').private === true")
+            if [ "$private" = "true" ]; then continue; fi
+            latest=$(npm view "$name" dist-tags.latest)
+            test "$latest" = "$version" || { echo "$name: latest is $latest, expected $version" >&2; exit 1; }
           done
 
-  # Keep the public docs aligned with successfully published stable releases.
+  finalize-release:
+    needs: [resolve-release, publish]
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - name: Mark the recommended version as a normal GitHub release
+        env:
+          GH_TOKEN: ${{ github.token }}
+          GH_REPO: ${{ github.repository }}
+          RELEASE_TAG: ${{ needs.resolve-release.outputs.tag }}
+        run: gh release edit "$RELEASE_TAG" --prerelease=false --latest
+
+  # Publishing and metadata finalization must both succeed before Pages sees this release.
   docs:
-    needs: publish
-    if: github.event_name == 'release' && github.event.action == 'published' && github.event.release.prerelease == false
+    needs: [resolve-release, finalize-release]
     uses: ./.github/workflows/docs.yml
+    with:
+      source_ref: ${{ needs.resolve-release.outputs.sha }}
     permissions:
       contents: read
       pages: write

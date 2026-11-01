@@ -155,12 +155,27 @@ pnpm release 0.3.0            # or: patch | minor | major
 [`.github/workflows/release.yml`](.github/workflows/release.yml) runs on `release: published` and
 publishes each changed, non-private package with provenance via npm OIDC trusted publishing.
 
-After a stable release successfully publishes to npm, the release workflow calls
+Every published version, including `1.0.0-beta.*` and `1.0.0-rc.*`, is our recommended release.
+CI publishes with an explicit npm `--tag latest`, verifies every public package's pointer, then marks
+the GitHub release as non-prerelease/latest. Nx initially infers the GitHub prerelease flag from the
+version suffix; the workflow corrects it after publishing. The version suffix retains its SemVer
+meaning independently of this distribution policy.
+
+After publishing and metadata finalization, the release workflow calls
 [`.github/workflows/docs.yml`](.github/workflows/docs.yml) to build and deploy the docs from the same
-release commit. Pushes to `main` and pull requests still run docs checks, but do not deploy the site.
-Pre-releases and manual Release dispatches do not deploy docs. Retry a failed docs deployment by
-re-running its job in the original release run, preserving the released commit; there is no standalone
-manual Docs trigger.
+release commit. Pushes to `main` and pull requests run docs checks without deploying the site.
+
+Recover an existing release with the current workflow configuration while preserving its tag:
+
+```bash
+gh workflow run release.yml --ref main -f release_tag=v1.0.0-beta.0
+```
+
+Recovery resolves the existing published tag to a commit, checks its package versions, and runs CI,
+publishing, and Pages against that exact commit. Published package versions are reused; an incorrect
+`latest` pointer is repaired rather than republishing an immutable tarball. This repair requires a
+publish token or npm 11.21+ and **Allow npm dist-tag** on the trusted publisher. Correct pointers need
+no extra permission. Retry failed jobs in that recovery run; there is no standalone Docs trigger.
 
 Prerequisites: the git remote must point at `skein-js/skein-js` (Nx derives the release repo from
 `origin`), and `gh` must be authenticated (or `GITHUB_TOKEN` set) for the GitHub Release step.

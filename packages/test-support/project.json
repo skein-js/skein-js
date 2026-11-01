@@ -26,6 +26,7 @@
         "default",
         "^production",
         "{workspaceRoot}/packages/*/package.json",
+        "{workspaceRoot}/.github/workflows/*.yml",
         "{workspaceRoot}/packages/agent-protocol/src/validation/schemas.ts",
         "{workspaceRoot}/pnpm-lock.yaml",
         "{workspaceRoot}/patches/**/*",

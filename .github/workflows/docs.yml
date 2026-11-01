@@ -1,8 +1,13 @@
 name: Docs
 
 on:
-  # release.yml calls this only after a stable release successfully publishes to npm.
+  # release.yml calls this after publishing and normalizing the selected GitHub release.
   workflow_call:
+    inputs:
+      source_ref:
+        description: Released commit to build and deploy
+        required: false
+        type: string
 
 # One deploy at a time, and never cancel one mid-flight: a half-published Pages artifact is worse
 # than a slightly stale site.
@@ -29,7 +34,7 @@ jobs:
       - uses: actions/checkout@v4
         with:
           # Build the same commit as the caller's release, including on a retry.
-          ref: ${{ github.sha }}
+          ref: ${{ inputs.source_ref || github.sha }}
           # `lastUpdated` in the VitePress config reads git history for each page's timestamp,
           # which a shallow clone doesn't have.
           fetch-depth: 0
@@ -47,7 +52,7 @@ jobs:
       - uses: actions/cache@v4
         with:
           path: .nx/cache
-          key: nx-${{ runner.os }}-${{ hashFiles('pnpm-lock.yaml') }}-${{ github.sha }}
+          key: nx-${{ runner.os }}-${{ hashFiles('pnpm-lock.yaml') }}-${{ inputs.source_ref || github.sha }}
           restore-keys: |
             nx-${{ runner.os }}-${{ hashFiles('pnpm-lock.yaml') }}-
             nx-${{ runner.os }}-
