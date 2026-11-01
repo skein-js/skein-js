@@ -121,7 +121,7 @@ export interface RunningServer {
 /** Boot a bridge server for the given router on an ephemeral loopback port. */
 export async function startEchoServer(options: {
   router: "app" | "pages";
-  disable?: { docs?: boolean; meta?: boolean };
+  disable?: { docs?: boolean; meta?: boolean; runs?: boolean };
   cors?: boolean | CorsOptions;
   auth?: AuthEngine;
   deps?: ProtocolDeps;

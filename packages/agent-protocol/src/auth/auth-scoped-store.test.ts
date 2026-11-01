@@ -271,3 +271,15 @@ describe("createAuthScopedStore", () => {
     await expect(scoped.runs.setStatus(run.run_id, "error")).rejects.toMatchObject({ status: 404 });
   });
 });
+
+it("preserves genuine search capability absence in the scoped store", () => {
+  const inner = new MemorySkeinStore();
+  const { search: _search, ...runs } = inner.runs;
+  const scoped = createAuthScopedStore(
+    { ...inner, runs },
+    ownerEngine,
+    { owner: "alice" },
+    "threads",
+  );
+  expect(scoped.runs.search).toBeUndefined();
+});

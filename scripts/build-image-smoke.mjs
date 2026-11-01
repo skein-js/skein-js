@@ -194,6 +194,30 @@ async function main() {
     "production image serves offline API docs",
     (await (await fetch(`${url}/docs`)).text()).includes("Skein Agent Server API"),
   );
+  const completed = await fetch(`${url}/runs/wait`, {
+    method: "POST",
+    headers: { "content-type": "application/json" },
+    body: JSON.stringify({
+      assistant_id: "agent",
+      input: { messages: [{ role: "user", content: "search the built artifact" }] },
+    }),
+  });
+  check("production image executes a run before searching", completed.ok);
+  const searched = await fetch(`${url}/runs/search`, {
+    method: "POST",
+    headers: { "content-type": "application/json" },
+    body: JSON.stringify({ status: "success", assistant_id: "agent", limit: 1 }),
+  });
+  const found = await searched.json();
+  check(
+    "production image serves driver-backed run search and its generated contract",
+    searched.ok &&
+      found.length === 1 &&
+      !Object.hasOwn(found[0], "kwargs") &&
+      !Object.hasOwn(found[0], "result") &&
+      Boolean(spec.paths["/runs/search"]),
+  );
+
   // Relaunch the built artifact inside the image with docs-only and legacy metadata controls.
   // This probes the generated production launcher's config path without rebuilding or source files.
   execFileSync(

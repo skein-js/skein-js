@@ -43,7 +43,7 @@ retained results and the existing outbox. See [native access](./native-access.md
 | **Idempotent run creation**                | ✅     | **No LangGraph Platform equivalent.** [Details](./agent-protocol.md#idempotent-run-creation-idempotency-key)                         |
 | MCP endpoint (`/mcp`)                      | ✅     | Official SDK stateless Streamable HTTP; authorized assistants become tools                                                           |
 | Generative UI (`/ui/{agent}`)              | ✅     | Public upstream compiler/watch API and compiled production assets                                                                    |
-| `/docs` OpenAPI page                       | ✅     | Generated from mounted routes and validators; disabled groups are omitted                                                            |
+| `/docs` OpenAPI page                       | ✅     | Generated from shared operation contracts; `http.disable_docs` hides the reference independently                                     |
 
 **Storage, scale and operations**
 
@@ -77,7 +77,8 @@ A phase is complete only with its listed conformance, consumer and production-bu
 - ✅ **MCP/A2A**, **compiled graph UI and custom applications**, **OpenAPI/docs and diagnostics** — see the [dated compatibility matrix](./langgraph-compatibility.md)
 - ✅ **Per-thread partitioned dispatch.** Bundled queues skip occupied execution claims so independent
   threads can use available worker slots. [Details](./runs-and-redis.md#dispatch-by-thread).
-- 🗺️ **`POST /runs/search`** — cross-thread run search; today runs list per thread.
+- ✅ **`POST /runs/search`** — cross-thread status, identifier and time-window filters with
+  driver-enforced authorization and pagination on memory, Postgres and SQLite. [Details](./runs.md#search-runs-across-threads).
 
 ## Non-goals
 

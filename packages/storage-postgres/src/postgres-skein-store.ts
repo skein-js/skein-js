@@ -74,6 +74,7 @@ import { Pool, type PoolClient } from "pg";
 
 import { createPostgresAdmission, settlePostgresRun } from "./native-admission.js";
 import { acquireSessionAdvisoryLock, applySkeinMigrations } from "./run-migrations.js";
+import { runSearchWhere } from "./run-search.js";
 
 /** Computes embeddings for a batch of texts — injected so tests use a deterministic fake. */
 export type EmbedFunction = (texts: string[]) => Promise<number[][]>;
@@ -1909,6 +1910,18 @@ export class PostgresSkeinStore implements SkeinStore {
   };
 
   readonly runs: RunRepo = {
+    search: async (query) => {
+      const { where, params } = runSearchWhere(query);
+      params.push(
+        this.#pageLimit(Math.min(query.limit ?? 100, DEFAULT_MAX_PAGE_SIZE)),
+        query.offset ?? 0,
+      );
+      const { rows } = await this.#pool.query<RunRow>(
+        `SELECT ${RUN_COLUMNS} FROM runs ${where} ORDER BY created_at DESC,run_id COLLATE "C" DESC LIMIT $${params.length - 1} OFFSET $${params.length}`,
+        params,
+      );
+      return rows.map(rowToRun);
+    },
     settle: (id, final) => this.#withTransaction((client) => this.#settle(client, id, final)),
     recordResult: async (runId, result) => {
       await this.#pool.query(

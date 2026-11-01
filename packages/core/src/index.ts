@@ -93,6 +93,7 @@ export type {
   RunKwargs,
   RunResult,
   RunListQuery,
+  RunSearchQuery,
   RunRepo,
   SkeinStore,
   SkeinStoreSnapshot,

@@ -22,6 +22,7 @@ import {
   type RunFrame,
   type RunKwargs,
   type RunListQuery,
+  type RunSearchQuery,
   type RunStatus,
   type RunTrigger,
   type RunAdmission,
@@ -230,6 +231,8 @@ export interface RunRequestOptions {
 }
 
 export interface RunService {
+  /** Global, driver-filtered listing; unavailable custom drivers return 501. */
+  search?(query: RunSearchQuery): Promise<Run[]>;
   createWait(input: CreateRunInput, options?: RunRequestOptions): Promise<CompletedWaitRun>;
   createStream(input: CreateRunInput, options?: RunRequestOptions): Promise<StartedStream>;
   createBackground(threadId: string, input: CreateRunInput): Promise<Run>;
@@ -1032,6 +1035,12 @@ export function createRunService(ctx: ProtocolContext): RunService {
       const run = await deps.store.runs.get(runId);
       if (!run) throw SkeinHttpError.notFound(`Run "${runId}" not found.`);
       return run;
+    },
+
+    async search(query) {
+      if (!deps.store.runs.search)
+        throw SkeinHttpError.notImplemented("This store does not support cross-thread run search.");
+      return deps.store.runs.search(query);
     },
 
     async listByThread(threadId, query) {

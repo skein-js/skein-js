@@ -40,8 +40,8 @@ export type SkeinStoreFactory = (
 ) => SkeinStore | Promise<SkeinStore>;
 
 /**
- * The single behavioral contract every SkeinStore driver must satisfy. Memory and Postgres run
- * the *same* suite, so they are provably interchangeable — swapping drivers can't change how
+ * The single behavioral contract every bundled SkeinStore driver must satisfy. Memory, Postgres
+ * and SQLite run the *same* suite, so they are interchangeable — swapping drivers can't change how
  * assistants, threads, runs, or the store behave. See docs/storage.md and docs/testing.md.
  *
  * @example
@@ -534,6 +534,100 @@ export function runSkeinStoreConformance(
     });
 
     describe("runs", () => {
+      describe("cross-thread search", () => {
+        it("filters historical runs across threads and combines constraints before pagination", async () => {
+          const store = await makeStore({ maxPageSize: 2 });
+          const first = await seedThread(store);
+          const second = await seedThread(store);
+          const ownerRuns = [];
+          for (let index = 0; index < 6; index++) {
+            const owned = index % 2 === 0;
+            const run = await store.runs.create({
+              thread_id: owned ? first : second,
+              assistant_id: owned ? "target" : "other",
+              status: owned ? "error" : "success",
+              metadata: { owner: owned ? "alice" : "bob", groups: ["readers", "writers"] },
+              kwargs: { input: { private: "execution" } },
+            });
+            if (owned) ownerRuns.push(run);
+          }
+          expect(typeof store.runs.search).toBe("function");
+          const search = store.runs.search!.bind(store.runs);
+          const query = {
+            status: "error" as const,
+            assistantId: "target",
+            threadId: first,
+            enforcedMetadata: { owner: "alice", groups: ["readers"] },
+          };
+          const firstPage = await search({ ...query, limit: 2 });
+          const secondPage = await search({ ...query, limit: 2, offset: 2 });
+          expect(firstPage).toHaveLength(2);
+          expect(secondPage).toHaveLength(1);
+          expect([...firstPage, ...secondPage].map((run) => run.run_id).sort()).toEqual(
+            ownerRuns.map((run) => run.run_id).sort(),
+          );
+          expect(await search({ ...query, status: "success" })).toEqual([]);
+          expect(await search({ ...query, assistantId: "missing" })).toEqual([]);
+          expect(await search({ ...query, threadId: "missing" })).toEqual([]);
+          expect(await search({ ...query, enforcedMetadata: { owner: "bob" } })).toEqual([]);
+          for (const run of firstPage) {
+            expect(run).not.toHaveProperty("kwargs");
+            expect(run).not.toHaveProperty("result");
+          }
+          firstPage[0]!.metadata = { changed: true };
+          expect((await search(query))[0]!.metadata).toMatchObject({ owner: "alice" });
+        });
+        it("applies inclusive lower/exclusive upper timestamp bounds independently", async () => {
+          const store = await makeStore();
+          const thread_id = await seedThread(store);
+          const run = await store.runs.create({
+            thread_id,
+            assistant_id: "agent",
+            status: "error",
+          });
+          const search = store.runs.search!.bind(store.runs);
+          const epoch = "1970-01-01T00:00:00.000Z";
+          const future = "9999-01-01T00:00:00.000Z";
+          expect(
+            await search({
+              createdAfter: run.created_at,
+              updatedAfter: run.updated_at,
+              createdBefore: future,
+              updatedBefore: future,
+            }),
+          ).toHaveLength(1);
+          expect(await search({ createdBefore: run.created_at })).toEqual([]);
+          expect(await search({ updatedBefore: run.updated_at })).toEqual([]);
+          expect(await search({ createdAfter: epoch, createdBefore: future })).toHaveLength(1);
+          expect(await search({ createdAfter: future })).toEqual([]);
+          expect(await search({ updatedAfter: future })).toEqual([]);
+          expect(await search({ createdBefore: epoch })).toEqual([]);
+          expect(await search({ updatedBefore: epoch })).toEqual([]);
+          expect(
+            await search({ createdAfter: run.created_at, createdBefore: run.created_at }),
+          ).toEqual([]);
+        });
+        it("defaults to one hundred rows and honors the driver cap and stable page traversal", async () => {
+          const store = await makeStore();
+          const thread_id = await seedThread(store);
+          for (let index = 0; index < 103; index++)
+            await store.runs.create({ thread_id, assistant_id: "agent" });
+          const search = store.runs.search!.bind(store.runs);
+          expect(await search({})).toHaveLength(100);
+          const first = await search({ limit: 2 });
+          const next = await search({ limit: 2, offset: 2 });
+          expect([...first, ...next]).toEqual(await search({ limit: 4 }));
+          for (const [index, run] of first.entries())
+            if (index > 0) expect(run.created_at <= first[index - 1]!.created_at).toBe(true);
+          const bounded = await makeStore({ maxPageSize: 1 });
+          const boundedThread = await seedThread(bounded);
+          for (let index = 0; index < 3; index++)
+            await bounded.runs.create({ thread_id: boundedThread, assistant_id: "agent" });
+          expect(await bounded.runs.search!({ limit: 5000 })).toHaveLength(1);
+          expect(await bounded.runs.search!({ offset: 99 })).toEqual([]);
+        });
+      });
+
       describe("optional immutable results", () => {
         it("preserves first output through concurrent writes and defensive reads", async () => {
           const store = await makeStore();

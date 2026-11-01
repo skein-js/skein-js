@@ -389,3 +389,60 @@ it("reopens per-item indexing, no-expiry writes and thread retention policy", as
 });
 
 runPartitionedRunQueueConformance("sqlite", async () => (await open()).queue);
+
+it("upgrades historical search indexes and retains exact tied pages after reopening", async () => {
+  const storage = await open();
+  const thread = await storage.store.threads.create();
+  for (const run_id of ["a", "\uE000", "😀"])
+    await storage.store.runs.create({
+      thread_id: thread.thread_id,
+      assistant_id: "agent",
+      run_id,
+      status: "error",
+      metadata: { owner: "alice" },
+    });
+  const timestamp = "2026-11-01T00:00:00.000Z";
+  storage.database
+    .prepare("UPDATE skein_runs SET body=json_set(body,'$.created_at',?,'$.updated_at',?)")
+    .run(timestamp, timestamp);
+  // Model an existing version-four file, then exercise the real open-time upgrade.
+  for (const index of ["created", "status", "assistant", "updated"])
+    storage.database.exec(`DROP INDEX skein_runs_search_${index}`);
+  storage.database.prepare("DELETE FROM skein_migrations WHERE version=5").run();
+  const filename = storage.database.name;
+  await storage.dispose();
+  const reopened = await openSqliteStorage({ filename });
+  try {
+    const first = await reopened.store.runs.search!({
+      limit: 2,
+      enforcedMetadata: { owner: "alice" },
+    });
+    const next = await reopened.store.runs.search!({ limit: 2, offset: 2 });
+    expect([...first, ...next].map((run) => run.run_id)).toEqual(["😀", "\uE000", "a"]);
+    expect(
+      await reopened.store.runs.search!({ createdAfter: timestamp, updatedAfter: timestamp }),
+    ).toHaveLength(3);
+    expect(await reopened.store.runs.search!({ createdBefore: timestamp })).toEqual([]);
+    expect(await reopened.store.runs.search!({ updatedBefore: timestamp })).toEqual([]);
+    const indexes = reopened.database
+      .prepare("SELECT name FROM sqlite_master WHERE type='index' AND tbl_name='skein_runs'")
+      .all() as { name: string }[];
+    expect(indexes.map((index) => index.name)).toEqual(
+      expect.arrayContaining([
+        "skein_runs_inflight",
+        "skein_runs_search_created",
+        "skein_runs_search_status",
+        "skein_runs_search_assistant",
+        "skein_runs_search_updated",
+      ]),
+    );
+    const plan = reopened.database
+      .prepare(
+        "EXPLAIN QUERY PLAN SELECT body FROM skein_runs ORDER BY json_extract(body,'$.created_at') DESC,key DESC LIMIT 2",
+      )
+      .all();
+    expect(JSON.stringify(plan)).toContain("skein_runs_search_created");
+  } finally {
+    await reopened.dispose();
+  }
+});

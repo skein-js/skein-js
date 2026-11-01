@@ -196,8 +196,10 @@ export const skeinRoutes: readonly RouteBinding[] = [
   },
 
   // runs — the stateless handlers are reused on the thread-scoped path with the id folded in.
-  // `/runs/wait|stream|batch|cancel` and bare `/runs` are all literal paths, so their relative order
+  // `/runs/wait|stream|batch|cancel|search` and bare `/runs` are all literal paths, so their relative order
   // does not matter (each regex is anchored); they are grouped by resource for readability.
+  // A Skein extension over the existing Run wire type; current SDKs list only per thread.
+  { method: "post", path: "/runs/search", handler: "searchRuns", group: "runs" },
   { method: "post", path: "/runs/wait", handler: "createWaitRun", group: "runs" },
   { method: "post", path: "/runs/stream", handler: "createStreamRun", group: "runs" },
   { method: "post", path: "/runs/batch", handler: "createRunBatch", group: "runs" },

@@ -76,6 +76,7 @@ describe("SKEIN_MIGRATIONS", () => {
       "0013_thread_retention",
       "0014_run_results",
       "0015_native_admission",
+      "0016_run_search",
     ]);
   });
 

@@ -99,6 +99,14 @@ the pairing.)
 - [Storage](https://skein-js.github.io/skein-js/storage) · [Testing](https://github.com/skein-js/skein-js/blob/main/docs/testing.md)
 - [skein-js overview](https://skein-js.github.io/skein-js/) · [Reuse-first architecture](https://github.com/skein-js/skein-js/blob/main/docs/reuse.md) · [Root README](https://github.com/skein-js/skein-js)
 
+## Cross-thread run search
+
+`RunSearchQuery` describes the optional `RunRepo.search` capability, implemented by all bundled
+stores. It filters status, assistant/thread IDs, creation/update windows and server-enforced
+ownership before bounded pagination, returning existing run rows ordered newest first. Direct
+queries use camel-case fields; `POST /runs/search` uses snake-case fields and returns 501 for a
+custom driver without the capability. See [run search](../../docs/runs.md#search-runs-across-threads).
+
 ## License
 
 [Apache-2.0](../../LICENSE)

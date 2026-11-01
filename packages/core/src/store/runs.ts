@@ -145,6 +145,19 @@ export interface RunListQuery extends Pagination {
   status?: RunStatus;
 }
 
+/** Global run selection. Time bounds are normalized UTC ISO strings: lower inclusive, upper exclusive. */
+export interface RunSearchQuery extends Pagination {
+  status?: RunStatus;
+  assistantId?: string;
+  threadId?: string;
+  createdAfter?: string;
+  createdBefore?: string;
+  updatedAfter?: string;
+  updatedBefore?: string;
+  /** Server-owned metadata containment, evaluated before sorting/pagination. Never an HTTP field. */
+  enforcedMetadata?: Metadata;
+}
+
 /**
  * The preconditions {@link RunRepo.createIfThreadMatches} settles atomically with the insert.
  *
@@ -200,6 +213,12 @@ export interface SettledRun {
 }
 
 export interface RunRepo {
+  /**
+   * Cross-thread search, newest created_at first with run_id descending as the tie-breaker.
+   * Defaults to 100 rows, bounded by 1000 and maxPageSize. All predicates precede pagination.
+   * Optional for existing third-party drivers; HTTP search returns 501 when unavailable.
+   */
+  search?(query: RunSearchQuery): Promise<Run[]>;
   /** First terminal status wins. Result is write-once; an identified delivery is inserted once. */
   settle?(runId: string, settlement: RunSettlement): Promise<SettledRun>;
   /** First write wins atomically. Unknown/deleted runs are no-ops; inputs are defensively copied. */
@@ -306,7 +325,7 @@ export interface RunRepo {
    * serve one, and it is the shape that kept `listByThread` on the "still unbounded" list.
    *
    * "Most recent" is `created_at` descending, **tie-broken on `run_id` descending** — the same
-   * determinism contract {@link listByThread}'s ordering has, and it matters here because `created_at`
+   * determinism contract {@link search}'s ordering has, and it matters here because `created_at`
    * ties at millisecond resolution on a thread whose runs were created in one burst. Which row wins a
    * tie is arbitrary but must not vary between two calls on one driver.
    */

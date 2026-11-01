@@ -46,6 +46,11 @@ thread_id TEXT NOT NULL, kind TEXT NOT NULL, action TEXT, not_before TEXT NOT NU
 lease_until TEXT, dispatched INTEGER NOT NULL DEFAULT 0);
 CREATE INDEX skein_native_dispatch_due ON skein_native_dispatch(lease_until,run_id) WHERE kind='cancel' AND dispatched=0;
 CREATE INDEX skein_runs_inflight ON skein_runs(key) WHERE status IN ('pending','running');`,
+  // Additive indexes only: existing run rows and the queue's inflight index remain intact.
+  `CREATE INDEX skein_runs_search_created ON skein_runs(json_extract(body,'$.created_at') DESC,key DESC);
+CREATE INDEX skein_runs_search_status ON skein_runs(status,json_extract(body,'$.created_at') DESC,key DESC);
+CREATE INDEX skein_runs_search_assistant ON skein_runs(json_extract(body,'$.assistant_id'),json_extract(body,'$.created_at') DESC,key DESC);
+CREATE INDEX skein_runs_search_updated ON skein_runs(json_extract(body,'$.updated_at'));`,
 ];
 
 export function migrateDatabase(database: Database): void {

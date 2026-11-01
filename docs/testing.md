@@ -306,6 +306,15 @@ HTML source.
 | `pnpm affected`                                       | Only projects affected by your changes.                                                   |
 | `pnpm nx test storage-sqlite`                         | SQLite conformance, retention, real-file reopening, and subprocess crash tests; no Docker |
 
+## Run search conformance
+
+Global run search shares filter, bound, ownership, copy and pagination cases across memory,
+Postgres and SQLite. Driver-specific tests pin genuine stored timestamp ties, including Unicode
+run-ID ordering. Postgres integration checks index catalogs and `EXPLAIN`; SQLite checks upgrade,
+reopening and query plans without Docker. HTTP conformance covers every adapter and disabled routes.
+When changing SQL migrations, run `nx run storage-postgres:generate-migrations` and the Postgres
+`test-integration` target; the build does not regenerate the compiled migration asset.
+
 ## Compatibility regression gates
 
 The thread-protocol HTTP suite uses the official JavaScript SDK. The Express integration target

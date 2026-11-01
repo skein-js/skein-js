@@ -1,6 +1,6 @@
 // Maps each protocol handler to the resource + action an `@auth.on.*` handler guards, mirroring
 // LangGraph's `resource:action` event names. Runs have no resource of their own — every run
-// operation authorizes through its owning thread (`threads:read`/`update`/`delete`/`create_run`),
+// operation authorizes through its owning thread (`threads:read`/`search`/`update`/`delete`/`create_run`),
 // exactly as LangGraph does. Also builds the WHATWG `Request` the user's authenticate handler reads.
 
 import { SkeinHttpError, type AuthAction, type AuthResource } from "@skein-js/core";
@@ -99,6 +99,7 @@ export const ROUTE_AUTHZ: Record<keyof ProtocolHandlers, RouteAuthz> = {
   deleteThread: { resource: "threads", action: "delete" },
 
   // runs (authorized through the owning thread)
+  searchRuns: { resource: "threads", action: "search" },
   createWaitRun: { resource: "threads", action: "create_run" },
   createStreamRun: { resource: "threads", action: "create_run" },
   createBackgroundRun: { resource: "threads", action: "create_run" },

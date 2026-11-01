@@ -26,8 +26,8 @@ for building a frontend on top, see [react-sdk.md](./react-sdk.md).
 
 Every endpoint below is implemented (✅). The route table in
 [`packages/agent-protocol/src/http/routes.ts`](https://github.com/skein-js/skein-js/blob/main/packages/agent-protocol/src/http/routes.ts) is the
-source of truth — paths mirror the `@langchain/langgraph-sdk` client, so runs are addressed
-thread-scoped (`/threads/{thread_id}/runs/{run_id}`).
+source of truth. Individual runs use the SDK's thread-scoped paths
+(`/threads/{thread_id}/runs/{run_id}`); Skein's cross-thread search is listed below.
 
 ### Assistants
 
@@ -116,7 +116,7 @@ becomes the checkpointer's filter. Checkpoint IDs, namespaces and checkpoint map
 server-owned, so a `thread_id` in `before.configurable` is dropped.
 
 A `?limit=` query param is still accepted for hand-rolled callers, but it is _clamped_ to 1000 rather
-than rejected (a query string has no schema to 400 from). The body wins if both are present.
+than rejected, preserving the established lenient query behavior. The body wins if both are present.
 
 `useStream` sends `limit: 10`, so 10 checkpoints come back rather than every one, matching LangGraph
 Platform. The rendered transcript is unaffected (the newest checkpoint's
@@ -148,13 +148,18 @@ _branch_ from any past checkpoint:
 
 Each of these creates its own thread. `on_completion` decides what happens to it (below).
 
-| Method | Path           | Notes                                            |
-| ------ | -------------- | ------------------------------------------------ |
-| `POST` | `/runs/wait`   | Run to completion, answer with the final values  |
-| `POST` | `/runs/stream` | Run and stream frames as SSE                     |
-| `POST` | `/runs`        | Queue a background run, answer with the `Run`    |
-| `POST` | `/runs/batch`  | An **array** of run-creates; max 100 per request |
-| `POST` | `/runs/cancel` | `cancelMany` — see below                         |
+Cross-thread reads use `POST /runs/search`: status, assistant/thread identifiers, creation/update
+windows, and bounded offset pagination. See [run search](./runs.md#search-runs-across-threads) for the
+wire fields, ownership rules, and HTTP example.
+
+| Method | Path           | Notes                                                         |
+| ------ | -------------- | ------------------------------------------------------------- |
+| `POST` | `/runs/search` | Cross-thread filters and pagination; authorized before paging |
+| `POST` | `/runs/wait`   | Run to completion, answer with the final values               |
+| `POST` | `/runs/stream` | Run and stream frames as SSE                                  |
+| `POST` | `/runs`        | Queue a background run, answer with the `Run`                 |
+| `POST` | `/runs/batch`  | An **array** of run-creates; max 100 per request              |
+| `POST` | `/runs/cancel` | `cancelMany` — see below                                      |
 
 ### Runs — background (thread-scoped)
 
