@@ -5,11 +5,13 @@ export function Tabs<T extends string>({
   onChange,
   tabs,
   label,
+  panelId,
 }: {
   value: T;
   onChange: (value: T) => void;
   tabs: readonly { value: T; label: string }[];
   label: string;
+  panelId: string;
 }) {
   return (
     <div
@@ -22,6 +24,8 @@ export function Tabs<T extends string>({
           key={tab.value}
           type="button"
           role="tab"
+          id={`${panelId}-tab-${tab.value}`}
+          aria-controls={panelId}
           aria-selected={value === tab.value}
           tabIndex={value === tab.value ? 0 : -1}
           className={cn(

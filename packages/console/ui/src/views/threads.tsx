@@ -6,7 +6,7 @@
 
 import type { Thread, Message } from "@langchain/langgraph-sdk";
 import { ArrowLeft, RefreshCw } from "lucide-react";
-import { useEffect, useState } from "react";
+import { useEffect, useId, useRef, useState } from "react";
 
 import { createConsoleClient } from "@/api";
 import { Button } from "@/components/ui/button";
@@ -24,6 +24,7 @@ import { cn } from "@/lib/utils";
 import { routeHref, useRoute } from "@/router";
 import { useAsync } from "@/use-async";
 import { usePagedRows } from "@/use-paged-rows";
+import { useWorkspace, useWorkspaceStore } from "@/workspace/provider";
 
 import { CheckpointHistory } from "./checkpoints";
 import { InterruptPanel, pendingInterrupts } from "./interrupts";
@@ -31,6 +32,7 @@ import { Async, IdLink, Json, Pagination, Panel, StatusBadge, Timestamp } from "
 import { ThreadRetentionEditor, type Retention } from "./retention";
 import { RunView } from "./run";
 import { ThreadActions } from "./thread-actions";
+import { describeThread } from "./thread-label";
 import { Transcript } from "./transcript";
 
 export function ThreadsView({
@@ -72,10 +74,21 @@ type StatusFilter = (typeof STATUS_FILTERS)[number];
  */
 function ThreadList({ status }: { status: StatusFilter }) {
   const [client] = useState(() => createConsoleClient({}));
-  const { navigate, query: routeQuery } = useRoute();
+  const { navigate, query: routeQuery, segments } = useRoute();
+  const workspace = useWorkspaceStore();
   const graph = routeQuery.get("graph") ?? "";
   const [graphDraft, setGraphDraft] = useState(graph),
     [exactId, setExactId] = useState("");
+  const previousGraph = useRef(graph);
+  if (previousGraph.current !== graph) {
+    previousGraph.current = graph;
+    setGraphDraft(graph);
+  }
+  const listRoute = `threads${routeQuery.size ? `?${routeQuery}` : ""}`;
+  const viewingList = segments[0] === "threads" && segments.length === 1;
+  useEffect(() => {
+    if (viewingList) workspace?.getState().rememberThreadList(listRoute);
+  }, [listRoute, viewingList, workspace]);
   const [selected, setSelected] = useState<Set<string>>(new Set());
   const [message, setMessage] = useState<string>(),
     [mutationError, setMutationError] = useState<string>(),
@@ -100,11 +113,19 @@ function ThreadList({ status }: { status: StatusFilter }) {
         ...(graph ? { metadata: { graph_id: graph } } : {}),
         signal,
       }),
+    "thread-list",
   );
 
   useEffect(() => {
     setSelected(new Set());
   }, [threads.offset, status, graph]);
+  useEffect(() => {
+    if (!threads.rows) return;
+    const row = workspace?.getState().returnRow;
+    if (!row) return;
+    document.getElementById(`thread-${row}`)?.focus();
+    workspace?.getState().rememberReturnRow(undefined);
+  }, [threads.rows, workspace]);
   const prune = async (strategy: "delete" | "keep_latest") => {
     if (
       !(await confirm({
@@ -124,6 +145,7 @@ function ThreadList({ status }: { status: StatusFilter }) {
     setMutationError(undefined);
     try {
       const result = await client.threads.prune([...selected], { strategy });
+      if (strategy === "delete") for (const id of selected) workspace?.getState().forgetThread(id);
       setMessage(
         `${result.pruned_count} of ${selected.size} selected threads changed. ${selected.size - result.pruned_count} unchanged, unavailable, or skipped.`,
       );
@@ -185,6 +207,11 @@ function ThreadList({ status }: { status: StatusFilter }) {
         Graph filtering uses the latest recorded graph metadata. Older threads or failed metadata
         stamps may be absent from a filtered result.
       </p>
+      {(status !== "all" || graph) && (
+        <a className="mb-3 inline-block text-sm text-primary underline" href={routeHref("threads")}>
+          Clear filters
+        </a>
+      )}
       {message && (
         <p role="status" className="action-success mb-3">
           {message}
@@ -216,6 +243,7 @@ function ThreadList({ status }: { status: StatusFilter }) {
                 <button
                   key={value}
                   type="button"
+                  aria-pressed={status === value}
                   onClick={() => {
                     const query = new URLSearchParams();
                     if (value !== "all") query.set("status", value);
@@ -240,11 +268,13 @@ function ThreadList({ status }: { status: StatusFilter }) {
         <Async
           state={{ ...threads, data: threads.rows }}
           empty={
-            status === "interrupted"
-              ? "Nothing is waiting for you."
-              : status === "all"
-                ? "No threads yet."
-                : `No ${status} threads.`
+            graph
+              ? "No matching threads. Clear filters to see other conversations."
+              : status === "interrupted"
+                ? "Nothing is waiting for you."
+                : status === "all"
+                  ? "No threads yet."
+                  : `No ${status} threads.`
           }
         >
           {(rows) => (
@@ -256,6 +286,7 @@ function ThreadList({ status }: { status: StatusFilter }) {
                   <TableHead>Status</TableHead>
                   <TableHead>Created</TableHead>
                   <TableHead>Updated</TableHead>
+                  <TableHead>Actions</TableHead>
                 </TableRow>
               </TableHeader>
               <TableBody>
@@ -277,7 +308,19 @@ function ThreadList({ status }: { status: StatusFilter }) {
                       />
                     </TableCell>
                     <TableCell>
-                      <IdLink id={thread.thread_id} to={`threads/${thread.thread_id}`} />
+                      <a
+                        id={`thread-${thread.thread_id}`}
+                        className="block max-w-sm break-words font-medium hover:underline"
+                        href={routeHref(`threads/${encodeURIComponent(thread.thread_id)}`)}
+                        onClick={() => workspace?.getState().rememberReturnRow(thread.thread_id)}
+                      >
+                        {describeThread(thread)}
+                      </a>
+                      <IdLink
+                        id={thread.thread_id}
+                        to={`threads/${encodeURIComponent(thread.thread_id)}`}
+                        onNavigate={() => workspace?.getState().rememberReturnRow(thread.thread_id)}
+                      />
                     </TableCell>
                     <TableCell>
                       <StatusBadge status={thread.status} />
@@ -287,6 +330,15 @@ function ThreadList({ status }: { status: StatusFilter }) {
                     </TableCell>
                     <TableCell>
                       <Timestamp value={thread.updated_at} />
+                    </TableCell>
+                    <TableCell>
+                      <a
+                        className="whitespace-nowrap text-sm text-primary hover:underline"
+                        href={routeHref(`playground/${encodeURIComponent(thread.thread_id)}`)}
+                        onClick={() => workspace?.getState().rememberReturnRow(thread.thread_id)}
+                      >
+                        Open in Playground
+                      </a>
                     </TableCell>
                   </TableRow>
                 ))}
@@ -306,9 +358,12 @@ function ThreadList({ status }: { status: StatusFilter }) {
 }
 
 function ThreadDetail({ threadId }: { threadId: string }) {
-  const [tab, setTab] = useState<
-    "conversation" | "runs" | "state" | "checkpoints" | "details" | undefined
-  >();
+  const { query, navigate, segments } = useRoute();
+  const workspace = useWorkspaceStore();
+  const listRoute = useWorkspace((state) => state?.threadListRoute) ?? "threads";
+  const panelId = useId();
+  const tabs = ["conversation", "runs", "state", "checkpoints", "details"] as const;
+  const tab = tabs.find((value) => value === query.get("tab"));
   const [client] = useState(() => createConsoleClient({}));
   const thread = useAsync((signal) => client.threads.get(threadId, { signal }), [threadId]);
   const state = useAsync(
@@ -319,6 +374,8 @@ function ThreadDetail({ threadId }: { threadId: string }) {
     (offset, limit, signal) => client.runs.list(threadId, { offset, limit, signal }),
     threadId,
     50,
+    undefined,
+    `thread-runs:${threadId}`,
   );
   const latestRun = useAsync(
     (signal) => client.runs.list(threadId, { limit: 1, signal }),
@@ -327,6 +384,11 @@ function ThreadDetail({ threadId }: { threadId: string }) {
 
   const messages = (state.data?.values as { messages?: Message[] } | undefined)?.messages;
   const selectedTab = tab ?? (messages ? "conversation" : "state");
+  const viewingThread =
+    segments[0] === "threads" && segments.length === 2 && segments[1] === threadId;
+  useEffect(() => {
+    if (viewingThread) workspace?.getState().rememberThreadTab(threadId, selectedTab);
+  }, [threadId, selectedTab, viewingThread, workspace]);
   const reload = () => {
     state.reload();
     runs.reload();
@@ -343,7 +405,7 @@ function ThreadDetail({ threadId }: { threadId: string }) {
     <>
       <div className="mb-4 flex flex-wrap items-center gap-3">
         <a
-          href={routeHref("threads")}
+          href={routeHref(listRoute)}
           className="inline-flex items-center gap-1.5 text-sm text-muted-foreground hover:text-foreground"
         >
           <ArrowLeft className="size-3.5" aria-hidden />
@@ -354,6 +416,7 @@ function ThreadDetail({ threadId }: { threadId: string }) {
         </span>
         {thread.data ? <StatusBadge status={thread.data.status} /> : null}
       </div>
+      {thread.error && <Async state={thread}>{() => null}</Async>}
 
       {!latestRun.loading &&
         !thread.loading &&
@@ -390,8 +453,11 @@ function ThreadDetail({ threadId }: { threadId: string }) {
       <div className="mb-4 overflow-hidden rounded-xl border bg-card">
         <Tabs
           label="Thread inspection"
+          panelId={panelId}
           value={selectedTab}
-          onChange={setTab}
+          onChange={(value) =>
+            navigate(`threads/${encodeURIComponent(threadId)}?tab=${value}`, true)
+          }
           tabs={[
             { value: "conversation", label: "Conversation" },
             { value: "runs", label: "Runs" },
@@ -400,7 +466,13 @@ function ThreadDetail({ threadId }: { threadId: string }) {
             { value: "details", label: "Details" },
           ]}
         />
-        <div className="min-w-0 p-4">
+        <div
+          id={panelId}
+          role="tabpanel"
+          aria-labelledby={`${panelId}-tab-${selectedTab}`}
+          tabIndex={0}
+          className="min-w-0 p-4"
+        >
           {selectedTab === "conversation" && (
             <Async state={state}>
               {() =>

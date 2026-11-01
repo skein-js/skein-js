@@ -6,6 +6,20 @@
   "tags": [],
   "// targets": "build / serve / preview / test are inferred by @nx/vite from vite.config.mts; lint by @nx/eslint. `nx serve console-ui` is the HMR dev loop; `nx build console-ui` produces the static bundle @skein-js/console compiles in.",
   "targets": {
+    "record-demo": {
+      "executor": "nx:run-commands",
+      "cache": false,
+      "dependsOn": [
+        "console:build",
+        "server-express:build",
+        "langgraph:build",
+        "storage-memory:build"
+      ],
+      "options": {
+        "command": "vitest run --config vitest.recording.config.ts",
+        "cwd": "packages/console/ui"
+      }
+    },
     "typecheck": {
       "executor": "nx:run-commands",
       "options": {

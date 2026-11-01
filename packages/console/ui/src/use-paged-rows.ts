@@ -1,6 +1,8 @@
-import { useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 
 import { useAsync } from "./use-async";
+import { useWorkspace, useWorkspaceStore } from "./workspace/provider";
+import type { PagePosition } from "./workspace/snapshot";
 
 const firstPageOffsets: readonly number[] = [0];
 
@@ -20,8 +22,26 @@ export function usePagedRows<Row>(
   queryKey: string,
   pageSize: number,
   count?: (signal: AbortSignal) => Promise<number>,
+  persistenceKey?: string,
 ) {
-  const [position, setPosition] = useState({ queryKey, pageSize, offsets: firstPageOffsets });
+  const workspace = useWorkspaceStore();
+  const saved = useWorkspace((state) =>
+    persistenceKey ? state?.pages[`${persistenceKey}:${queryKey}`] : undefined,
+  );
+  const [localPosition, setLocalPosition] = useState<PagePosition>({
+    queryKey,
+    pageSize,
+    offsets: firstPageOffsets,
+  });
+  const position = saved ?? localPosition;
+  const setPosition = useCallback(
+    (next: PagePosition) => {
+      if (workspace && persistenceKey)
+        workspace.getState().rememberPage(`${persistenceKey}:${next.queryKey}`, next);
+      else setLocalPosition(next);
+    },
+    [workspace, persistenceKey],
+  );
   const offsets =
     position.queryKey === queryKey && position.pageSize === pageSize
       ? position.offsets
@@ -75,7 +95,7 @@ export function usePagedRows<Row>(
     if (!loading && !result.error && current?.rows.length === 0 && page > 0) {
       setPosition({ queryKey, pageSize, offsets: offsets.slice(0, -1) });
     }
-  }, [current, result.error, loading, page, offsets, pageSize, queryKey]);
+  }, [current, result.error, loading, page, offsets, pageSize, queryKey, setPosition]);
 
   return {
     ...result,

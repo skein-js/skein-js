@@ -9,6 +9,15 @@ import { useCallback, useSyncExternalStore } from "react";
 /** A parsed route: the path segments after `#/`, e.g. `["threads", "abc"]`. */
 export type Route = readonly string[];
 
+export function navigateRoute(path: string, replace = false): void {
+  const hash = routeHref(path);
+  if (window.location.hash === hash) return;
+  if (replace) {
+    window.history.replaceState(null, "", hash);
+    window.dispatchEvent(new HashChangeEvent("hashchange"));
+  } else window.location.hash = hash;
+}
+
 function currentHash(): string {
   return window.location.hash.replace(/^#\/?/, "");
 }
@@ -28,12 +37,10 @@ function subscribe(onChange: () => void): () => void {
 export function useRoute(): {
   segments: Route;
   query: URLSearchParams;
-  navigate: (path: string) => void;
+  navigate: (path: string, replace?: boolean) => void;
 } {
   const raw = useSyncExternalStore(subscribe, currentHash, () => "");
-  const navigate = useCallback((path: string) => {
-    window.location.hash = `#/${path.replace(/^\/+/, "")}`;
-  }, []);
+  const navigate = useCallback(navigateRoute, []);
   const [path, search = ""] = raw.split("?");
   const segments = (path ?? "")
     .split("/")

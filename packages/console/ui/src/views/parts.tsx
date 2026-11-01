@@ -240,12 +240,21 @@ export function formatRelative(date: Date, now: number = Date.now()): string {
 }
 
 /** An id, shortened for the eye, linking to the full resource and keeping the whole value on hover. */
-export function IdLink({ id, to }: { id: string; to: string }) {
+export function IdLink({
+  id,
+  to,
+  onNavigate,
+}: {
+  id: string;
+  to: string;
+  onNavigate?: () => void;
+}) {
   return (
     <a
       className="font-mono text-xs text-foreground underline-offset-4 hover:underline"
       href={routeHref(to)}
       title={id}
+      onClick={onNavigate}
     >
       {shortId(id)}
     </a>

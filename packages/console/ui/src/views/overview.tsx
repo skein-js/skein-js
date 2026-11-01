@@ -18,6 +18,7 @@ import { routeHref } from "@/router";
 import { useAsync } from "@/use-async";
 
 import { Async, IdLink, Json, Panel, StatusBadge, Timestamp } from "./parts";
+import { describeThread } from "./thread-label";
 
 export function OverviewView() {
   const [client] = useState(() => createConsoleClient());
@@ -128,6 +129,12 @@ export function OverviewView() {
                 {threads.map((thread) => (
                   <TableRow key={thread.thread_id}>
                     <TableCell>
+                      <a
+                        className="block max-w-sm break-words font-medium hover:underline"
+                        href={routeHref(`threads/${encodeURIComponent(thread.thread_id)}`)}
+                      >
+                        {describeThread(thread)}
+                      </a>
                       <IdLink id={thread.thread_id} to={`threads/${thread.thread_id}`} />
                     </TableCell>
                     <TableCell>

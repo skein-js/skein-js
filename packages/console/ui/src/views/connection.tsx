@@ -67,10 +67,13 @@ function ConnectionForm({ onDone }: { onDone: () => void }) {
   const [key, setKey] = useState(resolveApiKey() ?? "");
 
   const apply = () => {
+    // Remove the boot-time override before resolving the new key's owning server.
+    window.history.replaceState(null, "", `${window.location.pathname}${window.location.hash}`);
     setApiUrl(url === "" ? undefined : url);
     setApiKey(key === "" ? undefined : key);
-    // Drop `?baseUrl=` so it cannot override what was just chosen on the next boot.
-    window.location.replace(`${window.location.pathname}${window.location.hash}`);
+    // Replacing an identical fragment URL can be a same-document navigation. Rebuild clients
+    // and the connection-scoped workspace even when only credentials changed.
+    window.location.reload();
   };
 
   return (

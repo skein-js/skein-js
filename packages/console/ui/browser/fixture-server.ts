@@ -1,4 +1,5 @@
 import { readFile } from "node:fs/promises";
+import { createServer, request as proxyRequest } from "node:http";
 import { dirname, extname, resolve, sep } from "node:path";
 import { setTimeout as pause } from "node:timers/promises";
 import { fileURLToPath } from "node:url";
@@ -65,7 +66,7 @@ function buildGraph(kind: string) {
     .addEdge("answer", "__end__")
     .compile();
 }
-export async function startConsoleFixture(mountPath = "/console") {
+export async function startConsoleFixture(mountPath = "/console", apiPrefix = "") {
   const ids = ["research", "approval", "failure", "slow"];
   const graphs = new Map(ids.map((id) => [id, buildGraph(id)]));
   const input = {
@@ -139,11 +140,56 @@ export async function startConsoleFixture(mountPath = "/console") {
   const listener = await server.listen(0, "127.0.0.1");
   const address = listener.address();
   if (!address || typeof address === "string") throw new Error("Fixture did not bind");
+  // An actual prefixed protocol mount, not a baseUrl override masking discovery.
+  const proxy = apiPrefix
+    ? createServer((incoming, response) => {
+        const path = incoming.url ?? "/";
+        if (!path.startsWith(mountPath) && !path.startsWith(`${apiPrefix}/`)) {
+          response.writeHead(404);
+          response.end();
+          return;
+        }
+        const apiPath = path.startsWith(mountPath)
+          ? path
+          : path.startsWith(`${apiPrefix}/`)
+            ? path.slice(apiPrefix.length)
+            : path;
+        const forwarded = proxyRequest(
+          {
+            host: "127.0.0.1",
+            port: address.port,
+            path: apiPath,
+            method: incoming.method,
+            headers: incoming.headers,
+          },
+          (result) => {
+            response.writeHead(result.statusCode ?? 502, result.headers);
+            result.pipe(response);
+            response.on("close", () => result.destroy());
+          },
+        );
+        forwarded.on("error", () => {
+          if (!response.headersSent) response.writeHead(502);
+          response.end();
+        });
+        incoming.on("aborted", () => forwarded.destroy());
+        incoming.pipe(forwarded);
+      })
+    : undefined;
+  if (proxy) await new Promise<void>((resolve) => proxy.listen(0, "127.0.0.1", resolve));
+  const proxyAddress = proxy?.address();
+  const port = proxyAddress && typeof proxyAddress !== "string" ? proxyAddress.port : address.port;
   return {
     server,
     store,
-    url: `http://127.0.0.1:${address.port}`,
+    url: `http://127.0.0.1:${port}`,
     mountPath,
-    close: () => server.close(),
+    close: async () => {
+      if (proxy) {
+        proxy.closeAllConnections();
+        await new Promise<void>((resolve) => proxy.close(() => resolve()));
+      }
+      await server.close();
+    },
   };
 }
