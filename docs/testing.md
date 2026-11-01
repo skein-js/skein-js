@@ -370,6 +370,15 @@ subdirectory captures state, runs, metadata/retention, checkpoint/time travel, r
 deliveries. Fixtures include configured channels and an intentional callback failure, without
 contacting external services.
 
+Workspace regressions cover Threads-to-Playground links, separate Chat/JSON drafts through reloads,
+foreground runs surviving navigation without resubmission, capped-page and URL/tab restoration,
+keyboard panel associations, and visible missing-run errors. A prefixed fixture proxies the protocol
+at `/api` and serves `/api/console`, proving base discovery without a `baseUrl` override. Workspace
+unit tests exercise StrictMode hydration, selector isolation, invalid/versioned storage, connection
+separation, draft transfer/deletion, and storage read/write/removal failures with usable memory.
+Additional regressions cover independent providers, custom thread IDs, connection changes after a
+`baseUrl` boot override, and streamed events preserving newer drafts without workspace writes.
+
 Short-window coverage checks the entire composer and sidebar footer remain in the viewport at
 1440×760, 1280×640, 768×900, and 390×844. Long output and interrupt requests scroll inside the
 conversation region; expanded run options scroll inside the composer. Resource-page checks also

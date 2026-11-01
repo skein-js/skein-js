@@ -1,15 +1,17 @@
 import type { Message } from "@langchain/langgraph-sdk";
 import { ArrowLeft, Ban, RotateCcw, Trash2 } from "lucide-react";
-import { useEffect, useState } from "react";
+import { useEffect, useId, useState } from "react";
 
 import { createConsoleClient } from "@/api";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { useConfirmation } from "@/components/ui/dialog";
 import { Tabs } from "@/components/ui/tabs";
-import { routeHref } from "@/router";
+import { routeHref, useRoute } from "@/router";
 import { useAsync } from "@/use-async";
 import { useRunStream, type RunFrame } from "@/use-run-stream";
+import { useWorkspace } from "@/workspace/provider";
+import { getThreadInspectionTab } from "@/workspace/snapshot";
 
 import { ActivityFeed } from "./activity";
 import { Async, Json, Panel, StatusBadge } from "./parts";
@@ -19,7 +21,15 @@ import { Transcript } from "./transcript";
 export function RunView({ threadId, runId }: { threadId: string; runId: string }) {
   const [client] = useState(() => createConsoleClient({}));
   const confirm = useConfirmation();
-  const [tab, setTab] = useState<"activity" | "events" | "deliveries" | "details">("activity");
+  const { query, navigate } = useRoute();
+  const tab =
+    (["activity", "events", "deliveries", "details"] as const).find(
+      (value) => value === query.get("tab"),
+    ) ?? "activity";
+  const returnTab =
+    useWorkspace((state) => getThreadInspectionTab(state?.threadTabs, threadId)) ?? "runs";
+  const threadRoute = `threads/${encodeURIComponent(threadId)}?tab=${returnTab}`;
+  const panelId = useId();
   const [action, setAction] = useState<{ error?: Error; busy?: boolean }>({});
   const run = useAsync((signal) => client.runs.get(threadId, runId, { signal }), [threadId, runId]);
   const stream = useRunStream(threadId, runId);
@@ -57,7 +67,7 @@ export function RunView({ threadId, runId }: { threadId: string; runId: string }
           kind === "rollback" ? "rollback" : "interrupt",
         );
       setAction({});
-      if (kind !== "cancel") window.location.hash = routeHref(`threads/${threadId}`);
+      if (kind !== "cancel") window.location.hash = routeHref(threadRoute);
       else run.reload();
     } catch (error) {
       setAction({ error: error instanceof Error ? error : new Error(String(error)) });
@@ -66,7 +76,7 @@ export function RunView({ threadId, runId }: { threadId: string; runId: string }
   return (
     <>
       <a
-        href={routeHref(`threads/${threadId}`)}
+        href={routeHref(threadRoute)}
         className="mb-4 inline-flex items-center gap-2 text-sm text-primary"
       >
         <ArrowLeft className="size-4" />
@@ -100,7 +110,7 @@ export function RunView({ threadId, runId }: { threadId: string; runId: string }
         <Button
           variant="ghost"
           size="sm"
-          disabled={inFlight || action.busy}
+          disabled={!run.data || inFlight || action.busy}
           onClick={() => void perform("delete")}
         >
           <Trash2 className="size-3.5" />
@@ -112,13 +122,16 @@ export function RunView({ threadId, runId }: { threadId: string; runId: string }
           {action.error.message}
         </p>
       )}
+      {run.error && <Async state={run}>{() => null}</Async>}
       <div className="mb-4 rounded-lg border bg-card p-4">
         <p className="font-medium">
           {inFlight
             ? "Execution is in progress"
             : run.data
               ? `Execution status: ${run.data.status}`
-              : "Loading run status…"}
+              : run.error
+                ? "Run status unavailable"
+                : "Loading run status…"}
         </p>
         <p className="help mt-1">
           {stream.phase === "error"
@@ -137,7 +150,13 @@ export function RunView({ threadId, runId }: { threadId: string; runId: string }
       <div className="overflow-hidden rounded-xl border bg-card">
         <Tabs
           value={tab}
-          onChange={setTab}
+          panelId={panelId}
+          onChange={(value) =>
+            navigate(
+              `threads/${encodeURIComponent(threadId)}/runs/${encodeURIComponent(runId)}?tab=${value}`,
+              true,
+            )
+          }
           label="Run inspection"
           tabs={[
             { value: "activity", label: "Activity" },
@@ -146,7 +165,13 @@ export function RunView({ threadId, runId }: { threadId: string; runId: string }
             { value: "details", label: "Details" },
           ]}
         />
-        <div className="min-w-0 p-4">
+        <div
+          id={panelId}
+          role="tabpanel"
+          aria-labelledby={`${panelId}-tab-${tab}`}
+          tabIndex={0}
+          className="min-w-0 p-4"
+        >
           {tab === "activity" && (
             <div className="space-y-6">
               {failure?.error?.message && (

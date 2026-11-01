@@ -4,6 +4,7 @@ import { createConsoleClient } from "@/api";
 import { Button } from "@/components/ui/button";
 import { useConfirmation } from "@/components/ui/dialog";
 import { routeHref } from "@/router";
+import { useWorkspaceStore } from "@/workspace/provider";
 
 export function ThreadActions({
   threadId,
@@ -13,6 +14,7 @@ export function ThreadActions({
   onChanged: () => void;
 }) {
   const confirm = useConfirmation();
+  const workspace = useWorkspaceStore();
   const [busy, setBusy] = useState(false);
   const [message, setMessage] = useState<string>();
   const [error, setError] = useState<string>();
@@ -39,7 +41,8 @@ export function ThreadActions({
         window.location.hash = routeHref(`threads/${copied.thread_id}`);
       } else if (action === "delete") {
         await client.threads.delete(threadId);
-        window.location.hash = routeHref("threads");
+        workspace?.getState().forgetThread(threadId);
+        window.location.hash = routeHref(workspace?.getState().threadListRoute ?? "threads");
       } else {
         const result = await client.threads.prune([threadId], { strategy: "keep_latest" });
         setMessage(
@@ -58,6 +61,9 @@ export function ThreadActions({
   return (
     <div className="mb-4">
       <div className="flex flex-wrap gap-2">
+        <Button asChild>
+          <a href={routeHref(`playground/${encodeURIComponent(threadId)}`)}>Open in Playground</a>
+        </Button>
         <Button variant="outline" disabled={busy} onClick={() => void perform("copy")}>
           Copy thread
         </Button>
@@ -67,12 +73,6 @@ export function ThreadActions({
         <Button variant="ghost" disabled={busy} onClick={() => void perform("delete")}>
           Delete thread
         </Button>
-        <a
-          className="inline-flex items-center px-3 text-sm text-primary"
-          href={routeHref(`playground/${threadId}`)}
-        >
-          Continue in Playground ↗
-        </a>
       </div>
       {message && (
         <p role="status" className="action-success mt-3">

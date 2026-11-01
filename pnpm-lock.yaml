@@ -1127,13 +1127,13 @@ importers:
     devDependencies:
       '@langchain/core':
         specifier: ^1.2.9
-        version: 1.2.9(@opentelemetry/api@1.9.1)(openai@6.49.0(ws@8.21.0)(zod@4.6.7))(ws@8.21.0)
+        version: 1.2.9(@opentelemetry/api@1.9.1)(openai@6.49.0(ws@8.21.0)(zod@3.25.76))(ws@8.21.0)
       '@langchain/langgraph':
         specifier: 1.4.0
-        version: 1.4.0(@langchain/core@1.2.9(@opentelemetry/api@1.9.1)(openai@6.49.0(ws@8.21.0)(zod@4.6.7))(ws@8.21.0))(react-dom@19.2.6(react@19.2.6))(react@19.2.6)(svelte@5.57.2(@typescript-eslint/types@8.62.1))(vue@3.5.44(typescript@5.9.3))(zod-to-json-schema@3.25.2(zod@4.6.7))(zod@4.6.7)
+        version: 1.4.0(@langchain/core@1.2.9(@opentelemetry/api@1.9.1)(openai@6.49.0(ws@8.21.0)(zod@3.25.76))(ws@8.21.0))(react-dom@19.2.6(react@19.2.6))(react@19.2.6)(svelte@5.57.2(@typescript-eslint/types@8.62.1))(vue@3.5.44(typescript@5.9.3))(zod-to-json-schema@3.25.2(zod@3.25.76))(zod@3.25.76)
       '@langchain/langgraph-sdk':
         specifier: ^1.9.0
-        version: 1.9.25(@langchain/core@1.2.9(@opentelemetry/api@1.9.1)(openai@6.49.0(ws@8.21.0)(zod@4.6.7))(ws@8.21.0))(react-dom@19.2.6(react@19.2.6))(react@19.2.6)(svelte@5.57.2(@typescript-eslint/types@8.62.1))(vue@3.5.44(typescript@5.9.3))
+        version: 1.9.25(@langchain/core@1.2.9(@opentelemetry/api@1.9.1)(openai@6.49.0(ws@8.21.0)(zod@3.25.76))(ws@8.21.0))(react-dom@19.2.6(react@19.2.6))(react@19.2.6)(svelte@5.57.2(@typescript-eslint/types@8.62.1))(vue@3.5.44(typescript@5.9.3))
       '@playwright/test':
         specifier: 1.61.1
         version: 1.61.1
@@ -1212,6 +1212,12 @@ importers:
       tailwindcss:
         specifier: ^3.4.17
         version: 3.4.19(tsx@4.22.4)(yaml@2.9.0)
+      zod:
+        specifier: ^3.25.76
+        version: 3.25.76
+      zustand:
+        specifier: 5.0.16
+        version: 5.0.16(@types/react@19.2.15)(react@19.2.6)
 
   packages/core:
     dependencies:
@@ -10346,6 +10352,24 @@ packages:
   zod@4.6.7:
     resolution: {integrity: sha512-g8W2D2kU6a8untc053fX1uVBKzM7yqAxW/3zwk83+6RyF2+SKOuV+c0wBDhUwzV1PaGapmZH+rmcUzPf+3CGwg==}
 
+  zustand@5.0.16:
+    resolution: {integrity: sha512-Uv7e327ihlCfayfja3hDc0M64Upev1LWBKpRobdK4NyovDDPeeX4imWXc/wzC1yc6fkYPoAY/ncKVPAs2jrtQw==}
+    engines: {node: '>=12.20.0'}
+    peerDependencies:
+      '@types/react': '>=18.0.0'
+      immer: '>=9.0.6'
+      react: '>=18.0.0'
+      use-sync-external-store: '>=1.2.0'
+    peerDependenciesMeta:
+      '@types/react':
+        optional: true
+      immer:
+        optional: true
+      react:
+        optional: true
+      use-sync-external-store:
+        optional: true
+
   zwitch@2.0.4:
     resolution: {integrity: sha512-bXE4cR/kVZhKZX/RjPEflHaKVhUVl85noU3v6b8apfQEc1x4A+zBxjZ4lN8LqGd6WZ3dl98pY4o717VFmoPp+A==}
 
@@ -12198,9 +12222,9 @@ snapshots:
       svelte: 5.57.2(@typescript-eslint/types@8.62.1)
       vue: 3.5.44(typescript@5.9.3)
 
-  '@langchain/langgraph-sdk@1.9.25(@langchain/core@1.2.9(@opentelemetry/api@1.9.1)(openai@6.49.0(ws@8.21.0)(zod@4.6.7))(ws@8.21.0))(react-dom@19.2.6(react@19.2.6))(react@19.2.6)(svelte@5.57.2(@typescript-eslint/types@8.62.1))(vue@3.5.44(typescript@5.9.3))':
+  '@langchain/langgraph-sdk@1.9.25(@langchain/core@1.2.9(@opentelemetry/api@1.9.1)(openai@6.49.0(ws@8.21.0)(zod@3.25.76))(ws@8.21.0))(react-dom@19.2.6(react@19.2.6))(react@19.2.6)(svelte@5.57.2(@typescript-eslint/types@8.62.1))(vue@3.5.44(typescript@5.9.3))':
     dependencies:
-      '@langchain/core': 1.2.9(@opentelemetry/api@1.9.1)(openai@6.49.0(ws@8.21.0)(zod@4.6.7))(ws@8.21.0)
+      '@langchain/core': 1.2.9(@opentelemetry/api@1.9.1)(openai@6.49.0(ws@8.21.0)(zod@3.25.76))(ws@8.21.0)
       '@langchain/protocol': 0.0.18
       '@types/json-schema': 7.0.15
       p-queue: 9.3.1
@@ -12271,17 +12295,17 @@ snapshots:
       esbuild-plugin-tailwindcss: 2.2.0
       zod: 3.25.76
 
-  '@langchain/langgraph@1.4.0(@langchain/core@1.2.9(@opentelemetry/api@1.9.1)(openai@6.49.0(ws@8.21.0)(zod@4.6.7))(ws@8.21.0))(react-dom@19.2.6(react@19.2.6))(react@19.2.6)(svelte@5.57.2(@typescript-eslint/types@8.62.1))(vue@3.5.44(typescript@5.9.3))(zod-to-json-schema@3.25.2(zod@4.6.7))(zod@4.6.7)':
+  '@langchain/langgraph@1.4.0(@langchain/core@1.2.9(@opentelemetry/api@1.9.1)(openai@6.49.0(ws@8.21.0)(zod@3.25.76))(ws@8.21.0))(react-dom@19.2.6(react@19.2.6))(react@19.2.6)(svelte@5.57.2(@typescript-eslint/types@8.62.1))(vue@3.5.44(typescript@5.9.3))(zod-to-json-schema@3.25.2(zod@3.25.76))(zod@3.25.76)':
     dependencies:
-      '@langchain/core': 1.2.9(@opentelemetry/api@1.9.1)(openai@6.49.0(ws@8.21.0)(zod@4.6.7))(ws@8.21.0)
-      '@langchain/langgraph-checkpoint': 1.1.5(@langchain/core@1.2.9(@opentelemetry/api@1.9.1)(openai@6.49.0(ws@8.21.0)(zod@4.6.7))(ws@8.21.0))
-      '@langchain/langgraph-sdk': 1.9.31(@langchain/core@1.2.9(@opentelemetry/api@1.9.1)(openai@6.49.0(ws@8.21.0)(zod@4.6.7))(ws@8.21.0))(react-dom@19.2.6(react@19.2.6))(react@19.2.6)(svelte@5.57.2(@typescript-eslint/types@8.62.1))(vue@3.5.44(typescript@5.9.3))
+      '@langchain/core': 1.2.9(@opentelemetry/api@1.9.1)(openai@6.49.0(ws@8.21.0)(zod@3.25.76))(ws@8.21.0)
+      '@langchain/langgraph-checkpoint': 1.1.5(@langchain/core@1.2.9(@opentelemetry/api@1.9.1)(openai@6.49.0(ws@8.21.0)(zod@3.25.76))(ws@8.21.0))
+      '@langchain/langgraph-sdk': 1.9.31(@langchain/core@1.2.9(@opentelemetry/api@1.9.1)(openai@6.49.0(ws@8.21.0)(zod@3.25.76))(ws@8.21.0))(react-dom@19.2.6(react@19.2.6))(react@19.2.6)(svelte@5.57.2(@typescript-eslint/types@8.62.1))(vue@3.5.44(typescript@5.9.3))
       '@langchain/protocol': 0.0.16
       '@standard-schema/spec': 1.1.0
       uuid: 14.0.1
-      zod: 4.6.7
+      zod: 3.25.76
     optionalDependencies:
-      zod-to-json-schema: 3.25.2(zod@4.6.7)
+      zod-to-json-schema: 3.25.2(zod@3.25.76)
     transitivePeerDependencies:
       - react
       - react-dom
@@ -20493,13 +20517,13 @@ snapshots:
     dependencies:
       zod: 3.25.76
 
-  zod-to-json-schema@3.25.2(zod@4.6.7):
-    dependencies:
-      zod: 4.6.7
-    optional: true
-
   zod@3.25.76: {}
 
   zod@4.6.7: {}
+
+  zustand@5.0.16(@types/react@19.2.15)(react@19.2.6):
+    optionalDependencies:
+      '@types/react': 19.2.15
+      react: 19.2.6
 
   zwitch@2.0.4: {}

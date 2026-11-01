@@ -47,6 +47,304 @@ afterAll(async () => {
   await fixture?.close();
 });
 
+it("returns from Threads to the same Playground with isolated drafts and no submission on restoration", async () => {
+  const page = await newPage({ viewport: { width: 1440, height: 900 } });
+  const threadId = await openAssistant(page, "research");
+  let submissions = 0;
+  page.on("request", (request) => {
+    if (request.method() === "POST" && /\/runs(?:\/stream)?$/.test(new URL(request.url()).pathname))
+      submissions++;
+  });
+  const message = page.getByRole("textbox", { name: "Message", exact: true });
+  await message.fill("Recognizable conversation");
+  await page.getByRole("button", { name: "Send message", exact: true }).click();
+  await expect(page.getByText("Run completed", { exact: true })).toBeVisible();
+  await message.fill("Unsent chat draft");
+  await page.getByRole("button", { name: "JSON", exact: true }).click();
+  const json = page.getByRole("textbox", { name: "Graph input (JSON)", exact: true });
+  await json.fill('{"messages":[],"draft":"keep"}');
+  await page.getByRole("navigation").getByRole("link", { name: "Threads", exact: true }).click();
+  const row = page.getByRole("row").filter({ hasText: "Recognizable conversation" });
+  await expect(row).toBeVisible();
+  await row.getByRole("link", { name: "Open in Playground", exact: true }).click();
+  await expect(page).toHaveURL(new RegExp(`playground/${threadId}$`));
+  await expect(json).toHaveValue('{"messages":[],"draft":"keep"}');
+  await page.reload();
+  await expect(json).toHaveValue('{"messages":[],"draft":"keep"}');
+  await page.getByRole("button", { name: "Chat", exact: true }).click();
+  await expect(message).toHaveValue("Unsent chat draft");
+  await page.getByRole("navigation").getByRole("link", { name: "Overview", exact: true }).click();
+  await page.getByRole("navigation").getByRole("link", { name: "Playground", exact: true }).click();
+  await expect(page).toHaveURL(new RegExp(`playground/${threadId}$`));
+  await expect(message).toHaveValue("Unsent chat draft");
+  expect(submissions).toBe(1);
+  await page.getByRole("button", { name: "Recent threads", exact: true }).click();
+  await expect(
+    page.getByRole("dialog").getByRole("link", { name: "Recognizable conversation", exact: true }),
+  ).toBeVisible();
+  await page.keyboard.press("Escape");
+  await expect(page.getByRole("button", { name: "Recent threads", exact: true })).toBeFocused();
+  await page.getByRole("button", { name: "New thread", exact: true }).click();
+  await expect(message).toHaveValue("");
+  expect(submissions).toBe(1);
+  await message.fill("Fresh workspace draft");
+  await page.reload();
+  await expect(message).toHaveValue("Fresh workspace draft");
+  await page.getByRole("button", { name: "Send message", exact: true }).click();
+  await expect(page.getByText("Run completed", { exact: true })).toBeVisible();
+  expect(page.url()).not.toContain(threadId);
+  await expect(message).toHaveValue("");
+  expect(submissions).toBe(2);
+  await page.close();
+});
+
+it("keeps a foreground run alive through navigation and observes the same run on return", async () => {
+  const page = await newPage({ viewport: { width: 1440, height: 900 } });
+  const threadId = await openAssistant(page, "slow");
+  let submissions = 0;
+  page.on("request", (request) => {
+    if (request.method() === "POST" && request.url().endsWith("/runs/stream")) submissions++;
+  });
+  await page
+    .getByRole("textbox", { name: "Message", exact: true })
+    .fill("Continue while inspecting");
+  await page.getByRole("button", { name: "Send message", exact: true }).click();
+  await expect(page.getByText("Run in progress", { exact: true })).toBeVisible();
+  await page
+    .getByRole("textbox", { name: "Message", exact: true })
+    .fill("Draft typed during execution");
+  const run = (await client.runs.list(threadId))[0]!;
+  await page.getByRole("navigation").getByRole("link", { name: "Threads", exact: true }).click();
+  await expect
+    .poll(async () => (await client.runs.get(threadId, run.run_id)).status)
+    .toBe("success");
+  await page.getByRole("navigation").getByRole("link", { name: "Playground", exact: true }).click();
+  await expect(page.getByText("Run completed", { exact: true })).toBeVisible();
+  await expect(page.getByRole("textbox", { name: "Message", exact: true })).toHaveValue(
+    "Draft typed during execution",
+  );
+  expect((await client.runs.list(threadId)).map((entry) => entry.run_id)).toEqual([run.run_id]);
+  expect(submissions).toBe(1);
+  await page.close();
+});
+
+it("does not persist streamed frames or write workspace state as events arrive", async () => {
+  const page = await newPage();
+  await openAssistant(page, "slow");
+  await page
+    .getByRole("textbox", { name: "Message", exact: true })
+    .fill("Observe without persistence writes");
+  await page.getByRole("button", { name: "Send message", exact: true }).click();
+  await expect(page.getByText("Run in progress", { exact: true })).toBeVisible();
+  await page.getByRole("textbox", { name: "Message", exact: true }).fill("Keep this next input");
+  await page.evaluate(() => {
+    const original = Storage.prototype.setItem;
+    Object.assign(window, { workspaceWrites: 0 });
+    Storage.prototype.setItem = function (key, value) {
+      if (this === sessionStorage && key.startsWith("skein-console:workspace:")) {
+        Object.assign(window, { workspaceWrites: Reflect.get(window, "workspaceWrites") + 1 });
+      }
+      original.call(this, key, value);
+    };
+  });
+  await expect(page.getByText("Run completed", { exact: true })).toBeVisible();
+  expect(await page.evaluate(() => Reflect.get(window, "workspaceWrites"))).toBe(0);
+  await expect(page.getByRole("textbox", { name: "Message", exact: true })).toHaveValue(
+    "Keep this next input",
+  );
+  await page.close();
+});
+
+it("restores capped list positions, URL filters and inspection tabs with usable return focus", async () => {
+  const page = await newPage({ viewport: { width: 1440, height: 900 } });
+  for (let index = 0; index < 5; index++)
+    await client.threads.create({
+      graphId: "paging-proof",
+      metadata: { assistant_id: "research" },
+    });
+  await page.goto(`${fixture.url}/console/#/threads?graph=paging-proof`);
+  await page.getByRole("button", { name: "Next", exact: true }).click();
+  await expect(page.getByText("4–5 of 5", { exact: true })).toBeVisible();
+  const target = page.locator('a[id^="thread-"]').first();
+  const label = await target.innerText();
+  await target.locator("..").getByRole("link").last().click();
+  await page.getByRole("tab", { name: "Runs", exact: true }).click();
+  await expect(page).toHaveURL(/\?tab=runs$/);
+  await page.reload();
+  await expect(page.getByRole("tab", { name: "Runs", exact: true })).toHaveAttribute(
+    "aria-selected",
+    "true",
+  );
+  await page.getByRole("link", { name: "Open in Playground", exact: true }).click();
+  await page.getByRole("link", { name: "Inspect thread", exact: true }).click();
+  await expect(page.getByRole("tab", { name: "Runs", exact: true })).toHaveAttribute(
+    "aria-selected",
+    "true",
+  );
+  await page.getByRole("main").getByRole("link", { name: "Threads", exact: true }).click();
+  await expect(page.getByLabel("Latest graph ID", { exact: true })).toHaveValue("paging-proof");
+  await expect(page.getByText("4–5 of 5", { exact: true })).toBeVisible();
+  await expect(page.getByRole("link", { name: label, exact: true })).toBeFocused();
+  await page.getByRole("link", { name: "Clear filters", exact: true }).click();
+  await expect(page.getByLabel("Latest graph ID", { exact: true })).toHaveValue("");
+  await page.getByLabel("Latest graph ID", { exact: true }).fill("no-such-graph");
+  await page.getByRole("button", { name: "Filter", exact: true }).click();
+  await expect(page.getByText(/No matching threads/)).toBeVisible();
+  await page.close();
+});
+
+it("discovers an actual prefixed API and launches an off-page Assistant without creating resources", async () => {
+  const prefixed = await startConsoleFixture("/api/console", "/api");
+  const page = await newPage();
+  const prefixedClient = new Client({ apiUrl: `${prefixed.url}/api` });
+  try {
+    expect((await fetch(`${prefixed.url}/info`)).status).toBe(404);
+    const thread = await prefixedClient.threads.create({ metadata: { assistant_id: "research" } });
+    const count = await prefixedClient.threads.count();
+    await page.goto(`${prefixed.url}/api/console/#/assistants/research`);
+    await page.getByRole("link", { name: "Open in Playground", exact: true }).click();
+    await expect(page.getByRole("combobox", { name: "Assistant", exact: true })).toHaveValue(
+      "research",
+    );
+    await page.getByRole("textbox", { name: "Message", exact: true }).fill("Prefix draft");
+    await page.reload();
+    await expect(page.getByRole("textbox", { name: "Message", exact: true })).toHaveValue(
+      "Prefix draft",
+    );
+    expect(await prefixedClient.threads.count()).toBe(count);
+    await page.goto(`${prefixed.url}/api/console/#/playground/${thread.thread_id}`);
+    await expect(page.getByRole("textbox", { name: "Message", exact: true })).toHaveValue("");
+    await page.getByRole("textbox", { name: "Message", exact: true }).fill("Prefix run");
+    await page.getByRole("button", { name: "Send message", exact: true }).click();
+    await expect(page.getByText("Run completed", { exact: true })).toBeVisible();
+    expect(page.url()).not.toContain("baseUrl");
+  } finally {
+    await page.close();
+    await prefixed.close();
+  }
+});
+
+it("reports missing runs in the default tab and associates keyboard tabs with unique panels", async () => {
+  const page = await newPage();
+  const thread = await openAssistant(page, "research");
+  await page.getByRole("tab", { name: "Activity", exact: true }).focus();
+  await page.keyboard.press("ArrowRight");
+  const graph = page.getByRole("tab", { name: "Graph", exact: true });
+  await expect(graph).toBeFocused();
+  const panel = await graph.getAttribute("aria-controls");
+  await expect(page.locator(`[id="${panel}"]`)).toHaveAttribute("role", "tabpanel");
+  await expect(page.locator(`[id="${panel}"]`)).toHaveAttribute(
+    "aria-labelledby",
+    (await graph.getAttribute("id"))!,
+  );
+  await page.goto(
+    `${fixture.url}/console/#/threads/${thread}/runs/00000000-0000-4000-8000-000000000000`,
+  );
+  await expect(page.getByText("Run status unavailable", { exact: true })).toBeVisible();
+  await expect(page.getByRole("alert")).toBeVisible();
+  await expect(page.getByRole("button", { name: "Delete", exact: true })).toBeDisabled();
+  await page.getByRole("link", { name: "Back to thread", exact: true }).click();
+  await expect(page.getByRole("tab", { name: "Runs", exact: true })).toHaveAttribute(
+    "aria-selected",
+    "true",
+  );
+  await page.close();
+});
+
+it("returns custom thread IDs from a direct run entry to the Runs tab", async () => {
+  const page = await newPage();
+  await client.threads.create({ threadId: "constructor" });
+  await page.goto(
+    `${fixture.url}/console/#/threads/constructor/runs/00000000-0000-4000-8000-000000000000`,
+  );
+  const back = page.getByRole("link", { name: "Back to thread", exact: true });
+  await expect(back).toHaveAttribute("href", "#/threads/constructor?tab=runs");
+  await back.click();
+  await expect(page.getByRole("tab", { name: "Runs", exact: true })).toHaveAttribute(
+    "aria-selected",
+    "true",
+  );
+  await page.close();
+});
+
+it("applies a new connection and key after booting with an explicit base URL", async () => {
+  const page = await newPage();
+  await page.goto(`${fixture.url}/console/?baseUrl=${encodeURIComponent(fixture.url)}#/overview`);
+  await page.getByRole("button", { name: /^connected/ }).click();
+  const target = `${fixture.url}/missing-api`;
+  await page.getByLabel("Server URL", { exact: true }).fill(target);
+  await page.getByLabel("API key", { exact: true }).fill("connection-review-key");
+  await page.getByRole("button", { name: "Connect", exact: true }).click();
+  await expect(page.getByRole("button", { name: /^unreachable/ })).toBeVisible();
+  expect(new URL(page.url()).search).toBe("");
+  expect(
+    await page.evaluate(() => ({
+      base: localStorage.getItem("skein-console:baseUrl"),
+      owner: localStorage.getItem("skein-console:apiKeyFor"),
+    })),
+  ).toEqual({ base: target, owner: target });
+  await page.close();
+});
+
+it("keeps a usable in-memory workspace and composer when session storage rejects writes", async () => {
+  const page = await newPage({ viewport: { width: 390, height: 844 } });
+  await page.addInitScript(() => {
+    const original = Storage.prototype.setItem;
+    Storage.prototype.setItem = function (key, value) {
+      if (this === sessionStorage) throw new DOMException("Quota exceeded", "QuotaExceededError");
+      original.call(this, key, value);
+    };
+  });
+  await page.goto(`${fixture.url}/console/#/playground?new=1&assistant=research`);
+  const message = page.getByRole("textbox", { name: "Message", exact: true });
+  await message.fill("Memory fallback draft");
+  await expect(
+    page.getByRole("status").filter({ hasText: "Drafts are kept in memory" }),
+  ).toBeVisible();
+  await page.getByRole("button", { name: "Open navigation", exact: true }).click();
+  await page.getByRole("dialog").getByRole("link", { name: "Overview", exact: true }).click();
+  await page.getByRole("button", { name: "Open navigation", exact: true }).click();
+  await page.getByRole("dialog").getByRole("link", { name: "Playground", exact: true }).click();
+  await expect(message).toHaveValue("Memory fallback draft");
+  await expect(page.getByRole("button", { name: "Send message", exact: true })).toBeInViewport();
+  await page.getByRole("button", { name: "Send message", exact: true }).click();
+  await expect(page.getByText("Run completed", { exact: true })).toBeVisible();
+  await page.close();
+});
+
+it("invalidates drafts on same-tab credential saves and cross-tab connection changes", async () => {
+  const context = await browser.newContext();
+  context.setDefaultTimeout(10000);
+  const page = await context.newPage();
+  await openAssistant(page, "research");
+  const message = page.getByRole("textbox", { name: "Message", exact: true });
+  await message.fill("Old credential draft");
+  await page.getByRole("button", { name: /^connected/ }).click();
+  await page.getByLabel("API key", { exact: true }).fill("workspace-test-key");
+  await page.getByRole("button", { name: "Connect", exact: true }).click();
+  await expect(message).toHaveValue("");
+  await message.fill("Before cross-tab change");
+  const second = await page.context().newPage();
+  await second.goto(`${fixture.url}/console/#/overview`);
+  await second.evaluate(() =>
+    localStorage.setItem("skein-console:workspace-generation", "other-tab-generation"),
+  );
+  await expect(message).toHaveValue("");
+  await message.fill("New connection draft");
+  await page.reload();
+  await expect(message).toHaveValue("New connection draft");
+  const snapshots = await page.evaluate(() =>
+    Object.keys(sessionStorage)
+      .filter((key) => key.startsWith("skein-console:workspace:"))
+      .map((key) => `${key}:${sessionStorage.getItem(key)}`)
+      .join("\n"),
+  );
+  expect(snapshots).not.toContain("workspace-test-key");
+  expect(snapshots).not.toContain("Old credential draft");
+  await second.close();
+  await context.close();
+});
+
 it("shows real tool activity, token output, a nonboolean pause, failure and resumed success", async () => {
   const page = await newPage({ viewport: { width: 1440, height: 1000 } });
   const errors: string[] = [];
@@ -348,7 +646,7 @@ it("copies, edits, retains, trims, and deletes threads with actual affected coun
       }
     })
     .toBe(false);
-  const bulk = await client.threads.create({ metadata: { graph_id: "bulk-browser" } });
+  const bulk = await client.threads.create({ graphId: "bulk-browser" });
   await page.goto(`${fixture.url}/console/#/threads?graph=bulk-browser`);
   await page
     .getByRole("checkbox", { name: `Select thread ${bulk.thread_id}`, exact: true })
@@ -585,6 +883,18 @@ it("captures current documentation screens in light and dark themes", async () =
         path: resolve(directory, `${name}-${theme}.png`),
         fullPage: true,
       });
+      if (name === "playground") {
+        await page.getByRole("button", { name: "Recent threads", exact: true }).click();
+        await expect(
+          page.getByRole("dialog").getByRole("link", { name: "View all threads", exact: true }),
+        ).toBeVisible();
+        await page.screenshot({
+          animations: "disabled",
+          path: resolve(directory, `recent-threads-${theme}.png`),
+          fullPage: true,
+        });
+        await page.keyboard.press("Escape");
+      }
     }
     const detailDirectory = resolve(directory, "details");
     await mkdir(detailDirectory, { recursive: true });

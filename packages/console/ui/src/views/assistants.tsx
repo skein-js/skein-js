@@ -19,6 +19,8 @@ import {
 import { routeHref } from "@/router";
 import { useAsync } from "@/use-async";
 import { usePagedRows } from "@/use-paged-rows";
+import { useWorkspaceStore } from "@/workspace/provider";
+import { createDraftKey } from "@/workspace/store";
 
 import { CreateAssistant, DeleteAssistant, RestoreAssistantVersion } from "./assistant-actions";
 import { Async, IdLink, Json, Pagination, Panel, Timestamp } from "./parts";
@@ -112,6 +114,7 @@ function AssistantList() {
 }
 
 function AssistantDetail({ assistantId }: { assistantId: string }) {
+  const workspace = useWorkspaceStore();
   const [client] = useState(() => createConsoleClient({}));
   const assistant = useAsync(
     (signal) => client.assistants.get(assistantId, { signal }),
@@ -141,6 +144,37 @@ function AssistantDetail({ assistantId }: { assistantId: string }) {
         <ArrowLeft className="size-3.5" aria-hidden />
         Assistants
       </a>
+      {assistant.error && <Async state={assistant}>{() => null}</Async>}
+      {assistant.data && (
+        <div className="mb-4 flex flex-wrap items-center justify-between gap-3">
+          <h2 className="text-lg font-semibold">
+            {assistant.data.name || assistant.data.graph_id}
+          </h2>
+          <Button asChild>
+            <a
+              href={routeHref(`playground?new=1&assistant=${encodeURIComponent(assistantId)}`)}
+              onClick={(event) => {
+                if (
+                  event.metaKey ||
+                  event.ctrlKey ||
+                  event.shiftKey ||
+                  event.altKey ||
+                  event.button !== 0
+                )
+                  return;
+                workspace?.getState().updateDraft(createDraftKey(undefined, assistantId), {
+                  chat: "",
+                  json: undefined,
+                  mode: undefined,
+                });
+                workspace?.getState().rememberWorkspace({ assistantId });
+              }}
+            >
+              Open in Playground
+            </a>
+          </Button>
+        </div>
+      )}
 
       <details className="mb-4">
         <summary className="mb-3 cursor-pointer text-sm text-muted-foreground">

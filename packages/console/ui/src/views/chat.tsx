@@ -12,7 +12,7 @@
 import type { Message, Run } from "@langchain/langgraph-sdk";
 import { MessageTupleManager, toMessageDict } from "@langchain/langgraph-sdk/ui";
 import { CornerDownLeft, PanelRightClose, PanelRightOpen, Plus, Square } from "lucide-react";
-import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from "react";
+import { useCallback, useEffect, useId, useMemo, useRef, useState, type ReactNode } from "react";
 
 import { createConsoleClient, createSkeinConsoleClient, fetchServerInfo } from "@/api";
 import { GraphDiagram } from "@/components/graph-diagram";
@@ -22,21 +22,39 @@ import { Tabs } from "@/components/ui/tabs";
 import type { GraphEdge, GraphNode } from "@/graph-layout";
 import { acceptsMessages, inputSchemaOf, sampleInputFor } from "@/graph-schema";
 import { cn } from "@/lib/utils";
-import { routeHref } from "@/router";
+import { navigateRoute, routeHref } from "@/router";
 import { useAsync } from "@/use-async";
 import { useFrameBuffer } from "@/use-frame-buffer";
 import { usePagedRows } from "@/use-paged-rows";
 import { useRunStream } from "@/use-run-stream";
+import { useWorkspace, useWorkspaceStore } from "@/workspace/provider";
+import { getThreadInspectionTab, type WorkspaceDraft } from "@/workspace/snapshot";
+import { createDraftKey } from "@/workspace/store";
 
 import { ActivityFeed, describeExecution } from "./activity";
 import { InterruptPanel, pendingInterrupts } from "./interrupts";
 import { Async, Json, Pagination, Panel } from "./parts";
+import { RecentThreads } from "./recent-threads";
 import { DEFAULT_RUN_OPTIONS, parseRunOptions, RunOptionsForm } from "./run-options";
 import { Transcript } from "./transcript";
 
 type InputMode = "chat" | "json";
 
-export function ChatView({ threadId }: { threadId?: string }) {
+export function ChatView({
+  threadId,
+  fresh = false,
+  requestedAssistant,
+}: {
+  threadId?: string;
+  fresh?: boolean;
+  requestedAssistant?: string;
+}) {
+  const workspace = useWorkspaceStore();
+  const remembered = useWorkspace((state) => state?.lastWorkspace);
+  const resume = !threadId && !fresh && remembered?.threadId;
+  useEffect(() => {
+    if (resume) navigateRoute(`playground/${encodeURIComponent(resume)}`, true);
+  }, [resume]);
   const [client] = useState(() => createConsoleClient({}));
   const assistants = usePagedRows(
     (offset, limit, signal) => client.assistants.search({ offset, limit, signal }),
@@ -49,6 +67,12 @@ export function ChatView({ threadId }: { threadId?: string }) {
     threadId?: string;
     sessionKey?: string;
   }>();
+  const explicitAssistant = !threadId ? requestedAssistant : undefined;
+  const requested = useAsync(
+    async (signal) =>
+      explicitAssistant ? client.assistants.get(explicitAssistant, { signal }) : undefined,
+    [explicitAssistant],
+  );
   const restored = useAsync(
     async (signal) => {
       if (!threadId) return undefined;
@@ -76,8 +100,39 @@ export function ChatView({ threadId }: { threadId?: string }) {
   }
   const knownSelection = selection?.assistantId;
   const selected =
-    knownSelection ?? (threadId ? restored.data?.assistantId : assistants.rows?.[0]?.assistant_id);
+    knownSelection ??
+    (threadId
+      ? (restored.data?.assistantId ??
+        (remembered?.threadId === threadId ? remembered.assistantId : undefined))
+      : (explicitAssistant ?? remembered?.assistantId ?? assistants.rows?.[0]?.assistant_id));
   const sessionKey = selection?.sessionKey ?? threadId ?? "new";
+  const startingFresh = Boolean(selection?.sessionKey && !selection.threadId);
+  const [, refreshFreshIntent] = useState(0);
+  const initializingFresh = Boolean(
+    fresh && !threadId && selected && window.history.state?.freshWorkspace !== true,
+  );
+  useEffect(() => {
+    if (!initializingFresh || !selected || window.history.state?.freshWorkspace === true) return;
+    workspace?.getState().updateDraft(createDraftKey(undefined, selected), {
+      chat: "",
+      json: undefined,
+      mode: undefined,
+    });
+    // History state survives reloads but is not copied by a fresh link opened in another tab.
+    window.history.replaceState(
+      { ...window.history.state, freshWorkspace: true },
+      "",
+      window.location.href,
+    );
+    refreshFreshIntent((revision) => revision + 1);
+  }, [initializingFresh, selected, workspace]);
+  useEffect(() => {
+    if (selected && !resume && !restored.error && !requested.error)
+      workspace
+        ?.getState()
+        .rememberWorkspace({ assistantId: selected, ...(threadId ? { threadId } : {}) });
+  }, [selected, threadId, resume, restored.error, requested.error, workspace]);
+  if (resume || initializingFresh) return <p role="status">Opening workspace…</p>;
   return (
     <div className="flex min-h-0 min-w-0 flex-1 flex-col">
       <div className="mb-4 flex shrink-0 flex-wrap items-end gap-3">
@@ -105,6 +160,7 @@ export function ChatView({ threadId }: { threadId?: string }) {
           </select>
         </label>
         <span className="help pb-2">An Assistant is a saved configuration of a graph.</span>
+        <RecentThreads />
         {(assistants.hasNext || assistants.offset > 0) && (
           <Pagination
             {...assistants}
@@ -125,20 +181,46 @@ export function ChatView({ threadId }: { threadId?: string }) {
       )}
       {restored.error && !knownSelection && (
         <p className="action-error" role="alert">
-          Unable to identify this thread&apos;s Assistant: {restored.error.message}. Select one
-          explicitly before continuing.
+          Unable to open this thread: {restored.error.message}. Retry, choose a Recent thread, or
+          start fresh.
+          <a className="ml-2 underline" href={routeHref("playground?new=1")}>
+            New thread
+          </a>
+          <Button variant="outline" size="sm" onClick={restored.reload}>
+            Try again
+          </Button>
         </p>
       )}
-      {selected && (knownSelection || !threadId || !restored.loading) ? (
+      {requested.error && !knownSelection && (
+        <p role="alert" className="action-error">
+          Unable to open this Assistant: {requested.error.message}. Select an Assistant above or{" "}
+          <a className="underline" href={routeHref("playground?new=1")}>
+            start fresh
+          </a>
+          .
+        </p>
+      )}
+      {selected &&
+      !restored.error &&
+      (!requested.error || knownSelection) &&
+      (knownSelection || !threadId || !restored.loading) ? (
         <Session
           key={`${selected}:${sessionKey}`}
           assistantId={selected}
-          threadId={threadId}
-          initialRun={restored.data?.run}
+          threadId={startingFresh ? undefined : threadId}
+          initialRun={startingFresh ? undefined : restored.data?.run}
           onThreadCreated={(id) =>
             setSelection({ assistantId: selected, threadId: id, sessionKey })
           }
-          onNewThread={() => setSelection({ assistantId: selected, sessionKey: "new" })}
+          onNewThread={() => {
+            workspace?.getState().updateDraft(createDraftKey(undefined, selected), {
+              chat: "",
+              json: undefined,
+              mode: undefined,
+            });
+            workspace?.getState().rememberWorkspace({ assistantId: selected });
+            setSelection({ assistantId: selected, sessionKey: crypto.randomUUID() });
+          }}
         />
       ) : (
         <Panel title="Get started" padded>
@@ -165,17 +247,55 @@ function Session({
   onNewThread: () => void;
 }) {
   const [client] = useState(() => createConsoleClient({}));
+  const workspace = useWorkspaceStore();
+  const draftIdentity = useRef(createDraftKey(threadId, assistantId));
+  const storedDraft = useWorkspace((state) => state?.drafts[draftIdentity.current]);
+  const inspectionTab = useWorkspace((state) =>
+    threadId ? getThreadInspectionTab(state?.threadTabs, threadId) : undefined,
+  );
   const capabilities = useAsync((signal) => fetchServerInfo(signal), []);
   const [options, setOptions] = useState(DEFAULT_RUN_OPTIONS);
   const [batchRuns, setBatchRuns] = useState<{ run_id: string; thread_id: string }[]>([]);
-  const [requestedMode, setMode] = useState<InputMode | undefined>();
+  const [localMode, setLocalMode] = useState<InputMode | undefined>();
+  const requestedMode = storedDraft?.mode ?? localMode;
+  const setMode = (mode: InputMode) => {
+    setLocalMode(mode);
+    workspace?.getState().updateDraft(draftIdentity.current, { mode });
+  };
   /**
    * One draft per mode.
    *
    * A single shared draft meant the JSON template seeded for a non-chat graph was still sitting in the
    * box after switching to Chat — so the first thing you sent a chatbot was a state object.
    */
-  const [drafts, setDrafts] = useState<Partial<Record<InputMode, string>>>({ chat: "" });
+  const [localDrafts, setLocalDrafts] = useState<WorkspaceDraft>({ chat: "" });
+  const drafts = storedDraft ?? localDrafts;
+  const setDrafts = useCallback(
+    (update: (current: WorkspaceDraft) => WorkspaceDraft) => {
+      if (workspace)
+        workspace
+          .getState()
+          .updateDraft(
+            draftIdentity.current,
+            update(workspace.getState().drafts[draftIdentity.current] ?? { chat: "" }),
+          );
+      else setLocalDrafts(update);
+    },
+    [workspace],
+  );
+  const clearSubmittedDraft = useCallback(
+    (mode: InputMode, submittedDraft: string) => {
+      if (workspace)
+        workspace.getState().clearSubmittedDraft(draftIdentity.current, mode, submittedDraft);
+      else
+        setLocalDrafts((current) =>
+          (current[mode] ?? submittedDraft) === submittedDraft
+            ? { ...current, [mode]: "" }
+            : current,
+        );
+    },
+    [workspace],
+  );
   const [messages, setMessages] = useState<Message[]>([]);
   const [values, setValues] = useState<unknown>();
   const [running, setRunning] = useState(false);
@@ -210,6 +330,16 @@ function Session({
    * the conversation in half.
    */
   const activeThread = useRef<string | undefined>(threadId);
+  const adoptThread = useCallback(
+    (id: string) => {
+      const previous = draftIdentity.current;
+      draftIdentity.current = createDraftKey(id, assistantId);
+      workspace?.getState().moveDraft(previous, draftIdentity.current);
+      workspace?.getState().rememberWorkspace({ threadId: id, assistantId });
+      onThreadCreated(id);
+    },
+    [assistantId, onThreadCreated, workspace],
+  );
   /** When the last run finished. Thread state fetched before this is stale and must not be applied. */
   const ranUntil = useRef(0);
 
@@ -277,7 +407,7 @@ function Session({
   const draft = mode ? (drafts[mode] ?? (mode === "json" ? sampleInputFor(schemas.data) : "")) : "";
   const setDraft = useCallback(
     (value: string) => setDrafts((current) => (mode ? { ...current, [mode]: value } : current)),
-    [mode],
+    [mode, setDrafts],
   );
 
   const send = useCallback(async () => {
@@ -343,7 +473,7 @@ function Session({
           );
           setBatchRuns(rows);
           setTerminalStatus("submitted");
-          setDrafts((current) => (current.json === draft ? { ...current, json: "" } : current));
+          clearSubmittedDraft("json", draft);
           return;
         }
         if (!parsed || typeof parsed !== "object" || Array.isArray(parsed))
@@ -358,20 +488,22 @@ function Session({
         const created = await client.threads.create({ metadata: { source: "console-playground" } });
         target = created.thread_id;
         activeThread.current = target;
-        onThreadCreated(target);
-        window.location.hash = routeHref(`playground/${encodeURIComponent(target)}`);
+        adoptThread(target);
+        if (controller.signal.aborted) return;
+        navigateRoute(`playground/${encodeURIComponent(target)}`, true);
       }
       if (target && target !== activeThread.current) {
         activeThread.current = target;
-        onThreadCreated(target);
-        window.location.hash = routeHref(`playground/${encodeURIComponent(target)}`);
+        adoptThread(target);
+        if (controller.signal.aborted) return;
+        navigateRoute(`playground/${encodeURIComponent(target)}`, true);
       }
       const payload = {
         input,
         streamMode: options.capture,
         multitaskStrategy: options.multitask,
         afterSeconds: parsedOptions.afterSeconds,
-        onDisconnect: "cancel" as const,
+        onDisconnect: "continue" as const,
         onRunCreated: ({ run_id, thread_id }: { run_id: string; thread_id?: string }) => {
           const resolvedThread = thread_id ?? target;
           if (resolvedThread) setRunIdentity({ threadId: resolvedThread, runId: run_id });
@@ -389,10 +521,11 @@ function Session({
       if (createdRun) {
         target = createdRun.thread_id;
         setRunIdentity({ threadId: target, runId: createdRun.run_id });
-        onThreadCreated(target);
+        adoptThread(target);
         {
           activeThread.current = target;
-          window.location.hash = routeHref(`playground/${encodeURIComponent(target)}`);
+          if (controller.signal.aborted) return;
+          navigateRoute(`playground/${encodeURIComponent(target)}`, true);
         }
       }
       const chunks = createdRun
@@ -404,7 +537,7 @@ function Session({
           ? submissionClient.runs.stream(null, assistantId, {
               input,
               streamMode: options.capture,
-              onDisconnect: "cancel",
+              onDisconnect: "continue",
               signal: controller.signal,
             })
           : submissionClient.runs.stream(target, assistantId, payload);
@@ -474,9 +607,7 @@ function Session({
           !reportedFailure &&
           (observedStatus === "success" || observedStatus === "interrupted")
         ) {
-          setDrafts((current) =>
-            (current[mode] ?? draft) === draft ? { ...current, [mode]: "" } : current,
-          );
+          clearSubmittedDraft(mode, draft);
         } else if (!reportedFailure && observedStatus === undefined) {
           setError(
             new Error(
@@ -485,6 +616,13 @@ function Session({
           );
         }
       }
+      if (
+        options.target === "stateless" &&
+        options.completion === "delete" &&
+        observedStatus === "success" &&
+        target
+      )
+        workspace?.getState().forgetThread(target);
     } catch (caught) {
       if (!controller.signal.aborted) {
         setError(
@@ -509,7 +647,9 @@ function Session({
     thread,
     options,
     capabilities.data,
-    onThreadCreated,
+    adoptThread,
+    clearSubmittedDraft,
+    workspace,
     appendFrame,
     clearFrames,
     flushFrames,
@@ -585,10 +725,13 @@ function Session({
               error ??
               (observedFailure ? new Error(describeRunFailure(observedFailure)) : undefined),
           });
-  const inspectorBody = (
+  const inspectorId = useId();
+  const drawerInspectorId = useId();
+  const inspectorBody = (panelId: string) => (
     <>
       <Tabs
         label="Execution inspector"
+        panelId={panelId}
         value={inspector}
         onChange={setInspector}
         tabs={[
@@ -597,7 +740,13 @@ function Session({
           { value: "state", label: "State" },
         ]}
       />
-      <div className="min-h-0 flex-1 overflow-auto p-4">
+      <div
+        id={panelId}
+        role="tabpanel"
+        aria-labelledby={`${panelId}-tab-${inspector}`}
+        tabIndex={0}
+        className="min-h-0 flex-1 overflow-auto p-4"
+      >
         {inspector === "activity" ? (
           <ActivityFeed frames={displayedFrames} dropped={displayedDropped} />
         ) : inspector === "graph" ? (
@@ -669,11 +818,13 @@ function Session({
             observedStatus === "success"
           ) && (
             <a
-              href={routeHref(`threads/${threadId}`)}
+              href={routeHref(
+                `threads/${encodeURIComponent(threadId)}${inspectionTab ? `?tab=${inspectionTab}` : ""}`,
+              )}
               className="text-xs text-primary"
               title={threadId}
             >
-              Inspect thread ↗
+              Inspect thread
             </a>
           )}
         <Button
@@ -683,7 +834,9 @@ function Session({
           onClick={() => {
             activeThread.current = undefined;
             onNewThread();
-            window.location.hash = routeHref("playground");
+            window.location.hash = routeHref(
+              `playground?new=1&assistant=${encodeURIComponent(assistantId)}`,
+            );
             setMessages([]);
             setValues(undefined);
             setVisited(new Set());
@@ -752,7 +905,7 @@ function Session({
               className="mr-4 inline-block text-xs text-primary underline"
               href={routeHref(`threads/${run.thread_id}/runs/${run.run_id}`)}
             >
-              {run.run_id.slice(0, 8)} ↗
+              {run.run_id.slice(0, 8)}
             </a>
           ))}
         </div>
@@ -953,7 +1106,7 @@ function Session({
             aria-label="Execution inspector"
             className="hidden w-80 shrink-0 flex-col border-l bg-muted/20 lg:flex"
           >
-            {inspectorBody}
+            {inspectorBody(inspectorId)}
           </aside>
         )}
       </div>
@@ -964,7 +1117,7 @@ function Session({
         description="Inspect reported activity, graph structure, and current state."
         side
       >
-        {inspectorBody}
+        {inspectorBody(drawerInspectorId)}
       </Dialog>
     </div>
   );

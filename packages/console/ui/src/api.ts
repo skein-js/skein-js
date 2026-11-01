@@ -16,6 +16,8 @@
 import type { Run } from "@langchain/langgraph-sdk";
 import { BaseClient, Client } from "@langchain/langgraph-sdk/client";
 
+import { invalidateWorkspaceConnection } from "./workspace/connection";
+
 const BASE_URL_STORAGE_KEY = "skein-console:baseUrl";
 const API_KEY_STORAGE_KEY = "skein-console:apiKey";
 /** The server the stored API key belongs to. See {@link resolveApiKey}. */
@@ -43,6 +45,8 @@ function readBaseUrlOverride(): string | undefined {
   const fromQuery = new URLSearchParams(window.location.search).get("baseUrl");
   if (fromQuery !== null && fromQuery !== "") {
     if (isSameOrigin(fromQuery) || confirmForeignTarget(fromQuery)) {
+      if (window.localStorage.getItem(BASE_URL_STORAGE_KEY) !== fromQuery)
+        invalidateWorkspaceConnection();
       window.localStorage.setItem(BASE_URL_STORAGE_KEY, fromQuery);
       return fromQuery;
     }
@@ -75,6 +79,7 @@ export function resolveApiUrl(): string {
 
 /** Point the console at a different server (or, with `undefined`, back at its own origin). */
 export function setApiUrl(url: string | undefined): void {
+  invalidateWorkspaceConnection();
   if (url === undefined || url === "") window.localStorage.removeItem(BASE_URL_STORAGE_KEY);
   else window.localStorage.setItem(BASE_URL_STORAGE_KEY, url);
 }
@@ -96,6 +101,7 @@ export function resolveApiKey(): string | undefined {
 }
 
 export function setApiKey(key: string | undefined): void {
+  invalidateWorkspaceConnection();
   if (key === undefined || key === "") {
     window.localStorage.removeItem(API_KEY_STORAGE_KEY);
     window.localStorage.removeItem(API_KEY_OWNER_STORAGE_KEY);

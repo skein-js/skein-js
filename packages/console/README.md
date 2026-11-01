@@ -80,6 +80,17 @@ schema-based JSON input, a visible execution summary, and Activity/Graph/State i
 versions, thread copy/pruning/retention, store creation/expiry, advanced runs, and schedules use the
 existing SDK API. Failed drafts remain editable; observers never cancel execution when closed.
 
+Playground resumes the last workspace in this tab; **New thread** starts fresh without creating a
+resource until submission. **Recent threads** provides paged conversation discovery, and thread rows
+and details offer **Open in Playground**. Assistant details can open a fresh Playground with that
+configuration selected. Leaving Playground keeps active runs executing; **Stop run** cancels them.
+
+A connection-scoped Zustand store keeps separate Chat/JSON drafts, input modes, and navigation
+positions in memory, with versioned `sessionStorage` retention through reloads for the tab's lifetime.
+Connection/API-key changes invalidate that workspace. Browser-storage failures fall back to memory
+with a visible notice. Fetched transcripts, resources and SSE frames remain in the existing server
+read/observation hooks. Inspection tabs use hash queries, and return links restore list context.
+
 Passive store inspection requests `refreshTtl: false`. Unsupported custom adapters require an
 explicit normal-read choice. Per-run timeout input is enabled only when `/info.flags.per_run_timeout`
 is `true`. Delayed/keyed runs use background submission followed by observation; ambiguous failures

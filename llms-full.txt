@@ -9275,8 +9275,10 @@ See [agent-protocol.md](./agent-protocol.md#authentication--authorization) for t
 
 ## What it is
 
-The console is a **client** and stores nothing of its own. Most screens use the standard Agent
-Protocol through the real [`@langchain/langgraph-sdk`](./react-sdk.md). Two small skein extensions
+The console is a **client**; the server owns resource data and execution. A browser-local workspace
+store keeps unsent drafts and navigation positions for the current tab, including across reloads.
+Most screens use the standard Agent Protocol through the real
+[`@langchain/langgraph-sdk`](./react-sdk.md). Two small skein extensions
 cover operational state the upstream SDK does not model: a sanitized channel inventory and a run's
 durable delivery attempts. The console subclasses the SDK's transport for these calls, so connection,
 authentication and errors use the SDK transport. Run submissions disable automatic retries. A narrow
@@ -9360,7 +9362,8 @@ Two things worth knowing before you enable it on a public host:
 ## What it shows
 
 The sidebar groups work by purpose: **Build** (Playground, Assistants), **Inspect** (Threads), and
-**Operate** (Overview, Channels, Store, Schedules). Playground remains the landing page; existing
+**Operate** (Overview, Channels, Store, Schedules). Playground remains the landing page and returns
+to this tab's last workspace. **New thread** starts fresh. Existing
 hash links, including `#/crons`, still work. Navigation becomes a drawer on phones. The Playground
 inspector becomes a drawer below 1024px. Light, dark, and system themes share the same labeled status
 colors; teal marks primary actions and selection.
@@ -9389,6 +9392,30 @@ JSON example. Each mode keeps its own draft. Threads are created only on submiss
 request failures preserve the draft. If schema discovery fails, its error remains visible and you
 can select Chat or JSON explicitly or retry discovery.
 
+**Recent threads** opens a paged list ordered by last update, with an exact-ID opener and a link to
+all threads. Conversation previews use available human-message text; structured or unavailable state
+falls back to a graph name and thread ID. **Open in Playground** is available directly on thread rows
+and details, and on Assistant details for a fresh workspace with that configuration selected.
+
+<div class="light-only">
+
+![Recent conversations with previews and direct Playground links](/images/console/recent-threads-light.png)
+
+</div>
+<div class="dark-only">
+
+![Recent conversations in dark mode](/images/console/recent-threads-dark.png)
+
+</div>
+
+Chat and JSON drafts stay separate for each thread and Assistant. A Zustand workspace store saves
+only drafts, input mode, last workspace, and navigation positions to `sessionStorage`. It does not
+persist fetched transcripts, resource responses, or stream events. Workspace state is scoped to the
+API base and reset when the console's connection or API key changes, including changes from another
+tab. Server authorization still controls access; account changes outside the connection control are
+not detected automatically. If browser storage fails, the console keeps working in memory and shows
+that drafts may not survive a reload.
+
 The execution summary explains what was observed and what to do next. Reopening a thread restores
 its latest run's retained activity through an observer that never cancels execution. **Activity** shows reported
 node output, tool calls and results, pauses, and failures. **Graph** highlights nodes that reported
@@ -9401,6 +9428,10 @@ output keeps your scroll position.
 without cancelling execution. An interrupted run displays its originating task and requested value;
 **Send true**, **Send false**, and the editable response submit their literal values. A resumed run
 is followed until its terminal event.
+
+Leaving or reloading Playground also closes observation without cancelling its run. Return to the
+same thread to observe its latest run; opening a thread never resubmits input. Use **Stop run** to
+cancel explicitly.
 
 **Advanced run options** are collapsed initially:
 
@@ -9498,6 +9529,12 @@ retention. Select threads on the current page to prune or delete them. Results r
 unchanged/skipped counts rather than assuming every selection changed. Retention is in minutes;
 `null` means known no expiry, while missing readback means unavailable. Thread expiry marks
 eligibility for background cleanup, which can be deferred by active work.
+
+Thread and run inspection tabs are shareable through the hash URL's `tab` query. Existing tab names
+are accepted; unknown names fall back safely. Returning from inspection restores the prior thread
+list filters and page. A direct run link returns to the thread's Runs tab. Explicit fresh-workspace
+links use `#/playground?new=1`, optionally with `assistant=<id>`; existing
+`#/playground/<threadId>` links continue the named conversation.
 
 <div class="light-only">
 

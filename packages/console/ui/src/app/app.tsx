@@ -25,6 +25,7 @@ import { CronsView } from "@/views/crons";
 import { OverviewView } from "@/views/overview";
 import { StoreView } from "@/views/store";
 import { ThreadsView } from "@/views/threads";
+import { WorkspaceProvider, WorkspaceStorageNotice, useWorkspaceStore } from "@/workspace/provider";
 
 const NAV = [
   {
@@ -80,21 +81,33 @@ const NAV = [
 
 export function App() {
   return (
-    <ConfirmationProvider>
-      <ConsoleShell />
-    </ConfirmationProvider>
+    <WorkspaceProvider>
+      <ConfirmationProvider>
+        <ConsoleShell />
+      </ConfirmationProvider>
+    </WorkspaceProvider>
   );
 }
 
 function ConsoleShell() {
   const { segments, query, navigate } = useRoute();
+  const workspace = useWorkspaceStore();
   const [mobileNavigation, setMobileNavigation] = useState(false);
   const section = segments[0] ?? "";
   const playground = section === "" || section === "playground";
   const current = NAV.find((entry) => entry.path === section);
   useEffect(() => {
-    if (section === "") navigate("playground");
+    if (section === "") navigate("playground", true);
   }, [section, navigate]);
+  const resourcePath = segments.join("/");
+  useEffect(() => {
+    const row = workspace?.getState().returnRow;
+    const target =
+      section === "threads" && segments.length === 1 && row
+        ? document.getElementById(`thread-${row}`)
+        : null;
+    (target ?? document.getElementById("console-heading"))?.focus();
+  }, [resourcePath, section, segments.length, workspace]);
   const navigation = (
     <nav aria-label="Console navigation" className="space-y-7">
       {["Build", "Inspect", "Operate"].map((group) => (
@@ -197,10 +210,13 @@ function ConsoleShell() {
                 {current?.group ?? "Workspace"}
               </div>
             )}
-            <h1 className="text-2xl font-semibold">{current?.label ?? "Console"}</h1>
+            <h1 id="console-heading" tabIndex={-1} className="text-2xl font-semibold outline-none">
+              {current?.label ?? "Console"}
+            </h1>
             <p className="mt-1 max-w-3xl text-sm leading-relaxed text-muted-foreground">
               {current?.description}
             </p>
+            <WorkspaceStorageNotice />
           </div>
           <Body segments={segments} query={query} />
         </main>
@@ -216,7 +232,13 @@ function Body({ segments, query }: { segments: readonly string[]; query: URLSear
     // `undefined` only shows for the instant before the redirect above lands.
     case undefined:
     case "playground":
-      return <ChatView threadId={id} />;
+      return (
+        <ChatView
+          threadId={id}
+          fresh={query.get("new") === "1"}
+          requestedAssistant={query.get("assistant") ?? undefined}
+        />
+      );
     case "overview":
       return <OverviewView />;
     case "assistants":
