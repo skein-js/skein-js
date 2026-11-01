@@ -1,111 +1,91 @@
 import type { AuthEngine } from "@skein-js/core";
-import type { ZodTypeAny } from "zod";
 import { zodToJsonSchema } from "zod-to-json-schema";
 
 import type { ProtocolHandlers } from "../create-handlers.js";
+import { operationContracts } from "../http/operation-contracts.js";
 import type { RouteBinding } from "../http/routes.js";
-import {
-  threadEventFilterSchema,
-  threadCommandEnvelopeSchema,
-} from "../threads/thread-protocol-service.js";
-import * as schemas from "../validation/schemas.js";
+import { pathParameterSchema } from "../validation/parse.js";
 
-import { responseSchemas } from "./response-schemas.js";
-
-/** The validators actually used by each body-bearing handler, kept internal. */
-const requests: Partial<Record<keyof ProtocolHandlers, ZodTypeAny>> = {
-  createWaitRun: schemas.runCreateSchema,
-  createStreamRun: schemas.runCreateSchema,
-  createBackgroundRun: schemas.runCreateSchema,
-  createStatelessRun: schemas.runCreateSchema,
-  createRunBatch: schemas.runBatchCreateSchema,
-  cancelManyRuns: schemas.cancelManySchema,
-  createThread: schemas.threadCreateSchema,
-  patchThread: schemas.threadPatchSchema,
-  listThreads: schemas.threadSearchSchema,
-  countThreads: schemas.threadCountSchema,
-  pruneThreads: schemas.threadPruneSchema,
-  getThreadHistory: schemas.threadHistorySchema,
-  getThreadStateAtCheckpointFromBody: schemas.threadStateCheckpointSchema,
-  updateThreadState: schemas.threadStateUpdateSchema,
-  createAssistant: schemas.assistantCreateSchema,
-  updateAssistant: schemas.assistantUpdateSchema,
-  searchAssistants: schemas.assistantSearchSchema,
-  countAssistants: schemas.assistantCountSchema,
-  listAssistantVersions: schemas.assistantVersionsSchema,
-  setAssistantLatestVersion: schemas.assistantSetLatestSchema,
-  createCron: schemas.cronCreateSchema,
-  updateCron: schemas.cronUpdateSchema,
-  searchCrons: schemas.cronSearchSchema,
-  countCrons: schemas.cronCountSchema,
-  putStoreItem: schemas.storePutSchema,
-  searchStoreItems: schemas.storeSearchSchema,
-  listStoreNamespaces: schemas.listNamespacesSchema,
-  postThreadStream: schemas.threadStreamSchema,
-  postThreadCommands: schemas.commandBodySchema.or(threadCommandEnvelopeSchema),
-  postThreadEvents: threadEventFilterSchema,
-};
-
-const streams = new Set<keyof ProtocolHandlers>([
-  "createStreamRun",
-  "postThreadStream",
-  "getThreadStream",
-  "joinRunStream",
-  "postThreadEvents",
-]);
+import { enabledNativeDiagnostics } from "./native-diagnostics.js";
 
 export function createOpenApiDocument(
   routes: readonly RouteBinding[],
   handlers: ProtocolHandlers,
   auth?: AuthEngine,
   version = "unknown",
-): object {
+) {
   const paths: Record<string, Record<string, unknown>> = {};
+  const convert = (schema: Parameters<typeof zodToJsonSchema>[0]) =>
+    zodToJsonSchema(schema, { target: "openApi3", $refStrategy: "none" });
   for (const route of routes) {
     if (!handlers[route.handler]) continue;
+    const contract = operationContracts[route.handler];
     const path = route.path.replace(/:([A-Za-z_]+)/g, "{$1}");
     const parameters: object[] = [...route.path.matchAll(/:([A-Za-z_]+)/g)].map(([, name]) => ({
       name,
       in: "path",
       required: true,
-      schema: { type: "string" },
+      schema: convert(pathParameterSchema),
     }));
-    if (route.method === "get" && route.handler === "listThreadRuns")
-      parameters.push(
-        { name: "limit", in: "query", schema: { type: "integer", minimum: 1 } },
-        { name: "offset", in: "query", schema: { type: "integer", minimum: 0 } },
-        { name: "status", in: "query", schema: { type: "string" } },
-      );
-    if (["getThreadStream", "joinRunStream"].includes(route.handler))
-      parameters.push({ name: "Last-Event-ID", in: "header", schema: { type: "string" } });
-    if (route.handler === "getThreadStream")
-      parameters.push({
-        name: "stream_mode",
-        in: "query",
-        schema: { type: "array", items: { type: "string" } },
-        style: "form",
-        explode: true,
-      });
-    const validator = requests[route.handler];
-    const requestSchema = validator
-      ? zodToJsonSchema(validator, { target: "openApi3", $refStrategy: "none" })
-      : undefined;
-    const streaming = streams.has(route.handler);
-    const responseSchema = responseSchemas[route.handler];
-    const jsonSchema = responseSchema
-      ? zodToJsonSchema(responseSchema, { target: "openApi3", $refStrategy: "none" })
-      : {};
-    const content = streaming
-      ? { "text/event-stream": { schema: { type: "string" } } }
-      : {
-          "application/json": { schema: jsonSchema },
-          ...(route.handler === "postThreadCommands" ||
-          route.handler === "handleMcp" ||
-          route.handler === "handleA2a"
-            ? { "text/event-stream": { schema: { type: "string" } } }
-            : {}),
-        };
-    const operation = {
+    if ("query" in contract) {
+      const querySchema = convert(contract.query) as {
+        properties?: Record<string, unknown>;
+        required?: string[];
+      };
+      for (const [name, schema] of Object.entries(querySchema.properties ?? {}))
+        parameters.push({
+          name,
+          in: "query",
+          schema,
+          required: querySchema.required?.includes(name) ?? false,
+        });
+    }
+    if ("headers" in contract) {
+      const headers = convert(contract.headers) as { properties?: Record<string, unknown> };
+      for (const [name, schema] of Object.entries(headers.properties ?? {}))
+        parameters.push({ name, in: "header", schema });
+    }
+    const validator = "body" in contract ? contract.body : undefined;
+    const requestSchema = validator ? convert(validator) : undefined;
+    const content =
+      contract.kind === "empty"
+        ? undefined
+        : contract.kind === "sse"
+          ? { "text/event-stream": { schema: convert(contract.response) } }
+          : {
+              "application/json": { schema: convert(contract.response) },
+              ...(contract.kind === "mixed"
+                ? { "text/event-stream": { schema: { type: "string" } } }
+                : {}),
+            };
+    const responses = {
+      ...("external" in contract && contract.external
+        ? {}
+        : {
+            [contract.status]: {
+              description: contract.kind === "empty" ? "No content" : "Success",
+              ...(content ? { content } : {}),
+            },
+          }),
+      default: {
+        description: "Protocol error. The HTTP status and optional code describe the failure.",
+        content: {
+          "application/json": {
+            schema: {
+              type: "object",
+              required: ["status", "message"],
+              properties: {
+                status: { type: "integer" },
+                message: { type: "string" },
+                code: { type: "string" },
+                details: {},
+              },
+            },
+          },
+        },
+      },
+    };
+    (paths[path] ??= {})[route.method] = {
       operationId: `${route.handler}_${route.method}_${route.path.replace(/[^A-Za-z0-9]+/g, "_")}`,
       tags: [route.group ?? "custom"],
       parameters,
@@ -127,51 +107,43 @@ export function createOpenApiDocument(
               "Requires deployment authentication and the resource authorization policy.",
           }
         : {}),
-      responses: {
-        "200": { description: "Success", content },
-        "204": { description: "No content" },
-        "400": { description: "Invalid request" },
-        "401": { description: "Authentication required" },
-        "403": { description: "Permission denied" },
-        "404": { description: "Resource not found" },
-        "409": { description: "Conflict" },
-        "422": { description: "Unsupported operation or state" },
-        "501": { description: "Deployment capability unavailable" },
-      },
+      responses:
+        "external" in contract && contract.external
+          ? {
+              default: {
+                description:
+                  "Response status, headers and payload are supplied by the official SDK or configured channel provider.",
+                content: {
+                  "application/json": { schema: {} },
+                  "text/event-stream": { schema: { type: "string" } },
+                },
+              },
+            }
+          : responses,
     };
-    (paths[path] ??= {})[route.method] = operation;
   }
-  if (routes.some((route) => route.handler === "getOpenApi"))
-    paths["/docs"] = {
+  for (const diagnostic of enabledNativeDiagnostics(
+    routes.filter((route) => Boolean(handlers[route.handler])),
+  )) {
+    paths[diagnostic.path] = {
       get: {
-        summary: "API reference",
+        summary: diagnostic.summary,
+        ...("query" in diagnostic
+          ? {
+              parameters: Object.entries(
+                (convert(diagnostic.query) as { properties: Record<string, unknown> }).properties,
+              ).map(([name, schema]) => ({ name, in: "query", schema })),
+            }
+          : {}),
         responses: {
-          "200": {
-            description: "HTML API reference",
-            content: { "text/html": { schema: { type: "string" } } },
-          },
+          [diagnostic.status]: { description: "Success", content: diagnostic.content },
+          ...(diagnostic.name === "metrics"
+            ? { "501": { description: "No host collector configured" } }
+            : {}),
         },
       },
     };
-  if (routes.some((route) => route.group === "meta"))
-    paths["/metrics"] = {
-      get: {
-        summary: "Collect host OpenTelemetry metrics",
-        parameters: [
-          { name: "format", in: "query", schema: { type: "string", enum: ["prometheus", "json"] } },
-        ],
-        responses: {
-          "200": {
-            description: "Collected metrics",
-            content: {
-              "text/plain": { schema: { type: "string" } },
-              "application/json": { schema: { type: "object" } },
-            },
-          },
-          "501": { description: "No host collector configured" },
-        },
-      },
-    };
+  }
   return {
     openapi: "3.0.3",
     info: { title: "Skein Agent Server", version },

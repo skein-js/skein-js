@@ -32,12 +32,15 @@ function bannerLines(runConcurrency: number, authPath?: string): string[] {
 }
 
 /** The decorative header lines, which go to `console.log` rather than the logger. */
-function headerLines(): string[] {
+function headerLines(apiDocsEnabled = false): string[] {
   const printed: string[] = [];
   vi.spyOn(console, "log").mockImplementation((...args: unknown[]) => {
     printed.push(args.join(" "));
   });
-  printBanner({ host: "127.0.0.1", port: 2024, graphIds: ["agent"], runConcurrency: 1 }, logger());
+  printBanner(
+    { host: "127.0.0.1", port: 2024, graphIds: ["agent"], runConcurrency: 1, apiDocsEnabled },
+    logger(),
+  );
   return printed;
 }
 
@@ -87,8 +90,12 @@ describe("printBanner", () => {
     expect(headerLines().join("\n")).toContain("http://127.0.0.1:2024");
   });
 
-  // skein serves no OpenAPI page, so a `${base}/docs` URL in the banner would 404 on the first
-  // thing a new user clicks. The Docs line must point at the real docs instead.
+  it("advertises the local reference only when mounted and retains the guide", () => {
+    const header = headerLines(true).join("\n");
+    expect(header).toContain("http://127.0.0.1:2024/docs");
+    expect(header).toContain("https://skein-js.github.io/skein-js/");
+  });
+
   it("never advertises a local /docs route the server does not serve", () => {
     const header = headerLines().join("\n");
     expect(header).not.toContain("http://127.0.0.1:2024/docs");

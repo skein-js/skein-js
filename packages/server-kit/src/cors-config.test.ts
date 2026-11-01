@@ -126,6 +126,18 @@ describe("disabledRoutesFromHttpConfig / routesFromHttpConfig", () => {
     });
   });
 
+  it("disables documentation independently and preserves the legacy meta switch", () => {
+    const docs = routesFromHttpConfig({ disable_docs: true });
+    expect(docs.some((route) => route.handler === "getOpenApi")).toBe(false);
+    expect(docs.some((route) => route.handler === "getServerInfo")).toBe(true);
+    expect(routesFromHttpConfig({ disable_docs: "true" })).toBe(skeinRoutes);
+    expect(
+      routesFromHttpConfig({ disable_meta: true, disable_docs: false }).some(
+        (route) => route.group === "docs" || route.group === "meta",
+      ),
+    ).toBe(false);
+  });
+
   it("treats only literal true as disabling", () => {
     // LangGraph's schema defaults each flag to false, and an env-substituted config can carry the
     // string "false" — which must not remove a resource.

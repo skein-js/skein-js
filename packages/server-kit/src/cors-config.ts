@@ -104,6 +104,7 @@ const DISABLE_FLAGS: Record<string, RouteGroup> = {
   disable_crons: "crons",
   disable_store: "store",
   disable_meta: "meta",
+  disable_docs: "docs",
 };
 
 /**

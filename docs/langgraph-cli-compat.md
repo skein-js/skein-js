@@ -176,6 +176,7 @@ it but is never required.
     "disable_runs": false,
     "disable_crons": false, // skein-only: also stops the scheduler, not just the routes
     "disable_store": false,
+    "disable_docs": false, // hide /docs and /openapi.json while keeping /info and /metrics
     "disable_meta": false, // turns off /info, /openapi.json, /docs and /metrics; never /ok
     "console": false, // skein-only: serve the console at /console (or a path). Off unless set;
     //                   `skein dev` serves it anyway. See docs/console.md.

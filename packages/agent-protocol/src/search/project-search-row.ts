@@ -22,7 +22,7 @@ export function projectSearchRow(
   row: object,
   select?: readonly string[],
   extract?: Record<string, string>,
-): object {
+): Record<string, unknown> {
   const selected =
     select === undefined
       ? row

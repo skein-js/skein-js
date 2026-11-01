@@ -67,7 +67,9 @@ or an explicit deployment policy permitting those assets. See the configuration 
 
 MCP and A2A reuse authorized run services; do not add another scheduler or task database. For custom
 stores, A2A requires immutable run-result persistence. Diagnostics are `/openapi.json`, `/docs`,
-`/metrics`, and `/threads/{thread_id}/storage`. Metrics require a host-owned collector, and custom
+`/metrics`, and `/threads/{thread_id}/storage`. The API reference is generated from enabled operation
+contracts. `http.disable_docs: true` hides docs and OpenAPI while retaining info and metrics;
+`http.disable_meta: true` hides all four. `/ok` is independent. Metrics require a host-owned collector, and custom
 savers without concrete byte inspectors return 501. Never estimate stored bytes or silently ignore
 requested indexing, explicit no-expiry TTL, or per-read refresh controls.
 

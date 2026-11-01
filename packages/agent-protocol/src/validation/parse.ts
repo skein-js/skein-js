@@ -3,10 +3,14 @@
 // clean 400. Interior code then works with fully-typed, trusted values.
 
 import { SkeinHttpError } from "@skein-js/core";
-import type { ZodType } from "zod";
+import { z, type ZodType, type ZodTypeDef } from "zod";
 
 /** Validate `raw` against `schema`, or throw a 400 describing what was wrong. */
-export function parse<T>(schema: ZodType<T>, raw: unknown, subject = "request body"): T {
+export function parse<T>(
+  schema: ZodType<T, ZodTypeDef, unknown>,
+  raw: unknown,
+  subject = "request body",
+): T {
   const result = schema.safeParse(raw);
   if (!result.success) {
     throw SkeinHttpError.badRequest(`Invalid ${subject}.`, { details: result.error.flatten() });
@@ -14,11 +18,14 @@ export function parse<T>(schema: ZodType<T>, raw: unknown, subject = "request bo
   return result.data;
 }
 
+export const pathParameterSchema = z.string().min(1);
+
 /** Require a non-empty string path param (e.g. `thread_id`), or throw a 400. */
 export function requireParam(params: Record<string, string>, name: string): string {
   const value = params[name];
-  if (typeof value !== "string" || value.length === 0) {
+  const result = pathParameterSchema.safeParse(value);
+  if (!result.success) {
     throw SkeinHttpError.badRequest(`Missing path parameter "${name}".`);
   }
-  return value;
+  return result.data;
 }

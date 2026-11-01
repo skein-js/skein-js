@@ -194,6 +194,51 @@ async function main() {
     "production image serves offline API docs",
     (await (await fetch(`${url}/docs`)).text()).includes("Skein Agent Server API"),
   );
+  // Relaunch the built artifact inside the image with docs-only and legacy metadata controls.
+  // This probes the generated production launcher's config path without rebuilding or source files.
+  execFileSync(
+    "docker",
+    [
+      "exec",
+      runningContainer,
+      "node",
+      "--input-type=module",
+      "-e",
+      String.raw`
+    import assert from 'node:assert/strict';
+    import {readFile,writeFile,cp,symlink} from 'node:fs/promises';
+    import {spawn} from 'node:child_process';
+    // The production image runs as an unprivileged user; keep the original artifact read-only.
+    const work='/tmp/skein-docs-artifact';
+    await cp('/app',work,{recursive:true,filter:source=>source!=='/app/node_modules' && source!=='/app/vendor'});
+    await symlink('/app/node_modules',work+'/node_modules','dir');
+    const original=JSON.parse(await readFile(work+'/langgraph.json','utf8'));
+    for(const flags of [{disable_docs:true},{disable_meta:true}]) {
+      await writeFile(work+'/docs-control.json',JSON.stringify({...original,http:{...original.http,...flags}}));
+      const child=spawn(process.execPath,['/app/node_modules/skein-js/dist/index.js','start','-c',work+'/docs-control.json','--store','sqlite','--queue','sqlite','--sqlite-path','/tmp/docs-control.sqlite','--host','127.0.0.1','--port','2025'],{stdio:['ignore','pipe','pipe']});
+      let output='';child.stdout.on('data',chunk=>output+=chunk);child.stderr.on('data',chunk=>output+=chunk);
+      const closed=new Promise(resolve=>child.once('exit',resolve));
+      try {
+        let ready=false;
+        for(let i=0;i<100;i++) {
+          if(child.exitCode!==null) throw Error(output);
+          try {if((await fetch('http://127.0.0.1:2025/ok')).ok){ready=true;break;}}catch{}
+          await new Promise(resolve=>setTimeout(resolve,100));
+        }
+        assert(ready,output);
+        for(const path of ['/docs','/openapi.json']) assert.equal((await fetch('http://127.0.0.1:2025'+path)).status,404);
+        assert.equal((await fetch('http://127.0.0.1:2025/info')).status,flags.disable_meta?404:200);
+        assert.equal((await fetch('http://127.0.0.1:2025/metrics')).status,flags.disable_meta?404:501);
+      } finally {
+        child.kill('SIGTERM');const killer=setTimeout(()=>child.kill('SIGKILL'),10000);await closed;clearTimeout(killer);
+      }
+    }
+  `,
+    ],
+    { stdio: "inherit", timeout: 120000 },
+  );
+  check("production artifact retains independent docs and legacy meta controls", true);
+
   execFileSync("docker", [
     "exec",
     runningContainer,

@@ -15,7 +15,7 @@ export type HttpMethod = "get" | "post" | "put" | "patch" | "delete";
  * `langgraph dev` would.
  */
 export type RouteGroup =
-  "assistants" | "threads" | "runs" | "crons" | "store" | "meta" | "mcp" | "a2a";
+  "assistants" | "threads" | "runs" | "crons" | "store" | "meta" | "docs" | "mcp" | "a2a";
 
 /**
  * One route. `HandlerName` defaults to a member of the protocol handler table; a surface mounted
@@ -58,7 +58,7 @@ export interface RouteBinding<HandlerName = keyof ProtocolHandlers> {
 
 /** The route table, ordered most-specific-first within each method so literals win over params. */
 export const skeinRoutes: readonly RouteBinding[] = [
-  { method: "get", path: "/openapi.json", handler: "getOpenApi", group: "meta" },
+  { method: "get", path: "/openapi.json", handler: "getOpenApi", group: "docs" },
   {
     method: "get",
     path: "/threads/:thread_id/storage",
@@ -323,6 +323,9 @@ export const skeinRoutes: readonly RouteBinding[] = [
 export type DisabledRouteGroups = Partial<Record<RouteGroup, boolean>>;
 
 /**
+ * The original `meta` switch also hides docs for existing direct filter callers; a separate
+ * `docs` switch leaves info and metrics mounted.
+ *
  * Drop every route belonging to a disabled group, so a disabled resource is simply **not mounted** and
  * a request for it gets the framework's own 404 — exactly what `langgraph dev` does (it skips the
  * `app.route(...)` call rather than answering 403 or 501).
@@ -335,7 +338,11 @@ export function filterSkeinRoutes(
   disabled: DisabledRouteGroups,
 ): readonly RouteBinding[] {
   if (!Object.values(disabled).some(Boolean)) return bindings; // nothing disabled — same array
-  return bindings.filter((binding) => binding.group === undefined || !disabled[binding.group]);
+  return bindings.filter(
+    (binding) =>
+      binding.group === undefined ||
+      (!disabled[binding.group] && !(binding.group === "docs" && disabled.meta)),
+  );
 }
 
 /**

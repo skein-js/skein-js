@@ -5,9 +5,7 @@
 // terminal event read from the run's final status).
 
 import {
-  type DeliveryStatus,
   isTerminalRunStatus,
-  RUN_STATUSES,
   SkeinHttpError,
   type RunFrame,
   type RunStatus,
@@ -15,46 +13,20 @@ import {
   type StoreItemFilter,
 } from "@skein-js/core";
 
+import {
+  operationContracts,
+  createOperationJson,
+  createOperationEmpty,
+} from "./http/operation-contracts.js";
 import { markRequestAdmission } from "./idempotency/admission-input.js";
 import { transferA2aOrigin } from "./interop/a2a-origin.js";
-import type { CancelRunOptions, CreateRunInput } from "./runs/run-service.js";
+import type { CreateRunInput } from "./runs/run-service.js";
 import { projectSearchRow } from "./search/project-search-row.js";
 import type { ProtocolService } from "./service.js";
 import { parseAfterSeq, toSseEvents } from "./sse/sse.js";
-import {
-  isThreadCommandEnvelope,
-  threadEventFilterSchema,
-} from "./threads/thread-protocol-service.js";
+import { isThreadCommandEnvelope } from "./threads/thread-protocol-service.js";
 import type { CommandInput, ThreadStreamInput } from "./threads/thread-stream-service.js";
 import { parse, requireParam } from "./validation/parse.js";
-import {
-  assistantCountSchema,
-  assistantCreateSchema,
-  assistantSearchSchema,
-  assistantSetLatestSchema,
-  assistantUpdateSchema,
-  assistantVersionsSchema,
-  cancelManySchema,
-  commandBodySchema,
-  cronCountSchema,
-  cronCreateSchema,
-  cronSearchSchema,
-  cronUpdateSchema,
-  listNamespacesSchema,
-  runBatchCreateSchema,
-  runCreateSchema,
-  storePutSchema,
-  storeSearchSchema,
-  threadCreateSchema,
-  threadPatchSchema,
-  threadHistorySchema,
-  threadCountSchema,
-  threadPruneSchema,
-  threadSearchSchema,
-  threadStateCheckpointSchema,
-  threadStateUpdateSchema,
-  threadStreamSchema,
-} from "./validation/schemas.js";
 
 /** A normalized request an adapter maps its framework request onto. */
 export interface ProtocolRequest {
@@ -169,14 +141,6 @@ export interface ProtocolHandlers {
   listStoreNamespaces: ProtocolHandler;
 }
 
-const json = (body: unknown, status = 200, headers?: Record<string, string>): ProtocolResponse => ({
-  kind: "json",
-  status,
-  body,
-  headers,
-});
-const empty = (status = 204): ProtocolResponse => ({ kind: "empty", status });
-
 /**
  * A store item on the wire: `created_at`/`updated_at`, not the domain type's camelCase.
  *
@@ -190,7 +154,7 @@ const empty = (status = 204): ProtocolResponse => ({ kind: "empty", status });
  * declares camelCase; upstream is internally inconsistent between that type and its client's
  * transform. The client is the wire authority, so `Item` stays the domain type and converts here.
  */
-function storeItemBody(item: SearchItem): Record<string, unknown> {
+function storeItemBody(item: SearchItem) {
   const { createdAt, updatedAt, expiresAt, ...rest } = item;
   return {
     ...rest,
@@ -206,18 +170,12 @@ function queryValue(value: string | string[] | undefined): string | undefined {
 }
 
 /**
- * Ceiling on any integer read from the query string. Matches the cap the request *body* schemas apply
- * to a `limit`, so the two ways of asking for a page size agree.
- */
-const MAX_QUERY_INT = 1000;
-
-/**
  * Default page for the two collections that had no bound at all: `GET /threads/{id}/runs` and
  * `POST /store/namespaces`.
  *
  * 100, matching what the LangGraph SDK itself sends for `store.listNamespaces` (`limit ?? 100`), so a
  * caller that omits the parameter gets the same page from skein as from Platform. Smaller than
- * `MAX_QUERY_INT`/`SKEIN_MAX_PAGE_SIZE` on purpose: a run row carries its error and metadata, so a
+ * `SKEIN_MAX_PAGE_SIZE` on purpose: a run row carries its error and metadata, so a
  * page of them is heavier than a page of ids, and both endpoints previously returned *everything*.
  * A caller wanting more asks for more, up to the 1000 ceiling every other collection shares.
  */
@@ -240,15 +198,12 @@ export function storeItemTarget(req: {
   query: Record<string, string | string[] | undefined>;
   body?: unknown;
 }): { namespace: string[]; key: string } {
-  const body = typeof req.body === "object" && req.body !== null ? (req.body as StoreItemBody) : {};
+  const rawBody =
+    typeof req.body === "object" && req.body !== null && !Array.isArray(req.body) ? req.body : {};
+  const body = parse(operationContracts.getStoreItem.body, rawBody);
   const namespace = namespacePath(body.namespace) ?? namespaceFromQuery(req.query["namespace"]);
   const key = typeof body.key === "string" ? body.key : (queryValue(req.query["key"]) ?? "");
   return { namespace, key };
-}
-
-interface StoreItemBody {
-  namespace?: unknown;
-  key?: unknown;
 }
 
 /**
@@ -301,42 +256,6 @@ function namespaceFromQuery(value: string | string[] | undefined): string[] {
 }
 
 /**
- * A positive-integer query param, bounded by {@link MAX_QUERY_INT}.
- *
- * Bounded rather than rejected: these are all "how much do you want" params, and a caller asking for
- * more than the ceiling wants as much as it can get. An *unbounded* value is the problem — it used to
- * mean `?limit=1000000` was accepted verbatim.
- */
-function positiveIntQuery(value: string | string[] | undefined): number | undefined {
-  const raw = queryValue(value);
-  if (raw === undefined) return undefined;
-  const parsed = Number.parseInt(raw, 10);
-  if (!Number.isInteger(parsed) || parsed <= 0) return undefined;
-  return Math.min(parsed, MAX_QUERY_INT);
-}
-
-/** Coerce a `?flag=true|false` query param to a boolean (anything else → undefined). */
-function booleanQuery(value: string | string[] | undefined): boolean | undefined {
-  const raw = queryValue(value);
-  if (raw === "true") return true;
-  if (raw === "false") return false;
-  return undefined;
-}
-
-/**
- * `?cancel_on_disconnect` on the join routes.
- *
- * Its own parser rather than {@link booleanQuery} because the SDK sends **`"1"` / `"0"`**, not
- * `true`/`false` (`params: { cancel_on_disconnect: opts?.cancelOnDisconnect ? "1" : "0" }`). Reading it
- * with the general helper would see neither spelling and silently answer `undefined` — the flag would
- * look supported and never fire. Both spellings are accepted, so a hand-rolled caller works too.
- */
-function cancelOnDisconnectQuery(value: string | string[] | undefined): boolean {
-  const raw = queryValue(value);
-  return raw === "1" || raw === "true";
-}
-
-/**
  * Normalize a thread `ttl` to minutes.
  *
  * The SDK's type allows a bare number but always sends `{ ttl, strategy }`, so both arrive in
@@ -348,48 +267,6 @@ function threadTtlMinutes(
 ): number | null | undefined {
   if (ttl === undefined || ttl === null) return ttl;
   return typeof ttl === "number" ? ttl : ttl.ttl;
-}
-
-/** `?xray` is `boolean | number` (a depth bound) — try boolean first, then a positive integer. */
-function xrayQuery(value: string | string[] | undefined): number | boolean | undefined {
-  return booleanQuery(value) ?? positiveIntQuery(value);
-}
-
-/**
- * `?status=` on `GET /threads/{id}/runs`. Ignored rather than rejected when it is not a run status —
- * this is a query string, which every other filter in this table absorbs rather than 400s on, and the
- * SDK sends the field on calls that do not mean to filter.
- */
-function runStatusQuery(value: string | string[] | undefined): RunStatus | undefined {
-  const raw = queryValue(value);
-  return raw !== undefined && (RUN_STATUSES as readonly string[]).includes(raw)
-    ? (raw as RunStatus)
-    : undefined;
-}
-
-/**
- * A `?status=` delivery filter, or `undefined` for anything unrecognized — clamping rather than
- * rejecting, exactly as `runStatusQuery` does for the same reason.
- */
-function deliveryStatusQuery(raw: unknown): DeliveryStatus | undefined {
-  const statuses: readonly DeliveryStatus[] = ["pending", "delivering", "delivered", "dead"];
-  return typeof raw === "string" && (statuses as readonly string[]).includes(raw)
-    ? (raw as DeliveryStatus)
-    : undefined;
-}
-
-/**
- * `?action=` and `?wait=` on the two cancel endpoints — both sent by every `client.runs.cancel(...)`
- * call. An unrecognized `action` falls back to `interrupt`, its default and the safer of the two: it
- * keeps the run's writes, where a mistyped value silently discarding them would be unrecoverable.
- */
-function cancelOptionsFrom(req: ProtocolRequest): CancelRunOptions {
-  const action = queryValue(req.query["action"]);
-  return {
-    action: action === "rollback" ? "rollback" : "interrupt",
-    // `wait=1` is what the SDK sends (not `true`), so both spellings are accepted.
-    wait: booleanQuery(req.query["wait"]) ?? queryValue(req.query["wait"]) === "1",
-  };
 }
 
 /**
@@ -449,6 +326,7 @@ export function createProtocolHandlers(
 ): ProtocolHandlers {
   // Build an SSE response whose terminal event reflects the run's final status once frames end.
   const sse = (
+    name: keyof typeof operationContracts,
     started: {
       runId: string;
       frames: AsyncIterable<RunFrame>;
@@ -457,7 +335,7 @@ export function createProtocolHandlers(
     headers?: Record<string, string>,
   ): ProtocolResponse => ({
     kind: "sse",
-    status: 200,
+    status: operationContracts[name].status,
     // The started run's own resolver when it has one (exact, read from the execution outcome), else the
     // run row. See `StartedStream.finalStatus` for why the row is not good enough on its own.
     events: toSseEvents(
@@ -468,7 +346,7 @@ export function createProtocolHandlers(
   });
 
   const afterSeqFrom = (req: ProtocolRequest): number =>
-    parseAfterSeq(req.headers["last-event-id"]);
+    parseAfterSeq(parse(operationContracts.joinRunStream.headers, req.headers)["last-event-id"]);
 
   return {
     ...(extras.getOpenApi ? { getOpenApi: extras.getOpenApi } : {}),
@@ -476,10 +354,13 @@ export function createProtocolHandlers(
     ...(extras.handleA2a ? { handleA2a: extras.handleA2a } : {}),
     // --- assistants ---------------------------------------------------------------------------
     getAssistant: async (req) =>
-      json(await service.assistants.get(requireParam(req.params, "assistant_id"))),
+      createOperationJson(
+        "getAssistant",
+        await service.assistants.get(requireParam(req.params, "assistant_id")),
+      ),
 
     searchAssistants: async (req) => {
-      const body = parse(assistantSearchSchema, req.body ?? {});
+      const body = parse(operationContracts.searchAssistants.body, req.body ?? {});
       const query = {
         graph_id: body.graph_id,
         name: body.name,
@@ -494,16 +375,17 @@ export function createProtocolHandlers(
         service.assistants.search(query),
         service.assistants.count(query),
       ]);
-      return json(
+      return createOperationJson(
+        "searchAssistants",
         assistants.map((assistant) => projectSearchRow(assistant, body.select)),
-        200,
         { "x-pagination-total": String(total) },
       );
     },
 
     countAssistants: async (req) => {
-      const body = parse(assistantCountSchema, req.body ?? {});
-      return json(
+      const body = parse(operationContracts.countAssistants.body, req.body ?? {});
+      return createOperationJson(
+        "countAssistants",
         await service.assistants.count({
           graph_id: body.graph_id,
           name: body.name,
@@ -514,11 +396,15 @@ export function createProtocolHandlers(
     },
 
     getAssistantSchemas: async (req) =>
-      json(await service.assistants.schemas(requireParam(req.params, "assistant_id"))),
+      createOperationJson(
+        "getAssistantSchemas",
+        await service.assistants.schemas(requireParam(req.params, "assistant_id")),
+      ),
 
     createAssistant: async (req) => {
-      const body = parse(assistantCreateSchema, req.body);
-      return json(
+      const body = parse(operationContracts.createAssistant.body, req.body);
+      return createOperationJson(
+        "createAssistant",
         await service.assistants.create({
           graph_id: body.graph_id,
           assistant_id: body.assistant_id,
@@ -533,23 +419,26 @@ export function createProtocolHandlers(
     },
 
     updateAssistant: async (req) =>
-      json(
+      createOperationJson(
+        "updateAssistant",
         await service.assistants.update(
           requireParam(req.params, "assistant_id"),
-          parse(assistantUpdateSchema, req.body ?? {}),
+          parse(operationContracts.updateAssistant.body, req.body ?? {}),
         ),
       ),
 
     deleteAssistant: async (req) => {
       await service.assistants.delete(requireParam(req.params, "assistant_id"), {
-        deleteThreads: booleanQuery(req.query["delete_threads"]) ?? false,
+        deleteThreads:
+          parse(operationContracts.deleteAssistant.query, req.query).delete_threads ?? false,
       });
-      return empty();
+      return createOperationEmpty("deleteAssistant");
     },
 
     listAssistantVersions: async (req) => {
-      const body = parse(assistantVersionsSchema, req.body ?? {});
-      return json(
+      const body = parse(operationContracts.listAssistantVersions.body, req.body ?? {});
+      return createOperationJson(
+        "listAssistantVersions",
         await service.assistants.listVersions(requireParam(req.params, "assistant_id"), {
           metadata: body.metadata,
           limit: body.limit,
@@ -559,31 +448,38 @@ export function createProtocolHandlers(
     },
 
     setAssistantLatestVersion: async (req) => {
-      const body = parse(assistantSetLatestSchema, req.body);
-      return json(
+      const body = parse(operationContracts.setAssistantLatestVersion.body, req.body);
+      return createOperationJson(
+        "setAssistantLatestVersion",
         await service.assistants.setLatest(requireParam(req.params, "assistant_id"), body.version),
       );
     },
 
     getAssistantGraph: async (req) =>
-      json(
+      createOperationJson(
+        "getAssistantGraph",
         await service.assistants.drawGraph(requireParam(req.params, "assistant_id"), {
-          xray: xrayQuery(req.query["xray"]),
+          xray: parse(operationContracts.getAssistantGraph.query, req.query).xray,
         }),
       ),
 
     getAssistantSubgraphs: async (req) =>
-      json(
+      createOperationJson(
+        "getAssistantSubgraphs",
         await service.assistants.subgraphs(requireParam(req.params, "assistant_id"), {
-          namespace: queryValue(req.query["namespace"]) ?? req.params["namespace"],
-          recurse: booleanQuery(req.query["recurse"]) ?? false,
+          namespace:
+            parse(operationContracts.getAssistantSubgraphs.query, req.query).namespace ??
+            req.params["namespace"],
+          recurse:
+            parse(operationContracts.getAssistantSubgraphs.query, req.query).recurse ?? false,
         }),
       ),
 
     // --- threads ------------------------------------------------------------------------------
     createThread: async (req) => {
-      const body = parse(threadCreateSchema, req.body ?? {});
-      return json(
+      const body = parse(operationContracts.createThread.body, req.body ?? {});
+      return createOperationJson(
+        "createThread",
         await service.threads.create({
           thread_id: body.thread_id,
           metadata: body.metadata,
@@ -614,13 +510,19 @@ export function createProtocolHandlers(
     getThreadStorage: async (req) => {
       if (!service.threads.getStorage)
         throw SkeinHttpError.notImplemented("This service does not expose storage accounting.");
-      return json(await service.threads.getStorage(requireParam(req.params, "thread_id")));
+      return createOperationJson(
+        "getThreadStorage",
+        await service.threads.getStorage(requireParam(req.params, "thread_id")),
+      );
     },
     getThread: async (req) =>
-      json(await service.threads.get(requireParam(req.params, "thread_id"))),
+      createOperationJson(
+        "getThread",
+        await service.threads.get(requireParam(req.params, "thread_id")),
+      ),
 
     listThreads: async (req) => {
-      const body = parse(threadSearchSchema, req.body ?? {});
+      const body = parse(operationContracts.listThreads.body, req.body ?? {});
       const threads = await service.threads.search({
         metadata: body.metadata,
         excludeMetadata: body.exclude_metadata,
@@ -632,12 +534,16 @@ export function createProtocolHandlers(
         sortBy: body.sort_by,
         sortOrder: body.sort_order,
       });
-      return json(threads.map((thread) => projectSearchRow(thread, body.select, body.extract)));
+      return createOperationJson(
+        "listThreads",
+        threads.map((thread) => projectSearchRow(thread, body.select, body.extract)),
+      );
     },
 
     countThreads: async (req) => {
-      const body = parse(threadCountSchema, req.body ?? {});
-      return json(
+      const body = parse(operationContracts.countThreads.body, req.body ?? {});
+      return createOperationJson(
+        "countThreads",
         await service.threads.count({
           metadata: body.metadata,
           excludeMetadata: body.exclude_metadata,
@@ -649,8 +555,9 @@ export function createProtocolHandlers(
     },
 
     pruneThreads: async (req) => {
-      const body = parse(threadPruneSchema, req.body);
-      return json(
+      const body = parse(operationContracts.pruneThreads.body, req.body);
+      return createOperationJson(
+        "pruneThreads",
         await service.threads.prune({
           threadIds: body.thread_ids,
           ...(body.strategy !== undefined ? { strategy: body.strategy } : {}),
@@ -659,11 +566,15 @@ export function createProtocolHandlers(
     },
 
     copyThread: async (req) =>
-      json(await service.threads.copy(requireParam(req.params, "thread_id"))),
+      createOperationJson(
+        "copyThread",
+        await service.threads.copy(requireParam(req.params, "thread_id")),
+      ),
 
     patchThread: async (req) => {
-      const body = parse(threadPatchSchema, req.body ?? {});
-      return json(
+      const body = parse(operationContracts.patchThread.body, req.body ?? {});
+      return createOperationJson(
+        "patchThread",
         await service.threads.patch(requireParam(req.params, "thread_id"), {
           metadata: body.metadata,
           ...(body.ttl !== undefined
@@ -680,16 +591,17 @@ export function createProtocolHandlers(
 
     deleteThread: async (req) => {
       await service.threads.delete(requireParam(req.params, "thread_id"));
-      return empty();
+      return createOperationEmpty("deleteThread");
     },
 
     getThreadHistory: async (req) => {
       // The SDK sends every option in the body; `?limit=` is kept as a fallback for hand-rolled callers
       // that reach for a query param on a POST. It is *clamped* rather than rejected, unlike the body's
-      // limit — a query string has no schema to 400 from.
-      const body = parse(threadHistorySchema, req.body ?? {}) ?? {};
-      const limit = body.limit ?? positiveIntQuery(req.query["limit"]);
-      return json(
+      // limit — query schemas preserve the established lenient GET behavior.
+      const body = parse(operationContracts.getThreadHistory.body, req.body ?? {}) ?? {};
+      const limit = body.limit ?? parse(operationContracts.getThreadHistory.query, req.query).limit;
+      return createOperationJson(
+        "getThreadHistory",
         await service.threads.history(requireParam(req.params, "thread_id"), {
           ...(limit !== undefined ? { limit } : {}),
           ...(body.before ? { before: historyBefore(body.before) } : {}),
@@ -700,14 +612,16 @@ export function createProtocolHandlers(
     },
 
     getThreadState: async (req) =>
-      json(
+      createOperationJson(
+        "getThreadState",
         await service.threads.getState(requireParam(req.params, "thread_id"), {
-          subgraphs: req.query["subgraphs"] === "true",
+          subgraphs: parse(operationContracts.getThreadState.query, req.query).subgraphs ?? false,
         }),
       ),
 
     getThreadStateAtCheckpoint: async (req) =>
-      json(
+      createOperationJson(
+        "getThreadStateAtCheckpoint",
         await service.threads.getStateAt(
           requireParam(req.params, "thread_id"),
           requireParam(req.params, "checkpoint_id"),
@@ -721,9 +635,13 @@ export function createProtocolHandlers(
     // which spreads the checkpoint into `configurable` and lets the checkpointer resolve it.
     getThreadStateAtCheckpointFromBody: async (req) => {
       const threadId = requireParam(req.params, "thread_id");
-      const body = parse(threadStateCheckpointSchema, req.body ?? {});
+      const body = parse(
+        operationContracts.getThreadStateAtCheckpointFromBody.body,
+        req.body ?? {},
+      );
       const checkpointId = body.checkpoint?.checkpoint_id;
-      return json(
+      return createOperationJson(
+        "getThreadStateAtCheckpointFromBody",
         checkpointId !== undefined
           ? await service.threads.getStateAt(
               threadId,
@@ -739,8 +657,9 @@ export function createProtocolHandlers(
     },
 
     updateThreadState: async (req) => {
-      const body = parse(threadStateUpdateSchema, req.body ?? {});
-      return json(
+      const body = parse(operationContracts.updateThreadState.body, req.body ?? {});
+      return createOperationJson(
+        "updateThreadState",
         await service.threads.updateState(requireParam(req.params, "thread_id"), {
           values: body.values,
           as_node: body.as_node,
@@ -755,18 +674,18 @@ export function createProtocolHandlers(
     // omits it and the run simply runs to completion (`"continue"`, the default).
     createWaitRun: async (req) => {
       const { runId, threadId, result } = await service.runs.createWait(
-        parse(runCreateSchema, req.body) as CreateRunInput,
+        parse(operationContracts.createWaitRun.body, req.body) as CreateRunInput,
         { signal: req.signal },
       );
-      return json(result, 200, runLocationHeaders(threadId, runId));
+      return createOperationJson("createWaitRun", result, runLocationHeaders(threadId, runId));
     },
 
     createStreamRun: async (req) => {
       const started = await service.runs.createStream(
-        parse(runCreateSchema, req.body) as CreateRunInput,
+        parse(operationContracts.createStreamRun.body, req.body) as CreateRunInput,
         { signal: req.signal },
       );
-      return sse(started, runLocationHeaders(started.threadId, started.runId));
+      return sse("createStreamRun", started, runLocationHeaders(started.threadId, started.runId));
     },
 
     createBackgroundRun: async (req) => {
@@ -774,34 +693,49 @@ export function createProtocolHandlers(
         requireParam(req.params, "thread_id"),
         markRequestAdmission(
           req,
-          transferA2aOrigin(req.body, parse(runCreateSchema, req.body)),
+          transferA2aOrigin(req.body, parse(operationContracts.createBackgroundRun.body, req.body)),
         ) as CreateRunInput,
       );
-      return json(run, 200, runLocationHeaders(run.thread_id, run.run_id));
+      return createOperationJson(
+        "createBackgroundRun",
+        run,
+        runLocationHeaders(run.thread_id, run.run_id),
+      );
     },
 
     createStatelessRun: async (req) => {
       const run = await service.runs.createStatelessBackground(
-        transferA2aOrigin(req.body, parse(runCreateSchema, req.body)) as CreateRunInput,
+        transferA2aOrigin(
+          req.body,
+          parse(operationContracts.createStatelessRun.body, req.body),
+        ) as CreateRunInput,
       );
-      return json(run, 200, runLocationHeaders(run.thread_id, run.run_id));
+      return createOperationJson(
+        "createStatelessRun",
+        run,
+        runLocationHeaders(run.thread_id, run.run_id),
+      );
     },
 
     createRunBatch: async (req) =>
       // No `Content-Location`: it names one run, and this response carries many. The runs themselves
       // are in the body, each with its `run_id` and `thread_id`.
-      json(
-        await service.runs.createBatch(parse(runBatchCreateSchema, req.body) as CreateRunInput[]),
+      createOperationJson(
+        "createRunBatch",
+        await service.runs.createBatch(
+          parse(operationContracts.createRunBatch.body, req.body) as CreateRunInput[],
+        ),
       ),
 
-    getRun: async (req) => json(await service.runs.get(requireParam(req.params, "run_id"))),
+    getRun: async (req) =>
+      createOperationJson("getRun", await service.runs.get(requireParam(req.params, "run_id"))),
 
     listRunDeliveries: async (req) => {
-      // `positiveIntQuery` rather than a schema, matching every other paginated GET in this table:
-      // they clamp an absurd `?limit=` rather than 400ing on it.
-      const limit = positiveIntQuery(req.query["limit"]);
-      const offset = positiveIntQuery(req.query["offset"]);
-      const status = deliveryStatusQuery(req.query["status"]);
+      // Shared GET query schemas retain the existing lenient, bounded pagination semantics.
+      const { limit, offset, status } = parse(
+        operationContracts.listRunDeliveries.query,
+        req.query,
+      );
       const deliveries = await service.runs.listDeliveries(requireParam(req.params, "run_id"), {
         ...(limit !== undefined ? { limit } : {}),
         ...(offset !== undefined ? { offset } : {}),
@@ -813,7 +747,7 @@ export function createProtocolHandlers(
       // for. Reporting its size would mean re-serializing every row's payload to answer, which is
       // most of that cost for a number nobody acts on: the question a replay depends on is whether
       // there is anything left to send, and `payload_truncated` already covers the other one.
-      return json({
+      return createOperationJson("listRunDeliveries", {
         deliveries: deliveries.map(({ payload, ...rest }) => ({
           ...rest,
           replayable: payload !== null,
@@ -822,7 +756,8 @@ export function createProtocolHandlers(
     },
 
     replayRunDelivery: async (req) =>
-      json(
+      createOperationJson(
+        "replayRunDelivery",
         await service.runs.replayDelivery(
           requireParam(req.params, "run_id"),
           requireParam(req.params, "delivery_id"),
@@ -830,13 +765,12 @@ export function createProtocolHandlers(
       ),
 
     listThreadRuns: async (req) => {
-      // `positiveIntQuery`, not a Zod schema: this is a GET, and every other query-string limit in this
-      // table clamps rather than 400s — see its docstring. A schema here would make the one paginated
-      // GET in the protocol reject `?limit=5000` and `?offset=-1` where its siblings absorb them.
-      const limit = positiveIntQuery(req.query["limit"]) ?? DEFAULT_COLLECTION_PAGE_SIZE;
-      const offset = positiveIntQuery(req.query["offset"]);
-      const status = runStatusQuery(req.query["status"]);
-      return json(
+      // GET query schemas absorb malformed filters and clamp oversized pages, unlike POST bodies.
+      const query = parse(operationContracts.listThreadRuns.query, req.query);
+      const { offset, status } = query;
+      const limit = query.limit ?? DEFAULT_COLLECTION_PAGE_SIZE;
+      return createOperationJson(
+        "listThreadRuns",
         await service.runs.listByThread(requireParam(req.params, "thread_id"), {
           limit,
           ...(offset !== undefined ? { offset } : {}),
@@ -857,7 +791,10 @@ export function createProtocolHandlers(
     joinRunStream: async (req) => {
       const runId = requireParam(req.params, "run_id");
       const frames = await service.runs.join(runId, afterSeqFrom(req));
-      if (cancelOnDisconnectQuery(req.query["cancel_on_disconnect"]) && req.signal !== undefined) {
+      if (
+        parse(operationContracts.joinRunStream.query, req.query).cancel_on_disconnect &&
+        req.signal !== undefined
+      ) {
         // Swallowed rather than logged: this table is built from the service alone and has no logger
         // to reach for, and the caller it would report to has already hung up. The run-service side of
         // `on_disconnect` does log, because it has `deps.logger` in scope.
@@ -870,7 +807,7 @@ export function createProtocolHandlers(
         if (req.signal.aborted) cancelOnAbort();
         else req.signal.addEventListener("abort", cancelOnAbort, { once: true });
       }
-      return sse({ runId, frames });
+      return sse("joinRunStream", { runId, frames });
     },
 
     /**
@@ -911,31 +848,37 @@ export function createProtocolHandlers(
       // A failed run must not read as an empty success — same `__error__` envelope `createWait` uses.
       // `error` is optional on the row, so fall back to the status rather than emitting a bare `{}`.
       if (settled && (settled.status === "error" || settled.status === "timeout")) {
-        return json({
+        return createOperationJson("joinRun", {
           __error__: settled.error ?? {
             message: `Run "${runId}" finished with status "${settled.status}".`,
           },
         });
       }
-      return json((await service.threads.getState(run.thread_id)).values);
+      return createOperationJson("joinRun", (await service.threads.getState(run.thread_id)).values);
     },
 
     cancelRun: async (req) =>
-      json(await service.runs.cancel(requireParam(req.params, "run_id"), cancelOptionsFrom(req))),
+      createOperationJson(
+        "cancelRun",
+        await service.runs.cancel(
+          requireParam(req.params, "run_id"),
+          parse(operationContracts.cancelRun.query, req.query),
+        ),
+      ),
 
     cancelManyRuns: async (req) => {
-      const body = parse(cancelManySchema, req.body ?? {});
+      const body = parse(operationContracts.cancelManyRuns.body, req.body ?? {});
       const { cancelledRunIds, truncated } = await service.runs.cancelMany({
         threadId: body.thread_id,
         runIds: body.run_ids,
         status: body.status,
-        ...cancelOptionsFrom(req),
+        ...parse(operationContracts.cancelManyRuns.query, req.query),
       });
       // The SDK types `cancelMany` as `Promise<void>` and ignores the body, so its shape is skein's to
       // choose. It reports what happened rather than nothing: a bounded sweep that left runs going has
       // to be visible to a caller that asked to cancel everything. `truncated` is a fact about the
       // caller's own page — never a count of what other principals are running.
-      return json({
+      return createOperationJson("cancelManyRuns", {
         cancelled_count: cancelledRunIds.length,
         cancelled_run_ids: cancelledRunIds,
         truncated,
@@ -944,30 +887,31 @@ export function createProtocolHandlers(
 
     deleteRun: async (req) => {
       await service.runs.delete(requireParam(req.params, "run_id"));
-      return empty();
+      return createOperationEmpty("deleteRun");
     },
 
     // --- crons --------------------------------------------------------------------------------
     // One handler for both create routes: the thread-scoped path folds `thread_id` into the body
     // (`foldThreadIdIntoBody`), exactly as the thread-scoped wait/stream runs do.
     createCron: async (req) => {
-      const body = parse(cronCreateSchema, req.body ?? {});
-      return json(await service.crons.create(body));
+      const body = parse(operationContracts.createCron.body, req.body ?? {});
+      return createOperationJson("createCron", await service.crons.create(body));
     },
 
-    getCron: async (req) => json(await service.crons.get(requireParam(req.params, "cron_id"))),
+    getCron: async (req) =>
+      createOperationJson("getCron", await service.crons.get(requireParam(req.params, "cron_id"))),
 
     searchCrons: async (req) => {
-      const body = parse(cronSearchSchema, req.body ?? {});
+      const body = parse(operationContracts.searchCrons.body, req.body ?? {});
       // Paired with a total, like assistants and threads — the SDK ignores the header, but a client
       // paging a cron list has no other way to know how far it goes.
       const [crons, total] = await Promise.all([
         service.crons.search(body),
         service.crons.count(body),
       ]);
-      return json(
+      return createOperationJson(
+        "searchCrons",
         crons.map((cron) => projectSearchRow(cron, body.select)),
-        200,
         { "x-pagination-total": String(total) },
       );
     },
@@ -975,11 +919,17 @@ export function createProtocolHandlers(
     // Answers a **bare integer**, not `{ count }` — matching the OpenAPI spec and what the SDK's
     // `crons.count()` reads.
     countCrons: async (req) =>
-      json(await service.crons.count(parse(cronCountSchema, req.body ?? {}))),
+      createOperationJson(
+        "countCrons",
+        await service.crons.count(parse(operationContracts.countCrons.body, req.body ?? {})),
+      ),
 
     updateCron: async (req) => {
-      const body = parse(cronUpdateSchema, req.body ?? {});
-      return json(await service.crons.update(requireParam(req.params, "cron_id"), body));
+      const body = parse(operationContracts.updateCron.body, req.body ?? {});
+      return createOperationJson(
+        "updateCron",
+        await service.crons.update(requireParam(req.params, "cron_id"), body),
+      );
     },
 
     // 200 with a JSON body, not 204 — and the body matters. The SDK's `BaseClient` skips
@@ -988,7 +938,7 @@ export function createProtocolHandlers(
     // `serializeWireJson(null)` is `"null"`, which parses.
     deleteCron: async (req) => {
       await service.crons.delete(requireParam(req.params, "cron_id"));
-      return json(null);
+      return createOperationJson("deleteCron", null);
     },
 
     // --- thread streaming / commands ----------------------------------------------------------
@@ -997,10 +947,10 @@ export function createProtocolHandlers(
         throw SkeinHttpError.unprocessable("Thread subscriptions are unavailable.");
       return {
         kind: "sse",
-        status: 200,
+        status: operationContracts.postThreadEvents.status,
         events: await service.threadStream.subscribe(
           requireParam(req.params, "thread_id"),
-          parse(threadEventFilterSchema, req.body),
+          parse(operationContracts.postThreadEvents.body, req.body),
           req.signal,
         ),
       };
@@ -1008,23 +958,24 @@ export function createProtocolHandlers(
     postThreadStream: async (req) => {
       const started = await service.threadStream.stream(
         requireParam(req.params, "thread_id"),
-        parse(threadStreamSchema, req.body) as ThreadStreamInput,
+        parse(operationContracts.postThreadStream.body, req.body) as ThreadStreamInput,
       );
-      return sse(started, runLocationHeaders(started.threadId, started.runId));
+      return sse("postThreadStream", started, runLocationHeaders(started.threadId, started.runId));
     },
 
     getThreadStream: async (req) => {
       // `stream_mode` is what the official SDK's `threads.joinStream` sends.
-      if (req.query["stream_mode"] !== undefined) {
+      const streamQuery = parse(operationContracts.getThreadStream.query, req.query);
+      if (streamQuery.stream_mode !== undefined) {
         if (!service.threadStream.follow)
           throw SkeinHttpError.unprocessable("Thread subscriptions are unavailable.");
-        const requested = req.query["stream_mode"];
+        const requested = streamQuery.stream_mode;
         const modes = (Array.isArray(requested) ? requested : [requested!]).flatMap((mode) =>
           mode.split(","),
         );
         return {
           kind: "sse",
-          status: 200,
+          status: operationContracts.getThreadStream.status,
           events: await service.threadStream.follow(
             requireParam(req.params, "thread_id"),
             modes,
@@ -1037,14 +988,15 @@ export function createProtocolHandlers(
         requireParam(req.params, "thread_id"),
         afterSeqFrom(req),
       );
-      return sse(started, runLocationHeaders(started.threadId, started.runId));
+      return sse("getThreadStream", started, runLocationHeaders(started.threadId, started.runId));
     },
 
     postThreadCommands: async (req) => {
       if (isThreadCommandEnvelope(req.body)) {
         if (!service.threadStream.protocolCommand)
           throw SkeinHttpError.unprocessable("Thread commands are unavailable.");
-        return json(
+        return createOperationJson(
+          "postThreadCommands",
           await service.threadStream.protocolCommand(
             requireParam(req.params, "thread_id"),
             req.body,
@@ -1053,13 +1005,17 @@ export function createProtocolHandlers(
       }
       const started = await service.threadStream.command(
         requireParam(req.params, "thread_id"),
-        parse(commandBodySchema, req.body ?? {}) as CommandInput,
+        parse(operationContracts.postThreadCommands.body, req.body ?? {}) as CommandInput,
       );
-      return sse(started, runLocationHeaders(started.threadId, started.runId));
+      return sse(
+        "postThreadCommands",
+        started,
+        runLocationHeaders(started.threadId, started.runId),
+      );
     },
 
     // --- meta ---------------------------------------------------------------------------------
-    getServerInfo: async () => json(await service.meta.info()),
+    getServerInfo: async () => createOperationJson("getServerInfo", await service.meta.info()),
 
     // Present on the handler table even when the route is not mounted, just like
     // `handleInboundEvent`. Keeping every `ProtocolHandlers[keyof ProtocolHandlers]` callable is a
@@ -1072,8 +1028,9 @@ export function createProtocolHandlers(
 
     // --- store --------------------------------------------------------------------------------
     putStoreItem: async (req) => {
-      const body = parse(storePutSchema, req.body);
-      return json(
+      const body = parse(operationContracts.putStoreItem.body, req.body);
+      return createOperationJson(
+        "putStoreItem",
         storeItemBody(
           await (
             service.store.putWithOptions ??
@@ -1089,10 +1046,9 @@ export function createProtocolHandlers(
 
     getStoreItem: async (req) => {
       const { namespace, key } = requireStoreItemTarget(req);
-      const refresh = req.query["refresh_ttl"];
-      if (refresh !== undefined && refresh !== "true" && refresh !== "false")
-        throw SkeinHttpError.badRequest("refresh_ttl must be true or false.");
-      return json(
+      const refresh = parse(operationContracts.getStoreItem.query, req.query).refresh_ttl;
+      return createOperationJson(
+        "getStoreItem",
         storeItemBody(
           await service.store.get(
             namespace,
@@ -1109,11 +1065,11 @@ export function createProtocolHandlers(
     deleteStoreItem: async (req) => {
       const { namespace, key } = requireStoreItemTarget(req);
       await service.store.delete(namespace, key);
-      return empty();
+      return createOperationEmpty("deleteStoreItem");
     },
 
     searchStoreItems: async (req) => {
-      const body = parse(storeSearchSchema, req.body ?? {});
+      const body = parse(operationContracts.searchStoreItems.body, req.body ?? {});
       const items = await service.store.search({
         refreshTtl: body.refresh_ttl ?? undefined,
         prefix: body.namespace_prefix,
@@ -1122,11 +1078,11 @@ export function createProtocolHandlers(
         limit: body.limit,
         offset: body.offset,
       });
-      return json({ items: items.map(storeItemBody) });
+      return createOperationJson("searchStoreItems", { items: items.map(storeItemBody) });
     },
 
     listStoreNamespaces: async (req) => {
-      const body = parse(listNamespacesSchema, req.body ?? {});
+      const body = parse(operationContracts.listStoreNamespaces.body, req.body ?? {});
       const namespaces = await service.store.listNamespaces({
         ...(body.prefix !== undefined ? { prefix: body.prefix } : {}),
         ...(body.suffix !== undefined ? { suffix: body.suffix } : {}),
@@ -1134,7 +1090,7 @@ export function createProtocolHandlers(
         limit: body.limit ?? DEFAULT_COLLECTION_PAGE_SIZE,
         ...(body.offset !== undefined ? { offset: body.offset } : {}),
       });
-      return json({ namespaces });
+      return createOperationJson("listStoreNamespaces", { namespaces });
     },
 
     // 404 rather than 501 when no pipeline is injected: with no channel configured this route is not

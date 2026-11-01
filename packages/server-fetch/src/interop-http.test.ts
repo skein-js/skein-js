@@ -1,6 +1,7 @@
 import { createServer } from "node:http";
 
 import { MessagesAnnotation, StateGraph } from "@langchain/langgraph";
+import { filterSkeinRoutes, skeinRoutes } from "@skein-js/agent-protocol";
 import {
   embedInMemoryGraphs,
   readNativeNodeRequest,
@@ -17,6 +18,7 @@ runInteropHttpConformance("Fetch", async (options) => {
     .addEdge("echo", "__end__")
     .compile();
   const runtime = await createSkeinFetchServer({
+    routes: filterSkeinRoutes(skeinRoutes, options?.disable ?? {}),
     deps: embedInMemoryGraphs({ echo: graph }, { auth: options?.auth }),
   });
   const server = createServer((request, response) => {
