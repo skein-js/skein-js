@@ -1,87 +1,137 @@
-import { RUN_STATUSES } from "@skein-js/core";
+import { RUN_STATUSES, type RunStatus } from "@skein-js/core";
 import { z } from "zod";
-
-import type { ProtocolHandlers } from "../create-handlers.js";
 
 const metadata = z.record(z.unknown());
 const timestamp = z.string();
-const assistant = z
+export const assistant = z
   .object({
     assistant_id: z.string(),
     graph_id: z.string(),
     name: z.string(),
-    metadata,
+    description: z.string().optional(),
+    context: z.unknown(),
+    metadata: metadata.nullish(),
     config: metadata,
     created_at: timestamp,
     updated_at: timestamp,
     version: z.number(),
   })
   .passthrough();
-const thread = z
+export const interrupt = z
+  .object({
+    id: z.string().optional(),
+    value: z.unknown().optional(),
+    when: z.string().optional(),
+    resumable: z.boolean().optional(),
+    ns: z.array(z.string()).optional(),
+  })
+  .passthrough();
+export const thread = z
   .object({
     ttl: z.number().nullable().optional(),
     expires_at: timestamp.nullable().optional(),
     ttl_strategy: z.enum(["delete", "keep_latest"]).optional(),
     thread_id: z.string(),
+    state_updated_at: timestamp.optional(),
+    config: metadata.optional(),
+    error: z.union([z.string(), metadata]).nullish(),
+    extracted: metadata.optional(),
     created_at: timestamp,
     updated_at: timestamp,
-    metadata,
+    metadata: metadata.nullish(),
     status: z.string(),
     values: z.unknown(),
-    interrupts: z.record(z.unknown()).optional(),
+    interrupts: z.record(z.array(interrupt)).optional(),
   })
   .passthrough();
-const run = z
+export const run = z
   .object({
     run_id: z.string(),
     thread_id: z.string(),
     assistant_id: z.string(),
     created_at: timestamp,
     updated_at: timestamp,
-    status: z.enum(RUN_STATUSES as [string, ...string[]]),
-    metadata,
-    kwargs: metadata.optional(),
+    status: z.enum(RUN_STATUSES as [RunStatus, ...RunStatus[]]),
+    metadata: metadata.nullish(),
+    multitask_strategy: z
+      .enum(["reject", "interrupt", "rollback", "enqueue"])
+      .nullable()
+      .optional(),
+    error: z
+      .object({
+        error: z.string(),
+        message: z.string(),
+        name: z.string(),
+        stack: z.string().optional(),
+        cause: z.unknown().optional(),
+        errors: z.array(z.unknown()).optional(),
+      })
+      .passthrough()
+      .optional(),
   })
   .passthrough();
-const checkpoint = z
+export const checkpoint = z
   .object({
+    thread_id: z.string().optional(),
     checkpoint_id: z.string().nullish(),
     checkpoint_ns: z.string().optional(),
-    checkpoint_map: z.record(z.string()).optional(),
+    checkpoint_map: z.record(z.unknown()).nullish(),
   })
   .passthrough();
-const state = z
+export const task = z
+  .object({
+    id: z.string(),
+    name: z.string(),
+    result: z.unknown().optional(),
+    error: z.string().nullish(),
+    interrupts: z.array(interrupt),
+    checkpoint: checkpoint.nullish(),
+    state: z.unknown().optional(),
+  })
+  .passthrough();
+export const state = z
   .object({
     values: z.unknown(),
     next: z.array(z.string()),
     checkpoint,
+    created_at: timestamp.nullish(),
+    parent_checkpoint: checkpoint.nullish(),
     metadata: z.unknown(),
-    tasks: z.array(z.object({ id: z.string(), name: z.string() }).passthrough()),
+    tasks: z.array(task),
   })
   .passthrough();
-const cron = z
+export const cron = z
   .object({
     cron_id: z.string(),
     assistant_id: z.string(),
     thread_id: z.string().nullish(),
     schedule: z.string(),
+    on_run_completed: z.enum(["delete", "keep"]).optional(),
+    end_time: timestamp.nullish(),
+    timezone: z.string().nullish(),
+    payload: metadata,
+    user_id: z.string().nullish(),
+    next_run_date: timestamp.nullish(),
+    metadata,
+    enabled: z.boolean(),
     created_at: timestamp,
     updated_at: timestamp,
   })
   .passthrough();
-const item = z
+export const item = z
   .object({
     ttl: z.number().nullable().optional(),
     expires_at: timestamp.nullable().optional(),
     namespace: z.array(z.string()),
     key: z.string(),
     value: metadata,
+    score: z.number().optional(),
     created_at: timestamp,
     updated_at: timestamp,
   })
   .passthrough();
 const size = z.object({ count: z.number().nonnegative(), bytes: z.number().nonnegative() });
-const storage = z.object({
+export const storage = z.object({
   thread_id: z.string(),
   total_bytes: z.number().nonnegative(),
   checkpoints: size,
@@ -92,44 +142,3 @@ const storage = z.object({
     ),
   }),
 });
-
-/** Describes existing wire responses; search projections deliberately make selected fields optional. */
-export const responseSchemas: Partial<Record<keyof ProtocolHandlers, z.ZodTypeAny>> = {
-  createThread: thread,
-  getThread: thread,
-  patchThread: thread,
-  copyThread: thread,
-  listThreads: z.array(thread.partial()),
-  createAssistant: assistant,
-  getAssistant: assistant,
-  updateAssistant: assistant,
-  setAssistantLatestVersion: assistant,
-  searchAssistants: z.array(assistant.partial()),
-  listAssistantVersions: z.array(assistant),
-  createBackgroundRun: run,
-  createStatelessRun: run,
-  getRun: run,
-  listThreadRuns: z.array(run),
-  createRunBatch: z.array(run),
-  getThreadState: state,
-  getThreadStateAtCheckpoint: state,
-  getThreadStateAtCheckpointFromBody: state,
-  getThreadHistory: z.array(state),
-  getThreadStorage: storage,
-  updateThreadState: z.object({ checkpoint }),
-  createCron: cron,
-  getCron: cron,
-  updateCron: cron,
-  searchCrons: z.array(cron.partial()),
-  getStoreItem: item.nullable(),
-  searchStoreItems: z.object({ items: z.array(item) }),
-  listStoreNamespaces: z.object({ namespaces: z.array(z.array(z.string())) }),
-  countThreads: z.number(),
-  countAssistants: z.number(),
-  countCrons: z.number(),
-  postThreadCommands: z.object({
-    id: z.union([z.string(), z.number()]),
-    result: z.unknown().optional(),
-    error: z.unknown().optional(),
-  }),
-};

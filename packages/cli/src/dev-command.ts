@@ -19,7 +19,11 @@ import {
   type SkeinExpressServer,
 } from "@skein-js/express";
 import { buildRuntime, type QueueDriver, type StoreDriver } from "@skein-js/runtime";
-import { resolveRunConcurrency, resolveShutdownGraceMs } from "@skein-js/server-kit";
+import {
+  routesFromHttpConfig,
+  resolveRunConcurrency,
+  resolveShutdownGraceMs,
+} from "@skein-js/server-kit";
 import { describeSnapshot, readLanggraphDevState } from "@skein-js/server-kit/dev";
 
 import { printBanner } from "./banner.js";
@@ -200,6 +204,7 @@ export async function runDev(options: DevCommandOptions): Promise<void> {
   try {
     server = await createExpressServer({
       deps: runtime.deps,
+      routes: routesFromHttpConfig(config.http),
       ...(runtime.channels ? { channels: runtime.channels } : {}),
       // Studio is hosted at smith.langchain.com. When the dev UI key is enabled, admit that one
       // browser origin unless the project supplied its own explicit CORS policy.
@@ -234,6 +239,9 @@ export async function runDev(options: DevCommandOptions): Promise<void> {
       graphIds: runtime.deps.graphs.ids,
       authPath: config.auth?.path,
       runConcurrency,
+      apiDocsEnabled: routesFromHttpConfig(config.http).some(
+        (route) => route.handler === "getOpenApi",
+      ),
       ...(consoleMountPath ? { consoleMountPath } : {}),
       ...(devUiKeys ? { devUiAccessKey: devUiKeys.currentKey } : {}),
     },

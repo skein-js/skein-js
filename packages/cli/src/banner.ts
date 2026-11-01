@@ -7,16 +7,14 @@ import type { Logger } from "@skein-js/agent-protocol";
 
 import { bold, cyan, dim, green } from "./colors.js";
 
-/**
- * Where the `Docs` line points. Deliberately *not* a `${base}/docs` route: unlike LangGraph Server,
- * skein serves no OpenAPI/Swagger page, so printing a local `/docs` URL would 404 on the first thing
- * a new user clicks. Point at the published docs site until an `/docs` endpoint exists.
- */
+/** Published getting-started and deployment guidance. */
 const DOCS_URL = "https://skein-js.github.io/skein-js/";
 
 /** What the banner needs to describe the running dev server. */
 export interface BannerInfo {
   host: string;
+  /** Whether the effective route table includes the local API reference. */
+  apiDocsEnabled?: boolean;
   port: number;
   /** Declared graph ids — one `Registering graph with id '…'` line each. */
   graphIds: string[];
@@ -51,6 +49,7 @@ export function printBanner(info: BannerInfo, logger: Logger): void {
   if (consoleMountPath) {
     console.log(`${dim("Console")}  ${cyan(`${base}${consoleMountPath}/`)}`);
   }
+  if (info.apiDocsEnabled) console.log(`${dim("API docs")}  ${cyan(`${base}/docs`)}`);
   console.log(`${dim("Docs   ")}  ${cyan(DOCS_URL)}`);
   console.log();
 

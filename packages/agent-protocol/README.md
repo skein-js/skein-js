@@ -184,3 +184,7 @@ queued execution and inherited by native start/resume inputs. Its clock starts w
 and is bounded by `runTimeoutMs` and any native deadline. It uses the existing cancellation and
 terminal `timeout` path. `/info.flags.per_run_timeout` advertises support. Thread and store response
 schemas also expose optional retention metadata; see [the API reference](../../docs/agent-protocol.md).
+
+The served `/docs` reference and `/openapi.json` are generated from enabled routes and shared
+operation contracts. Set `http.disable_docs: true` to hide both while retaining `/info` and
+`/metrics`; `http.disable_meta: true` hides all four. `/ok` stays available.

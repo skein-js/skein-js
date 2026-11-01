@@ -3,11 +3,11 @@ import { describe, expect, it } from "vitest";
 import { createFixtureDeps } from "../__fixtures__/deps.js";
 import { createContext } from "../context.js";
 import { createProtocolHandlers } from "../create-handlers.js";
+import { operationContracts } from "../http/operation-contracts.js";
 import { skeinRoutes } from "../http/routes.js";
 import { createProtocolServiceFromContext } from "../service.js";
 
 import { createOpenApiDocument } from "./openapi.js";
-import { responseSchemas } from "./response-schemas.js";
 
 describe("optional run and retention API contract", () => {
   it("documents the duration boundary and retention projections without requiring them", () => {
@@ -55,6 +55,22 @@ describe("optional run and retention API contract", () => {
     expect(item.properties).toHaveProperty("expires_at");
   });
 
+  it("describes the metrics query from its runtime validator", () => {
+    const handlers = createProtocolHandlers(
+      createProtocolServiceFromContext(createContext(createFixtureDeps())),
+    );
+    const spec = createOpenApiDocument(skeinRoutes, handlers);
+    expect(spec.paths["/metrics"]!.get).toMatchObject({
+      parameters: expect.arrayContaining([
+        expect.objectContaining({
+          name: "format",
+          in: "query",
+          schema: expect.objectContaining({ enum: ["prometheus", "json"] }),
+        }),
+      ]),
+    });
+  });
+
   it("accepts legacy custom-driver projections and explicit no-expiry metadata", () => {
     const legacy = {
       thread_id: "thread",
@@ -64,9 +80,9 @@ describe("optional run and retention API contract", () => {
       metadata: {},
       values: {},
     };
-    expect(responseSchemas.getThread!.parse(legacy)).toEqual(legacy);
+    expect(operationContracts.getThread.response.parse(legacy)).toEqual(legacy);
     expect(
-      responseSchemas.getThread!.parse({
+      operationContracts.getThread.response.parse({
         ...legacy,
         ttl: null,
         expires_at: null,

@@ -20,6 +20,7 @@ import {
   describeError,
   describePoolPressure,
   consoleMountFromHttpConfig,
+  routesFromHttpConfig,
   resolveRunConcurrency,
   resolveShutdownGraceMs,
 } from "@skein-js/server-kit";
@@ -183,6 +184,7 @@ export async function runStart(options: StartCommandOptions): Promise<void> {
   try {
     const sharedOptions = {
       deps: runtime.deps,
+      routes: routesFromHttpConfig(httpConfig),
       ...(runtime.channels ? { channels: runtime.channels } : {}),
       cors: runtime.cors,
       // Not `warm: true` — the eager load runs after the banner instead, so a graph that cannot load
@@ -278,6 +280,9 @@ export async function runStart(options: StartCommandOptions): Promise<void> {
       graphIds: runtime.deps.graphs.ids,
       authPath,
       runConcurrency,
+      apiDocsEnabled: routesFromHttpConfig(httpConfig).some(
+        (route) => route.handler === "getOpenApi",
+      ),
       ...(consoleMountPath ? { consoleMountPath } : {}),
     },
     logger,

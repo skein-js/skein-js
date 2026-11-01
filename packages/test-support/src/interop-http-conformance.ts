@@ -4,8 +4,42 @@ import { expect, it } from "vitest";
 /** Wire checks shared by each transport; official client semantics also run in the packed consumer. */
 export function runInteropHttpConformance(
   name: string,
-  start: (options?: { auth?: AuthEngine }) => Promise<{ baseUrl: string; close(): Promise<void> }>,
+  start: (options?: {
+    auth?: AuthEngine;
+    disable?: { docs?: boolean; meta?: boolean };
+  }) => Promise<{ baseUrl: string; close(): Promise<void> }>,
 ): void {
+  for (const disabled of [
+    {},
+    { docs: true },
+    { meta: true },
+    { docs: true, meta: true },
+  ] as const) {
+    it(`${name} serves only enabled diagnostics (${JSON.stringify(disabled)})`, async () => {
+      // Embedded adapters may leave the health endpoint to their host. Flags must not change it.
+      const baseline = await start();
+      let healthStatus: number;
+      try {
+        healthStatus = (await fetch(baseline.baseUrl + "/ok")).status;
+      } finally {
+        await baseline.close();
+      }
+      const server = await start({ disable: disabled });
+      try {
+        const hidden = Boolean("docs" in disabled || "meta" in disabled);
+        expect((await fetch(server.baseUrl + "/docs")).status).toBe(hidden ? 404 : 200);
+        expect((await fetch(server.baseUrl + "/openapi.json")).status).toBe(hidden ? 404 : 200);
+        expect((await fetch(server.baseUrl + "/info")).status).toBe("meta" in disabled ? 404 : 200);
+        expect((await fetch(server.baseUrl + "/metrics")).status).toBe(
+          "meta" in disabled ? 404 : 501,
+        );
+        expect((await fetch(server.baseUrl + "/ok")).status).toBe(healthStatus);
+      } finally {
+        await server.close();
+      }
+    });
+  }
+
   it(`${name} authenticates discovery and interop routes before dispatch`, async () => {
     const auth: AuthEngine = {
       enabled: true,

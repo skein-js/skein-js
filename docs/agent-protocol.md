@@ -707,8 +707,15 @@ frontend browser and packed-package gates validate clients separately from these
 
 ### Discovery and storage diagnostics
 
-`GET /openapi.json` and `/docs` describe the mounted route table and request schemas, including
-configured route groups and deployment-supplied authentication descriptions. `/metrics` exposes
+`GET /openapi.json` and `/docs` are generated on each request from the mounted routes and the
+same internal operation contracts used by request validators and typed response constructors.
+They describe request fields, response schemas, status codes, content types, and deployment-supplied
+authentication. There is no separate OpenAPI JSON file to update. Graph-defined payloads remain open
+and are described by the assistant schema endpoints.
+
+Set `http.disable_docs: true` to hide `/docs` and `/openapi.json` independently.
+`http.disable_meta: true` retains its broader meaning: hide docs, `/info`, and `/metrics`.
+Only literal `true` disables a group; `/ok` remains available. Settings take effect on server startup. `/metrics` exposes
 host-owned OpenTelemetry collection (501 when unavailable). Authorized
 `GET /threads/{thread_id}/storage` returns concrete saver payload counts and bytes, or 501 for a
 custom saver without an inspector. These routes use the common adapter/runtime paths; see

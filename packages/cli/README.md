@@ -178,3 +178,7 @@ on top of the open LangGraph runtime.
 ## License
 
 [Apache-2.0](../../LICENSE)
+
+The served `/docs` reference and `/openapi.json` are generated from enabled routes and shared
+operation contracts. Set `http.disable_docs: true` to hide both while retaining `/info` and
+`/metrics`; `http.disable_meta: true` hides all four. `/ok` stays available.

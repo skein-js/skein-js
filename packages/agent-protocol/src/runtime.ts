@@ -32,6 +32,7 @@ import {
   type DeliveryWorkerOptions,
 } from "./deliveries/delivery-worker.js";
 import type { ProtocolDeps } from "./deps.js";
+import { createOperationJson } from "./http/operation-contracts.js";
 import { createRouteMatcher, skeinRoutes, type RouteBinding } from "./http/routes.js";
 import {
   createIdempotencySweeper,
@@ -40,6 +41,7 @@ import {
 } from "./idempotency/idempotency-sweeper.js";
 import { createIdempotentHandlers } from "./idempotency/idempotent-handlers.js";
 import { instrumentHttpHandlers } from "./meta/http-telemetry.js";
+import { matchNativeDiagnostic, metricsQuerySchema } from "./meta/native-diagnostics.js";
 import { apiDocsHtml, createOpenApiDocument } from "./meta/openapi.js";
 import { createNativeClientFromContext } from "./native/create-native-client.js";
 import type { NativeClient, NativeSourceOptions } from "./native/native-client.js";
@@ -51,6 +53,7 @@ import {
   type ThreadTtlSweeper,
   type ThreadTtlSweeperOptions,
 } from "./threads/thread-ttl-sweeper.js";
+import { parse } from "./validation/parse.js";
 
 /** Options for {@link createProtocolRuntime}. */
 export interface ProtocolRuntimeOptions {
@@ -161,11 +164,11 @@ export function createProtocolRuntime(
   const matchAuthExemptRoute = createRouteMatcher(
     mountedRoutes.filter((route) => isProtocolAuthExempt(route.handler)),
   );
-  handlerExtras.getOpenApi ??= async () => ({
-    kind: "json",
-    status: 200,
-    body: createOpenApiDocument(mountedRoutes, handlers, deps.auth, deps.serverVersion),
-  });
+  handlerExtras.getOpenApi ??= async () =>
+    createOperationJson(
+      "getOpenApi",
+      createOpenApiDocument(mountedRoutes, handlers, deps.auth, deps.serverVersion),
+    );
   handlerExtras.handleMcp ??= async (request) =>
     (await import("./interop/mcp.js")).createMcpHandler(() => handlers)(request);
   handlerExtras.handleA2a ??= async (request) =>
@@ -340,14 +343,9 @@ export function createProtocolRuntime(
   return {
     handleRequest: Object.assign(
       async (request: Request) => {
-        const docs =
-          request.method === "GET" &&
-          new URL(request.url).pathname === "/docs" &&
-          mountedRoutes.some((route) => route.handler === "getOpenApi");
-        const metrics =
-          request.method === "GET" &&
-          new URL(request.url).pathname === "/metrics" &&
-          mountedRoutes.some((route) => route.group === "meta");
+        const diagnostic = matchNativeDiagnostic(request.method, request.url, mountedRoutes);
+        const docs = diagnostic?.name === "docs";
+        const metrics = diagnostic?.name === "metrics";
         if (!deps.httpHandler && !docs && !metrics) return undefined;
         if (deps.auth && !matchAuthExemptRoute(request.method, new URL(request.url).pathname)) {
           const authenticatedRequest = request.clone();
@@ -366,12 +364,14 @@ export function createProtocolRuntime(
               "Metrics require a host-owned collector on a telemetry sink.",
             );
           const url = new URL(request.url);
-          const requested = url.searchParams.get("format");
-          if (requested !== null && requested !== "json" && requested !== "prometheus")
-            throw SkeinHttpError.badRequest("Unknown metrics format.");
+          const { format: requested } = parse(
+            metricsQuerySchema,
+            { format: url.searchParams.get("format") ?? undefined },
+            "metrics query",
+          );
           const format =
             requested === "json" ||
-            (requested === null && request.headers.get("accept")?.includes("application/json"))
+            (requested === undefined && request.headers.get("accept")?.includes("application/json"))
               ? "json"
               : "prometheus";
           let collected;
@@ -381,22 +381,22 @@ export function createProtocolRuntime(
             throw new SkeinHttpError(503, "Metric collection failed.", { cause: error });
           }
           return new Response(collected.body, {
+            status: diagnostic.status,
             headers: { "content-type": collected.contentType },
           });
         }
         return docs
-          ? new Response(apiDocsHtml(), { headers: { "content-type": "text/html; charset=utf-8" } })
+          ? new Response(apiDocsHtml(), {
+              status: diagnostic?.status,
+              headers: { "content-type": "text/html; charset=utf-8" },
+            })
           : undefined;
       },
       {
         // Internal transport hint: diagnostics must not consume an unrelated host request's body.
         [Symbol.for("@skein-js/native-request-matcher")]: (method: string, url: string) =>
           Boolean(deps.httpHandler) ||
-          (method === "GET" &&
-            ((new URL(url).pathname === "/docs" &&
-              mountedRoutes.some((route) => route.handler === "getOpenApi")) ||
-              (new URL(url).pathname === "/metrics" &&
-                mountedRoutes.some((route) => route.group === "meta")))),
+          matchNativeDiagnostic(method, url, mountedRoutes) !== undefined,
       },
     ),
     service,

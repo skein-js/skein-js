@@ -321,7 +321,9 @@ export const langgraphJsonSchema = z
          */
         disable_crons: z.unknown().optional(),
         disable_store: z.unknown().optional(),
-        /** Turns off `GET /info`. skein's `/ok` health probe is unaffected — see meta/server-info.ts. */
+        /** Hide the API reference and OpenAPI document independently of metadata and metrics. */
+        disable_docs: z.unknown().optional(),
+        /** Turns off metadata, metrics and API docs. The `/ok` probe is unaffected. */
         disable_meta: z.unknown().optional(),
         /**
          * Serve the skein console (`@skein-js/console`) — a skein extension, so a config carrying it

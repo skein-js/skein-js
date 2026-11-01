@@ -14,7 +14,13 @@ import {
   MessagesAnnotation,
   StateGraph,
 } from "@langchain/langgraph";
-import type { GraphResolver, GraphSchemas, ProtocolDeps } from "@skein-js/agent-protocol";
+import {
+  filterSkeinRoutes,
+  skeinRoutes,
+  type GraphResolver,
+  type GraphSchemas,
+  type ProtocolDeps,
+} from "@skein-js/agent-protocol";
 import type { AuthEngine } from "@skein-js/core";
 import { cloneLangGraphCheckpoint, langGraphResolver, SkeinBaseStore } from "@skein-js/langgraph";
 import type { CorsOptions } from "@skein-js/server-kit";
@@ -115,6 +121,7 @@ export interface RunningServer {
 /** Boot a bridge server for the given router on an ephemeral loopback port. */
 export async function startEchoServer(options: {
   router: "app" | "pages";
+  disable?: { docs?: boolean; meta?: boolean };
   cors?: boolean | CorsOptions;
   auth?: AuthEngine;
   deps?: ProtocolDeps;
@@ -123,9 +130,15 @@ export async function startEchoServer(options: {
   const appHandlers: SkeinRouteHandlers = createSkeinRouteHandlers({
     deps,
     cors: options.cors,
+    routes: filterSkeinRoutes(skeinRoutes, options.disable ?? {}),
     basePath: "",
   });
-  const pagesHandler = createSkeinPagesHandler({ deps, cors: options.cors, basePath: "" });
+  const pagesHandler = createSkeinPagesHandler({
+    deps,
+    cors: options.cors,
+    routes: filterSkeinRoutes(skeinRoutes, options.disable ?? {}),
+    basePath: "",
+  });
 
   const server: Server = createServer((req, res) => {
     void (async () => {

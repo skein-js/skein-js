@@ -17,6 +17,9 @@ try {
       private: true,
       type: "module",
       dependencies: {
+        "skein-js": "*",
+        "@skein-js/local": "*",
+        "@langchain/langgraph-checkpoint-sqlite": "~1.0.4",
         "@skein-js/express": "*",
         "@skein-js/server-kit": "*",
         "@langchain/langgraph": "1.4.12",
@@ -37,6 +40,10 @@ try {
     path.join(consumer, "proof.mjs"),
     String.raw`
     import assert from 'node:assert/strict';
+    import {spawn,spawnSync} from 'node:child_process';
+    import {createServer} from 'node:net';
+    import {writeFile} from 'node:fs/promises';
+    import path from 'node:path';
     import {AIMessage} from '@langchain/core/messages';
     import {MessagesAnnotation,StateGraph} from '@langchain/langgraph';
     import {createExpressServer} from '@skein-js/express';
@@ -96,6 +103,46 @@ try {
       const sizes=await (await fetch(url+'/threads/'+threadId+'/storage')).json();assert(sizes.total_bytes>0);
       console.log('PACKED_COMPATIBILITY_OK');
     } finally {await stream?.close();await mcp.close();await server.close();}
+    // Exercise the real published CLI paths: injected dependencies must retain config route flags.
+    await writeFile('cli-graph.ts', "import {StateGraph,MessagesAnnotation} from '@langchain/langgraph';export const graph=new StateGraph(MessagesAnnotation).addNode('echo',()=>({messages:[]})).addEdge('__start__','echo').addEdge('echo','__end__').compile();");
+    await writeFile('tsconfig.json',JSON.stringify({compilerOptions:{target:'ES2022',module:'NodeNext',moduleResolution:'NodeNext',strict:true,skipLibCheck:true},include:['cli-graph.ts']}));
+    for (const command of ['dev','start']) for (const http of [{disable_docs:true},{disable_meta:true},{disable_docs:'true'}]) {
+      await writeFile('cli-config.json',JSON.stringify({graphs:{agent:'./cli-graph.ts:graph'},http}));
+      const reservation=createServer();await new Promise(resolve=>reservation.listen(0,'127.0.0.1',resolve));
+      const port=reservation.address().port;await new Promise(resolve=>reservation.close(resolve));
+      const cli=path.resolve('node_modules/skein-js/dist/index.js');
+      let config='cli-config.json';
+      if(command==='start') {
+        // Production startup must consume a real built artifact, including its baked graph schemas.
+        const built=spawnSync(process.execPath,[cli,'build','-c',config,'--artifact-only'],{encoding:'utf8'});
+        assert.equal(built.status,0,String(built.stdout)+String(built.stderr));
+        config='.skein/build/langgraph.json';
+      }
+      const child=spawn(process.execPath,[cli,command,'-c',config,'--host','127.0.0.1','--port',String(port),...(command==='dev'?['--no-console']:['--store','sqlite','--queue','sqlite','--sqlite-path',path.resolve('cli-check.sqlite')])],{stdio:['ignore','pipe','pipe']});
+      let output='';child.stdout.on('data',chunk=>output+=chunk);child.stderr.on('data',chunk=>output+=chunk);
+      const closed=new Promise(resolve=>child.once('exit',resolve));
+      const base='http://127.0.0.1:'+port;
+      try {
+        let ready=false;
+        for(let i=0;i<200;i++) {
+          if(child.exitCode!==null) throw Error(output);
+          try {if((await fetch(base+'/ok')).ok){ready=true;break;}}catch{}
+          await new Promise(resolve=>setTimeout(resolve,100));
+        }
+        assert(ready,output);
+        const disabled=http.disable_docs===true || http.disable_meta===true;
+        assert.equal((await fetch(base+'/docs')).status,disabled?404:200,output);
+        assert.equal((await fetch(base+'/openapi.json')).status,disabled?404:200);
+        assert.equal((await fetch(base+'/info')).status,http.disable_meta===true?404:200);
+        assert.equal((await fetch(base+'/metrics')).status,http.disable_meta===true?404:501);
+        assert.equal(output.includes(base+'/docs'),!disabled);
+      } finally {
+        child.kill('SIGTERM');
+        const killer=setTimeout(()=>child.kill('SIGKILL'),10000);
+        await closed;clearTimeout(killer);
+      }
+    }
+    console.log('PACKED_CLI_DOCS_OK');
   `,
   );
   run(process.execPath, ["proof.mjs"], { cwd: consumer, env: { ...process.env, NODE_PATH: "" } });

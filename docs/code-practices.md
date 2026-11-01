@@ -122,6 +122,13 @@ has to argue them in review.
   (a `pg` pool, a Redis/queue client). Everything else is functions + plain data.
 - Immutability by default; don't mutate inputs.
 
+### HTTP operation contracts
+
+Built-in HTTP operations declare an internal contract consumed by boundary validation, typed
+response construction, and runtime OpenAPI generation. Add or update the contract with the handler;
+do not maintain a separate documentation-only request/response map. Preserve SDK-backed resource
+fields and operation IDs. The contract coverage and response conformance tests must pass.
+
 ### Validation & errors
 
 - **Validate at boundaries with [Zod](https://zod.dev).** Every inbound HTTP body / config
