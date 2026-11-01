@@ -156,8 +156,19 @@ jobs:
             version=$(node -p "require('./$manifest').version")
             private=$(node -p "require('./$manifest').private === true")
             if [ "$private" = "true" ]; then continue; fi
-            latest=$(npm view "$name" dist-tags.latest)
-            test "$latest" = "$version" || { echo "$name: latest is $latest, expected $version" >&2; exit 1; }
+            # npm accepts uploads before asynchronous registry processing updates every reader.
+            # Poll fresh metadata for up to five minutes; never finalize an unverified release.
+            for attempt in {1..60}; do
+              if latest=$(npm view "$name" dist-tags.latest --prefer-online) && [ "$latest" = "$version" ]; then
+                break
+              fi
+              if [ "$attempt" -eq 60 ]; then
+                echo "$name: latest is ${latest:-unavailable}, expected $version" >&2
+                exit 1
+              fi
+              echo "$name: waiting for npm processing ($attempt/60)"
+              sleep 5
+            done
           done
 
   finalize-release:

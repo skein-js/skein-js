@@ -295,8 +295,10 @@ To recover an existing release using the fixed workflow on `main`, dispatch Rele
 `release_tag` input; see [releasing](../AGENTS.md#releasing). CI, publishing, and docs all receive the
 resolved tag commit rather than the workflow's current branch. Retry failed jobs in that run so the
 source stays the same. The private `test-support` suite executes the publishing shell against a fake
-registry to check beta promotion, private-package exclusion, partial retries, and failed `latest`
-verification, and guards source propagation and the publishing/finalization/deployment dependency
+registry to check beta promotion, private-package exclusion, partial retries, asynchronous registry
+processing, and bounded `latest` verification. The publisher polls fresh npm metadata for up to five
+minutes per package before failing; GitHub metadata and Pages remain gated on verified pointers.
+The suite also guards source propagation and the publishing/finalization/deployment dependency
 chain. Workflow files are explicit Nx test inputs so edits invalidate that coverage.
 
 The checker also accepts a directory argument through `--args="/absolute/path/to/site"` for

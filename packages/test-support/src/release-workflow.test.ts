@@ -46,7 +46,7 @@ afterEach(() => {
   for (const directory of fixtureDirectories.splice(0)) rmSync(directory, { recursive: true });
 });
 
-function createRegistryFixture(published: boolean, latest: string) {
+function createRegistryFixture(published: boolean, latest: string, pendingReads = 0) {
   const directory = mkdtempSync(path.join(tmpdir(), "skein-release-"));
   fixtureDirectories.push(directory);
   mkdirSync(path.join(directory, "bin"));
@@ -60,7 +60,10 @@ function createRegistryFixture(published: boolean, latest: string) {
       JSON.stringify({ name: `@fixture/${name}`, version: "1.0.0-beta.0", private: isPrivate }),
     );
   }
-  writeFileSync(path.join(directory, "registry.json"), JSON.stringify({ published, latest }));
+  writeFileSync(
+    path.join(directory, "registry.json"),
+    JSON.stringify({ published, latest, pendingReads }),
+  );
   // Both executables refuse unexpected commands. No test can contact npm or publish a real package.
   writeFileSync(
     path.join(directory, "bin/npm"),
@@ -72,7 +75,10 @@ const state = JSON.parse(fs.readFileSync(file, 'utf8'));
 fs.appendFileSync(process.env.FIXTURE_ROOT + '/commands.jsonl', JSON.stringify(args) + '\\n');
 if (args[0] === 'view' && args[1].startsWith('@fixture/public')) {
   if (args[2] === 'version') { if (!state.published) process.exit(1); console.log('1.0.0-beta.0'); }
-  else if (args[2] === 'dist-tags.latest') console.log(state.latest);
+  else if (args[2] === 'dist-tags.latest') {
+    console.log(state.pendingReads > 0 ? '0.23.0' : state.latest);
+    if (state.pendingReads > 0) state.pendingReads--;
+  }
   else process.exit(2);
 } else if (args[0] === 'publish') {
   if (!args.includes('--provenance') || args[args.indexOf('--tag') + 1] !== 'latest') process.exit(2);
@@ -94,6 +100,8 @@ fs.writeFileSync(args[2] + '/fixture.tgz', 'fixture only');
 `,
     { mode: 0o755 },
   );
+  // Keep the real bounded polling loop, replacing wall-clock delays in this isolated fixture.
+  writeFileSync(path.join(directory, "bin/sleep"), "#!/bin/sh\nexit 0\n", { mode: 0o755 });
   return {
     run(name: string) {
       return spawnSync("bash", ["-c", releaseScript(name)], {
@@ -182,10 +190,21 @@ describe.skipIf(process.platform === "win32")("release registry behavior", () =>
     },
   );
 
+  it("waits for asynchronous npm processing before finalizing the release", () => {
+    const fixture = createRegistryFixture(true, "1.0.0-beta.0", 2);
+    const result = fixture.run("Verify every public package is the recommended version");
+    expect(result.status, result.stderr).toBe(0);
+    expect(fixture.commands()).toHaveLength(3);
+    expect(fixture.commands().every((args) => args.includes("--prefer-online"))).toBe(true);
+    expect(result.stdout).toContain("waiting for npm processing");
+  });
+
   it("fails the publishing gate when a public package still points at another version", () => {
     const fixture = createRegistryFixture(true, "0.23.0");
     const result = fixture.run("Verify every public package is the recommended version");
     expect(result.status).not.toBe(0);
     expect(result.stderr).toContain("expected 1.0.0-beta.0");
-  });
+    expect(fixture.commands()).toHaveLength(60);
+    // Sixty real CLI fixture processes exercise the bound; sleep itself is virtualized above.
+  }, 15_000);
 });
