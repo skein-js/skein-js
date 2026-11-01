@@ -1,3 +1,18 @@
+## 1.0.0-beta.0 (2026-11-01)
+
+### 🚀 Features
+
+- **agent-protocol:** generate docs from shared operation contracts ([#79](https://github.com/skein-js/skein-js/pull/79))
+- **runs:** add authorized cross-thread search ([#80](https://github.com/skein-js/skein-js/pull/80), [#15](https://github.com/skein-js/skein-js/issues/15))
+
+### 🩹 Fixes
+
+- **console:** preserve playground workspace and thread navigation ([#76](https://github.com/skein-js/skein-js/pull/76))
+
+### ❤️ Thank You
+
+- Maina Wycliffe @mainawycliffe
+
 ## 0.23.0 (2026-10-26)
 
 This was a version bump only, there were no code changes.
