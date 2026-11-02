@@ -113,6 +113,42 @@ h3 {
   letter-spacing: -0.02em;
 }
 
+/* VitePress's image slot assumes a decorative illustration above the copy on mobile.
+   This diagram follows the buttons and needs its own natural height and two-column layout. */
+.VPHomeHero:has(.skein-hero-diagram) .container {
+  gap: 32px;
+}
+
+.VPHomeHero:has(.skein-hero-diagram) .main {
+  order: 1;
+  min-width: 0;
+  width: 100%;
+}
+
+.VPHomeHero:has(.skein-hero-diagram) .image {
+  order: 2;
+  min-width: 0;
+  margin: 0;
+}
+
+.VPHomeHero:has(.skein-hero-diagram) .image-container {
+  width: 100%;
+  height: auto;
+  transform: none;
+}
+
+.VPHomeHero:has(.skein-hero-diagram) .image-bg {
+  display: none;
+}
+
+@media (min-width: 960px) {
+  .VPHomeHero:has(.skein-hero-diagram) .container {
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    align-items: center;
+  }
+}
+
 /* Screenshots come in matched light/dark pairs — the console has its own theme toggle, and a light
    screenshot on a dark page (or vice versa) reads as a rendering bug rather than a screenshot. The
    wrappers are plain <div>s in the markdown so the images stay markdown `![]()`, which is what gets

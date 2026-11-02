@@ -1,11 +1,13 @@
 name: Docs
 
 on:
+  # Deploy docs independently when no package release is needed.
+  workflow_dispatch:
   # release.yml calls this after publishing and normalizing the selected GitHub release.
   workflow_call:
     inputs:
       source_ref:
-        description: Released commit to build and deploy
+        description: Commit to build and deploy; defaults to the triggering commit
         required: false
         type: string
 
@@ -33,7 +35,7 @@ jobs:
     steps:
       - uses: actions/checkout@v4
         with:
-          # Build the same commit as the caller's release, including on a retry.
+          # Build the caller's release commit or the manually selected ref's triggering commit.
           ref: ${{ inputs.source_ref || github.sha }}
           # `lastUpdated` in the VitePress config reads git history for each page's timestamp,
           # which a shallow clone doesn't have.

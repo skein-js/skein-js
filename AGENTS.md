@@ -181,6 +181,16 @@ After publishing and metadata finalization, the release workflow calls
 [`.github/workflows/docs.yml`](.github/workflows/docs.yml) to build and deploy the docs from the same
 release commit. Pushes to `main` and pull requests run docs checks without deploying the site.
 
+Deploy documentation changes without creating a release or publishing packages:
+
+```bash
+gh workflow run docs.yml --ref main
+```
+
+Push the docs commit first. The manual run builds and checks that commit, then deploys through the
+existing `github-pages` environment and its deployment protections. In GitHub Actions, the same
+operation is available under **Docs → Run workflow**; select `main` for the latest docs.
+
 Recover an existing release with the current workflow configuration while preserving its tag:
 
 ```bash
@@ -191,7 +201,8 @@ Recovery resolves the existing published tag to a commit, checks its package ver
 publishing, and Pages against that exact commit. Published package versions are reused; an incorrect
 `latest` pointer is repaired rather than republishing an immutable tarball. This repair requires a
 publish token or npm 11.21+ and **Allow npm dist-tag** on the trusted publisher. Correct pointers need
-no extra permission. Retry failed jobs in that recovery run; there is no standalone Docs trigger.
+no extra permission. Retry failed jobs in that recovery run to keep publishing and docs on the
+recovered release commit; use the separate Docs dispatch only for an independent docs deployment.
 
 Prerequisites: the git remote must point at `skein-js/skein-js` (Nx derives the release repo from
 `origin`), and `gh` must be authenticated (or `GITHUB_TOKEN` set) for the GitHub Release step.
