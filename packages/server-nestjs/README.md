@@ -6,7 +6,7 @@
 
 Part of **[skein-js](https://github.com/skein-js/skein-js)** — the open-source alternative to LangGraph Platform for TypeScript: a self-hosted Agent Protocol server for [LangGraph.js](https://github.com/langchain-ai/langgraphjs), and a drop-in replacement for the LangGraph CLI.
 
-📖 **Docs:** [NestJS adapter](https://skein-js.github.io/skein-js/adapters#nestjs)
+📖 **Docs:** [NestJS adapter](https://skein.js.org/adapters#nestjs)
 
 A thin transport shim over the framework-agnostic [`@skein-js/agent-protocol`](../agent-protocol)
 handler table — it adds no protocol logic, exactly like [`@skein-js/express`](../server-express).
@@ -102,7 +102,7 @@ export class AppModule {}
 
 Map keys become graph ids. For durable state, swap in `embedPostgresGraphs` (Postgres + Redis) from
 [`@skein-js/runtime`](../runtime) — or, if you _do_ have a `langgraph.json` and just want production
-drivers, its `buildRuntime`. Full walkthrough: [docs/embedding.md](https://skein-js.github.io/skein-js/embedding).
+drivers, its `buildRuntime`. Full walkthrough: [docs/embedding.md](https://skein.js.org/embedding).
 
 ## Graphs as plain endpoints (non-chat)
 
@@ -118,7 +118,7 @@ export class AppModule {}
 ```
 
 Send `Accept: text/event-stream` to stream the steps instead. See
-[docs/serving-a-single-graph.md](https://skein-js.github.io/skein-js/serving-a-single-graph).
+[docs/serving-a-single-graph.md](https://skein.js.org/serving-a-single-graph).
 
 ## Standalone server
 
@@ -170,7 +170,7 @@ produced, tearing the run's subscription down on client disconnect.
 - **`createNestLogger(options?)`** — point skein at a specific `LoggerService` instead of the globally
   configured one. **`createConsoleLogger()`** (re-exported from
   [`@skein-js/server-kit`](../server-kit)) bypasses Nest entirely. See
-  [errors-and-logging.md](https://skein-js.github.io/skein-js/errors-and-logging#logging).
+  [errors-and-logging.md](https://skein.js.org/errors-and-logging#logging).
 - Low-level mappers: `toProtocolRequest`, plus `sendNodeResponse` / `sendNodeError` (re-exported from
   [`@skein-js/server-kit`](../server-kit)).
 
@@ -182,9 +182,9 @@ produced, tearing the run's subscription down on client disconnect.
 ## Learn more
 
 - [`@skein-js/express`](../server-express) — the reference adapter
-- [Embedding a graph you already have](https://skein-js.github.io/skein-js/embedding) — the `{ deps }` path, no `langgraph.json`
-- [Serving a graph as a plain endpoint](https://skein-js.github.io/skein-js/serving-a-single-graph) — the non-chat surface
-- [Building your own adapter](https://skein-js.github.io/skein-js/building-an-adapter) · [skein-js overview](https://skein-js.github.io/skein-js/)
+- [Embedding a graph you already have](https://skein.js.org/embedding) — the `{ deps }` path, no `langgraph.json`
+- [Serving a graph as a plain endpoint](https://skein.js.org/serving-a-single-graph) — the non-chat surface
+- [Building your own adapter](https://skein.js.org/building-an-adapter) · [skein-js overview](https://skein.js.org/)
 
 ## License
 

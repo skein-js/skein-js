@@ -93,12 +93,12 @@ describe("printBanner", () => {
   it("advertises the local reference only when mounted and retains the guide", () => {
     const header = headerLines(true).join("\n");
     expect(header).toContain("http://127.0.0.1:2024/docs");
-    expect(header).toContain("https://skein-js.github.io/skein-js/");
+    expect(header).toContain("https://skein.js.org/");
   });
 
   it("never advertises a local /docs route the server does not serve", () => {
     const header = headerLines().join("\n");
     expect(header).not.toContain("http://127.0.0.1:2024/docs");
-    expect(header).toContain("https://skein-js.github.io/skein-js/");
+    expect(header).toContain("https://skein.js.org/");
   });
 });

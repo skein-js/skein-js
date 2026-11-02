@@ -106,7 +106,7 @@ export function describeNextSteps(
     );
   }
 
-  lines.push(`  ${dim("Docs: https://skein-js.github.io/skein-js/your-first-agent")}`, "");
+  lines.push(`  ${dim("Docs: https://skein.js.org/your-first-agent")}`, "");
 
   return lines;
 }

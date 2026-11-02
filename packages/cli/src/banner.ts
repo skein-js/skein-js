@@ -8,7 +8,7 @@ import type { Logger } from "@skein-js/agent-protocol";
 import { bold, cyan, dim, green } from "./colors.js";
 
 /** Published getting-started and deployment guidance. */
-const DOCS_URL = "https://skein-js.github.io/skein-js/";
+const DOCS_URL = "https://skein.js.org/";
 
 /** What the banner needs to describe the running dev server. */
 export interface BannerInfo {

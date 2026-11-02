@@ -111,7 +111,7 @@ describe("what git actually did", () => {
 
   it("stays quiet when it worked, or was never attempted", () => {
     // Nothing to report: a repository exists and the next steps are the point of this output. Not a
-    // bare /git/ — the closing line links to skein-js.github.io, which would match it.
+    // bare /git/ — the closing line includes a documentation URL.
     const initialized = describeNextSteps(optionsFor(), { ...outcome, git: "initialized" }).join(
       "\n",
     );

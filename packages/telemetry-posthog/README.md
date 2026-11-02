@@ -7,7 +7,7 @@
 
 Part of **[skein-js](https://github.com/skein-js/skein-js)** — the open-source alternative to LangGraph Platform for TypeScript: a self-hosted [Agent Protocol](https://github.com/langchain-ai/agent-protocol) server for [LangGraph.js](https://github.com/langchain-ai/langgraphjs), and a drop-in replacement for the LangGraph CLI.
 
-📖 **Docs:** [PostHog](https://skein-js.github.io/skein-js/observability#posthog)
+📖 **Docs:** [PostHog](https://skein.js.org/observability#posthog)
 
 ## What's here
 
@@ -56,7 +56,7 @@ Using the CLI? Declare it in `langgraph.json` instead and `skein dev` / `skein s
 { "telemetry": { "posthog": { "host": "https://eu.i.posthog.com" } } }
 ```
 
-See [docs/observability.md](https://skein-js.github.io/skein-js/observability).
+See [docs/observability.md](https://skein.js.org/observability).
 
 ## Events
 
@@ -91,9 +91,9 @@ would drop the tail of every process.
 
 ## Learn more
 
-- [Observability](https://skein-js.github.io/skein-js/observability) — traces, metrics, and writing your own sink
-- [Errors & logging](https://skein-js.github.io/skein-js/errors-and-logging) — the other two reporting surfaces
-- [skein-js overview](https://skein-js.github.io/skein-js/)
+- [Observability](https://skein.js.org/observability) — traces, metrics, and writing your own sink
+- [Errors & logging](https://skein.js.org/errors-and-logging) — the other two reporting surfaces
+- [skein-js overview](https://skein.js.org/)
 
 ## License
 

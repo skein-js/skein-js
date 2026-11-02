@@ -4,7 +4,7 @@ Scaffold a [skein-js](https://github.com/skein-js/skein-js) project — a self-h
 [Agent Protocol](https://github.com/langchain-ai/agent-protocol) server for your
 [LangGraph.js](https://docs.langchain.com/oss/javascript/langgraph/overview) agents.
 
-📖 **Docs:** [Scaffolding a project](https://skein-js.github.io/skein-js/scaffolding)
+📖 **Docs:** [Scaffolding a project](https://skein.js.org/scaffolding)
 
 ```bash
 npm create skein-js@latest my-agent
@@ -24,7 +24,7 @@ No database, no Docker, and no API key — `echo` answers your first request imm
 
 Open the console, choose **echo**, send `hello`, and expect `echo: hello`. In a second terminal,
 run `npm test` to check the graph without a server. Follow
-[Testing your project](https://skein-js.github.io/skein-js/testing-your-project) to add an SDK smoke test.
+[Testing your project](https://skein.js.org/testing-your-project) to add an SDK smoke test.
 
 ## What you get
 
@@ -48,7 +48,7 @@ agent, and a README explaining every file.
 Node 24 is recommended; generated engines support `^22.12.0 || ^24.0.0 || ^26.0.0`. ESLint and Prettier default
 on, with `lint`, `format`, and `format:check` scripts. Root configurations are inherited independently;
 missing tool dependencies are added, and generated files follow inherited Prettier settings. See
-[workspace tooling](https://skein-js.github.io/skein-js/scaffolding).
+[workspace tooling](https://skein.js.org/scaffolding).
 
 ## Options
 
@@ -102,13 +102,13 @@ Existing patterns and exclusions are preserved, including when creating missing 
 In Nx 23.2.1 through 23.x, install `@skein-js/nx` at the root (`pnpm add -Dw @skein-js/nx`) and run
 `pnpm exec nx g @skein-js/nx:application --directory=apps/my-agent`. The CLI redirects for new child
 directories in Nx workspaces. Workspace-root targets, including `create-skein-js . --force`, are
-rejected before writes. See [workspace tooling](https://skein-js.github.io/skein-js/scaffolding).
+rejected before writes. See [workspace tooling](https://skein.js.org/scaffolding).
 
 ## Docs
 
-- [Your first agent](https://skein-js.github.io/skein-js/your-first-agent) — from empty directory to deployed
-- [Scaffolding reference](https://skein-js.github.io/skein-js/scaffolding) — every flag and generator
-- [skein-js docs](https://skein-js.github.io/skein-js/)
+- [Your first agent](https://skein.js.org/your-first-agent) — from empty directory to deployed
+- [Scaffolding reference](https://skein.js.org/scaffolding) — every flag and generator
+- [skein-js docs](https://skein.js.org/)
 
 ## License
 

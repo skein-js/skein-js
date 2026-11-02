@@ -6,7 +6,7 @@
 
 Part of **[skein-js](https://github.com/skein-js/skein-js)** — the open-source alternative to LangGraph Platform for TypeScript: a self-hosted [Agent Protocol](https://github.com/langchain-ai/agent-protocol) server for [LangGraph.js](https://github.com/langchain-ai/langgraphjs), and a drop-in replacement for the LangGraph CLI.
 
-📖 **Docs:** [Express adapter](https://skein-js.github.io/skein-js/adapters#express)
+📖 **Docs:** [Express adapter](https://skein.js.org/adapters#express)
 
 **Status:** 🚧 Pre-alpha — implemented; the v1 framework adapter.
 
@@ -91,7 +91,7 @@ app.use(router);
 ```
 
 Send `Accept: text/event-stream` to stream the steps instead. See
-[docs/serving-a-single-graph.md](https://skein-js.github.io/skein-js/serving-a-single-graph) and
+[docs/serving-a-single-graph.md](https://skein.js.org/serving-a-single-graph) and
 [`examples/invoke-endpoint`](../../examples/invoke-endpoint).
 
 ## API
@@ -120,7 +120,7 @@ Send `Accept: text/event-stream` to stream the steps instead. See
   what `requestLog: false` is for (and what `skein start` does).
   **`createConsoleLogger({ level?, prefix? })`** (re-exported from
   [`@skein-js/server-kit`](../server-kit)) is the one-liner. See
-  [errors-and-logging.md](https://skein-js.github.io/skein-js/errors-and-logging#logging).
+  [errors-and-logging.md](https://skein.js.org/errors-and-logging#logging).
 - **`createHandlerRouter(handlers, options?)`** / **`skeinRoutes`** — the pure route table, for
   composing your own routing over an existing `ProtocolHandlers`.
 - **`corsFromHttpConfig(http)`** / **`toCorsOptions(config)`** — map a `langgraph.json` `http.cors`
@@ -157,8 +157,8 @@ its own.
 
 ## Learn more
 
-- [Agent Protocol surface](https://skein-js.github.io/skein-js/agent-protocol) · [Streaming (SSE)](https://skein-js.github.io/skein-js/streaming) · [React SDK / `useStream`](https://skein-js.github.io/skein-js/react-sdk)
-- [skein-js overview](https://skein-js.github.io/skein-js/) · [Reuse-first architecture](https://github.com/skein-js/skein-js/blob/main/docs/reuse.md) · [Root README](https://github.com/skein-js/skein-js)
+- [Agent Protocol surface](https://skein.js.org/agent-protocol) · [Streaming (SSE)](https://skein.js.org/streaming) · [React SDK / `useStream`](https://skein.js.org/react-sdk)
+- [skein-js overview](https://skein.js.org/) · [Reuse-first architecture](https://github.com/skein-js/skein-js/blob/main/docs/reuse.md) · [Root README](https://github.com/skein-js/skein-js)
 
 ## License
 

@@ -159,7 +159,7 @@ function ConsoleShell() {
         </a>
         <div className="min-h-0 flex-1 overflow-y-auto">{navigation}</div>
         <a
-          href="https://skein-js.github.io/skein-js/console"
+          href="https://skein.js.org/console"
           target="_blank"
           rel="noreferrer"
           className="mt-6 flex shrink-0 items-center gap-2 border-t px-3 pt-4 text-xs text-muted-foreground hover:text-primary"

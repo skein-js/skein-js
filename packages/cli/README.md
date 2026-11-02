@@ -7,7 +7,7 @@
 
 Part of **[skein-js](https://github.com/skein-js/skein-js)** — the open-source alternative to LangGraph Platform for TypeScript: a self-hosted [Agent Protocol](https://github.com/langchain-ai/agent-protocol) server for [LangGraph.js](https://github.com/langchain-ai/langgraphjs), and a drop-in replacement for the LangGraph CLI.
 
-📖 **Docs:** [LangGraph CLI compatibility](https://skein-js.github.io/skein-js/langgraph-cli-compat#command-mapping) · [Deploy](https://skein-js.github.io/skein-js/deploy)
+📖 **Docs:** [LangGraph CLI compatibility](https://skein.js.org/langgraph-cli-compat#command-mapping) · [Deploy](https://skein.js.org/deploy)
 
 **Status:** 🚧 Pre-alpha — `dev`, `up`, `build`, and `dockerfile` all work today.
 
@@ -54,7 +54,7 @@ pnpm skein dev                 # → http://127.0.0.1:2024
 
 Talk to it with the official `@langchain/langgraph-sdk` client, `useStream`, Agent Chat UI, or
 LangGraph Studio — any Agent Protocol client works with only a URL change. See the
-[getting-started guide](https://skein-js.github.io/skein-js/getting-started).
+[getting-started guide](https://skein.js.org/getting-started).
 
 ## Commands
 
@@ -104,7 +104,7 @@ any layer. Public-registry builds don't need it.
 `--concurrency`, `-n, --n-jobs-per-worker`, and `--run-timeout` are accepted by `skein start` too. The
 first two also read
 `SKEIN_RUN_CONCURRENCY` (or `N_JOBS_PER_WORKER`) when no flag is passed — the path that reaches a
-container. See [runs-and-redis.md](https://skein-js.github.io/skein-js/runs-and-redis#run-concurrency).
+container. See [runs-and-redis.md](https://skein.js.org/runs-and-redis#run-concurrency).
 
 **`skein start` takes `--store` and `--queue` too, but only the durable values.** It is the production
 entrypoint: `--store postgres` and `--queue redis` are its defaults, and `--store memory` is rejected at
@@ -119,13 +119,13 @@ gets reported at all), and a line per request under production traffic buries th
 
 The combination `--store postgres --queue memory` — durable state, process-local queue, single instance —
 is still fully supported, but on the **embedded** path where it is documented
-([embedding.md](https://skein-js.github.io/skein-js/embedding), `embedPostgresGraphs` with no `REDIS_URI`) rather than on the
+([embedding.md](https://skein.js.org/embedding), `embedPostgresGraphs` with no `REDIS_URI`) rather than on the
 container entrypoint.
 
 `skein dev --store postgres --queue redis` is a capability the LangGraph CLI does **not** offer: it
 lets you develop against **production-shaped** storage (durable Postgres checkpoints, pgvector
 search, cross-instance Redis streaming) with hot reload and no Docker. Full mapping and the
-annotated `langgraph.json`: [docs/langgraph-cli-compat.md](https://skein-js.github.io/skein-js/langgraph-cli-compat).
+annotated `langgraph.json`: [docs/langgraph-cli-compat.md](https://skein.js.org/langgraph-cli-compat).
 
 ## Self-hosted, no lock-in
 
@@ -149,13 +149,13 @@ docker run -p 8123:8123 \
 
 The image binds `$PORT` when a platform injects one (8123 when nothing does), runs as a non-root
 user, serves a `/ok` health probe, and drains in-flight runs on `SIGTERM`. Step-by-step guides per
-platform, and the knobs that are the same everywhere: [deploy anywhere](https://skein-js.github.io/skein-js/deploy).
+platform, and the knobs that are the same everywhere: [deploy anywhere](https://skein.js.org/deploy).
 
 The build compiles your graphs — tsconfig `paths` and workspace aliases included — into
 `.skein/build`, and pins every published package they still import at its installed version, so the
 image installs exactly that and nothing else. Packages you load **by name** at runtime are the one
 thing it cannot see; declare those under `dependencies` in `langgraph.json`
-([details](https://skein-js.github.io/skein-js/bundling#what-skein-build-inlines-vs-externalizes)). Add `--artifact-only`
+([details](https://skein.js.org/bundling#what-skein-build-inlines-vs-externalizes)). Add `--artifact-only`
 to write `.skein/build` and its Dockerfile without invoking Docker, for pipelines that build the
 image themselves.
 
@@ -163,17 +163,17 @@ image themselves.
 
 With skein-js you operate deployment, storage, backups, and access policy. If you need a provider to
 operate the service or supply a support agreement, evaluate a managed offering against those needs.
-See [Why skein-js](https://skein-js.github.io/skein-js/why) for adoption choices and the
-[compatibility reference](https://skein-js.github.io/skein-js/langgraph-compatibility) before migration.
+See [Why skein-js](https://skein.js.org/why) for adoption choices and the
+[compatibility reference](https://skein.js.org/langgraph-compatibility) before migration.
 
 ## Learn more
 
-- [Test your graph in the console](https://skein-js.github.io/skein-js/console)
-- [Testing your project](https://skein-js.github.io/skein-js/testing-your-project) — graph assertions and an SDK smoke test
+- [Test your graph in the console](https://skein.js.org/console)
+- [Testing your project](https://skein.js.org/testing-your-project) — graph assertions and an SDK smoke test
 
-- [Deploy anywhere](https://skein-js.github.io/skein-js/deploy) — Cloud Run, Railway, Fly.io, Render, AWS, Kubernetes, VPS
-- [LangGraph CLI compatibility](https://skein-js.github.io/skein-js/langgraph-cli-compat) — commands + `langgraph.json` fields
-- [skein-js overview](https://skein-js.github.io/skein-js/) · [Reuse-first architecture](https://github.com/skein-js/skein-js/blob/main/docs/reuse.md) · [Roadmap](https://skein-js.github.io/skein-js/roadmap)
+- [Deploy anywhere](https://skein.js.org/deploy) — Cloud Run, Railway, Fly.io, Render, AWS, Kubernetes, VPS
+- [LangGraph CLI compatibility](https://skein.js.org/langgraph-cli-compat) — commands + `langgraph.json` fields
+- [skein-js overview](https://skein.js.org/) · [Reuse-first architecture](https://github.com/skein-js/skein-js/blob/main/docs/reuse.md) · [Roadmap](https://skein.js.org/roadmap)
 - [skein-js root README](https://github.com/skein-js/skein-js)
 
 ## License

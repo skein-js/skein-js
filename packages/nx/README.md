@@ -23,9 +23,9 @@ Root ESLint/Prettier configurations and declared tool dependencies are inherited
 missing tools are added to the appropriate dependency owner. New files follow inherited formatting.
 Cached targets include `^default` dependency sources, and build/typecheck/test depend on `^build`.
 Workspace-library edits invalidate application caches. Preserve these inputs, ordering and SQLite
-exclusions. See [workspace tooling](https://skein-js.github.io/skein-js/scaffolding).
+exclusions. See [workspace tooling](https://skein.js.org/scaffolding).
 
 The named root export `generateApplication` accepts an Nx Tree and these options.
 The exact metadata export `@skein-js/nx/package.json` supports discovery.
 
-See [scaffolding](https://skein-js.github.io/skein-js/scaffolding). Apache-2.0.
+See [scaffolding](https://skein.js.org/scaffolding). Apache-2.0.

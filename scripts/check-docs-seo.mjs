@@ -2,10 +2,10 @@ import assert from "node:assert/strict";
 import { readFile, readdir } from "node:fs/promises";
 import path from "node:path";
 
-// Validate rendered output, including the project-site base path, rather than just config values.
+// Validate rendered output and custom-domain URLs rather than just config values.
 const root = path.resolve(import.meta.dirname, "..");
 const output = path.resolve(process.argv[2] ?? path.join(root, "docs/.vitepress/dist"));
-const site = new URL("https://skein-js.github.io/skein-js/");
+const site = new URL("https://skein.js.org/");
 const decodeEntities = (value) =>
   value.replace(/&(#x[\da-f]+|#\d+|amp|lt|gt|quot|apos);/gi, (_match, entity) => {
     if (entity.startsWith("#"))
@@ -110,6 +110,11 @@ for (const route of ["", "deploy", "local-deployment", "getting-started", "stora
 const home = await readFile(path.join(output, "index.html"), "utf8");
 for (const route of ["deploy", "local-deployment"])
   assert(home.includes(`href="${site.pathname}${route}"`), `Homepage must link to ${route}`);
+assert.equal(
+  (await readFile(path.join(output, "CNAME"), "utf8")).trim(),
+  site.hostname,
+  "Pages custom domain must match canonical URLs",
+);
 const robots = await readFile(path.join(output, "robots.txt"), "utf8");
 assert(
   robots.includes(`Sitemap: ${new URL("sitemap.xml", site).href}`),

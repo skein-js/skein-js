@@ -139,7 +139,7 @@ Build and serve the artifact:
 The database stays outside \`.skein/build\`. Any Agent Protocol client, including
 \`@langchain/langgraph-sdk\`, can connect. Models and local tools are configured in your graph.
 
-See [local deployment](https://skein-js.github.io/skein-js/local-deployment) for embedding and
+See [local deployment](https://skein.js.org/local-deployment) for embedding and
 packaging with Electron or Tauri.
 
 ## Checks
@@ -166,7 +166,7 @@ ESLint and Prettier are enabled. Existing workspace configurations are inherited
 
 An [Agent Protocol](https://github.com/langchain-ai/agent-protocol) server for your
 [LangGraph.js](https://docs.langchain.com/oss/javascript/langgraph/overview) agents, built with
-[skein-js](https://skein-js.github.io/skein-js/).
+[skein-js](https://skein.js.org/).
 
 ## Develop
 
@@ -243,7 +243,7 @@ const answer = await client.runs.wait(thread.thread_id, "echo", {
 \`\`\`
 
 The same server backs the \`useStream\` React hook — point it at the URL and you have a streaming chat
-UI. See [Frontend SDKs](https://skein-js.github.io/skein-js/react-sdk).
+UI. See [Frontend SDKs](https://skein.js.org/react-sdk).
 
 ## Ship it
 
@@ -266,10 +266,10 @@ the image.
 
 ## Next steps
 
-- [Your first agent](https://skein-js.github.io/skein-js/your-first-agent) — from here to deployed
-- [Agent Protocol surface](https://skein-js.github.io/skein-js/agent-protocol) — every endpoint
-- [Storage](https://skein-js.github.io/skein-js/storage) — long-term memory and checkpoints
-- [Deploy](https://skein-js.github.io/skein-js/deploy) — Cloud Run, Fly, Railway, AWS, Kubernetes, a VPS
+- [Your first agent](https://skein.js.org/your-first-agent) — from here to deployed
+- [Agent Protocol surface](https://skein.js.org/agent-protocol) — every endpoint
+- [Storage](https://skein.js.org/storage) — long-term memory and checkpoints
+- [Deploy](https://skein.js.org/deploy) — Cloud Run, Fly, Railway, AWS, Kubernetes, a VPS
 
 ## Checks
 

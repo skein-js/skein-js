@@ -6,7 +6,7 @@
 
 Part of **[skein-js](https://github.com/skein-js/skein-js)** — the open-source alternative to LangGraph Platform for TypeScript: a self-hosted [Agent Protocol](https://github.com/langchain-ai/agent-protocol) server for [LangGraph.js](https://github.com/langchain-ai/langgraphjs), and a drop-in replacement for the LangGraph CLI.
 
-📖 **Docs:** [The SkeinStore contract](https://skein-js.github.io/skein-js/storage#skeinstore-interface) · [Bring your own drivers](https://skein-js.github.io/skein-js/embedding#bring-your-own-drivers-auth-logger)
+📖 **Docs:** [The SkeinStore contract](https://skein.js.org/storage#skeinstore-interface) · [Bring your own drivers](https://skein.js.org/embedding#bring-your-own-drivers-auth-logger)
 
 **Status:** 🚧 Pre-alpha — implemented. The run engine, handler table, and SSE mapping that build on this contract live in [`@skein-js/agent-protocol`](../agent-protocol).
 
@@ -113,8 +113,8 @@ in [`@skein-js/agent-protocol`](../agent-protocol) — never a reimplemented run
 
 ## Learn more
 
-- [Agent Protocol surface](https://skein-js.github.io/skein-js/agent-protocol) · [Storage](https://skein-js.github.io/skein-js/storage)
-- [skein-js overview](https://skein-js.github.io/skein-js/) · [Reuse-first architecture](https://github.com/skein-js/skein-js/blob/main/docs/reuse.md) · [Root README](https://github.com/skein-js/skein-js)
+- [Agent Protocol surface](https://skein.js.org/agent-protocol) · [Storage](https://skein.js.org/storage)
+- [skein-js overview](https://skein.js.org/) · [Reuse-first architecture](https://github.com/skein-js/skein-js/blob/main/docs/reuse.md) · [Root README](https://github.com/skein-js/skein-js)
 
 ## Cross-thread run search
 

@@ -6,7 +6,7 @@
 
 Part of **[skein-js](https://github.com/skein-js/skein-js)** — the open-source alternative to LangGraph Platform for TypeScript: a self-hosted [Agent Protocol](https://github.com/langchain-ai/agent-protocol) server for [LangGraph.js](https://github.com/langchain-ai/langgraphjs), and a drop-in replacement for the LangGraph CLI.
 
-📖 **Docs:** [OpenTelemetry](https://skein-js.github.io/skein-js/observability#opentelemetry)
+📖 **Docs:** [OpenTelemetry](https://skein.js.org/observability#opentelemetry)
 
 ## What's here
 
@@ -49,7 +49,7 @@ Using the CLI? Declare it in `langgraph.json` instead:
 { "telemetry": { "otel": true } }
 ```
 
-See [docs/observability.md](https://skein-js.github.io/skein-js/observability).
+See [docs/observability.md](https://skein.js.org/observability).
 
 ## What it emits
 
@@ -90,9 +90,9 @@ see generations indented under the run in a trace waterfall.
 
 ## Learn more
 
-- [Observability](https://skein-js.github.io/skein-js/observability) — traces, metrics, and writing your own sink
-- [Errors & logging](https://skein-js.github.io/skein-js/errors-and-logging) — the other two reporting surfaces
-- [skein-js overview](https://skein-js.github.io/skein-js/)
+- [Observability](https://skein.js.org/observability) — traces, metrics, and writing your own sink
+- [Errors & logging](https://skein.js.org/errors-and-logging) — the other two reporting surfaces
+- [skein-js overview](https://skein.js.org/)
 
 ## License
 
@@ -107,4 +107,4 @@ registered with your provider; Skein does not start an exporter or another liste
 shutdown leaves the provider alive. Without a collector the endpoint returns 501.
 
 The sink also measures HTTP handler response latency and requests, and active background workers.
-See the [diagnostics guide](https://skein-js.github.io/skein-js/observability#http-diagnostics).
+See the [diagnostics guide](https://skein.js.org/observability#http-diagnostics).

@@ -10,22 +10,22 @@ skein-js hosts LangGraph.js graphs. LangGraph defines graph state, nodes, edges,
 
 ## Choose the shortest supported path
 
-- **New project:** Inspect workspace markers first, then use `npm create skein-js@latest <name>` in a new directory, or the Nx generator in an Nx workspace. Generated projects recommend Node 24, support `^22.12.0 || ^24.0.0 || ^26.0.0`, and enable ESLint/Prettier by default (`--no-linting` opts out). Keep the keyless echo graph until the first server run succeeds. See [scaffolding](https://skein-js.github.io/skein-js/scaffolding).
-- **Existing `langgraph.json`:** Keep the config and graph exports; use the skein CLI in place of the LangGraph CLI. Check [compatibility](https://skein-js.github.io/skein-js/langgraph-cli-compat) before changing any config field.
-- **Graph compiled in an existing app:** Pick the adapter for the app's framework and pass either `{ config }` or assembled `{ deps }`. Mount the adapter at the intended URL and set the client's `apiUrl` to that mount root. See [using skein-js](https://skein-js.github.io/skein-js/using-skein) and [embedding](https://skein-js.github.io/skein-js/embedding).
-- **Desktop app, CLI, or daemon with local persistence:** Scaffold with `npm create skein-js@latest <name> -- --storage sqlite`, or embed graphs through `embedSqliteGraphs` from `@skein-js/local`. Use the existing protocol service directly or an HTTP/SSE adapter with the existing SDK. See [local deployment](https://skein-js.github.io/skein-js/local-deployment).
+- **New project:** Inspect workspace markers first, then use `npm create skein-js@latest <name>` in a new directory, or the Nx generator in an Nx workspace. Generated projects recommend Node 24, support `^22.12.0 || ^24.0.0 || ^26.0.0`, and enable ESLint/Prettier by default (`--no-linting` opts out). Keep the keyless echo graph until the first server run succeeds. See [scaffolding](https://skein.js.org/scaffolding).
+- **Existing `langgraph.json`:** Keep the config and graph exports; use the skein CLI in place of the LangGraph CLI. Check [compatibility](https://skein.js.org/langgraph-cli-compat) before changing any config field.
+- **Graph compiled in an existing app:** Pick the adapter for the app's framework and pass either `{ config }` or assembled `{ deps }`. Mount the adapter at the intended URL and set the client's `apiUrl` to that mount root. See [using skein-js](https://skein.js.org/using-skein) and [embedding](https://skein.js.org/embedding).
+- **Desktop app, CLI, or daemon with local persistence:** Scaffold with `npm create skein-js@latest <name> -- --storage sqlite`, or embed graphs through `embedSqliteGraphs` from `@skein-js/local`. Use the existing protocol service directly or an HTTP/SSE adapter with the existing SDK. See [local deployment](https://skein.js.org/local-deployment).
 
 SQLite is an explicit option for Node 22/24/26 with one process owning each database file. Install the upstream SQLite saver as documented, supply an absolute `sqlitePath` when embedding, and let the host start its worker or adapter and stop it before disposing storage. A desktop UI and a separate daemon can use the same protocol; keep database ownership in the backend process. The [Electron](https://github.com/skein-js/skein-js/tree/main/examples/desktop-electron), [Tauri](https://github.com/skein-js/skein-js/tree/main/examples/desktop-tauri), and [CLI](https://github.com/skein-js/skein-js/tree/main/examples/local-cli) examples show supported host integration and native packaging.
 
 Applications choose models, tools, credentials, process lifetime, and recovery behavior. A local app can use a cloud provider or a local model. SQLite records abandoned attempts as failures without automatically replaying input or continuing checkpoints; live stream frames remain process-local. Recover the UI from persisted records and state/history APIs.
 
-For a normal model and tool loop, prefer LangChain's `createAgent`; use a custom LangGraph `StateGraph` when the requested workflow needs explicit state or branching. For planning, files, and subagents, export a `createDeepAgent()` graph from the upstream `deepagents` package (support is experimental); give its `StoreBackend` a namespace built from `langgraph_auth_user_id`, use `stream_subgraphs` to stream subagents, and give async subagents an explicit `url`. See the [Deep Agents recipe](https://github.com/skein-js/skein-js/blob/main/docs/recipes/deep-agents.md). Consult the installed LangGraph version and [official LangGraph documentation](https://docs.langchain.com/oss/javascript/langgraph/overview) for graph APIs. When skein manages a served graph, let it inject the checkpointer and store; do not pass them to `.compile()` yourself. See [LangGraph essentials](https://skein-js.github.io/skein-js/langgraph-essentials).
+For a normal model and tool loop, prefer LangChain's `createAgent`; use a custom LangGraph `StateGraph` when the requested workflow needs explicit state or branching. For planning, files, and subagents, export a `createDeepAgent()` graph from the upstream `deepagents` package (support is experimental); give its `StoreBackend` a namespace built from `langgraph_auth_user_id`, use `stream_subgraphs` to stream subagents, and give async subagents an explicit `url`. See the [Deep Agents recipe](https://github.com/skein-js/skein-js/blob/main/docs/recipes/deep-agents.md). Consult the installed LangGraph version and [official LangGraph documentation](https://docs.langchain.com/oss/javascript/langgraph/overview) for graph APIs. When skein manages a served graph, let it inject the checkpointer and store; do not pass them to `.compile()` yourself. See [LangGraph essentials](https://skein.js.org/langgraph-essentials).
 
 ## Documentation for the adopter
 
 When documenting the generated application or explaining setup, teach the user's task, commands,
-expected result, and next step. Use the [console guide](https://skein-js.github.io/skein-js/console)
-for manual graph checks and [Testing your project](https://skein-js.github.io/skein-js/testing-your-project)
+expected result, and next step. Use the [console guide](https://skein.js.org/console)
+for manual graph checks and [Testing your project](https://skein.js.org/testing-your-project)
 for repeatable assertions and a server smoke test. Keep repository CI and implementation details out
 of the adoption path; preserve public integration requirements and operational limits.
 
@@ -34,11 +34,11 @@ of the adoption path; preserve public integration requirements and operational l
 1. Inspect the user's package manager, framework, existing graph and config, and deployment needs. Preserve existing choices.
 2. Implement the smallest graph and host wiring that meet the request. Use the scaffold or a matching [runnable example](https://github.com/skein-js/skein-js/tree/main/examples) as a starting point when useful.
 3. Run the project's typecheck and tests, plus lint and format checks when those scripts exist. Apply inherited formatting before checking CLI-generated files. Start the host when practical, confirm the graph loads, and exercise one run through the protocol service, console, or SDK. For an interrupt workflow, exercise pause and resume; when local durability is claimed, reopen the SQLite file and verify persisted state. Report any check you could not run.
-4. Choose durability for the host: [SQLite](https://skein-js.github.io/skein-js/local-deployment) for one local owner, or [Postgres and Redis](https://skein-js.github.io/skein-js/deploy) for a shared server. CLI SQLite selection requires `--store sqlite --queue sqlite`; memory remains the default for `skein dev`.
+4. Choose durability for the host: [SQLite](https://skein.js.org/local-deployment) for one local owner, or [Postgres and Redis](https://skein.js.org/deploy) for a shared server. CLI SQLite selection requires `--store sqlite --queue sqlite`; memory remains the default for `skein dev`.
 
-In a workspace, use a new child directory, preserve root configuration, and leave dependency installation at the root. Root tool declarations are reused independently of configuration inheritance; missing tool dependencies are added to the generated package. New files follow inherited Prettier settings. Workspace-root targets are rejected before writes, including with `--force`. See [workspace tooling](https://skein-js.github.io/skein-js/scaffolding).
+In a workspace, use a new child directory, preserve root configuration, and leave dependency installation at the root. Root tool declarations are reused independently of configuration inheritance; missing tool dependencies are added to the generated package. New files follow inherited Prettier settings. Workspace-root targets are rejected before writes, including with `--force`. See [workspace tooling](https://skein.js.org/scaffolding).
 
-For an Nx or Turborepo workspace, use the matching skein-js workspace skill if installed. Otherwise follow the workspace's existing task conventions and [monorepo guidance](https://skein-js.github.io/skein-js/scaffolding#nx-and-other-monorepos).
+For an Nx or Turborepo workspace, use the matching skein-js workspace skill if installed. Otherwise follow the workspace's existing task conventions and [monorepo guidance](https://skein.js.org/scaffolding#nx-and-other-monorepos).
 
 ## Protocol and hosting compatibility
 
@@ -49,10 +49,10 @@ via `getRun`/`getReceipt`/`getResult`, and resume with the expected interrupted 
 `cancel` reports status separately from confirmed stop; use `wait: true` when shutdown must be complete.
 An optional source `outcomeTarget` enables complete durable terminal outcomes. SQLite process loss
 records failure and an owed outcome without replaying abandoned input. See
-[native access](https://skein-js.github.io/skein-js/native-access).
+[native access](https://skein.js.org/native-access).
 Native state reads hold the execution lease and can wait behind active work; retry
 `native_state_changed`. Use the [native/BullMQ example](https://github.com/skein-js/skein-js/tree/main/examples/native-transports)
-for maintained host wiring, and read the [security guide](https://skein-js.github.io/skein-js/native-access-security).
+for maintained host wiring, and read the [security guide](https://skein.js.org/native-access-security).
 Projection covers outcomes/result queries only: raw run/state queries need separate host policy.
 Broker credentials expose retained payloads/return values; configure Redis ACLs/TLS and retention.
 
@@ -62,7 +62,7 @@ Keep caller verification, routing, deadlines and projection host-controlled. Per
 deduplication independently of BullMQ job retention. Retrieve missed/large output with authorized
 `result.get` chunks and verify their digest. Preserve Skein's internal execution/delivery queues.
 
-Use the [Agent Server compatibility reference](https://skein-js.github.io/skein-js/langgraph-compatibility)
+Use the [Agent Server compatibility reference](https://skein.js.org/langgraph-compatibility)
 when choosing clients. Legacy SDK React and dedicated framework packages use different streaming
 contracts. Modern thread subscriptions are separate from run commands: reconnect only reopens the
 subscription. Prefer the official HTTP/SSE SDK and preserve server-owned run admission/cancellation.

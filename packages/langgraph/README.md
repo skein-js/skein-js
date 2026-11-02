@@ -8,7 +8,7 @@ TypeScript: a self-hosted [Agent Protocol](https://github.com/langchain-ai/agent
 [LangGraph.js](https://github.com/langchain-ai/langgraphjs), and a drop-in replacement for the
 LangGraph CLI.
 
-📖 **Docs:** [Embedding graphs](https://skein-js.github.io/skein-js/embedding) · [Building a runner](https://skein-js.github.io/skein-js/building-a-runner)
+📖 **Docs:** [Embedding graphs](https://skein.js.org/embedding) · [Building a runner](https://skein.js.org/building-a-runner)
 
 **Status:** 🚧 Pre-alpha — implemented.
 

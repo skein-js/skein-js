@@ -11,10 +11,10 @@ import { llmAssetsDevPlugin, writeLlmAssets } from "./llm-assets";
 // where README.md, llms.txt and scripts/generate-llms-full.mjs already point at it — the site is
 // configuration layered over the repo's docs, not a copy of them.
 //
-// Served from GitHub Pages as a *project* site (skein-js.github.io/skein-js), hence `base`. Swap in
-// a custom domain by adding docs/public/CNAME and updating ORIGIN/BASE, robots.txt, and the SEO gate.
-const BASE = "/skein-js/";
-const ORIGIN = "https://skein-js.github.io";
+// GitHub Pages serves the custom domain at its root. Keep the origin aligned with
+// docs/public/CNAME, robots.txt, and the rendered SEO checks.
+const BASE = "/";
+const ORIGIN = "https://skein.js.org";
 const REPO = "https://github.com/skein-js/skein-js";
 
 /**

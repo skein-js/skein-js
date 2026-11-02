@@ -11,5 +11,5 @@ ESLint and Prettier, with each root configuration inherited independently.
 Tests cover all 96 provider/storage/package-manager/tooling combinations. The internal
 `scripts/scaffold-cases.json` catalog also drives 33 installed consumers through test-support Nx
 targets. See the [testing guide](../../docs/testing.md#scaffold-consumers)
-for commands and coverage, and [workspace tooling](https://skein-js.github.io/skein-js/scaffolding)
+for commands and coverage, and [workspace tooling](https://skein.js.org/scaffolding)
 for configuration inheritance, formatting, dependency caching and safe workspace discovery.

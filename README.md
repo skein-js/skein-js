@@ -1,6 +1,6 @@
 # skein-js
 
-[![npm](https://img.shields.io/npm/v/skein-js?logo=npm&color=cb3837&label=skein-js)](https://www.npmjs.com/package/skein-js)&nbsp;[![downloads](https://img.shields.io/npm/dm/skein-js?color=blue)](https://www.npmjs.com/package/skein-js)&nbsp;[![license](https://img.shields.io/npm/l/skein-js?color=green)](./LICENSE)&nbsp;[![CI](https://github.com/skein-js/skein-js/actions/workflows/ci.yml/badge.svg)](https://github.com/skein-js/skein-js/actions/workflows/ci.yml)&nbsp;[![docs](https://img.shields.io/badge/docs-skein--js.github.io-3b82f6)](https://skein-js.github.io/skein-js/)
+[![npm](https://img.shields.io/npm/v/skein-js?logo=npm&color=cb3837&label=skein-js)](https://www.npmjs.com/package/skein-js)&nbsp;[![downloads](https://img.shields.io/npm/dm/skein-js?color=blue)](https://www.npmjs.com/package/skein-js)&nbsp;[![license](https://img.shields.io/npm/l/skein-js?color=green)](./LICENSE)&nbsp;[![CI](https://github.com/skein-js/skein-js/actions/workflows/ci.yml/badge.svg)](https://github.com/skein-js/skein-js/actions/workflows/ci.yml)&nbsp;[![docs](https://img.shields.io/badge/docs-skein.js.org-3b82f6)](https://skein.js.org/)
 
 **Run LangGraph.js agents on your own infrastructure.**
 
@@ -111,7 +111,7 @@ important cases into [automated project tests](./docs/testing-your-project.md).
 
 ## Documentation
 
-[Read the docs](https://skein-js.github.io/skein-js/) for the complete guides and reference.
+[Read the docs](https://skein.js.org/) for the complete guides and reference.
 
 - [Getting started](./docs/getting-started.md) — adopt Skein with a new project or an existing graph.
 - [Testing your project](./docs/testing-your-project.md) — graph assertions and a server smoke test.

@@ -6,7 +6,7 @@
 
 Part of **[skein-js](https://github.com/skein-js/skein-js)** — the open-source alternative to LangGraph Platform for TypeScript: a self-hosted Agent Protocol server for [LangGraph.js](https://github.com/langchain-ai/langgraphjs), and a drop-in replacement for the LangGraph CLI.
 
-📖 **Docs:** [Next.js adapter](https://skein-js.github.io/skein-js/adapters#next-js)
+📖 **Docs:** [Next.js adapter](https://skein.js.org/adapters#next-js)
 
 A thin transport shim over the framework-agnostic [`@skein-js/agent-protocol`](../agent-protocol)
 handler table — it adds no protocol logic. Mount the protocol **same-origin** inside an existing
@@ -69,7 +69,7 @@ export const { POST } = createSkeinInvokeRouteHandlers({ deps, basePath: "/api/i
 ```
 
 Send `Accept: text/event-stream` to stream the steps instead. See
-[docs/serving-a-single-graph.md](https://skein-js.github.io/skein-js/serving-a-single-graph).
+[docs/serving-a-single-graph.md](https://skein.js.org/serving-a-single-graph).
 
 ## Deployment caveat
 
@@ -88,7 +88,7 @@ export default { serverExternalPackages: ["@langchain/langgraph-api", "@typescri
 
 The `{ deps }` / `embedPostgresGraphs` path never reaches that loader and needs no externals. Full
 details, including the "Critical dependency" warning, in
-[docs/bundling.md](https://skein-js.github.io/skein-js/bundling).
+[docs/bundling.md](https://skein.js.org/bundling).
 
 ## API
 
@@ -113,14 +113,14 @@ details, including the "Critical dependency" warning, in
   run engine, so failed graph runs and webhook failures are reported.
   **`createConsoleLogger({ level?, prefix? })`** (re-exported from
   [`@skein-js/server-kit`](../server-kit)) is the one-liner. See
-  [errors-and-logging.md](https://skein-js.github.io/skein-js/errors-and-logging#logging).
+  [errors-and-logging.md](https://skein.js.org/errors-and-logging#logging).
 - Low-level serializers: `toWebResponse` / `webErrorResponse` (Web `Response`), plus
   `sendNodeResponse` / `sendNodeError` (re-exported from [`@skein-js/server-kit`](../server-kit)).
 
 ## Learn more
 
 - [`@skein-js/express`](../server-express) — the reference adapter
-- [Building your own adapter](https://skein-js.github.io/skein-js/building-an-adapter) · [skein-js overview](https://skein-js.github.io/skein-js/)
+- [Building your own adapter](https://skein.js.org/building-an-adapter) · [skein-js overview](https://skein.js.org/)
 
 ## License
 

@@ -6,7 +6,7 @@
 
 Part of **[skein-js](https://github.com/skein-js/skein-js)** — the open-source alternative to LangGraph Platform for TypeScript: a self-hosted [Agent Protocol](https://github.com/langchain-ai/agent-protocol) server for [LangGraph.js](https://github.com/langchain-ai/langgraphjs), and a drop-in replacement for the LangGraph CLI.
 
-📖 **Docs:** [Agent Protocol reference](https://skein-js.github.io/skein-js/agent-protocol) · [Streaming](https://skein-js.github.io/skein-js/streaming)
+📖 **Docs:** [Agent Protocol reference](https://skein.js.org/agent-protocol) · [Streaming](https://skein.js.org/streaming)
 
 **Status:** 🚧 Pre-alpha — implemented. Uses the [`@skein-js/core`](../core) contracts and official protocol SDKs; it can be consumed without a graph runtime.
 
@@ -45,7 +45,7 @@ require `ProtocolDeps.threadBus` and an agent implementing optional `streamProto
 runtime assemblers supply the bus, and `@skein-js/langgraph` binds public v3 streaming. Legacy
 run-based clients and custom agents retain their existing path. MCP/A2A reuse these same authorized
 services; A2A also requires the optional run-result persistence methods on the driver. See the
-[compatibility reference](https://skein-js.github.io/skein-js/langgraph-compatibility) for tested
+[compatibility reference](https://skein.js.org/langgraph-compatibility) for tested
 versions and intentional differences.
 
 ## Install
@@ -57,7 +57,7 @@ pnpm add @skein-js/agent-protocol @skein-js/core
 `@langchain/langgraph-sdk` is a peer dependency — its types are the wire contract. `@langchain/langgraph`
 is an **optional** peer: this package installs no graph runtime, so add it only if you are running
 LangGraph.js graphs (via [`@skein-js/langgraph`](../langgraph)). To serve the protocol with your own
-agent, see [Serving the Agent Protocol with your own agent](https://skein-js.github.io/skein-js/building-a-runner):
+agent, see [Serving the Agent Protocol with your own agent](https://skein.js.org/building-a-runner):
 
 ```bash
 pnpm add @langchain/langgraph-sdk
@@ -138,7 +138,7 @@ Graph **state, history, and interrupt/resume are 100% LangGraph-native** via the
   `createRunWorker(ctx, options?)` (`RunWorkerOptions`: `maxConcurrency` — queued runs at once,
   default `DEFAULT_RUN_CONCURRENCY` (10, matching the LangGraph CLI) — and `shutdownGraceMs`). The
   adapters surface this as `worker.maxConcurrency` and also read `SKEIN_RUN_CONCURRENCY` /
-  `N_JOBS_PER_WORKER`; see [runs-and-redis.md](https://skein-js.github.io/skein-js/runs-and-redis#run-concurrency).
+  `N_JOBS_PER_WORKER`; see [runs-and-redis.md](https://skein.js.org/runs-and-redis#run-concurrency).
 - **Service surface** (`runtime.service`): `assistants` (`registerGraphAssistants`, `get`, `list`,
   `search`, `schemas`), `threads`
   (`create`/`get`/`list`/`search`/`count`/`patch`/`copy`/`prune`/`delete`/`history`/`getState`/`getStateAt`/`updateState`),
@@ -171,9 +171,9 @@ from `@langchain/langgraph-sdk` via [`@skein-js/core`](../core).
 
 ## Learn more
 
-- [Agent Protocol surface](https://skein-js.github.io/skein-js/agent-protocol) · [Streaming (SSE)](https://skein-js.github.io/skein-js/streaming) · [Runs & Redis](https://skein-js.github.io/skein-js/runs-and-redis)
-- [Building your own adapter](https://skein-js.github.io/skein-js/building-an-adapter) — mount this engine on any HTTP framework
-- [skein-js overview](https://skein-js.github.io/skein-js/) · [Reuse-first architecture](https://github.com/skein-js/skein-js/blob/main/docs/reuse.md) · [Root README](https://github.com/skein-js/skein-js)
+- [Agent Protocol surface](https://skein.js.org/agent-protocol) · [Streaming (SSE)](https://skein.js.org/streaming) · [Runs & Redis](https://skein.js.org/runs-and-redis)
+- [Building your own adapter](https://skein.js.org/building-an-adapter) — mount this engine on any HTTP framework
+- [skein-js overview](https://skein.js.org/) · [Reuse-first architecture](https://github.com/skein-js/skein-js/blob/main/docs/reuse.md) · [Root README](https://github.com/skein-js/skein-js)
 
 ## Cross-thread run search
 

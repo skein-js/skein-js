@@ -93,7 +93,10 @@ jobs:
           args: >-
             --root-dir ${{ github.workspace }}
             --config lychee.toml
-            --remap '^https://skein-js[.]github[.]io/skein-js/([a-z0-9-]+)(?:[.]html)?/?(#.*)?$ file://${{ github.workspace }}/docs/.vitepress/dist/$1.html$2'
+            --remap '^https://skein[.]js[.]org/(#.*)?$ file://${{ github.workspace }}/docs/.vitepress/dist/index.html$1'
+            --remap '^https://skein[.]js[.]org/(recipes|proposals)/?(#.*)?$ file://${{ github.workspace }}/docs/.vitepress/dist/$1/index.html$2'
+            --remap '^https://skein[.]js[.]org/((?:[a-z0-9-]+/)*[a-z0-9-]+)(?:[.]html)?/?(#.*)?$ file://${{ github.workspace }}/docs/.vitepress/dist/$1.html$2'
+            --remap '^https://skein[.]js[.]org/([^#]+[.](?:md|txt|xml|svg|png|webm))(#.*)?$ file://${{ github.workspace }}/docs/.vitepress/dist/$1$2'
             --remap 'https://github\.com/skein-js/skein-js/(?:blob|tree)/main/([^#]+)$ file://${{ github.workspace }}/$1'
             --no-progress
             README.md
