@@ -53,13 +53,6 @@ a user's `Auth` instance), and the in-memory runtime loader is behind a dynamic 
 branch. So on an embedded path they are never in the module graph at all, rather than being present and
 merely tree-shakeable.
 
-That is asserted, not asserted-by-comment: `packages/test-support/src/static-imports.test.ts` walks each
-adapter's built output — following `@skein-js/*` edges into their own `dist` — and fails if
-`@langchain/langgraph-api`, `@typescript/vfs`, or `superjson` is statically reachable. The walk is
-transitive because the regression it caught was: no adapter imported `@langchain/langgraph-api`, but
-every adapter imported `@skein-js/server-kit`, which imported the `@skein-js/config` barrel for one error
-class, and that barrel imported `@langchain/langgraph-api`.
-
 One trade-off worth knowing: because `@langchain/langgraph-api` is now loaded on demand, a bundling
 mistake around it (the `serverExternalPackages` config below) surfaces when something first asks for a
 graph schema rather than at startup. The container boots and passes its probes, and
@@ -139,14 +132,9 @@ export default {
 constants inside `dist/index.js`, so the package makes no filesystem access at runtime — it imports
 only `node:crypto`, `pg`, and `@skein-js/core`. (`pg` itself has one wrinkle — see below.)
 
-Before 0.10.0 it located its `migrations/` directory with `new URL("../migrations", import.meta.url)`
-and handed it to `node-pg-migrate`. Bundlers rewrite `import.meta.url` to the **output** location, so
-a bundled build looked fine until boot, then failed to find its own SQL against a real database. If
-you hit that on an older version, externalize `@skein-js/storage-postgres` (which then has to be
-present in `node_modules` at runtime) or upgrade.
-
-Migrations still run automatically on boot, tracked in a `skein_migrations` table and serialized by a
-Postgres advisory lock — see [deploy.md](./deploy.md) and [storage.md](./storage.md).
+You do not need to copy a separate migrations directory into your bundle. Migrations run at startup.
+If an older bundled version fails to find its migration files, upgrade or externalize
+`@skein-js/storage-postgres` and keep it installed at runtime. See [storage](./storage.md) for upgrades.
 
 ### One caveat, from `pg` rather than skein
 

@@ -88,7 +88,7 @@ Things to know:
 - **The fork target is server-validated.** A client cannot redirect a run to an arbitrary checkpoint
   through `config` — skein reads `checkpoint_id` only from the top-level field.
 - **`updateState` 409s while a run is in flight** on that thread. Cancel or wait first.
-- **It rides the checkpointer**, so forking costs no extra storage. If you want a whole independent
+- **A fork adds a checkpoint to the thread's history.** If you want a whole independent
   copy instead, `client.threads.copy(threadId)` duplicates the thread and its history.
 - The [console](./console.md) does all of this without code — open a checkpoint, edit, fork, run
   forward.

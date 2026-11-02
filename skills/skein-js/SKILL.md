@@ -21,6 +21,14 @@ Applications choose models, tools, credentials, process lifetime, and recovery b
 
 For a normal model and tool loop, prefer LangChain's `createAgent`; use a custom LangGraph `StateGraph` when the requested workflow needs explicit state or branching. For planning, files, and subagents, export a `createDeepAgent()` graph from the upstream `deepagents` package (support is experimental); give its `StoreBackend` a namespace built from `langgraph_auth_user_id`, use `stream_subgraphs` to stream subagents, and give async subagents an explicit `url`. See the [Deep Agents recipe](https://github.com/skein-js/skein-js/blob/main/docs/recipes/deep-agents.md). Consult the installed LangGraph version and [official LangGraph documentation](https://docs.langchain.com/oss/javascript/langgraph/overview) for graph APIs. When skein manages a served graph, let it inject the checkpointer and store; do not pass them to `.compile()` yourself. See [LangGraph essentials](https://skein-js.github.io/skein-js/langgraph-essentials).
 
+## Documentation for the adopter
+
+When documenting the generated application or explaining setup, teach the user's task, commands,
+expected result, and next step. Use the [console guide](https://skein-js.github.io/skein-js/console)
+for manual graph checks and [Testing your project](https://skein-js.github.io/skein-js/testing-your-project)
+for repeatable assertions and a server smoke test. Keep repository CI and implementation details out
+of the adoption path; preserve public integration requirements and operational limits.
+
 ## Complete the project
 
 1. Inspect the user's package manager, framework, existing graph and config, and deployment needs. Preserve existing choices.
@@ -54,7 +62,7 @@ Keep caller verification, routing, deadlines and projection host-controlled. Per
 deduplication independently of BullMQ job retention. Retrieve missed/large output with authorized
 `result.get` chunks and verify their digest. Preserve Skein's internal execution/delivery queues.
 
-Use the dated [Agent Server matrix](https://skein-js.github.io/skein-js/langgraph-compatibility)
+Use the [Agent Server compatibility reference](https://skein-js.github.io/skein-js/langgraph-compatibility)
 when choosing clients. Legacy SDK React and dedicated framework packages use different streaming
 contracts. Modern thread subscriptions are separate from run commands: reconnect only reopens the
 subscription. Prefer the official HTTP/SSE SDK and preserve server-owned run admission/cancellation.

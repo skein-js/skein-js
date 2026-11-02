@@ -1,115 +1,30 @@
 # Workflows and channels — connect LangGraph to external systems
 
-Workflows and channels solve different halves of the same problem. A **workflow** defines what should
-happen after an event arrives. A **channel** is the provider integration: it defines how that event
-enters the workflow and how an outcome reaches an external system. Together they form one reliable
-path:
+Connect an external event to your graph and deliver its result back to the right person or system.
+For example, a customer emails a refund request, your graph asks a reviewer on WhatsApp, and the
+reviewer's answer lets it finish the request and notify the customer.
 
-```text
-channel source  →  LangGraph workflow  →  channel destination
-```
+A **channel** verifies and translates provider events. Your **workflow** is the LangGraph graph that
+makes decisions, calls tools, and pauses for approval. Configure allowed destinations before the
+graph can choose where to send a result.
 
-Skein owns the channel boundary: authentication, deduplication, thread and run coordination, and
-durable delivery. LangGraph owns the workflow in the middle: state, decisions, tools, branching, and
-`interrupt()`.
+<span id="what-workflow-means-here"></span>
+<span id="what-this-looks-like-in-practice"></span>
+<span id="why-langgraph-and-channels-fit-together"></span>
+<span id="what-skein-removes-from-each-workflow-connection"></span>
 
-LangGraph deliberately doesn't own integrations to WhatsApp, email, Slack, GitHub, or your internal
-systems. It gives you the orchestration engine. Skein channels give that engine authenticated sources
-and durable destinations. This is the part Skein adds: the integration lifecycle that turns graph
-logic into a workflow people and systems can actually participate in.
+## Choose a connection {#when-to-use-it}
 
-## What “workflow” means here
+| Your workflow                                                      | Start here                                                         |
+| ------------------------------------------------------------------ | ------------------------------------------------------------------ |
+| Answer an order question in the same WhatsApp chat                 | [Coupled replies](./recipes/coupled-channel.md)                    |
+| Receive email, request WhatsApp approval, then notify the customer | [Cross-provider workflow](./recipes/decoupled-channel-delivery.md) |
+| Accept a GitHub or internal-system event                           | Implement the channel source below and route to your graph         |
+| Notify an existing HTTP service when any run finishes              | [Run-completion webhooks](./webhooks.md) may be enough             |
 
-A workflow is the business process expressed by your LangGraph graph and carried across its persisted
-thread state. It is more than forwarding one message to another provider. It can inspect an event,
-call tools, branch, fan out work, ask a person for a decision, pause for hours or days, resume from a
-later event, and finally choose what should happen next.
-
-For example, “send this email to WhatsApp” is message forwarding. “Validate a refund request, collect
-the required approvals over WhatsApp, wait for every response, decide the refund, and notify the
-customer by email” is a workflow.
-
-Workflow is not a new Skein resource or API. It is the LangGraph graph you already write, plus the
-state LangGraph persists in a thread. A channel is the adapter and Skein pipeline around that graph:
-its source verifies and translates provider events; its destination translates and delivers graph
-outcomes.
-
-```text
-channel source                  LangGraph workflow                  channel destination
-email / WhatsApp / webhook  →   state + decisions              →   email / WhatsApp / provider API
-                                tools + branching
-                                interrupt / resume
-```
-
-## What this looks like in practice
-
-The useful unit is the whole process, not a provider-to-provider pipe:
-
-| Real-world workflow            | Channel source            | LangGraph does                                                | Channel destination                     |
-| ------------------------------ | ------------------------- | ------------------------------------------------------------- | --------------------------------------- |
-| **Answer an order question**   | Customer WhatsApp message | Looks up the order, decides whether to escalate, drafts reply | Reply to the same WhatsApp chat         |
-| **Approve a refund**           | Customer email            | Validates the claim, gathers approvals, pauses and resumes    | WhatsApp approvers, then email customer |
-| **Handle a failed deploy**     | GitHub deployment webhook | Inspects the failure, classifies severity, chooses escalation | Alert the on-call team in Slack         |
-| **Resolve an order exception** | ERP order webhook         | Checks inventory, branches by risk, waits for warehouse input | Notify sales or email the customer      |
-
-In every case, the channel handles provider truth—signatures, event IDs, identities, payloads, and
-delivery—while the workflow handles business truth: what the event means and what should happen next.
-
-## Why LangGraph and channels fit together
-
-LangGraph doesn't try to own provider integrations, and external systems fail differently from
-business logic. A provider webhook needs authentication, a fast acknowledgement, retry
-deduplication, and stable identity mapping. The business process needs state, branching, tool calls,
-and human-in-the-loop pauses. Outbound delivery needs recipient policy, provider-specific validation,
-retries, and idempotency.
-
-Keeping those responsibilities separate gives each layer one job:
-
-| Layer                   | Owns                                                                 |
-| ----------------------- | -------------------------------------------------------------------- |
-| **Channel source**      | Verify, parse, deduplicate, identify the thread, and start or resume |
-| **LangGraph workflow**  | State, decisions, tools, branching, fan-out, and `interrupt()`       |
-| **Channel destination** | Validate and deliver the declared outcome through the durable outbox |
-
-This keeps provider code thin and keeps transport concerns out of the graph. The graph declares an
-outcome; the destination adapter performs the external side effect after the run settles.
-
-## When to use it
-
-Use a workflow with channels when an external provider event starts or resumes a process whose state
-belongs in LangGraph, and the result must return to a provider reliably. The channel shape depends on
-the workflow:
-
-- Use a **coupled channel** when the source already determines where the outcome belongs, such as a
-  WhatsApp question followed by a WhatsApp answer.
-- Use **decoupled channel delivery** when the workflow must choose another provider, recipient, or
-  route, such as an email request that triggers WhatsApp approvals and an email decision.
-- Use the Agent Protocol run API directly when your own application already owns ingress and only
-  needs to invoke or stream a graph; a channel adds no value in that path.
-
-In both shapes, the workflow stays provider-independent. It receives ordinary graph input and
-declares an outcome; the surrounding channels translate between that data and provider payloads.
-
-You write thin provider adapters. Skein handles retry deduplication, external-identity-to-thread
-mapping, start-versus-resume decisions, and durable delivery consistently across channels.
-
-> A chat channel is a `Channel` whose reply target happens to be the sender. A GitHub webhook and a
-> Stripe dispute go through the identical pipeline without that property — which is why these types
-> talk about _events_, and why you will not find `from`, `to`, `body` or `typing` in any of them.
-
-Entirely optional. A deployment that configures no channel does not install the package, serves no
-channel routes, and cannot tell the feature exists.
-
-## What Skein removes from each workflow connection
-
-Connecting a workflow to a phone number by hand means writing signature verification, deduplication
-for retried deliveries, a mapping from `whatsapp:+254…` to a thread, a branch on whether that thread
-is already waiting on a human, payload mapping in both directions, and a reply path that does not
-double-send.
-
-Only two of those are about the provider. The rest are identical for every integration anyone will
-ever write — and their failures are silent ones: a double reply, a lost reply, a question nobody was
-ever asked.
+Skein handles inbound deduplication, thread/run coordination, and durable outbound delivery. You
+supply provider signature verification, event parsing, business decisions, destination policy, and
+provider calls. There are no built-in Slack, WhatsApp, or email provider packages to configure.
 
 ## Quick start
 

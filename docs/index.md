@@ -96,16 +96,17 @@ choose durable storage when you need persistence beyond development.
 
 The console is served by your own process at `/console`. Test a graph, follow live runs, review
 approvals, and browse memory and schedules. It is enabled in development and off by default in
-production. [Take the tour](./console.md).
+production. [Test your graph in the console](./console.md), then save important cases as
+[automated project tests](./testing-your-project.md).
 
 <div class="light-only">
 
-![The skein console showing threads awaiting approval and recent activity](/images/console/overview-light.png)
+![Testing a graph in the skein console Playground](/images/console/playground-light.png)
 
 </div>
 <div class="dark-only">
 
-![The skein console showing threads awaiting approval and recent activity](/images/console/overview-dark.png)
+![Testing a graph in the skein console Playground in dark mode](/images/console/playground-dark.png)
 
 </div>
 

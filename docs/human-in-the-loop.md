@@ -70,7 +70,8 @@ const waiting = await client.threads.search({ status: "interrupted" });
 ```
 
 The [console](./console.md) ships this view already — its Overview lists what's waiting for you, and
-the Interrupts view approves, rejects, or resumes with any JSON, without you building a UI first.
+Playground and thread inspection show a **Waiting for you** request. Submit the boolean or JSON
+response your graph expects, then inspect the resumed run. You can test this before building your own UI.
 
 ## What you must get right
 

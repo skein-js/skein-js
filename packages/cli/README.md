@@ -161,14 +161,15 @@ image themselves.
 
 ## When the managed platform may fit you better
 
-skein-js gives you the code and full ownership, not a support contract. If you're an established
-product that wants a vendor standing behind your agent stack — dedicated support with response-time
-SLAs, plus enterprise features like SSO, RBAC, and SOC2 — LangGraph Platform's Enterprise plan is a
-sound choice. Your graph code and `langgraph.json` stay unchanged either way, so switching between
-them is cheap. See the [reuse-first architecture](https://github.com/skein-js/skein-js/blob/main/docs/reuse.md) for how little skein-js adds
-on top of the open LangGraph runtime.
+With skein-js you operate deployment, storage, backups, and access policy. If you need a provider to
+operate the service or supply a support agreement, evaluate a managed offering against those needs.
+See [Why skein-js](https://skein-js.github.io/skein-js/why) for adoption choices and the
+[compatibility reference](https://skein-js.github.io/skein-js/langgraph-compatibility) before migration.
 
 ## Learn more
+
+- [Test your graph in the console](https://skein-js.github.io/skein-js/console)
+- [Testing your project](https://skein-js.github.io/skein-js/testing-your-project) — graph assertions and an SDK smoke test
 
 - [Deploy anywhere](https://skein-js.github.io/skein-js/deploy) — Cloud Run, Railway, Fly.io, Render, AWS, Kubernetes, VPS
 - [LangGraph CLI compatibility](https://skein-js.github.io/skein-js/langgraph-cli-compat) — commands + `langgraph.json` fields

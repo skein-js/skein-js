@@ -14,7 +14,7 @@ things, and they behave completely differently:
 | `input`               | Your graph's **state channels** | **Yes** — checkpointed per thread | The turn itself: the new message, the document                              |
 | `context`             | LangGraph's **runtime context** | Stored on the run, not the state  | Per-run facts the graph reads but shouldn't remember: a locale, a tenant id |
 | `config.configurable` | The graph's **config**          | Stored on the run, not the state  | Knobs: which model, which prompt, a feature flag                            |
-| `metadata`            | The **run/thread row**          | Yes, as searchable labels         | Finding things later — never read by the graph                              |
+| `metadata`            | The **run/thread row**          | Yes, as searchable labels         | Finding and filtering runs; not conversation state                          |
 
 ```ts
 await client.runs.create(threadId, "agent", {

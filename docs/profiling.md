@@ -1,31 +1,23 @@
 # Profiling and performance tuning Skein
 
-This guide is the practical bridge between “the server feels slow” and an evidence-backed change.
-It assumes no profiling experience.
+Profile the skein-js application you deploy when runs are slow, memory keeps growing, or throughput
+stops improving. Start with one reproducible symptom and measure before changing configuration.
 
 ## The four tools and the tuning loop
 
-- A **benchmark** tells you how much: latency, throughput, memory, boot time.
-- A **profiler** tells you where: hot functions, allocation sites, retained objects, garbage collection.
-- **Telemetry** tells you when and why in production: graph, runtime, queue delay, failures, saturation.
-- A **correctness test** tells you whether a faster result is still the same product.
+1. Record the symptom and target: for example, time to first response, completion time, or memory
+   after a batch of runs.
+2. Reproduce it in a test deployment using your graph, storage, and representative inputs. Use
+   controlled model/tool responses first, then repeat with the real dependencies.
+3. Record a baseline after warm-up. Measure the client and server separately so a saturated load
+   generator is not mistaken for a slow server.
+4. Capture a CPU profile for slow execution, or compare heap profiles for retained memory.
+5. Change one setting or application behavior, repeat the same workload, and run your
+   [project tests](./testing-your-project.md) to check that output and state remain correct.
 
-Use the same loop every time:
-
-1. Write an SLO, such as “p99 time to first frame below 250 ms at 100 streams.”
-2. Reproduce it with a deterministic graph and fixed container CPU/memory.
-3. Warm the runtime, then record a baseline and raw artifacts.
-4. Profile the failing interval, not server startup or an idle process.
-5. Change one variable.
-6. Run protocol/conformance tests and a negative test designed to expose the suspected failure.
-7. Repeat the identical benchmark and compare confidence intervals, not one lucky run.
-
-Create a directory per experiment; generated profiles are ignored by Git and production images:
-
-```bash
-mkdir -p .profiles/2026-07-31-slow-sse/{before,after}
-nx build bench
-```
+Use [observability](./observability.md) to distinguish graph/model latency from queue delay and
+storage waits. The [symptom-to-setting table](./performance.md#triage-symptom-knob) helps choose a
+configuration change once you know the bottleneck.
 
 ## Reading the numbers
 
@@ -52,43 +44,23 @@ self time points at the hot implementation; high total but low self time says to
 children. Wide flame-graph boxes consumed more samples. GC width means allocation pressure, not
 necessarily that the collector itself is defective.
 
-## Skein’s cross-runtime benchmark
+<span id="skein-s-cross-runtime-benchmark"></span>
 
-Use deterministic graphs first—no model calls—then repeat with a separate realistic model workload.
-The existing harness exercises real HTTP/SSE and can use real Postgres and Redis:
+## Profile your installed server {#skeins-cross-runtime-benchmark}
 
-```bash
-nx bench bench -- --scenario fast-client
-nx bench bench -- --scenario slow-client --streams 1
-nx bench bench -- --scenario slow-client --streams 50
-nx bench bench -- --scenario slow-client --streams 100
-nx bench bench -- --scenario slow-client --streams 500
-nx bench bench -- --driver postgres-redis
-```
+Run the following commands from your application directory, with `skein-js` installed locally.
+Build the production artifact and make its storage services and environment available as you would
+for your normal `skein start` command. Append your usual storage flags to the profiler commands if
+needed. If you embed skein-js, replace `node_modules/skein-js/dist/index.js start --runtime node` with
+your own built server entry point.
 
-Do not model a slow client with `fetch()` plus delayed reads: the client runtime may eagerly drain the
-socket into its own heap. Skein’s slow-client harness pauses a raw socket so the TCP receive window
-closes and backpressure reaches the server.
+Send representative traffic from a separate process while the profile is recording. Stop the server
+cleanly so the profile is written. Confirm that your output directory contains a profile before
+opening it in your runtime's tools.
 
-For Node/Bun/Deno comparisons there is **no harness support yet** — `packages/bench` starts the server
-inside its own process, so it cannot measure another runtime, and adding an external-target mode is
-tracked follow-up work. Today the comparison is a manual procedure: build each production artifact and
-run the load generator outside the measured container. Keep identical CPU/memory limits, graph bundle, payloads, Postgres/Redis versions,
-telemetry setting, warm-up, sample duration, and runtime image architecture. Record:
-
-- cold boot and readiness;
-- p50/p95/p99 and time to first frame;
-- requests/s and frames/s;
-- RSS, runtime heap values, and settled post-GC memory;
-- memory slope at 1/50/100/500 slow streams;
-- queue delay and Postgres pool saturation;
-- Redis commands, connections, and retained frames;
-- telemetry-off versus telemetry-on overhead;
-- SIGTERM drain duration and lost terminal states/events;
-- a sustained mixed-load soak.
-
-Run at least five measured repetitions after warm-up and report the median plus a 95% confidence
-interval. Save raw JSON beside runtime, image digest, CPU model, memory limit, OS/kernel, and commit.
+The repository's own benchmark fixtures require a skein-js checkout. Their commands and historical
+measurements are [contributor reference](https://github.com/skein-js/skein-js/blob/main/docs/testing.md#repository-profiling-fixtures),
+not a prerequisite for profiling your application.
 
 ## Node recipes
 
@@ -98,13 +70,13 @@ it cleanly so profiles flush:
 ```bash
 mkdir -p .profiles/node/cpu .profiles/node/heap
 node --cpu-prof --cpu-prof-dir=.profiles/node/cpu \
-  packages/cli/dist/index.js start --runtime node
+  node_modules/skein-js/dist/index.js start --runtime node
 
 node --heap-prof --heap-prof-dir=.profiles/node/heap \
-  packages/cli/dist/index.js start --runtime node
+  node_modules/skein-js/dist/index.js start --runtime node
 
-node --trace-gc packages/cli/dist/index.js start --runtime node
-node --inspect packages/cli/dist/index.js start --runtime node
+node --trace-gc node_modules/skein-js/dist/index.js start --runtime node
+node --inspect node_modules/skein-js/dist/index.js start --runtime node
 ```
 
 Load `.cpuprofile` in Chrome DevTools’ Performance panel. Load `.heapprofile` in Memory. In an
@@ -118,9 +90,9 @@ remove from traffic.
 ```bash
 mkdir -p .profiles/bun/cpu .profiles/bun/heap
 bun --cpu-prof --cpu-prof-dir=.profiles/bun/cpu \
-  packages/cli/dist/index.js start --runtime bun
+  node_modules/skein-js/dist/index.js start --runtime bun
 bun --heap-prof --heap-prof-dir=.profiles/bun/heap \
-  packages/cli/dist/index.js start --runtime bun
+  node_modules/skein-js/dist/index.js start --runtime bun
 ```
 
 Bun has separate JavaScriptCore and native heaps. For an instrumented experiment, record
@@ -140,48 +112,46 @@ mkdir -p .profiles/deno/cpu
 deno run --allow-net --allow-env --allow-read=. --allow-sys --allow-ffi \
   --cpu-prof --cpu-prof-dir=.profiles/deno/cpu \
   --cpu-prof-md --cpu-prof-flamegraph \
-  packages/cli/dist/index.js start --runtime deno
+  node_modules/skein-js/dist/index.js start --runtime deno
 
 deno run --inspect --allow-net --allow-env --allow-read=. --allow-sys --allow-ffi \
-  packages/cli/dist/index.js start --runtime deno
+  node_modules/skein-js/dist/index.js start --runtime deno
 ```
 
 Open the SVG directly or load `.cpuprofile` in DevTools. Deno reports transpiled JavaScript line
 numbers in CPU profiles, so use function names and sourcemaps to get back to TypeScript.
 
-## Five diagnostic exercises
+## Diagnostic checks {#five-diagnostic-exercises}
 
 ### 1. SSE backpressure
 
-Run `slow-client` at 1, 50, 100, and 500 streams. Watch server RSS, socket buffered bytes, and bus
-frames. Expected: socket bytes and bus retention plateau at configured bounds. Negative verification:
-temporarily replace the raw paused client with a fast client—the pressure disappears, proving a fast
-client cannot validate slow-client safety.
+Compare ordinary clients with deliberately slow readers against your test server. Watch RSS and
+connection count at increasing concurrency. Memory should settle within your configured limits;
+compare received output and final state to ensure a lower memory reading is not lost work.
 
 ### 2. Event-bus retention
 
-Run `long-run`, let all clients disconnect, force idle+GC, and inspect retained objects. Expected:
-completed-run retention stops at `SKEIN_MEMORY_BUS_MAX_RETAINED_RUNS`, and frames per run stop at
-`SKEIN_MEMORY_BUS_MAX_FRAMES_PER_RUN`. A retaining path through a subscription after cancellation is
-a leak; a bounded map at its configured ceiling is not.
+Complete a repeatable workload, disconnect clients, and compare memory after the same idle period.
+Configured retention can keep a bounded amount of history. A rising retained baseline across repeated
+workloads warrants a heap-profile comparison; see [streaming bounds](./performance.md#streaming).
 
 ### 3. Serialization cost
 
-Compare `stream_mode: "values"` with `"updates"` using the same graph. If CPU self time concentrates
-in wire serialization and GC grows, reduce full-state frames or payload size. Verify final state and
-frame order before accepting the change.
+Compare `stream_mode: "values"` and `"updates"` with the same graph and inputs. If full-state events
+dominate CPU and allocations, reduce event volume or payload size. Verify that your UI still receives
+what it needs and that final graph state matches.
 
 ### 4. Postgres pool saturation
 
-Sweep run concurrency through 1/5/10/20 while holding `PG_POOL_MAX=5`, then repeat at 20. Throughput
-should flatten and queue time rise when the pool saturates. Raising worker concurrency alone cannot
-fix a five-connection bottleneck; remember Skein uses separate store and checkpointer pools.
+Increase concurrency gradually while observing database connections and queue delay. When throughput
+flattens, check the [connection budget](./deploy.md#connection-budget) before raising concurrency.
+Each instance has multiple pools; database capacity must cover all replicas.
 
 ### 5. Telemetry shutdown leak
 
-Create a test sink that buffers events and whose `flush()` rejects. Send SIGTERM. The test passes only
-if `shutdown()` still runs, the other sinks flush, terminal run state is persisted, and the process
-exits within the configured grace. This distinguishes exporter failure from lifecycle loss.
+Stop a busy test server gracefully and check that it exits within your configured shutdown budget.
+Confirm that expected terminal run state and telemetry arrive. If an exporter delays exit, inspect
+its flush behavior and your host's shutdown order; do not infer a completed run from process exit alone.
 
 ## Benchmark traps
 

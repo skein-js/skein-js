@@ -22,6 +22,10 @@ No database, no Docker, and no API key — `echo` answers your first request imm
 
 > Keep `@latest` to request the latest published scaffolder instead of relying on a cached version.
 
+Open the console, choose **echo**, send `hello`, and expect `echo: hello`. In a second terminal,
+run `npm test` to check the graph without a server. Follow
+[Testing your project](https://skein-js.github.io/skein-js/testing-your-project) to add an SDK smoke test.
+
 ## What you get
 
 A `langgraph.json` project driven by the `skein` CLI — the same lifecycle you ship with:

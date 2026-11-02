@@ -62,7 +62,7 @@ the authenticated sources and durable destinations around the graph.
 | [Deliveries & replay](./webhooks.md#see-what-a-callback-did-and-replay-it) | ✅     | See every attempt, and re-send one by hand when it never landed                    |
 | [Custom auth](./agent-protocol.md#authentication--authorization)           | ✅     | LangGraph's `Auth` model, drop-in, with ownership filters pushed into the query    |
 | [Telemetry sinks](./observability.md)                                      | ✅     | LangSmith, PostHog, OpenTelemetry — or your own `TelemetrySink`                    |
-| [MCP endpoint](./roadmap.md)                                               | 🗺️     | Expose your graphs as MCP tools                                                    |
+| [MCP endpoint](./agent-protocol.md#mcp-and-a2a)                            | ✅     | Expose authorized Assistants as tools over Streamable HTTP                         |
 
 ## Operate it
 
@@ -72,11 +72,11 @@ the authenticated sources and durable destinations around the graph.
 | [Postgres + pgvector](./storage.md)                     | ✅         | Durable server storage with semantic search and automatic migrations                 |
 | [Local apps with SQLite](./local-deployment.md)         | ✅         | Desktop, CLI, and daemon embedding with persistent resources, queue, and checkpoints |
 | [Redis queue & pub/sub](./runs-and-redis.md)            | ✅         | Durable run queue and cross-instance streaming                                       |
-| [Multi-instance](./deploy.md#scaling-past-one-instance) | ✅         | Atomic create guard, cross-instance cancel, per-thread execution claim               |
+| [Multi-instance](./deploy.md#scaling-past-one-instance) | ✅         | Run independent conversations across replicas, with cross-instance cancellation      |
 | [Errors & logging](./errors-and-logging.md)             | ✅         | What a failed run reports, and where — wire, log, and callback                       |
 | [Deploy anywhere](./deploy.md)                          | ✅         | One image; guides for Cloud Run, Fly, Railway, Render, AWS, Kubernetes, a VPS        |
 | [Performance tuning](./performance.md)                  | ✅         | Every knob in one table, plus symptom → knob triage                                  |
-| [Bun / Deno runtimes](./deploy.md)                      | ⚠️ preview | Fetch launchers and images ship; the runtime matrices must graduate each             |
+| [Bun / Deno runtimes](./deploy.md)                      | ⚠️ preview | Preview deployment targets; use Node for the default production path                 |
 
 ## Build on it
 

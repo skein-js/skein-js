@@ -26,7 +26,7 @@ and an open alternative to the second.
 
 Native embedded callers and optional BullMQ access share authorized admission, strict resume,
 retained results and the existing outbox. See [native access](./native-access.md) and its
-[reproducible validation](./native-access-validation.md). This adds no A2A/MCP features.
+[security and operations guide](./native-access-security.md). This adds no A2A/MCP features.
 
 | Capability                                 | Status | Notes                                                                                                                                |
 | ------------------------------------------ | ------ | ------------------------------------------------------------------------------------------------------------------------------------ |
@@ -62,23 +62,17 @@ retained results and the existing outbox. See [native access](./native-access.md
 
 ## Compatibility delivery and remaining work
 
-The compatibility program for [#62](https://github.com/skein-js/skein-js/issues/62) is tracked in the
-[dated compatibility matrix](./langgraph-compatibility.md), with these separate delivery phases:
+Use the [compatibility reference](./langgraph-compatibility.md) for verified SDK versions and
+intentional differences. Shipped capabilities include MCP/A2A, compiled graph UI and custom
+applications, OpenAPI/docs, diagnostics, and [cross-thread run search](./runs.md#search-runs-across-threads).
+Bundled queues [dispatch independent threads](./runs-and-redis.md#dispatch-by-thread) while another
+thread is busy.
 
-0. Correct frontend claims and record versions, adapters, drivers and intentional differences.
-1. Thread subscriptions and command envelopes, replay, authorization and the official-SDK reconnect gate.
-2. Execution/checkpoint options, namespace retention, search and per-operation store/TTL behavior.
-3. Official-SDK MCP and A2A endpoints over the existing execution and persistence services.
-4. Graph UI build/hosting and `http.app`, including standalone production artifacts.
-5. Enabled-route OpenAPI/docs, standard metrics export, and exact checkpoint storage accounting.
-
-A phase is complete only with its listed conformance, consumer and production-build checks. The matrix records the browser, backend and build evidence for each surface.
-
-- ✅ **MCP/A2A**, **compiled graph UI and custom applications**, **OpenAPI/docs and diagnostics** — see the [dated compatibility matrix](./langgraph-compatibility.md)
-- ✅ **Per-thread partitioned dispatch.** Bundled queues skip occupied execution claims so independent
-  threads can use available worker slots. [Details](./runs-and-redis.md#dispatch-by-thread).
-- ✅ **`POST /runs/search`** — cross-thread status, identifier and time-window filters with
-  driver-enforced authorization and pagination on memory, Postgres and SQLite. [Details](./runs.md#search-runs-across-threads).
+Bun and Deno remain preview deployment targets. There is no global run-search screen in the console;
+use the HTTP endpoint when you need a server-wide query. Open issues and the
+[changelog](https://github.com/skein-js/skein-js/releases) track further work; this page does not
+promise delivery dates. Dated implementation evidence belongs in the
+[contributor testing guide](https://github.com/skein-js/skein-js/blob/main/docs/testing.md#recorded-compatibility-evidence).
 
 ## Non-goals
 

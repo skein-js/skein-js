@@ -45,7 +45,7 @@ require `ProtocolDeps.threadBus` and an agent implementing optional `streamProto
 runtime assemblers supply the bus, and `@skein-js/langgraph` binds public v3 streaming. Legacy
 run-based clients and custom agents retain their existing path. MCP/A2A reuse these same authorized
 services; A2A also requires the optional run-result persistence methods on the driver. See the
-[dated compatibility matrix](https://skein-js.github.io/skein-js/langgraph-compatibility) for tested
+[compatibility reference](https://skein-js.github.io/skein-js/langgraph-compatibility) for tested
 versions and intentional differences.
 
 ## Install

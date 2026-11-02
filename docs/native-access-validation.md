@@ -5,6 +5,9 @@ description: Reproducible packed-consumer and storage checks for native admissio
 
 # Native access validation
 
+> **Contributor evidence.** This dated record documents repository validation, not setup steps or a
+> guarantee for every application. For adoption, follow [native access](./native-access.md).
+
 Implementation base: refreshed `main` at `a2e1a8e` (PR #63), in managed worktree
 `issue-64-native-transports`. Existing result storage, migrations through Postgres `0014_run_results`
 and SQLite version 3, copy/snapshot behavior and A2A/MCP implementations are reused.
@@ -159,7 +162,7 @@ Run a selection with:
 pnpm exec nx run test-support:test-redis-compatibility --bullmq=6.4.1 --ioredis=6.0.0
 ```
 
-See [the testing guide](./testing.md#redis-dependency-compatibility) for matrix lifecycle and artifacts.
+See [the contributor testing guide](https://github.com/skein-js/skein-js/blob/main/docs/testing.md#redis-dependency-compatibility) for matrix lifecycle and artifacts.
 
 ### Review regressions
 
@@ -192,3 +195,11 @@ during an unlock query emitted an unhandled client error after the gate had deta
 The listener now stays attached through cleanup and is removed immediately before pool handoff or
 discard. Subprocess tests fault the actual TCP connection during release for both claim methods;
 both exited unsuccessfully before the fix and cleanly afterward.
+
+## Dependency review, 25 October 2026
+
+The October 25, 2026 review updated compatible Vite, body-parser, follow-redirects and multer patches.
+The production dependency audit fell from ten advisories to one high advisory:
+[Zod collection validation resource consumption](https://github.com/advisories/GHSA-mrhx-c7xc-m3w5).
+The published fix is Zod 4.6.6; this workspace and LangChain dependencies use Zod 3. A forced
+transitive major replacement is not a compatible fix. This PR does not claim a clean dependency audit.

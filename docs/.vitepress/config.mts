@@ -182,10 +182,14 @@ export default withMermaid(
     // what makes GitHub render it when you open the folder — while the site serves it at /proposals/.
     rewrites: { "proposals/README.md": "proposals/index.md" },
 
-    // The site is for getting up and running with skein, not for working on skein. These three are
-    // contributor docs about the internals — they stay in the repo (AGENTS.md sends contributors
-    // straight to them) and every in-site reference to them is an absolute GitHub link.
-    srcExclude: ["reuse.md", "code-practices.md", "testing.md"],
+    // Contributor guides and the adoption audit stay in the repo. Public pages link to contributor
+    // material on GitHub so readers can distinguish it from application setup instructions.
+    srcExclude: [
+      "reuse.md",
+      "code-practices.md",
+      "testing.md",
+      "audits/documentation-adoption-2026-11-02.md",
+    ],
 
     // Those three are excluded but still exist on disk, so a *relative* link to one from a page that IS
     // on the site resolves to nothing and hard-fails the build — which then blocks the Pages deploy.
@@ -256,6 +260,13 @@ export default withMermaid(
             { text: "Your first agent", link: "/your-first-agent" },
             { text: "Getting started", link: "/getting-started" },
             { text: "Scaffolding a project", link: "/scaffolding" },
+            {
+              text: "The console",
+              link: "/console",
+              collapsed: true,
+              items: [{ text: "Setup reference", link: "/console-reference" }],
+            },
+            { text: "Testing your project", link: "/testing-your-project" },
             { text: "Agent skills", link: "/agent-skills" },
             { text: "Framework adapters", link: "/adapters" },
             { text: "Frontend SDKs & useStream", link: "/react-sdk" },
@@ -322,7 +333,6 @@ export default withMermaid(
             { text: "Local apps & SQLite", link: "/local-deployment" },
             { text: "Storage", link: "/storage" },
             { text: "Runs & Redis", link: "/runs-and-redis" },
-            { text: "The console", link: "/console" },
             { text: "Errors & logging", link: "/errors-and-logging" },
             { text: "Observability", link: "/observability" },
             { text: "Performance", link: "/performance" },
@@ -356,7 +366,7 @@ export default withMermaid(
               collapsed: true,
               items: [
                 { text: "Overview", link: "/proposals/" },
-                { text: "Inbound events", link: "/proposals/inbound-events" },
+                { text: "A2A task results (draft)", link: "/proposals/a2a-run-results" },
               ],
             },
             { text: "Changelog", link: "https://github.com/skein-js/skein-js/releases" },

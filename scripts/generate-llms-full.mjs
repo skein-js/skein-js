@@ -21,16 +21,15 @@ const DOCS = [
   "docs/your-first-agent.md",
   "docs/getting-started.md",
   "docs/scaffolding.md",
+  "docs/testing-your-project.md",
   "docs/agent-skills.md",
   "docs/using-skein.md",
   "docs/adapters.md",
   "docs/langgraph-cli-compat.md",
   "docs/embedding.md",
   "docs/local-deployment.md",
-  "docs/local-deployment-validation.md",
   "docs/native-access.md",
   "docs/native-access-security.md",
-  "docs/native-access-validation.md",
   "docs/serving-a-single-graph.md",
   "docs/agent-protocol.md",
   "docs/building-blocks.md",
@@ -53,6 +52,7 @@ const DOCS = [
   "docs/runs-and-redis.md",
   "docs/crons.md",
   "docs/console.md",
+  "docs/console-reference.md",
   "docs/observability.md",
   "docs/recipes/index.md",
   "docs/recipes/serving.md",
@@ -70,7 +70,6 @@ const DOCS = [
   "docs/profiling.md",
   "docs/deploy-cloud-run.md",
   "docs/bundling.md",
-  "docs/reuse.md",
 ];
 
 const HEADER = `# skein-js — full documentation

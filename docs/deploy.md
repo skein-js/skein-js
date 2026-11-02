@@ -28,9 +28,8 @@ Production artifacts can run on Node, Bun, or Deno. Node 24 LTS is the default a
 Deno use the Web-standard `@skein-js/fetch` adapter and their native HTTP servers. Select one in
 `langgraph.json` or at build time:
 
-Node is the graduated production fallback. Bun and Deno are preview targets until each complete
-clean-image conformance matrix (real SDK, Postgres/Redis, multi-instance streaming, slow clients,
-telemetry parenting, and PID-1 shutdown) is green; the native launchers themselves are tested.
+Use Node for the default production path. Bun and Deno are preview targets; verify streaming,
+background execution, persistence, and shutdown on your chosen runtime before deployment.
 
 ```json
 { "skein": { "runtime": { "name": "deno", "version": "2.9.4" } } }
@@ -271,6 +270,8 @@ platform would have done, which on a VM is a
 
 ## What every deployment needs
 
+<span id="1-a-postgres"></span>
+
 ### 1. A Postgres
 
 Set `POSTGRES_URI`. It holds protocol resources (assistants, threads, runs, store items) and
@@ -311,6 +312,8 @@ given, which keeps state durable but limits you to a single instance. See
 Nothing to do if your platform injects `PORT`. If it asks you which port the container listens on,
 answer **8123**.
 
+<span id="4-a-health-probe"></span>
+
 ### 4. A health probe
 
 Point it at **`/ok`**. It's a dependency-free liveness check that deliberately does _not_ touch
@@ -319,6 +322,8 @@ Postgres or Redis, so a transient database blip can't flap an otherwise healthy 
 It also works as a **startup/readiness probe**: migrations, assistant registration and graph warming
 all complete before the server binds, so a responding `/ok` genuinely means "fully booted". Budget
 your startup probe accordingly — the image's own estimate is 20 seconds.
+
+<span id="5-auth--read-this-before-you-expose-it"></span>
 
 ### 5. Auth — read this before you expose it
 
@@ -329,6 +334,8 @@ your startup probe accordingly — the image's own estimate is 20 seconds.
 > behind your platform's authenticated ingress, a VPC, or an authenticating proxy.
 >
 > `/ok` is registered ahead of the auth engine, so health probes keep working either way.
+
+<span id="sizing--tuning"></span>
 
 ## Sizing & tuning
 
@@ -402,6 +409,8 @@ a guarantee.
 **Full sizing guidance, and every tuning knob in one table, is in
 [performance.md](./performance.md).** This section covers only what is specific to running the
 container.
+
+<span id="heap-size-vs-the-containers-memory-limit"></span>
 
 ### Heap size vs. the container's memory limit
 
@@ -637,8 +646,8 @@ Two notes specific to the container:
 
 `skein build` includes configured graph UI assets and `http.app` exports in the production artifact.
 Ship the whole artifact; production does not need TypeScript sources or the development UI compiler.
-The build-image gate runs the generated image and checks custom routes, UI bootstrap/assets,
-OpenAPI and docs. See [configuration compatibility](./langgraph-cli-compat.md#graph-ui-and-custom-http-applications).
+After building, test your custom routes and UI assets from the artifact without the source tree,
+and check the generated API reference. See [configuration compatibility](./langgraph-cli-compat.md#graph-ui-and-custom-http-applications).
 
 Use Redis thread events for reconnect across API instances. SQLite and memory event replay are
 process-local, even when SQLite resource rows and checkpoints persist. Monitoring remains host-owned:

@@ -364,6 +364,8 @@ multi-tenant. Keep the namespace rewrite even if every other resource is owner-f
 from `config.configurable.langgraph_auth_user_id` (or another server-injected verified field), never
 from model output.
 
+<span id="authjs--nextauth"></span>
+
 ## Auth.js / NextAuth
 
 Auth.js already knows how to verify its own session. You only need a small wrapper that accepts two

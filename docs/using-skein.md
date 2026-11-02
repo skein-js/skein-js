@@ -18,8 +18,10 @@ inputs, plus optional common fields:
 // plus common: { logger?, cors?, warm? }
 ```
 
-`config` → in-memory drivers, hot-reload, great for dev. `deps` → whatever you assembled (Postgres +
-Redis for a server, SQLite for a local app, or an in-code graph map). **Same server either way** — only the wiring differs.
+`config` loads the configured graphs with in-memory drivers. `deps` uses the runtime you assembled:
+Postgres/Redis for a server, SQLite for a local app, or an in-code graph map. Both expose the same
+protocol API. The adapter's `config` option does not watch files or save development snapshots;
+use `skein dev` for that workflow, or let your host manage reload and persistence.
 
 ## Install
 

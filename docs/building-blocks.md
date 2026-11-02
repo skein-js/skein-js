@@ -1,8 +1,8 @@
 # Building blocks
 
-Every agent starts as a model, a prompt and a loop. That version works for about a day. What follows
-is what reality adds — each piece arriving because something broke without it, and each one either
-yours to write, LangGraph's to define, or skein's to run.
+Use this map to choose the skein-js capabilities your project needs. Start with a working graph,
+then add conversation state, human approval, background work, or durable deployment as required.
+Each section explains the user decision and links to a practical guide.
 
 ```mermaid
 flowchart LR
@@ -56,8 +56,8 @@ _second_ run with a 422 and leaves the first alone.
 
 ## Checkpoints, and everything they buy
 
-This is where homegrown agent servers start hurting, because "the conversation is still there" is not
-something a request handler can give you.
+Use checkpoints when a conversation must continue from saved state, pause for approval, or branch
+from an earlier point. Inspect them in the [console](./console.md#time-travel) to test those paths.
 
 LangGraph saves state at every node boundary; skein persists it. One mechanism, four consequences:
 
@@ -126,7 +126,7 @@ reconnects and joins the same run.
 Not everything is a chat turn.
 
 - [Background jobs](./background-jobs.md) — hand it over, get an id
-- [Crons](./crons.md) — a schedule that fires exactly once across every instance
+- [Crons](./crons.md) — schedule runs across your server instances
 - [Webhooks](./webhooks.md) — your service told when a run settles
 
 The webhook contract is worth reading twice: delivery is durable, committed in the same transaction
@@ -142,9 +142,9 @@ roll it back in one call, graph untouched.
 
 ## Knowing what it did
 
-An agent that works in a demo and misbehaves in production is the normal case. skein emits run and
-model-call telemetry through a sink interface, with LangSmith, PostHog and OpenTelemetry
-implementations, so traces land in a backend you already run.
+Connect LangSmith, PostHog, or OpenTelemetry to inspect your agent's production runs in a backend
+you already use.
+For a local investigation, first inspect the run's output and state in the [console](./console.md#runs).
 
 What skein does not do is judge the output — that is LangSmith or your own harness. Its job is making
 every run recorded and replayable.

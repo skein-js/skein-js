@@ -14,14 +14,16 @@ skein dev                     # console at http://127.0.0.1:2024/console/
 skein dev --no-console        # leave it out
 ```
 
-In production it is **off unless asked for**, because it can read and delete every thread, memory and
-schedule on the server:
+In production it is **off unless asked for**, and uses the server's authorization for resource access and changes:
 
 ```jsonc
 { "http": { "console": true } } // langgraph.json — or a path: "/admin/console"
 ```
 
-Full documentation: **[docs/console.md](https://skein-js.github.io/skein-js/console)**.
+Start with **[Test your graph in the console](https://skein-js.github.io/skein-js/console)**.
+Then add [automated project tests](https://skein-js.github.io/skein-js/testing-your-project).
+Connection, authentication, and advanced controls are in the
+[setup reference](https://skein-js.github.io/skein-js/console-reference).
 
 ## Mounting it in your own server
 
@@ -38,7 +40,9 @@ app.use((req, res, next) => {
 });
 ```
 
-## What is in this package
+<span id="what-is-in-this-package"></span>
+
+## Published API
 
 **Compiled bytes and a resolver — nothing else.** The UI (React, shadcn/ui, the LangGraph SDK) is built
 to static files and embedded as string constants, so this package has **no runtime dependencies**, reads
@@ -56,42 +60,5 @@ no files at runtime, and bundles cleanly into a consumer's server (see
 
 ## Working on it
 
-The UI is the `console-ui` Nx project in [`ui/`](./ui):
-
-```bash
-nx serve console-ui     # Vite dev server with HMR (point it at a running skein via ?baseUrl=)
-nx build console        # build the SPA → compile assets in → bundle the package
-nx test console         # resolver contract + 1 MiB asset budget
-nx run console-ui:test-browser # real HTTP graphs, resource actions, responsive layouts
-```
-
-`src/assets.generated.ts` is generated, not committed. `build`, `typecheck` and `test` all depend on the
-`generate-assets` target, so it cannot go stale.
-
-The console is a **client** and holds no server-side state. It uses the Agent Protocol through the
-official LangGraph SDK, plus two narrow skein operator endpoints for sanitized channel inventory and
-run-delivery tracking. The Channels tab is read-only; code and `langgraph.json` stay the source of
-truth. Delivery destinations are redacted before rendering, and replay requires confirmation.
-
-The window-filling shell keeps navigation fixed and resource scrolling inside the main pane.
-Playground docks its composer below scrolling conversation output and interrupt requests.
-The sidebar groups Build, Inspect, and Operate workflows. Playground leads with a conversation or
-schema-based JSON input, a visible execution summary, and Activity/Graph/State inspection. Assistant
-versions, thread copy/pruning/retention, store creation/expiry, advanced runs, and schedules use the
-existing SDK API. Failed drafts remain editable; observers never cancel execution when closed.
-
-Playground resumes the last workspace in this tab; **New thread** starts fresh without creating a
-resource until submission. **Recent threads** provides paged conversation discovery, and thread rows
-and details offer **Open in Playground**. Assistant details can open a fresh Playground with that
-configuration selected. Leaving Playground keeps active runs executing; **Stop run** cancels them.
-
-A connection-scoped Zustand store keeps separate Chat/JSON drafts, input modes, and navigation
-positions in memory, with versioned `sessionStorage` retention through reloads for the tab's lifetime.
-Connection/API-key changes invalidate that workspace. Browser-storage failures fall back to memory
-with a visible notice. Fetched transcripts, resources and SSE frames remain in the existing server
-read/observation hooks. Inspection tabs use hash queries, and return links restore list context.
-
-Passive store inspection requests `refreshTtl: false`. Unsupported custom adapters require an
-explicit normal-read choice. Per-run timeout input is enabled only when `/info.flags.per_run_timeout`
-is `true`. Delayed/keyed runs use background submission followed by observation; ambiguous failures
-and failed batches are never automatically resubmitted. A batch may have partially created runs.
+Contributor setup, build details, and browser checks are in
+[Developing the console](https://github.com/skein-js/skein-js/blob/main/CONTRIBUTING.md#developing-the-console).

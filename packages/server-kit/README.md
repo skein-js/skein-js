@@ -22,7 +22,9 @@ handler table.
   runtime (assistants seeded, worker started) — the step every adapter runs before mounting routes.
 - **In-memory dev runtime** — `loadInMemoryRuntime` / `loadReloadableInMemoryRuntime`: assemble a
   `ProtocolDeps` backed by in-process drivers from a `langgraph.json`. This is what powers `skein dev`
-  and every adapter's `{ config }` convenience path (hot-reload + snapshot/restore included).
+  and every adapter's `{ config }` convenience path. The reloadable helper exposes reload and
+  snapshot/restore operations; `skein dev` supplies the file watcher and snapshot persistence.
+  An adapter's `{ config }` option alone does not enable either.
 - **In-code embedding** — `embedInMemoryGraphs` / `graphMapToResolver`: build a `ProtocolDeps` around a
   compiled graph (or map of them) you already hold — **no `langgraph.json`, no CLI** — then pass
   `{ deps }` to any adapter. `overrides` swaps in production drivers/auth. See

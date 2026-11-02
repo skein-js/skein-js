@@ -1,77 +1,53 @@
 # LangGraph Agent Server compatibility
 
-Baseline investigated on **22 October 2026**. A shared dependency or a route with a similar name
-does not establish compatibility: the official client must exercise the behavior end to end.
+Use this reference before pointing an existing LangChain client at skein-js. Start with your current
+`langgraph.json` and SDK, run a known input, and verify the behavior your application uses with
+[project smoke tests](./testing-your-project.md#check-the-running-server).
 
-| Surface                                           | Baseline                                      | Compatibility work                                                                                   |
-| ------------------------------------------------- | --------------------------------------------- | ---------------------------------------------------------------------------------------------------- |
-| Run-based JavaScript SDK and legacy React hook    | Supported                                     | Retain coverage for SDK 1.9.25 and 1.9.31                                                            |
-| Thread event protocol                             | Not yet supported                             | SDK 1.12.6; protocol 0.0.20; subscriptions, commands, reconnect and restoration                      |
-| Dedicated React, Angular, Vue and Svelte bindings | Not yet verified                              | Test each package at 1.2.6 in a real browser                                                         |
-| Thread-wide legacy stream                         | Joins one run                                 | Add explicit `stream_mode` following without changing the existing default                           |
-| Execution and checkpoint options                  | Partial                                       | Durability, task/checkpoint modes, recursive and namespaced state/history                            |
-| Search and retention                              | Partial                                       | Projection, exclusion, extraction, state timestamps, per-operation store options and keep-latest TTL |
-| MCP and A2A endpoints                             | Not implemented                               | Official transport SDKs over the existing authorized services                                        |
-| Graph UI assets and `http.app`                    | Accepted configuration without implementation | Development loading and standalone production artifacts                                              |
-| OpenAPI and `/docs`                               | Not implemented                               | Describe actual enabled routes and authentication                                                    |
-| `/metrics` and thread storage reporting           | Not implemented                               | Existing OTel instrumentation and exact saver-backed payload accounting                              |
+## Verified client combinations
 
-Explicit legacy thread following supports the SDK's `run_modes`, `lifecycle`, and `state_update`
-categories, including per-run completion metadata and immutable checkpoint snapshots on replay.
-Search extraction returns aliases inside `extracted`; checkpoint forks validate saver coordinates
-without requiring optional custom-agent timestamps.
+| Client or surface                   | Verified combination and behavior                                                                                |
+| ----------------------------------- | ---------------------------------------------------------------------------------------------------------------- |
+| JavaScript SDK                      | Legacy SDK 1.9.25/1.9.31 and thread-protocol SDK 1.12.6; examples also use 1.12.7                                |
+| React                               | Dedicated `@langchain/react` 1.2.6 and 1.2.7; legacy SDK React hook remains supported                            |
+| Angular, Vue, Svelte                | Dedicated packages 1.2.6, exercised in Chromium                                                                  |
+| Thread subscriptions                | Multiple turns, restoration, interrupt/resume, cancellation, and reconnect; reconnect does not start another run |
+| Cross-instance reconnect            | Express with Redis queues and thread event buses                                                                 |
+| Memory and retention options        | Memory, SQLite, and Postgres store indexing, write TTL, and per-read refresh controls                            |
+| MCP                                 | Official MCP SDK 1.32.1, stateless Streamable HTTP                                                               |
+| A2A                                 | Official A2A SDK 1.3.0, retained task output and interrupt handling                                              |
+| Compiled UI and custom applications | UI compiler 1.4.2; Node 24 production artifact with SQLite                                                       |
+| Diagnostics                         | Checkpoint payload accounting with memory, SQLite, and Postgres; Prometheus and OTLP JSON output                 |
 
-The versions above are **implementation targets**, not a claim that all of their features have
-passed. The implementation updates this matrix with the corresponding test evidence.
+These combinations establish the listed behavior, rather than universal compatibility with every
+version or backend. The workspace uses LangGraph.js 1.4.7 and a packed consumer uses 1.4.12.
+Thread-event execution requires LangGraph's public `streamEvents({ version: "v3" })` capability;
+legacy execution remains available for older graphs and custom agents.
+
+For frontend setup, use [the SDK guide](./react-sdk.md). For configuration and exact wire contracts,
+use [CLI compatibility](./langgraph-cli-compat.md) and the [protocol reference](./agent-protocol.md).
+
+## Client limitations
+
+- **Svelte 1.2.6:** root `useImages` returns an empty projection. Use a scoped media selector for the
+  subgraph namespace containing the media.
+- **Vue 1.2.6:** unwrap a media asset with `toRaw(asset)` before reading `blob`; see the
+  [frontend workaround](./react-sdk.md#dedicated-framework-packages).
+- **Development UI watchers:** follow the upstream watcher's process lifetime. Your host owns shutdown.
 
 ## Intentional differences
 
-- HTTP/SSE is the supported transport target; WebSockets and gRPC remain outside the compatibility
-  program.
-- Stateless runs keep their threads by default. Request `on_completion: "delete"` to remove them.
+- HTTP/SSE is supported; WebSockets and gRPC are outside the compatibility target.
+- Stateless runs keep their threads by default. Set `on_completion: "delete"` to remove them.
 - Store ordering filters compare numbers only.
-- Local SQLite persists resources and checkpoints; event replay is process-local and is lost on
-  restart.
+- Local SQLite persists resources and checkpoints; event replay is process-local and is lost on restart.
 - Skein adds idempotent run creation and durable, signed, retried webhook delivery. LangGraph also
   supports ordinary run-completion webhooks.
-- Managed hosting, billing, evaluations and application identity policy remain outside Skein.
+- Managed hosting, billing, evaluations, and application identity policy remain application or
+  service choices.
 
-See [the frontend guide](./react-sdk.md), [protocol reference](./agent-protocol.md),
-[CLI compatibility](./langgraph-cli-compat.md), and
-[issue #62](https://github.com/skein-js/skein-js/issues/62).
+<span id="implementation-evidence-23-october-2026"></span>
+<span id="frontend-example-refresh-25-october-2026"></span>
 
-## Implementation evidence, 23 October 2026
-
-The workspace exercises LangGraph.js **1.4.7**; the clean packed consumer pins **1.4.12**.
-The thread-protocol binding uses public `streamEvents({ version: "v3" })` and requires that runtime
-capability. The existing legacy execution path remains available for older graphs and custom agents.
-
-| Scope                                                                      | Versions and backends exercised                                                                        | Evidence                                                                                                                                          |
-| -------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------ | ------------------------------------------------------------------------------------------------------------------------------------------------- |
-| Thread subscriptions, commands, restoration, multiple turns and interrupts | JavaScript SDK 1.12.6 / protocol 0.0.20; Express + memory                                              | Official client HTTP tests in `thread-protocol.test.ts`                                                                                           |
-| Reconnect across API instances, one queued execution                       | SDK 1.12.6; Express + real Redis queue and thread buses                                                | `thread-protocol.integration.test.ts`, including a proxy-forced reconnect                                                                         |
-| Legacy protocol and adapters                                               | Packed SDK 1.9.25 / 1.9.31 clients and legacy protocol tests; Express, Fastify, Fetch, NestJS, Next.js | Existing adapter suites retained; dedicated framework browser coverage is listed separately below                                                 |
-| Store indexing, nullable write TTL and per-read refresh                    | Memory, SQLite and real Postgres                                                                       | Shared store-options conformance; real SQLite reopen                                                                                              |
-| MCP discovery and execution                                                | Official MCP SDK 1.32.1; stateless Streamable HTTP                                                     | Official client transport test; shared MCP/A2A HTTP checks across all five adapters                                                               |
-| A2A output retention and interrupts                                        | Official A2A SDK 1.3.0; memory and reopened SQLite                                                     | Official client over HTTP; first-task output survives another turn and checkpoint pruning                                                         |
-| Dedicated frontend bindings                                                | React/Angular/Vue/Svelte 1.2.6, SDK 1.12.6, Chromium; Express + memory                                 | Native HTTP streaming, restoration, interrupts, cancellation, multiple turns, subgraphs, custom channels, scoped media and proxy-forced reconnect |
-| Compiled UI and custom applications                                        | Public UI compiler 1.4.2; generated Node 24 production image + SQLite                                  | Real build → artifact → image; UI bootstrap/assets, Fetch app, OpenAPI and docs without sources or optional UI compiler                           |
-| Diagnostics                                                                | Memory, SQLite and real Postgres saver payloads; standard OTel metric reader                           | Actual buffer/blob/datum accounting; Prometheus and OTLP JSON serializers; explicit unsupported-capability errors                                 |
-
-A separate packed consumer installs Skein tarballs outside the workspace and exercises SDK 1.12.6,
-legacy SDKs 1.9.25 and 1.9.31, official MCP and A2A clients, and diagnostics over native HTTP with no
-application transport shim. That gate passes. These checks establish the listed behavior only;
-release also requires the full Nx quality gates. Svelte 1.2.6's root `useImages` selector returns an empty
-projection in its own implementation; scoped media selectors pass. Root media from React, Angular
-and Vue was also exercised while validating graph-scope message namespaces. Vue 1.2.6 media assets
-require `toRaw(asset)` before accessing `blob`, because its reactive proxy breaks private fields.
-The browser gate checks actual media bytes with that public Vue workaround. These client limitations
-are tracked separately from server media delivery. Development UI watches currently follow the
-upstream watcher’s process lifetime; applications own process shutdown.
-
-## Frontend example refresh, 25 October 2026
-
-The React examples (`chat-app`, `nextjs-app`, and `react-usestream`) use `@langchain/react` 1.2.7.
-Example JavaScript clients require SDK 1.12.7. The browser matrix also runs the React package
-installed by `react-usestream`, alongside the pinned 1.2.6 framework packages and SDK 1.12.6.
-Legacy SDK 1.9.25 and 1.9.31 coverage remains in the packed consumer.
+Contributor investigation and dated test evidence are recorded in the
+[testing guide](https://github.com/skein-js/skein-js/blob/main/docs/testing.md#recorded-compatibility-evidence).

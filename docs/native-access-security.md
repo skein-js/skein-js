@@ -104,14 +104,12 @@ dispatch warnings, outbox depth, failed jobs, capacity and receiver lag; reconci
 
 ## Dependency review
 
-The October 25, 2026 review updated compatible Vite, body-parser, follow-redirects and multer patches.
-The production dependency audit fell from ten advisories to one high advisory:
-[Zod collection validation resource consumption](https://github.com/advisories/GHSA-mrhx-c7xc-m3w5).
-The published fix is Zod 4.6.6; this workspace and LangChain dependencies use Zod 3. A forced
-transitive major replacement is not a compatible fix. This PR does not claim a clean dependency audit.
+Audit the dependencies in your deployed lockfile, including transitive validators and broker clients.
+Apply compatible fixes and verify the application after upgrades. Historical repository dependency
+findings are kept in the [validation record](https://github.com/skein-js/skein-js/blob/main/docs/native-access-validation.md).
 
 Enforce request byte limits, **pre-validation** collection limits and rate/concurrency budgets at
-host boundaries, including user-facing bridges into native calls. Array `.max()` inside an affected
-validator is not sufficient early rejection. BullMQ's message cap helps bound input but is not a
-general resource-exhaustion guarantee. A compatible upstream fix or separately reviewed Zod migration
-remains required; audit the actual deployed lockfile again.
+host boundaries, including user-facing bridges into native calls. Check whether your installed
+validator rejects large collections before expensive validation; a length check performed afterward
+does not bound that work. BullMQ's message cap helps bound input but is not a general
+resource-exhaustion guarantee.

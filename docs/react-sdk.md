@@ -1,75 +1,19 @@
 # Frontend SDKs / `useStream` compatibility
 
-Skein supports the run-based JavaScript SDK, the legacy React hook from
-`@langchain/langgraph-sdk/react`, and the dedicated framework packages. The `@langchain/react`, `@langchain/vue`,
-`@langchain/svelte`, and `@langchain/angular` packages use a separate thread event protocol.
-The browser matrix covers each framework at 1.2.6 and React at 1.2.7, with the media workarounds
-described below. The React examples use `@langchain/react` 1.2.7 and the current JavaScript client
-1.12.7; legacy SDK coverage remains separate. See the [compatibility matrix](./langgraph-compatibility.md).
+Connect your frontend to a running skein-js server with the standard LangChain SDKs. Use `useStream`
+to submit turns, read streamed messages, show errors, and respond to human-approval requests.
+You build the interface; the hook supplies the conversation state and actions.
 
-**What this gives you:** point
-[`useStream`](https://reference.langchain.com/javascript/langchain-react/useStream) at a
-skein-js server and you get the whole rich chat UX for free — live token streaming, model
-**thinking**, structured **tool-result cards**, and **human-in-the-loop** interrupt/resume — with no
-custom SDK and no bespoke wire format. You send a turn with `thread.submit(...)`, read live state off
-`thread.messages`, and when a graph node pauses with `interrupt()` you render an approval card off
-`thread.interrupt` and resume with `thread.respond(...)`. The flagship [`chat-app`](https://github.com/skein-js/skein-js/tree/main/examples/chat-app)
-example builds all of this; [`react-usestream`](https://github.com/skein-js/skein-js/tree/main/examples/react-usestream) is the minimal
-copy-paste starting point.
+## Connect a React UI {#usestream-against-skein-js}
 
-```tsx
-// send a turn — thread.messages updates live as tokens stream in
-void thread.submit({ messages: [{ role: "user", content: input }] });
+Install the dedicated React package in your frontend:
 
-// a pending interrupt (e.g. "approve this booking?") surfaces here; resume with a command
-if (thread.interrupt) {
-  void thread.respond({ approved: true });
-}
+```bash
+npm install @langchain/react @langchain/core
 ```
 
-Long-term memory is the one piece that lives on the server, not in the hook: a graph node calls
-`getStore()` and skein-js persists it (see [storage.md](./storage.md)). The frontend just keeps
-streaming.
-
-## The clients skein-js must satisfy
-
-| Client                 | Package                                 | How it talks to skein-js                                                       |
-| ---------------------- | --------------------------------------- | ------------------------------------------------------------------------------ |
-| Vanilla JS SDK         | `@langchain/langgraph-sdk`              | `client.threads.*`, `client.runs.stream()`, `client.runs.wait()`               |
-| **React hook**         | `@langchain/react`                      | **`useStream({ apiUrl, assistantId })`** over thread SSE and commands          |
-| Legacy React hook      | `@langchain/langgraph-sdk/react`        | Run-based SSE; retained compatibility coverage                                 |
-| New framework bindings | `@langchain/{react,vue,svelte,angular}` | Thread event subscriptions and command envelopes; see the compatibility matrix |
-| Agent Chat UI          | (built on `useStream`)                  | Same SSE path                                                                  |
-| LangGraph Studio       | —                                       | Agent Protocol HTTP                                                            |
-
-## Not just React — Vue, Svelte and Angular
-
-LangChain publishes first-party bindings for four frameworks. Their current releases subscribe to
-`POST /threads/{thread_id}/stream/events` and send protocol command envelopes to `/commands`.
-This differs from the run-based endpoints used by the legacy React hook. A subscription must never
-start a run, including when the client reconnects.
-
-| Framework | Package                                                                                        | Entry points                                    | Peer range    |
-| --------- | ---------------------------------------------------------------------------------------------- | ----------------------------------------------- | ------------- |
-| React     | [`@langchain/react`](https://github.com/langchain-ai/langgraphjs/tree/main/libs/sdk-react)     | `useStream`, `StreamProvider`                   | React 18 · 19 |
-| Vue       | [`@langchain/vue`](https://github.com/langchain-ai/langgraphjs/tree/main/libs/sdk-vue)         | `useStream`, `provideStream`, `LangChainPlugin` | Vue 3         |
-| Svelte    | [`@langchain/svelte`](https://github.com/langchain-ai/langgraphjs/tree/main/libs/sdk-svelte)   | `useStream`, `provideStream`, `getStream`       | Svelte 5      |
-| Angular   | [`@langchain/angular`](https://github.com/langchain-ai/langgraphjs/tree/main/libs/sdk-angular) | `injectStream`, the `inject*` family            | Angular 18–21 |
-
-Each follows its own idiom — a React hook, a Vue composable, Svelte context, Angular DI — over a
-shared streaming core. The React examples below use the dedicated package.
-
-**Mind the package names.** These are `@langchain/<framework>` packages, _not_ subpaths of the SDK —
-`@langchain/langgraph-sdk/vue` does not resolve, and the SDK's own README links to them by monorepo
-path, which is easy to misread as a subpath. `@langchain/langgraph-sdk/react` still exists for legacy clients; new applications should use the
-dedicated packages shown here.
-
-skein-js ships no standalone Vue, Svelte or Angular example. The dedicated compatibility CI job
-exercises all four framework packages in Chromium, separately from the runtime matrix and legacy
-`useStream` coverage. The [compatibility matrix](./langgraph-compatibility.md) records tested versions
-and features.
-
-## `useStream` against skein-js
+Start your skein-js server, then use its API URL and a registered Assistant ID. This example assumes
+the scaffolded `echo` graph and sends a known input:
 
 ```tsx
 "use client";
@@ -77,77 +21,115 @@ import { useStream } from "@langchain/react";
 
 export function Chat() {
   const thread = useStream({
-    apiUrl: process.env.NEXT_PUBLIC_SKEIN_URL!, // e.g. http://localhost:2024
-    assistantId: "agent", // a graph id from langgraph.json
+    apiUrl: "http://localhost:2024",
+    assistantId: "echo", // replace with your graph's Assistant ID
   });
 
   return (
     <div>
-      {thread.messages.map((m) => (
-        <div key={m.id}>{typeof m.content === "string" ? m.content : ""}</div>
+      {thread.messages.map((message) => (
+        <p key={message.id}>{typeof message.content === "string" ? message.content : ""}</p>
       ))}
-      <button onClick={() => thread.submit({ messages: [{ role: "user", content: "hello" }] })}>
-        Send
+      {thread.error != null && <p role="alert">{String(thread.error)}</p>}
+      <button
+        disabled={thread.isLoading}
+        onClick={() => void thread.submit({ messages: [{ role: "user", content: "hello" }] })}
+      >
+        Send hello
       </button>
+      {thread.isLoading && <button onClick={() => void thread.stop()}>Stop</button>}
     </div>
   );
 }
 ```
 
-The only difference from a LangGraph Platform setup is that `apiUrl` points at a skein-js
-server. The dedicated hook subscribes to `POST /threads/{thread_id}/stream/events` and dispatches
-turns through `POST /threads/{thread_id}/commands`. Subscriptions stay open across turns, and
-reconnecting or restoring an existing thread never starts a run. The legacy hook instead uses
-run-based streaming endpoints (see [streaming.md](./streaming.md)).
+Choose **Send hello** and expect `echo: hello` in the conversation. A browser on a different origin
+needs the [server's CORS policy](./recipes/serving.md#cors-for-a-browser-client) to allow your frontend.
+For custom authentication, follow the [authentication recipe](./recipes/authentication.md#browser-cookies-and-cors).
 
-Call `thread.stop()` to cancel the active run. Unmounting or reopening a thread subscription is
-separate from execution; use the explicit stop action when the user intends to cancel.
+The [`nextjs-app`](https://github.com/skein-js/skein-js/tree/main/examples/nextjs-app) example serves
+both UI and protocol from one origin. For a complete application with tools, reasoning output,
+and approval cards, see [`chat-app`](https://github.com/skein-js/skein-js/tree/main/examples/chat-app).
 
-## Why it works over SSE
+## Handle pauses and failures
 
-`useStream` is an SSE client. Because skein-js serves the Agent Protocol streaming endpoints as
-`text/event-stream` with the same event names and payloads LangGraph emits, the hook cannot
-tell the difference. **No WebSocket is required**, so deferring WebSocket transport in v1
-does not affect the React SDK.
+When your graph calls `interrupt()`, render its request from `thread.interrupt` and respond with the
+value your graph expects. For a graph expecting `{ approved: boolean }`, an approval button can call:
 
-## Verification harness
+```tsx
+<button onClick={() => void thread.respond({ approved: true })}>Approve</button>
+```
 
-[`examples/react-usestream`](https://github.com/skein-js/skein-js/tree/main/examples/react-usestream)
-is a minimal Next.js app using `@langchain/react` 1.2.7. The dedicated browser target exercises current
-framework packages over real HTTP, and the packed consumer checks both current and legacy clients
-outside the workspace. See [testing.md](./testing.md#compatibility-regression-gates).
+Use the matching rejection value on another test thread and verify that the action is not performed.
+See [human-in-the-loop](./human-in-the-loop.md) for the graph and SDK examples.
 
-## References
+Show `thread.error` to the user and inspect the run before retrying an ambiguous request. Call
+`thread.stop()` when the user wants to cancel. Unmounting the UI or reopening a conversation does
+not cancel or start a run by itself. Test restoration and multiple turns with your application's
+thread-selection controls.
 
-- LangGraph JS SDK — <https://github.com/langchain-ai/langgraphjs/tree/main/libs/sdk>
-- `useStream` API reference — <https://reference.langchain.com/javascript/langchain-react/useStream>
-- LangGraph streaming — <https://docs.langchain.com/oss/javascript/langgraph/streaming>
-- Agent Chat UI — <https://github.com/langchain-ai/agent-chat-ui>
-- React bindings — <https://github.com/langchain-ai/langgraphjs/tree/main/libs/sdk-react>
-- Vue bindings — <https://github.com/langchain-ai/langgraphjs/tree/main/libs/sdk-vue>
-- Svelte bindings — <https://github.com/langchain-ai/langgraphjs/tree/main/libs/sdk-svelte>
-- Angular bindings — <https://github.com/langchain-ai/langgraphjs/tree/main/libs/sdk-angular>
+## Choose a client {#the-clients-skein-js-must-satisfy}
 
-## Dedicated framework packages
+| Your application                     | Client                                                         |
+| ------------------------------------ | -------------------------------------------------------------- |
+| Node, a service, or a test           | `Client` from `@langchain/langgraph-sdk`                       |
+| React                                | `useStream` from `@langchain/react`                            |
+| An existing legacy React integration | `@langchain/langgraph-sdk/react` remains supported             |
+| A ready-made chat frontend           | [Agent Chat UI](https://github.com/langchain-ai/agent-chat-ui) |
+| Interactive graph development        | The [console](./console.md) or LangGraph Studio                |
 
-The dedicated `@langchain/react`, `@langchain/angular`, `@langchain/vue`, and `@langchain/svelte`
-packages use the thread event protocol. Versions **1.2.6** are exercised in Chromium against Skein
-with their native HTTP transport, including multiple turns, restoration, interrupts, subgraphs,
-custom transformer channels, scoped media, forced reconnect and cancellation. Reopening a
-subscription never starts another graph execution. See the [compatibility matrix](./langgraph-compatibility.md)
-for the exact server, SDK and backend evidence.
+For a JavaScript SDK smoke test with assertions and cleanup, see [Testing your project](./testing-your-project.md#check-the-running-server).
 
-Svelte 1.2.6 has an upstream limitation: its root `useImages` selector returns an empty projection.
-Scoped media selectors are covered; target the subgraph namespace containing the media. This is a
-client selector limitation, even when the server sends valid root media events. React, Angular and
-Vue root media selectors also pass the browser checks.
+<span id="not-just-react-—-vue-svelte-and-angular"></span>
 
-Vue 1.2.6 wraps media asset instances in reactive proxies. Reading an asset's `blob` directly can
-throw a private-field error; unwrap it with Vue's public `toRaw` first. The browser gate verifies the
-actual MIME type and bytes with this workaround:
+## Vue, Svelte, and Angular {#not-just-react-vue-svelte-and-angular}
+
+Use the dedicated framework packages, not SDK subpaths such as `@langchain/langgraph-sdk/vue`:
+
+| Framework | Package              | Entry points                                    | Tested peer range |
+| --------- | -------------------- | ----------------------------------------------- | ----------------- |
+| React     | `@langchain/react`   | `useStream`, `StreamProvider`                   | React 18–19       |
+| Vue       | `@langchain/vue`     | `useStream`, `provideStream`, `LangChainPlugin` | Vue 3             |
+| Svelte    | `@langchain/svelte`  | `useStream`, `provideStream`, `getStream`       | Svelte 5          |
+| Angular   | `@langchain/angular` | `injectStream`                                  | Angular 18–21     |
+
+Use each package's framework-specific setup. The [compatibility reference](./langgraph-compatibility.md)
+lists the versions exercised with skein-js and known media limitations. There are no standalone
+skein-js Vue, Svelte, or Angular example applications yet.
+
+## Version and streaming reference {#dedicated-framework-packages}
+
+The React examples use `@langchain/react` 1.2.7 and SDK 1.12.7. React, Angular, Vue, and Svelte 1.2.6
+are also verified combinations. Treat these as tested versions, rather than a guarantee about every
+future client release.
+
+Svelte 1.2.6's root `useImages` selector returns an empty projection; use the scoped selector for the
+subgraph namespace containing media. Vue 1.2.6 proxies media assets, so unwrap an asset before reading
+its `blob`:
 
 ```ts
 import { toRaw } from "vue";
 
 const blob = await toRaw(images.value[0]).blob;
 ```
+
+<span id="why-it-works-over-sse"></span>
+
+Dedicated framework bindings use thread event subscriptions and commands. The legacy React hook
+uses run-based streaming. Both use HTTP/SSE; no WebSocket configuration is required. See
+[streaming](./streaming.md#thread-event-subscriptions) if you implement a custom client.
+
+## Working example {#verification-harness}
+
+[`react-usestream`](https://github.com/skein-js/skein-js/tree/main/examples/react-usestream) is a
+minimal Next.js application. Start its graph server and UI using its README, send two turns, reopen
+the conversation, and check that state is restored without another execution. Repeat with your own
+graph before building a larger interface.
+
+## References
+
+- [React `useStream` reference](https://reference.langchain.com/javascript/langchain-react/useStream)
+- [LangGraph JavaScript SDK](https://github.com/langchain-ai/langgraphjs/tree/main/libs/sdk)
+- [Vue bindings](https://github.com/langchain-ai/langgraphjs/tree/main/libs/sdk-vue)
+- [Svelte bindings](https://github.com/langchain-ai/langgraphjs/tree/main/libs/sdk-svelte)
+- [Angular bindings](https://github.com/langchain-ai/langgraphjs/tree/main/libs/sdk-angular)

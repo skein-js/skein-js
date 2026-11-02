@@ -1,56 +1,36 @@
 # Runs & Redis
 
-This doc covers how skein-js executes runs and how it scales horizontally — modeled on
-[aegra](https://github.com/aegra/aegra)'s worker + Redis architecture, adapted to Node.
+Choose a queue for background runs and configure concurrency for your deployment. Use memory
+while developing, SQLite for one local Node owner, and Redis when workers or streaming clients span
+server instances. For submitting individual runs, start with [Runs](./runs.md).
 
-> **Reuse note:** `@skein-js/redis` is the run **queue + pub/sub** — the piece LangGraph OSS
-> does not provide (the open [`@langchain/langgraph-api`](https://github.com/langchain-ai/langgraphjs/tree/main/libs/langgraph-api)
-> server runs runs in-process, in-memory). It is _not_ a checkpointer; for Redis-backed
-> checkpoints use `@langchain/langgraph-checkpoint-redis`. See [reuse.md](https://github.com/skein-js/skein-js/blob/main/docs/reuse.md).
+`@skein-js/redis` supplies the queue and cross-instance event delivery. It is not a graph checkpointer;
+Postgres or another configured saver holds checkpoint history.
 
 ## Run modes
 
-The [Agent Protocol](./agent-protocol.md) defines three ways to execute a graph:
+Choose wait, streaming, or background execution using the [run-mode guide](./runs.md#pick-a-run-mode).
+Runs on the same thread are serialized. Run concurrency below controls how many different threads
+one instance executes at once.
 
-| Mode           | Endpoint                                     | Behavior                                                   |
-| -------------- | -------------------------------------------- | ---------------------------------------------------------- |
-| **wait**       | `POST /runs/wait`, `GET /runs/{id}/wait`     | Run to completion, return final output.                    |
-| **stream**     | `POST /runs/stream`, `GET /runs/{id}/stream` | [SSE](./streaming.md) as output is produced.               |
-| **background** | `POST /threads/{id}/runs`                    | Enqueue; poll (`GET /runs/{id}`) or join its stream later. |
+## Inspect execution {#run-engine}
 
-A **per-thread concurrency guard** prevents two active runs on the same thread (the protocol's
-concurrency-control requirement). That is a different thing from
-[run concurrency](#run-concurrency) below, which is how many runs on _different_ threads one
-instance executes at once.
-
-## Run engine
-
-`@skein-js/agent-protocol` owns a run engine that:
-
-1. Resolves the target graph via [`@skein-js/config`](./langgraph-cli-compat.md).
-2. Persists a run row through [`SkeinStore`](./storage.md) (`pending → running → success/error`).
-   A failed run also records _why_ on the row, so `GET /threads/{tid}/runs/{rid}` can still explain
-   it afterwards — see [errors and logging](./errors-and-logging.md).
-3. Invokes the graph (`invoke` for wait, `stream` for streaming), threading the LangGraph
-   **checkpointer** so state/history persist and **interrupt/resume** (human-in-the-loop)
-   works.
-4. Publishes stream frames to subscribers (local bus or Redis pub/sub).
+Keep the thread ID and run ID returned by submission. Read the run's status or open it in the
+[console](./console.md#runs). A failed run retains its error for later inspection; see
+[Errors & logging](./errors-and-logging.md). Joining a stream observes existing work rather than
+submitting another run.
 
 ## Queue drivers
 
-The engine talks to small `RunQueue` / `RunEventBus` interfaces (`@skein-js/core`) with queue
-drivers for memory, SQLite, and Redis. `RunQueue` is **processor-driven**: `enqueue(run)` adds a job and
-`consume(process)` registers a worker that drains the queue — so the same run worker code drives
-each driver. Crash behavior depends on the queue: Redis can redeliver stalled work; SQLite records
-abandoned attempts as failures; memory loses queued work on process exit. The worker skips runs
-already terminal in the store.
+| Deployment                        | Queue  | Recovery                                                   |
+| --------------------------------- | ------ | ---------------------------------------------------------- |
+| Development and isolated tests    | Memory | Pending queue work is process-local                        |
+| One local Node owner              | SQLite | Unclaimed jobs survive; abandoned attempts become failures |
+| Shared server or multiple workers | Redis  | Delayed jobs survive and stalled work can be redelivered   |
 
-`enqueue` takes an optional `{ delayMs }` — the run-create
-[`after_seconds`](./agent-protocol.md). The driver holds the run until it comes due, which is why a
-delayed run cannot be picked up early. The drivers dedupe a
-re-enqueue of a run that is still waiting out its delay, so the cron scheduler's outbox sweep — which
-re-enqueues anything it cannot prove reached the queue — can never cut a delay short or schedule the
-same run twice. A delayed run is durable exactly as far as its driver is: see below.
+Choose the matching store/queue configuration in your CLI or embedding helper. An `after_seconds`
+delay starts work no earlier than its due time. Its survival across restart depends on the selected
+queue, as described below. Make external effects idempotent when retries are possible.
 
 ### In-memory (dev)
 
@@ -87,18 +67,10 @@ same run twice. A delayed run is durable exactly as far as its driver is: see be
   message costs promptness rather than correctness. See
   [deploy.md](./deploy.md#scaling-past-one-instance).
 
-### What a frame costs
+### Stream retention {#what-a-frame-costs}
 
-Publishing sits inside the graph's own loop — the engine awaits it per chunk — so at token
-granularity its cost is paid per token. It is **one pipelined round trip**: `XADD` and `PUBLISH`
-batched together, with the frame serialized once for both. The stream's TTL is refreshed every 256
-frames and on close, rather than on every frame, since the window only has to outlive the run.
-
-All in-flight subscribers share **one** pub/sub connection, with a `SUBSCRIBE` per run rather than a
-connection per stream — an instance serving 500 SSE streams holds two Redis sockets, not 501.
-
-Replay is paged (`XRANGE … COUNT`), and a reconnecting subscriber resumes from the last stream id it
-read rather than re-reading the whole stream.
+Redis retains stream frames so a client connected to another instance can join a run or reconnect.
+Set bounds for both retained events and each observer's buffer:
 
 Two knobs bound what this costs:
 
@@ -115,8 +87,7 @@ A subscriber whose buffer overflows has its stream ended rather than being allow
 bound behind a reader that cannot drain it; the client reconnects with `Last-Event-ID` and replays from
 the stream, which is what the stream is for.
 
-This is the same shape aegra uses (Redis job queue + pub/sub, crash recovery, Postgres
-checkpoints) — <https://github.com/aegra/aegra>.
+See [streaming and reconnect](./streaming.md) for client behavior.
 
 ## Run concurrency
 
@@ -166,28 +137,19 @@ processor-failure attempt. The execution claim remains responsible for serializa
 against inline runs and other instances. The default `multitask_strategy` remains `"reject"`;
 `"enqueue"` is the strategy that builds a thread backlog.
 
-The worker uses the optional `RunQueue.consumePartitioned` and, when a backend gate is configured,
-`ThreadExecutionGate.tryAcquire` capabilities. Existing third-party queues or gates without either
-capability retain ordinary blocking dispatch. `tryAcquire` returns a lease or `undefined` for a busy
-thread/capacity; backend errors still reject. A partitioned processor returns `true` only after handling
-a run and `false` when execution never started. A false result retains identity and ordering position.
+For a custom queue, optional `RunQueue.consumePartitioned` acknowledges handled work with `true`.
+Return `false` only when execution did not start; the run stays at its thread's head without spending
+a failure attempt. Optional `ThreadExecutionGate.tryAcquire` returns a lease or `undefined` when busy;
+backend failures reject. Older queues and gates retain blocking dispatch. Preserve original due times,
+deduplication, and the execution lease when implementing these public extension contracts.
 
-Redis continues using BullMQ jobs, delay floors, retries and stalled-job recovery. Internal partition
-metadata registers jobs when first eligible, parks followers, and promotes the next head after
-settlement. Promotion applies only to Skein-parked attempts; native BullMQ retry backoff remains in
-force. Busy heads retry after 50 ms; followers have a 60-second parking backstop. A bounded sweep
-reconciles up to 100 partitions per second after crashes or removals. Registration never promotes a
-run before its original `after_seconds` delay. Empty metadata is removed. Existing queued jobs register
-lazily, so an upgrade does not require flushing the queue. Coordinate worker upgrades to obtain the
-new dispatch behavior throughout the deployment; the execution claim remains the safety boundary.
+Coordinate worker upgrades so all instances use the same dispatch behavior. Existing queued jobs
+can remain in place; an upgrade does not require flushing Redis. SQLite retains queued job due times
+and records abandoned attempts as failures without automatic replay.
 
-SQLite keeps the original job sequence and due time, with no schema migration. Abandoned attempts
-still fail without automatic replay. Deferred work is not a new recovery policy.
-
-Relatedly, **ordering across background `"enqueue"` runs is not guaranteed above concurrency 1**:
-several are dequeued at once and race for the thread's claim. This matches LangGraph at
-`N_JOBS_PER_WORKER=10`, whose N worker loops have no cross-loop ordering guarantee either. If you
-need strict FIFO across background runs on one thread, set concurrency to 1.
+**Ordering across background `"enqueue"` runs is not guaranteed above concurrency 1.** If your
+application needs a strict sequence, finish one run before submitting the next, or express the
+sequence inside your graph. A busy thread should not prevent unrelated conversations from running.
 
 **Concurrency vs. replicas.** Raise concurrency when you have many independent threads and runs are
 I/O-bound (model calls). Add instances when runs are CPU-bound, or when threads are long-lived and

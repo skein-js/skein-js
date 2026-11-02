@@ -84,3 +84,138 @@ subscription and reconnect do not invoke a graph. The legacy graph stream remain
 run-based clients. MCP and A2A use their official SDKs for transport and canonical serialization,
 while Skein’s existing authorization, run admission, queue, persistence and cancellation remain the
 execution authority. A2A results live on run rows rather than in a second task database.
+
+## Under the hood: what skein-js changes (transparently)
+
+skein-js keeps the **contract** identical — same `langgraph.json`, same graph code, same Agent
+Protocol on the wire, same clients — while re-implementing the runtime underneath with a different,
+open, self-hostable set of building blocks. None of this requires a change on your side; it's the
+"drop-in" promise honored at the implementation level.
+
+**Same graph code, same config, same wire protocol.** skein-js reuses the LangGraph runtime,
+checkpointers, the `langgraph.json` parser/schemas, and the SDK/types from the open
+`@langchain/*` packages (see [reuse.md](https://github.com/skein-js/skein-js/blob/main/docs/reuse.md)). It only rebuilds the durable-production,
+multi-framework, drop-in-CLI layer that isn't open — so your project moves over untouched.
+
+**What we implement, and the tools we use:**
+
+| Concern                  | skein-js implementation                                                                                                                                                                                                                                                                                                                         |
+| ------------------------ | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| CLI                      | [commander](https://github.com/tj/commander.js) — the `skein dev`/`up`/`build`/`dockerfile` command surface, plus `skein start` (below).                                                                                                                                                                                                        |
+| Dev graph loading        | [vite](https://vitejs.dev) loads your TypeScript graphs **in-process** — no separate build step. tsconfig `paths` aliases resolve, so graphs in an Nx/Turborepo/pnpm-workspace monorepo import shared workspace packages unchanged.                                                                                                             |
+| Prod image build         | `skein build`/`up` bundle graphs (+ auth/embed) to plain JS with `vite.build()` at build time — same alias resolution as dev, anchored at the workspace root — into a self-contained `.skein/build` artifact. The slim image installs prod deps only and runs the compiled output via `skein start` (no vite, no runtime TypeScript transform). |
+| Dev hot reload           | **State-preserving** reload on source change: your threads, runs, and memory survive the reload. `.env` is watched too, so filling in a missing model key reloads the graphs instead of needing a restart.                                                                                                                                      |
+| Dev persistence          | Dev state is snapshotted to `.skein/` so it survives restarts (opt out with `--no-persist`).                                                                                                                                                                                                                                                    |
+| Run queue (prod)         | [BullMQ](https://docs.bullmq.io) on Redis — background runs, retries, backoff, and crash recovery.                                                                                                                                                                                                                                              |
+| Cross-instance streaming | [ioredis](https://github.com/redis/ioredis) + **Redis Streams**/pub-sub — join a run's SSE stream from any instance.                                                                                                                                                                                                                            |
+| Postgres store (prod)    | [pg](https://node-postgres.com) + compiled-in schema migrations + **pgvector** semantic search.                                                                                                                                                                                                                                                 |
+| Checkpoints (prod)       | LangGraph-native [`PostgresSaver`](https://github.com/langchain-ai/langgraphjs/tree/main/libs/checkpoint-postgres) — reused, not reinvented.                                                                                                                                                                                                    |
+
+**Transparent improvements over `langgraph dev`.** Because the storage/queue are pluggable drivers,
+`skein dev` can run against **production-shaped** Postgres/Redis **without Docker** (`--store
+postgres --queue redis`), and dev state persists across restarts — both beyond the stock LangGraph
+CLI dev server, and both fully opt-in. The wire behavior your clients see is unchanged either way.
+
+If any of this ever _does_ change observable behavior versus the LangGraph CLI, that's a
+compatibility bug — please [report it](https://github.com/skein-js/skein-js/issues).
+
+## How it works
+
+Every instance runs a ticker. Every 30 seconds (`SKEIN_CRON_TICK_MS`) it asks the store for enabled
+crons whose `next_run_date` has arrived, and for each one:
+
+1. Computes the **next** occurrence, from the later of the stored date and now — so a cron that fell
+   behind lands in the future in one step rather than replaying the backlog.
+2. **Claims** it with a single-row conditional `UPDATE` on the primary key, guarded by a claim token
+   the store bumps on every write. If three instances see the same occurrence, exactly one wins; the
+   others skip. No leader election, no distributed lock, no Redis.
+3. Commits the claim **and the `pending` run row in one transaction**, then enqueues the run.
+
+That third step is a transactional outbox, and it is what makes delivery durable. Advancing without
+the run would silently skip the occurrence if the instance died in between; creating the run first
+would re-fire it. Committed together, the worst case is a `pending` run that never reached the queue —
+which the next tick re-enqueues. Because enqueue is idempotent (keyed on the run id) and the worker
+skips runs already terminal, delivery is **at-least-once** and execution **exactly-once**.
+
+The recovery sweep looks only at runs a cron produced. A bare `pending` is not enough to conclude a
+run is waiting for a worker: an inline `wait`/`stream` run is written `pending` too and only becomes
+`running` once it acquires its thread's lock, so one queued behind a long peer would look identical
+while its caller waits to execute it in-process. Handing that to a worker would run the graph twice.
+
+The run itself then goes through the ordinary run queue — on Redis that is BullMQ, so cron-fired runs
+get its retries, backoff, and stalled-job crash recovery like any other background run.
+
+Schedule state lives in the store rather than in the queue, because `enabled`, `sort_by=next_run_date`,
+filtered `count`, and metadata search are all things a queue cannot serve — and because a schedule
+that a `FLUSHALL` can erase while the API still reports it as enabled is worse than no schedule.
+
+## Queue implementation notes
+
+The engine talks to small `RunQueue` / `RunEventBus` interfaces (`@skein-js/core`) with queue
+drivers for memory, SQLite, and Redis. `RunQueue` is **processor-driven**: `enqueue(run)` adds a job and
+`consume(process)` registers a worker that drains the queue — so the same run worker code drives
+each driver. Crash behavior depends on the queue: Redis can redeliver stalled work; SQLite records
+abandoned attempts as failures; memory loses queued work on process exit. The worker skips runs
+already terminal in the store.
+
+`enqueue` takes an optional `{ delayMs }` — the run-create
+[`after_seconds`](./agent-protocol.md). The driver holds the run until it comes due, which is why a
+delayed run cannot be picked up early. The drivers dedupe a
+re-enqueue of a run that is still waiting out its delay, so the cron scheduler's outbox sweep — which
+re-enqueues anything it cannot prove reached the queue — can never cut a delay short or schedule the
+same run twice. A delayed run is durable exactly as far as its driver is: see below.
+
+### What a frame costs
+
+Publishing sits inside the graph's own loop — the engine awaits it per chunk — so at token
+granularity its cost is paid per token. It is **one pipelined round trip**: `XADD` and `PUBLISH`
+batched together, with the frame serialized once for both. The stream's TTL is refreshed every 256
+frames and on close, rather than on every frame, since the window only has to outlive the run.
+
+All in-flight subscribers share **one** pub/sub connection, with a `SUBSCRIBE` per run rather than a
+connection per stream — an instance serving 500 SSE streams holds two Redis sockets, not 501.
+
+Replay is paged (`XRANGE … COUNT`), and a reconnecting subscriber resumes from the last stream id it
+read rather than re-reading the whole stream.
+
+The worker uses the optional `RunQueue.consumePartitioned` and, when a backend gate is configured,
+`ThreadExecutionGate.tryAcquire` capabilities. Existing third-party queues or gates without either
+capability retain ordinary blocking dispatch. `tryAcquire` returns a lease or `undefined` for a busy
+thread/capacity; backend errors still reject. A partitioned processor returns `true` only after handling
+a run and `false` when execution never started. A false result retains identity and ordering position.
+
+Redis continues using BullMQ jobs, delay floors, retries and stalled-job recovery. Internal partition
+metadata registers jobs when first eligible, parks followers, and promotes the next head after
+settlement. Promotion applies only to Skein-parked attempts; native BullMQ retry backoff remains in
+force. Busy heads retry after 50 ms; followers have a 60-second parking backstop. A bounded sweep
+reconciles up to 100 partitions per second after crashes or removals. Registration never promotes a
+run before its original `after_seconds` delay. Empty metadata is removed. Existing queued jobs register
+lazily, so an upgrade does not require flushing the queue. Coordinate worker upgrades to obtain the
+new dispatch behavior throughout the deployment; the execution claim remains the safety boundary.
+
+SQLite keeps the original job sequence and due time, with no schema migration. Abandoned attempts
+still fail without automatic replay. Deferred work is not a new recovery policy.
+
+## Bundle regression history
+
+That is asserted, not asserted-by-comment: `packages/test-support/src/static-imports.test.ts` walks each
+adapter's built output — following `@skein-js/*` edges into their own `dist` — and fails if
+`@langchain/langgraph-api`, `@typescript/vfs`, or `superjson` is statically reachable. The walk is
+transitive because the regression it caught was: no adapter imported `@langchain/langgraph-api`, but
+every adapter imported `@skein-js/server-kit`, which imported the `@skein-js/config` barrel for one error
+class, and that barrel imported `@langchain/langgraph-api`.
+
+Before 0.10.0 it located its `migrations/` directory with `new URL("../migrations", import.meta.url)`
+and handed it to `node-pg-migrate`. Bundlers rewrite `import.meta.url` to the **output** location, so
+a bundled build looked fine until boot, then failed to find its own SQL against a real database. If
+you hit that on an older version, externalize `@skein-js/storage-postgres` (which then has to be
+present in `node_modules` at runtime) or upgrade.
+
+Migrations still run automatically on boot, tracked in a `skein_migrations` table and serialized by a
+Postgres advisory lock — see [deploy.md](./deploy.md) and [storage.md](./storage.md).
+
+## Storage implementation history
+
+The memory driver holds versions in a second map; Postgres uses an `assistant_versions` table
+(`PRIMARY KEY (assistant_id, version)`, `ON DELETE CASCADE` from `assistants`) added in migration
+`0003`. Keep migrations enabled when upgrading a persistent deployment.

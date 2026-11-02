@@ -52,7 +52,9 @@ Upstream references: [LangGraph.js overview](https://docs.langchain.com/oss/java
 - [Deploy on Google Cloud Run](https://github.com/skein-js/skein-js/blob/main/docs/deploy-cloud-run.md): Artifact Registry, Cloud SQL or a hosted Postgres, Secret Manager, and why background runs need `--no-cpu-throttling --min-instances=1`.
 - Per-platform guides also cover [Railway](https://github.com/skein-js/skein-js/blob/main/docs/deploy-railway.md), [Fly.io](https://github.com/skein-js/skein-js/blob/main/docs/deploy-fly.md), [Render](https://github.com/skein-js/skein-js/blob/main/docs/deploy-render.md), [AWS App Runner and ECS Fargate](https://github.com/skein-js/skein-js/blob/main/docs/deploy-aws.md), [Kubernetes](https://github.com/skein-js/skein-js/blob/main/docs/deploy-kubernetes.md), [a plain VPS](https://github.com/skein-js/skein-js/blob/main/docs/deploy-vps.md), and [what does and doesn't work on Vercel/serverless](https://github.com/skein-js/skein-js/blob/main/docs/deploy-serverless.md).
 - [Bundling skein](https://github.com/skein-js/skein-js/blob/main/docs/bundling.md): For when you own the bundler (rspack/webpack/esbuild/Next.js) — skein is ESM-only but `require()`-resolvable, `@langchain/langgraph-api` + `@typescript/vfs` must stay external, everything else bundles cleanly.
-- [The skein console](https://github.com/skein-js/skein-js/blob/main/docs/console.md): A web UI for a running server — assistants, threads, live run tails, interrupt approve/resume, time travel, the store browser, and crons. Served by the server itself at `/console`; on by default under `skein dev`, opt-in via `http.console` elsewhere.
+- [The skein console](https://github.com/skein-js/skein-js/blob/main/docs/console.md): Test a graph with Chat or JSON, inspect activity and state, diagnose failures, and try approval or checkpoint paths.
+- [Console setup reference](https://github.com/skein-js/skein-js/blob/main/docs/console-reference.md): Connections, authentication, production enablement, manual mounting, and advanced run options.
+- [Testing your project](https://github.com/skein-js/skein-js/blob/main/docs/testing-your-project.md): Run generated graph tests, add an SDK smoke test, and check persistence and interrupt/resume.
 - [Building a custom adapter](https://github.com/skein-js/skein-js/blob/main/docs/building-an-adapter.md): Put skein on any HTTP framework via the transport-neutral handler table.
 
 ## API by package
@@ -94,7 +96,5 @@ Upstream references: [LangGraph.js overview](https://docs.langchain.com/oss/java
 
 ## Optional
 
-- [Reuse-first architecture](https://github.com/skein-js/skein-js/blob/main/docs/reuse.md): What skein reuses from LangGraph OSS vs rebuilds.
 - [Roadmap](https://github.com/skein-js/skein-js/blob/main/docs/roadmap.md): Milestones, shipped features, known gaps vs LangGraph, and non-goals.
-- [AGENTS.md](https://github.com/skein-js/skein-js/blob/main/AGENTS.md): For agents/humans working ON skein itself (contributor guide), not consuming it.
 - [llms-full.txt](https://github.com/skein-js/skein-js/blob/main/llms-full.txt): The user-facing docs concatenated into one file for wholesale ingestion.

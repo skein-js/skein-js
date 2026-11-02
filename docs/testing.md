@@ -411,3 +411,225 @@ Short-window coverage checks the entire composer and sidebar footer remain in th
 1440×760, 1280×640, 768×900, and 390×844. Long output and interrupt requests scroll inside the
 conversation region; expanded run options scroll inside the composer. Resource-page checks also
 assert the document itself does not grow beyond the viewport.
+
+## Recorded compatibility evidence
+
+The following records the investigation and validation history behind the public
+[compatibility reference](./langgraph-compatibility.md). Baseline statuses describe 22 October 2026,
+not the currently implemented surface.
+
+Baseline investigated on **22 October 2026**. A shared dependency or a route with a similar name
+does not establish compatibility: the official client must exercise the behavior end to end.
+
+| Surface                                           | Baseline                                      | Compatibility work                                                                                   |
+| ------------------------------------------------- | --------------------------------------------- | ---------------------------------------------------------------------------------------------------- |
+| Run-based JavaScript SDK and legacy React hook    | Supported                                     | Retain coverage for SDK 1.9.25 and 1.9.31                                                            |
+| Thread event protocol                             | Not yet supported                             | SDK 1.12.6; protocol 0.0.20; subscriptions, commands, reconnect and restoration                      |
+| Dedicated React, Angular, Vue and Svelte bindings | Not yet verified                              | Test each package at 1.2.6 in a real browser                                                         |
+| Thread-wide legacy stream                         | Joins one run                                 | Add explicit `stream_mode` following without changing the existing default                           |
+| Execution and checkpoint options                  | Partial                                       | Durability, task/checkpoint modes, recursive and namespaced state/history                            |
+| Search and retention                              | Partial                                       | Projection, exclusion, extraction, state timestamps, per-operation store options and keep-latest TTL |
+| MCP and A2A endpoints                             | Not implemented                               | Official transport SDKs over the existing authorized services                                        |
+| Graph UI assets and `http.app`                    | Accepted configuration without implementation | Development loading and standalone production artifacts                                              |
+| OpenAPI and `/docs`                               | Not implemented                               | Describe actual enabled routes and authentication                                                    |
+| `/metrics` and thread storage reporting           | Not implemented                               | Existing OTel instrumentation and exact saver-backed payload accounting                              |
+
+Explicit legacy thread following supports the SDK's `run_modes`, `lifecycle`, and `state_update`
+categories, including per-run completion metadata and immutable checkpoint snapshots on replay.
+Search extraction returns aliases inside `extracted`; checkpoint forks validate saver coordinates
+without requiring optional custom-agent timestamps.
+
+The versions above are **implementation targets**, not a claim that all of their features have
+passed. The implementation updates this matrix with the corresponding test evidence.
+
+## Implementation evidence, 23 October 2026
+
+The workspace exercises LangGraph.js **1.4.7**; the clean packed consumer pins **1.4.12**.
+The thread-protocol binding uses public `streamEvents({ version: "v3" })` and requires that runtime
+capability. The existing legacy execution path remains available for older graphs and custom agents.
+
+| Scope                                                                      | Versions and backends exercised                                                                        | Evidence                                                                                                                                          |
+| -------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------ | ------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Thread subscriptions, commands, restoration, multiple turns and interrupts | JavaScript SDK 1.12.6 / protocol 0.0.20; Express + memory                                              | Official client HTTP tests in `thread-protocol.test.ts`                                                                                           |
+| Reconnect across API instances, one queued execution                       | SDK 1.12.6; Express + real Redis queue and thread buses                                                | `thread-protocol.integration.test.ts`, including a proxy-forced reconnect                                                                         |
+| Legacy protocol and adapters                                               | Packed SDK 1.9.25 / 1.9.31 clients and legacy protocol tests; Express, Fastify, Fetch, NestJS, Next.js | Existing adapter suites retained; dedicated framework browser coverage is listed separately below                                                 |
+| Store indexing, nullable write TTL and per-read refresh                    | Memory, SQLite and real Postgres                                                                       | Shared store-options conformance; real SQLite reopen                                                                                              |
+| MCP discovery and execution                                                | Official MCP SDK 1.32.1; stateless Streamable HTTP                                                     | Official client transport test; shared MCP/A2A HTTP checks across all five adapters                                                               |
+| A2A output retention and interrupts                                        | Official A2A SDK 1.3.0; memory and reopened SQLite                                                     | Official client over HTTP; first-task output survives another turn and checkpoint pruning                                                         |
+| Dedicated frontend bindings                                                | React/Angular/Vue/Svelte 1.2.6, SDK 1.12.6, Chromium; Express + memory                                 | Native HTTP streaming, restoration, interrupts, cancellation, multiple turns, subgraphs, custom channels, scoped media and proxy-forced reconnect |
+| Compiled UI and custom applications                                        | Public UI compiler 1.4.2; generated Node 24 production image + SQLite                                  | Real build → artifact → image; UI bootstrap/assets, Fetch app, OpenAPI and docs without sources or optional UI compiler                           |
+| Diagnostics                                                                | Memory, SQLite and real Postgres saver payloads; standard OTel metric reader                           | Actual buffer/blob/datum accounting; Prometheus and OTLP JSON serializers; explicit unsupported-capability errors                                 |
+
+A separate packed consumer installs Skein tarballs outside the workspace and exercises SDK 1.12.6,
+legacy SDKs 1.9.25 and 1.9.31, official MCP and A2A clients, and diagnostics over native HTTP with no
+application transport shim. That gate passes. These checks establish the listed behavior only;
+release also requires the full Nx quality gates. Svelte 1.2.6's root `useImages` selector returns an empty
+projection in its own implementation; scoped media selectors pass. Root media from React, Angular
+and Vue was also exercised while validating graph-scope message namespaces. Vue 1.2.6 media assets
+require `toRaw(asset)` before accessing `blob`, because its reactive proxy breaks private fields.
+The browser gate checks actual media bytes with that public Vue workaround. These client limitations
+are tracked separately from server media delivery. Development UI watches currently follow the
+upstream watcher’s process lifetime; applications own process shutdown.
+
+## Frontend example refresh, 25 October 2026
+
+The React examples (`chat-app`, `nextjs-app`, and `react-usestream`) use `@langchain/react` 1.2.7.
+Example JavaScript clients require SDK 1.12.7. The browser matrix also runs the React package
+installed by `react-usestream`, alongside the pinned 1.2.6 framework packages and SDK 1.12.6.
+Legacy SDK 1.9.25 and 1.9.31 coverage remains in the packed consumer.
+
+## Scaffold distribution evidence
+
+The internal `scripts/scaffold-cases.json` catalog drives 96 generation combinations and 33 installed
+consumers: every package-manager/storage and provider/storage pair, opt-outs, independent tooling
+inheritance, both Nx layouts on Node 22.12 and 24, and three additional Node 26 consumers.
+
+CI builds and packs the commit once and distributes tarballs. Consumers install outside the checkout,
+verify transitive Skein artifact hashes, run typechecking, tests, applicable lint/format checks and
+build, then send echo requests to development and artifact servers. Dummy keys allow provider graph
+building without model calls. SQLite always executes on Node. Required durable cases fail without Docker.
+CI pins npm 11.12.1, pnpm 9.15.0 and Yarn 4.9.2; Bun is provisioned by `setup-bun`. Yarn consumers
+use its node-modules linker. These checks also gate npm publication. Registry smoke tests and
+SQLite/desktop platform gates remain. The curated cases cover the presence of inherited tooling;
+they do not yet cover every limitation listed above. See the contributor
+[scaffold consumer coverage](#scaffold-consumers) for local commands and coverage details.
+
+The new `@skein-js/nx` package follows the fixed release group. Its tarball includes generator
+metadata, schema and declarations without a private runtime dependency.
+
+## Performance benchmark evidence
+
+Repository benchmark commands and historical dispatch measurements follow. These measure skein-js
+fixtures; they do not replace profiling an adopter's application.
+
+## Measuring it yourself
+
+`packages/bench` boots a real skein server in-process, opens real SSE clients against it, and samples
+while they stream. It is deliberately not part of `pnpm test` — it takes minutes and needs Docker for the
+Postgres/Redis driver.
+
+```bash
+nx build bench && nx bench bench                 # all scenarios, in-memory drivers, no Docker
+nx bench bench -- --driver postgres-redis        # needs Docker
+nx bench bench -- --scenario slow-client --streams 500
+```
+
+The measurement that matters is **RSS after idle + a forced GC**, not peak RSS: peak tells you about
+churn, retained tells you what is actually held. A slow-client run at increasing `--streams` should
+plateau, not climb — that plateau is the whole point of the bounds above.
+
+Alongside it, the counters are deterministic and make a regression provable rather than plausible:
+buffered frames, Redis commands per frame, socket `writableLength`, iterator pulls, connections opened.
+Those are integers with no timing in them, which is why they **do** gate CI where throughput and latency
+cannot. See [testing.md](https://github.com/skein-js/skein-js/blob/main/docs/testing.md) for how the same idea is applied in the unit tests.
+
+The run therefore ends in `all bounds hold.` or a non-zero exit listing what no longer does — the
+per-stream SSE buffer ceiling, the bus's retained-run and per-run frame caps, and that backpressure
+delayed frames rather than dropping them. CI's `perf bounds (bench)` job runs exactly this on the
+in-memory driver and publishes the numbers to the run summary without asserting any of them. So if you
+are reading this page because a bound above stopped holding for you, that job is what should have caught
+it first; if it was green, the shape you hit is one the scenarios do not cover, and it is worth adding
+one (see [`packages/bench/README.md`](https://github.com/skein-js/skein-js/blob/main/packages/bench/README.md)).
+
+## Thread dispatch measurements
+
+`pnpm exec nx run bench:dispatch --args="--output results/dispatch.json"` runs two Node processes
+against shared Postgres/Redis, with four execution slots each. The hot-thread scenario enqueues
+32 runs taking 250 ms on one thread, then 32 independent runs taking 25 ms. The control uses
+64 independent threads. Reported cold-start latency runs from persisted run creation to graph-node
+start, including the initial enqueue phase. Only exclusivity and concurrency bounds are asserted.
+
+On 26 October 2026, Node 24.15.0 with BullMQ 5.80.2, ioredis 5.10.1, Redis 7 and Postgres 16 produced
+these medians of five repetitions on the same macOS host. The benchmark harness was added before
+changing dispatch. Raw samples are committed under `packages/bench/results/dispatch-baseline.json`
+and `dispatch-after.json`. The latter was refreshed after review corrections; its dirty-worktree
+marker distinguishes the measured source from the recorded parent commit.
+
+| Scenario / metric                   |   Before | Partitioned dispatch |
+| ----------------------------------- | -------: | -------------------: |
+| Hot backlog: cold start p50         | 7,624 ms |               191 ms |
+| Hot backlog: cold start p95         | 7,792 ms |               248 ms |
+| Hot backlog: cold start p99         | 7,792 ms |               250 ms |
+| Hot backlog: total runs/second      |     7.11 |                 7.06 |
+| Independent control: start p95      |   384 ms |               382 ms |
+| Independent control: runs/second    |   164.52 |               166.67 |
+| Peak occupied slots, both scenarios |        8 |                    8 |
+
+Cold-thread p95 improves about 31-fold. Total throughput in the hot scenario remains constrained
+by the same serialized chain of 32 hot runs; partitioned dispatch lets independent work start while
+that chain proceeds. Both workloads fill the configured capacity at their peak. These measurements
+are evidence for this workload, not throughput or latency guarantees for other machines or graphs.
+
+## Repository profiling fixtures
+
+## Skein’s cross-runtime benchmark
+
+Use deterministic graphs first—no model calls—then repeat with a separate realistic model workload.
+The existing harness exercises real HTTP/SSE and can use real Postgres and Redis:
+
+```bash
+nx bench bench -- --scenario fast-client
+nx bench bench -- --scenario slow-client --streams 1
+nx bench bench -- --scenario slow-client --streams 50
+nx bench bench -- --scenario slow-client --streams 100
+nx bench bench -- --scenario slow-client --streams 500
+nx bench bench -- --driver postgres-redis
+```
+
+Do not model a slow client with `fetch()` plus delayed reads: the client runtime may eagerly drain the
+socket into its own heap. Skein’s slow-client harness pauses a raw socket so the TCP receive window
+closes and backpressure reaches the server.
+
+For Node/Bun/Deno comparisons there is **no harness support yet** — `packages/bench` starts the server
+inside its own process, so it cannot measure another runtime, and adding an external-target mode is
+tracked follow-up work. Today the comparison is a manual procedure: build each production artifact and
+run the load generator outside the measured container. Keep identical CPU/memory limits, graph bundle, payloads, Postgres/Redis versions,
+telemetry setting, warm-up, sample duration, and runtime image architecture. Record:
+
+- cold boot and readiness;
+- p50/p95/p99 and time to first frame;
+- requests/s and frames/s;
+- RSS, runtime heap values, and settled post-GC memory;
+- memory slope at 1/50/100/500 slow streams;
+- queue delay and Postgres pool saturation;
+- Redis commands, connections, and retained frames;
+- telemetry-off versus telemetry-on overhead;
+- SIGTERM drain duration and lost terminal states/events;
+- a sustained mixed-load soak.
+
+Run at least five measured repetitions after warm-up and report the median plus a 95% confidence
+interval. Save raw JSON beside runtime, image digest, CPU model, memory limit, OS/kernel, and commit.
+
+## Five diagnostic exercises
+
+### 1. SSE backpressure
+
+Run `slow-client` at 1, 50, 100, and 500 streams. Watch server RSS, socket buffered bytes, and bus
+frames. Expected: socket bytes and bus retention plateau at configured bounds. Negative verification:
+temporarily replace the raw paused client with a fast client—the pressure disappears, proving a fast
+client cannot validate slow-client safety.
+
+### 2. Event-bus retention
+
+Run `long-run`, let all clients disconnect, force idle+GC, and inspect retained objects. Expected:
+completed-run retention stops at `SKEIN_MEMORY_BUS_MAX_RETAINED_RUNS`, and frames per run stop at
+`SKEIN_MEMORY_BUS_MAX_FRAMES_PER_RUN`. A retaining path through a subscription after cancellation is
+a leak; a bounded map at its configured ceiling is not.
+
+### 3. Serialization cost
+
+Compare `stream_mode: "values"` with `"updates"` using the same graph. If CPU self time concentrates
+in wire serialization and GC grows, reduce full-state frames or payload size. Verify final state and
+frame order before accepting the change.
+
+### 4. Postgres pool saturation
+
+Sweep run concurrency through 1/5/10/20 while holding `PG_POOL_MAX=5`, then repeat at 20. Throughput
+should flatten and queue time rise when the pool saturates. Raising worker concurrency alone cannot
+fix a five-connection bottleneck; remember Skein uses separate store and checkpointer pools.
+
+### 5. Telemetry shutdown leak
+
+Create a test sink that buffers events and whose `flush()` rejects. Send SIGTERM. The test passes only
+if `shutdown()` still runs, the other sinks flush, terminal run state is persisted, and the process
+exits within the configured grace. This distinguishes exporter failure from lifecycle loss.

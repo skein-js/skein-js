@@ -144,6 +144,8 @@ _branch_ from any past checkpoint:
   An explicit top-level ID wins. The server always supplies the owning thread ID. Coordinates
   survive queued execution, so the worker branches from the same checkpoint the caller selected.
 
+<span id="runs--stateless--ephemeral"></span>
+
 ### Runs — stateless / ephemeral
 
 Each of these creates its own thread. `on_completion` decides what happens to it (below).
@@ -490,7 +492,7 @@ A few properties worth knowing:
 
 - **The claim is atomic across instances.** The record is inserted first and the store's uniqueness
   constraint arbitrates, so two provider retries landing on two pods milliseconds apart still produce
-  exactly one run. Held to that by the shared `SkeinStore` conformance suite, on every driver.
+  exactly one run. Use a stable key for retries of the same request.
 - **Keys are scoped per principal** when auth is configured, so one caller cannot replay another's
   response by guessing their key.
 - **A replay is re-authorized.** It answers from the record without reaching the handler table, so
@@ -521,6 +523,8 @@ A few properties worth knowing:
 
 Retention is tunable under `skein.idempotency` in `langgraph.json` — see
 [langgraph-cli-compat.md](./langgraph-cli-compat.md#idempotency-skeinidempotency).
+
+<span id="authentication--authorization"></span>
 
 ## Authentication + authorization
 
@@ -706,8 +710,7 @@ history. Assistant `metadata.a2a.input_modes`/`output_modes` customize nonempty 
 lists. File parts preserve bytes or URLs, MIME and filenames through standard content blocks.
 
 Skein advertises HTTP/SSE, history scope and streaming. It does not advertise A2UI, task push
-notifications or subscription-to-task support. These unsupported methods fail explicitly. Dedicated
-frontend browser and packed-package gates validate clients separately from these transport tests.
+notifications or subscription-to-task support. These unsupported methods fail explicitly.
 `http.disable_mcp` and `http.disable_a2a` remove their route groups.
 
 ### Discovery and storage diagnostics

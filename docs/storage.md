@@ -5,273 +5,33 @@ description: Choose memory for development, SQLite for local apps, or Postgres w
 
 # Storage
 
-**What this gives you:** durable agents and **long-term memory** that outlives a single
-conversation, with zero setup in dev. Threads, runs, and stored memories survive restarts, and inside
-a graph node you get a LangGraph-native store — `getStore()` — for cross-thread facts ("prefers window
-seats") backed by **pgvector semantic search** when using Postgres with indexing. It's the same store LangGraph Platform
-auto-provides, so a graph that calls `getStore()` runs unchanged on skein-js. The best part: you write
-your graph once and choose a backend — **memory for the default `skein dev`, SQLite for local apps,
-or Postgres + pgvector for a server** — no graph code change. SQLite provides text/filter search;
-semantic indexing uses Postgres or an external store. The flagship [`chat-app`](https://github.com/skein-js/skein-js/tree/main/examples/chat-app) example uses
-this to remember a user across sessions.
+Choose storage for the lifetime and deployment of your project. Your graph can continue using
+LangGraph's `getStore()` interface when you change the backend.
 
-skein-js separates two kinds of persistence, and it is important not to conflate them:
+| Your project                                | Choose              | What to verify                                                      |
+| ------------------------------------------- | ------------------- | ------------------------------------------------------------------- |
+| Development or isolated tests               | Memory              | Graph behavior; development snapshots are not production durability |
+| Desktop app, CLI, daemon, or one Node owner | SQLite              | Reopen the same file and read the thread, checkpoints, and memory   |
+| Shared server                               | Postgres            | Resources and checkpoints survive restart                           |
+| Multiple server instances                   | Postgres plus Redis | Queueing and stream observation work across instances               |
 
-1. **Graph checkpoints** — LangGraph's own state/history for a thread (this is what powers
-   **interrupt/resume** and history). **Reused, never reimplemented:** delegated to an existing
-   LangGraph checkpointer (`MemorySaver` for memory, `SqliteSaver` for the local assembly,
-   `PostgresSaver` for Postgres). See [reuse.md](https://github.com/skein-js/skein-js/blob/main/docs/reuse.md).
-2. **Protocol resources** — assistants, thread metadata/status, run rows, and long-term
-   store items. These are the gap OSS keeps _in memory_, so skein-js owns them behind a single
-   `SkeinStore` interface with durable drivers.
+SQLite supports text/filter search. Semantic indexing uses Postgres with pgvector or an external
+store. Start with [SQLite embedding](./local-deployment.md), [Postgres deployment](./deploy.md), or
+the driver reference below.
 
-## `SkeinStore` interface
+Graph checkpoints hold conversation state/history; store items hold values across conversations.
+Choose the correct lifetime before adding memory: see [state and persistence](./state-and-context.md)
+and [agent memory](./memory.md).
 
-A single interface, implemented by each driver, covering the protocol resources:
+## Verify your storage
 
-```ts
-interface SkeinStore {
-  // assistants (derived from langgraph.json graphs, plus user-created)
-  assistants: AssistantRepo;
-
-  // threads: metadata + status (idle | busy | interrupted | error), plus the latest turn's error
-  threads: ThreadRepo;
-
-  // runs: status + queue rows (pending | running | success | error | cancelled | timeout),
-  // and — for a failed run — why (see errors-and-logging.md)
-  runs: RunRepo;
-
-  // schedules that fire runs on a cadence, plus the compare-and-swap claim the scheduler uses
-  crons: CronRepo;
-
-  // long-term memory: namespace/key items with optional semantic search
-  store: StoreRepo;
-
-  // recorded responses for `Idempotency-Key`, so a provider's retry replays instead of re-running
-  idempotency: IdempotencyRepo;
-}
-```
-
-Each repo exposes CRUD + list/search shaped to the [Agent Protocol](./agent-protocol.md)
-endpoints. All drivers are validated against **one shared conformance test suite**, so
-memory, SQLite, and Postgres share the same resource behavior. Their queue ownership and crash
-semantics differ; see [local deployment](./local-deployment.md#what-survives-a-process-ending).
-
-### Page bound (`SKEIN_MAX_PAGE_SIZE`)
-
-Every list and search path is **bounded — including when the caller passes no `limit` at all**. The
-default is **1000 rows**. This is a memory bound: a thread row carries the thread's mirrored graph
-state, so an unbounded `POST /threads/search` on a large deployment materializes the table twice over
-(the rows, then the JSON response string) inside one request.
-
-| Surface                                 | Bound                                                       |
-| --------------------------------------- | ----------------------------------------------------------- |
-| `limit` on a search request             | rejected above 1000 by the wire schema                      |
-| `limit` omitted, or a `list()` call     | the first `SKEIN_MAX_PAGE_SIZE` rows (default 1000)         |
-| `assistants.count()`, `threads.count()` | **not** bounded — they answer "how many match" in total     |
-| `runs.listByThread()`                   | **not** bounded — run rows carry no graph state             |
-| `runs.latestForThread()`                | one row by construction — the thread state path uses this   |
-| `runs.listActiveRuns()` (all threads)   | bounded — the whole-server sweep behind `POST /runs/cancel` |
-| `POST /threads/{id}/history`            | 100 checkpoints by default, 1000 max — a separate bound     |
-
-`runs.latestForThread()` exists because the unbounded `listByThread()` above used to be read on **every**
-thread state, history, and state-update request: resolving which graph a thread belongs to means reading
-its most recent run's `assistant_id`, and that was done by fetching the thread's entire run history and
-sorting it. A driver must return the newest run by `created_at` descending, tie-broken on `run_id`
-descending — the tie-break is a within-driver determinism contract (`created_at` ties at millisecond
-resolution), not a cross-driver one.
-
-Sizing guidance is in [performance.md](./performance.md#sizing). Set `SKEIN_MAX_PAGE_SIZE` to change the
-driver bound (`maxPageSize` on the store constructor and on
-`embedPostgresGraphs` do the same in code). Lowering it is the useful direction on a small container.
-Raising it widens what an omitted `limit` returns, but **not** the wire cap: a client-supplied `limit`
-is still rejected above 1000, deliberately, so a single request can't be made arbitrarily expensive
-from outside.
-
-Truncation is **not** signalled on the response today — a short page is indistinguishable from the end
-of the results, so page with `offset` until you get fewer rows than you asked for. Lowering the bound
-below 1000 clamps a client-supplied `limit` silently for the same reason, so page by what you _received_
-rather than by what you requested.
-
-### Server-enforced metadata (`enforcedMetadata`)
-
-`ThreadSearchQuery` carries a second metadata subset alongside `metadata`, AND-ed with it. It is set by
-the server, never read from a request body, and exists so the auth ownership filter is a `WHERE` clause
-instead of a full read plus an in-process pass — see
-[agent-protocol.md](./agent-protocol.md#authentication--authorization).
-
-Two subsets rather than one merged object, because a merge would silently drop one side on a key
-collision: a caller filtering `owner: "bob"` while the ownership filter requires `owner: "alice"` must
-match **nothing**, not one or the other. Both drivers apply it with the same containment semantics as
-`metadata`, and the shared conformance suite holds them to that.
-
-### Assistant versioning
-
-`AssistantRepo` carries full CRUD plus a **version history** (LangGraph parity — see the
-[assistants endpoints](./agent-protocol.md#assistants)). The model is deliberately simple so nothing
-else has to change:
-
-- Each assistant keeps an append-only list of immutable **version snapshots**
-  (`graph_id`/`name`/`description`/`config`/`context`/`metadata` at that version).
-- The **live assistant row mirrors the currently-active version** and carries its `version` number.
-  So every existing reader — `get`, `list`, the run engine's graph resolution, thread history —
-  keeps working unchanged; a run always resolves the assistant's _active_ version.
-- `create` seeds version 1. `update` mints a new version (`max + 1`) and makes it active.
-  `setLatest(version)` rolls the live row back to an existing snapshot **without** minting a new one.
-  `listVersions` returns history newest-first (filterable by metadata, paginated). Deleting an
-  assistant cascades its versions.
-
-The memory driver holds versions in a second map; Postgres uses an `assistant_versions` table
-(`PRIMARY KEY (assistant_id, version)`, `ON DELETE CASCADE` from `assistants`) added in migration
-`0003`. Both are exercised by the shared conformance suite.
-
-### Long-term memory in the graph (`getStore()`)
-
-The `store` repo isn't only reachable over the `/store/items` HTTP endpoints — it is also injected
-into **every graph run** as a LangGraph
-[`BaseStore`](https://docs.langchain.com/oss/javascript/langgraph/persistence),
-alongside the checkpointer. A node reads and writes cross-thread memory the LangGraph-native way:
-
-```ts
-import { getStore } from "@langchain/langgraph";
-
-async function remember(state) {
-  const store = getStore(); // the run's SkeinStore.store, as a BaseStore
-  await store.put(["memories", userId], "prefs", { units: "metric" });
-  const hits = await store.search(["memories", userId], { query: "units" }); // pgvector in Postgres
-  return { ... };
-}
-```
-
-This is what makes skein a faithful drop-in: LangGraph Platform auto-provides a store to graphs, so
-a graph that calls `getStore()` runs unchanged on skein. The bridge is `SkeinBaseStore` in
-[`@skein-js/langgraph`](https://github.com/skein-js/skein-js/tree/main/packages/langgraph), attached in the run engine the same way the
-checkpointer is. Semantic `search` uses pgvector on the Postgres driver and a naive scan on memory —
-both come from the same `StoreRepo`, so behavior matches.
-
-### Filtering and namespace traversal
-
-Two ways to narrow a store read: by **content** (`search`'s `filter`) and by **namespace shape**
-(`listNamespaces`' `prefix`/`suffix`/`maxDepth`). Both are honoured over HTTP and through
-`getStore()`, and both are pinned for every driver by the shared conformance suite.
-
-```ts
-await store.search(["users", userId], { filter: { topic: "coffee", score: { $gte: 3 } } });
-await store.listNamespaces({ prefix: ["users", "*"], suffix: ["facts"], maxDepth: 3 });
-```
-
-**`filter`** applies to the **top-level** keys of an item's `value`, never a nested JSON path — `"a.b"`
-is the literal key `"a.b"`. Keys are ANDed, as are multiple operators on one key. The operators are
-LangGraph's — `$eq`, `$ne`, `$gt`, `$gte`, `$lt`, `$lte`, `$in`, `$nin` — and a bare scalar means
-equality. It is applied **before** paging, so a page is a page of matches.
-
-| Case                            | Behaviour                                                                                            |
-| ------------------------------- | ---------------------------------------------------------------------------------------------------- |
-| Ordering (`$gt`/`$gte`/…)       | **Numbers only** on both sides. A string, boolean, `null`, object, array or absent key never matches |
-| Key absent from `value`         | `$ne` and `$nin` match; `$eq`, a bare scalar, `$in` and every ordering operator do not               |
-| Present JSON `null`             | Distinguishable from absent — `{ deleted: null }` means "present and null"                           |
-| Empty operator bag `{}`         | States no conditions, so it matches everything                                                       |
-| Unknown `$op`, non-scalar value | **400** at the boundary, not a silent narrowing                                                      |
-
-The numbers-only ordering rule is a **deliberate departure from LangGraph**, which coerces both sides
-with `Number()` and so treats `"5" > 3` as true. Postgres cannot reproduce that (`'abc'::numeric`
-throws), and faithful reproduction would also make `true > 0` and `null >= 0` true. The divergence is
-limited to numeric strings.
-
-**Namespace matching** is positional. `"*"` stands for exactly one segment, `prefix` anchors at the
-first and `suffix` at the last, and a path longer than the namespace never matches. A path _shorter_
-than the namespace still matches, which is what makes `prefix` select a subtree: `["users","*"]`
-matches `["users","1"]` and `["users","1","memories"]` alike. `maxDepth` truncates each match to that
-many segments and de-duplicates, before sorting and paging — so `{ maxDepth: 1, limit: 10 }` is ten
-_roots_, not the roots of the first ten namespaces.
-
-Namespaces come back in ascending, element-wise order, shorter first on a shared prefix. Per-segment
-ordering follows the **driver's** collation (Postgres's database collation; UTF-16 code units in
-memory), which agree for ordinary segments and can differ on exotic ones like `"a-b"` vs `"ab"`. The
-contract is the element-wise order, not a byte-exact one.
-
-> **Driver authors:** `StoreRepo.listNamespaces` takes a single `StoreNamespaceQuery`
-> (`{ prefix, suffix, maxDepth, limit, offset }`) rather than the old `(prefix, pagination)` pair,
-> which could not express a wildcard, a suffix or a depth. `listNamespaces(["users"])` becomes
-> `listNamespaces({ prefix: ["users"] })`. Like every other list path, it now applies the driver's
-> page bound when the caller names no `limit`.
-
-#### Multi-tenancy is yours to define
-
-> `prefix`, `suffix` and `filter` are _request parameters_, not access control. An omitted prefix
-> matches every namespace, so **any caller who can reach `POST /store/items/search` can read every item
-> in the store** — no wildcard required.
-
-skein offers no store-scoping mechanism of its own, deliberately: who owns what, and how a namespace
-encodes it, is the policy that varies most between deployments. Scope it with an `@auth.on.store`
-handler that rewrites `value.namespace` — the pattern, and its two limits, are in
-[agent-protocol.md](./agent-protocol.md#scoping-the-store).
-
-### Store item TTL
-
-Store items can expire, matching LangGraph's store TTL. Configure it in `langgraph.json` under
-`store.ttl` (all durations in **minutes**):
-
-```json
-{
-  "store": { "ttl": { "default_ttl": 1440, "refresh_on_read": true, "sweep_interval_minutes": 60 } }
-}
-```
-
-- `default_ttl` — lifetime applied to a `put` that doesn't pass its own `ttl`. A `PUT /store/items`
-  body may include a per-item `ttl` (minutes) that overrides the default for that item.
-- `refresh_on_read` (default `true`) — a `get` extends a live item's expiry by its own TTL.
-- `sweep_interval_minutes` (default `60`) — how often the background sweeper deletes expired rows.
-
-Expiry is enforced two ways: **lazily** (an expired item reads as absent from `get`/`search`/
-`listNamespaces` even before it's swept) and by the **sweeper** (a periodic `DELETE`). With no
-`store.ttl` set, items never expire. The sweeper runs in the production runtime (`skein up`/`build`,
-and `skein dev --store postgres`); pure in-memory `skein dev` still enforces expiry lazily on read.
-
-### Thread TTL
-
-Threads can expire too, configured under `checkpointer.ttl` — the shape LangGraph Platform documents,
-so the same `langgraph.json` works under both. Durations in **minutes**:
-
-```json
-{
-  "checkpointer": {
-    "ttl": { "default_ttl": 43200, "strategy": "delete", "sweep_interval_minutes": 60 }
-  }
-}
-```
-
-- `default_ttl` — lifetime applied to a thread created without its own `ttl`. `POST /threads` accepts a
-  per-thread `ttl` (minutes) that overrides it, and an explicit `null` **pins** the thread so no TTL
-  ever collects it. `PATCH /threads/{id}` can change or clear it later; a new value restarts the clock.
-- `strategy` — `"delete"` (default) removes the expired thread; `"keep_latest"` retains current state, referenced namespace checkpoints and necessary ancestor writes.
-- `sweep_interval_minutes` (default `60`) — how often the sweeper runs.
-
-**Expiry means "may be collected", not "gone"** — the one place this deliberately differs from store
-items. An expired thread still reads normally from `GET /threads/{id}` and search until the sweeper
-takes it. Hiding it early would make a thread with an in-flight run vanish out from under that run.
-
-The sweeper deletes through the **thread service**, not the driver: an expiring thread's in-flight run
-is aborted and its event bus closed first, then its runs and checkpoints go with it. That is why it
-lives beside the cron scheduler rather than with the store-item sweeper — a thread is a container, not
-a row. It collects a bounded batch per tick and re-ticks immediately while the batch stays full, so a
-backlog drains without waiting out the interval.
-
-> **Deleting a thread deletes any cron scheduled on it.** Thread crons cascade with their thread (the
-> same `ON DELETE CASCADE` a manual `DELETE /threads/{id}` triggers), so a **thread-scoped**
-> [cron](./crons.md) on an expiring thread stops firing — silently, since nothing errors. Either pin
-> such threads with `ttl: null` or use a stateless cron, which owns no thread to lose.
-
-The sweeper runs whether or not `checkpointer.ttl` is set, because a per-thread `ttl` can arrive on any
-`POST /threads`; the config block supplies the _default lifetime_ and the cadence, not permission to
-collect. With neither configured nor requested, nothing has an expiry and each sweep is one indexed
-read that finds nothing.
-
-Threads without a configured or per-thread TTL live until explicitly deleted.
-
-> Note this goes **past** LangGraph OSS rather than catching up to it: the open-source
-> `@langchain/langgraph-api` accepts `ttl` on thread create and silently drops it — thread expiry is a
-> LangGraph Platform feature there.
+Create a test thread, run a known input, and read its state. Write an item in a test namespace. With
+SQLite or Postgres, restart using the same storage configuration and read both again. For
+multi-instance servers, repeat the read through another instance. An embedded memory backend loses
+its state on process exit; the CLI's development snapshots are a separate convenience. Clean up the
+test thread and item afterward. Follow the
+[project persistence checks](./testing-your-project.md#check-state-across-turns-and-restarts) for the
+expected outcomes and local crash-recovery limits.
 
 ## Drivers
 
@@ -380,6 +140,8 @@ const checkpointer = PostgresSaver.fromConnString(process.env.POSTGRES_URI!);
 await checkpointer.setup(); // idempotent migrations for checkpoint tables
 ```
 
+<span id="bringing-your-own-store-storeadapter"></span>
+
 ### Bringing your own store (`store.adapter`)
 
 Long-term memory is the one repo you can swap without implementing the other five. Point
@@ -411,8 +173,7 @@ capability skein's own driver does not have.
 `["users2", …]` — a cross-tenant read the moment a prefix is derived from a principal), ignores `query`
 without a vector index, and coerces filter operands with `Number()`. So the adapted store supplies a
 candidate set and its vector ranking; skein applies filtering, ordering and paging on top. The price is
-over-fetching. The shared conformance suite runs against both an adapted `InMemoryStore` and a real
-`PostgresStore`.
+over-fetching; measure this cost with your dataset before switching adapters.
 
 Four things worth knowing before you switch:
 
@@ -515,3 +276,210 @@ sweeping, rather than a promise of immediate deletion. Refresh-enabled reads ret
 
 These fields reuse existing storage columns, require no migration, and add no required custom-driver
 methods. Passive tools can use `refreshTtl: false` to inspect without extending a sliding lifetime.
+
+## `SkeinStore` interface
+
+A single interface, implemented by each driver, covering the protocol resources:
+
+```ts
+interface SkeinStore {
+  // assistants (derived from langgraph.json graphs, plus user-created)
+  assistants: AssistantRepo;
+
+  // threads: metadata + status (idle | busy | interrupted | error), plus the latest turn's error
+  threads: ThreadRepo;
+
+  // runs: status + queue rows (pending | running | success | error | cancelled | timeout),
+  // and — for a failed run — why (see errors-and-logging.md)
+  runs: RunRepo;
+
+  // schedules that fire runs on a cadence
+  crons: CronRepo;
+
+  // long-term memory: namespace/key items with optional semantic search
+  store: StoreRepo;
+
+  // recorded responses for `Idempotency-Key`, so a provider's retry replays instead of re-running
+  idempotency: IdempotencyRepo;
+}
+```
+
+Each repo exposes CRUD + list/search shaped to the [Agent Protocol](./agent-protocol.md)
+endpoints. Memory, SQLite, and Postgres implement the same resource contract. Their queue ownership and crash
+semantics differ; see [local deployment](./local-deployment.md#what-survives-a-process-ending).
+
+### Page bound (`SKEIN_MAX_PAGE_SIZE`)
+
+Every list and search path is **bounded — including when the caller passes no `limit` at all**. The
+default is **1000 rows**. This is a memory bound: a thread row carries the thread's mirrored graph
+state, so an unbounded `POST /threads/search` on a large deployment materializes the table twice over
+(the rows, then the JSON response string) inside one request.
+
+| Surface                                 | Bound                                                       |
+| --------------------------------------- | ----------------------------------------------------------- |
+| `limit` on a search request             | rejected above 1000 by the wire schema                      |
+| `limit` omitted, or a `list()` call     | the first `SKEIN_MAX_PAGE_SIZE` rows (default 1000)         |
+| `assistants.count()`, `threads.count()` | **not** bounded — they answer "how many match" in total     |
+| `runs.listByThread()`                   | **not** bounded — run rows carry no graph state             |
+| `runs.latestForThread()`                | one row by construction — the thread state path uses this   |
+| `runs.listActiveRuns()` (all threads)   | bounded — the whole-server sweep behind `POST /runs/cancel` |
+| `POST /threads/{id}/history`            | 100 checkpoints by default, 1000 max — a separate bound     |
+
+A custom driver's `runs.latestForThread()` must return the newest run by `created_at` descending,
+tie-broken on `run_id` descending. This ordering makes ties deterministic within the driver.
+
+Sizing guidance is in [performance.md](./performance.md#sizing). Set `SKEIN_MAX_PAGE_SIZE` to change the
+driver bound (`maxPageSize` on the store constructor and on
+`embedPostgresGraphs` do the same in code). Lowering it is the useful direction on a small container.
+Raising it widens what an omitted `limit` returns, but **not** the wire cap: a client-supplied `limit`
+is still rejected above 1000, deliberately, so a single request can't be made arbitrarily expensive
+from outside.
+
+Truncation is **not** signalled on the response today — a short page is indistinguishable from the end
+of the results, so page with `offset` until you get fewer rows than you asked for. Lowering the bound
+below 1000 clamps a client-supplied `limit` silently for the same reason, so page by what you _received_
+rather than by what you requested.
+
+### Server-enforced metadata (`enforcedMetadata`)
+
+`ThreadSearchQuery` carries a second metadata subset alongside `metadata`, AND-ed with it. It is set by
+the server, never read from a request body, and exists so the auth ownership filter is a `WHERE` clause
+instead of a full read plus an in-process pass — see
+[agent-protocol.md](./agent-protocol.md#authentication--authorization).
+
+Two subsets rather than one merged object, because a merge would silently drop one side on a key
+collision: a caller filtering `owner: "bob"` while the ownership filter requires `owner: "alice"` must
+match **nothing**, not one or the other. Custom drivers must apply both subsets with the same containment semantics as `metadata`.
+
+### Assistant versioning
+
+`AssistantRepo` carries full CRUD plus a **version history** (LangGraph parity — see the
+[assistants endpoints](./agent-protocol.md#assistants)). The model is deliberately simple so nothing
+else has to change:
+
+- Each assistant keeps an append-only list of immutable **version snapshots**
+  (`graph_id`/`name`/`description`/`config`/`context`/`metadata` at that version).
+- The **live assistant row mirrors the currently-active version** and carries its `version` number.
+  So every existing reader — `get`, `list`, the run engine's graph resolution, thread history —
+  keeps working unchanged; a run always resolves the assistant's _active_ version.
+- `create` seeds version 1. `update` mints a new version (`max + 1`) and makes it active.
+  `setLatest(version)` rolls the live row back to an existing snapshot **without** minting a new one.
+  `listVersions` returns history newest-first (filterable by metadata, paginated). Deleting an
+  assistant cascades its versions.
+
+Keep migrations enabled when upgrading a persistent deployment.
+
+### Long-term memory in the graph (`getStore()`)
+
+Use LangGraph's `getStore()` inside a node to read and write values across threads. For example,
+a support assistant can remember a customer's preferred language between conversations. Skein supplies
+the store to each run; your application chooses the namespace and access rules.
+
+Follow the [memory guide](./memory.md) for profile and collection patterns and checks that a second
+thread can retrieve the saved preference. Semantic search requires a configured embedding index; SQLite supports
+text and filter search.
+
+### Filtering and namespace traversal
+
+Two ways to narrow a store read: by **content** (`search`'s `filter`) and by **namespace shape**
+(`listNamespaces`' `prefix`/`suffix`/`maxDepth`). Both are honoured over HTTP and through
+`getStore()`, across the bundled storage drivers.
+
+```ts
+await store.search(["users", userId], { filter: { topic: "coffee", score: { $gte: 3 } } });
+await store.listNamespaces({ prefix: ["users", "*"], suffix: ["facts"], maxDepth: 3 });
+```
+
+**`filter`** applies to the **top-level** keys of an item's `value`, never a nested JSON path — `"a.b"`
+is the literal key `"a.b"`. Keys are ANDed, as are multiple operators on one key. The operators are
+LangGraph's — `$eq`, `$ne`, `$gt`, `$gte`, `$lt`, `$lte`, `$in`, `$nin` — and a bare scalar means
+equality. It is applied **before** paging, so a page is a page of matches.
+
+| Case                            | Behaviour                                                                                            |
+| ------------------------------- | ---------------------------------------------------------------------------------------------------- |
+| Ordering (`$gt`/`$gte`/…)       | **Numbers only** on both sides. A string, boolean, `null`, object, array or absent key never matches |
+| Key absent from `value`         | `$ne` and `$nin` match; `$eq`, a bare scalar, `$in` and every ordering operator do not               |
+| Present JSON `null`             | Distinguishable from absent — `{ deleted: null }` means "present and null"                           |
+| Empty operator bag `{}`         | States no conditions, so it matches everything                                                       |
+| Unknown `$op`, non-scalar value | **400** at the boundary, not a silent narrowing                                                      |
+
+The numbers-only ordering rule is a **deliberate departure from LangGraph**, which coerces both sides
+with `Number()` and so treats `"5" > 3` as true. Postgres cannot reproduce that (`'abc'::numeric`
+throws), and faithful reproduction would also make `true > 0` and `null >= 0` true. The divergence is
+limited to numeric strings.
+
+**Namespace matching** is positional. `"*"` stands for exactly one segment, `prefix` anchors at the
+first and `suffix` at the last, and a path longer than the namespace never matches. A path _shorter_
+than the namespace still matches, which is what makes `prefix` select a subtree: `["users","*"]`
+matches `["users","1"]` and `["users","1","memories"]` alike. `maxDepth` truncates each match to that
+many segments and de-duplicates, before sorting and paging — so `{ maxDepth: 1, limit: 10 }` is ten
+_roots_, not the roots of the first ten namespaces.
+
+Namespaces come back in ascending, element-wise order, shorter first on a shared prefix. Per-segment
+ordering follows the **driver's** collation (Postgres's database collation; UTF-16 code units in
+memory), which agree for ordinary segments and can differ on exotic ones like `"a-b"` vs `"ab"`. The
+contract is the element-wise order, not a byte-exact one.
+
+> **Driver authors:** `StoreRepo.listNamespaces` accepts a `StoreNamespaceQuery`
+> (`{ prefix, suffix, maxDepth, limit, offset }`). Apply the driver's page bound when `limit` is omitted.
+
+#### Multi-tenancy is yours to define
+
+> `prefix`, `suffix` and `filter` are _request parameters_, not access control. An omitted prefix
+> matches every namespace, so **any caller who can reach `POST /store/items/search` can read every item
+> in the store** — no wildcard required.
+
+skein offers no store-scoping mechanism of its own, deliberately: who owns what, and how a namespace
+encodes it, is the policy that varies most between deployments. Scope it with an `@auth.on.store`
+handler that rewrites `value.namespace` — the pattern, and its two limits, are in
+[agent-protocol.md](./agent-protocol.md#scoping-the-store).
+
+### Store item TTL
+
+Store items can expire, matching LangGraph's store TTL. Configure it in `langgraph.json` under
+`store.ttl` (all durations in **minutes**):
+
+```json
+{
+  "store": { "ttl": { "default_ttl": 1440, "refresh_on_read": true, "sweep_interval_minutes": 60 } }
+}
+```
+
+- `default_ttl` — lifetime applied to a `put` that doesn't pass its own `ttl`. A `PUT /store/items`
+  body may include a per-item `ttl` (minutes) that overrides the default for that item.
+- `refresh_on_read` (default `true`) — a `get` extends a live item's expiry by its own TTL.
+- `sweep_interval_minutes` (default `60`) — how often the background sweeper deletes expired rows.
+
+Expiry is enforced two ways: **lazily** (an expired item reads as absent from `get`/`search`/
+`listNamespaces` even before it's swept) and by the **sweeper** (a periodic `DELETE`). With no
+`store.ttl` set, items never expire. The sweeper runs in the production runtime (`skein up`/`build`,
+and `skein dev --store postgres`); pure in-memory `skein dev` still enforces expiry lazily on read.
+
+### Thread TTL
+
+Threads can expire too, configured under `checkpointer.ttl` — the shape LangGraph Platform documents,
+so the same `langgraph.json` works under both. Durations in **minutes**:
+
+```json
+{
+  "checkpointer": {
+    "ttl": { "default_ttl": 43200, "strategy": "delete", "sweep_interval_minutes": 60 }
+  }
+}
+```
+
+- `default_ttl` — lifetime applied to a thread created without its own `ttl`. `POST /threads` accepts a
+  per-thread `ttl` (minutes) that overrides it, and an explicit `null` **pins** the thread so no TTL
+  ever collects it. `PATCH /threads/{id}` can change or clear it later; a new value restarts the clock.
+- `strategy` — `"delete"` (default) removes the expired thread; `"keep_latest"` retains current state, referenced namespace checkpoints and necessary ancestor writes.
+- `sweep_interval_minutes` (default `60`) — how often the sweeper runs.
+
+An expired thread remains readable through `GET /threads/{id}` and search until the sweeper
+collects it. With the `delete` strategy, collection stops any active run and removes the thread,
+its runs, and checkpoints.
+
+> **Deleting a thread also deletes its thread-scoped schedules.** Pin a thread with `ttl: null`
+> when its [cron](./crons.md) must keep firing, or use a stateless cron.
+
+Per-thread TTLs are collected even without a `checkpointer.ttl` configuration block. Threads without
+a configured or per-thread TTL live until explicitly deleted.

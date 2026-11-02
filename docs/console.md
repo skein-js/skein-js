@@ -1,418 +1,166 @@
 # The skein console
 
-> A web UI for a running skein server: assistants, threads, live runs, channel wiring and deliveries,
-> interrupts, time travel, the store, and crons. Served by the server itself, at `/console`.
+Use the console to test your graph, inspect its state, and understand why a run succeeded, failed,
+or paused. It runs alongside your skein-js server at `/console/`.
 
-## What it is
+<span id="what-it-is"></span>
 
-The console is a **client**; the server owns resource data and execution. A browser-local workspace
-store keeps unsent drafts and navigation positions for the current tab, including across reloads.
-Most screens use the standard Agent Protocol through the real
-[`@langchain/langgraph-sdk`](./react-sdk.md). Two small skein extensions
-cover operational state the upstream SDK does not model: a sanitized channel inventory and a run's
-durable delivery attempts. The console subclasses the SDK's transport for these calls, so connection,
-authentication and errors use the SDK transport. Run submissions disable automatic retries. A narrow
-batch serializer normalizes options the installed SDK does not serialize; a submission-scoped request
-hook supplies `timeout_ms` without changing the shared SDK client.
+## Open your project {#running-it}
 
-That is a deliberate constraint, not a coincidence. If a view cannot be built, it means the API is
-missing something, and we would rather feel that here than paper over it with a bespoke endpoint. (One
-gap found exactly this way: there is no cross-thread run search — runs list per thread — so "recent
-activity" fans out over threads. See [roadmap](./roadmap.md).)
+From your project directory, with `skein-js` installed and a `langgraph.json` in place, start the
+development server:
 
-It ships as [`@skein-js/console`](https://github.com/skein-js/skein-js/tree/main/packages/console): the compiled UI plus a resolver, with **no
-runtime dependencies**.
+```bash
+npx skein dev
+```
 
-## Watch the console walkthrough
+Open the **Console** URL printed by the server, usually
+`http://localhost:2024/console/`. No separate UI process or account is
+needed. If you do not have a project yet, follow [Your first agent](./your-first-agent.md).
 
-This silent recording follows a message from Playground into thread inspection, returns with an
-unsent draft intact, and reopens the conversation from Threads and Recent threads. It uses the
-offline demo graphs. Use the player's fullscreen control for a closer view.
+With custom authentication, use your normal API key in the connection control, or follow
+[development UI access](./console-reference.md#development-authentication).
+If you embed skein-js in your own server, [mount the console](./console-reference.md#mounting-it-yourself)
+first; framework adapters do not mount it automatically.
 
-<video controls playsinline preload="none" aria-label="Console walkthrough: run an Assistant, inspect its thread, and return to an unsent draft" poster="/images/console/playground-light.png" style="width: 100%; border-radius: 12px">
+<span id="what-it-shows"></span>
+<span id="the-playground"></span>
+<span id="assistants"></span>
+
+## Test your graph
+
+1. Open **Playground** and choose an **Assistant**. An Assistant is a saved configuration of a graph;
+   each registered graph has one by default. Check the graph ID beneath its name.
+2. Use **Chat** when your graph accepts a `messages` channel. Use **JSON** for structured input,
+   following the selected graph's schema and example.
+3. Enter an input whose expected result you know, then choose **Send message** or **Run input**.
+4. Compare the response or final state with that expected result.
+
+For a scaffolded project, choose **echo**, send `hello`, and expect `echo: hello`. This graph needs
+no model credentials. For your own graph, use an example from its tests or documented input schema.
+Sending a message to the echo graph does not test your model-backed graph; select that graph's
+Assistant to test it separately.
+
+<div class="light-only">
+
+![Playground with graph selection, input, and run inspection](/images/console/playground-light.png)
+
+</div>
+<div class="dark-only">
+
+![Playground with graph selection, input, and run inspection in dark mode](/images/console/playground-dark.png)
+
+</div>
+
+For example, suppose you are testing a support agent. Send “I was charged twice for my order.”
+Check that it chooses your billing path and looks up the order before drafting a response. If the
+reply sounds right but the wrong tool ran, inspect Activity and State before changing the prompt.
+For a structured classifier, submit the same complaint using the fields in its JSON input schema.
+
+## Understand the result {#runs}
+
+The inspector helps you check more than the final answer:
+
+| View         | Use it to check                                                                    |
+| ------------ | ---------------------------------------------------------------------------------- |
+| **Activity** | Reported node output, tool calls and results, pauses, and failures                 |
+| **State**    | The latest reported values, including structured output                            |
+| **Graph**    | Which nodes reported output; highlighting does not identify the node executing now |
+
+For a failed run, open the thread's **Runs** tab and select the run to inspect its activity and raw
+events. Compare the reported error with the server logs; see [Errors & logging](./errors-and-logging.md).
+A connection problem and a failed graph execution are different states. After a disconnect or an
+ambiguous submission error, inspect the thread before sending the input again: the run may already exist.
+
+**Stop run** requests cancellation on the server. Leaving the page, reloading, or closing an
+inspection stream does not cancel execution. Reopen the same thread to observe its latest run;
+opening it does not submit another input.
+
+## Try another case {#threads-and-what-is-waiting-on-you}
+
+Continue on the same thread to test a conversation with existing state. Choose **New thread** to test
+from a fresh conversation. **Recent threads**, or **Threads → Open in Playground**, returns you to
+an earlier conversation. Each thread keeps its own Chat and JSON drafts in this browser tab.
+
+Change your graph and save it to trigger development hot reload, then run a new case. In the echo
+example, change the reply prefix to `you said:` and check that a new message uses it. Start a fresh
+thread when earlier state would affect the result.
+
+<div class="light-only">
+
+![Thread inspection with Conversation, Runs, State, and Checkpoints tabs](/images/console/thread-detail-light.png)
+
+</div>
+<div class="dark-only">
+
+![Thread inspection tabs in dark mode](/images/console/thread-detail-dark.png)
+
+</div>
+
+## Test pauses and alternative paths {#time-travel}
+
+If your graph uses [human approval](./human-in-the-loop.md), run an input that reaches `interrupt()`.
+Read the **Waiting for you** request and submit the value your graph expects. **Send true** and
+**Send false** send literal booleans; use the editable response for another JSON value. Check that
+the resumed run follows the intended path. Repeat on a fresh thread with a different response. For a refund workflow, check that approval
+reaches your test refund tool and rejection leaves the charge untouched.
+
+If the thread has checkpoint history, open **Checkpoints** to inspect an earlier state:
+
+- **Fork here** writes your edited values as a new checkpoint.
+- **Fork and run** writes the edits and runs forward.
+- **Run from here unchanged** runs forward from the selected checkpoint.
+
+Edits use your graph's reducers: an append channel adds values rather than replacing its history.
+Review the selected checkpoint and the reducer warning before running. These actions can execute
+your tools again; use test inputs and destinations when exploring side effects.
+
+## Inspect the rest of your project {#overview}
+
+Use these screens when your project uses the corresponding capability:
+
+<span id="channels"></span>
+<span id="the-store"></span>
+<span id="crons"></span>
+
+| Task                                   | Where to go                                                                                                  |
+| -------------------------------------- | ------------------------------------------------------------------------------------------------------------ |
+| Find paused or failed conversations    | **Overview** or filter **Threads** by status                                                                 |
+| Compare saved graph configurations     | **Assistants**; see [Assistant versions](./assistants.md#versioning-and-rollback)                            |
+| Check long-term memory                 | **Store**; see [memory](./memory.md) and [storage](./storage.md)                                             |
+| Check when a scheduled run should fire | **Schedules**; see [cron schedules](./crons.md)                                                              |
+| Inspect configured inbound routes      | **Channels**; changes are made in [code/configuration](./channels.md)                                        |
+| Diagnose a run's outbound delivery     | The run's **Deliveries** tab; see [delivery and replay](./webhooks.md#see-what-a-callback-did-and-replay-it) |
+
+Lists refresh on demand; observed runs stream live. Overview's recent activity covers recent
+threads, not every run on the server. For server-wide queries, use [run search](./runs.md#search-runs-across-threads).
+
+<span id="boundaries"></span>
+
+The console operates on your connected server's real resources with your permissions. Store writes,
+schedule changes, deletion, and delivery replay affect that server. It does not edit graph code or
+manage your application's permissions.
+
+## Make your checks repeatable
+
+The console is useful for exploring an input and diagnosing a result. Turn important cases into
+[automated project tests](./testing-your-project.md) so you can check them after future changes.
+
+## Optional walkthrough {#watch-the-console-walkthrough}
+
+This silent recording uses offline demo graphs to show running an Assistant, inspecting its thread,
+and returning to Playground. The steps above work with your own registered graphs.
+
+<video controls playsinline preload="none" aria-label="Console walkthrough: run an Assistant and inspect its thread" poster="/images/console/playground-light.png" style="width: 100%; border-radius: 12px">
   <source src="./videos/console-walkthrough.webm" type="video/webm">
   Your browser cannot play this video.
 </video>
 
-## Running it
+## Setup reference
 
-`skein dev` serves it by default and prints the URL:
+<span id="turning-it-on-in-production"></span>
+<span id="mounting-it-yourself"></span>
 
-```
-skein · Agent Protocol dev server
-
-API      http://127.0.0.1:2024
-Console  http://127.0.0.1:2024/console/
-Docs     https://github.com/skein-js/skein-js/tree/main/docs
-```
-
-Pass `--no-console` to leave it out.
-
-With custom auth, run `skein dev --dev-ui-access` or enable it in `langgraph.json`:
-
-```jsonc
-{
-  "auth": {
-    "path": "./src/auth.ts:auth",
-    "dev_ui_access": true, // skein dev only; stripped from production builds
-  },
-}
-```
-
-Both forms print a temporary API key shared by the console and LangGraph Studio. Enter it in the
-console's connection control or add `x-api-key` under Studio's **Custom Headers**. The key skips your
-custom `authenticate` callback; your `@auth.on.*` authorization callbacks still run with the
-`skein-dev-ui-user` identity. It rotates every 15 minutes, with a one-minute grace period for the
-previous key. The new key appears in the server output; enter it again in each UI. It works only when
-the dev server binds to loopback (`127.0.0.1`, `::1`, or `localhost`). Without either opt-in, both
-UIs need normal credentials. Dev UI access allows Studio's `https://smith.langchain.com` origin when
-no `http.cors` policy is configured; an explicit policy must allow that origin itself. Keep the
-printed key private; anyone holding it can call the API as that dev identity.
-
-Because it is served by the server, it is **same origin**: no CORS to configure, no second process, no
-account, and it works with no internet connection.
-
-## Turning it on in production
-
-**Off by default** under `skein start` and the production image. The console can read every thread,
-memory and schedule on the server, and delete runs, memories and schedules, so enabling it is a
-decision you make:
-
-```jsonc
-{
-  "http": {
-    "console": true, // serve at /console
-    // or: "console": "/admin/console"  — any path but "/"
-  },
-}
-```
-
-Requests from the console go through the **same** [`auth`](./agent-protocol.md#authentication--authorization)
-path as any other client. The temporary UI key is unavailable under `skein start`. On a server with
-custom auth, use the console's connection control (top right) to supply an API key — it is sent as
-`x-api-key` and held in
-`localStorage`, since a static bundle has no server of its own to set a cookie.
-
-Two things worth knowing before you enable it on a public host:
-
-- The **assets** are served unauthenticated (they are a UI shell; every byte of data behind them is
-  authorized). If that is not acceptable, put the mount path behind your ingress' own auth.
-- `http.console` is honoured by the **Express** transport, which is `skein start`'s Node runtime. On
-  Bun/Deno the flag logs a warning and does nothing — mount it yourself (below).
-
-## What it shows
-
-The sidebar groups work by purpose: **Build** (Playground, Assistants), **Inspect** (Threads), and
-**Operate** (Overview, Channels, Store, Schedules). Playground remains the landing page and returns
-to this tab's last workspace. **New thread** starts fresh. Existing
-hash links, including `#/crons`, still work. Navigation becomes a drawer on phones. The Playground
-inspector becomes a drawer below 1024px. Light, dark, and system themes share the same labeled status
-colors; teal marks primary actions and selection.
-
-The shell fills the browser window. Navigation stays in place while resource pages scroll in the
-main pane. In Playground, conversation output and interrupt requests scroll together above a docked
-composer; expanding advanced options scrolls within the composer. The inspector has its own scroll
-area. This keeps the input controls reachable in short desktop windows and on phones.
-
-### The playground
-
-<div class="light-only">
-
-![Playground with a conversation, execution summary, and reported activity](/images/console/playground-light.png)
-
-</div>
-<div class="dark-only">
-
-![Playground in dark mode with a conversation and Activity inspector](/images/console/playground-dark.png)
-
-</div>
-
-Choose an **Assistant**, a saved graph configuration, then use **Chat** for a graph with a `messages`
-channel or **JSON** for structured input. The input schema explains the selected mode and supplies a
-JSON example. Each mode keeps its own draft. Threads are created only on submission; validation and
-request failures preserve the draft. If schema discovery fails, its error remains visible and you
-can select Chat or JSON explicitly or retry discovery.
-
-**Recent threads** opens a paged list ordered by last update, with an exact-ID opener and a link to
-all threads. Conversation previews use available human-message text; structured or unavailable state
-falls back to a graph name and thread ID. **Open in Playground** is available directly on thread rows
-and details, and on Assistant details for a fresh workspace with that configuration selected.
-
-<div class="light-only">
-
-![Recent conversations with previews and direct Playground links](/images/console/recent-threads-light.png)
-
-</div>
-<div class="dark-only">
-
-![Recent conversations in dark mode](/images/console/recent-threads-dark.png)
-
-</div>
-
-Chat and JSON drafts stay separate for each thread and Assistant. A Zustand workspace store saves
-only drafts, input mode, last workspace, and navigation positions to `sessionStorage`. It does not
-persist fetched transcripts, resource responses, or stream events. Workspace state is scoped to the
-API base and reset when the console's connection or API key changes, including changes from another
-tab. Server authorization still controls access; account changes outside the connection control are
-not detected automatically. If browser storage fails, the console keeps working in memory and shows
-that drafts may not survive a reload.
-
-The execution summary explains what was observed and what to do next. Reopening a thread restores
-its latest run's retained activity through an observer that never cancels execution. **Activity** shows reported
-node output, tool calls and results, pauses, and failures. **Graph** highlights nodes that reported
-output; this does not establish which node is executing now. **State** shows the latest reported
-values. The connection badge describes server reachability separately from execution. Markdown is
-rendered without raw HTML, and remote images open only after an explicit click. Reading earlier
-output keeps your scroll position.
-
-**Stop run** sends server cancellation. An observer, such as the run detail page, closes its stream
-without cancelling execution. An interrupted run displays its originating task and requested value;
-**Send true**, **Send false**, and the editable response submit their literal values. A resumed run
-is followed until its terminal event.
-
-Leaving or reloading Playground also closes observation without cancelling its run. Return to the
-same thread to observe its latest run; opening a thread never resubmits input. Use **Stop run** to
-cancel explicitly.
-
-**Advanced run options** are collapsed initially:
-
-- Run on this thread, an explicit existing thread, a fresh stateless thread, or a batch of **1–100
-  JSON objects** for the selected Assistant.
-- Delay execution in seconds; choose reject, enqueue, interrupt, or rollback when the thread is busy.
-- Set an execution timeout in integer milliseconds, subject to the deployment limit. This control
-  requires positive confirmation of `/info.flags.per_run_timeout`; discovery failure leaves ordinary
-  operations available.
-- Supply an idempotency key, choose completion retention for generated threads, and select captured
-  stream modes.
-
-Delayed and keyed submissions are created in the background, then observed. Closing observation
-leaves these runs running. A disconnect or ambiguous failure never automatically resubmits input.
-Inspect the thread before trying again. A failed batch may already have created some runs.
-
-### Overview
-
-<div class="light-only">
-
-![Overview prioritizing threads waiting for input and errors](/images/console/overview-light.png)
-
-</div>
-<div class="dark-only">
-
-![Overview with server counts, freshness, and recent activity in dark mode](/images/console/overview-dark.png)
-
-</div>
-
-Start with threads **waiting for you** or reporting errors, then inspect counts and recent activity.
-Freshness labels describe the last successful read. Lists refresh explicitly; only observed runs
-stream live. Unavailable counts and failed reads remain visible. Recent activity is bounded to
-recent threads because the protocol has no global run search.
-
-### Assistants
-
-<div class="light-only">
-
-![Assistant configurations, registered graphs, and saved versions](/images/console/assistants-light.png)
-
-</div>
-<div class="dark-only">
-
-![Assistant configurations, registered graphs, and saved versions in dark mode](/images/console/assistants-dark.png)
-
-</div>
-
-Create an Assistant from a registered graph, edit its name/config/context/metadata, preview a saved
-version, or restore it using `setLatest`. Deletion keeps threads by default; cascading deletion is an
-explicit choice. Assistants registered from graph configuration return at server startup. Deleting
-one does not remove the graph from `langgraph.json`.
-
-<div class="light-only">
-
-![Editing an Assistant's saved configuration](/images/console/assistant-detail-light.png)
-
-</div>
-<div class="dark-only">
-
-![Editing an Assistant's saved configuration in dark mode](/images/console/assistant-detail-dark.png)
-
-</div>
-
-### Threads, and what is waiting on you
-
-<div class="light-only">
-
-![Paged thread inspection with status filters](/images/console/threads-light.png)
-
-</div>
-<div class="dark-only">
-
-![Paged thread inspection in dark mode](/images/console/threads-dark.png)
-
-</div>
-
-Filter by status or recorded graph metadata, open an exact ID, and page through results. Older
-threads without a recorded graph may be absent from a graph-filtered result. A thread has focused
-**Conversation**, **Runs**, **State**, **Checkpoints**, and **Details** tabs. Structured graphs default
-to State. The Assistant is resolved from the latest run, then metadata, then explicit selection.
-
-<div class="light-only">
-
-![Thread conversation with focused inspection tabs](/images/console/thread-detail-light.png)
-
-</div>
-<div class="dark-only">
-
-![Thread conversation with focused inspection tabs in dark mode](/images/console/thread-detail-dark.png)
-
-</div>
-
-Copy or delete a thread, trim its checkpoints with `keep_latest`, edit metadata, and inspect/change
-retention. Select threads on the current page to prune or delete them. Results report affected and
-unchanged/skipped counts rather than assuming every selection changed. Retention is in minutes;
-`null` means known no expiry, while missing readback means unavailable. Thread expiry marks
-eligibility for background cleanup, which can be deferred by active work.
-
-Thread and run inspection tabs are shareable through the hash URL's `tab` query. Existing tab names
-are accepted; unknown names fall back safely. Returning from inspection restores the prior thread
-list filters and page. A direct run link returns to the thread's Runs tab. Explicit fresh-workspace
-links use `#/playground?new=1`, optionally with `assistant=<id>`; existing
-`#/playground/<threadId>` links continue the named conversation.
-
-<div class="light-only">
-
-![An interrupt request and an exact editable JSON response](/images/console/interrupts-light.png)
-
-</div>
-<div class="dark-only">
-
-![An interrupt request and response controls in dark mode](/images/console/interrupts-dark.png)
-
-</div>
-
-### Runs
-
-<div class="light-only">
-
-![Run inspection with execution status, conversation output, and activity tabs](/images/console/run-light.png)
-
-</div>
-<div class="dark-only">
-
-![Run inspection with execution status, conversation output, and activity tabs in dark mode](/images/console/run-dark.png)
-
-</div>
-
-Run details separate **Activity**, **Raw events**, **Deliveries**, and **Details**. The event buffer
-retains 500 frames and reports dropped history. Server execution state and observer connection state
-are labeled separately. Closing the observer never cancels the run. Explicit cancel, rollback, and
-delete actions explain their effects in keyboard-accessible confirmation dialogs.
-
-Deliveries show lifecycle status, attempts, last errors, next retries, and server timestamps. Dead
-deliveries can be replayed after confirmation. Delivery is at-least-once: receivers must deduplicate
-by the stable delivery ID. Destinations show only the host/path presence or channel name; credentials,
-queries, paths, and opaque reply targets remain redacted.
-
-### Channels
-
-<div class="light-only">
-
-![Read-only channel routes, graph routing, and outbound delivery support](/images/console/channels-light.png)
-
-</div>
-<div class="dark-only">
-
-![Read-only channel routes, graph routing, and outbound delivery support in dark mode](/images/console/channels-dark.png)
-
-</div>
-
-Channels is a read-only inventory of effective inbound routes, provider identity, default Assistant,
-allowed Assistants, and outbound delivery support. It uses `GET /channels`, which is absent when no
-channels are configured. Code and `langgraph.json` remain the source of truth; changes require a
-restart. Provider credentials and module configuration are not returned. Custom authorization uses
-`assistants:read`; inbound provider events still use channel signature verification.
-
-### Time travel
-
-Checkpoints support **Fork here** (write edited values), **Fork and run**, and **Run from here
-unchanged**. Edits go through graph reducers, so an append channel adds values instead of replacing
-its history. Review the displayed checkpoint and reducer warning before running forward.
-
-### The store
-
-<div class="light-only">
-
-![Store namespaces, item details, and retention readback](/images/console/store-light.png)
-
-</div>
-<div class="dark-only">
-
-![Store namespaces and item retention in dark mode](/images/console/store-dark.png)
-
-</div>
-
-Browse namespaces, filter item values with JSON, and use semantic queries when the deployment
-supports them. Open individual items, create values, edit JSON, or delete items. Saving is an
-**upsert**: it replaces any value at the same namespace/key and resets expiry using the chosen
-lifetime or deployment default. Retention and expiry are shown when the store reports them.
-
-Passive inspection sends `refreshTtl: false` so browsing does not extend sliding expiry. If a custom
-adapter rejects per-read TTL controls, the console explains this and offers **Load using normal
-reads**, which may refresh expiry. It never silently falls back.
-
-### Crons
-
-<div class="light-only">
-
-![Schedules with timezone, thread scope, next occurrence, and pause controls](/images/console/schedules-light.png)
-
-</div>
-<div class="dark-only">
-
-![Schedules with timezone, thread scope, next occurrence, and pause controls in dark mode](/images/console/schedules-dark.png)
-
-</div>
-
-The navigation label is **Schedules**; the URL remains `#/crons`. Create stateless or existing-thread
-schedules with five-field cron expressions, a timezone, optional end time, and applicable completion
-retention. For example, `0 9 * * 1-5` runs at 09:00 on weekdays in the chosen timezone. Scheduling
-resolution is one minute. An enabled schedule with no future match is dormant and shows **no
-upcoming run**. Pause/resume without deleting. Editing scheduling fields preserves the saved run
-payload; it does not replace input or Assistant configuration.
-
-## Boundaries
-
-Lists are paged and refresh on demand. Global run search, graph editing, and separate authentication
-or permission management are outside this console. Every operation uses the server's existing
-authorization. Destructive resource changes and delivery replay use accessible dialogs with focus
-restoration. The foreign-server confirmation at boot remains a browser confirmation, before any
-application data is requested; saved API keys stay bound to the server where they were entered.
-
-## Mounting it yourself
-
-The console is route bindings and bytes, so any adapter can serve it. It is not a dependency of the
-adapters on purpose — the compiled UI stays under 1 MiB, and mounting the protocol should not cost that.
-
-```ts
-import { consoleAssetHeaders, resolveConsoleRequest } from "@skein-js/console";
-
-// Express, Fastify, Hono, a Fetch handler — the shape is the same.
-app.use((req, res, next) => {
-  if (req.method !== "GET" && req.method !== "HEAD") return next();
-  const resolution = resolveConsoleRequest(req.path, { mountPath: "/console" });
-  if (resolution.kind === "miss") return next();
-  if (resolution.kind === "redirect") return res.redirect(302, resolution.location);
-  res.set(consoleAssetHeaders(resolution.asset));
-  return res.status(200).send(Buffer.from(resolution.asset.bytes));
-});
-```
-
-Two rules the resolver enforces so you do not have to:
-
-- **A bare mount path redirects to its slashed form.** Assets are referenced relatively (so one build
-  works at any mount point); at `/console` the browser would resolve them against the parent directory.
-- **An unknown path is a `miss`, not a fallback to `index.html`.** Hash routing means a real deep link
-  never arrives, so answering 200-with-HTML would only turn a broken asset reference into a blank page.
-
-The SPA derives the API base by dropping the **last segment** of its own path: `/console/` → `/`,
-`/api/console/` → `/api`. Mount it at `<api-base>/console` and it finds the server with no
-configuration. To point it somewhere else entirely, append `?baseUrl=https://your-deployment` (the
-choice is remembered), which is also how you would host the bundle statically.
+See the [console setup reference](./console-reference.md) for connections, authentication,
+[production enablement](./console-reference.md#turning-it-on-in-production),
+[manual mounting](./console-reference.md#mounting-it-yourself), and advanced run options.

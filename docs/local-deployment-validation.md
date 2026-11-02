@@ -1,5 +1,8 @@
 # Local deployment validation
 
+> **Contributor evidence.** This dated record documents repository validation, not setup steps or a
+> guarantee for every application. For adoption, follow [local deployment](./local-deployment.md).
+
 Recorded on 2026-10-19. Local measurements were taken on macOS ARM64; the CI platform results below
 come from their corresponding runners. Measurements are samples for this implementation, not
 throughput or footprint guarantees.

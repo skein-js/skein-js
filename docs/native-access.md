@@ -284,10 +284,11 @@ at their pre-COMMIT boundary and roll back when it is aborted before COMMIT disp
 stored in kwargs, keys or snapshots. Abort can race a COMMIT already sent: a committed receipt remains
 authoritative and is recovered by key. This is cooperative admission cancellation, not database fencing.
 
-The packed consumers run outside the workspace with package-root imports:
-`pnpm exec nx run test-support:test-native-consumer`. They include an existing-API gap reproduction,
-an HTTP/BullMQ approval worker on Postgres/Redis, durable receiver deduplication after job removal,
-and a SQLite daemon killed and reopened without HTTP. See [the implementation evidence](./native-access-validation.md).
+To verify an integration, run the same command twice with the same scoped key and confirm the
+receipt is reused. Exercise resume, cancellation, and outcome delivery with test tools, then restart
+your host and read the recorded result. The [native-transports example](https://github.com/skein-js/skein-js/tree/main/examples/native-transports)
+shows an HTTP/BullMQ approval backend and durable receiver deduplication. Repository validation is
+recorded in the [contributor evidence](https://github.com/skein-js/skein-js/blob/main/docs/native-access-validation.md).
 
 Existing MCP and A2A endpoints keep their protocol-specific identity, state and transport behavior.
 This boundary adds no protocol endpoints, SDK dependency, workflow engine, artifact service or

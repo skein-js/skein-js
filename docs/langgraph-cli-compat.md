@@ -94,39 +94,20 @@ References:
 - LangGraph CLI docs — <https://docs.langchain.com/langsmith/cli>
 - `@langchain/langgraph-cli` source — <https://github.com/langchain-ai/langgraphjs/tree/main/libs/langgraph-cli>
 
-## Under the hood: what skein-js changes (transparently)
+## Migrating your project {#under-the-hood-what-skein-js-changes-transparently}
 
-skein-js keeps the **contract** identical — same `langgraph.json`, same graph code, same Agent
-Protocol on the wire, same clients — while re-implementing the runtime underneath with a different,
-open, self-hostable set of building blocks. None of this requires a change on your side; it's the
-"drop-in" promise honored at the implementation level.
+Keep your graph exports and `langgraph.json`. Replace the development command with `skein dev`,
+then verify a known input in the [console](./console.md). Run your graph tests and an
+[SDK smoke test](./testing-your-project.md) before switching a deployment.
 
-**Same graph code, same config, same wire protocol.** skein-js reuses the LangGraph runtime,
-checkpointers, the `langgraph.json` parser/schemas, and the SDK/types from the open
-`@langchain/*` packages (see [reuse.md](https://github.com/skein-js/skein-js/blob/main/docs/reuse.md)). It only rebuilds the durable-production,
-multi-framework, drop-in-CLI layer that isn't open — so your project moves over untouched.
+TypeScript path aliases work in development and production builds, including workspace imports.
+Build production artifacts with `skein build`; `skein start` serves the compiled output without a
+runtime TypeScript loader. Keep your production dependencies installed in the deployed environment.
 
-**What we implement, and the tools we use:**
-
-| Concern                  | skein-js implementation                                                                                                                                                                                                                                                                                                                         |
-| ------------------------ | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| CLI                      | [commander](https://github.com/tj/commander.js) — the `skein dev`/`up`/`build`/`dockerfile` command surface, plus `skein start` (below).                                                                                                                                                                                                        |
-| Dev graph loading        | [vite](https://vitejs.dev) loads your TypeScript graphs **in-process** — no separate build step. tsconfig `paths` aliases resolve, so graphs in an Nx/Turborepo/pnpm-workspace monorepo import shared workspace packages unchanged.                                                                                                             |
-| Prod image build         | `skein build`/`up` bundle graphs (+ auth/embed) to plain JS with `vite.build()` at build time — same alias resolution as dev, anchored at the workspace root — into a self-contained `.skein/build` artifact. The slim image installs prod deps only and runs the compiled output via `skein start` (no vite, no runtime TypeScript transform). |
-| Dev hot reload           | **State-preserving** reload on source change: your threads, runs, and memory survive the reload. `.env` is watched too, so filling in a missing model key reloads the graphs instead of needing a restart.                                                                                                                                      |
-| Dev persistence          | Dev state is snapshotted to `.skein/` so it survives restarts (opt out with `--no-persist`).                                                                                                                                                                                                                                                    |
-| Run queue (prod)         | [BullMQ](https://docs.bullmq.io) on Redis — background runs, retries, backoff, and crash recovery.                                                                                                                                                                                                                                              |
-| Cross-instance streaming | [ioredis](https://github.com/redis/ioredis) + **Redis Streams**/pub-sub — join a run's SSE stream from any instance.                                                                                                                                                                                                                            |
-| Postgres store (prod)    | [pg](https://node-postgres.com) + compiled-in schema migrations + **pgvector** semantic search.                                                                                                                                                                                                                                                 |
-| Checkpoints (prod)       | LangGraph-native [`PostgresSaver`](https://github.com/langchain-ai/langgraphjs/tree/main/libs/checkpoint-postgres) — reused, not reinvented.                                                                                                                                                                                                    |
-
-**Transparent improvements over `langgraph dev`.** Because the storage/queue are pluggable drivers,
-`skein dev` can run against **production-shaped** Postgres/Redis **without Docker** (`--store
-postgres --queue redis`), and dev state persists across restarts — both beyond the stock LangGraph
-CLI dev server, and both fully opt-in. The wire behavior your clients see is unchanged either way.
-
-If any of this ever _does_ change observable behavior versus the LangGraph CLI, that's a
-compatibility bug — please [report it](https://github.com/skein-js/skein-js/issues).
+Check the [compatibility reference](./langgraph-compatibility.md) for supported client combinations
+and intentional differences. CLI compatibility does not mean every feature of a managed deployment
+service is included. Contributor architecture details are in the
+[reuse guide](https://github.com/skein-js/skein-js/blob/main/docs/reuse.md).
 
 ## `langgraph.json` — fields we honor
 
@@ -247,6 +228,8 @@ escape hatch for the packages that list cannot contain: the ones you load **by n
 This is the same contract LangGraph.js users already write against, so **no code changes
 are required** to move a project onto skein-js.
 
+<span id="idempotency-skeinidempotency"></span>
+
 ## Idempotency (`skein.idempotency`)
 
 A skein extension with no LangGraph counterpart, so it lives under the reserved `skein` namespace
@@ -284,6 +267,8 @@ What each one is for:
 Honoured identically on every driver combination, including `skein dev` with no Docker. See
 [agent-protocol.md](./agent-protocol.md#idempotent-run-creation-idempotency-key) for the request
 semantics and the replay table.
+
+<span id="webhooks-skeinwebhooks"></span>
 
 ## Webhooks (`skein.webhooks`)
 

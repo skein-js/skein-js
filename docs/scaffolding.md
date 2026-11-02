@@ -247,36 +247,19 @@ so imported workspace libraries build first and source edits invalidate the appl
 Keep the workspace's dependency graph accurate and retain the generated SQLite/WAL/SHM exclusions.
 `start` depends on the application's build; live hosts remain uncached.
 
-## Scaffold validation
+## Verify the generated project
 
-The internal `scripts/scaffold-cases.json` catalog drives 96 generation combinations and 33 installed
-consumers: every package-manager/storage and provider/storage pair, opt-outs, independent tooling
-inheritance, both Nx layouts on Node 22.12 and 24, and three additional Node 26 consumers.
+Start the generated development command, open its console URL, choose **echo**, and send `hello`.
+Expect `echo: hello` without model credentials. Then run the generated test command (`npm test` for
+an npm project) to check the echo graph without a server. See [Testing your project](./testing-your-project.md)
+for an SDK smoke test and persistence checks.
 
-CI builds and packs the commit once and distributes tarballs. Consumers install outside the checkout,
-verify transitive Skein artifact hashes, run typechecking, tests, applicable lint/format checks and
-build, then send echo requests to development and artifact servers. Dummy keys allow provider graph
-building without model calls. SQLite always executes on Node. Required durable cases fail without Docker.
-CI pins npm 11.12.1, pnpm 9.15.0 and Yarn 4.9.2; Bun is provisioned by `setup-bun`. Yarn consumers
-use its node-modules linker. These checks also gate npm publication. Registry smoke tests and
-SQLite/desktop platform gates remain. The curated cases cover the presence of inherited tooling;
-they do not yet cover every limitation listed above. See the contributor
-[scaffold validation guide](./testing.md#scaffold-consumers) for local commands and coverage details.
+<span id="scaffold-validation"></span>
+<span id="first-publication"></span>
 
-The new `@skein-js/nx` package follows the fixed release group. Its tarball includes generator
-metadata, schema and declarations without a private runtime dependency.
-
-### First publication
-
-Publishing runs through `.github/workflows/release.yml` after the reusable CI gate. Before the first
-release containing `@skein-js/nx`, maintainers must verify that the workflow's optional `NPM_TOKEN`
-bootstrap credential is configured and authorized to create that package. Passing consumer tests
-does not verify registry permissions.
-
-After the package exists, configure its npm trusted publisher for repository `skein-js/skein-js`
-and workflow `release.yml`, allowing direct `npm publish` as used by the workflow. Remove the
-bootstrap token once every published package has a working trusted publisher. See npm's
-[trusted publishing documentation](https://docs.npmjs.com/trusted-publishers/).
+Repository validation coverage and publication procedures are contributor topics:
+[scaffold tests](https://github.com/skein-js/skein-js/blob/main/docs/testing.md#scaffold-consumers) and
+[publishing](https://github.com/skein-js/skein-js/blob/main/CONTRIBUTING.md#publishing-the-scaffolder).
 
 ## If you don't want the scaffolder
 

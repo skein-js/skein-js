@@ -190,14 +190,18 @@ Two defaults are deliberately not LangGraph's. If you're migrating, these are th
 | `on_completion` | `keep`     | `delete`  | A stateless run's thread stays inspectable afterwards                                      |
 | `on_disconnect` | `continue` | `cancel`  | A proxy timeout is indistinguishable from a real hang-up, and shouldn't kill a healthy run |
 
-Pass the LangGraph value explicitly if you want its behaviour. Note `useStream` sends
-`on_disconnect: "cancel"` on every submit unless the stream is resumable, so with a browser client
-closing the tab does stop the run — skein's default only applies to callers that don't send the field.
+Pass the LangGraph value explicitly if you want its behavior. A client's explicit choice overrides
+skein's default. The legacy `@langchain/langgraph-sdk/react` hook requests cancellation on disconnect
+unless its stream is resumable. Dedicated framework bindings use thread subscriptions: closing a
+subscription does not cancel execution. Use their explicit stop action when cancellation is intended;
+see [frontend SDKs](./react-sdk.md#handle-pauses-and-failures).
 
 One more worth knowing, though it matches LangGraph: **naming a thread that doesn't exist is a 404**
 (`if_not_exists: "reject"`). Pass `"create"` to have the run bring the thread into existence instead —
 which is how you start a run keyed on an external identity (a phone number, a ticket id) without a
 round trip to create the thread first.
+
+<span id="dont-start-a-run-on-a-thread-thats-waiting-for-a-human"></span>
 
 ## Don't start a run on a thread that's waiting for a human
 

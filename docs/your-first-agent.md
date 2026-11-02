@@ -41,11 +41,21 @@ You now have an agent server on `http://localhost:2024`.
 Open `http://localhost:2024/console`.
 
 That's the **skein console**, served by your own process — no account, no hosted service, no tunnel.
-Create a thread, send "hello", and watch the run execute. You will get `echo: hello` back, because
+In Playground, choose the **echo** Assistant, send "hello", and watch the run execute. You will get `echo: hello` back, because
 the graph you just created echoes its input.
 
 This is worth doing before anything else: everything below is about changing what happens between
 your message and that reply, and it helps to have seen the loop close.
+
+Run the generated graph tests in a second terminal:
+
+```bash
+npm test
+```
+
+Both echo cases should pass without a model key or a running server. As you change the graph,
+update its behavior assertions; [Testing your project](./testing-your-project.md) adds an SDK smoke
+test and checks for multi-turn state, persistence, and approval flows.
 
 ## 3. What you actually got
 
@@ -129,12 +139,14 @@ Those four ideas are enough to finish this guide. When you want the rest — cus
 subgraphs, `interrupt()` — [LangGraph essentials](./langgraph-essentials.md) is the short version,
 with a link out to the LangChain docs on each one.
 
+<span id="5-give-it-a-real-model"></span>
+
 ## 5. Give it a real model
 
 Now swap the echo for an LLM. Install a provider:
 
 ```bash
-npm install @langchain/anthropic
+npm install @langchain/anthropic langchain zod
 ```
 
 Create `src/agent-graph.ts`:
@@ -159,20 +171,24 @@ Register it in `langgraph.json`:
   "graphs": {
     "echo": "./src/echo-graph.ts:graph",
     "agent": "./src/agent-graph.ts:graph"
-  }
+  },
+  "env": ".env"
 }
 ```
 
-Then give it a key — `.env` is already there, with every line commented out:
+Add your [Anthropic API key](https://console.anthropic.com/settings/keys) to the existing `.env` file:
 
 ```bash
-# in .env, set ANTHROPIC_API_KEY= — from https://console.anthropic.com/settings/keys
+ANTHROPIC_API_KEY=your-api-key
 ```
+
+The packages installed above provide the model, `createAgent`, and the tool schema used in the next
+step. Keep the existing `env` setting in `langgraph.json` when adding the new graph.
 
 Restart, pick `agent` in the console, and you are talking to a real model. Tokens stream as they are
 generated.
 
-> Prefer to skip this assembly? `npm create skein-js@latest my-agent --provider anthropic` scaffolds
+> Prefer to skip this assembly? `npm create skein-js@latest my-agent -- --provider anthropic` scaffolds
 > all of it, plus a working tool, in one step.
 
 ## 6. Give it a tool
@@ -294,6 +310,6 @@ If you would rather understand the graph model first,
 Then, as you need them:
 
 - [Recipes](./recipes/) — auth, human-in-the-loop, background runs, CORS
-- [The console](./console.md) — what else that UI does: time travel, interrupt approvals, crons
+- [The console](./console.md) — test your graph and inspect its output, state, and failures
 - [Agent Protocol](./agent-protocol.md) — every endpoint your server exposes
 - [Scaffolding reference](./scaffolding.md) — every flag, and the Nx generators

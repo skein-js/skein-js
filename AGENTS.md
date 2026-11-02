@@ -57,6 +57,21 @@ input. See [docs/local-deployment.md](./docs/local-deployment.md).
    bypass the hook (`git commit --no-verify`) in a genuine pinch, and go green before you push. Same
    bar as [Definition of done](#definition-of-done).
 
+## Documentation: teach adoption and use
+
+User-facing documentation teaches people how to adopt and use skein-js. Explain the reader's task,
+necessary setup, supported steps, expected result, and next action. Include technical detail when it
+helps readers configure, integrate, troubleshoot, or extend their project. Keep implementation
+explanations and internal validation history in contributor documentation. Review documentation from
+the adopter's perspective, and verify examples against supported public interfaces.
+
+Apply this standard to guides, references, recipes, package READMEs, and installable skills wherever
+they describe adoption. Lead guides with a working user journey; keep precise configuration, API
+contracts, and operational limits in linked reference sections. Explain internals only when they are
+needed for a concrete user decision or supported extension contract. Repository test counts, CI
+machinery, release procedures, and implementation diaries belong in explicitly identified contributor
+material. Preserve existing documentation URLs and linked fragments when reorganizing content.
+
 ## This is an Nx monorepo (pnpm) — use Nx
 
 **Always drive tasks through Nx**, not ad-hoc scripts. Nx gives caching, the affected-graph,

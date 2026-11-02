@@ -13,17 +13,18 @@ description: Embed compiled LangGraph.js graphs with memory, SQLite, or Postgres
 
 ## Two on-ramps
 
-|                      | Drop-in CLI (`{ config }`)                            | In-code embedding (`{ deps }`)                                  |
-| -------------------- | ----------------------------------------------------- | --------------------------------------------------------------- |
-| You start from       | a `langgraph.json` + the `skein` CLI                  | a **compiled graph object** in your own code                    |
-| Wiring               | `createExpressServer({ config: "./langgraph.json" })` | `createExpressServer({ deps: embedInMemoryGraphs({ graph }) })` |
-| Graph loading        | `path:export` resolved from disk (vite/TS loader)     | you already hold the graph — nothing is loaded from disk        |
-| Best for             | migrating off / comparing against the LangGraph CLI   | greenfield apps, or anyone who never used the Platform          |
-| Static graph schemas | ✅ extracted from source                              | 🟡 stubbed (see [trade-off](#the-one-trade-off-schemas))        |
+|                      | Config-based loading (`{ config }`)                    | In-code embedding (`{ deps }`)                                  |
+| -------------------- | ------------------------------------------------------ | --------------------------------------------------------------- |
+| You start from       | a `langgraph.json` in your application                 | a **compiled graph object** in your own code                    |
+| Wiring               | `createExpressServer({ config: "./langgraph.json" })`  | `createExpressServer({ deps: embedInMemoryGraphs({ graph }) })` |
+| Graph loading        | `path:export` loaded by your host or supplied importer | you already hold the graph — nothing is loaded from disk        |
+| Best for             | migrating off / comparing against the LangGraph CLI    | greenfield apps, or anyone who never used the Platform          |
+| Static graph schemas | ✅ extracted from source                               | 🟡 stubbed (see [trade-off](#the-one-trade-off-schemas))        |
 
-Both produce the **exact same** Agent Protocol server — same threads/runs/streaming/HITL/persistence,
-same `useStream` / Agent Chat UI / LangGraph SDK compatibility. The only difference is how graphs get
-in and how `ProtocolDeps` is assembled. Everything downstream is identical.
+Both expose the same thread/run APIs. Your chosen storage and graph capabilities determine
+persistence and client support. The CLI supplies its own development watcher and snapshots; an
+adapter's `{ config }` option does not start that workflow. Use a TypeScript-capable host or supply
+`importModule` when your config points at TypeScript graphs.
 
 ### Choose an assembly for your host
 
@@ -68,6 +69,11 @@ await client.runs.wait(thread.thread_id, "agent", {
 `ProtocolDeps` backed by in-process drivers — the store, run queue, event bus, and checkpointer. No
 config file, and nothing to import from a storage package. `{ deps }` is the seam **every** adapter
 accepts, so the same `deps` mounts on Express, Fastify, NestJS, or Next.js unchanged.
+
+Check the returned state against your graph's expected output. To repeat this automatically, adapt
+[the SDK smoke test](./testing-your-project.md#check-the-running-server) to the `agent` Assistant.
+Framework adapters do not serve the console automatically; follow
+[manual mounting](./console-reference.md#mounting-it-yourself) if you want interactive inspection.
 
 Runnable version: [`examples/embed-graph`](https://github.com/skein-js/skein-js/tree/main/examples/embed-graph).
 

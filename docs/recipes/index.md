@@ -1,8 +1,8 @@
 # Recipes
 
-Task-oriented pages: a problem and the smallest code that solves it. Runnable examples named here are
-in the repo and exercised by CI; provider integration snippets are checked against the linked official
-SDK documentation. For a terse API reference see [using-skein.md](../using-skein.md).
+Choose a task, follow its recipe, and run the linked example to compare the result with your own
+project. Each recipe uses existing public APIs. For a terse API reference, see
+[Using skein-js](../using-skein.md).
 
 ## Read working code first
 

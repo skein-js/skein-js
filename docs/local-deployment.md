@@ -171,16 +171,15 @@ port and use a per-launch bearer through existing auth, with `studioAuthDisabled
 are passed through environment/private bridges, rather than command-line arguments or saved files.
 
 The target matrix is Node 22/24/26, Electron 44 and Tauri 2 on Linux x64, Windows x64, and macOS ARM64/x64.
-Packaged consumer gates install tarballs outside the checkout and exercise native addon loading,
-writable data paths, streaming, approval resume and credential rejection. Platform support requires
-those gates to pass on the corresponding runner; a source build alone supplies no packaging evidence.
+When packaging your host, verify native addon loading, a writable application-data path, streamed
+output, approval resume after reopening, and rejection of invalid credentials on each target platform.
+Test the packaged application, since a source build does not establish native packaging compatibility.
 
 Tauri packages an official portable Node 24 distribution, verified against its SHA-256 manifest,
 plus the backend directory and native assets. Electron rebuilds the SQLite addon against its own ABI.
 See [Tauri resources](https://tauri.app/develop/resources/) for the bundle mapping.
 This release does not support SQLite in browsers, Bun/Deno or distributed workers, or promise a
-single executable containing every native dependency. Size/startup measurements belong to the
-specific packed consumer and platform; the smoke prints package bytes, assembly time and process RSS.
+single executable containing every native dependency. Measure package size and startup on the platform you ship.
 
-See the [validation record](./local-deployment-validation.md) for measured sizes and completed versus
-pending platform gates.
+Historical package measurements and platform validation are available as
+[contributor evidence](https://github.com/skein-js/skein-js/blob/main/docs/local-deployment-validation.md).

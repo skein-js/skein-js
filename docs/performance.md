@@ -191,6 +191,8 @@ With auth configured, the ownership filter is pushed into the driver query, so a
 indexed lookup rather than a full read filtered in JS. Details in [storage.md](./storage.md) and
 [agent-protocol.md](./agent-protocol.md#authentication--authorization).
 
+<span id="triage-symptom-knob"></span>
+
 ## Triage: symptom → knob
 
 | Symptom                                                  | Likely cause                                      | What to do                                                                                                                                                                                    |
@@ -211,58 +213,21 @@ indexed lookup rather than a full read filtered in JS. Details in [storage.md](.
 
 ## Measuring it yourself
 
-`packages/bench` boots a real skein server in-process, opens real SSE clients against it, and samples
-while they stream. It is deliberately not part of `pnpm test` — it takes minutes and needs Docker for the
-Postgres/Redis driver.
+Measure your application's graph with representative inputs and the intended storage backend.
+Record time to first frame, total duration, throughput, queue delay, and RSS before changing a limit.
+Use the same workload after the change and confirm final state and error behavior still match.
+Follow [Profiling your application](./profiling.md) for commands that run against an installed project.
 
-```bash
-nx build bench && nx bench bench                 # all scenarios, in-memory drivers, no Docker
-nx bench bench -- --driver postgres-redis        # needs Docker
-nx bench bench -- --scenario slow-client --streams 500
-```
-
-The measurement that matters is **RSS after idle + a forced GC**, not peak RSS: peak tells you about
-churn, retained tells you what is actually held. A slow-client run at increasing `--streams` should
-plateau, not climb — that plateau is the whole point of the bounds above.
-
-Alongside it, the counters are deterministic and make a regression provable rather than plausible:
-buffered frames, Redis commands per frame, socket `writableLength`, iterator pulls, connections opened.
-Those are integers with no timing in them, which is why they **do** gate CI where throughput and latency
-cannot. See [testing.md](https://github.com/skein-js/skein-js/blob/main/docs/testing.md) for how the same idea is applied in the unit tests.
-
-The run therefore ends in `all bounds hold.` or a non-zero exit listing what no longer does — the
-per-stream SSE buffer ceiling, the bus's retained-run and per-run frame caps, and that backpressure
-delayed frames rather than dropping them. CI's `perf bounds (bench)` job runs exactly this on the
-in-memory driver and publishes the numbers to the run summary without asserting any of them. So if you
-are reading this page because a bound above stopped holding for you, that job is what should have caught
-it first; if it was green, the shape you hit is one the scenarios do not cover, and it is worth adding
-one (see [`packages/bench/README.md`](https://github.com/skein-js/skein-js/blob/main/packages/bench/README.md)).
+For a memory issue, compare retained memory after the same idle period, not just the peak during a
+run. Increase client count gradually; buffers should level off at the configured limits. Test slow
+readers separately from ordinary SDK clients, which may drain the socket before your application
+reads an event.
 
 ## Thread dispatch measurements
 
-`pnpm exec nx run bench:dispatch --args="--output results/dispatch.json"` runs two Node processes
-against shared Postgres/Redis, with four execution slots each. The hot-thread scenario enqueues
-32 runs taking 250 ms on one thread, then 32 independent runs taking 25 ms. The control uses
-64 independent threads. Reported cold-start latency runs from persisted run creation to graph-node
-start, including the initial enqueue phase. Only exclusivity and concurrency bounds are asserted.
+Dispatch timings depend on your graph, backend, and workload. For your deployment, compare wait time
+for independent threads while another thread has a backlog. Use [queue configuration](./runs-and-redis.md#dispatch-by-thread)
+and the [pool budget](./deploy.md#connection-budget) to interpret the result.
 
-On 26 October 2026, Node 24.15.0 with BullMQ 5.80.2, ioredis 5.10.1, Redis 7 and Postgres 16 produced
-these medians of five repetitions on the same macOS host. The benchmark harness was added before
-changing dispatch. Raw samples are committed under `packages/bench/results/dispatch-baseline.json`
-and `dispatch-after.json`. The latter was refreshed after review corrections; its dirty-worktree
-marker distinguishes the measured source from the recorded parent commit.
-
-| Scenario / metric                   |   Before | Partitioned dispatch |
-| ----------------------------------- | -------: | -------------------: |
-| Hot backlog: cold start p50         | 7,624 ms |               191 ms |
-| Hot backlog: cold start p95         | 7,792 ms |               248 ms |
-| Hot backlog: cold start p99         | 7,792 ms |               250 ms |
-| Hot backlog: total runs/second      |     7.11 |                 7.06 |
-| Independent control: start p95      |   384 ms |               382 ms |
-| Independent control: runs/second    |   164.52 |               166.67 |
-| Peak occupied slots, both scenarios |        8 |                    8 |
-
-Cold-thread p95 improves about 31-fold. Total throughput in the hot scenario remains constrained
-by the same serialized chain of 32 hot runs; partitioned dispatch lets independent work start while
-that chain proceeds. Both workloads fill the configured capacity at their peak. These measurements
-are evidence for this workload, not throughput or latency guarantees for other machines or graphs.
+Historical repository measurements and benchmark commands are preserved in the
+[contributor testing guide](https://github.com/skein-js/skein-js/blob/main/docs/testing.md#performance-benchmark-evidence).

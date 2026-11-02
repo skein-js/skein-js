@@ -6,7 +6,7 @@ they happen, and a paused run's **interrupt** surfaces for approval. skein-js de
 one transport — **Server-Sent Events (SSE)** — so the standard clients ([`useStream`](./react-sdk.md),
 the vanilla SDK, Agent Chat UI) render a rich conversation against a skein-js server with only a URL
 change. The flagship [`chat-app`](https://github.com/skein-js/skein-js/tree/main/examples/chat-app) example wires the full experience end to end;
-[`react-usestream`](https://github.com/skein-js/skein-js/tree/main/examples/react-usestream) is the minimal harness.
+[`react-usestream`](https://github.com/skein-js/skein-js/tree/main/examples/react-usestream) is a minimal frontend example.
 
 Under the hood, skein-js maps LangGraph.js **stream modes** onto Agent Protocol SSE. This one
 transport powers the `/runs/stream` endpoint, joining an in-flight run (`/runs/{id}/stream`), and
@@ -44,20 +44,16 @@ data: <json payload>
 ```
 
 - **Event id sequencing** — each run assigns monotonically increasing ids so a reconnecting
-  client can resume via `Last-Event-ID` (replay support; full replay buffering is iterative).
+  client can resume via `Last-Event-ID` while the requested frames are retained. See
+  [joining and replay](#joining-and-cross-instance-fan-out) for backend limits.
 - **Terminal frames** — a final `event: end` (or `error`) closes the stream with the run's
   status. An `error` frame's payload is a `RunError` — `{ error, message, name, cause?, errors? }`,
   plus `stack` when the server sets `exposeErrorStacks`. See
   [errors-and-logging.md](./errors-and-logging.md).
-- **Transport ownership** — `@skein-js/core` produces an async iterator of normalized frames;
-  each framework adapter writes them as `text/event-stream` (Express `res.write`, Fastify
-  reply stream, etc.). The core stays framework-agnostic.
-- **Idle heartbeats** — a stream that goes 15s without a frame gets a `: heartbeat` line. An SSE
-  comment is spec-defined as ignorable, so no client dispatches it as an event; it exists for the
-  machinery in between. Without it, a graph thinking for a minute before its first token looks
-  identical to a dead socket — nginx, ALB, and Cloud Run all default to closing an idle connection
-  around 60s, and the SDK's `stream_idle_reconnect: "auto"` has nothing to distinguish the two either.
-  Tune it with `toSseEvents(..., { heartbeatMs })`; `0` writes only real frames.
+- **Idle heartbeats** — after 15 seconds without a frame, the server sends an ignorable SSE comment
+  (`: heartbeat`). Configure your proxy and load-balancer timeouts for the expected run duration;
+  heartbeats do not override a platform's total request timeout. Custom adapters can set
+  `toSseEvents(..., { heartbeatMs })`; `0` disables heartbeats.
 
 ## Subgraphs and subagents
 
@@ -187,6 +183,5 @@ A subscription without `since` replays retained events so late selectors can rec
 channels and media, then receives a current state baseline and live events. An explicit `since`
 resumes after that publication sequence. Sequences span runs; payload expiry does not reset them.
 Expired or future explicit cursors return `thread_cursor_expired` and require state restoration.
-Memory and Redis buses use independent reader cursors and reject publications from a deleted
-thread incarnation, including after an explicit thread-ID reuse. SQLite's event bus is process-local;
+Deleting and recreating a thread ID does not make old events part of the new conversation. SQLite's event bus is process-local;
 its state and run records remain durable across restart.

@@ -115,8 +115,7 @@ the scheduler, so a disabled deployment does not keep firing schedules nobody ca
 `next_run_date` becomes `null`. Re-enabling recomputes it.
 
 **`next_run_date === null` means dormant** — disabled, past `end_time`, or an unreachable expression
-(`0 0 30 2 *`). It is the same field the scheduler indexes on, so the wire answer and the firing
-behaviour can never disagree.
+(`0 0 30 2 *`). Inspect the saved schedule before deciding whether it should fire.
 
 **`end_time`** is inclusive: an occurrence falling exactly on it still fires. On `PATCH` it is
 tri-state — omit to leave it, send `null` to clear it, send a value to set it. Same for `timezone`.
@@ -125,16 +124,14 @@ tri-state — omit to leave it, send `null` to clear it, send a value to set it.
 when a patch touches any run field, because a half-replaced request (new `input`, stale `config`) is
 not a request anyone asked for.
 
-**Catch-up.** If the server is down when occurrences pass, the cron fires **once** on return and
-resyncs to the next future occurrence. It does not backfill: replaying an hour of a five-minutely
-schedule is twelve times the model spend on near-identical inputs, and on a thread cron they serialize
-so the catch-up becomes the outage. This matches APScheduler's `coalesce` default; there is no knob.
+**Catch-up.** If the server is down when occurrences pass, an overdue enabled cron fires once on
+return and resyncs to the next future occurrence. It does not backfill missed occurrences.
 
 **Traceability.** Every fired run — and every thread a stateless cron creates — carries `cron_id` in
 its metadata. For a **stateless** cron that makes `client.threads.search({ metadata: { cron_id } })`
 the way in, since each fire has its own thread; for a **thread** cron the thread is already known, so
-`client.runs.list(thread_id)` lists the runs and each carries the `cron_id` that produced it. (The SDK
-has no `runs.search` — runs are always addressed through their thread.)
+`client.runs.list(thread_id)` lists the runs and each carries the `cron_id` that produced it. The tested SDK provides per-thread listing; use
+[HTTP run search](./runs.md#search-runs-across-threads) when you need a cross-thread query.
 
 **Failures.** If a fire fails (a deleted assistant, a store error) the cron is logged at `error`,
 counted, and **left enabled** — the next occurrence is the retry. skein never auto-disables a
@@ -164,35 +161,16 @@ The scheduler logs one warning at startup on a non-durable store. A schedule tha
 worse than one that was never created, and an embedded memory store in production loses every cron on
 every deploy.
 
-## How it works
+## Execution and recovery {#how-it-works}
 
-Every instance runs a ticker. Every 30 seconds (`SKEIN_CRON_TICK_MS`) it asks the store for enabled
-crons whose `next_run_date` has arrived, and for each one:
+Multiple instances can share schedules without creating a separate run for the same occurrence.
+Delivery to the execution queue is retried, so design your graph's external effects to tolerate
+retries. Use durable storage when schedules must survive restart; the driver requirements above
+explain which combinations provide that behavior.
 
-1. Computes the **next** occurrence, from the later of the stored date and now — so a cron that fell
-   behind lands in the future in one step rather than replaying the backlog.
-2. **Claims** it with a single-row conditional `UPDATE` on the primary key, guarded by a claim token
-   the store bumps on every write. If three instances see the same occurrence, exactly one wins; the
-   others skip. No leader election, no distributed lock, no Redis.
-3. Commits the claim **and the `pending` run row in one transaction**, then enqueues the run.
-
-That third step is a transactional outbox, and it is what makes delivery durable. Advancing without
-the run would silently skip the occurrence if the instance died in between; creating the run first
-would re-fire it. Committed together, the worst case is a `pending` run that never reached the queue —
-which the next tick re-enqueues. Because enqueue is idempotent (keyed on the run id) and the worker
-skips runs already terminal, delivery is **at-least-once** and execution **exactly-once**.
-
-The recovery sweep looks only at runs a cron produced. A bare `pending` is not enough to conclude a
-run is waiting for a worker: an inline `wait`/`stream` run is written `pending` too and only becomes
-`running` once it acquires its thread's lock, so one queued behind a long peer would look identical
-while its caller waits to execute it in-process. Handing that to a worker would run the graph twice.
-
-The run itself then goes through the ordinary run queue — on Redis that is BullMQ, so cron-fired runs
-get its retries, backoff, and stalled-job crash recovery like any other background run.
-
-Schedule state lives in the store rather than in the queue, because `enabled`, `sort_by=next_run_date`,
-filtered `count`, and metadata search are all things a queue cannot serve — and because a schedule
-that a `FLUSHALL` can erase while the API still reports it as enabled is worse than no schedule.
+Scheduling resolution is one minute. Check the saved timezone, next occurrence, enabled state, and
+end time when a schedule does not fire. For an end-to-end check, create a test schedule with a known
+input, observe its run in the console, then pause or delete the schedule.
 
 ## Operating a scheduler
 

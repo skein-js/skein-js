@@ -4,6 +4,13 @@ What happens when a graph throws — where the failure shows up, what a client s
 your logs. Errors and logging live in one doc because a failure goes to both, on deliberately
 different terms: **the log gets everything; the wire gets what is safe to hand a caller.**
 
+## Diagnose a failed request
+
+If an order assistant says nothing after calling your order service, inspect the existing run before
+sending the request again. Check its status and error in the [console](./console.md#runs), then find
+the same run in the server logs. A graph failure, a disconnected browser, and a failed delivery need
+different fixes. Confirm what happened before retrying an action that could change an order.
+
 ## When a local process disappears
 
 Reopening a SQLite deployment records abandoned executing/claimed attempts and pending inline
@@ -14,7 +21,7 @@ decide what to do next. See [local crash behavior](./local-deployment.md#what-su
 
 ## When a graph throws
 
-A node that throws does not crash the server. The run engine catches it, and five things happen:
+A node that throws does not crash the server. The run engine catches it, and the failure appears on these surfaces:
 
 | Surface               | What it gets                                                                                   |
 | --------------------- | ---------------------------------------------------------------------------------------------- |

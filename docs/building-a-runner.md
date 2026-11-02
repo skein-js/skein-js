@@ -1,23 +1,18 @@
 # Serving the Agent Protocol with your own agent
 
-skein-js is built for [LangGraph.js](https://github.com/langchain-ai/langgraphjs), but the protocol
-engine is not. `@skein-js/agent-protocol` installs with **no graph runtime** — no
-`@langchain/langgraph`, no `@langchain/langgraph-checkpoint`, in the emitted JavaScript _or_ the
-generated type declarations. Both are asserted in CI by
-[`static-imports.test.ts`](https://github.com/skein-js/skein-js/blob/main/packages/test-support/src/static-imports.test.ts),
-as two separate checks, because they fail independently.
+Use `@skein-js/agent-protocol` to expose your own agent implementation through the Agent Protocol.
+It installs without a graph runtime, so your application can supply an AI SDK loop, a workflow,
+or another execution engine. Implement the capabilities your clients need and verify them with a
+[server smoke test](./testing-your-project.md#check-the-running-server) adapted to your agent.
 
-So if you have an agent of your own — an AI SDK loop, a Mastra workflow, a hand-rolled tool loop —
-you can serve the Agent Protocol with it, and every LangGraph client
-([`useStream`](./react-sdk.md), Agent Chat UI, LangGraph Studio) works against it unchanged.
-
-This page is the runtime seam. [Building your own adapter](./building-an-adapter.md) is the transport
-seam — one page per seam.
+This guide covers the agent integration contract. To connect another HTTP framework, follow
+[Building your own adapter](./building-an-adapter.md). Thread-event frontend bindings need additional
+capabilities; check the table below before choosing a client.
 
 ## What you implement
 
-The engine drives an **`AgentGraph`**. Two methods are required; the rest are optional, and the split
-is empirical rather than designed — it is what a measured, working server actually needed.
+Implement **`AgentGraph`** with the two required methods. Add optional methods for the endpoints
+you want to support; missing methods have the explicit behavior listed below.
 
 ```ts
 interface AgentGraph {
@@ -192,8 +187,9 @@ To report a pause, return a snapshot with non-empty `next` (or tasks carrying `i
 
 ## What you cannot change
 
-- **The wire types.** They are `@langchain/langgraph-sdk`'s, deliberately — that is why every
-  LangGraph client works against skein by construction. See [reuse](./reuse.md).
+- **The wire types.** Use the SDK-shaped protocol types and implement the capabilities your client
+  needs. Check the [verified client combinations](./langgraph-compatibility.md) rather than assuming
+  type compatibility establishes every client behavior.
 - **The run lifecycle** — statuses, multitask strategies, the SSE frame envelope.
 - **The auth model** — see [the Agent Protocol reference](./agent-protocol.md). Auth is the
   deployment's concern, not the agent's; a runner never sees it.

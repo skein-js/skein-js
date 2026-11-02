@@ -20,7 +20,7 @@ mounts the protocol inside an app you already run:
 | `@skein-js/fastify` | `createFastifyServer`    | `skeinPlugin` under a `prefix`             | [fastify-basic](https://github.com/skein-js/skein-js/tree/main/examples/fastify-basic) · [fastify-app](https://github.com/skein-js/skein-js/tree/main/examples/fastify-app) |
 | `@skein-js/nestjs`  | `createNestServer`       | `SkeinModule.forRoot()`                    | [nestjs-basic](https://github.com/skein-js/skein-js/tree/main/examples/nestjs-basic) · [nestjs-app](https://github.com/skein-js/skein-js/tree/main/examples/nestjs-app)     |
 | `@skein-js/nextjs`  | — (the routes _are_ it)  | `createSkeinRouteHandlers` / Pages handler | [nextjs-app](https://github.com/skein-js/skein-js/tree/main/examples/nextjs-app) · [nextjs-basic](https://github.com/skein-js/skein-js/tree/main/examples/nextjs-basic)     |
-| `@skein-js/fetch`   | `createSkeinFetchServer` | — (no mount export)                        | — (covered by CI's runtime matrix)                                                                                                                                          |
+| `@skein-js/fetch`   | `createSkeinFetchServer` | — (no mount export)                        | — (select with `skein build --runtime`)                                                                                                                                     |
 
 Express is the default: it is what `skein dev` and the production image run, and what the other
 docs use in examples. Reach for another when you already have an app on it.
