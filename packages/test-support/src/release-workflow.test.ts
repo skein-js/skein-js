@@ -13,6 +13,34 @@ import { afterEach, describe, expect, it } from "vitest";
 const workspaceRequire = createRequire(new URL("../../../package.json", import.meta.url));
 const nxRequire = createRequire(workspaceRequire.resolve("nx/package.json"));
 const { load } = nxRequire("@zkochan/js-yaml") as { load: (source: string) => Workflow };
+interface GithubReleasePayload {
+  tag_name: string;
+  name: string;
+  body: string;
+  prerelease: boolean;
+  target_commitish?: string;
+}
+interface GithubReleaseClient {
+  createRelease(payload: GithubReleasePayload): Promise<{ id: number; html_url: string }>;
+  updateRelease(
+    id: number,
+    payload: GithubReleasePayload,
+  ): Promise<{ id: number; html_url: string }>;
+  syncRelease(
+    options: { version: string; body: string; prerelease: boolean; commit: string },
+    existing?: { id: number },
+  ): Promise<{ status: string; url?: string }>;
+}
+// Exercise the installed, pinned release client; these fixtures never contact GitHub.
+const { GithubRemoteReleaseClient } = nxRequire(
+  "./dist/src/command-line/release/utils/remote-release-clients/github.js",
+) as {
+  GithubRemoteReleaseClient: new (
+    repository: { hostname: string; slug: string; apiBaseUrl: string } | null,
+    configuration: false,
+    token: null,
+  ) => GithubReleaseClient;
+};
 const root = fileURLToPath(new URL("../../../", import.meta.url));
 interface Step {
   name?: string;
@@ -125,6 +153,64 @@ fs.writeFileSync(args[2] + '/fixture.tgz', 'fixture only');
     },
   };
 }
+
+describe("GitHub release classification", () => {
+  it("does not suggest a prerelease when creation falls back to GitHub's release form", async () => {
+    const client = new GithubRemoteReleaseClient(
+      { hostname: "github.com", slug: "fixture/project", apiBaseUrl: "https://api.github.com" },
+      false,
+      null,
+    );
+    client.createRelease = async () => {
+      throw new Error("Fixture API failure");
+    };
+    const result = await client.syncRelease({
+      version: "v1.0.0-beta.2",
+      body: "Release notes",
+      prerelease: true,
+      commit: "released-commit",
+    });
+    expect(result.status).toBe("manual");
+    const manual = new URL(result.url!);
+    expect(manual.searchParams.get("tag")).toBe("v1.0.0-beta.2");
+    expect(manual.searchParams.get("prerelease")).not.toBe("true");
+  });
+
+  it.each(["v1.0.0-beta.2", "v1.0.0-rc.1", "v1.0.0"])(
+    "creates and updates %s as a normal release without changing its version",
+    async (version) => {
+      const client = new GithubRemoteReleaseClient(null, false, null);
+      const requests: { operation: string; payload: GithubReleasePayload }[] = [];
+      const response = { id: 42, html_url: "https://example.com/releases/42" };
+      client.createRelease = async (payload) => {
+        requests.push({ operation: "create", payload });
+        return response;
+      };
+      client.updateRelease = async (id, payload) => {
+        expect(id).toBe(42);
+        requests.push({ operation: "update", payload });
+        return response;
+      };
+      const options = {
+        version,
+        body: "Release notes",
+        prerelease: version.includes("-"),
+        commit: "released-commit",
+      };
+      expect((await client.syncRelease(options)).status).toBe("created");
+      expect((await client.syncRelease(options, { id: 42 })).status).toBe("updated");
+      expect(requests.map(({ operation }) => operation)).toEqual(["create", "update"]);
+      for (const { payload } of requests)
+        expect(payload).toMatchObject({
+          tag_name: version,
+          name: version,
+          body: "Release notes",
+          prerelease: false,
+        });
+      expect(requests[0]?.payload.target_commitish).toBe("released-commit");
+    },
+  );
+});
 
 describe("release source and deployment gates", () => {
   it("recovers an explicit release tag and keeps CI, publishing and docs on its resolved SHA", () => {

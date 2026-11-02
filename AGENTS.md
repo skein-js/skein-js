@@ -171,10 +171,11 @@ pnpm release 0.3.0            # or: patch | minor | major
 publishes each changed, non-private package with provenance via npm OIDC trusted publishing.
 
 Every published version, including `1.0.0-beta.*` and `1.0.0-rc.*`, is our recommended release.
-CI publishes with an explicit npm `--tag latest`, verifies every public package's pointer, then marks
-the GitHub release as non-prerelease/latest. Nx initially infers the GitHub prerelease flag from the
-version suffix; the workflow corrects it after publishing. The version suffix retains its SemVer
-meaning independently of this distribution policy.
+The pinned Nx GitHub release client is patched to create and update releases with `prerelease: false`,
+including beta and rc tags. Keep `patches/nx@23.2.1.patch` and the release-classification regression
+checks aligned when upgrading Nx. CI publishes with an explicit npm `--tag latest`, verifies every
+public package's pointer, then marks the GitHub release as non-prerelease/latest as a final safeguard.
+The version suffix retains its SemVer meaning independently of this distribution policy.
 
 After publishing and metadata finalization, the release workflow calls
 [`.github/workflows/docs.yml`](.github/workflows/docs.yml) to build and deploy the docs from the same

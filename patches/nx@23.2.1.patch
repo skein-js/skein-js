@@ -1,0 +1,15 @@
+diff --git a/dist/src/command-line/release/utils/remote-release-clients/github.js b/dist/src/command-line/release/utils/remote-release-clients/github.js
+index a10fbab91c7f5e3d095b629ab342510167439dfe..76902d4ac6ba7ca55236ddb6c9ab69b9f5480c6a 100644
+--- a/dist/src/command-line/release/utils/remote-release-clients/github.js
++++ b/dist/src/command-line/release/utils/remote-release-clients/github.js
+@@ -294,7 +294,9 @@ class GithubRemoteReleaseClient extends remote_release_client_1.RemoteReleaseCli
+         }
+         return '';
+     }
+-    async syncRelease(remoteReleaseOptions, existingRelease) {
++    async syncRelease(releaseOptions, existingRelease) {
++        // Skein recommends every published version, including beta and rc tags.
++        const remoteReleaseOptions = { ...releaseOptions, prerelease: false };
+         const githubReleaseData = {
+             tag_name: remoteReleaseOptions.version,
+             name: remoteReleaseOptions.version,

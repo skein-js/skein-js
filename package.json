@@ -108,7 +108,8 @@
       "typescript": "^5.9.3"
     },
     "patchedDependencies": {
-      "braces@3.0.3": "patches/braces@3.0.3.patch"
+      "braces@3.0.3": "patches/braces@3.0.3.patch",
+      "nx@23.2.1": "patches/nx@23.2.1.patch"
     }
   }
 }
