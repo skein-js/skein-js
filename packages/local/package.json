@@ -1,6 +1,6 @@
 {
   "name": "@skein-js/local",
-  "version": "1.0.0-beta.0",
+  "version": "1.0.0-beta.1",
   "description": "Embed LangGraph agents with durable local SQLite storage.",
   "license": "Apache-2.0",
   "author": "Maina Wycliffe <wmmaina7@gmail.com>",

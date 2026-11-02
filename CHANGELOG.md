@@ -1,3 +1,15 @@
+## 1.0.0-beta.1 (2026-11-02)
+
+### 🩹 Fixes
+
+- **docs:** serve skein.js.org from the site root ([ef98b7c](https://github.com/skein-js/skein-js/commit/ef98b7c))
+- **release:** promote beta milestones and recover tagged releases ([4c0349d](https://github.com/skein-js/skein-js/commit/4c0349d))
+- **release:** wait for asynchronous npm registry processing ([289d5fe](https://github.com/skein-js/skein-js/commit/289d5fe))
+
+### ❤️ Thank You
+
+- Maina Wycliffe
+
 ## 1.0.0-beta.0 (2026-11-01)
 
 ### 🚀 Features
