@@ -123,7 +123,11 @@ export type { DeliveryRetryConfig, WebhookDeliveryConfig } from "./deliveries/de
 export { buildDeliveryPayload, toDeliveryBody } from "./deliveries/delivery-payload.js";
 // A graph declaring the answer that should be sent back — see `runs/declared-reply.ts`.
 export { DECLARED_REPLY_KEY, readDeclaredReply, replyWith } from "./runs/declared-reply.js";
-export { toDeliveryRequest } from "./deliveries/delivery-request.js";
+export {
+  createDeliveryRequest,
+  toDeliveryRequest,
+  toDeliveryRequestFromPayload,
+} from "./deliveries/delivery-request.js";
 export type { DeliveryRequest } from "./deliveries/delivery-request.js";
 export { processDelivery } from "./deliveries/delivery-processor.js";
 export type { DeliveryProcessorDeps } from "./deliveries/delivery-processor.js";

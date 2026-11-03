@@ -7,6 +7,7 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 
 import { createFixtureDeps } from "../__fixtures__/deps.js";
 import { createContext } from "../context.js";
+import { verifySkeinSignature } from "../crypto/verify-delivery.js";
 import {
   DEFAULT_WEBHOOK_TIMEOUT_MS,
   resolveDeps,
@@ -310,7 +311,49 @@ describe("the run-completion outbox", () => {
     expect(outcome.status).toBe("success");
     expect(dispatch).toHaveBeenCalledTimes(1);
     expect(dispatch.mock.calls[0]![1]).toMatchObject({ status: "success", values: {} });
+    const attempt = dispatch.mock.calls[0]![2];
+    expect(attempt).toBeDefined();
+    expect(typeof attempt?.deliveryId).toBe("string");
+    expect(attempt?.attempt).toBe(1);
+    expect(attempt?.headers).toMatchObject({
+      "x-skein-delivery-id": attempt?.deliveryId,
+      "x-skein-attempt": "1",
+    });
     expect(await deps.store.deliveries!.listByRun(run.run_id)).toEqual([]);
+  });
+
+  it("signs the best-effort POST when webhook secrets are configured", async () => {
+    const dispatch = vi.fn<WebhookDispatcher>().mockResolvedValue(undefined);
+    const secret = "whsec_test_secret";
+    const { deps, run, control, kwargs } = await seed(
+      { webhookDispatcher: dispatch, webhooks: { secrets: [secret] } },
+      "echo",
+      {
+        input: { value: "hi" },
+        webhook: "https://example.test/hook",
+      },
+    );
+    const withoutOutbox = {
+      ...deps,
+      store: Object.assign(Object.create(Object.getPrototypeOf(deps.store) as object), deps.store, {
+        deliveries: undefined,
+        runs: { ...deps.store.runs, finalizeWithDelivery: undefined },
+      }),
+    } as typeof deps;
+
+    await executeRun(withoutOutbox, { run, kwargs, control });
+
+    expect(dispatch).toHaveBeenCalledTimes(1);
+    const [, body, attempt] = dispatch.mock.calls[0]!;
+    expect(attempt?.headers["x-skein-signature"]).toMatch(/^t=\d+,v1=[0-9a-f]{64}$/);
+    expect(
+      verifySkeinSignature({
+        header: attempt?.headers["x-skein-signature"],
+        body: attempt?.body ?? JSON.stringify(body),
+        secrets: [secret],
+        nowSeconds: Math.floor(deps.clock().getTime() / 1000),
+      }),
+    ).toEqual({ ok: true });
   });
 
   // Regression: `settleRun` can be reached twice — anything after the first one (the thread mirror's

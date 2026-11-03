@@ -64,3 +64,6 @@ export function createDeliveryRequest(input: {
     },
   };
 }
+
+/** Alias for `createDeliveryRequest`. */
+export const toDeliveryRequestFromPayload = createDeliveryRequest;
