@@ -126,6 +126,14 @@ minimal Next.js application. Start its graph server and UI using its README, sen
 the conversation, and check that state is restored without another execution. Repeat with your own
 graph before building a larger interface.
 
+## Catalog-driven UI with json-render
+
+The [json-render recipe](./recipes/json-render.md) and
+[public React/Vite example](https://github.com/skein-js/skein-js/tree/main/examples/json-render)
+show progressive component rendering, saved specifications, form/button inputs and interrupt/resume.
+Use the official SDK run stream plus the upstream SpecStream compiler: json-render’s `useUIStream`
+hook expects raw generation text, so a Skein SSE URL is not a direct endpoint replacement.
+
 ## References
 
 - [React `useStream` reference](https://reference.langchain.com/javascript/langchain-react/useStream)

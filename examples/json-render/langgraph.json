@@ -1,0 +1,6 @@
+{
+  "node_version": "24",
+  "graphs": { "plan-builder": "./src/plan-graph.ts:graph" },
+  "auth": { "path": "./src/auth.ts:auth" },
+  "env": ".env"
+}

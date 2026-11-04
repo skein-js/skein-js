@@ -129,6 +129,8 @@ For AI tools, [llms.txt](./llms.txt) indexes the docs and [llms-full.txt](./llms
 
 Start with [triage-agent](./examples/triage-agent) for background work, schedules, and approvals
 without an API key, or [chat-app](./examples/chat-app) for a research assistant with a Next.js UI.
+For a generated component UI, try the [json-render plan builder](./examples/json-render): stream a
+plan, restore it from thread state, revise it through buttons/forms, and approve it.
 The [examples directory](./examples) also includes framework integrations, migration, and local apps.
 For durable embedded calls and external command queues, use the
 [native/BullMQ approval example](./examples/native-transports) and

@@ -17,6 +17,7 @@ Use this reference before pointing an existing LangChain client at skein-js. Sta
 | MCP                                 | Official MCP SDK 1.32.1, stateless Streamable HTTP                                                               |
 | A2A                                 | Official A2A SDK 1.3.0, retained task output and interrupt handling                                              |
 | Compiled UI and custom applications | UI compiler 1.4.2; Node 24 production artifact with SQLite                                                       |
+| json-render integration             | Core/React 0.21.4, SDK 1.12.7, React 19.2.6; root custom stream, saved specs, actions and interrupt/resume       |
 | Diagnostics                         | Checkpoint payload accounting with memory, SQLite, and Postgres; Prometheus and OTLP JSON output                 |
 
 These combinations establish the listed behavior, rather than universal compatibility with every
