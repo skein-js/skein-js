@@ -27,7 +27,6 @@
     "test:coverage": "nx run-many -t test --coverage",
     "format": "nx format:write --all",
     "format:check": "nx format:check --all",
-    "dev:json-render": "nx run-many -p example-json-render -t dev serve --parallel=2",
     "docs:llms": "node scripts/generate-llms-full.mjs",
     "docs:og": "node scripts/generate-og.mjs",
     "docs:logo": "node scripts/generate-logo.mjs",

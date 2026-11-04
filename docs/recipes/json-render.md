@@ -15,7 +15,8 @@ Use Node 24, clone the repository, and run these commands at its root:
 
 ```bash
 pnpm install
-pnpm dev:json-render
+cd examples/json-render
+pnpm dev:all
 ```
 
 The shortcut runs the graph server and Vite frontend together through Nx. Keep the terminal
