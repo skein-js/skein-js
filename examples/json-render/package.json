@@ -4,6 +4,9 @@
   "private": true,
   "type": "module",
   "description": "Stream, restore and interact with application-owned json-render UIs through a Skein-hosted LangGraph. Offline demo with optional live model.",
+  "scripts": {
+    "dev:all": "nx run-many -p example-json-render -t dev serve --parallel=2"
+  },
   "dependencies": {
     "@json-render/core": "0.21.4",
     "@json-render/react": "0.21.4",
