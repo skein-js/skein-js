@@ -29,6 +29,7 @@ export async function verifyJsonRenderConsumer(directory, packed) {
     "catalog.ts",
     "generation.ts",
     "plan-graph.ts",
+    "plan-client.ts",
     "plan-session.ts",
     "ui-events.ts",
   ]) {
@@ -73,6 +74,7 @@ export async function verifyJsonRenderConsumer(directory, packed) {
     import {Client} from '@langchain/langgraph-sdk';
     import {createExpressServer} from '@skein-js/express';
     import {createPlanSession} from './compiled/plan-session.js';
+    import {addRunIdempotency} from './compiled/plan-client.js';
     import {catalog} from './compiled/catalog.js';
     delete process.env.JSON_RENDER_MODEL;
     assert(catalog.prompt().includes('TaskList'));
@@ -80,7 +82,7 @@ export async function verifyJsonRenderConsumer(directory, packed) {
     const server = await createExpressServer({config:path.resolve('langgraph.json')});
     const listener = await server.listen(0,'127.0.0.1');
     const apiUrl = 'http://127.0.0.1:'+listener.address().port;
-    const client = new Client({apiUrl,apiKey:null,defaultHeaders:{'x-user':'consumer'}});
+    const client = new Client({apiUrl,apiKey:null,defaultHeaders:{'x-user':'consumer'},onRequest:addRunIdempotency});
     const session = createPlanSession(client);
     let reopened;
     try {
@@ -95,7 +97,7 @@ export async function verifyJsonRenderConsumer(directory, packed) {
       const generation = saved.ui.generationId;
       const before = (await client.runs.list(saved.threadId)).length;
       session.dispose();
-      reopened = createPlanSession(new Client({apiUrl,apiKey:null,defaultHeaders:{'x-user':'consumer'}}));
+      reopened = createPlanSession(new Client({apiUrl,apiKey:null,defaultHeaders:{'x-user':'consumer'},onRequest:addRunIdempotency}));
       await reopened.open(saved.threadId);
       assert.deepEqual(reopened.read().ui,saved.ui);
       assert.equal((await client.runs.list(saved.threadId)).length,before);

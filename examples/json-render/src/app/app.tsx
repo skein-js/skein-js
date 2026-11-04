@@ -3,15 +3,20 @@ import { Client } from "@langchain/langgraph-sdk";
 import { useEffect, useId, useMemo, useState, useSyncExternalStore } from "react";
 
 import { catalog } from "../catalog.js";
+import { addRunIdempotency } from "../plan-client.js";
 import { createPlanSession } from "../plan-session.js";
 
 export function App() {
+  const [initialThreadId] = useState(() =>
+    new URLSearchParams(window.location.search).get("thread"),
+  );
   const [session] = useState(() =>
     createPlanSession(
       new Client<Record<string, unknown>>({
         apiUrl: window.location.origin + "/api",
         apiKey: null,
         defaultHeaders: { "x-user": "demo-user" },
+        onRequest: addRunIdempotency,
       }),
     ),
   );
@@ -91,11 +96,11 @@ export function App() {
   );
 
   useEffect(() => {
-    void session.open(new URLSearchParams(window.location.search).get("thread"));
+    void session.open(initialThreadId);
     return () => {
       session.dispose();
     };
-  }, [session]);
+  }, [session, initialThreadId]);
   useEffect(() => {
     const url = new URL(window.location.href);
     if (snapshot.threadId) url.searchParams.set("thread", snapshot.threadId);

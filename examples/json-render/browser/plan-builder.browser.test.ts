@@ -3,7 +3,7 @@ import { resolve } from "node:path";
 import { setTimeout as pause } from "node:timers/promises";
 
 import { chromium, type Browser, type Page } from "@playwright/test";
-import { preview, type PreviewServer } from "vite";
+import { createServer, preview, type PreviewServer } from "vite";
 import { afterAll, beforeAll, expect, it } from "vitest";
 
 import { demoSpecStream, generateDemoText } from "../src/generation.js";
@@ -66,6 +66,50 @@ afterAll(async () => {
 async function capture(page: Page, name: string) {
   await page.screenshot({ path: resolve(screenshots, name + ".png"), fullPage: true });
 }
+
+it("reopens and reloads a thread through the development StrictMode entry", async () => {
+  const client = harness.clientFor();
+  const thread = await client.threads.create();
+  await client.runs.wait(thread.thread_id, "plan-builder", {
+    input: { request: { prompt: "Restore this development thread" } },
+  });
+  const beforeReopen = generations;
+  const devServer = await createServer({
+    configFile: resolve("vite.config.mts"),
+    server: {
+      host: "127.0.0.1",
+      port: 0,
+      hmr: false,
+      proxy: { "/api": { target: harness.url, rewrite: (path) => path.replace(/^\/api/, "") } },
+    },
+  });
+  const page = await browser.newPage();
+  const errors: string[] = [];
+  page.on("pageerror", (error) => errors.push(error.message));
+  try {
+    await devServer.listen();
+    const address = devServer.httpServer?.address();
+    if (!address || typeof address === "string") throw new Error("No development UI listener");
+    const threadUrl = "http://127.0.0.1:" + address.port + "/?thread=" + thread.thread_id;
+    await page.goto(threadUrl);
+    await page.getByText("Restore this development thread", { exact: true }).waitFor();
+    await page.getByRole("button", { name: "Approve plan" }).waitFor();
+    expect(page.url()).toBe(threadUrl);
+    expect(generations).toBe(beforeReopen);
+    await page.getByRole("button", { name: "Approve plan" }).click();
+    await page.getByText("Plan approved. You can keep refining it.").waitFor();
+    await page.reload();
+    await page.getByText("Restore this development thread", { exact: true }).waitFor();
+    await page.getByText("Plan approved. You can keep refining it.").waitFor();
+    expect(page.url()).toBe(threadUrl);
+    expect(generations).toBe(beforeReopen);
+    expect(await client.runs.list(thread.thread_id)).toHaveLength(2);
+    expect(errors).toEqual([]);
+  } finally {
+    await page.close();
+    await devServer.close();
+  }
+});
 
 it("renders progressively, routes buttons and forms, approves, and restores on reload", async () => {
   const page = await browser.newPage({ viewport: { width: 1280, height: 960 } });
