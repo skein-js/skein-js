@@ -59,20 +59,25 @@ Provider failures or invalid output leave the last valid UI available.
 
 ## Adapt it
 
-| Module                                     | Responsibility                                                       |
-| ------------------------------------------ | -------------------------------------------------------------------- |
-| [`catalog.ts`](./src/catalog.ts)           | Application components, action/input schemas and upstream validation |
-| [`generation.ts`](./src/generation.ts)     | Offline SpecStream fixture and optional LangChain model              |
-| [`plan-graph.ts`](./src/plan-graph.ts)     | Custom chunks, checkpointed UI and a separate approval node          |
-| [`ui-events.ts`](./src/ui-events.ts)       | Generation sequencing around the upstream SpecStream compiler        |
-| [`plan-session.ts`](./src/plan-session.ts) | SDK run observation, restoration, reconnect and cancellation         |
-| [`app.tsx`](./src/app/app.tsx)             | Registered React components and trusted review controls              |
-| [`auth.ts`](./src/auth.ts)                 | Demo authentication and thread ownership                             |
+| Module                                     | Responsibility                                                        |
+| ------------------------------------------ | --------------------------------------------------------------------- |
+| [`catalog.ts`](./src/catalog.ts)           | Application components, action/input schemas and upstream validation  |
+| [`generation.ts`](./src/generation.ts)     | Offline SpecStream fixture and optional LangChain model               |
+| [`plan-graph.ts`](./src/plan-graph.ts)     | Custom chunks, checkpointed UI and a separate approval node           |
+| [`ui-events.ts`](./src/ui-events.ts)       | Generation sequencing around the upstream SpecStream compiler         |
+| [`plan-client.ts`](./src/plan-client.ts)   | SDK request hook for idempotent run creation across transport retries |
+| [`plan-session.ts`](./src/plan-session.ts) | SDK run observation, restoration, reconnect and cancellation          |
+| [`app.tsx`](./src/app/app.tsx)             | Registered React components and trusted review controls               |
+| [`auth.ts`](./src/auth.ts)                 | Demo authentication and thread ownership                              |
 
 The browser's `x-user: demo-user` header is a **demo identity assertion**, not production
 authentication. Replace the Auth callback with session/JWT verification and keep thread ownership
 checks. Unused HTTP store access is denied. Generated actions can only request revisions; approval
 controls are authored by the application and resume the current generation's interrupt.
+
+Configure SDK clients with `onRequest: addRunIdempotency` from `plan-client.ts`. It assigns one
+`Idempotency-Key` to each run-creation request before the SDK retries it, so a lost successful
+response cannot create a second generation or resume. Each new turn or decision gets a new key.
 
 The [json-render recipe](../../docs/recipes/json-render.md) explains the transport bridge, retention
 fallback, supported versions and steps for using this pattern in an existing application.

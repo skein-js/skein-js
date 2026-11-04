@@ -365,10 +365,11 @@ OpenAPI and docs without source files. These gates complement the existing runti
 ## json-render integration coverage
 
 `nx test example-json-render` exercises upstream compilation, sequence deduplication, lost event
-history, multiple turns, checkpoint restoration, errors, cancellation, authorization and approval
-against a real HTTP server with SDK 1.12.7. Generation is injected offline, irrespective of local
+history, lost run-creation responses, multiple turns, checkpoint restoration, errors, cancellation,
+authorization and approval against a real HTTP server with SDK 1.12.7. Generation is injected offline, irrespective of local
 model credentials. `nx run example-json-render:test-browser` runs the real React/Vite UI in Chromium
 and captures desktop/mobile, preview, approval and recovery states in `dist/json-render-screenshots`.
+It also checks reopening and reloading a saved thread through Vite's development StrictMode entry.
 The CI compatibility job invokes that target explicitly after installing Chromium.
 
 `nx run test-support:test-compatibility-consumer` also installs a separate json-render consumer

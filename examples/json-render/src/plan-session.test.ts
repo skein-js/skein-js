@@ -5,6 +5,7 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 
 import { committedUiSchema } from "./catalog.js";
 import { demoSpecStream } from "./generation.js";
+import { addRunIdempotency } from "./plan-client.js";
 import { createPlanSession } from "./plan-session.js";
 import { generateImmediateText, startHarness } from "./test-harness.js";
 
@@ -22,6 +23,69 @@ function gate() {
 }
 
 describe("plan session over the official HTTP SDK", () => {
+  it("retries a lost run-creation response without generating or approving twice", async () => {
+    let generations = 0;
+    const harness = await startHarness(async function* (request, signal) {
+      generations++;
+      yield* generateImmediateText(request, signal);
+    });
+    let lostResponse = false;
+    const creationKeys: (string | null)[] = [];
+    const client = new Client<Record<string, unknown>>({
+      apiUrl: harness.url,
+      apiKey: null,
+      defaultHeaders: { "x-user": "demo-user" },
+      onRequest: addRunIdempotency,
+      callerOptions: {
+        fetch: async (input: RequestInfo | URL, init?: RequestInit) => {
+          const response = await fetch(input, init);
+          const url =
+            typeof input === "string" ? input : input instanceof URL ? input.href : input.url;
+          if (init?.method === "POST" && /\/threads\/[^/]+\/runs$/.test(new URL(url).pathname)) {
+            creationKeys.push(new Headers(init.headers).get("Idempotency-Key"));
+            if (!lostResponse) {
+              lostResponse = true;
+              // Let the accepted run finish before its response is lost.
+              // An active-run rejection alone cannot protect this retry.
+              const run = await response.clone().json();
+              await harness.clientFor().runs.join(run.thread_id, run.run_id);
+              throw new TypeError("fetch failed");
+            }
+          }
+          return response;
+        },
+      },
+    });
+    const session = createPlanSession(client);
+    try {
+      await session.generate({ prompt: "Create exactly one plan" });
+      expect(session.read()).toMatchObject({ busy: false, error: null });
+      expect(session.read().review).not.toBeNull();
+      expect(generations).toBe(1);
+      expect(creationKeys).toHaveLength(2);
+      expect(creationKeys[0]).toBeTruthy();
+      expect(creationKeys[1]).toBe(creationKeys[0]);
+      expect(await client.runs.list(session.read().threadId!)).toHaveLength(1);
+
+      // Each later operation gets a new key, even when prompts and decisions repeat.
+      lostResponse = false;
+      await session.decide(true);
+      expect(session.read()).toMatchObject({ approved: true, error: null });
+      expect(creationKeys[2]).not.toBe(creationKeys[0]);
+      expect(creationKeys[3]).toBe(creationKeys[2]);
+      await session.generate({ prompt: "Create exactly one plan" });
+      expect(session.read().review).not.toBeNull();
+      await session.decide(true);
+      expect(session.read()).toMatchObject({ approved: true, error: null });
+      expect(generations).toBe(2);
+      expect(new Set(creationKeys).size).toBe(4);
+      expect(await client.runs.list(session.read().threadId!)).toHaveLength(4);
+    } finally {
+      session.dispose();
+      await harness.close();
+    }
+  });
+
   it.each(["prefix", "interior", "tail", "all", "duplicates"])(
     "reconciles %s event delivery with saved state",
     async (damage) => {

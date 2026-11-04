@@ -93,6 +93,13 @@ it with `client.runs.joinStream`. The example's controller binds each subscripti
 run, accepts only bare `custom` events for the current generation, and ignores `custom|…` subgraph
 events. Keep a separate controller/compiler if your application renders additional graph scopes.
 
+Configure the SDK client with `onRequest: addRunIdempotency` from the example's
+[`plan-client.ts`](https://github.com/skein-js/skein-js/blob/main/examples/json-render/src/plan-client.ts).
+The hook assigns an `Idempotency-Key` to each run-creation request, including approval resumes.
+SDK 1.12.7 calls the hook before its retry loop, so retries reuse that key if a successful response
+is lost. Each new turn or decision gets a new key. This uses Skein's existing
+[idempotent run creation](../agent-protocol.md#idempotent-run-creation-idempotency-key).
+
 **A Skein URL is not a direct replacement for `useUIStream`'s generation endpoint.** That hook reads
 SpecStream text; Skein sends Agent Protocol SSE envelopes. The SDK parses the envelopes and the
 application passes only their selected text fragments to the upstream compiler. See

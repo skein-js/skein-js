@@ -5,6 +5,7 @@ import { createExpressServer } from "@skein-js/express";
 
 import { auth } from "./auth.js";
 import { demoSpecStream, generateDemoText, type GenerateText } from "./generation.js";
+import { addRunIdempotency } from "./plan-client.js";
 import { createPlanGraph } from "./plan-graph.js";
 
 /** Real config/auth/HTTP, with only generation injected so tests never call a provider. */
@@ -30,6 +31,7 @@ export async function startHarness(generateText: GenerateText = generateDemoText
         apiUrl: url,
         apiKey: null,
         defaultHeaders: { "x-user": user },
+        onRequest: addRunIdempotency,
       }),
     close: () => server.close(),
   };
