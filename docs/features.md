@@ -24,19 +24,20 @@ organised by parity instead.
 
 ## Hold a conversation
 
-| Capability                                                            | Status | What it gets you                                                                       |
-| --------------------------------------------------------------------- | ------ | -------------------------------------------------------------------------------------- |
-| [State, context & persistence](./state-and-context.md)                | ✅     | What the agent knows, what's only for this run, and what survives a restart            |
-| [Threads](./threads.md)                                               | ✅     | Conversations that persist, addressable by your own key (a ticket id, a phone number)  |
-| [Streaming (SSE)](./streaming.md)                                     | ✅     | Tokens, tool calls and reasoning as they happen — including a true `events` mode       |
-| [Reconnect & join](./streaming.md)                                    | ✅     | Resume a dropped stream, or tail the same run from a second client                     |
-| [Subgraph streaming](./streaming.md#subgraphs-and-subagents)          | ✅     | `stream_subgraphs` streams nested graphs and subagents under `mode\|<namespace>` names |
-| [Human-in-the-loop](./human-in-the-loop.md)                           | ✅     | Pause for approval and resume hours later, from anywhere                               |
-| [Time travel](./threads.md#time-travel-re-run-a-turn-a-different-way) | ✅     | Fork from any past checkpoint and run forward — "edit and resubmit"                    |
-| [Thread state & history](./threads.md#read-the-state)                 | ✅     | Read, patch, page, copy or prune a conversation's state                                |
-| [Thread TTL](./storage.md#thread-ttl)                                 | ✅     | Expire conversations automatically. LangGraph OSS ignores `ttl`; skein doesn't         |
-| [Assistants & versioning](./assistants.md)                            | ✅     | Ship a prompt change without redeploying, and roll it back in one call                 |
-| [`useStream` and friends](./react-sdk.md)                             | ✅     | The LangChain client ecosystem works unchanged — React, Vue, Svelte, Angular           |
+| Capability                                                            | Status | What it gets you                                                                        |
+| --------------------------------------------------------------------- | ------ | --------------------------------------------------------------------------------------- |
+| [State, context & persistence](./state-and-context.md)                | ✅     | What the agent knows, what's only for this run, and what survives a restart             |
+| [Threads](./threads.md)                                               | ✅     | Conversations that persist, addressable by your own key (a ticket id, a phone number)   |
+| [Streaming (SSE)](./streaming.md)                                     | ✅     | Tokens, tool calls and reasoning as they happen — including a true `events` mode        |
+| [Reconnect & join](./streaming.md)                                    | ✅     | Resume a dropped stream, or tail the same run from a second client                      |
+| [Subgraph streaming](./streaming.md#subgraphs-and-subagents)          | ✅     | `stream_subgraphs` streams nested graphs and subagents under `mode\|<namespace>` names  |
+| [Human-in-the-loop](./human-in-the-loop.md)                           | ✅     | Pause for approval and resume hours later, from anywhere                                |
+| [Time travel](./threads.md#time-travel-re-run-a-turn-a-different-way) | ✅     | Fork from any past checkpoint and run forward — "edit and resubmit"                     |
+| [Thread state & history](./threads.md#read-the-state)                 | ✅     | Read, patch, page, copy or prune a conversation's state                                 |
+| [Thread TTL](./storage.md#thread-ttl)                                 | ✅     | Expire conversations automatically. LangGraph OSS ignores `ttl`; skein doesn't          |
+| [Assistants & versioning](./assistants.md)                            | ✅     | Ship a prompt change without redeploying, and roll it back in one call                  |
+| [`useStream` and friends](./react-sdk.md)                             | ✅     | The LangChain client ecosystem works unchanged — React, Vue, Svelte, Angular            |
+| [JSON UI with json-render](./recipes/json-render.md)                  | ✅     | Generate and restore application-owned component specifications, with validated actions |
 
 ## Remember things
 

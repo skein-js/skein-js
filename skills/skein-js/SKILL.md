@@ -91,6 +91,13 @@ and command envelopes; restoring or reconnecting a subscription must never submi
 The legacy `@langchain/langgraph-sdk/react` hook remains supported for existing apps.
 See `docs/react-sdk.md` and the three React examples for current usage.
 
+For json-render UI specifications, use its upstream catalog/compiler/renderer and the official SDK
+run stream. Agent Protocol SSE is not raw SpecStream text for `useUIStream`. Keep the bridge and
+action policy in application code, save validated specs in graph state, deduplicate generation
+chunks before compiling, and reconcile checkpoint state after terminal runs or lost history.
+See the [json-render recipe](https://skein.js.org/recipes/json-render) and
+[public example](https://github.com/skein-js/skein-js/tree/main/examples/json-render).
+
 Bundled memory, SQLite and Redis queues dispatch by thread: an occupied execution claim does not
 consume a background execution slot. Keep `maxConcurrency` sized for real work. Custom queues/gates
 can opt into `consumePartitioned`/`tryAcquire`; older implementations retain blocking dispatch.

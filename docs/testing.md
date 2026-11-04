@@ -362,6 +362,21 @@ an actual HTTP server without an application transport shim. `nx run test-suppor
 runs real build → artifact → generated production image, checking custom app, compiled UI assets,
 OpenAPI and docs without source files. These gates complement the existing runtime matrix.
 
+## json-render integration coverage
+
+`nx test example-json-render` exercises upstream compilation, sequence deduplication, lost event
+history, multiple turns, checkpoint restoration, errors, cancellation, authorization and approval
+against a real HTTP server with SDK 1.12.7. Generation is injected offline, irrespective of local
+model credentials. `nx run example-json-render:test-browser` runs the real React/Vite UI in Chromium
+and captures desktop/mobile, preview, approval and recovery states in `dist/json-render-screenshots`.
+The CI compatibility job invokes that target explicitly after installing Chromium.
+
+`nx run test-support:test-compatibility-consumer` also installs a separate json-render consumer
+outside the checkout. It compiles the actual example graph/catalog/controller with public tarballs
+and no workspace aliases, then verifies generation, reopening without execution, revision and
+interrupt/resume. Its SDK 1.12.7 dependencies do not replace the existing SDK 1.12.6 and legacy gates.
+This coverage concerns JSON specifications with app-owned components, not `/ui/{agent}` assets.
+
 ## Redis dependency compatibility
 
 Run `pnpm exec nx run test-support:test-redis-compatibility --bullmq=6.4.1 --ioredis=6.0.0` with Docker

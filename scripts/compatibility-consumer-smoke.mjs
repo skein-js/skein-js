@@ -2,7 +2,9 @@
 import { mkdtemp, writeFile, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import path from "node:path";
+import process from "node:process";
 
+import { verifyJsonRenderConsumer } from "./json-render-consumer-smoke.mjs";
 import { packWorkspace, run, installConsumer } from "./pack-local-consumer.mjs";
 
 const directory = await mkdtemp(path.join(tmpdir(), "skein-compatibility-consumer-"));
@@ -188,6 +190,7 @@ try {
     ],
     { cwd: consumer },
   );
+  await verifyJsonRenderConsumer(path.join(directory, "json-render-consumer"), packed);
 } finally {
   await rm(directory, { recursive: true, force: true });
 }

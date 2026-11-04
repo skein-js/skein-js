@@ -1,0 +1,33 @@
+{
+  "name": "example-json-render",
+  "$schema": "../../node_modules/nx/schemas/project-schema.json",
+  "sourceRoot": "examples/json-render/src",
+  "projectType": "application",
+  "targets": {
+    "typecheck": {
+      "executor": "nx:run-commands",
+      "options": {
+        "command": "tsc --noEmit",
+        "cwd": "examples/json-render"
+      }
+    },
+    "dev": {
+      "executor": "nx:run-commands",
+      "cache": false,
+      "dependsOn": ["^build"],
+      "options": {
+        "command": "skein dev --host 127.0.0.1 --port 2024 --no-persist",
+        "cwd": "examples/json-render"
+      }
+    },
+    "test-browser": {
+      "executor": "nx:run-commands",
+      "cache": false,
+      "dependsOn": ["^build", "build"],
+      "options": {
+        "command": "vitest run --config vitest.browser.config.ts",
+        "cwd": "examples/json-render"
+      }
+    }
+  }
+}

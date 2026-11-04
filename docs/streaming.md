@@ -86,6 +86,15 @@ continue to work.
 Declared replies keep their existing last-write-wins behavior, including nested custom writes that
 LangGraph propagates. The client's `stream_subgraphs` setting does not change which reply is delivered.
 
+## Streaming JSON UI specifications
+
+For json-render, pass selected custom-event text through its upstream SpecStream compiler. Keep
+generation sequencing and action routing in your application, then checkpoint the validated spec
+for restoration. Reconnecting observes the same run; it must not submit another generation.
+Sequence checks prevent duplicate patch application, while terminal state reads recover missing
+tails and entirely expired history. The [json-render recipe](./recipes/json-render.md) includes the
+complete React example, compiler buffering rules and retention fallback.
+
 ## Slow clients and backpressure
 
 A stream is only as fast as the client reading it, and skein paces itself accordingly. Every adapter's

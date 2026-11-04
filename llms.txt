@@ -45,6 +45,7 @@ Upstream references: [LangGraph.js overview](https://docs.langchain.com/oss/java
 - [Errors & logging](https://skein.js.org/errors-and-logging.md): What happens when a graph throws — the `RunError` payload, `exposeErrorStacks`, the `Logger` interface, and the `skein dev` failure block.
 - [LangGraph compatibility](https://skein.js.org/langgraph-compatibility.md): Dated verification scope and intentional Agent Server differences.
 - [React SDK / useStream](https://skein.js.org/react-sdk.md): Frontend compatibility — `@langchain/langgraph-sdk` and `useStream` over SSE.
+- [Streaming UI with json-render](https://skein.js.org/recipes/json-render.md): Application-owned catalogs, SpecStream compiler bridge, checkpoint restoration, actions, approval and replay limits.
 - [Storage](https://skein.js.org/storage.md): `SkeinStore`, memory/SQLite/Postgres selection, pgvector semantic search, upstream checkpointers, and `getStore()` in a graph.
 - [Runs & Redis](https://skein.js.org/runs-and-redis.md): The run engine, the queue, and cross-instance streaming with Redis.
 - [Observability](https://skein.js.org/observability.md): Tracing and metrics — the `TelemetrySink` seam, LangSmith thread grouping, PostHog `$ai_generation` analytics, OpenTelemetry spans/metrics, and guides for Langfuse, Braintrust, Sentry, and Datadog/Grafana/Honeycomb.
@@ -92,6 +93,7 @@ Upstream references: [LangGraph.js overview](https://docs.langchain.com/oss/java
 - [express-basic](https://github.com/skein-js/skein-js/tree/main/examples/express-basic): Zero-setup `echo` + a model-backed `agent` graph from one `langgraph.json`.
 - [embed-graph](https://github.com/skein-js/skein-js/tree/main/examples/embed-graph): In-code embedding with no `langgraph.json` (`embedInMemoryGraphs` + `{ deps }`).
 - [chat-app](https://github.com/skein-js/skein-js/tree/main/examples/chat-app): Flagship — a Gemini research assistant (thinking + web search + long-term memory) with a Next.js + shadcn UI.
+- [json-render](https://github.com/skein-js/skein-js/tree/main/examples/json-render): Public React/Vite example with offline-first UI generation, restoration, revisions and interrupt/resume.
 - [gemini-chat](https://github.com/skein-js/skein-js/tree/main/examples/gemini-chat): Model-backed end-to-end — a Gemini ReAct agent streamed into a browser.
 - [migrated-langgraph](https://github.com/skein-js/skein-js/tree/main/examples/migrated-langgraph): The drop-in proof — a stock LangGraph project run under `skein dev`.
 - [Framework adapters](https://github.com/skein-js/skein-js/tree/main/examples): fastify-basic/-app, nestjs-basic/-app, nextjs-basic/-app (standalone + embedded), react-usestream.

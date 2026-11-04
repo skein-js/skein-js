@@ -300,6 +300,7 @@ export default withMermaid(
             },
             { text: "Memory", link: "/recipes/memory" },
             { text: "Deep Agents (experimental)", link: "/recipes/deep-agents" },
+            { text: "Streaming UI with json-render", link: "/recipes/json-render" },
             { text: "Authenticating requests", link: "/recipes/authentication" },
             { text: "Production", link: "/recipes/production" },
           ],
