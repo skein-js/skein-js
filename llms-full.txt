@@ -10436,14 +10436,11 @@ Use Node 24, clone the repository, and run these commands at its root:
 
 ```bash
 pnpm install
-pnpm exec nx dev example-json-render
+pnpm dev:json-render
 ```
 
-Start the frontend in a second terminal:
-
-```bash
-pnpm exec nx serve example-json-render
-```
+The shortcut runs the graph server and Vite frontend together through Nx. Keep the terminal
+running and press **Ctrl+C** to stop both.
 
 Open **http://127.0.0.1:3006**, enter a request and select **Build a plan**. The card and tasks appear
 while generation is in progress. Approve or reject the plan, then use its generated button or
