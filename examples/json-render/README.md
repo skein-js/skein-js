@@ -14,14 +14,13 @@ Use Node 24 and the workspace's pnpm version. From the repository root:
 
 ```bash
 pnpm install
-pnpm exec nx dev example-json-render
+pnpm dev:json-render
 ```
 
-In another terminal, also from the repository root:
-
-```bash
-pnpm exec nx serve example-json-render
-```
+The shortcut starts both the backend and frontend in one terminal with
+`nx run-many -p example-json-render -t dev serve --parallel=2`. Keep it running; **Ctrl+C** stops
+both servers. To run them separately, use `pnpm exec nx dev example-json-render` and
+`pnpm exec nx serve example-json-render` in two terminals.
 
 Open **http://127.0.0.1:3006**. Vite proxies `/api` to the Skein server at `127.0.0.1:2024`.
 No API key, external service, or Docker is needed. The default generator emits a scripted plan with
