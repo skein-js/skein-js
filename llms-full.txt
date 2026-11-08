@@ -2016,7 +2016,9 @@ whichever handler served the first request deciding for both.
 function that scales to zero — a serverless deploy needs the Postgres store and Redis queue. See
 [deploy-serverless.md](./deploy-serverless.md).
 
-## Fetch (Bun / Deno)
+<span id="fetch-bun-deno"></span>
+
+## Fetch (Bun and Deno)
 
 The web-standard transport, and the production path on Bun and Deno. `skein build --runtime bun|deno`
 selects it for you.
