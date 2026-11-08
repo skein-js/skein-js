@@ -1034,6 +1034,7 @@ function Session({
             </label>
             <textarea
               id="graph-input"
+              disabled={mode === undefined}
               value={draft}
               onChange={(event) => setDraft(event.target.value)}
               onKeyDown={(event) => {

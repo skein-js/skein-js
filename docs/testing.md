@@ -421,6 +421,7 @@ uncached, asserts the navigation and draft-restoration steps, and stays separate
 tests so ordinary test runs do not regenerate documentation media.
 
 Workspace regressions cover Threads-to-Playground links, separate Chat/JSON drafts through reloads,
+and a delayed input schema keeping the editor disabled until it can retain typed input. They also cover
 foreground runs surviving navigation without resubmission, capped-page and URL/tab restoration,
 keyboard panel associations, and visible missing-run errors. A prefixed fixture proxies the protocol
 at `/api` and serves `/api/console`, proving base discovery without a `baseUrl` override. Workspace

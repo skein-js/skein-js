@@ -8991,6 +8991,8 @@ opening it does not submit another input.
 Continue on the same thread to test a conversation with existing state. Choose **New thread** to test
 from a fresh conversation. **Recent threads**, or **Threads → Open in Playground**, returns you to
 an earlier conversation. Each thread keeps its own Chat and JSON drafts in this browser tab.
+The input editor becomes available once the graph's input schema selects a mode. If the schema is
+unavailable, retry it or choose **Chat** or **JSON** explicitly before typing.
 
 Change your graph and save it to trigger development hot reload, then run a new case. In the echo
 example, change the reply prefix to `you said:` and check that a new message uses it. Start a fresh

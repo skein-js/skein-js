@@ -84,8 +84,22 @@ it("returns from Threads to the same Playground with isolated drafts and no subm
   ).toBeVisible();
   await page.keyboard.press("Escape");
   await expect(page.getByRole("button", { name: "Recent threads", exact: true })).toBeFocused();
+  let releaseSchema!: () => void;
+  const schemaReady = new Promise<void>((resolve) => {
+    releaseSchema = resolve;
+  });
+  await page.route(/\/assistants\/[^/]+\/schemas$/, async (route) => {
+    await schemaReady;
+    await route.continue();
+  });
   await page.getByRole("button", { name: "New thread", exact: true }).click();
   await expect(message).toHaveValue("");
+  try {
+    await expect(message).toBeDisabled();
+  } finally {
+    releaseSchema();
+  }
+  await expect(message).toBeEnabled();
   expect(submissions).toBe(1);
   await message.fill("Fresh workspace draft");
   await page.reload();
