@@ -4,6 +4,12 @@ Optional BullMQ access to Skein's native client. External command/outcome queues
 authorization, atomic admission, retained results and outbox. Skein's internal execution and delivery
 queues remain in charge.
 
+Part of **[skein-js](https://skein.js.org/)** — the open-source TypeScript runtime for
+LangGraph.js agents on shared servers or in local applications.
+
+[Choose where to run](https://skein.js.org/#run-it-your-way) ·
+[See who can connect](https://skein.js.org/#who-can-connect)
+
 ```ts
 import { createBullMqTransport } from "@skein-js/bullmq";
 

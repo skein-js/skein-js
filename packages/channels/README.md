@@ -18,8 +18,13 @@ lifecycle around the graph. For example:
 - customer email → refund validation and approvals → WhatsApp approvers → customer email;
 - GitHub deployment webhook → failure triage workflow → Slack on-call alert.
 
-Part of **[skein-js](https://github.com/skein-js/skein-js)**. Entirely optional: a deployment that
-configures no channel cannot tell this package exists.
+Part of **[skein-js](https://skein.js.org/)** — the open-source TypeScript runtime for
+LangGraph.js agents on shared servers or in local applications.
+
+[Choose where to run](https://skein.js.org/#run-it-your-way) ·
+[See who can connect](https://skein.js.org/#who-can-connect)
+
+Entirely optional: a deployment that configures no channel cannot tell this package exists.
 
 📖 **Docs:** [Workflows & channels](https://skein.js.org/channels)
 

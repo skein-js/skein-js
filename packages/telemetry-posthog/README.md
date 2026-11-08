@@ -5,7 +5,11 @@
 > See how your agents behave in production — usage, failures, latency, models, and token consumption
 > in PostHog.
 
-Part of **[skein-js](https://github.com/skein-js/skein-js)** — the open-source alternative to LangGraph Platform for TypeScript: a self-hosted [Agent Protocol](https://github.com/langchain-ai/agent-protocol) server for [LangGraph.js](https://github.com/langchain-ai/langgraphjs), and a drop-in replacement for the LangGraph CLI.
+Part of **[skein-js](https://skein.js.org/)** — the open-source TypeScript runtime for
+LangGraph.js agents on shared servers or in local applications.
+
+[Choose where to run](https://skein.js.org/#run-it-your-way) ·
+[See who can connect](https://skein.js.org/#who-can-connect)
 
 📖 **Docs:** [PostHog](https://skein.js.org/observability#posthog)
 

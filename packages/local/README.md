@@ -1,6 +1,13 @@
 # @skein-js/local
 
-Embed LangGraph.js agents with durable SQLite resources, checkpoints and queued work on Node 22/24/26.
+Embed LangGraph.js agents in an Electron app, Tauri Node backend, CLI, or daemon with durable SQLite
+resources, checkpoints and queued work on Node 22/24/26.
+
+Part of **[skein-js](https://skein.js.org/)** — the open-source TypeScript runtime for
+LangGraph.js agents on shared servers or in local applications.
+
+[Choose where to run](https://skein.js.org/#run-it-your-way) ·
+[See who can connect](https://skein.js.org/#who-can-connect)
 
 📖 **Docs:** [Local deployment](https://skein.js.org/local-deployment#embed-agents)
 

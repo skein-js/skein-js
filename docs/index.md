@@ -1,12 +1,14 @@
 ---
 layout: home
-title: skein-js — Self-host LangGraph.js agents in TypeScript
-description: Run LangGraph.js agents on your own infrastructure. Skein provides APIs, persistence, streaming, background jobs, and a console, with SQLite embedding for local apps.
+title: skein-js — Self-host LangGraph.js agents and Deep Agents
+description: Run LangGraph.js agents and Deep Agents on shared servers, in existing backends, or inside desktop apps, CLIs, and daemons with SQLite.
 
 hero:
   name: skein-js
-  text: Run LangGraph.js agents on your own infrastructure.
-  tagline: An open-source TypeScript runtime that handles the backend around your graphs, so you can focus on your application.
+  text: Run LangGraph.js agents and Deep Agents on your own infrastructure.
+  tagline: >-
+    An open-source TypeScript runtime for shared servers, existing backends, desktop apps, CLIs,
+    and daemons.
   actions:
     - theme: brand
       text: Get started
@@ -48,6 +50,10 @@ features:
     linkText: Explore the console
 ---
 
+<script setup>
+import SkeinRuntimeOverview from "./.vitepress/theme/components/SkeinRuntimeOverview.vue";
+</script>
+
 ## Why skein-js? {#why-skein-js}
 
 skein-js is an open-source TypeScript runtime for hosting LangGraph.js agents. LangGraph defines and
@@ -83,14 +89,113 @@ Install the CLI in your project with `npm install -D skein-js`, then replace `la
 
 ## Run it your way
 
-| Path                  | Use it for                                                               | Guide                                     |
-| --------------------- | ------------------------------------------------------------------------ | ----------------------------------------- |
-| **Standalone server** | A shared service with Postgres and Redis                                 | [Server deployment](./deploy.md)          |
-| **Existing backend**  | Graphs alongside your Express, Fastify, NestJS, or Next.js routes        | [Embedding](./embedding.md)               |
-| **Local application** | A desktop app, CLI, or daemon with one Node process owning a SQLite file | [Local deployment](./local-deployment.md) |
+Choose where Skein and your graphs live. Each option uses the same Agent Protocol engine; your
+application chooses its models, credentials, and tools.
 
-Each path uses the same Agent Protocol engine. The default development server uses memory drivers;
-choose durable storage when you need persistence beyond development.
+<div class="skein-cards">
+<div class="skein-card">
+
+### A shared server
+
+An agent service running on Node or in a container. Use Postgres for durable state and Redis for queues and streaming across instances.
+
+[Server deployment](./deploy.md)
+
+</div>
+<div class="skein-card">
+
+### Your existing backend
+
+Graphs alongside your Express, Fastify, NestJS, or Next.js routes, using the storage your application needs.
+
+[Embed your graphs](./embedding.md) · [Framework adapters](./adapters.md)
+
+</div>
+<div class="skein-card">
+
+### A local application
+
+An Electron app, Tauri app with a Node backend, CLI, or daemon. One Node process owns the SQLite file containing resources, queued work, and checkpoints.
+
+[Local deployment](./local-deployment.md)
+
+</div>
+</div>
+
+Node is the default server runtime. Bun and Deno are **preview** options through the
+[Fetch adapter](./adapters.md#fetch-bun-deno). The default development server uses memory drivers;
+select durable storage when state must survive beyond development.
+
+<SkeinRuntimeOverview />
+
+The hosting options are alternatives. Enable the access methods your application needs; a local
+runtime can use the native client directly or add an HTTP adapter for remote clients.
+
+## Who can connect
+
+Choose the connection that matches your caller, then follow its setup guide.
+
+<div class="skein-cards">
+<div class="skein-card">
+
+### Web frontends
+
+LangChain's official React, Vue, Svelte, and Angular SDKs, or the ready-made Agent Chat UI, over HTTP/SSE.
+
+[Connect LangChain SDKs](./react-sdk.md) · [LangChain SDK docs](https://docs.langchain.com/oss/javascript/langchain/frontend/overview)
+
+</div>
+<div class="skein-card">
+
+### Services and scripts
+
+The LangGraph JavaScript SDK or Agent Protocol HTTP/SSE. Mount the single-graph adapter for a plain `/invoke/:graph_id` input/output endpoint.
+
+[Agent Protocol](./agent-protocol.md) · [Serve a single graph](./serving-a-single-graph.md)
+
+</div>
+<div class="skein-card">
+
+### Developer tools
+
+The self-hosted console or LangGraph Studio pointed at your server.
+
+[Console](./console.md) · [Studio credentials](./console-reference.md#development-authentication)
+
+</div>
+<div class="skein-card">
+
+### Other agents
+
+MCP clients call authorized assistants as tools; A2A clients discover agents and exchange messages and tasks.
+
+[MCP and A2A](./agent-protocol.md#mcp-and-a2a)
+
+</div>
+<div class="skein-card">
+
+### Embedded apps and workers
+
+The native TypeScript client without HTTP, or optional BullMQ command and outcome queues.
+
+[Native access and BullMQ](./native-access.md)
+
+</div>
+<div class="skein-card">
+
+### Channels and provider events
+
+Channels your application implements and configures to verify inbound events and deliver workflow outcomes.
+
+[Workflows and channels](./channels.md)
+
+</div>
+</div>
+
+Your application's [authentication and authorization](./recipes/authentication.md) determine who can
+access each graph and its resources. For browser clients on another origin, configure
+[CORS](./recipes/serving.md#cors-for-a-browser-client). Check the
+[compatibility reference](./langgraph-compatibility.md) for tested clients and limitations.
 
 ## See it running {#see-it}
 

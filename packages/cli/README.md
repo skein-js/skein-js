@@ -5,7 +5,11 @@
 > The `skein` CLI — self-host your LangGraph.js agents as an open-source alternative to LangGraph
 > Platform, with a drop-in replacement for the LangGraph CLI (`dev` / `up` / `build` / `dockerfile`).
 
-Part of **[skein-js](https://github.com/skein-js/skein-js)** — the open-source alternative to LangGraph Platform for TypeScript: a self-hosted [Agent Protocol](https://github.com/langchain-ai/agent-protocol) server for [LangGraph.js](https://github.com/langchain-ai/langgraphjs), and a drop-in replacement for the LangGraph CLI.
+Part of **[skein-js](https://skein.js.org/)** — the open-source TypeScript runtime for
+LangGraph.js agents on shared servers or in local applications.
+
+[Choose where to run](https://skein.js.org/#run-it-your-way) ·
+[See who can connect](https://skein.js.org/#who-can-connect)
 
 📖 **Docs:** [LangGraph CLI compatibility](https://skein.js.org/langgraph-cli-compat#command-mapping) · [Deploy](https://skein.js.org/deploy)
 
@@ -86,32 +90,31 @@ any layer. Public-registry builds don't need it.
 
 ## `skein dev` flags
 
-| Flag                      | Values               | Default     | Notes                                                                                   |
-| ------------------------- | -------------------- | ----------- | --------------------------------------------------------------------------------------- |
-| `-p, --port`              | number               | `2024`      | Port to listen on.                                                                      |
-| `--host`                  | host                 | `127.0.0.1` | Interface to bind.                                                                      |
-| `--store <driver>`        | `memory`, `postgres` | `memory`    | `postgres` reads `POSTGRES_URI`; also selects `PostgresSaver`.                          |
-| `--queue <driver>`        | `memory`, `redis`    | `memory`    | `redis` reads `REDIS_URI` (BullMQ queue + Redis Streams bus).                           |
-| `--concurrency`           | number               | `10`        | Queued runs the background worker executes at once.                                     |
-| `-n, --n-jobs-per-worker` | number               | `10`        | LangGraph-compatible alias for `--concurrency`.                                         |
-| `--no-persist`            | —                    | persists    | Don't snapshot dev state to `.skein/` across restarts.                                  |
-| `--no-reload`             | —                    | reloads     | Disable hot reload on source change.                                                    |
-| `--dev-ui-access`         | —                    | off         | Rotating console/Studio key; also enabled by `auth.dev_ui_access: true`. Loopback only. |
-| `-v, --verbose`           | —                    | off         | Log per-run activity (tool calls, interrupts, timing). Failures are always logged.      |
-| `--request-log`           | —                    | on          | A line per HTTP request. `--no-request-log` turns it off; env `SKEIN_REQUEST_LOG`.      |
-| `--run-timeout <ms>`      | number               | off         | Abort a run executing longer than this; env `SKEIN_RUN_TIMEOUT_MS`.                     |
+| Flag                      | Values                         | Default               | Notes                                                                                   |
+| ------------------------- | ------------------------------ | --------------------- | --------------------------------------------------------------------------------------- |
+| `-p, --port`              | number                         | `2024`                | Port to listen on.                                                                      |
+| `--host`                  | host                           | `127.0.0.1`           | Interface to bind.                                                                      |
+| `--store <driver>`        | `memory`, `postgres`, `sqlite` | `memory`              | `postgres` reads `POSTGRES_URI`; `sqlite` requires the SQLite queue.                    |
+| `--queue <driver>`        | `memory`, `redis`, `sqlite`    | `memory`              | `redis` reads `REDIS_URI`; `sqlite` requires the SQLite store.                          |
+| `--sqlite-path <path>`    | path                           | `.skein/state.sqlite` | SQLite file, resolved against the working directory.                                    |
+| `--concurrency`           | number                         | `10`                  | Queued runs the background worker executes at once.                                     |
+| `-n, --n-jobs-per-worker` | number                         | `10`                  | LangGraph-compatible alias for `--concurrency`.                                         |
+| `--no-persist`            | —                              | persists              | Don't snapshot dev state to `.skein/` across restarts.                                  |
+| `--no-reload`             | —                              | reloads               | Disable hot reload on source change.                                                    |
+| `--dev-ui-access`         | —                              | off                   | Rotating console/Studio key; also enabled by `auth.dev_ui_access: true`. Loopback only. |
+| `-v, --verbose`           | —                              | off                   | Log per-run activity (tool calls, interrupts, timing). Failures are always logged.      |
+| `--request-log`           | —                              | on                    | A line per HTTP request. `--no-request-log` turns it off; env `SKEIN_REQUEST_LOG`.      |
+| `--run-timeout <ms>`      | number                         | off                   | Abort a run executing longer than this; env `SKEIN_RUN_TIMEOUT_MS`.                     |
 
 `--concurrency`, `-n, --n-jobs-per-worker`, and `--run-timeout` are accepted by `skein start` too. The
 first two also read
 `SKEIN_RUN_CONCURRENCY` (or `N_JOBS_PER_WORKER`) when no flag is passed — the path that reaches a
 container. See [runs-and-redis.md](https://skein.js.org/runs-and-redis#run-concurrency).
 
-**`skein start` takes `--store` and `--queue` too, but only the durable values.** It is the production
-entrypoint: `--store postgres` and `--queue redis` are its defaults, and `--store memory` is rejected at
-parse time. It used to default to the in-memory drivers, with only the generated Dockerfile's CMD
-flipping them — so any CMD override, or a hand-rolled `docker run`, quietly produced a production server
-with a process-local queue and state that vanished on restart. For a local run with no infrastructure use
-`skein dev`; to develop against production drivers, `skein dev --store postgres --queue redis`.
+**`skein start` takes `--store`, `--queue`, and `--sqlite-path` too.** It defaults to
+`--store postgres --queue redis`; memory drivers are rejected. For a durable local Node deployment
+without database services, select `--store sqlite --queue sqlite` together. To develop against a
+shared server's drivers, use `skein dev --store postgres --queue redis`.
 
 `skein start` also defaults `--request-log` **off**: it always passes a logger (that is how a failed run
 gets reported at all), and a line per request under production traffic buries those reports. Pass
@@ -126,6 +129,22 @@ container entrypoint.
 lets you develop against **production-shaped** storage (durable Postgres checkpoints, pgvector
 search, cross-instance Redis streaming) with hot reload and no Docker. Full mapping and the
 annotated `langgraph.json`: [docs/langgraph-cli-compat.md](https://skein.js.org/langgraph-cli-compat).
+
+### Local persistence with SQLite
+
+Install `@skein-js/local` and `@langchain/langgraph-checkpoint-sqlite@~1.0.4` in your project, then run:
+
+```bash
+skein dev --store sqlite --queue sqlite
+skein build --artifact-only
+skein start -c .skein/build/langgraph.json --store sqlite --queue sqlite
+```
+
+Stop the development server before starting the built artifact so it can own the SQLite file.
+Both serving commands accept `--sqlite-path`. The default `.skein/state.sqlite` stays outside the
+build artifact, and one Node process owns the file. SQLite requires both drivers together and the
+Node runtime. For embedding in an Electron app, a Tauri Node backend, CLI, or daemon, follow
+[local deployment](https://skein.js.org/local-deployment).
 
 ## Self-hosted, no lock-in
 

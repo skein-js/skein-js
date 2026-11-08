@@ -2,7 +2,9 @@
 
 [![npm](https://img.shields.io/npm/v/skein-js?logo=npm&color=cb3837&label=skein-js)](https://www.npmjs.com/package/skein-js)&nbsp;[![downloads](https://img.shields.io/npm/dm/skein-js?color=blue)](https://www.npmjs.com/package/skein-js)&nbsp;[![license](https://img.shields.io/npm/l/skein-js?color=green)](./LICENSE)&nbsp;[![CI](https://github.com/skein-js/skein-js/actions/workflows/ci.yml/badge.svg)](https://github.com/skein-js/skein-js/actions/workflows/ci.yml)&nbsp;[![docs](https://img.shields.io/badge/docs-skein.js.org-3b82f6)](https://skein.js.org/)
 
-**Run LangGraph.js agents on your own infrastructure.**
+**Run LangGraph.js agents and Deep Agents on your own infrastructure.**
+
+Run your graphs on shared servers, alongside your backend, or inside desktop apps, CLIs, and daemons.
 
 skein-js is an open-source TypeScript runtime for hosting
 [LangGraph.js](https://docs.langchain.com/oss/javascript/langgraph/overview) agents. LangGraph defines
@@ -85,17 +87,41 @@ limitations.
 
 ## Run it your way
 
-Each path uses the same Agent Protocol engine. Choose where the runtime lives:
+Choose where Skein and your graphs live. Each option uses the same Agent Protocol engine; your
+application chooses its models, credentials, and tools.
 
-| Path                  | Use it for                                                                      | Guide                                                             |
-| --------------------- | ------------------------------------------------------------------------------- | ----------------------------------------------------------------- |
-| **Standalone server** | A shared agent service with Postgres and Redis, deployed as Node or a container | [Server deployment](./docs/deploy.md)                             |
-| **Existing backend**  | Graphs mounted alongside your Express, Fastify, NestJS, or Next.js routes       | [Embedding](./docs/embedding.md) · [Adapters](./docs/adapters.md) |
-| **Local application** | A desktop app, CLI, or daemon with one Node process owning a SQLite file        | [Local deployment](./docs/local-deployment.md)                    |
+| Run Skein in              | Choose it for                                                                                                                                             | Start here                                                                          |
+| ------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------- | ----------------------------------------------------------------------------------- |
+| **A shared server**       | An agent service running on Node or in a container. Use Postgres for durable state and Redis for queues and streaming across instances.                   | [Server deployment](./docs/deploy.md)                                               |
+| **Your existing backend** | Graphs alongside your Express, Fastify, NestJS, or Next.js routes, using the storage your application needs.                                              | [Embed your graphs](./docs/embedding.md) · [Framework adapters](./docs/adapters.md) |
+| **A local application**   | An Electron app, Tauri app with a Node backend, CLI, or daemon. One Node process owns the SQLite file containing resources, queued work, and checkpoints. | [Local deployment](./docs/local-deployment.md)                                      |
 
-The default development server uses memory drivers. Select durable storage when you need state to
-survive beyond development. Your application chooses its models, credentials, and tools in every
-path.
+Node is the default server runtime. Bun and Deno are **preview** options through the
+[Fetch adapter](./docs/adapters.md#fetch-bun-deno). The default development server uses memory drivers;
+select durable storage when state must survive beyond development.
+
+![Apps, agents, native callers, and channels connect to Skein and your graphs. Choose a shared server, existing backend, or local application.](./docs/public/images/runtime-overview.svg)
+
+The hosting options are alternatives. Enable the access methods your application needs; a local
+runtime can use the native client directly or add an HTTP adapter for remote clients.
+
+## Who can connect
+
+Choose the connection that matches your caller, then follow its setup guide.
+
+| Your caller                      | How it connects                                                                                                                                | Start here                                                                                                                                  |
+| -------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------- |
+| **Web frontends**                | LangChain's official React, Vue, Svelte, and Angular SDKs, or the ready-made Agent Chat UI, over HTTP/SSE.                                     | [Connect LangChain SDKs](./docs/react-sdk.md) · [LangChain SDK docs](https://docs.langchain.com/oss/javascript/langchain/frontend/overview) |
+| **Services and scripts**         | The LangGraph JavaScript SDK or Agent Protocol HTTP/SSE. Mount the single-graph adapter for a plain `/invoke/:graph_id` input/output endpoint. | [Agent Protocol](./docs/agent-protocol.md) · [Serve a single graph](./docs/serving-a-single-graph.md)                                       |
+| **Developer tools**              | The self-hosted console or LangGraph Studio pointed at your server.                                                                            | [Console](./docs/console.md) · [Studio credentials](./docs/console-reference.md#development-authentication)                                 |
+| **Other agents**                 | MCP clients call authorized assistants as tools; A2A clients discover agents and exchange messages and tasks.                                  | [MCP and A2A](./docs/agent-protocol.md#mcp-and-a2a)                                                                                         |
+| **Embedded apps and workers**    | The native TypeScript client without HTTP, or optional BullMQ command and outcome queues.                                                      | [Native access and BullMQ](./docs/native-access.md)                                                                                         |
+| **Channels and provider events** | Channels your application implements and configures to verify inbound events and deliver workflow outcomes.                                    | [Workflows and channels](./docs/channels.md)                                                                                                |
+
+Your application's [authentication and authorization](./docs/recipes/authentication.md) determine who
+can access each graph and its resources. For browser clients on another origin, configure
+[CORS](./docs/recipes/serving.md#cors-for-a-browser-client). Check the
+[compatibility reference](./docs/langgraph-compatibility.md) for tested clients and limitations.
 
 ## The console
 

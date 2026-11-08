@@ -1,8 +1,14 @@
 # create-skein-js
 
-Scaffold a [skein-js](https://github.com/skein-js/skein-js) project — a self-hosted
-[Agent Protocol](https://github.com/langchain-ai/agent-protocol) server for your
-[LangGraph.js](https://docs.langchain.com/oss/javascript/langgraph/overview) agents.
+Scaffold a [skein-js](https://github.com/skein-js/skein-js) project for your
+[LangGraph.js](https://docs.langchain.com/oss/javascript/langgraph/overview) agents. Start with memory
+for development, SQLite for a local Node application, or Postgres and Redis for a shared server.
+
+Part of **[skein-js](https://skein.js.org/)** — the open-source TypeScript runtime for
+LangGraph.js agents on shared servers or in local applications.
+
+[Choose where to run](https://skein.js.org/#run-it-your-way) ·
+[See who can connect](https://skein.js.org/#who-can-connect)
 
 📖 **Docs:** [Scaffolding a project](https://skein.js.org/scaffolding)
 

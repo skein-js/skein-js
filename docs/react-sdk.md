@@ -1,8 +1,16 @@
 # Frontend SDKs / `useStream` compatibility
 
-Connect your frontend to a running skein-js server with the standard LangChain SDKs. Use `useStream`
-to submit turns, read streamed messages, show errors, and respond to human-approval requests.
-You build the interface; the hook supplies the conversation state and actions.
+Connect your frontend to a running skein-js server with LangChain's official SDKs for React, Vue,
+Svelte, and Angular. LangChain maintains the frontend packages; Skein supplies the Agent Protocol
+backend. Set the client's `apiUrl` to your Skein server and `assistantId` to your graph's Assistant ID.
+
+Read [LangChain's frontend SDK guide](https://docs.langchain.com/oss/javascript/langchain/frontend/overview)
+for framework patterns and UI capabilities. This page covers connecting those SDKs to Skein, with
+setup examples and [tested client versions](./langgraph-compatibility.md).
+
+React, Vue, and Svelte use `useStream`; Angular uses `injectStream`. Submit turns, read streamed
+messages, show errors, and respond to human-approval requests through the returned stream handle.
+You build the interface; the SDK supplies the conversation state and actions.
 
 ## Connect a React UI {#usestream-against-skein-js}
 

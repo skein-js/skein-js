@@ -2,9 +2,15 @@
 
 [![npm](https://img.shields.io/npm/v/%40skein-js%2Ffetch?logo=npm&color=cb3837)](https://www.npmjs.com/package/@skein-js/fetch)&nbsp;[![downloads](https://img.shields.io/npm/dm/%40skein-js%2Ffetch?color=blue)](https://www.npmjs.com/package/@skein-js/fetch)&nbsp;[![license](https://img.shields.io/npm/l/%40skein-js%2Ffetch?color=green)](../../LICENSE)
 
-Native Web `Request`/`Response` transport for Skein. It is the production HTTP boundary for Bun and
-Deno; Node framework adapters remain in `@skein-js/express`, `@skein-js/fastify`,
+Native Web `Request`/`Response` transport for Skein's **preview Bun and Deno runtimes**.
+Node framework adapters remain in `@skein-js/express`, `@skein-js/fastify`,
 `@skein-js/nestjs`, and `@skein-js/nextjs`.
+
+Part of **[skein-js](https://skein.js.org/)** — the open-source TypeScript runtime for
+LangGraph.js agents on shared servers or in local applications.
+
+[Choose where to run](https://skein.js.org/#run-it-your-way) ·
+[See who can connect](https://skein.js.org/#who-can-connect)
 
 📖 **Docs:** [Fetch adapter for Bun & Deno](https://skein.js.org/adapters#fetch-bun-deno) · [Deploy](https://skein.js.org/deploy)
 

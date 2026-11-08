@@ -1,0 +1,91 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1200 550" class="skein-runtime-art" role="img" aria-labelledby="runtime-overview-title runtime-overview-description">
+  <title id="runtime-overview-title">Your clients. Your graphs. Your infrastructure.</title>
+  <desc id="runtime-overview-description">Apps and services, other agents, native callers and channels connect to Skein and your LangGraph.js graphs or Deep Agents. Choose one host: a shared server, your existing backend, or a local desktop app, CLI or daemon.</desc>
+  <style>
+    .skein-runtime-art { --art-text: #161b22; --art-muted: #53616e; --art-paper: #fff; --art-soft: #f5f7f9; --art-border: #dde3e9; --art-blue: #096bd8; --art-slate: #60758b; --art-silver: #b4c2ce; --art-mist: #dbe3ea; font-family: ui-sans-serif, system-ui, -apple-system, "Segoe UI", sans-serif; }
+    @media (prefers-color-scheme: dark) {
+      .skein-runtime-art { --art-text: #e9eef4; --art-muted: #a5b3c1; --art-paper: #12171d; --art-soft: #171f28; --art-border: #2c3b49; --art-blue: #1e73ce; --art-slate: #536d88; --art-silver: #3d5369; --art-mist: #293d50; }
+    }
+    html:not(.dark) .skein-runtime-art { --art-text: #161b22; --art-muted: #53616e; --art-paper: #fff; --art-soft: #f5f7f9; --art-border: #dde3e9; --art-blue: #096bd8; --art-slate: #60758b; --art-silver: #b4c2ce; --art-mist: #dbe3ea; }
+    html.dark .skein-runtime-art { --art-text: #e9eef4; --art-muted: #a5b3c1; --art-paper: #12171d; --art-soft: #171f28; --art-border: #2c3b49; --art-blue: #1e73ce; --art-slate: #536d88; --art-silver: #3d5369; --art-mist: #293d50; }
+    .skein-runtime-art .art-heading { fill: var(--art-muted); font-size: 14px; font-weight: 650; letter-spacing: 1.8px; }
+    .skein-runtime-art .art-title { fill: var(--art-text); font-size: 19px; font-weight: 650; }
+    .skein-runtime-art .art-detail { fill: var(--art-muted); font-size: 14px; }
+    .skein-runtime-art .art-white { fill: #fff; }
+    .skein-runtime-art .art-number { fill: var(--art-text); font-size: 15px; font-weight: 650; }
+    .skein-runtime-art .art-ribbon { fill: none; stroke-linecap: round; }
+  </style>
+  <defs>
+    <marker id="runtime-overview-arrow" viewBox="0 0 12 12" refX="10" refY="6" markerWidth="14" markerHeight="14" markerUnits="userSpaceOnUse" orient="auto-start-reverse">
+      <path d="M1 1 11 6 1 11Z" fill="var(--art-blue)"/>
+    </marker>
+  </defs>
+
+  <rect x="1" y="1" width="1198" height="548" rx="22" fill="var(--art-paper)" stroke="var(--art-border)"/>
+
+  <text x="24" y="49" class="art-heading">CONNECT FROM</text>
+  <text x="500" y="49" class="art-heading">YOUR GRAPH BACKEND</text>
+  <text x="939" y="49" class="art-heading">CHOOSE ONE HOST</text>
+
+  <g class="art-ribbon" stroke-width="62">
+    <path d="M269 433C386 433 372 278 504 278" stroke="var(--art-mist)"/>
+    <path d="M269 339C371 339 387 278 504 278" stroke="var(--art-silver)"/>
+    <path d="M269 245C371 245 397 278 504 278" stroke="var(--art-slate)"/>
+    <path d="M269 151C391 151 362 278 504 278" stroke="var(--art-blue)"/>
+  </g>
+
+  <g class="art-ribbon" stroke="var(--art-blue)" stroke-width="15" marker-end="url(#runtime-overview-arrow)">
+    <path d="M751 278C836 278 821 160 923 160"/>
+    <path d="M751 278H923"/>
+    <path d="M751 278C836 278 821 396 923 396"/>
+  </g>
+
+  <g>
+    <rect x="24" y="120" width="280" height="62" rx="31" fill="var(--art-blue)"/>
+    <circle cx="57" cy="151" r="23" fill="var(--art-paper)"/>
+    <text x="57" y="156" text-anchor="middle" class="art-number">01</text>
+    <text x="91" y="146" class="art-title art-white">Apps &amp; services</text>
+    <text x="91" y="167" class="art-detail art-white">LangChain SDKs · HTTP / SSE</text>
+
+    <rect x="24" y="214" width="280" height="62" rx="31" fill="var(--art-slate)"/>
+    <circle cx="57" cy="245" r="23" fill="var(--art-paper)"/>
+    <text x="57" y="250" text-anchor="middle" class="art-number">02</text>
+    <text x="91" y="240" class="art-title art-white">Agents &amp; tools</text>
+    <text x="91" y="261" class="art-detail art-white">MCP / A2A</text>
+
+    <rect x="24" y="308" width="280" height="62" rx="31" fill="var(--art-silver)"/>
+    <circle cx="57" cy="339" r="23" fill="var(--art-paper)"/>
+    <text x="57" y="344" text-anchor="middle" class="art-number">03</text>
+    <text x="91" y="334" class="art-title">Native callers</text>
+    <text x="91" y="355" class="art-detail" style="fill:var(--art-text)">TypeScript / optional BullMQ</text>
+
+    <rect x="24" y="402" width="280" height="62" rx="31" fill="var(--art-mist)"/>
+    <circle cx="57" cy="433" r="23" fill="var(--art-paper)"/>
+    <text x="57" y="438" text-anchor="middle" class="art-number">04</text>
+    <text x="91" y="428" class="art-title">Channels</text>
+    <text x="91" y="449" class="art-detail" style="fill:var(--art-text)">Verified provider events</text>
+  </g>
+
+  <g>
+    <rect x="476" y="215" width="290" height="126" rx="25" fill="var(--art-blue)"/>
+    <text x="621" y="262" text-anchor="middle" class="art-white" font-size="36" font-weight="700">skein-js</text>
+    <text x="621" y="295" text-anchor="middle" class="art-white" font-size="17">Your LangGraph.js graphs</text>
+    <text x="621" y="318" text-anchor="middle" class="art-white" font-size="17">&amp; Deep Agents</text>
+    <text x="621" y="379" text-anchor="middle" class="art-detail">One engine. Your choice of host.</text>
+  </g>
+
+  <g fill="var(--art-soft)" stroke="var(--art-border)">
+    <rect x="939" y="117" width="237" height="86" rx="18"/>
+    <rect x="939" y="235" width="237" height="86" rx="18"/>
+    <rect x="939" y="353" width="237" height="86" rx="18"/>
+  </g>
+  <g>
+    <text x="959" y="151" class="art-title">Shared server</text>
+    <text x="959" y="176" class="art-detail">Node / containers</text>
+    <text x="959" y="269" class="art-title">Existing backend</text>
+    <text x="959" y="294" class="art-detail">Framework adapters</text>
+    <text x="959" y="387" class="art-title">Local application</text>
+    <text x="959" y="412" class="art-detail">Desktop / CLI / daemon</text>
+  </g>
+  <text x="600" y="515" text-anchor="middle" class="art-detail">Enable the connections you need. Run your graphs where your application lives.</text>
+</svg>

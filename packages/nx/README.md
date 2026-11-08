@@ -2,6 +2,12 @@
 
 Generate a skein-js LangGraph application in Nx 23.2.1 through 23.x.
 
+Part of **[skein-js](https://skein.js.org/)** — the open-source TypeScript runtime for
+LangGraph.js agents on shared servers or in local applications.
+
+[Choose where to run](https://skein.js.org/#run-it-your-way) ·
+[See who can connect](https://skein.js.org/#who-can-connect)
+
 ```bash
 pnpm add -Dw @skein-js/nx
 pnpm exec nx g @skein-js/nx:application --directory=apps/agent --storage=sqlite

@@ -3,6 +3,12 @@
 Durable Agent Protocol resources and a run queue in one SQLite file. Requires Node 22, 24 or 26 and
 `better-sqlite3`; no database service is needed.
 
+Part of **[skein-js](https://skein.js.org/)** — the open-source TypeScript runtime for
+LangGraph.js agents on shared servers or in local applications.
+
+[Choose where to run](https://skein.js.org/#run-it-your-way) ·
+[See who can connect](https://skein.js.org/#who-can-connect)
+
 📖 **Docs:** [Local SQLite storage](https://skein.js.org/storage#local-sqlite-storage) · [Local deployment](https://skein.js.org/local-deployment)
 
 ```ts

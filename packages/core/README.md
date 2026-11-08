@@ -4,7 +4,11 @@
 
 > The shared Agent Protocol **contract** for skein-js — wire types, the `SkeinStore` interface, the queue / bus / auth seams, and the edge error type.
 
-Part of **[skein-js](https://github.com/skein-js/skein-js)** — the open-source alternative to LangGraph Platform for TypeScript: a self-hosted [Agent Protocol](https://github.com/langchain-ai/agent-protocol) server for [LangGraph.js](https://github.com/langchain-ai/langgraphjs), and a drop-in replacement for the LangGraph CLI.
+Part of **[skein-js](https://skein.js.org/)** — the open-source TypeScript runtime for
+LangGraph.js agents on shared servers or in local applications.
+
+[Choose where to run](https://skein.js.org/#run-it-your-way) ·
+[See who can connect](https://skein.js.org/#who-can-connect)
 
 📖 **Docs:** [The SkeinStore contract](https://skein.js.org/storage#skeinstore-interface) · [Bring your own drivers](https://skein.js.org/embedding#bring-your-own-drivers-auth-logger)
 

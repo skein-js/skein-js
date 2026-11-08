@@ -4,6 +4,12 @@ The **skein console** — a web UI for a running [skein](https://github.com/skei
 assistants, threads, live runs, channel wiring and deliveries, interrupts, time travel, the store,
 and crons.
 
+Part of **[skein-js](https://skein.js.org/)** — the open-source TypeScript runtime for
+LangGraph.js agents on shared servers or in local applications.
+
+[Choose where to run](https://skein.js.org/#run-it-your-way) ·
+[See who can connect](https://skein.js.org/#who-can-connect)
+
 📖 **Docs:** [The console](https://skein.js.org/console)
 
 Served by the server itself, so it is same-origin: no CORS, no second process, no account, and it works
