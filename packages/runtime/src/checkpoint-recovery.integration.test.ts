@@ -51,10 +51,11 @@ it("continues a killed Redis worker from its committed Postgres checkpoint witho
       "checkpointed",
     );
     expect((await embedded.deps.store.runs.getKwargs(run.run_id))?.durability).toBe("sync");
-    expect((await runtime.service.threads.getState(thread.thread_id)).values).toEqual({
-      total: 11,
-      steps: ["first"],
-    });
+    // The child signal identifies the second node, not visibility of the committed checkpoint
+    // to another connection. Establish that durable boundary before killing the process.
+    await expect
+      .poll(async () => (await runtime.service.threads.getState(thread.thread_id)).values)
+      .toEqual({ total: 11, steps: ["first"] });
     const exit = once(child, "exit");
     child.kill("SIGKILL");
     await exit;
@@ -83,8 +84,17 @@ it("continues a killed Redis worker from its committed Postgres checkpoint witho
     expect(received.at(-1)?.data).toEqual({ total: 111, steps: ["first", "second"] });
     // A settled run redelivered again is a no-op, including its external effect.
     const readRun = vi.spyOn(embedded.deps.store.runs, "get");
-    await embedded.deps.queue.enqueue({ run_id: run.run_id, thread_id: thread.thread_id });
-    await expect.poll(() => readRun.mock.calls.some(([id]) => id === run.run_id)).toBe(true);
+    // Resource settlement precedes BullMQ's acknowledgment. An enqueue while the old job is
+    // active is correctly deduplicated; repeat the stable ID until a new delivery is observed.
+    await expect
+      .poll(
+        async () => {
+          await embedded.deps.queue.enqueue({ run_id: run.run_id, thread_id: thread.thread_id });
+          return readRun.mock.calls.some(([id]) => id === run.run_id);
+        },
+        { timeout: 10_000 },
+      )
+      .toBe(true);
     await runtime.worker.stop();
     readRun.mockRestore();
     expect(
