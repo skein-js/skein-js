@@ -18,7 +18,7 @@ security settings. This does not introduce application identity policy or a new 
 Use upstream JSON names `webhooks.headers` (string map), `env_prefix` (default `LG_WEBHOOK_`) and
 `url.{allowed_domains,allowed_ports,require_https,disable_loopback,max_url_length}`. Domain entries
 are exact hosts or `*.` subdomain patterns; ports are integers 1–65535; length is a positive integer.
-Omitted restrictions retain current behavior. Resolve `${{ env.NAME }}` only in webhook header
+Omitted restrictions retain current behavior. Resolve <code v-pre>${{ env.NAME }}</code> only in webhook header
 values; referenced names must have the configured prefix and exist. Reject invalid names/headers
 without reporting secret values. No general config interpolation is added.
 
