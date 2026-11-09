@@ -2,8 +2,10 @@
 
 Contributor work record for [#83](https://github.com/skein-js/skein-js/issues/83), based on
 [`3d0bf43`](https://github.com/skein-js/skein-js/commit/3d0bf4381077b40b5997735daacac87e67758052).
-Implementation and local verification are distinct from merge/issue closure. No checkbox is closed
-merely because code exists. The IDs below map one-for-one, in original order, to all 48 epic checkboxes.
+Closeout completed on 10 November 2026 (Africa/Nairobi). The seven focused implementation reviews
+are merged; their final source tree passed the combined local and remote gates below. The IDs map
+one-for-one, in original order, to all 48 epic checkboxes. No package release or documentation
+deployment was performed.
 
 ## Protected contracts
 
@@ -33,8 +35,9 @@ promise, CLI role, or mandatory execution-on-workers behavior.
 ## Checkbox dispositions
 
 An evidence link names the maintained regression source, not an unreviewable temporary experiment.
-The verification section records command outcomes. “Fixed” below means implemented locally until its
-focused PR is merged. “Boundary” is a supported alternative, not an unresolved security/recovery defect.
+The verification section records command outcomes. “Fixed” below refers to the merged implementation
+linked in the delivery record. “Boundary” is a supported alternative; recovery and security defects
+were resolved rather than classified as optional.
 
 ### 1. Checkpoint-aware Redis crash recovery
 
@@ -121,33 +124,34 @@ focused PR is merged. “Boundary” is a supported alternative, not an unresolv
 | ------------------------------------------ | --------------------------------------------------------------------------------------------------------------------------------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | P1 Global run-search Console decision      | API existed, users needed thread ID → Inspect/Runs at #/runs finds failed runs and opens existing run/thread details; filters/offset survive navigation.        | [View](https://github.com/skein-js/skein-js/blob/main/packages/console/ui/src/views/runs.tsx), [browser suite](https://github.com/skein-js/skein-js/blob/main/packages/console/ui/browser/console.browser.test.ts). Fixed; uses existing API filter names. #77 backend work remains separate. |
 | P2 Assess specialized task/file inspection | Generic state/activity/approval views already exist → task IDs/status/files remain inspectable as state, pending human decisions use existing approval journey. | Existing Console JSON/state/history/activity and approval browser journeys plus B5 actual payloads. No demonstrated unmet specialized journey; no new product surface approved. Binary previews/task orchestration UX would need a separate proposal.                                         |
-| P3 Reconcile #12/stale backlog             | Generative UI already shipped; disable_ui missing → keep existing graph UI/compiler/image proof and add independent disable behavior including Console.         | CLI packed consumer + artifact/UI tests + production image. #12 may close only after focused change is merged; this record does not close issues.                                                                                                                                             |
+| P3 Reconcile #12/stale backlog             | Generative UI already shipped; disable_ui missing → keep existing graph UI/compiler/image proof and add independent disable behavior including Console.         | CLI packed consumer + artifact/UI tests + production image. [#12](https://github.com/skein-js/skein-js/issues/12) reconciled and closed after merged graph UI/configuration proof.                                                                                                            |
 
 ### 10. Completion criteria
 
 | ID / original checkbox                 | Observable closeout requirement                                                                                                               | Disposition                                                                                   |
 | -------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------- | --------------------------------------------------------------------------------------------- |
-| Z1 Every workstream linked/disposed    | All 42 workstream checkboxes above have maintained evidence and a fix, verified support, recipe or boundary.                                  | Local mapping complete; PR/merge links still required for external closure.                   |
-| Z2 Recovery/security controls resolved | Real killed-worker graph recovery and enforcement/fail-fast controls pass regression gates.                                                   | Implemented; see verification outcomes. Any failing required gate remains blocking.           |
+| Z1 Every workstream linked/disposed    | All 42 workstream checkboxes above have maintained evidence and a fix, verified support, recipe or boundary.                                  | Complete; focused PR and merge links below cover every workstream.                            |
+| Z2 Recovery/security controls resolved | Real killed-worker graph recovery and enforcement/fail-fast controls pass regression gates.                                                   | Resolved; local and remote recovery/configuration gates passed.                               |
 | Z3 Accurate compatibility docs         | Versions/backends/workarounds/intentional differences separately visible.                                                                     | Compatibility reference and recipes updated; no blanket upstream parity claim.                |
 | Z4 Public surface audited first        | Staged program and concrete config/MCP designs pass independent premise + A–F review.                                                         | Passed, reports linked above; no audit override. Context/saver new APIs deliberately omitted. |
-| Z5 Nx verification                     | Formatting, all applicable lint/typecheck/unit/build, real infrastructure, adapters, packed/browser/artifact and affected packaging evidence. | Commands/status below; pending checks must not be called green.                               |
-| Z6 Adoption docs/skills/LLMs           | Guides teach supported paths; installable skill agrees; generated bundle matches curated docs.                                                | Updated; docs generation/build/check required before final commit.                            |
+| Z5 Nx verification                     | Formatting, all applicable lint/typecheck/unit/build, real infrastructure, adapters, packed/browser/artifact and affected packaging evidence. | Passed; exact commands and final-source CI outcomes below.                                    |
+| Z6 Adoption docs/skills/LLMs           | Guides teach supported paths; installable skill agrees; generated bundle matches curated docs.                                                | Updated; generated bundle, formatting, built documentation and link checks passed.            |
 
 ## Delivery record
 
-| Layer                                              | Review                                              |
-| -------------------------------------------------- | --------------------------------------------------- |
-| Compatibility contract and concrete design audits  | [#84](https://github.com/skein-js/skein-js/pull/84) |
-| Redis checkpoint recovery                          | [#85](https://github.com/skein-js/skein-js/pull/85) |
-| Webhook and HTTP controls                          | [#87](https://github.com/skein-js/skein-js/pull/87) |
-| Official MCP human-input rounds                    | [#88](https://github.com/skein-js/skein-js/pull/88) |
-| Deep Agents and upstream saver evidence            | [#89](https://github.com/skein-js/skein-js/pull/89) |
-| Split API/background-worker recipe                 | [#90](https://github.com/skein-js/skein-js/pull/90) |
-| Console run search and compatibility documentation | This change; review link pending                    |
+| Layer                                              | Review                                              | Merge commit                                                                                      |
+| -------------------------------------------------- | --------------------------------------------------- | ------------------------------------------------------------------------------------------------- |
+| Compatibility contract and concrete design audits  | [#84](https://github.com/skein-js/skein-js/pull/84) | [`71b8c76`](https://github.com/skein-js/skein-js/commit/71b8c760feffcc73913895718d19ae26a4af984f) |
+| Redis checkpoint recovery                          | [#85](https://github.com/skein-js/skein-js/pull/85) | [`f924a5e`](https://github.com/skein-js/skein-js/commit/f924a5e183b65398ffdf5fa64b7e2fd2bdf753c6) |
+| Webhook and HTTP controls                          | [#87](https://github.com/skein-js/skein-js/pull/87) | [`f924a5e`](https://github.com/skein-js/skein-js/commit/f924a5e183b65398ffdf5fa64b7e2fd2bdf753c6) |
+| Official MCP human-input rounds                    | [#88](https://github.com/skein-js/skein-js/pull/88) | [`f924a5e`](https://github.com/skein-js/skein-js/commit/f924a5e183b65398ffdf5fa64b7e2fd2bdf753c6) |
+| Deep Agents and upstream saver evidence            | [#89](https://github.com/skein-js/skein-js/pull/89) | [`f924a5e`](https://github.com/skein-js/skein-js/commit/f924a5e183b65398ffdf5fa64b7e2fd2bdf753c6) |
+| Split API/background-worker recipe                 | [#90](https://github.com/skein-js/skein-js/pull/90) | [`f924a5e`](https://github.com/skein-js/skein-js/commit/f924a5e183b65398ffdf5fa64b7e2fd2bdf753c6) |
+| Console run search and compatibility documentation | [#91](https://github.com/skein-js/skein-js/pull/91) | [`f924a5e`](https://github.com/skein-js/skein-js/commit/f924a5e183b65398ffdf5fa64b7e2fd2bdf753c6) |
 
-These changes remain open pending remote gates and merge. Local verification does not close the
-tracking issues or establish support for platforms only exercised in CI.
+Each layer passed its applicable local Nx gate before commit and its remote gate before merge.
+The restacked PR source trees matched the independently verified local trees byte-for-byte.
+The merged implementation tree also matched the final tested PR source tree.
 
 ## Verification record
 
@@ -174,9 +178,31 @@ redelivery; its Nx integration target builds the runtime used by the child proce
 
 Additional existing-consumer gates passed: `server-express:test-browser` (React/Angular/Vue/Svelte),
 `test-support:test-local-consumer`, and both `test-support:test-local-electron` and
-`test-support:test-local-tauri` on macOS arm64/Node 24. Cross-platform and Redis major-version matrix
-results remain CI obligations for the final review stack; local Mac evidence does not establish those
-other platforms. No storage schema changed, so no compiled migration regeneration is required.
+`test-support:test-local-tauri` on macOS arm64/Node 24. The final-source remote matrix additionally passed all Linux/macOS/Windows packaging and SQLite
+rows, the selected Redis/client majors, and the scaffold consumer matrix listed below. No storage schema changed, so no compiled migration regeneration is required.
+
+## Remote combined gate
+
+The [final-source CI run](https://github.com/skein-js/skein-js/actions/runs/42701454803)
+and [documentation run](https://github.com/skein-js/skein-js/actions/runs/42701454234)
+completed successfully: 81 passing checks, none waived or cancelled. All six code reviews passed their
+own remote runs before the stack merged. The merge retained the tested source tree.
+
+- Full workspace format/lint/typecheck/test/build, real Testcontainers integration, Console browser
+  journeys, official frontend SDKs and packed consumers.
+- Redis compatibility on Node 24 and 26 with BullMQ 5.80.2/6.4.1 and ioredis 5.10.1/6.0.0, as selected
+  by the maintained CI matrix, plus Node 24/BullMQ 6.0.0/ioredis 6.0.0. Native/BullMQ host-upgrade
+  consumers remain separate evidence.
+- SQLite on Linux, macOS and Windows with Node 22, 24 and 26; packaged Electron and Tauri on all three
+  operating systems.
+- All 33 packed scaffold consumers, including package-manager/workspace/tooling/SQLite cases, plus
+  generation fixtures. These fixtures establish the selected cases rather than arbitrary workspaces.
+- Retained Deep Agents 1.15.1 and the isolated 1.16.3 candidate; generated Node/Bun/Deno artifacts and
+  production image checks. The credential-gated live-provider sandbox smoke remains unrun.
+- Built documentation, SEO and link checks. The existing compatibility page and linked fragments
+  remain rendered and reachable.
+
+The merged implementation revision independently passed its complete 81-check gate: [Docs check](https://github.com/skein-js/skein-js/actions/runs/42717192151), [CI](https://github.com/skein-js/skein-js/actions/runs/42717192326).
 
 ## Optional seam evidence and stop decisions
 
@@ -193,12 +219,17 @@ MemorySaver/SqliteSaver history/copy/prune and ownership succeed through existin
 Postgres setup/disposal is already exercised. A config factory would add permanent lifecycle policy
 without a demonstrated unmet consumer. Stop that addition; diagnose backend/path and teach injection.
 
-## Remaining external closeout
+## Tracking and boundaries
 
-The focused reviews are linked above; record final merge links and required CI outcomes before
-external closure. Link correctness/security/regression blockers
-to #75 without classifying optional additions as V1 blockers. Keep #77's deployment-owned telemetry
-backend/evaluation work out of this scope. Close #12 only after shipped graph UI and disabling are
-verified on the merged revision. Close #83 only when all 48 rows have their final merged implementation
-or accepted explicit disposition and the combined gate is complete. No release, deployment or issue
-closure is implied by the local evidence.
+[#12](https://github.com/skein-js/skein-js/issues/12) is reconciled and closed: graph UI already
+shipped, and independent `http.disable_ui` enforcement now passes development/production checks.
+The [#75 coordination record](https://github.com/skein-js/skein-js/issues/75#issuecomment-6751508762)
+links merged recovery/security/regression fixes without making optional additions V1 blockers.
+[#77](https://github.com/skein-js/skein-js/issues/77#issuecomment-6751510893) retains its historical
+observability-backend, metrics and trace-correlation scope; evaluations remain outside both issues.
+Console run search supplies existing-API navigation, not a telemetry backend.
+
+All 48 #83 rows have a merged implementation, verified existing support, tested recipe or explicit
+supported boundary. Final evidence recording and issue reconciliation do not change runtime behavior.
+New context/saver APIs, stronger FIFO, worker-only wait/stream execution and specialized Deep Agents
+views remain outside this program. No release, deployment or live-provider availability is claimed.
