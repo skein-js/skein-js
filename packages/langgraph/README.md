@@ -62,7 +62,9 @@ await createExpressServer({ deps }).listen(2024);
 ## API
 
 - **`langGraphResolver(resolver)`** — a `GraphResolver` whose graphs are wrapped with
-  `langGraphAgent`. Memoized per underlying graph, so `load()` stays identity-stable.
+  `langGraphAgent`. Memoized per underlying graph, so `load()` stays identity-stable. Agent wrappers
+  exposing a public compiled `.graph` (including current LangChain/Deep Agents) use that inner graph
+  so injected resources do not invoke wrapper setters without their private state.
 - **`langGraphAgent(compiled)`** — presents one compiled graph as an `AgentGraph`, translating
   command envelopes on `stream` / `streamEvents` / `invoke` / `bulkUpdateState`. Overrides live on a
   prototype clone and delegate with `this`, so the per-call checkpointer the engine attaches

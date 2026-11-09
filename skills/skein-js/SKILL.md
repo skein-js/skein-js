@@ -135,3 +135,12 @@ negotiation explicitly and declare form/URL elicitation capabilities. Let its re
 handler collect the person's answers. Keep the returned state with the same caller/tool/arguments;
 do not turn an uncertain inline submission into a new resume. Legacy ordinary calls remain supported.
 See the [MCP human-input recipe](https://skein.js.org/recipes/mcp-human-input).
+
+## Use upstream Deep Agents capabilities
+
+Deep Agents 1.16.3 needs compatible peers (LangChain 1.6.2, Core 1.3.5, LangGraph 1.6.1 in the isolated
+candidate). Retain an application's pinned combination until its consumer checks pass. Explicit-URL
+forks, queued updates and media are upstream features; parent wakeups need polling or application-owned
+authorized notification. Use atomic `if_thread_status` to protect busy/waiting parents. Preserve
+caller-scoped credentials and receiving-thread ownership. Sandbox provisioning and disposal belong to
+the application; use upstream remote backends without process-global transport replacement.

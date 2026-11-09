@@ -19,6 +19,11 @@ import { isLangGraphCompiled, langGraphAgent } from "./lang-graph-agent.js";
 const wrappers = new WeakMap<object, AgentGraph>();
 
 function wrapOnce(graph: AgentGraph): AgentGraph {
+  // ReactAgent exposes its compiled graph publicly. Match config's afterResolve normalization:
+  // prototype-cloning the wrapper would lose its private brand and call its resource setters on
+  // an object that never owned those fields. The compiled graph is the supported hosting surface.
+  const inner = (graph as AgentGraph & { graph?: unknown }).graph;
+  if (inner !== graph && isLangGraphCompiled(inner)) return wrapOnce(inner as AgentGraph);
   // Only LangGraph graphs are translated. A resolver may legitimately front a hand-written
   // `AgentGraph`, which must receive the command envelope untouched — turning it into a `Command`
   // would hand it a class it cannot read. Conditional here rather than at the call sites so every
