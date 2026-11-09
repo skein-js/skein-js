@@ -38,6 +38,7 @@ async function openAssistant(page: Page, assistant: string) {
   return thread.thread_id;
 }
 beforeAll(async () => {
+  await mkdir(resolve("../../../dist/console-screenshots"), { recursive: true });
   fixture = await startConsoleFixture();
   client = new Client({ apiUrl: fixture.url });
   browser = await chromium.launch({ headless: true });
@@ -45,6 +46,129 @@ beforeAll(async () => {
 afterAll(async () => {
   await browser?.close();
   await fixture?.close();
+});
+
+it("finds failed runs across threads and preserves search filters through run inspection", async () => {
+  const thread = await client.threads.create();
+  await expect(
+    client.runs.wait(thread.thread_id, "failure", {
+      input: { messages: [{ role: "user", content: "Find this failed run" }] },
+    }),
+  ).rejects.toThrow("The document source is unavailable");
+  const [run] = await client.runs.list(thread.thread_id);
+  const page = await newPage({ viewport: { width: 1440, height: 900 } });
+  await page.goto(`${fixture.url}${fixture.mountPath}/#/runs?status=error`);
+  await expect(page.getByLabel("Run status")).toHaveValue("error");
+  await expect(page.getByLabel("Thread ID")).toHaveValue("");
+  const row = page.getByRole("row").filter({ hasText: run!.run_id.slice(0, 8) });
+  await expect(row).toBeVisible();
+  await row.getByRole("link").first().click();
+  await expect(page).toHaveURL(new RegExp(`threads/${thread.thread_id}/runs/${run!.run_id}$`));
+  await expect(
+    page
+      .getByText("The document source is unavailable. Try another source.", { exact: false })
+      .first(),
+  ).toBeVisible();
+  await page.goBack();
+  await expect(page.getByLabel("Run status")).toHaveValue("error");
+  await expect(page.getByLabel("Thread ID")).toHaveValue("");
+  await expect(row).toBeVisible();
+  await page.screenshot({
+    path: resolve("../../../dist/console-screenshots/runs.png"),
+    fullPage: true,
+    animations: "disabled",
+  });
+  await page.close();
+});
+
+it("shows global run-search capability and authorization failures without stale rows", async () => {
+  const page = await newPage();
+  await page.route("**/runs/search", (route) =>
+    route.fulfill({
+      status: 501,
+      contentType: "application/json",
+      body: JSON.stringify({ detail: "unsupported" }),
+    }),
+  );
+  await page.goto(`${fixture.url}${fixture.mountPath}/#/runs`);
+  await expect(
+    page.getByRole("status").filter({ hasText: "does not support global run search" }),
+  ).toBeVisible();
+  await page.unroute("**/runs/search");
+  await page.route("**/runs/search", (route) =>
+    route.fulfill({
+      status: 403,
+      contentType: "application/json",
+      body: JSON.stringify({ detail: "Run access denied" }),
+    }),
+  );
+  await page.getByRole("button", { name: "Refresh", exact: true }).click();
+  await expect(page.getByRole("alert")).toContainText("Run access denied");
+  await expect(page.getByRole("table")).toHaveCount(0);
+  await page.close();
+});
+
+it("pages run search in the URL and supports keyboard filtering on a narrow screen", async () => {
+  const page = await newPage({ viewport: { width: 390, height: 844 } });
+  let release!: () => void;
+  const pending = new Promise<void>((resolve) => {
+    release = resolve;
+  });
+  let requests = 0;
+  await page.route("**/runs/search", async (route) => {
+    requests++;
+    if (requests === 1) await pending;
+    const query = route.request().postDataJSON() as { offset: number; status?: string };
+    await route.fulfill({
+      status: 200,
+      contentType: "application/json",
+      body: JSON.stringify(
+        Array.from({ length: query.offset ? 1 : 50 }, (_, index) => ({
+          run_id: `run-${query.offset + index}`,
+          thread_id: "thread",
+          assistant_id: "research",
+          status: query.status ?? "success",
+          created_at: "2026-11-09T00:00:00Z",
+          updated_at: "2026-11-09T00:00:00Z",
+        })),
+      ),
+    });
+  });
+  await page.goto(`${fixture.url}${fixture.mountPath}/#/runs`);
+  await expect(page.getByText("Loading", { exact: true })).toBeVisible();
+  release();
+  await expect(page.getByRole("row")).toHaveCount(51);
+  await page.getByLabel("Run status").focus();
+  await page.getByLabel("Run status").selectOption("error");
+  await page.getByLabel("Run status").press("Tab");
+  await expect(page.getByLabel("Assistant ID")).toBeFocused();
+  await page.getByRole("button", { name: "Search runs", exact: true }).focus();
+  await page.keyboard.press("Enter");
+  await expect(page).toHaveURL(/#\/runs\?status=error$/);
+  await page.getByRole("button", { name: "Next", exact: true }).click();
+  await expect(page).toHaveURL(/status=error&offset=50$/);
+  await expect(page.getByRole("row")).toHaveCount(2);
+  await page.goBack();
+  await expect(page.getByLabel("Run status")).toHaveValue("error");
+  await expect(page.getByRole("row")).toHaveCount(51);
+  expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(true);
+  await page.getByLabel("Run status").scrollIntoViewIfNeeded();
+  await page.screenshot({
+    path: resolve("../../../dist/console-screenshots/runs-mobile.png"),
+    fullPage: true,
+    animations: "disabled",
+  });
+  await page.unroute("**/runs/search");
+  await page.route("**/runs/search", (route) =>
+    route.fulfill({
+      status: 500,
+      contentType: "application/json",
+      body: JSON.stringify({ detail: "Search is temporarily unavailable" }),
+    }),
+  );
+  await page.getByRole("button", { name: "Refresh", exact: true }).click();
+  await expect(page.getByRole("alert")).toContainText("Search is temporarily unavailable");
+  await page.close();
 });
 
 it("returns from Threads to the same Playground with isolated drafts and no submission on restoration", async () => {

@@ -7,6 +7,7 @@ import {
   Menu,
   MessagesSquare,
   Radio,
+  Search,
   Terminal,
 } from "lucide-react";
 import { useEffect, useState } from "react";
@@ -23,6 +24,7 @@ import { ChatView } from "@/views/chat";
 import { ConnectionBadge } from "@/views/connection";
 import { CronsView } from "@/views/crons";
 import { OverviewView } from "@/views/overview";
+import { RunsView } from "@/views/runs";
 import { StoreView } from "@/views/store";
 import { ThreadsView } from "@/views/threads";
 import { WorkspaceProvider, WorkspaceStorageNotice, useWorkspaceStore } from "@/workspace/provider";
@@ -48,6 +50,13 @@ const NAV = [
     label: "Threads",
     Icon: MessagesSquare,
     description: "A thread keeps state and history across runs. Find one to inspect or continue.",
+  },
+  {
+    group: "Inspect",
+    path: "runs",
+    label: "Runs",
+    Icon: Search,
+    description: "Find executions across threads and open their state, errors, and history.",
   },
   {
     group: "Operate",
@@ -251,6 +260,8 @@ function Body({ segments, query }: { segments: readonly string[]; query: URLSear
           {...(query.get("status") ? { status: query.get("status") as string } : {})}
         />
       );
+    case "runs":
+      return <RunsView />;
     case "channels":
       return <ChannelsView />;
     case "store":
