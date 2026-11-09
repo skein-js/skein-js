@@ -13,7 +13,8 @@ import type { Logger, WebhookDispatcher } from "../deps.js";
 import { nextAttemptDelayMs } from "./backoff.js";
 import { QUEUE_SWEEP_MARGIN_MS, type WebhookDeliveryConfig } from "./delivery-config.js";
 import { toDeliveryRequest } from "./delivery-request.js";
-import { disallowedHost, insecureTransport, redactWebhookUrl } from "./delivery-target.js";
+import { deliveryTargetError, redactWebhookUrl } from "./delivery-target.js";
+import { configureHttpDelivery } from "./http-delivery-policy.js";
 
 export interface DeliveryProcessorDeps {
   store: Pick<SkeinStore, "deliveries">;
@@ -51,9 +52,7 @@ export async function processDelivery(
   // survives the queue re-creating a job for this delivery. See `DeliveryAttemptContext`.
   const attempt = delivery.attempt + 1;
 
-  const disallowed =
-    disallowedHost(delivery.url, deps.webhooks?.allowedHosts) ??
-    insecureTransport(delivery.url, deps.webhooks?.requireHttps);
+  const disallowed = await deliveryTargetError(delivery.url, deps.webhooks);
   if (disallowed) {
     deps.logger.warn(`delivery ${delivery.delivery_id}: ${disallowed}`);
     await deliveries.recordAttempt(delivery.delivery_id, { outcome: "dead", error: disallowed });
@@ -67,7 +66,11 @@ export async function processDelivery(
       sentAt: deps.clock(),
       ...(deps.webhooks?.secrets ? { secrets: deps.webhooks.secrets } : {}),
     });
-    await deps.webhookDispatcher(delivery.url, request.payload, request.attempt);
+    await deps.webhookDispatcher(
+      delivery.url,
+      request.payload,
+      configureHttpDelivery(request.attempt, delivery.url, deps.webhooks),
+    );
   } catch (error) {
     const message = error instanceof Error ? error.message : String(error);
     if (context.isFinalAttempt) {

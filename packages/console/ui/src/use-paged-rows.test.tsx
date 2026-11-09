@@ -4,6 +4,57 @@ import { describe, expect, it, vi } from "vitest";
 import { usePagedRows } from "./use-paged-rows";
 
 describe("usePagedRows", () => {
+  it("walks backward through capped pages from a bookmarked URL without visited history", async () => {
+    const rows = Array.from({ length: 10 }, (_, index) => index);
+    const onOffsetChange = vi.fn();
+    const { result, rerender } = renderHook(
+      ({ offset }) =>
+        usePagedRows(
+          async (start, limit) => rows.slice(start, start + Math.min(limit, 2)),
+          "runs",
+          4,
+          undefined,
+          undefined,
+          { offset, onOffsetChange },
+        ),
+      { initialProps: { offset: 8 } },
+    );
+    await waitFor(() => expect(result.current.rows).toEqual([8, 9]));
+    for (const offset of [6, 4, 2, 0]) {
+      act(() => result.current.previous());
+      expect(onOffsetChange).toHaveBeenLastCalledWith(offset);
+      rerender({ offset });
+      await waitFor(() => expect(result.current.rows).toEqual([offset, offset + 1]));
+    }
+  });
+  it("restores URL offsets and retains visited boundaries when the server caps pages", async () => {
+    const rows = ["a", "b", "c", "d", "e"];
+    const onOffsetChange = vi.fn();
+    const { result, rerender } = renderHook(
+      ({ offset }) =>
+        usePagedRows(
+          async (start, limit) => rows.slice(start, start + Math.min(limit, 2)),
+          "runs",
+          50,
+          undefined,
+          undefined,
+          { offset, onOffsetChange },
+        ),
+      { initialProps: { offset: 0 } },
+    );
+    await waitFor(() => expect(result.current.rows).toEqual(["a", "b"]));
+    act(() => result.current.next());
+    expect(onOffsetChange).toHaveBeenLastCalledWith(2);
+    rerender({ offset: 2 });
+    await waitFor(() => expect(result.current.rows).toEqual(["c", "d"]));
+    act(() => result.current.next());
+    rerender({ offset: 4 });
+    await waitFor(() => expect(result.current.rows).toEqual(["e"]));
+    act(() => result.current.previous());
+    expect(onOffsetChange).toHaveBeenLastCalledWith(2);
+    rerender({ offset: 0 });
+    await waitFor(() => expect(result.current.rows).toEqual(["a", "b"]));
+  });
   it("moves through page boundaries and resets when the query changes", async () => {
     const rows = ["a", "b", "c", "d", "e"];
     const load = vi.fn(async (offset: number, limit: number) => rows.slice(offset, offset + limit));

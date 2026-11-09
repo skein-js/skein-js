@@ -52,6 +52,12 @@ services; A2A also requires the optional run-result persistence methods on the d
 [compatibility reference](https://skein.js.org/langgraph-compatibility) for tested
 versions and intentional differences.
 
+MCP ordinary calls retain legacy SDK 1.32.1 support. Human-input rounds use the official server/client
+2.4.0 contract at revision `2026-07-28`, with modern negotiation and form/URL capabilities enabled by
+the client. Resumable rounds also need the existing paired optional immutable-result methods; stores
+without them return an explicit tool error on interruption. Follow the
+[MCP human-input recipe](https://skein.js.org/recipes/mcp-human-input).
+
 ## Install
 
 ```bash
@@ -103,31 +109,37 @@ context**, so cancelling a run through the service actually aborts it in the wor
 individual `createProtocolService` / `createProtocolHandlers` / `createRunWorker` factories only when
 you don't run a worker in the same process.
 
+For separate HTTP and background owners, keep one runtime per process and start workers only where
+queued work should execute. Wait/stream still execute inline. The
+[split deployment recipe](https://skein.js.org/recipes/split-api-worker) covers maintenance and
+shutdown ownership. Redis redelivery continues attributable checkpoints without reapplying accepted
+input; external effects still need idempotency. SQLite retains its application-controlled recovery policy.
+
 ### The injected contract (`ProtocolDeps`)
 
-| Dependency              | Type                                           | Responsibility                                                                                              |
-| ----------------------- | ---------------------------------------------- | ----------------------------------------------------------------------------------------------------------- |
-| `store`                 | `SkeinStore` (core)                            | Protocol resource rows (assistants/threads/runs/store)                                                      |
-| `graphs`                | `GraphResolver` (this package)                 | Resolve a `graph_id` to a compiled graph + schemas                                                          |
-| `queue`                 | `RunQueue` (core)                              | Hand background runs to a worker                                                                            |
-| `bus`                   | `RunEventBus` (core)                           | Fan run frames out to streaming clients                                                                     |
-| `checkpointer`          | `BaseCheckpointSaver` (`@langchain/langgraph`) | Graph state, history, and interrupt/resume                                                                  |
-| `threadBus?`            | `ThreadEventBus` (core)                        | Ordered replay and live thread events for the dedicated frontend SDKs                                       |
-| `httpHandler?`          | Fetch request → native response or fallthrough | Custom applications and compiled graph UI, before protocol dispatch                                         |
-| `inspectThreadStorage?` | Thread ID → `ThreadStorage` (core)             | Concrete saver payload counts and stored bytes for diagnostics                                              |
-| `auth?`                 | `AuthEngine` (core)                            | Per-request 401/403 + ownership filtering; absent = all allowed                                             |
-| `logger?`               | `Logger` (this package)                        | Structured logging; default no-op                                                                           |
-| `clock?`                | `Clock`                                        | Time source; default `() => new Date()`                                                                     |
-| `logRunActivity?`       | `boolean`                                      | Log per-run start/finish, tool calls, interrupts (`skein dev --verbose`). A failed run is logged regardless |
-| `exposeErrorStacks?`    | `boolean`                                      | Send a failed run's stack to the client (SSE frame + `Run.error`). Off by default; `skein dev` sets it      |
-| `runTimeoutMs?`         | `number`                                       | Optional per-run wall-clock timeout → `"timeout"`                                                           |
-| `threadTtl?`            | `ThreadTtlConfig` (core)                       | Thread expiry (`checkpointer.ttl`) — the sweeper's cadence; a per-thread `ttl` is collected regardless      |
-| `abortChannel?`         | `RunAbortChannel` (core)                       | Carries a cancel to whichever instance is executing the run (Redis pub/sub)                                 |
-| `threadExecutionGate?`  | `ThreadExecutionGate` (core)                   | Cross-instance per-thread execution claim (a Postgres advisory lock)                                        |
-| `telemetry?`            | `TelemetrySink[]` (core)                       | Tracing/metrics sinks; off by default and free when off                                                     |
-| `webhookDispatcher?`    | `WebhookDispatcher` (this package)             | Delivers the run-completion `webhook`; inject to allowlist hosts                                            |
-| `cronsEnabled?`         | `boolean`                                      | Whether this server serves crons — reported as `flags.crons` by `GET /info`                                 |
-| `serverVersion?`        | `string`                                       | Reported by `GET /info`; the CLI supplies its own version                                                   |
+| Dependency              | Type                                              | Responsibility                                                                                              |
+| ----------------------- | ------------------------------------------------- | ----------------------------------------------------------------------------------------------------------- |
+| `store`                 | `SkeinStore` (core)                               | Protocol resource rows (assistants/threads/runs/store)                                                      |
+| `graphs`                | `GraphResolver` (this package)                    | Resolve a `graph_id` to a compiled graph + schemas                                                          |
+| `queue`                 | `RunQueue` (core)                                 | Hand background runs to a worker                                                                            |
+| `bus`                   | `RunEventBus` (core)                              | Fan run frames out to streaming clients                                                                     |
+| `checkpointer`          | `ThreadCheckpointer` (upstream savers satisfy it) | Graph state, history, and interrupt/resume                                                                  |
+| `threadBus?`            | `ThreadEventBus` (core)                           | Ordered replay and live thread events for the dedicated frontend SDKs                                       |
+| `httpHandler?`          | Fetch request → native response or fallthrough    | Custom applications and compiled graph UI, before protocol dispatch                                         |
+| `inspectThreadStorage?` | Thread ID → `ThreadStorage` (core)                | Concrete saver payload counts and stored bytes for diagnostics                                              |
+| `auth?`                 | `AuthEngine` (core)                               | Per-request 401/403 + ownership filtering; absent = all allowed                                             |
+| `logger?`               | `Logger` (this package)                           | Structured logging; default no-op                                                                           |
+| `clock?`                | `Clock`                                           | Time source; default `() => new Date()`                                                                     |
+| `logRunActivity?`       | `boolean`                                         | Log per-run start/finish, tool calls, interrupts (`skein dev --verbose`). A failed run is logged regardless |
+| `exposeErrorStacks?`    | `boolean`                                         | Send a failed run's stack to the client (SSE frame + `Run.error`). Off by default; `skein dev` sets it      |
+| `runTimeoutMs?`         | `number`                                          | Optional per-run wall-clock timeout → `"timeout"`                                                           |
+| `threadTtl?`            | `ThreadTtlConfig` (core)                          | Thread expiry (`checkpointer.ttl`) — the sweeper's cadence; a per-thread `ttl` is collected regardless      |
+| `abortChannel?`         | `RunAbortChannel` (core)                          | Carries a cancel to whichever instance is executing the run (Redis pub/sub)                                 |
+| `threadExecutionGate?`  | `ThreadExecutionGate` (core)                      | Cross-instance per-thread execution claim (a Postgres advisory lock)                                        |
+| `telemetry?`            | `TelemetrySink[]` (core)                          | Tracing/metrics sinks; off by default and free when off                                                     |
+| `webhookDispatcher?`    | `WebhookDispatcher` (this package)                | Delivers the run-completion `webhook`; inject to allowlist hosts                                            |
+| `cronsEnabled?`         | `boolean`                                         | Whether this server serves crons — reported as `flags.crons` by `GET /info`                                 |
+| `serverVersion?`        | `string`                                          | Reported by `GET /info`; the CLI supplies its own version                                                   |
 
 Graph **state, history, and interrupt/resume are 100% LangGraph-native** via the checkpointer. The
 `SkeinStore` owns only the protocol resource rows — it is deliberately not the checkpointer.

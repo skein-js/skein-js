@@ -316,6 +316,8 @@ export async function buildRuntime(options: BuildRuntimeOptions): Promise<SkeinR
     // a run carrying a `webhook` owes a callback either way. The memory branch above resolves this
     // itself, for the reason that comment gives.
     const webhooks = resolveWebhooks(first.config.skein?.webhooks, {
+      compatible: first.config.webhooks,
+      disabled: first.config.http?.disable_webhooks,
       warn: (message) => console.warn(message),
     });
     // Bring-your-own long-term-memory store (`store.adapter`). Only the memory repo is replaced —
@@ -461,6 +463,8 @@ export async function buildRuntime(options: BuildRuntimeOptions): Promise<SkeinR
     });
 
     const deps: ProtocolDeps = {
+      configurableHeaders: first.config.http?.configurable_headers,
+      loggingHeaders: first.config.http?.logging_headers,
       httpHandler: await loadConfigHttpHandler(first.config, {
         configDir: first.configDir,
         importModule,

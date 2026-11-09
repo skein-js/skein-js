@@ -33,6 +33,7 @@ try {
         "sdk-legacy-25": "npm:@langchain/langgraph-sdk@1.9.25",
         "sdk-legacy-31": "npm:@langchain/langgraph-sdk@1.9.31",
         "@modelcontextprotocol/sdk": "1.32.1",
+        "@modelcontextprotocol/client": "2.4.0",
         "@a2a-js/sdk": "1.3.0",
         express: "5.2.1",
       },
@@ -47,10 +48,11 @@ try {
     import assert from 'node:assert/strict';
     import {spawn,spawnSync} from 'node:child_process';
     import {createServer} from 'node:net';
+    import {createServer as createHttpServer} from 'node:http';
     import {writeFile} from 'node:fs/promises';
     import path from 'node:path';
     import {AIMessage} from '@langchain/core/messages';
-    import {MessagesAnnotation,StateGraph} from '@langchain/langgraph';
+    import {MessagesAnnotation,StateGraph,interrupt} from '@langchain/langgraph';
     import {createExpressServer} from '@skein-js/express';
     import {embedInMemoryGraphs} from '@skein-js/server-kit';
     import {Client} from '@langchain/langgraph-sdk';
@@ -58,16 +60,20 @@ try {
     import {Client as Legacy31} from 'sdk-legacy-31';
     import {Client as McpClient} from '@modelcontextprotocol/sdk/client/index.js';
     import {StreamableHTTPClientTransport} from '@modelcontextprotocol/sdk/client/streamableHttp.js';
+    import {Client as ModernMcpClient,StreamableHTTPClientTransport as ModernMcpTransport} from '@modelcontextprotocol/client';
     import {ClientFactory} from '@a2a-js/sdk/client';
     import {SendMessageRequest,TaskState} from '@a2a-js/sdk';
     let executions=0;
-    const graph=new StateGraph(MessagesAnnotation).addNode('echo',state=>{executions++;return {messages:[new AIMessage('echo: '+state.messages.at(-1).content)]};}).addEdge('__start__','echo').addEdge('echo','__end__').compile();
+    const graph=new StateGraph(MessagesAnnotation).addNode('echo',state=>{const content=state.messages.at(-1).content;const answer=content==='mcp-question'?interrupt('Name?'):content;executions++;return {messages:[new AIMessage('echo: '+answer)]};}).addEdge('__start__','echo').addEdge('echo','__end__').compile();
     const server=await createExpressServer({deps:embedInMemoryGraphs({agent:graph})});
     const listener=await server.listen(0,'127.0.0.1');
     const url='http://127.0.0.1:'+listener.address().port;
     const client=new Client({apiUrl:url});
     let stream;
     const mcp=new McpClient({name:'packed-proof',version:'1.0.0'});
+    let questions=0;
+    const modernMcp=new ModernMcpClient({name:'packed-modern-proof',version:'1'}, {versionNegotiation:{mode:'auto'},capabilities:{elicitation:{form:{}}}});
+    modernMcp.setRequestHandler('elicitation/create',async()=>{questions++;return {action:'accept',content:{response:'Ada'}};});
     try {
       stream=client.threads.stream({assistantId:'agent'});
       await stream.run.start({input:{messages:[{role:'user',content:'modern'}]}});
@@ -100,6 +106,10 @@ try {
       const tools=await mcp.listTools();assert(tools.tools.some(tool=>tool.name==='agent'));
       const result=await mcp.callTool({name:'agent',arguments:{messages:[{role:'user',content:'MCP'}]}});
       assert.notEqual(result.isError,true);
+      await modernMcp.connect(new ModernMcpTransport(new URL('/mcp',url)));
+      const answered=await modernMcp.callTool({name:'agent',arguments:{messages:[{role:'user',content:'mcp-question'}]}});
+      assert.notEqual(answered.isError,true);assert.equal(questions,1);
+      assert.equal(answered.structuredContent.messages.at(-1).content,'echo: Ada');
       const a2a=await new ClientFactory().createFromUrl(url,'/.well-known/agent-card.json?assistant_id=agent');
       const task=await a2a.sendMessage(SendMessageRequest.fromJSON({message:{messageId:'packed-a2a',role:'ROLE_USER',parts:[{text:'A2A'}]}}));
       assert.equal(task.status.state,TaskState.TASK_STATE_COMPLETED);
@@ -113,12 +123,18 @@ try {
       assert(spec.paths['/runs/search'].post.requestBody.content['application/json'].schema.properties.updated_after);
 
       console.log('PACKED_COMPATIBILITY_OK');
-    } finally {await stream?.close();await mcp.close();await server.close();}
+    } finally {await stream?.close();await mcp.close();await modernMcp.close();await server.close();}
     // Exercise the real published CLI paths: injected dependencies must retain config route flags.
-    await writeFile('cli-graph.ts', "import {StateGraph,MessagesAnnotation} from '@langchain/langgraph';export const graph=new StateGraph(MessagesAnnotation).addNode('echo',()=>({messages:[]})).addEdge('__start__','echo').addEdge('echo','__end__').compile();");
+    await writeFile('cli-graph.ts', "import {StateGraph,MessagesAnnotation} from '@langchain/langgraph';import {AIMessage} from '@langchain/core/messages';export const graph=new StateGraph(MessagesAnnotation).addNode('echo',(_state,config)=>({messages:[new AIMessage(JSON.stringify({tenant:config.configurable?.['x-tenant'],thread:config.configurable?.thread_id}))]})).addEdge('__start__','echo').addEdge('echo','__end__').compile();");
     await writeFile('tsconfig.json',JSON.stringify({compilerOptions:{target:'ES2022',module:'NodeNext',moduleResolution:'NodeNext',strict:true,skipLibCheck:true},include:['cli-graph.ts']}));
-    for (const command of ['dev','start']) for (const http of [{disable_docs:true},{disable_meta:true},{disable_docs:'true'}]) {
-      await writeFile('cli-config.json',JSON.stringify({graphs:{agent:'./cli-graph.ts:graph'},http}));
+    const callbacks=[];
+    const callback=createHttpServer(async(request,response)=>{let body='';for await(const chunk of request)body+=chunk;callbacks.push({headers:request.headers,body:JSON.parse(body)});response.end('ok');});
+    await new Promise(resolve=>callback.listen(0,'127.0.0.1',resolve));
+    const callbackPort=callback.address().port;
+    for (const command of ['dev','start']) for (const http of [{disable_docs:true},{disable_meta:true},{disable_docs:'true'},{disable_ui:true,console:true},{disable_webhooks:true},{middleware_order:'auth_first',configurable_headers:{includes:['x-*'],excludes:['x-secret']},logging_headers:{includes:['x-*']}}]) {
+      await writeFile('cli-config.json',JSON.stringify({graphs:{agent:'./cli-graph.ts:graph'},http,
+        ...((http.configurable_headers || http.disable_webhooks) ? {webhooks:{headers:{authorization:'Bearer $'+'{{ env.LG_WEBHOOK_BEARER }}','x-skein-signature':'forged'},url:{allowed_domains:['127.0.0.1'],allowed_ports:[callbackPort]}},skein:{webhooks:{secret:'fixture-signing-key'}}}:{}),
+        ...(http.disable_ui===true?{ui:{agent:'./missing-ui.tsx'}}:{})}));
       const reservation=createServer();await new Promise(resolve=>reservation.listen(0,'127.0.0.1',resolve));
       const port=reservation.address().port;await new Promise(resolve=>reservation.close(resolve));
       const cli=path.resolve('node_modules/skein-js/dist/index.js');
@@ -129,7 +145,7 @@ try {
         assert.equal(built.status,0,String(built.stdout)+String(built.stderr));
         config='.skein/build/langgraph.json';
       }
-      const child=spawn(process.execPath,[cli,command,'-c',config,'--host','127.0.0.1','--port',String(port),...(command==='dev'?['--no-console']:['--store','sqlite','--queue','sqlite','--sqlite-path',path.resolve('cli-check.sqlite')])],{stdio:['ignore','pipe','pipe']});
+      const child=spawn(process.execPath,[cli,command,'-c',config,'--host','127.0.0.1','--port',String(port),...(command==='dev'?(http.disable_ui===true?[]:['--no-console']):['--store','sqlite','--queue','sqlite','--sqlite-path',path.resolve('cli-check.sqlite')])],{env:{...process.env,LG_WEBHOOK_BEARER:'private-callback-token'},stdio:['ignore','pipe','pipe']});
       let output='';child.stdout.on('data',chunk=>output+=chunk);child.stderr.on('data',chunk=>output+=chunk);
       const closed=new Promise(resolve=>child.once('exit',resolve));
       const base='http://127.0.0.1:'+port;
@@ -147,12 +163,35 @@ try {
         assert.equal((await fetch(base+'/info')).status,http.disable_meta===true?404:200);
         assert.equal((await fetch(base+'/metrics')).status,http.disable_meta===true?404:501);
         assert.equal(output.includes(base+'/docs'),!disabled);
+        if(http.configurable_headers) {
+          const thread=await (await fetch(base+'/threads',{method:'POST',headers:{'content-type':'application/json'},body:'{}'})).json();
+          const selected=await (await fetch(base+'/threads/'+thread.thread_id+'/runs/wait',{method:'POST',headers:{'content-type':'application/json','x-tenant':'header','x-secret':'REDACT_ME'},body:JSON.stringify({assistant_id:'agent',input:{messages:[]},config:{configurable:{'x-tenant':'body'}}})})).json();
+          assert.deepEqual(JSON.parse(selected.messages.at(-1).content),{tenant:'body',thread:thread.thread_id});
+          const before=callbacks.length;
+          assert.equal((await fetch(base+'/runs/wait',{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify({assistant_id:'agent',input:{messages:[]},webhook:'http://127.0.0.1:'+callbackPort+'/outcome'})})).status,200);
+          assert.equal(callbacks.length,before+1);
+          assert.equal(callbacks.at(-1).headers.authorization,'Bearer private-callback-token');
+          assert.match(callbacks.at(-1).headers['x-skein-signature'],/^t=/);
+          assert.equal(callbacks.at(-1).body.status,'success');
+        }
+        if(http.disable_webhooks) {
+          const before=callbacks.length;
+          assert.equal((await fetch(base+'/runs/wait',{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify({assistant_id:'agent',webhook:'http://127.0.0.1:'+callbackPort+'/outcome'})})).status,422);
+          assert.equal(callbacks.length,before);
+        }
+        if(http.disable_ui===true) {
+          assert.equal((await fetch(base+'/ui/agent')).status,404);
+          assert.equal((await fetch(base+'/console/')).status,200,'graph UI disabling must preserve Console');
+        }
       } finally {
         child.kill('SIGTERM');
         const killer=setTimeout(()=>child.kill('SIGKILL'),10000);
         await closed;clearTimeout(killer);
+        assert(!output.includes('REDACT_ME'),'selected credentials must be redacted from logging');
+        assert(!output.includes('private-callback-token'),'webhook credentials must stay out of logging');
       }
     }
+    await new Promise(resolve=>callback.close(resolve));
     console.log('PACKED_CLI_DOCS_OK');
   `,
   );
@@ -190,6 +229,79 @@ try {
     ],
     { cwd: consumer },
   );
+  const standalone = path.join(directory, "standalone-protocol");
+  const standaloneManifest = installConsumer(
+    standalone,
+    {
+      name: "skein-standalone-protocol-proof",
+      version: "1.0.0",
+      private: true,
+      type: "module",
+      dependencies: {
+        "@skein-js/agent-protocol": "*",
+        "@skein-js/core": "*",
+        "@skein-js/storage-memory": "*",
+        "@langchain/langgraph-sdk": "1.12.6",
+        "@modelcontextprotocol/client": "2.4.0",
+        typescript: "5.9.3",
+      },
+    },
+    packed,
+  );
+  await writeFile(
+    path.join(standalone, "package.json"),
+    JSON.stringify(standaloneManifest, null, 2),
+  );
+  run("npm", ["install", "--no-audit", "--no-fund"], { cwd: standalone });
+  await writeFile(
+    path.join(standalone, "proof.mjs"),
+    String.raw`
+    import assert from 'node:assert/strict';
+    import {createRequire} from 'node:module';
+    import {createProtocolRuntime} from '@skein-js/agent-protocol';
+    import {MemorySkeinStore,MemoryRunQueue,MemoryRunEventBus} from '@skein-js/storage-memory';
+    import {Client,StreamableHTTPClientTransport} from '@modelcontextprotocol/client';
+    assert.throws(()=>createRequire(import.meta.url).resolve('@langchain/langgraph'),{code:'MODULE_NOT_FOUND'});
+    const values=new Map();
+    const graph={async *stream(input,options){await this.checkpointer.getTuple(options);values.set(options.configurable.thread_id,input);yield ['values',input];},async getState(config){return {values:values.get(config.configurable.thread_id)||{},next:[],tasks:[]};}};
+    const checkpointer=Object.freeze({async getTuple(){return undefined;},async *list(){},async put(){return {};},async putWrites(){},async deleteThread(){}});
+    const runtime=createProtocolRuntime({store:new MemorySkeinStore(),queue:new MemoryRunQueue(),bus:new MemoryRunEventBus(),checkpointer,graphs:{ids:['plain'],async load(){return graph;},async schemas(){return {};}}});
+    await runtime.service.assistants.registerGraphAssistants();
+    assert.deepEqual((await runtime.service.runs.createWait({assistant_id:'plain',input:{value:'ordinary'}})).result,{value:'ordinary'});
+    const client=new Client({name:'standalone-proof',version:'1'},{versionNegotiation:{mode:'auto'}});
+    try {
+      await client.connect(new StreamableHTTPClientTransport(new URL('http://localhost/mcp'),{fetch:async(input,init)=>{
+        const request=new Request(input,init);const body=request.method==='POST'?await request.json():undefined;
+        const response=await runtime.handlers.handleMcp({method:request.method,url:request.url,headers:Object.fromEntries(request.headers),body,params:{},query:{},signal:request.signal});
+        assert.notEqual(response.kind,'sse');return new Response(response.kind==='json'?JSON.stringify(response.body):null,{status:response.status,headers:response.headers});
+      }}));
+      assert.deepEqual((await client.callTool({name:'plain',arguments:{value:'MCP without LangGraph'}})).structuredContent,{value:'MCP without LangGraph'});
+      console.log('PACKED_STANDALONE_PROTOCOL_OK');
+    } finally {await client.close();await runtime.worker.stop();}
+  `,
+  );
+  await writeFile(
+    path.join(standalone, "contracts.ts"),
+    "import type {AgentGraph,ProtocolDeps,ThreadCheckpointer} from '@skein-js/agent-protocol';declare const graph:AgentGraph;declare const deps:ProtocolDeps;declare const saver:ThreadCheckpointer;void [graph,deps,saver];\n",
+  );
+  run(
+    process.execPath,
+    [
+      "node_modules/typescript/bin/tsc",
+      "--noEmit",
+      "--strict",
+      "--target",
+      "ES2022",
+      "--module",
+      "NodeNext",
+      "--moduleResolution",
+      "NodeNext",
+      "--skipLibCheck",
+      "contracts.ts",
+    ],
+    { cwd: standalone },
+  );
+  run(process.execPath, ["proof.mjs"], { cwd: standalone, env: { ...process.env, NODE_PATH: "" } });
   await verifyJsonRenderConsumer(path.join(directory, "json-render-consumer"), packed);
 } finally {
   await rm(directory, { recursive: true, force: true });

@@ -300,6 +300,8 @@ export default withMermaid(
             },
             { text: "Memory", link: "/recipes/memory" },
             { text: "Deep Agents (experimental)", link: "/recipes/deep-agents" },
+            { text: "Human input over MCP", link: "/recipes/mcp-human-input" },
+            { text: "Separate API and workers", link: "/recipes/split-api-worker" },
             { text: "Streaming UI with json-render", link: "/recipes/json-render" },
             { text: "Authenticating requests", link: "/recipes/authentication" },
             { text: "Production", link: "/recipes/production" },

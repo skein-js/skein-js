@@ -67,6 +67,10 @@ The inspector helps you check more than the final answer:
 | **State**    | The latest reported values, including structured output                            |
 | **Graph**    | Which nodes reported output; highlighting does not identify the node executing now |
 
+If you do not know the thread, open **Inspect → Runs**. Filter by status, assistant, thread or
+creation/update dates, then open a run or its thread. The filter and page are retained in the
+`#/runs` URL, so you can bookmark a failed-run search and navigate back from details.
+
 For a failed run, open the thread's **Runs** tab and select the run to inspect its activity and raw
 events. Compare the reported error with the server logs; see [Errors & logging](./errors-and-logging.md).
 A connection problem and a failed graph execution are different states. After a disconnect or an
@@ -135,7 +139,9 @@ Use these screens when your project uses the corresponding capability:
 | Diagnose a run's outbound delivery     | The run's **Deliveries** tab; see [delivery and replay](./webhooks.md#see-what-a-callback-did-and-replay-it) |
 
 Lists refresh on demand; observed runs stream live. Overview's recent activity covers recent
-threads, not every run on the server. For server-wide queries, use [run search](./runs.md#search-runs-across-threads).
+threads, not every run on the server. **Runs** searches across threads using the existing
+[run search API](./runs.md#search-runs-across-threads). Custom stores without that optional search
+capability show a supported alternative: open a thread and inspect its Runs tab.
 
 <span id="boundaries"></span>
 

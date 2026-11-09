@@ -207,6 +207,21 @@ describe("isLangGraphCompiled", () => {
 });
 
 describe("langGraphResolver", () => {
+  it("uses a public compiled inner graph without touching wrapper resource setters", async () => {
+    const graph = buildInterruptingGraph();
+    const agent = {
+      graph,
+      set checkpointer(_value: unknown) {
+        throw new Error("wrapper private state");
+      },
+    } as unknown as AgentGraph;
+    const resolved = await langGraphResolver({
+      ids: ["agent"],
+      load: async () => agent,
+      schemas: async () => ({}),
+    }).load("agent");
+    expect(Object.getPrototypeOf(resolved as object)).toBe(graph);
+  });
   // The bug this guards: a caller-supplied resolver used to be passed through unwrapped, so the
   // envelope reached a real graph untranslated and HITL resume became a silent no-op.
   it("binds a LangGraph graph a resolver hands back", async () => {

@@ -6,7 +6,7 @@
 // provider's latency, token counts, and failure modes would drown that signal in variance.
 
 import { AIMessageChunk } from "@langchain/core/messages";
-import { END, MessagesAnnotation, START, StateGraph } from "@langchain/langgraph";
+import { END, interrupt, MessagesAnnotation, START, StateGraph } from "@langchain/langgraph";
 
 const frames = Number(process.env["MATRIX_FRAMES"] ?? 50);
 const frameBytes = Number(process.env["MATRIX_FRAME_BYTES"] ?? 1024);
@@ -23,7 +23,13 @@ const sleep = (ms) =>
 const filler = "x".repeat(Math.max(0, frameBytes));
 
 export const graph = new StateGraph(MessagesAnnotation)
-  .addNode("stream", async (_state, config) => {
+  .addNode("stream", async (state, config) => {
+    if (state.messages.at(-1)?.content === "mcp-question")
+      return {
+        messages: [
+          new AIMessageChunk({ content: `approved: ${String(interrupt("approve runtime?"))}` }),
+        ],
+      };
     for (let index = 0; index < frames; index += 1) {
       config?.writer?.(new AIMessageChunk({ content: `${index}:${filler}` }));
       if (delayMs > 0) await sleep(delayMs);

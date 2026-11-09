@@ -64,6 +64,38 @@ beforeAll(async () => {
 
 let artifact: BuildArtifact;
 
+it("builds and starts an artifact with disabled graph UI without reading its missing UI source", async () => {
+  const configPath = path.join(appDir, "disabled-ui.json");
+  const disabledOutput = `${outDir}-disabled-ui`;
+  const config = JSON.parse(await readFile(path.join(appDir, "langgraph.json"), "utf8"));
+  await writeFile(
+    configPath,
+    JSON.stringify({ ...config, ui: { echo: "./missing-ui.tsx" }, http: { disable_ui: true } }),
+  );
+  try {
+    await bundleProject({
+      configPath,
+      outDir: disabledOutput,
+      nodeVersion: "20",
+      skeinVersion: "9.9.9-test",
+    });
+    expect(await readdir(disabledOutput)).not.toContain("ui");
+    const runtime = await buildRuntime({
+      configPath: path.join(disabledOutput, "langgraph.json"),
+      store: "memory",
+      queue: "memory",
+    });
+    try {
+      expect(runtime.deps.httpHandler).toBeUndefined();
+    } finally {
+      await runtime.dispose();
+    }
+  } finally {
+    await rm(configPath, { force: true });
+    await rm(disabledOutput, { recursive: true, force: true });
+  }
+}, 60_000);
+
 beforeAll(async () => {
   artifact = await bundleProject({
     configPath: path.join(appDir, "langgraph.json"),

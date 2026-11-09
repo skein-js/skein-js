@@ -185,6 +185,10 @@ export interface DeliverySummary {
 
 /** Skein extensions not yet represented by the upstream SDK's resource clients. */
 class SkeinConsoleClient extends BaseClient {
+  searchRuns(query: Record<string, string | number>, signal?: AbortSignal): Promise<Run[]> {
+    return this.fetch("/runs/search", { method: "POST", json: query, signal });
+  }
+
   createBatchRuns(
     payloads: Record<string, unknown>[],
     idempotencyKey?: string,

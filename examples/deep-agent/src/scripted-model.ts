@@ -61,7 +61,10 @@ type ToolResult = { name: string; content: string };
 
 /** The latest request and everything the agent has done about it since. */
 function currentTurn(messages: BaseMessage[]): { request: string; results: ToolResult[] } {
-  const at = messages.findLastIndex((message) => message.getType() === "human");
+  const at = messages.findLastIndex(
+    (message) =>
+      message.getType() === "human" && message.additional_kwargs["lc_source"] !== "async_subagent",
+  );
   const turn = messages.slice(at + 1);
   const callNames = new Map(
     turn.flatMap((message) => ((message as AIMessage).tool_calls ?? []).map((c) => [c.id, c.name])),

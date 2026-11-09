@@ -196,6 +196,9 @@ jobs:
       - name: Packed SDK, MCP and A2A consumers
         run: pnpm exec nx run test-support:test-compatibility-consumer --output-style=stream
 
+      - name: Isolated Deep Agents 1.16.3 candidate
+        run: pnpm exec nx run test-support:test-deep-agents-consumer --output-style=stream
+
       - name: Packed native and BullMQ consumers
         run: pnpm exec nx run test-support:test-native-consumer --output-style=stream
 

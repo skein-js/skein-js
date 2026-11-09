@@ -2219,7 +2219,7 @@ it but is never required.
     "adapter": "./src/my-store.ts:store",
   },
 
-  // checkpointer backend; "default" == Postgres (via PostgresSaver)
+  // checkpointer backend; "default" uses the runtime's selected storage backend
   "checkpointer": { "type": "default" },
 
   // server customization — `cors` plus LangGraph's route toggles
@@ -2273,7 +2273,7 @@ it but is never required.
 | `skein.webhooks`       | How run-completion callbacks are retried and bounded. Tuning only — a run carrying a `webhook` owes a callback either way. See [below](#webhooks-skeinwebhooks).                                                                                                                                                                                                                                                                                                              |
 | `env`                  | Loaded into `process.env` at boot (dev) / baked into the image (build).                                                                                                                                                                                                                                                                                                                                                                                                       |
 | `store`                | `store.index.{embed,dims,fields,hnsw}` configures pgvector semantic search on the Postgres driver (`hnsw: true` opts into the approximate index); `store.ttl.{default_ttl,refresh_on_read,sweep_interval_minutes}` expires items. `store.adapter` is a **skein extension** — `path:export` to your own LangGraph `BaseStore` (e.g. `PostgresStore`, `MongoDBStore`), which then serves the whole `/store` surface. See [storage.md](./storage.md).                            |
-| `checkpointer`         | `"default"` → `PostgresSaver`; dev falls back to an in-memory `MemorySaver`.                                                                                                                                                                                                                                                                                                                                                                                                  |
+| `checkpointer`         | `"default"` uses the runtime-selected saver; custom savers use [programmatic injection](./embedding.md#supply-an-upstream-saver).                                                                                                                                                                                                                                                                                                                                             |
 | `http`                 | `http.cors` maps to the adapter's CORS options; the `disable_*` flags remove that resource's routes before mounting, so it 404s from the host app as under `langgraph dev`. `http.console` is skein-only — it serves the [console](./console.md) at `/console` (off unless set; `skein dev` serves it regardless). `http.app` loads an exported Fetch/Hono application before protocol dispatch; a 404 falls through. Authentication runs before custom application dispatch. |
 | `auth`                 | `auth.path` loads an `Auth` from `@langchain/langgraph-sdk/auth`; every request is authenticated + authorized. The CLI requires credentials for Studio regardless of `disable_studio_auth`; `auth.dev_ui_access: true` or loopback `skein dev --dev-ui-access` provides a temporary key for Studio and the console. The setting is stripped from production builds.                                                                                                           |
 | `telemetry`            | **skein extension.** Builds the telemetry sinks runs report to — see [observability.md](./observability.md). Unknown to `langgraph dev`, which ignores it.                                                                                                                                                                                                                                                                                                                    |
@@ -2345,9 +2345,9 @@ semantics and the replay table.
 
 ## Webhooks (`skein.webhooks`)
 
-LangGraph's `webhook` field is a bare URL with no delivery policy at all, so this block is a skein
-extension under the reserved namespace, for the same reason `skein.idempotency` is. The **payload
-shape is unchanged** — this configures delivery, not the body.
+Use `skein.webhooks` for Skein's signing, retry, payload and retention policy. Compatible top-level
+`webhooks` configures HTTP headers and destinations, as described below. The payload shape is
+unchanged.
 
 ```jsonc
 {
@@ -2411,6 +2411,82 @@ Postgres therefore retain waiting retries without a separate delivery queue.
 With a durable store, the delivery and its due time are recorded in the same transaction as the
 run's terminal status. Waiting retries therefore survive restart without a separate queue. See
 [webhooks.md](./webhooks.md).
+
+### Compatible HTTP webhook controls
+
+Set receiver credentials through environment-backed headers, then restrict where callers can send
+callbacks. Both configuration blocks apply together:
+
+```json
+{
+  "webhooks": {
+    "headers": { "Authorization": "Bearer ${{ env.LG_WEBHOOK_TOKEN }}" },
+    "url": {
+      "allowed_domains": ["hooks.example.com", "*.receivers.example.com"],
+      "allowed_ports": [443],
+      "require_https": true,
+      "disable_loopback": true,
+      "max_url_length": 4096
+    }
+  },
+  "skein": { "webhooks": { "allowed_hosts": ["hooks.example.com"] } }
+}
+```
+
+Set `LG_WEBHOOK_TOKEN` before starting the server. <code v-pre>${{ env.NAME }}</code> expansion applies only to
+these header values. `webhooks.env_prefix` defaults to `LG_WEBHOOK_`; referenced variables must
+have that prefix and exist. Invalid or missing references fail startup without printing secret values.
+Skein's content type, delivery identity, attempt and signing headers override configured names,
+case-insensitively. Header credentials are never forwarded to channel or BullMQ outcome transports.
+
+Domain entries match exactly, or `*.example.com` matches subdomains without matching the bare domain.
+Ports include the effective default, 443 for HTTPS and 80 for HTTP. An explicit empty domain or port
+list permits no destinations; omission adds no restriction. These predicates intersect with legacy
+`skein.webhooks.allowed_hosts`, whose existing empty-list behavior remains unrestricted. Neither
+block can weaken the other, and either `require_https` setting requires HTTPS.
+
+`disable_loopback` rejects literal loopback forms and destinations resolving to loopback at the
+policy check. Restricted HTTP callbacks refuse redirects. This is a destination check, not DNS
+pinning; use network egress controls when callers or DNS are untrusted.
+
+`http.disable_webhooks: true` rejects new caller-provided callbacks and explicit replay. Existing
+pending callbacks become visible dead letters when processed, without being sent. Re-enable the
+feature and explicitly replay an accessible, retained delivery to send it; re-enabling alone does
+not replay dead letters. Signing, retention and attempt budgets still apply. Host-derived channel
+and BullMQ outcomes continue working. Restart the runtime to apply delivery-policy changes.
+
+### Request headers, UI and configuration diagnostics
+
+Forward only the headers the graph needs, and select logging separately:
+
+```json
+{
+  "http": {
+    "configurable_headers": { "includes": ["x-tenant-*"], "excludes": ["x-tenant-secret"] },
+    "logging_headers": { "includes": ["x-request-id"] },
+    "disable_ui": true,
+    "middleware_order": "auth_first"
+  }
+}
+```
+
+Selection is case-insensitive; `*` matches any sequence and exclusions win. A selector without
+`includes` selects every non-excluded header; an empty `includes` selects none. Omitting a selector
+keeps forwarding or header logging off. Selected names enter `config.configurable` in lowercase;
+explicit body values win. Server-owned thread, run, checkpoint and authenticated identity fields
+remain authoritative. The same selection applies to legacy runs, batches and thread commands.
+Authenticated request logs use the configured logger; recognized credential headers are redacted.
+Custom application logging remains application-owned. Restart to change selectors.
+
+`disable_ui` skips graph UI loading/watching and production UI compilation. It does not disable
+the separately configured Console or custom application. Authentication always precedes custom
+application/UI dispatch. `auth_first` is accepted; `middleware_first` fails startup with guidance
+because Skein does not expose a pre-authentication application path. CORS remains opt-in.
+
+`checkpointer.backend: "default"` (and legacy `checkpointer.type: "default"`) uses the saver selected
+by the runtime's storage backend. Non-default backends and `checkpointer.path` fail with guidance
+to inject a saver through `ProtocolDeps.checkpointer`; config-loaded saver factories are not a
+supported contract. Unrelated unknown configuration retains its existing passthrough behavior.
 
 ## Authentication + authorization (`auth`)
 
@@ -2751,7 +2827,8 @@ import { PostgresSaver } from "@langchain/langgraph-checkpoint-postgres";
 import { RedisRunEventBus, RedisRunQueue } from "@skein-js/redis";
 import { createPostgresPool, PostgresSkeinStore } from "@skein-js/storage-postgres";
 
-const checkpointer = new PostgresSaver(createPostgresPool(process.env.POSTGRES_URI!));
+const checkpointPool = createPostgresPool(process.env.POSTGRES_URI!);
+const checkpointer = new PostgresSaver(checkpointPool);
 await checkpointer.setup();
 
 const deps = embedInMemoryGraphs(
@@ -2776,6 +2853,27 @@ one warm process, so they don't survive a function that scales to zero. See
 Bundling the result yourself? The in-code path is the friendly one — it never reaches the
 `langgraph.json` graph loader, so everything on it bundles cleanly, `@skein-js/storage-postgres`
 included. See [bundling.md](./bundling.md).
+
+## Supply an upstream saver
+
+`ProtocolDeps.checkpointer` is the existing programmatic seam. Construct your upstream saver, run
+its documented setup/migrations before serving, and pass it as above. MemorySaver, SqliteSaver and
+PostgresSaver use this seam; no Skein saver subclass or config-loaded factory is required.
+`checkpointer.backend: "default"` selects the runtime's normal saver; other backend selections and
+`checkpointer.path` produce a startup diagnostic pointing to programmatic injection.
+
+Use a saver with the capabilities your application needs: state/history readback, writes, and thread
+deletion for erasure; copy and `keep_latest` pruning also depend on the saver supporting the relevant
+checkpoint operations. Unsupported operations produce capability errors rather than pretending to
+succeed. Keep checkpoint and resource durability aligned. For a durable local application, start with
+[`embedSqliteGraphs`](./local-deployment.md) instead of combining persistent checkpoints with volatile
+thread records.
+
+Your host owns injected connections and pools. Stop the runtime and drain requests before closing
+them; for the example above, close `checkpointPool` with `await checkpointPool.end()` after the server
+has stopped. Stopping a runtime does not dispose an application-supplied saver. Keep its normal
+serializer and public methods intact; Skein delegates checkpoint writes while adding run attribution
+for [worker recovery](./runs-and-redis.md#recover-after-a-worker-exits).
 
 ## The one trade-off: schemas
 
@@ -4378,6 +4476,14 @@ the default strategy and explicit `ttl: null` pins a thread. See [storage](./sto
 `/mcp` uses the official MCP SDK’s stateless Streamable HTTP transport. Tools list authorized
 assistants and their input schemas. Calling a tool creates a run through the same authorized run
 service; cancellation uses the existing run cancellation machinery.
+
+Protocol revision `2026-07-28` additionally supports form and URL elicitation over checkpointed
+interrupt/resume. Use an elicitation-capable client with modern negotiation enabled; see the
+[working human-input recipe](./recipes/mcp-human-input.md). State is bound to the authenticated
+caller, tool, arguments and checkpoint. Missing answers reask, invalid answers fail before resume,
+and accepted rounds replay without applying input twice. Custom stores need the existing optional
+result methods for resumable MCP calls; ordinary calls remain supported without them. Legacy
+clients receive an explicit error when a graph asks for input.
 
 `POST /a2a/{assistant_id}` uses the official A2A SDK’s JSON-RPC handlers and legacy codecs.
 Discovery is `GET /.well-known/agent-card.json?assistant_id=...`; `DEFAULT_A2A_ASSISTANT_ID` supplies
@@ -6134,10 +6240,15 @@ older best-effort path — one POST, failures logged and swallowed. Both bundled
 so this only bites a store you wrote yourself.
 
 > [!WARNING]
-> That fallback POST carries **no `X-Skein-Delivery-Id`, no `X-Skein-Attempt` and no
+> Without compatible header/URL configuration, that fallback POST carries **no `X-Skein-Delivery-Id`, no `X-Skein-Attempt` and no
 > `X-Skein-Signature`** — there is no delivery row for those to come from. A receiver that dedupes on
 > the header, or rejects unsigned requests, will find nothing to work with. If you implement a custom
 > store and want callbacks at all, implement the `deliveries` repo.
+
+Compatible [header and destination controls](./langgraph-cli-compat.md#compatible-http-webhook-controls)
+also apply to the fallback. They do not give a custom store durable delivery records or retries.
+`http.disable_webhooks` blocks caller HTTP callbacks across admission, delivery and replay while
+retaining host-owned channel/BullMQ outcomes.
 
 The body is **stored**, not re-rendered at send time. It has to be: a stateless `POST /runs` deletes
 the thread the server made for it as soon as the run settles, so an hour later there is no run row
@@ -7752,27 +7863,43 @@ Use this reference before pointing an existing LangChain client at skein-js. Sta
 
 ## Verified client combinations
 
-| Client or surface                   | Verified combination and behavior                                                                                |
-| ----------------------------------- | ---------------------------------------------------------------------------------------------------------------- |
-| JavaScript SDK                      | Legacy SDK 1.9.25/1.9.31 and thread-protocol SDK 1.12.6; examples also use 1.12.7                                |
-| React                               | Dedicated `@langchain/react` 1.2.6 and 1.2.7; legacy SDK React hook remains supported                            |
-| Angular, Vue, Svelte                | Dedicated packages 1.2.6, exercised in Chromium                                                                  |
-| Thread subscriptions                | Multiple turns, restoration, interrupt/resume, cancellation, and reconnect; reconnect does not start another run |
-| Cross-instance reconnect            | Express with Redis queues and thread event buses                                                                 |
-| Memory and retention options        | Memory, SQLite, and Postgres store indexing, write TTL, and per-read refresh controls                            |
-| MCP                                 | Official MCP SDK 1.32.1, stateless Streamable HTTP                                                               |
-| A2A                                 | Official A2A SDK 1.3.0, retained task output and interrupt handling                                              |
-| Compiled UI and custom applications | UI compiler 1.4.2; Node 24 production artifact with SQLite                                                       |
-| json-render integration             | Core/React 0.21.4, SDK 1.12.7, React 19.2.6; root custom stream, saved specs, actions and interrupt/resume       |
-| Diagnostics                         | Checkpoint payload accounting with memory, SQLite, and Postgres; Prometheus and OTLP JSON output                 |
+| Client or surface                   | Verified combination and behavior                                                                                                                            |
+| ----------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| JavaScript SDK                      | Legacy SDK 1.9.25/1.9.31 and thread-protocol SDK 1.12.6; examples also use 1.12.7                                                                            |
+| React                               | Dedicated `@langchain/react` 1.2.6 and 1.2.7; legacy SDK React hook remains supported                                                                        |
+| Angular, Vue, Svelte                | Dedicated packages 1.2.6, exercised in Chromium                                                                                                              |
+| Thread subscriptions                | Multiple turns, restoration, interrupt/resume, cancellation, and reconnect; reconnect does not start another run                                             |
+| Cross-instance reconnect            | Express with Redis queues and thread event buses                                                                                                             |
+| Memory and retention options        | Memory, SQLite, and Postgres store indexing, write TTL, and per-read refresh controls                                                                        |
+| MCP                                 | Legacy SDK 1.32.1 ordinary calls; server/client 2.4.0 with explicit revision 2026-07-28 negotiation for form/URL and tool-review rounds                      |
+| A2A                                 | Official A2A SDK 1.3.0, retained task output and interrupt handling                                                                                          |
+| Compiled UI and custom applications | UI compiler 1.4.2; Node 24 production artifact with SQLite                                                                                                   |
+| json-render integration             | Core/React 0.21.4, SDK 1.12.7, React 19.2.6; root custom stream, saved specs, actions and interrupt/resume                                                   |
+| Diagnostics                         | Checkpoint payload accounting with memory, SQLite, and Postgres; Prometheus and OTLP JSON output                                                             |
+| Deep Agents                         | Retained 1.15.1 consumer; isolated 1.16.3 with LangChain 1.6.2, Core 1.3.5, LangGraph 1.6.1, SDK 1.12.7 and QuickJS 0.6.6                                    |
+| Redis worker recovery               | Postgres checkpoints + Redis redelivery after process loss; accepted input/commands are not submitted as a new turn                                          |
+| Separate API/background processes   | Public Postgres/Redis runtime composition, authorization, cancellation, stream reconnection and shutdown; wait/stream stay inline                            |
+| Configuration controls              | Compatible webhook headers/templates/URL restrictions, configurable/logging headers, disable_webhooks and disable_ui; legacy Skein controls remain supported |
 
 These combinations establish the listed behavior, rather than universal compatibility with every
-version or backend. The workspace uses LangGraph.js 1.4.7 and a packed consumer uses 1.4.12.
+version or backend. Agent Protocol fixtures use LangGraph.js 1.4.7; a packed consumer uses 1.4.12.
 Thread-event execution requires LangGraph's public `streamEvents({ version: "v3" })` capability;
 legacy execution remains available for older graphs and custom agents.
 
 For frontend setup, use [the SDK guide](./react-sdk.md). For configuration and exact wire contracts,
 use [CLI compatibility](./langgraph-cli-compat.md) and the [protocol reference](./agent-protocol.md).
+
+For human input, follow the [MCP recipe](./recipes/mcp-human-input.md). Memory and SQLite reopening
+exercise retained rounds; Postgres/Redis runtime artifacts exercise the official client on Node,
+Bun and Deno. Custom stores without paired optional immutable-result read/write capabilities keep
+ordinary calls but return an explicit error for resumable input. Legacy clients receive an explicit
+error when a tool pauses. They do not silently complete that tool.
+
+The [Deep Agents recipe](./recipes/deep-agents.md) describes skills, files, permissions, summarization,
+offloading, interpreter, async tasks and binary state. Binary state reopens from a real SQLite file.
+Remote sandbox integration is verified with the public upstream backend and a deterministic HTTP
+provider; the credential-gated live LangSmith smoke test is separate and has not been run in this
+closeout. No claim is made about live provider availability or sandbox security policy.
 
 ## Client limitations
 
@@ -7781,6 +7908,11 @@ use [CLI compatibility](./langgraph-cli-compat.md) and the [protocol reference](
 - **Vue 1.2.6:** unwrap a media asset with `toRaw(asset)` before reading `blob`; see the
   [frontend workaround](./react-sdk.md#dedicated-framework-packages).
 - **Development UI watchers:** follow the upstream watcher's process lifetime. Your host owns shutdown.
+- **Deep Agents 1.16.3:** use explicit async URLs and caller-scoped credentials. URL-less automatic
+  parent notification has no public caller-scoped transport hook; use polling or the
+  [authorized parent-notification recipe](./recipes/deep-agents.md#notify-a-parent-through-http).
+- **Custom savers:** inject them [programmatically](./embedding.md#supply-an-upstream-saver), including
+  host-owned setup and disposal. Non-default config loaders are diagnosed rather than ignored.
 
 ## Intentional differences
 
@@ -7788,6 +7920,12 @@ use [CLI compatibility](./langgraph-cli-compat.md) and the [protocol reference](
 - Stateless runs keep their threads by default. Set `on_completion: "delete"` to remove them.
 - Store ordering filters compare numbers only.
 - Local SQLite persists resources and checkpoints; event replay is process-local and is lost on restart.
+- SQLite abandoned attempts become failures; recovery is application-controlled. Redis workers can
+  continue attributable checkpoints, but uncommitted external effects can repeat. See
+  [recovery](./runs-and-redis.md#recover-after-a-worker-exits).
+- Legacy run endpoints default to `reject`; thread commands default to `enqueue`. Set an explicit
+  strategy when migrating. Existing [queue ordering limits](./runs-and-redis.md#run-concurrency)
+  remain; this program does not add a stronger FIFO contract.
 - Skein adds idempotent run creation and durable, signed, retried webhook delivery. LangGraph also
   supports ordinary run-completion webhooks.
 - Managed hosting, billing, evaluations, and application identity policy remain application or
@@ -7798,6 +7936,8 @@ use [CLI compatibility](./langgraph-cli-compat.md) and the [protocol reference](
 
 Contributor investigation and dated test evidence are recorded in the
 [testing guide](https://github.com/skein-js/skein-js/blob/main/docs/testing.md#recorded-compatibility-evidence).
+The [9 November closeout record](./audits/agent-server-closeout-2026-11-09.md) maps each epic acceptance
+case to its implementation, boundary and verification status.
 
 
 ---
@@ -8555,8 +8695,10 @@ queue, as described below. Make external effects idempotent when retries are pos
 - **Job queue ([BullMQ](https://docs.bullmq.io))** — background runs are enqueued in Redis; worker
   processes across instances consume and execute them. BullMQ provides retries, backoff, and
   concurrency out of the box.
-- **Crash recovery** — a stalled job (its worker died mid-run) is moved back to the queue by
-  BullMQ's stalled-job check and retried, so runs survive restarts.
+- **Crash recovery** — BullMQ redelivers stalled background jobs. Skein continues the same run
+  from its latest attributable checkpoint, using LangGraph's pending work rather than applying
+  the accepted input or resume command again. If no input checkpoint committed, the original
+  input is still needed. A finished graph awaiting resource settlement is settled without rerunning it.
 - **Delayed runs** — an `after_seconds` delay is handed to BullMQ's own delayed set, which lives in
   Redis and promotes the job when it comes due, so a scheduled run outlives the process that created it.
 - **Cross-instance pub/sub** — run stream frames are published to a Redis Stream + channel so a
@@ -8566,6 +8708,32 @@ queue, as described below. Make external effects idempotent when retries are pos
   graph. The cancel itself is durable in the run row before the message is published, so a dropped
   message costs promptness rather than correctness. See
   [deploy.md](./deploy.md#scaling-past-one-instance).
+
+#### Recover after a worker exits
+
+Keep Postgres and Redis, then start a worker against the same databases. BullMQ's stalled-job
+interval determines when it redelivers the attempt. Inspect the original run ID; a cancelled or
+already settled run is not restarted. Human-input interrupts remain paused.
+
+Make external effects idempotent using a stable application operation key. A node that ran before
+its checkpoint committed can run again; checkpoint recovery does not make a remote API call and
+the checkpoint one transaction. Existing stream-history limits still apply to reconnecting observers.
+Only checkpointed graph state is recoverable. A custom-stream reply emitted before process loss
+is not itself a checkpoint; retain any reply your application must reconstruct in graph state.
+
+Skein supplies run/thread execution identity and attributes new checkpoint writes independently
+of tracing. Assistant/graph tracing metadata retains its existing telemetry behavior, so enabling
+recovery does not change application-owned configurable IDs or legacy store namespaces. A running attempt
+from an older version whose current checkpoint cannot be attributed fails with
+`run_recovery_ambiguous` rather than guessing. Inspect its thread state/history and choose an
+explicit resume or a new turn through the existing API. Keep the original base checkpoint for
+rollback decisions. This Redis recovery behavior does not change SQLite's application-controlled
+recovery policy.
+
+For a custom execution engine, verify its own continuation semantics before claiming durable
+recovery. Opaque custom-saver metadata is passed through unchanged; automatic attribution applies
+to ordinary metadata records. A saver alone does not establish that an arbitrary agent can continue
+its work from a checkpoint.
 
 ### Stream retention {#what-a-frame-costs}
 
@@ -8977,6 +9145,10 @@ The inspector helps you check more than the final answer:
 | **State**    | The latest reported values, including structured output                            |
 | **Graph**    | Which nodes reported output; highlighting does not identify the node executing now |
 
+If you do not know the thread, open **Inspect → Runs**. Filter by status, assistant, thread or
+creation/update dates, then open a run or its thread. The filter and page are retained in the
+`#/runs` URL, so you can bookmark a failed-run search and navigate back from details.
+
 For a failed run, open the thread's **Runs** tab and select the run to inspect its activity and raw
 events. Compare the reported error with the server logs; see [Errors & logging](./errors-and-logging.md).
 A connection problem and a failed graph execution are different states. After a disconnect or an
@@ -9045,7 +9217,9 @@ Use these screens when your project uses the corresponding capability:
 | Diagnose a run's outbound delivery     | The run's **Deliveries** tab; see [delivery and replay](./webhooks.md#see-what-a-callback-did-and-replay-it) |
 
 Lists refresh on demand; observed runs stream live. Overview's recent activity covers recent
-threads, not every run on the server. For server-wide queries, use [run search](./runs.md#search-runs-across-threads).
+threads, not every run on the server. **Runs** searches across threads using the existing
+[run search API](./runs.md#search-runs-across-threads). Custom stores without that optional search
+capability show a supported alternative: open a thread and inspect its Runs tab.
 
 <span id="boundaries"></span>
 
@@ -9621,6 +9795,8 @@ pnpm --filter @skein-js/example-triage-agent seed   # register the schedule + sw
 | [Cross-provider workflow](./decoupled-channel-delivery.md) | Email source → LangGraph workflow → allowlisted WhatsApp/email destinations  |
 | [Memory](./memory.md)                                      | `getStore()`, semantic search, and the dedup trap                            |
 | [Deep Agents](./deep-agents.md) _(experimental)_           | Files, per-user memory, streamed subagents, approval and async subagents     |
+| [Human input over MCP](./mcp-human-input.md)               | Official client form/URL questions, tool review and resumable answers        |
+| [Separate API and workers](./split-api-worker.md)          | Published runtime composition, background scaling and lifecycle ownership    |
 | [Streaming UI with json-render](./json-render.md)          | Catalog-driven UI generation, progressive rendering, restoration and actions |
 | [Authenticating requests](./authentication.md)             | Better Auth, Clerk, Supabase, Firebase, OIDC/JWT, and authorization policy   |
 | [Production](./production.md)                              | Auth, run-completion webhooks, durable storage and deploying                 |
@@ -10357,14 +10533,14 @@ driver lacks) or a skein `StoreRepo`. Details:
 # Deep Agents
 
 > [!WARNING]
-> **Experimental.** Deep Agents support is tested end to end against `deepagents` 1.15, but Deep
+> **Experimental.** Deep Agents support is tested against pinned 1.15.1 and an isolated 1.16.3 candidate, but Deep
 > Agents itself moves quickly and this integration may change in a minor release. See
 > [what is covered](#what-is-covered) before relying on it in production.
 
 Serving a LangChain [Deep Agent](https://docs.langchain.com/oss/javascript/deepagents/overview) —
 planning, files, subagents, human approval — with skein.
 
-`createDeepAgent()` returns a compiled LangGraph graph, so there is nothing to adapt: export it, name it
+`createDeepAgent()` exposes a compiled LangGraph graph: export the agent, name it
 in `langgraph.json`, and skein supplies the checkpointer, the store, streaming and interrupt/resume
 around it. There is no `@skein-js/deepagents` package; depend on `deepagents` directly.
 
@@ -10425,6 +10601,15 @@ Tested end to end in the example, through the official `@langchain/langgraph-sdk
 - approve / edit / reject on an `interruptOn` tool;
 - an async subagent started, checked, updated and cancelled over HTTP on the same server.
 
+The isolated 1.16.3 combination uses LangChain 1.6.2, Core 1.3.5, LangGraph 1.6.1,
+checkpoint 1.1.5, SQLite saver 1.0.4, SDK 1.12.7 and QuickJS 0.6.6. Keep these peers compatible when
+pinning your application; the retained 1.15.1 example keeps its existing dependency graph.
+Additional supported journeys on that candidate are upstream skills discovery/pinning/refresh,
+filesystem permission rules, summarization with persistent history offloading, tool-result
+offloading, the QuickJS interpreter, explicit-URL forked tasks/queued updates/media results,
+per-call tool review over [MCP](./mcp-human-input.md), and binary checkpoint reopening with SQLite.
+See the [compatibility reference](../langgraph-compatibility.md) for tested backends and provider limits.
+
 Not covered, or deliberately out of scope:
 
 - **The URL-less async transport.** LangGraph Platform runs co-deployed async subagents in process;
@@ -10432,8 +10617,8 @@ Not covered, or deliberately out of scope:
 - **Subgraph streaming on `/invoke`.** Use the run endpoints.
 - **Python Deep Agents.** skein loads TypeScript graphs; a Python agent can only be reached as a
   separate Agent Protocol service.
-- **Version range.** Tested with `deepagents` 1.15 and `@langchain/langgraph` 1.4.10 or later. Pin
-  `deepagents` in your application.
+- **Version range.** The two pinned combinations above establish support for their tested journeys;
+  they do not establish compatibility with arbitrary peer upgrades. Pin `deepagents` in your application.
 
 ## Files: thread state by default, the store for what outlives a thread
 
@@ -10541,11 +10726,74 @@ URL-less, in-process transport LangGraph Platform offers is not recreated. Each 
 background run, so give the server enough [run concurrency](../runs-and-redis.md#run-concurrency) for the
 main agent and its children at once.
 
+On 1.16.3, add `mode: "fork"` to inherit the parent's effective conversation at launch, and
+`updateStrategy: "enqueue"` to queue follow-ups. These are upstream options and work over explicit
+URLs. A fork uses its own tools/backend: inherited references to offloaded files require a shared
+authorized backend. Queued updates start even after a child stops for human input, dropping that
+question; choose the update policy deliberately and answer approvals on the child's own thread.
+Use `check_async_task` to bring completed text and standard media blocks into the parent conversation.
+
+### Notify a parent through HTTP
+
+The 1.16.3 automatic notifier's URL-less client has no public caller-scoped transport hook. Skein
+does not install process-global fetch replacements. Explicit-URL children do not automatically wake
+the parent. Poll with `check_async_task`, or let an application-owned completion receiver submit a
+notification through the existing run API:
+
+```ts
+const response = await fetch(`${apiUrl}/threads/${encodeURIComponent(parentThreadId)}/runs`, {
+  method: "POST",
+  headers: {
+    "content-type": "application/json",
+    authorization: callerCredential,
+    "idempotency-key": `child-completion:${childRunId}`,
+  },
+  body: JSON.stringify({
+    assistant_id: parentAssistantId,
+    input: { messages: [{ role: "user", content: "The child task completed; check its result." }] },
+    if_thread_status: ["idle", "error"],
+    multitask_strategy: "reject",
+  }),
+});
+if (!response.ok) throw new Error(`Parent notification was not admitted (${response.status})`);
+```
+
+The application supplies a trusted deployment URL, parent reference and caller-scoped credential.
+The receiving server reauthorizes thread ownership. The status precondition is atomic with admission,
+so a busy parent or one awaiting approval cannot be displaced. Treat 409 as deferred notification,
+and auth/network failures as delivery failures; retain/retry according to your application policy.
+An accepted child result alone does not prove the parent received a notification. Run and thread IDs
+are available in graph metadata without enabling telemetry; application-owned configurable
+assistant/graph IDs retain their existing meaning. Resolve a run through the authorized API when
+you need its actual assistant identity.
+
 ## Shell and code execution
 
 Use a remote sandbox provider for anything that executes commands. **Never use `LocalShellBackend` or
 `FilesystemBackend` on a shared server**: both act directly on the host skein runs on, with that
 process's permissions, for whoever can reach the agent. State and store backends need no sandbox.
+
+For an application-provisioned LangSmith sandbox, use the upstream backend directly:
+
+```ts
+import { createDeepAgent, LangSmithSandbox } from "deepagents";
+
+const backend = new LangSmithSandbox({ sandbox: provisionedSandbox });
+const graph = createDeepAgent({ model, backend });
+// Serve graph using your chosen Skein embedding/adapter.
+// After stopping the runtime and draining its requests:
+await backend.close();
+```
+
+`provisionedSandbox` is the provider SDK's sandbox instance, created with your application's
+credentials and resource policy. Skein supplies neither credentials nor provisioning/disposal policy.
+The backend exposes upstream execution/file tools; use its timeouts and the provider's isolation and
+network controls. QuickJS offers an alternative for bounded JavaScript evaluation through
+`createCodeInterpreterMiddleware()` from `@langchain/quickjs`.
+
+For history offloading on 1.16.3, use a persistent backend implementing upstream writes (the fixture
+uses a private `FilesystemBackend`). The current summarization middleware does not apply StateBackend's
+returned file update to checkpoint state. Do not rely on that combination to retain offloaded history.
 
 ## Dependency security
 
@@ -10554,6 +10802,214 @@ glob dependency. Applications copying this example must audit their own lockfile
 patch in their own package-manager configuration; workspace patches do not propagate through a
 published package or an exported artifact. See the [dependency audit](../audits/dependency-advisories-2026-10-20.md)
 for the patch, compatibility details, and current scan results.
+
+
+---
+
+<!-- source: docs/recipes/mcp-human-input.md -->
+
+# Answer an agent's questions over MCP
+
+Expose your graph as an MCP tool, ask for human input, and continue the same checkpointed
+conversation. Use protocol revision **2026-07-28** with an elicitation-capable client. Ordinary
+tools still work with older clients; interrupted tools return an explicit unsupported-client error.
+
+## Serve a question
+
+Export this graph as `greeter` in `langgraph.json`, then run `skein dev`:
+
+```ts
+import { Annotation, interrupt, StateGraph } from "@langchain/langgraph";
+
+const state = Annotation.Root({ greeting: Annotation<string> });
+export const graph = new StateGraph(state)
+  .addNode("ask", () => ({ greeting: `Hello, ${interrupt("What is your name?")}!` }))
+  .addEdge("__start__", "ask")
+  .addEdge("ask", "__end__")
+  .compile();
+```
+
+```json
+{ "graphs": { "greeter": "./src/greeter.ts:graph" } }
+```
+
+## Connect an official client
+
+Install `@modelcontextprotocol/client@2.4.0`. This Node client asks you to answer the form as JSON.
+For this graph, enter `{"response":"Ada"}`:
+
+```js
+import { createInterface } from "node:readline/promises";
+import { stdin, stdout } from "node:process";
+import { Client, StreamableHTTPClientTransport } from "@modelcontextprotocol/client";
+
+const terminal = createInterface({ input: stdin, output: stdout });
+const client = new Client(
+  { name: "interactive-agent", version: "1" },
+  {
+    versionNegotiation: { mode: { pin: "2026-07-28" } },
+    capabilities: { elicitation: { form: {}, url: {} } },
+  },
+);
+client.setRequestHandler("elicitation/create", async ({ params }) => {
+  console.log(params.message);
+  if (params.mode === "url") {
+    console.log(params.url);
+    await terminal.question("Open the page, finish the flow, then press Enter: ");
+    return { action: "accept" };
+  }
+  console.log(JSON.stringify(params.requestedSchema, null, 2));
+  const answer = await terminal.question("Answer as JSON, or type :decline / :cancel: ");
+  if (answer === ":decline") return { action: "decline" };
+  if (answer === ":cancel") return { action: "cancel" };
+  return { action: "accept", content: JSON.parse(answer) };
+});
+try {
+  await client.connect(new StreamableHTTPClientTransport(new URL("http://localhost:2024/mcp")));
+  console.log(await client.callTool({ name: "greeter", arguments: {} }));
+} finally {
+  await client.close();
+  terminal.close();
+}
+```
+
+The result contains `{"greeting":"Hello, Ada!"}`. In an authenticated deployment, configure the
+transport's request headers with the same caller credentials used for the Agent Protocol API.
+Each continuation and cached result is authorized again.
+
+## Interrupt shapes
+
+- Strings become forms with one string field named `response`.
+- `mcp_elicitation.requests` relays form or URL requests. Maps use MCP field names such as
+  `requestedSchema`; array entries can use `key` and `requested_schema`. The graph receives
+  `{responses: {key: {action, content}}}`, including declined/cancelled answers.
+- LangChain tool reviews become one form per proposed call. Only graph-offered decisions are
+  available. Edits accept JSON object arguments and preserve the reviewed tool's name.
+- Static breakpoints and unsupported payload/schema shapes return an actionable tool error.
+  Use the existing [human-input run/thread APIs](../human-in-the-loop.md) for those graphs.
+
+URL questions require HTTPS, except HTTP on localhost/127.0.0.1/`[::1]`; URLs cannot contain
+credentials or exceed 4,096 characters. The client presents the URL; Skein does not open it.
+Forms use MCP's restricted flat schemas. Use URL mode for credential or sign-in flows.
+
+## Retry and lifetime
+
+The official client handles rounds automatically. A manual client repeats the same tool/arguments
+with the returned `requestState` and answers under their original `inputRequests` keys. All parallel
+questions appear together. Missing answers reissue the same questions/state. Invalid answers return
+HTTP 400 / `-32602` before execution. Repeated accepted answers replay the result; changed answers
+cannot replace an accepted round. An in-flight concurrent answer reports a retry error.
+Identical string prompts share an answer key. Use a structured `mcp_elicitation` relay with distinct
+request keys when two questions with the same text need independent answers.
+
+Pending continuations are usable for at most 24 hours and completed replays for at most 10 minutes,
+bounded by thread TTL/idempotency retention. Expiration does not approve, reject or resume a graph;
+existing sweepers reclaim expired records. Thread/run erasure and fresh permission checks also apply.
+
+Bundled memory, SQLite and Postgres stores retain results. A custom store needs the existing optional
+`RunRepo.recordResult/getResult` pair for resumable calls; ordinary calls work without it. Memory
+remains process-local. Cross-instance safety uses the backend execution gate. Lost inline work is
+not automatically replayed: inspect the run and use your application's recovery procedure. Keep
+external effects idempotent.
+
+Skein retains its existing thread-retention behavior. Execution remains inline like other wait calls.
+Use the [Console](../console.md#runs) to inspect resulting runs, or continue through Agent Protocol.
+
+
+---
+
+<!-- source: docs/recipes/split-api-worker.md -->
+
+# Scale API serving and background workers separately
+
+Run an API owner and one or more background owners against the same Postgres and Redis databases.
+Use this when queued work needs a different process or replica count from HTTP serving. Wait and
+stream submissions still execute inline in the API process; this recipe does not move them to workers.
+
+Use the same graph exports, credentials, dependency versions and backend configuration in each process.
+Start with [Postgres and Redis setup](../deploy.md). The code below uses published exports; there is
+no additional CLI role.
+
+## API owner
+
+Create the runtime, register graph assistants, and mount its handler table without starting its worker:
+
+```ts
+import express from "express";
+import { createProtocolRuntime } from "@skein-js/agent-protocol";
+import { createHandlerRouter } from "@skein-js/express";
+import { embedPostgresGraphs } from "@skein-js/runtime";
+import { graph } from "./agent.js";
+import { authEngine } from "./auth-engine.js";
+
+const embedded = await embedPostgresGraphs({ agent: graph }, { overrides: { auth: authEngine } });
+const api = createProtocolRuntime(embedded.deps);
+await api.service.assistants.registerGraphAssistants();
+const app = express();
+app.use(createHandlerRouter(api.handlers, { handleRequest: api.handleRequest }));
+const listener = app.listen(2024);
+
+process.once("SIGTERM", () => {
+  void (async () => {
+    const drained = new Promise<void>((resolve, reject) =>
+      listener.close((error) => (error ? reject(error) : resolve())),
+    );
+    await api.worker.stop();
+    await drained;
+    await embedded.dispose();
+  })();
+});
+```
+
+`authEngine` is your existing resolved authentication/authorization engine; see
+[authentication](./authentication.md). Keep it on the API owner. Background runs persist the
+authenticated execution context at admission; worker processes do not infer identity from task IDs.
+
+## Background owner
+
+Assemble the same drivers and graphs, then start the worker lifecycle:
+
+```ts
+import { createProtocolRuntime } from "@skein-js/agent-protocol";
+import { embedPostgresGraphs } from "@skein-js/runtime";
+import { graph } from "./agent.js";
+
+const embedded = await embedPostgresGraphs({ agent: graph });
+const runtime = createProtocolRuntime(embedded.deps, { worker: { maxConcurrency: 10 } });
+await runtime.service.assistants.registerGraphAssistants();
+runtime.worker.start();
+process.once("SIGTERM", () => {
+  void runtime.worker.stop().then(() => embedded.dispose());
+});
+```
+
+The API process owns its listener, inline requests and subscriptions. The worker lifecycle owns
+background consumption, cron scheduling, thread TTL, idempotency sweeping and delivery retries.
+Cancellation subscriptions start at runtime assembly, including on API-only owners, and close through
+`worker.stop()`. That stop operation stops the loops, drains/aborts active work, and must
+finish before driver disposal. Multiple background owners use the existing distributed execution and
+cron claims; they do not strengthen the documented enqueue-order guarantee.
+
+This example configures no store-item TTL. `embedPostgresGraphs(graphs, {ttl: ...})` starts that separate
+store sweeper per assembly, independently of `worker.start()`. If you require a single store-sweep
+owner, compose `PostgresSkeinStore` and its existing `store.sweepExpired()` primitive in your host
+instead. Preserve the same TTL policy on writers. See [storage](../storage.md).
+
+Drain inline requests before disposing the API's drivers. Choose a shutdown deadline appropriate to
+your graph, and cancel unfinished runs through the existing run service when your host requires a
+bounded drain. Observe cancellation to completion before closing storage.
+
+## Verify the composition
+
+Submit a background run through the authenticated API, keep its thread/run IDs, and join its stream.
+It should execute on a background owner. Reconnect with the last event ID; Redis replays retained
+frames. Cancel through another API instance and inspect the original run until it settles. A caller
+without thread access must be unable to read, cancel or join that run.
+
+Submit a wait run to verify that it executes in the API process. Stop a background owner during work
+and check its settled cancellation before teardown; a hard process loss follows the separate
+[checkpoint-recovery contract](../runs-and-redis.md#recover-after-a-worker-exits). Keep external
+effects idempotent and retain the existing stream-history limits.
 
 
 ---

@@ -35,6 +35,7 @@ import { toStoredRollbackPlan, type ProtocolContext, type RollbackPlan } from ".
 import { remainingQueueAttempts } from "../deliveries/delivery-config.js";
 import { readInputAdmission } from "../idempotency/admission-input.js";
 import { a2aKwargs } from "../interop/a2a-origin.js";
+import { mcpKwargs } from "../interop/mcp-origin.js";
 import {
   assertNativeDeadline,
   nativeKwargs,
@@ -298,7 +299,13 @@ export function toKwargs(
   authScopes?: string[],
 ): RunKwargs {
   const kwargs: RunKwargs & ReturnType<typeof threadProtocolKwargs> = {};
-  Object.assign(kwargs, threadProtocolKwargs(input), a2aKwargs(input), nativeKwargs(input));
+  Object.assign(
+    kwargs,
+    threadProtocolKwargs(input),
+    a2aKwargs(input),
+    nativeKwargs(input),
+    mcpKwargs(input),
+  );
   // Only the non-default is stored: `keep` is what an absent flag already means, and kwargs are
   // written on every run.
   if ((ownsThread || readNativeOrigin(kwargs)?.ownsThread) && input.on_completion === "delete")
@@ -707,6 +714,9 @@ export function createRunService(ctx: ProtocolContext): RunService {
     resolveThread: () => Promise<Thread>,
     background = false,
   ): Promise<{ run: Run; kwargs: RunKwargs }> => {
+    if (input.webhook !== undefined && deps.webhooks?.disabled) {
+      throw SkeinHttpError.unprocessable("HTTP webhooks are disabled by http.disable_webhooks.");
+    }
     const assistant = await requireAssistant(input.assistant_id);
     const thread = await resolveThread();
     // "Stateless" is *the caller named no thread*, matching LangGraph's own `threadId == null` test —
@@ -1139,6 +1149,11 @@ export function createRunService(ctx: ProtocolContext): RunService {
       // belonging to a run the caller has no access to.
       if (!existing || existing.run_id !== runId) {
         throw SkeinHttpError.notFound(`Delivery "${deliveryId}" not found for run "${runId}".`);
+      }
+      if (deps.webhooks?.disabled && /^https?:/i.test(existing.url)) {
+        throw SkeinHttpError.unprocessable(
+          "HTTP webhook replay is disabled by http.disable_webhooks.",
+        );
       }
       const replayed = await deliveries?.retryNow(deliveryId, deps.clock().toISOString());
       if (!replayed) {

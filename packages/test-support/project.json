@@ -4,6 +4,12 @@
   "sourceRoot": "packages/test-support/src",
   "projectType": "library",
   "targets": {
+    "test-deep-agents-consumer": {
+      "executor": "nx:run-commands",
+      "cache": false,
+      "dependsOn": ["server-express:build", "runtime:build", "local:build", "cli:build"],
+      "options": { "command": "node scripts/deep-agents-consumer-smoke.mjs", "cwd": "." }
+    },
     "typecheck": {
       "executor": "nx:run-commands",
       "options": {

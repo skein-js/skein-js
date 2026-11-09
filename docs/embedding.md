@@ -219,7 +219,8 @@ import { PostgresSaver } from "@langchain/langgraph-checkpoint-postgres";
 import { RedisRunEventBus, RedisRunQueue } from "@skein-js/redis";
 import { createPostgresPool, PostgresSkeinStore } from "@skein-js/storage-postgres";
 
-const checkpointer = new PostgresSaver(createPostgresPool(process.env.POSTGRES_URI!));
+const checkpointPool = createPostgresPool(process.env.POSTGRES_URI!);
+const checkpointer = new PostgresSaver(checkpointPool);
 await checkpointer.setup();
 
 const deps = embedInMemoryGraphs(
@@ -244,6 +245,27 @@ one warm process, so they don't survive a function that scales to zero. See
 Bundling the result yourself? The in-code path is the friendly one — it never reaches the
 `langgraph.json` graph loader, so everything on it bundles cleanly, `@skein-js/storage-postgres`
 included. See [bundling.md](./bundling.md).
+
+## Supply an upstream saver
+
+`ProtocolDeps.checkpointer` is the existing programmatic seam. Construct your upstream saver, run
+its documented setup/migrations before serving, and pass it as above. MemorySaver, SqliteSaver and
+PostgresSaver use this seam; no Skein saver subclass or config-loaded factory is required.
+`checkpointer.backend: "default"` selects the runtime's normal saver; other backend selections and
+`checkpointer.path` produce a startup diagnostic pointing to programmatic injection.
+
+Use a saver with the capabilities your application needs: state/history readback, writes, and thread
+deletion for erasure; copy and `keep_latest` pruning also depend on the saver supporting the relevant
+checkpoint operations. Unsupported operations produce capability errors rather than pretending to
+succeed. Keep checkpoint and resource durability aligned. For a durable local application, start with
+[`embedSqliteGraphs`](./local-deployment.md) instead of combining persistent checkpoints with volatile
+thread records.
+
+Your host owns injected connections and pools. Stop the runtime and drain requests before closing
+them; for the example above, close `checkpointPool` with `await checkpointPool.end()` after the server
+has stopped. Stopping a runtime does not dispose an application-supplied saver. Keep its normal
+serializer and public methods intact; Skein delegates checkpoint writes while adding run attribution
+for [worker recovery](./runs-and-redis.md#recover-after-a-worker-exits).
 
 ## The one trade-off: schemas
 

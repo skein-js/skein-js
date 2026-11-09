@@ -35,7 +35,9 @@ import {
 import { attemptDelivery } from "../deliveries/attempt-delivery.js";
 import { DEFAULT_RETAIN_HOURS, deliveryLeaseMs } from "../deliveries/delivery-config.js";
 import { buildDeliveryPayload } from "../deliveries/delivery-payload.js";
-import { redactWebhookUrl } from "../deliveries/delivery-target.js";
+import { createDeliveryRequest } from "../deliveries/delivery-request.js";
+import { deliveryTargetError, redactWebhookUrl } from "../deliveries/delivery-target.js";
+import { configureHttpDelivery } from "../deliveries/http-delivery-policy.js";
 import { isNoopLogger, webhookTimeoutMs, type ResolvedDeps } from "../deps.js";
 import {
   requireAgentCapability,
@@ -44,6 +46,7 @@ import {
 } from "../graphs/agent-graph.js";
 import { resolveCompiledGraph } from "../graphs/resolve-compiled-graph.js";
 import { readA2aOrigin, verifyA2aResume } from "../interop/a2a-origin.js";
+import { readMcpOrigin } from "../interop/mcp-origin.js";
 import { observeDurableCancellation } from "../native/native-cancellation.js";
 import { readNativeOrigin } from "../native/native-origin.js";
 import { settleNativeRun } from "../native/native-outcome.js";
@@ -65,7 +68,9 @@ import {
 import { isThreadProtocolRun } from "../threads/thread-protocol-run.js";
 
 import type { AbortReason, RunControl } from "./cancellation.js";
+import { withCheckpointRunIdentity } from "./checkpoint-run-identity.js";
 import { readDeclaredReply } from "./declared-reply.js";
+import { verifyResumeTarget } from "./resume-target.js";
 import { RUN_FAILURE_REPORT_KIND, toError, type RunFailureReport } from "./run-failure.js";
 import {
   toFactoryConfigurable,
@@ -75,6 +80,7 @@ import {
   wantsEventsMode,
 } from "./run-input.js";
 import { describeFailingNodes, describeInterrupts, extractToolActivity } from "./run-log.js";
+import { preservesRecoveryInterrupt, resolveRunRecovery } from "./run-recovery.js";
 import {
   emitRunEvent,
   telemetryCallOptions,
@@ -86,13 +92,15 @@ import {
 export interface RunExecution {
   run: Run;
   kwargs: RunKwargs;
+  /** A previous execution lost its process without settling this same run. */
+  recovering?: boolean;
   control: RunControl;
   /**
    * Called once at `pending -> running` with the thread's checkpoint tip at that moment (`undefined`
    * if none). The run service uses this to compute a `rollback` plan for a run that later displaces
    * this one. Optional so tests can omit it.
    */
-  recordBaseCheckpoint?: (baseCheckpointId: string | undefined) => void;
+  recordBaseCheckpoint?: (baseCheckpointId: string | undefined) => void | Promise<void>;
   /**
    * How this run was started, for telemetry. Defaults to `"wait"` — the inline, non-streaming shape —
    * so a caller that doesn't care (and every existing test) needn't say.
@@ -144,10 +152,11 @@ async function resolveGraph(
   deps: ResolvedDeps,
   graphId: string,
   kwargs: RunKwargs,
+  runId: string,
 ): Promise<AgentGraph> {
   return resolveCompiledGraph(deps.graphs, graphId, {
     configurable: toFactoryConfigurable(kwargs),
-    checkpointer: deps.checkpointer,
+    checkpointer: withCheckpointRunIdentity(deps.checkpointer, runId),
     store: deps.storeBridge?.(deps.store.store),
   });
 }
@@ -246,7 +255,9 @@ export async function executeRun(deps: ResolvedDeps, exec: RunExecution): Promis
   const runId = run.run_id;
   const threadId = run.thread_id;
   const threadGeneration = await deps.threadBus?.generation(threadId);
-  let seq = 0;
+  // A thread sequence counts every run frame plus lifecycle events, so it bounds the previous
+  // attempt's run sequence. Reuse that durable cursor on redelivery without adding a bus method.
+  let seq = exec.recovering && deps.threadBus ? await deps.threadBus.latestSequence(threadId) : 0;
   const publishFrame = async (frame: RunFrame) => {
     await deps.bus.publish(runId, frame);
     await deps.threadBus?.publish(threadId, { kind: "run", runId, frame }, threadGeneration);
@@ -343,7 +354,7 @@ export async function executeRun(deps: ResolvedDeps, exec: RunExecution): Promis
         ...(error ? { error } : {}),
       });
     }
-    if (readA2aOrigin(kwargs) && deps.store.runs.recordResult) {
+    if ((readA2aOrigin(kwargs) || readMcpOrigin(kwargs)) && deps.store.runs.recordResult) {
       const { error: _error, ...result } = settled;
       await deps.store.runs.recordResult(runId, result);
     }
@@ -479,10 +490,10 @@ export async function executeRun(deps: ResolvedDeps, exec: RunExecution): Promis
     // thread, no checkpoints) means "revert to empty", but a failed read is *unknown* — recording
     // `undefined` there would make a later rollback wipe the thread's real prior history. On failure
     // we record nothing, so rollback safely skips the checkpoint revert. Best-effort either way.
-    if (exec.recordBaseCheckpoint) {
+    if (exec.recordBaseCheckpoint && !exec.recovering) {
       try {
         const tip = await deps.checkpointer.getTuple({ configurable: { thread_id: threadId } });
-        exec.recordBaseCheckpoint(tip?.checkpoint.id);
+        await exec.recordBaseCheckpoint(tip?.checkpoint.id);
       } catch (error) {
         deps.logger.warn(
           `run ${runId}: failed to read base checkpoint; a rollback of this run won't revert checkpoints`,
@@ -514,26 +525,67 @@ export async function executeRun(deps: ResolvedDeps, exec: RunExecution): Promis
       });
     }
 
-    await verifyA2aResume(deps, threadId, runId, readA2aOrigin(kwargs));
-    if (nativeOrigin?.expected)
-      await verifyNativeResumeTarget(deps, threadId, runId, nativeOrigin.expected, control.signal);
+    const verifyResumeAdmission = async () => {
+      await verifyA2aResume(deps, threadId, runId, readA2aOrigin(kwargs));
+      const mcpOrigin = readMcpOrigin(kwargs);
+      if (mcpOrigin) await verifyResumeTarget(deps, threadId, runId, mcpOrigin);
+      if (nativeOrigin?.expected)
+        await verifyNativeResumeTarget(
+          deps,
+          threadId,
+          runId,
+          nativeOrigin.expected,
+          control.signal,
+        );
+    };
+    // Preserve fresh admission's order: a stale continuation must fail before a factory runs.
+    if (!exec.recovering) await verifyResumeAdmission();
     if (remainingBudget !== undefined && remainingBudget <= 0) {
       control.abort("timeout");
       throw new Error("Native execution deadline expired before invocation.");
     }
-    graph = await resolveGraph(deps, assistant.graph_id, kwargs);
+    graph = await resolveGraph(deps, assistant.graph_id, kwargs, runId);
     const activeGraph = graph;
-    const input = toGraphInput(kwargs);
+    const recovered = exec.recovering
+      ? await resolveRunRecovery(activeGraph, runId, threadId, kwargs)
+      : undefined;
+    if (exec.recovering && !recovered) await verifyResumeAdmission();
+    const input = recovered ? null : toGraphInput(kwargs);
+    const recoveredInterrupt = recovered
+      ? await preservesRecoveryInterrupt(activeGraph, recovered, kwargs)
+      : false;
     // Trace identity (metadata/tags/runName) and any tracer handlers ride along with the call, so a
     // callback-based tracer's spans nest under this run instead of floating free. Empty when no
     // sink is configured.
+    const graphOptions = toGraphCallOptions(kwargs, threadId, control.signal);
+    const traceOptions = telemetryContext ? telemetryCallOptions(deps, telemetryContext) : {};
+    if (recovered) {
+      delete graphOptions.configurable["checkpoint_id"];
+      delete graphOptions.configurable["checkpoint_map"];
+    }
     const options = {
-      ...toGraphCallOptions(kwargs, threadId, control.signal),
-      ...(telemetryContext ? telemetryCallOptions(deps, telemetryContext) : {}),
+      ...graphOptions,
+      ...traceOptions,
+      // Execution identity is a runtime contract, including for checkpoint recovery and upstream
+      // async middleware. It must not disappear when tracing is disabled. Application configurable
+      // graph/assistant IDs remain untouched.
+      metadata: {
+        ...traceOptions.metadata,
+        run_id: runId,
+        thread_id: threadId,
+      },
     };
 
     await withRunTelemetryContext(deps, telemetryContext, async () => {
       control.signal.throwIfAborted();
+      // A recovered interrupt is still a question for the caller, not permission to answer it.
+      if (recovered && (recovered.next.length === 0 || recoveredInterrupt)) {
+        if (toGraphStreamModes(kwargs.stream_mode).includes("values")) {
+          seq += 1;
+          await publishFrame({ seq, event: "values", data: recovered.values });
+        }
+        return;
+      }
       if (isThreadProtocolRun(kwargs)) {
         await deps.threadBus?.publish(
           threadId,
@@ -895,7 +947,25 @@ export async function executeRun(deps: ResolvedDeps, exec: RunExecution): Promis
     };
     return async () => {
       try {
-        await resolved.webhookDispatcher(url, payload);
+        const denied = await deliveryTargetError(url, resolved.webhooks);
+        if (denied) {
+          resolved.logger.warn(`run ${runId}: ${denied}`);
+          return;
+        }
+        if (resolved.webhooks?.headers || resolved.webhooks?.url) {
+          const request = createDeliveryRequest({
+            payload,
+            deliveryId: runId,
+            attempt: 1,
+            sentAt: resolved.clock(),
+            secrets: resolved.webhooks.secrets,
+          });
+          await resolved.webhookDispatcher(
+            url,
+            request.payload,
+            configureHttpDelivery(request.attempt, url, resolved.webhooks),
+          );
+        } else await resolved.webhookDispatcher(url, payload);
       } catch (error) {
         resolved.logger.warn(
           `run ${runId}: webhook delivery to ${redactWebhookUrl(url)} failed`,

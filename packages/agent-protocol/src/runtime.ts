@@ -32,6 +32,7 @@ import {
   type DeliveryWorkerOptions,
 } from "./deliveries/delivery-worker.js";
 import type { ProtocolDeps } from "./deps.js";
+import { configureRequestHeaders } from "./http/configured-headers.js";
 import { createOperationJson } from "./http/operation-contracts.js";
 import { createRouteMatcher, skeinRoutes, type RouteBinding } from "./http/routes.js";
 import {
@@ -170,7 +171,7 @@ export function createProtocolRuntime(
       createOpenApiDocument(mountedRoutes, handlers, deps.auth, deps.serverVersion),
     );
   handlerExtras.handleMcp ??= async (request) =>
-    (await import("./interop/mcp.js")).createMcpHandler(() => handlers)(request);
+    (await import("./interop/mcp.js")).createMcpHandler(context, () => handlers)(request);
   handlerExtras.handleA2a ??= async (request) =>
     (await import("./interop/a2a.js")).createA2aHandler(context, () => handlers)(request);
   const authorized = deps.auth
@@ -242,7 +243,10 @@ export function createProtocolRuntime(
         }
       : {}),
   });
-  const handlers = instrumentHttpHandlers(idempotentHandlers, context.deps.telemetry);
+  const handlers = instrumentHttpHandlers(
+    configureRequestHeaders(idempotentHandlers, context.deps),
+    context.deps.telemetry,
+  );
   const worker = createRunWorker(context, options.worker);
   const scheduler = createCronScheduler(context, options.scheduler);
   // Always built, NOT gated on `checkpointer.ttl` being configured. A per-thread `ttl` on

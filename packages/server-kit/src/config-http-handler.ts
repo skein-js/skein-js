@@ -16,8 +16,30 @@ export async function loadConfigHttpHandler(
   config: LanggraphJson,
   options: { configDir: string; importModule?: ModuleImporter },
 ): Promise<((request: Request) => Promise<Response | undefined>) | undefined> {
+  if (
+    config.http?.["middleware_order"] !== undefined &&
+    config.http["middleware_order"] !== "auth_first"
+  ) {
+    throw new SkeinConfigError(
+      "http.middleware_order supports auth_first only; authenticate before dispatching custom applications.",
+    );
+  }
+  for (const key of ["backend", "type"] as const) {
+    const selected = config.checkpointer?.[key];
+    if (selected !== undefined && selected !== "default")
+      throw new SkeinConfigError(
+        `checkpointer.${key} is unsupported; inject an upstream saver through ProtocolDeps.checkpointer.`,
+      );
+  }
+  if (config.checkpointer?.["path"] !== undefined)
+    throw new SkeinConfigError(
+      "checkpointer.path is unsupported; inject an upstream saver through ProtocolDeps.checkpointer.",
+    );
   const app = config.http?.["app"];
-  const ui = await loadGraphUiHandler(config, options.configDir);
+  const ui =
+    config.http?.disable_ui === true
+      ? undefined
+      : await loadGraphUiHandler(config, options.configDir);
   if (app === undefined) return ui;
   if (typeof app !== "string") throw new SkeinConfigError("http.app must be a path:export string.");
   const spec = parseGraphSpec(app, options.configDir);

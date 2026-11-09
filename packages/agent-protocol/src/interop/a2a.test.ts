@@ -18,11 +18,17 @@ it.each(["memory", "sqlite"])(
     const directory = await mkdtemp(join(tmpdir(), "skein-a2a-"));
     let storage: SqliteStorage | undefined;
     const openDeps = async () => {
-      if (backend === "memory") return createFixtureDeps();
+      const configurableHeaders = { includes: ["x-*"] };
+      if (backend === "memory") return createFixtureDeps({ configurableHeaders });
       storage = await openSqliteStorage({ filename: join(directory, "state.sqlite") });
       const checkpointer = new SqliteSaver(storage.database);
       await checkpointer.getTuple({ configurable: { thread_id: "__initialize__" } });
-      return createFixtureDeps({ store: storage.store, queue: storage.queue, checkpointer });
+      return createFixtureDeps({
+        store: storage.store,
+        queue: storage.queue,
+        checkpointer,
+        configurableHeaders,
+      });
     };
     let runtime = createProtocolRuntime(await openDeps());
     await runtime.service.assistants.registerGraphAssistants();
@@ -39,7 +45,7 @@ it.each(["memory", "sqlite"])(
           params: url.pathname.startsWith("/a2a/") ? { assistant_id: url.pathname.slice(5) } : {},
           query: Object.fromEntries(url.searchParams),
           body,
-          headers: { "content-type": "application/json" },
+          headers: { "content-type": "application/json", "x-request-source": "a2a" },
         });
         response.writeHead(result.status, {
           "content-type": result.kind === "sse" ? "text/event-stream" : "application/json",

@@ -690,6 +690,14 @@ the default strategy and explicit `ttl: null` pins a thread. See [storage](./sto
 assistants and their input schemas. Calling a tool creates a run through the same authorized run
 service; cancellation uses the existing run cancellation machinery.
 
+Protocol revision `2026-07-28` additionally supports form and URL elicitation over checkpointed
+interrupt/resume. Use an elicitation-capable client with modern negotiation enabled; see the
+[working human-input recipe](./recipes/mcp-human-input.md). State is bound to the authenticated
+caller, tool, arguments and checkpoint. Missing answers reask, invalid answers fail before resume,
+and accepted rounds replay without applying input twice. Custom stores need the existing optional
+result methods for resumable MCP calls; ordinary calls remain supported without them. Legacy
+clients receive an explicit error when a graph asks for input.
+
 `POST /a2a/{assistant_id}` uses the official A2A SDK’s JSON-RPC handlers and legacy codecs.
 Discovery is `GET /.well-known/agent-card.json?assistant_id=...`; `DEFAULT_A2A_ASSISTANT_ID` supplies
 an omitted assistant and `LANGGRAPH_API_URL` supplies the public origin. Supported method families

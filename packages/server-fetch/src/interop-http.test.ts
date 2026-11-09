@@ -1,6 +1,6 @@
 import { createServer } from "node:http";
 
-import { MessagesAnnotation, StateGraph } from "@langchain/langgraph";
+import { interrupt, MessagesAnnotation, StateGraph } from "@langchain/langgraph";
 import { filterSkeinRoutes, skeinRoutes } from "@skein-js/agent-protocol";
 import {
   embedInMemoryGraphs,
@@ -13,13 +13,36 @@ import { createSkeinFetchServer } from "./skein-fetch-server.js";
 
 runInteropHttpConformance("Fetch", async (options) => {
   const graph = new StateGraph(MessagesAnnotation)
-    .addNode("echo", () => ({ messages: [{ role: "assistant" as const, content: "echo" }] }))
+    .addNode("echo", (state, config) => ({
+      messages: [
+        {
+          role: "assistant" as const,
+          content:
+            state.messages.at(-1)?.content === "headers"
+              ? JSON.stringify({
+                  tenant: config.configurable?.["x-tenant"],
+                  thread: config.configurable?.["thread_id"],
+                })
+              : state.messages.at(-1)?.content === "mcp-question"
+                ? `approved: ${String(interrupt("approve?"))}`
+                : "echo",
+        },
+      ],
+    }))
     .addEdge("__start__", "echo")
     .addEdge("echo", "__end__")
     .compile();
   const runtime = await createSkeinFetchServer({
     routes: filterSkeinRoutes(skeinRoutes, options?.disable ?? {}),
-    deps: embedInMemoryGraphs({ echo: graph }, { auth: options?.auth }),
+    deps: embedInMemoryGraphs(
+      { echo: graph },
+      {
+        auth: options?.auth,
+        ...(options?.configuredHeaders
+          ? { configurableHeaders: { includes: ["x-*", "thread_id"] } }
+          : {}),
+      },
+    ),
   });
   const server = createServer((request, response) => {
     void (async () => {

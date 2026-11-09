@@ -1,8 +1,6 @@
 // Threads: the list, and a thread's current state, checkpoint history and runs.
 //
-// Note what a global "recent runs" view would have to do: there is no cross-thread run search in the
-// protocol (runs list per thread, `GET /threads/:id/runs`), so it would have to fan out over threads.
-// That gap is real and deliberate to surface — see packages/console/README.md.
+// Global execution discovery lives in Runs; this view retains the conversation's state/history.
 
 import type { Thread, Message } from "@langchain/langgraph-sdk";
 import { ArrowLeft, RefreshCw } from "lucide-react";

@@ -82,6 +82,10 @@ export async function startRunExecution(
         rollbackPlans.delete(runId);
         return { status: current?.status ?? "cancelled", values: {} };
       }
+      const recovering = current.status === "running";
+      const executionKwargs = recovering
+        ? ((await deps.store.runs.getKwargs(runId)) ?? kwargs)
+        : kwargs;
       // A `rollback` run drops the displaced run's writes now that it has settled (we hold the lock
       // it released), then removes its row so the run "never happened". Best-effort on the checkpoint
       // side — a failure to revert must not strand the new run.
@@ -90,7 +94,9 @@ export async function startRunExecution(
       // instance that *created* this run is not the one executing it, and what makes a crash-recovered
       // run still clean up. Re-applying is safe — reverting to the same base twice lands on the same
       // history, and deleting an already-deleted row is tolerated below.
-      const plan = rollbackPlans.get(runId) ?? storedRollbackPlan(kwargs);
+      const plan = recovering
+        ? undefined
+        : (rollbackPlans.get(runId) ?? storedRollbackPlan(kwargs));
       if (plan) {
         rollbackPlans.delete(runId);
         leaseSignal?.throwIfAborted();
@@ -134,15 +140,16 @@ export async function startRunExecution(
       engineStarted = true;
       return await executeRun(deps, {
         run,
-        kwargs,
+        kwargs: executionKwargs,
+        recovering,
         control: runControl,
         // Noted in-process *and* persisted onto the run. The map is the fast path for a displacement
         // decided in this process; the persisted copy is what a *different* instance reads when it is
         // the one displacing this run. Persisting is best-effort — failing a run because a bookkeeping
         // write failed would be a much worse outcome than a rollback that declines to revert.
-        recordBaseCheckpoint: (base) => {
+        recordBaseCheckpoint: async (base) => {
           runBaseCheckpoints.set(runId, base);
-          void deps.store.runs
+          await deps.store.runs
             .recordBaseCheckpoint(runId, base ?? null)
             .catch((error: unknown) =>
               deps.logger.warn(

@@ -437,7 +437,7 @@ export async function bundleProject(options: BundleProjectOptions): Promise<Buil
     assertEveryImportIsPinned(bundle, dependencies);
 
     await mkdir(outDir, { recursive: true });
-    if (config.ui && Object.keys(config.ui).length) {
+    if (config.http?.disable_ui !== true && config.ui && Object.keys(config.ui).length) {
       const { build: buildUi } = await import("@langchain/langgraph-ui");
       const output = path.join(outDir, "ui");
       await buildUi({ cwd: configDir, defs: config.ui, config: config.ui_config, output });

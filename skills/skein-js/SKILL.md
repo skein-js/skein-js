@@ -19,6 +19,23 @@ SQLite is an explicit option for Node 22/24/26 with one process owning each data
 
 Applications choose models, tools, credentials, process lifetime, and recovery behavior. A local app can use a cloud provider or a local model. SQLite records abandoned attempts as failures without automatically replaying input or continuing checkpoints; live stream frames remain process-local. Recover the UI from persisted records and state/history APIs.
 
+Redis workers continue an attributable stalled run from its committed checkpoint without reapplying
+accepted input. Make external effects idempotent: uncommitted work may repeat. Inspect
+`run_recovery_ambiguous` failures before explicitly choosing recovery for older checkpoints.
+Use compatible top-level `webhooks` headers/URL controls together with `skein.webhooks` signing and
+retries. Restrictions intersect; explicit empty domain/port lists deny all. `http.disable_webhooks`
+blocks caller callbacks without disabling host-owned outcomes. Header templates require existing,
+prefix-allowed environment variables. `http.configurable_headers` and `logging_headers` use
+case-insensitive includes/excludes with exclusions winning. Keep credentials out of logs.
+`http.disable_ui` disables graph UI loading/building independently of Console. Preserve auth-first
+dispatch and opt-in CORS. Non-default config checkpointer loaders require programmatic saver injection;
+do not silently accept unapplied security or backend settings.
+
+Scale queued work separately using the [API/background-worker recipe](https://skein.js.org/recipes/split-api-worker).
+Keep wait/stream inline, select maintenance-loop owners explicitly, and stop runtimes before driver
+disposal. Preserve legacy run `reject` and thread-command `enqueue` defaults and documented ordering
+limits. Do not add a CLI role or stronger FIFO promise to assemble an existing deployment pattern.
+
 For a normal model and tool loop, prefer LangChain's `createAgent`; use a custom LangGraph `StateGraph` when the requested workflow needs explicit state or branching. For planning, files, and subagents, export a `createDeepAgent()` graph from the upstream `deepagents` package (support is experimental); give its `StoreBackend` a namespace built from `langgraph_auth_user_id`, use `stream_subgraphs` to stream subagents, and give async subagents an explicit `url`. See the [Deep Agents recipe](https://github.com/skein-js/skein-js/blob/main/docs/recipes/deep-agents.md). Consult the installed LangGraph version and [official LangGraph documentation](https://docs.langchain.com/oss/javascript/langgraph/overview) for graph APIs. When skein manages a served graph, let it inject the checkpointer and store; do not pass them to `.compile()` yourself. See [LangGraph essentials](https://skein.js.org/langgraph-essentials).
 
 ## Documentation for the adopter
@@ -82,6 +99,19 @@ savers without concrete byte inspectors return 501. Never estimate stored bytes 
 requested indexing, explicit no-expiry TTL, or per-read refresh controls.
 
 ### Browser clients
+
+For MCP human input, use an official modern client supporting revision `2026-07-28`, enable modern
+negotiation explicitly and declare form/URL elicitation capabilities. Let its registered elicitation
+handler collect the person's answers. Keep the returned state with the same caller/tool/arguments;
+do not turn an uncertain inline submission into a new resume. Legacy ordinary calls remain supported.
+See the [MCP human-input recipe](https://skein.js.org/recipes/mcp-human-input).
+
+Deep Agents 1.16.3 needs compatible peers (LangChain 1.6.2, Core 1.3.5, LangGraph 1.6.1 in the isolated
+candidate). Retain an application's pinned combination until its consumer checks pass. Explicit-URL
+forks, queued updates and media are upstream features; parent wakeups need polling or application-owned
+authorized notification. Use atomic `if_thread_status` to protect busy/waiting parents. Preserve
+caller-scoped credentials and receiving-thread ownership. Sandbox provisioning and disposal belong to
+the application; use upstream remote backends without process-global transport replacement.
 
 For new React frontends, install `@langchain/react` (tested at 1.2.7) and its
 `@langchain/core` peer. Import `useStream` from `@langchain/react`, point `apiUrl` and

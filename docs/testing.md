@@ -437,6 +437,15 @@ assert the document itself does not grow beyond the viewport.
 
 ## Recorded compatibility evidence
 
+The [9 November Agent Server closeout](./audits/agent-server-closeout-2026-11-09.md) maps all #83
+acceptance cases to maintained regression sources and dispositions. Run the isolated candidate with
+`nx run test-support:test-deep-agents-consumer`: it packs this checkout and installs exact Deep Agents
+1.16.3 peers outside the workspace, retaining the 1.15.1 example. Fixtures exercise real upstream
+middleware/tools without model credentials. The LangSmith sandbox case defaults to a deterministic
+HTTP provider. A live-provider smoke requires explicit `SKEIN_TEST_LIVE_SANDBOX=1`,
+`SKEIN_TEST_SANDBOX_SNAPSHOT`, and the provider SDK's credentials; it creates and deletes a sandbox.
+Do not count a skipped provider test as live-provider evidence.
+
 The following records the investigation and validation history behind the public
 [compatibility reference](./langgraph-compatibility.md). Baseline statuses describe 22 October 2026,
 not the currently implemented surface.

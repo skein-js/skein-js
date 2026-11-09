@@ -1,3 +1,4 @@
+import { Client, StreamableHTTPClientTransport } from "@modelcontextprotocol/client";
 import { SkeinHttpError, type AuthEngine } from "@skein-js/core";
 import { expect, it } from "vitest";
 
@@ -6,9 +7,80 @@ export function runInteropHttpConformance(
   name: string,
   start: (options?: {
     auth?: AuthEngine;
+    configuredHeaders?: boolean;
     disable?: { docs?: boolean; meta?: boolean; runs?: boolean };
   }) => Promise<{ baseUrl: string; close(): Promise<void> }>,
 ): void {
+  it(`${name} forwards selected headers while preserving explicit configuration and server-owned thread identity`, async () => {
+    const server = await start({ configuredHeaders: true });
+    try {
+      const thread = (await (
+        await fetch(server.baseUrl + "/threads", {
+          method: "POST",
+          headers: { "content-type": "application/json" },
+          body: "{}",
+        })
+      ).json()) as { thread_id: string };
+      const response = await fetch(`${server.baseUrl}/threads/${thread.thread_id}/runs/wait`, {
+        method: "POST",
+        headers: { "content-type": "application/json", "x-tenant": "header", thread_id: "spoof" },
+        body: JSON.stringify({
+          assistant_id: "echo",
+          input: { messages: [{ role: "user", content: "headers" }] },
+          config: { configurable: { "x-tenant": "body" } },
+        }),
+      });
+      expect(response.status).toBe(200);
+      const result = (await response.json()) as { messages: { content: string }[] };
+      expect(JSON.parse(result.messages.at(-1)!.content)).toEqual({
+        tenant: "body",
+        thread: thread.thread_id,
+      });
+    } finally {
+      await server.close();
+    }
+  });
+  it(`${name} serves official modern MCP discovery, calls and human-input rounds`, async () => {
+    const server = await start();
+    const client = new Client(
+      { name: "modern-adapter-proof", version: "1" },
+      {
+        versionNegotiation: { mode: { pin: "2026-07-28" } },
+        capabilities: { elicitation: { form: {} } },
+      },
+    );
+    let questions = 0;
+    client.setRequestHandler("elicitation/create", () => {
+      questions++;
+      return { action: "accept", content: { response: "yes" } };
+    });
+    try {
+      await client.connect(new StreamableHTTPClientTransport(new URL(server.baseUrl + "/mcp")));
+      expect((await client.listTools()).tools.some((tool) => tool.name === "echo")).toBe(true);
+      expect(
+        (
+          await client.callTool({
+            name: "echo",
+            arguments: { messages: [{ role: "user", content: "ordinary" }] },
+          })
+        ).isError,
+      ).toBe(false);
+      const result = await client.callTool({
+        name: "echo",
+        arguments: { messages: [{ role: "user", content: "mcp-question" }] },
+      });
+      expect(result).toMatchObject({
+        isError: false,
+        structuredContent: {
+          messages: expect.arrayContaining([expect.objectContaining({ content: "approved: yes" })]),
+        },
+      });
+      expect(questions).toBe(1);
+    } finally {
+      await client.close();
+      await server.close();
+    }
+  });
   for (const disabled of [
     {},
     { docs: true },

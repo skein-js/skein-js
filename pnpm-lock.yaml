@@ -1017,9 +1017,9 @@ importers:
       '@langchain/langgraph':
         specifier: ^1.4.0
         version: 1.4.7(@langchain/core@1.2.18(@opentelemetry/api@1.9.1)(openai@6.49.0(ws@8.21.0)(zod@3.25.76))(ws@8.21.0))(react-dom@19.2.6(react@19.2.6))(react@19.2.6)(svelte@5.57.2(@typescript-eslint/types@8.62.1))(vue@3.5.44(typescript@5.9.3))(zod@3.25.76)
-      '@modelcontextprotocol/sdk':
-        specifier: 1.32.1
-        version: 1.32.1(@cfworker/json-schema@4.1.1)(zod@3.25.76)
+      '@modelcontextprotocol/server':
+        specifier: 2.4.0
+        version: 2.4.0
       '@skein-js/core':
         specifier: workspace:*
         version: link:../core
@@ -1039,6 +1039,12 @@ importers:
       '@langchain/langgraph-sdk':
         specifier: ^1.9.0
         version: 1.9.25(@langchain/core@1.2.18(@opentelemetry/api@1.9.1)(openai@6.49.0(ws@8.21.0)(zod@3.25.76))(ws@8.21.0))(react-dom@19.2.6(react@19.2.6))(react@19.2.6)(svelte@5.57.2(@typescript-eslint/types@8.62.1))(vue@3.5.44(typescript@5.9.3))
+      '@modelcontextprotocol/client':
+        specifier: 2.4.0
+        version: 2.4.0
+      '@modelcontextprotocol/sdk':
+        specifier: 1.32.1
+        version: 1.32.1(@cfworker/json-schema@4.1.1)(zod@3.25.76)
       '@skein-js/storage-memory':
         specifier: workspace:*
         version: link:../storage-memory
@@ -1413,6 +1419,9 @@ importers:
       '@langchain/langgraph-checkpoint-postgres':
         specifier: ^1.0.4
         version: 1.0.4(@langchain/core@1.2.9(@opentelemetry/api@1.9.1)(openai@6.49.0(ws@8.21.0)(zod@4.6.7))(ws@8.21.0))(@langchain/langgraph-checkpoint@1.1.5(@langchain/core@1.2.9(@opentelemetry/api@1.9.1)(openai@6.49.0(ws@8.21.0)(zod@4.6.7))(ws@8.21.0)))
+      '@skein-js/core':
+        specifier: workspace:1.0.0-beta.1
+        version: link:../core
       '@skein-js/langsmith':
         specifier: workspace:*
         version: link:../telemetry-langsmith
@@ -1855,6 +1864,9 @@ importers:
       '@langchain/langgraph-sdk':
         specifier: ^1.12.6
         version: 1.12.6(@langchain/core@1.2.9(@opentelemetry/api@1.9.1)(openai@6.49.0(ws@8.21.0)(zod@4.6.7))(ws@8.21.0))(react-dom@19.2.6(react@19.2.6))(react@19.2.6)
+      '@modelcontextprotocol/client':
+        specifier: 2.4.0
+        version: 2.4.0
       braces:
         specifier: 3.0.3
         version: 3.0.3(patch_hash=dusyxqqojd5n5nskgynl47dwae)
@@ -3501,6 +3513,14 @@ packages:
   '@mermaid-js/parser@1.2.0':
     resolution: {integrity: sha512-oYPyv8A4As1yH5Bx+04iQEQxXuIQDe0GKCNSRgao6z8AM9jixXIfP0vsppRLvGf+nKIOb9/LdpWA4YuJiVvESA==}
 
+  '@modelcontextprotocol/client@2.4.0':
+    resolution: {integrity: sha512-LgrD2OphHuG12vfKFKz6SOnq7bKHQmhGJIAYdD+MZBn2npHEyry6uD8zvktodtl5CQM85MO0anUyD9JwmUmxww==}
+    engines: {node: '>=20'}
+
+  '@modelcontextprotocol/core@2.4.0':
+    resolution: {integrity: sha512-z8QBKqdfXLPzkLQuG4xp8hrVEMm1PZ1IgxMN2sMbJiFiAKOWXnAzogXn2W4aqIBlP1ea6U5yiqVquvUNM1Cj6Q==}
+    engines: {node: '>=20'}
+
   '@modelcontextprotocol/sdk@1.32.1':
     resolution: {integrity: sha512-2DdE+SJDtzLEEWzY1ZjY7Q+VcPhcV1KisD3zI4u0XZyktsjHum1mwbMI+JaulUBi2OZk+KJAi2uPXzxichPkdw==}
     engines: {node: '>=18'}
@@ -3510,6 +3530,10 @@ packages:
     peerDependenciesMeta:
       '@cfworker/json-schema':
         optional: true
+
+  '@modelcontextprotocol/server@2.4.0':
+    resolution: {integrity: sha512-rgR9yxSaAJ+bcsi/XroT/S2AfPiIWloXAnrdfYSCms9ivVju0ishu/wW0J21Ho6+ZOR1r7RyeRbjiRuF87ix5Q==}
+    engines: {node: '>=20'}
 
   '@msgpackr-extract/msgpackr-extract-darwin-arm64@3.0.4':
     resolution: {integrity: sha512-LCkGo6JDfaBhgST7UpPWgNgLINpcpabaHfyz5OBx75nUYxBsaEPxjnyNjWpeb/xBup/682QnBfRBy2/LvPutZQ==}
@@ -12615,6 +12639,20 @@ snapshots:
     dependencies:
       '@chevrotain/types': 11.1.2
 
+  '@modelcontextprotocol/client@2.4.0':
+    dependencies:
+      '@modelcontextprotocol/core': 2.4.0
+      cross-spawn: 7.0.6
+      eventsource: 3.0.7
+      eventsource-parser: 3.1.1
+      jose: 6.2.12
+      pkce-challenge: 5.0.1
+      zod: 4.6.7
+
+  '@modelcontextprotocol/core@2.4.0':
+    dependencies:
+      zod: 4.6.7
+
   '@modelcontextprotocol/sdk@1.32.1(@cfworker/json-schema@4.1.1)(zod@3.25.76)':
     dependencies:
       '@hono/node-server': 1.19.17(hono@4.13.13)
@@ -12638,6 +12676,11 @@ snapshots:
       '@cfworker/json-schema': 4.1.1
     transitivePeerDependencies:
       - supports-color
+
+  '@modelcontextprotocol/server@2.4.0':
+    dependencies:
+      '@modelcontextprotocol/core': 2.4.0
+      zod: 4.6.7
 
   '@msgpackr-extract/msgpackr-extract-darwin-arm64@3.0.4':
     optional: true

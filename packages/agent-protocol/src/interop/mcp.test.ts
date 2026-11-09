@@ -37,6 +37,11 @@ describe("MCP protocol transport", () => {
       expect(result.isError).toBe(false);
       expect(result.structuredContent).toEqual({ value: "echo: MCP" });
       expect(await runtime.service.threads.list()).toHaveLength(1);
+      const paused = await client.callTool({ name: "interrupting", arguments: {} });
+      expect(paused.isError).toBe(true);
+      expect(paused.content).toContainEqual(
+        expect.objectContaining({ text: expect.stringContaining("this client can't answer") }),
+      );
     } finally {
       await client.close();
     }

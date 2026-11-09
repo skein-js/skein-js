@@ -23,6 +23,7 @@ export function usePagedRows<Row>(
   pageSize: number,
   count?: (signal: AbortSignal) => Promise<number>,
   persistenceKey?: string,
+  location?: { offset: number; onOffsetChange: (offset: number) => void },
 ) {
   const workspace = useWorkspaceStore();
   const saved = useWorkspace((state) =>
@@ -42,10 +43,18 @@ export function usePagedRows<Row>(
     },
     [workspace, persistenceKey],
   );
-  const offsets =
+  const storedOffsets =
     position.queryKey === queryKey && position.pageSize === pageSize
       ? position.offsets
       : firstPageOffsets;
+  const locationIndex = location ? storedOffsets.indexOf(location.offset) : -1;
+  const offsets = location
+    ? locationIndex >= 0
+      ? storedOffsets.slice(0, locationIndex + 1)
+      : location.offset === 0
+        ? firstPageOffsets
+        : [Math.max(0, location.offset - pageSize), location.offset]
+    : storedOffsets;
   const page = offsets.length - 1;
   const offset = offsets[page]!;
   // The most rows the server has returned in one response. The page cap (`SKEIN_MAX_PAGE_SIZE`) is at
@@ -92,10 +101,10 @@ export function usePagedRows<Row>(
   // A deletion can empty the last page. Return to the preceding page instead of leaving an
   // apparently empty collection with no forward or backward explanation.
   useEffect(() => {
-    if (!loading && !result.error && current?.rows.length === 0 && page > 0) {
+    if (!location && !loading && !result.error && current?.rows.length === 0 && page > 0) {
       setPosition({ queryKey, pageSize, offsets: offsets.slice(0, -1) });
     }
-  }, [current, result.error, loading, page, offsets, pageSize, queryKey, setPosition]);
+  }, [current, result.error, loading, page, offsets, pageSize, queryKey, setPosition, location]);
 
   return {
     ...result,
@@ -107,15 +116,29 @@ export function usePagedRows<Row>(
     offset,
     pageSize,
     page,
-    previous: () =>
+    previous: () => {
+      const visitedOffset = page > 0 ? offsets[page - 1]! : 0;
+      // A bookmarked URL may have no visited page history. Respect a smaller server cap
+      // when walking back instead of jumping over rows by the requested page size.
+      const previousOffset = location
+        ? Math.max(visitedOffset, offset - Math.min(pageSize, largestResponse.current || pageSize))
+        : visitedOffset;
       setPosition({
         queryKey,
         pageSize,
-        offsets: page > 0 ? offsets.slice(0, -1) : firstPageOffsets,
-      }),
+        offsets: location
+          ? [...offsets.filter((value) => value < previousOffset), previousOffset]
+          : page > 0
+            ? offsets.slice(0, -1)
+            : firstPageOffsets,
+      });
+      location?.onOffsetChange(previousOffset);
+    },
     next: () => {
-      if (!loading && current?.hasNext)
+      if (!loading && current?.hasNext) {
         setPosition({ queryKey, pageSize, offsets: [...offsets, offset + current.rows.length] });
+        location?.onOffsetChange(offset + current.rows.length);
+      }
     },
   };
 }

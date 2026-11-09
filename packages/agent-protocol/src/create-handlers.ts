@@ -20,6 +20,7 @@ import {
 } from "./http/operation-contracts.js";
 import { markRequestAdmission } from "./idempotency/admission-input.js";
 import { transferA2aOrigin } from "./interop/a2a-origin.js";
+import { transferMcpOrigin } from "./interop/mcp-origin.js";
 import { createRunSearchHandler } from "./runs/run-search-handler.js";
 import type { CreateRunInput } from "./runs/run-service.js";
 import { projectSearchRow } from "./search/project-search-row.js";
@@ -679,7 +680,10 @@ export function createProtocolHandlers(
 
     createWaitRun: async (req) => {
       const { runId, threadId, result } = await service.runs.createWait(
-        parse(operationContracts.createWaitRun.body, req.body) as CreateRunInput,
+        transferMcpOrigin(
+          req.body,
+          parse(operationContracts.createWaitRun.body, req.body),
+        ) as CreateRunInput,
         { signal: req.signal },
       );
       return createOperationJson("createWaitRun", result, runLocationHeaders(threadId, runId));
