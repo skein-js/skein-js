@@ -81,6 +81,12 @@ export async function loadInMemoryRuntime(
     staticSchemas,
   });
   const deps = embedInMemoryGraphs(toGraphResolver(graphs));
+  deps.webhooks = resolveWebhooks(config.skein?.webhooks, {
+    compatible: config.webhooks,
+    disabled: config.http?.disable_webhooks,
+  });
+  deps.configurableHeaders = config.http?.configurable_headers;
+  deps.loggingHeaders = config.http?.logging_headers;
   deps.auth = await loadAuthEngine(config.auth, { configDir, importModule });
   deps.httpHandler = await loadConfigHttpHandler(config, { configDir, importModule });
   return {
@@ -161,6 +167,8 @@ export async function loadReloadableInMemoryRuntime(
   // Same story for `skein.webhooks`: resolved here as well as in `buildRuntime`'s durable branch, or
   // a retry policy would work under `skein start` and silently do nothing under `skein dev`.
   const webhooks = resolveWebhooks(first.config.skein?.webhooks, {
+    compatible: first.config.webhooks,
+    disabled: first.config.http?.disable_webhooks,
     warn: (message) => console.warn(message),
   });
   const store = new MemorySkeinStore({
@@ -183,6 +191,8 @@ export async function loadReloadableInMemoryRuntime(
   // and a `MemoryRunEventBus(resolveMemoryBusLimits())`, so the bounds still reach the longest-lived
   // memory bus skein runs (this is the path `skein start` and `skein up` take by default).
   const deps: ProtocolDeps = embedInMemoryGraphs(graphs, {
+    configurableHeaders: first.config.http?.configurable_headers,
+    loggingHeaders: first.config.http?.logging_headers,
     store,
     checkpointer,
     auth: await loadAuthEngine(first.config.auth, { configDir: first.configDir, importModule }),

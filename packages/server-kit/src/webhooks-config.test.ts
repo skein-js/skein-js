@@ -5,6 +5,53 @@ import { describe, expect, it } from "vitest";
 import { resolveWebhooks } from "./webhooks-config.js";
 
 describe("resolveWebhooks", () => {
+  it("resolves prefixed header secrets and combines compatible restrictions without widening Skein policy", () => {
+    expect(
+      resolveWebhooks(
+        { allowed_hosts: ["a.example"], require_https: false },
+        {
+          compatible: {
+            headers: { Authorization: "Bearer ${{ env.LG_WEBHOOK_TOKEN }}" },
+            url: { allowed_domains: ["b.example"], allowed_ports: [], require_https: true },
+          },
+          env: { LG_WEBHOOK_TOKEN: "private-value" },
+          disabled: true,
+        },
+      ),
+    ).toEqual({
+      allowedHosts: ["a.example"],
+      requireHttps: true,
+      headers: { authorization: "Bearer private-value" },
+      url: { allowedDomains: ["b.example"], allowedPorts: [] },
+      disabled: true,
+    });
+  });
+
+  it.each([
+    "${{ env.OTHER_TOKEN }}",
+    "${{ env.LG_WEBHOOK_MISSING }}",
+    "${{ unsupported }}",
+    "token\nprivate-value",
+  ])(
+    "refuses unavailable or invalid configured header values without including secrets: %s",
+    (template) => {
+      expect(() =>
+        resolveWebhooks(undefined, {
+          compatible: { headers: { Authorization: template } },
+          env: { OTHER_TOKEN: "private-value" },
+        }),
+      ).toThrow(/webhooks.headers/);
+      try {
+        resolveWebhooks(undefined, {
+          compatible: { headers: { Authorization: template } },
+          env: { OTHER_TOKEN: "private-value" },
+        });
+      } catch (error) {
+        expect(String(error)).not.toContain("private-value");
+      }
+    },
+  );
+
   it("maps every key to its camelCase counterpart", () => {
     expect(
       resolveWebhooks({

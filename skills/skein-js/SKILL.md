@@ -116,3 +116,14 @@ When annotating options around an application-owned outcome queue, use
 Redis workers continue an attributable stalled run from its committed checkpoint without reapplying
 accepted input. Make external effects idempotent: uncommitted work may repeat. Inspect
 `run_recovery_ambiguous` failures before explicitly choosing recovery for older checkpoints.
+
+## Apply configuration controls
+
+Use compatible top-level `webhooks` headers/URL controls together with `skein.webhooks` signing and
+retries. Restrictions intersect; explicit empty domain/port lists deny all. `http.disable_webhooks`
+blocks caller callbacks without disabling host-owned outcomes. Header templates require existing,
+prefix-allowed environment variables. `http.configurable_headers` and `logging_headers` use
+case-insensitive includes/excludes with exclusions winning. Keep credentials out of logs.
+`http.disable_ui` disables graph UI loading/building independently of Console. Preserve auth-first
+dispatch and opt-in CORS. Non-default config checkpointer loaders require programmatic saver injection;
+do not silently accept unapplied security or backend settings.

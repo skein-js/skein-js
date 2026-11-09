@@ -47,10 +47,11 @@ try {
     import assert from 'node:assert/strict';
     import {spawn,spawnSync} from 'node:child_process';
     import {createServer} from 'node:net';
+    import {createServer as createHttpServer} from 'node:http';
     import {writeFile} from 'node:fs/promises';
     import path from 'node:path';
     import {AIMessage} from '@langchain/core/messages';
-    import {MessagesAnnotation,StateGraph} from '@langchain/langgraph';
+    import {MessagesAnnotation,StateGraph,interrupt} from '@langchain/langgraph';
     import {createExpressServer} from '@skein-js/express';
     import {embedInMemoryGraphs} from '@skein-js/server-kit';
     import {Client} from '@langchain/langgraph-sdk';
@@ -61,7 +62,7 @@ try {
     import {ClientFactory} from '@a2a-js/sdk/client';
     import {SendMessageRequest,TaskState} from '@a2a-js/sdk';
     let executions=0;
-    const graph=new StateGraph(MessagesAnnotation).addNode('echo',state=>{executions++;return {messages:[new AIMessage('echo: '+state.messages.at(-1).content)]};}).addEdge('__start__','echo').addEdge('echo','__end__').compile();
+    const graph=new StateGraph(MessagesAnnotation).addNode('echo',state=>{const content=state.messages.at(-1).content;const answer=content==='mcp-question'?interrupt('Name?'):content;executions++;return {messages:[new AIMessage('echo: '+answer)]};}).addEdge('__start__','echo').addEdge('echo','__end__').compile();
     const server=await createExpressServer({deps:embedInMemoryGraphs({agent:graph})});
     const listener=await server.listen(0,'127.0.0.1');
     const url='http://127.0.0.1:'+listener.address().port;
@@ -115,10 +116,16 @@ try {
       console.log('PACKED_COMPATIBILITY_OK');
     } finally {await stream?.close();await mcp.close();await server.close();}
     // Exercise the real published CLI paths: injected dependencies must retain config route flags.
-    await writeFile('cli-graph.ts', "import {StateGraph,MessagesAnnotation} from '@langchain/langgraph';export const graph=new StateGraph(MessagesAnnotation).addNode('echo',()=>({messages:[]})).addEdge('__start__','echo').addEdge('echo','__end__').compile();");
+    await writeFile('cli-graph.ts', "import {StateGraph,MessagesAnnotation} from '@langchain/langgraph';import {AIMessage} from '@langchain/core/messages';export const graph=new StateGraph(MessagesAnnotation).addNode('echo',(_state,config)=>({messages:[new AIMessage(JSON.stringify({tenant:config.configurable?.['x-tenant'],thread:config.configurable?.thread_id}))]})).addEdge('__start__','echo').addEdge('echo','__end__').compile();");
     await writeFile('tsconfig.json',JSON.stringify({compilerOptions:{target:'ES2022',module:'NodeNext',moduleResolution:'NodeNext',strict:true,skipLibCheck:true},include:['cli-graph.ts']}));
-    for (const command of ['dev','start']) for (const http of [{disable_docs:true},{disable_meta:true},{disable_docs:'true'}]) {
-      await writeFile('cli-config.json',JSON.stringify({graphs:{agent:'./cli-graph.ts:graph'},http}));
+    const callbacks=[];
+    const callback=createHttpServer(async(request,response)=>{let body='';for await(const chunk of request)body+=chunk;callbacks.push({headers:request.headers,body:JSON.parse(body)});response.end('ok');});
+    await new Promise(resolve=>callback.listen(0,'127.0.0.1',resolve));
+    const callbackPort=callback.address().port;
+    for (const command of ['dev','start']) for (const http of [{disable_docs:true},{disable_meta:true},{disable_docs:'true'},{disable_ui:true,console:true},{disable_webhooks:true},{middleware_order:'auth_first',configurable_headers:{includes:['x-*'],excludes:['x-secret']},logging_headers:{includes:['x-*']}}]) {
+      await writeFile('cli-config.json',JSON.stringify({graphs:{agent:'./cli-graph.ts:graph'},http,
+        ...((http.configurable_headers || http.disable_webhooks) ? {webhooks:{headers:{authorization:'Bearer $'+'{{ env.LG_WEBHOOK_BEARER }}','x-skein-signature':'forged'},url:{allowed_domains:['127.0.0.1'],allowed_ports:[callbackPort]}},skein:{webhooks:{secret:'fixture-signing-key'}}}:{}),
+        ...(http.disable_ui===true?{ui:{agent:'./missing-ui.tsx'}}:{})}));
       const reservation=createServer();await new Promise(resolve=>reservation.listen(0,'127.0.0.1',resolve));
       const port=reservation.address().port;await new Promise(resolve=>reservation.close(resolve));
       const cli=path.resolve('node_modules/skein-js/dist/index.js');
@@ -129,7 +136,7 @@ try {
         assert.equal(built.status,0,String(built.stdout)+String(built.stderr));
         config='.skein/build/langgraph.json';
       }
-      const child=spawn(process.execPath,[cli,command,'-c',config,'--host','127.0.0.1','--port',String(port),...(command==='dev'?['--no-console']:['--store','sqlite','--queue','sqlite','--sqlite-path',path.resolve('cli-check.sqlite')])],{stdio:['ignore','pipe','pipe']});
+      const child=spawn(process.execPath,[cli,command,'-c',config,'--host','127.0.0.1','--port',String(port),...(command==='dev'?(http.disable_ui===true?[]:['--no-console']):['--store','sqlite','--queue','sqlite','--sqlite-path',path.resolve('cli-check.sqlite')])],{env:{...process.env,LG_WEBHOOK_BEARER:'private-callback-token'},stdio:['ignore','pipe','pipe']});
       let output='';child.stdout.on('data',chunk=>output+=chunk);child.stderr.on('data',chunk=>output+=chunk);
       const closed=new Promise(resolve=>child.once('exit',resolve));
       const base='http://127.0.0.1:'+port;
@@ -147,12 +154,35 @@ try {
         assert.equal((await fetch(base+'/info')).status,http.disable_meta===true?404:200);
         assert.equal((await fetch(base+'/metrics')).status,http.disable_meta===true?404:501);
         assert.equal(output.includes(base+'/docs'),!disabled);
+        if(http.configurable_headers) {
+          const thread=await (await fetch(base+'/threads',{method:'POST',headers:{'content-type':'application/json'},body:'{}'})).json();
+          const selected=await (await fetch(base+'/threads/'+thread.thread_id+'/runs/wait',{method:'POST',headers:{'content-type':'application/json','x-tenant':'header','x-secret':'REDACT_ME'},body:JSON.stringify({assistant_id:'agent',input:{messages:[]},config:{configurable:{'x-tenant':'body'}}})})).json();
+          assert.deepEqual(JSON.parse(selected.messages.at(-1).content),{tenant:'body',thread:thread.thread_id});
+          const before=callbacks.length;
+          assert.equal((await fetch(base+'/runs/wait',{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify({assistant_id:'agent',input:{messages:[]},webhook:'http://127.0.0.1:'+callbackPort+'/outcome'})})).status,200);
+          assert.equal(callbacks.length,before+1);
+          assert.equal(callbacks.at(-1).headers.authorization,'Bearer private-callback-token');
+          assert.match(callbacks.at(-1).headers['x-skein-signature'],/^t=/);
+          assert.equal(callbacks.at(-1).body.status,'success');
+        }
+        if(http.disable_webhooks) {
+          const before=callbacks.length;
+          assert.equal((await fetch(base+'/runs/wait',{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify({assistant_id:'agent',webhook:'http://127.0.0.1:'+callbackPort+'/outcome'})})).status,422);
+          assert.equal(callbacks.length,before);
+        }
+        if(http.disable_ui===true) {
+          assert.equal((await fetch(base+'/ui/agent')).status,404);
+          assert.equal((await fetch(base+'/console/')).status,200,'graph UI disabling must preserve Console');
+        }
       } finally {
         child.kill('SIGTERM');
         const killer=setTimeout(()=>child.kill('SIGKILL'),10000);
         await closed;clearTimeout(killer);
+        assert(!output.includes('REDACT_ME'),'selected credentials must be redacted from logging');
+        assert(!output.includes('private-callback-token'),'webhook credentials must stay out of logging');
       }
     }
+    await new Promise(resolve=>callback.close(resolve));
     console.log('PACKED_CLI_DOCS_OK');
   `,
   );

@@ -29,6 +29,18 @@ export function toDeliveryRequest(input: {
   secrets?: readonly string[];
 }): DeliveryRequest {
   const payload = toDeliveryBody(input.delivery, input.sentAt.toISOString());
+  return createDeliveryRequest({ payload, deliveryId: input.delivery.delivery_id, ...input });
+}
+
+/** Internal shared construction for custom stores whose callbacks have no outbox row. */
+export function createDeliveryRequest(input: {
+  payload: Record<string, unknown>;
+  deliveryId: string;
+  attempt: number;
+  sentAt: Date;
+  secrets?: readonly string[];
+}): DeliveryRequest {
+  const { payload } = input;
   // Serialized once, here, and carried through to the dispatcher. Everything downstream sends these
   // bytes rather than re-deriving them.
   const body = JSON.stringify(payload);
@@ -45,9 +57,9 @@ export function toDeliveryRequest(input: {
   return {
     payload,
     attempt: {
-      deliveryId: input.delivery.delivery_id,
+      deliveryId: input.deliveryId,
       attempt: input.attempt,
-      headers: deliveryHeaders(input.delivery.delivery_id, input.attempt, signature),
+      headers: deliveryHeaders(input.deliveryId, input.attempt, signature),
       body,
     },
   };

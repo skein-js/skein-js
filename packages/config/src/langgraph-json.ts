@@ -71,6 +71,30 @@ const checkpointerTtlSchema = z
  */
 const telemetryProviderSchema = z.union([z.boolean(), z.object({}).passthrough()]);
 
+const headerSelectionSchema = z
+  .object({
+    includes: z.array(z.string()).optional(),
+    excludes: z.array(z.string()).optional(),
+  })
+  .passthrough();
+
+const compatibleWebhooksSchema = z
+  .object({
+    headers: z.record(z.string()).optional(),
+    env_prefix: z.string().optional(),
+    url: z
+      .object({
+        allowed_domains: z.array(z.string().min(1)).optional(),
+        allowed_ports: z.array(z.number().int().min(1).max(65535)).optional(),
+        require_https: z.boolean().optional(),
+        disable_loopback: z.boolean().optional(),
+        max_url_length: z.number().int().positive().optional(),
+      })
+      .passthrough()
+      .optional(),
+  })
+  .passthrough();
+
 /** `telemetry` — which backends runs report to. See the field docs on {@link langgraphJsonSchema}. */
 const telemetrySchema = z
   .object({
@@ -279,7 +303,9 @@ export const langgraphJsonSchema = z
       })
       .passthrough()
       .optional(),
-    /** Checkpointer backend; `"default"` == Postgres, absent == in-memory. Plus `ttl` — thread expiry. */
+    /** Compatible webhook credentials and destination restrictions; Skein signing/retries remain additive. */
+    webhooks: compatibleWebhooksSchema.optional(),
+    /** `"default"` uses the runtime-selected saver. Plus `ttl` — thread expiry. */
     checkpointer: z
       .object({ type: z.string().optional(), ttl: checkpointerTtlSchema.optional() })
       .passthrough()
@@ -298,6 +324,11 @@ export const langgraphJsonSchema = z
       .object({
         app: z.unknown().optional(),
         cors: z.object({}).passthrough().optional(),
+        configurable_headers: headerSelectionSchema.optional(),
+        logging_headers: headerSelectionSchema.optional(),
+        middleware_order: z.unknown().optional(),
+        disable_ui: z.boolean().optional(),
+        disable_webhooks: z.boolean().optional(),
         disable_mcp: z.unknown().optional(),
         disable_a2a: z.unknown().optional(),
         // Declared as `unknown`, not `boolean`. This block used to be opaque

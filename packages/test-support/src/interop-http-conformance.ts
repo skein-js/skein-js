@@ -6,9 +6,39 @@ export function runInteropHttpConformance(
   name: string,
   start: (options?: {
     auth?: AuthEngine;
+    configuredHeaders?: boolean;
     disable?: { docs?: boolean; meta?: boolean; runs?: boolean };
   }) => Promise<{ baseUrl: string; close(): Promise<void> }>,
 ): void {
+  it(`${name} forwards selected headers while preserving explicit configuration and server-owned thread identity`, async () => {
+    const server = await start({ configuredHeaders: true });
+    try {
+      const thread = (await (
+        await fetch(server.baseUrl + "/threads", {
+          method: "POST",
+          headers: { "content-type": "application/json" },
+          body: "{}",
+        })
+      ).json()) as { thread_id: string };
+      const response = await fetch(`${server.baseUrl}/threads/${thread.thread_id}/runs/wait`, {
+        method: "POST",
+        headers: { "content-type": "application/json", "x-tenant": "header", thread_id: "spoof" },
+        body: JSON.stringify({
+          assistant_id: "echo",
+          input: { messages: [{ role: "user", content: "headers" }] },
+          config: { configurable: { "x-tenant": "body" } },
+        }),
+      });
+      expect(response.status).toBe(200);
+      const result = (await response.json()) as { messages: { content: string }[] };
+      expect(JSON.parse(result.messages.at(-1)!.content)).toEqual({
+        tenant: "body",
+        thread: thread.thread_id,
+      });
+    } finally {
+      await server.close();
+    }
+  });
   for (const disabled of [
     {},
     { docs: true },

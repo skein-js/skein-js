@@ -16,7 +16,8 @@ import {
   type WebhookDeliveryConfig,
 } from "./delivery-config.js";
 import { toDeliveryRequest } from "./delivery-request.js";
-import { disallowedHost, insecureTransport, redactWebhookUrl } from "./delivery-target.js";
+import { deliveryTargetError, redactWebhookUrl } from "./delivery-target.js";
+import { configureHttpDelivery } from "./http-delivery-policy.js";
 
 export interface AttemptDeliveryDeps {
   store: Pick<SkeinStore, "deliveries">;
@@ -75,9 +76,7 @@ export async function attemptDelivery(
     }
   };
 
-  const disallowed =
-    disallowedHost(delivery.url, deps.webhooks?.allowedHosts) ??
-    insecureTransport(delivery.url, deps.webhooks?.requireHttps);
+  const disallowed = await deliveryTargetError(delivery.url, deps.webhooks);
   if (disallowed) {
     // Dead on the spot rather than retried: no number of attempts makes a disallowed host allowed,
     // and recording it is what keeps this visible in the delivery list instead of being a callback
@@ -98,7 +97,11 @@ export async function attemptDelivery(
   // retry, and so a second POST, for a callback the receiver already has.
   let dispatchFailure: { cause: unknown } | undefined;
   try {
-    await deps.webhookDispatcher(delivery.url, request.payload, request.attempt);
+    await deps.webhookDispatcher(
+      delivery.url,
+      request.payload,
+      configureHttpDelivery(request.attempt, delivery.url, deps.webhooks),
+    );
   } catch (cause) {
     dispatchFailure = { cause };
   }

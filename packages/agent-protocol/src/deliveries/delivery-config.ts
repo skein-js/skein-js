@@ -29,6 +29,17 @@ export interface DeliveryRetryConfig {
 }
 
 export interface WebhookDeliveryConfig {
+  /** Explicitly refuse caller HTTP callbacks; server-derived outcomes retain their own policy. */
+  disabled?: boolean;
+  /** Extra HTTP headers; server delivery/signature headers remain authoritative. */
+  headers?: Readonly<Record<string, string>>;
+  /** Additional predicates. Empty lists deny all; legacy allowedHosts retains its meaning. */
+  url?: {
+    allowedDomains?: readonly string[];
+    allowedPorts?: readonly number[];
+    disableLoopback?: boolean;
+    maxUrlLength?: number;
+  };
   retries?: DeliveryRetryConfig;
   /**
    * The cap on a stored delivery body, in bytes. Defaults to 256 KiB.

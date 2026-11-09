@@ -3,6 +3,7 @@
 // langgraph.json on disk needed).
 
 import { AIMessage, type BaseMessage } from "@langchain/core/messages";
+import type { RunnableConfig } from "@langchain/core/runnables";
 import {
   type CompiledGraph,
   interrupt,
@@ -32,9 +33,25 @@ import { createExpressServer, type SkeinExpressServer } from "../create-express-
 
 /** A deterministic graph that echoes the last message back — no API key, no network. */
 function buildEchoGraph(): CompiledGraph<string> {
-  function echo(state: typeof MessagesAnnotation.State): { messages: BaseMessage[] } {
+  function echo(
+    state: typeof MessagesAnnotation.State,
+    config: RunnableConfig,
+  ): { messages: BaseMessage[] } {
     const last = state.messages.at(-1);
     const text = typeof last?.content === "string" ? last.content : "";
+    if (text === "headers")
+      return {
+        messages: [
+          new AIMessage(
+            JSON.stringify({
+              tenant: config.configurable?.["x-tenant"],
+              thread: config.configurable?.["thread_id"],
+            }),
+          ),
+        ],
+      };
+    if (text === "mcp-question")
+      return { messages: [new AIMessage(`approved: ${String(interrupt("approve?"))}`)] };
     return { messages: [new AIMessage(`echo: ${text}`)] };
   }
   return new StateGraph(MessagesAnnotation)
@@ -118,12 +135,18 @@ export async function startEchoServer(
     cors?: boolean | CorsOptions;
     auth?: AuthEngine;
     deps?: ProtocolDeps;
+    configuredHeaders?: boolean;
     /** Route groups to switch off, as a `langgraph.json` `http.disable_*` block would. */
     disable?: DisabledRouteGroups;
   } = {},
 ): Promise<RunningServer> {
   const server = await createExpressServer({
-    deps: options.deps ?? createEchoDeps(options.auth),
+    deps: {
+      ...(options.deps ?? createEchoDeps(options.auth)),
+      ...(options.configuredHeaders
+        ? { configurableHeaders: { includes: ["x-*", "thread_id"] } }
+        : {}),
+    },
     cors: options.cors,
     ...(options.disable ? { routes: filterSkeinRoutes(skeinRoutes, options.disable) } : {}),
   });

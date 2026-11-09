@@ -35,7 +35,9 @@ import {
 import { attemptDelivery } from "../deliveries/attempt-delivery.js";
 import { DEFAULT_RETAIN_HOURS, deliveryLeaseMs } from "../deliveries/delivery-config.js";
 import { buildDeliveryPayload } from "../deliveries/delivery-payload.js";
-import { redactWebhookUrl } from "../deliveries/delivery-target.js";
+import { createDeliveryRequest } from "../deliveries/delivery-request.js";
+import { deliveryTargetError, redactWebhookUrl } from "../deliveries/delivery-target.js";
+import { configureHttpDelivery } from "../deliveries/http-delivery-policy.js";
 import { isNoopLogger, webhookTimeoutMs, type ResolvedDeps } from "../deps.js";
 import {
   requireAgentCapability,
@@ -941,7 +943,25 @@ export async function executeRun(deps: ResolvedDeps, exec: RunExecution): Promis
     };
     return async () => {
       try {
-        await resolved.webhookDispatcher(url, payload);
+        const denied = await deliveryTargetError(url, resolved.webhooks);
+        if (denied) {
+          resolved.logger.warn(`run ${runId}: ${denied}`);
+          return;
+        }
+        if (resolved.webhooks?.headers || resolved.webhooks?.url) {
+          const request = createDeliveryRequest({
+            payload,
+            deliveryId: runId,
+            attempt: 1,
+            sentAt: resolved.clock(),
+            secrets: resolved.webhooks.secrets,
+          });
+          await resolved.webhookDispatcher(
+            url,
+            request.payload,
+            configureHttpDelivery(request.attempt, url, resolved.webhooks),
+          );
+        } else await resolved.webhookDispatcher(url, payload);
       } catch (error) {
         resolved.logger.warn(
           `run ${runId}: webhook delivery to ${redactWebhookUrl(url)} failed`,

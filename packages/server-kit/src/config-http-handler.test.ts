@@ -4,6 +4,35 @@ import { expect, it } from "vitest";
 
 import { loadConfigHttpHandler } from "./config-http-handler.js";
 
+it("does not load missing graph UI sources when disabled, while retaining the custom app", async () => {
+  const handler = await loadConfigHttpHandler(
+    {
+      graphs: {},
+      ui: { missing: "./absent.tsx" },
+      http: { disable_ui: true, app: "./app.ts:app" },
+    } as LanggraphJson,
+    {
+      configDir: "/project",
+      importModule: async () => ({ app: () => new Response("application") }),
+    },
+  );
+  expect(await (await handler!(new Request("http://localhost/custom")))?.text()).toBe(
+    "application",
+  );
+});
+
+it.each([
+  { http: { middleware_order: "middleware_first" } },
+  { checkpointer: { backend: "mongo" } },
+  { checkpointer: { path: "./saver.ts:saver" } },
+])("diagnoses unsupported configuration before serving requests: %j", async (unsupported) => {
+  await expect(
+    loadConfigHttpHandler({ graphs: {}, ...unsupported } as LanggraphJson, {
+      configDir: "/project",
+    }),
+  ).rejects.toThrow(/http.middleware_order|checkpointer/);
+});
+
 it("loads Fetch exports with their receiver and falls through on 404 without consuming the request", async () => {
   const app = {
     prefix: "custom",

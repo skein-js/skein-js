@@ -109,10 +109,15 @@ older best-effort path — one POST, failures logged and swallowed. Both bundled
 so this only bites a store you wrote yourself.
 
 > [!WARNING]
-> That fallback POST carries **no `X-Skein-Delivery-Id`, no `X-Skein-Attempt` and no
+> Without compatible header/URL configuration, that fallback POST carries **no `X-Skein-Delivery-Id`, no `X-Skein-Attempt` and no
 > `X-Skein-Signature`** — there is no delivery row for those to come from. A receiver that dedupes on
 > the header, or rejects unsigned requests, will find nothing to work with. If you implement a custom
 > store and want callbacks at all, implement the `deliveries` repo.
+
+Compatible [header and destination controls](./langgraph-cli-compat.md#compatible-http-webhook-controls)
+also apply to the fallback. They do not give a custom store durable delivery records or retries.
+`http.disable_webhooks` blocks caller HTTP callbacks across admission, delivery and replay while
+retaining host-owned channel/BullMQ outcomes.
 
 The body is **stored**, not re-rendered at send time. It has to be: a stateless `POST /runs` deletes
 the thread the server made for it as soon as the run settles, so an hour later there is no run row

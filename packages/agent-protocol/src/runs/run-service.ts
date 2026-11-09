@@ -707,6 +707,9 @@ export function createRunService(ctx: ProtocolContext): RunService {
     resolveThread: () => Promise<Thread>,
     background = false,
   ): Promise<{ run: Run; kwargs: RunKwargs }> => {
+    if (input.webhook !== undefined && deps.webhooks?.disabled) {
+      throw SkeinHttpError.unprocessable("HTTP webhooks are disabled by http.disable_webhooks.");
+    }
     const assistant = await requireAssistant(input.assistant_id);
     const thread = await resolveThread();
     // "Stateless" is *the caller named no thread*, matching LangGraph's own `threadId == null` test —
@@ -1139,6 +1142,11 @@ export function createRunService(ctx: ProtocolContext): RunService {
       // belonging to a run the caller has no access to.
       if (!existing || existing.run_id !== runId) {
         throw SkeinHttpError.notFound(`Delivery "${deliveryId}" not found for run "${runId}".`);
+      }
+      if (deps.webhooks?.disabled && /^https?:/i.test(existing.url)) {
+        throw SkeinHttpError.unprocessable(
+          "HTTP webhook replay is disabled by http.disable_webhooks.",
+        );
       }
       const replayed = await deliveries?.retryNow(deliveryId, deps.clock().toISOString());
       if (!replayed) {

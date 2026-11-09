@@ -9,14 +9,15 @@ interface A2aOrigin {
   checkpoint?: Checkpoint;
 }
 const A2A_ORIGIN = Symbol("a2a-origin");
-const bodies = new WeakMap<object, A2aOrigin>();
 
 export function markA2aBody<T extends object>(body: T, origin: A2aOrigin): T {
-  bodies.set(body, origin);
-  return body;
+  return { ...body, [A2A_ORIGIN]: origin };
 }
 export function transferA2aOrigin<T extends object>(body: unknown, parsed: T): T {
-  const origin = typeof body === "object" && body !== null ? bodies.get(body) : undefined;
+  const origin =
+    typeof body === "object" && body !== null && A2A_ORIGIN in body
+      ? (body[A2A_ORIGIN] as A2aOrigin)
+      : undefined;
   return origin ? { ...parsed, [A2A_ORIGIN]: origin } : parsed;
 }
 export function a2aKwargs(input: object): { a2a_origin?: A2aOrigin } {

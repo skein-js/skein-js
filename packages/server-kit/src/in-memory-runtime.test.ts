@@ -13,7 +13,7 @@ import path from "node:path";
 import { createProtocolRuntime } from "@skein-js/agent-protocol";
 import { afterAll, describe, expect, it } from "vitest";
 
-import { loadReloadableInMemoryRuntime } from "./in-memory-runtime.js";
+import { loadInMemoryRuntime, loadReloadableInMemoryRuntime } from "./in-memory-runtime.js";
 
 const created: string[] = [];
 afterAll(async () => {
@@ -60,6 +60,57 @@ async function project(graphSource: string): Promise<string> {
 }
 
 describe("loadReloadableInMemoryRuntime", () => {
+  it.each([loadInMemoryRuntime, loadReloadableInMemoryRuntime])(
+    "enforces compatible webhook/header/UI settings through a config-loaded runtime: %s",
+    async (load) => {
+      const configPath = await project(rememberGraph);
+      await writeFile(
+        configPath,
+        JSON.stringify({
+          graphs: { remember: "./graph.ts:graph" },
+          ui: { remember: "./missing-ui.tsx" },
+          webhooks: {
+            headers: { authorization: "Bearer configured" },
+            url: { allowed_domains: ["receiver.example"] },
+          },
+          http: {
+            configurable_headers: { includes: ["x-tenant"] },
+            disable_webhooks: true,
+            disable_ui: true,
+          },
+        }),
+      );
+      const loaded = await load(configPath);
+      expect(loaded.deps.httpHandler).toBeUndefined();
+      expect(loaded.deps.webhooks).toMatchObject({
+        disabled: true,
+        headers: { authorization: "Bearer configured" },
+        url: { allowedDomains: ["receiver.example"] },
+      });
+      const runtime = createProtocolRuntime(loaded.deps);
+      await runtime.service.assistants.registerGraphAssistants();
+      const request = {
+        method: "POST",
+        url: "http://localhost/runs/wait",
+        body: { assistant_id: "remember", input: { value: "selected" } },
+        headers: { "x-tenant": "organization" },
+        params: {},
+        query: {},
+      };
+      const response = await runtime.handlers.createWaitRun(request);
+      expect(response.status).toBe(200);
+      const [run] = await runtime.service.runs.search!({ limit: 1 });
+      expect(
+        (await loaded.deps.store.runs.getKwargs(run!.run_id))?.config?.configurable,
+      ).toMatchObject({ "x-tenant": "organization" });
+      await expect(
+        runtime.handlers.createWaitRun({
+          ...request,
+          body: { ...request.body, webhook: "https://receiver.example/callback" },
+        }),
+      ).rejects.toThrow("disabled");
+    },
+  );
   it("carries the deps that bind the engine to LangGraph", async () => {
     const runtime = await loadReloadableInMemoryRuntime(await project(rememberGraph));
 

@@ -146,7 +146,7 @@ it but is never required.
     "adapter": "./src/my-store.ts:store",
   },
 
-  // checkpointer backend; "default" == Postgres (via PostgresSaver)
+  // checkpointer backend; "default" uses the runtime's selected storage backend
   "checkpointer": { "type": "default" },
 
   // server customization — `cors` plus LangGraph's route toggles
@@ -200,7 +200,7 @@ it but is never required.
 | `skein.webhooks`       | How run-completion callbacks are retried and bounded. Tuning only — a run carrying a `webhook` owes a callback either way. See [below](#webhooks-skeinwebhooks).                                                                                                                                                                                                                                                                                                              |
 | `env`                  | Loaded into `process.env` at boot (dev) / baked into the image (build).                                                                                                                                                                                                                                                                                                                                                                                                       |
 | `store`                | `store.index.{embed,dims,fields,hnsw}` configures pgvector semantic search on the Postgres driver (`hnsw: true` opts into the approximate index); `store.ttl.{default_ttl,refresh_on_read,sweep_interval_minutes}` expires items. `store.adapter` is a **skein extension** — `path:export` to your own LangGraph `BaseStore` (e.g. `PostgresStore`, `MongoDBStore`), which then serves the whole `/store` surface. See [storage.md](./storage.md).                            |
-| `checkpointer`         | `"default"` → `PostgresSaver`; dev falls back to an in-memory `MemorySaver`.                                                                                                                                                                                                                                                                                                                                                                                                  |
+| `checkpointer`         | `"default"` uses the runtime-selected saver; custom savers use [programmatic injection](./embedding.md#supply-an-upstream-saver).                                                                                                                                                                                                                                                                                                                                             |
 | `http`                 | `http.cors` maps to the adapter's CORS options; the `disable_*` flags remove that resource's routes before mounting, so it 404s from the host app as under `langgraph dev`. `http.console` is skein-only — it serves the [console](./console.md) at `/console` (off unless set; `skein dev` serves it regardless). `http.app` loads an exported Fetch/Hono application before protocol dispatch; a 404 falls through. Authentication runs before custom application dispatch. |
 | `auth`                 | `auth.path` loads an `Auth` from `@langchain/langgraph-sdk/auth`; every request is authenticated + authorized. The CLI requires credentials for Studio regardless of `disable_studio_auth`; `auth.dev_ui_access: true` or loopback `skein dev --dev-ui-access` provides a temporary key for Studio and the console. The setting is stripped from production builds.                                                                                                           |
 | `telemetry`            | **skein extension.** Builds the telemetry sinks runs report to — see [observability.md](./observability.md). Unknown to `langgraph dev`, which ignores it.                                                                                                                                                                                                                                                                                                                    |
@@ -272,9 +272,9 @@ semantics and the replay table.
 
 ## Webhooks (`skein.webhooks`)
 
-LangGraph's `webhook` field is a bare URL with no delivery policy at all, so this block is a skein
-extension under the reserved namespace, for the same reason `skein.idempotency` is. The **payload
-shape is unchanged** — this configures delivery, not the body.
+Use `skein.webhooks` for Skein's signing, retry, payload and retention policy. Compatible top-level
+`webhooks` configures HTTP headers and destinations, as described below. The payload shape is
+unchanged.
 
 ```jsonc
 {
@@ -338,6 +338,82 @@ Postgres therefore retain waiting retries without a separate delivery queue.
 With a durable store, the delivery and its due time are recorded in the same transaction as the
 run's terminal status. Waiting retries therefore survive restart without a separate queue. See
 [webhooks.md](./webhooks.md).
+
+### Compatible HTTP webhook controls
+
+Set receiver credentials through environment-backed headers, then restrict where callers can send
+callbacks. Both configuration blocks apply together:
+
+```json
+{
+  "webhooks": {
+    "headers": { "Authorization": "Bearer ${{ env.LG_WEBHOOK_TOKEN }}" },
+    "url": {
+      "allowed_domains": ["hooks.example.com", "*.receivers.example.com"],
+      "allowed_ports": [443],
+      "require_https": true,
+      "disable_loopback": true,
+      "max_url_length": 4096
+    }
+  },
+  "skein": { "webhooks": { "allowed_hosts": ["hooks.example.com"] } }
+}
+```
+
+Set `LG_WEBHOOK_TOKEN` before starting the server. `${{ env.NAME }}` expansion applies only to
+these header values. `webhooks.env_prefix` defaults to `LG_WEBHOOK_`; referenced variables must
+have that prefix and exist. Invalid or missing references fail startup without printing secret values.
+Skein's content type, delivery identity, attempt and signing headers override configured names,
+case-insensitively. Header credentials are never forwarded to channel or BullMQ outcome transports.
+
+Domain entries match exactly, or `*.example.com` matches subdomains without matching the bare domain.
+Ports include the effective default, 443 for HTTPS and 80 for HTTP. An explicit empty domain or port
+list permits no destinations; omission adds no restriction. These predicates intersect with legacy
+`skein.webhooks.allowed_hosts`, whose existing empty-list behavior remains unrestricted. Neither
+block can weaken the other, and either `require_https` setting requires HTTPS.
+
+`disable_loopback` rejects literal loopback forms and destinations resolving to loopback at the
+policy check. Restricted HTTP callbacks refuse redirects. This is a destination check, not DNS
+pinning; use network egress controls when callers or DNS are untrusted.
+
+`http.disable_webhooks: true` rejects new caller-provided callbacks and explicit replay. Existing
+pending callbacks become visible dead letters when processed, without being sent. Re-enable the
+feature and explicitly replay an accessible, retained delivery to send it; re-enabling alone does
+not replay dead letters. Signing, retention and attempt budgets still apply. Host-derived channel
+and BullMQ outcomes continue working. Restart the runtime to apply delivery-policy changes.
+
+### Request headers, UI and configuration diagnostics
+
+Forward only the headers the graph needs, and select logging separately:
+
+```json
+{
+  "http": {
+    "configurable_headers": { "includes": ["x-tenant-*"], "excludes": ["x-tenant-secret"] },
+    "logging_headers": { "includes": ["x-request-id"] },
+    "disable_ui": true,
+    "middleware_order": "auth_first"
+  }
+}
+```
+
+Selection is case-insensitive; `*` matches any sequence and exclusions win. A selector without
+`includes` selects every non-excluded header; an empty `includes` selects none. Omitting a selector
+keeps forwarding or header logging off. Selected names enter `config.configurable` in lowercase;
+explicit body values win. Server-owned thread, run, checkpoint and authenticated identity fields
+remain authoritative. The same selection applies to legacy runs, batches and thread commands.
+Authenticated request logs use the configured logger; recognized credential headers are redacted.
+Custom application logging remains application-owned. Restart to change selectors.
+
+`disable_ui` skips graph UI loading/watching and production UI compilation. It does not disable
+the separately configured Console or custom application. Authentication always precedes custom
+application/UI dispatch. `auth_first` is accepted; `middleware_first` fails startup with guidance
+because Skein does not expose a pre-authentication application path. CORS remains opt-in.
+
+`checkpointer.backend: "default"` (and legacy `checkpointer.type: "default"`) uses the saver selected
+by the runtime's storage backend. Non-default backends and `checkpointer.path` fail with guidance
+to inject a saver through `ProtocolDeps.checkpointer`; config-loaded saver factories are not a
+supported contract. Unrelated unknown configuration retains its existing passthrough behavior.
 
 ## Authentication + authorization (`auth`)
 

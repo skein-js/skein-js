@@ -1,5 +1,70 @@
 // Whether a callback may be sent to a URL at all, and how that URL may be written down.
 
+import { lookup } from "node:dns/promises";
+import { isIP } from "node:net";
+
+import type { WebhookDeliveryConfig } from "./delivery-config.js";
+
+export async function deliveryTargetError(
+  target: string,
+  config?: WebhookDeliveryConfig,
+): Promise<string | undefined> {
+  if (isServerDerivedTarget(target)) return undefined;
+  if (config?.disabled) return "HTTP webhook delivery is disabled by http.disable_webhooks";
+  const existing =
+    disallowedHost(target, config?.allowedHosts) ?? insecureTransport(target, config?.requireHttps);
+  if (existing) return existing;
+  if (!config?.url) return undefined;
+  const policy = config.url;
+  let url: URL;
+  try {
+    url = new URL(target);
+  } catch {
+    return "webhook URL is not a valid absolute URL";
+  }
+  if (policy.maxUrlLength !== undefined && target.length > policy.maxUrlLength)
+    return "webhook URL exceeds webhooks.url.max_url_length";
+  const host = url.hostname.toLowerCase().replace(/^\[|\]$/g, "");
+  if (
+    policy.allowedDomains &&
+    !policy.allowedDomains.some((domain) => {
+      const normalized = domain.toLowerCase();
+      return normalized.startsWith("*.")
+        ? host.endsWith(normalized.slice(1)) && host.length > normalized.length - 1
+        : host === normalized;
+    })
+  )
+    return "webhook host is not in webhooks.url.allowed_domains";
+  const port = Number(url.port || (url.protocol === "https:" ? 443 : 80));
+  if (policy.allowedPorts && !policy.allowedPorts.includes(port))
+    return "webhook port is not in webhooks.url.allowed_ports";
+  if (!policy.disableLoopback) return undefined;
+  try {
+    const addresses = isIP(host) ? [{ address: host }] : await lookup(host, { all: true });
+    if (addresses.some(({ address }) => isLoopbackAddress(address)))
+      return "webhook loopback destinations are disabled by webhooks.url.disable_loopback";
+  } catch {
+    return "webhook destination could not be resolved for webhooks.url.disable_loopback";
+  }
+  return undefined;
+}
+
+function isLoopbackAddress(address: string): boolean {
+  const normalized = address.toLowerCase();
+  if (
+    normalized === "::1" ||
+    normalized === "::" ||
+    normalized === "0.0.0.0" ||
+    normalized.startsWith("127.")
+  )
+    return true;
+  if (!normalized.startsWith("::ffff:")) return false;
+  const mapped = normalized.slice(7);
+  return mapped.includes(".")
+    ? isLoopbackAddress(mapped)
+    : Number.parseInt(mapped.split(":")[0]!, 16) >>> 8 === 127 || mapped === "0:0";
+}
+
 /**
  * Why `url`'s host is not deliverable, or `undefined` when it is. An absent or empty allowlist
  * permits everything, which is today's behaviour and stays the default.
@@ -73,6 +138,6 @@ export function redactWebhookUrl(url: string): string {
  * Recognised by scheme, which is safe **only because** the run-create schema restricts `webhook` to
  * `http`/`https`. If that restriction is ever relaxed, this becomes a way to bypass both guards above.
  */
-function isServerDerivedTarget(url: string): boolean {
+export function isServerDerivedTarget(url: string): boolean {
   return url.startsWith("skein+channel://") || url.startsWith("skein-bullmq://");
 }

@@ -25,6 +25,7 @@ import {
 import { SIGNATURE_HEADER } from "./crypto/sign-delivery.js";
 import type { WebhookDeliveryConfig } from "./deliveries/delivery-config.js";
 import { redactWebhookUrl } from "./deliveries/delivery-target.js";
+import { refusesWebhookRedirects } from "./deliveries/http-delivery-policy.js";
 import type { AgentGraph, AgentGraphFactory } from "./graphs/agent-graph.js";
 import type { ThreadCheckpointer } from "./graphs/thread-checkpointer.js";
 import type { IdempotencyConfig } from "./idempotency/idempotency-config.js";
@@ -277,6 +278,10 @@ export interface ProtocolDeps {
   exposeErrorStacks?: boolean;
   /** Optional per-run wall-clock timeout in ms. When set, a run exceeding it becomes `"timeout"`. */
   runTimeoutMs?: number;
+  /** Selected request headers exposed as configurable values; explicit body config wins. */
+  configurableHeaders?: { includes?: readonly string[]; excludes?: readonly string[] };
+  /** Selected protocol request headers logged after authentication, with secrets redacted. */
+  loggingHeaders?: { includes?: readonly string[]; excludes?: readonly string[] };
   /**
    * Retention for `Idempotency-Key` records (`langgraph.json` `skein.idempotency`).
    *
@@ -368,6 +373,7 @@ type GlobalFetch = (
     headers?: Record<string, string>;
     body?: string;
     signal?: AbortSignalLike;
+    redirect?: "error";
   },
 ) => Promise<{ ok: boolean; status: number }>;
 
@@ -450,6 +456,7 @@ export const fetchWebhookDispatcher: WebhookDispatcher = async (url, payload, at
       // `AbortSignal.timeout` rather than a manual controller + `setTimeout`: it needs no clearing, so
       // it cannot keep the event loop alive past a delivery that finished early.
       ...(signal ? { signal } : {}),
+      ...(refusesWebhookRedirects(attempt) ? { redirect: "error" as const } : {}),
     });
   } catch (error) {
     // A timeout arrives as an `AbortError`/`TimeoutError`, which on its own reads like a client bug
