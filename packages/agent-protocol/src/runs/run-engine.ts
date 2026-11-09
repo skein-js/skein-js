@@ -46,6 +46,7 @@ import {
 } from "../graphs/agent-graph.js";
 import { resolveCompiledGraph } from "../graphs/resolve-compiled-graph.js";
 import { readA2aOrigin, verifyA2aResume } from "../interop/a2a-origin.js";
+import { readMcpOrigin } from "../interop/mcp-origin.js";
 import { observeDurableCancellation } from "../native/native-cancellation.js";
 import { readNativeOrigin } from "../native/native-origin.js";
 import { settleNativeRun } from "../native/native-outcome.js";
@@ -69,6 +70,7 @@ import { isThreadProtocolRun } from "../threads/thread-protocol-run.js";
 import type { AbortReason, RunControl } from "./cancellation.js";
 import { withCheckpointRunIdentity } from "./checkpoint-run-identity.js";
 import { readDeclaredReply } from "./declared-reply.js";
+import { verifyResumeTarget } from "./resume-target.js";
 import { RUN_FAILURE_REPORT_KIND, toError, type RunFailureReport } from "./run-failure.js";
 import {
   toFactoryConfigurable,
@@ -352,7 +354,7 @@ export async function executeRun(deps: ResolvedDeps, exec: RunExecution): Promis
         ...(error ? { error } : {}),
       });
     }
-    if (readA2aOrigin(kwargs) && deps.store.runs.recordResult) {
+    if ((readA2aOrigin(kwargs) || readMcpOrigin(kwargs)) && deps.store.runs.recordResult) {
       const { error: _error, ...result } = settled;
       await deps.store.runs.recordResult(runId, result);
     }
@@ -525,6 +527,8 @@ export async function executeRun(deps: ResolvedDeps, exec: RunExecution): Promis
 
     const verifyResumeAdmission = async () => {
       await verifyA2aResume(deps, threadId, runId, readA2aOrigin(kwargs));
+      const mcpOrigin = readMcpOrigin(kwargs);
+      if (mcpOrigin) await verifyResumeTarget(deps, threadId, runId, mcpOrigin);
       if (nativeOrigin?.expected)
         await verifyNativeResumeTarget(
           deps,

@@ -18,6 +18,7 @@ import path from "node:path";
 import { fileURLToPath } from "node:url";
 
 import { Client } from "@langchain/langgraph-sdk";
+import { Client as McpClient, StreamableHTTPClientTransport } from "@modelcontextprotocol/client";
 
 const repoRoot = path.resolve(fileURLToPath(new URL("../../..", import.meta.url)));
 const artifactDir = path.join(repoRoot, "packages/test-support/fixtures/runtime-artifact");
@@ -191,6 +192,47 @@ async function main() {
   const assistantId = assistants.find((assistant) => assistant.graph_id === "tokens")?.assistant_id;
   const schemas = await client.assistants.getSchemas(assistantId);
   check("the baked schema endpoint answers", schemas !== undefined);
+
+  const mcp = new McpClient(
+    { name: "runtime-mcp-proof", version: "1" },
+    {
+      versionNegotiation: { mode: { pin: "2026-07-28" } },
+      capabilities: { elicitation: { form: {} } },
+    },
+  );
+  let questions = 0;
+  mcp.setRequestHandler("elicitation/create", () => {
+    questions++;
+    return { action: "accept", content: { response: "yes" } };
+  });
+  try {
+    await mcp.connect(new StreamableHTTPClientTransport(new URL("http://127.0.0.1:2610/mcp")));
+    check(
+      "modern MCP discovers the artifact graph",
+      (await mcp.listTools()).tools.some((tool) => tool.name === assistantId),
+    );
+    check(
+      "modern MCP executes an ordinary call",
+      (
+        await mcp.callTool({
+          name: assistantId,
+          arguments: { messages: [{ role: "user", content: "ordinary" }] },
+        })
+      ).isError === false,
+    );
+    const answered = await mcp.callTool({
+      name: assistantId,
+      arguments: { messages: [{ role: "user", content: "mcp-question" }] },
+    });
+    check(
+      "modern MCP resumes an interrupted call once",
+      answered.isError === false &&
+        questions === 1 &&
+        JSON.stringify(answered.structuredContent).includes("approved: yes"),
+    );
+  } finally {
+    await mcp.close();
+  }
 
   console.log("threads + streaming run");
   const thread = await client.threads.create();

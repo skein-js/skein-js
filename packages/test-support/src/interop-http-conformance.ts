@@ -1,3 +1,4 @@
+import { Client, StreamableHTTPClientTransport } from "@modelcontextprotocol/client";
 import { SkeinHttpError, type AuthEngine } from "@skein-js/core";
 import { expect, it } from "vitest";
 
@@ -36,6 +37,47 @@ export function runInteropHttpConformance(
         thread: thread.thread_id,
       });
     } finally {
+      await server.close();
+    }
+  });
+  it(`${name} serves official modern MCP discovery, calls and human-input rounds`, async () => {
+    const server = await start();
+    const client = new Client(
+      { name: "modern-adapter-proof", version: "1" },
+      {
+        versionNegotiation: { mode: { pin: "2026-07-28" } },
+        capabilities: { elicitation: { form: {} } },
+      },
+    );
+    let questions = 0;
+    client.setRequestHandler("elicitation/create", () => {
+      questions++;
+      return { action: "accept", content: { response: "yes" } };
+    });
+    try {
+      await client.connect(new StreamableHTTPClientTransport(new URL(server.baseUrl + "/mcp")));
+      expect((await client.listTools()).tools.some((tool) => tool.name === "echo")).toBe(true);
+      expect(
+        (
+          await client.callTool({
+            name: "echo",
+            arguments: { messages: [{ role: "user", content: "ordinary" }] },
+          })
+        ).isError,
+      ).toBe(false);
+      const result = await client.callTool({
+        name: "echo",
+        arguments: { messages: [{ role: "user", content: "mcp-question" }] },
+      });
+      expect(result).toMatchObject({
+        isError: false,
+        structuredContent: {
+          messages: expect.arrayContaining([expect.objectContaining({ content: "approved: yes" })]),
+        },
+      });
+      expect(questions).toBe(1);
+    } finally {
+      await client.close();
       await server.close();
     }
   });

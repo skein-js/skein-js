@@ -46,6 +46,7 @@ Upstream references: [LangGraph.js overview](https://docs.langchain.com/oss/java
 - [LangGraph compatibility](https://skein.js.org/langgraph-compatibility.md): Dated verification scope and intentional Agent Server differences.
 - [React SDK / useStream](https://skein.js.org/react-sdk.md): Frontend compatibility — `@langchain/langgraph-sdk` and `useStream` over SSE.
 - [Streaming UI with json-render](https://skein.js.org/recipes/json-render.md): Application-owned catalogs, SpecStream compiler bridge, checkpoint restoration, actions, approval and replay limits.
+- [Human input over MCP](https://skein.js.org/recipes/mcp-human-input.md): Official modern client, form/URL elicitation, tool reviews and guarded checkpoint continuation.
 - [Storage](https://skein.js.org/storage.md): `SkeinStore`, memory/SQLite/Postgres selection, pgvector semantic search, upstream checkpointers, and `getStore()` in a graph.
 - [Runs & Redis](https://skein.js.org/runs-and-redis.md): The run engine, the queue, and cross-instance streaming with Redis.
 - [Observability](https://skein.js.org/observability.md): Tracing and metrics — the `TelemetrySink` seam, LangSmith thread grouping, PostHog `$ai_generation` analytics, OpenTelemetry spans/metrics, and guides for Langfuse, Braintrust, Sentry, and Datadog/Grafana/Honeycomb.

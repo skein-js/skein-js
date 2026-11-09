@@ -171,7 +171,7 @@ export function createProtocolRuntime(
       createOpenApiDocument(mountedRoutes, handlers, deps.auth, deps.serverVersion),
     );
   handlerExtras.handleMcp ??= async (request) =>
-    (await import("./interop/mcp.js")).createMcpHandler(() => handlers)(request);
+    (await import("./interop/mcp.js")).createMcpHandler(context, () => handlers)(request);
   handlerExtras.handleA2a ??= async (request) =>
     (await import("./interop/a2a.js")).createA2aHandler(context, () => handlers)(request);
   const authorized = deps.auth

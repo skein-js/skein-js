@@ -35,6 +35,7 @@ import { toStoredRollbackPlan, type ProtocolContext, type RollbackPlan } from ".
 import { remainingQueueAttempts } from "../deliveries/delivery-config.js";
 import { readInputAdmission } from "../idempotency/admission-input.js";
 import { a2aKwargs } from "../interop/a2a-origin.js";
+import { mcpKwargs } from "../interop/mcp-origin.js";
 import {
   assertNativeDeadline,
   nativeKwargs,
@@ -298,7 +299,13 @@ export function toKwargs(
   authScopes?: string[],
 ): RunKwargs {
   const kwargs: RunKwargs & ReturnType<typeof threadProtocolKwargs> = {};
-  Object.assign(kwargs, threadProtocolKwargs(input), a2aKwargs(input), nativeKwargs(input));
+  Object.assign(
+    kwargs,
+    threadProtocolKwargs(input),
+    a2aKwargs(input),
+    nativeKwargs(input),
+    mcpKwargs(input),
+  );
   // Only the non-default is stored: `keep` is what an absent flag already means, and kwargs are
   // written on every run.
   if ((ownsThread || readNativeOrigin(kwargs)?.ownsThread) && input.on_completion === "delete")

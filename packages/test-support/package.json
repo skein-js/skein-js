@@ -39,6 +39,7 @@
     "@langchain/core": "^1.2.9",
     "@langchain/langgraph": "^1.4.0",
     "@langchain/langgraph-sdk": "^1.12.6",
+    "@modelcontextprotocol/client": "2.4.0",
     "braces": "3.0.3",
     "vitest": "4.1.11"
   }

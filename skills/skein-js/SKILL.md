@@ -127,3 +127,11 @@ case-insensitive includes/excludes with exclusions winning. Keep credentials out
 `http.disable_ui` disables graph UI loading/building independently of Console. Preserve auth-first
 dispatch and opt-in CORS. Non-default config checkpointer loaders require programmatic saver injection;
 do not silently accept unapplied security or backend settings.
+
+## Human input over MCP
+
+For MCP human input, use an official modern client supporting revision `2026-07-28`, enable modern
+negotiation explicitly and declare form/URL elicitation capabilities. Let its registered elicitation
+handler collect the person's answers. Keep the returned state with the same caller/tool/arguments;
+do not turn an uncertain inline submission into a new resume. Legacy ordinary calls remain supported.
+See the [MCP human-input recipe](https://skein.js.org/recipes/mcp-human-input).

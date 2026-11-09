@@ -33,6 +33,7 @@ try {
         "sdk-legacy-25": "npm:@langchain/langgraph-sdk@1.9.25",
         "sdk-legacy-31": "npm:@langchain/langgraph-sdk@1.9.31",
         "@modelcontextprotocol/sdk": "1.32.1",
+        "@modelcontextprotocol/client": "2.4.0",
         "@a2a-js/sdk": "1.3.0",
         express: "5.2.1",
       },
@@ -59,6 +60,7 @@ try {
     import {Client as Legacy31} from 'sdk-legacy-31';
     import {Client as McpClient} from '@modelcontextprotocol/sdk/client/index.js';
     import {StreamableHTTPClientTransport} from '@modelcontextprotocol/sdk/client/streamableHttp.js';
+    import {Client as ModernMcpClient,StreamableHTTPClientTransport as ModernMcpTransport} from '@modelcontextprotocol/client';
     import {ClientFactory} from '@a2a-js/sdk/client';
     import {SendMessageRequest,TaskState} from '@a2a-js/sdk';
     let executions=0;
@@ -69,6 +71,9 @@ try {
     const client=new Client({apiUrl:url});
     let stream;
     const mcp=new McpClient({name:'packed-proof',version:'1.0.0'});
+    let questions=0;
+    const modernMcp=new ModernMcpClient({name:'packed-modern-proof',version:'1'}, {versionNegotiation:{mode:'auto'},capabilities:{elicitation:{form:{}}}});
+    modernMcp.setRequestHandler('elicitation/create',async()=>{questions++;return {action:'accept',content:{response:'Ada'}};});
     try {
       stream=client.threads.stream({assistantId:'agent'});
       await stream.run.start({input:{messages:[{role:'user',content:'modern'}]}});
@@ -101,6 +106,10 @@ try {
       const tools=await mcp.listTools();assert(tools.tools.some(tool=>tool.name==='agent'));
       const result=await mcp.callTool({name:'agent',arguments:{messages:[{role:'user',content:'MCP'}]}});
       assert.notEqual(result.isError,true);
+      await modernMcp.connect(new ModernMcpTransport(new URL('/mcp',url)));
+      const answered=await modernMcp.callTool({name:'agent',arguments:{messages:[{role:'user',content:'mcp-question'}]}});
+      assert.notEqual(answered.isError,true);assert.equal(questions,1);
+      assert.equal(answered.structuredContent.messages.at(-1).content,'echo: Ada');
       const a2a=await new ClientFactory().createFromUrl(url,'/.well-known/agent-card.json?assistant_id=agent');
       const task=await a2a.sendMessage(SendMessageRequest.fromJSON({message:{messageId:'packed-a2a',role:'ROLE_USER',parts:[{text:'A2A'}]}}));
       assert.equal(task.status.state,TaskState.TASK_STATE_COMPLETED);
@@ -114,7 +123,7 @@ try {
       assert(spec.paths['/runs/search'].post.requestBody.content['application/json'].schema.properties.updated_after);
 
       console.log('PACKED_COMPATIBILITY_OK');
-    } finally {await stream?.close();await mcp.close();await server.close();}
+    } finally {await stream?.close();await mcp.close();await modernMcp.close();await server.close();}
     // Exercise the real published CLI paths: injected dependencies must retain config route flags.
     await writeFile('cli-graph.ts', "import {StateGraph,MessagesAnnotation} from '@langchain/langgraph';import {AIMessage} from '@langchain/core/messages';export const graph=new StateGraph(MessagesAnnotation).addNode('echo',(_state,config)=>({messages:[new AIMessage(JSON.stringify({tenant:config.configurable?.['x-tenant'],thread:config.configurable?.thread_id}))]})).addEdge('__start__','echo').addEdge('echo','__end__').compile();");
     await writeFile('tsconfig.json',JSON.stringify({compilerOptions:{target:'ES2022',module:'NodeNext',moduleResolution:'NodeNext',strict:true,skipLibCheck:true},include:['cli-graph.ts']}));
@@ -220,6 +229,79 @@ try {
     ],
     { cwd: consumer },
   );
+  const standalone = path.join(directory, "standalone-protocol");
+  const standaloneManifest = installConsumer(
+    standalone,
+    {
+      name: "skein-standalone-protocol-proof",
+      version: "1.0.0",
+      private: true,
+      type: "module",
+      dependencies: {
+        "@skein-js/agent-protocol": "*",
+        "@skein-js/core": "*",
+        "@skein-js/storage-memory": "*",
+        "@langchain/langgraph-sdk": "1.12.6",
+        "@modelcontextprotocol/client": "2.4.0",
+        typescript: "5.9.3",
+      },
+    },
+    packed,
+  );
+  await writeFile(
+    path.join(standalone, "package.json"),
+    JSON.stringify(standaloneManifest, null, 2),
+  );
+  run("npm", ["install", "--no-audit", "--no-fund"], { cwd: standalone });
+  await writeFile(
+    path.join(standalone, "proof.mjs"),
+    String.raw`
+    import assert from 'node:assert/strict';
+    import {createRequire} from 'node:module';
+    import {createProtocolRuntime} from '@skein-js/agent-protocol';
+    import {MemorySkeinStore,MemoryRunQueue,MemoryRunEventBus} from '@skein-js/storage-memory';
+    import {Client,StreamableHTTPClientTransport} from '@modelcontextprotocol/client';
+    assert.throws(()=>createRequire(import.meta.url).resolve('@langchain/langgraph'),{code:'MODULE_NOT_FOUND'});
+    const values=new Map();
+    const graph={async *stream(input,options){await this.checkpointer.getTuple(options);values.set(options.configurable.thread_id,input);yield ['values',input];},async getState(config){return {values:values.get(config.configurable.thread_id)||{},next:[],tasks:[]};}};
+    const checkpointer=Object.freeze({async getTuple(){return undefined;},async *list(){},async put(){return {};},async putWrites(){},async deleteThread(){}});
+    const runtime=createProtocolRuntime({store:new MemorySkeinStore(),queue:new MemoryRunQueue(),bus:new MemoryRunEventBus(),checkpointer,graphs:{ids:['plain'],async load(){return graph;},async schemas(){return {};}}});
+    await runtime.service.assistants.registerGraphAssistants();
+    assert.deepEqual((await runtime.service.runs.createWait({assistant_id:'plain',input:{value:'ordinary'}})).result,{value:'ordinary'});
+    const client=new Client({name:'standalone-proof',version:'1'},{versionNegotiation:{mode:'auto'}});
+    try {
+      await client.connect(new StreamableHTTPClientTransport(new URL('http://localhost/mcp'),{fetch:async(input,init)=>{
+        const request=new Request(input,init);const body=request.method==='POST'?await request.json():undefined;
+        const response=await runtime.handlers.handleMcp({method:request.method,url:request.url,headers:Object.fromEntries(request.headers),body,params:{},query:{},signal:request.signal});
+        assert.notEqual(response.kind,'sse');return new Response(response.kind==='json'?JSON.stringify(response.body):null,{status:response.status,headers:response.headers});
+      }}));
+      assert.deepEqual((await client.callTool({name:'plain',arguments:{value:'MCP without LangGraph'}})).structuredContent,{value:'MCP without LangGraph'});
+      console.log('PACKED_STANDALONE_PROTOCOL_OK');
+    } finally {await client.close();await runtime.worker.stop();}
+  `,
+  );
+  await writeFile(
+    path.join(standalone, "contracts.ts"),
+    "import type {AgentGraph,ProtocolDeps,ThreadCheckpointer} from '@skein-js/agent-protocol';declare const graph:AgentGraph;declare const deps:ProtocolDeps;declare const saver:ThreadCheckpointer;void [graph,deps,saver];\n",
+  );
+  run(
+    process.execPath,
+    [
+      "node_modules/typescript/bin/tsc",
+      "--noEmit",
+      "--strict",
+      "--target",
+      "ES2022",
+      "--module",
+      "NodeNext",
+      "--moduleResolution",
+      "NodeNext",
+      "--skipLibCheck",
+      "contracts.ts",
+    ],
+    { cwd: standalone },
+  );
+  run(process.execPath, ["proof.mjs"], { cwd: standalone, env: { ...process.env, NODE_PATH: "" } });
   await verifyJsonRenderConsumer(path.join(directory, "json-render-consumer"), packed);
 } finally {
   await rm(directory, { recursive: true, force: true });
