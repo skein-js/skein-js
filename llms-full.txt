@@ -2433,7 +2433,7 @@ callbacks. Both configuration blocks apply together:
 }
 ```
 
-Set `LG_WEBHOOK_TOKEN` before starting the server. `${{ env.NAME }}` expansion applies only to
+Set `LG_WEBHOOK_TOKEN` before starting the server. <code v-pre>${{ env.NAME }}</code> expansion applies only to
 these header values. `webhooks.env_prefix` defaults to `LG_WEBHOOK_`; referenced variables must
 have that prefix and exist. Invalid or missing references fail startup without printing secret values.
 Skein's content type, delivery identity, attempt and signing headers override configured names,
