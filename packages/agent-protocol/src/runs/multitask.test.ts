@@ -6,6 +6,7 @@ import { describe, expect, it } from "vitest";
 
 import { createFixtureDeps } from "../__fixtures__/deps.js";
 import { createContext } from "../context.js";
+import { createProtocolHandlers } from "../create-handlers.js";
 import { createProtocolServiceFromContext, type ProtocolService } from "../service.js";
 
 async function serviceWithAssistants() {
@@ -43,6 +44,47 @@ async function startActiveRun(service: ProtocolService, threadId: string): Promi
 }
 
 describe("multitask strategies", () => {
+  it("keeps legacy endpoint defaults at reject and protocol thread-command defaults at enqueue", async () => {
+    const { ctx, service } = await serviceWithAssistants();
+    const handlers = createProtocolHandlers(service);
+    const thread = await service.threads.create();
+    const activeId = await startActiveRun(service, thread.thread_id);
+    try {
+      for (const name of ["createWaitRun", "createStreamRun", "createBackgroundRun"] as const) {
+        await expect(
+          handlers[name]({
+            method: "POST",
+            url: "http://localhost/",
+            headers: {},
+            params: { thread_id: thread.thread_id },
+            query: {},
+            body: { thread_id: thread.thread_id, assistant_id: "echo", input: { value: "legacy" } },
+          }),
+        ).rejects.toMatchObject({ status: 422, code: "thread_busy" });
+      }
+      const command = await handlers.postThreadCommands({
+        method: "POST",
+        url: "http://localhost/",
+        headers: {},
+        params: { thread_id: thread.thread_id },
+        query: {},
+        body: {
+          id: 1,
+          method: "run.start",
+          params: { assistant_id: "echo", input: { value: "queued" } },
+        },
+      });
+      expect(command).toMatchObject({ kind: "json", body: { type: "success" } });
+      const queued = (await ctx.deps.store.runs.listByThread(thread.thread_id)).find(
+        (run) => run.run_id !== activeId,
+      )!;
+      expect(queued.status).toBe("pending");
+      expect((await service.runs.get(activeId)).status).toBe("running");
+      await service.runs.cancel(queued.run_id);
+    } finally {
+      await service.runs.cancel(activeId, { wait: true });
+    }
+  });
   it("reject: a busy thread rejects the second run with 422 and leaves the first running", async () => {
     const { service } = await serviceWithAssistants();
     const thread = await service.threads.create();

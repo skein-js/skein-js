@@ -26,6 +26,7 @@ pnpm --filter @skein-js/example-triage-agent seed   # register the schedule + sw
 | [Memory](./memory.md)                                      | `getStore()`, semantic search, and the dedup trap                            |
 | [Deep Agents](./deep-agents.md) _(experimental)_           | Files, per-user memory, streamed subagents, approval and async subagents     |
 | [Human input over MCP](./mcp-human-input.md)               | Official client form/URL questions, tool review and resumable answers        |
+| [Separate API and workers](./split-api-worker.md)          | Published runtime composition, background scaling and lifecycle ownership    |
 | [Streaming UI with json-render](./json-render.md)          | Catalog-driven UI generation, progressive rendering, restoration and actions |
 | [Authenticating requests](./authentication.md)             | Better Auth, Clerk, Supabase, Firebase, OIDC/JWT, and authorization policy   |
 | [Production](./production.md)                              | Auth, run-completion webhooks, durable storage and deploying                 |

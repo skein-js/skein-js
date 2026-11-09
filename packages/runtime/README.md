@@ -40,6 +40,7 @@ const server = await createExpressServer({
 });
 await server.listen(2024);
 // …on shutdown:
+await server.close();
 await runtime.dispose();
 ```
 
@@ -83,6 +84,7 @@ const { deps, dispose } = await embedPostgresGraphs({ agent: graph }); // reads 
 const server = await createExpressServer({ deps });
 await server.listen(2024);
 // …on shutdown:
+await server.close();
 await dispose();
 ```
 
@@ -93,6 +95,15 @@ Options mirror the low-level knobs: `index` (pgvector), `ttl` (store items), `th
 `poolMax`, `sslNoVerify`, and `overrides`
 for non-driver deps (`auth`/`logger`/…). See [docs/embedding.md](https://skein.js.org/embedding) for the full
 walkthrough.
+
+Use the [API/background-worker recipe](https://skein.js.org/recipes/split-api-worker) to scale queued
+execution separately through existing exports. Wait/stream remain inline. Postgres/Redis workers can
+continue their own attributed checkpoint after process loss; make external effects idempotent and
+retain the [documented recovery limits](https://skein.js.org/runs-and-redis#recover-after-a-worker-exits).
+
+Configuration assembly applies compatible webhook/header controls and `http.disable_ui` in memory
+and durable modes. Unsupported middleware-first dispatch and non-default config saver loaders produce
+startup diagnostics. See [configuration compatibility](https://skein.js.org/langgraph-cli-compat).
 
 ## Install
 

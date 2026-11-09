@@ -62,6 +62,7 @@ const DOCS = [
   "docs/recipes/memory.md",
   "docs/recipes/deep-agents.md",
   "docs/recipes/mcp-human-input.md",
+  "docs/recipes/split-api-worker.md",
   "docs/recipes/json-render.md",
   "docs/recipes/authentication.md",
   "docs/recipes/production.md",

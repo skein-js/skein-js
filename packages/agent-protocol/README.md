@@ -109,7 +109,10 @@ context**, so cancelling a run through the service actually aborts it in the wor
 individual `createProtocolService` / `createProtocolHandlers` / `createRunWorker` factories only when
 you don't run a worker in the same process.
 
-Redis redelivery continues attributable checkpoints without reapplying accepted
+For separate HTTP and background owners, keep one runtime per process and start workers only where
+queued work should execute. Wait/stream still execute inline. The
+[split deployment recipe](https://skein.js.org/recipes/split-api-worker) covers maintenance and
+shutdown ownership. Redis redelivery continues attributable checkpoints without reapplying accepted
 input; external effects still need idempotency. SQLite retains its application-controlled recovery policy.
 
 ### The injected contract (`ProtocolDeps`)
