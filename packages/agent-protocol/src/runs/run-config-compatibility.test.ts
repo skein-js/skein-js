@@ -18,6 +18,10 @@ const ReportState = Annotation.Root({
     reducer: (_previous, next) => next,
     default: () => ({}),
   }),
+  metadata: Annotation<Record<string, unknown>>({
+    reducer: (_previous, next) => next,
+    default: () => ({}),
+  }),
 });
 
 async function harness(authenticated = false) {
@@ -25,6 +29,7 @@ async function harness(authenticated = false) {
   const compiled = new StateGraph(ReportState)
     .addNode("report", (_state, config: LangGraphRunnableConfig) => ({
       seen: config.configurable ?? {},
+      metadata: config.metadata ?? {},
     }))
     .addEdge("__start__", "report")
     .addEdge("report", "__end__")
@@ -53,6 +58,22 @@ async function harness(authenticated = false) {
 }
 
 describe("run configuration compatibility", () => {
+  it("supplies authoritative execution metadata without telemetry while keeping application routing IDs", async () => {
+    const { service } = await harness();
+    const { result, runId, threadId } = await service.runs.createWait({
+      assistant_id: "reporting",
+      input: {},
+      config: { configurable: { assistant_id: "app-assistant", graph_id: "app-graph" } },
+    });
+    expect(result).toMatchObject({
+      seen: { assistant_id: "app-assistant", graph_id: "app-graph" },
+      metadata: { run_id: runId, thread_id: threadId },
+    });
+    // LangGraph mirrors scalar configurable values into metadata. Preserve application values;
+    // adding the server's assistant/graph here would silently change Deep Agents namespaces.
+    expect(result).toHaveProperty("metadata.assistant_id", "app-assistant");
+    expect(result).toHaveProperty("metadata.graph_id", "app-graph");
+  });
   it("keeps legacy assistant/graph keys and the same factory config on state reconstruction", async () => {
     const { service, factoryCalls } = await harness(true);
     const thread = await service.threads.create();

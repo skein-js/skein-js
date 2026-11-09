@@ -110,3 +110,9 @@ Borrowed `Redis` and `Cluster` clients are accepted. The transport never closes 
 or outcome queue.
 When annotating options around an application-owned outcome queue, use
 `BullMqTransportOptions<typeof outcomeQueue>` so an independent BullMQ major upgrade retains its type.
+
+## Recover queued runs
+
+Redis workers continue an attributable stalled run from its committed checkpoint without reapplying
+accepted input. Make external effects idempotent: uncommitted work may repeat. Inspect
+`run_recovery_ambiguous` failures before explicitly choosing recovery for older checkpoints.

@@ -8555,8 +8555,10 @@ queue, as described below. Make external effects idempotent when retries are pos
 - **Job queue ([BullMQ](https://docs.bullmq.io))** — background runs are enqueued in Redis; worker
   processes across instances consume and execute them. BullMQ provides retries, backoff, and
   concurrency out of the box.
-- **Crash recovery** — a stalled job (its worker died mid-run) is moved back to the queue by
-  BullMQ's stalled-job check and retried, so runs survive restarts.
+- **Crash recovery** — BullMQ redelivers stalled background jobs. Skein continues the same run
+  from its latest attributable checkpoint, using LangGraph's pending work rather than applying
+  the accepted input or resume command again. If no input checkpoint committed, the original
+  input is still needed. A finished graph awaiting resource settlement is settled without rerunning it.
 - **Delayed runs** — an `after_seconds` delay is handed to BullMQ's own delayed set, which lives in
   Redis and promotes the job when it comes due, so a scheduled run outlives the process that created it.
 - **Cross-instance pub/sub** — run stream frames are published to a Redis Stream + channel so a
@@ -8566,6 +8568,32 @@ queue, as described below. Make external effects idempotent when retries are pos
   graph. The cancel itself is durable in the run row before the message is published, so a dropped
   message costs promptness rather than correctness. See
   [deploy.md](./deploy.md#scaling-past-one-instance).
+
+#### Recover after a worker exits
+
+Keep Postgres and Redis, then start a worker against the same databases. BullMQ's stalled-job
+interval determines when it redelivers the attempt. Inspect the original run ID; a cancelled or
+already settled run is not restarted. Human-input interrupts remain paused.
+
+Make external effects idempotent using a stable application operation key. A node that ran before
+its checkpoint committed can run again; checkpoint recovery does not make a remote API call and
+the checkpoint one transaction. Existing stream-history limits still apply to reconnecting observers.
+Only checkpointed graph state is recoverable. A custom-stream reply emitted before process loss
+is not itself a checkpoint; retain any reply your application must reconstruct in graph state.
+
+Skein supplies run/thread execution identity and attributes new checkpoint writes independently
+of tracing. Assistant/graph tracing metadata retains its existing telemetry behavior, so enabling
+recovery does not change application-owned configurable IDs or legacy store namespaces. A running attempt
+from an older version whose current checkpoint cannot be attributed fails with
+`run_recovery_ambiguous` rather than guessing. Inspect its thread state/history and choose an
+explicit resume or a new turn through the existing API. Keep the original base checkpoint for
+rollback decisions. This Redis recovery behavior does not change SQLite's application-controlled
+recovery policy.
+
+For a custom execution engine, verify its own continuation semantics before claiming durable
+recovery. Opaque custom-saver metadata is passed through unchanged; automatic attribution applies
+to ordinary metadata records. A saver alone does not establish that an arbitrary agent can continue
+its work from a checkpoint.
 
 ### Stream retention {#what-a-frame-costs}
 

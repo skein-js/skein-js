@@ -200,3 +200,7 @@ schemas also expose optional retention metadata; see [the API reference](../../d
 The served `/docs` reference and `/openapi.json` are generated from enabled routes and shared
 operation contracts. Set `http.disable_docs: true` to hide both while retaining `/info` and
 `/metrics`; `http.disable_meta: true` hides all four. `/ok` stays available.
+
+For Postgres/Redis worker recovery, Skein continues an attributable committed checkpoint without
+reapplying accepted input. Keep external effects idempotent; work before a checkpoint may repeat.
+SQLite retains application-controlled recovery. See [the recovery guide](https://skein.js.org/runs-and-redis#recover-after-a-worker-exits).
