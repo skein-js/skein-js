@@ -35,7 +35,7 @@ import {
 import { attemptDelivery } from "../deliveries/attempt-delivery.js";
 import { DEFAULT_RETAIN_HOURS, deliveryLeaseMs } from "../deliveries/delivery-config.js";
 import { buildDeliveryPayload } from "../deliveries/delivery-payload.js";
-import { createDeliveryRequest } from "../deliveries/delivery-request.js";
+import { createDeliveryRequest, type DeliveryRequest } from "../deliveries/delivery-request.js";
 import { deliveryTargetError, redactWebhookUrl } from "../deliveries/delivery-target.js";
 import { configureHttpDelivery } from "../deliveries/http-delivery-policy.js";
 import { isNoopLogger, webhookTimeoutMs, type ResolvedDeps } from "../deps.js";
@@ -925,14 +925,15 @@ export async function executeRun(deps: ResolvedDeps, exec: RunExecution): Promis
   ): (() => Promise<void>) | undefined {
     if (!started || execution.kwargs.webhook === undefined) return undefined;
     const url = execution.kwargs.webhook;
-    const sentAt = resolved.clock().toISOString();
+    const sentAt = resolved.clock();
+    const sentAtIso = sentAt.toISOString();
     const payload = {
       ...execution.run,
       status: settled.status,
       values: settled.values,
       run_started_at: new Date(startedAt).toISOString(),
-      run_ended_at: sentAt,
-      webhook_sent_at: sentAt,
+      run_ended_at: sentAtIso,
+      webhook_sent_at: sentAtIso,
       ...(webhookErrorMessage !== undefined ? { error: webhookErrorMessage } : {}),
       // Carried here too: a store with no `deliveries` repo is still a store whose receiver cannot
       // reach the question any other way. Omitting it would leave the gap open on exactly the drivers
@@ -945,6 +946,22 @@ export async function executeRun(deps: ResolvedDeps, exec: RunExecution): Promis
       // and not the other silently dropped whatever the graph asked to send.
       ...(settled.reply !== undefined ? { reply: settled.reply } : {}),
     };
+    let request: DeliveryRequest;
+    try {
+      request = createDeliveryRequest({
+        payload,
+        deliveryId: runId,
+        attempt: 1,
+        sentAt,
+        ...(resolved.webhooks?.secrets ? { secrets: resolved.webhooks.secrets } : {}),
+      });
+    } catch (error) {
+      resolved.logger.warn(
+        `run ${runId}: webhook payload could not be serialized; no callback will be sent`,
+        error,
+      );
+      return undefined;
+    }
     return async () => {
       try {
         const denied = await deliveryTargetError(url, resolved.webhooks);
@@ -952,20 +969,11 @@ export async function executeRun(deps: ResolvedDeps, exec: RunExecution): Promis
           resolved.logger.warn(`run ${runId}: ${denied}`);
           return;
         }
-        if (resolved.webhooks?.headers || resolved.webhooks?.url) {
-          const request = createDeliveryRequest({
-            payload,
-            deliveryId: runId,
-            attempt: 1,
-            sentAt: resolved.clock(),
-            secrets: resolved.webhooks.secrets,
-          });
-          await resolved.webhookDispatcher(
-            url,
-            request.payload,
-            configureHttpDelivery(request.attempt, url, resolved.webhooks),
-          );
-        } else await resolved.webhookDispatcher(url, payload);
+        await resolved.webhookDispatcher(
+          url,
+          request.payload,
+          configureHttpDelivery(request.attempt, url, resolved.webhooks),
+        );
       } catch (error) {
         resolved.logger.warn(
           `run ${runId}: webhook delivery to ${redactWebhookUrl(url)} failed`,
