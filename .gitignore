@@ -67,3 +67,5 @@ output
 examples/desktop-tauri/backend/
 examples/desktop-tauri/src-tauri/target/
 examples/desktop-tauri/src-tauri/gen/
+
+.angular

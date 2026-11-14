@@ -144,6 +144,9 @@ LangChain's official React, Vue, Svelte, and Angular SDKs, or the ready-made Age
 
 [Connect LangChain SDKs](./react-sdk.md) · [LangChain SDK docs](https://docs.langchain.com/oss/javascript/langchain/frontend/overview)
 
+For generated component interfaces, follow the [json-render](./recipes/json-render.md) or
+[Angular A2UI](./recipes/a2ui.md) recipe.
+
 </div>
 <div class="skein-card">
 

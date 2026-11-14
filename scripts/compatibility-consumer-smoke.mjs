@@ -4,6 +4,8 @@ import { tmpdir } from "node:os";
 import path from "node:path";
 import process from "node:process";
 
+import { verifyA2uiConsumer } from "../packages/test-support/scripts/a2ui-consumer-smoke.mjs";
+
 import { verifyJsonRenderConsumer } from "./json-render-consumer-smoke.mjs";
 import { packWorkspace, run, installConsumer } from "./pack-local-consumer.mjs";
 
@@ -303,6 +305,7 @@ try {
   );
   run(process.execPath, ["proof.mjs"], { cwd: standalone, env: { ...process.env, NODE_PATH: "" } });
   await verifyJsonRenderConsumer(path.join(directory, "json-render-consumer"), packed);
+  await verifyA2uiConsumer(path.join(directory, "a2ui-consumer"), packed);
 } finally {
   await rm(directory, { recursive: true, force: true });
 }

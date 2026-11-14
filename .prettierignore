@@ -17,3 +17,5 @@ tools/ai-migrations/
 # valid in any language Prettier parses. The `.tmpl` suffix already keeps them out of the eslint,
 # tsc and vitest globs; this keeps them out of `nx format`.
 packages/scaffold/templates/
+
+.angular

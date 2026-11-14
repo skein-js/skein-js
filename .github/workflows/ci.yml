@@ -193,7 +193,18 @@ jobs:
           path: dist/json-render-screenshots
           if-no-files-found: warn
 
-      - name: Packed SDK, MCP and A2A consumers
+      - name: Angular A2UI trip-planner user journey
+        run: pnpm exec nx run example-a2ui:test-browser --output-style=stream
+
+      - name: Upload A2UI browser evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: a2ui-browser-evidence
+          path: dist/a2ui-screenshots
+          if-no-files-found: warn
+
+      - name: Packed SDK, MCP, A2A and UI consumers
         run: pnpm exec nx run test-support:test-compatibility-consumer --output-style=stream
 
       - name: Isolated Deep Agents 1.16.3 candidate

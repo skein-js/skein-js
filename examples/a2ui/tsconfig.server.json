@@ -1,0 +1,21 @@
+{
+  "extends": "./tsconfig.json",
+  "compilerOptions": {
+    "noEmit": true,
+    "declaration": false,
+    "types": ["node"],
+    "importHelpers": false,
+    "noPropertyAccessFromIndexSignature": false
+  },
+  "include": [
+    "src/trip*.ts",
+    "src/generation.ts",
+    "src/ui-events.ts",
+    "src/auth.ts",
+    "src/test-harness.ts",
+    "src/**/*.test.ts",
+    "browser/**/*.ts",
+    "*.config.ts"
+  ],
+  "exclude": []
+}

@@ -150,6 +150,15 @@
         "command": "node scripts/scaffold-consumers.mjs prepare-managers"
       }
     },
+    "test-a2ui-consumer": {
+      "executor": "nx:run-commands",
+      "cache": false,
+      "dependsOn": ["server-express:build", "runtime:build", "cli:build"],
+      "options": {
+        "command": "node packages/test-support/scripts/a2ui-consumer-smoke.mjs",
+        "cwd": "."
+      }
+    },
     "test-compatibility-consumer": {
       "executor": "nx:run-commands",
       "cache": false,

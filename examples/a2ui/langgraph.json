@@ -1,0 +1,6 @@
+{
+  "node_version": "24",
+  "graphs": { "trip-planner": "./src/trip-graph.ts:graph" },
+  "auth": { "path": "./src/auth.ts:auth" },
+  "env": ".env"
+}
