@@ -168,8 +168,10 @@ it("reconnects to one run and preserves saved UI on cancellation and invalid gen
       .locator(".generated")
       .getByText("Sketching your interface…", { exact: true })
       .waitFor();
+    await page.getByLabel("Describe the UI").fill("Reconnect this trip");
     await page.getByRole("button", { name: "Pause updates" }).click();
     await page.getByText("Updates paused. The run continues on the server.").waitFor();
+    expect(await page.getByLabel("Describe the UI").inputValue()).toBe("Reconnect this trip");
     await capture(page, "paused-desktop");
     const beforeReconnect = generations;
     releaseUpdates();

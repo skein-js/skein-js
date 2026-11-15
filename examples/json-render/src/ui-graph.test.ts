@@ -65,7 +65,7 @@ describe("json-render through Skein HTTP", () => {
     }
   });
 
-  it.each(["Website traffic dashboard", "Event registration form", "Product comparison cards"])(
+  it.each(["Website traffic dashboard", "UI feedback form", "Product comparison cards"])(
     "compiles the %s offline sample through the upstream catalog",
     (prompt) => {
       const compiler = createSpecStreamCompiler<Spec>();

@@ -30,11 +30,7 @@ export class App {
     const state = this.session.snapshot();
     return [state.conversation.length, state.pendingPrompt, state.busy].join(":");
   });
-  readonly samples = [
-    "Website traffic dashboard",
-    "Event registration form",
-    "Product comparison cards",
-  ];
+  readonly samples = ["Website traffic dashboard", "UI feedback form", "Product comparison cards"];
   constructor() {
     const threadId = new URLSearchParams(window.location.search).get("thread");
     if (threadId) this.prompt.setValue("");
@@ -45,12 +41,14 @@ export class App {
       if (element) element.scrollTop = element.scrollHeight;
     });
   }
-  async send(event?: Event) {
+  send(event?: Event) {
     event?.preventDefault();
-    if (this.prompt.invalid) return;
+    const state = this.session.snapshot();
+    if (this.prompt.invalid || state.busy || state.review || state.needsRefresh) return;
     const submitted = this.prompt.value;
-    await this.session.generate(submitted);
-    if (!this.session.snapshot().error && this.prompt.value === submitted) this.prompt.setValue("");
+    void this.session.generate(submitted);
+    // Clear only once the session accepts this prompt, before any async completion can affect a new draft.
+    if (this.session.snapshot().pendingPrompt === submitted.trim()) this.prompt.setValue("");
   }
   chooseSample(prompt: string) {
     this.prompt.setValue(prompt);

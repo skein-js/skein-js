@@ -13,12 +13,11 @@ export function demoSpecStream(request: UiRequest): string {
   const form = /form|registration|sign.?up|contact/i.test(request.prompt);
   const cards = /product|pricing|compar/i.test(request.prompt);
   const title = form
-    ? "Event registration"
+    ? "UI feedback form"
     : cards
       ? "Choose your workspace"
       : "Website traffic dashboard";
-  const elements = {
-    summary: { type: "Text", props: { text: request.prompt }, children: [] },
+  const dashboard = {
     metrics: {
       type: "Grid",
       props: { columns: 3 },
@@ -27,8 +26,8 @@ export function demoSpecStream(request: UiRequest): string {
     metric_a: {
       type: "Metric",
       props: {
-        label: form ? "Event" : cards ? "Starter" : "Total sessions",
-        value: form ? "Your next event" : cards ? "$12" : "284,520",
+        label: cards ? "Starter" : "Total sessions",
+        value: cards ? "$12" : "284,520",
         detail: "Illustrative sample",
       },
       children: [],
@@ -36,8 +35,8 @@ export function demoSpecStream(request: UiRequest): string {
     metric_b: {
       type: "Metric",
       props: {
-        label: form ? "Capacity" : cards ? "Studio" : "Conversion rate",
-        value: form ? "80 people" : cards ? "$29" : "3.42%",
+        label: cards ? "Studio" : "Conversion rate",
+        value: cards ? "$29" : "3.42%",
         detail: "Illustrative sample",
       },
       children: [],
@@ -45,8 +44,8 @@ export function demoSpecStream(request: UiRequest): string {
     metric_c: {
       type: "Metric",
       props: {
-        label: form ? "Format" : cards ? "Team" : "Average visit",
-        value: form ? "In person" : cards ? "$79" : "2m 48s",
+        label: cards ? "Team" : "Average visit",
+        value: cards ? "$79" : "2m 48s",
         detail: "Illustrative sample",
       },
       children: [],
@@ -54,24 +53,26 @@ export function demoSpecStream(request: UiRequest): string {
     table: {
       type: "Table",
       props: {
-        caption: form ? "Registration checklist" : cards ? "Plan comparison" : "Traffic by channel",
+        caption: cards ? "Plan comparison" : "Traffic by channel",
         columns: ["Item", "Value", "Status"],
-        rows: form
-          ? [["Event brief", "Add details below", "Draft"]]
-          : cards
-            ? [
-                ["Starter", "1 workspace", "Available"],
-                ["Studio", "5 workspaces", "Available"],
-                ["Team", "Unlimited", "Available"],
-              ]
-            : [
-                ["Organic search", "118,400", "+12.4%"],
-                ["Direct", "64,200", "+8.2%"],
-                ["Paid search", "42,100", "+4.5%"],
-              ],
+        rows: cards
+          ? [
+              ["Starter", "1 workspace", "Available"],
+              ["Studio", "5 workspaces", "Available"],
+              ["Team", "Unlimited", "Available"],
+            ]
+          : [
+              ["Organic search", "118,400", "+12.4%"],
+              ["Direct", "64,200", "+8.2%"],
+              ["Paid search", "42,100", "+4.5%"],
+            ],
       },
       children: [],
     },
+  };
+  const elements = {
+    summary: { type: "Text", props: { text: request.prompt }, children: [] },
+    ...(form ? {} : dashboard),
     tasks: { type: "TaskList", props: { tasks: [] }, children: [] },
     revise: {
       type: "Button",

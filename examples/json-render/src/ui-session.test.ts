@@ -23,6 +23,76 @@ function gate() {
 }
 
 describe("plan session over the official HTTP SDK", () => {
+  it("blocks a stale tab from replacing another tab's pending review", async () => {
+    const harness = await startHarness(generateImmediateText);
+    const first = createUiSession(harness.clientFor());
+    const second = createUiSession(harness.clientFor());
+    try {
+      const thread = await harness.clientFor().threads.create();
+      await first.open(thread.thread_id);
+      await second.open(thread.thread_id);
+      await first.generate({ prompt: "Keep this review" });
+      const saved = first.read().ui;
+      await second.generate({ prompt: "Do not replace it" });
+      expect(second.read().error).toBeTruthy();
+      expect(await harness.clientFor().runs.list(thread.thread_id)).toHaveLength(1);
+      await second.open(thread.thread_id);
+      expect(second.read().ui).toEqual(saved);
+      expect(second.read().review).not.toBeNull();
+    } finally {
+      first.dispose();
+      second.dispose();
+      await harness.close();
+    }
+  });
+
+  it("abandons an unsaved preview and blocks writes until its checkpoint is refreshed", async () => {
+    const harness = await startHarness(generateImmediateText);
+    let failStateReads = false;
+    const client = new Client<Record<string, unknown>>({
+      apiUrl: harness.url,
+      apiKey: null,
+      defaultHeaders: { "x-user": "demo-user" },
+      onRequest: addRunIdempotency,
+      callerOptions: {
+        fetch: async (input: RequestInfo | URL, init?: RequestInit) => {
+          const url =
+            typeof input === "string" ? input : input instanceof URL ? input.href : input.url;
+          if (failStateReads && new URL(url).pathname.endsWith("/state"))
+            return new Response(JSON.stringify({ detail: "Checkpoint unavailable" }), {
+              status: 403,
+            });
+          return fetch(input, init);
+        },
+      },
+    });
+    const session = createUiSession(client);
+    try {
+      await session.generate({ prompt: "A saved baseline" });
+      await session.decide(true);
+      const baseline = session.read().ui;
+      failStateReads = true;
+      await session.generate({ prompt: "An uncertain new UI" });
+      expect(session.read()).toMatchObject({
+        ui: baseline,
+        spec: baseline!.spec,
+        preview: false,
+        busy: false,
+      });
+      const before = (await client.runs.list(session.read().threadId!)).length;
+      await session.generate({ prompt: "Do not repeat uncertain work" });
+      expect(await client.runs.list(session.read().threadId!)).toHaveLength(before);
+      failStateReads = false;
+      await session.open(session.read().threadId);
+      expect(session.read().error).toBeNull();
+      expect(session.read().ui?.generationId).not.toBe(baseline!.generationId);
+      expect(session.read().review).not.toBeNull();
+    } finally {
+      session.dispose();
+      await harness.close();
+    }
+  });
+
   it("retries a lost run-creation response without generating or approving twice", async () => {
     let generations = 0;
     const harness = await startHarness(async function* (request, signal) {

@@ -25,15 +25,15 @@ to restore the saved surfaces, prompts and pending review without executing the 
 
 ![The Angular chat playground](/images/a2ui/trip-planner.png)
 
-The default generator emits a scripted UI samples and needs no credentials. To use a live
+The default generator emits scripted UI samples and needs no credentials. To use a live
 model, copy `.env.example` to `.env`, set `A2UI_MODEL` to a LangChain `provider:model` string, supply
 the provider's credentials and restart the backend. The Google integration is installed; add the
-appropriate LangChain integration for another provider. The fixture is a demonstration, not a
-destination or availability search. Approval records a decision and submits no external action.
+appropriate LangChain integration for another provider. Sample data is illustrative.
+Approval records a decision and submits no external action.
 
 ## Use the chat playground
 
-Choose a **Website traffic dashboard**, **Event registration form** or **Product comparison cards**, or describe an interface and select **Send**. The response renders inline; the read-only JSON panel shows the current validated UI. Approve or reject the saved version, then continue in chat or use its generated revision controls.
+Choose a **Website traffic dashboard**, **UI feedback form** or **Product comparison cards**, or describe an interface and select **Send**. The response renders inline; the read-only JSON panel shows the current validated UI. Approve or reject the saved version, then continue in chat or use its generated revision controls.
 
 The default runs offline using three illustrative layouts. A live model accepts other prompts within the registered catalog; it cannot emit arbitrary executable code. Configure it using the model instructions below.
 
@@ -159,8 +159,7 @@ and retention limits.
   before retrying an uncertain submission.
 
 The normal demo uses memory with `--no-persist`. Its state survives browser reloads only while the
-backend lives. Use existing [durable deployment options](../deploy.md), or the example's documented
-[SQLite command](https://github.com/skein-js/skein-js/tree/main/examples/a2ui#restore-after-a-server-restart).
+backend lives. Use existing [durable deployment options](../deploy.md) for server restarts.
 SQLite retains checkpoints and run records but uses process-local event history; reopening restores
 the saved baseline rather than replaying old frames.
 

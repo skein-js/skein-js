@@ -1,4 +1,10 @@
-import { ActionBindingSchema, defineCatalog, validateSpec, type Spec } from "@json-render/core";
+import {
+  ActionBindingSchema,
+  defineCatalog,
+  resolveElementProps,
+  validateSpec,
+  type Spec,
+} from "@json-render/core";
 import { schema } from "@json-render/react/schema";
 import { z } from "zod";
 
@@ -75,6 +81,12 @@ export function validateUiSpec(spec: unknown): Spec {
     throw new Error("Generated UI failed catalog validation");
   const bindings = bindingsSchema.parse(spec);
   const normalized = validated.data as Spec;
+  // Catalog validation permits dynamic props. Validate resolved values against each registered schema too.
+  for (const element of Object.values(normalized.elements)) {
+    const definition =
+      catalog.data.components[element.type as keyof typeof catalog.data.components];
+    definition.props.parse(resolveElementProps(element.props, { stateModel: { feedback: "" } }));
+  }
   const parsedSpec = {
     ...normalized,
     elements: Object.fromEntries(

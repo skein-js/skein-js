@@ -153,13 +153,20 @@ export function App() {
     if (element) element.scrollTop = element.scrollHeight;
   }, [snapshot.conversation.length, snapshot.pendingPrompt, snapshot.busy]);
   const canRevise =
-    !snapshot.busy && !snapshot.review && !snapshot.preview && snapshot.approved !== null;
+    !snapshot.busy &&
+    !snapshot.review &&
+    !snapshot.preview &&
+    !snapshot.needsRefresh &&
+    snapshot.approved !== null;
   const renderable =
     snapshot.spec?.root && snapshot.spec.elements?.[snapshot.spec.root] ? snapshot.spec : null;
-  const canSend = !snapshot.busy && !snapshot.review;
-  async function send(nextPrompt = prompt) {
-    await session.generate({ prompt: nextPrompt });
-    if (!session.read().error) setPrompt((current) => (current === nextPrompt ? "" : current));
+  const canSend = !snapshot.busy && !snapshot.review && !snapshot.needsRefresh;
+  function send(nextPrompt = prompt) {
+    const state = session.read();
+    if (state.busy || state.review || state.needsRefresh) return;
+    void session.generate({ prompt: nextPrompt });
+    // Clear only once the session accepts this prompt, before any async completion can affect a new draft.
+    if (session.read().pendingPrompt === nextPrompt.trim()) setPrompt("");
   }
   return (
     <div className="playground">
@@ -201,7 +208,7 @@ export function App() {
                 <div className="samples" aria-label="Sample prompts">
                   {[
                     "Website traffic dashboard",
-                    "Event registration form",
+                    "UI feedback form",
                     "Product comparison cards",
                   ].map((sample) => (
                     <button
@@ -211,6 +218,7 @@ export function App() {
                         setPrompt(sample);
                         void send(sample);
                       }}
+                      disabled={!canSend}
                     >
                       {sample} ↗
                     </button>
@@ -273,7 +281,7 @@ export function App() {
                     </fieldset>
                   </JSONUIProvider>
                 )}
-                {snapshot.review && !snapshot.busy && (
+                {snapshot.review && !snapshot.busy && !snapshot.needsRefresh && (
                   <section className="review" aria-label="Review generated UI">
                     <div>
                       <strong>Keep this version?</strong>

@@ -19,15 +19,15 @@ export function demoMessages(prompt: string, generationId: string): UiMessage[] 
   const form = /form|registration|sign.?up|contact/i.test(prompt);
   const cards = /product|pricing|compar/i.test(prompt);
   const title = form
-    ? "Event registration"
+    ? "UI feedback form"
     : cards
       ? "Choose your workspace"
       : "Website traffic dashboard";
   const labels = form
     ? [
-        "A simple registration form",
-        "Collect an event brief below. This demo sends no registrations.",
-        "Name · Date · Audience",
+        "Describe a change",
+        "Submit it through the feedback field below",
+        "Review the updated interface",
       ]
     : cards
       ? ["Starter · $12 / month", "Studio · $29 / month", "Team · $79 / month"]

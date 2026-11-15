@@ -31,7 +31,7 @@ const immediateText: GenerateText = async function* (request) {
 };
 
 describe("upstream A2UI generation and checkpoint bootstrap", () => {
-  it.each(["Website traffic dashboard", "Event registration form", "Product comparison cards"])(
+  it.each(["Website traffic dashboard", "UI feedback form", "Product comparison cards"])(
     "compiles fragmented %s output, restores surfaces and applies a deletion",
     async (prompt) => {
       const messages: UiMessage[] = [];

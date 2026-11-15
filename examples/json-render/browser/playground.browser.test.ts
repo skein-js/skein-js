@@ -21,6 +21,33 @@ beforeAll(async () => {
   await mkdir(screenshots, { recursive: true });
   harness = await startHarness(async function* (request, signal) {
     generations++;
+    if (request.prompt === "Stream a table") {
+      const patches = demoSpecStream(request)
+        .split("\n")
+        .map((line) => JSON.parse(line));
+      const table = patches.find((patch) => patch.path === "/elements/table");
+      const props = table.value.props;
+      table.value.props = {};
+      const beforeTable = patches.indexOf(table);
+      const split = patches.findIndex((patch) => patch.value === "table") + 1;
+      yield patches
+        .slice(0, beforeTable)
+        .map((patch) => JSON.stringify(patch))
+        .join("\n") + "\n";
+      yield patches
+        .slice(beforeTable, split)
+        .map((patch) => JSON.stringify(patch))
+        .join("\n") + "\n";
+      await new Promise<void>((resolve) => {
+        releaseUpdates = resolve;
+      });
+      yield JSON.stringify({ op: "add", path: "/elements/table/props", value: props }) + "\n";
+      yield patches
+        .slice(split)
+        .map((patch) => JSON.stringify(patch))
+        .join("\n");
+      return;
+    }
     if (request.prompt === "Show an error") {
       yield "invalid generated UI";
       return;
@@ -66,6 +93,28 @@ afterAll(async () => {
 async function capture(page: Page, name: string) {
   await page.screenshot({ path: resolve(screenshots, name + ".png"), fullPage: true });
 }
+
+it("keeps rendering while streamed table props are incomplete", async () => {
+  const page = await browser.newPage();
+  const errors: string[] = [];
+  page.on("pageerror", (error) => errors.push(error.message));
+  try {
+    await page.goto(url);
+    await page.getByLabel("Describe the UI").fill("Stream a table");
+    await page.getByRole("button", { name: "Send" }).click();
+    await page.getByRole("heading", { name: "Website traffic dashboard" }).waitFor();
+    expect(await page.getByRole("table").count()).toBe(0);
+    expect(errors).toEqual([]);
+    releaseUpdates();
+    await page.getByRole("table", { name: "Traffic by channel" }).waitFor();
+    await page.getByRole("button", { name: "Approve UI" }).click();
+    await page.getByText("UI approved. Keep refining it.").waitFor();
+    expect(errors).toEqual([]);
+  } finally {
+    releaseUpdates();
+    await page.close();
+  }
+});
 
 it("reopens and reloads a thread through the development StrictMode entry", async () => {
   const client = harness.clientFor();
@@ -194,8 +243,10 @@ it("reconnects without another generation and displays cancellation and errors",
     await page.getByLabel("Describe the UI").fill("Reconnect this plan");
     await page.getByRole("button", { name: "Send" }).click();
     await page.getByRole("heading", { name: "Website traffic dashboard" }).waitFor();
+    await page.getByLabel("Describe the UI").fill("Reconnect this plan");
     await page.getByRole("button", { name: "Pause updates" }).click();
     await page.getByText("Updates paused. The run continues on the server.").waitFor();
+    expect(await page.getByLabel("Describe the UI").inputValue()).toBe("Reconnect this plan");
     await capture(page, "paused-desktop");
     const beforeReconnect = generations;
     releaseUpdates();

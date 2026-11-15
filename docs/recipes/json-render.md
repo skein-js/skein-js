@@ -37,7 +37,7 @@ need their LangChain integration package. Keep these settings on the backend.
 
 ## Use the chat playground
 
-Choose a **Website traffic dashboard**, **Event registration form** or **Product comparison cards**, or describe an interface and select **Send**. The response renders inline; the read-only JSON panel shows the current validated UI. Approve or reject the saved version, then continue in chat or use its generated revision controls.
+Choose a **Website traffic dashboard**, **UI feedback form** or **Product comparison cards**, or describe an interface and select **Send**. The response renders inline; the read-only JSON panel shows the current validated UI. Approve or reject the saved version, then continue in chat or use its generated revision controls.
 
 The default runs offline using three illustrative layouts. A live model accepts other prompts within the registered catalog; it cannot emit arbitrary executable code. Configure it using the model instructions below.
 
@@ -73,7 +73,9 @@ the displayed UI rather than replaying old patches onto it.
 
 Validate completed output with `catalog.validate()` and the upstream `validateSpec()` structural
 validator before saving it. In json-render 0.21.4, catalog validation normalizes elements and strips
-their `on` bindings. The example preserves bindings separately through upstream `ActionBindingSchema`,
+their `on` bindings. It also permits dynamic props, so the example uses upstream `resolveElementProps`
+with its initial feedback state and checks the resolved values against each component's registered
+Zod schema. It preserves bindings separately through upstream `ActionBindingSchema`,
 restricted to `reviseUi`, and combines those with the normalized specification. It accepts no
 generated action chains or navigation. This validation is application policy, not a Skein setting.
 
@@ -89,7 +91,7 @@ events identify one generation and carry contiguous sequence numbers:
 | `complete` | Same generation ID and the next sequence after the final fragment |
 
 Text fragments can end anywhere inside a JSONL patch operation. Feed them to
-`createSpecStreamCompiler<Spec>()` from `@json-render/core`. Use `push(text).result` for previews;
+`createSpecStreamCompiler<Spec>()` from `@json-render/core`. Validate `push(text).result` before rendering previews;
 call `getResult()` only at generation completion because it consumes the incomplete-line buffer.
 Create a fresh compiler per generation and clone snapshots before exposing them to React or
 retaining them as a baseline. The server uses the same compiler to validate its final result.
@@ -105,6 +107,10 @@ The hook assigns an `Idempotency-Key` to each run-creation request, including ap
 SDK 1.12.7 calls the hook before its retry loop, so retries reuse that key if a successful response
 is lost. Each new turn or decision gets a new key. This uses Skein's existing
 [idempotent run creation](../agent-protocol.md#idempotent-run-creation-idempotency-key).
+The hook also supplies `if_thread_status`: new requests require `idle` or `error`, and approval
+resumes require `interrupted`. SDK 1.12.7 omits that wire field, so the supported hook adds it.
+This prevents a stale tab from replacing a pending review. Refresh the chat after an uncertain
+submission or checkpoint read before sending again.
 
 **A Skein URL is not a direct replacement for `useUIStream`'s generation endpoint.** That hook reads
 SpecStream text; Skein sends Agent Protocol SSE envelopes. The SDK parses the envelopes and the
@@ -120,7 +126,9 @@ normal requests must not be able to supply saved UI or approval state.
 Reopening a thread calls `threads.getState`. This is the authoritative baseline and does not execute
 the graph. If the thread has an active run, observe that existing run. A custom `complete` event
 arrives before checkpoint completion, so it must not mark the UI as saved; reconcile state after the
-run becomes terminal. The example disables generated actions on unvalidated previews.
+run becomes terminal. Validate intermediate specs before rendering them: streamed patches may
+temporarily leave component props or references incomplete. Keep the last renderable preview until
+the next valid update. Generated actions remain disabled until the saved version is reviewed.
 
 The example passes `--no-persist` to `skein dev`, so its memory server preserves threads across browser reloads while its process lives. It
 does not preserve them after a server restart. Configure existing
@@ -135,7 +143,7 @@ provider and validated again by the application and graph.
 
 Put `interrupt()` in a separate node after generation has checkpointed. Render its approval controls
 in trusted application code. Send `input: null` and `command.resume` with the expected generation ID
-and decision. When the interrupt has an ID, the example addresses that ID explicitly. Resuming the
+and decision, addressed to the saved interrupt ID. Resuming the
 review node does not rerun generation. Approval here records a boolean only; add any real-world
 action in your own graph after validating that decision.
 

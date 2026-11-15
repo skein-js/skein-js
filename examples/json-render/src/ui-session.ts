@@ -21,7 +21,7 @@ const valuesSchema = z.object({
   ui: committedUiSchema.nullish(),
   approved: z.boolean().nullish(),
 });
-type Review = z.infer<typeof reviewSchema> & { id?: string };
+type Review = z.infer<typeof reviewSchema> & { id: string };
 export interface UiSnapshot {
   conversation: { generationId: string; prompt: string }[];
   pendingPrompt: string | null;
@@ -36,6 +36,7 @@ export interface UiSnapshot {
   approved: boolean | null;
   error: string | null;
   recovery: string | null;
+  needsRefresh: boolean;
 }
 
 const initialSnapshot: UiSnapshot = {
@@ -52,6 +53,7 @@ const initialSnapshot: UiSnapshot = {
   approved: null,
   error: null,
   recovery: null,
+  needsRefresh: false,
 };
 const isActive = (status: string) => status === "running" || status === "pending";
 const describeError = (error: unknown) => (error instanceof Error ? error.message : String(error));
@@ -60,8 +62,11 @@ function readReview(state: ThreadState<Record<string, unknown>>): Review | null 
   for (const task of state.tasks)
     for (const interruption of task.interrupts) {
       const parsed = reviewSchema.safeParse(interruption.value);
-      if (parsed.success)
-        return { ...parsed.data, ...(interruption.id ? { id: interruption.id } : {}) };
+      if (parsed.success) {
+        if (!interruption.id)
+          throw new Error("The pending review has no interrupt identity. Start a New chat.");
+        return { ...parsed.data, id: interruption.id };
+      }
     }
   return null;
 }
@@ -83,6 +88,16 @@ export function createUiSession(client: Client<Record<string, unknown>>) {
     snapshot = { ...snapshot, ...changes };
     for (const listener of listeners) listener();
   }
+  function requireRefresh(error: unknown) {
+    publish({
+      busy: false,
+      connected: false,
+      spec: snapshot.ui?.spec ?? null,
+      preview: false,
+      error: describeError(error) + ". Refresh the thread to recover saved state.",
+      needsRefresh: true,
+    });
+  }
   function leave() {
     epoch++;
     observation?.controller?.abort();
@@ -96,7 +111,7 @@ export function createUiSession(client: Client<Record<string, unknown>>) {
     const ui = values.ui ? structuredClone(values.ui) : null;
     const review = readReview(state);
     if (review && review.generationId !== ui?.generationId)
-      throw new Error("The pending review does not match the saved plan. Refresh this thread.");
+      throw new Error("The pending review does not match the saved UI. Refresh this thread.");
     publish({
       conversation: values.conversation,
       pendingPrompt: null,
@@ -106,6 +121,7 @@ export function createUiSession(client: Client<Record<string, unknown>>) {
       review,
       approved: values.approved ?? null,
       recovery: null,
+      needsRefresh: false,
     });
   }
   async function follow(current: NonNullable<typeof observation>, token: number) {
@@ -165,11 +181,7 @@ export function createUiSession(client: Client<Record<string, unknown>>) {
               : null),
         });
     } catch (error) {
-      if (token === epoch)
-        publish({
-          connected: false,
-          error: describeError(error) + ". Refresh the thread to recover saved state.",
-        });
+      if (token === epoch) requireRefresh(error);
     }
   }
   async function startRun(
@@ -211,6 +223,7 @@ export function createUiSession(client: Client<Record<string, unknown>>) {
           connected: false,
           error:
             describeError(error) + ". Refresh this thread before retrying an uncertain request.",
+          needsRefresh: true,
         });
     }
   }
@@ -245,11 +258,11 @@ export function createUiSession(client: Client<Record<string, unknown>>) {
         publish({ runId: active.run_id, busy: true });
         await follow(observation, token);
       } catch (error) {
-        if (token === epoch) publish({ busy: false, error: describeError(error) });
+        if (token === epoch) requireRefresh(error);
       }
     },
     async generate(request: unknown) {
-      if (snapshot.busy || snapshot.review) return;
+      if (snapshot.busy || snapshot.review || snapshot.needsRefresh) return;
       const parsed = requestSchema.safeParse(request);
       if (!parsed.success) {
         publish({ error: "Enter a request between 1 and 2000 characters." });
@@ -258,9 +271,9 @@ export function createUiSession(client: Client<Record<string, unknown>>) {
       await startRun({ input: { request: parsed.data } }, parsed.data.prompt);
     },
     async decide(approved: boolean) {
-      if (snapshot.busy || !snapshot.review || !snapshot.ui) return;
+      if (snapshot.busy || snapshot.needsRefresh || !snapshot.review || !snapshot.ui) return;
       const decision = decisionSchema.parse({ generationId: snapshot.ui.generationId, approved });
-      const resume = snapshot.review.id ? { [snapshot.review.id]: decision } : decision;
+      const resume = { [snapshot.review.id]: decision };
       await startRun({ input: null, command: { resume } });
     },
     disconnect() {
@@ -288,7 +301,7 @@ export function createUiSession(client: Client<Record<string, unknown>>) {
         if (token === epoch)
           publish({ busy: false, error: null, recovery: "Run stopped. Showing saved state." });
       } catch (error) {
-        if (token === epoch) publish({ error: describeError(error) });
+        if (token === epoch) requireRefresh(error);
       }
     },
     dispose: leave,

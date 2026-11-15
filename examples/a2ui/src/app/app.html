@@ -19,7 +19,13 @@
           <p>Dashboards, forms, comparison cards. Watch a UI take shape, then make it yours.</p>
           <div class="samples" aria-label="Sample prompts">
             @for (sample of samples; track sample) {
-            <button type="button" (click)="chooseSample(sample)">{{ sample }} ↗</button>
+            <button
+              type="button"
+              (click)="chooseSample(sample)"
+              [disabled]="state.busy || !!state.review || state.needsRefresh"
+            >
+              {{ sample }} ↗
+            </button>
             }
           </div>
         </section>
@@ -47,7 +53,7 @@
               <a2ui-v09-surface [surfaceId]="surfaceId" />
             </fieldset>
           </section>
-          } @if (state.review && !state.busy) {
+          } @if (state.review && !state.busy && !state.needsRefresh) {
           <section class="review" aria-label="Review generated UI">
             <div>
               <strong>Keep this version?</strong>
