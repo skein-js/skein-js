@@ -2,17 +2,29 @@ import type { Spec } from "@json-render/core";
 import type { Client, Command, ThreadState } from "@langchain/langgraph-sdk";
 import { z } from "zod";
 
-import { committedUiSchema, decisionSchema, requestSchema, type CommittedUi } from "./catalog.js";
+import {
+  conversationSchema,
+  committedUiSchema,
+  decisionSchema,
+  requestSchema,
+  type CommittedUi,
+} from "./catalog.js";
 import { createUiStream } from "./ui-events.js";
 
 const reviewSchema = z.object({
-  kind: z.literal("review-plan"),
+  kind: z.literal("review-ui"),
   generationId: z.string().uuid(),
   prompt: z.string(),
 });
-const valuesSchema = z.object({ ui: committedUiSchema.nullish(), approved: z.boolean().nullish() });
+const valuesSchema = z.object({
+  conversation: conversationSchema.default([]),
+  ui: committedUiSchema.nullish(),
+  approved: z.boolean().nullish(),
+});
 type Review = z.infer<typeof reviewSchema> & { id?: string };
-export interface PlanSnapshot {
+export interface UiSnapshot {
+  conversation: { generationId: string; prompt: string }[];
+  pendingPrompt: string | null;
   threadId: string | null;
   runId: string | null;
   ui: CommittedUi | null;
@@ -26,7 +38,9 @@ export interface PlanSnapshot {
   recovery: string | null;
 }
 
-const initialSnapshot: PlanSnapshot = {
+const initialSnapshot: UiSnapshot = {
+  conversation: [],
+  pendingPrompt: null,
   threadId: null,
   runId: null,
   ui: null,
@@ -53,8 +67,8 @@ function readReview(state: ThreadState<Record<string, unknown>>): Review | null 
 }
 
 /** Application lifecycle around the SDK. Transport parsing and retries remain upstream. */
-export function createPlanSession(client: Client<Record<string, unknown>>) {
-  let snapshot: PlanSnapshot = { ...initialSnapshot };
+export function createUiSession(client: Client<Record<string, unknown>>) {
+  let snapshot: UiSnapshot = { ...initialSnapshot };
   let epoch = 0;
   const listeners = new Set<() => void>();
   let observation: {
@@ -65,7 +79,7 @@ export function createPlanSession(client: Client<Record<string, unknown>>) {
     controller?: AbortController;
   } | null = null;
 
-  function publish(changes: Partial<PlanSnapshot>) {
+  function publish(changes: Partial<UiSnapshot>) {
     snapshot = { ...snapshot, ...changes };
     for (const listener of listeners) listener();
   }
@@ -84,6 +98,8 @@ export function createPlanSession(client: Client<Record<string, unknown>>) {
     if (review && review.generationId !== ui?.generationId)
       throw new Error("The pending review does not match the saved plan. Refresh this thread.");
     publish({
+      conversation: values.conversation,
+      pendingPrompt: null,
       ui,
       spec: ui?.spec ?? null,
       preview: false,
@@ -156,9 +172,13 @@ export function createPlanSession(client: Client<Record<string, unknown>>) {
         });
     }
   }
-  async function startRun(payload: { input: Record<string, unknown> | null; command?: Command }) {
+  async function startRun(
+    payload: { input: Record<string, unknown> | null; command?: Command },
+    pendingPrompt: string | null = null,
+  ) {
     const token = leave();
     publish({
+      pendingPrompt,
       busy: true,
       runId: null,
       error: null,
@@ -174,7 +194,7 @@ export function createPlanSession(client: Client<Record<string, unknown>>) {
         threadId = thread.thread_id;
         publish({ threadId });
       }
-      const run = await client.runs.create(threadId, "plan-builder", {
+      const run = await client.runs.create(threadId, "ui-playground", {
         ...payload,
         streamMode: ["custom", "values"],
         streamSubgraphs: true,
@@ -235,7 +255,7 @@ export function createPlanSession(client: Client<Record<string, unknown>>) {
         publish({ error: "Enter a request between 1 and 2000 characters." });
         return;
       }
-      await startRun({ input: { request: parsed.data } });
+      await startRun({ input: { request: parsed.data } }, parsed.data.prompt);
     },
     async decide(approved: boolean) {
       if (snapshot.busy || !snapshot.review || !snapshot.ui) return;

@@ -1,16 +1,16 @@
 import { describe, expect, it } from "vitest";
 
 import { generateImmediateText, rendererMetadata, startHarness } from "./test-harness.js";
-import { parseSavedUi, tripSurfaceIds } from "./trip-contract.js";
-import { createTripSession } from "./trip-session.js";
+import { parseSavedUi, uiSurfaceIds } from "./ui-contract.js";
+import { createUiSession } from "./ui-session.js";
 
 describe("trip authorization and application boundaries", () => {
   it("enforces ownership for state, stream, cancellation and resume", async () => {
     const harness = await startHarness(generateImmediateText);
     const alice = harness.clientFor("alice");
-    const session = createTripSession(alice, rendererMetadata);
+    const session = createUiSession(alice, rendererMetadata);
     try {
-      await session.generate("Alice's itinerary");
+      await session.generate("Alice's canvas");
       const { threadId, runId } = session.read();
       const root = "/threads/" + threadId;
       for (const [path, method, body] of [
@@ -20,7 +20,7 @@ describe("trip authorization and application boundaries", () => {
         [
           root + "/runs",
           "POST",
-          { assistant_id: "trip-planner", input: null, command: { resume: { approved: true } } },
+          { assistant_id: "ui-playground", input: null, command: { resume: { approved: true } } },
         ],
       ] as const) {
         const response = await fetch(harness.url + path, {
@@ -37,18 +37,18 @@ describe("trip authorization and application boundaries", () => {
     }
   });
 
-  it("does not admit a competing start while an itinerary awaits approval", async () => {
+  it("does not admit a competing start while an canvas awaits approval", async () => {
     const harness = await startHarness(generateImmediateText);
     const client = harness.clientFor();
-    const session = createTripSession(client, rendererMetadata);
+    const session = createUiSession(client, rendererMetadata);
     try {
       await session.generate("Preserve the pending review");
       const saved = session.read();
       const before = await client.runs.list(saved.threadId!);
       await expect(
-        harness.clientFor().runs.create(saved.threadId!, "trip-planner", {
+        harness.clientFor().runs.create(saved.threadId!, "ui-playground", {
           input: {
-            request: { kind: "plan", prompt: "A competing tab", metadata: rendererMetadata() },
+            request: { kind: "generate", prompt: "A competing tab", metadata: rendererMetadata() },
           },
           multitaskStrategy: "reject",
         }),
@@ -57,7 +57,7 @@ describe("trip authorization and application boundaries", () => {
       expect((await client.threads.getState(saved.threadId!)).values["ui"]).toEqual(saved.ui);
       await session.decide(true);
       await expect(
-        harness.clientFor().runs.create(saved.threadId!, "trip-planner", {
+        harness.clientFor().runs.create(saved.threadId!, "ui-playground", {
           input: null,
           command: { resume: { generationId: saved.ui!.generationId, approved: false } },
         }),
@@ -73,9 +73,9 @@ describe("trip authorization and application boundaries", () => {
     try {
       const client = harness.clientFor();
       const thread = await client.threads.create();
-      await client.runs.wait(thread.thread_id, "trip-planner", {
+      await client.runs.wait(thread.thread_id, "ui-playground", {
         input: {
-          request: { kind: "plan", prompt: "A real request", metadata: rendererMetadata() },
+          request: { kind: "generate", prompt: "A real request", metadata: rendererMetadata() },
           ui: { schemaVersion: 1, bootstrapMessages: "forged" },
           approved: true,
         },
@@ -94,11 +94,11 @@ describe("trip authorization and application boundaries", () => {
     async (kind) => {
       const harness = await startHarness(generateImmediateText);
       const client = harness.clientFor();
-      const session = createTripSession(client, rendererMetadata);
+      const session = createUiSession(client, rendererMetadata);
       try {
         await session.generate("Review me");
         const saved = session.read();
-        const run = await client.runs.create(saved.threadId!, "trip-planner", {
+        const run = await client.runs.create(saved.threadId!, "ui-playground", {
           input: null,
           command: {
             resume: {
@@ -122,14 +122,14 @@ describe("trip authorization and application boundaries", () => {
   it("rejects stale actions, forged source components and mismatched submitted form state", async () => {
     const harness = await startHarness(generateImmediateText);
     const client = harness.clientFor();
-    const session = createTripSession(client, rendererMetadata);
+    const session = createUiSession(client, rendererMetadata);
     try {
       await session.generate("My trip");
       await session.decide(true);
       const saved = session.read();
-      const preferenceId = tripSurfaceIds(saved.ui!.generationId).preferences;
+      const preferenceId = uiSurfaceIds(saved.ui!.generationId).controls;
       for (const failure of ["generation", "source", "data-model"] as const) {
-        const run = await client.runs.create(saved.threadId!, "trip-planner", {
+        const run = await client.runs.create(saved.threadId!, "ui-playground", {
           input: {
             request: {
               kind: "action",
@@ -137,11 +137,11 @@ describe("trip authorization and application boundaries", () => {
               message: {
                 version: "1.0",
                 action: {
-                  name: "reviseTrip",
+                  name: "reviseUi",
                   surfaceId: preferenceId,
                   sourceComponentId: failure === "source" ? "unknown" : "revise",
                   timestamp: new Date().toISOString(),
-                  context: { prompt: "New trip" },
+                  context: { prompt: "New chat" },
                 },
               },
               metadata: {

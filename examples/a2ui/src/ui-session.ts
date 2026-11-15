@@ -3,23 +3,30 @@ import type { Client, Command, ThreadState } from "@langchain/langgraph-sdk";
 import { z } from "zod";
 
 import {
+  conversationSchema,
   decisionSchema,
   parseSavedUi,
   promptSchema,
   requestSchema,
   type SavedUi,
   type RendererMetadata,
-} from "./trip-contract.js";
+} from "./ui-contract.js";
 import { createUiStream } from "./ui-events.js";
 
 const reviewSchema = z.object({
-  kind: z.literal("review-trip"),
+  kind: z.literal("review-ui"),
   generationId: z.string().uuid(),
   prompt: z.string(),
 });
-const valuesSchema = z.object({ ui: z.unknown().nullish(), approved: z.boolean().nullish() });
+const valuesSchema = z.object({
+  conversation: conversationSchema.default([]),
+  ui: z.unknown().nullish(),
+  approved: z.boolean().nullish(),
+});
 type Review = z.infer<typeof reviewSchema> & { id: string };
-export interface TripSnapshot {
+export interface UiSnapshot {
+  conversation: { generationId: string; prompt: string }[];
+  pendingPrompt: string | null;
   threadId: string | null;
   runId: string | null;
   ui: SavedUi | null;
@@ -34,7 +41,9 @@ export interface TripSnapshot {
   needsRefresh: boolean;
 }
 
-const initialSnapshot: TripSnapshot = {
+const initialSnapshot: UiSnapshot = {
+  conversation: [],
+  pendingPrompt: null,
   threadId: null,
   runId: null,
   ui: null,
@@ -57,7 +66,7 @@ function readReview(state: ThreadState<Record<string, unknown>>): Review | null 
       const parsed = reviewSchema.safeParse(interruption.value);
       if (parsed.success) {
         if (!interruption.id)
-          throw new Error("The pending review has no interrupt identity. Start a New trip.");
+          throw new Error("The pending review has no interrupt identity. Start a New chat.");
         return { ...parsed.data, id: interruption.id };
       }
     }
@@ -65,11 +74,11 @@ function readReview(state: ThreadState<Record<string, unknown>>): Review | null 
 }
 
 /** Application lifecycle around the SDK. Transport parsing and retries remain upstream. */
-export function createTripSession(
+export function createUiSession(
   client: Client<Record<string, unknown>>,
   readMetadata: () => RendererMetadata,
 ) {
-  let snapshot: TripSnapshot = { ...initialSnapshot };
+  let snapshot: UiSnapshot = { ...initialSnapshot };
   let epoch = 0;
   const listeners = new Set<() => void>();
   let observation: {
@@ -80,7 +89,7 @@ export function createTripSession(
     controller?: AbortController;
   } | null = null;
 
-  function publish(changes: Partial<TripSnapshot>) {
+  function publish(changes: Partial<UiSnapshot>) {
     snapshot = { ...snapshot, ...changes };
     for (const listener of listeners) listener();
   }
@@ -108,8 +117,10 @@ export function createTripSession(
     const ui = values.ui ? parseSavedUi(values.ui) : null;
     const review = readReview(state);
     if (review && review.generationId !== ui?.generationId)
-      throw new Error("The pending review does not match the saved trip. Refresh this thread.");
+      throw new Error("The pending review does not match the saved UI. Refresh this thread.");
     publish({
+      conversation: values.conversation,
+      pendingPrompt: null,
       ui,
       view: ui,
       preview: false,
@@ -147,7 +158,7 @@ export function createTripSession(
               Boolean(preview.view) &&
               preview.view?.generationId === preview.generationId,
             recovery: preview.gap
-              ? "Some updates are missing. Showing the last saved trip until this run finishes."
+              ? "Some updates are missing. Showing the last saved UI until this run finishes."
               : null,
           });
       }
@@ -175,16 +186,20 @@ export function createTripSession(
           error:
             failure ??
             (["error", "timeout"].includes(run.status)
-              ? "Generation failed. Showing the last saved trip."
+              ? "Generation failed. Showing the last saved UI."
               : null),
         });
     } catch (error) {
       if (token === epoch) requireRefresh(error);
     }
   }
-  async function startRun(payload: { input: Record<string, unknown> | null; command?: Command }) {
+  async function startRun(
+    payload: { input: Record<string, unknown> | null; command?: Command },
+    pendingPrompt: string | null = null,
+  ) {
     const token = leave();
     publish({
+      pendingPrompt,
       busy: true,
       runId: null,
       error: null,
@@ -200,7 +215,7 @@ export function createTripSession(
         threadId = thread.thread_id;
         publish({ threadId });
       }
-      const run = await client.runs.create(threadId, "trip-planner", {
+      const run = await client.runs.create(threadId, "ui-playground", {
         ...payload,
         streamMode: ["custom", "values"],
         streamSubgraphs: true,
@@ -264,15 +279,18 @@ export function createTripSession(
         return;
       }
       try {
-        await startRun({
-          input: {
-            request: requestSchema.parse({
-              kind: "plan",
-              prompt: parsed.data,
-              metadata: readMetadata(),
-            }),
+        await startRun(
+          {
+            input: {
+              request: requestSchema.parse({
+                kind: "generate",
+                prompt: parsed.data,
+                metadata: readMetadata(),
+              }),
+            },
           },
-        });
+          parsed.data,
+        );
       } catch (error) {
         publish({ error: describeError(error) });
       }
@@ -294,7 +312,12 @@ export function createTripSession(
           message: ActionMessageSchema.parse(message),
           metadata: readMetadata(),
         });
-        await startRun({ input: { request } });
+        await startRun(
+          { input: { request } },
+          request.kind === "action" && request.message.action.name === "reviseUi"
+            ? String(request.message.action.context?.["prompt"] ?? "")
+            : null,
+        );
       } catch (error) {
         publish({ error: describeError(error) });
       }

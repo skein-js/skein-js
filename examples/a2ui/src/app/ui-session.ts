@@ -3,20 +3,20 @@ import type { ActionPayload } from "@a2ui/web_core/v1_0";
 import { Injectable, type OnDestroy, computed, inject, signal } from "@angular/core";
 import { Client } from "@langchain/langgraph-sdk";
 
-import { prepareTripRun } from "../trip-client.js";
-import type { RendererMetadata, SavedUi } from "../trip-contract.js";
-import { createTripSession } from "../trip-session.js";
+import { prepareUiRun } from "../ui-client.js";
+import type { RendererMetadata, SavedUi } from "../ui-contract.js";
+import { createUiSession } from "../ui-session.js";
 
 /** Angular owns presentation; the framework-independent session owns SDK observation. */
 @Injectable({ providedIn: "root" })
-export class TripSession implements OnDestroy {
+export class UiSession implements OnDestroy {
   private readonly renderer = inject(A2uiRendererService);
-  private readonly session = createTripSession(
+  private readonly session = createUiSession(
     new Client<Record<string, unknown>>({
       apiUrl: window.location.origin + "/api",
       apiKey: null,
       defaultHeaders: { "x-user": "demo-user" },
-      onRequest: prepareTripRun,
+      onRequest: prepareUiRun,
     }),
     () => this.readMetadata(),
   );
@@ -86,7 +86,7 @@ export class TripSession implements OnDestroy {
   stop() {
     return this.session.stop();
   }
-  newTrip() {
+  newChat() {
     window.history.replaceState(null, "", window.location.pathname);
     return this.session.open(null);
   }

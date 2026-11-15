@@ -41,11 +41,11 @@ export async function verifyA2uiConsumer(directory, packed) {
   const backendFiles = [
     "auth.ts",
     "generation.ts",
-    "trip-client.ts",
-    "trip-contract.ts",
-    "trip-generation.ts",
-    "trip-graph.ts",
-    "trip-session.ts",
+    "ui-client.ts",
+    "ui-contract.ts",
+    "ui-generation.ts",
+    "ui-graph.ts",
+    "ui-session.ts",
     "ui-events.ts",
   ];
   await writeFile(
@@ -75,7 +75,7 @@ export async function verifyA2uiConsumer(directory, packed) {
   await writeFile(
     path.join(directory, "langgraph.json"),
     JSON.stringify({
-      graphs: { "trip-planner": "./compiled/trip-graph.js:graph" },
+      graphs: { "ui-playground": "./compiled/ui-graph.js:graph" },
       auth: { path: "./compiled/auth.js:auth" },
     }),
   );
@@ -87,9 +87,9 @@ export async function verifyA2uiConsumer(directory, packed) {
     import {MessageProcessor,basicCatalog} from '@a2ui/web_core/v1_0';
     import {Client} from '@langchain/langgraph-sdk';
     import {createExpressServer} from '@skein-js/express';
-    import {prepareTripRun} from './compiled/trip-client.js';
-    import {createTripSession} from './compiled/trip-session.js';
-    import {tripSurfaceIds} from './compiled/trip-contract.js';
+    import {prepareUiRun} from './compiled/ui-client.js';
+    import {createUiSession} from './compiled/ui-session.js';
+    import {uiSurfaceIds} from './compiled/ui-contract.js';
     delete process.env.A2UI_MODEL;
     const renderer=new MessageProcessor([basicCatalog]);
     const metadata=()=>({
@@ -98,8 +98,8 @@ export async function verifyA2uiConsumer(directory, packed) {
     });
     const server=await createExpressServer({config:path.resolve('langgraph.json')});
     const listener=await server.listen(0,'127.0.0.1');
-    const client=new Client({apiUrl:'http://127.0.0.1:'+listener.address().port,apiKey:null,defaultHeaders:{'x-user':'consumer'},onRequest:prepareTripRun});
-    const session=createTripSession(client,metadata);
+    const client=new Client({apiUrl:'http://127.0.0.1:'+listener.address().port,apiKey:null,defaultHeaders:{'x-user':'consumer'},onRequest:prepareUiRun});
+    const session=createUiSession(client,metadata);
     let reopened;
     try {
       let previewed=false;
@@ -114,23 +114,23 @@ export async function verifyA2uiConsumer(directory, packed) {
       assert.equal(session.read().approved,true);
       assert.equal(session.read().ui.generationId,saved.ui.generationId);
       renderer.processMessages(saved.ui.bootstrapMessages);
-      const preferenceId=tripSurfaceIds(saved.ui.generationId).preferences;
+      const preferenceId=uiSurfaceIds(saved.ui.generationId).controls;
       renderer.model.getSurface(preferenceId).dataModel.set('/feedback','More gardens and less walking');
-      await session.act({version:'1.0',action:{name:'reviseTrip',surfaceId:preferenceId,sourceComponentId:'revise',timestamp:new Date().toISOString(),context:{prompt:'More gardens and less walking'}}});
+      await session.act({version:'1.0',action:{name:'reviseUi',surfaceId:preferenceId,sourceComponentId:'revise',timestamp:new Date().toISOString(),context:{prompt:'More gardens and less walking'}}});
       assert.equal(session.read().error,null);
       assert.notEqual(session.read().ui.generationId,saved.ui.generationId);
       assert(session.read().review);
       await session.decide(false);
       for(const surfaceId of renderer.getSurfaces().keys())renderer.processMessages({version:'1.0',deleteSurface:{surfaceId}});
       renderer.processMessages(session.read().ui.bootstrapMessages);
-      const tipsId=tripSurfaceIds(session.read().ui.generationId).tips;
-      await session.act({version:'1.0',action:{name:'dismissTips',surfaceId:tipsId,sourceComponentId:'dismiss',timestamp:new Date().toISOString(),context:{}}});
+      const notesId=uiSurfaceIds(session.read().ui.generationId).notes;
+      await session.act({version:'1.0',action:{name:'dismissNotes',surfaceId:notesId,sourceComponentId:'dismiss',timestamp:new Date().toISOString(),context:{}}});
       assert.equal(session.read().error,null);
       assert.equal(session.read().ui.bootstrapMessages.length,2);
       assert.equal(session.read().review,null);
       const finalUi=session.read().ui;
       const before=(await client.runs.list(saved.threadId)).length;
-      reopened=createTripSession(client,metadata);
+      reopened=createUiSession(client,metadata);
       await reopened.open(saved.threadId);
       assert.deepEqual(reopened.read().ui,finalUi);
       assert.equal(reopened.read().approved,false);
@@ -169,7 +169,7 @@ export async function verifyA2uiConsumer(directory, packed) {
     path.join(directory, "tsconfig.app.json"),
   );
   const angular = JSON.parse(await readFile(path.join(example, "angular.json"), "utf8"));
-  angular.projects["trip-planner"].architect.build.options.outputPath = "dist";
+  angular.projects["ui-playground"].architect.build.options.outputPath = "dist";
   await writeFile(path.join(directory, "angular.json"), JSON.stringify(angular, null, 2));
   run(process.execPath, ["node_modules/@angular/cli/bin/ng.js", "build"], {
     cwd: directory,

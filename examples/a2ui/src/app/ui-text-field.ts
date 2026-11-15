@@ -2,7 +2,7 @@ import { TextFieldComponent } from "@a2ui/angular/v0_9";
 import { ChangeDetectionStrategy, Component } from "@angular/core";
 
 @Component({
-  selector: "app-trip-text-field",
+  selector: "app-ui-text-field",
   changeDetection: ChangeDetectionStrategy.OnPush,
   template: `
     <label [for]="inputId">{{ label() }}</label>
@@ -41,6 +41,6 @@ import { ChangeDetectionStrategy, Component } from "@angular/core";
     }
   `,
 })
-export class TripTextField extends TextFieldComponent {
-  readonly inputId = "trip-feedback-" + crypto.randomUUID();
+export class UiTextField extends TextFieldComponent {
+  readonly inputId = "ui-feedback-" + crypto.randomUUID();
 }

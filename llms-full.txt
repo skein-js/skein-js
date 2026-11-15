@@ -164,9 +164,9 @@ For AI tools, [llms.txt](./llms.txt) indexes the docs and [llms-full.txt](./llms
 
 Start with [triage-agent](./examples/triage-agent) for background work, schedules, and approvals
 without an API key, or [chat-app](./examples/chat-app) for a research assistant with a Next.js UI.
-For a generated component UI, try the [json-render plan builder](./examples/json-render): stream a
+For a generated component UI, try the [json-render UI playground](./examples/json-render): stream a
 plan, restore it from thread state, revise it through buttons/forms, and approve it.
-The [Angular A2UI trip planner](./examples/a2ui) demonstrates streamed surfaces, bound form input,
+The [Angular A2UI UI playground](./examples/a2ui) demonstrates streamed surfaces, bound form input,
 checkpointed review and restoration with Google's A2UI protocol.
 The [examples directory](./examples) also includes framework integrations, migration, and local apps.
 For durable embedded calls and external command queues, use the
@@ -9821,8 +9821,8 @@ pnpm --filter @skein-js/example-triage-agent seed   # register the schedule + sw
 | [`triage-agent`](https://github.com/skein-js/skein-js/tree/main/examples/triage-agent)             | Crons, background runs, idempotency, HITL, memory, time travel                           |
 | [`decoupled-delivery`](https://github.com/skein-js/skein-js/tree/main/examples/decoupled-delivery) | Routed channels: email source → approval workflow → WhatsApp/email destinations          |
 | [`chat-app`](https://github.com/skein-js/skein-js/tree/main/examples/chat-app)                     | Full-stack chat: streaming, thinking, tool cards, HITL, memory                           |
-| [`json-render`](https://github.com/skein-js/skein-js/tree/main/examples/json-render)               | React plan builder: streamed JSON UI, saved specs, revisions and approval                |
-| [`a2ui`](https://github.com/skein-js/skein-js/tree/main/examples/a2ui)                             | Angular trip planner: A2UI 1.0, bound actions, surface deletion and checkpointed review  |
+| [`json-render`](https://github.com/skein-js/skein-js/tree/main/examples/json-render)               | React UI playground: streamed JSON UI, saved specs, revisions and approval               |
+| [`a2ui`](https://github.com/skein-js/skein-js/tree/main/examples/a2ui)                             | Angular UI playground: A2UI 1.0, bound actions, surface deletion and checkpointed review |
 | [`deep-agent`](https://github.com/skein-js/skein-js/tree/main/examples/deep-agent)                 | Research briefing assistant on Deep Agents _(experimental)_: memory, subagents, approval |
 | [`invoke-endpoint`](https://github.com/skein-js/skein-js/tree/main/examples/invoke-endpoint)       | Non-chat graphs as plain HTTP endpoints                                                  |
 | [`embed-graph`](https://github.com/skein-js/skein-js/tree/main/examples/embed-graph)               | A graph you already have, served with no `langgraph.json`                                |
@@ -11037,7 +11037,7 @@ its custom events, and exposes the thread checkpoints you need to reopen the UI.
 
 This recipe follows the public
 [`json-render` example](https://github.com/skein-js/skein-js/tree/main/examples/json-render): a
-React plan builder with an offline generator and an optional live model. It uses the existing
+React UI playground with an offline generator and an optional live model. It uses the existing
 JavaScript SDK and upstream SpecStream compiler; no Skein adapter package is needed.
 
 ## Try the complete journey
@@ -11053,18 +11053,26 @@ pnpm dev:all
 The shortcut runs the graph server and Vite frontend together through Nx. Keep the terminal
 running and press **Ctrl+C** to stop both.
 
-Open **http://127.0.0.1:3006**, enter a request and select **Build a plan**. The card and tasks appear
-while generation is in progress. Approve or reject the plan, then use its generated button or
+Open **http://127.0.0.1:3006**, enter a request and select **Send**. The card and tasks appear
+while generation is in progress. Approve or reject the UI, then use its generated button or
 feedback form to request a revision. Reload its thread URL: the latest saved specification and any
 pending review return without another generation.
 
-![The plan builder after approval](/images/json-render/plan-builder.png)
+![The UI playground after approval](/images/json-render/plan-builder.png)
 
-The default generator is a deterministic fixture with fixed tasks and your request as its summary.
+The default generator is a deterministic fixture with dashboard, form and comparison layouts.
 It needs no credentials or external service. To use a live model, copy the example's `.env.example`
 to `.env`, set `JSON_RENDER_MODEL` to a LangChain `provider:model` string, add the provider's
 credentials, and restart the graph server. The Google integration is installed; other providers
 need their LangChain integration package. Keep these settings on the backend.
+
+## Use the chat playground
+
+Choose a **Website traffic dashboard**, **Event registration form** or **Product comparison cards**, or describe an interface and select **Send**. The response renders inline; the read-only JSON panel shows the current validated UI. Approve or reject the saved version, then continue in chat or use its generated revision controls.
+
+The default runs offline using three illustrative layouts. A live model accepts other prompts within the registered catalog; it cannot emit arbitrary executable code. Configure it using the model instructions below.
+
+Reload the chat URL to restore saved prompts, the active UI and pending review without execution. Only the current UI payload is retained in application state; earlier chat turns keep their prompts and a replacement notice. **New chat** starts a separate thread.
 
 ## Bring the pattern into your application
 
@@ -11087,17 +11095,17 @@ maps each module to its responsibility.
 Use `defineCatalog` from `@json-render/core` with `schema` from `@json-render/react/schema` and Zod
 schemas for component props and action parameters. Define React implementations with
 `defineRegistry`, then render through `JSONUIProvider` and `Renderer` from `@json-render/react`.
-The example provides Card, Text, TaskList, Button and FeedbackForm, with one `revisePlan` action.
+The example provides Card, Grid, Metric, Table, Text, TaskList, Button and FeedbackForm, with one `reviseUi` action.
 
 Use `catalog.prompt()` for model instructions and `catalog.jsonSchema()` when your generation
 strategy needs a schema. The optional model path receives the previous committed specification as
 context but generates a complete new specification from an empty compiler. Multiple turns replace
-the displayed plan rather than replaying old patches onto it.
+the displayed UI rather than replaying old patches onto it.
 
 Validate completed output with `catalog.validate()` and the upstream `validateSpec()` structural
 validator before saving it. In json-render 0.21.4, catalog validation normalizes elements and strips
 their `on` bindings. The example preserves bindings separately through upstream `ActionBindingSchema`,
-restricted to `revisePlan`, and combines those with the normalized specification. It accepts no
+restricted to `reviseUi`, and combines those with the normalized specification. It accepts no
 generated action chains or navigation. This validation is application policy, not a Skein setting.
 
 ### Stream graph output through the compiler
@@ -11123,7 +11131,7 @@ run, accepts only bare `custom` events for the current generation, and ignores `
 events. Keep a separate controller/compiler if your application renders additional graph scopes.
 
 Configure the SDK client with `onRequest: addRunIdempotency` from the example's
-[`plan-client.ts`](https://github.com/skein-js/skein-js/blob/main/examples/json-render/src/plan-client.ts).
+[`ui-client.ts`](https://github.com/skein-js/skein-js/blob/main/examples/json-render/src/ui-client.ts).
 The hook assigns an `Idempotency-Key` to each run-creation request, including approval resumes.
 SDK 1.12.7 calls the hook before its retry loop, so retries reuse that key if a successful response
 is lost. Each new turn or decision gets a new key. This uses Skein's existing
@@ -11223,7 +11231,7 @@ Use [A2UI](https://a2ui.org/) when an agent should compose interactive interface
 registered by your application. Skein hosts the LangGraph graph and delivers its custom events;
 upstream A2UI libraries compile, validate and render the UI.
 
-This recipe follows the public [Angular trip planner](https://github.com/skein-js/skein-js/tree/main/examples/a2ui).
+This recipe follows the public [Angular UI playground](https://github.com/skein-js/skein-js/tree/main/examples/a2ui).
 It streams surfaces, saves them in graph checkpoints, routes generated controls into new runs and
 resumes a separate approval step. It uses existing Agent Protocol SSE and the JavaScript SDK.
 
@@ -11237,18 +11245,26 @@ cd examples/a2ui
 pnpm dev:all
 ```
 
-Open **http://127.0.0.1:3007** and select **Plan my trip**. Review the saved itinerary with
-**Approve itinerary** or **Reject**, then use its generated revision button or feedback field.
-**Dismiss travel tips** deletes one surface without regenerating the trip. Reload its thread URL
-to restore the saved surfaces and pending review without executing the graph.
+Open **http://127.0.0.1:3007** and select **Send**. Review the saved UI with
+**Approve UI** or **Reject**, then use its generated revision button or feedback field.
+**Dismiss notes** deletes one surface without regenerating the UI. Reload its thread URL
+to restore the saved surfaces, prompts and pending review without executing the graph.
 
-![An approved trip restored in Angular](/images/a2ui/trip-planner.png)
+![The Angular chat playground](/images/a2ui/trip-planner.png)
 
-The default generator emits a scripted three-day itinerary and needs no credentials. To use a live
+The default generator emits a scripted UI samples and needs no credentials. To use a live
 model, copy `.env.example` to `.env`, set `A2UI_MODEL` to a LangChain `provider:model` string, supply
 the provider's credentials and restart the backend. The Google integration is installed; add the
 appropriate LangChain integration for another provider. The fixture is a demonstration, not a
-destination or availability search. Approval records a decision and makes no booking.
+destination or availability search. Approval records a decision and submits no external action.
+
+## Use the chat playground
+
+Choose a **Website traffic dashboard**, **Event registration form** or **Product comparison cards**, or describe an interface and select **Send**. The response renders inline; the read-only JSON panel shows the current validated UI. Approve or reject the saved version, then continue in chat or use its generated revision controls.
+
+The default runs offline using three illustrative layouts. A live model accepts other prompts within the registered catalog; it cannot emit arbitrary executable code. Configure it using the model instructions below.
+
+Reload the chat URL to restore saved prompts, the active UI and pending review without execution. Only the current UI payload is retained in application state; earlier chat turns keep their prompts and a replacement notice. **New chat** starts a separate thread.
 
 ## Bring the pattern into your application
 
@@ -11268,20 +11284,20 @@ imports out of the frontend; the browser uses the core processor and Angular ren
 
 Register the upstream `BasicCatalog` through `provideA2UI`, with `useUniversalComponents: false`
 for native Angular components. Release 0.14.0's default v1 catalog entries are universal-only.
-The example's `createTripCatalog` uses public component overrides to pair v1 Basic Catalog schemas
+The example's `createUiCatalog` uses public component overrides to pair v1 Basic Catalog schemas
 with the package's exported native Text, layout, Button, TextField and Divider implementations
 from `@a2ui/angular/v0_9`. It retains the v1 catalog ID and wire format; browser coverage verifies
 this specific combination. Mount its `SurfaceComponent` for each active surface. In this
 pinned release, that component's selector is `<a2ui-v09-surface>` even for A2UI 1.0.
-The small `TripTextField` override retains upstream field binding and input handling while associating
+The small `UiTextField` override retains upstream field binding and input handling while associating
 the label with its input, which the pinned native field's template omits.
 
 Use standalone components, OnPush and zoneless change detection. The example's Angular service
 adapts a framework-independent SDK session into signals. Its action callback forwards the upstream
 resolved action payload to the session; it does not implement a renderer or data-binding engine.
 
-The example supports Text, Column, Row, Card, Button, TextField and Divider, with `reviseTrip` and
-`dismissTips` event actions. It rejects function calls, navigation and custom catalogs. Its
+The example supports Text, Column, Row, Card, Button, TextField and Divider, with `reviseUi` and
+`dismissNotes` event actions. It rejects function calls, navigation and custom catalogs. Its
 `provideMarkdownRenderer` implementation escapes text; the optional Markdown package is omitted
 because its declared core peer range does not match the pinned core package.
 
@@ -11328,7 +11344,7 @@ For editable surfaces, set `sendDataModel: true`. On an action, call
 the upstream action message. This carries local bound-field edits to the graph.
 
 Validate action name, source component, current generation and the application values you accept.
-The trip planner accepts feedback on its preferences surface, checks that the submitted field and
+The UI playground accepts feedback on its controls surface, checks that the submitted field and
 resolved action agree, and maps that action into the next generation. Client metadata never decides
 ownership. Keep the graph's input schema narrower than its saved-state schema.
 
@@ -11343,10 +11359,10 @@ application controls send `input: null` and an interrupt-ID-addressed `command.r
 the decision and generation ID inside that node. Resuming review does not rerun generation.
 
 The generated controls are disabled during previews, execution and pending review. Every new
-itinerary is reviewed; dismissing travel tips only updates saved surfaces and retains the existing
-itinerary decision.
+generated UI is reviewed; dismissing notes only updates saved surfaces and retains the existing
+UI decision.
 
-Configure the SDK with `onRequest: prepareTripRun` from the example. SDK 1.12.7 does not serialize
+Configure the SDK with `onRequest: prepareUiRun` from the example. SDK 1.12.7 does not serialize
 `if_thread_status` from `runs.create` options, so this public hook inserts the existing wire field:
 ordinary starts require `idle` or `error`, and resumes require `interrupted`. Combined with
 `multitaskStrategy: "reject"`, this prevents a competing tab from overwriting a pending review.
@@ -11395,16 +11411,16 @@ decision, not an immutable authorization to perform an external action.
 | Feature            | Supported behavior                                                                               |
 | ------------------ | ------------------------------------------------------------------------------------------------ |
 | Generation         | Fragmented Direct JSON, offline fixture and optional LangChain model stream                      |
-| Surfaces           | Create, component/data updates and deletion across itinerary, preferences and tips               |
-| Inputs and actions | Native bound TextField, `reviseTrip` and `dismissTips` events                                    |
+| Surfaces           | Create, component/data updates and deletion across canvas, controls and notes                    |
+| Inputs and actions | Native bound TextField, `reviseUi` and `dismissNotes` events                                     |
 | Review             | Checkpoint first, then interrupt-ID-addressed approval or rejection without regeneration         |
 | Recovery           | Reconnect to the same run, explicit cancellation and checkpoint restoration after missing events |
 | Persistence        | Memory for the demo; SQLite close/reopen with a fresh event bus                                  |
 | Rendering          | Native Angular with the documented overrides and escaped plain text                              |
 
 These versions establish this Angular/root-stream integration and application snapshot schema
-version 1. They do not establish full A2UI conformance or compatibility with future releases.
-Incompatible snapshots show an error and offer **New trip**; the example does not migrate them,
+version 2. They do not establish full A2UI conformance or compatibility with future releases.
+Incompatible snapshots show an error and offer **New chat**; the example does not migrate them,
 overwrite them or regenerate on reopening. Unsubmitted local form edits are not checkpointed.
 
 ### A2A interoperability is separate

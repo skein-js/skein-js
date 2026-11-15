@@ -6,7 +6,7 @@ its custom events, and exposes the thread checkpoints you need to reopen the UI.
 
 This recipe follows the public
 [`json-render` example](https://github.com/skein-js/skein-js/tree/main/examples/json-render): a
-React plan builder with an offline generator and an optional live model. It uses the existing
+React UI playground with an offline generator and an optional live model. It uses the existing
 JavaScript SDK and upstream SpecStream compiler; no Skein adapter package is needed.
 
 ## Try the complete journey
@@ -22,18 +22,26 @@ pnpm dev:all
 The shortcut runs the graph server and Vite frontend together through Nx. Keep the terminal
 running and press **Ctrl+C** to stop both.
 
-Open **http://127.0.0.1:3006**, enter a request and select **Build a plan**. The card and tasks appear
-while generation is in progress. Approve or reject the plan, then use its generated button or
+Open **http://127.0.0.1:3006**, enter a request and select **Send**. The card and tasks appear
+while generation is in progress. Approve or reject the UI, then use its generated button or
 feedback form to request a revision. Reload its thread URL: the latest saved specification and any
 pending review return without another generation.
 
-![The plan builder after approval](/images/json-render/plan-builder.png)
+![The UI playground after approval](/images/json-render/plan-builder.png)
 
-The default generator is a deterministic fixture with fixed tasks and your request as its summary.
+The default generator is a deterministic fixture with dashboard, form and comparison layouts.
 It needs no credentials or external service. To use a live model, copy the example's `.env.example`
 to `.env`, set `JSON_RENDER_MODEL` to a LangChain `provider:model` string, add the provider's
 credentials, and restart the graph server. The Google integration is installed; other providers
 need their LangChain integration package. Keep these settings on the backend.
+
+## Use the chat playground
+
+Choose a **Website traffic dashboard**, **Event registration form** or **Product comparison cards**, or describe an interface and select **Send**. The response renders inline; the read-only JSON panel shows the current validated UI. Approve or reject the saved version, then continue in chat or use its generated revision controls.
+
+The default runs offline using three illustrative layouts. A live model accepts other prompts within the registered catalog; it cannot emit arbitrary executable code. Configure it using the model instructions below.
+
+Reload the chat URL to restore saved prompts, the active UI and pending review without execution. Only the current UI payload is retained in application state; earlier chat turns keep their prompts and a replacement notice. **New chat** starts a separate thread.
 
 ## Bring the pattern into your application
 
@@ -56,17 +64,17 @@ maps each module to its responsibility.
 Use `defineCatalog` from `@json-render/core` with `schema` from `@json-render/react/schema` and Zod
 schemas for component props and action parameters. Define React implementations with
 `defineRegistry`, then render through `JSONUIProvider` and `Renderer` from `@json-render/react`.
-The example provides Card, Text, TaskList, Button and FeedbackForm, with one `revisePlan` action.
+The example provides Card, Grid, Metric, Table, Text, TaskList, Button and FeedbackForm, with one `reviseUi` action.
 
 Use `catalog.prompt()` for model instructions and `catalog.jsonSchema()` when your generation
 strategy needs a schema. The optional model path receives the previous committed specification as
 context but generates a complete new specification from an empty compiler. Multiple turns replace
-the displayed plan rather than replaying old patches onto it.
+the displayed UI rather than replaying old patches onto it.
 
 Validate completed output with `catalog.validate()` and the upstream `validateSpec()` structural
 validator before saving it. In json-render 0.21.4, catalog validation normalizes elements and strips
 their `on` bindings. The example preserves bindings separately through upstream `ActionBindingSchema`,
-restricted to `revisePlan`, and combines those with the normalized specification. It accepts no
+restricted to `reviseUi`, and combines those with the normalized specification. It accepts no
 generated action chains or navigation. This validation is application policy, not a Skein setting.
 
 ### Stream graph output through the compiler
@@ -92,7 +100,7 @@ run, accepts only bare `custom` events for the current generation, and ignores `
 events. Keep a separate controller/compiler if your application renders additional graph scopes.
 
 Configure the SDK client with `onRequest: addRunIdempotency` from the example's
-[`plan-client.ts`](https://github.com/skein-js/skein-js/blob/main/examples/json-render/src/plan-client.ts).
+[`ui-client.ts`](https://github.com/skein-js/skein-js/blob/main/examples/json-render/src/ui-client.ts).
 The hook assigns an `Idempotency-Key` to each run-creation request, including approval resumes.
 SDK 1.12.7 calls the hook before its retry loop, so retries reuse that key if a successful response
 is lost. Each new turn or decision gets a new key. This uses Skein's existing

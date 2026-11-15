@@ -4,7 +4,7 @@
     "analytics": false
   },
   "projects": {
-    "trip-planner": {
+    "ui-playground": {
       "projectType": "application",
       "root": "",
       "sourceRoot": "src",
@@ -53,10 +53,10 @@
           "builder": "@angular/build:dev-server",
           "configurations": {
             "development": {
-              "buildTarget": "trip-planner:build:development"
+              "buildTarget": "ui-playground:build:development"
             },
             "production": {
-              "buildTarget": "trip-planner:build:production"
+              "buildTarget": "ui-playground:build:production"
             }
           },
           "defaultConfiguration": "development"

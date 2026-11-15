@@ -28,9 +28,9 @@ export async function verifyJsonRenderConsumer(directory, packed) {
     "auth.ts",
     "catalog.ts",
     "generation.ts",
-    "plan-graph.ts",
-    "plan-client.ts",
-    "plan-session.ts",
+    "ui-graph.ts",
+    "ui-client.ts",
+    "ui-session.ts",
     "ui-events.ts",
   ]) {
     await copyFile(path.join(example, "src", filename), path.join(directory, "src", filename));
@@ -62,7 +62,7 @@ export async function verifyJsonRenderConsumer(directory, packed) {
   await writeFile(
     path.join(directory, "langgraph.json"),
     JSON.stringify({
-      graphs: { "plan-builder": "./compiled/plan-graph.js:graph" },
+      graphs: { "ui-playground": "./compiled/ui-graph.js:graph" },
       auth: { path: "./compiled/auth.js:auth" },
     }),
   );
@@ -73,8 +73,8 @@ export async function verifyJsonRenderConsumer(directory, packed) {
     import path from 'node:path';
     import {Client} from '@langchain/langgraph-sdk';
     import {createExpressServer} from '@skein-js/express';
-    import {createPlanSession} from './compiled/plan-session.js';
-    import {addRunIdempotency} from './compiled/plan-client.js';
+    import {createUiSession} from './compiled/ui-session.js';
+    import {addRunIdempotency} from './compiled/ui-client.js';
     import {catalog} from './compiled/catalog.js';
     delete process.env.JSON_RENDER_MODEL;
     assert(catalog.prompt().includes('TaskList'));
@@ -83,7 +83,7 @@ export async function verifyJsonRenderConsumer(directory, packed) {
     const listener = await server.listen(0,'127.0.0.1');
     const apiUrl = 'http://127.0.0.1:'+listener.address().port;
     const client = new Client({apiUrl,apiKey:null,defaultHeaders:{'x-user':'consumer'},onRequest:addRunIdempotency});
-    const session = createPlanSession(client);
+    const session = createUiSession(client);
     let reopened;
     try {
       let previewed = false;
@@ -97,7 +97,7 @@ export async function verifyJsonRenderConsumer(directory, packed) {
       const generation = saved.ui.generationId;
       const before = (await client.runs.list(saved.threadId)).length;
       session.dispose();
-      reopened = createPlanSession(new Client({apiUrl,apiKey:null,defaultHeaders:{'x-user':'consumer'},onRequest:addRunIdempotency}));
+      reopened = createUiSession(new Client({apiUrl,apiKey:null,defaultHeaders:{'x-user':'consumer'},onRequest:addRunIdempotency}));
       await reopened.open(saved.threadId);
       assert.deepEqual(reopened.read().ui,saved.ui);
       assert.equal((await client.runs.list(saved.threadId)).length,before);

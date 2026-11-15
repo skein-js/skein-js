@@ -118,7 +118,7 @@ describe("application SpecStream bridge", () => {
     expect(() => validateUiSpec(unknownAction)).toThrow();
     const navigation = structuredClone(expected);
     navigation.elements["revise"]!.on = {
-      press: { action: "revisePlan", onSuccess: { navigate: "https://example.com" } },
+      press: { action: "reviseUi", onSuccess: { navigate: "https://example.com" } },
     };
     expect(() => validateUiSpec(navigation)).toThrow();
   });

@@ -7,8 +7,8 @@ import {
   provideZonelessChangeDetection,
 } from "@angular/core";
 
-import { TripSession } from "./trip-session";
-import { createTripCatalog } from "./trip-catalog";
+import { UiSession } from "./ui-session";
+import { createUiCatalog } from "./native-catalog";
 
 export const appConfig: ApplicationConfig = {
   providers: [
@@ -17,9 +17,9 @@ export const appConfig: ApplicationConfig = {
     provideA2UI(() => {
       const injector = inject(Injector);
       return {
-        catalogs: [createTripCatalog()],
+        catalogs: [createUiCatalog()],
         useUniversalComponents: false,
-        actionHandler: (action) => injector.get(TripSession).act(action),
+        actionHandler: (action) => injector.get(UiSession).act(action),
       };
     }),
     provideMarkdownRenderer(async (text) =>

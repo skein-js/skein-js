@@ -242,9 +242,9 @@ are limited to tests and packaging gates. See [local deployment](docs/local-depl
 commands and host boundaries.
 
 Examples live in `examples/`: `native-transports` (native SQLite admission and an HTTP/BullMQ approval
-backend with a durable outcome receiver), `json-render` (public React/Vite plan builder — upstream
+backend with a durable outcome receiver), `json-render` (public React/Vite UI playground — upstream
 SpecStream compilation, checkpoint restoration, revisions and interrupt/resume; offline by default), `chat-app` (flagship — research assistant + Next.js/shadcn UI),
-`a2ui` (native Angular trip planner — upstream A2UI 1.0, checkpoint restoration, bound actions,
+`a2ui` (native Angular UI playground — upstream A2UI 1.0, checkpoint restoration, bound actions,
 surface deletion and interrupt/resume; offline by default), `triage-agent` (the console's workload — cron sweep, a durable run per item, idempotent re-sweeps,
 conditional HITL approval, store memory; runs offline with no API key),
 `deep-agent` (experimental Deep Agents support — a research briefing assistant with per-user memory,

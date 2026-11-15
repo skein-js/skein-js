@@ -4,7 +4,7 @@ Use [A2UI](https://a2ui.org/) when an agent should compose interactive interface
 registered by your application. Skein hosts the LangGraph graph and delivers its custom events;
 upstream A2UI libraries compile, validate and render the UI.
 
-This recipe follows the public [Angular trip planner](https://github.com/skein-js/skein-js/tree/main/examples/a2ui).
+This recipe follows the public [Angular UI playground](https://github.com/skein-js/skein-js/tree/main/examples/a2ui).
 It streams surfaces, saves them in graph checkpoints, routes generated controls into new runs and
 resumes a separate approval step. It uses existing Agent Protocol SSE and the JavaScript SDK.
 
@@ -18,18 +18,26 @@ cd examples/a2ui
 pnpm dev:all
 ```
 
-Open **http://127.0.0.1:3007** and select **Plan my trip**. Review the saved itinerary with
-**Approve itinerary** or **Reject**, then use its generated revision button or feedback field.
-**Dismiss travel tips** deletes one surface without regenerating the trip. Reload its thread URL
-to restore the saved surfaces and pending review without executing the graph.
+Open **http://127.0.0.1:3007** and select **Send**. Review the saved UI with
+**Approve UI** or **Reject**, then use its generated revision button or feedback field.
+**Dismiss notes** deletes one surface without regenerating the UI. Reload its thread URL
+to restore the saved surfaces, prompts and pending review without executing the graph.
 
-![An approved trip restored in Angular](/images/a2ui/trip-planner.png)
+![The Angular chat playground](/images/a2ui/trip-planner.png)
 
-The default generator emits a scripted three-day itinerary and needs no credentials. To use a live
+The default generator emits a scripted UI samples and needs no credentials. To use a live
 model, copy `.env.example` to `.env`, set `A2UI_MODEL` to a LangChain `provider:model` string, supply
 the provider's credentials and restart the backend. The Google integration is installed; add the
 appropriate LangChain integration for another provider. The fixture is a demonstration, not a
-destination or availability search. Approval records a decision and makes no booking.
+destination or availability search. Approval records a decision and submits no external action.
+
+## Use the chat playground
+
+Choose a **Website traffic dashboard**, **Event registration form** or **Product comparison cards**, or describe an interface and select **Send**. The response renders inline; the read-only JSON panel shows the current validated UI. Approve or reject the saved version, then continue in chat or use its generated revision controls.
+
+The default runs offline using three illustrative layouts. A live model accepts other prompts within the registered catalog; it cannot emit arbitrary executable code. Configure it using the model instructions below.
+
+Reload the chat URL to restore saved prompts, the active UI and pending review without execution. Only the current UI payload is retained in application state; earlier chat turns keep their prompts and a replacement notice. **New chat** starts a separate thread.
 
 ## Bring the pattern into your application
 
@@ -49,20 +57,20 @@ imports out of the frontend; the browser uses the core processor and Angular ren
 
 Register the upstream `BasicCatalog` through `provideA2UI`, with `useUniversalComponents: false`
 for native Angular components. Release 0.14.0's default v1 catalog entries are universal-only.
-The example's `createTripCatalog` uses public component overrides to pair v1 Basic Catalog schemas
+The example's `createUiCatalog` uses public component overrides to pair v1 Basic Catalog schemas
 with the package's exported native Text, layout, Button, TextField and Divider implementations
 from `@a2ui/angular/v0_9`. It retains the v1 catalog ID and wire format; browser coverage verifies
 this specific combination. Mount its `SurfaceComponent` for each active surface. In this
 pinned release, that component's selector is `<a2ui-v09-surface>` even for A2UI 1.0.
-The small `TripTextField` override retains upstream field binding and input handling while associating
+The small `UiTextField` override retains upstream field binding and input handling while associating
 the label with its input, which the pinned native field's template omits.
 
 Use standalone components, OnPush and zoneless change detection. The example's Angular service
 adapts a framework-independent SDK session into signals. Its action callback forwards the upstream
 resolved action payload to the session; it does not implement a renderer or data-binding engine.
 
-The example supports Text, Column, Row, Card, Button, TextField and Divider, with `reviseTrip` and
-`dismissTips` event actions. It rejects function calls, navigation and custom catalogs. Its
+The example supports Text, Column, Row, Card, Button, TextField and Divider, with `reviseUi` and
+`dismissNotes` event actions. It rejects function calls, navigation and custom catalogs. Its
 `provideMarkdownRenderer` implementation escapes text; the optional Markdown package is omitted
 because its declared core peer range does not match the pinned core package.
 
@@ -109,7 +117,7 @@ For editable surfaces, set `sendDataModel: true`. On an action, call
 the upstream action message. This carries local bound-field edits to the graph.
 
 Validate action name, source component, current generation and the application values you accept.
-The trip planner accepts feedback on its preferences surface, checks that the submitted field and
+The UI playground accepts feedback on its controls surface, checks that the submitted field and
 resolved action agree, and maps that action into the next generation. Client metadata never decides
 ownership. Keep the graph's input schema narrower than its saved-state schema.
 
@@ -124,10 +132,10 @@ application controls send `input: null` and an interrupt-ID-addressed `command.r
 the decision and generation ID inside that node. Resuming review does not rerun generation.
 
 The generated controls are disabled during previews, execution and pending review. Every new
-itinerary is reviewed; dismissing travel tips only updates saved surfaces and retains the existing
-itinerary decision.
+generated UI is reviewed; dismissing notes only updates saved surfaces and retains the existing
+UI decision.
 
-Configure the SDK with `onRequest: prepareTripRun` from the example. SDK 1.12.7 does not serialize
+Configure the SDK with `onRequest: prepareUiRun` from the example. SDK 1.12.7 does not serialize
 `if_thread_status` from `runs.create` options, so this public hook inserts the existing wire field:
 ordinary starts require `idle` or `error`, and resumes require `interrupted`. Combined with
 `multitaskStrategy: "reject"`, this prevents a competing tab from overwriting a pending review.
@@ -176,16 +184,16 @@ decision, not an immutable authorization to perform an external action.
 | Feature            | Supported behavior                                                                               |
 | ------------------ | ------------------------------------------------------------------------------------------------ |
 | Generation         | Fragmented Direct JSON, offline fixture and optional LangChain model stream                      |
-| Surfaces           | Create, component/data updates and deletion across itinerary, preferences and tips               |
-| Inputs and actions | Native bound TextField, `reviseTrip` and `dismissTips` events                                    |
+| Surfaces           | Create, component/data updates and deletion across canvas, controls and notes                    |
+| Inputs and actions | Native bound TextField, `reviseUi` and `dismissNotes` events                                     |
 | Review             | Checkpoint first, then interrupt-ID-addressed approval or rejection without regeneration         |
 | Recovery           | Reconnect to the same run, explicit cancellation and checkpoint restoration after missing events |
 | Persistence        | Memory for the demo; SQLite close/reopen with a fresh event bus                                  |
 | Rendering          | Native Angular with the documented overrides and escaped plain text                              |
 
 These versions establish this Angular/root-stream integration and application snapshot schema
-version 1. They do not establish full A2UI conformance or compatibility with future releases.
-Incompatible snapshots show an error and offer **New trip**; the example does not migrate them,
+version 2. They do not establish full A2UI conformance or compatibility with future releases.
+Incompatible snapshots show an error and offer **New chat**; the example does not migrate them,
 overwrite them or regenerate on reopening. Unsubmitted local form edits are not checkpointed.
 
 ### A2A interoperability is separate

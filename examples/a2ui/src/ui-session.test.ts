@@ -9,13 +9,13 @@ import { describe, expect, it } from "vitest";
 
 import { demoResponse } from "./generation.js";
 import { generateImmediateText, rendererMetadata, startHarness } from "./test-harness.js";
-import { prepareTripRun } from "./trip-client.js";
-import { parseSavedUi, tripSurfaceIds, type SavedUi } from "./trip-contract.js";
-import { createTripSession } from "./trip-session.js";
+import { prepareUiRun } from "./ui-client.js";
+import { parseSavedUi, uiSurfaceIds, type SavedUi } from "./ui-contract.js";
+import { createUiSession } from "./ui-session.js";
 
 function action(
   ui: SavedUi,
-  role: "itinerary" | "preferences" | "tips",
+  role: "canvas" | "controls" | "notes",
   name: string,
   source: string,
   context: Record<string, unknown>,
@@ -24,7 +24,7 @@ function action(
     version: "1.0",
     action: {
       name,
-      surfaceId: tripSurfaceIds(ui.generationId)[role],
+      surfaceId: uiSurfaceIds(ui.generationId)[role],
       sourceComponentId: source,
       timestamp: new Date().toISOString(),
       context,
@@ -33,7 +33,7 @@ function action(
 }
 
 describe("trip session over the official HTTP SDK", () => {
-  it("streams, approves without regeneration, revises through bound form input, deletes tips and reopens", async () => {
+  it("streams, approves without regeneration, revises through bound form input, deletes notes and reopens", async () => {
     let generations = 0;
     const harness = await startHarness(async function* (request, signal) {
       generations++;
@@ -41,8 +41,8 @@ describe("trip session over the official HTTP SDK", () => {
     });
     const client = harness.clientFor();
     let metadata = rendererMetadata();
-    const session = createTripSession(client, () => metadata);
-    const reopened = createTripSession(client, rendererMetadata);
+    const session = createUiSession(client, () => metadata);
+    const reopened = createUiSession(client, rendererMetadata);
     try {
       let previewed = false;
       session.subscribe(() => {
@@ -57,16 +57,16 @@ describe("trip session over the official HTTP SDK", () => {
       await session.decide(true);
       expect(session.read()).toMatchObject({ approved: true, error: null });
       expect(generations).toBe(1);
-      const preferences = tripSurfaceIds(saved.ui!.generationId).preferences;
+      const controls = uiSurfaceIds(saved.ui!.generationId).controls;
       metadata = {
         ...metadata,
         a2uiRendererDataModel: {
           version: "1.0",
-          surfaces: { [preferences]: { feedback: "  Less walking and more markets  " } },
+          surfaces: { [controls]: { feedback: "  Less walking and more markets  " } },
         },
       };
       await session.act(
-        action(saved.ui!, "preferences", "reviseTrip", "revise", {
+        action(saved.ui!, "controls", "reviseUi", "revise", {
           prompt: "  Less walking and more markets  ",
         }),
       );
@@ -79,13 +79,18 @@ describe("trip session over the official HTTP SDK", () => {
       await session.decide(false);
       const revised = session.read().ui!;
       metadata = rendererMetadata();
-      await session.act(action(revised, "tips", "dismissTips", "dismiss", {}));
+      await session.act(action(revised, "notes", "dismissNotes", "dismiss", {}));
       expect(session.read()).toMatchObject({ approved: false, error: null, review: null });
       expect(session.read().ui?.bootstrapMessages).toHaveLength(2);
       expect(generations).toBe(2);
       const before = (await client.runs.list(saved.threadId!)).length;
       await reopened.open(saved.threadId);
       expect(reopened.read().ui).toEqual(session.read().ui);
+      expect(reopened.read().conversation).toEqual(session.read().conversation);
+      expect(reopened.read().conversation.map((turn) => turn.prompt)).toEqual([
+        "Explore a coastal city",
+        "Less walking and more markets",
+      ]);
       expect(reopened.read().approved).toBe(false);
       expect(await client.runs.list(saved.threadId!)).toHaveLength(before);
       expect(generations).toBe(2);
@@ -108,7 +113,7 @@ describe("trip session over the official HTTP SDK", () => {
       apiUrl: harness.url,
       apiKey: null,
       defaultHeaders: { "x-user": "demo-user" },
-      onRequest: prepareTripRun,
+      onRequest: prepareUiRun,
       callerOptions: {
         fetch: async (input: RequestInfo | URL, init?: RequestInit) => {
           const response = await fetch(input, init);
@@ -127,7 +132,7 @@ describe("trip session over the official HTTP SDK", () => {
         },
       },
     });
-    const session = createTripSession(client, rendererMetadata);
+    const session = createUiSession(client, rendererMetadata);
     try {
       await session.generate("One generation only");
       expect(session.read().error).toBeNull();
@@ -155,7 +160,7 @@ describe("trip session over the official HTTP SDK", () => {
         apiUrl: harness.url,
         apiKey: null,
         defaultHeaders: { "x-user": "demo-user" },
-        onRequest: prepareTripRun,
+        onRequest: prepareUiRun,
         callerOptions: {
           fetch: async (input: RequestInfo | URL, init?: RequestInit) => {
             const response = await fetch(input, init);
@@ -184,7 +189,7 @@ describe("trip session over the official HTTP SDK", () => {
           },
         },
       });
-      const session = createTripSession(client, rendererMetadata);
+      const session = createUiSession(client, rendererMetadata);
       try {
         await session.generate("Recover this trip");
         expect(session.read()).toMatchObject({ error: null, busy: false, preview: false });
@@ -201,12 +206,12 @@ describe("trip session over the official HTTP SDK", () => {
   it("restores after actual memory event eviction", async () => {
     const bus = new MemoryRunEventBus({ maxFramesPerRun: 2, maxRetainedRuns: 1 });
     const harness = await startHarness(generateImmediateText, { bus });
-    const session = createTripSession(harness.clientFor(), rendererMetadata);
+    const session = createUiSession(harness.clientFor(), rendererMetadata);
     try {
-      await session.generate("A saved trip outlives its frames");
+      await session.generate("A saved UI outlives its frames");
       const saved = session.read();
       await session.decide(true);
-      const reopened = createTripSession(harness.clientFor(), rendererMetadata);
+      const reopened = createUiSession(harness.clientFor(), rendererMetadata);
       try {
         await reopened.open(saved.threadId);
         expect(reopened.read().ui).toEqual(saved.ui);
@@ -239,7 +244,7 @@ describe("trip session over the official HTTP SDK", () => {
       } else await pause(20_000, undefined, { signal });
       yield text.slice(800);
     });
-    const session = createTripSession(harness.clientFor(), rendererMetadata);
+    const session = createUiSession(harness.clientFor(), rendererMetadata);
     try {
       const generating = session.generate("Reconnect");
       await ready;
@@ -275,7 +280,7 @@ describe("trip session over the official HTTP SDK", () => {
       if (request.prompt === "Fail") throw new Error("Provider unavailable");
       yield* generateImmediateText(request, signal);
     });
-    const session = createTripSession(harness.clientFor(), rendererMetadata);
+    const session = createUiSession(harness.clientFor(), rendererMetadata);
     try {
       await session.generate("A valid trip");
       await session.decide(true);
@@ -297,7 +302,7 @@ describe("trip session over the official HTTP SDK", () => {
       apiUrl: harness.url,
       apiKey: null,
       defaultHeaders: { "x-user": "demo-user" },
-      onRequest: prepareTripRun,
+      onRequest: prepareUiRun,
       callerOptions: {
         fetch: async (input: RequestInfo | URL, init?: RequestInit) => {
           const url =
@@ -310,7 +315,7 @@ describe("trip session over the official HTTP SDK", () => {
         },
       },
     });
-    const session = createTripSession(client, rendererMetadata);
+    const session = createUiSession(client, rendererMetadata);
     try {
       await session.generate("A saved baseline");
       await session.decide(true);
@@ -348,14 +353,14 @@ describe("trip session over the official HTTP SDK", () => {
       yield* generateImmediateText(...args);
     };
     let harness = await startHarness(generator, { sqlitePath });
-    let session = createTripSession(harness.clientFor(), rendererMetadata);
+    let session = createUiSession(harness.clientFor(), rendererMetadata);
     try {
       await session.generate("Keep this trip after restart");
       const saved = session.read();
       session.dispose();
       await harness.close();
       harness = await startHarness(generator, { sqlitePath });
-      session = createTripSession(harness.clientFor(), rendererMetadata);
+      session = createUiSession(harness.clientFor(), rendererMetadata);
       await session.open(saved.threadId);
       expect(session.read().ui).toEqual(saved.ui);
       expect(session.read().review?.generationId).toBe(saved.ui!.generationId);

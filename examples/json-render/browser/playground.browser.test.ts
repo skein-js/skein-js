@@ -70,7 +70,7 @@ async function capture(page: Page, name: string) {
 it("reopens and reloads a thread through the development StrictMode entry", async () => {
   const client = harness.clientFor();
   const thread = await client.threads.create();
-  await client.runs.wait(thread.thread_id, "plan-builder", {
+  await client.runs.wait(thread.thread_id, "ui-playground", {
     input: { request: { prompt: "Restore this development thread" } },
   });
   const beforeReopen = generations;
@@ -92,15 +92,23 @@ it("reopens and reloads a thread through the development StrictMode entry", asyn
     if (!address || typeof address === "string") throw new Error("No development UI listener");
     const threadUrl = "http://127.0.0.1:" + address.port + "/?thread=" + thread.thread_id;
     await page.goto(threadUrl);
-    await page.getByText("Restore this development thread", { exact: true }).waitFor();
-    await page.getByRole("button", { name: "Approve plan" }).waitFor();
+    await page
+      .locator(".generated")
+      .getByText("Restore this development thread", { exact: true })
+      .waitFor();
+    await page.getByRole("button", { name: "Approve UI" }).waitFor();
     expect(page.url()).toBe(threadUrl);
     expect(generations).toBe(beforeReopen);
-    await page.getByRole("button", { name: "Approve plan" }).click();
-    await page.getByText("Plan approved. You can keep refining it.").waitFor();
+    await page.getByRole("button", { name: "Approve UI" }).click();
+    await page.getByText("UI approved. Keep refining it.").waitFor();
+
     await page.reload();
-    await page.getByText("Restore this development thread", { exact: true }).waitFor();
-    await page.getByText("Plan approved. You can keep refining it.").waitFor();
+    await page
+      .locator(".generated")
+      .getByText("Restore this development thread", { exact: true })
+      .waitFor();
+    await page.getByText("UI approved. Keep refining it.").waitFor();
+
     expect(page.url()).toBe(threadUrl);
     expect(generations).toBe(beforeReopen);
     expect(await client.runs.list(thread.thread_id)).toHaveLength(2);
@@ -117,41 +125,56 @@ it("renders progressively, routes buttons and forms, approves, and restores on r
   page.on("pageerror", (error) => errors.push(error.message));
   try {
     await page.goto(url);
-    await page.getByLabel("What are you planning?").focus();
+    await page.getByLabel("Describe the UI").focus();
     await page.keyboard.press("Tab");
     expect(
       await page
-        .getByRole("button", { name: "Build a plan" })
+        .getByRole("button", { name: "Send" })
         .evaluate((element) => element === document.activeElement),
     ).toBe(true);
     await capture(page, "empty-desktop");
-    await page.getByRole("button", { name: "Build a plan" }).click();
-    await page.getByRole("heading", { name: "Your next steps" }).waitFor();
-    expect(await page.getByRole("button", { name: "Approve plan" }).count()).toBe(0);
-    expect(await page.getByText("Preview", { exact: true }).isVisible()).toBe(true);
+    await page.getByRole("button", { name: "Send" }).click();
+    await page.getByRole("heading", { name: "Website traffic dashboard" }).waitFor();
+    expect(await page.getByRole("button", { name: "Approve UI" }).count()).toBe(0);
+    expect(
+      await page.getByText("Preview · saving after validation", { exact: true }).isVisible(),
+    ).toBe(true);
     await capture(page, "streaming-desktop");
-    await page.getByRole("button", { name: "Approve plan" }).click();
-    await page.getByText("Plan approved. You can keep refining it.").waitFor();
-    await page.getByRole("button", { name: "Make it more focused" }).click();
+    await page.getByRole("button", { name: "Approve UI" }).click();
+    await page.getByText("UI approved. Keep refining it.").waitFor();
+    await page.locator(".conversation").evaluate((element) => {
+      element.scrollTop = 0;
+    });
+    await capture(page, "playground-dashboard");
+    expect(await page.getByLabel("UI JSON", { exact: true }).textContent()).toContain("Metric");
+    await page.getByRole("button", { name: "Make it simpler" }).click();
     await page
-      .getByText("Focus on one next step: Plan a small community workshop", { exact: true })
+      .locator(".generated")
+      .getByText("Make this UI simpler: Website traffic dashboard", { exact: true })
       .waitFor();
     await page.getByRole("button", { name: "Reject", exact: true }).click();
-    await page.getByText("Plan rejected. Change your request or use the revision form.").waitFor();
+    await page.getByText("UI rejected. Describe another direction.").waitFor();
     await page
       .getByLabel("What would you change?")
       .fill("Use a smaller room and invite ten people");
-    await page.getByRole("button", { name: "Revise plan" }).click();
-    await page.getByText("Use a smaller room and invite ten people", { exact: true }).waitFor();
-    await page.getByRole("button", { name: "Approve plan" }).click();
-    await page.getByText("Plan approved. You can keep refining it.").waitFor();
+    await page.getByRole("button", { name: "Update UI" }).click();
+    await page
+      .locator(".generated")
+      .getByText("Use a smaller room and invite ten people", { exact: true })
+      .waitFor();
+    await page.getByRole("button", { name: "Approve UI" }).click();
+    await page.getByText("UI approved. Keep refining it.").waitFor();
     const beforeReload = generations;
     const savedUrl = page.url();
     expect(new URL(savedUrl).searchParams.get("thread")).toBeTruthy();
     await page.reload();
-    await page.getByText("Use a smaller room and invite ten people", { exact: true }).waitFor();
-    await page.getByText("Plan approved. You can keep refining it.").waitFor();
+    await page
+      .locator(".generated")
+      .getByText("Use a smaller room and invite ten people", { exact: true })
+      .waitFor();
+    await page.getByText("UI approved. Keep refining it.").waitFor();
     expect(generations).toBe(beforeReload);
+    expect(await page.locator(".user-message").count()).toBe(3);
     await capture(page, "approved-desktop");
     await page.setViewportSize({ width: 390, height: 844 });
     expect(
@@ -168,29 +191,34 @@ it("reconnects without another generation and displays cancellation and errors",
   const page = await browser.newPage({ viewport: { width: 1280, height: 960 } });
   try {
     await page.goto(url);
-    await page.getByLabel("What are you planning?").fill("Reconnect this plan");
-    await page.getByRole("button", { name: "Build a plan" }).click();
-    await page.getByRole("heading", { name: "Your next steps" }).waitFor();
+    await page.getByLabel("Describe the UI").fill("Reconnect this plan");
+    await page.getByRole("button", { name: "Send" }).click();
+    await page.getByRole("heading", { name: "Website traffic dashboard" }).waitFor();
     await page.getByRole("button", { name: "Pause updates" }).click();
     await page.getByText("Updates paused. The run continues on the server.").waitFor();
     await capture(page, "paused-desktop");
     const beforeReconnect = generations;
     releaseUpdates();
     await page.getByRole("button", { name: "Reconnect" }).click();
-    await page.getByRole("button", { name: "Approve plan" }).waitFor();
+    await page.getByRole("button", { name: "Approve UI" }).waitFor();
     expect(generations).toBe(beforeReconnect);
     await page.getByRole("button", { name: "Reject", exact: true }).click();
-    await page.getByText("Plan rejected. Change your request or use the revision form.").waitFor();
-    await page.getByLabel("What are you planning?").fill("Cancel this plan");
-    await page.getByRole("button", { name: "Build a plan" }).click();
-    await page.getByText("Preview", { exact: true }).waitFor();
+    await page.getByText("UI rejected. Describe another direction.").waitFor();
+    await page.getByLabel("Describe the UI").fill("Cancel this plan");
+    await page.getByRole("button", { name: "Send" }).click();
+    await page.getByText("Preview · saving after validation", { exact: true }).waitFor();
     await page.getByRole("button", { name: "Stop run" }).click();
     await page.getByText("Run stopped. Showing saved state.").waitFor();
     await capture(page, "stopped-desktop");
-    await page.getByLabel("What are you planning?").fill("Show an error");
-    await page.getByRole("button", { name: "Build a plan" }).click();
+    await page.getByLabel("Describe the UI").fill("Show an error");
+    await page.getByRole("button", { name: "Send" }).click();
     await page.getByRole("alert").waitFor();
-    expect(await page.getByText("Reconnect this plan", { exact: true }).isVisible()).toBe(true);
+    expect(
+      await page
+        .locator(".generated")
+        .getByText("Reconnect this plan", { exact: true })
+        .isVisible(),
+    ).toBe(true);
     await capture(page, "error-desktop");
   } finally {
     releaseUpdates();

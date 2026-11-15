@@ -1,48 +1,76 @@
 @let state = session.snapshot();
-<div class="app-shell">
+<div class="playground">
   <header class="site-header">
-    <a class="wordmark" href="/" aria-label="Trip planner home"
-      ><span class="brand-mark" aria-hidden="true">↗</span> Trip planner</a
-    >
-    <span class="demo-label">Skein × A2UI · Angular</span>
+    <a class="wordmark" href="/">↗ <span>Skein playground</span></a>
+    <span class="platform">A2UI · Angular</span>
+    <nav aria-label="Playground controls">
+      <a href="https://skein.js.org/recipes/a2ui">Guide ↗</a>
+      <button type="button" (click)="refresh()" [disabled]="!state.threadId">Refresh chat</button>
+      <button type="button" (click)="newChat()">New chat</button>
+    </nav>
   </header>
-  <main>
-    <section class="intro">
-      <p class="eyebrow">A little curiosity goes a long way</p>
-      <h1>A trip with room<br />for <span>the unexpected.</span></h1>
-      <p>Tell us what you have in mind. Watch an itinerary take shape, then make it your own.</p>
-    </section>
-    <div class="workspace">
-      <aside class="request-panel">
-        <form (submit)="plan($event)">
-          <label for="trip-prompt">Where will curiosity take you?</label>
-          <textarea id="trip-prompt" [formControl]="prompt" rows="5" maxlength="2000"></textarea>
-          <button
-            class="primary"
-            type="submit"
-            [disabled]="prompt.invalid || state.busy || !!state.review || state.needsRefresh"
-          >
-            Plan my trip <span aria-hidden="true">↗</span>
-          </button>
-        </form>
-        <nav class="session-tools" aria-label="Trip controls">
-          <button class="text-button" type="button" (click)="session.newTrip()">New trip</button>
-          <button
-            class="text-button"
-            type="button"
-            (click)="refresh()"
-            [disabled]="!state.threadId"
-          >
-            Refresh trip
-          </button>
-        </nav>
-        <p class="hint">
-          The default demo runs offline. Review each saved itinerary before using its revision
-          controls. Approval records your decision; it makes no bookings.
-        </p>
-        @if (state.threadId) {
-        <a class="reopen" [href]="'?thread=' + state.threadId">Reopen this trip ↗</a> } @if
-        (state.busy) {
+  <div class="workspace">
+    <main class="chat-panel" aria-label="UI conversation">
+      <div class="conversation" #conversation>
+        @if (!state.conversation.length && !state.pendingPrompt) {
+        <section class="welcome">
+          <span class="eyebrow">Your prompt. Your components.</span>
+          <h1>Describe an interface.</h1>
+          <p>Dashboards, forms, comparison cards. Watch a UI take shape, then make it yours.</p>
+          <div class="samples" aria-label="Sample prompts">
+            @for (sample of samples; track sample) {
+            <button type="button" (click)="chooseSample(sample)">{{ sample }} ↗</button>
+            }
+          </div>
+        </section>
+        } @for (turn of state.conversation; track turn.generationId) {
+        <p class="user-message">{{ turn.prompt }}</p>
+        @if (turn.generationId !== state.ui?.generationId) {
+        <p class="earlier-response">UI updated · the latest version is shown below.</p>
+        } } @if (state.pendingPrompt) {
+        <p class="user-message">{{ state.pendingPrompt }}</p>
+        } @if (state.error) {
+        <p class="notice error" role="alert">{{ state.error }}</p>
+        } @if (state.recovery) {
+        <p class="notice" role="status">{{ state.recovery }}</p>
+        } @if (state.busy || session.surfaceIds().length) {
+        <article class="assistant-message">
+          <div class="response-header" role="status">
+            <span class="assistant-mark">↗</span>
+            @if (state.preview) { Preview · saving after validation } @else if (state.busy) {
+            Generating UI… } @else { Saved in this chat }
+          </div>
+          @for (surfaceId of session.surfaceIds(); track surfaceId) {
+          <section class="surface-card" [attr.aria-label]="surfaceTitle(surfaceId)">
+            <h2>{{ surfaceTitle(surfaceId) }}</h2>
+            <fieldset class="generated" [disabled]="session.actionsDisabled()">
+              <a2ui-v09-surface [surfaceId]="surfaceId" />
+            </fieldset>
+          </section>
+          } @if (state.review && !state.busy) {
+          <section class="review" aria-label="Review generated UI">
+            <div>
+              <strong>Keep this version?</strong>
+              <p>Review the saved UI to enable its controls and continue chatting.</p>
+            </div>
+            <div class="button-row">
+              <button type="button" (click)="session.decide(false)">Reject</button
+              ><button class="primary" type="button" (click)="session.decide(true)">
+                Approve UI
+              </button>
+            </div>
+          </section>
+          } @if (state.approved !== null && !state.busy) {
+          <p class="decision" role="status">
+            {{ state.approved ? 'UI approved. Keep refining it.' : 'UI rejected. Describe another
+            direction.' }}
+          </p>
+          }
+        </article>
+        }
+      </div>
+      <div class="composer-dock">
+        @if (state.busy && state.runId) {
         <div class="run-tools">
           @if (state.connected) {
           <button type="button" (click)="session.disconnect()">Pause updates</button> } @else {
@@ -50,53 +78,44 @@
           <button type="button" (click)="session.stop()">Stop run</button>
         </div>
         }
-      </aside>
-      <section class="trip-workspace" aria-label="Your trip">
-        <div class="status" role="status" aria-live="polite">
-          <span class="status-dot" aria-hidden="true"></span>
-          @if (state.preview) { Preview · saving after validation } @else if (state.busy) { Working
-          on your trip… } @else if (state.ui) { Saved in this thread } @else { A little inspiration
-          starts here }
-        </div>
-        @if (state.error) {
-        <div class="notice error" role="alert">{{ state.error }}</div>
-        } @if (state.recovery) {
-        <p class="notice" role="status">{{ state.recovery }}</p>
-        } @if (session.surfaceIds().length) { @for (surfaceId of session.surfaceIds(); track
-        surfaceId) {
-        <section class="surface-card" [attr.aria-label]="surfaceTitle(surfaceId)">
-          <h2>{{ surfaceTitle(surfaceId) }}</h2>
-          <fieldset class="generated" [disabled]="session.actionsDisabled()">
-            <a2ui-v09-surface [surfaceId]="surfaceId" />
-          </fieldset>
-        </section>
-        } } @else {
-        <div class="empty-state">
-          <span class="empty-mark" aria-hidden="true">✧</span>
-          <h2>Good trips start with a possibility.</h2>
-          <p>A slow weekend, a new city, or somewhere you have always wanted to go.</p>
-        </div>
-        } @if (state.review && !state.busy) {
-        <section class="review" aria-label="Review your itinerary">
-          <h2>Does this feel like your kind of trip?</h2>
-          <p>Review this version, then keep refining it with the generated controls.</p>
-          <div class="decisions">
-            <button class="primary" type="button" (click)="session.decide(true)">
-              Approve itinerary</button
-            ><button type="button" (click)="session.decide(false)">Reject</button>
+        <form class="composer" (submit)="send($event)">
+          <label class="sr-only" for="ui-prompt">Describe the UI</label>
+          <textarea
+            id="ui-prompt"
+            [formControl]="prompt"
+            rows="2"
+            maxlength="2000"
+            placeholder="Ask for a dashboard, form or product comparison…"
+          ></textarea>
+          <div class="composer-footer">
+            <span>Offline samples by default</span
+            ><button
+              class="primary"
+              type="submit"
+              [disabled]="prompt.invalid || state.busy || !!state.review || state.needsRefresh"
+            >
+              Send ↑
+            </button>
           </div>
-        </section>
-        } @if (state.approved !== null && !state.busy) {
-        <p class="decision" role="status">
-          {{ state.approved ? 'Itinerary approved. You can keep exploring.' : 'Itinerary rejected.
-          Use the revision form to try another direction.' }}
+        </form>
+        <div class="composer-note">
+          <span>Approval records a decision. Nothing is published or submitted.</span> @if
+          (state.threadId) { <a [href]="'?thread=' + state.threadId">Reopen this chat ↗</a> }
+        </div>
+      </div>
+    </main>
+    <aside class="inspector" aria-label="Generated JSON">
+      <details open>
+        <summary>Generated JSON <span>A2UI 1.0</span></summary>
+        <p>
+          Validated bootstrap for the current {{ state.preview ? 'preview' : 'saved UI' }}. Earlier
+          chat turns keep their prompts, not duplicate UI payloads.
         </p>
-        }
-      </section>
-    </div>
-  </main>
-  <footer>
-    <span>Your components. Your agent. Your next adventure.</span
-    ><a href="https://skein.js.org/recipes/a2ui">Read the integration recipe ↗</a>
-  </footer>
+        <pre
+          tabindex="0"
+          aria-label="A2UI JSON"
+        ><code>{{ (state.view?.bootstrapMessages ?? []) | json }}</code></pre>
+      </details>
+    </aside>
+  </div>
 </div>

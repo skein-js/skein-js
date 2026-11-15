@@ -5,9 +5,9 @@ import {
   messageSurfaceId,
   parseUiMessage,
   snapshotSurfaces,
-  tripSurfaceIds,
+  uiSurfaceIds,
   type SavedUi,
-} from "./trip-contract.js";
+} from "./ui-contract.js";
 
 const eventBase = {
   type: z.literal("a2ui"),
@@ -77,7 +77,7 @@ export function createUiStream(baseline: SavedUi | null) {
         }
         if (event.phase === "message") {
           if (
-            !Object.values(tripSurfaceIds(generationId)).includes(messageSurfaceId(event.message))
+            !Object.values(uiSurfaceIds(generationId)).includes(messageSurfaceId(event.message))
           ) {
             losePreview();
             return;

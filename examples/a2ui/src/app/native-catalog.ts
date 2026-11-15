@@ -8,7 +8,7 @@ import {
   TextComponent,
 } from "@a2ui/angular/v0_9";
 
-import { TripTextField } from "./trip-text-field";
+import { UiTextField } from "./ui-text-field";
 
 function basicApi(name: string) {
   const component = BASIC_COMPONENTS.find((candidate) => candidate.name === name);
@@ -17,7 +17,7 @@ function basicApi(name: string) {
 }
 
 /** 0.14 defaults v1 to universal elements. Reuse its exported native widgets with v1 schemas. */
-export function createTripCatalog() {
+export function createUiCatalog() {
   return new BasicCatalog({
     components: {
       text: createComponentImplementation(basicApi("Text"), TextComponent),
@@ -25,7 +25,7 @@ export function createTripCatalog() {
       row: createComponentImplementation(basicApi("Row"), RowComponent),
       card: createComponentImplementation(basicApi("Card"), CardComponent),
       button: createComponentImplementation(basicApi("Button"), ButtonComponent),
-      textField: createComponentImplementation(basicApi("TextField"), TripTextField),
+      textField: createComponentImplementation(basicApi("TextField"), UiTextField),
       divider: createComponentImplementation(basicApi("Divider"), DividerComponent),
     },
   });

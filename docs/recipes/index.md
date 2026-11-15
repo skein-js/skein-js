@@ -40,8 +40,8 @@ pnpm --filter @skein-js/example-triage-agent seed   # register the schedule + sw
 | [`triage-agent`](https://github.com/skein-js/skein-js/tree/main/examples/triage-agent)             | Crons, background runs, idempotency, HITL, memory, time travel                           |
 | [`decoupled-delivery`](https://github.com/skein-js/skein-js/tree/main/examples/decoupled-delivery) | Routed channels: email source → approval workflow → WhatsApp/email destinations          |
 | [`chat-app`](https://github.com/skein-js/skein-js/tree/main/examples/chat-app)                     | Full-stack chat: streaming, thinking, tool cards, HITL, memory                           |
-| [`json-render`](https://github.com/skein-js/skein-js/tree/main/examples/json-render)               | React plan builder: streamed JSON UI, saved specs, revisions and approval                |
-| [`a2ui`](https://github.com/skein-js/skein-js/tree/main/examples/a2ui)                             | Angular trip planner: A2UI 1.0, bound actions, surface deletion and checkpointed review  |
+| [`json-render`](https://github.com/skein-js/skein-js/tree/main/examples/json-render)               | React UI playground: streamed JSON UI, saved specs, revisions and approval               |
+| [`a2ui`](https://github.com/skein-js/skein-js/tree/main/examples/a2ui)                             | Angular UI playground: A2UI 1.0, bound actions, surface deletion and checkpointed review |
 | [`deep-agent`](https://github.com/skein-js/skein-js/tree/main/examples/deep-agent)                 | Research briefing assistant on Deep Agents _(experimental)_: memory, subagents, approval |
 | [`invoke-endpoint`](https://github.com/skein-js/skein-js/tree/main/examples/invoke-endpoint)       | Non-chat graphs as plain HTTP endpoints                                                  |
 | [`embed-graph`](https://github.com/skein-js/skein-js/tree/main/examples/embed-graph)               | A graph you already have, served with no `langgraph.json`                                |

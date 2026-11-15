@@ -5,9 +5,9 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 
 import { committedUiSchema } from "./catalog.js";
 import { demoSpecStream } from "./generation.js";
-import { addRunIdempotency } from "./plan-client.js";
-import { createPlanSession } from "./plan-session.js";
 import { generateImmediateText, startHarness } from "./test-harness.js";
+import { addRunIdempotency } from "./ui-client.js";
+import { createUiSession } from "./ui-session.js";
 
 afterEach(() => {
   vi.unstubAllEnvs();
@@ -56,7 +56,7 @@ describe("plan session over the official HTTP SDK", () => {
         },
       },
     });
-    const session = createPlanSession(client);
+    const session = createUiSession(client);
     try {
       await session.generate({ prompt: "Create exactly one plan" });
       expect(session.read()).toMatchObject({ busy: false, error: null });
@@ -128,7 +128,7 @@ describe("plan session over the official HTTP SDK", () => {
             },
           },
         });
-        const session = createPlanSession(client);
+        const session = createUiSession(client);
         const recovered: string[] = [];
         const unsubscribe = session.subscribe(() => {
           if (session.read().recovery) recovered.push(session.read().recovery!);
@@ -165,7 +165,7 @@ describe("plan session over the official HTTP SDK", () => {
         yield text.slice(split);
       });
       const client = harness.clientFor();
-      const session = createPlanSession(client);
+      const session = createUiSession(client);
       try {
         const running = session.generate({ prompt: "Reconnect safely" });
         await expect.poll(() => session.read().preview).toBe(true);
@@ -202,19 +202,19 @@ describe("plan session over the official HTTP SDK", () => {
     try {
       const client = harness.clientFor();
       const first = await client.threads.create();
-      await client.runs.wait(first.thread_id, "plan-builder", {
+      await client.runs.wait(first.thread_id, "ui-playground", {
         input: { request: { prompt: "Remember this plan" } },
       });
       const firstRun = (await client.runs.list(first.thread_id))[0]!;
       const second = await client.threads.create();
-      await client.runs.wait(second.thread_id, "plan-builder", {
+      await client.runs.wait(second.thread_id, "ui-playground", {
         input: { request: { prompt: "Evict old frames" } },
       });
       const replay = [];
       for await (const event of client.runs.joinStream(first.thread_id, firstRun.run_id))
         replay.push(event);
       expect(replay.filter((event) => event.event === "custom")).toEqual([]);
-      const reopened = createPlanSession(harness.clientFor());
+      const reopened = createUiSession(harness.clientFor());
       await reopened.open(first.thread_id);
       expect(reopened.read().spec?.elements["summary"]?.props["text"]).toBe("Remember this plan");
       expect(reopened.read().review).not.toBeNull();
@@ -237,7 +237,7 @@ describe("plan session over the official HTTP SDK", () => {
       }
       yield* generateImmediateText(request, signal);
     });
-    const session = createPlanSession(harness.clientFor());
+    const session = createUiSession(harness.clientFor());
     try {
       await session.generate({ prompt: "Keep this saved" });
       const baseline = structuredClone(session.read().ui);
@@ -274,7 +274,7 @@ describe("plan session over the official HTTP SDK", () => {
         [first, "Old thread"],
         [second, "Current thread"],
       ] as const)
-        await client.runs.wait(thread.thread_id, "plan-builder", {
+        await client.runs.wait(thread.thread_id, "ui-playground", {
           input: { request: { prompt } },
         });
       const getState = client.threads.getState.bind(client.threads);
@@ -283,7 +283,7 @@ describe("plan session over the official HTTP SDK", () => {
         if (threadId === first.thread_id) await releaseOld.promise;
         return state;
       });
-      const session = createPlanSession(client);
+      const session = createUiSession(client);
       const old = session.open(first.thread_id);
       await session.open(second.thread_id);
       releaseOld.release();
@@ -306,7 +306,7 @@ describe("plan session over the official HTTP SDK", () => {
     const client = harness.clientFor();
     try {
       const thread = await client.threads.create();
-      const run = await client.runs.create(thread.thread_id, "plan-builder", {
+      const run = await client.runs.create(thread.thread_id, "ui-playground", {
         input: { request: { prompt: "Committed while reopening" } },
       });
       const getState = client.threads.getState.bind(client.threads);
@@ -316,7 +316,7 @@ describe("plan session over the official HTTP SDK", () => {
         await client.runs.join(threadId, run.run_id);
         return oldState;
       });
-      const session = createPlanSession(client);
+      const session = createUiSession(client);
       await session.open(thread.thread_id);
       expect(session.read().spec?.elements["summary"]?.props["text"]).toBe(
         "Committed while reopening",

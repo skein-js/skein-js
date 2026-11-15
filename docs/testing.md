@@ -380,6 +380,9 @@ This coverage concerns JSON specifications with app-owned components, not `/ui/{
 
 ## Angular A2UI integration coverage
 
+Both UI playgrounds checkpoint prompt turns alongside one current UI. Their browser journeys verify
+the chat composer, read-only JSON panel, generated controls and restoration without repeating runs.
+
 `nx test example-a2ui` exercises the pinned upstream Direct JSON parser, catalog validation,
 surface/bootstrap round trips, sequence handling and graph-scope isolation. Its actual HTTP SDK
 tests cover actions and submitted form state, ownership, forged inputs, stale decisions, atomic

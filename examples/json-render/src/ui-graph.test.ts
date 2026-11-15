@@ -18,7 +18,7 @@ describe("json-render through Skein HTTP", () => {
     try {
       const client = harness.clientFor();
       const thread = await client.threads.create();
-      const run = await client.runs.create(thread.thread_id, "plan-builder", {
+      const run = await client.runs.create(thread.thread_id, "ui-playground", {
         input: { request: { prompt: "Launch a tiny café ☕" } },
         streamMode: ["custom", "values"],
         streamSubgraphs: true,
@@ -37,7 +37,7 @@ describe("json-render through Skein HTTP", () => {
       expect(ui.spec.elements["summary"]?.props["text"]).toBe("Launch a tiny café ☕");
       expect(snapshot.tasks.flatMap((task) => task.interrupts)).toHaveLength(1);
       const decision = { generationId: ui.generationId, approved: true };
-      await client.runs.wait(thread.thread_id, "plan-builder", {
+      await client.runs.wait(thread.thread_id, "ui-playground", {
         input: null,
         command: { resume: decision },
       });
@@ -45,10 +45,17 @@ describe("json-render through Skein HTTP", () => {
       expect(restored.values["ui"]).toEqual(ui);
       expect(restored.values["approved"]).toBe(true);
       expect(generations).toBe(1);
-      await client.runs.wait(thread.thread_id, "plan-builder", {
+      await client.runs.wait(thread.thread_id, "ui-playground", {
         input: { request: { prompt: "Make a smaller launch" } },
       });
       const revised = await client.threads.getState(thread.thread_id);
+      expect(revised.values["conversation"]).toEqual([
+        { generationId: ui.generationId, prompt: "Launch a tiny café ☕" },
+        {
+          generationId: committedUiSchema.parse(revised.values["ui"]).generationId,
+          prompt: "Make a smaller launch",
+        },
+      ]);
       expect(committedUiSchema.parse(revised.values["ui"]).generationId).not.toBe(ui.generationId);
       expect(generations).toBe(2);
       expect(previousPlans[0]).toBeNull();
@@ -58,11 +65,14 @@ describe("json-render through Skein HTTP", () => {
     }
   });
 
-  it("uses the upstream compiler and catalog for the offline generator", () => {
-    const compiler = createSpecStreamCompiler<Spec>();
-    compiler.push(demoSpecStream({ prompt: "A weekend project" }));
-    const spec = validateUiSpec(compiler.getResult());
-    expect(spec.elements["tasks"]?.props["tasks"]).toHaveLength(3);
-    expect(spec.elements["revise"]?.on).toBeDefined();
-  });
+  it.each(["Website traffic dashboard", "Event registration form", "Product comparison cards"])(
+    "compiles the %s offline sample through the upstream catalog",
+    (prompt) => {
+      const compiler = createSpecStreamCompiler<Spec>();
+      compiler.push(demoSpecStream({ prompt }));
+      const spec = validateUiSpec(compiler.getResult());
+      expect(spec.elements["tasks"]?.props["tasks"]).toHaveLength(3);
+      expect(spec.elements["revise"]?.on).toBeDefined();
+    },
+  );
 });

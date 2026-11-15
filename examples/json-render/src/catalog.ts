@@ -2,7 +2,11 @@ import { ActionBindingSchema, defineCatalog, validateSpec, type Spec } from "@js
 import { schema } from "@json-render/react/schema";
 import { z } from "zod";
 
-export const requestSchema = z.object({ prompt: z.string().trim().min(1).max(2000) }).strict();
+export const promptSchema = z.string().trim().min(1).max(2000);
+export const requestSchema = z.object({ prompt: promptSchema }).strict();
+export const conversationSchema = z.array(
+  z.object({ generationId: z.uuid(), prompt: promptSchema }),
+);
 export const decisionSchema = z
   .object({ generationId: z.string().uuid(), approved: z.boolean() })
   .strict();
@@ -12,32 +16,49 @@ export const catalog = defineCatalog(schema, {
     Card: {
       props: z.object({ title: z.string() }),
       slots: ["default"],
-      description: "A plan card. Use as the root.",
+      description: "A titled container for dashboards, forms, product cards or other UI.",
     },
     Text: { props: z.object({ text: z.string() }), description: "Plain text, never HTML." },
     TaskList: {
       props: z.object({ tasks: z.array(z.string()) }),
-      description: "A short list of concrete steps.",
+      description: "A short checklist or list of facts.",
+    },
+    Grid: {
+      props: z.object({ columns: z.number().int().min(1).max(4) }),
+      slots: ["default"],
+      description: "Responsive columns for cards and metrics.",
+    },
+    Metric: {
+      props: z.object({ label: z.string(), value: z.string(), detail: z.string() }),
+      description: "A dashboard statistic, price or summary value.",
+    },
+    Table: {
+      props: z.object({
+        caption: z.string(),
+        columns: z.array(z.string()),
+        rows: z.array(z.array(z.string())),
+      }),
+      description: "A data table with illustrative values.",
     },
     Button: {
       props: z.object({ label: z.string() }),
-      description: "Request a revision. Bind press to revisePlan.",
+      description: "Request a revision. Bind press to reviseUi.",
     },
     FeedbackForm: {
       props: z.object({ label: z.string(), value: z.string() }),
       description:
-        "Bind value to /feedback with $bindState. Bind submit to revisePlan with prompt from $state /feedback.",
+        "Bind value to /feedback with $bindState. Bind submit to reviseUi with prompt from $state /feedback.",
     },
   },
   actions: {
-    revisePlan: { params: requestSchema, description: "Generate a revised plan from this prompt." },
+    reviseUi: { params: requestSchema, description: "Generate a revised plan from this prompt." },
   },
 });
 
 // The upstream catalog validator normalizes element fields and strips `on` in 0.21.4.
 // Preserve event bindings with its public schema, narrowed to this application's one action.
 const bindingSchema = ActionBindingSchema.omit({ onSuccess: true, onError: true, confirm: true })
-  .extend({ action: z.literal("revisePlan") })
+  .extend({ action: z.literal("reviseUi") })
   .strict();
 const bindingsSchema = z.object({
   elements: z.record(
@@ -74,5 +95,5 @@ export const committedUiSchema = z.object({
   spec: z.unknown().transform(validateUiSpec),
 });
 
-export type PlanRequest = z.infer<typeof requestSchema>;
+export type UiRequest = z.infer<typeof requestSchema>;
 export type CommittedUi = z.infer<typeof committedUiSchema>;

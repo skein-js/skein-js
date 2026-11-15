@@ -12,8 +12,11 @@ import {
 import { z } from "zod";
 
 export const CATALOG_ID = basicCatalog.id;
-export const surfaceRoles = ["itinerary", "preferences", "tips"] as const;
+export const surfaceRoles = ["canvas", "controls", "notes"] as const;
 export const promptSchema = z.string().trim().min(1).max(2000);
+export const conversationSchema = z.array(
+  z.object({ generationId: z.uuid(), prompt: promptSchema }),
+);
 export const decisionSchema = z.object({ generationId: z.uuid(), approved: z.boolean() }).strict();
 
 const rendererMetadataSchema = z
@@ -37,7 +40,7 @@ const rendererMetadataSchema = z
 
 export const requestSchema = z.discriminatedUnion("kind", [
   z
-    .object({ kind: z.literal("plan"), prompt: promptSchema, metadata: rendererMetadataSchema })
+    .object({ kind: z.literal("generate"), prompt: promptSchema, metadata: rendererMetadataSchema })
     .strict(),
   z
     .object({
@@ -48,7 +51,7 @@ export const requestSchema = z.discriminatedUnion("kind", [
     })
     .strict(),
 ]);
-export type TripRequest = z.infer<typeof requestSchema>;
+export type UiRequest = z.infer<typeof requestSchema>;
 export type RendererMetadata = z.infer<typeof rendererMetadataSchema>;
 export type UiMessage = Exclude<
   AgentToRendererMessage,
@@ -68,7 +71,7 @@ const feedbackBindingSchema = z.object({ "@path": z.literal("/feedback") }).stri
 const generatedActionSchema = z.discriminatedUnion("name", [
   z
     .object({
-      name: z.literal("reviseTrip"),
+      name: z.literal("reviseUi"),
       context: z
         .object({
           prompt: z.union([promptSchema, feedbackBindingSchema]),
@@ -76,7 +79,7 @@ const generatedActionSchema = z.discriminatedUnion("name", [
         .strict(),
     })
     .strict(),
-  z.object({ name: z.literal("dismissTips"), context: z.object({}).strict() }).strict(),
+  z.object({ name: z.literal("dismissNotes"), context: z.object({}).strict() }).strict(),
 ]);
 
 // These are example policy restrictions. Upstream owns protocol/catalog validation and bindings.
@@ -94,7 +97,7 @@ function checkUiPolicy(value: unknown): void {
     )
       throw new Error("This example accepts Basic Catalog components and local event actions only");
     if (key === "component" && (typeof child !== "string" || !allowedComponents.has(child)))
-      throw new Error("Generated component is outside the trip catalog subset");
+      throw new Error("Generated component is outside the UI catalog subset");
     if (key === "event") {
       generatedActionSchema.parse(child);
     }
@@ -112,7 +115,7 @@ export function parseUiMessage(value: unknown): UiMessage {
   return message;
 }
 
-export function tripSurfaceIds(generationId: string) {
+export function uiSurfaceIds(generationId: string) {
   return Object.fromEntries(
     surfaceRoles.map((role) => [role, generationId + ":" + role]),
   ) as Record<(typeof surfaceRoles)[number], string>;
@@ -127,21 +130,21 @@ export function messageSurfaceId(message: UiMessage): string {
 
 const savedUiShape = z
   .object({
-    schemaVersion: z.literal(1),
+    schemaVersion: z.literal(2),
     generationId: z.uuid(),
     bootstrapMessages: z.array(z.unknown()).min(1).max(3),
   })
   .strict();
 export interface SavedUi {
-  schemaVersion: 1;
+  schemaVersion: 2;
   generationId: string;
   bootstrapMessages: CreateSurfaceMessage[];
 }
 
 export function parseSavedUi(value: unknown): SavedUi {
   const shape = savedUiShape.safeParse(value);
-  if (!shape.success) throw new Error("This saved trip is incompatible. Start a New trip.");
-  const allowedIds = Object.values(tripSurfaceIds(shape.data.generationId));
+  if (!shape.success) throw new Error("This saved UI is incompatible. Start a New chat.");
+  const allowedIds = Object.values(uiSurfaceIds(shape.data.generationId));
   const bootstrapMessages = shape.data.bootstrapMessages.map((candidate) => {
     const message = CreateSurfaceMessageSchema.parse(parseUiMessage(candidate));
     if (!allowedIds.includes(message.createSurface.surfaceId))
@@ -180,17 +183,17 @@ export function snapshotSurfaces(generationId: string, surfaces: Iterable<Surfac
       },
     }),
   );
-  return parseSavedUi({ schemaVersion: 1, generationId, bootstrapMessages });
+  return parseSavedUi({ schemaVersion: 2, generationId, bootstrapMessages });
 }
 
 /** Enforce the usable trip journey after upstream protocol and topology validation. */
-export function validateGeneratedTrip(saved: SavedUi): SavedUi {
-  const ids = tripSurfaceIds(saved.generationId);
+export function validateGeneratedUi(saved: SavedUi): SavedUi {
+  const ids = uiSurfaceIds(saved.generationId);
   for (const { createSurface: surface } of saved.bootstrapMessages) {
-    const preferences = surface.surfaceId === ids.preferences;
-    if (Boolean(surface.sendDataModel) !== preferences)
-      throw new Error("Only the preferences surface must send its data model");
-    if (preferences)
+    const controls = surface.surfaceId === ids.controls;
+    if (Boolean(surface.sendDataModel) !== controls)
+      throw new Error("Only the controls surface must send its data model");
+    if (controls)
       z.object({ feedback: z.string().max(2000) })
         .strict()
         .parse(surface.dataModel);
@@ -202,23 +205,23 @@ export function validateGeneratedTrip(saved: SavedUi): SavedUi {
           .object({ event: generatedActionSchema })
           .strict()
           .parse(component["action"]).event;
-        if (preferences && action.name === "reviseTrip")
+        if (controls && action.name === "reviseUi")
           feedbackBindingSchema.parse(action.context.prompt);
-        else if (surface.surfaceId === ids.itinerary && action.name === "reviseTrip")
+        else if (surface.surfaceId === ids.canvas && action.name === "reviseUi")
           promptSchema.parse(action.context.prompt);
-        else if (surface.surfaceId !== ids.tips || action.name !== "dismissTips")
+        else if (surface.surfaceId !== ids.notes || action.name !== "dismissNotes")
           throw new Error("Action is on an unexpected surface");
         return action.name;
       });
     const fields = components.filter((component) => component.component === "TextField");
     for (const field of fields) {
-      if (!preferences) throw new Error("Only preferences may contain editable fields");
+      if (!controls) throw new Error("Only controls may contain editable fields");
       feedbackBindingSchema.parse(field["value"]);
     }
-    if (preferences && !fields.length) throw new Error("Preferences must contain a feedback field");
-    const requiredAction = surface.surfaceId === ids.tips ? "dismissTips" : "reviseTrip";
+    if (controls && !fields.length) throw new Error("Preferences must contain a feedback field");
+    const requiredAction = surface.surfaceId === ids.notes ? "dismissNotes" : "reviseUi";
     if (!actions.includes(requiredAction))
-      throw new Error("Generated trip is missing a required action");
+      throw new Error("Generated UI is missing a required action");
   }
   return saved;
 }

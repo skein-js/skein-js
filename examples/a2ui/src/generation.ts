@@ -1,7 +1,7 @@
 import { setTimeout as pause } from "node:timers/promises";
 
-import type { UiMessage, SavedUi } from "./trip-contract.js";
-import { CATALOG_ID, tripSurfaceIds } from "./trip-contract.js";
+import type { UiMessage, SavedUi } from "./ui-contract.js";
+import { CATALOG_ID, uiSurfaceIds } from "./ui-contract.js";
 
 export interface GenerationRequest {
   prompt: string;
@@ -15,68 +15,71 @@ export type GenerateText = (
 ) => AsyncIterable<string>;
 
 export function demoMessages(prompt: string, generationId: string): UiMessage[] {
-  const ids = tripSurfaceIds(generationId);
+  const ids = uiSurfaceIds(generationId);
+  const form = /form|registration|sign.?up|contact/i.test(prompt);
+  const cards = /product|pricing|compar/i.test(prompt);
+  const title = form
+    ? "Event registration"
+    : cards
+      ? "Choose your workspace"
+      : "Website traffic dashboard";
+  const labels = form
+    ? [
+        "A simple registration form",
+        "Collect an event brief below. This demo sends no registrations.",
+        "Name · Date · Audience",
+      ]
+    : cards
+      ? ["Starter · $12 / month", "Studio · $29 / month", "Team · $79 / month"]
+      : ["Total sessions · 284,520", "Conversion rate · 3.42%", "Average visit · 2m 48s"];
+  const content = labels.flatMap((label, index) => [
+    { id: "item_" + index, component: "Card", child: "item_text_" + index },
+    { id: "item_text_" + index, component: "Text", text: label },
+  ]);
   return [
     {
       version: "1.0",
       createSurface: {
-        surfaceId: ids.itinerary,
+        surfaceId: ids.canvas,
         catalogId: CATALOG_ID,
-        components: [
-          { id: "root", component: "Text", text: "Making room for a little adventure…" },
-        ],
+        components: [{ id: "root", component: "Text", text: "Sketching your interface…" }],
         dataModel: { summary: prompt },
       },
     },
     {
       version: "1.0",
       updateComponents: {
-        surfaceId: ids.itinerary,
+        surfaceId: ids.canvas,
         components: [
           {
             id: "root",
             component: "Column",
-            children: ["summary", "day1", "day2", "day3", "relax"],
+            children: ["heading", "summary", "content", "refine"],
           },
+          { id: "heading", component: "Text", text: title },
           { id: "summary", component: "Text", text: { "@path": "/summary" } },
+          { id: "content", component: "Row", children: labels.map((_, index) => "item_" + index) },
+          ...content,
           {
-            id: "day1",
-            component: "Text",
-            text: "Day 1 · Arrive slowly. Explore the old town and find a neighborhood café.",
-          },
-          {
-            id: "day2",
-            component: "Text",
-            text: "Day 2 · Follow your curiosity. Visit a local museum, then leave the afternoon open.",
-          },
-          {
-            id: "day3",
-            component: "Text",
-            text: "Day 3 · Take the scenic route. Walk in a garden before heading home.",
-          },
-          {
-            id: "relax",
+            id: "refine",
             component: "Button",
-            child: "relax_label",
+            child: "refine_label",
             action: {
               event: {
-                name: "reviseTrip",
-                context: { prompt: ("Make this trip more relaxed: " + prompt).slice(0, 2000) },
+                name: "reviseUi",
+                context: { prompt: ("Make this UI simpler: " + prompt).slice(0, 2000) },
               },
             },
           },
-          { id: "relax_label", component: "Text", text: "Make it more relaxed" },
+          { id: "refine_label", component: "Text", text: "Make it simpler" },
         ],
       },
     },
-    {
-      version: "1.0",
-      updateDataModel: { surfaceId: ids.itinerary, path: "/summary", value: prompt },
-    },
+    { version: "1.0", updateDataModel: { surfaceId: ids.canvas, path: "/summary", value: prompt } },
     {
       version: "1.0",
       createSurface: {
-        surfaceId: ids.preferences,
+        surfaceId: ids.controls,
         catalogId: CATALOG_ID,
         sendDataModel: true,
         components: [
@@ -86,20 +89,15 @@ export function demoMessages(prompt: string, generationId: string): UiMessage[] 
             component: "TextField",
             label: "What would you change?",
             value: { "@path": "/feedback" },
-            placeholder: "Less walking, more food, or an extra day…",
+            placeholder: "Describe a change to the interface",
           },
           {
             id: "revise",
             component: "Button",
             child: "revise_label",
-            action: {
-              event: {
-                name: "reviseTrip",
-                context: { prompt: { "@path": "/feedback" } },
-              },
-            },
+            action: { event: { name: "reviseUi", context: { prompt: { "@path": "/feedback" } } } },
           },
-          { id: "revise_label", component: "Text", text: "Revise trip" },
+          { id: "revise_label", component: "Text", text: "Update UI" },
         ],
         dataModel: { feedback: "" },
       },
@@ -107,22 +105,22 @@ export function demoMessages(prompt: string, generationId: string): UiMessage[] 
     {
       version: "1.0",
       createSurface: {
-        surfaceId: ids.tips,
+        surfaceId: ids.notes,
         catalogId: CATALOG_ID,
         components: [
-          { id: "root", component: "Column", children: ["tip", "dismiss"] },
+          { id: "root", component: "Column", children: ["note", "dismiss"] },
           {
-            id: "tip",
+            id: "note",
             component: "Text",
-            text: "Keep a little space in your day. The best discoveries rarely need a reservation.",
+            text: "Illustrative sample data. Approval records a decision; it does not publish or submit anything.",
           },
           {
             id: "dismiss",
             component: "Button",
             child: "dismiss_label",
-            action: { event: { name: "dismissTips", context: {} } },
+            action: { event: { name: "dismissNotes", context: {} } },
           },
-          { id: "dismiss_label", component: "Text", text: "Dismiss travel tips" },
+          { id: "dismiss_label", component: "Text", text: "Dismiss notes" },
         ],
         dataModel: {},
       },
@@ -154,7 +152,7 @@ export const generateModelText: GenerateText = async function* (request, signal)
         role: "user",
         content: JSON.stringify({
           prompt: request.prompt,
-          surfaceIds: tripSurfaceIds(request.generationId),
+          surfaceIds: uiSurfaceIds(request.generationId),
           previousUi: request.previousUi,
         }),
       },

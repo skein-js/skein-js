@@ -7,9 +7,9 @@ import {
   parseUiMessage,
   type RendererMetadata,
   type UiMessage,
-} from "./trip-contract.js";
-import { generateTripUi } from "./trip-generation.js";
+} from "./ui-contract.js";
 import { createUiStream } from "./ui-events.js";
+import { generateUiUi } from "./ui-generation.js";
 
 export function rendererMetadata(): RendererMetadata {
   const processor = new MessageProcessor([basicCatalog]);
@@ -31,39 +31,42 @@ const immediateText: GenerateText = async function* (request) {
 };
 
 describe("upstream A2UI generation and checkpoint bootstrap", () => {
-  it("compiles fragmented output, restores three surfaces and applies a deletion", async () => {
-    const messages: UiMessage[] = [];
-    const generationId = crypto.randomUUID();
-    const saved = await generateTripUi({
-      prompt: "A weekend by the sea",
-      generationId,
-      metadata: rendererMetadata(),
-      previousUi: null,
-      generateText: immediateText,
-      writeMessage: (message) => messages.push(message),
-    });
-    expect(messages.some((message) => "updateComponents" in message)).toBe(true);
-    expect(messages.some((message) => "updateDataModel" in message)).toBe(true);
-    expect(saved.bootstrapMessages).toHaveLength(3);
-    expect(parseSavedUi(JSON.parse(JSON.stringify(saved)))).toEqual(saved);
-    const processor = new MessageProcessor([basicCatalog]);
-    try {
-      processor.processMessages(saved.bootstrapMessages);
-      expect(processor.getSurfaces().size).toBe(3);
-      processor.processMessages({
-        version: "1.0",
-        deleteSurface: { surfaceId: generationId + ":tips" },
+  it.each(["Website traffic dashboard", "Event registration form", "Product comparison cards"])(
+    "compiles fragmented %s output, restores surfaces and applies a deletion",
+    async (prompt) => {
+      const messages: UiMessage[] = [];
+      const generationId = crypto.randomUUID();
+      const saved = await generateUiUi({
+        prompt,
+        generationId,
+        metadata: rendererMetadata(),
+        previousUi: null,
+        generateText: immediateText,
+        writeMessage: (message) => messages.push(message),
       });
-      expect(processor.getSurfaces().size).toBe(2);
-    } finally {
-      processor.dispose();
-    }
-  });
+      expect(messages.some((message) => "updateComponents" in message)).toBe(true);
+      expect(messages.some((message) => "updateDataModel" in message)).toBe(true);
+      expect(saved.bootstrapMessages).toHaveLength(3);
+      expect(parseSavedUi(JSON.parse(JSON.stringify(saved)))).toEqual(saved);
+      const processor = new MessageProcessor([basicCatalog]);
+      try {
+        processor.processMessages(saved.bootstrapMessages);
+        expect(processor.getSurfaces().size).toBe(3);
+        processor.processMessages({
+          version: "1.0",
+          deleteSurface: { surfaceId: generationId + ":notes" },
+        });
+        expect(processor.getSurfaces().size).toBe(2);
+      } finally {
+        processor.dispose();
+      }
+    },
+  );
 
   it("uses contiguous app sequences, drops duplicates and isolates graph scopes", async () => {
     const generationId = crypto.randomUUID();
     const messages: UiMessage[] = [];
-    const saved = await generateTripUi({
+    const saved = await generateUiUi({
       prompt: "A quiet city break",
       generationId,
       metadata: rendererMetadata(),
@@ -105,7 +108,7 @@ describe("upstream A2UI generation and checkpoint bootstrap", () => {
       yield "<a2ui-json>" + text + "</a2ui-json>";
     };
     await expect(
-      generateTripUi({
+      generateUiUi({
         prompt: "A quiet city break",
         generationId: crypto.randomUUID(),
         metadata: rendererMetadata(),
@@ -113,7 +116,7 @@ describe("upstream A2UI generation and checkpoint bootstrap", () => {
         generateText: withoutBinding,
         writeMessage: () => undefined,
       }),
-    ).rejects.toThrow("preferences surface");
+    ).rejects.toThrow("controls surface");
   });
 
   it("abandons a damaged preview and rejects incompatible snapshots and executable actions", () => {
@@ -124,7 +127,7 @@ describe("upstream A2UI generation and checkpoint bootstrap", () => {
         data: { type: "a2ui", generationId: crypto.randomUUID(), sequence: 3, phase: "complete" },
       });
       expect(stream.snapshot()).toMatchObject({ gap: true, view: null });
-      expect(() => parseSavedUi({ schemaVersion: 2 })).toThrow("New trip");
+      expect(() => parseSavedUi({ schemaVersion: 2 })).toThrow("New chat");
       expect(() =>
         parseUiMessage({
           version: "1.0",

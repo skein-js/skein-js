@@ -1,5 +1,5 @@
 /** SDK 1.12.7 omits if_thread_status; its public hook can supply the existing wire field. */
-export function prepareTripRun(url: URL, request: RequestInit): RequestInit {
+export function prepareUiRun(url: URL, request: RequestInit): RequestInit {
   if (request.method !== "POST" || !/\/threads\/[^/]+\/runs$/.test(url.pathname)) return request;
   if (typeof request.body !== "string") throw new Error("Expected a serialized SDK run body");
   const body = JSON.parse(request.body) as { command?: { resume?: unknown } };

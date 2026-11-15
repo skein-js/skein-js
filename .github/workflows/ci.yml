@@ -193,7 +193,7 @@ jobs:
           path: dist/json-render-screenshots
           if-no-files-found: warn
 
-      - name: Angular A2UI trip-planner user journey
+      - name: Angular A2UI chat-playground user journey
         run: pnpm exec nx run example-a2ui:test-browser --output-style=stream
 
       - name: Upload A2UI browser evidence

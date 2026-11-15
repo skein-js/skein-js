@@ -3,7 +3,7 @@
   "version": "0.0.0",
   "private": true,
   "type": "module",
-  "description": "Stream, review, revise and restore an Angular A2UI trip planner through a Skein-hosted LangGraph. Offline by default with optional live generation.",
+  "description": "A chat playground for composing, reviewing and restoring A2UI interfaces through Skein. Offline samples with optional live generation.",
   "scripts": {
     "dev:all": "nx run-many -p example-a2ui -t dev serve --parallel=2"
   },

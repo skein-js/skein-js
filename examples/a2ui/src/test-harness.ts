@@ -9,9 +9,9 @@ import type { MemoryRunEventBus } from "@skein-js/storage-memory";
 
 import { auth } from "./auth.js";
 import { demoResponse, generateDemoText, type GenerateText } from "./generation.js";
-import { prepareTripRun } from "./trip-client.js";
-import type { RendererMetadata } from "./trip-contract.js";
-import { createTripGraph } from "./trip-graph.js";
+import { prepareUiRun } from "./ui-client.js";
+import type { RendererMetadata } from "./ui-contract.js";
+import { createUiGraph } from "./ui-graph.js";
 
 export function rendererMetadata(): RendererMetadata {
   const processor = new MessageProcessor([basicCatalog]);
@@ -32,18 +32,18 @@ export async function startHarness(
   generateText: GenerateText = generateDemoText,
   options: { sqlitePath?: string; bus?: MemoryRunEventBus } = {},
 ) {
-  const graph = createTripGraph(generateText);
+  const graph = createUiGraph(generateText);
   const loaded = await loadInMemoryRuntime(
     fileURLToPath(new URL("../langgraph.json", import.meta.url)),
     async (filename) => {
       if (filename.endsWith("/auth.ts")) return { auth };
-      if (filename.endsWith("/trip-graph.ts")) return { graph };
+      if (filename.endsWith("/ui-graph.ts")) return { graph };
       throw new Error("Unexpected example module: " + filename);
     },
   );
   const sqlite = options.sqlitePath
     ? await embedSqliteGraphs(
-        { "trip-planner": graph },
+        { "ui-playground": graph },
         {
           sqlitePath: options.sqlitePath,
           overrides: { auth: loaded.deps.auth },
@@ -66,7 +66,7 @@ export async function startHarness(
         apiUrl: url,
         apiKey: null,
         defaultHeaders: { "x-user": user },
-        onRequest: prepareTripRun,
+        onRequest: prepareUiRun,
       }),
     async close() {
       try {
