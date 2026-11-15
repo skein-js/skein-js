@@ -185,5 +185,6 @@ try {
   }
 } finally {
   if (process.env["SKEIN_KEEP_CONSUMER"] === "1") console.log(`Consumer retained: ${temporary}`);
-  else await rm(temporary, { recursive: true, force: true });
+  // Windows can briefly keep the packaged executable locked after the process exits.
+  else await rm(temporary, { recursive: true, force: true, maxRetries: 5, retryDelay: 200 });
 }
