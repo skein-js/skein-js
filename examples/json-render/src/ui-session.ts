@@ -8,6 +8,7 @@ import {
   decisionSchema,
   requestSchema,
   type CommittedUi,
+  type Conversation,
 } from "./catalog.js";
 import { createUiStream } from "./ui-events.js";
 
@@ -23,7 +24,7 @@ const valuesSchema = z.object({
 });
 type Review = z.infer<typeof reviewSchema> & { id: string };
 export interface UiSnapshot {
-  conversation: { generationId: string; prompt: string }[];
+  conversation: Conversation;
   pendingPrompt: string | null;
   threadId: string | null;
   runId: string | null;
@@ -113,7 +114,11 @@ export function createUiSession(client: Client<Record<string, unknown>>) {
     if (review && review.generationId !== ui?.generationId)
       throw new Error("The pending review does not match the saved UI. Refresh this thread.");
     publish({
-      conversation: values.conversation,
+      conversation: ui
+        ? values.conversation.map((turn) =>
+            turn.generationId === ui.generationId ? { ...turn, ui } : turn,
+          )
+        : values.conversation,
       pendingPrompt: null,
       ui,
       spec: ui?.spec ?? null,
@@ -147,7 +152,7 @@ export function createUiSession(client: Client<Record<string, unknown>>) {
         if (preview.generationId || preview.gap)
           publish({
             spec: preview.spec,
-            preview: !preview.gap,
+            preview: preview.preview,
             recovery: preview.gap
               ? "Some updates are missing. Showing the last saved plan until this run finishes."
               : null,

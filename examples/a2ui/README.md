@@ -21,9 +21,9 @@ Open **http://127.0.0.1:3007**. The command starts the frontend and the graph se
 2. Watch the generated UI and its JSON appear. The JSON panel is read-only.
 3. Select **Approve UI** or **Reject**. Review records a decision and enables generated controls and the next chat turn.
 4. Ask for a change in chat, select **Make it simpler**, or submit the generated feedback form.
-5. Reload or follow **Reopen this chat**. Saved prompts, the latest UI and pending review return without generation.
+5. Reload or follow **Reopen this chat**. Saved prompts, generated responses and pending review return without generation.
 
-Offline mode selects from three illustrative layouts; it is not a language model. Configure a model for other prompts within the registered catalog. Chat checkpoints store prompts and one active UI snapshot; earlier prompts stay visible while their UI is replaced. No arbitrary JavaScript, code editor or new transport is involved.
+Offline mode selects from three illustrative layouts; it is not a language model. Configure a model for other prompts within the registered catalog. Chat checkpoints retain each generated response. Earlier responses remain visible with read-only controls; only the latest UI accepts actions. No arbitrary JavaScript, code editor or new transport is involved.
 
 During generation, **Pause updates** disconnects observation, **Reconnect** rejoins the same run and **Stop run** cancels execution. Errors preserve the saved UI. Refresh an uncertain submission before trying again.
 
@@ -32,11 +32,11 @@ During generation, **Pause updates** disconnects observation, **Reconnect** rejo
 Copy `.env.example` to `.env` in this directory and configure the backend:
 
 ```dotenv
-A2UI_MODEL=google-genai:YOUR_MODEL_ID
+A2UI_MODEL=google:YOUR_MODEL_ID
 GOOGLE_API_KEY=YOUR_API_KEY
 ```
 
-Restart the graph server. The Google integration is installed; another provider needs its LangChain integration. Credentials stay on the backend. Model output goes through the same compiler, catalog validation and action policy as the offline samples.
+Restart the graph server. The Google integration is installed; another provider needs its LangChain integration. Existing `google-genai:model` settings also use the included `@langchain/google` integration. Credentials stay on the backend. Model output goes through the same compiler, catalog validation and action policy as the offline samples.
 
 ## Adapt it
 

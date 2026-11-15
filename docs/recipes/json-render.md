@@ -35,13 +35,16 @@ to `.env`, set `JSON_RENDER_MODEL` to a LangChain `provider:model` string, add t
 credentials, and restart the graph server. The Google integration is installed; other providers
 need their LangChain integration package. Keep these settings on the backend.
 
+The included `@langchain/google` integration accepts `google:model`; existing
+`google-genai:model` settings use it as an alias. Credentials stay on the backend.
+
 ## Use the chat playground
 
 Choose a **Website traffic dashboard**, **UI feedback form** or **Product comparison cards**, or describe an interface and select **Send**. The response renders inline; the read-only JSON panel shows the current validated UI. Approve or reject the saved version, then continue in chat or use its generated revision controls.
 
 The default runs offline using three illustrative layouts. A live model accepts other prompts within the registered catalog; it cannot emit arbitrary executable code. Configure it using the model instructions below.
 
-Reload the chat URL to restore saved prompts, the active UI and pending review without execution. Only the current UI payload is retained in application state; earlier chat turns keep their prompts and a replacement notice. **New chat** starts a separate thread.
+Reload the chat URL to restore saved prompts, the active UI and pending review without execution. Each completed turn retains its validated UI snapshot. Earlier responses remain visible with read-only controls; only the latest UI accepts actions. Older prompt-only turns show a notice. **New chat** starts a separate thread.
 
 ## Bring the pattern into your application
 
@@ -68,8 +71,8 @@ The example provides Card, Grid, Metric, Table, Text, TaskList, Button and Feedb
 
 Use `catalog.prompt()` for model instructions and `catalog.jsonSchema()` when your generation
 strategy needs a schema. The optional model path receives the previous committed specification as
-context but generates a complete new specification from an empty compiler. Multiple turns replace
-the displayed UI rather than replaying old patches onto it.
+context but generates a complete new specification from an empty compiler. Each turn starts a fresh UI rather than replaying patches onto the previous response. Keep completed
+specifications with their chat turns and render earlier responses read-only.
 
 Validate completed output with `catalog.validate()` and the upstream `validateSpec()` structural
 validator before saving it. In json-render 0.21.4, catalog validation normalizes elements and strips
@@ -183,13 +186,13 @@ of frontend environment variables and generated specifications.
 
 ## Tested versions and limits
 
-| Dependency                                      | Tested version        |
-| ----------------------------------------------- | --------------------- |
-| `@json-render/core`, `@json-render/react`       | 0.21.4                |
-| `@langchain/langgraph-sdk`                      | 1.12.7                |
-| `@langchain/langgraph`, `@langchain/core`       | 1.4.12, 1.2.18        |
-| `langchain`, optional `@langchain/google-genai` | 1.5.10, 2.2.0         |
-| React, React DOM, Zod                           | 19.2.6, 19.2.6, 4.6.7 |
+| Dependency                                | Tested version        |
+| ----------------------------------------- | --------------------- |
+| `@json-render/core`, `@json-render/react` | 0.21.4                |
+| `@langchain/langgraph-sdk`                | 1.12.7                |
+| `@langchain/langgraph`, `@langchain/core` | 1.4.12, 1.2.18        |
+| `langchain`, optional `@langchain/google` | 1.5.10, 0.2.12        |
+| React, React DOM, Zod                     | 19.2.6, 19.2.6, 4.6.7 |
 
 These versions establish this React/root-stream integration. They are not a guarantee about future
 json-render releases or other renderer packages. The runnable default and regression fixtures use

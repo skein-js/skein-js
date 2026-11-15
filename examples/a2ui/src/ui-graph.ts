@@ -19,6 +19,7 @@ import {
   snapshotSurfaces,
   uiSurfaceIds,
   type SavedUi,
+  type Conversation,
   type UiRequest,
 } from "./ui-contract.js";
 import type { UiEvent } from "./ui-events.js";
@@ -28,7 +29,7 @@ const UiInput = Annotation.Root({ request: Annotation<UiRequest> });
 const UiState = Annotation.Root({
   ...UiInput.spec,
   ui: Annotation<SavedUi | null>({ reducer: (_, next) => next, default: () => null }),
-  conversation: Annotation<{ generationId: string; prompt: string }[]>({
+  conversation: Annotation<Conversation>({
     reducer: (_, next) => next,
     default: () => [],
   }),
@@ -128,7 +129,12 @@ export function createUiGraph(generateText: GenerateText = generateDemoText) {
       ui,
       prompt,
       approved: null,
-      conversation: [...state.conversation, { generationId, prompt }],
+      conversation: [
+        ...state.conversation.map((turn) =>
+          turn.generationId === state.ui?.generationId ? { ...turn, ui: state.ui } : turn,
+        ),
+        { generationId, prompt, ui },
+      ],
     };
   }
 

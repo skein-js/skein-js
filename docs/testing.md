@@ -380,8 +380,11 @@ This coverage concerns JSON specifications with app-owned components, not `/ui/{
 
 ## Angular A2UI integration coverage
 
-Both UI playgrounds checkpoint prompt turns alongside one current UI. Their browser journeys verify
-the chat composer, read-only JSON panel, generated controls and restoration without repeating runs.
+Both UI playgrounds checkpoint each generated response with its prompt. Their browser journeys verify
+that generated actions retain earlier responses as read-only history, including after reload, alongside
+the chat composer, JSON panel, review controls and restoration without repeating runs.
+The A2UI model-transport regression injects dropped streams and early cancellation into the actual
+Google integration, ensuring errors reach the caller without an unhandled rejection.
 
 `nx test example-a2ui` exercises the pinned upstream Direct JSON parser, catalog validation,
 surface/bootstrap round trips, sequence handling and graph-scope isolation. Its actual HTTP SDK

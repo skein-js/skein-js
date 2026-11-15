@@ -10,6 +10,7 @@ import {
   requestSchema,
   type SavedUi,
   type RendererMetadata,
+  type Conversation,
 } from "./ui-contract.js";
 import { createUiStream } from "./ui-events.js";
 
@@ -25,7 +26,7 @@ const valuesSchema = z.object({
 });
 type Review = z.infer<typeof reviewSchema> & { id: string };
 export interface UiSnapshot {
-  conversation: { generationId: string; prompt: string }[];
+  conversation: Conversation;
   pendingPrompt: string | null;
   threadId: string | null;
   runId: string | null;
@@ -119,7 +120,11 @@ export function createUiSession(
     if (review && review.generationId !== ui?.generationId)
       throw new Error("The pending review does not match the saved UI. Refresh this thread.");
     publish({
-      conversation: values.conversation,
+      conversation: ui
+        ? values.conversation.map((turn) =>
+            turn.generationId === ui.generationId ? { ...turn, ui } : turn,
+          )
+        : values.conversation,
       pendingPrompt: null,
       ui,
       view: ui,

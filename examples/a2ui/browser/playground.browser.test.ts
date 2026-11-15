@@ -108,6 +108,7 @@ it("streams native Angular surfaces, binds forms, reviews, deletes notes and res
     );
 
     await page
+      .locator(".current-response")
       .getByLabel("What would you change?")
       .fill("  Less walking, more markets and a picnic  ");
     await page.keyboard.press("Tab");
@@ -119,14 +120,17 @@ it("streams native Angular surfaces, binds forms, reviews, deletes notes and res
     await capture(page, "revision-keyboard-focus");
     await page.keyboard.press("Enter");
     await page
-      .locator(".generated")
+      .locator(".current-response .generated")
       .getByText("Less walking, more markets and a picnic", { exact: true })
       .waitFor();
     await page.getByRole("button", { name: "Reject", exact: true }).click();
     await page.getByText("UI rejected. Describe another direction.").waitFor();
-    await page.getByRole("button", { name: "Make it simpler" }).click();
     await page
-      .locator(".generated")
+      .locator(".current-response")
+      .getByRole("button", { name: "Make it simpler" })
+      .click();
+    await page
+      .locator(".current-response .generated")
       .getByText("Make this UI simpler: Less walking, more markets and a picnic", {
         exact: true,
       })
@@ -134,17 +138,41 @@ it("streams native Angular surfaces, binds forms, reviews, deletes notes and res
     await page.getByRole("button", { name: "Approve UI" }).click();
     await page.getByText("UI approved. Keep refining it.").waitFor();
     const beforeDismiss = generations;
-    await page.getByRole("button", { name: "Dismiss notes" }).click();
-    await page.getByRole("region", { name: "Notes" }).waitFor({ state: "detached" });
+    await page.locator(".current-response").getByRole("button", { name: "Dismiss notes" }).click();
+    await page
+      .locator(".current-response")
+      .getByRole("region", { name: "Notes" })
+      .waitFor({ state: "detached" });
     expect(generations).toBe(beforeDismiss);
     const savedUrl = page.url();
     expect(new URL(savedUrl).searchParams.get("thread")).toBeTruthy();
     await page.reload();
     await page.getByText("UI approved. Keep refining it.").waitFor();
     expect(page.url()).toBe(savedUrl);
-    expect(await page.getByRole("button", { name: "Dismiss notes" }).count()).toBe(0);
+    expect(
+      await page
+        .locator(".current-response")
+        .getByRole("button", { name: "Dismiss notes" })
+        .count(),
+    ).toBe(0);
     expect(generations).toBe(beforeDismiss);
     expect(await page.locator(".user-message").count()).toBe(3);
+    expect(await page.locator(".history-response").count()).toBe(2);
+    expect(
+      await page.evaluate(() => document.documentElement.scrollHeight <= window.innerHeight),
+    ).toBe(true);
+    await page.locator(".conversation").evaluate((element) => {
+      element.scrollTop = 0;
+    });
+    await capture(page, "history-desktop");
+    await page.locator(".conversation").evaluate((element) => {
+      element.scrollTop = element.scrollHeight;
+    });
+    expect(
+      await page
+        .locator(".history-response fieldset")
+        .evaluateAll((fields) => fields.every((field) => (field as HTMLFieldSetElement).disabled)),
+    ).toBe(true);
     await capture(page, "approved-desktop");
     await page.setViewportSize({ width: 390, height: 844 });
     expect(
@@ -165,7 +193,7 @@ it("reconnects to one run and preserves saved UI on cancellation and invalid gen
     await page.getByLabel("Describe the UI").fill("Reconnect this trip");
     await page.getByRole("button", { name: "Send" }).click();
     await page
-      .locator(".generated")
+      .locator(".current-response .generated")
       .getByText("Sketching your interface…", { exact: true })
       .waitFor();
     await page.getByLabel("Describe the UI").fill("Reconnect this trip");
@@ -190,7 +218,7 @@ it("reconnects to one run and preserves saved UI on cancellation and invalid gen
     await page.getByRole("alert").waitFor();
     expect(
       await page
-        .locator(".generated")
+        .locator(".current-response .generated")
         .getByText("Reconnect this trip", { exact: true })
         .isVisible(),
     ).toBe(true);

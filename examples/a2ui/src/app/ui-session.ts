@@ -48,6 +48,15 @@ export class UiSession implements OnDestroy {
       deleteSurface: { surfaceId },
     }));
     this.renderer.processMessages(deletions);
+    for (const turn of snapshot.conversation) {
+      if (!turn.ui || turn.generationId === snapshot.view?.generationId) continue;
+      this.renderer.processMessages(
+        turn.ui.bootstrapMessages.map((message) => ({
+          ...message,
+          createSurface: { ...message.createSurface, sendDataModel: false },
+        })),
+      );
+    }
     if (snapshot.view) this.renderer.processMessages(snapshot.view.bootstrapMessages);
     this.surfaceIds.set(
       snapshot.view?.bootstrapMessages.map((message) => message.createSurface.surfaceId) ?? [],

@@ -10,9 +10,6 @@ import { z } from "zod";
 
 export const promptSchema = z.string().trim().min(1).max(2000);
 export const requestSchema = z.object({ prompt: promptSchema }).strict();
-export const conversationSchema = z.array(
-  z.object({ generationId: z.uuid(), prompt: promptSchema }),
-);
 export const decisionSchema = z
   .object({ generationId: z.string().uuid(), approved: z.boolean() })
   .strict();
@@ -106,6 +103,16 @@ export const committedUiSchema = z.object({
   chunkCount: z.number().int().nonnegative(),
   spec: z.unknown().transform(validateUiSpec),
 });
+
+export const conversationSchema = z.array(
+  z
+    .object({ generationId: z.uuid(), prompt: promptSchema, ui: committedUiSchema.optional() })
+    .refine(
+      (turn) => !turn.ui || turn.ui.generationId === turn.generationId,
+      "Saved response has an invalid generation identity",
+    ),
+);
+export type Conversation = z.infer<typeof conversationSchema>;
 
 export type UiRequest = z.infer<typeof requestSchema>;
 export type CommittedUi = z.infer<typeof committedUiSchema>;

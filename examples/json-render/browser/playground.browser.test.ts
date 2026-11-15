@@ -142,7 +142,7 @@ it("reopens and reloads a thread through the development StrictMode entry", asyn
     const threadUrl = "http://127.0.0.1:" + address.port + "/?thread=" + thread.thread_id;
     await page.goto(threadUrl);
     await page
-      .locator(".generated")
+      .locator(".current-response .generated")
       .getByText("Restore this development thread", { exact: true })
       .waitFor();
     await page.getByRole("button", { name: "Approve UI" }).waitFor();
@@ -153,7 +153,7 @@ it("reopens and reloads a thread through the development StrictMode entry", asyn
 
     await page.reload();
     await page
-      .locator(".generated")
+      .locator(".current-response .generated")
       .getByText("Restore this development thread", { exact: true })
       .waitFor();
     await page.getByText("UI approved. Keep refining it.").waitFor();
@@ -196,19 +196,36 @@ it("renders progressively, routes buttons and forms, approves, and restores on r
     });
     await capture(page, "playground-dashboard");
     expect(await page.getByLabel("UI JSON", { exact: true }).textContent()).toContain("Metric");
-    await page.getByRole("button", { name: "Make it simpler" }).click();
     await page
-      .locator(".generated")
+      .locator(".current-response")
+      .getByRole("button", { name: "Make it simpler" })
+      .click();
+    expect(await page.locator(".history-response").count()).toBe(1);
+    expect(
+      await page
+        .locator(".history-response")
+        .getByRole("heading", { name: "Website traffic dashboard" })
+        .isVisible(),
+    ).toBe(true);
+    expect(
+      await page
+        .locator(".history-response")
+        .getByRole("button", { name: "Make it simpler" })
+        .isDisabled(),
+    ).toBe(true);
+    await page
+      .locator(".current-response .generated")
       .getByText("Make this UI simpler: Website traffic dashboard", { exact: true })
       .waitFor();
     await page.getByRole("button", { name: "Reject", exact: true }).click();
     await page.getByText("UI rejected. Describe another direction.").waitFor();
     await page
+      .locator(".current-response")
       .getByLabel("What would you change?")
       .fill("Use a smaller room and invite ten people");
-    await page.getByRole("button", { name: "Update UI" }).click();
+    await page.locator(".current-response").getByRole("button", { name: "Update UI" }).click();
     await page
-      .locator(".generated")
+      .locator(".current-response .generated")
       .getByText("Use a smaller room and invite ten people", { exact: true })
       .waitFor();
     await page.getByRole("button", { name: "Approve UI" }).click();
@@ -218,12 +235,28 @@ it("renders progressively, routes buttons and forms, approves, and restores on r
     expect(new URL(savedUrl).searchParams.get("thread")).toBeTruthy();
     await page.reload();
     await page
-      .locator(".generated")
+      .locator(".current-response .generated")
       .getByText("Use a smaller room and invite ten people", { exact: true })
       .waitFor();
     await page.getByText("UI approved. Keep refining it.").waitFor();
     expect(generations).toBe(beforeReload);
     expect(await page.locator(".user-message").count()).toBe(3);
+    expect(await page.locator(".history-response").count()).toBe(2);
+    expect(
+      await page.evaluate(() => document.documentElement.scrollHeight <= window.innerHeight),
+    ).toBe(true);
+    await page.locator(".conversation").evaluate((element) => {
+      element.scrollTop = 0;
+    });
+    await capture(page, "history-desktop");
+    await page.locator(".conversation").evaluate((element) => {
+      element.scrollTop = element.scrollHeight;
+    });
+    expect(
+      await page
+        .locator(".history-response fieldset")
+        .evaluateAll((fields) => fields.every((field) => (field as HTMLFieldSetElement).disabled)),
+    ).toBe(true);
     await capture(page, "approved-desktop");
     await page.setViewportSize({ width: 390, height: 844 });
     expect(
@@ -266,7 +299,7 @@ it("reconnects without another generation and displays cancellation and errors",
     await page.getByRole("alert").waitFor();
     expect(
       await page
-        .locator(".generated")
+        .locator(".current-response .generated")
         .getByText("Reconnect this plan", { exact: true })
         .isVisible(),
     ).toBe(true);

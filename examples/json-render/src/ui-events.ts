@@ -23,10 +23,12 @@ export function createUiStream(baseline: CommittedUi | null) {
   let lastSequence = -1;
   let complete = false;
   let gap = false;
+  let hasPreview = false;
   let preview = baseline ? structuredClone(baseline.spec) : null;
 
   function losePreview() {
     gap = true;
+    hasPreview = false;
     preview = baseline ? structuredClone(baseline.spec) : null;
   }
 
@@ -62,6 +64,7 @@ export function createUiStream(baseline: CommittedUi | null) {
           if (compiled.newPatches.length) {
             try {
               preview = structuredClone(validateUiSpec(compiled.result));
+              hasPreview = true;
             } catch {
               // A patch can leave props or references incomplete. Keep the last renderable UI.
             }
@@ -81,6 +84,7 @@ export function createUiStream(baseline: CommittedUi | null) {
         generationId,
         chunkCount: complete ? lastSequence - 1 : undefined,
         gap,
+        preview: hasPreview && !gap,
         complete,
       };
     },

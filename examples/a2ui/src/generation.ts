@@ -144,7 +144,7 @@ export const generateModelText: GenerateText = async function* (request, signal)
   const configuredModel = process.env["A2UI_MODEL"];
   if (!configuredModel) throw new Error("Set A2UI_MODEL to a LangChain provider:model string");
   const { initChatModel } = await import("langchain/chat_models/universal");
-  const model = await initChatModel(configuredModel);
+  const model = await initChatModel(configuredModel.replace(/^google-genai:/, "google:"));
   const chunks = await model.stream(
     [
       { role: "system", content: request.systemPrompt },

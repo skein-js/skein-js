@@ -31,8 +31,23 @@
         </section>
         } @for (turn of state.conversation; track turn.generationId) {
         <p class="user-message">{{ turn.prompt }}</p>
-        @if (turn.generationId !== state.ui?.generationId) {
-        <p class="earlier-response">UI updated · the latest version is shown below.</p>
+        @if (turn.ui && (turn.generationId !== state.ui?.generationId || state.pendingPrompt)) {
+        <article class="assistant-message history-response" aria-label="Earlier generated UI">
+          <div class="response-header">Saved version · read-only</div>
+          @for (message of turn.ui.bootstrapMessages; track message.createSurface.surfaceId) {
+          <section
+            class="surface-card"
+            [attr.aria-label]="surfaceTitle(message.createSurface.surfaceId)"
+          >
+            <h2>{{ surfaceTitle(message.createSurface.surfaceId) }}</h2>
+            <fieldset class="generated" disabled>
+              <a2ui-v09-surface [surfaceId]="message.createSurface.surfaceId" />
+            </fieldset>
+          </section>
+          }
+        </article>
+        } @else if (turn.generationId !== state.ui?.generationId) {
+        <p class="earlier-response">This earlier response has no saved UI.</p>
         } } @if (state.pendingPrompt) {
         <p class="user-message">{{ state.pendingPrompt }}</p>
         } @if (state.error) {
@@ -40,13 +55,14 @@
         } @if (state.recovery) {
         <p class="notice" role="status">{{ state.recovery }}</p>
         } @if (state.busy || session.surfaceIds().length) {
-        <article class="assistant-message">
+        <article class="assistant-message current-response">
           <div class="response-header" role="status">
             <span class="assistant-mark">↗</span>
             @if (state.preview) { Preview · saving after validation } @else if (state.busy) {
             Generating UI… } @else { Saved in this chat }
           </div>
-          @for (surfaceId of session.surfaceIds(); track surfaceId) {
+          @for (surfaceId of (state.pendingPrompt && !state.preview ? [] : session.surfaceIds());
+          track surfaceId) {
           <section class="surface-card" [attr.aria-label]="surfaceTitle(surfaceId)">
             <h2>{{ surfaceTitle(surfaceId) }}</h2>
             <fieldset class="generated" [disabled]="session.actionsDisabled()">
@@ -115,7 +131,7 @@
         <summary>Generated JSON <span>A2UI 1.0</span></summary>
         <p>
           Validated bootstrap for the current {{ state.preview ? 'preview' : 'saved UI' }}. Earlier
-          chat turns keep their prompts, not duplicate UI payloads.
+          responses stay read-only in the chat.
         </p>
         <pre
           tabindex="0"

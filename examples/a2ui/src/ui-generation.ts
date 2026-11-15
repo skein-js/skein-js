@@ -1,7 +1,7 @@
 import { A2uiGenerator, CatalogConfig, DirectJsonFormatFactory } from "@a2ui/agent";
 import { basicCatalog } from "@a2ui/web_core/v1_0";
 
-import type { GenerateText } from "./generation.js";
+import { demoResponse, type GenerateText } from "./generation.js";
 import {
   messageSurfaceId,
   parseUiMessage,
@@ -38,10 +38,13 @@ export async function generateUiUi(options: {
       "Build a general-purpose UI as a complete NEW generation using exactly the three supplied surface IDs: canvas, controls, notes.",
       "Use only Text, Column, Row, Card, Button, TextField and Divider from the Basic Catalog. Text is plain text.",
       "Use only event actions reviseUi (context.prompt is a nonempty UI revision request) and dismissNotes (empty context, on the notes surface).",
+      "Event objects contain only name and context. Omit userMessage.",
       "On controls set sendDataModel:true and dataModel:{feedback:''}. Bind its TextField value to @path:/feedback and its reviseUi context.prompt to that path. Use no other editable data fields.",
       "Include a revision form, a quick revision button, and a Dismiss notes button. No function calls, navigation, custom catalogs, metadata, macros, checks or approval controls.",
       "The host provides review controls. Do not emit remote RPC messages. Create every surface with its root component before updating it.",
-    ].join("\n");
+    ].join("\n") +
+    "\nFollow this valid example's action and binding structure; adapt the visible components and content to the request:\n" +
+    demoResponse(options.prompt, options.generationId);
   const emit = (parts: ReturnType<typeof stream.feed>) => {
     for (const part of parts) {
       if (part.type !== "a2ui") continue;

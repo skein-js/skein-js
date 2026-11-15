@@ -13,6 +13,7 @@ import {
   requestSchema,
   validateUiSpec,
   type CommittedUi,
+  type Conversation,
   type UiRequest,
 } from "./catalog.js";
 import { generateDemoText, generateModelText, type GenerateText } from "./generation.js";
@@ -22,7 +23,7 @@ const UiInput = Annotation.Root({ request: Annotation<UiRequest> });
 const UiState = Annotation.Root({
   ...UiInput.spec,
   ui: Annotation<CommittedUi | null>({ reducer: (_, next) => next, default: () => null }),
-  conversation: Annotation<{ generationId: string; prompt: string }[]>({
+  conversation: Annotation<Conversation>({
     reducer: (_, next) => next,
     default: () => [],
   }),
@@ -49,7 +50,12 @@ export function createUiGraph(generateText: GenerateText = generateDemoText) {
     return {
       ui,
       approved: null,
-      conversation: [...state.conversation, { generationId, prompt: request.prompt }],
+      conversation: [
+        ...state.conversation.map((turn) =>
+          turn.generationId === state.ui?.generationId ? { ...turn, ui: state.ui } : turn,
+        ),
+        { generationId, prompt: request.prompt, ui },
+      ],
     };
   }
 

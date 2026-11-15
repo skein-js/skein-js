@@ -1,4 +1,5 @@
 import { defineRegistry, JSONUIProvider, Renderer, useBoundProp } from "@json-render/react";
+import type { Spec } from "@json-render/core";
 import { Client } from "@langchain/langgraph-sdk";
 import { useEffect, useId, useMemo, useRef, useState, useSyncExternalStore } from "react";
 
@@ -168,6 +169,24 @@ export function App() {
     // Clear only once the session accepts this prompt, before any async completion can affect a new draft.
     if (session.read().pendingPrompt === nextPrompt.trim()) setPrompt("");
   }
+  function renderUi(spec: Spec, key: string, disabled: boolean, loading = false) {
+    return (
+      <JSONUIProvider
+        key={key}
+        registry={uiRegistry.registry}
+        handlers={handlers}
+        initialState={{ feedback: "" }}
+        navigate={() => {
+          throw new Error("Navigation is outside this playground");
+        }}
+      >
+        <fieldset className="generated" disabled={disabled}>
+          <legend className="sr-only">Generated interface and revision controls</legend>
+          <Renderer spec={spec} registry={uiRegistry.registry} loading={loading} />
+        </fieldset>
+      </JSONUIProvider>
+    );
+  }
   return (
     <div className="playground">
       <header className="site-header">
@@ -229,10 +248,19 @@ export function App() {
             {snapshot.conversation.map((turn) => (
               <div key={turn.generationId} className="turn">
                 <p className="user-message">{turn.prompt}</p>
-                {turn.generationId !== snapshot.ui?.generationId && (
-                  <p className="earlier-response">
-                    UI updated · the latest version is shown below.
-                  </p>
+                {turn.ui &&
+                (turn.generationId !== snapshot.ui?.generationId || snapshot.pendingPrompt) ? (
+                  <article
+                    className="assistant-message history-response"
+                    aria-label="Earlier generated UI"
+                  >
+                    <div className="response-header">Saved version · read-only</div>
+                    {renderUi(turn.ui.spec, turn.generationId, true)}
+                  </article>
+                ) : (
+                  turn.generationId !== snapshot.ui?.generationId && (
+                    <p className="earlier-response">This earlier response has no saved UI.</p>
+                  )
                 )}
               </div>
             ))}
@@ -248,7 +276,7 @@ export function App() {
               </p>
             )}
             {(snapshot.busy || renderable) && (
-              <article className="assistant-message">
+              <article className="assistant-message current-response">
                 <div className="response-header" role="status">
                   <span className="assistant-mark" aria-hidden="true">
                     ↗
@@ -261,26 +289,16 @@ export function App() {
                         : "Saved in this chat"}
                   </span>
                 </div>
-                {renderable && (
-                  <JSONUIProvider
-                    key={snapshot.ui?.generationId ?? snapshot.runId ?? "empty"}
-                    registry={uiRegistry.registry}
-                    handlers={handlers}
-                    initialState={{ feedback: "" }}
-                    navigate={() => {
-                      throw new Error("Navigation is outside this playground");
-                    }}
-                  >
-                    <fieldset className="generated" disabled={!canRevise}>
-                      <legend className="sr-only">Generated interface and revision controls</legend>
-                      <Renderer
-                        spec={renderable}
-                        registry={uiRegistry.registry}
-                        loading={snapshot.preview}
-                      />
-                    </fieldset>
-                  </JSONUIProvider>
-                )}
+                {renderable &&
+                  (!snapshot.pendingPrompt || snapshot.preview) &&
+                  renderUi(
+                    renderable,
+                    snapshot.pendingPrompt
+                      ? (snapshot.runId ?? "starting")
+                      : (snapshot.ui?.generationId ?? "empty"),
+                    !canRevise,
+                    snapshot.preview,
+                  )}
                 {snapshot.review && !snapshot.busy && !snapshot.needsRefresh && (
                   <section className="review" aria-label="Review generated UI">
                     <div>

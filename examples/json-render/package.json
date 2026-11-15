@@ -11,7 +11,7 @@
     "@json-render/core": "0.21.4",
     "@json-render/react": "0.21.4",
     "@langchain/core": "1.2.18",
-    "@langchain/google-genai": "2.2.0",
+    "@langchain/google": "0.2.12",
     "@langchain/langgraph": "1.4.12",
     "@langchain/langgraph-sdk": "1.12.7",
     "langchain": "1.5.10",

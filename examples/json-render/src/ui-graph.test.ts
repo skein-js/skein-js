@@ -50,10 +50,11 @@ describe("json-render through Skein HTTP", () => {
       });
       const revised = await client.threads.getState(thread.thread_id);
       expect(revised.values["conversation"]).toEqual([
-        { generationId: ui.generationId, prompt: "Launch a tiny café ☕" },
+        { generationId: ui.generationId, prompt: "Launch a tiny café ☕", ui },
         {
           generationId: committedUiSchema.parse(revised.values["ui"]).generationId,
           prompt: "Make a smaller launch",
+          ui: committedUiSchema.parse(revised.values["ui"]),
         },
       ]);
       expect(committedUiSchema.parse(revised.values["ui"]).generationId).not.toBe(ui.generationId);

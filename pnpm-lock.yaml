@@ -166,9 +166,9 @@ importers:
       '@langchain/core':
         specifier: 1.2.18
         version: 1.2.18(@opentelemetry/api@1.9.1)(openai@6.49.0(ws@8.21.0)(zod@4.6.7))(ws@8.21.0)
-      '@langchain/google-genai':
-        specifier: 2.2.0
-        version: 2.2.0(@langchain/core@1.2.18(@opentelemetry/api@1.9.1)(openai@6.49.0(ws@8.21.0)(zod@4.6.7))(ws@8.21.0))
+      '@langchain/google':
+        specifier: 0.2.12
+        version: 0.2.12(@langchain/core@1.2.18(@opentelemetry/api@1.9.1)(openai@6.49.0(ws@8.21.0)(zod@4.6.7))(ws@8.21.0))
       '@langchain/langgraph':
         specifier: 1.4.12
         version: 1.4.12(@langchain/core@1.2.18(@opentelemetry/api@1.9.1)(openai@6.49.0(ws@8.21.0)(zod@4.6.7))(ws@8.21.0))(react-dom@19.2.6(react@19.2.6))(react@19.2.6)(svelte@5.57.2(@typescript-eslint/types@8.62.1))(vue@3.5.44(typescript@5.9.3))(zod@4.6.7)
@@ -652,9 +652,9 @@ importers:
       '@langchain/core':
         specifier: 1.2.18
         version: 1.2.18(@opentelemetry/api@1.9.1)(openai@6.49.0(ws@8.21.0)(zod@4.6.7))(ws@8.21.0)
-      '@langchain/google-genai':
-        specifier: 2.2.0
-        version: 2.2.0(@langchain/core@1.2.18(@opentelemetry/api@1.9.1)(openai@6.49.0(ws@8.21.0)(zod@4.6.7))(ws@8.21.0))
+      '@langchain/google':
+        specifier: 0.2.12
+        version: 0.2.12(@langchain/core@1.2.18(@opentelemetry/api@1.9.1)(openai@6.49.0(ws@8.21.0)(zod@4.6.7))(ws@8.21.0))
       '@langchain/langgraph':
         specifier: 1.4.12
         version: 1.4.12(@langchain/core@1.2.18(@opentelemetry/api@1.9.1)(openai@6.49.0(ws@8.21.0)(zod@4.6.7))(ws@8.21.0))(react-dom@19.2.6(react@19.2.6))(react@19.2.6)(svelte@5.57.2(@typescript-eslint/types@8.62.1))(vue@3.5.44(typescript@5.9.3))(zod@4.6.7)
@@ -3747,6 +3747,12 @@ packages:
     engines: {node: '>=20'}
     peerDependencies:
       '@langchain/core': ^1.0.0
+
+  '@langchain/google@0.2.12':
+    resolution: {integrity: sha512-GTBrL0Zc/KhsC+vY9+iheE5Lorz9AeaBQtPaPGYx2MoeLJhadwmJO3/v1jtJBn0soxf112SwFHeb03Iz6A0yog==}
+    engines: {node: '>=20'}
+    peerDependencies:
+      '@langchain/core': ^1.2.18
 
   '@langchain/langgraph-api@1.4.2':
     resolution: {integrity: sha512-//I89/m3POb2UKn6Lc5Ww/M6BsaqwBGpRmnZIstf9E0XnfCMGzjsg1sBeE2+33gn3nOXwlwS1sSOxqv/qcacjg==}
@@ -8005,6 +8011,10 @@ packages:
     resolution: {integrity: sha512-EKN1vKAMcZ8MlYMpaNuxN6R9yakzH6uajHcHVTqWJzvu5pWw9DyhbP35HH8MVBQ+dZjAfDxk+A8NiR9KWaXiyQ==}
     engines: {node: '>=18.0.0'}
 
+  eventsource-parser@4.1.3:
+    resolution: {integrity: sha512-jZVIVilXZfAx6H20ZKKEj5dabbpD9ETmMj3uHsjMmgBzBHB6tsHrmdWB4mAiy3amtN6MOoVkfXRQu4wf1n88Rw==}
+    engines: {node: '>=22.12'}
+
   eventsource@3.0.7:
     resolution: {integrity: sha512-CRT1WTyuQoD771GW56XEZFQ/ZoSfWid1alKGDYMmkt2yl8UXrVR4pspqWNEcqKvVIzg6PAltWjxcSSPrboA4iA==}
     engines: {node: '>=18.0.0'}
@@ -8286,9 +8296,17 @@ packages:
     resolution: {integrity: sha512-kB3rzJV7d9juLZh8/56QTXCwQfxyhdOMdyYk1HdQKFtF8TJTDTZQJtixWIwXdE9Jji91mC41DUNpjleo4L4eAQ==}
     engines: {node: '>=18'}
 
+  gaxios@8.3.3:
+    resolution: {integrity: sha512-zqPbbtW5bAOZ8BRjS7bxj5VG7PBY5PwKRxpku9NplLqAPmYMoXExL1KOdaK5fHvwRETu3bPplLEsFGDdUUlrpw==}
+    engines: {node: '>=22'}
+
   gcp-metadata@8.1.2:
     resolution: {integrity: sha512-zV/5HKTfCeKWnxG0Dmrw51hEWFGfcF2xiXqcA3+J90WDuP0SvoiSO5ORvcBsifmx/FoIjgQN3oNOGaQ5PhLFkg==}
     engines: {node: '>=18'}
+
+  gcp-metadata@9.2.3:
+    resolution: {integrity: sha512-d2OI/dJJ3IIaeOz3c9jvr5j5G5beI5fQzbgilNiWhDKGwvJN9o10Qub70NkbF6PNJSUoNKZ77JKYGz0Fs4+9Lg==}
+    engines: {node: '>=22'}
 
   generator-function@2.0.1:
     resolution: {integrity: sha512-SFdFmIJi+ybC0vjlHN0ZGVGHc3lgE0DxPAT0djjVg+kjOnSqclqmj0KQ7ykTOLP6YxoqOvuAODGdcHJn+43q3g==}
@@ -8372,9 +8390,17 @@ packages:
     resolution: {integrity: sha512-i1ydyHrqcIxXkWh/uBmVkzCvIuq5yiK2ATndIe5XxKholrG/MTYP9xGYka4sQhrbIAgGjL2B6NOE7rFaiF3fXw==}
     engines: {node: '>=18'}
 
+  google-auth-library@11.3.4:
+    resolution: {integrity: sha512-RaYCDoeYIIFTRgH8hesSxqLrmtC2l+DB3cSCS/SN1TPGjI2VpPdJmF3bfRLUn8VvP/4I2Af9fsktw2f9SvVSVg==}
+    engines: {node: '>=22'}
+
   google-logging-utils@1.1.3:
     resolution: {integrity: sha512-eAmLkjDjAFCVXg7A1unxHsLf961m6y17QFqXqAXGj/gVkKFrEICfStRfwUlGNfeCEjNRa32JEWOUTlYXPyyKvA==}
     engines: {node: '>=14'}
+
+  google-logging-utils@2.2.0:
+    resolution: {integrity: sha512-Q6HuSEyoaxi0AgqUrOYb2gc77fDl4QugRoHpreI8VpW/VzPsoKyxjL8tGKLmZpWlvC1uVBXM85tykoQpCGBF5g==}
+    engines: {node: '>=22'}
 
   gopd@1.2.0:
     resolution: {integrity: sha512-ZUKRh6/kUFoAiTAtTYPZJ3hw9wNxx+BIBOijnlG9PnrJsCcSjs1wyyD6vJpaYtgnzDrKYRSqf3OO6Rfa93xsRg==}
@@ -14014,6 +14040,15 @@ snapshots:
     transitivePeerDependencies:
       - supports-color
 
+  '@langchain/google@0.2.12(@langchain/core@1.2.18(@opentelemetry/api@1.9.1)(openai@6.49.0(ws@8.21.0)(zod@4.6.7))(ws@8.21.0))':
+    dependencies:
+      '@langchain/core': 1.2.18(@opentelemetry/api@1.9.1)(openai@6.49.0(ws@8.21.0)(zod@4.6.7))(ws@8.21.0)
+      eventsource-parser: 4.1.3
+      google-auth-library: 11.3.4
+      jose: 6.2.12
+    transitivePeerDependencies:
+      - supports-color
+
   '@langchain/langgraph-api@1.4.2(@langchain/core@1.2.18(@opentelemetry/api@1.9.1)(openai@6.49.0(ws@8.21.0)(zod@3.25.76))(ws@8.21.0))(@langchain/langgraph-checkpoint@1.1.5(@langchain/core@1.2.18(@opentelemetry/api@1.9.1)(openai@6.49.0(ws@8.21.0)(zod@3.25.76))(ws@8.21.0)))(@langchain/langgraph-sdk@1.9.31(@langchain/core@1.2.18(@opentelemetry/api@1.9.1)(openai@6.49.0(ws@8.21.0)(zod@3.25.76))(ws@8.21.0))(react-dom@19.2.6(react@19.2.6))(react@19.2.6)(svelte@5.57.2(@typescript-eslint/types@8.62.1))(vue@3.5.44(typescript@5.9.3)))(@langchain/langgraph@1.4.12(@langchain/core@1.2.18(@opentelemetry/api@1.9.1)(openai@6.49.0(ws@8.21.0)(zod@3.25.76))(ws@8.21.0))(react-dom@19.2.6(react@19.2.6))(react@19.2.6)(svelte@5.57.2(@typescript-eslint/types@8.62.1))(vue@3.5.44(typescript@5.9.3))(zod@3.25.76))(@opentelemetry/api@1.9.1)(babel-plugin-macros@3.1.0)(openai@6.49.0(ws@8.21.0)(zod@3.25.76))(typescript@5.9.3)(ws@8.21.0)':
     dependencies:
       '@babel/code-frame': 7.29.7
@@ -18825,6 +18860,8 @@ snapshots:
 
   eventsource-parser@3.1.1: {}
 
+  eventsource-parser@4.1.3: {}
+
   eventsource@3.0.7:
     dependencies:
       eventsource-parser: 3.1.1
@@ -19214,10 +19251,26 @@ snapshots:
     transitivePeerDependencies:
       - supports-color
 
+  gaxios@8.3.3:
+    dependencies:
+      extend: 3.0.2
+      https-proxy-agent: 7.0.6
+      node-fetch: 3.3.2
+    transitivePeerDependencies:
+      - supports-color
+
   gcp-metadata@8.1.2:
     dependencies:
       gaxios: 7.3.1
       google-logging-utils: 1.1.3
+      json-bigint: 1.0.0
+    transitivePeerDependencies:
+      - supports-color
+
+  gcp-metadata@9.2.3:
+    dependencies:
+      gaxios: 8.3.3
+      google-logging-utils: 2.2.0
       json-bigint: 1.0.0
     transitivePeerDependencies:
       - supports-color
@@ -19316,7 +19369,20 @@ snapshots:
     transitivePeerDependencies:
       - supports-color
 
+  google-auth-library@11.3.4:
+    dependencies:
+      base64-js: 1.5.1
+      ecdsa-sig-formatter: 1.0.11
+      gaxios: 8.3.3
+      gcp-metadata: 9.2.3
+      google-logging-utils: 2.2.0
+      jws: 4.0.1
+    transitivePeerDependencies:
+      - supports-color
+
   google-logging-utils@1.1.3: {}
+
+  google-logging-utils@2.2.0: {}
 
   gopd@1.2.0: {}
 

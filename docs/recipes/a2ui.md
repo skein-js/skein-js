@@ -31,13 +31,16 @@ the provider's credentials and restart the backend. The Google integration is in
 appropriate LangChain integration for another provider. Sample data is illustrative.
 Approval records a decision and submits no external action.
 
+The included `@langchain/google` integration accepts `google:model`; existing
+`google-genai:model` settings use it as an alias. Credentials stay on the backend.
+
 ## Use the chat playground
 
 Choose a **Website traffic dashboard**, **UI feedback form** or **Product comparison cards**, or describe an interface and select **Send**. The response renders inline; the read-only JSON panel shows the current validated UI. Approve or reject the saved version, then continue in chat or use its generated revision controls.
 
 The default runs offline using three illustrative layouts. A live model accepts other prompts within the registered catalog; it cannot emit arbitrary executable code. Configure it using the model instructions below.
 
-Reload the chat URL to restore saved prompts, the active UI and pending review without execution. Only the current UI payload is retained in application state; earlier chat turns keep their prompts and a replacement notice. **New chat** starts a separate thread.
+Reload the chat URL to restore saved prompts, the active UI and pending review without execution. Each completed turn retains its validated UI snapshot. Earlier responses remain visible with read-only controls; only the latest UI accepts actions. Older prompt-only turns show a notice. **New chat** starts a separate thread.
 
 ## Bring the pattern into your application
 
@@ -70,7 +73,8 @@ adapts a framework-independent SDK session into signals. Its action callback for
 resolved action payload to the session; it does not implement a renderer or data-binding engine.
 
 The example supports Text, Column, Row, Card, Button, TextField and Divider, with `reviseUi` and
-`dismissNotes` event actions. It rejects function calls, navigation and custom catalogs. Its
+`dismissNotes` event actions. Render historical surfaces with `sendDataModel: false` so revisions submit
+only the current generation’s bound data. It rejects function calls, navigation and custom catalogs. Its
 `provideMarkdownRenderer` implementation escapes text; the optional Markdown package is omitted
 because its declared core peer range does not match the pinned core package.
 
@@ -79,7 +83,7 @@ because its declared core peer range does not match the pinned core package.
 Use `A2uiGenerator` and `CatalogConfig` with the registered catalog. Create a request processor
 negotiated against the renderer's capabilities and select `DirectJsonFormatFactory` with
 `progressiveKeys: []`. Its `promptSnippet` supplies upstream format and catalog instructions.
-Add your application policy and surface identities to that prompt.
+Add your application policy, surface identities and a short valid response example to that prompt.
 
 Feed model text fragments through `openStream().feed(text)` and finish with `close()`. Consume
 the returned `a2ui` parts, which contain complete A2UI messages. The upstream stream handles partial
@@ -177,7 +181,7 @@ decision, not an immutable authorization to perform an external action.
 | Angular framework, compiler and build tools      | 21.2.25               |
 | `@langchain/langgraph-sdk`                       | 1.12.7                |
 | `@langchain/langgraph`, `@langchain/core`        | 1.4.12, 1.2.18        |
-| `langchain`, optional `@langchain/google-genai`  | 1.5.10, 2.2.0         |
+| `langchain`, optional `@langchain/google`        | 1.5.10, 0.2.12        |
 | Application Zod                                  | 4.6.7                 |
 
 | Feature            | Supported behavior                                                                               |

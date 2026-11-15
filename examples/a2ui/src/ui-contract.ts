@@ -15,8 +15,18 @@ export const CATALOG_ID = basicCatalog.id;
 export const surfaceRoles = ["canvas", "controls", "notes"] as const;
 export const promptSchema = z.string().trim().min(1).max(2000);
 export const conversationSchema = z.array(
-  z.object({ generationId: z.uuid(), prompt: promptSchema }),
+  z
+    .object({
+      generationId: z.uuid(),
+      prompt: promptSchema,
+      ui: z.unknown().transform(parseSavedUi).optional(),
+    })
+    .refine(
+      (turn) => !turn.ui || turn.ui.generationId === turn.generationId,
+      "Saved response has an invalid generation identity",
+    ),
 );
+export type Conversation = z.infer<typeof conversationSchema>;
 export const decisionSchema = z.object({ generationId: z.uuid(), approved: z.boolean() }).strict();
 
 const rendererMetadataSchema = z
