@@ -1,5 +1,5 @@
 // Packaging guard for every publishable package. skein is ESM-only, but consumers still reach for
-// `require()` — Node's require(esm) (20.19+/22.12+) and every CJS-emitting bundler resolve through
+// `require()` — Node's require(esm) (22.14+/24/26) and every CJS-emitting bundler resolve through
 // the `require` condition. Without a matching condition they fail with ERR_PACKAGE_PATH_NOT_EXPORTED,
 // which reads like the package is broken rather than like a module-format mismatch. `default` is the
 // catch-all that matches it, and it must come last (conditional exports match in declaration order).
@@ -81,6 +81,14 @@ describe("publishable package manifests", () => {
     // Guards the discovery itself: a broken glob would silently make every case below vacuous.
     expect(publishablePackages.length).toBe(25);
     expect(libraryPackages.length).toBe(23);
+  });
+
+  it("keeps every published package on the workspace Node support policy", () => {
+    const workspace = JSON.parse(readFileSync(path.join(packagesDir, "../package.json"), "utf8"));
+    expect(workspace.engines.node).toBe("^22.14.0 || ^24.0.0 || ^26.0.0");
+    for (const pkg of publishablePackages) {
+      expect(pkg.manifest.engines, pkg.manifest.name as string).toEqual(workspace.engines);
+    }
   });
 
   // Ranges we *install* have to name a major, because npm resolves them at install time and a

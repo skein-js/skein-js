@@ -85,6 +85,10 @@ describe("headless entrypoint", () => {
       expect(existsSync(path.join(root, "apps/agent/eslint.config.mjs"))).toBe(
         !flags.includes("--no-linting"),
       );
+      expect(readFileSync(path.join(root, "apps/agent/.nvmrc"), "utf8")).toBe("26\n");
+      expect(
+        JSON.parse(readFileSync(path.join(root, "apps/agent/langgraph.json"), "utf8")).node_version,
+      ).toBe("26");
     },
   );
   it.each([false, true])("registers packages unless opted out: %s", (optOut) => {
@@ -152,19 +156,20 @@ describe("headless entrypoint", () => {
     ).toBe("26");
     expect(readFileSync(path.join(root, filename), "utf8")).toBe("26.12.0\n");
   });
-  it.each([".nvmrc", ".node-version"])(
-    "rejects an unsupported Node pin in %s before writing",
-    (filename) => {
-      const root = createRoot();
-      writeFileSync(path.join(root, "package.json"), '{"workspaces":["apps/*"]}');
-      writeFileSync(path.join(root, filename), "20\n");
-      const result = invoke(root, ["--yes"]);
-      expect(result.status).toBe(1);
-      expect(result.stderr).toContain('Node pin "20" is unsupported');
-      expect(existsSync(path.join(root, "apps"))).toBe(false);
-      expect(readFileSync(path.join(root, filename), "utf8")).toBe("20\n");
-    },
-  );
+  it.each(
+    [".nvmrc", ".node-version"].flatMap((filename) =>
+      ["20", "22.12.0"].map((pin) => ({ filename, pin })),
+    ),
+  )("rejects unsupported Node $pin in $filename before writing", ({ filename, pin }) => {
+    const root = createRoot();
+    writeFileSync(path.join(root, "package.json"), '{"workspaces":["apps/*"]}');
+    writeFileSync(path.join(root, filename), `${pin}\n`);
+    const result = invoke(root, ["--yes"]);
+    expect(result.status).toBe(1);
+    expect(result.stderr).toContain(`Node pin "${pin}" is unsupported`);
+    expect(existsSync(path.join(root, "apps"))).toBe(false);
+    expect(readFileSync(path.join(root, filename), "utf8")).toBe(`${pin}\n`);
+  });
   it("redirects Nx before writing files", () => {
     const root = createRoot();
     writeFileSync(path.join(root, "package.json"), "{}");

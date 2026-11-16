@@ -17,12 +17,15 @@ remain the same.
 
 ## Prerequisites
 
-- **New projects (Path A):** Node 24 is recommended. Generated engines support `^22.12.0 || ^24.0.0 || ^26.0.0`.
-- **Existing graphs (Paths B and C):** Node ≥ 20 and a package manager (`pnpm`/`npm`).
-- **Node 22, 24 or 26** when selecting SQLite; desktop examples build with Node 24.
+- **New projects (Path A):** Node 26 is recommended. Generated engines support `^22.14.0 || ^24.0.0 || ^26.0.0`.
+- **Existing graphs (Paths B and C):** Node 22.14+ within 22.x, Node 24 or Node 26, and a package manager (`pnpm`/`npm`).
+- **Node 22.14+ within 22.x, 24 or 26** when selecting SQLite; desktop examples build with Node 24.
 - For Paths B and C, a
   **[LangGraph.js graph](https://docs.langchain.com/oss/javascript/langgraph/graph-api)** — a
   `CompiledStateGraph` from `@langchain/langgraph`. Path A writes one for you.
+
+When upgrading an existing project, upgrade Node before installing this version of Skein if you use
+Node 20 or Node 22 below 22.14. Node 26 is recommended; supported Node 22 and 24 pins remain valid.
 
 <span id="path-a--starting-from-scratch"></span>
 

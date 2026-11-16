@@ -41,7 +41,7 @@
   ],
   "sideEffects": false,
   "engines": {
-    "node": ">=20"
+    "node": "^22.14.0 || ^24.0.0 || ^26.0.0"
   },
   "//": "Everything the console needs is a *dev* dependency: `ui/` is compiled to static files by `nx build console-ui`, and scripts/generate-assets.mjs turns those files into a JS module. So the published package ships compiled strings and has no runtime dependencies at all — nothing here reaches a consumer's node_modules.",
   "devDependencies": {

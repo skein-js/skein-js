@@ -6,7 +6,7 @@ Describe an interface in chat, watch it render, review it and ask for a change. 
 
 ## Run it
 
-Use Node 24 and the repository's pnpm version. From the repository root:
+Use Node 26 and the repository's pnpm version. From the repository root:
 
 ```sh
 pnpm install

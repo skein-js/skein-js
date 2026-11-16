@@ -152,15 +152,19 @@ front-end signal for the SSE/`useStream` path.
 
 ## Node runtime coverage
 
-The main quality and Postgres/Redis integration jobs run on Node 24 and 26. Protocol conformance
-runs a real server on each Node major; production image checks verify the Node major inside the
-image. Node 24 remains the default for generated images, releases and desktop packaging.
+The main quality, Postgres/Redis integration and Node protocol-conformance jobs run on Node
+22.14.0, 24 and 26. The exact Node 22 minimum exercises native package-manifest lookup. Production
+image checks verify the default Node 26 image and an explicit Node 24 image. Node 26 is the default
+for generated images and releases; desktop packaging keeps its explicit Node 24 pin.
+
+Bun 1.3.14 and Deno 2.9.4 protocol checks launch the compiled CLI. The Node-only package-manifest
+lookup loads only during a build, so a production runtime does not need to implement that API.
 
 SQLite tests and clean packed consumers run on Node 22, 24 and 26 across Linux x64, Windows x64,
 macOS ARM64 and macOS x64. Native dependencies must be installed for the selected Node major;
 reusing a Node 24 `node_modules` directory on Node 26 can fail with a native ABI mismatch.
 Actions computation-cache archives are separated by Node major, and Nx also hashes `node --version`.
-Console test workers disable Node's Web Storage so jsdom supplies browser storage on both majors.
+Console test workers disable Node's Web Storage so jsdom supplies browser storage on supported Node versions.
 The dated [local validation record](./local-deployment-validation.md) describes completed gates;
 adding a matrix entry does not by itself establish a passing platform result.
 
@@ -179,7 +183,7 @@ The **33 installed consumers** are curated rather than the full cross-product:
 | Standalone defaults |    12 | Every manager × storage and provider × storage pair on Node 24               |
 | CLI opt-outs        |     4 | Every manager and provider, with all storage choices represented             |
 | Generic workspaces  |     4 | One per manager; neither tool, ESLint only, Prettier only, or both inherited |
-| Nx defaults         |     8 | Both layouts × four inheritance profiles, on Node 22.12.0 and 24             |
+| Nx defaults         |     8 | Both layouts × four inheritance profiles, on Node 22.14.0 and 24             |
 | Nx opt-outs         |     2 | Both layouts, with absent or existing root tooling                           |
 | Node 26 additions   |     3 | Standalone pnpm/SQLite, integrated Nx/both tools, package-based Nx/no tools  |
 
@@ -544,7 +548,7 @@ Legacy SDK 1.9.25 and 1.9.31 coverage remains in the packed consumer.
 
 The internal `scripts/scaffold-cases.json` catalog drives 96 generation combinations and 33 installed
 consumers: every package-manager/storage and provider/storage pair, opt-outs, independent tooling
-inheritance, both Nx layouts on Node 22.12 and 24, and three additional Node 26 consumers.
+inheritance, both Nx layouts on Node 22.14 and 24, and three additional Node 26 consumers.
 
 CI builds and packs the commit once and distributes tarballs. Consumers install outside the checkout,
 verify transitive Skein artifact hashes, run typechecking, tests, applicable lint/format checks and

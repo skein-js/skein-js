@@ -70,7 +70,7 @@ describe("scaffold case catalog", () => {
     expect(nxOptOuts).toHaveLength(2);
     expect(new Set(nxOptOuts.map((row) => row.layout)).size).toBe(2);
     expect(nxOptOuts.map((row) => row.tooling).sort()).toEqual(["both", "neither"]);
-    expect(new Set(catalog.cases.map((row) => row.node))).toEqual(new Set(["22.12.0", "24", "26"]));
+    expect(new Set(catalog.cases.map((row) => row.node))).toEqual(new Set(["22.14.0", "24", "26"]));
   });
   it("keeps Nx schema defaults and enums aligned with the shared builders", () => {
     const schema = JSON.parse(
@@ -103,8 +103,11 @@ describe("scaffold case catalog", () => {
       const manifest = JSON.parse(files.find((file) => file.path === "package.json")!.contents);
       expect(Boolean(manifest.scripts.lint)).toBe(options.linting);
       expect(Boolean(manifest.devDependencies.prettier)).toBe(options.linting);
-      expect(files.find((file) => file.path === ".nvmrc")?.contents).toBe("24\n");
-      expect(manifest.engines.node).toBe("^22.12.0 || ^24.0.0 || ^26.0.0");
+      expect(files.find((file) => file.path === ".nvmrc")?.contents).toBe("26\n");
+      expect(
+        JSON.parse(files.find((file) => file.path === "langgraph.json")!.contents).node_version,
+      ).toBe("26");
+      expect(manifest.engines.node).toBe("^22.14.0 || ^24.0.0 || ^26.0.0");
       expect(manifest.scripts.start).toContain("-c .skein/build/langgraph.json");
       expect(new Set(files.map((file) => file.path)).size).toBe(files.length);
       const readme = files.find((file) => file.path === "README.md")!.contents;

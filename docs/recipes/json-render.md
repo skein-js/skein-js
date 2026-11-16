@@ -11,7 +11,7 @@ JavaScript SDK and upstream SpecStream compiler; no Skein adapter package is nee
 
 ## Try the complete journey
 
-Use Node 24, clone the repository, and run these commands at its root:
+Use Node 26, clone the repository, and run these commands at its root:
 
 ```bash
 pnpm install

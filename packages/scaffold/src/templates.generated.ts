@@ -144,7 +144,7 @@ packaging with Electron or Tauri.
 
 ## Checks
 
-Use the Node version in \`.nvmrc\`. Node 24 is recommended; Node 22.12+ within 22.x and Node 26 are also
+Use the Node version in \`.nvmrc\`. Node 26 is recommended; Node 22.14+ within 22.x and Node 24 are also
 supported.
 
 \`\`\`sh
@@ -273,7 +273,7 @@ the image.
 
 ## Checks
 
-Use the Node version in \`.nvmrc\`. Node 24 is recommended; Node 22.12+ within 22.x and Node 26 are also
+Use the Node version in \`.nvmrc\`. Node 26 is recommended; Node 22.14+ within 22.x and Node 24 are also
 supported.
 
 \`\`\`sh

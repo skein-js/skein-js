@@ -26,8 +26,8 @@ describe("generateDockerfile", () => {
 
   it("defaults to a supported node and boots the compiled artifact via `skein start`", () => {
     const out = generateDockerfile({ port: 8123 });
-    // Node 24 is the current LTS; an omitted `node_version` follows that production baseline.
-    expect(out).toContain("FROM node:24-slim");
+    // Node 26 is the current LTS; an omitted `node_version` follows that production baseline.
+    expect(out).toContain("FROM node:26-slim");
     // Pre-built path: runs `skein start` (compiled JS), not `skein dev` (runtime TS transform).
     expect(out).toContain('"/app/node_modules/skein-js/dist/index.js", "start"');
     expect(out).not.toContain('"dev"');

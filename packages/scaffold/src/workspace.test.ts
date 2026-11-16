@@ -83,7 +83,7 @@ describe("workspace planning", () => {
   it("inherits each tool independently and honors a numeric Node pin", () => {
     const plan = inspect({
       "package.json": "{}",
-      ".nvmrc": "22.12.0",
+      ".nvmrc": "22.14.0",
       "eslint.config.mjs": "existing",
     });
     const files = buildProjectFiles({ ...defaults, ...plan.options });
@@ -92,7 +92,7 @@ describe("workspace planning", () => {
     expect(files.some((file) => file.path === ".prettierrc.json")).toBe(true);
     expect(manifest.devDependencies.eslint).toBeDefined();
     expect(manifest.devDependencies.prettier).toBeDefined();
-    expect(files.find((file) => file.path === ".nvmrc")?.contents).toBe("22.12.0\n");
+    expect(files.find((file) => file.path === ".nvmrc")?.contents).toBe("22.14.0\n");
     expect(
       JSON.parse(files.find((file) => file.path === "langgraph.json")!.contents).node_version,
     ).toBe("22");

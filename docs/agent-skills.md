@@ -12,7 +12,7 @@ The [Agent Skills](https://agentskills.io/specification) in this repository guid
 
 The skills cover the same LangGraph execution and Agent Protocol in either deployment. Choose
 SQLite explicitly for a desktop app, CLI, daemon, or one Node owner; choose Postgres/Redis for a
-shared server. New projects recommend Node 24 and enable ESLint/Prettier by default; compatible
+shared server. New projects recommend Node 26 and enable ESLint/Prettier by default; compatible
 workspace pins and explicit tooling opt-outs are preserved.
 
 The local guidance covers `--storage sqlite`, `embedSqliteGraphs`, host-owned startup/shutdown,

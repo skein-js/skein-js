@@ -19,7 +19,7 @@ Shared flags where sensible: `--port`, `--host`, `--no-reload`, `--config`,
 
 Production commands (`up`, `build`, `dockerfile`, and the generated `start`) also accept
 `--runtime node|bun|deno` and `--runtime-version`. Precedence is CLI flag, then
-`skein.runtime` in config, then Node 24 LTS. Legacy `node_version` remains the Node version fallback.
+`skein.runtime` in config, then Node 26 LTS. Legacy `node_version` remains the Node version fallback.
 
 **skein-only:** `skein start` serves a pre-built `.skein/build` artifact — plain compiled JS, no vite,
 no reload. It is the production image's entrypoint, and it is also how you run skein **without a
@@ -122,8 +122,8 @@ it but is never required.
     "chat": "./src/chat.ts:makeGraph", // or a factory function
   },
 
-  // JS/Node runtime pin (20 | 22 | 24)
-  "node_version": "24",
+  // JS/Node runtime pin (22.14+ within 22.x | 24 | 26)
+  "node_version": "26",
 
   // Native production runtime (skein extension). Omit for Node.
   "skein": {
@@ -194,7 +194,7 @@ it but is never required.
 | `langgraph.json` field | skein-js wiring                                                                                                                                                                                                                                                                                                                                                                                                                                                               |
 | ---------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | `graphs`               | [`@skein-js/config`](./storage.md) resolves each `path:export`, loading a compiled graph or `makeGraph` factory. Drives `/agents` introspection + run execution.                                                                                                                                                                                                                                                                                                              |
-| `node_version`         | Used by `skein build` / `skein dockerfile` base image selection. Defaults to Node 24 LTS when omitted; an explicit value is honoured verbatim, including an older one.                                                                                                                                                                                                                                                                                                        |
+| `node_version`         | Used by `skein build` / `skein dockerfile` base image selection. Defaults to Node 26 LTS when omitted; an explicit value is honoured verbatim, including an older one.                                                                                                                                                                                                                                                                                                        |
 | `skein.runtime`        | Native production server and pinned official image: `node`, `bun`, or `deno`. Bun/Deno use `@skein-js/fetch` with `Bun.serve`/`Deno.serve`, never Express compatibility.                                                                                                                                                                                                                                                                                                      |
 | `skein.idempotency`    | Retention for `Idempotency-Key` records. Tuning only — the header is honoured either way. See [below](#idempotency-skeinidempotency).                                                                                                                                                                                                                                                                                                                                         |
 | `skein.webhooks`       | How run-completion callbacks are retried and bounded. Tuning only — a run carrying a `webhook` owes a callback either way. See [below](#webhooks-skeinwebhooks).                                                                                                                                                                                                                                                                                                              |

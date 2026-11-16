@@ -7,10 +7,12 @@
 // and the user's lockfile are irrelevant here; a single `npm install --omit=dev` is deterministic
 // because every dependency is exact-pinned.
 
+import { DEFAULT_RUNTIME_VERSIONS } from "../runtime-selection.js";
+
 /**
  * Node major version → base image tag.
  *
- * Falls back to **24**, the current Active LTS, so a config without an explicit
+ * Falls back to **26**, the current Active LTS, so a config without an explicit
  * `node_version` would otherwise generate an image with an unpatched runtime. An explicit
  * `node_version` is still honoured verbatim, including an older one — that is the user's call, and
  * pinning is exactly what the field is for.
@@ -20,12 +22,12 @@ export type ProductionRuntime = "node" | "bun" | "deno";
 function baseImage(runtime: ProductionRuntime, version: string): string {
   if (runtime === "bun") return `oven/bun:${version}-slim`;
   if (runtime === "deno") return `denoland/deno:${version}`;
-  const major = version.trim().match(/^\d+/)?.[0] ?? "24";
+  const major = version.trim().match(/^\d+/)?.[0] ?? DEFAULT_RUNTIME_VERSIONS.node;
   return `node:${major}-slim`;
 }
 
 export interface DockerfileOptions {
-  /** `node_version` from the config (major version); defaults to the current LTS, Node 24. */
+  /** `node_version` from the config (major version); defaults to the current LTS, Node 26. */
   nodeVersion?: string;
   /** Native runtime selected by CLI/config. */
   runtime?: ProductionRuntime;
@@ -69,7 +71,7 @@ export function generateDockerfile(options: DockerfileOptions): string {
   // carrying `node_version: "24"` plus `skein.runtime.name: "bun"` into `FROM oven/bun:24-slim` — a tag
   // that does not exist, failing the build with an opaque manifest-not-found instead of using the
   // tested default.
-  const defaultVersion = runtime === "bun" ? "1.3.14" : runtime === "deno" ? "2.9.4" : "24";
+  const defaultVersion = DEFAULT_RUNTIME_VERSIONS[runtime];
   const runtimeVersion =
     options.runtimeVersion ?? (runtime === "node" ? nodeVersion : undefined) ?? defaultVersion;
   const install =

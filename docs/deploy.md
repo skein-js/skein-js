@@ -12,7 +12,7 @@ description: Deploy skein-js with Postgres and Redis on your infrastructure, or 
 | **Shared server**     | Web/API clients and workers spanning instances        | Postgres for resources/checkpoints; Redis for a shared queue and streaming |
 | **Local application** | Desktop apps, CLI tools, daemons, or one Node process | One exclusively owned SQLite file through `@skein-js/local`                |
 
-For the SQLite option, follow [local deployment](./local-deployment.md). It supports Node 22/24/26;
+For the SQLite option, follow [local deployment](./local-deployment.md). It supports Node 22.14+ within 22.x, 24 and 26;
 Electron and Tauri hosts package the same engine and use the existing protocol. Models and tools
 remain application choices. The default `skein dev` continues to use memory drivers.
 
@@ -24,9 +24,12 @@ What it ships instead is an ordinary OCI image: `skein build` bundles your TypeS
 JS and produces a Docker image that needs a Postgres, a Redis, and two environment variables. Nothing
 about it is specific to any host.
 
-Production artifacts can run on Node, Bun, or Deno. Node 24 LTS is the default and uses Express. Bun and
+Production artifacts can run on Node, Bun, or Deno. Node 26 LTS is the default and uses Express. Bun and
 Deno use the Web-standard `@skein-js/fetch` adapter and their native HTTP servers. Select one in
 `langgraph.json` or at build time:
+
+Run `skein build` on Node 22.14+ within 22.x, Node 24 or Node 26, including when the artifact targets
+Bun or Deno.
 
 Use Node for the default production path. Bun and Deno are preview targets; verify streaming,
 background execution, persistence, and shutdown on your chosen runtime before deployment.

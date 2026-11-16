@@ -205,7 +205,7 @@ async function main() {
   check("the image builds, including the graph compatibility probe", true);
 
   if (runtime === "node") {
-    const expectedMajor = runtimeVersion?.split(".")[0] ?? "24";
+    const expectedMajor = runtimeVersion?.split(".")[0] ?? "26";
     const actualVersion = run("docker", [
       "run",
       "--rm",

@@ -4,13 +4,13 @@ import { resolveRuntimeSelection } from "./runtime-selection.js";
 
 const config = {
   graphs: {},
-  node_version: "20",
+  node_version: "24",
   skein: { runtime: { name: "bun" as const, version: "1.2.0" } },
 };
 
 describe("resolveRuntimeSelection", () => {
-  it("defaults to Node 24 LTS", () => {
-    expect(resolveRuntimeSelection({ graphs: {} })).toEqual({ name: "node", version: "24" });
+  it("defaults to Node 26 LTS", () => {
+    expect(resolveRuntimeSelection({ graphs: {} })).toEqual({ name: "node", version: "26" });
   });
 
   it("uses CLI, then config, then defaults", () => {
@@ -26,9 +26,9 @@ describe("resolveRuntimeSelection", () => {
   });
 
   it("continues honoring legacy node_version", () => {
-    expect(resolveRuntimeSelection({ graphs: {}, node_version: "20" })).toEqual({
+    expect(resolveRuntimeSelection({ graphs: {}, node_version: "24" })).toEqual({
       name: "node",
-      version: "20",
+      version: "24",
     });
   });
 

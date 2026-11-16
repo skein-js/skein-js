@@ -1,7 +1,7 @@
 import type { LanggraphJson, SkeinRuntimeName } from "@skein-js/config";
 
 export const DEFAULT_RUNTIME_VERSIONS: Readonly<Record<SkeinRuntimeName, string>> = {
-  node: "24",
+  node: "26",
   bun: "1.3.14",
   deno: "2.9.4",
 };
