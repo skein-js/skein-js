@@ -1,5 +1,5 @@
 import { cp, mkdtemp, mkdir, readdir, readFile, rm, writeFile } from "node:fs/promises";
-import { isBuiltin } from "node:module";
+import nodeModule, { isBuiltin } from "node:module";
 import { tmpdir } from "node:os";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
@@ -15,6 +15,7 @@ import {
   type BuildArtifact,
   type BundleResult,
 } from "./bundle-project.js";
+import type { PackageManifestResolvers } from "./installed-package-version.js";
 
 // A committed mini-monorepo fixture: an app whose graph imports a workspace lib through a
 // `tsconfig.base.json` path alias (`@fixture/lib`) plus real npm-shaped deps. This is the exact shape
@@ -264,6 +265,44 @@ describe("bundleProject", () => {
     expect(manifest.dependencies["@fixture/subpath-sdk"]).toBe("1.32.2");
     expect(await bareImportsInArtifact()).toContain("@fixture/subpath-sdk/client/index.js");
   });
+
+  it("pins a dependency visible only through the project's PnP API", async () => {
+    const name = "@fixture/pnp-only";
+    const directory = await mkdtemp(path.join(tmpdir(), "skein-pnp-dependency-"));
+    const configPath = path.join(appDir, "pnp-dependency.json");
+    const output = `${outDir}-pnp`;
+    const config = JSON.parse(await readFile(path.join(appDir, "langgraph.json"), "utf8"));
+    const resolvers: PackageManifestResolvers = nodeModule;
+    const original = resolvers.findPnpApi;
+    await writeFile(
+      path.join(directory, "package.json"),
+      JSON.stringify({ name, version: "8.7.6" }),
+    );
+    await writeFile(
+      configPath,
+      JSON.stringify({ ...config, dependencies: [name], http: { disable_ui: true } }),
+    );
+    // Exercise bundleProject's lazy module-object wiring; cli:test-pnp covers the real Yarn API.
+    resolvers.findPnpApi = (issuer) =>
+      path.dirname(issuer) === appDir
+        ? {
+            resolveToUnqualified: (pkg, source) =>
+              pkg === name ? directory : path.dirname(nodeModule.findPackageJSON(pkg, source)!),
+          }
+        : null;
+    try {
+      const built = await bundleProject({ configPath, outDir: output, skeinVersion: "9.9.9-test" });
+      expect(built.externals[name]).toBe("8.7.6");
+      const manifest = JSON.parse(await readFile(path.join(output, "package.json"), "utf8"));
+      expect(manifest.dependencies[name]).toBe("8.7.6");
+    } finally {
+      if (original) resolvers.findPnpApi = original;
+      else delete resolvers.findPnpApi;
+      await rm(configPath, { force: true });
+      await rm(directory, { recursive: true, force: true });
+      await rm(output, { recursive: true, force: true });
+    }
+  }, 30_000);
 
   it("ignores a different package's version in an exported nested manifest", async () => {
     const name = "@fixture/manifest-decoy";

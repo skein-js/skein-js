@@ -14060,7 +14060,9 @@ what dissolves the "my Docker build context doesn't contain my monorepo" problem
 at the exact version installed on the build host and writes it into the artifact's `package.json`,
 which the image installs with `npm install --omit=dev`. Static subpath imports, including MCP SDK
 client/server imports, are pinned using the installed package's root manifest; no extra
-`dependencies` entry is needed for those imports. Externalizing is not a limitation to work
+`dependencies` entry is needed for those imports. For Yarn Plug'n'Play projects, run the build through
+Yarn so its loader is active; dependency versions come from that project's PnP map, including packages
+inside Yarn's cache archives. Externalizing is not a limitation to work
 around; it is load-bearing:
 
 - **One copy of each library.** The image installs `skein-js`, which brings `@langchain/langgraph` and
