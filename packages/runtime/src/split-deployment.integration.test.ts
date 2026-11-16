@@ -34,6 +34,8 @@ it("separates authorized API admission/streams from worker execution, cancellati
   const expiredReads = vi.spyOn(embedded.deps.store.threads, "listExpired");
   // API owner does not start worker/maintenance. The child is the only consumer and loop owner.
   const child = fork(fileURLToPath(new URL("./__fixtures__/split-worker.mjs", import.meta.url)), {
+    // Node 22.14 requires an opt-in for the worker's TypeScript graph fixture.
+    execArgv: [...process.execArgv, "--experimental-strip-types"],
     env: { ...process.env, POSTGRES_URI: postgres.url, REDIS_URI: redis.url },
     stdio: ["ignore", "ignore", "inherit", "ipc"],
   });
