@@ -16,7 +16,7 @@ and an open alternative to the second.
 | -------------------------------------------- | ---------- | --------------------------------------------------------------------------------------------- |
 | `dev` / `up` / `build` / `dockerfile`        | ✅         | Drop-in, plus skein-only `start` and `import-langgraph`. [Details](./langgraph-cli-compat.md) |
 | Project scaffolding                          | ✅         | `npm create skein-js@latest` — no LangGraph Platform equivalent. [Details](./scaffolding.md)  |
-| Node 24 production runtime                   | ✅         | Default production image and fallback                                                         |
+| Node 26 production runtime                   | ✅         | Default production image and fallback                                                         |
 | Bun / Deno production runtimes               | ⚠️ preview | Fetch launchers and images ship; clean-artifact matrices must graduate each                   |
 | Express · Fastify · NestJS · Next.js · Fetch | ✅         | Standalone or embedded in an app you already run. [Details](./using-skein.md)                 |
 | Embed a graph in code, no CLI                | ✅         | [Details](./embedding.md)                                                                     |

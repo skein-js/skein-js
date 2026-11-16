@@ -17,12 +17,12 @@ That does **not** mean you can't `require()` it. Each library package exposes a 
 condition, so Node's `require(esm)` resolves it:
 
 ```js
-const { embedPostgresGraphs } = require("@skein-js/runtime"); // works on Node 20.19+ / 22.12+
+const { embedPostgresGraphs } = require("@skein-js/runtime"); // works on supported Node 22.14+, 24 and 26
 ```
 
-`require(esm)` landed unflagged in **Node 20.19** and **22.12**. On an older Node you get
-`ERR_REQUIRE_ESM` telling you to use `import()` instead — which is the honest answer, and what a
-CJS-emitting bundler should be configured to do. Plain `import` works on any Node ≥ 20.
+All supported Node versions (**22.14+ within 22.x, 24 and 26**) can load these ESM libraries through
+`require(esm)`. A CJS-emitting bundler can also use dynamic `import()`. Node 20 and Node 22 releases
+below 22.14 are outside the supported range.
 
 > Before 0.10.0 the packages declared only `types` + `import` conditions, so `require()` failed with
 > `ERR_PACKAGE_PATH_NOT_EXPORTED` — which reads like the package is broken rather than like a module
@@ -98,7 +98,7 @@ esbuild server.ts --bundle --platform=node --format=esm \
 ```
 
 Prefer `--format=esm` if you can. With `--format=cjs`, anything the bundle `require()`s at runtime
-still needs Node 20.19+, per above.
+still needs a supported Node version with `require(esm)`, as described above.
 
 ## The "Critical dependency" warning
 
@@ -173,7 +173,9 @@ what dissolves the "my Docker build context doesn't contain my monorepo" problem
 
 **Left external and pinned** — every published `node_modules` package. `skein build` records each one
 at the exact version installed on the build host and writes it into the artifact's `package.json`,
-which the image installs with `npm install --omit=dev`. Externalizing is not a limitation to work
+which the image installs with `npm install --omit=dev`. Static subpath imports, including MCP SDK
+client/server imports, are pinned using the installed package's root manifest; no extra
+`dependencies` entry is needed for those imports. Externalizing is not a limitation to work
 around; it is load-bearing:
 
 - **One copy of each library.** The image installs `skein-js`, which brings `@langchain/langgraph` and

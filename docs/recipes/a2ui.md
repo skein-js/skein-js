@@ -10,7 +10,7 @@ resumes a separate approval step. It uses existing Agent Protocol SSE and the Ja
 
 ## Try the complete journey
 
-Use Node 24, clone the repository, then run these commands at its root:
+Use Node 26, clone the repository, then run these commands at its root:
 
 ```sh
 pnpm install

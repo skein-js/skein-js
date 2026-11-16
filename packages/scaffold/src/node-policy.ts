@@ -1,8 +1,8 @@
 import { satisfies } from "semver";
 
 /** Keep the recommended production baseline separate from additional tested Node majors. */
-export const RECOMMENDED_NODE_MAJOR = "24";
-export const SUPPORTED_NODE_RANGE = "^22.12.0 || ^24.0.0 || ^26.0.0";
+export const RECOMMENDED_NODE_MAJOR = "26";
+export const SUPPORTED_NODE_RANGE = "^22.14.0 || ^24.0.0 || ^26.0.0";
 
 /** Resolve a workspace version-manager value without consulting the network. */
 export function resolveNodeVersion(pin: string | undefined): { version: string; notice?: string } {
@@ -17,7 +17,7 @@ export function resolveNodeVersion(pin: string | undefined): { version: string; 
   const parts = normalized.split(".");
   const minimum =
     parts.length === 1 && parts[0] === "22"
-      ? "22.12.0"
+      ? "22.14.0"
       : [...parts, ...Array(3 - parts.length).fill("0")].join(".");
   if (!satisfies(minimum, SUPPORTED_NODE_RANGE))
     throw new Error(

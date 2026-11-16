@@ -20,7 +20,7 @@ npx create-skein-js@latest my-agent
 ```
 
 **Keep the `@latest`** to request the latest published scaffolder instead of relying on a cached
-version. Node 24 is recommended; generated projects support `^22.12.0 || ^24.0.0 || ^26.0.0`.
+version. Node 26 is recommended; generated projects support `^22.14.0 || ^24.0.0 || ^26.0.0`.
 
 For an existing workspace, choose a new child directory such as `apps/my-agent`. Use the
 [Nx generator](#nx-and-other-monorepos) in Nx workspaces.
@@ -104,7 +104,7 @@ SQLite projects install `@skein-js/local`, LangGraph, and its SQLite saver. Both
 select `--store sqlite --queue sqlite`, with the database at `.skein/state.sqlite`; `dev:memory`
 keeps the memory alternative. There is no Compose file, service-start script, or Postgres/Redis
 environment configuration. Graphs still build to `.skein/build` and the database stays outside it.
-Use Node 24 (recommended), Node 22.12+ within 22.x, or Node 26. See [local deployment](./local-deployment.md) for embedding and desktop examples.
+Use Node 26 (recommended), Node 22.14+ within 22.x, or Node 24. See [local deployment](./local-deployment.md) for embedding and desktop examples.
 
 ## Options
 
@@ -179,11 +179,11 @@ state and package-manager lockfiles are ignored. Missing tool dependencies are a
 of inherited configuration, and new files follow workspace formatting; see the
 [workspace tooling and caching](#workspace-tooling-and-caching).
 
-The shared policy recommends **Node 24** with engines `^22.12.0 || ^24.0.0 || ^26.0.0`. It derives `.nvmrc`
+The shared policy recommends **Node 26** with engines `^22.14.0 || ^24.0.0 || ^26.0.0`. It derives `.nvmrc`
 and `langgraph.json.node_version` from the same selection. Compatible numeric workspace pins in
 `.nvmrc` or `.node-version` are honored. Unsupported numeric pins fail before writing; unresolved
-aliases such as `lts/*` produce an explanation and fall back to Node 24. Node 26 is an additional
-supported runtime; production defaults and desktop packaging remain on Node 24. Yarn users on Node 26
+aliases such as `lts/*` produce an explanation and fall back to Node 26. Node 26 is the default for
+new projects and production images; desktop packaging keeps its explicit Node 24 pin. Yarn users on Node 26
 must install Corepack separately because it is no longer bundled with Node.
 
 ## Nx and other monorepos
@@ -299,7 +299,7 @@ export const graph = new StateGraph(MessagesAnnotation)
 
 ```json
 // langgraph.json
-{ "node_version": "24", "graphs": { "agent": "./src/graph.ts:graph" }, "env": ".env" }
+{ "node_version": "26", "graphs": { "agent": "./src/graph.ts:graph" }, "env": ".env" }
 ```
 
 Add `"type": "module"` to your `package.json`, then `npx skein dev`. That is the entire contract —

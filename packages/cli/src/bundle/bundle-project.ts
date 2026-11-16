@@ -6,9 +6,9 @@
 // identically to dev and are inlined into the bundle, dissolving the monorepo build-context gap.
 // Published `node_modules` packages stay external (recorded + pinned into the artifact package.json).
 
-import { existsSync, readFileSync } from "node:fs";
+import { readFileSync } from "node:fs";
 import { mkdir, readFile, rm, writeFile } from "node:fs/promises";
-import { createRequire, isBuiltin } from "node:module";
+import { isBuiltin, type findPackageJSON } from "node:module";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 
@@ -19,6 +19,8 @@ import {
   telemetryRuntimePackages,
 } from "@skein-js/runtime";
 import type { build as viteBuild, Plugin } from "vite";
+
+import { DEFAULT_RUNTIME_VERSIONS } from "../runtime-selection.js";
 
 import { precomputeSchemas } from "./precompute-schemas.js";
 import {
@@ -35,7 +37,7 @@ export interface BundleProjectOptions {
   configPath: string;
   /** Absolute path to the artifact output dir (e.g. `<configDir>/.skein/build`). */
   outDir: string;
-  /** ECMAScript bundle target derived from the selected runtime; defaults to Node 24 syntax. */
+  /** ECMAScript bundle target derived from the selected runtime; defaults to Node 26 syntax. */
   nodeVersion?: string;
   /** The CLI's own version, pinned as `skein-js` in the artifact package.json. */
   skeinVersion: string;
@@ -73,52 +75,40 @@ function uniqueSafeName(graphId: string, used: Set<string>): string {
   return candidate;
 }
 
-/** Node major used as the portable JS syntax target; defaults to the Node 24 LTS baseline. */
+/** Node major used as the JS syntax target; other runtimes pass their portable target explicitly. */
 function nodeMajor(nodeVersion: string | undefined): string {
-  return nodeVersion?.trim().match(/\d+/)?.[0] ?? "24";
+  return nodeVersion?.trim().match(/\d+/)?.[0] ?? DEFAULT_RUNTIME_VERSIONS.node;
 }
 
-/** Read a `version` from a package.json path, or undefined if unreadable. */
-function readVersion(pkgJsonPath: string): string | undefined {
+/** Only the requested package's own metadata can supply its installed version. */
+function readVersion(pkgJsonPath: string, pkg: string): string | undefined {
   try {
     const parsed = JSON.parse(readFileSync(pkgJsonPath, "utf8")) as {
-      name?: string;
-      version?: string;
-    };
-    return parsed.version;
+      name?: unknown;
+      version?: unknown;
+    } | null;
+    return parsed?.name === pkg && typeof parsed.version === "string" && parsed.version.trim()
+      ? parsed.version
+      : undefined;
   } catch {
     return undefined;
   }
 }
 
 /** One module tree's answer for a package's installed version, or undefined if it isn't there. */
-function findInstalledVersion(pkg: string, fromDir: string): string | undefined {
-  const require = createRequire(path.join(fromDir, "__skein_resolver__.js"));
-
+function findInstalledVersion(
+  pkg: string,
+  fromDir: string,
+  findPackageManifest: typeof findPackageJSON,
+): string | undefined {
   try {
-    const version = readVersion(require.resolve(`${pkg}/package.json`));
-    if (version) return version;
-  } catch {
-    // `exports` may not expose package.json — fall back to walking up from the entry.
-  }
-
-  try {
-    let dir = path.dirname(require.resolve(pkg));
-    while (dir !== path.dirname(dir)) {
-      const pkgJson = path.join(dir, "package.json");
-      if (existsSync(pkgJson)) {
-        const parsed = JSON.parse(readFileSync(pkgJson, "utf8")) as {
-          name?: string;
-          version?: string;
-        };
-        if (parsed.name === pkg && parsed.version) return parsed.version;
-      }
-      dir = path.dirname(dir);
-    }
+    // A bare specifier returns the package root even when its manifest export points into dist/,
+    // and does not require a root entrypoint. Resolving a file first would select nested metadata.
+    const pkgJsonPath = findPackageManifest(pkg, path.join(fromDir, "__skein_resolver__.js"));
+    return pkgJsonPath ? readVersion(pkgJsonPath, pkg) : undefined;
   } catch {
     return undefined;
   }
-  return undefined;
 }
 
 /**
@@ -130,9 +120,13 @@ function findInstalledVersion(pkg: string, fromDir: string): string | undefined 
  * **CLI's** tree — under pnpm's strict layout a peer of `skein-js` is not reachable from the project
  * at all. Trying the project first still lets a user pin a peer themselves and have that win.
  */
-function resolveInstalledVersion(pkg: string, fromDirs: readonly string[]): string {
+function resolveInstalledVersion(
+  pkg: string,
+  fromDirs: readonly string[],
+  findPackageManifest: typeof findPackageJSON,
+): string {
   for (const fromDir of fromDirs) {
-    const version = findInstalledVersion(pkg, fromDir);
+    const version = findInstalledVersion(pkg, fromDir, findPackageManifest);
     if (version) return version;
   }
 
@@ -293,6 +287,8 @@ export async function bundleProject(options: BundleProjectOptions): Promise<Buil
   // vite is an optionalDependency, host-only; import it lazily so this module loads in the vite-less
   // production image (the CLI graph imports it transitively but `skein start` never calls bundleProject).
   const { build, searchForWorkspaceRoot } = await import("vite");
+  // Bun's production runtime can load this module without implementing Node's build-only API.
+  const { findPackageJSON } = await import("node:module");
   const { config, configDir, graphs } = await loadConfig({ configPath });
   const workspaceRoot = searchForWorkspaceRoot(configDir);
 
@@ -408,14 +404,15 @@ export async function bundleProject(options: BundleProjectOptions): Promise<Buil
     // in insertion order because that order comes from whichever concurrent `resolveId` finished first,
     // which would let two builds of the same tree pin different versions.
     for (const [pkg, importerDirs] of externals) {
-      dependencies[pkg] = resolveInstalledVersion(pkg, [
-        ...projectTree,
-        ...[...importerDirs].sort(),
-      ]);
+      dependencies[pkg] = resolveInstalledVersion(
+        pkg,
+        [...projectTree, ...[...importerDirs].sort()],
+        findPackageJSON,
+      );
     }
     dependencies["skein-js"] = skeinVersion;
     for (const peer of SKEIN_RUNTIME_PEERS) {
-      dependencies[peer] = resolveInstalledVersion(peer, peerTree);
+      dependencies[peer] = resolveInstalledVersion(peer, peerTree, findPackageJSON);
     }
     // Runtime deps the bundle can't discover from graph imports, so they must be pinned explicitly:
     //  • a `provider:model` embed dynamically imports `@langchain/<provider>` (never a code import);
@@ -423,15 +420,16 @@ export async function bundleProject(options: BundleProjectOptions): Promise<Buil
     //  • `langgraph.json` `dependencies` — the user's escape hatch for packages loaded by name.
     // The old full-install image happened to carry these; the slim image must add them or break.
     const embedPkg = config.store?.index?.embed && providerEmbedPackage(config.store.index.embed);
-    if (embedPkg) dependencies[embedPkg] = resolveInstalledVersion(embedPkg, projectTree);
+    if (embedPkg)
+      dependencies[embedPkg] = resolveInstalledVersion(embedPkg, projectTree, findPackageJSON);
     for (const pkg of telemetryRuntimePackages(config.telemetry)) {
-      dependencies[pkg] = resolveInstalledVersion(pkg, projectTree);
+      dependencies[pkg] = resolveInstalledVersion(pkg, projectTree, findPackageJSON);
     }
     for (const dep of config.dependencies ?? []) {
       // Skip local-path deps (".", "./pkg") — those are the project's own source, already bundled.
       if (dep.startsWith(".") || dep.startsWith("/")) continue;
       const pkg = packageNameOf(dep);
-      dependencies[pkg] = resolveInstalledVersion(pkg, projectTree);
+      dependencies[pkg] = resolveInstalledVersion(pkg, projectTree, findPackageJSON);
     }
 
     assertEveryImportIsPinned(bundle, dependencies);

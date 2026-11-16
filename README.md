@@ -51,7 +51,9 @@ the HTTP and streaming API around your graphs.
 > 🚧 **Status: pre-alpha, but end-to-end.** Development and self-hosted production work today, with
 > Fetch, Express, Fastify, NestJS, and Next.js adapters. See the [roadmap](./docs/roadmap.md).
 
-Use **Node 24** (recommended), then create a project:
+Use **Node 26** (recommended), then create a project:
+
+Node 22.14+ within 22.x and Node 24 are also supported. Node 20 and earlier Node 22 releases are unsupported.
 
 ```bash
 npm create skein-js@latest my-agent

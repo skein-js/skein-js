@@ -34,6 +34,9 @@ describe("application generator", () => {
       expect(tree.listChanges().every((change) => !change.path.includes("lock"))).toBe(true);
       const manifest = readJson(tree, packageLayout ? "apps/agent/package.json" : "package.json");
       expect(manifest.devDependencies["skein-js"]).toBe("^" + version);
+      if (packageLayout) expect(manifest.engines.node).toBe("^22.14.0 || ^24.0.0 || ^26.0.0");
+      expect(tree.read("apps/agent/.nvmrc")?.toString()).toBe("26\n");
+      expect(readJson(tree, "apps/agent/langgraph.json").node_version).toBe("26");
       if (packageLayout)
         expect(tree.read("pnpm-workspace.yaml")?.toString()).toContain("# retained");
     },
@@ -75,15 +78,19 @@ describe("application generator", () => {
     expect(readJson(tree, "apps/agent/langgraph.json").node_version).toBe("26");
     expect(tree.read(filename)?.toString()).toBe("26.12.0\n");
   });
-  it.each([".nvmrc", ".node-version"])(
-    "rejects an unsupported workspace Node pin in %s without mutations",
-    async (filename) => {
+  it.each(
+    [".nvmrc", ".node-version"].flatMap((filename) =>
+      ["20", "22.12.0"].map((pin) => ({ filename, pin })),
+    ),
+  )(
+    "rejects unsupported workspace Node $pin in $filename without mutations",
+    async ({ filename, pin }) => {
       const tree = createTreeWithEmptyWorkspace();
       tree.write("tsconfig.base.json", "{}");
-      tree.write(filename, "20\n");
+      tree.write(filename, `${pin}\n`);
       const before = tree.listChanges();
       await expect(generateApplication(tree, { directory: "apps/agent" })).rejects.toThrow(
-        /Node pin "20" is unsupported/,
+        `Node pin "${pin}" is unsupported`,
       );
       expect(tree.listChanges()).toEqual(before);
     },

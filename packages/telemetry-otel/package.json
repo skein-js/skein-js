@@ -42,7 +42,7 @@
   ],
   "sideEffects": false,
   "engines": {
-    "node": ">=20"
+    "node": "^22.14.0 || ^24.0.0 || ^26.0.0"
   },
   "dependencies": {
     "@skein-js/core": "workspace:*"

@@ -7,7 +7,7 @@ If you already have a LangGraph.js graph or a `langgraph.json`, you want
 [getting-started.md](./getting-started.md) instead: there is nothing to scaffold, and adopting skein
 is a one-line change.
 
-**Prerequisites:** Node 24 is recommended, with Node 22.12+ within 22.x also supported, and a package
+**Prerequisites:** Node 26 is recommended, with Node 22.14+ within 22.x and Node 24 also supported, and a package
 manager. Nothing in this guide needs an API key until you choose a model, and nothing needs Docker
 until deployment. For a workspace, start with the [monorepo guidance](./scaffolding.md#nx-and-other-monorepos).
 
@@ -68,7 +68,7 @@ Node version. The three files to understand first:
 
 ```json
 {
-  "node_version": "24",
+  "node_version": "26",
   "graphs": { "echo": "./src/echo-graph.ts:graph" },
   "env": ".env"
 }

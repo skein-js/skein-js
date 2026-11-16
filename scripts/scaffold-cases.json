@@ -143,7 +143,7 @@
       "packageManager": "npm",
       "storage": "memory",
       "provider": "none",
-      "node": "22.12.0",
+      "node": "22.14.0",
       "tooling": "neither",
       "linting": false
     },
@@ -154,7 +154,7 @@
       "packageManager": "pnpm",
       "storage": "postgres",
       "provider": "google",
-      "node": "22.12.0",
+      "node": "22.14.0",
       "tooling": "neither",
       "linting": false
     },
@@ -231,7 +231,7 @@
       "packageManager": "pnpm",
       "storage": "memory",
       "provider": "none",
-      "node": "22.12.0",
+      "node": "22.14.0",
       "tooling": "neither",
       "linting": true
     },
@@ -253,7 +253,7 @@
       "packageManager": "pnpm",
       "storage": "sqlite",
       "provider": "anthropic",
-      "node": "22.12.0",
+      "node": "22.14.0",
       "tooling": "prettier",
       "linting": true
     },
@@ -286,7 +286,7 @@
       "packageManager": "pnpm",
       "storage": "sqlite",
       "provider": "google",
-      "node": "22.12.0",
+      "node": "22.14.0",
       "tooling": "eslint",
       "linting": true
     },
@@ -308,7 +308,7 @@
       "packageManager": "pnpm",
       "storage": "postgres",
       "provider": "openai",
-      "node": "22.12.0",
+      "node": "22.14.0",
       "tooling": "both",
       "linting": true
     },

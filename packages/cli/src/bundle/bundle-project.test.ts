@@ -42,9 +42,50 @@ async function installPackage(treeDir: string, name: keyof typeof FIXTURE_PACKAG
   await mkdir(dir, { recursive: true });
   await writeFile(
     path.join(dir, "package.json"),
-    JSON.stringify({ name, version, type: "module", main: "index.js" }),
+    JSON.stringify({
+      name,
+      version,
+      type: "module",
+      exports: {
+        ".": "./index.js",
+        ...(name === "@fixture/lib-dep" ? {} : { "./package.json": "./package.json" }),
+      },
+    }),
   );
   await writeFile(path.join(dir, "index.js"), source);
+}
+
+/** Mirrors the MCP SDK: importable subpaths, a type-only manifest export, and no root entry. */
+async function installSubpathPackage(treeDir: string): Promise<void> {
+  const dir = path.join(treeDir, "node_modules/@fixture/subpath-sdk");
+  await Promise.all(
+    ["cjs", "esm"].map((format) =>
+      mkdir(path.join(dir, "dist", format, "client"), { recursive: true }),
+    ),
+  );
+  await Promise.all([
+    writeFile(
+      path.join(dir, "package.json"),
+      JSON.stringify({
+        name: "@fixture/subpath-sdk",
+        version: "1.32.2",
+        exports: {
+          "./package.json": "./dist/cjs/package.json",
+          "./client/index.js": {
+            import: "./dist/esm/client/index.js",
+            require: "./dist/cjs/client/index.js",
+          },
+        },
+      }),
+    ),
+    writeFile(path.join(dir, "dist/cjs/package.json"), JSON.stringify({ type: "commonjs" })),
+    writeFile(path.join(dir, "dist/esm/package.json"), JSON.stringify({ type: "module" })),
+    writeFile(path.join(dir, "dist/cjs/client/index.js"), 'exports.sdkMarker = "subpath-dep";\n'),
+    writeFile(
+      path.join(dir, "dist/esm/client/index.js"),
+      'export const sdkMarker = "subpath-dep";\n',
+    ),
+  ]);
 }
 
 // Each package is placed deliberately:
@@ -59,6 +100,7 @@ beforeAll(async () => {
     installPackage(appDir, "@fixture/pinned"),
     installPackage(libDir, "@fixture/lib-dep"),
     installPackage(appDir, "@fixture/by-name"),
+    installSubpathPackage(appDir),
   ]);
 });
 
@@ -76,7 +118,7 @@ it("builds and starts an artifact with disabled graph UI without reading its mis
     await bundleProject({
       configPath,
       outDir: disabledOutput,
-      nodeVersion: "20",
+      nodeVersion: "26",
       skeinVersion: "9.9.9-test",
     });
     expect(await readdir(disabledOutput)).not.toContain("ui");
@@ -100,7 +142,7 @@ beforeAll(async () => {
   artifact = await bundleProject({
     configPath: path.join(appDir, "langgraph.json"),
     outDir,
-    nodeVersion: "20",
+    nodeVersion: "26",
     skeinVersion: "9.9.9-test",
   });
 }, 60_000);
@@ -113,6 +155,7 @@ beforeAll(async () => {
   await Promise.all([
     installPackage(outDir, "@fixture/pinned"),
     installPackage(outDir, "@fixture/lib-dep"),
+    installSubpathPackage(outDir),
   ]);
 });
 
@@ -215,6 +258,90 @@ describe("bundleProject", () => {
     expect(artifact.externals["@fixture/lib-dep"]).toBe("4.5.6");
   });
 
+  it("pins a subpath-only package from its root instead of its exported type-only manifest", async () => {
+    expect(artifact.externals["@fixture/subpath-sdk"]).toBe("1.32.2");
+    const manifest = JSON.parse(await readFile(path.join(outDir, "package.json"), "utf8"));
+    expect(manifest.dependencies["@fixture/subpath-sdk"]).toBe("1.32.2");
+    expect(await bareImportsInArtifact()).toContain("@fixture/subpath-sdk/client/index.js");
+  });
+
+  it("ignores a different package's version in an exported nested manifest", async () => {
+    const name = "@fixture/manifest-decoy";
+    const directory = path.join(appDir, "node_modules", name);
+    const configPath = path.join(appDir, "manifest-decoy.json");
+    const output = `${outDir}-manifest-decoy`;
+    const config = JSON.parse(await readFile(path.join(appDir, "langgraph.json"), "utf8"));
+    await mkdir(path.join(directory, "dist"), { recursive: true });
+    await writeFile(
+      path.join(directory, "package.json"),
+      JSON.stringify({
+        name,
+        version: "2.3.4",
+        exports: { "./package.json": "./dist/package.json" },
+      }),
+    );
+    await writeFile(
+      path.join(directory, "dist/package.json"),
+      JSON.stringify({ name: "@fixture/another-package", version: "99.0.0" }),
+    );
+    await writeFile(
+      configPath,
+      JSON.stringify({ ...config, dependencies: [name], http: { disable_ui: true } }),
+    );
+    try {
+      const dependencyArtifact = await bundleProject({
+        configPath,
+        outDir: output,
+        skeinVersion: "9.9.9-test",
+      });
+      expect(dependencyArtifact.externals[name]).toBe("2.3.4");
+    } finally {
+      await rm(configPath, { force: true });
+      await rm(output, { recursive: true, force: true });
+    }
+  }, 30_000);
+
+  it.each([
+    { label: "missing package", manifest: undefined },
+    {
+      label: "wrong package name",
+      manifest: { name: "@fixture/another-package", version: "99.0.0" },
+    },
+    { label: "missing version", manifest: { name: "@fixture/invalid-manifest" } },
+    { label: "malformed manifest", manifest: "{" },
+  ])(
+    "rejects $label without retaining a partial artifact",
+    async ({ manifest }) => {
+      const name = "@fixture/invalid-manifest";
+      const directory = path.join(appDir, "node_modules", name);
+      const configPath = path.join(appDir, "invalid-dependency.json");
+      const output = `${outDir}-invalid-dependency`;
+      const config = JSON.parse(await readFile(path.join(appDir, "langgraph.json"), "utf8"));
+      if (manifest !== undefined) {
+        await mkdir(directory, { recursive: true });
+        await writeFile(
+          path.join(directory, "package.json"),
+          typeof manifest === "string" ? manifest : JSON.stringify(manifest),
+        );
+      }
+      await writeFile(
+        configPath,
+        JSON.stringify({ ...config, dependencies: [name], http: { disable_ui: true } }),
+      );
+      try {
+        await expect(
+          bundleProject({ configPath, outDir: output, skeinVersion: "9.9.9-test" }),
+        ).rejects.toThrow('could not resolve an installed version of "@fixture/invalid-manifest"');
+        await expect(readdir(output)).rejects.toMatchObject({ code: "ENOENT" });
+      } finally {
+        await rm(configPath, { force: true });
+        await rm(directory, { recursive: true, force: true });
+        await rm(output, { recursive: true, force: true });
+      }
+    },
+    30_000,
+  );
+
   it("pins a `langgraph.json` dependency the bundle never imports", () => {
     // The escape hatch for packages loaded by name at runtime, which no bundler can discover.
     expect(artifact.externals["@fixture/by-name"]).toBe("7.8.9");
@@ -280,7 +407,7 @@ describe("bundleProject", () => {
         messages: Array<{ content: unknown }>;
       };
       expect(result.messages.at(-1)?.content).toBe(
-        "from-aliased-workspace-lib(lib-dep)+pinned-dep: hi",
+        "from-aliased-workspace-lib(lib-dep)+pinned-dep+subpath-dep: hi",
       );
 
       // Schemas come from the baked map (the artifact ships no `.ts` to parse).

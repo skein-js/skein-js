@@ -136,8 +136,8 @@ not create a package tree file-by-file.
 `packages/scaffold` owns the shared builders, Node policy and compiled templates used by
 `create-skein-js` and `@skein-js/nx`. Edit template sources, then run
 `pnpm exec nx run scaffold:generate-templates`; never hand-edit `templates.generated.ts`.
-Generated projects default to ESLint/Prettier and recommend Node 24, with engines
-`^22.12.0 || ^24.0.0 || ^26.0.0`. Preserve explicit opt-outs, compatible workspace pins, root configuration,
+Generated projects default to ESLint/Prettier and recommend Node 26, with engines
+`^22.14.0 || ^24.0.0 || ^26.0.0`. Preserve explicit opt-outs, compatible workspace pins, root configuration,
 registration exclusions and existing dependency versions.
 
 - Scaffold into a new child directory in an existing workspace. Avoid `create-skein-js . --force`

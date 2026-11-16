@@ -39,6 +39,9 @@
     "README.md"
   ],
   "sideEffects": false,
+  "engines": {
+    "node": "^22.14.0 || ^24.0.0 || ^26.0.0"
+  },
   "dependencies": {
     "@skein-js/agent-protocol": "workspace:*",
     "@skein-js/core": "workspace:*",

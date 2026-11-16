@@ -67,7 +67,7 @@ that you run on your own infrastructure.
 
 ## Quick start {#start}
 
-Use **Node 24** (recommended):
+Use **Node 26** (recommended):
 
 ```bash
 npm create skein-js@latest my-agent

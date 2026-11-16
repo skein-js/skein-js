@@ -60,7 +60,9 @@ the HTTP and streaming API around your graphs.
 > 🚧 **Status: pre-alpha, but end-to-end.** Development and self-hosted production work today, with
 > Fetch, Express, Fastify, NestJS, and Next.js adapters. See the [roadmap](./docs/roadmap.md).
 
-Use **Node 24** (recommended), then create a project:
+Use **Node 26** (recommended), then create a project:
+
+Node 22.14+ within 22.x and Node 24 are also supported. Node 20 and earlier Node 22 releases are unsupported.
 
 ```bash
 npm create skein-js@latest my-agent
@@ -210,7 +212,7 @@ that you run on your own infrastructure.
 
 ## Quick start {#start}
 
-Use **Node 24** (recommended):
+Use **Node 26** (recommended):
 
 ```bash
 npm create skein-js@latest my-agent
@@ -479,7 +481,7 @@ If you already have a LangGraph.js graph or a `langgraph.json`, you want
 [getting-started.md](./getting-started.md) instead: there is nothing to scaffold, and adopting skein
 is a one-line change.
 
-**Prerequisites:** Node 24 is recommended, with Node 22.12+ within 22.x also supported, and a package
+**Prerequisites:** Node 26 is recommended, with Node 22.14+ within 22.x and Node 24 also supported, and a package
 manager. Nothing in this guide needs an API key until you choose a model, and nothing needs Docker
 until deployment. For a workspace, start with the [monorepo guidance](./scaffolding.md#nx-and-other-monorepos).
 
@@ -540,7 +542,7 @@ Node version. The three files to understand first:
 
 ```json
 {
-  "node_version": "24",
+  "node_version": "26",
   "graphs": { "echo": "./src/echo-graph.ts:graph" },
   "env": ".env"
 }
@@ -810,12 +812,15 @@ remain the same.
 
 ## Prerequisites
 
-- **New projects (Path A):** Node 24 is recommended. Generated engines support `^22.12.0 || ^24.0.0 || ^26.0.0`.
-- **Existing graphs (Paths B and C):** Node ≥ 20 and a package manager (`pnpm`/`npm`).
-- **Node 22, 24 or 26** when selecting SQLite; desktop examples build with Node 24.
+- **New projects (Path A):** Node 26 is recommended. Generated engines support `^22.14.0 || ^24.0.0 || ^26.0.0`.
+- **Existing graphs (Paths B and C):** Node 22.14+ within 22.x, Node 24 or Node 26, and a package manager (`pnpm`/`npm`).
+- **Node 22.14+ within 22.x, 24 or 26** when selecting SQLite; desktop examples build with Node 24.
 - For Paths B and C, a
   **[LangGraph.js graph](https://docs.langchain.com/oss/javascript/langgraph/graph-api)** — a
   `CompiledStateGraph` from `@langchain/langgraph`. Path A writes one for you.
+
+When upgrading an existing project, upgrade Node before installing this version of Skein if you use
+Node 20 or Node 22 below 22.14. Node 26 is recommended; supported Node 22 and 24 pins remain valid.
 
 <span id="path-a--starting-from-scratch"></span>
 
@@ -1040,7 +1045,7 @@ npx create-skein-js@latest my-agent
 ```
 
 **Keep the `@latest`** to request the latest published scaffolder instead of relying on a cached
-version. Node 24 is recommended; generated projects support `^22.12.0 || ^24.0.0 || ^26.0.0`.
+version. Node 26 is recommended; generated projects support `^22.14.0 || ^24.0.0 || ^26.0.0`.
 
 For an existing workspace, choose a new child directory such as `apps/my-agent`. Use the
 [Nx generator](#nx-and-other-monorepos) in Nx workspaces.
@@ -1124,7 +1129,7 @@ SQLite projects install `@skein-js/local`, LangGraph, and its SQLite saver. Both
 select `--store sqlite --queue sqlite`, with the database at `.skein/state.sqlite`; `dev:memory`
 keeps the memory alternative. There is no Compose file, service-start script, or Postgres/Redis
 environment configuration. Graphs still build to `.skein/build` and the database stays outside it.
-Use Node 24 (recommended), Node 22.12+ within 22.x, or Node 26. See [local deployment](./local-deployment.md) for embedding and desktop examples.
+Use Node 26 (recommended), Node 22.14+ within 22.x, or Node 24. See [local deployment](./local-deployment.md) for embedding and desktop examples.
 
 ## Options
 
@@ -1199,11 +1204,11 @@ state and package-manager lockfiles are ignored. Missing tool dependencies are a
 of inherited configuration, and new files follow workspace formatting; see the
 [workspace tooling and caching](#workspace-tooling-and-caching).
 
-The shared policy recommends **Node 24** with engines `^22.12.0 || ^24.0.0 || ^26.0.0`. It derives `.nvmrc`
+The shared policy recommends **Node 26** with engines `^22.14.0 || ^24.0.0 || ^26.0.0`. It derives `.nvmrc`
 and `langgraph.json.node_version` from the same selection. Compatible numeric workspace pins in
 `.nvmrc` or `.node-version` are honored. Unsupported numeric pins fail before writing; unresolved
-aliases such as `lts/*` produce an explanation and fall back to Node 24. Node 26 is an additional
-supported runtime; production defaults and desktop packaging remain on Node 24. Yarn users on Node 26
+aliases such as `lts/*` produce an explanation and fall back to Node 26. Node 26 is the default for
+new projects and production images; desktop packaging keeps its explicit Node 24 pin. Yarn users on Node 26
 must install Corepack separately because it is no longer bundled with Node.
 
 ## Nx and other monorepos
@@ -1319,7 +1324,7 @@ export const graph = new StateGraph(MessagesAnnotation)
 
 ```json
 // langgraph.json
-{ "node_version": "24", "graphs": { "agent": "./src/graph.ts:graph" }, "env": ".env" }
+{ "node_version": "26", "graphs": { "agent": "./src/graph.ts:graph" }, "env": ".env" }
 ```
 
 Add `"type": "module"` to your `package.json`, then `npx skein dev`. That is the entire contract —
@@ -1526,7 +1531,7 @@ The [Agent Skills](https://agentskills.io/specification) in this repository guid
 
 The skills cover the same LangGraph execution and Agent Protocol in either deployment. Choose
 SQLite explicitly for a desktop app, CLI, daemon, or one Node owner; choose Postgres/Redis for a
-shared server. New projects recommend Node 24 and enable ESLint/Prettier by default; compatible
+shared server. New projects recommend Node 26 and enable ESLint/Prettier by default; compatible
 workspace pins and explicit tooling opt-outs are preserved.
 
 The local guidance covers `--storage sqlite`, `embedSqliteGraphs`, host-owned startup/shutdown,
@@ -2097,7 +2102,7 @@ Shared flags where sensible: `--port`, `--host`, `--no-reload`, `--config`,
 
 Production commands (`up`, `build`, `dockerfile`, and the generated `start`) also accept
 `--runtime node|bun|deno` and `--runtime-version`. Precedence is CLI flag, then
-`skein.runtime` in config, then Node 24 LTS. Legacy `node_version` remains the Node version fallback.
+`skein.runtime` in config, then Node 26 LTS. Legacy `node_version` remains the Node version fallback.
 
 **skein-only:** `skein start` serves a pre-built `.skein/build` artifact — plain compiled JS, no vite,
 no reload. It is the production image's entrypoint, and it is also how you run skein **without a
@@ -2200,8 +2205,8 @@ it but is never required.
     "chat": "./src/chat.ts:makeGraph", // or a factory function
   },
 
-  // JS/Node runtime pin (20 | 22 | 24)
-  "node_version": "24",
+  // JS/Node runtime pin (22.14+ within 22.x | 24 | 26)
+  "node_version": "26",
 
   // Native production runtime (skein extension). Omit for Node.
   "skein": {
@@ -2272,7 +2277,7 @@ it but is never required.
 | `langgraph.json` field | skein-js wiring                                                                                                                                                                                                                                                                                                                                                                                                                                                               |
 | ---------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | `graphs`               | [`@skein-js/config`](./storage.md) resolves each `path:export`, loading a compiled graph or `makeGraph` factory. Drives `/agents` introspection + run execution.                                                                                                                                                                                                                                                                                                              |
-| `node_version`         | Used by `skein build` / `skein dockerfile` base image selection. Defaults to Node 24 LTS when omitted; an explicit value is honoured verbatim, including an older one.                                                                                                                                                                                                                                                                                                        |
+| `node_version`         | Used by `skein build` / `skein dockerfile` base image selection. Defaults to Node 26 LTS when omitted; an explicit value is honoured verbatim, including an older one.                                                                                                                                                                                                                                                                                                        |
 | `skein.runtime`        | Native production server and pinned official image: `node`, `bun`, or `deno`. Bun/Deno use `@skein-js/fetch` with `Bun.serve`/`Deno.serve`, never Express compatibility.                                                                                                                                                                                                                                                                                                      |
 | `skein.idempotency`    | Retention for `Idempotency-Key` records. Tuning only — the header is honoured either way. See [below](#idempotency-skeinidempotency).                                                                                                                                                                                                                                                                                                                                         |
 | `skein.webhooks`       | How run-completion callbacks are retried and bounded. Tuning only — a run carrying a `webhook` owes a callback either way. See [below](#webhooks-skeinwebhooks).                                                                                                                                                                                                                                                                                                              |
@@ -11042,7 +11047,7 @@ JavaScript SDK and upstream SpecStream compiler; no Skein adapter package is nee
 
 ## Try the complete journey
 
-Use Node 24, clone the repository, and run these commands at its root:
+Use Node 26, clone the repository, and run these commands at its root:
 
 ```bash
 pnpm install
@@ -11248,7 +11253,7 @@ resumes a separate approval step. It uses existing Agent Protocol SSE and the Ja
 
 ## Try the complete journey
 
-Use Node 24, clone the repository, then run these commands at its root:
+Use Node 26, clone the repository, then run these commands at its root:
 
 ```sh
 pnpm install
@@ -12647,7 +12652,7 @@ Reading it is the fastest way to see what a complete binding looks like.
 | **Shared server**     | Web/API clients and workers spanning instances        | Postgres for resources/checkpoints; Redis for a shared queue and streaming |
 | **Local application** | Desktop apps, CLI tools, daemons, or one Node process | One exclusively owned SQLite file through `@skein-js/local`                |
 
-For the SQLite option, follow [local deployment](./local-deployment.md). It supports Node 22/24/26;
+For the SQLite option, follow [local deployment](./local-deployment.md). It supports Node 22.14+ within 22.x, 24 and 26;
 Electron and Tauri hosts package the same engine and use the existing protocol. Models and tools
 remain application choices. The default `skein dev` continues to use memory drivers.
 
@@ -12659,9 +12664,12 @@ What it ships instead is an ordinary OCI image: `skein build` bundles your TypeS
 JS and produces a Docker image that needs a Postgres, a Redis, and two environment variables. Nothing
 about it is specific to any host.
 
-Production artifacts can run on Node, Bun, or Deno. Node 24 LTS is the default and uses Express. Bun and
+Production artifacts can run on Node, Bun, or Deno. Node 26 LTS is the default and uses Express. Bun and
 Deno use the Web-standard `@skein-js/fetch` adapter and their native HTTP servers. Select one in
 `langgraph.json` or at build time:
+
+Run `skein build` on Node 22.14+ within 22.x, Node 24 or Node 26, including when the artifact targets
+Bun or Deno.
 
 Use Node for the default production path. Bun and Deno are preview targets; verify streaming,
 background execution, persistence, and shutdown on your chosen runtime before deployment.
@@ -13894,12 +13902,12 @@ That does **not** mean you can't `require()` it. Each library package exposes a 
 condition, so Node's `require(esm)` resolves it:
 
 ```js
-const { embedPostgresGraphs } = require("@skein-js/runtime"); // works on Node 20.19+ / 22.12+
+const { embedPostgresGraphs } = require("@skein-js/runtime"); // works on supported Node 22.14+, 24 and 26
 ```
 
-`require(esm)` landed unflagged in **Node 20.19** and **22.12**. On an older Node you get
-`ERR_REQUIRE_ESM` telling you to use `import()` instead — which is the honest answer, and what a
-CJS-emitting bundler should be configured to do. Plain `import` works on any Node ≥ 20.
+All supported Node versions (**22.14+ within 22.x, 24 and 26**) can load these ESM libraries through
+`require(esm)`. A CJS-emitting bundler can also use dynamic `import()`. Node 20 and Node 22 releases
+below 22.14 are outside the supported range.
 
 > Before 0.10.0 the packages declared only `types` + `import` conditions, so `require()` failed with
 > `ERR_PACKAGE_PATH_NOT_EXPORTED` — which reads like the package is broken rather than like a module
@@ -13975,7 +13983,7 @@ esbuild server.ts --bundle --platform=node --format=esm \
 ```
 
 Prefer `--format=esm` if you can. With `--format=cjs`, anything the bundle `require()`s at runtime
-still needs Node 20.19+, per above.
+still needs a supported Node version with `require(esm)`, as described above.
 
 ## The "Critical dependency" warning
 
@@ -14050,7 +14058,9 @@ what dissolves the "my Docker build context doesn't contain my monorepo" problem
 
 **Left external and pinned** — every published `node_modules` package. `skein build` records each one
 at the exact version installed on the build host and writes it into the artifact's `package.json`,
-which the image installs with `npm install --omit=dev`. Externalizing is not a limitation to work
+which the image installs with `npm install --omit=dev`. Static subpath imports, including MCP SDK
+client/server imports, are pinned using the installed package's root manifest; no extra
+`dependencies` entry is needed for those imports. Externalizing is not a limitation to work
 around; it is load-bearing:
 
 - **One copy of each library.** The image installs `skein-js`, which brings `@langchain/langgraph` and

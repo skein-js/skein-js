@@ -8,6 +8,7 @@ import { banner } from "@fixture/lib";
 // only route into the artifact's `package.json` is the bundler's externals recorder, so this import
 // is what proves that recorder runs at all — see the `enforce` note in bundle-project.ts.
 import { marker } from "@fixture/pinned";
+import { sdkMarker } from "@fixture/subpath-sdk/client/index.js";
 
 // Return a plain message dict (the MessagesAnnotation reducer coerces it) rather than importing a
 // message class, so the fixture's only runtime externals are the ones under test.
@@ -16,7 +17,9 @@ function reply(state: typeof MessagesAnnotation.State): {
 } {
   const last = state.messages.at(-1);
   const text = typeof last?.content === "string" ? last.content : "";
-  return { messages: [{ role: "assistant", content: `${banner()}+${marker}: ${text}` }] };
+  return {
+    messages: [{ role: "assistant", content: `${banner()}+${marker}+${sdkMarker}: ${text}` }],
+  };
 }
 
 export const graph = new StateGraph(MessagesAnnotation)

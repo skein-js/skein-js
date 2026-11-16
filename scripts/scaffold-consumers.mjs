@@ -343,7 +343,7 @@ async function exerciseCase(row) {
   const expectedMajor = row.node.split(".")[0];
   if (
     process.versions.node.split(".")[0] !== expectedMajor ||
-    (expectedMajor === "22" && process.versions.node !== "22.12.0")
+    (expectedMajor === "22" && process.versions.node !== "22.14.0")
   )
     throw new Error(row.id + " requires Node " + row.node + "; running " + process.versions.node);
   const workspace = mkdtempSync(path.join(tmpdir(), "skein-" + row.id + "-"));
