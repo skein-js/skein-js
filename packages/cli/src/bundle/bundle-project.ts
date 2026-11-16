@@ -6,9 +6,8 @@
 // identically to dev and are inlined into the bundle, dissolving the monorepo build-context gap.
 // Published `node_modules` packages stay external (recorded + pinned into the artifact package.json).
 
-import { readFileSync } from "node:fs";
 import { mkdir, readFile, rm, writeFile } from "node:fs/promises";
-import { isBuiltin, type findPackageJSON } from "node:module";
+import { isBuiltin } from "node:module";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 
@@ -22,6 +21,7 @@ import type { build as viteBuild, Plugin } from "vite";
 
 import { DEFAULT_RUNTIME_VERSIONS } from "../runtime-selection.js";
 
+import { resolveInstalledVersion } from "./installed-package-version.js";
 import { precomputeSchemas } from "./precompute-schemas.js";
 import {
   buildArtifactPackageJson,
@@ -78,62 +78,6 @@ function uniqueSafeName(graphId: string, used: Set<string>): string {
 /** Node major used as the JS syntax target; other runtimes pass their portable target explicitly. */
 function nodeMajor(nodeVersion: string | undefined): string {
   return nodeVersion?.trim().match(/\d+/)?.[0] ?? DEFAULT_RUNTIME_VERSIONS.node;
-}
-
-/** Only the requested package's own metadata can supply its installed version. */
-function readVersion(pkgJsonPath: string, pkg: string): string | undefined {
-  try {
-    const parsed = JSON.parse(readFileSync(pkgJsonPath, "utf8")) as {
-      name?: unknown;
-      version?: unknown;
-    } | null;
-    return parsed?.name === pkg && typeof parsed.version === "string" && parsed.version.trim()
-      ? parsed.version
-      : undefined;
-  } catch {
-    return undefined;
-  }
-}
-
-/** One module tree's answer for a package's installed version, or undefined if it isn't there. */
-function findInstalledVersion(
-  pkg: string,
-  fromDir: string,
-  findPackageManifest: typeof findPackageJSON,
-): string | undefined {
-  try {
-    // A bare specifier returns the package root even when its manifest export points into dist/,
-    // and does not require a root entrypoint. Resolving a file first would select nested metadata.
-    const pkgJsonPath = findPackageManifest(pkg, path.join(fromDir, "__skein_resolver__.js"));
-    return pkgJsonPath ? readVersion(pkgJsonPath, pkg) : undefined;
-  } catch {
-    return undefined;
-  }
-}
-
-/**
- * Resolve an installed package's exact version, trying each module tree in order.
- *
- * Node's algorithm walks up from each directory, so one entry covers a project *and* anything hoisted
- * above it. More than one is needed because the two kinds of pinned dependency live in different
- * trees: a graph's imports belong to the **project**, while skein's own runtime peers belong to the
- * **CLI's** tree — under pnpm's strict layout a peer of `skein-js` is not reachable from the project
- * at all. Trying the project first still lets a user pin a peer themselves and have that win.
- */
-function resolveInstalledVersion(
-  pkg: string,
-  fromDirs: readonly string[],
-  findPackageManifest: typeof findPackageJSON,
-): string {
-  for (const fromDir of fromDirs) {
-    const version = findInstalledVersion(pkg, fromDir, findPackageManifest);
-    if (version) return version;
-  }
-
-  throw new Error(
-    `skein build: could not resolve an installed version of "${pkg}". Install it in your project ` +
-      `(it is imported by a graph/auth/embed module and must ship in the production image).`,
-  );
 }
 
 /** What `vite.build()` resolves to. Derived, not imported: vite re-exports none of rolldown's output types. */
