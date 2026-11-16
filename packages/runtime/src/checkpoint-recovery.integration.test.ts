@@ -37,6 +37,8 @@ it("continues a killed Redis worker from its committed Postgres checkpoint witho
   const child = fork(
     fileURLToPath(new URL("./__fixtures__/recovery-worker.mjs", import.meta.url)),
     {
+      // Node 22.14 requires an opt-in for the worker's TypeScript graph fixture.
+      execArgv: [...process.execArgv, "--experimental-strip-types"],
       env: { ...process.env, POSTGRES_URI: postgres.url, REDIS_URI: redis.url },
       stdio: ["ignore", "ignore", "inherit", "ipc"],
     },
