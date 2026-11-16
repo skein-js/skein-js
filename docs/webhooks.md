@@ -68,17 +68,14 @@ one displaced by a [multitask strategy](./runs.md#multitask-what-happens-to-the-
 before it began, has nothing to report — so do not treat "a run was created" as "a callback is
 owed". Only a run that started does.
 
-Every request also carries three headers, whenever the store records deliveries — which both bundled
-drivers do:
+Every request carries three headers (including on custom stores without an outbox, where the run id
+serves as the delivery key):
 
-| Header                | Use                                                         |
-| --------------------- | ----------------------------------------------------------- |
-| `X-Skein-Delivery-Id` | Stable across every retry — **this is your dedup key**      |
-| `X-Skein-Attempt`     | Which attempt this is, counting the first inline one as `1` |
-| `X-Skein-Signature`   | Present when a signing key is configured — see below        |
-
-The one exception is a custom store that doesn't record deliveries — see
-[the guarantee](#the-guarantee-why-a-callback-survives-a-crash) below.
+| Header                | Use                                                                                     |
+| --------------------- | --------------------------------------------------------------------------------------- |
+| `X-Skein-Delivery-Id` | Stable across every retry — **this is your dedup key** (run id on unpersisted fallback) |
+| `X-Skein-Attempt`     | Which attempt this is, counting the first inline one as `1`                             |
+| `X-Skein-Signature`   | Present when a signing key is configured — see below                                    |
 
 ## The guarantee: why a callback survives a crash
 
@@ -105,19 +102,15 @@ skein attempts the first delivery inline, so a healthy receiver hears within mil
 failure falls through to the retry schedule.
 
 A [bring-your-own store](./storage.md) that does not implement the `deliveries` repo degrades to the
-older best-effort path — one POST, failures logged and swallowed. Both bundled drivers implement it,
+best-effort path — one POST, failures logged and swallowed. Both bundled drivers implement the outbox,
 so this only bites a store you wrote yourself.
 
-> [!WARNING]
-> Without compatible header/URL configuration, that fallback POST carries **no `X-Skein-Delivery-Id`, no `X-Skein-Attempt` and no
-> `X-Skein-Signature`** — there is no delivery row for those to come from. A receiver that dedupes on
-> the header, or rejects unsigned requests, will find nothing to work with. If you implement a custom
-> store and want callbacks at all, implement the `deliveries` repo.
-
-Compatible [header and destination controls](./langgraph-cli-compat.md#compatible-http-webhook-controls)
-also apply to the fallback. They do not give a custom store durable delivery records or retries.
-`http.disable_webhooks` blocks caller HTTP callbacks across admission, delivery and replay while
-retaining host-owned channel/BullMQ outcomes.
+That fallback POST carries **`X-Skein-Delivery-Id` (using the run id), `X-Skein-Attempt: 1`, and
+`X-Skein-Signature`** when signing secrets are configured, so receivers can still deduplicate and
+verify callbacks. Compatible [header and destination controls](./langgraph-cli-compat.md#compatible-http-webhook-controls)
+also apply. However, without an outbox, delivery is not durable across a crash, failed attempts are
+not retried, and the callback cannot be inspected or replayed from the delivery routes. If you need
+retry durability or delivery inspection on a custom store, implement the `deliveries` repo.
 
 The body is **stored**, not re-rendered at send time. It has to be: a stateless `POST /runs` deletes
 the thread the server made for it as soon as the run settles, so an hour later there is no run row
