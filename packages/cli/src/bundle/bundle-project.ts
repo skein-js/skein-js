@@ -21,7 +21,10 @@ import type { build as viteBuild, Plugin } from "vite";
 
 import { DEFAULT_RUNTIME_VERSIONS } from "../runtime-selection.js";
 
-import { resolveInstalledVersion } from "./installed-package-version.js";
+import {
+  resolveInstalledVersion,
+  type PackageManifestResolvers,
+} from "./installed-package-version.js";
 import { precomputeSchemas } from "./precompute-schemas.js";
 import {
   buildArtifactPackageJson,
@@ -232,7 +235,7 @@ export async function bundleProject(options: BundleProjectOptions): Promise<Buil
   // production image (the CLI graph imports it transitively but `skein start` never calls bundleProject).
   const { build, searchForWorkspaceRoot } = await import("vite");
   // Bun's production runtime can load this module without implementing Node's build-only API.
-  const { findPackageJSON } = await import("node:module");
+  const packageResolvers: PackageManifestResolvers = (await import("node:module")).default;
   const { config, configDir, graphs } = await loadConfig({ configPath });
   const workspaceRoot = searchForWorkspaceRoot(configDir);
 
@@ -351,12 +354,12 @@ export async function bundleProject(options: BundleProjectOptions): Promise<Buil
       dependencies[pkg] = resolveInstalledVersion(
         pkg,
         [...projectTree, ...[...importerDirs].sort()],
-        findPackageJSON,
+        packageResolvers,
       );
     }
     dependencies["skein-js"] = skeinVersion;
     for (const peer of SKEIN_RUNTIME_PEERS) {
-      dependencies[peer] = resolveInstalledVersion(peer, peerTree, findPackageJSON);
+      dependencies[peer] = resolveInstalledVersion(peer, peerTree, packageResolvers);
     }
     // Runtime deps the bundle can't discover from graph imports, so they must be pinned explicitly:
     //  • a `provider:model` embed dynamically imports `@langchain/<provider>` (never a code import);
@@ -365,15 +368,15 @@ export async function bundleProject(options: BundleProjectOptions): Promise<Buil
     // The old full-install image happened to carry these; the slim image must add them or break.
     const embedPkg = config.store?.index?.embed && providerEmbedPackage(config.store.index.embed);
     if (embedPkg)
-      dependencies[embedPkg] = resolveInstalledVersion(embedPkg, projectTree, findPackageJSON);
+      dependencies[embedPkg] = resolveInstalledVersion(embedPkg, projectTree, packageResolvers);
     for (const pkg of telemetryRuntimePackages(config.telemetry)) {
-      dependencies[pkg] = resolveInstalledVersion(pkg, projectTree, findPackageJSON);
+      dependencies[pkg] = resolveInstalledVersion(pkg, projectTree, packageResolvers);
     }
     for (const dep of config.dependencies ?? []) {
       // Skip local-path deps (".", "./pkg") — those are the project's own source, already bundled.
       if (dep.startsWith(".") || dep.startsWith("/")) continue;
       const pkg = packageNameOf(dep);
-      dependencies[pkg] = resolveInstalledVersion(pkg, projectTree, findPackageJSON);
+      dependencies[pkg] = resolveInstalledVersion(pkg, projectTree, packageResolvers);
     }
 
     assertEveryImportIsPinned(bundle, dependencies);

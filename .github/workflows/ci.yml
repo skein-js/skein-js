@@ -82,6 +82,12 @@ jobs:
       - name: Lint, typecheck, test, build
         run: pnpm exec nx run-many -t lint typecheck test build --output-style=stream
 
+      - name: Yarn Plug'n'Play package resolution
+        run: |
+          npm install --prefix "$RUNNER_TEMP/skein-yarn-pnp" --ignore-scripts --no-audit --no-fund @yarnpkg/cli-dist@4.9.2
+          SKEIN_PNP_YARN_CLI="$RUNNER_TEMP/skein-yarn-pnp/node_modules/@yarnpkg/cli-dist/bin/yarn.js" \
+            pnpm exec nx run cli:test-pnp --output-style=stream
+
   integration:
     name: ${{ matrix.node == 26 && 'integration tests (Testcontainers)' || format('integration tests (Testcontainers, Node {0})', matrix.node) }}
     runs-on: ubuntu-latest

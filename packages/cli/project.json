@@ -4,6 +4,14 @@
   "sourceRoot": "packages/cli/src",
   "projectType": "library",
   "targets": {
+    "test-pnp": {
+      "executor": "nx:run-commands",
+      "cache": false,
+      "options": {
+        "command": "node packages/cli/scripts/test-pnp.mjs",
+        "cwd": "."
+      }
+    },
     "build": {
       "executor": "nx:run-commands",
       "options": {

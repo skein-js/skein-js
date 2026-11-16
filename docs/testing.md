@@ -160,6 +160,17 @@ for generated images and releases; desktop packaging keeps its explicit Node 24 
 Bun 1.3.14 and Deno 2.9.4 protocol checks launch the compiled CLI. The Node-only package-manifest
 lookup loads only during a build, so a production runtime does not need to implement that API.
 
+Each quality job also runs `cli:test-pnp` with Yarn 4.9.2. Its offline, archive-backed fixtures verify
+exact root versions for a subpath-only package with nested metadata, hidden manifests, separate PnP
+projects, ordinary module-tree fallback, and rejection of undeclared dependencies even when a physical
+`node_modules` copy exists. This complements the 33 installed consumers, whose Yarn cases use the
+node-modules linker. To run it locally, provision `@yarnpkg/cli-dist@4.9.2` outside the workspace, then:
+
+```bash
+SKEIN_PNP_YARN_CLI=/path/to/node_modules/@yarnpkg/cli-dist/bin/yarn.js \
+  pnpm exec nx run cli:test-pnp
+```
+
 SQLite tests and clean packed consumers run on Node 22, 24 and 26 across Linux x64, Windows x64,
 macOS ARM64 and macOS x64. Native dependencies must be installed for the selected Node major;
 reusing a Node 24 `node_modules` directory on Node 26 can fail with a native ABI mismatch.
