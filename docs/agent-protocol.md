@@ -719,6 +719,8 @@ lists. File parts preserve bytes or URLs, MIME and filenames through standard co
 
 Skein advertises HTTP/SSE, history scope and streaming. It does not advertise A2UI, task push
 notifications or subscription-to-task support. These unsupported methods fail explicitly.
+Application-owned A2UI interfaces can use the existing custom-event SSE bridge shown in the
+[Angular A2UI recipe](./recipes/a2ui.md); that integration does not enable an A2UI A2A binding.
 `http.disable_mcp` and `http.disable_a2a` remove their route groups.
 
 ### Discovery and storage diagnostics

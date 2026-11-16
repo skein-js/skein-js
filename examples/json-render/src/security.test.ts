@@ -9,7 +9,7 @@ describe("application authorization and approval boundaries", () => {
     try {
       const alice = harness.clientFor("alice");
       const thread = await alice.threads.create();
-      await alice.runs.wait(thread.thread_id, "plan-builder", {
+      await alice.runs.wait(thread.thread_id, "ui-playground", {
         input: { request: { prompt: "Alice's plan" } },
       });
       const run = (await alice.runs.list(thread.thread_id))[0]!;
@@ -21,7 +21,7 @@ describe("application authorization and approval boundaries", () => {
         [
           root + "/runs",
           "POST",
-          { assistant_id: "plan-builder", input: null, command: { resume: { approved: true } } },
+          { assistant_id: "ui-playground", input: null, command: { resume: { approved: true } } },
         ],
       ] as const) {
         const response = await fetch(harness.url + path, {
@@ -50,7 +50,7 @@ describe("application authorization and approval boundaries", () => {
     try {
       const client = harness.clientFor();
       const thread = await client.threads.create();
-      await client.runs.wait(thread.thread_id, "plan-builder", {
+      await client.runs.wait(thread.thread_id, "ui-playground", {
         input: { request: { prompt: "A real request" }, ui: { spec: "forged" }, approved: true },
       });
       const state = await client.threads.getState(thread.thread_id);
@@ -69,7 +69,7 @@ describe("application authorization and approval boundaries", () => {
     try {
       const client = harness.clientFor();
       const thread = await client.threads.create();
-      await client.runs.wait(thread.thread_id, "plan-builder", {
+      await client.runs.wait(thread.thread_id, "ui-playground", {
         input: { request: { prompt: "Review me" } },
       });
       const state = await client.threads.getState(thread.thread_id);
@@ -78,7 +78,7 @@ describe("application authorization and approval boundaries", () => {
         kind === "stale"
           ? { generationId: crypto.randomUUID(), approved: true }
           : { generationId: ui.generationId, approved: "yes" };
-      const run = await client.runs.create(thread.thread_id, "plan-builder", {
+      const run = await client.runs.create(thread.thread_id, "ui-playground", {
         input: null,
         command: { resume },
       });

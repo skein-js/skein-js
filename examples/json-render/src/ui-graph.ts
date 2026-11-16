@@ -13,20 +13,25 @@ import {
   requestSchema,
   validateUiSpec,
   type CommittedUi,
-  type PlanRequest,
+  type Conversation,
+  type UiRequest,
 } from "./catalog.js";
 import { generateDemoText, generateModelText, type GenerateText } from "./generation.js";
 import type { UiEvent } from "./ui-events.js";
 
-const PlanInput = Annotation.Root({ request: Annotation<PlanRequest> });
-const PlanState = Annotation.Root({
-  ...PlanInput.spec,
+const UiInput = Annotation.Root({ request: Annotation<UiRequest> });
+const UiState = Annotation.Root({
+  ...UiInput.spec,
   ui: Annotation<CommittedUi | null>({ reducer: (_, next) => next, default: () => null }),
+  conversation: Annotation<Conversation>({
+    reducer: (_, next) => next,
+    default: () => [],
+  }),
   approved: Annotation<boolean | null>({ reducer: (_, next) => next, default: () => null }),
 });
 
-export function createPlanGraph(generateText: GenerateText = generateDemoText) {
-  async function generateUi(state: typeof PlanState.State, config: LangGraphRunnableConfig) {
+export function createUiGraph(generateText: GenerateText = generateDemoText) {
+  async function generateUi(state: typeof UiState.State, config: LangGraphRunnableConfig) {
     const request = requestSchema.parse(state.request);
     const compiler = createSpecStreamCompiler<Spec>();
     const generationId = crypto.randomUUID();
@@ -42,14 +47,23 @@ export function createPlanGraph(generateText: GenerateText = generateDemoText) {
     const spec = validateUiSpec(compiler.getResult());
     const ui = { spec, generationId, chunkCount: sequence };
     write({ type: "json-render", generationId, sequence: sequence + 1, phase: "complete" });
-    return { ui, approved: null };
+    return {
+      ui,
+      approved: null,
+      conversation: [
+        ...state.conversation.map((turn) =>
+          turn.generationId === state.ui?.generationId ? { ...turn, ui: state.ui } : turn,
+        ),
+        { generationId, prompt: request.prompt, ui },
+      ],
+    };
   }
 
-  function reviewPlan(state: typeof PlanState.State) {
+  function reviewUi(state: typeof UiState.State) {
     if (!state.ui) throw new Error("Generate a plan before reviewing it");
     const decision = decisionSchema.parse(
       interrupt({
-        kind: "review-plan",
+        kind: "review-ui",
         generationId: state.ui.generationId,
         prompt: state.request.prompt,
       }),
@@ -59,16 +73,16 @@ export function createPlanGraph(generateText: GenerateText = generateDemoText) {
     return { approved: decision.approved };
   }
 
-  return new StateGraph({ stateSchema: PlanState, input: PlanInput })
+  return new StateGraph({ stateSchema: UiState, input: UiInput })
     .addNode("generate", generateUi)
-    .addNode("review", reviewPlan)
+    .addNode("review", reviewUi)
     .addEdge(START, "generate")
     .addEdge("generate", "review")
     .addEdge("review", END)
     .compile();
 }
 
-export const graph = createPlanGraph((request, signal, previousUi) =>
+export const graph = createUiGraph((request, signal, previousUi) =>
   (process.env["JSON_RENDER_MODEL"] ? generateModelText : generateDemoText)(
     request,
     signal,

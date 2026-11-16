@@ -64,6 +64,7 @@ const DOCS = [
   "docs/recipes/mcp-human-input.md",
   "docs/recipes/split-api-worker.md",
   "docs/recipes/json-render.md",
+  "docs/recipes/a2ui.md",
   "docs/recipes/authentication.md",
   "docs/recipes/production.md",
   "docs/building-an-adapter.md",

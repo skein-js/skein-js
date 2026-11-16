@@ -6,7 +6,7 @@ its custom events, and exposes the thread checkpoints you need to reopen the UI.
 
 This recipe follows the public
 [`json-render` example](https://github.com/skein-js/skein-js/tree/main/examples/json-render): a
-React plan builder with an offline generator and an optional live model. It uses the existing
+React UI playground with an offline generator and an optional live model. It uses the existing
 JavaScript SDK and upstream SpecStream compiler; no Skein adapter package is needed.
 
 ## Try the complete journey
@@ -22,18 +22,29 @@ pnpm dev:all
 The shortcut runs the graph server and Vite frontend together through Nx. Keep the terminal
 running and press **Ctrl+C** to stop both.
 
-Open **http://127.0.0.1:3006**, enter a request and select **Build a plan**. The card and tasks appear
-while generation is in progress. Approve or reject the plan, then use its generated button or
+Open **http://127.0.0.1:3006**, enter a request and select **Send**. The card and tasks appear
+while generation is in progress. Approve or reject the UI, then use its generated button or
 feedback form to request a revision. Reload its thread URL: the latest saved specification and any
 pending review return without another generation.
 
-![The plan builder after approval](/images/json-render/plan-builder.png)
+![The UI playground after approval](/images/json-render/plan-builder.png)
 
-The default generator is a deterministic fixture with fixed tasks and your request as its summary.
+The default generator is a deterministic fixture with dashboard, form and comparison layouts.
 It needs no credentials or external service. To use a live model, copy the example's `.env.example`
 to `.env`, set `JSON_RENDER_MODEL` to a LangChain `provider:model` string, add the provider's
 credentials, and restart the graph server. The Google integration is installed; other providers
 need their LangChain integration package. Keep these settings on the backend.
+
+The included `@langchain/google` integration accepts `google:model`; existing
+`google-genai:model` settings use it as an alias. Credentials stay on the backend.
+
+## Use the chat playground
+
+Choose a **Website traffic dashboard**, **UI feedback form** or **Product comparison cards**, or describe an interface and select **Send**. The response renders inline; the read-only JSON panel shows the current validated UI. Approve or reject the saved version, then continue in chat or use its generated revision controls.
+
+The default runs offline using three illustrative layouts. A live model accepts other prompts within the registered catalog; it cannot emit arbitrary executable code. Configure it using the model instructions below.
+
+Reload the chat URL to restore saved prompts, the active UI and pending review without execution. Each completed turn retains its validated UI snapshot. Earlier responses remain visible with read-only controls; only the latest UI accepts actions. Older prompt-only turns show a notice. **New chat** starts a separate thread.
 
 ## Bring the pattern into your application
 
@@ -56,17 +67,19 @@ maps each module to its responsibility.
 Use `defineCatalog` from `@json-render/core` with `schema` from `@json-render/react/schema` and Zod
 schemas for component props and action parameters. Define React implementations with
 `defineRegistry`, then render through `JSONUIProvider` and `Renderer` from `@json-render/react`.
-The example provides Card, Text, TaskList, Button and FeedbackForm, with one `revisePlan` action.
+The example provides Card, Grid, Metric, Table, Text, TaskList, Button and FeedbackForm, with one `reviseUi` action.
 
 Use `catalog.prompt()` for model instructions and `catalog.jsonSchema()` when your generation
 strategy needs a schema. The optional model path receives the previous committed specification as
-context but generates a complete new specification from an empty compiler. Multiple turns replace
-the displayed plan rather than replaying old patches onto it.
+context but generates a complete new specification from an empty compiler. Each turn starts a fresh UI rather than replaying patches onto the previous response. Keep completed
+specifications with their chat turns and render earlier responses read-only.
 
 Validate completed output with `catalog.validate()` and the upstream `validateSpec()` structural
 validator before saving it. In json-render 0.21.4, catalog validation normalizes elements and strips
-their `on` bindings. The example preserves bindings separately through upstream `ActionBindingSchema`,
-restricted to `revisePlan`, and combines those with the normalized specification. It accepts no
+their `on` bindings. It also permits dynamic props, so the example uses upstream `resolveElementProps`
+with its initial feedback state and checks the resolved values against each component's registered
+Zod schema. It preserves bindings separately through upstream `ActionBindingSchema`,
+restricted to `reviseUi`, and combines those with the normalized specification. It accepts no
 generated action chains or navigation. This validation is application policy, not a Skein setting.
 
 ### Stream graph output through the compiler
@@ -81,7 +94,7 @@ events identify one generation and carry contiguous sequence numbers:
 | `complete` | Same generation ID and the next sequence after the final fragment |
 
 Text fragments can end anywhere inside a JSONL patch operation. Feed them to
-`createSpecStreamCompiler<Spec>()` from `@json-render/core`. Use `push(text).result` for previews;
+`createSpecStreamCompiler<Spec>()` from `@json-render/core`. Validate `push(text).result` before rendering previews;
 call `getResult()` only at generation completion because it consumes the incomplete-line buffer.
 Create a fresh compiler per generation and clone snapshots before exposing them to React or
 retaining them as a baseline. The server uses the same compiler to validate its final result.
@@ -92,11 +105,15 @@ run, accepts only bare `custom` events for the current generation, and ignores `
 events. Keep a separate controller/compiler if your application renders additional graph scopes.
 
 Configure the SDK client with `onRequest: addRunIdempotency` from the example's
-[`plan-client.ts`](https://github.com/skein-js/skein-js/blob/main/examples/json-render/src/plan-client.ts).
+[`ui-client.ts`](https://github.com/skein-js/skein-js/blob/main/examples/json-render/src/ui-client.ts).
 The hook assigns an `Idempotency-Key` to each run-creation request, including approval resumes.
 SDK 1.12.7 calls the hook before its retry loop, so retries reuse that key if a successful response
 is lost. Each new turn or decision gets a new key. This uses Skein's existing
 [idempotent run creation](../agent-protocol.md#idempotent-run-creation-idempotency-key).
+The hook also supplies `if_thread_status`: new requests require `idle` or `error`, and approval
+resumes require `interrupted`. SDK 1.12.7 omits that wire field, so the supported hook adds it.
+This prevents a stale tab from replacing a pending review. Refresh the chat after an uncertain
+submission or checkpoint read before sending again.
 
 **A Skein URL is not a direct replacement for `useUIStream`'s generation endpoint.** That hook reads
 SpecStream text; Skein sends Agent Protocol SSE envelopes. The SDK parses the envelopes and the
@@ -112,7 +129,9 @@ normal requests must not be able to supply saved UI or approval state.
 Reopening a thread calls `threads.getState`. This is the authoritative baseline and does not execute
 the graph. If the thread has an active run, observe that existing run. A custom `complete` event
 arrives before checkpoint completion, so it must not mark the UI as saved; reconcile state after the
-run becomes terminal. The example disables generated actions on unvalidated previews.
+run becomes terminal. Validate intermediate specs before rendering them: streamed patches may
+temporarily leave component props or references incomplete. Keep the last renderable preview until
+the next valid update. Generated actions remain disabled until the saved version is reviewed.
 
 The example passes `--no-persist` to `skein dev`, so its memory server preserves threads across browser reloads while its process lives. It
 does not preserve them after a server restart. Configure existing
@@ -127,7 +146,7 @@ provider and validated again by the application and graph.
 
 Put `interrupt()` in a separate node after generation has checkpointed. Render its approval controls
 in trusted application code. Send `input: null` and `command.resume` with the expected generation ID
-and decision. When the interrupt has an ID, the example addresses that ID explicitly. Resuming the
+and decision, addressed to the saved interrupt ID. Resuming the
 review node does not rerun generation. Approval here records a boolean only; add any real-world
 action in your own graph after validating that decision.
 
@@ -167,13 +186,13 @@ of frontend environment variables and generated specifications.
 
 ## Tested versions and limits
 
-| Dependency                                      | Tested version        |
-| ----------------------------------------------- | --------------------- |
-| `@json-render/core`, `@json-render/react`       | 0.21.4                |
-| `@langchain/langgraph-sdk`                      | 1.12.7                |
-| `@langchain/langgraph`, `@langchain/core`       | 1.4.12, 1.2.18        |
-| `langchain`, optional `@langchain/google-genai` | 1.5.10, 2.2.0         |
-| React, React DOM, Zod                           | 19.2.6, 19.2.6, 4.6.7 |
+| Dependency                                | Tested version        |
+| ----------------------------------------- | --------------------- |
+| `@json-render/core`, `@json-render/react` | 0.21.4                |
+| `@langchain/langgraph-sdk`                | 1.12.7                |
+| `@langchain/langgraph`, `@langchain/core` | 1.4.12, 1.2.18        |
+| `langchain`, optional `@langchain/google` | 1.5.10, 0.2.12        |
+| React, React DOM, Zod                     | 19.2.6, 19.2.6, 4.6.7 |
 
 These versions establish this React/root-stream integration. They are not a guarantee about future
 json-render releases or other renderer packages. The runnable default and regression fixtures use

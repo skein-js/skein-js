@@ -1,0 +1,143 @@
+@let state = session.snapshot();
+<div class="playground">
+  <header class="site-header">
+    <a class="wordmark" href="/">↗ <span>Skein playground</span></a>
+    <span class="platform">A2UI · Angular</span>
+    <nav aria-label="Playground controls">
+      <a href="https://skein.js.org/recipes/a2ui">Guide ↗</a>
+      <button type="button" (click)="refresh()" [disabled]="!state.threadId">Refresh chat</button>
+      <button type="button" (click)="newChat()">New chat</button>
+    </nav>
+  </header>
+  <div class="workspace">
+    <main class="chat-panel" aria-label="UI conversation">
+      <div class="conversation" #conversation>
+        @if (!state.conversation.length && !state.pendingPrompt) {
+        <section class="welcome">
+          <span class="eyebrow">Your prompt. Your components.</span>
+          <h1>Describe an interface.</h1>
+          <p>Dashboards, forms, comparison cards. Watch a UI take shape, then make it yours.</p>
+          <div class="samples" aria-label="Sample prompts">
+            @for (sample of samples; track sample) {
+            <button
+              type="button"
+              (click)="chooseSample(sample)"
+              [disabled]="state.busy || !!state.review || state.needsRefresh"
+            >
+              {{ sample }} ↗
+            </button>
+            }
+          </div>
+        </section>
+        } @for (turn of state.conversation; track turn.generationId) {
+        <p class="user-message">{{ turn.prompt }}</p>
+        @if (turn.ui && (turn.generationId !== state.ui?.generationId || state.pendingPrompt)) {
+        <article class="assistant-message history-response" aria-label="Earlier generated UI">
+          <div class="response-header">Saved version · read-only</div>
+          @for (message of turn.ui.bootstrapMessages; track message.createSurface.surfaceId) {
+          <section
+            class="surface-card"
+            [attr.aria-label]="surfaceTitle(message.createSurface.surfaceId)"
+          >
+            <h2>{{ surfaceTitle(message.createSurface.surfaceId) }}</h2>
+            <fieldset class="generated" disabled>
+              <a2ui-v09-surface [surfaceId]="message.createSurface.surfaceId" />
+            </fieldset>
+          </section>
+          }
+        </article>
+        } @else if (turn.generationId !== state.ui?.generationId) {
+        <p class="earlier-response">This earlier response has no saved UI.</p>
+        } } @if (state.pendingPrompt) {
+        <p class="user-message">{{ state.pendingPrompt }}</p>
+        } @if (state.error) {
+        <p class="notice error" role="alert">{{ state.error }}</p>
+        } @if (state.recovery) {
+        <p class="notice" role="status">{{ state.recovery }}</p>
+        } @if (state.busy || session.surfaceIds().length) {
+        <article class="assistant-message current-response">
+          <div class="response-header" role="status">
+            <span class="assistant-mark">↗</span>
+            @if (state.preview) { Preview · saving after validation } @else if (state.busy) {
+            Generating UI… } @else { Saved in this chat }
+          </div>
+          @for (surfaceId of (state.pendingPrompt && !state.preview ? [] : session.surfaceIds());
+          track surfaceId) {
+          <section class="surface-card" [attr.aria-label]="surfaceTitle(surfaceId)">
+            <h2>{{ surfaceTitle(surfaceId) }}</h2>
+            <fieldset class="generated" [disabled]="session.actionsDisabled()">
+              <a2ui-v09-surface [surfaceId]="surfaceId" />
+            </fieldset>
+          </section>
+          } @if (state.review && !state.busy && !state.needsRefresh) {
+          <section class="review" aria-label="Review generated UI">
+            <div>
+              <strong>Keep this version?</strong>
+              <p>Review the saved UI to enable its controls and continue chatting.</p>
+            </div>
+            <div class="button-row">
+              <button type="button" (click)="session.decide(false)">Reject</button
+              ><button class="primary" type="button" (click)="session.decide(true)">
+                Approve UI
+              </button>
+            </div>
+          </section>
+          } @if (state.approved !== null && !state.busy) {
+          <p class="decision" role="status">
+            {{ state.approved ? 'UI approved. Keep refining it.' : 'UI rejected. Describe another
+            direction.' }}
+          </p>
+          }
+        </article>
+        }
+      </div>
+      <div class="composer-dock">
+        @if (state.busy && state.runId) {
+        <div class="run-tools">
+          @if (state.connected) {
+          <button type="button" (click)="session.disconnect()">Pause updates</button> } @else {
+          <button type="button" (click)="session.reconnect()">Reconnect</button> }
+          <button type="button" (click)="session.stop()">Stop run</button>
+        </div>
+        }
+        <form class="composer" (submit)="send($event)">
+          <label class="sr-only" for="ui-prompt">Describe the UI</label>
+          <textarea
+            id="ui-prompt"
+            [formControl]="prompt"
+            rows="2"
+            maxlength="2000"
+            placeholder="Ask for a dashboard, form or product comparison…"
+          ></textarea>
+          <div class="composer-footer">
+            <span>Offline samples by default</span
+            ><button
+              class="primary"
+              type="submit"
+              [disabled]="prompt.invalid || state.busy || !!state.review || state.needsRefresh"
+            >
+              Send ↑
+            </button>
+          </div>
+        </form>
+        <div class="composer-note">
+          <span>Approval records a decision. Nothing is published or submitted.</span> @if
+          (state.threadId) { <a [href]="'?thread=' + state.threadId">Reopen this chat ↗</a> }
+        </div>
+      </div>
+    </main>
+    <aside class="inspector" aria-label="Generated JSON">
+      <details open>
+        <summary>Generated JSON <span>A2UI 1.0</span></summary>
+        <p>
+          Validated bootstrap for the current {{ state.preview ? 'preview' : 'saved UI' }}. Earlier
+          responses stay read-only in the chat.
+        </p>
+        <pre
+          tabindex="0"
+          aria-label="A2UI JSON"
+        ><code>{{ (state.view?.bootstrapMessages ?? []) | json }}</code></pre>
+      </details>
+    </aside>
+  </div>
+</div>

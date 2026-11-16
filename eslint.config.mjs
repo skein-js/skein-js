@@ -17,6 +17,7 @@ export default tseslint.config(
       // run a local build otherwise fails `pnpm lint` on bundled third-party code they did not write.
       "**/.skein/**",
       "**/.next/**",
+      "**/.angular/**", // Angular CLI build cache and prebundled third-party dependencies
       // VitePress's prebundled dependencies. `.gitignore` covers it, but flat config doesn't read
       // that — so without this, a developer who has run `pnpm docs:build` fails `pnpm lint` on a
       // vendored MiniSearch bundle.

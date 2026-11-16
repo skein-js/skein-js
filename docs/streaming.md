@@ -95,6 +95,10 @@ Sequence checks prevent duplicate patch application, while terminal state reads 
 tails and entirely expired history. The [json-render recipe](./recipes/json-render.md) includes the
 complete React example, compiler buffering rules and retention fallback.
 
+For A2UI, compile model output with the upstream agent SDK and send complete A2UI messages through
+custom events. The [Angular A2UI recipe](./recipes/a2ui.md) demonstrates native rendering, bound forms,
+surface deletion, saved bootstrap state and a separate checkpointed review.
+
 ## Slow clients and backpressure
 
 A stream is only as fast as the client reading it, and skein paces itself accordingly. Every adapter's

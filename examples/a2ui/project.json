@@ -1,0 +1,52 @@
+{
+  "name": "example-a2ui",
+  "$schema": "../../node_modules/nx/schemas/project-schema.json",
+  "projectType": "application",
+  "prefix": "app",
+  "sourceRoot": "examples/a2ui/src",
+  "tags": [],
+  "targets": {
+    "typecheck": {
+      "executor": "nx:run-commands",
+      "options": {
+        "command": "tsc --noEmit -p tsconfig.server.json && ngc --noEmit -p tsconfig.app.json",
+        "cwd": "examples/a2ui"
+      }
+    },
+    "dev": {
+      "executor": "nx:run-commands",
+      "cache": false,
+      "dependsOn": ["^build"],
+      "options": {
+        "command": "skein dev --host 127.0.0.1 --port 2025 --no-persist",
+        "cwd": "examples/a2ui"
+      }
+    },
+    "test-browser": {
+      "executor": "nx:run-commands",
+      "cache": false,
+      "dependsOn": ["^build", "build"],
+      "options": {
+        "command": "vitest run --config vitest.browser.config.ts",
+        "cwd": "examples/a2ui"
+      }
+    },
+    "build": {
+      "executor": "nx:run-commands",
+      "outputs": ["{workspaceRoot}/dist/examples/a2ui"],
+      "options": {
+        "command": "ng build",
+        "cwd": "examples/a2ui"
+      }
+    },
+    "serve": {
+      "executor": "nx:run-commands",
+      "continuous": true,
+      "cache": false,
+      "options": {
+        "command": "ng serve --host 127.0.0.1 --port 3007 --proxy-config proxy.conf.json",
+        "cwd": "examples/a2ui"
+      }
+    }
+  }
+}

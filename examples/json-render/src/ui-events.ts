@@ -23,10 +23,12 @@ export function createUiStream(baseline: CommittedUi | null) {
   let lastSequence = -1;
   let complete = false;
   let gap = false;
+  let hasPreview = false;
   let preview = baseline ? structuredClone(baseline.spec) : null;
 
   function losePreview() {
     gap = true;
+    hasPreview = false;
     preview = baseline ? structuredClone(baseline.spec) : null;
   }
 
@@ -57,7 +59,17 @@ export function createUiStream(baseline: CommittedUi | null) {
       lastSequence = event.sequence;
       if (gap) return;
       try {
-        if (event.phase === "chunk") preview = structuredClone(compiler.push(event.text).result);
+        if (event.phase === "chunk") {
+          const compiled = compiler.push(event.text);
+          if (compiled.newPatches.length) {
+            try {
+              preview = structuredClone(validateUiSpec(compiled.result));
+              hasPreview = true;
+            } catch {
+              // A patch can leave props or references incomplete. Keep the last renderable UI.
+            }
+          }
+        }
         if (event.phase === "complete") {
           preview = structuredClone(validateUiSpec(compiler.getResult()));
           complete = true;
@@ -72,6 +84,7 @@ export function createUiStream(baseline: CommittedUi | null) {
         generationId,
         chunkCount: complete ? lastSequence - 1 : undefined,
         gap,
+        preview: hasPreview && !gap,
         complete,
       };
     },

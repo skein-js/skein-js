@@ -30,6 +30,30 @@ function events(size = 43): UiEvent[] {
 }
 
 describe("application SpecStream bridge", () => {
+  it("keeps the last renderable preview while a table's props are incomplete", () => {
+    const stream = createUiStream(null);
+    let sequence = 1;
+    const push = (text: string) =>
+      stream.push(
+        frame({ type: "json-render", generationId, sequence: sequence++, phase: "chunk", text }),
+      );
+    stream.push(frame({ type: "json-render", generationId, sequence: 0, phase: "start" }));
+    push('{"op":"add","path":"/root","value":"table"}\n');
+    push(
+      '{"op":"add","path":"/elements/table","value":{"type":"Table","props":{},"children":[]}}\n',
+    );
+    expect(stream.snapshot()).toMatchObject({ spec: null, gap: false });
+    push(
+      '{"op":"add","path":"/elements/table/props","value":{"caption":"Traffic","columns":["Channel"],"rows":[["Search"]]}}\n',
+    );
+    const valid = stream.snapshot().spec;
+    expect(valid?.elements["table"]?.props["rows"]).toEqual([["Search"]]);
+    push('{"op":"remove","path":"/elements/table/props/rows"}\n');
+    expect(stream.snapshot().spec).toEqual(valid);
+    stream.push(frame({ type: "json-render", generationId, sequence, phase: "complete" }));
+    expect(stream.snapshot()).toMatchObject({ spec: null, gap: true });
+  });
+
   it.each([1, 17, 5000])(
     "buffers arbitrary chunks of %i characters and flushes the final line",
     (size) => {
@@ -118,7 +142,7 @@ describe("application SpecStream bridge", () => {
     expect(() => validateUiSpec(unknownAction)).toThrow();
     const navigation = structuredClone(expected);
     navigation.elements["revise"]!.on = {
-      press: { action: "revisePlan", onSuccess: { navigate: "https://example.com" } },
+      press: { action: "reviseUi", onSuccess: { navigate: "https://example.com" } },
     };
     expect(() => validateUiSpec(navigation)).toThrow();
   });

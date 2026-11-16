@@ -378,6 +378,36 @@ and no workspace aliases, then verifies generation, reopening without execution,
 interrupt/resume. Its SDK 1.12.7 dependencies do not replace the existing SDK 1.12.6 and legacy gates.
 This coverage concerns JSON specifications with app-owned components, not `/ui/{agent}` assets.
 
+## Angular A2UI integration coverage
+
+Both UI playgrounds checkpoint each generated response with its prompt. Their browser journeys verify
+that generated actions retain earlier responses as read-only history, including after reload, alongside
+the chat composer, JSON panel, review controls and restoration without repeating runs.
+The A2UI model-transport regression injects dropped streams and early cancellation into the actual
+Google integration, ensuring errors reach the caller without an unhandled rejection.
+
+`nx test example-a2ui` exercises the pinned upstream Direct JSON parser, catalog validation,
+surface/bootstrap round trips, sequence handling and graph-scope isolation. Its actual HTTP SDK
+tests cover actions and submitted form state, ownership, forged inputs, stale decisions, atomic
+competing-tab admission, lost-response retries, replay damage and eviction, observation-only
+disconnects, cancellation, provider failures and reopening. SQLite closes and reopens a real file
+with a fresh event bus, restores a pending review and resumes without regeneration. No model
+credentials or Docker are needed.
+
+`nx run example-a2ui:test-browser` builds the Angular production application and uses Chromium
+against the real HTTP graph harness. It verifies actual native Angular fields/buttons, review,
+revision, surface deletion, saved URLs, reload, reconnects, errors, keyboard focus and mobile
+overflow. Screenshots are written to `dist/a2ui-screenshots` and uploaded by compatibility CI.
+The pinned renderer's v1 defaults are universal-only; this gate specifically verifies public
+component overrides pairing its exported native implementations with v1 Basic Catalog schemas.
+
+`nx run test-support:test-a2ui-consumer` installs a clean consumer outside the checkout using
+packed Skein packages. It compiles the actual graph/session modules, executes generation, bound
+form submission, approval without regeneration, deletion and reopening without execution, then
+builds the actual Angular app without workspace aliases. The same helper runs inside
+`test-support:test-compatibility-consumer` using that run's existing tarballs and separate dependency
+versions. Existing json-render and SDK/framework gates remain in place.
+
 ## Redis dependency compatibility
 
 Run `pnpm exec nx run test-support:test-redis-compatibility --bullmq=6.4.1 --ioredis=6.0.0` with Docker
