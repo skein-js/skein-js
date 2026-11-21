@@ -188,18 +188,18 @@ it.each([
       </WorkspaceProvider>
     </StrictMode>,
   );
-  await Promise.all([
-    screen.findByLabelText("First workspace"),
-    screen.findByLabelText("Second workspace"),
-  ]);
+  await waitFor(() => {
+    screen.getByLabelText("First workspace");
+    screen.getByLabelText("Second workspace");
+  });
   expect(stores.size).toBe(2);
   expect(stores.get("First workspace")).not.toBe(stores.get("Second workspace"));
-  act(() =>
+  await act(async () => {
     stores
       .get("First workspace")!
       .getState()
-      .updateDraft("editor", { chat: "Only the first provider" }),
-  );
+      .updateDraft("editor", { chat: "Only the first provider" });
+  });
   expect((screen.getByLabelText("First workspace") as HTMLInputElement).value).toBe(
     "Only the first provider",
   );
