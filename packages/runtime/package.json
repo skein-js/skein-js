@@ -60,7 +60,7 @@
     "@langchain/core": "^1.2.9",
     "@langchain/langgraph": "^1.4.0",
     "@langchain/langgraph-checkpoint-postgres": "^1.0.4",
-    "@skein-js/core": "workspace:1.0.0-beta.1",
+    "@skein-js/core": "workspace:*",
     "@skein-js/langsmith": "workspace:*",
     "@skein-js/local": "workspace:*",
     "@skein-js/otel": "workspace:*",
