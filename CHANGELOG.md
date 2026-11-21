@@ -1,3 +1,42 @@
+## 1.0.0-beta.2 (2026-11-21)
+
+### 🚀 Features
+
+- **agent-protocol:** support official MCP human-input rounds ([e9119e2](https://github.com/skein-js/skein-js/commit/e9119e2))
+- **console:** find runs across threads with bookmarkable filters ([f9149e5](https://github.com/skein-js/skein-js/commit/f9149e5))
+- **examples:** add json-render streaming plan builder ([ff1c99f](https://github.com/skein-js/skein-js/commit/ff1c99f))
+- **examples:** add Angular A2UI trip planner ([0dbb552](https://github.com/skein-js/skein-js/commit/0dbb552))
+- **examples:** add chat UI playgrounds ([6683073](https://github.com/skein-js/skein-js/commit/6683073))
+
+### 🩹 Fixes
+
+- ⚠️  resolve dependency versions on supported Node LTS ([75c34a5](https://github.com/skein-js/skein-js/commit/75c34a5))
+- **agent-protocol:** continue recovered runs from attributable checkpoints ([775e5ff](https://github.com/skein-js/skein-js/commit/775e5ff))
+- **agent-protocol:** supply delivery attempt and signatures on fallback webhooks ([c44eb62](https://github.com/skein-js/skein-js/commit/c44eb62))
+- **ci:** stabilize SQLite checks and documentation links ([4002799](https://github.com/skein-js/skein-js/commit/4002799))
+- **ci:** retry Windows desktop package cleanup ([590a146](https://github.com/skein-js/skein-js/commit/590a146))
+- **cli:** preserve Yarn Plug'n'Play dependency resolution ([c5c0080](https://github.com/skein-js/skein-js/commit/c5c0080))
+- **console:** wait for input mode before accepting drafts ([3d0bf43](https://github.com/skein-js/skein-js/commit/3d0bf43))
+- **examples:** make json-render retries and reloads safe ([d15391e](https://github.com/skein-js/skein-js/commit/d15391e))
+- **examples:** harden chat playground previews and recovery ([71a7b5c](https://github.com/skein-js/skein-js/commit/71a7b5c))
+- **examples:** handle Google streams and retain chat responses ([7ebe07d](https://github.com/skein-js/skein-js/commit/7ebe07d))
+- **langgraph:** host current Deep Agents and verify compatibility ([5a09fb8](https://github.com/skein-js/skein-js/commit/5a09fb8))
+- **release:** mark GitHub releases as non-prerelease ([3694eef](https://github.com/skein-js/skein-js/commit/3694eef))
+- **release:** track the local core workspace version ([61e407c](https://github.com/skein-js/skein-js/commit/61e407c))
+- **runtime:** enforce compatible HTTP and webhook controls ([c94200e](https://github.com/skein-js/skein-js/commit/c94200e))
+
+### ⚠️  Breaking Changes
+
+- resolve dependency versions on supported Node LTS  ([75c34a5](https://github.com/skein-js/skein-js/commit/75c34a5))
+  Node 20 and Node 22 releases before 22.14 are unsupported.
+  Upgrade to Node 22.14+ within 22.x, Node 24 or Node 26 before installing.
+  Node 26 is now the default for new projects and production images.
+
+### ❤️ Thank You
+
+- Bethwel Kiplagat
+- Maina Wycliffe
+
 ## 1.0.0-beta.1 (2026-11-02)
 
 ### 🩹 Fixes
