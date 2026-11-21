@@ -1,17 +1,19 @@
 name: Docs check
 
-# The cheap half of CI, and the half a markdown-only change can actually break: Prettier (it formats
-# `.md` too), the VitePress build, and the link check. No path filter on purpose — this runs on every
-# push and PR, including code-only ones, because moving a package directory breaks relative links in
-# docs that no markdown edit would reveal.
-#
-# Its counterpart ci.yml skips markdown-only changes entirely; between the two, every change is
-# covered exactly once and nothing expensive runs for a typo fix.
+# Check formatting, the VitePress build, and links for docs and code changes. Moving a package can
+# break links without editing Markdown. Keep the repository metadata exclusions in sync with ci.yml.
 
 on:
   push:
     branches: [main]
+    paths-ignore: &docs-ignored-paths
+      - ".gitignore"
+      - ".github/FUNDING.yml"
+      - ".github/ISSUE_TEMPLATE/**"
+      - ".github/PULL_REQUEST_TEMPLATE.md"
+      - ".github/PULL_REQUEST_TEMPLATE/**"
   pull_request:
+    paths-ignore: *docs-ignored-paths
 
 concurrency:
   group: docs-check-${{ github.workflow }}-${{ github.ref }}

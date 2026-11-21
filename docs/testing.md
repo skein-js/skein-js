@@ -300,8 +300,10 @@ the social image, deployment links, and current LLM assets. It runs in the docs 
 build tracks the root LLM bundles and relevant git history as inputs, so a cached build cannot
 retain an older copy or stale page timestamps. Docs CI fetches full history to match Pages.
 
-Docs checks run on pushes to `main` and pull requests. Release deployments run separately, after the
-release workflow's CI, npm publishing, and GitHub release finalization succeed. Beta/RC milestones
+Docs checks run on pushes to `main` and pull requests, including when only Markdown changes. Changes
+limited to `.gitignore`, GitHub issue or pull request templates, or GitHub funding metadata skip CI
+and Docs check. Release deployments run separately, after the release workflow's CI, npm publishing,
+and GitHub release finalization succeed. Beta/RC milestones
 also use npm `latest` and normal GitHub releases. Deployment checks out the release's exact commit
 with full history and runs the same build and SEO checks before deploying. The `github-pages`
 environment must permit `v*` tags and `main`.

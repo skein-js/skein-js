@@ -1,26 +1,25 @@
 name: CI
 
-# Everything here builds or exercises code, so a markdown-only change can't affect any of it. Those
-# changes are covered by docs-check.yml instead, which runs on every push and holds the checks that a
-# docs edit *can* break: Prettier, the VitePress build, and the link check.
+# Docs check covers formatting, the VitePress build, and links. Ignore-only and GitHub template
+# changes skip both workflows.
 #
 # `paths-ignore` skips the run only when *every* changed file matches, so a commit touching code and
 # docs together still runs in full. `workflow_call` takes no filter, so release.yml's gate is unaffected.
-# The two lists are duplicated because GitHub Actions does not support YAML anchors — keep them in sync.
 on:
   push:
     branches: [main]
-    paths-ignore:
+    paths-ignore: &ci-ignored-paths
       - "**.md"
       - "llms.txt"
       - "llms-full.txt"
       - "LICENSE"
+      - ".gitignore"
+      - ".github/FUNDING.yml"
+      - ".github/ISSUE_TEMPLATE/**"
+      - ".github/PULL_REQUEST_TEMPLATE.md"
+      - ".github/PULL_REQUEST_TEMPLATE/**"
   pull_request:
-    paths-ignore:
-      - "**.md"
-      - "llms.txt"
-      - "llms-full.txt"
-      - "LICENSE"
+    paths-ignore: *ci-ignored-paths
   # Callable by release.yml so a publish runs these exact checks on the released commit.
   workflow_call:
     inputs:
