@@ -1,3 +1,7 @@
+## 1.0.0-beta.3 (2026-11-21)
+
+This was a version bump only, there were no code changes.
+
 ## 1.0.0-beta.2 (2026-11-21)
 
 ### 🚀 Features
