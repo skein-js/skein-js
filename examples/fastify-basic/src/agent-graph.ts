@@ -71,9 +71,12 @@ const getWeather = tool(
   },
 );
 
+const apiKey = process.env["GOOGLE_API_KEY"]?.trim();
+if (!apiKey) throw new Error("Set GOOGLE_API_KEY in the server environment or .env to use Gemini.");
+
 const model = new ChatGoogleGenerativeAI({
-  model: process.env.GOOGLE_MODEL ?? "gemini-2.5-flash",
-  temperature: 0,
+  apiKey,
+  model: process.env["GOOGLE_MODEL"]?.trim() || "gemini-3.5-flash-lite",
 });
 
 export const graph = createAgent({ model, tools: [getWeather] });

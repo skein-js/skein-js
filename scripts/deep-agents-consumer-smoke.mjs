@@ -58,16 +58,6 @@ try {
         path.join(consumer, `node_modules/@skein-js/${project}/dist`),
       );
   copyTree(path.join(root, "examples/deep-agent/src"), path.join(consumer, "src"));
-  // Let the consumer's TS test host own imports, as with the public Vite importer seam in dev.
-  // This keeps test spies and config-loaded graphs in the same module instance.
-  const serverSource = await readFile(path.join(consumer, "src/server.ts"), "utf8");
-  await writeFile(
-    path.join(consumer, "src/server.ts"),
-    serverSource.replace(
-      "{ config: configPath }",
-      "{ config: configPath, importModule: (file: string) => import(/* @vite-ignore */ file) }",
-    ),
-  );
   copyTree(path.join(root, "scripts/fixtures/deep-agents"), path.join(consumer, "proof"));
   const config = JSON.parse(
     await readFile(path.join(root, "examples/deep-agent/langgraph.json"), "utf8"),
@@ -87,7 +77,14 @@ try {
       "--eval",
       "await import('./src/briefing-assistant-graph.ts');",
     ],
-    { cwd: consumer },
+    {
+      cwd: consumer,
+      env: {
+        ...process.env,
+        GOOGLE_API_KEY: "test-key",
+        DEEP_AGENT_MODEL: "google-genai:gemini-3.5-flash-lite",
+      },
+    },
   );
   run(
     process.execPath,

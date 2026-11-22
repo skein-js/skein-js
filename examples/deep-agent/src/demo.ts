@@ -3,10 +3,11 @@
 //   pnpm demo
 //
 // It is the same @langchain/langgraph-sdk code a web or chat app would write: tell the assistant how you
-// like briefings, ask for one while showing the research subagent's progress live, then approve the
-// email it wants to send.
+// like briefings, ask for one while showing the research subagent's progress live, then approve a
+// simulated email if the assistant requests approval.
 
-import { Client } from "@langchain/langgraph-sdk";
+import { coerceMessageLikeToMessage } from "@langchain/core/messages";
+import { Client, type Message } from "@langchain/langgraph-sdk";
 
 const client = new Client({
   apiUrl: process.env["SKEIN_URL"] ?? "http://127.0.0.1:2024",
@@ -15,11 +16,12 @@ const client = new Client({
 
 const assistant = "briefing-assistant";
 
-type Message = { type?: string; content?: unknown };
-const lastReply = (values: unknown): string =>
-  String((values as { messages?: Message[] }).messages?.at(-1)?.content ?? "");
+function lastReply(values: unknown): string {
+  const message = (values as { messages?: Message[] }).messages?.at(-1);
+  return message?.type === "ai" ? coerceMessageLikeToMessage(message).text : "";
+}
 
-async function ask(threadId: string, content: string): Promise<string> {
+async function ask(threadId: string, content: string): Promise<void> {
   console.log(`\nyou › ${content}`);
   const reply = lastReply(
     await client.runs.wait(threadId, assistant, {
@@ -27,7 +29,6 @@ async function ask(threadId: string, content: string): Promise<string> {
     }),
   );
   console.log(`assistant › ${reply}`);
-  return reply;
 }
 
 // 1. A preference saved once applies to every future conversation.
@@ -62,21 +63,27 @@ for (const [path, file] of Object.entries(files)) {
   console.log(`\n── ${path} ──\n${Array.isArray(content) ? content.join("\n") : String(content)}`);
 }
 
-// 3. Emailing waits for a person. Here we approve; a UI would show approve / edit / reject.
+// 3. Sending a simulated email requires approval. A UI would offer approve, edit, or reject.
 console.log("\nyou › Email the briefing to facilities@example.com");
-await client.runs.wait(thread.thread_id, assistant, {
+const reply = await client.runs.wait(thread.thread_id, assistant, {
   input: { messages: [{ role: "user", content: "Email the briefing to facilities@example.com" }] },
 });
+
 const pending = await client.threads.getState(thread.thread_id);
 type ApprovalRequest = { actionRequests?: { name: string; args: { to?: string } }[] };
+const actions = pending.tasks
+  .flatMap((task) => task.interrupts)
+  .flatMap((request) => (request.value as ApprovalRequest).actionRequests ?? []);
 
-for (const request of pending.tasks.flatMap((task) => task.interrupts)) {
-  for (const action of (request.value as ApprovalRequest).actionRequests ?? []) {
+if (actions.length > 0 && actions.every((action) => action.name === "send_briefing")) {
+  for (const action of actions) {
     console.log(`   (paused: ${action.name} to ${action.args.to} needs approval — approving)`);
   }
-}
 
-const resumed = await client.runs.wait(thread.thread_id, assistant, {
-  command: { resume: { decisions: [{ type: "approve" }] } },
-});
-console.log(`assistant › ${lastReply(resumed)}`);
+  const resumed = await client.runs.wait(thread.thread_id, assistant, {
+    command: { resume: { decisions: actions.map(() => ({ type: "approve" })) } },
+  });
+  console.log(`assistant › ${lastReply(resumed)}`);
+} else {
+  console.log(`assistant › ${lastReply(reply)}`);
+}

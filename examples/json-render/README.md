@@ -7,6 +7,8 @@ model-generated view that you can review, refine, and reopen.
 
 ## Run it
 
+Follow the [free Gemini key setup](../../docs/recipes/index.md#free-api-keys-for-testing) before running the model-backed graph.
+
 Use Node 26 and the repository’s pnpm version. Run these commands from the repository root.
 
 ```sh
@@ -17,7 +19,7 @@ cp examples/json-render/.env.example examples/json-render/.env
 Set these backend values in `examples/json-render/.env`.
 
 ```dotenv
-JSON_RENDER_MODEL=google:YOUR_MODEL_ID
+JSON_RENDER_MODEL=google:gemini-3.5-flash-lite
 GOOGLE_API_KEY=YOUR_API_KEY
 ```
 

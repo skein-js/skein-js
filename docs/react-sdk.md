@@ -57,7 +57,8 @@ For custom authentication, follow the [authentication recipe](./recipes/authenti
 
 The [`nextjs-app`](https://github.com/skein-js/skein-js/tree/main/examples/nextjs-app) example serves
 both UI and protocol from one origin. For a complete application with tools, reasoning output,
-and approval cards, see [`chat-app`](https://github.com/skein-js/skein-js/tree/main/examples/chat-app).
+and approval cards using the SDK's run-stream hook, see
+[`chat-app`](https://github.com/skein-js/skein-js/tree/main/examples/chat-app).
 
 ## Handle pauses and failures
 
@@ -107,7 +108,7 @@ skein-js Vue, Svelte, or Angular example applications yet.
 
 ## Version and streaming reference {#dedicated-framework-packages}
 
-The React examples use `@langchain/react` 1.2.7 and SDK 1.12.7. React, Angular, Vue, and Svelte 1.2.6
+The dedicated React examples use `@langchain/react` 1.2.7 and SDK 1.12.7. React, Angular, Vue, and Svelte 1.2.6
 are also verified combinations. Treat these as tested versions, rather than a guarantee about every
 future client release.
 

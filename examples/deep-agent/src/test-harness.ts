@@ -1,12 +1,19 @@
 // Shared by the end-to-end suites: boot the example's own `langgraph.json` on a real port and talk to
 // it with the official `@langchain/langgraph-sdk` client, signed in as whichever user a test needs.
 
-import { createServer } from "node:net";
+import { fileURLToPath } from "node:url";
 
 import { Client } from "@langchain/langgraph-sdk";
+import { createExpressServer } from "@skein-js/express";
 import type { AsyncTask } from "deepagents";
+import { vi } from "vitest";
 
-import type { StartedExample } from "./server.js";
+vi.mock("./model.js", async () => {
+  const { ScriptedChatModel } = await import("./test-model.js");
+  return {
+    selectModel: (role: "assistant" | "researcher") => new ScriptedChatModel({ role }),
+  };
+});
 
 export const ASSISTANT = "briefing-assistant";
 
@@ -24,34 +31,37 @@ export interface Harness {
   close(): Promise<void>;
 }
 
-/** A port nothing is listening on — the deep dive has to know the server's URL before it boots. */
-async function freePort(): Promise<number> {
-  return new Promise((resolve, reject) => {
-    const probe = createServer();
-    probe.once("error", reject);
-    probe.listen(0, "127.0.0.1", () => {
-      const address = probe.address();
-      probe.close(() =>
-        typeof address === "object" && address
-          ? resolve(address.port)
-          : reject(new Error("no port")),
-      );
-    });
-  });
-}
-
-/** Boot the server offline (the scripted model), signed-in clients one call away. */
+/** Use the example's real config and let Vitest load the graph with the test model. */
 export async function startHarness(): Promise<Harness> {
-  const port = await freePort();
-  process.env["SKEIN_URL"] = `http://127.0.0.1:${port}`;
-  delete process.env["DEEP_AGENT_MODEL"];
-  // Imported after the env is set: the graph modules read SKEIN_URL when they load.
-  const { startServer } = await import("./server.js");
-  const started: StartedExample = await startServer(port);
+  const server = await createExpressServer({
+    config: fileURLToPath(new URL("../langgraph.json", import.meta.url)),
+    importModule: (file) => import(/* @vite-ignore */ file),
+  });
+
+  const listener = await server.listen(0, "127.0.0.1").catch(async (error: unknown) => {
+    await server.close();
+    throw error;
+  });
+
+  const address = listener.address();
+
+  if (!address || typeof address === "string") {
+    await server.close();
+    throw new Error("Expected a bound HTTP address");
+  }
+
+  const url = `http://127.0.0.1:${address.port}`;
+  const previousUrl = process.env["SKEIN_URL"];
+  process.env["SKEIN_URL"] = url;
+
   return {
-    url: started.url,
-    clientFor: (user) => new Client({ apiUrl: started.url, defaultHeaders: { "x-user": user } }),
-    close: () => started.close(),
+    url,
+    clientFor: (user) => new Client({ apiUrl: url, defaultHeaders: { "x-user": user } }),
+    async close() {
+      if (previousUrl === undefined) delete process.env["SKEIN_URL"];
+      else process.env["SKEIN_URL"] = previousUrl;
+      await server.close();
+    },
   };
 }
 

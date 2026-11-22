@@ -6,6 +6,8 @@ meetings with real tools. You can edit the proposed summary, owners and dates be
 
 ## Run it
 
+For Gemini, follow the [free Gemini key setup](../../docs/recipes/index.md#free-api-keys-for-testing). You can also select another supported model provider.
+
 Use Node 24, pnpm, and the native build prerequisites for your OS:
 
 ```sh

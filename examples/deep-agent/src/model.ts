@@ -1,15 +1,7 @@
-// Which model the agents think with.
-//
-// `DEEP_AGENT_MODEL` takes any `provider:model` string LangChain's `initChatModel` understands — e.g.
-// `google-genai:gemini-2.5-flash` with `GOOGLE_API_KEY` set (`@langchain/google-genai` is installed), or
-// `anthropic:…` / `openai:…` after adding that provider package. Unset, the agents use the offline
-// scripted model, which is what the tests run against.
-
-import type { BaseChatModel } from "@langchain/core/language_models/chat_models";
-
-import { ScriptedChatModel, type ScriptedRole } from "./scripted-model.js";
-
-export function selectModel(role: ScriptedRole): BaseChatModel | string {
-  const configured = process.env["DEEP_AGENT_MODEL"];
-  return configured ? configured : new ScriptedChatModel({ role });
+/** A LangChain provider:model string. The example includes Gemini by default. */
+export function selectModel(role: "assistant" | "researcher"): string {
+  const model = process.env["DEEP_AGENT_MODEL"]?.trim() || "google-genai:gemini-3.5-flash-lite";
+  if (/^google(?:-genai)?:/.test(model) && !process.env["GOOGLE_API_KEY"]?.trim())
+    throw new Error(`Set GOOGLE_API_KEY in the server environment or .env to run the ${role}.`);
+  return model.replace(/^google:/, "google-genai:");
 }

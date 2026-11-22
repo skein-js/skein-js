@@ -2,7 +2,7 @@
   "name": "@skein-js/example-triage-agent",
   "version": "0.0.0",
   "private": true,
-  "description": "A cron-driven triage agent: sweeps a queue of issues on a schedule, classifies each on its own thread, remembers conventions in the store, and interrupts for approval on anything that needs a human. Runs offline with no API key. The workload the skein console was built to show.",
+  "description": "A scheduled Gemini agent that triages issues on separate threads, remembers conventions, and requests approval when needed.",
   "type": "module",
   "scripts": {
     "dev": "skein dev --port 2024",

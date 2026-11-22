@@ -5,8 +5,8 @@
 > but the integration may change in a minor release. See the
 > [Deep Agents recipe](../../docs/recipes/deep-agents.md) for what is covered.
 
-Ask it to brief you on a topic and it researches, writes and — with your sign-off — emails a one-page
-briefing, remembering how you like them written. It is a LangChain
+Ask it to brief you on a topic and it drafts a one-page briefing, remembering how you like it
+written. You can approve a simulated email to try human-in-the-loop review. It is a LangChain
 [Deep Agent](https://docs.langchain.com/oss/javascript/deepagents/overview) served by skein from an
 ordinary `langgraph.json`; the graph files import `deepagents`, not skein.
 
@@ -24,20 +24,21 @@ assistant › Your briefing on heat pumps is ready in /briefings/heat-pumps.md.
 
 you › Email the briefing to facilities@example.com
    (paused: send_briefing to facilities@example.com needs approval — approving)
-assistant › Emailed "Briefing: heat pumps" to facilities@example.com.
+assistant › The simulated email for "Briefing: heat pumps" was approved.
 ```
 
 ## Run it
 
+Get a [free Gemini API key](../../docs/recipes/index.md#free-api-keys-for-testing), then copy `.env.example` to
+`.env` and set `GOOGLE_API_KEY`. Both agents use Gemini 3.5 Flash-Lite by default. To choose another
+LangChain model, set `DEEP_AGENT_MODEL` to a `provider:model` string and install that provider's
+integration. Test suites inject a model fixture.
+
 ```bash
+cp .env.example .env
 pnpm dev     # skein dev on :2024 — open the console at /console to watch the runs
 pnpm demo    # in another terminal: the session above, through @langchain/langgraph-sdk
 ```
-
-It runs offline: with no `DEEP_AGENT_MODEL`, both agents use a scripted model
-([`src/scripted-model.ts`](./src/scripted-model.ts)) that follows these requests and writes sample
-research notes. For a real model, set `DEEP_AGENT_MODEL` to a LangChain `provider:model` string, such
-as `google-genai:gemini-2.5-flash` with `GOOGLE_API_KEY`; the graphs do not change.
 
 | Ask                                     | What happens                                                                 |
 | --------------------------------------- | ---------------------------------------------------------------------------- |

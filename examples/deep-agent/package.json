@@ -2,7 +2,7 @@
   "name": "@skein-js/example-deep-agent",
   "version": "0.0.0",
   "private": true,
-  "description": "A research briefing assistant built with LangChain Deep Agents and served by skein from an unchanged langgraph.json: it plans, delegates research to a subagent, drafts briefings into the conversation, remembers each user's preferences, asks before emailing, and runs deep dives in the background. Runs offline with a scripted model, or against a real model via DEEP_AGENT_MODEL.",
+  "description": "A model-backed Deep Agents briefing assistant with memory, approval, and background research.",
   "type": "module",
   "scripts": {
     "dev": "skein dev --port 2024",

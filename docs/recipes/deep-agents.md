@@ -57,8 +57,8 @@ export const graph = createDeepAgent({
 `skein dev` serves it, with the same `langgraph.json` `langgraph dev` reads. A working version is
 [`examples/deep-agent`](https://github.com/skein-js/skein-js/tree/main/examples/deep-agent): a research
 briefing assistant that plans, delegates research to a subagent, drafts briefings, remembers each
-user's preferences, asks before emailing, and runs deep dives in the background. It runs offline with
-a scripted model, so it needs no API key.
+user's preferences, asks before simulating an email, and runs deep dives in the background.
+Set up [a Gemini API key](./index.md#free-api-keys-for-testing) to run it.
 
 ## What is covered
 

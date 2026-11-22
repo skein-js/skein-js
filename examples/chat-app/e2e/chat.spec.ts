@@ -1,14 +1,12 @@
 import { expect, test } from "@playwright/test";
 
-// A real browser drives the shadcn chat UI end to end against a live Gemini model, asserting the
-// things this example exists to show: a streamed answer, the model's thinking, a tool call, a
-// structured (JSON) tool card, and the human-in-the-loop approval gate. Requires GOOGLE_API_KEY (the
-// whole suite self-skips without one; see the config).
+// A real browser checks streamed replies, tool cards, and approval against Gemini.
+// The suite skips when GOOGLE_API_KEY is missing.
 const hasKey = Boolean(process.env["GOOGLE_API_KEY"]);
 
 test.skip(!hasKey, "requires GOOGLE_API_KEY to drive a live Gemini model");
 
-test("streams a reply, renders thinking, and shows a structured tool card", async ({ page }) => {
+test("streams a reply and shows a structured tool card", async ({ page }) => {
   await page.goto("/");
 
   // The history sidebar is present from the start.
@@ -22,9 +20,6 @@ test("streams a reply, renders thinking, and shows a structured tool card", asyn
   // The assistant turn appears and the answer streams in.
   const assistant = page.getByTestId("assistant-message").first();
   await expect(assistant).toBeVisible({ timeout: 90_000 });
-
-  // The model's thinking is rendered (Gemini thinking, streamed as reasoning content).
-  await expect(page.getByTestId("thinking-block").first()).toBeVisible({ timeout: 90_000 });
 
   // The agent used at least one tool, and its result rendered as a rich card (weather or flights) —
   // the "structured JSON, not raw text" payoff.

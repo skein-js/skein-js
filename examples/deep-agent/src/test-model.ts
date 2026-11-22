@@ -1,4 +1,4 @@
-// The offline stand-in for a real model, so the example runs — and its tests pass — with no API key.
+// The test model drives the real Deep Agents workflow without calling a provider.
 //
 // It plays two roles, the same two a real model would:
 //
@@ -7,8 +7,7 @@
 //   the research, write the draft, and wait for your sign-off before emailing anything.
 // - **researcher** — the research subagent, which answers with structured notes on whatever it is asked.
 //
-// Every Deep Agents feature it drives is the real one; only the decisions are scripted. Set
-// `DEEP_AGENT_MODEL` (see `model.ts`) and the same graphs run against a real model instead.
+// The test harness supplies this model explicitly.
 //
 // What the assistant understands:
 //
@@ -35,7 +34,7 @@ export const PREFERENCES_FILE = "/memories/preferences.md";
 /** Where a briefing is drafted — thread state, so it belongs to the conversation that wrote it. */
 export const briefingFileFor = (topic: string): string => `/briefings/${slugOf(topic)}.md`;
 
-export type ScriptedRole = "assistant" | "researcher";
+type ScriptedRole = "assistant" | "researcher";
 
 const TASK_ID = /[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}/i;
 
@@ -190,7 +189,7 @@ function reportResult(result: ToolResult, request: string): AIMessage {
       );
     case "send_briefing":
       return say(
-        content.startsWith("Emailed") ? content : `I didn't send the briefing. ${content}`,
+        content.startsWith("Simulated email") ? content : `I didn't send the briefing. ${content}`,
       );
 
     case "start_async_task": {

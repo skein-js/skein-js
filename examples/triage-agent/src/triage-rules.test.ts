@@ -1,13 +1,16 @@
-// The graph's actual judgement: how it classifies offline, what it corrects, and when it decides a
-// human needs to see something. These are the decisions the example is *about*, so they get tests
-// rather than a live run and a shrug.
+import { AIMessage } from "@langchain/core/messages";
+import { ChatGoogleGenerativeAI } from "@langchain/google-genai";
+import { describe, expect, it, vi } from "vitest";
 
-import { afterEach, beforeEach, describe, expect, it } from "vitest";
-
-import { createClassifier } from "./classifier.js";
+import { classify } from "./classifier.js";
+import { requireGoogleApiKey } from "./model.js";
 import { routeSweep } from "./sweep-graph.js";
 import { applyCritique, routeForApproval } from "./triage-graph.js";
-import { fixtureIssues, type TriageItem, type Verdict } from "./triage-sources.js";
+import type { TriageItem, Verdict } from "./triage-sources.js";
+
+vi.hoisted(() => {
+  vi.stubEnv("GOOGLE_API_KEY", "test-key");
+});
 
 const item = (overrides: Partial<TriageItem> = {}): TriageItem => ({
   sourceId: "1",
@@ -27,63 +30,37 @@ const verdict = (overrides: Partial<Verdict> = {}): Verdict => ({
   ...overrides,
 });
 
-describe("offline classifier", () => {
-  let previousKey: string | undefined;
+describe("Gemini classifier", () => {
+  it("uses the model's structured verdict", async () => {
+    const expected = verdict({ category: "bug", severity: "high", reply: "Thanks for the report" });
 
-  beforeEach(() => {
-    previousKey = process.env["GOOGLE_API_KEY"];
-    delete process.env["GOOGLE_API_KEY"];
-  });
-
-  afterEach(() => {
-    if (previousKey === undefined) delete process.env["GOOGLE_API_KEY"];
-    else process.env["GOOGLE_API_KEY"] = previousKey;
-  });
-
-  it("is selected when no model key is present, and says so", async () => {
-    const classifier = createClassifier();
-    expect(classifier.kind).toBe("rules");
-    const result = await classifier.classify(item({ title: "anything" }), {
-      conventions: [],
-      related: [],
+    const generate = vi.spyOn(ChatGoogleGenerativeAI.prototype, "_generate").mockResolvedValue({
+      generations: [
+        {
+          message: new AIMessage(JSON.stringify(expected)),
+          text: JSON.stringify(expected),
+        },
+      ],
     });
-    // Nobody should be able to mistake a rules verdict for a model one.
-    expect(result.reasoning).toContain("No model was called");
-  });
 
-  it("classifies the bundled fixtures the way a human would", async () => {
-    const classifier = createClassifier();
-    const issues = fixtureIssues(10);
-    const byTitle = new Map<string, Verdict>();
-
-    for (const issue of issues) {
-      byTitle.set(issue.title, await classifier.classify(issue, { conventions: [], related: [] }));
+    try {
+      const input = { item: item({ title: "Crash on startup" }), conventions: [], related: [] };
+      const result = await classify(input, {});
+      expect(result.verdict).toEqual(expected);
+      expect(generate).toHaveBeenCalledOnce();
+    } finally {
+      generate.mockRestore();
     }
-
-    const crash = byTitle.get(
-      "Crash on startup: Cannot read properties of undefined (reading 'graphs')",
-    );
-    expect(crash?.category).toBe("bug");
-    // "Production is down" is the phrase that should escalate it.
-    expect(crash?.severity).toBe("high");
-
-    expect(byTitle.get("Add support for streaming tool call arguments")?.category).toBe("feature");
-    expect(byTitle.get("How do I run two instances behind a load balancer?")?.category).toBe(
-      "question",
-    );
-    expect(
-      byTitle.get("Docs: `http.console` is not mentioned in the langgraph.json reference")
-        ?.category,
-    ).toBe("docs");
-    expect(byTitle.get("🔥🔥 BUY CHEAP FOLLOWERS NOW visit my site 🔥🔥")?.category).toBe("spam");
   });
 
-  it("is deterministic, which is what makes any of this testable", async () => {
-    const classifier = createClassifier();
-    const subject = item({ title: "Intermittent 500 under load", body: "fails sometimes" });
-    const first = await classifier.classify(subject, { conventions: [], related: [] });
-    const second = await classifier.classify(subject, { conventions: [], related: [] });
-    expect(first).toEqual(second);
+  it.each([undefined, "   "])("requires a nonblank Gemini key (%j)", (key) => {
+    vi.stubEnv("GOOGLE_API_KEY", key);
+
+    try {
+      expect(() => requireGoogleApiKey()).toThrow("Set GOOGLE_API_KEY");
+    } finally {
+      vi.stubEnv("GOOGLE_API_KEY", "test-key");
+    }
   });
 });
 
@@ -91,7 +68,7 @@ describe("critique", () => {
   it("strips a reply the classifier drafted for spam", () => {
     const corrected = applyCritique({
       verdict: verdict({ category: "spam", severity: "high", reply: "Thanks for reaching out!" }),
-    } as never);
+    });
     expect(corrected.verdict?.reply).toBe("");
     expect(corrected.verdict?.severity).toBe("low");
   });
@@ -99,39 +76,39 @@ describe("critique", () => {
   it("downgrades a high-severity question, which is a contradiction in terms", () => {
     const corrected = applyCritique({
       verdict: verdict({ category: "question", severity: "high" }),
-    } as never);
+    });
     expect(corrected.verdict?.severity).toBe("medium");
   });
 
   it("leaves a coherent verdict alone", () => {
     const original = verdict({ category: "bug", severity: "high", reply: "on it" });
-    expect(applyCritique({ verdict: original } as never).verdict).toEqual(original);
+    expect(applyCritique({ verdict: original }).verdict).toEqual(original);
   });
 });
 
 describe("routeForApproval", () => {
   it("never auto-records a bug, however minor it looks", () => {
     // Wrongly ignoring a bug costs far more than one extra approval.
-    expect(
-      routeForApproval({ verdict: verdict({ category: "bug", severity: "low" }) } as never),
-    ).toBe("approve");
+    expect(routeForApproval({ verdict: verdict({ category: "bug", severity: "low" }) })).toBe(
+      "approve",
+    );
   });
 
   it("records spam and low-severity chatter without asking", () => {
-    expect(routeForApproval({ verdict: verdict({ category: "spam" }) } as never)).toBe("record");
-    expect(
-      routeForApproval({ verdict: verdict({ category: "question", severity: "low" }) } as never),
-    ).toBe("record");
+    expect(routeForApproval({ verdict: verdict({ category: "spam" }) })).toBe("record");
+    expect(routeForApproval({ verdict: verdict({ category: "question", severity: "low" }) })).toBe(
+      "record",
+    );
   });
 
   it("asks about anything with real severity", () => {
     expect(
-      routeForApproval({ verdict: verdict({ category: "feature", severity: "medium" }) } as never),
+      routeForApproval({ verdict: verdict({ category: "feature", severity: "medium" }) }),
     ).toBe("approve");
   });
 
   it("asks when there is no verdict at all", () => {
-    expect(routeForApproval({} as never)).toBe("approve");
+    expect(routeForApproval({})).toBe("approve");
   });
 });
 

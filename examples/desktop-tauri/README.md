@@ -6,6 +6,8 @@ with a library sidebar, a reading pane, persistent conversation and a reviewed o
 
 ## Run it
 
+For Gemini, follow the [free Gemini key setup](../../docs/recipes/index.md#free-api-keys-for-testing). You can also select another supported model provider.
+
 Install Node 24 and the [Tauri prerequisites](https://tauri.app/start/prerequisites/) for your OS:
 
 ```sh

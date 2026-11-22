@@ -15,10 +15,11 @@ cd examples/a2ui
 cp .env.example .env
 ```
 
-Set these values in the example's backend `.env`. Choose a Gemini model that supports tool calling.
+Follow the [free Gemini key setup](./index.md#free-api-keys-for-testing). Put the key and model in
+the example's backend `.env`.
 
 ```dotenv
-A2UI_MODEL=google:YOUR_MODEL_ID
+A2UI_MODEL=google:gemini-3.5-flash-lite
 GOOGLE_API_KEY=YOUR_API_KEY
 ```
 

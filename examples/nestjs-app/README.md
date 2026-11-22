@@ -38,6 +38,8 @@ served (`echo`, `agent`).
 
 ## How to run
 
+Follow the [free Gemini key setup](../../docs/recipes/index.md#free-api-keys-for-testing) before running the model-backed graph.
+
 ```bash
 cp .env.example .env          # only needed for the `agent` graph; `echo` needs nothing
 pnpm install

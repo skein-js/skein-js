@@ -7,7 +7,7 @@
 // The pure builders (`weatherFor`, `flightsFor`, `lookupFlight`) live here without the tool wrappers
 // so the unit suite can assert their shapes without a model. All data is generated deterministically
 // from the input, so a demo (and its tests) produce the same result every time — no API key, no
-// network. This mirrors the `cannedResults` pattern in `research-tools.ts`.
+// network. The tools label these as simulated flight options and bookings.
 
 import { tool } from "@langchain/core/tools";
 import { interrupt } from "@langchain/langgraph";
@@ -134,7 +134,7 @@ export const searchFlightsTool = tool(
   {
     name: "search_flights",
     description:
-      "Search flights between two cities/airports. Returns structured JSON the UI renders as flight cards. Does NOT book anything — use `book_flight` for that.",
+      "Return sample flights between two cities or airports for the demo's flight cards.",
     schema: z.object({
       from: z.string().describe("Origin city or airport"),
       to: z.string().describe("Destination city or airport"),
@@ -160,7 +160,7 @@ export interface BookingApprovalRequest {
   flight: Flight;
 }
 
-/** What the UI sends back on resume (thread.submit(undefined, { command: { resume } })). */
+/** What the UI passes in the resume command. */
 export interface BookingDecision {
   approved: boolean;
 }
@@ -208,7 +208,7 @@ export const bookFlightTool = tool(
   {
     name: "book_flight",
     description:
-      "Book a specific flight by its id (from `search_flights`). This pauses for the user's explicit approval before booking — always use it to confirm; never claim a flight is booked without it.",
+      "Simulate booking a sample flight from `search_flights`. Pauses for approval. Does not book a real flight.",
     schema: z.object({ flightId: z.string().describe("The `id` of the flight to book") }),
   },
 );

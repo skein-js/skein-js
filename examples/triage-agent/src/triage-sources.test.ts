@@ -3,9 +3,9 @@ import { describe, expect, it } from "vitest";
 import {
   dedupeKey,
   normalizeGitHubIssues,
-  parseVerdict,
   requireTriageItem,
   threadIdFor,
+  verdictSchema,
 } from "./triage-sources.js";
 
 describe("normalizeGitHubIssues", () => {
@@ -64,33 +64,16 @@ describe("dedupeKey", () => {
   });
 });
 
-describe("parseVerdict", () => {
-  it("reads a bare JSON object", () => {
-    expect(
-      parseVerdict('{"category":"bug","severity":"high","reply":"hi","reasoning":"r"}'),
-    ).toEqual({ category: "bug", severity: "high", reply: "hi", reasoning: "r" });
-  });
-
-  it("reads JSON out of a code fence, which models emit about half the time", () => {
-    const raw =
-      'Sure!\n```json\n{"category":"docs","severity":"low","reply":"","reasoning":""}\n```';
-    expect(parseVerdict(raw).category).toBe("docs");
-  });
-
-  it("falls back to a low-severity question rather than throwing", () => {
-    // A scheduled run must not die at 3am because a model wrapped its answer in prose. The fallback
-    // still reaches a human: everything lands in the approval queue either way.
-    const verdict = parseVerdict("I think this is probably a bug?");
-    expect(verdict.category).toBe("question");
-    expect(verdict.severity).toBe("low");
-    expect(verdict.reasoning).toContain("Could not parse");
-  });
-
+describe("verdictSchema", () => {
   it("rejects categories and severities outside the allowed set", () => {
-    const verdict = parseVerdict('{"category":"URGENT","severity":"critical","reply":"r"}');
-    expect(verdict.category).toBe("question");
-    expect(verdict.severity).toBe("low");
-    expect(verdict.reply).toBe("r");
+    expect(
+      verdictSchema.safeParse({
+        category: "URGENT",
+        severity: "critical",
+        reply: "",
+        reasoning: "",
+      }).success,
+    ).toBe(false);
   });
 });
 
