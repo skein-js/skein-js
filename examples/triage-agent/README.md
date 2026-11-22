@@ -4,25 +4,26 @@ A cron sweeps a queue of issues, dispatches a **background run per issue on its 
 run gathers context, classifies, checks its own work, and then either records the decision or **stops
 and waits for a human**.
 
-**It runs with no API key and no network.** The default source is a set of bundled fixture issues, and
-with no `GOOGLE_API_KEY` the classifier falls back to deterministic rules. An example whose first step
-is "go get an API key" is an example most people never see run.
+Get a [free Gemini API key](../../docs/recipes/index.md#free-api-keys-for-testing) and set
+`GOOGLE_API_KEY` in `.env`. Gemini classifies the bundled sample issues and answers questions about
+recorded decisions. A sample sweep uses no GitHub credentials.
 
 ```bash
-pnpm --filter @skein-js/example-triage-agent dev     # console at http://127.0.0.1:2024/console/
-pnpm --filter @skein-js/example-triage-agent seed    # register the schedule + sweep once
+cp .env.example .env
+pnpm dev     # console at http://127.0.0.1:2024/console/
+pnpm seed    # register the schedule and sweep once, from another terminal
 ```
 
 ## Why this example exists
 
-One graph, and it exercises most of what separates skein from calling a model in a route handler:
+The example shows how to operate a queue of model-backed runs:
 
 | What you see                             | What it is                                                           |
 | ---------------------------------------- | -------------------------------------------------------------------- |
 | A schedule firing on its own             | [Crons](../../docs/crons.md) + the scheduler                         |
 | Issues appearing as separate threads     | Background runs, one per item                                        |
 | Re-sweeps that create nothing            | `Idempotency-Key` — **LangGraph Platform has no equivalent**         |
-| Two of six items waiting for you         | `interrupt()` / `Command({ resume })`, reached by a conditional edge |
+| Items waiting for you                    | `interrupt()` / `Command({ resume })`, reached by a conditional edge |
 | The agent following your conventions     | `getStore()` long-term memory, read back into the prompt             |
 | Restarting mid-run and finding it intact | Checkpointed, durable runs                                           |
 | Trying a triage decision a second way    | Time travel — fork a checkpoint and re-run                           |
@@ -51,17 +52,6 @@ severity they were given, because wrongly ignoring one costs far more than one e
 reason for each decision is written into state as `routedBecause`, so the console shows _why_ a thread
 is waiting — or why it never did.
 
-Against the bundled fixtures, offline, that produces:
-
-| Item                                        | Result                                        |
-| ------------------------------------------- | --------------------------------------------- |
-| Crash on startup — production down          | `interrupted` — high bug, needs a human       |
-| Intermittent 500 under load                 | `interrupted` — medium bug, needs a human     |
-| Add support for streaming tool calls        | recorded — low-severity feature               |
-| How do I run two instances?                 | recorded — low-severity question              |
-| Docs: `http.console` missing from reference | recorded — low-severity docs                  |
-| 🔥 BUY CHEAP FOLLOWERS 🔥                   | recorded — spam, reply stripped by `critique` |
-
 ## The demo script
 
 Each step shows something the previous one could not.
@@ -71,10 +61,9 @@ Each step shows something the previous one could not.
    channel; the JSON editor is pre-filled with its actual input shape, and the diagram shows the
    branch it will take.
 2. **Overview** — counts move as the sweep dispatches.
-3. **Threads** — one per issue, titled, two of them `interrupted`. A work queue, not a chat log.
-4. **Open an interrupted one** → the **Waiting for you** panel shows the verdict, who decided it
-   (`offline rules` or the configured Gemini model) and the draft reply. Click **Approve**; the run resumes from
-   its checkpoint and finishes.
+3. **Threads** — one per issue. Items that need a decision are `interrupted`.
+4. **Open an interrupted one** → the **Waiting for you** panel shows the verdict, the Gemini model, and the draft reply.
+   Click **Approve** to resume the run from its checkpoint.
 5. **Store** → browse `triage/decisions`. That is what "approve" actually did. Now add a convention:
 
    ```bash
@@ -99,12 +88,11 @@ Each step shows something the previous one could not.
 
 ## Going further
 
-Real issues instead of fixtures, and a real model:
+Triage open issues from a public GitHub repository:
 
 ```bash
 export TRIAGE_SOURCE=github
 export TRIAGE_REPO=owner/name       # default: skein-js/skein-js
-export GOOGLE_API_KEY=...           # switches the classifier from rules to Gemini
 ```
 
 Production shape — Postgres, Redis, the console behind `http.console`:
@@ -120,9 +108,9 @@ pnpm --filter @skein-js/example-triage-agent exec skein up
 
 | Variable          | Default                 | What it does                                                                                                                                                                                           |
 | ----------------- | ----------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
-| `TRIAGE_SOURCE`   | `fixture`               | `fixture` (offline, bundled) or `github`.                                                                                                                                                              |
-| `GOOGLE_API_KEY`  | —                       | Set it and the classifier is Gemini; unset, deterministic rules.                                                                                                                                       |
-| `GOOGLE_MODEL`    | `gemini-3.5-flash-lite` | Which Gemini model to use when a key is set.                                                                                                                                                           |
+| `TRIAGE_SOURCE`   | `fixture`               | Bundled sample issues (`fixture`) or live GitHub issues (`github`).                                                                                                                                    |
+| `GOOGLE_API_KEY`  | —                       | Required Gemini API key.                                                                                                                                                                               |
+| `GOOGLE_MODEL`    | `gemini-3.5-flash-lite` | Gemini model for triage and chat.                                                                                                                                                                      |
 | `TRIAGE_TIMEZONE` | `Africa/Nairobi`        | IANA timezone for the daily digest schedule.                                                                                                                                                           |
 | `TRIAGE_REPO`     | `skein-js/skein-js`     | Repo to sweep when `TRIAGE_SOURCE=github`.                                                                                                                                                             |
 | `TRIAGE_SCHEDULE` | `*/5 * * * *`           | Cron expression. Five fields — [sub-minute is a non-goal](../../docs/roadmap.md).                                                                                                                      |
@@ -133,20 +121,17 @@ pnpm --filter @skein-js/example-triage-agent exec skein up
 ## How it is put together
 
 - [`src/triage-sources.ts`](./src/triage-sources.ts) — the item schema (Zod, validated at the
-  boundary), source selection, the dedup key, defensive verdict parsing.
-- [`src/classifier.ts`](./src/classifier.ts) — Gemini, or deterministic rules when there is no key.
-  One interface, so the graph does not know which it got.
+  boundary), the verdict schema, sources, and deduplication.
+- [`src/classifier.ts`](./src/classifier.ts) — asks Gemini for a structured verdict.
 - [`src/triage-graph.ts`](./src/triage-graph.ts) — prepare → gather → classify → critique → route →
   (approve) → record.
 - [`src/sweep-graph.ts`](./src/sweep-graph.ts) — the cron target. One idempotent background run per
   item; the expensive work happens in those runs, not here.
-- [`src/assistant-graph.ts`](./src/assistant-graph.ts) — the chat graph: answers questions from the
-  store, with or without a model.
+- [`src/assistant-graph.ts`](./src/assistant-graph.ts) — asks Gemini to answer from recorded decisions.
 - [`scripts/seed-cron.ts`](./scripts/seed-cron.ts) — registers the four schedules and kicks one sweep
   off.
 
-Everything the graph actually decides — classification, the critique corrections, the approval routing
-— is unit-tested in [`src/triage-rules.test.ts`](./src/triage-rules.test.ts), which is only possible
-because the offline classifier is deterministic.
+The [unit tests](./src/triage-rules.test.ts) supply a model response and cover approval routing
+and verdict checks.
 
 The console is [`@skein-js/console`](../../packages/console) — see [docs/console.md](../../docs/console.md).

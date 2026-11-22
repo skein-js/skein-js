@@ -1,11 +1,11 @@
 # whatsapp-agent — a coupled WhatsApp workflow
 
-A customer texts a WhatsApp number. The agent answers. When the request is irreversible — a refund, a
-cancellation — it stops and asks, and the customer's reply **hours later resumes that same question**
-rather than starting a new conversation. A typing indicator runs while it thinks, the agent remembers
-them next time, and the answer arrives even if the process dies mid-run.
+A customer texts a WhatsApp number. A small workflow replies and asks for confirmation on requests
+like a refund or cancellation. A reply hours later resumes that same request. The workflow also
+shows typing indicators, conversation memory, and durable delivery.
 
-Part of **[skein-js](../../README.md)**. No Twilio account, no API key, no network needed.
+This protocol demo uses a deterministic workflow to exercise message routing, resume, and retries
+without a Twilio account or model key. The [chat example](../chat-app) shows a model-backed agent.
 
 ```bash
 pnpm --filter @skein-js/example-whatsapp-agent dev   # http://127.0.0.1:2024

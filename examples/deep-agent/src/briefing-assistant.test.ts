@@ -1,11 +1,9 @@
 // The briefing assistant end to end, the way an application would use it: a `createDeepAgent` export
-// served by skein from an unchanged `langgraph.json`, driven by the official SDK client. Offline — with
-// no `DEEP_AGENT_MODEL`, both agents think with the scripted model.
+// served by skein from `langgraph.json`, driven by the official SDK client and a test model.
 
 import type { Client } from "@langchain/langgraph-sdk";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 
-import { briefingFileFor } from "./scripted-model.js";
 import {
   ASSISTANT,
   replyOf,
@@ -14,6 +12,7 @@ import {
   type AssistantState,
   type Harness,
 } from "./test-harness.js";
+import { briefingFileFor } from "./test-model.js";
 
 describe("the briefing assistant", () => {
   let harness: Harness;
@@ -143,16 +142,16 @@ describe("the briefing assistant", () => {
       return replyOf(state);
     }
 
-    it("sends it once approved", async () => {
+    it("simulates sending it once approved", async () => {
       const client = harness.clientFor("gus");
       const threadId = await draftAndAskToEmail(client);
 
       expect(await decide(client, threadId, { type: "approve" })).toBe(
-        'Emailed "Briefing: wind power" to sam@example.test.',
+        'Simulated email "Briefing: wind power" to sam@example.test.',
       );
     });
 
-    it("sends it with your edits", async () => {
+    it("simulates sending it with your edits", async () => {
       const client = harness.clientFor("gus");
       const threadId = await draftAndAskToEmail(client);
 
@@ -165,7 +164,7 @@ describe("the briefing assistant", () => {
       };
 
       expect(await decide(client, threadId, edited)).toBe(
-        'Emailed "Wind power — for Monday" to team@example.test.',
+        'Simulated email "Wind power — for Monday" to team@example.test.',
       );
     });
 

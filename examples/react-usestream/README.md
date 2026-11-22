@@ -18,6 +18,8 @@ See [`../../docs/react-sdk.md`](../../docs/react-sdk.md).
 
 ## How to run
 
+Follow the [free Gemini key setup](../../docs/recipes/index.md#free-api-keys-for-testing) before running the model-backed graph.
+
 This is the frontend half of an end-to-end demo. Start a skein-js backend first, then this app.
 
 1. **Backend** — in one terminal, run the [`gemini-chat`](../gemini-chat) example (a real Gemini

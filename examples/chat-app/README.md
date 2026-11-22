@@ -17,14 +17,14 @@ It's a plain LangGraph.js graph — skein serves it unchanged.
 This is the end-to-end reference for **rich agent UX** — everything you need to communicate with an
 agent, not just print its final string:
 
-- **Streamed model thinking.** Gemini "thinking" is enabled (`thinkingConfig.includeThoughts`), so
-  the agent streams its reasoning as `thinking` content blocks; the UI renders them in a collapsible
-  panel, separate from the answer.
+- **Streamed thought summaries.** The agent requests summaries with `thinkingConfig.includeThoughts`.
+  When Gemini returns a `thinking` content block, the UI shows it in a collapsible panel above the
+  answer.
 - **A web-search tool.** `web_search` uses [Tavily](https://tavily.com) when `TAVILY_API_KEY` is set
-  and falls back to a deterministic placeholder otherwise — so the demo runs on the Gemini key alone.
+  and returns live sources. It is optional for chats that only need Gemini.
 - **Structured tool results rendered as cards.** The trip tools (`get_weather`, `search_flights`)
   return **structured JSON**, which the UI renders as rich **weather and flight cards** instead of raw
-  text. The data is deterministic mock data, so the demo needs no extra keys or network.
+  text. The trip tools use simulated data and approvals never purchase a ticket.
 - **Human-in-the-loop interrupt/resume.** `book_flight` calls LangGraph's `interrupt()`, so the run
   **pauses** and the UI shows an **approval card**; approving resumes the run with a `Command`
   (`thread.submit(undefined, { command: { resume } })`). This works out of the box because `skein dev`
@@ -44,12 +44,14 @@ agent, not just print its final string:
 > [`buildPromptWithMemories`](./src/research-tools.ts)); equally valid: expose recall as a tool the
 > model calls, use a library like `langmem`, or skip memory entirely.
 
-The frontend uses `@langchain/react` 1.2.7 and SDK 1.12.7. The hook subscribes to thread events,
-starts turns through commands, and resumes interrupts with `thread.respond(...)`.
+The frontend uses the SDK's `@langchain/langgraph-sdk/react` hook to stream each run. It renders the
+pending approval from `thread.interrupt` and uses `thread.submit(null, { command: { resume } })` to
+send the user's decision back to the paused tool.
 
 ## How to run
 
-Get a Gemini Developer API key from <https://aistudio.google.com/apikey>.
+Follow the [free API key setup](../../docs/recipes/index.md#free-api-keys-for-testing) for Gemini
+and optional Tavily search.
 
 **Backend** — in one terminal:
 
@@ -77,8 +79,8 @@ transcripts live on the skein-js server.)
 Open <http://localhost:3005> and try, in order:
 
 1. _"Plan a trip to Tokyo — check the weather and find flights from San Francisco."_ — watch the
-   **Thinking** panel, then a **weather card** and **flight cards** render from the tools' structured
-   JSON (not raw text).
+   **weather** and **flight** cards render from the tools' structured JSON. If Gemini returns a
+   thought summary, it appears in a **Thinking** panel.
 2. _"Remember that I fly out of SFO and prefer window seats."_ — the agent calls **save_memory**.
 3. _"Book the cheapest morning flight."_ — the agent calls **book_flight**, the run **pauses**, and an
    **approval card** appears. Click **Approve & book** → the run resumes and a booking confirmation
@@ -130,15 +132,13 @@ Note: enabling scoping hides threads created _before_ it — they carry no `owne
 ### Tests
 
 ```bash
-# 1. Graph-logic unit tests — hermetic, no key, no network.
+# 1. Unit tests for the graph tools and message rendering data. No key needed.
 pnpm exec vitest run
 
-# 2. Model-backed e2e over the official @langchain/langgraph-sdk (waits, streams, and asserts a
-#    thinking frame). Skips automatically unless GOOGLE_API_KEY is set.
+# 2. Model-backed SDK tests for waiting and streaming. Set a Gemini key to enable them.
 GOOGLE_API_KEY=... pnpm exec vitest run
 
-# 3. Browser e2e — Playwright drives the shadcn UI and asserts streaming + a Thinking block + a tool
-#    card render. Boots the backend and UI for you; needs a key and a browser.
+# 3. Browser tests for streamed answers, tool cards, and booking approval.
 npx playwright install chromium
 GOOGLE_API_KEY=... pnpm test:e2e
 ```

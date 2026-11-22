@@ -23,7 +23,7 @@ constructs `new URL(apiUrl)`, so give it an **absolute** same-origin URL (a bare
 
 ```ts
 const apiUrl = `${window.location.origin}/api`; // same-origin, no CORS
-const thread = useStream({ apiUrl, assistantId: "echo" });
+const thread = useStream({ apiUrl, assistantId: "agent" });
 ```
 
 Graphs are statically imported and passed via `{ deps }` (see [`lib/skein-deps.ts`](./lib/skein-deps.ts))
@@ -33,6 +33,8 @@ The frontend uses `@langchain/react` 1.2.7 and SDK 1.12.7. The hook subscribes t
 starts turns through commands, and resumes interrupts with `thread.respond(...)`.
 
 ## How to run
+
+Follow the [free Gemini key setup](../../docs/recipes/index.md#free-api-keys-for-testing) before running the model-backed graph.
 
 ```bash
 cp .env.local.example .env.local   # add your GOOGLE_API_KEY

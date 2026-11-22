@@ -23,6 +23,8 @@ it unchanged.
 
 ## How to run
 
+Follow the [free Gemini key setup](../../docs/recipes/index.md#free-api-keys-for-testing) before running the model-backed graph.
+
 Get a Gemini Developer API key from <https://aistudio.google.com/apikey>.
 
 **Backend** — in one terminal:

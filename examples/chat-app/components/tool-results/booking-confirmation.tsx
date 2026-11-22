@@ -25,7 +25,7 @@ export function BookingConfirmation({ booking }: { booking: BookingResult }) {
         ) : (
           <XCircle className="size-4 text-muted-foreground" />
         )}
-        <span>{booked ? "Flight booked" : "Booking cancelled"}</span>
+        <span>{booked ? "Simulated booking confirmed" : "Simulated booking cancelled"}</span>
       </div>
 
       {booking.flight && (

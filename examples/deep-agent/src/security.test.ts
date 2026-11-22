@@ -9,7 +9,6 @@ import { createExpressServer, loadInMemoryRuntime } from "@skein-js/express";
 import { StoreBackend } from "deepagents";
 import { afterAll, beforeAll, describe, expect, it, vi } from "vitest";
 
-import { ScriptedChatModel } from "./scripted-model.js";
 import {
   ASSISTANT,
   replyOf,
@@ -18,6 +17,7 @@ import {
   type AssistantState,
   type Harness,
 } from "./test-harness.js";
+import { ScriptedChatModel } from "./test-model.js";
 
 describe("the briefing assistant keeps users apart", () => {
   let harness: Harness;

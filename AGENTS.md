@@ -247,9 +247,9 @@ backend with a durable outcome receiver), `json-render` (public React/Vite UI pl
 SpecStream compilation, checkpoint restoration, revisions and interrupt/resume for model-generated GitHub views), `chat-app` (flagship — research assistant + Next.js/shadcn UI),
 `a2ui` (native Angular UI playground — upstream A2UI 1.0, checkpoint restoration, bound actions,
 surface deletion and interrupt/resume for model-generated GitHub views), `triage-agent` (the console's workload — cron sweep, a durable run per item, idempotent re-sweeps,
-conditional HITL approval, store memory; runs offline with no API key),
+Gemini classification, conditional HITL approval, and store memory),
 `deep-agent` (experimental Deep Agents support — a research briefing assistant with per-user memory,
-streamed and background subagents, and approval before emailing; runs offline with a scripted model), `migrated-langgraph` (drop-in proof), `gemini-chat` (model-backed e2e), `express-basic`
+streamed and background subagents, and approval before simulating an email), `migrated-langgraph` (drop-in proof), `gemini-chat` (model-backed e2e), `express-basic`
 (zero-setup), `react-usestream` (`useStream` harness). Each non-Express adapter ships a **standalone**
 example (a dedicated graph server) and an **embedded** one (graphs mounted alongside the app's own
 routes): `fastify-basic`/`fastify-app`, `nestjs-basic`/`nestjs-app`, and `nextjs-basic` (Pages Router,
@@ -257,6 +257,11 @@ headless) / `nextjs-app` (App Router, same-origin `useStream` UI). **`@skein-js/
 — it has no example yet. It is not mounted by hand in a Bun/Deno app so much as selected with
 `skein build --runtime`, and its serving behaviour is covered by the runtime matrix in
 [`ci.yml`](.github/workflows/ci.yml) rather than by an example anyone would copy.
+
+Runnable AI examples use a real model and report missing credentials clearly. Keep deterministic
+model fixtures in tests. Use keyless graphs when the example needs to isolate a transport,
+embedding, migration, or workflow contract. Link model-backed examples to the
+[free API key setup](docs/recipes/index.md#free-api-keys-for-testing).
 
 ## Conventions (enforced)
 

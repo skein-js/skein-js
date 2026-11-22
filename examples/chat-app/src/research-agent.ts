@@ -14,21 +14,36 @@ import { createAgent, dynamicSystemPromptMiddleware } from "langchain";
 import { buildSystemPromptWithMemories, saveMemoryTool, webSearchTool } from "./research-tools.js";
 import { bookFlightTool, getWeatherTool, searchFlightsTool } from "./trip-tools.js";
 
+const apiKey = process.env["GOOGLE_API_KEY"]?.trim();
+if (!apiKey) throw new Error("Set GOOGLE_API_KEY in the server environment or .env to use Gemini.");
+
+const modelName = process.env["GOOGLE_MODEL"]?.trim() || "gemini-3.5-flash-lite";
+
 /**
- * The model. Gemini "thinking" is enabled so the agent streams its reasoning as `thinking` content
- * blocks — the frontend renders these in a collapsible panel. Model overridable via `GOOGLE_MODEL`.
+ * Request Gemini thought summaries. The frontend shows any returned `thinking` content blocks in
+ * a collapsible panel. Set `GOOGLE_MODEL` to try another Gemini model.
  */
 const model = new ChatGoogleGenerativeAI({
-  model: process.env["GOOGLE_MODEL"] ?? "gemini-2.5-flash",
-  temperature: 0,
-  thinkingConfig: { includeThoughts: true, thinkingBudget: 2048 },
+  apiKey,
+  model: modelName,
+  thinkingConfig: modelName.startsWith("gemini-2.5")
+    ? { includeThoughts: true, thinkingBudget: 2048 }
+    : { includeThoughts: true, thinkingLevel: "LOW" },
 });
+
+const tools = [
+  ...(process.env["TAVILY_API_KEY"]?.trim() ? [webSearchTool] : []),
+  saveMemoryTool,
+  getWeatherTool,
+  searchFlightsTool,
+  bookFlightTool,
+];
 
 export const graph = createAgent({
   model,
   // Research tools (web search + long-term memory) plus the trip-planner tools that return structured
   // JSON the UI renders as cards — and `book_flight`, which pauses for human-in-the-loop approval.
-  tools: [webSearchTool, saveMemoryTool, getWeatherTool, searchFlightsTool, bookFlightTool],
+  tools,
   // Recall is an application choice (see buildSystemPromptWithMemories): this example auto-injects
   // relevant memories into the system prompt before each model call, so recall doesn't depend on the
   // model invoking a tool. skein itself stays unopinionated — it only makes getStore() available.

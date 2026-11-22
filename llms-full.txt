@@ -164,8 +164,9 @@ For AI tools, [llms.txt](./llms.txt) indexes the docs and [llms-full.txt](./llms
 
 ## Examples
 
-Start with [triage-agent](./examples/triage-agent) for background work, schedules, and approvals
-without an API key, or [chat-app](./examples/chat-app) for a research assistant with a Next.js UI.
+Start with [triage-agent](./examples/triage-agent) for Gemini-backed background work, schedules,
+and approvals, or [chat-app](./examples/chat-app) for a research assistant with a Next.js UI.
+Follow the [free API key setup](./docs/recipes/index.md#free-api-keys-for-testing) to test them locally.
 Explore a public GitHub profile or repository with the [React json-render playground](./examples/json-render)
 or [Angular A2UI playground](./examples/a2ui). Both use a model and GitHub tools to stream an
 interactive UI that you can review, revise, and reopen.
@@ -7778,7 +7779,8 @@ For custom authentication, follow the [authentication recipe](./recipes/authenti
 
 The [`nextjs-app`](https://github.com/skein-js/skein-js/tree/main/examples/nextjs-app) example serves
 both UI and protocol from one origin. For a complete application with tools, reasoning output,
-and approval cards, see [`chat-app`](https://github.com/skein-js/skein-js/tree/main/examples/chat-app).
+and approval cards using the SDK's run-stream hook, see
+[`chat-app`](https://github.com/skein-js/skein-js/tree/main/examples/chat-app).
 
 ## Handle pauses and failures
 
@@ -7828,7 +7830,7 @@ skein-js Vue, Svelte, or Angular example applications yet.
 
 ## Version and streaming reference {#dedicated-framework-packages}
 
-The React examples use `@langchain/react` 1.2.7 and SDK 1.12.7. React, Angular, Vue, and Svelte 1.2.6
+The dedicated React examples use `@langchain/react` 1.2.7 and SDK 1.12.7. React, Angular, Vue, and Svelte 1.2.6
 are also verified combinations. Treat these as tested versions, rather than a guarantee about every
 future client release.
 
@@ -9797,14 +9799,41 @@ project. Each recipe uses existing public APIs. For a terse API reference, see
 
 ## Read working code first
 
-[`triage-agent`](https://github.com/skein-js/skein-js/tree/main/examples/triage-agent) covers crons,
-background runs, idempotency, human-in-the-loop, long-term memory and time travel in **one graph** — and
-runs with **no API key and no network** (bundled fixtures, deterministic fallback classifier).
+[`triage-agent`](https://github.com/skein-js/skein-js/tree/main/examples/triage-agent) uses Gemini to
+triage issues and answer questions about past decisions. It shows crons, background runs, approval,
+and memory. Start with the bundled sample issues, then switch to a public GitHub repository if you
+want live input.
 
 ```bash
+cd examples/triage-agent
+cp .env.example .env    # add your GOOGLE_API_KEY
 pnpm --filter @skein-js/example-triage-agent dev    # console at http://127.0.0.1:2024/console/
 pnpm --filter @skein-js/example-triage-agent seed   # register the schedule + sweep once
 ```
+
+## Free API keys for testing
+
+**Gemini.** Sign in to [Google AI Studio](https://aistudio.google.com/apikey). Accept the terms and
+use the key from your default project, or select a project and choose **Create API key**. For
+no-cost testing, use a project that has free-tier access and check its available quota in
+[AI Studio](https://aistudio.google.com/usage). The examples generally use `gemini-3.5-flash-lite`,
+which Google lists on the [Gemini API free tier](https://ai.google.dev/gemini-api/docs/pricing).
+See [Google's API key setup guide](https://ai.google.dev/gemini-api/docs/api-key) for project and
+key setup.
+
+Copy the example's `.env.example` to `.env`, or copy `.env.local.example` to `.env.local` for Next.js.
+Add `GOOGLE_API_KEY=your-key` and start the example's server. If the example has no env template,
+set `GOOGLE_API_KEY` in the server's environment before starting it. Keep keys out of committed files
+and browser-side settings. If a request returns HTTP 429, check the
+[project's model and rate limits](https://ai.google.dev/gemini-api/docs/rate-limits).
+
+**Tavily web search (optional).** Create a [Tavily account](https://app.tavily.com/), copy a development
+key from the dashboard, and set `TAVILY_API_KEY` in the chat example's `.env`. See
+[Tavily's free plan](https://www.tavily.com/pricing) for the current credit allowance.
+
+The keyless examples focus on transport, embedding, migration, or workflow mechanics. They let
+you test those boundaries independently of a model provider. Automated tests inject their own
+model fixtures where a predictable response is needed.
 
 ## The recipes
 
@@ -10613,8 +10642,8 @@ export const graph = createDeepAgent({
 `skein dev` serves it, with the same `langgraph.json` `langgraph dev` reads. A working version is
 [`examples/deep-agent`](https://github.com/skein-js/skein-js/tree/main/examples/deep-agent): a research
 briefing assistant that plans, delegates research to a subagent, drafts briefings, remembers each
-user's preferences, asks before emailing, and runs deep dives in the background. It runs offline with
-a scripted model, so it needs no API key.
+user's preferences, asks before simulating an email, and runs deep dives in the background.
+Set up [a Gemini API key](./index.md#free-api-keys-for-testing) to run it.
 
 ## What is covered
 
@@ -11060,10 +11089,11 @@ cd examples/json-render
 cp .env.example .env
 ```
 
-Set these values in the example's backend `.env`. Choose a Gemini model that supports tool calling.
+Follow the [free Gemini key setup](./index.md#free-api-keys-for-testing). Put the key and model in
+the example's backend `.env`.
 
 ```dotenv
-JSON_RENDER_MODEL=google:YOUR_MODEL_ID
+JSON_RENDER_MODEL=google:gemini-3.5-flash-lite
 GOOGLE_API_KEY=YOUR_API_KEY
 ```
 
@@ -11194,10 +11224,11 @@ cd examples/a2ui
 cp .env.example .env
 ```
 
-Set these values in the example's backend `.env`. Choose a Gemini model that supports tool calling.
+Follow the [free Gemini key setup](./index.md#free-api-keys-for-testing). Put the key and model in
+the example's backend `.env`.
 
 ```dotenv
-A2UI_MODEL=google:YOUR_MODEL_ID
+A2UI_MODEL=google:gemini-3.5-flash-lite
 GOOGLE_API_KEY=YOUR_API_KEY
 ```
 

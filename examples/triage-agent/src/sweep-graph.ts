@@ -24,6 +24,7 @@ import {
 } from "@langchain/langgraph";
 import { Client } from "@langchain/langgraph-sdk";
 
+import { requireGoogleApiKey } from "./model.js";
 import {
   dedupeKey,
   fetchItems,
@@ -120,6 +121,7 @@ function requireStore(
 }
 
 async function fetchWork(state: State): Promise<Partial<State>> {
+  requireGoogleApiKey();
   return { fetched: await fetchItems({ repo: state.repo, limit: state.limit }) };
 }
 

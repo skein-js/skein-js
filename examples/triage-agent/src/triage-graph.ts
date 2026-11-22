@@ -23,7 +23,7 @@ import {
   type LangGraphRunnableConfig,
 } from "@langchain/langgraph";
 
-import { createClassifier } from "./classifier.js";
+import { classify } from "./classifier.js";
 import { requireTriageItem, type TriageItem, type Verdict } from "./triage-sources.js";
 
 const TriageState = Annotation.Root({
@@ -36,7 +36,7 @@ const TriageState = Annotation.Root({
     reducer: (_, next) => next,
     default: () => undefined,
   }),
-  /** How the verdict was reached, so a rules-based run is never mistaken for a model one. */
+  /** Model name shown with the verdict in the console. */
   decidedBy: Annotation<string | undefined>({
     reducer: (_, next) => next,
     default: () => undefined,
@@ -120,16 +120,6 @@ async function gather(state: State, config: LangGraphRunnableConfig): Promise<Pa
   };
 }
 
-async function classify(state: State): Promise<Partial<State>> {
-  const classifier = createClassifier();
-
-  const verdict = await classifier.classify(state.item, {
-    conventions: state.conventions,
-    related: state.related,
-  });
-  return { verdict, decidedBy: classifier.label };
-}
-
 /**
  * A cheap self-check on the verdict.
  *
@@ -137,8 +127,7 @@ async function classify(state: State): Promise<Partial<State>> {
  * drafted reply, and a "high severity question", are the two shapes that reliably mean the verdict
  * was guessed rather than reasoned, and both are cheaper to fix here than to explain to a human.
  */
-function critique(state: State): Partial<State> {
-  const verdict = state.verdict;
+export function applyCritique({ verdict }: Pick<State, "verdict">): Partial<State> {
   if (!verdict) return {};
   const corrected: Verdict = { ...verdict };
 
@@ -161,8 +150,9 @@ function critique(state: State): Partial<State> {
  * auto-recorded regardless of severity — the cost of wrongly ignoring one is much higher than the
  * cost of one extra approval.
  */
-export function routeForApproval(state: State): "approve" | "record" {
-  const verdict = state.verdict;
+export function routeForApproval({
+  verdict,
+}: Partial<Pick<State, "verdict">>): "approve" | "record" {
   if (!verdict) return "approve";
   if (verdict.category === "spam") return "record";
   if (verdict.severity === "low" && verdict.category !== "bug") return "record";
@@ -242,7 +232,7 @@ export const graph = new StateGraph(TriageState)
   .addNode("prepare", prepare)
   .addNode("gather", gather)
   .addNode("classify", classify)
-  .addNode("critique", critique)
+  .addNode("critique", applyCritique)
   .addNode("route", explainRoute)
   .addNode("approve", askForApproval)
   .addNode("record", record)
@@ -255,6 +245,3 @@ export const graph = new StateGraph(TriageState)
   .addEdge("approve", "record")
   .addEdge("record", END)
   .compile();
-
-/** Exported for unit tests — the routing and critique rules are the graph's actual judgement. */
-export { critique as applyCritique };

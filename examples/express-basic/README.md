@@ -26,13 +26,15 @@ Both are plain LangGraph.js graphs — skein-js serves them unchanged.
 
 - **Multiple graphs in one `langgraph.json`.** Two assistants (`echo`, `agent`) served side by side
   from a single config.
-- **A zero-key playground.** The `echo` graph needs no API key or network — the fastest way to poke
+- **A keyless protocol smoke test.** The `echo` graph needs no API key or network — the fastest way to poke
   at the Agent Protocol and SSE streaming.
 - **Drop-in compatibility.** Because these are standard LangGraph.js graphs, the same project also
   runs under the upstream `langgraph dev` — which is the point: `skein dev` is a
   [drop-in replacement](../../docs/langgraph-cli-compat.md).
 
 ## How to run
+
+Follow the [free Gemini key setup](../../docs/recipes/index.md#free-api-keys-for-testing) before running the model-backed graph.
 
 ```bash
 cp .env.example .env          # only needed for the `agent` graph; `echo` needs nothing
@@ -42,7 +44,7 @@ pnpm dev                      # → skein dev --port 2024
 
 Then point a client at `http://localhost:2024`:
 
-- Vanilla SDK — `new Client({ apiUrl: "http://localhost:2024" })`, assistant `echo` or `agent`.
+- Vanilla SDK — `new Client({ apiUrl: "http://localhost:2024" })`, assistant `agent`.
 - React — the [`react-usestream`](../react-usestream) app; set `NEXT_PUBLIC_SKEIN_ASSISTANT_ID=agent`.
 
 **Smoke test the `echo` graph** (no key needed):

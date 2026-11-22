@@ -1,6 +1,6 @@
 "use client";
 
-import { useStream } from "@langchain/react";
+import { useStream } from "@langchain/langgraph-sdk/react";
 import { ArrowUp, Loader2, Square } from "lucide-react";
 import { useEffect, useRef, useState } from "react";
 import Markdown from "react-markdown";
@@ -84,9 +84,9 @@ export default function Page() {
     setInput("");
   }
 
-  // Resume the pending interrupt with the user's decision through the SDK's input.respond command.
+  // Resume the checkpointed tool with the user's decision.
   function resolveApproval(approved: boolean) {
-    void thread.respond({ approved });
+    void thread.submit(null, { command: { resume: { approved } } });
   }
 
   // Leave the current conversation. Stop any in-flight run first so it doesn't keep streaming into a
@@ -135,9 +135,8 @@ export default function Page() {
               <div className="mx-auto max-w-lg space-y-4 pt-10 text-center">
                 <h2 className="text-lg font-medium">What can I help you plan?</h2>
                 <p className="text-sm text-muted-foreground">
-                  A Gemini agent that thinks out loud, searches the web, pulls live-style data into
-                  rich cards, remembers what you tell it across conversations, and asks before it
-                  books anything.
+                  A Gemini agent that remembers your preferences, shows sample weather and flights
+                  as cards, and asks for approval before simulating a booking.
                 </p>
                 <div className="flex flex-col gap-2">
                   {EXAMPLE_PROMPTS.map((prompt) => (

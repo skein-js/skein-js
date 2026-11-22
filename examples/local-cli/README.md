@@ -6,6 +6,8 @@ before the app writes anything. The original task inbox is never edited.
 
 ## Run it
 
+For Gemini, follow the [free Gemini key setup](../../docs/recipes/index.md#free-api-keys-for-testing). You can also select another supported model provider.
+
 Use Node 22/24 and configure whichever provider you have:
 
 ```sh

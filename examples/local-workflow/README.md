@@ -46,3 +46,5 @@ streamed chat, reviewed file output and an unchanged task inbox; it is separate 
 The Google defaults are Gemini 3 (`gemini-3-flash-preview`), OpenAI defaults to `gpt-5-mini`,
 Anthropic to `claude-sonnet-5-5`, and Ollama to `qwen3:8b`. Model names are editable. Ollama
 requires an installed tool-capable model and never receives the configured cloud API keys.
+
+For Gemini API testing, see the [free Gemini key setup](../../docs/recipes/index.md#free-api-keys-for-testing).

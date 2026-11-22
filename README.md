@@ -155,8 +155,9 @@ For AI tools, [llms.txt](./llms.txt) indexes the docs and [llms-full.txt](./llms
 
 ## Examples
 
-Start with [triage-agent](./examples/triage-agent) for background work, schedules, and approvals
-without an API key, or [chat-app](./examples/chat-app) for a research assistant with a Next.js UI.
+Start with [triage-agent](./examples/triage-agent) for Gemini-backed background work, schedules,
+and approvals, or [chat-app](./examples/chat-app) for a research assistant with a Next.js UI.
+Follow the [free API key setup](./docs/recipes/index.md#free-api-keys-for-testing) to test them locally.
 Explore a public GitHub profile or repository with the [React json-render playground](./examples/json-render)
 or [Angular A2UI playground](./examples/a2ui). Both use a model and GitHub tools to stream an
 interactive UI that you can review, revise, and reopen.

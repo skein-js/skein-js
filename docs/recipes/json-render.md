@@ -15,10 +15,11 @@ cd examples/json-render
 cp .env.example .env
 ```
 
-Set these values in the example's backend `.env`. Choose a Gemini model that supports tool calling.
+Follow the [free Gemini key setup](./index.md#free-api-keys-for-testing). Put the key and model in
+the example's backend `.env`.
 
 ```dotenv
-JSON_RENDER_MODEL=google:YOUR_MODEL_ID
+JSON_RENDER_MODEL=google:gemini-3.5-flash-lite
 GOOGLE_API_KEY=YOUR_API_KEY
 ```
 

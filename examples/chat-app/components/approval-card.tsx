@@ -8,7 +8,7 @@ import { formatDuration, type FlightApprovalRequest } from "@/lib/tool-results";
 /**
  * The human-in-the-loop gate. When `book_flight` calls LangGraph's `interrupt()`, the run pauses and
  * skein surfaces the payload on `thread.interrupt.value`; this card renders it and lets the user
- * approve or reject. The choice is sent back with `thread.submit(undefined, { command: { resume } })`,
+ * approve or reject. The choice is sent back with `thread.submit(null, { command: { resume } })`,
  * which resumes the paused run (see docs/streaming.md + the run engine's interrupted -> resume path).
  */
 export function ApprovalCard({
@@ -26,9 +26,9 @@ export function ApprovalCard({
       className="rounded-lg border-2 border-primary/40 bg-background p-4"
       data-testid="approval-card"
     >
-      <div className="text-sm font-medium">Confirm booking</div>
+      <div className="text-sm font-medium">Confirm simulated booking</div>
       <p className="mt-0.5 text-xs text-muted-foreground">
-        The assistant paused and is waiting for your approval before booking.
+        The assistant needs your approval to simulate booking this flight.
       </p>
 
       <div className="mt-3 flex items-center gap-2.5 rounded-md bg-muted/50 px-3 py-2">

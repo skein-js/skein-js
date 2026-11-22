@@ -27,6 +27,8 @@ Graphs are **statically imported** and passed via the `{ deps }` seam (see
 
 ## How to run
 
+Follow the [free Gemini key setup](../../docs/recipes/index.md#free-api-keys-for-testing) before running the model-backed graph.
+
 ```bash
 cp .env.local.example .env.local   # only for the `agent` graph
 pnpm install

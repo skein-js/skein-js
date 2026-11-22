@@ -1,28 +1,34 @@
 // Hermetic unit tests for the research agent's building blocks — no model, no API key, no network.
-// The live-model behavior (thinking, tool orchestration) is covered by server.test.ts under a key.
+// The live SDK tests in server.test.ts use a Gemini key.
 
 import { SkeinBaseStore } from "@skein-js/langgraph";
 import { MemorySkeinStore } from "@skein-js/storage-memory";
-import { describe, expect, it } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
 
 import { memoryNamespace, recallMemories, saveMemory, searchWeb } from "./research-tools.js";
 
 const newStore = () => new SkeinBaseStore(new MemorySkeinStore().store);
 
 describe("searchWeb", () => {
-  it("returns a canned result when no TAVILY_API_KEY is set", async () => {
-    const previous = process.env["TAVILY_API_KEY"];
-    delete process.env["TAVILY_API_KEY"];
+  afterEach(() => {
+    vi.unstubAllEnvs();
+    vi.unstubAllGlobals();
+  });
 
-    try {
-      const results = await searchWeb("skein-js");
-      expect(results).toHaveLength(1);
-      expect(results[0]?.title).toContain("skein-js");
-      // The fallback must steer the model to answer, not announce that search is broken.
-      expect(results[0]?.snippet.toLowerCase()).toContain("your own knowledge");
-    } finally {
-      if (previous !== undefined) process.env["TAVILY_API_KEY"] = previous;
-    }
+  it("reports a missing key before making a request", async () => {
+    vi.stubEnv("TAVILY_API_KEY", undefined);
+    const fetch = vi.fn();
+    vi.stubGlobal("fetch", fetch);
+
+    await expect(searchWeb("skein-js")).rejects.toThrow("Set TAVILY_API_KEY");
+    expect(fetch).not.toHaveBeenCalled();
+  });
+
+  it("surfaces a search failure without returning invented results", async () => {
+    vi.stubEnv("TAVILY_API_KEY", "test-key");
+    vi.stubGlobal("fetch", vi.fn().mockResolvedValue(new Response(null, { status: 429 })));
+
+    await expect(searchWeb("skein-js")).rejects.toThrow("Tavily search returned HTTP 429");
   });
 });
 

@@ -24,6 +24,8 @@ worker. See [`src/server.ts`](./src/server.ts).
 
 ## How to run
 
+Follow the [free Gemini key setup](../../docs/recipes/index.md#free-api-keys-for-testing) before running the model-backed graph.
+
 ```bash
 cp .env.example .env          # only needed for the `agent` graph; `echo` needs nothing
 pnpm install
@@ -38,8 +40,8 @@ import { Client } from "@langchain/langgraph-sdk";
 const client = new Client({ apiUrl: "http://127.0.0.1:2024" });
 const thread = await client.threads.create();
 
-const reply = await client.runs.wait(thread.thread_id, "echo", {
-  input: { messages: [{ role: "user", content: "hello" }] },
+const reply = await client.runs.wait(thread.thread_id, "agent", {
+  input: { messages: [{ role: "user", content: "What is the weather in Nairobi?" }] },
 });
 ```
 

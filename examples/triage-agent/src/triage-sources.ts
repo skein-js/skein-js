@@ -125,7 +125,7 @@ export function normalizeGitHubIssues(payload: unknown): TriageItem[] {
     }));
 }
 
-/** Where a sweep gets its work. `fixture` is the default so the example runs with no network. */
+/** Where a sweep gets its work. Bundled issues avoid GitHub setup for a first sweep. */
 export type TriageSource = "fixture" | "github";
 
 export function resolveSource(): TriageSource {
@@ -135,10 +135,7 @@ export function resolveSource(): TriageSource {
 /**
  * Bundled sample issues — the default source.
  *
- * An example that needs a network round-trip and a live repository before it shows you anything is an
- * example most people abandon at step one. These are shaped exactly like GitHub's payload and go
- * through the same normalization, so switching `TRIAGE_SOURCE=github` changes where the items come
- * from and nothing else.
+ * Sample issues use the same shape and normalization as issues from the GitHub API.
  */
 export function fixtureIssues(limit = 5): TriageItem[] {
   return normalizeGitHubIssues(fixturePayload).slice(0, limit);
@@ -181,46 +178,12 @@ export async function fetchOpenIssues(
   return normalizeGitHubIssues(await response.json());
 }
 
-/** A triage verdict, as the model is asked to produce it. */
-export interface Verdict {
-  category: "bug" | "feature" | "question" | "docs" | "spam";
-  severity: "low" | "medium" | "high";
-  reply: string;
-  reasoning: string;
-}
+/** The structured verdict Gemini supplies before the graph routes the issue. */
+export const verdictSchema = z.object({
+  category: z.enum(["bug", "feature", "question", "docs", "spam"]),
+  severity: z.enum(["low", "medium", "high"]),
+  reply: z.string().describe("A concise reply to the author, or an empty string for spam"),
+  reasoning: z.string().describe("One sentence explaining the verdict"),
+});
 
-const CATEGORIES = new Set(["bug", "feature", "question", "docs", "spam"]);
-const SEVERITIES = new Set(["low", "medium", "high"]);
-
-/**
- * Parse a model's verdict defensively.
- *
- * Models return JSON in a code fence about as often as they return it bare, and an unparsable answer
- * must not crash a scheduled run at 3am — it becomes a low-confidence "question" that a human will see
- * in the approval queue anyway.
- */
-export function parseVerdict(raw: string): Verdict {
-  const fenced = /```(?:json)?\s*([\s\S]*?)```/.exec(raw);
-  const candidate = (fenced?.[1] ?? raw).trim();
-
-  try {
-    const parsed = JSON.parse(candidate) as Partial<Verdict>;
-    return {
-      category: CATEGORIES.has(parsed.category ?? "")
-        ? (parsed.category as Verdict["category"])
-        : "question",
-      severity: SEVERITIES.has(parsed.severity ?? "")
-        ? (parsed.severity as Verdict["severity"])
-        : "low",
-      reply: typeof parsed.reply === "string" ? parsed.reply : "",
-      reasoning: typeof parsed.reasoning === "string" ? parsed.reasoning : "",
-    };
-  } catch {
-    return {
-      category: "question",
-      severity: "low",
-      reply: "",
-      reasoning: `Could not parse the model's answer: ${candidate.slice(0, 200)}`,
-    };
-  }
-}
+export type Verdict = z.infer<typeof verdictSchema>;

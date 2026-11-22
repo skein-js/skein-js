@@ -1,5 +1,5 @@
-// The briefing assistant: ask it to brief you on a topic and it researches, drafts and — with your
-// sign-off — emails a one-page briefing, remembering how you like them written.
+// The assistant researches and drafts a one-page briefing using your saved preferences.
+// It can then demonstrate email approval with a simulated send.
 //
 // It is an ordinary `createDeepAgent` export, served from an unchanged `langgraph.json`; there is no
 // skein import here. Each Deep Agents feature has a job in the workflow:
@@ -26,16 +26,10 @@ import { memoryNamespaceFor } from "./memory-namespace.js";
 import { selectModel } from "./model.js";
 import { RESEARCHER_PROMPT } from "./researcher-graph.js";
 
-/** Where this server answers — the deep dive calls back into it. */
-const SELF_URL = process.env["SKEIN_URL"] ?? "http://127.0.0.1:2024";
-
-/**
- * Emailing is the one irreversible step, so it waits for a person. This demo only pretends to send;
- * a real deployment would call its mail provider here.
- */
-const sendBriefing = tool(async ({ to, subject }) => `Emailed "${subject}" to ${to}.`, {
+/** Keep the approval flow usable without connecting an email provider. */
+const sendBriefing = tool(async ({ to, subject }) => `Simulated email "${subject}" to ${to}.`, {
   name: "send_briefing",
-  description: "Email a finished briefing to someone.",
+  description: "Simulate emailing a finished briefing after approval. No email is sent.",
   schema: z.object({
     to: z.string().describe("Recipient email address"),
     subject: z.string().describe("Email subject line"),
@@ -48,8 +42,8 @@ const SYSTEM_PROMPT = `You prepare one-page research briefings.
 For each briefing: read /memories/preferences.md for how this reader likes briefings written, plan
 with write_todos, delegate the research to the researcher subagent, then save the draft to
 /briefings/<topic>.md and tell the reader where it is. When the reader states a lasting preference,
-save it to /memories/preferences.md. Only email a briefing when asked, with send_briefing. For a long
-investigation, start a deep-researcher async task and report on it when asked.`;
+save it to /memories/preferences.md. Only run send_briefing when asked and describe its result as
+a simulation. For a long investigation, start a deep-researcher async task and report on it when asked.`;
 
 /**
  * Built per caller, so the deep dive — an HTTP call back into this server — runs with the caller's own
@@ -82,7 +76,7 @@ export function graph(config: RunnableConfig) {
         name: "deep-researcher",
         description: "Runs a longer research investigation in the background.",
         graphId: "researcher",
-        url: SELF_URL,
+        url: process.env["SKEIN_URL"] ?? "http://127.0.0.1:2024",
         headers: callerHeaders,
       },
     ],
