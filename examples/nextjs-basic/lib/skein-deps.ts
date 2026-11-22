@@ -7,8 +7,8 @@
 // the Redis queue + Postgres store (see @skein-js/runtime's `buildRuntime`).
 
 import { MemorySaver } from "@langchain/langgraph";
-import { cloneLangGraphCheckpoint, langGraphResolver, SkeinBaseStore } from "@skein-js/langgraph";
 import type { GraphResolver, GraphSchemas, ProtocolDeps } from "@skein-js/agent-protocol";
+import { cloneLangGraphCheckpoint, langGraphResolver, SkeinBaseStore } from "@skein-js/langgraph";
 import { MemoryRunEventBus, MemoryRunQueue, MemorySkeinStore } from "@skein-js/storage-memory";
 
 // `echo` is a pure, zero-setup graph — safe to import statically. `agent` constructs a `ChatGoogleGenerativeAI`

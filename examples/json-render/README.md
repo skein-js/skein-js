@@ -1,59 +1,70 @@
-# UI playground — React json-render with Skein
+# GitHub UI playground with React json-render and Skein
 
-Describe an interface in chat, watch it render, review it and ask for a change. The JSON panel shows the current validated UI. This private example uses existing Skein APIs and upstream rendering libraries.
+Give the agent a GitHub username or repository. It chooses public GitHub tools and streams a
+model-generated view that you can review, refine, and reopen.
 
-![The chat playground](../../docs/public/images/json-render/plan-builder.png)
+![The GitHub playground](../../docs/public/images/json-render/plan-builder.png)
 
 ## Run it
 
-Use Node 26 and the repository's pnpm version. From the repository root:
+Use Node 26 and the repository’s pnpm version. Run these commands from the repository root.
 
 ```sh
 pnpm install
-pnpm --dir examples/json-render dev:all
+cp examples/json-render/.env.example examples/json-render/.env
 ```
 
-Open **http://127.0.0.1:3006**. The command starts the frontend and the graph server at `127.0.0.1:2024` through Nx. **Ctrl+C** stops both. No credentials are needed for the offline samples.
-
-## Use the playground
-
-1. Choose a dashboard, form or product-comparison sample, or type a prompt and select **Send**.
-2. Watch the generated UI and its JSON appear. The JSON panel is read-only.
-3. Select **Approve UI** or **Reject**. Review records a decision and enables generated controls and the next chat turn.
-4. Ask for a change in chat, select **Make it simpler**, or submit the generated feedback form.
-5. Reload or follow **Reopen this chat**. Saved prompts, generated responses and pending review return without generation.
-
-Offline mode selects from three illustrative layouts; it is not a language model. Configure a model for other prompts within the registered catalog. Chat checkpoints retain each generated response. Earlier responses remain visible with read-only controls; only the latest UI accepts actions. No arbitrary JavaScript, code editor or new transport is involved.
-
-During generation, **Pause updates** disconnects observation, **Reconnect** rejoins the same run and **Stop run** cancels execution. Errors preserve the saved UI. Refresh an uncertain submission before trying again.
-
-## Use a live model
-
-Copy `.env.example` to `.env` in this directory and configure the backend:
+Set these backend values in `examples/json-render/.env`.
 
 ```dotenv
 JSON_RENDER_MODEL=google:YOUR_MODEL_ID
 GOOGLE_API_KEY=YOUR_API_KEY
 ```
 
-Restart the graph server. The Google integration is installed; another provider needs its LangChain integration. Existing `google-genai:model` settings also use the included `@langchain/google` integration. Credentials stay on the backend. Model output goes through the same compiler, catalog validation and action policy as the offline samples.
+Use a model that supports tool calling. The shared example package includes the Gemini integration
+and accepts the `google-genai:` alias. GitHub requests use the
+[anonymous REST API quota](https://docs.github.com/en/rest/using-the-rest-api/rate-limits-for-the-rest-api).
 
-## Adapt it
+```sh
+pnpm --dir examples/json-render dev:all
+```
 
-- `generation.ts`: offline layouts and optional LangChain model stream.
-- `catalog.ts`: input, component/action policy and saved UI validation.
-- `ui-graph.ts`: UI and prompt checkpoints, followed by a separate review node.
-- `ui-events.ts`: run sequencing, duplicates and preview recovery.
-- `ui-client.ts`, `ui-session.ts`: SDK admission, observation, restoration and cancellation.
-- `app/`: chat layout, registered components, JSON panel and trusted review controls.
+Open **http://127.0.0.1:3006**. Nx starts the browser app and the graph server on
+`127.0.0.1:2024`. **Ctrl+C** stops both.
 
-The json-render catalog contains Card, Grid, Metric, Table, Text, TaskList, Button and FeedbackForm. The upstream SpecStream compiler processes fragmented JSONL output. The local `reviseUi` action starts a new generation; trusted host controls handle approval separately.
+## Try it
 
-The `x-user: demo-user` header is demo identity. Replace it with verified session/JWT identity when deploying, and retain thread ownership checks. Narrow graph input does not make separately authorized state-update APIs immutable.
+1. Ask for a dashboard for `skein-js/skein-js`, the profile for `@octocat`, or recently pushed
+   repositories for `@torvalds`. Watch the UI and its read-only JSON panel update.
+2. Select **Approve UI** or **Reject** to record a decision and enable the next turn.
+3. Ask for a change in chat or submit a revision using the generated controls.
+4. Use **Reopen this chat** to restore the saved responses and any pending review.
+
+**Pause updates** disconnects the stream, **Reconnect** rejoins the same run, and **Stop run**
+cancels execution. The graph retries an invalid spec once. If generation still fails, the last
+saved UI remains available and you can retry the prompt from the composer.
+
+## Follow the code
+
+- The [shared GitHub agent](../github-playground/README.md) uses a model node to select tools and a
+  LangGraph `ToolNode` to execute them. It feeds the results into a second model call for rendering.
+- `catalog.ts` defines the React components and binds the generated button and form to `reviseUi`.
+  `generation.ts` uses `catalog.prompt()` with a complete SpecStream example. The graph feeds the
+  model's JSONL patches to the upstream compiler.
+- `app/generated-ui.tsx` creates the React renderer once. The app supplies the action handler
+  for the current saved view.
+- `ui-graph.ts` exports the compiled graph. Its `ToolNode` checks the revision against the saved
+  generation and sends the feedback to the same model node as a chat prompt. The review node
+  pauses after the new UI is saved.
+- `ui-session.ts` uses the LangGraph SDK to submit prompts and revisions, restore saved views, and
+  cancel runs.
 
 ## Persistence
 
-The default command uses memory and `--no-persist`: reloading preserves state while the backend runs; stopping it loses the threads. Use the existing [durable storage options](../../docs/deploy.md) for restarts. SQLite checkpoints can survive reopening, but its event history is process-local, so restoration uses the checkpoint baseline.
+The local run keeps checkpoints in memory until the backend stops. Choose a
+[durable storage option](../../docs/deploy.md) to retain them across restarts. The demo identity
+uses `x-user: demo-user`. Use verified session or JWT identity and keep thread ownership checks
+when hosting the playground.
 
 ## Contributor checks
 
@@ -64,4 +75,6 @@ pnpm exec nx run example-json-render:test-browser
 pnpm exec nx run test-support:test-compatibility-consumer
 ```
 
-Screenshots go to `dist/json-render-screenshots`. The packed consumer compiles the actual graph/session modules outside the checkout. See the [adoption recipe](../../docs/recipes/json-render.md) for the supported versions and transport boundaries.
+Browser captures go to `dist/json-render-screenshots`. Automated renderer and consumer tests use
+injected fixtures. See the [adoption recipe](../../docs/recipes/json-render.md) for the supported
+versions and interfaces.

@@ -19,6 +19,7 @@ export type StreamFrame = { event: string; data: unknown; id?: string };
 /** One compiler per run; this object survives reconnections, but never crosses threads/runs. */
 export function createUiStream(baseline: CommittedUi | null) {
   const compiler = createSpecStreamCompiler<Spec>();
+  const started = new Set<string>();
   let generationId: string | undefined;
   let lastSequence = -1;
   let complete = false;
@@ -26,10 +27,14 @@ export function createUiStream(baseline: CommittedUi | null) {
   let hasPreview = false;
   let preview = baseline ? structuredClone(baseline.spec) : null;
 
-  function losePreview() {
-    gap = true;
+  function resetPreview() {
     hasPreview = false;
     preview = baseline ? structuredClone(baseline.spec) : null;
+  }
+
+  function losePreview() {
+    gap = true;
+    resetPreview();
   }
 
   return {
@@ -44,23 +49,41 @@ export function createUiStream(baseline: CommittedUi | null) {
       )
         return;
       const parsed = uiEventSchema.safeParse(frame.data);
+
       if (!parsed.success) {
         losePreview();
         return;
       }
+
       const event = parsed.data;
+
+      if (event.phase === "start") {
+        if (complete || started.has(event.generationId)) return;
+        // A graph retry starts a new SpecStream in the same run.
+        started.add(event.generationId);
+        generationId = event.generationId;
+        lastSequence = event.sequence;
+        gap = false;
+        compiler.reset();
+        resetPreview();
+        return;
+      }
+
       if (generationId && event.generationId !== generationId) return;
       if (event.sequence <= lastSequence) return;
-      if (!generationId && event.phase === "start") generationId = event.generationId;
+
       if (!generationId || event.sequence !== lastSequence + 1 || complete) {
         losePreview();
         return;
       }
+
       lastSequence = event.sequence;
       if (gap) return;
+
       try {
         if (event.phase === "chunk") {
           const compiled = compiler.push(event.text);
+
           if (compiled.newPatches.length) {
             try {
               preview = structuredClone(validateUiSpec(compiled.result));
@@ -70,6 +93,7 @@ export function createUiStream(baseline: CommittedUi | null) {
             }
           }
         }
+
         if (event.phase === "complete") {
           preview = structuredClone(validateUiSpec(compiler.getResult()));
           complete = true;

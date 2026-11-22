@@ -117,12 +117,6 @@ a {
   margin: 8vh auto 3rem;
   text-align: center;
 }
-.eyebrow {
-  font-size: 0.72rem;
-  text-transform: uppercase;
-  letter-spacing: 0.12em;
-  color: #6b7f5a;
-}
 h1 {
   font-size: clamp(2rem, 4vw, 3rem);
   letter-spacing: -0.06em;
@@ -280,13 +274,9 @@ a2ui-v09-row a2ui-v09-card {
 }
 .composer-footer {
   display: flex;
-  justify-content: space-between;
+  justify-content: flex-end;
   align-items: center;
   gap: 1rem;
-}
-.composer-footer span {
-  font-size: 0.72rem;
-  color: #788171;
 }
 .composer-footer button {
   padding: 0.45rem 0.9rem;

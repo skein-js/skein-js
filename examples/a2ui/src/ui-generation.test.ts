@@ -1,7 +1,8 @@
-import { MessageProcessor, basicCatalog } from "@a2ui/web_core/v1_0";
+import { basicCatalog, MessageProcessor } from "@a2ui/web_core/v1_0";
 import { describe, expect, it } from "vitest";
 
-import { demoMessages, demoResponse, type GenerateText } from "./generation.js";
+import { fixtureMessages, fixtureResponse } from "./generation-fixture.js";
+import type { GenerateText } from "./generation.js";
 import {
   parseSavedUi,
   parseUiMessage,
@@ -9,10 +10,11 @@ import {
   type UiMessage,
 } from "./ui-contract.js";
 import { createUiStream } from "./ui-events.js";
-import { generateUiUi } from "./ui-generation.js";
+import { generateA2ui } from "./ui-generation.js";
 
 export function rendererMetadata(): RendererMetadata {
   const processor = new MessageProcessor([basicCatalog]);
+
   try {
     return {
       a2uiRendererCapabilities: processor.getRendererCapabilities({
@@ -26,47 +28,51 @@ export function rendererMetadata(): RendererMetadata {
 }
 
 const immediateText: GenerateText = async function* (request) {
-  const text = demoResponse(request.prompt, request.generationId);
+  const text = fixtureResponse(request.prompt, request.generationId);
   for (let offset = 0; offset < text.length; offset += 37) yield text.slice(offset, offset + 37);
 };
 
 describe("upstream A2UI generation and checkpoint bootstrap", () => {
-  it.each(["Website traffic dashboard", "UI feedback form", "Product comparison cards"])(
-    "compiles fragmented %s output, restores surfaces and applies a deletion",
-    async (prompt) => {
-      const messages: UiMessage[] = [];
-      const generationId = crypto.randomUUID();
-      const saved = await generateUiUi({
-        prompt,
-        generationId,
-        metadata: rendererMetadata(),
-        previousUi: null,
-        generateText: immediateText,
-        writeMessage: (message) => messages.push(message),
+  it.each([
+    "Build a dashboard for skein-js/skein-js",
+    "Show the GitHub profile for @octocat",
+    "List recently pushed repositories for @torvalds",
+  ])("compiles fragmented %s output, restores surfaces and applies a deletion", async (prompt) => {
+    const messages: UiMessage[] = [];
+    const generationId = crypto.randomUUID();
+
+    const saved = await generateA2ui({
+      prompt,
+      generationId,
+      metadata: rendererMetadata(),
+      previousUi: null,
+      generateText: immediateText,
+      writeMessage: (message) => messages.push(message),
+    });
+    expect(messages.some((message) => "updateComponents" in message)).toBe(true);
+    expect(messages.some((message) => "updateDataModel" in message)).toBe(true);
+    expect(saved.bootstrapMessages).toHaveLength(3);
+    expect(parseSavedUi(JSON.parse(JSON.stringify(saved)))).toEqual(saved);
+    const processor = new MessageProcessor([basicCatalog]);
+
+    try {
+      processor.processMessages(saved.bootstrapMessages);
+      expect(processor.getSurfaces().size).toBe(3);
+      processor.processMessages({
+        version: "1.0",
+        deleteSurface: { surfaceId: generationId + ":notes" },
       });
-      expect(messages.some((message) => "updateComponents" in message)).toBe(true);
-      expect(messages.some((message) => "updateDataModel" in message)).toBe(true);
-      expect(saved.bootstrapMessages).toHaveLength(3);
-      expect(parseSavedUi(JSON.parse(JSON.stringify(saved)))).toEqual(saved);
-      const processor = new MessageProcessor([basicCatalog]);
-      try {
-        processor.processMessages(saved.bootstrapMessages);
-        expect(processor.getSurfaces().size).toBe(3);
-        processor.processMessages({
-          version: "1.0",
-          deleteSurface: { surfaceId: generationId + ":notes" },
-        });
-        expect(processor.getSurfaces().size).toBe(2);
-      } finally {
-        processor.dispose();
-      }
-    },
-  );
+      expect(processor.getSurfaces().size).toBe(2);
+    } finally {
+      processor.dispose();
+    }
+  });
 
   it("uses contiguous app sequences, drops duplicates and isolates graph scopes", async () => {
     const generationId = crypto.randomUUID();
     const messages: UiMessage[] = [];
-    const saved = await generateUiUi({
+
+    const saved = await generateA2ui({
       prompt: "A quiet city break",
       generationId,
       metadata: rendererMetadata(),
@@ -74,7 +80,9 @@ describe("upstream A2UI generation and checkpoint bootstrap", () => {
       generateText: immediateText,
       writeMessage: (message) => messages.push(message),
     });
+
     const stream = createUiStream(null);
+
     try {
       stream.push({ event: "custom|nested", data: { type: "a2ui", phase: "broken" } });
       const frames = [
@@ -88,10 +96,12 @@ describe("upstream A2UI generation and checkpoint bootstrap", () => {
         })),
         { type: "a2ui", generationId, sequence: messages.length + 1, phase: "complete" },
       ];
+
       for (const frame of frames) {
         stream.push({ event: "custom", data: frame });
         stream.push({ event: "custom", data: frame });
       }
+
       expect(stream.snapshot()).toMatchObject({ complete: true, gap: false, view: saved });
     } finally {
       stream.dispose();
@@ -100,15 +110,17 @@ describe("upstream A2UI generation and checkpoint bootstrap", () => {
 
   it("rejects a generated form that cannot submit the supported feedback action", async () => {
     const withoutBinding: GenerateText = async function* (request) {
-      const messages = demoMessages(request.prompt, request.generationId);
+      const messages = fixtureMessages(request.prompt, request.generationId);
+
       const text = JSON.stringify(messages).replace(
         '"sendDataModel":true',
         '"sendDataModel":false',
       );
       yield "<a2ui-json>" + text + "</a2ui-json>";
     };
+
     await expect(
-      generateUiUi({
+      generateA2ui({
         prompt: "A quiet city break",
         generationId: crypto.randomUUID(),
         metadata: rendererMetadata(),
@@ -121,6 +133,7 @@ describe("upstream A2UI generation and checkpoint bootstrap", () => {
 
   it("abandons a damaged preview and rejects incompatible snapshots and executable actions", () => {
     const stream = createUiStream(null);
+
     try {
       stream.push({
         event: "custom",

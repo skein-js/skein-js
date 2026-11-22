@@ -1,10 +1,10 @@
 import {
   ActionMessageSchema,
   AgentToRendererMessageSchema,
+  basicCatalog,
   CreateSurfaceMessageSchema,
   MessageProcessor,
   STRICT_VALIDATION,
-  basicCatalog,
   type AgentToRendererMessage,
   type CreateSurfaceMessage,
   type SurfaceModel,
@@ -77,7 +77,9 @@ const allowedComponents = new Set([
   "TextField",
   "Divider",
 ]);
+
 const feedbackBindingSchema = z.object({ "@path": z.literal("/feedback") }).strict();
+
 const generatedActionSchema = z.discriminatedUnion("name", [
   z
     .object({
@@ -95,10 +97,12 @@ const generatedActionSchema = z.discriminatedUnion("name", [
 // These are example policy restrictions. Upstream owns protocol/catalog validation and bindings.
 function checkUiPolicy(value: unknown): void {
   if (!value || typeof value !== "object") return;
+
   if (Array.isArray(value)) {
     for (const child of value) checkUiPolicy(child);
     return;
   }
+
   for (const [key, child] of Object.entries(value)) {
     if (
       ["@call", "call", "functionCall", "@macro", "@catalogId", "@metadata", "metadata"].includes(
@@ -108,9 +112,11 @@ function checkUiPolicy(value: unknown): void {
       throw new Error("This example accepts Basic Catalog components and local event actions only");
     if (key === "component" && (typeof child !== "string" || !allowedComponents.has(child)))
       throw new Error("Generated component is outside the UI catalog subset");
+
     if (key === "event") {
       generatedActionSchema.parse(child);
     }
+
     checkUiPolicy(child);
   }
 }
@@ -155,6 +161,7 @@ export function parseSavedUi(value: unknown): SavedUi {
   const shape = savedUiShape.safeParse(value);
   if (!shape.success) throw new Error("This saved UI is incompatible. Start a New chat.");
   const allowedIds = Object.values(uiSurfaceIds(shape.data.generationId));
+
   const bootstrapMessages = shape.data.bootstrapMessages.map((candidate) => {
     const message = CreateSurfaceMessageSchema.parse(parseUiMessage(candidate));
     if (!allowedIds.includes(message.createSurface.surfaceId))
@@ -165,15 +172,17 @@ export function parseSavedUi(value: unknown): SavedUi {
     new Set(bootstrapMessages.map((message) => message.createSurface.surfaceId)).size !==
     bootstrapMessages.length
   )
-    throw new Error("Saved trip contains duplicate surfaces");
+    throw new Error("Saved UI contains duplicate surfaces");
   const processor = new MessageProcessor([basicCatalog], undefined, {
     validationConfig: STRICT_VALIDATION,
   });
+
   try {
     processor.processMessages(bootstrapMessages);
   } finally {
     processor.dispose();
   }
+
   return { ...shape.data, bootstrapMessages };
 }
 
@@ -196,9 +205,10 @@ export function snapshotSurfaces(generationId: string, surfaces: Iterable<Surfac
   return parseSavedUi({ schemaVersion: 2, generationId, bootstrapMessages });
 }
 
-/** Enforce the usable trip journey after upstream protocol and topology validation. */
+/** Check the revision and dismissal controls after upstream protocol and topology validation. */
 export function validateGeneratedUi(saved: SavedUi): SavedUi {
   const ids = uiSurfaceIds(saved.generationId);
+
   for (const { createSurface: surface } of saved.bootstrapMessages) {
     const controls = surface.surfaceId === ids.controls;
     if (Boolean(surface.sendDataModel) !== controls)
@@ -208,6 +218,7 @@ export function validateGeneratedUi(saved: SavedUi): SavedUi {
         .strict()
         .parse(surface.dataModel);
     const components = surface.components ?? [];
+
     const actions = components
       .filter((component) => component.component === "Button")
       .map((component) => {
@@ -223,15 +234,20 @@ export function validateGeneratedUi(saved: SavedUi): SavedUi {
           throw new Error("Action is on an unexpected surface");
         return action.name;
       });
+
     const fields = components.filter((component) => component.component === "TextField");
+
     for (const field of fields) {
       if (!controls) throw new Error("Only controls may contain editable fields");
       feedbackBindingSchema.parse(field["value"]);
     }
-    if (controls && !fields.length) throw new Error("Preferences must contain a feedback field");
+
+    if (controls && !fields.length)
+      throw new Error("The controls surface must contain a feedback field");
     const requiredAction = surface.surfaceId === ids.notes ? "dismissNotes" : "reviseUi";
     if (!actions.includes(requiredAction))
       throw new Error("Generated UI is missing a required action");
   }
+
   return saved;
 }

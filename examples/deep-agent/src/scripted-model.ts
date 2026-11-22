@@ -37,8 +37,6 @@ export const briefingFileFor = (topic: string): string => `/briefings/${slugOf(t
 
 export type ScriptedRole = "assistant" | "researcher";
 
-type ToolCall = { name: string; args: Record<string, unknown> };
-
 const TASK_ID = /[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}/i;
 
 function slugOf(topic: string): string {

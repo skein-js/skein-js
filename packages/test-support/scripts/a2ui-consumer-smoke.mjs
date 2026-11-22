@@ -38,8 +38,16 @@ export async function verifyA2uiConsumer(directory, packed) {
   run("npm", ["install", "--no-audit", "--no-fund"], { cwd: directory });
   copyTree(path.join(example, "src"), path.join(directory, "src"));
   copyTree(path.join(example, "public"), path.join(directory, "public"));
+  // Compile the real graph and inject generation only at this consumer's test entry point.
+  await writeFile(
+    path.join(directory, "src/fixture-graph.ts"),
+    'import {graph as uiGraph} from "./ui-graph.js";\n' +
+      'import {generateFixtureText} from "./generation-fixture.js";\n' +
+      "export const graph = uiGraph.withConfig({ context: { generateText: generateFixtureText } });\n",
+  );
   const backendFiles = [
     "auth.ts",
+    "fixture-graph.ts",
     "generation.ts",
     "ui-client.ts",
     "ui-contract.ts",
@@ -75,7 +83,7 @@ export async function verifyA2uiConsumer(directory, packed) {
   await writeFile(
     path.join(directory, "langgraph.json"),
     JSON.stringify({
-      graphs: { "ui-playground": "./compiled/ui-graph.js:graph" },
+      graphs: { "ui-playground": "./compiled/fixture-graph.js:graph" },
       auth: { path: "./compiled/auth.js:auth" },
     }),
   );
@@ -104,7 +112,7 @@ export async function verifyA2uiConsumer(directory, packed) {
     try {
       let previewed=false;
       session.subscribe(()=>{previewed ||= session.read().preview;});
-      await session.generate('A quiet coastal weekend');
+      await session.generate('Build a dashboard for skein-js/skein-js');
       const saved=session.read();
       assert.equal(saved.error,null);
       assert(saved.review);
@@ -115,8 +123,8 @@ export async function verifyA2uiConsumer(directory, packed) {
       assert.equal(session.read().ui.generationId,saved.ui.generationId);
       renderer.processMessages(saved.ui.bootstrapMessages);
       const preferenceId=uiSurfaceIds(saved.ui.generationId).controls;
-      renderer.model.getSurface(preferenceId).dataModel.set('/feedback','More gardens and less walking');
-      await session.act({version:'1.0',action:{name:'reviseUi',surfaceId:preferenceId,sourceComponentId:'revise',timestamp:new Date().toISOString(),context:{prompt:'More gardens and less walking'}}});
+      renderer.model.getSurface(preferenceId).dataModel.set('/feedback','Show stars and forks only');
+      await session.act({version:'1.0',action:{name:'reviseUi',surfaceId:preferenceId,sourceComponentId:'revise',timestamp:new Date().toISOString(),context:{prompt:'Show stars and forks only'}}});
       assert.equal(session.read().error,null);
       assert.notEqual(session.read().ui.generationId,saved.ui.generationId);
       assert(session.read().review);
@@ -182,7 +190,7 @@ if (process.argv[1] && path.resolve(process.argv[1]) === fileURLToPath(import.me
   try {
     await verifyA2uiConsumer(
       path.join(directory, "consumer"),
-      packWorkspace(path.join(directory, "packs")),
+      packWorkspace(path.join(directory, "packs"), ["github-playground"]),
     );
   } finally {
     await rm(directory, { recursive: true, force: true });

@@ -3,5 +3,13 @@
   "singleQuote": false,
   "semi": true,
   "trailingComma": "all",
-  "arrowParens": "always"
+  "arrowParens": "always",
+  "overrides": [
+    {
+      "files": ["examples/{a2ui,github-playground,json-render}/**/*.{ts,mts,tsx}"],
+      "options": {
+        "plugins": ["./tools/prettier-playground-spacing.mjs"]
+      }
+    }
+  ]
 }

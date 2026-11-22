@@ -11,7 +11,7 @@ import { packWorkspace, run, installConsumer } from "./pack-local-consumer.mjs";
 
 const directory = await mkdtemp(path.join(tmpdir(), "skein-compatibility-consumer-"));
 try {
-  const packed = packWorkspace(path.join(directory, "packs"));
+  const packed = packWorkspace(path.join(directory, "packs"), ["github-playground"]);
   const consumer = path.join(directory, "consumer");
   const manifest = installConsumer(
     consumer,

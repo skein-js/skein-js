@@ -383,15 +383,17 @@ OpenAPI and docs without source files. These gates complement the existing runti
 
 `nx test example-json-render` exercises upstream compilation, sequence deduplication, lost event
 history, lost run-creation responses, multiple turns, checkpoint restoration, errors, cancellation,
-authorization and approval against a real HTTP server with SDK 1.12.7. Generation is injected offline, irrespective of local
-model credentials. `nx run example-json-render:test-browser` runs the real React/Vite UI in Chromium
+authorization and approval against a real HTTP server with SDK 1.12.7. Test-only graph entry points
+inject generation fixtures, so the suites run without model credentials.
+`nx run example-json-render:test-browser` runs the real React/Vite UI in Chromium
 and captures desktop/mobile, preview, approval and recovery states in `dist/json-render-screenshots`.
 It also checks reopening and reloading a saved thread through Vite's development StrictMode entry.
 The CI compatibility job invokes that target explicitly after installing Chromium.
 
 `nx run test-support:test-compatibility-consumer` also installs a separate json-render consumer
-outside the checkout. It compiles the actual example graph/catalog/controller with public tarballs
-and no workspace aliases, then verifies generation, reopening without execution, revision and
+outside the checkout. It compiles the actual example graph, shared GitHub helper, catalog and
+controller with packed dependencies and no workspace aliases. It verifies fixture generation,
+reopening without execution, revision and
 interrupt/resume. Its SDK 1.12.7 dependencies do not replace the existing SDK 1.12.6 and legacy gates.
 This coverage concerns JSON specifications with app-owned components, not `/ui/{agent}` assets.
 

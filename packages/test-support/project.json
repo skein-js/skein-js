@@ -154,7 +154,12 @@
     "test-a2ui-consumer": {
       "executor": "nx:run-commands",
       "cache": false,
-      "dependsOn": ["server-express:build", "runtime:build", "cli:build"],
+      "dependsOn": [
+        "server-express:build",
+        "runtime:build",
+        "cli:build",
+        "example-github-playground:build"
+      ],
       "options": {
         "command": "node packages/test-support/scripts/a2ui-consumer-smoke.mjs",
         "cwd": "."
@@ -163,7 +168,13 @@
     "test-compatibility-consumer": {
       "executor": "nx:run-commands",
       "cache": false,
-      "dependsOn": ["server-express:build", "runtime:build", "cli:build", "telemetry-otel:build"],
+      "dependsOn": [
+        "server-express:build",
+        "runtime:build",
+        "cli:build",
+        "telemetry-otel:build",
+        "example-github-playground:build"
+      ],
       "options": {
         "command": "node scripts/compatibility-consumer-smoke.mjs",
         "cwd": "."

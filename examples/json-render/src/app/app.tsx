@@ -1,16 +1,23 @@
-import { defineRegistry, JSONUIProvider, Renderer, useBoundProp } from "@json-render/react";
 import type { Spec } from "@json-render/core";
 import { Client } from "@langchain/langgraph-sdk";
-import { useEffect, useId, useMemo, useRef, useState, useSyncExternalStore } from "react";
+import { useEffect, useRef, useState, useSyncExternalStore } from "react";
 
-import { catalog } from "../catalog.js";
 import { addRunIdempotency } from "../ui-client.js";
 import { createUiSession } from "../ui-session.js";
+
+import { GeneratedUi } from "./generated-ui.js";
+
+const samples = [
+  "Build a dashboard for skein-js/skein-js",
+  "Show the GitHub profile for @octocat",
+  "List recently pushed repositories for @torvalds",
+] as const;
 
 export function App() {
   const [initialThreadId] = useState(() =>
     new URLSearchParams(window.location.search).get("thread"),
   );
+
   const [session] = useState(() =>
     createUiSession(
       new Client<Record<string, unknown>>({
@@ -21,123 +28,14 @@ export function App() {
       }),
     ),
   );
-  const snapshot = useSyncExternalStore(session.subscribe, session.read);
-  const conversation = useRef<HTMLDivElement>(null);
-  const [prompt, setPrompt] = useState(initialThreadId ? "" : "Website traffic dashboard");
-  const uiRegistry = useMemo(
-    () =>
-      defineRegistry(catalog, {
-        components: {
-          Card: ({ props, children }) => (
-            <article className="ui-card">
-              <h2>{props.title}</h2>
-              {children}
-            </article>
-          ),
-          Text: ({ props }) => <p className="plan-summary">{props.text}</p>,
-          Grid: ({ props, children }) => (
-            <div
-              className="metric-grid"
-              style={{ gridTemplateColumns: `repeat(${props.columns}, minmax(0, 1fr))` }}
-            >
-              {children}
-            </div>
-          ),
-          Metric: ({ props }) => (
-            <section className="metric">
-              <span>{props.label}</span>
-              <strong>{props.value}</strong>
-              <small>{props.detail}</small>
-            </section>
-          ),
-          Table: ({ props }) => (
-            <div className="table-scroll">
-              <table>
-                <caption>{props.caption}</caption>
-                <thead>
-                  <tr>
-                    {props.columns.map((column, index) => (
-                      <th key={index} scope="col">
-                        {column}
-                      </th>
-                    ))}
-                  </tr>
-                </thead>
-                <tbody>
-                  {props.rows.map((row, index) => (
-                    <tr key={index}>
-                      {row.map((cell, column) => (
-                        <td key={column}>{cell}</td>
-                      ))}
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
-            </div>
-          ),
-          TaskList: ({ props }) => (
-            <ol className="task-list">
-              {(props.tasks ?? []).map((task, index) => (
-                <li key={index}>
-                  <span className="task-number">{String(index + 1).padStart(2, "0")}</span>
-                  <span>{task}</span>
-                </li>
-              ))}
-            </ol>
-          ),
-          Button: ({ props, emit }) => (
-            <button className="secondary" type="button" onClick={() => emit("press")}>
-              {props.label}
-            </button>
-          ),
-          FeedbackForm: ({ props, bindings, emit }) => {
-            const [value, setValue] = useBoundProp(props.value, bindings?.["value"]);
-            const id = useId();
-            return (
-              <form
-                className="feedback"
-                onSubmit={(event) => {
-                  event.preventDefault();
-                  emit("submit");
-                }}
-              >
-                <label htmlFor={id}>{props.label}</label>
-                <div className="input-row">
-                  <input
-                    id={id}
-                    value={value ?? ""}
-                    maxLength={2000}
-                    onChange={(event) => setValue(event.target.value)}
-                    required
-                    placeholder="Describe a change to the interface"
-                  />
-                  <button className="secondary" type="submit">
-                    Update UI
-                  </button>
-                </div>
-              </form>
-            );
-          },
-        },
-        actions: {
-          reviseUi: async (params) => {
-            await session.generate(params);
-          },
-        },
-      }),
-    [session],
-  );
-  const handlers = useMemo(
-    () =>
-      uiRegistry.handlers(
-        () => undefined,
-        () => ({}),
-      ),
-    [uiRegistry],
-  );
 
+  const snapshot = useSyncExternalStore(session.subscribe, session.read);
+  const generationId = snapshot.ui?.generationId;
+  const conversation = useRef<HTMLDivElement>(null);
+  const [prompt, setPrompt] = useState(initialThreadId ? "" : samples[0]);
   useEffect(() => {
     void session.open(initialThreadId);
+
     return () => {
       session.dispose();
     };
@@ -159,34 +57,42 @@ export function App() {
     !snapshot.preview &&
     !snapshot.needsRefresh &&
     snapshot.approved !== null;
+
   const renderable =
     snapshot.spec?.root && snapshot.spec.elements?.[snapshot.spec.root] ? snapshot.spec : null;
+
   const canSend = !snapshot.busy && !snapshot.review && !snapshot.needsRefresh;
+
   function send(nextPrompt = prompt) {
     const state = session.read();
     if (state.busy || state.review || state.needsRefresh) return;
-    void session.generate({ prompt: nextPrompt });
-    // Clear only once the session accepts this prompt, before any async completion can affect a new draft.
-    if (session.read().pendingPrompt === nextPrompt.trim()) setPrompt("");
+    const draft = prompt;
+    void session.generate({ prompt: nextPrompt }, () => {
+      if (draft.trim() === nextPrompt.trim())
+        setPrompt((current) => (current === draft ? "" : current));
+    });
   }
+
   function renderUi(spec: Spec, key: string, disabled: boolean, loading = false) {
     return (
-      <JSONUIProvider
-        key={key}
-        registry={uiRegistry.registry}
-        handlers={handlers}
-        initialState={{ feedback: "" }}
-        navigate={() => {
-          throw new Error("Navigation is outside this playground");
-        }}
-      >
-        <fieldset className="generated" disabled={disabled}>
-          <legend className="sr-only">Generated interface and revision controls</legend>
-          <Renderer spec={spec} registry={uiRegistry.registry} loading={loading} />
-        </fieldset>
-      </JSONUIProvider>
+      <fieldset key={key} className="generated" disabled={disabled}>
+        <legend className="sr-only">Generated interface and revision controls</legend>
+        <GeneratedUi
+          spec={spec}
+          state={{ feedback: "" }}
+          loading={loading}
+          onAction={
+            key === generationId
+              ? (action, params) => {
+                  if (action === "reviseUi") void session.revise(key, params);
+                }
+              : undefined
+          }
+        />
+      </fieldset>
     );
   }
+
   return (
     <div className="playground">
       <header className="site-header">
@@ -219,24 +125,14 @@ export function App() {
           <div className="conversation" ref={conversation}>
             {!snapshot.conversation.length && !snapshot.pendingPrompt && (
               <section className="welcome">
-                <span className="eyebrow">Your prompt. Your components.</span>
-                <h1>Describe an interface.</h1>
-                <p>
-                  Dashboards, forms, comparison cards. Watch a UI take shape, then make it yours.
-                </p>
+                <h1>Explore public GitHub data</h1>
+                <p>Enter a username or repository to generate a view you can refine.</p>
                 <div className="samples" aria-label="Sample prompts">
-                  {[
-                    "Website traffic dashboard",
-                    "UI feedback form",
-                    "Product comparison cards",
-                  ].map((sample) => (
+                  {samples.map((sample) => (
                     <button
                       key={sample}
                       type="button"
-                      onClick={() => {
-                        setPrompt(sample);
-                        void send(sample);
-                      }}
+                      onClick={() => send(sample)}
                       disabled={!canSend}
                     >
                       {sample} ↗
@@ -285,7 +181,7 @@ export function App() {
                     {snapshot.preview
                       ? "Preview · saving after validation"
                       : snapshot.busy
-                        ? "Generating UI…"
+                        ? "Looking up GitHub data and generating UI…"
                         : "Saved in this chat"}
                   </span>
                 </div>
@@ -363,10 +259,9 @@ export function App() {
                 maxLength={2000}
                 required
                 rows={2}
-                placeholder="Ask for a dashboard, form or product comparison…"
+                placeholder="Ask about a GitHub username or owner/repo…"
               />
               <div className="composer-footer">
-                <span>Offline samples by default</span>
                 <button className="primary" type="submit" disabled={!canSend || !prompt.trim()}>
                   Send ↑
                 </button>
@@ -389,7 +284,7 @@ export function App() {
               Validated specification for the current {snapshot.preview ? "preview" : "saved UI"}.
               Read-only.
             </p>
-            <pre tabIndex={0} aria-label="UI JSON">
+            <pre role="region" tabIndex={0} aria-label="UI JSON">
               <code>{JSON.stringify(snapshot.spec ?? {}, null, 2)}</code>
             </pre>
           </details>

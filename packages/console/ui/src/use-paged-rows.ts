@@ -102,9 +102,19 @@ export function usePagedRows<Row>(
   // apparently empty collection with no forward or backward explanation.
   useEffect(() => {
     if (!location && !loading && !result.error && current?.rows.length === 0 && page > 0) {
-      setPosition({ queryKey, pageSize, offsets: offsets.slice(0, -1) });
+      setPosition({ queryKey, pageSize, offsets: storedOffsets.slice(0, -1) });
     }
-  }, [current, result.error, loading, page, offsets, pageSize, queryKey, setPosition, location]);
+  }, [
+    current,
+    result.error,
+    loading,
+    page,
+    storedOffsets,
+    pageSize,
+    queryKey,
+    setPosition,
+    location,
+  ]);
 
   return {
     ...result,

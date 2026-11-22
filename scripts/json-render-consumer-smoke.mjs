@@ -27,6 +27,7 @@ export async function verifyJsonRenderConsumer(directory, packed) {
   for (const filename of [
     "auth.ts",
     "catalog.ts",
+    "generation-fixture.ts",
     "generation.ts",
     "ui-graph.ts",
     "ui-client.ts",
@@ -35,6 +36,13 @@ export async function verifyJsonRenderConsumer(directory, packed) {
   ]) {
     await copyFile(path.join(example, "src", filename), path.join(directory, "src", filename));
   }
+  // Compile the real graph and inject generation only at this consumer's test entry point.
+  await writeFile(
+    path.join(directory, "src/fixture-graph.ts"),
+    'import {graph as uiGraph} from "./ui-graph.js";\n' +
+      'import {generateFixtureText} from "./generation-fixture.js";\n' +
+      "export const graph = uiGraph.withConfig({ context: { generateText: generateFixtureText } });\n",
+  );
   await writeFile(
     path.join(directory, "tsconfig.json"),
     JSON.stringify(
@@ -62,7 +70,7 @@ export async function verifyJsonRenderConsumer(directory, packed) {
   await writeFile(
     path.join(directory, "langgraph.json"),
     JSON.stringify({
-      graphs: { "ui-playground": "./compiled/ui-graph.js:graph" },
+      graphs: { "ui-playground": "./compiled/fixture-graph.js:graph" },
       auth: { path: "./compiled/auth.js:auth" },
     }),
   );
@@ -88,7 +96,7 @@ export async function verifyJsonRenderConsumer(directory, packed) {
     try {
       let previewed = false;
       session.subscribe(()=>{previewed ||= session.read().preview;});
-      await session.generate({prompt:'Plan a public workshop'});
+      await session.generate({prompt:'Build a dashboard for skein-js/skein-js'});
       const saved = session.read();
       assert.equal(saved.error,null);
       assert(saved.review);
@@ -104,9 +112,9 @@ export async function verifyJsonRenderConsumer(directory, packed) {
       await reopened.decide(true);
       assert.equal(reopened.read().approved,true);
       assert.equal(reopened.read().ui.generationId,generation);
-      await reopened.generate({prompt:'Use a smaller room'});
+      await reopened.revise(generation, {prompt:'Show stars and forks only'});
       assert.notEqual(reopened.read().ui.generationId,generation);
-      assert.equal(reopened.read().spec.elements.summary.props.text,'Use a smaller room');
+      assert.equal(reopened.read().spec.elements.summary.props.text,'Show stars and forks only');
       await reopened.decide(false);
       assert.equal(reopened.read().approved,false);
       console.log('PACKED_JSON_RENDER_OK');
