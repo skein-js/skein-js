@@ -29,7 +29,7 @@ export function run(command, args, options = {}) {
     throw new Error(`${command} failed (${result.status}): ${result.stderr ?? ""}`);
   return result;
 }
-export function packWorkspace(directory) {
+export function packWorkspace(directory, extraExamples = []) {
   mkdirSync(directory, { recursive: true });
   const overrides = {};
   for (const parent of ["packages", "examples"])
@@ -42,7 +42,12 @@ export function packWorkspace(directory) {
       } catch {
         continue;
       }
-      if (parent === "examples" && entry.name !== "local-workflow") continue;
+      if (
+        parent === "examples" &&
+        entry.name !== "local-workflow" &&
+        !extraExamples.includes(entry.name)
+      )
+        continue;
       if (manifest.private && parent === "packages") continue;
       const result = run("pnpm", ["pack", "--pack-destination", directory], {
         cwd: project,

@@ -75,11 +75,14 @@ jobs:
             nx-${{ runner.os }}-node-${{ matrix.node }}-${{ hashFiles('pnpm-lock.yaml') }}-
             nx-${{ runner.os }}-node-${{ matrix.node }}-
 
-      - name: Prettier
+      - name: Check formatting with Prettier
         run: pnpm format:check
 
-      - name: Lint, typecheck, test, build
-        run: pnpm exec nx run-many -t lint typecheck test build --output-style=stream
+      - name: ESLint
+        run: pnpm lint --max-warnings=0 --output-style=stream
+
+      - name: Typecheck, test, build
+        run: pnpm exec nx run-many -t typecheck test build --output-style=stream
 
       - name: Yarn Plug'n'Play package resolution
         run: |

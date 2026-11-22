@@ -1,69 +1,66 @@
-import { SurfaceComponent } from "@a2ui/angular";
-import { JsonPipe } from "@angular/common";
-import {
-  ChangeDetectionStrategy,
-  Component,
-  type ElementRef,
-  afterRenderEffect,
-  computed,
-  inject,
-  viewChild,
-} from "@angular/core";
-import { FormControl, ReactiveFormsModule, Validators } from "@angular/forms";
+import { ChangeDetectionStrategy, Component, inject } from "@angular/core";
+import { FormControl, Validators } from "@angular/forms";
 
+import { ChatConversation, samplePrompts } from "./chat-conversation";
+import { JsonInspector } from "./json-inspector";
+import { PromptComposer } from "./prompt-composer";
 import { UiSession } from "./ui-session";
 
 @Component({
-  imports: [ReactiveFormsModule, SurfaceComponent, JsonPipe],
+  imports: [ChatConversation, JsonInspector, PromptComposer],
   selector: "app-root",
-  templateUrl: "./app.html",
   changeDetection: ChangeDetectionStrategy.OnPush,
+  template: `
+    <div class="playground">
+      <header class="site-header">
+        <a class="wordmark" href="/">↗ <span>Skein playground</span></a>
+        <span class="platform">A2UI · Angular</span>
+        <nav aria-label="Playground controls">
+          <a href="https://skein.js.org/recipes/a2ui">Guide ↗</a>
+          <button type="button" (click)="refresh()" [disabled]="!session.snapshot().threadId">
+            Refresh chat
+          </button>
+          <button type="button" (click)="newChat()">New chat</button>
+        </nav>
+      </header>
+      <div class="workspace">
+        <main class="chat-panel" aria-label="UI conversation">
+          <app-chat-conversation (sampleSelected)="send($event)" />
+          <app-prompt-composer [prompt]="prompt" (promptSubmitted)="send($event)" />
+        </main>
+        <aside appJsonInspector class="inspector" aria-label="Generated JSON"></aside>
+      </div>
+    </div>
+  `,
 })
 export class App {
-  readonly session = inject(UiSession);
-  readonly prompt = new FormControl("Website traffic dashboard", {
-    nonNullable: true,
-    validators: [Validators.required, Validators.maxLength(2000)],
-  });
-  private readonly conversation = viewChild<ElementRef<HTMLElement>>("conversation");
-  private readonly scrollVersion = computed(() => {
-    const state = this.session.snapshot();
-    return [state.conversation.length, state.pendingPrompt, state.busy].join(":");
-  });
-  readonly samples = ["Website traffic dashboard", "UI feedback form", "Product comparison cards"];
+  protected readonly session = inject(UiSession);
+  private readonly initialThreadId = new URLSearchParams(window.location.search).get("thread");
+  protected readonly prompt = new FormControl<string>(
+    this.initialThreadId ? "" : samplePrompts[0],
+    {
+      nonNullable: true,
+      validators: [Validators.required, Validators.maxLength(2000)],
+    },
+  );
+
   constructor() {
-    const threadId = new URLSearchParams(window.location.search).get("thread");
-    if (threadId) this.prompt.setValue("");
-    void this.session.open(threadId);
-    afterRenderEffect(() => {
-      this.scrollVersion();
-      const element = this.conversation()?.nativeElement;
-      if (element) element.scrollTop = element.scrollHeight;
+    void this.session.open(this.initialThreadId);
+  }
+
+  protected send(prompt: string) {
+    const draft = this.prompt.value;
+    void this.session.generate(prompt, () => {
+      if (draft.trim() === prompt.trim() && this.prompt.value === draft) this.prompt.setValue("");
     });
   }
-  send(event?: Event) {
-    event?.preventDefault();
-    const state = this.session.snapshot();
-    if (this.prompt.invalid || state.busy || state.review || state.needsRefresh) return;
-    const submitted = this.prompt.value;
-    void this.session.generate(submitted);
-    // Clear only once the session accepts this prompt, before any async completion can affect a new draft.
-    if (this.session.snapshot().pendingPrompt === submitted.trim()) this.prompt.setValue("");
-  }
-  chooseSample(prompt: string) {
-    this.prompt.setValue(prompt);
-    void this.send();
-  }
-  newChat() {
+
+  protected newChat() {
     this.prompt.setValue("");
     void this.session.newChat();
   }
-  refresh() {
+
+  protected refresh() {
     void this.session.open(this.session.snapshot().threadId);
-  }
-  surfaceTitle(surfaceId: string) {
-    if (surfaceId.endsWith(":canvas")) return "Generated interface";
-    if (surfaceId.endsWith(":controls")) return "Refine this UI";
-    return "Notes";
   }
 }

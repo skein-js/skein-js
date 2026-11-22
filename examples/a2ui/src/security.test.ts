@@ -9,10 +9,12 @@ describe("trip authorization and application boundaries", () => {
     const harness = await startHarness(generateImmediateText);
     const alice = harness.clientFor("alice");
     const session = createUiSession(alice, rendererMetadata);
+
     try {
       await session.generate("Alice's canvas");
       const { threadId, runId } = session.read();
       const root = "/threads/" + threadId;
+
       for (const [path, method, body] of [
         [root + "/state", "GET", undefined],
         [root + "/runs/" + runId + "/stream", "GET", undefined],
@@ -30,6 +32,7 @@ describe("trip authorization and application boundaries", () => {
         });
         expect(response.status, path).toBe(404);
       }
+
       expect((await fetch(harness.url + root + "/state")).status).toBe(401);
     } finally {
       session.dispose();
@@ -41,6 +44,7 @@ describe("trip authorization and application boundaries", () => {
     const harness = await startHarness(generateImmediateText);
     const client = harness.clientFor();
     const session = createUiSession(client, rendererMetadata);
+
     try {
       await session.generate("Preserve the pending review");
       const saved = session.read();
@@ -70,6 +74,7 @@ describe("trip authorization and application boundaries", () => {
 
   it("excludes checkpoint UI and approval channels from ordinary input", async () => {
     const harness = await startHarness(generateImmediateText);
+
     try {
       const client = harness.clientFor();
       const thread = await client.threads.create();
@@ -95,9 +100,11 @@ describe("trip authorization and application boundaries", () => {
       const harness = await startHarness(generateImmediateText);
       const client = harness.clientFor();
       const session = createUiSession(client, rendererMetadata);
+
       try {
         await session.generate("Review me");
         const saved = session.read();
+
         const run = await client.runs.create(saved.threadId!, "ui-playground", {
           input: null,
           command: {
@@ -123,11 +130,13 @@ describe("trip authorization and application boundaries", () => {
     const harness = await startHarness(generateImmediateText);
     const client = harness.clientFor();
     const session = createUiSession(client, rendererMetadata);
+
     try {
       await session.generate("My trip");
       await session.decide(true);
       const saved = session.read();
       const preferenceId = uiSurfaceIds(saved.ui!.generationId).controls;
+
       for (const failure of ["generation", "source", "data-model"] as const) {
         const run = await client.runs.create(saved.threadId!, "ui-playground", {
           input: {

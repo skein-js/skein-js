@@ -23,6 +23,6 @@ fi
 
 echo "pre-commit: format + lint/typecheck/test for affected projects (build + integration run in CI)…"
 [ -n "$fmt_files" ] && pnpm exec nx format:check --files="$fmt_files"
-# CI=true so Vitest runs once instead of hanging in watch mode. Examples need live services / local
-# .env (CI covers them in a clean env where key-gated tests self-skip), so exclude them here.
-CI=true pnpm exec nx affected -t lint typecheck test --files="$all_files" --exclude='examples/*'
+CI=true pnpm exec nx affected -t lint --files="$all_files" --max-warnings=0
+# Keep local example tests separate from the hook because they can use local services and .env.
+CI=true pnpm exec nx affected -t typecheck test --files="$all_files" --exclude='examples/*'

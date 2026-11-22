@@ -6,7 +6,11 @@ import { chromium, type Browser, type Page } from "@playwright/test";
 import { preview, type PreviewServer } from "vite";
 import { afterAll, beforeAll, expect, it } from "vitest";
 
-import { demoMessages, demoResponse, generateDemoText } from "../src/generation.js";
+import {
+  fixtureMessages,
+  fixtureResponse,
+  generateFixtureText,
+} from "../src/generation-fixture.js";
 import { rendererMetadata, startHarness } from "../src/test-harness.js";
 
 let browser: Browser;
@@ -21,15 +25,18 @@ beforeAll(async () => {
   await mkdir(screenshots, { recursive: true });
   harness = await startHarness(async function* (request, signal) {
     generations++;
+
     if (request.prompt === "Show an error") {
       yield "<a2ui-json>{invalid}</a2ui-json>";
       return;
     }
+
     if (["Reconnect this trip", "Cancel this trip"].includes(request.prompt)) {
-      const text = demoResponse(request.prompt, request.generationId);
+      const text = fixtureResponse(request.prompt, request.generationId);
+
       const prefix =
         "<a2ui-json>[" +
-        JSON.stringify(demoMessages(request.prompt, request.generationId)[0]) +
+        JSON.stringify(fixtureMessages(request.prompt, request.generationId)[0]) +
         ",";
       yield prefix;
       if (request.prompt === "Cancel this trip") await pause(20_000, undefined, { signal });
@@ -40,7 +47,8 @@ beforeAll(async () => {
       yield text.slice(prefix.length);
       return;
     }
-    yield* generateDemoText(request, signal);
+
+    yield* generateFixtureText(request, signal);
   });
   const output = resolve("../../dist/examples/a2ui/browser");
   uiServer = await preview({
@@ -79,6 +87,7 @@ it("streams native Angular surfaces, binds forms, reviews, deletes notes and res
   const page = await browser.newPage({ viewport: { width: 1280, height: 960 } });
   const errors: string[] = [];
   page.on("pageerror", (error) => errors.push(error.message));
+
   try {
     await page.goto(url);
     await page.getByLabel("Describe the UI").focus();
@@ -99,18 +108,21 @@ it("streams native Angular surfaces, binds forms, reviews, deletes notes and res
     await capture(page, "review-desktop");
     await page.getByRole("button", { name: "Approve UI" }).click();
     await page.getByText("UI approved. Keep refining it.").waitFor();
+    expect(await page.getByLabel("Describe the UI").inputValue()).toBe("");
     await page.locator(".conversation").evaluate((element) => {
       element.scrollTop = 0;
     });
     await capture(page, "playground-dashboard");
-    expect(await page.getByLabel("A2UI JSON", { exact: true }).textContent()).toContain(
-      "createSurface",
-    );
+    const json = page.getByRole("region", { name: "A2UI JSON" });
+    expect(await json.textContent()).toContain("createSurface");
+    await json.focus();
+    await page.keyboard.press("End");
+    await expect.poll(() => json.evaluate((element) => element.scrollTop)).toBeGreaterThan(0);
 
     await page
       .locator(".current-response")
       .getByLabel("What would you change?")
-      .fill("  Less walking, more markets and a picnic  ");
+      .fill("  Show stars and forks in two cards  ");
     await page.keyboard.press("Tab");
     expect(
       await page
@@ -121,7 +133,7 @@ it("streams native Angular surfaces, binds forms, reviews, deletes notes and res
     await page.keyboard.press("Enter");
     await page
       .locator(".current-response .generated")
-      .getByText("Less walking, more markets and a picnic", { exact: true })
+      .getByText("Show stars and forks in two cards", { exact: true })
       .waitFor();
     await page.getByRole("button", { name: "Reject", exact: true }).click();
     await page.getByText("UI rejected. Describe another direction.").waitFor();
@@ -131,18 +143,24 @@ it("streams native Angular surfaces, binds forms, reviews, deletes notes and res
       .click();
     await page
       .locator(".current-response .generated")
-      .getByText("Make this UI simpler: Less walking, more markets and a picnic", {
+      .getByText("Make this UI simpler: Show stars and forks in two cards", {
         exact: true,
       })
       .waitFor();
     await page.getByRole("button", { name: "Approve UI" }).click();
     await page.getByText("UI approved. Keep refining it.").waitFor();
     const beforeDismiss = generations;
+    const feedback = page.locator(".current-response").getByLabel("What would you change?");
+    await feedback.fill("Keep this feedback draft");
+    const feedbackId = await feedback.getAttribute("id");
     await page.locator(".current-response").getByRole("button", { name: "Dismiss notes" }).click();
     await page
       .locator(".current-response")
       .getByRole("region", { name: "Notes" })
       .waitFor({ state: "detached" });
+    await page.getByText("UI approved. Keep refining it.").waitFor();
+    expect(await feedback.inputValue()).toBe("Keep this feedback draft");
+    expect(await feedback.getAttribute("id")).toBe(feedbackId);
     expect(generations).toBe(beforeDismiss);
     const savedUrl = page.url();
     expect(new URL(savedUrl).searchParams.get("thread")).toBeTruthy();
@@ -188,6 +206,7 @@ it("streams native Angular surfaces, binds forms, reviews, deletes notes and res
 
 it("reconnects to one run and preserves saved UI on cancellation and invalid generation", async () => {
   const page = await browser.newPage({ viewport: { width: 1280, height: 960 } });
+
   try {
     await page.goto(url);
     await page.getByLabel("Describe the UI").fill("Reconnect this trip");
@@ -196,10 +215,10 @@ it("reconnects to one run and preserves saved UI on cancellation and invalid gen
       .locator(".current-response .generated")
       .getByText("Sketching your interface…", { exact: true })
       .waitFor();
-    await page.getByLabel("Describe the UI").fill("Reconnect this trip");
+    await page.getByLabel("Describe the UI").fill("My next draft");
     await page.getByRole("button", { name: "Pause updates" }).click();
     await page.getByText("Updates paused. The run continues on the server.").waitFor();
-    expect(await page.getByLabel("Describe the UI").inputValue()).toBe("Reconnect this trip");
+    expect(await page.getByLabel("Describe the UI").inputValue()).toBe("My next draft");
     await capture(page, "paused-desktop");
     const beforeReconnect = generations;
     releaseUpdates();
@@ -207,6 +226,7 @@ it("reconnects to one run and preserves saved UI on cancellation and invalid gen
     await page.getByRole("button", { name: "Approve UI" }).click();
     await page.getByText("UI approved. Keep refining it.").waitFor();
     expect(generations).toBe(beforeReconnect);
+    expect(await page.getByLabel("Describe the UI").inputValue()).toBe("My next draft");
     await page.getByLabel("Describe the UI").fill("Cancel this trip");
     await page.getByRole("button", { name: "Send" }).click();
     await page.getByText("Preview · saving after validation").waitFor();
@@ -216,6 +236,7 @@ it("reconnects to one run and preserves saved UI on cancellation and invalid gen
     await page.getByLabel("Describe the UI").fill("Show an error");
     await page.getByRole("button", { name: "Send" }).click();
     await page.getByRole("alert").waitFor();
+    expect(await page.getByLabel("Describe the UI").inputValue()).toBe("Show an error");
     expect(
       await page
         .locator(".current-response .generated")
@@ -244,6 +265,7 @@ it("reopens pending review without generation and rejects an incompatible saved 
   });
   const before = generations;
   const page = await browser.newPage();
+
   try {
     await page.goto(url + "/?thread=" + thread.thread_id);
     await page.getByRole("button", { name: "Approve UI" }).waitFor();

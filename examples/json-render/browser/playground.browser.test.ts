@@ -6,7 +6,7 @@ import { chromium, type Browser, type Page } from "@playwright/test";
 import { createServer, preview, type PreviewServer } from "vite";
 import { afterAll, beforeAll, expect, it } from "vitest";
 
-import { demoSpecStream, generateDemoText } from "../src/generation.js";
+import { fixtureSpecStream, generateFixtureText } from "../src/generation-fixture.js";
 import { startHarness } from "../src/test-harness.js";
 
 let browser: Browser;
@@ -17,14 +17,23 @@ let generations = 0;
 let releaseUpdates: () => void = () => undefined;
 const screenshots = resolve("../../dist/json-render-screenshots");
 
+const invalidPatches = new Map<string, object>([
+  ["Apply an invalid patch", { op: "test", path: "/root", value: "another-root" }],
+  ["Hide the feedback form", { op: "add", path: "/elements/feedback/visible", value: false }],
+]);
+
+const failedOnce = new Set<string>();
+
 beforeAll(async () => {
   await mkdir(screenshots, { recursive: true });
   harness = await startHarness(async function* (request, signal) {
     generations++;
+
     if (request.prompt === "Stream a table") {
-      const patches = demoSpecStream(request)
+      const patches = fixtureSpecStream(request)
         .split("\n")
         .map((line) => JSON.parse(line));
+
       const table = patches.find((patch) => patch.path === "/elements/table");
       const props = table.value.props;
       table.value.props = {};
@@ -48,12 +57,22 @@ beforeAll(async () => {
         .join("\n");
       return;
     }
+
     if (request.prompt === "Show an error") {
       yield "invalid generated UI";
       return;
     }
+
+    const invalidPatch = invalidPatches.get(request.prompt);
+
+    if (invalidPatch && !failedOnce.has(request.prompt)) {
+      failedOnce.add(request.prompt);
+      yield fixtureSpecStream(request) + "\n" + JSON.stringify(invalidPatch) + "\n";
+      return;
+    }
+
     if (request.prompt === "Reconnect this plan" || request.prompt === "Cancel this plan") {
-      const text = demoSpecStream(request);
+      const text = fixtureSpecStream(request);
       const split = text.indexOf("\n", text.indexOf("\n") + 1) + 1;
       yield text.slice(0, split);
       if (request.prompt === "Cancel this plan") await pause(20_000, undefined, { signal });
@@ -64,7 +83,8 @@ beforeAll(async () => {
       yield text.slice(split);
       return;
     }
-    yield* generateDemoText(request, signal);
+
+    yield* generateFixtureText(request, signal);
   });
   uiServer = await preview({
     configFile: resolve("vite.config.mts"),
@@ -98,17 +118,19 @@ it("keeps rendering while streamed table props are incomplete", async () => {
   const page = await browser.newPage();
   const errors: string[] = [];
   page.on("pageerror", (error) => errors.push(error.message));
+
   try {
     await page.goto(url);
     await page.getByLabel("Describe the UI").fill("Stream a table");
     await page.getByRole("button", { name: "Send" }).click();
-    await page.getByRole("heading", { name: "Website traffic dashboard" }).waitFor();
+    await page.getByRole("heading", { name: "skein-js/skein-js" }).waitFor();
     expect(await page.getByRole("table").count()).toBe(0);
     expect(errors).toEqual([]);
     releaseUpdates();
-    await page.getByRole("table", { name: "Traffic by channel" }).waitFor();
+    await page.getByRole("table", { name: "Repository overview" }).waitFor();
     await page.getByRole("button", { name: "Approve UI" }).click();
     await page.getByText("UI approved. Keep refining it.").waitFor();
+    expect(await page.getByLabel("Describe the UI").inputValue()).toBe("");
     expect(errors).toEqual([]);
   } finally {
     releaseUpdates();
@@ -123,6 +145,7 @@ it("reopens and reloads a thread through the development StrictMode entry", asyn
     input: { request: { prompt: "Restore this development thread" } },
   });
   const beforeReopen = generations;
+
   const devServer = await createServer({
     configFile: resolve("vite.config.mts"),
     server: {
@@ -132,9 +155,11 @@ it("reopens and reloads a thread through the development StrictMode entry", asyn
       proxy: { "/api": { target: harness.url, rewrite: (path) => path.replace(/^\/api/, "") } },
     },
   });
+
   const page = await browser.newPage();
   const errors: string[] = [];
   page.on("pageerror", (error) => errors.push(error.message));
+
   try {
     await devServer.listen();
     const address = devServer.httpServer?.address();
@@ -172,6 +197,7 @@ it("renders progressively, routes buttons and forms, approves, and restores on r
   const page = await browser.newPage({ viewport: { width: 1280, height: 960 } });
   const errors: string[] = [];
   page.on("pageerror", (error) => errors.push(error.message));
+
   try {
     await page.goto(url);
     await page.getByLabel("Describe the UI").focus();
@@ -183,7 +209,7 @@ it("renders progressively, routes buttons and forms, approves, and restores on r
     ).toBe(true);
     await capture(page, "empty-desktop");
     await page.getByRole("button", { name: "Send" }).click();
-    await page.getByRole("heading", { name: "Website traffic dashboard" }).waitFor();
+    await page.getByRole("heading", { name: "skein-js/skein-js" }).waitFor();
     expect(await page.getByRole("button", { name: "Approve UI" }).count()).toBe(0);
     expect(
       await page.getByText("Preview · saving after validation", { exact: true }).isVisible(),
@@ -195,7 +221,11 @@ it("renders progressively, routes buttons and forms, approves, and restores on r
       element.scrollTop = 0;
     });
     await capture(page, "playground-dashboard");
-    expect(await page.getByLabel("UI JSON", { exact: true }).textContent()).toContain("Metric");
+    const json = page.getByRole("region", { name: "UI JSON" });
+    expect(await json.textContent()).toContain("Metric");
+    await json.focus();
+    await page.keyboard.press("End");
+    await expect.poll(() => json.evaluate((element) => element.scrollTop)).toBeGreaterThan(0);
     await page
       .locator(".current-response")
       .getByRole("button", { name: "Make it simpler" })
@@ -204,7 +234,7 @@ it("renders progressively, routes buttons and forms, approves, and restores on r
     expect(
       await page
         .locator(".history-response")
-        .getByRole("heading", { name: "Website traffic dashboard" })
+        .getByRole("heading", { name: "skein-js/skein-js" })
         .isVisible(),
     ).toBe(true);
     expect(
@@ -215,28 +245,30 @@ it("renders progressively, routes buttons and forms, approves, and restores on r
     ).toBe(true);
     await page
       .locator(".current-response .generated")
-      .getByText("Make this UI simpler: Website traffic dashboard", { exact: true })
+      .getByText("Make this UI simpler: Build a dashboard for skein-js/skein-js", { exact: true })
       .waitFor();
     await page.getByRole("button", { name: "Reject", exact: true }).click();
     await page.getByText("UI rejected. Describe another direction.").waitFor();
+    const earlierCard = await page.locator(".history-response .ui-card").first().elementHandle();
     await page
       .locator(".current-response")
       .getByLabel("What would you change?")
-      .fill("Use a smaller room and invite ten people");
+      .fill("Show stars and forks in two cards");
     await page.locator(".current-response").getByRole("button", { name: "Update UI" }).click();
     await page
       .locator(".current-response .generated")
-      .getByText("Use a smaller room and invite ten people", { exact: true })
+      .getByText("Show stars and forks in two cards", { exact: true })
       .waitFor();
     await page.getByRole("button", { name: "Approve UI" }).click();
     await page.getByText("UI approved. Keep refining it.").waitFor();
+    expect(await earlierCard?.evaluate((element) => element.isConnected)).toBe(true);
     const beforeReload = generations;
     const savedUrl = page.url();
     expect(new URL(savedUrl).searchParams.get("thread")).toBeTruthy();
     await page.reload();
     await page
       .locator(".current-response .generated")
-      .getByText("Use a smaller room and invite ten people", { exact: true })
+      .getByText("Show stars and forks in two cards", { exact: true })
       .waitFor();
     await page.getByText("UI approved. Keep refining it.").waitFor();
     expect(generations).toBe(beforeReload);
@@ -271,21 +303,23 @@ it("renders progressively, routes buttons and forms, approves, and restores on r
 
 it("reconnects without another generation and displays cancellation and errors", async () => {
   const page = await browser.newPage({ viewport: { width: 1280, height: 960 } });
+
   try {
     await page.goto(url);
     await page.getByLabel("Describe the UI").fill("Reconnect this plan");
     await page.getByRole("button", { name: "Send" }).click();
-    await page.getByRole("heading", { name: "Website traffic dashboard" }).waitFor();
-    await page.getByLabel("Describe the UI").fill("Reconnect this plan");
+    await page.getByRole("heading", { name: "skein-js/skein-js" }).waitFor();
+    await page.getByLabel("Describe the UI").fill("My next draft");
     await page.getByRole("button", { name: "Pause updates" }).click();
     await page.getByText("Updates paused. The run continues on the server.").waitFor();
-    expect(await page.getByLabel("Describe the UI").inputValue()).toBe("Reconnect this plan");
+    expect(await page.getByLabel("Describe the UI").inputValue()).toBe("My next draft");
     await capture(page, "paused-desktop");
     const beforeReconnect = generations;
     releaseUpdates();
     await page.getByRole("button", { name: "Reconnect" }).click();
     await page.getByRole("button", { name: "Approve UI" }).waitFor();
     expect(generations).toBe(beforeReconnect);
+    expect(await page.getByLabel("Describe the UI").inputValue()).toBe("My next draft");
     await page.getByRole("button", { name: "Reject", exact: true }).click();
     await page.getByText("UI rejected. Describe another direction.").waitFor();
     await page.getByLabel("Describe the UI").fill("Cancel this plan");
@@ -297,6 +331,7 @@ it("reconnects without another generation and displays cancellation and errors",
     await page.getByLabel("Describe the UI").fill("Show an error");
     await page.getByRole("button", { name: "Send" }).click();
     await page.getByRole("alert").waitFor();
+    expect(await page.getByLabel("Describe the UI").inputValue()).toBe("Show an error");
     expect(
       await page
         .locator(".current-response .generated")
@@ -306,6 +341,26 @@ it("reconnects without another generation and displays cancellation and errors",
     await capture(page, "error-desktop");
   } finally {
     releaseUpdates();
+    await page.close();
+  }
+});
+
+it.each([...invalidPatches.keys()])("retries %s and renders the usable result", async (prompt) => {
+  const page = await browser.newPage();
+  const before = generations;
+
+  try {
+    await page.goto(url);
+    await page.getByLabel("Describe the UI").fill(prompt);
+    await page.getByRole("button", { name: "Send" }).click();
+    await page.getByRole("button", { name: "Approve UI" }).click();
+    await page.getByText("UI approved. Keep refining it.").waitFor();
+    const current = page.locator(".current-response");
+    expect(generations - before).toBe(2);
+    expect(await page.getByRole("alert").count()).toBe(0);
+    expect(await current.getByRole("button", { name: "Make it simpler" }).isEnabled()).toBe(true);
+    expect(await current.getByLabel("What would you change?").isEnabled()).toBe(true);
+  } finally {
     await page.close();
   }
 });

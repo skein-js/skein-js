@@ -3,7 +3,7 @@
   "version": "0.0.0",
   "private": true,
   "type": "module",
-  "description": "A chat playground for composing, reviewing and restoring json-render interfaces through Skein. Offline samples with optional live generation.",
+  "description": "Model-generated GitHub interfaces using React json-render and Skein.",
   "scripts": {
     "dev:all": "nx run-many -p example-json-render -t dev serve --parallel=2"
   },
@@ -11,10 +11,9 @@
     "@json-render/core": "0.21.4",
     "@json-render/react": "0.21.4",
     "@langchain/core": "1.2.18",
-    "@langchain/google": "0.2.12",
     "@langchain/langgraph": "1.4.12",
     "@langchain/langgraph-sdk": "1.12.7",
-    "langchain": "1.5.10",
+    "@skein-js/example-github-playground": "workspace:*",
     "react": "19.2.6",
     "react-dom": "19.2.6",
     "zod": "4.6.7"

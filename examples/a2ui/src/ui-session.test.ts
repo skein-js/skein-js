@@ -7,7 +7,7 @@ import { Client } from "@langchain/langgraph-sdk";
 import { MemoryRunEventBus } from "@skein-js/storage-memory";
 import { describe, expect, it } from "vitest";
 
-import { demoResponse } from "./generation.js";
+import { fixtureResponse } from "./generation-fixture.js";
 import { generateImmediateText, rendererMetadata, startHarness } from "./test-harness.js";
 import { prepareUiRun } from "./ui-client.js";
 import { parseSavedUi, uiSurfaceIds, type SavedUi } from "./ui-contract.js";
@@ -35,14 +35,17 @@ function action(
 describe("trip session over the official HTTP SDK", () => {
   it("streams, approves without regeneration, revises through bound form input, deletes notes and reopens", async () => {
     let generations = 0;
+
     const harness = await startHarness(async function* (request, signal) {
       generations++;
       yield* generateImmediateText(request, signal);
     });
+
     const client = harness.clientFor();
     let metadata = rendererMetadata();
     const session = createUiSession(client, () => metadata);
     const reopened = createUiSession(client, rendererMetadata);
+
     try {
       let previewed = false;
       session.subscribe(() => {
@@ -103,12 +106,15 @@ describe("trip session over the official HTTP SDK", () => {
 
   it("retries lost generation and resume responses using the same operation keys", async () => {
     let generations = 0;
+
     const harness = await startHarness(async function* (request, signal) {
       generations++;
       yield* generateImmediateText(request, signal);
     });
+
     let loseResponse = true;
     const keys: (string | null)[] = [];
+
     const client = new Client<Record<string, unknown>>({
       apiUrl: harness.url,
       apiKey: null,
@@ -117,10 +123,13 @@ describe("trip session over the official HTTP SDK", () => {
       callerOptions: {
         fetch: async (input: RequestInfo | URL, init?: RequestInit) => {
           const response = await fetch(input, init);
+
           const url =
             typeof input === "string" ? input : input instanceof URL ? input.href : input.url;
+
           if (init?.method === "POST" && /\/threads\/[^/]+\/runs$/.test(new URL(url).pathname)) {
             keys.push(new Headers(init.headers).get("Idempotency-Key"));
+
             if (loseResponse) {
               loseResponse = false;
               const run = await response.clone().json();
@@ -128,11 +137,14 @@ describe("trip session over the official HTTP SDK", () => {
               throw new TypeError("fetch failed");
             }
           }
+
           return response;
         },
       },
     });
+
     const session = createUiSession(client, rendererMetadata);
+
     try {
       await session.generate("One generation only");
       expect(session.read().error).toBeNull();
@@ -156,6 +168,7 @@ describe("trip session over the official HTTP SDK", () => {
     "recovers %s delivery from the terminal checkpoint",
     async (damage) => {
       const harness = await startHarness(generateImmediateText);
+
       const client = new Client<Record<string, unknown>>({
         apiUrl: harness.url,
         apiKey: null,
@@ -164,12 +177,14 @@ describe("trip session over the official HTTP SDK", () => {
         callerOptions: {
           fetch: async (input: RequestInfo | URL, init?: RequestInit) => {
             const response = await fetch(input, init);
+
             const url =
               typeof input === "string" ? input : input instanceof URL ? input.href : input.url;
             if (!new URL(url).pathname.endsWith("/stream") || !response.ok) return response;
             const blocks = (await response.text()).split("\n\n");
             const custom = blocks.filter((block) => block.includes('"type":"a2ui"'));
             let index = -1;
+
             const filtered = blocks.flatMap((block) => {
               if (!block.includes('"type":"a2ui"')) return [block];
               index++;
@@ -189,7 +204,9 @@ describe("trip session over the official HTTP SDK", () => {
           },
         },
       });
+
       const session = createUiSession(client, rendererMetadata);
+
       try {
         await session.generate("Recover this trip");
         expect(session.read()).toMatchObject({ error: null, busy: false, preview: false });
@@ -207,11 +224,13 @@ describe("trip session over the official HTTP SDK", () => {
     const bus = new MemoryRunEventBus({ maxFramesPerRun: 2, maxRetainedRuns: 1 });
     const harness = await startHarness(generateImmediateText, { bus });
     const session = createUiSession(harness.clientFor(), rendererMetadata);
+
     try {
       await session.generate("A saved UI outlives its frames");
       const saved = session.read();
       await session.decide(true);
       const reopened = createUiSession(harness.clientFor(), rendererMetadata);
+
       try {
         await reopened.open(saved.threadId);
         expect(reopened.read().ui).toEqual(saved.ui);
@@ -228,15 +247,18 @@ describe("trip session over the official HTTP SDK", () => {
     let release!: () => void;
     let started!: () => void;
     let generations = 0;
+
     const ready = new Promise<void>((resolve) => {
       started = resolve;
     });
+
     const gate = new Promise<void>((resolve) => {
       release = resolve;
     });
+
     const harness = await startHarness(async function* (request, signal) {
       generations++;
-      const text = demoResponse(request.prompt, request.generationId);
+      const text = fixtureResponse(request.prompt, request.generationId);
       yield text.slice(0, 800);
       if (request.prompt === "Reconnect") {
         started();
@@ -244,7 +266,9 @@ describe("trip session over the official HTTP SDK", () => {
       } else await pause(20_000, undefined, { signal });
       yield text.slice(800);
     });
+
     const session = createUiSession(harness.clientFor(), rendererMetadata);
+
     try {
       const generating = session.generate("Reconnect");
       await ready;
@@ -275,29 +299,41 @@ describe("trip session over the official HTTP SDK", () => {
     }
   });
 
-  it("keeps the previous checkpoint when a provider fails", async () => {
-    const harness = await startHarness(async function* (request, signal) {
-      if (request.prompt === "Fail") throw new Error("Provider unavailable");
-      yield* generateImmediateText(request, signal);
-    });
-    const session = createUiSession(harness.clientFor(), rendererMetadata);
-    try {
-      await session.generate("A valid trip");
-      await session.decide(true);
-      const baseline = session.read().ui;
-      await session.generate("Fail");
-      expect(session.read().error).toContain("Provider unavailable");
-      expect(session.read().ui).toEqual(baseline);
-      expect(session.read().view).toEqual(baseline);
-    } finally {
-      session.dispose();
-      await harness.close();
-    }
-  });
+  it.each(["prompt", "revision"] as const)(
+    "keeps the previous checkpoint when a %s fails",
+    async (source) => {
+      const harness = await startHarness(async function* (request, signal) {
+        if (request.prompt === "Fail") throw new Error("Provider unavailable");
+        yield* generateImmediateText(request, signal);
+      });
+
+      const client = harness.clientFor();
+      const session = createUiSession(client, rendererMetadata);
+
+      try {
+        await session.generate("A valid trip");
+        await session.decide(true);
+        const baseline = session.read().ui!;
+        if (source === "revision")
+          await session.act(action(baseline, "canvas", "reviseUi", "refine", { prompt: "Fail" }));
+        else await session.generate("Fail");
+        expect(session.read().error).toContain("Provider unavailable");
+        expect(session.read().ui).toEqual(baseline);
+        expect(session.read().view).toEqual(baseline);
+        expect((await client.threads.getState(session.read().threadId!)).values["prompt"]).toBe(
+          "A valid trip",
+        );
+      } finally {
+        session.dispose();
+        await harness.close();
+      }
+    },
+  );
 
   it("abandons an unsaved preview when the terminal checkpoint cannot be read", async () => {
     const harness = await startHarness(generateImmediateText);
     let failStateReads = false;
+
     const client = new Client<Record<string, unknown>>({
       apiUrl: harness.url,
       apiKey: null,
@@ -315,7 +351,9 @@ describe("trip session over the official HTTP SDK", () => {
         },
       },
     });
+
     const session = createUiSession(client, rendererMetadata);
+
     try {
       await session.generate("A saved baseline");
       await session.decide(true);
@@ -348,12 +386,15 @@ describe("trip session over the official HTTP SDK", () => {
     const directory = await mkdtemp(join(tmpdir(), "skein-a2ui-"));
     const sqlitePath = join(directory, "trips.sqlite");
     let generations = 0;
+
     const generator = async function* (...args: Parameters<typeof generateImmediateText>) {
       generations++;
       yield* generateImmediateText(...args);
     };
+
     let harness = await startHarness(generator, { sqlitePath });
     let session = createUiSession(harness.clientFor(), rendererMetadata);
+
     try {
       await session.generate("Keep this trip after restart");
       const saved = session.read();

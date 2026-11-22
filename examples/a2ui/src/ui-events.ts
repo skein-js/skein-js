@@ -1,4 +1,4 @@
-import { MessageProcessor, basicCatalog } from "@a2ui/web_core/v1_0";
+import { basicCatalog, MessageProcessor } from "@a2ui/web_core/v1_0";
 import { z } from "zod";
 
 import {
@@ -43,10 +43,12 @@ export function createUiStream(baseline: SavedUi | null) {
   let complete = false;
   let gap = false;
   let view = baseline;
+
   const losePreview = () => {
     gap = true;
     view = baseline;
   };
+
   return {
     push(frame: StreamFrame) {
       if (
@@ -57,24 +59,30 @@ export function createUiStream(baseline: SavedUi | null) {
         frame.data.type !== "a2ui"
       )
         return;
+
       try {
         const event = uiEventSchema.parse(frame.data);
         if (generationId && event.generationId !== generationId) return;
         if (event.sequence <= sequence) return;
         if (!generationId && event.phase === "start") generationId = event.generationId;
+
         if (!generationId || event.sequence !== sequence + 1 || complete) {
           losePreview();
           return;
         }
+
         sequence = event.sequence;
         if (gap) return;
+
         if (event.phase === "start" && event.operation === "update") {
           if (baseline?.generationId !== generationId) {
             losePreview();
             return;
           }
+
           processor.processMessages(baseline.bootstrapMessages);
         }
+
         if (event.phase === "message") {
           if (
             !Object.values(uiSurfaceIds(generationId)).includes(messageSurfaceId(event.message))
@@ -82,7 +90,9 @@ export function createUiStream(baseline: SavedUi | null) {
             losePreview();
             return;
           }
+
           processor.processMessages(event.message);
+
           // In-progress references may not exist yet; only materialize a validated view when ready.
           try {
             view = snapshotSurfaces(generationId, processor.getSurfaces().values());
@@ -90,6 +100,7 @@ export function createUiStream(baseline: SavedUi | null) {
             /* keep last renderable preview */
           }
         }
+
         if (event.phase === "complete") {
           view = snapshotSurfaces(generationId, processor.getSurfaces().values());
           complete = true;

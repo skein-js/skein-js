@@ -15,9 +15,9 @@
 // The sink's `withRunContext` hook makes the run span active while LangGraph executes, so LangChain,
 // model, and tool instrumentation can parent its spans correctly across async callbacks.
 
-import { collectOtelMetrics } from "./collect-metrics.js";
-
 import type { RunTelemetryContext, RunTelemetryEvent, TelemetrySink } from "@skein-js/core";
+
+import { collectOtelMetrics } from "./collect-metrics.js";
 
 // The slices of `@opentelemetry/api` this sink uses, declared structurally. Keeping the import
 // type-only means the package has no runtime dependency on the API either — a host that hasn't

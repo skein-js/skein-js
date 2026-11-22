@@ -2,9 +2,9 @@ import type { Delivery } from "@skein-js/core";
 import { describe, expect, it, vi } from "vitest";
 
 import { createFixtureDeps } from "../__fixtures__/deps.js";
-import { createProtocolRuntime } from "../runtime.js";
 import { resolveDeps } from "../deps.js";
 import { fetchWebhookDispatcher } from "../deps.js";
+import { createProtocolRuntime } from "../runtime.js";
 
 import { attemptDelivery } from "./attempt-delivery.js";
 import { processDelivery } from "./delivery-processor.js";

@@ -1,11 +1,26 @@
 // Flat ESLint config for the skein-js workspace.
-// ESLint owns correctness + imports; Prettier owns formatting (eslint-config-prettier
-// disables any stylistic rules that would fight the formatter). See docs/code-practices.md.
+// ESLint checks correctness, import order, and deliberate blank lines. Prettier formats the code.
+import angular from "@angular-eslint/eslint-plugin";
+import angularTemplate from "@angular-eslint/eslint-plugin-template";
+import angularTemplateParser from "@angular-eslint/template-parser";
 import js from "@eslint/js";
-import tseslint from "typescript-eslint";
-import importPlugin from "eslint-plugin-import";
-import unusedImports from "eslint-plugin-unused-imports";
+import stylistic from "@stylistic/eslint-plugin";
 import prettier from "eslint-config-prettier";
+import importPlugin from "eslint-plugin-import";
+import jsxA11y from "eslint-plugin-jsx-a11y";
+import react from "eslint-plugin-react";
+import reactHooks from "eslint-plugin-react-hooks";
+import unusedImports from "eslint-plugin-unused-imports";
+import tseslint from "typescript-eslint";
+
+import { declarationSpacing } from "./tools/playground-spacing.mjs";
+
+const playgroundCode = "examples/{a2ui,github-playground,json-render}/**/*.{ts,mts,tsx}";
+const importOrder = {
+  "newlines-between": "always",
+  alphabetize: { order: "asc", caseInsensitive: true },
+  groups: ["builtin", "external", "internal", "parent", "sibling", "index"],
+};
 
 export default tseslint.config(
   {
@@ -34,6 +49,7 @@ export default tseslint.config(
       "**/node_modules/**",
       "**/.nx/**",
       "**/*.config.*",
+      "!examples/{a2ui,github-playground,json-render}/*.config.{ts,mts}",
       "packages/cli/src/bundle/__fixtures__/**", // mini-monorepo fixture shaped for the bundler, not our lint rules
       // Throwaway projects a test writes into its own package directory, because a fixture that
       // declares an `auth.path` has to sit somewhere node resolution can reach the workspace's
@@ -44,10 +60,9 @@ export default tseslint.config(
     ],
   },
 
-  js.configs.recommended,
-  ...tseslint.configs.recommended,
-
   {
+    files: ["**/*.{js,cjs,mjs,jsx,ts,cts,mts,tsx}"],
+    extends: [js.configs.recommended, ...tseslint.configs.recommended],
     plugins: {
       import: importPlugin,
       "unused-imports": unusedImports,
@@ -69,14 +84,7 @@ export default tseslint.config(
         "warn",
         { argsIgnorePattern: "^_", varsIgnorePattern: "^_" },
       ],
-      "import/order": [
-        "warn",
-        {
-          "newlines-between": "always",
-          alphabetize: { order: "asc", caseInsensitive: true },
-          groups: ["builtin", "external", "internal", "parent", "sibling", "index"],
-        },
-      ],
+      "import/order": ["warn", importOrder],
 
       // --- explicitness ---
       "@typescript-eslint/consistent-type-imports": [
@@ -210,5 +218,89 @@ export default tseslint.config(
     rules: { "@typescript-eslint/no-explicit-any": "off" },
   },
 
+  {
+    name: "playgrounds/imports",
+    files: [playgroundCode],
+    rules: {
+      "import/order": ["error", { ...importOrder, named: { enabled: true, types: "types-last" } }],
+      "import/no-duplicates": ["error", { "prefer-inline": true }],
+      "@typescript-eslint/no-unused-vars": "error",
+    },
+  },
+  {
+    name: "playgrounds/async",
+    files: ["examples/{a2ui,github-playground,json-render}/{src,browser}/**/*.{ts,tsx}"],
+    languageOptions: {
+      parserOptions: {
+        tsconfigRootDir: import.meta.dirname,
+        project: [
+          "./examples/a2ui/tsconfig.app.json",
+          "./examples/a2ui/tsconfig.server.json",
+          "./examples/github-playground/tsconfig.json",
+          "./examples/json-render/tsconfig.json",
+        ],
+      },
+    },
+    rules: {
+      "@typescript-eslint/no-floating-promises": "error",
+      "@typescript-eslint/no-misused-promises": "error",
+    },
+  },
+  {
+    name: "a2ui/angular",
+    files: ["examples/a2ui/src/{app/**/*.ts,main.ts}"],
+    processor: angularTemplate.processors["extract-inline-html"],
+    plugins: { "@angular-eslint": angular },
+    rules: {
+      ...angular.configs.recommended.rules,
+      "@angular-eslint/prefer-on-push-component-change-detection": "error",
+    },
+  },
+  {
+    name: "a2ui/angular-templates",
+    files: ["examples/a2ui/src/app/**/*.html"],
+    languageOptions: { parser: angularTemplateParser },
+    plugins: { "@angular-eslint/template": angularTemplate },
+    rules: {
+      ...angularTemplate.configs.recommended.rules,
+      ...angularTemplate.configs.accessibility.rules,
+    },
+  },
+  {
+    name: "json-render/react",
+    files: ["examples/json-render/src/**/*.tsx"],
+    extends: [
+      react.configs.flat.recommended,
+      react.configs.flat["jsx-runtime"],
+      reactHooks.configs.flat.recommended,
+      jsxA11y.flatConfigs.recommended,
+    ],
+    settings: { react: { version: "detect" } },
+    rules: {
+      // A named scroll region needs to be reachable by keyboard.
+      "jsx-a11y/no-noninteractive-tabindex": ["error", { roles: ["region", "tabpanel"] }],
+      "react/prop-types": "off", // Component props are checked by TypeScript.
+      "react-hooks/exhaustive-deps": "error",
+    },
+  },
   prettier,
+  {
+    name: "playgrounds/blank-lines",
+    files: [playgroundCode],
+    plugins: { "@stylistic": stylistic },
+    rules: {
+      // Prettier preserves an existing blank line between these statements.
+      "@stylistic/padding-line-between-statements": [
+        "error",
+        { blankLine: "always", prev: "block-like", next: "*" },
+        { blankLine: "always", prev: "*", next: "block-like" },
+        ...declarationSpacing,
+      ],
+      "@stylistic/lines-between-class-members": [
+        "error",
+        "always",
+        { exceptAfterSingleLine: true },
+      ],
+    },
+  },
 );

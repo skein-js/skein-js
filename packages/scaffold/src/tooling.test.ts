@@ -1,8 +1,8 @@
 import { format } from "prettier";
 import { describe, expect, it } from "vitest";
 
-import { inspectWorkspace } from "./workspace.js";
 import { buildProjectFiles } from "./project-files.js";
+import { inspectWorkspace } from "./workspace.js";
 
 describe("independent inherited tooling", () => {
   it.each(["eslint", "prettier"] as const)(

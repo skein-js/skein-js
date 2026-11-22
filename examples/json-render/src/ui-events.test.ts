@@ -2,14 +2,15 @@ import { compileSpecStream } from "@json-render/core";
 import { describe, expect, it } from "vitest";
 
 import { validateUiSpec, type CommittedUi } from "./catalog.js";
-import { demoSpecStream } from "./generation.js";
+import { fixtureSpecStream } from "./generation-fixture.js";
 import { createUiStream, type StreamFrame, type UiEvent } from "./ui-events.js";
 
 const generationId = "32cf59ea-785c-43eb-81ce-f936d533d956";
 const otherGeneration = "7f4aa0d1-6602-49a5-b128-06ac9aad4450";
-const text = demoSpecStream({ prompt: "Plan a café visit ☕ 🌱" });
+const text = fixtureSpecStream({ prompt: "Plan a café visit ☕ 🌱" });
 const expected = validateUiSpec(compileSpecStream(text));
 const baseline: CommittedUi = { spec: expected, generationId: otherGeneration, chunkCount: 1 };
+
 const frame = (event: UiEvent, namespace = "custom"): StreamFrame => ({
   event: namespace,
   data: event,
@@ -33,6 +34,7 @@ describe("application SpecStream bridge", () => {
   it("keeps the last renderable preview while a table's props are incomplete", () => {
     const stream = createUiStream(null);
     let sequence = 1;
+
     const push = (text: string) =>
       stream.push(
         frame({ type: "json-render", generationId, sequence: sequence++, phase: "chunk", text }),
@@ -65,10 +67,12 @@ describe("application SpecStream bridge", () => {
 
   it("deduplicates replay before non-idempotent array inserts reach the compiler", () => {
     const stream = createUiStream(null);
+
     for (const event of events()) {
       stream.push(frame(event));
       stream.push(frame(event));
     }
+
     expect(stream.snapshot().spec).toEqual(expected);
     expect(stream.snapshot().spec?.elements["tasks"]?.props["tasks"]).toHaveLength(3);
   });
@@ -78,6 +82,7 @@ describe("application SpecStream bridge", () => {
     (loss) => {
       const stream = createUiStream(baseline);
       const chunks = events();
+
       const damaged =
         loss === "prefix"
           ? chunks.slice(1)
@@ -101,6 +106,7 @@ describe("application SpecStream bridge", () => {
 
   it("ignores other modes, subgraphs, unrelated custom events and another generation", () => {
     const stream = createUiStream(null);
+
     for (const event of events()) {
       stream.push(frame(event, "custom|worker:123"));
       stream.push(frame(event, "messages"));
@@ -108,6 +114,7 @@ describe("application SpecStream bridge", () => {
       stream.push(frame(event));
       stream.push(frame({ ...event, generationId: otherGeneration }));
     }
+
     expect(stream.snapshot()).toMatchObject({ gap: false, complete: true, spec: expected });
   });
 

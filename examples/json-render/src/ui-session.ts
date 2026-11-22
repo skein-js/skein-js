@@ -3,10 +3,10 @@ import type { Client, Command, ThreadState } from "@langchain/langgraph-sdk";
 import { z } from "zod";
 
 import {
-  conversationSchema,
   committedUiSchema,
+  conversationSchema,
   decisionSchema,
-  requestSchema,
+  promptRequestSchema,
   type CommittedUi,
   type Conversation,
 } from "./catalog.js";
@@ -17,6 +17,7 @@ const reviewSchema = z.object({
   generationId: z.string().uuid(),
   prompt: z.string(),
 });
+
 const valuesSchema = z.object({
   conversation: conversationSchema.default([]),
   ui: committedUiSchema.nullish(),
@@ -56,6 +57,7 @@ const initialSnapshot: UiSnapshot = {
   recovery: null,
   needsRefresh: false,
 };
+
 const isActive = (status: string) => status === "running" || status === "pending";
 const describeError = (error: unknown) => (error instanceof Error ? error.message : String(error));
 
@@ -63,12 +65,14 @@ function readReview(state: ThreadState<Record<string, unknown>>): Review | null 
   for (const task of state.tasks)
     for (const interruption of task.interrupts) {
       const parsed = reviewSchema.safeParse(interruption.value);
+
       if (parsed.success) {
         if (!interruption.id)
           throw new Error("The pending review has no interrupt identity. Start a New chat.");
         return { ...parsed.data, id: interruption.id };
       }
     }
+
   return null;
 }
 
@@ -77,10 +81,12 @@ export function createUiSession(client: Client<Record<string, unknown>>) {
   let snapshot: UiSnapshot = { ...initialSnapshot };
   let epoch = 0;
   const listeners = new Set<() => void>();
+
   let observation: {
     threadId: string;
     runId: string;
     stream: ReturnType<typeof createUiStream>;
+    onCommitted?: () => void;
     cursor?: string;
     controller?: AbortController;
   } | null = null;
@@ -89,6 +95,7 @@ export function createUiSession(client: Client<Record<string, unknown>>) {
     snapshot = { ...snapshot, ...changes };
     for (const listener of listeners) listener();
   }
+
   function requireRefresh(error: unknown) {
     publish({
       busy: false,
@@ -99,12 +106,14 @@ export function createUiSession(client: Client<Record<string, unknown>>) {
       needsRefresh: true,
     });
   }
+
   function leave() {
     epoch++;
     observation?.controller?.abort();
     observation = null;
     return epoch;
   }
+
   async function restore(threadId: string, token: number) {
     const state = await client.threads.getState(threadId);
     if (token !== epoch) return;
@@ -129,12 +138,14 @@ export function createUiSession(client: Client<Record<string, unknown>>) {
       needsRefresh: false,
     });
   }
+
   async function follow(current: NonNullable<typeof observation>, token: number) {
     if (token !== epoch) return;
     const controller = new AbortController();
     current.controller = controller;
     publish({ connected: true, error: null });
     let failure: string | null = null;
+
     try {
       for await (const frame of client.runs.joinStream(current.threadId, current.runId, {
         lastEventId: current.cursor,
@@ -162,10 +173,13 @@ export function createUiSession(client: Client<Record<string, unknown>>) {
       if (controller.signal.aborted || token !== epoch) return;
       failure = describeError(error);
     }
+
     if (token !== epoch || controller.signal.aborted) return;
+
     try {
       const run = await client.runs.get(current.threadId, current.runId);
       if (token !== epoch) return;
+
       if (isActive(run.status)) {
         publish({
           connected: false,
@@ -173,9 +187,12 @@ export function createUiSession(client: Client<Record<string, unknown>>) {
         });
         return;
       }
+
       // Reconcile even when replay was empty or its tail vanished. An SSE complete event isn't a checkpoint.
+      const previousGenerationId = snapshot.ui?.generationId;
       await restore(current.threadId, token);
-      if (token === epoch)
+
+      if (token === epoch) {
         publish({
           busy: false,
           connected: false,
@@ -185,13 +202,22 @@ export function createUiSession(client: Client<Record<string, unknown>>) {
               ? "Generation failed. Showing the last saved plan."
               : null),
         });
+        if (
+          snapshot.ui &&
+          snapshot.ui.generationId !== previousGenerationId &&
+          (run.status === "interrupted" || run.status === "success")
+        )
+          current.onCommitted?.();
+      }
     } catch (error) {
       if (token === epoch) requireRefresh(error);
     }
   }
+
   async function startRun(
     payload: { input: Record<string, unknown> | null; command?: Command },
     pendingPrompt: string | null = null,
+    onCommitted?: () => void,
   ) {
     const token = leave();
     publish({
@@ -203,14 +229,17 @@ export function createUiSession(client: Client<Record<string, unknown>>) {
       spec: snapshot.ui?.spec ?? null,
       preview: false,
     });
+
     try {
       let threadId = snapshot.threadId;
+
       if (!threadId) {
         const thread = await client.threads.create();
         if (token !== epoch) return;
         threadId = thread.thread_id;
         publish({ threadId });
       }
+
       const run = await client.runs.create(threadId, "ui-playground", {
         ...payload,
         streamMode: ["custom", "values"],
@@ -218,7 +247,12 @@ export function createUiSession(client: Client<Record<string, unknown>>) {
         multitaskStrategy: "reject",
       });
       if (token !== epoch) return;
-      observation = { threadId, runId: run.run_id, stream: createUiStream(snapshot.ui) };
+      observation = {
+        threadId,
+        runId: run.run_id,
+        stream: createUiStream(snapshot.ui),
+        onCommitted,
+      };
       publish({ runId: run.run_id, review: null, approved: null });
       await follow(observation, token);
     } catch (error) {
@@ -237,6 +271,7 @@ export function createUiSession(client: Client<Record<string, unknown>>) {
     read: () => snapshot,
     subscribe(listener: () => void) {
       listeners.add(listener);
+
       return () => {
         listeners.delete(listener);
       };
@@ -245,6 +280,7 @@ export function createUiSession(client: Client<Record<string, unknown>>) {
       const token = leave();
       publish({ ...initialSnapshot, threadId, busy: Boolean(threadId) });
       if (!threadId) return;
+
       try {
         await restore(threadId, token);
         const [running, pending] = await Promise.all([
@@ -253,12 +289,14 @@ export function createUiSession(client: Client<Record<string, unknown>>) {
         ]);
         if (token !== epoch) return;
         const active = running[0] ?? pending[0];
+
         if (!active) {
           // A run may have committed between the first state read and the active-run queries.
           await restore(threadId, token);
           if (token === epoch) publish({ busy: false });
           return;
         }
+
         observation = { threadId, runId: active.run_id, stream: createUiStream(snapshot.ui) };
         publish({ runId: active.run_id, busy: true });
         await follow(observation, token);
@@ -266,14 +304,30 @@ export function createUiSession(client: Client<Record<string, unknown>>) {
         if (token === epoch) requireRefresh(error);
       }
     },
-    async generate(request: unknown) {
+    async generate(request: unknown, onCommitted?: () => void) {
       if (snapshot.busy || snapshot.review || snapshot.needsRefresh) return;
-      const parsed = requestSchema.safeParse(request);
+      const parsed = promptRequestSchema.safeParse(request);
+
       if (!parsed.success) {
         publish({ error: "Enter a request between 1 and 2000 characters." });
         return;
       }
-      await startRun({ input: { request: parsed.data } }, parsed.data.prompt);
+
+      await startRun({ input: { request: parsed.data } }, parsed.data.prompt, onCommitted);
+    },
+    async revise(generationId: string, params: unknown) {
+      if (snapshot.busy || snapshot.review || snapshot.needsRefresh || snapshot.approved === null)
+        return;
+      if (generationId !== snapshot.ui?.generationId) return;
+      const parsed = promptRequestSchema.safeParse(params);
+
+      if (!parsed.success) {
+        publish({ error: "Enter a request between 1 and 2000 characters." });
+        return;
+      }
+
+      const request = { action: "reviseUi", generationId, prompt: parsed.data.prompt };
+      await startRun({ input: { request } }, request.prompt);
     },
     async decide(approved: boolean) {
       if (snapshot.busy || snapshot.needsRefresh || !snapshot.review || !snapshot.ui) return;
@@ -297,6 +351,7 @@ export function createUiSession(client: Client<Record<string, unknown>>) {
       const token = epoch;
       current.controller?.abort();
       publish({ connected: false });
+
       try {
         await client.runs.cancel(current.threadId, current.runId, true);
         const run = await client.runs.get(current.threadId, current.runId);

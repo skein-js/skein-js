@@ -86,7 +86,11 @@
       "cache": false
     },
     "lint": {
-      "inputs": ["default", "{workspaceRoot}/eslint.config.mjs"],
+      "inputs": [
+        "default",
+        "{workspaceRoot}/eslint.config.mjs",
+        "{workspaceRoot}/tools/playground-spacing.mjs"
+      ],
       "cache": true
     }
   },

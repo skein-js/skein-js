@@ -4,7 +4,7 @@ import { Client } from "@langchain/langgraph-sdk";
 import { afterEach, describe, expect, it, vi } from "vitest";
 
 import { committedUiSchema } from "./catalog.js";
-import { demoSpecStream } from "./generation.js";
+import { fixtureSpecStream } from "./generation-fixture.js";
 import { generateImmediateText, startHarness } from "./test-harness.js";
 import { addRunIdempotency } from "./ui-client.js";
 import { createUiSession } from "./ui-session.js";
@@ -16,6 +16,7 @@ afterEach(() => {
 
 function gate() {
   let release!: () => void;
+
   const promise = new Promise<void>((resolve) => {
     release = resolve;
   });
@@ -27,6 +28,7 @@ describe("plan session over the official HTTP SDK", () => {
     const harness = await startHarness(generateImmediateText);
     const first = createUiSession(harness.clientFor());
     const second = createUiSession(harness.clientFor());
+
     try {
       const thread = await harness.clientFor().threads.create();
       await first.open(thread.thread_id);
@@ -49,6 +51,7 @@ describe("plan session over the official HTTP SDK", () => {
   it("abandons an unsaved preview and blocks writes until its checkpoint is refreshed", async () => {
     const harness = await startHarness(generateImmediateText);
     let failStateReads = false;
+
     const client = new Client<Record<string, unknown>>({
       apiUrl: harness.url,
       apiKey: null,
@@ -66,7 +69,9 @@ describe("plan session over the official HTTP SDK", () => {
         },
       },
     });
+
     const session = createUiSession(client);
+
     try {
       await session.generate({ prompt: "A saved baseline" });
       await session.decide(true);
@@ -95,12 +100,15 @@ describe("plan session over the official HTTP SDK", () => {
 
   it("retries a lost run-creation response without generating or approving twice", async () => {
     let generations = 0;
+
     const harness = await startHarness(async function* (request, signal) {
       generations++;
       yield* generateImmediateText(request, signal);
     });
+
     let lostResponse = false;
     const creationKeys: (string | null)[] = [];
+
     const client = new Client<Record<string, unknown>>({
       apiUrl: harness.url,
       apiKey: null,
@@ -109,10 +117,13 @@ describe("plan session over the official HTTP SDK", () => {
       callerOptions: {
         fetch: async (input: RequestInfo | URL, init?: RequestInit) => {
           const response = await fetch(input, init);
+
           const url =
             typeof input === "string" ? input : input instanceof URL ? input.href : input.url;
+
           if (init?.method === "POST" && /\/threads\/[^/]+\/runs$/.test(new URL(url).pathname)) {
             creationKeys.push(new Headers(init.headers).get("Idempotency-Key"));
+
             if (!lostResponse) {
               lostResponse = true;
               // Let the accepted run finish before its response is lost.
@@ -122,11 +133,14 @@ describe("plan session over the official HTTP SDK", () => {
               throw new TypeError("fetch failed");
             }
           }
+
           return response;
         },
       },
     });
+
     const session = createUiSession(client);
+
     try {
       await session.generate({ prompt: "Create exactly one plan" });
       expect(session.read()).toMatchObject({ busy: false, error: null });
@@ -160,10 +174,12 @@ describe("plan session over the official HTTP SDK", () => {
     "reconciles %s event delivery with saved state",
     async (damage) => {
       let generations = 0;
+
       const harness = await startHarness(async function* (request, signal) {
         generations++;
         yield* generateImmediateText(request, signal);
       });
+
       try {
         const client = new Client<Record<string, unknown>>({
           apiUrl: harness.url,
@@ -172,6 +188,7 @@ describe("plan session over the official HTTP SDK", () => {
           callerOptions: {
             fetch: async (input: RequestInfo | URL, init?: RequestInit) => {
               const response = await fetch(input, init);
+
               const url =
                 typeof input === "string" ? input : input instanceof URL ? input.href : input.url;
               if (!new URL(url).pathname.endsWith("/stream") || !response.ok) return response;
@@ -179,6 +196,7 @@ describe("plan session over the official HTTP SDK", () => {
               const blocks = (await response.text()).split("\n\n");
               const custom = blocks.filter((block) => block.includes('"type":"json-render"'));
               let index = -1;
+
               const filtered = blocks.flatMap((block) => {
                 if (!block.includes('"type":"json-render"')) return [block];
                 index++;
@@ -198,8 +216,10 @@ describe("plan session over the official HTTP SDK", () => {
             },
           },
         });
+
         const session = createUiSession(client);
         const recovered: string[] = [];
+
         const unsubscribe = session.subscribe(() => {
           if (session.read().recovery) recovered.push(session.read().recovery!);
         });
@@ -226,16 +246,19 @@ describe("plan session over the official HTTP SDK", () => {
     async (finishFirst) => {
       const continuation = gate();
       let generations = 0;
+
       const harness = await startHarness(async function* (request) {
         generations++;
-        const text = demoSpecStream(request);
+        const text = fixtureSpecStream(request);
         const split = text.indexOf("\n", text.indexOf("\n") + 1) + 1;
         yield text.slice(0, split);
         await continuation.promise;
         yield text.slice(split);
       });
+
       const client = harness.clientFor();
       const session = createUiSession(client);
+
       try {
         const running = session.generate({ prompt: "Reconnect safely" });
         await expect.poll(() => session.read().preview).toBe(true);
@@ -243,10 +266,12 @@ describe("plan session over the official HTTP SDK", () => {
         session.disconnect();
         await running;
         expect((await client.runs.get(threadId!, runId!)).status).toBe("running");
+
         if (finishFirst) {
           continuation.release();
           await client.runs.join(threadId!, runId!);
         }
+
         const reconnecting = session.reconnect();
         if (!finishFirst) continuation.release();
         await reconnecting;
@@ -265,10 +290,12 @@ describe("plan session over the official HTTP SDK", () => {
     vi.stubEnv("SKEIN_MEMORY_BUS_MAX_FRAMES_PER_RUN", "2");
     vi.stubEnv("SKEIN_MEMORY_BUS_MAX_RETAINED_RUNS", "1");
     let generations = 0;
+
     const harness = await startHarness(async function* (request, signal) {
       generations++;
       yield* generateImmediateText(request, signal);
     });
+
     try {
       const client = harness.clientFor();
       const first = await client.threads.create();
@@ -301,21 +328,26 @@ describe("plan session over the official HTTP SDK", () => {
         yield "invalid output";
         return;
       }
+
       if (request.prompt === "slow") {
-        yield demoSpecStream(request).slice(0, 400);
+        yield fixtureSpecStream(request).slice(0, 400);
         await pause(20_000, undefined, { signal });
       }
+
       yield* generateImmediateText(request, signal);
     });
+
     const session = createUiSession(harness.clientFor());
+
     try {
       await session.generate({ prompt: "Keep this saved" });
       const baseline = structuredClone(session.read().ui);
       await session.decide(false);
       expect(session.read().approved).toBe(false);
-      await session.generate({ prompt: "fail" });
+      await session.revise(baseline!.generationId, { prompt: "fail" });
       expect(session.read().error).toBeTruthy();
       expect(session.read().ui).toEqual(baseline);
+      expect(session.read().approved).toBe(false);
       const running = session.generate({ prompt: "slow" });
       await expect.poll(() => session.read().preview).toBe(true);
       await session.stop();
@@ -337,6 +369,7 @@ describe("plan session over the official HTTP SDK", () => {
     const harness = await startHarness(generateImmediateText);
     const client = harness.clientFor();
     const releaseOld = gate();
+
     try {
       const first = await client.threads.create();
       const second = await client.threads.create();
@@ -369,16 +402,21 @@ describe("plan session over the official HTTP SDK", () => {
 
   it("refreshes a checkpoint that commits between reopening state and looking for active runs", async () => {
     const continuation = gate();
+
     const harness = await startHarness(async function* (request, signal) {
       await continuation.promise;
       yield* generateImmediateText(request, signal);
     });
+
     const client = harness.clientFor();
+
     try {
       const thread = await client.threads.create();
+
       const run = await client.runs.create(thread.thread_id, "ui-playground", {
         input: { request: { prompt: "Committed while reopening" } },
       });
+
       const getState = client.threads.getState.bind(client.threads);
       vi.spyOn(client.threads, "getState").mockImplementationOnce(async (threadId) => {
         const oldState = await getState(threadId);

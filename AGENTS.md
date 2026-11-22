@@ -44,9 +44,9 @@ input. See [docs/local-deployment.md](./docs/local-deployment.md).
    settle style — don't hand-argue it.
 4. **Green before commit — never commit red.** A pre-commit hook enforces this mechanically:
    [`.githooks/pre-commit`](.githooks/pre-commit), wired by `pnpm install` (`prepare` sets
-   `core.hooksPath`), runs `nx format:check` + `nx affected -t lint typecheck test` (with `CI=true`
-   so Vitest runs once; `examples/*` excluded — they need live services / local `.env`) for whatever
-   your staged changes touch. Build and the Docker-backed integration tests run in
+   `core.hooksPath`), checks staged formatting and runs affected ESLint with zero warnings.
+   It runs affected typechecks and tests with `CI=true`, excluding examples that can need local
+   services or `.env` files. Build and the Docker-backed integration tests run in
    [CI](.github/workflows/ci.yml) — run them locally too for anything substantial
    (`nx run-many -t build test-integration`). Keep docs current with any behavior/architecture change —
    including the installable `skills/` guidance when onboarding or deployment changes —
@@ -243,9 +243,9 @@ commands and host boundaries.
 
 Examples live in `examples/`: `native-transports` (native SQLite admission and an HTTP/BullMQ approval
 backend with a durable outcome receiver), `json-render` (public React/Vite UI playground — upstream
-SpecStream compilation, checkpoint restoration, revisions and interrupt/resume; offline by default), `chat-app` (flagship — research assistant + Next.js/shadcn UI),
+SpecStream compilation, checkpoint restoration, revisions and interrupt/resume for model-generated GitHub views), `chat-app` (flagship — research assistant + Next.js/shadcn UI),
 `a2ui` (native Angular UI playground — upstream A2UI 1.0, checkpoint restoration, bound actions,
-surface deletion and interrupt/resume; offline by default), `triage-agent` (the console's workload — cron sweep, a durable run per item, idempotent re-sweeps,
+surface deletion and interrupt/resume for model-generated GitHub views), `triage-agent` (the console's workload — cron sweep, a durable run per item, idempotent re-sweeps,
 conditional HITL approval, store memory; runs offline with no API key),
 `deep-agent` (experimental Deep Agents support — a research briefing assistant with per-user memory,
 streamed and background subagents, and approval before emailing; runs offline with a scripted model), `migrated-langgraph` (drop-in proof), `gemini-chat` (model-backed e2e), `express-basic`

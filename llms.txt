@@ -96,8 +96,8 @@ Upstream references: [LangGraph.js overview](https://docs.langchain.com/oss/java
 - [express-basic](https://github.com/skein-js/skein-js/tree/main/examples/express-basic): Zero-setup `echo` + a model-backed `agent` graph from one `langgraph.json`.
 - [embed-graph](https://github.com/skein-js/skein-js/tree/main/examples/embed-graph): In-code embedding with no `langgraph.json` (`embedInMemoryGraphs` + `{ deps }`).
 - [chat-app](https://github.com/skein-js/skein-js/tree/main/examples/chat-app): Flagship — a Gemini research assistant (thinking + web search + long-term memory) with a Next.js + shadcn UI.
-- [json-render](https://github.com/skein-js/skein-js/tree/main/examples/json-render): Public React/Vite example with offline-first UI generation, restoration, revisions and interrupt/resume.
-- [a2ui](https://github.com/skein-js/skein-js/tree/main/examples/a2ui): Native Angular UI playground with A2UI 1.0 surfaces, offline/optional live generation, bound actions, review and checkpoint restoration.
+- [json-render](https://github.com/skein-js/skein-js/tree/main/examples/json-render): Model-backed GitHub playground with streamed React UI, restoration, revisions and review.
+- [a2ui](https://github.com/skein-js/skein-js/tree/main/examples/a2ui): Model-backed GitHub playground with native Angular A2UI 1.0 surfaces, bound actions, review and restoration.
 - [gemini-chat](https://github.com/skein-js/skein-js/tree/main/examples/gemini-chat): Model-backed end-to-end — a Gemini ReAct agent streamed into a browser.
 - [migrated-langgraph](https://github.com/skein-js/skein-js/tree/main/examples/migrated-langgraph): The drop-in proof — a stock LangGraph project run under `skein dev`.
 - [Framework adapters](https://github.com/skein-js/skein-js/tree/main/examples): fastify-basic/-app, nestjs-basic/-app, nextjs-basic/-app (standalone + embedded), react-usestream.

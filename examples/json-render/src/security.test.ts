@@ -6,6 +6,7 @@ import { generateImmediateText, startHarness } from "./test-harness.js";
 describe("application authorization and approval boundaries", () => {
   it("authorizes state, stream, cancellation and resume through the thread owner", async () => {
     const harness = await startHarness(generateImmediateText);
+
     try {
       const alice = harness.clientFor("alice");
       const thread = await alice.threads.create();
@@ -14,6 +15,7 @@ describe("application authorization and approval boundaries", () => {
       });
       const run = (await alice.runs.list(thread.thread_id))[0]!;
       const root = "/threads/" + thread.thread_id;
+
       for (const [path, method, body] of [
         [root + "/state", "GET", undefined],
         [root + "/runs/" + run.run_id + "/stream", "GET", undefined],
@@ -31,6 +33,7 @@ describe("application authorization and approval boundaries", () => {
         });
         expect(response.status, path).toBe(404);
       }
+
       const missingIdentity = await fetch(harness.url + root + "/state");
       expect(missingIdentity.status).toBe(401);
       const store = await fetch(harness.url + "/store/items/search", {
@@ -47,6 +50,7 @@ describe("application authorization and approval boundaries", () => {
 
   it("does not accept saved UI or approval through ordinary graph input", async () => {
     const harness = await startHarness(generateImmediateText);
+
     try {
       const client = harness.clientFor();
       const thread = await client.threads.create();
@@ -64,8 +68,49 @@ describe("application authorization and approval boundaries", () => {
     }
   });
 
+  it("rejects a revision from an older UI before calling the generator", async () => {
+    const harness = await startHarness(generateImmediateText);
+
+    try {
+      const client = harness.clientFor();
+      const thread = await client.threads.create();
+      await client.runs.wait(thread.thread_id, "ui-playground", {
+        input: { request: { prompt: "Review me" } },
+      });
+      const saved = await client.threads.getState(thread.thread_id);
+      const ui = committedUiSchema.parse(saved.values["ui"]);
+      await client.runs.wait(thread.thread_id, "ui-playground", {
+        input: null,
+        command: { resume: { generationId: ui.generationId, approved: true } },
+      });
+
+      const run = await client.runs.create(thread.thread_id, "ui-playground", {
+        input: {
+          request: {
+            action: "reviseUi",
+            generationId: crypto.randomUUID(),
+            prompt: "Make it simpler",
+          },
+        },
+        streamMode: ["custom"],
+      });
+
+      const events = [];
+      for await (const event of client.runs.joinStream(thread.thread_id, run.run_id))
+        events.push(event);
+      expect(events.some((event) => event.event === "custom")).toBe(false);
+      expect((await client.runs.get(thread.thread_id, run.run_id)).status).toBe("error");
+      const restored = await client.threads.getState(thread.thread_id);
+      expect(restored.values["ui"]).toEqual(ui);
+      expect(restored.values["approved"]).toBe(true);
+    } finally {
+      await harness.close();
+    }
+  });
+
   it.each(["stale", "malformed"])("does not approve a %s resume decision", async (kind) => {
     const harness = await startHarness(generateImmediateText);
+
     try {
       const client = harness.clientFor();
       const thread = await client.threads.create();
@@ -74,17 +119,21 @@ describe("application authorization and approval boundaries", () => {
       });
       const state = await client.threads.getState(thread.thread_id);
       const ui = committedUiSchema.parse(state.values["ui"]);
+
       const resume =
         kind === "stale"
           ? { generationId: crypto.randomUUID(), approved: true }
           : { generationId: ui.generationId, approved: "yes" };
+
       const run = await client.runs.create(thread.thread_id, "ui-playground", {
         input: null,
         command: { resume },
       });
+
       for await (const _ of client.runs.joinStream(thread.thread_id, run.run_id)) {
         /* wait for graph validation */
       }
+
       expect((await client.runs.get(thread.thread_id, run.run_id)).status).toBe("error");
       const rejected = await client.threads.getState(thread.thread_id);
       expect(rejected.values["approved"]).toBeNull();
