@@ -1,36 +1,11 @@
 import { basicCatalog, MessageProcessor } from "@a2ui/web_core/v1_0";
 import { describe, expect, it } from "vitest";
 
-import { fixtureMessages, fixtureResponse } from "./generation-fixture.js";
+import { fixtureMessages, generateImmediateText, rendererMetadata } from "./generation-fixture.js";
 import type { GenerateText } from "./generation.js";
-import {
-  parseSavedUi,
-  parseUiMessage,
-  type RendererMetadata,
-  type UiMessage,
-} from "./ui-contract.js";
+import { parseSavedUi, parseUiMessage, type UiMessage } from "./ui-contract.js";
 import { createUiStream } from "./ui-events.js";
 import { generateA2ui } from "./ui-generation.js";
-
-export function rendererMetadata(): RendererMetadata {
-  const processor = new MessageProcessor([basicCatalog]);
-
-  try {
-    return {
-      a2uiRendererCapabilities: processor.getRendererCapabilities({
-        versions: ["1.0"],
-        includeInlineCatalogs: false,
-      }),
-    } as RendererMetadata;
-  } finally {
-    processor.dispose();
-  }
-}
-
-const immediateText: GenerateText = async function* (request) {
-  const text = fixtureResponse(request.prompt, request.generationId);
-  for (let offset = 0; offset < text.length; offset += 37) yield text.slice(offset, offset + 37);
-};
 
 describe("upstream A2UI generation and checkpoint bootstrap", () => {
   it.each([
@@ -46,7 +21,7 @@ describe("upstream A2UI generation and checkpoint bootstrap", () => {
       generationId,
       metadata: rendererMetadata(),
       previousUi: null,
-      generateText: immediateText,
+      generateText: generateImmediateText,
       writeMessage: (message) => messages.push(message),
     });
     expect(messages.some((message) => "updateComponents" in message)).toBe(true);
@@ -77,7 +52,7 @@ describe("upstream A2UI generation and checkpoint bootstrap", () => {
       generationId,
       metadata: rendererMetadata(),
       previousUi: null,
-      generateText: immediateText,
+      generateText: generateImmediateText,
       writeMessage: (message) => messages.push(message),
     });
 

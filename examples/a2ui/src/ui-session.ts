@@ -26,7 +26,7 @@ const valuesSchema = z.object({
   approved: z.boolean().nullish(),
 });
 type Review = z.infer<typeof reviewSchema> & { id: string };
-export interface UiSnapshot {
+interface UiSnapshot {
   conversation: Conversation;
   pendingPrompt: string | null;
   threadId: string | null;

@@ -224,15 +224,9 @@ importers:
       '@playwright/test':
         specifier: 1.61.1
         version: 1.61.1
-      '@skein-js/agent-protocol':
-        specifier: workspace:*
-        version: link:../../packages/agent-protocol
       '@skein-js/express':
         specifier: workspace:*
         version: link:../../packages/server-express
-      '@skein-js/langgraph':
-        specifier: workspace:*
-        version: link:../../packages/langgraph
       '@skein-js/local':
         specifier: workspace:*
         version: link:../../packages/local
@@ -245,9 +239,6 @@ importers:
       skein-js:
         specifier: workspace:*
         version: link:../../packages/cli
-      tsx:
-        specifier: 4.22.4
-        version: 4.22.4
 
   examples/chat-app:
     dependencies:
@@ -710,21 +701,9 @@ importers:
       '@playwright/test':
         specifier: 1.61.1
         version: 1.61.1
-      '@skein-js/agent-protocol':
-        specifier: workspace:*
-        version: link:../../packages/agent-protocol
       '@skein-js/express':
         specifier: workspace:*
         version: link:../../packages/server-express
-      '@skein-js/langgraph':
-        specifier: workspace:*
-        version: link:../../packages/langgraph
-      '@skein-js/server-kit':
-        specifier: workspace:*
-        version: link:../../packages/server-kit
-      '@skein-js/storage-memory':
-        specifier: workspace:*
-        version: link:../../packages/storage-memory
       '@types/react':
         specifier: ^19.0.2
         version: 19.2.15
@@ -737,9 +716,6 @@ importers:
       skein-js:
         specifier: workspace:*
         version: link:../../packages/cli
-      tsx:
-        specifier: 4.22.4
-        version: 4.22.4
 
   examples/local-cli:
     dependencies:

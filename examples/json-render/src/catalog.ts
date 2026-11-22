@@ -8,7 +8,7 @@ import {
 import { schema } from "@json-render/react/schema";
 import { z } from "zod";
 
-export const promptSchema = z.string().trim().min(1).max(2000);
+const promptSchema = z.string().trim().min(1).max(2000);
 export const promptRequestSchema = z.object({ prompt: promptSchema }).strict();
 export const revisionSchema = promptRequestSchema.extend({ generationId: z.uuid() });
 export const requestSchema = z.union([

@@ -1,10 +1,11 @@
 import { describe, expect, it } from "vitest";
 
-import { generateImmediateText, rendererMetadata, startHarness } from "./test-harness.js";
+import { generateImmediateText, rendererMetadata } from "./generation-fixture.js";
+import { startHarness } from "./test-harness.js";
 import { parseSavedUi, uiSurfaceIds } from "./ui-contract.js";
 import { createUiSession } from "./ui-session.js";
 
-describe("trip authorization and application boundaries", () => {
+describe("A2UI authorization and application boundaries", () => {
   it("enforces ownership for state, stream, cancellation and resume", async () => {
     const harness = await startHarness(generateImmediateText);
     const alice = harness.clientFor("alice");

@@ -30,13 +30,10 @@
     "@angular/compiler-cli": "21.2.25",
     "@langchain/langgraph-checkpoint-sqlite": "~1.0.4",
     "@playwright/test": "1.61.1",
-    "@skein-js/agent-protocol": "workspace:*",
     "@skein-js/express": "workspace:*",
-    "@skein-js/langgraph": "workspace:*",
     "@skein-js/local": "workspace:*",
     "@skein-js/server-kit": "workspace:*",
     "@skein-js/storage-memory": "workspace:*",
-    "skein-js": "workspace:*",
-    "tsx": "4.22.4"
+    "skein-js": "workspace:*"
   }
 }

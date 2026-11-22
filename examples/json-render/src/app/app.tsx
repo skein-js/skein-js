@@ -142,7 +142,7 @@ export function App() {
               </section>
             )}
             {snapshot.conversation.map((turn) => (
-              <div key={turn.generationId} className="turn">
+              <div key={turn.generationId}>
                 <p className="user-message">{turn.prompt}</p>
                 {turn.ui &&
                 (turn.generationId !== snapshot.ui?.generationId || snapshot.pendingPrompt) ? (
@@ -246,7 +246,7 @@ export function App() {
               className="composer"
               onSubmit={(event) => {
                 event.preventDefault();
-                void send();
+                send();
               }}
             >
               <label className="sr-only" htmlFor="ui-prompt">

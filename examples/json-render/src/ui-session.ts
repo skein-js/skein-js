@@ -24,7 +24,7 @@ const valuesSchema = z.object({
   approved: z.boolean().nullish(),
 });
 type Review = z.infer<typeof reviewSchema> & { id: string };
-export interface UiSnapshot {
+interface UiSnapshot {
   conversation: Conversation;
   pendingPrompt: string | null;
   threadId: string | null;
@@ -165,7 +165,7 @@ export function createUiSession(client: Client<Record<string, unknown>>) {
             spec: preview.spec,
             preview: preview.preview,
             recovery: preview.gap
-              ? "Some updates are missing. Showing the last saved plan until this run finishes."
+              ? "Some updates are missing. Showing the last saved UI until this run finishes."
               : null,
           });
       }
@@ -199,7 +199,7 @@ export function createUiSession(client: Client<Record<string, unknown>>) {
           error:
             failure ??
             (["error", "timeout"].includes(run.status)
-              ? "Generation failed. Showing the last saved plan."
+              ? "Generation failed. Showing the last saved UI."
               : null),
         });
         if (

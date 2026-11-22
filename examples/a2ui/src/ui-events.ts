@@ -14,7 +14,8 @@ const eventBase = {
   generationId: z.uuid(),
   sequence: z.number().int().nonnegative(),
 };
-export const uiEventSchema = z.discriminatedUnion("phase", [
+
+const uiEventSchema = z.discriminatedUnion("phase", [
   z
     .object({
       ...eventBase,
@@ -33,7 +34,7 @@ export const uiEventSchema = z.discriminatedUnion("phase", [
   z.object({ ...eventBase, phase: z.literal("complete") }).strict(),
 ]);
 export type UiEvent = z.infer<typeof uiEventSchema>;
-export type StreamFrame = { event: string; data: unknown; id?: string };
+type StreamFrame = { event: string; data: unknown };
 
 /** One upstream processor per observed run, retained across reconnects to that run only. */
 export function createUiStream(baseline: SavedUi | null) {

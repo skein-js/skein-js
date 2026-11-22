@@ -10,8 +10,9 @@ import {
   fixtureMessages,
   fixtureResponse,
   generateFixtureText,
+  rendererMetadata,
 } from "../src/generation-fixture.js";
-import { rendererMetadata, startHarness } from "../src/test-harness.js";
+import { startHarness } from "../src/test-harness.js";
 
 let browser: Browser;
 let uiServer: PreviewServer;

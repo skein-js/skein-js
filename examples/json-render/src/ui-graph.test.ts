@@ -9,7 +9,7 @@ import {
 } from "./catalog.js";
 import { fixtureSpecStream } from "./generation-fixture.js";
 import { generateImmediateText, startHarness } from "./test-harness.js";
-import { createUiStream } from "./ui-events.js";
+import { createUiStream, type UiEvent } from "./ui-events.js";
 
 describe("json-render through Skein HTTP", () => {
   it("streams a validated UI, checkpoints it, and resumes without generating again", async () => {
@@ -33,16 +33,22 @@ describe("json-render through Skein HTTP", () => {
       });
 
       const stream = createUiStream(null);
-      for await (const frame of client.runs.joinStream(thread.thread_id, run.run_id))
+      let chunkCount = 0;
+
+      for await (const frame of client.runs.joinStream(thread.thread_id, run.run_id)) {
+        if (frame.event === "custom" && (frame.data as UiEvent | undefined)?.phase === "chunk")
+          chunkCount++;
         stream.push(frame);
+      }
+
       const snapshot = await client.threads.getState(thread.thread_id);
       const ui = committedUiSchema.parse(snapshot.values["ui"]);
       expect(stream.snapshot()).toMatchObject({
         complete: true,
         gap: false,
         spec: ui.spec,
-        chunkCount: ui.chunkCount,
       });
+      expect(chunkCount).toBe(ui.chunkCount);
       expect(ui.spec.elements["summary"]?.props["text"]).toBe("Launch a tiny café ☕");
       expect(snapshot.tasks.flatMap((task) => task.interrupts)).toHaveLength(1);
       const decision = { generationId: ui.generationId, approved: true };

@@ -11,8 +11,7 @@ import {
 } from "@a2ui/web_core/v1_0";
 import { z } from "zod";
 
-export const CATALOG_ID = basicCatalog.id;
-export const surfaceRoles = ["canvas", "controls", "notes"] as const;
+const CATALOG_ID = basicCatalog.id;
 export const promptSchema = z.string().trim().min(1).max(2000);
 export const conversationSchema = z.array(
   z
@@ -132,9 +131,11 @@ export function parseUiMessage(value: unknown): UiMessage {
 }
 
 export function uiSurfaceIds(generationId: string) {
-  return Object.fromEntries(
-    surfaceRoles.map((role) => [role, generationId + ":" + role]),
-  ) as Record<(typeof surfaceRoles)[number], string>;
+  return {
+    canvas: generationId + ":canvas",
+    controls: generationId + ":controls",
+    notes: generationId + ":notes",
+  };
 }
 
 export function messageSurfaceId(message: UiMessage): string {

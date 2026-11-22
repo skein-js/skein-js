@@ -1,7 +1,24 @@
 import { setTimeout as pause } from "node:timers/promises";
 
+import { basicCatalog, MessageProcessor } from "@a2ui/web_core/v1_0";
+
 import type { GenerateText } from "./generation.js";
-import { CATALOG_ID, uiSurfaceIds, type UiMessage } from "./ui-contract.js";
+import { uiSurfaceIds, type RendererMetadata, type UiMessage } from "./ui-contract.js";
+
+export function rendererMetadata(): RendererMetadata {
+  const processor = new MessageProcessor([basicCatalog]);
+
+  try {
+    return {
+      a2uiRendererCapabilities: processor.getRendererCapabilities({
+        versions: ["1.0"],
+        includeInlineCatalogs: false,
+      }),
+    } as RendererMetadata;
+  } finally {
+    processor.dispose();
+  }
+}
 
 export function fixtureMessages(prompt: string, generationId: string): UiMessage[] {
   const ids = uiSurfaceIds(generationId);
@@ -33,7 +50,7 @@ export function fixtureMessages(prompt: string, generationId: string): UiMessage
       version: "1.0",
       createSurface: {
         surfaceId: ids.canvas,
-        catalogId: CATALOG_ID,
+        catalogId: basicCatalog.id,
         components: [{ id: "root", component: "Text", text: "Sketching your interface…" }],
         dataModel: { summary: prompt },
       },
@@ -72,7 +89,7 @@ export function fixtureMessages(prompt: string, generationId: string): UiMessage
       version: "1.0",
       createSurface: {
         surfaceId: ids.controls,
-        catalogId: CATALOG_ID,
+        catalogId: basicCatalog.id,
         sendDataModel: true,
         components: [
           { id: "root", component: "Column", children: ["feedback", "revise"] },
@@ -98,7 +115,7 @@ export function fixtureMessages(prompt: string, generationId: string): UiMessage
       version: "1.0",
       createSurface: {
         surfaceId: ids.notes,
-        catalogId: CATALOG_ID,
+        catalogId: basicCatalog.id,
         components: [
           { id: "root", component: "Column", children: ["note", "dismiss"] },
           {
@@ -123,6 +140,11 @@ export function fixtureMessages(prompt: string, generationId: string): UiMessage
 export function fixtureResponse(prompt: string, generationId: string): string {
   return "<a2ui-json>" + JSON.stringify(fixtureMessages(prompt, generationId)) + "</a2ui-json>";
 }
+
+export const generateImmediateText: GenerateText = async function* (request) {
+  const text = fixtureResponse(request.prompt, request.generationId);
+  for (let offset = 0; offset < text.length; offset += 37) yield text.slice(offset, offset + 37);
+};
 
 export const generateFixtureText: GenerateText = async function* (request, signal) {
   const text = fixtureResponse(request.prompt, request.generationId);

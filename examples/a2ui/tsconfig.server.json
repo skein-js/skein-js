@@ -8,10 +8,10 @@
     "noPropertyAccessFromIndexSignature": false
   },
   "include": [
-    "src/trip*.ts",
     "src/generation.ts",
     "src/ui-events.ts",
     "src/auth.ts",
+    "src/live-graph.ts",
     "src/test-harness.ts",
     "src/**/*.test.ts",
     "browser/**/*.ts",

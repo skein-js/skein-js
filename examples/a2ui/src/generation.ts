@@ -2,7 +2,7 @@ import { streamGitHubUi } from "@skein-js/example-github-playground";
 
 import { uiSurfaceIds, type SavedUi } from "./ui-contract.js";
 
-export interface GenerationRequest {
+interface GenerationRequest {
   prompt: string;
   generationId: string;
   systemPrompt: string;

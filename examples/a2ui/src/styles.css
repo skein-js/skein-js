@@ -176,8 +176,7 @@ h1 {
   color: #375d46;
   font-weight: 700;
 }
-.surface-card,
-.ui-card {
+.surface-card {
   padding: 1.3rem;
   border: 1px solid #e0e6dc;
   border-radius: 0.8rem;
@@ -248,7 +247,6 @@ a2ui-v09-row a2ui-v09-card {
 }
 .composer-dock {
   flex-shrink: 0;
-  position: static;
   padding: 1rem clamp(1rem, 5vw, 5rem);
   background: linear-gradient(transparent, #fafbf9 1rem);
 }
@@ -305,7 +303,6 @@ a2ui-v09-row a2ui-v09-card {
   min-width: 0;
   border-left: 1px solid #e0e5dc;
   background: #f7f8f6;
-  position: static;
   height: 100%;
   overflow: auto;
 }
@@ -336,89 +333,6 @@ a2ui-v09-row a2ui-v09-card {
   line-height: 1.75;
   color: #3a5847;
 }
-.metric-grid {
-  display: grid;
-  gap: 0.75rem;
-  margin: 1.25rem 0;
-}
-.metric {
-  display: flex;
-  flex-direction: column;
-  gap: 0.4rem;
-  padding: 1rem;
-  border: 1px solid #e0e6dc;
-  border-radius: 0.8rem;
-  min-width: 0;
-}
-.metric span,
-.metric small {
-  font-size: 0.72rem;
-  color: #75816e;
-}
-.metric strong {
-  font-size: 1.5rem;
-  letter-spacing: -0.05em;
-  color: #375d46;
-}
-.table-scroll {
-  overflow: auto;
-  max-width: 100%;
-  border: 1px solid #e0e6dc;
-  border-radius: 0.7rem;
-  margin: 1rem 0;
-}
-table {
-  width: 100%;
-  border-collapse: collapse;
-  font-size: 0.75rem;
-  text-align: left;
-}
-caption {
-  text-align: left;
-  padding: 0.8rem;
-  font-weight: 600;
-  background: #f6f8f3;
-}
-th,
-td {
-  padding: 0.7rem 0.8rem;
-  border-top: 1px solid #e6ebe2;
-}
-.task-list {
-  padding: 0;
-  list-style: none;
-  font-size: 0.8rem;
-}
-.task-list li {
-  display: flex;
-  gap: 0.7rem;
-  padding: 0.5rem 0;
-}
-.task-number {
-  color: #8b9c7b;
-}
-.feedback {
-  border-top: 1px solid #e5eadf;
-  padding-top: 1rem;
-  margin-top: 1rem;
-}
-.feedback label {
-  display: block;
-  font-size: 0.8rem;
-  font-weight: 600;
-  margin-bottom: 0.6rem;
-}
-.input-row {
-  display: flex;
-  gap: 0.5rem;
-}
-.input-row input {
-  min-width: 0;
-  flex: 1;
-  border: 1px solid #d8e1d2;
-  border-radius: 0.5rem;
-  padding: 0.6rem;
-}
 .sr-only {
   position: absolute;
   width: 1px;
@@ -436,7 +350,6 @@ td {
     grid-template-rows: minmax(0, 1fr) auto;
   }
   .inspector {
-    position: static;
     max-height: 25dvh;
     height: auto;
     border-left: 0;
@@ -452,13 +365,11 @@ td {
     padding: 1rem;
     flex-wrap: wrap;
   }
-  .site-header nav {
-    gap: 0.5rem;
-  }
   .platform {
     margin-left: auto;
   }
   .site-header nav {
+    gap: 0.5rem;
     width: 100%;
     margin: 0;
     justify-content: flex-end;
@@ -477,14 +388,5 @@ td {
   .review {
     align-items: flex-start;
     flex-direction: column;
-  }
-  .metric-grid {
-    grid-template-columns: minmax(0, 1fr) !important;
-  }
-  .input-row {
-    flex-wrap: wrap;
-  }
-  .input-row input {
-    flex-basis: 100%;
   }
 }
