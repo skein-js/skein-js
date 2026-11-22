@@ -27,6 +27,7 @@ export function ChannelsView() {
   const inventory = useAsync((signal) => client.listChannels(signal), []);
   const [query, setQuery] = useState("");
   const [copied, setCopied] = useState<string>();
+
   const rows = useMemo(
     () => filterChannels(inventory.data?.channels ?? [], query),
     [inventory.data, query],
@@ -169,6 +170,7 @@ export function ChannelsView() {
 
 function ChannelStats({ rows }: { rows: ChannelSummary[] }) {
   const outbound = rows.filter((row) => row.delivery_supported).length;
+
   const assistants = new Set(rows.flatMap((row) => [row.assistant, ...row.allowed_assistants]))
     .size;
   return (

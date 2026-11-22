@@ -3,8 +3,12 @@ import { randomUUID } from "node:crypto";
 import { once } from "node:events";
 import { fileURLToPath } from "node:url";
 
-import { runPartitionedRunQueueConformance } from "@skein-js/test-support";
-import { runRunQueueConformance, startRedis, type StartedResource } from "@skein-js/test-support";
+import {
+  runPartitionedRunQueueConformance,
+  runRunQueueConformance,
+  startRedis,
+  type StartedResource,
+} from "@skein-js/test-support";
 import { Queue, Worker } from "bullmq";
 import { Redis } from "ioredis";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
@@ -22,10 +26,12 @@ afterAll(async () => {
 
 async function waitFor(predicate: () => boolean, timeoutMs = 5000): Promise<void> {
   const start = Date.now();
+
   while (Date.now() - start < timeoutMs) {
     if (predicate()) return;
     await new Promise((resolve) => setTimeout(resolve, 20));
   }
+
   throw new Error("timed out waiting for condition");
 }
 
@@ -53,13 +59,16 @@ describe("RedisRunQueue (BullMQ)", () => {
       },
     );
     let release!: () => void;
+
     const held = new Promise<void>((resolve) => {
       release = resolve;
     });
+
     let entered = false;
     let failedAt = 0;
     let retriedAt = 0;
     const handled: string[] = [];
+
     const process = async (run: { run_id: string }) => {
       if (run.run_id === "head") {
         entered = true;
@@ -71,8 +80,10 @@ describe("RedisRunQueue (BullMQ)", () => {
       handled.push(run.run_id);
       return true;
     };
+
     const owner = first.consumePartitioned(process);
     let peer: ReturnType<RedisRunQueue["consumePartitioned"]> | undefined;
+
     try {
       await waitFor(() => entered);
       peer = second.consumePartitioned(process);
@@ -109,15 +120,18 @@ describe("RedisRunQueue (BullMQ)", () => {
     let failedAt = 0;
     let retriedAt = 0;
     const handled: string[] = [];
+
     const consumer = queue.consumePartitioned(async (run) => {
       if (run.run_id === "head" && !failedAt) {
         failedAt = Date.now();
         throw new Error("Retry after the original backoff");
       }
+
       if (run.run_id === "head") retriedAt = Date.now();
       handled.push(run.run_id);
       return true;
     });
+
     try {
       await waitFor(() => handled.length === 2, 8000);
       expect(handled).toEqual(["head", "tail"]);
@@ -146,6 +160,7 @@ describe("RedisRunQueue (BullMQ)", () => {
       handled = true;
       return true;
     });
+
     try {
       await waitFor(() => probes >= 4);
       const job = await inspector.getJob("run-identity");
@@ -169,6 +184,7 @@ describe("RedisRunQueue (BullMQ)", () => {
     await first.enqueue({ run_id: "head", thread_id: "t" });
     await first.enqueue({ run_id: "tail", thread_id: "t" });
     let probes = 0;
+
     const consumer = first.consumePartitioned(async () => {
       probes++;
       return false;
@@ -178,10 +194,12 @@ describe("RedisRunQueue (BullMQ)", () => {
     await first.dispose();
     const reopened = new RedisRunQueue(redis.url, { queueName });
     const handled: string[] = [];
+
     const next = reopened.consumePartitioned(async (run) => {
       handled.push(run.run_id);
       return true;
     });
+
     try {
       await waitFor(() => handled.length === 2);
       expect(handled).toEqual(["head", "tail"]);
@@ -212,8 +230,10 @@ describe("RedisRunQueue (BullMQ)", () => {
         stdio: ["ignore", "ignore", "inherit", "ipc"],
       },
     );
+
     const handled: string[] = [];
     let survivor: ReturnType<RedisRunQueue["consumePartitioned"]> | undefined;
+
     try {
       expect((await once(child, "message", { signal: AbortSignal.timeout(10_000) }))[0]).toBe(
         "head",
@@ -239,9 +259,11 @@ describe("RedisRunQueue (BullMQ)", () => {
     const producer = new RedisRunQueue(redis.url, { queueName });
     const consumerInstance = new RedisRunQueue(redis.url, { queueName });
     const received: string[] = [];
+
     const consumer = consumerInstance.consume(async (run) => {
       received.push(run.run_id);
     });
+
     try {
       await producer.enqueue({ run_id: "cross", thread_id: "t" });
       await waitFor(() => received.length === 1);

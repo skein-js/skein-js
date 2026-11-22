@@ -22,12 +22,15 @@ export function RunView({ threadId, runId }: { threadId: string; runId: string }
   const [client] = useState(() => createConsoleClient({}));
   const confirm = useConfirmation();
   const { query, navigate } = useRoute();
+
   const tab =
     (["activity", "events", "deliveries", "details"] as const).find(
       (value) => value === query.get("tab"),
     ) ?? "activity";
+
   const returnTab =
     useWorkspace((state) => getThreadInspectionTab(state?.threadTabs, threadId)) ?? "runs";
+
   const threadRoute = `threads/${encodeURIComponent(threadId)}?tab=${returnTab}`;
   const panelId = useId();
   const [action, setAction] = useState<{ error?: Error; busy?: boolean }>({});
@@ -39,8 +42,10 @@ export function RunView({ threadId, runId }: { threadId: string; runId: string }
   }, [stream.phase, reloadRun]);
   const latestValues = [...stream.frames].reverse().find((frame) => frame.event === "values")
     ?.data as { messages?: Message[] } | undefined;
+
   const failure = run.data as typeof run.data & { error?: { message?: string } };
   const inFlight = run.data?.status === "pending" || run.data?.status === "running";
+
   const perform = async (kind: "cancel" | "rollback" | "delete") => {
     if (
       !(await confirm({
@@ -57,6 +62,7 @@ export function RunView({ threadId, runId }: { threadId: string; runId: string }
     )
       return;
     setAction({ busy: true });
+
     try {
       if (kind === "delete") await client.runs.delete(threadId, runId);
       else
@@ -73,6 +79,7 @@ export function RunView({ threadId, runId }: { threadId: string; runId: string }
       setAction({ error: error instanceof Error ? error : new Error(String(error)) });
     }
   };
+
   return (
     <>
       <a

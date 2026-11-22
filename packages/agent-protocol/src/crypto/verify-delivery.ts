@@ -49,7 +49,9 @@ export function verifySkeinSignature(input: VerifySignatureInput): VerifySignatu
   if (!input.header) {
     return { ok: false, reason: "missing", message: "no X-Skein-Signature header" };
   }
+
   const parsed = parseHeader(input.header);
+
   if (!parsed) {
     return {
       ok: false,
@@ -60,6 +62,7 @@ export function verifySkeinSignature(input: VerifySignatureInput): VerifySignatu
 
   const now = input.nowSeconds ?? Math.floor(Date.now() / 1000);
   const tolerance = input.toleranceSeconds ?? DEFAULT_TOLERANCE_SECONDS;
+
   // Absolute, so a callback timestamped in the *future* is refused too — otherwise an attacker could
   // mint one that stays valid indefinitely.
   if (Math.abs(now - parsed.timestampSeconds) > tolerance) {
@@ -71,6 +74,7 @@ export function verifySkeinSignature(input: VerifySignatureInput): VerifySignatu
   }
 
   const signed = `${parsed.timestampSeconds}.${input.body}`;
+
   // **Every** secret is tried, and the loop does not stop early on a match, because rotation is the
   // whole reason this takes a list: while both keys are live, callbacks arrive signed with either.
   const matched = input.secrets.some((secret) =>
@@ -79,9 +83,11 @@ export function verifySkeinSignature(input: VerifySignatureInput): VerifySignatu
       parsed.v1,
     ),
   );
+
   if (!matched) {
     return { ok: false, reason: "mismatch", message: "signature does not match the body" };
   }
+
   return { ok: true };
 }
 
@@ -89,15 +95,19 @@ export function verifySkeinSignature(input: VerifySignatureInput): VerifySignatu
 function parseHeader(header: string): { timestampSeconds: number; v1: string } | undefined {
   let timestampSeconds: number | undefined;
   let v1: string | undefined;
+
   for (const part of header.split(",")) {
     const [key, value] = part.trim().split("=", 2);
     if (!value) continue;
+
     if (key === "t") {
       const seconds = Number(value);
       if (Number.isFinite(seconds)) timestampSeconds = seconds;
     }
+
     if (key === "v1") v1 = value;
   }
+
   return timestampSeconds !== undefined && v1 !== undefined ? { timestampSeconds, v1 } : undefined;
 }
 

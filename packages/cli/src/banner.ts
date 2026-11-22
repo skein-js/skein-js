@@ -46,9 +46,11 @@ export function printBanner(info: BannerInfo, logger: Logger): void {
   console.log(`${bold(green("skein"))} ${dim("· Agent Protocol dev server")}`);
   console.log();
   console.log(`${dim("API    ")}  ${cyan(base)}`);
+
   if (consoleMountPath) {
     console.log(`${dim("Console")}  ${cyan(`${base}${consoleMountPath}/`)}`);
   }
+
   if (info.apiDocsEnabled) console.log(`${dim("API docs")}  ${cyan(`${base}/docs`)}`);
   console.log(`${dim("Docs   ")}  ${cyan(DOCS_URL)}`);
   console.log();

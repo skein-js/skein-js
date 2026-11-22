@@ -12,6 +12,7 @@ function launch(entry: string, environment: Record<string, string>) {
     env: { ...process.env, ...environment },
     stdio: ["ignore", "pipe", "pipe"],
   });
+
   let stdout = "";
   let stderr = "";
   child.stdout.on("data", (chunk: Buffer) => {
@@ -39,6 +40,7 @@ async function stop(child: ChildProcess) {
 
 it("runs the embedded example twice with the same durable receipt", async () => {
   const directory = await mkdtemp(join(tmpdir(), "skein-native-example-"));
+
   try {
     const environment = { SKEIN_SQLITE_PATH: join(directory, "embedded.sqlite") };
     const first = JSON.parse(await launch("embedded", environment).finished);
@@ -53,17 +55,21 @@ it("runs the embedded example twice with the same durable receipt", async () => 
 it("serves HTTP and BullMQ, survives backend/receiver restart, and reconciles duplicate commands", async () => {
   const redis = await startRedis();
   const directory = await mkdtemp(join(tmpdir(), "skein-bullmq-example-"));
+
   const environment = {
     REDIS_URI: redis.url,
     PORT: "0",
     SKEIN_SQLITE_PATH: join(directory, "backend.sqlite"),
     SKEIN_RECEIVER_PATH: join(directory, "receiver.sqlite"),
   };
+
   let backend: ReturnType<typeof launch> | undefined;
+
   try {
     backend = launch("backend", environment);
     await expect.poll(() => backend!.output(), { timeout: 15_000 }).toContain('"ready":true');
     const ready = JSON.parse(backend.output().trim().split("\n").at(-1)!);
+
     const http = await fetch(`http://127.0.0.1:${ready.port}/threads`, {
       method: "POST",
       headers: { authorization: "Bearer local-example", "content-type": "application/json" },
@@ -81,6 +87,7 @@ it("serves HTTP and BullMQ, survives backend/receiver restart, and reconciles du
     expect(duplicate.answer).toEqual(first.answer);
     expect(duplicate.result).toEqual(first.result);
     const inbox = new DatabaseSync(environment.SKEIN_RECEIVER_PATH);
+
     try {
       expect(inbox.prepare("SELECT count(*) AS count FROM outcomes").get()?.["count"]).toBe(2);
     } finally {

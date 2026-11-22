@@ -32,6 +32,7 @@ const nativeDiagnostics = [
 export function enabledNativeDiagnostics(routes: readonly RouteBinding[]) {
   return nativeDiagnostics.filter((diagnostic) => diagnostic.enabled(routes));
 }
+
 export function matchNativeDiagnostic(
   method: string,
   url: string,

@@ -26,9 +26,9 @@ import {
   type RunStatus,
   type RunTelemetryContext,
   type RunTrigger,
-  type ThreadStatus,
-  type ThreadState,
   type Thread,
+  type ThreadState,
+  type ThreadStatus,
   type ThreadUpdate,
 } from "@skein-js/core";
 
@@ -61,8 +61,8 @@ import {
 import {
   collectInterrupts,
   runStatusForSnapshot,
-  snapshotToThreadUpdate,
   snapshotToThreadState,
+  snapshotToThreadUpdate,
   toCheckpoint,
 } from "../threads/thread-mirror.js";
 import { isThreadProtocolRun } from "../threads/thread-protocol-run.js";
@@ -192,8 +192,10 @@ async function mirrorThread(
   // now-healthy thread doesn't keep reporting an old message. Note this clearing is why the thread
   // is only a mirror of the *latest* turn — the durable per-run record is `Run.error`.
   let effective = patch;
+
   if (patch.status && patch.status !== "error") {
     effective = { ...patch, error: null };
+
     // (The patch's own metadata wins if it brought one.)
     if (patch.metadata === undefined && thread.metadata != null && "error" in thread.metadata) {
       const cleared: Metadata = { ...thread.metadata };
@@ -201,6 +203,7 @@ async function mirrorThread(
       effective = { ...effective, metadata: cleared };
     }
   }
+
   return deps.store.threads.update(threadId, effective);
 }
 
@@ -238,6 +241,7 @@ async function readRunSnapshot(
   threadId: string,
 ): Promise<AgentStateSnapshot | undefined> {
   if (!graph) return undefined;
+
   try {
     return await graph.getState({ configurable: { thread_id: threadId } });
   } catch {
@@ -258,10 +262,12 @@ export async function executeRun(deps: ResolvedDeps, exec: RunExecution): Promis
   // A thread sequence counts every run frame plus lifecycle events, so it bounds the previous
   // attempt's run sequence. Reuse that durable cursor on redelivery without adding a bus method.
   let seq = exec.recovering && deps.threadBus ? await deps.threadBus.latestSequence(threadId) : 0;
+
   const publishFrame = async (frame: RunFrame) => {
     await deps.bus.publish(runId, frame);
     await deps.threadBus?.publish(threadId, { kind: "run", runId, frame }, threadGeneration);
   };
+
   // Captured for the run-completion webhook fired in `finally`. `started` gates the webhook to runs
   // that actually executed (a run cancelled while still pending never fires one, matching the worker).
   let started = false;
@@ -272,24 +278,29 @@ export async function executeRun(deps: ResolvedDeps, exec: RunExecution): Promis
   // settling and the callback going out would lose the answer — the one thing the outbox must not lose.
   // Last write wins; a run has one answer.
   let declaredReply: { reply: unknown } | undefined;
+
   // LangGraph already propagates nested custom writes without `subgraphs`. Preserve last-write-wins
   // across all namespaces so changing the client's streaming selection cannot change the answer.
   const captureDeclaredReply = (body: RunFrameBody): void => {
     const found = readDeclaredReply(body.data);
     if (found) declaredReply = found;
   };
+
   // Hoisted out of the `try` so the catch can take a post-mortem snapshot to name the failing node.
   let graph: AgentGraph | undefined;
   let completedState: ThreadState | undefined;
   let lastSnapshot: AgentStateSnapshot | undefined;
   let snapshotRead = false;
+
   const captureSnapshot = async () => {
     if (!snapshotRead) {
       snapshotRead = true;
       lastSnapshot = await readRunSnapshot(graph, threadId);
     }
+
     return lastSnapshot;
   };
+
   // Telemetry, all hoisted so the `finally` can close the span the `try` opened. The context needs
   // the assistant's graph id, so it only exists once the assistant has loaded — and `run.finished`
   // is gated on it, so the two events are always emitted as a pair. A run that fails its
@@ -304,14 +315,17 @@ export async function executeRun(deps: ResolvedDeps, exec: RunExecution): Promis
   // call across chunks, so we dedupe on the tool-call id (falling back to the name).
   const startedAt = deps.clock().getTime();
   const loggedTools = new Set<string>();
+
   const logToolActivity = (data: unknown): void => {
     const { calls, results } = extractToolActivity(data);
+
     for (const call of calls) {
       const key = `call:${call.id ?? call.name}`;
       if (loggedTools.has(key)) continue;
       loggedTools.add(key);
       deps.logger.info(`run ${runId} → tool call: ${call.name}`);
     }
+
     for (const result of results) {
       const key = `result:${result.id ?? result.name}`;
       if (loggedTools.has(key)) continue;
@@ -319,6 +333,7 @@ export async function executeRun(deps: ResolvedDeps, exec: RunExecution): Promis
       deps.logger.info(`run ${runId} ← tool result: ${result.name}`);
     }
   };
+
   const logFinished = (status: RunStatus): void => {
     if (!deps.logRunActivity) return;
     deps.logger.info(
@@ -354,11 +369,14 @@ export async function executeRun(deps: ResolvedDeps, exec: RunExecution): Promis
         ...(error ? { error } : {}),
       });
     }
+
     if ((readA2aOrigin(kwargs) || readMcpOrigin(kwargs)) && deps.store.runs.recordResult) {
       const { error: _error, ...result } = settled;
       await deps.store.runs.recordResult(runId, result);
     }
+
     const recordDelivery = deps.store.runs.finalizeWithDelivery;
+
     // No webhook, no outbox in this driver, or a run that never executed: the pre-outbox path, which
     // for the last case means no callback at all — matching today, where `started` gates the fire.
     //
@@ -378,6 +396,7 @@ export async function executeRun(deps: ResolvedDeps, exec: RunExecution): Promis
     ) {
       return finalizeRun(deps, runId, status, settled.error);
     }
+
     const endedAt = deps.clock();
     // Guarded because it serializes: a final state carrying a BigInt or a cycle throws here, and this
     // now runs *before* the run's status is written. Unguarded, a graph that returned an awkward value
@@ -385,6 +404,7 @@ export async function executeRun(deps: ResolvedDeps, exec: RunExecution): Promis
     // outcome, which it must never do. Falling back to the plain finalize costs the callback and keeps
     // the run honest; `buildDeliveryPayload` already substitutes a marker for the common cases.
     let built: ReturnType<typeof buildDeliveryPayload>;
+
     try {
       built = buildDeliveryPayload({
         run,
@@ -405,7 +425,9 @@ export async function executeRun(deps: ResolvedDeps, exec: RunExecution): Promis
       );
       return finalizeRun(deps, runId, status, settled.error);
     }
+
     const { payload, truncated, bytes } = built;
+
     if (truncated) {
       // Warned on every truncation, not once per process: a receiver silently losing `values` is a
       // shape change it cannot detect from the outside, and one log line at boot would not connect
@@ -414,6 +436,7 @@ export async function executeRun(deps: ResolvedDeps, exec: RunExecution): Promis
         `run ${runId}: webhook payload was ${bytes} bytes; \`values\` replaced by a truncation marker`,
       );
     }
+
     const { delivery } = await recordDelivery.call(deps.store.runs, runId, {
       status,
       ...(settled.error ? { error: settled.error } : {}),
@@ -439,17 +462,22 @@ export async function executeRun(deps: ResolvedDeps, exec: RunExecution): Promis
 
   // Arm the optional wall-clock timeout; it aborts this run's signal with reason "timeout".
   const nativeOrigin = readNativeOrigin(kwargs);
+
   const stopCancellationObservation =
     nativeOrigin || (deps.abortChannel && deps.store.admission)
       ? observeDurableCancellation(deps, runId, control)
       : undefined;
+
   const remainingBudget = nativeOrigin?.deadlineAt
     ? Math.max(0, Date.parse(nativeOrigin.deadlineAt) - deps.clock().getTime())
     : undefined;
+
   const budgets = [deps.runTimeoutMs, kwargs.timeout_ms, remainingBudget].filter(
     (budget): budget is number => budget !== undefined,
   );
+
   const timeoutBudget = budgets.length ? Math.min(...budgets) : undefined;
+
   const timer =
     timeoutBudget === undefined
       ? undefined
@@ -458,6 +486,7 @@ export async function executeRun(deps: ResolvedDeps, exec: RunExecution): Promis
   try {
     // Cancelled before we even started (e.g. the worker was slow to pick it up): honor it.
     const current = await deps.store.runs.get(runId);
+
     if (current && isTerminalRunStatus(current.status)) {
       outcome = { status: current.status, values: {} as DefaultValues };
       return outcome;
@@ -465,11 +494,13 @@ export async function executeRun(deps: ResolvedDeps, exec: RunExecution): Promis
 
     // pending -> running: run row first (the concurrency source of truth), then the thread mirror.
     const running = await deps.store.runs.setStatus(runId, "running");
+
     // A cancellation can win between the initial read and this conditional transition.
     if (running && isTerminalRunStatus(running.status)) {
       outcome = { status: running.status, values: {} as DefaultValues };
       return outcome;
     }
+
     started = true;
     const runningThread = await mirrorThreadStatus(deps, threadId, "busy");
     // Thread-only metadata leaves single-run SSE framing and its sequence numbers unchanged.
@@ -485,6 +516,7 @@ export async function executeRun(deps: ResolvedDeps, exec: RunExecution): Promis
         },
         threadGeneration,
       );
+
     // Record the thread's checkpoint tip *before* this run writes anything, so a later `rollback` run
     // knows the state to revert to. Only record on a *successful* read: a genuine `undefined` (fresh
     // thread, no checkpoints) means "revert to empty", but a failed read is *unknown* — recording
@@ -501,11 +533,13 @@ export async function executeRun(deps: ResolvedDeps, exec: RunExecution): Promis
         );
       }
     }
+
     if (deps.logRunActivity) {
       deps.logger.info(`run ${runId} started · assistant=${run.assistant_id} thread=${threadId}`);
     }
 
     const assistant = await deps.store.assistants.get(run.assistant_id);
+
     if (!assistant) {
       throw SkeinHttpError.notFound(`Assistant "${run.assistant_id}" not found.`);
     }
@@ -538,31 +572,39 @@ export async function executeRun(deps: ResolvedDeps, exec: RunExecution): Promis
           control.signal,
         );
     };
+
     // Preserve fresh admission's order: a stale continuation must fail before a factory runs.
     if (!exec.recovering) await verifyResumeAdmission();
+
     if (remainingBudget !== undefined && remainingBudget <= 0) {
       control.abort("timeout");
       throw new Error("Native execution deadline expired before invocation.");
     }
+
     graph = await resolveGraph(deps, assistant.graph_id, kwargs, runId);
     const activeGraph = graph;
+
     const recovered = exec.recovering
       ? await resolveRunRecovery(activeGraph, runId, threadId, kwargs)
       : undefined;
     if (exec.recovering && !recovered) await verifyResumeAdmission();
     const input = recovered ? null : toGraphInput(kwargs);
+
     const recoveredInterrupt = recovered
       ? await preservesRecoveryInterrupt(activeGraph, recovered, kwargs)
       : false;
+
     // Trace identity (metadata/tags/runName) and any tracer handlers ride along with the call, so a
     // callback-based tracer's spans nest under this run instead of floating free. Empty when no
     // sink is configured.
     const graphOptions = toGraphCallOptions(kwargs, threadId, control.signal);
     const traceOptions = telemetryContext ? telemetryCallOptions(deps, telemetryContext) : {};
+
     if (recovered) {
       delete graphOptions.configurable["checkpoint_id"];
       delete graphOptions.configurable["checkpoint_map"];
     }
+
     const options = {
       ...graphOptions,
       ...traceOptions,
@@ -578,14 +620,17 @@ export async function executeRun(deps: ResolvedDeps, exec: RunExecution): Promis
 
     await withRunTelemetryContext(deps, telemetryContext, async () => {
       control.signal.throwIfAborted();
+
       // A recovered interrupt is still a question for the caller, not permission to answer it.
       if (recovered && (recovered.next.length === 0 || recoveredInterrupt)) {
         if (toGraphStreamModes(kwargs.stream_mode).includes("values")) {
           seq += 1;
           await publishFrame({ seq, event: "values", data: recovered.values });
         }
+
         return;
       }
+
       if (isThreadProtocolRun(kwargs)) {
         await deps.threadBus?.publish(
           threadId,
@@ -612,6 +657,7 @@ export async function executeRun(deps: ResolvedDeps, exec: RunExecution): Promis
             runId,
           },
         );
+
         for await (const event of events) {
           if (control.signal.aborted) break;
           // Root termination follows the persisted run outcome, including cancellation races.
@@ -627,6 +673,7 @@ export async function executeRun(deps: ResolvedDeps, exec: RunExecution): Promis
         // `on_chain_stream` chunks become mode frames, everything else becomes an `events` frame.
         // `runId` tags the root run so the demux can tell this run's stream chunks from a subgraph's.
         const graphModes = toGraphStreamModes(kwargs.stream_mode);
+
         // `events` mode needs `streamEvents`; an agent without it gets a handled 422 rather
         // than an unhandled TypeError. LangGraph always implements it.
         const eventStream = requireAgentCapability(activeGraph, "streamEvents").streamEvents(
@@ -637,6 +684,7 @@ export async function executeRun(deps: ResolvedDeps, exec: RunExecution): Promis
             runId,
           },
         ) as AsyncIterable<GraphStreamEvent>;
+
         for await (const event of eventStream) {
           const body = streamEventToFrameBody(event, runId, graphModes, options.subgraphs === true);
           if (!body) continue;
@@ -647,6 +695,7 @@ export async function executeRun(deps: ResolvedDeps, exec: RunExecution): Promis
         }
       } else {
         const stream = await activeGraph.stream(input, options);
+
         for await (const chunk of stream) {
           seq += 1;
           const body = chunkToFrameBody(chunk, options.subgraphs === true);
@@ -663,6 +712,7 @@ export async function executeRun(deps: ResolvedDeps, exec: RunExecution): Promis
     if (control.signal.aborted) {
       const abortStatus = abortedStatus(control.reason.current);
       const timedOut = abortStatus === "timeout" ? RUN_TIMEOUT_ERROR : undefined;
+
       const finalStatus = await settleRun(abortStatus, {
         values: {} as DefaultValues,
         ...(timedOut ? { error: timedOut } : {}),
@@ -688,6 +738,7 @@ export async function executeRun(deps: ResolvedDeps, exec: RunExecution): Promis
     if (deps.threadBus) completedState = snapshotToThreadState(snapshot);
     const computed = runStatusForSnapshot(snapshot);
     const checkpoint = toCheckpoint(snapshot.config);
+
     // The snapshot is already in hand, so the questions cost nothing extra to carry — no second read
     // of the thread, and no window in which the run settles before they are captured.
     const finalStatus = await settleRun(computed, {
@@ -696,17 +747,20 @@ export async function executeRun(deps: ResolvedDeps, exec: RunExecution): Promis
       interrupts: collectInterrupts(snapshot),
       ...(declaredReply ? { reply: declaredReply.reply } : {}),
     });
+
     if (finalStatus === computed) {
       await mirrorThread(deps, threadId, snapshotToThreadUpdate(snapshot, finalStatus));
     } else {
       await mirrorThreadStatus(deps, threadId, finalStatus === "error" ? "error" : "idle");
     }
+
     if (deps.logRunActivity && finalStatus === "interrupted") {
       const prompts = describeInterrupts(snapshot);
       deps.logger.info(
         `run ${runId} interrupted${prompts.length ? ` · awaiting: ${prompts.join("; ")}` : ""}`,
       );
     }
+
     logFinished(finalStatus);
     outcome = {
       status: finalStatus,
@@ -718,6 +772,7 @@ export async function executeRun(deps: ResolvedDeps, exec: RunExecution): Promis
     return outcome;
   } catch (error) {
     const reason = control.reason.current;
+
     if (reason === "timeout") {
       const finalStatus = await settleRun("timeout", {
         values: {} as DefaultValues,
@@ -729,6 +784,7 @@ export async function executeRun(deps: ResolvedDeps, exec: RunExecution): Promis
       outcome = { status: finalStatus, values: {} as DefaultValues, error: RUN_TIMEOUT_ERROR };
       return outcome;
     }
+
     if (
       reason === "cancel" ||
       reason === "interrupt" ||
@@ -743,6 +799,7 @@ export async function executeRun(deps: ResolvedDeps, exec: RunExecution): Promis
       outcome = { status: finalStatus, values: {} as DefaultValues };
       return outcome;
     }
+
     // Genuine graph error: surface it as the terminal frame, then persist error state. One payload
     // serves the frame, the run row, and the returned outcome, so they can never disagree.
     const wireError = toRunError(error, { includeStack: deps.exposeErrorStacks === true });
@@ -760,6 +817,7 @@ export async function executeRun(deps: ResolvedDeps, exec: RunExecution): Promis
     // the same node names, so the read happens once and both consumers share it.
     thrownError = toError(error);
     const reportingLogger = !isNoopLogger(deps.logger);
+
     // Gated on a sink that actually *consumes* run events, not merely on telemetry being on: a
     // trace-only sink (LangSmith contributes metadata and no `onRunEvent`) would otherwise pay a
     // checkpointer round trip per failure to build a field nothing reads.
@@ -767,6 +825,7 @@ export async function executeRun(deps: ResolvedDeps, exec: RunExecution): Promis
       const snapshot = await captureSnapshot();
       failingNodes = snapshot ? describeFailingNodes(snapshot) : [];
     }
+
     if (reportingLogger) {
       deps.logger.error(`Graph run failed: ${wireError.message}`, {
         kind: RUN_FAILURE_REPORT_KIND,
@@ -778,6 +837,7 @@ export async function executeRun(deps: ResolvedDeps, exec: RunExecution): Promis
         wireError,
       } satisfies RunFailureReport);
     }
+
     logFinished(finalStatus);
     webhookErrorMessage = wireError.message;
     outcome = { status: finalStatus, values: {} as DefaultValues, error: wireError };
@@ -785,6 +845,7 @@ export async function executeRun(deps: ResolvedDeps, exec: RunExecution): Promis
   } finally {
     if (timer !== undefined) clearTimeout(timer);
     await stopCancellationObservation?.();
+
     // Close the telemetry span the `try` opened, BEFORE anything here that can reject. `bus.close`
     // can (a Redis blip), and a rejection escaping this block would skip the event — leaving a
     // span-based sink holding an unclosed span for a run that is definitively over. Enough of those
@@ -808,15 +869,19 @@ export async function executeRun(deps: ResolvedDeps, exec: RunExecution): Promis
         ...(thrownError !== undefined ? { cause: thrownError } : {}),
       });
     }
+
     // Always close the bus so every subscriber's iterator completes and emits the terminal event.
     await deps.bus.close(runId);
+
     if (deps.threadBus && started) {
       const thread = await deps.store.threads.get(threadId);
+
       if (thread) {
         if (!completedState && graph) {
           const snapshot = await captureSnapshot();
           if (snapshot) completedState = snapshotToThreadState(snapshot);
         }
+
         await deps.threadBus.publish(
           threadId,
           {
@@ -839,6 +904,7 @@ export async function executeRun(deps: ResolvedDeps, exec: RunExecution): Promis
           },
           threadGeneration,
         );
+
         if (isThreadProtocolRun(kwargs)) {
           const status = outcome.status;
           await deps.threadBus.publish(
@@ -869,6 +935,7 @@ export async function executeRun(deps: ResolvedDeps, exec: RunExecution): Promis
         }
       }
     }
+
     // Run-completion webhook: the first attempt, made inline so a healthy receiver still hears within
     // milliseconds rather than at the next worker tick. A failure is logged and recorded, never
     // propagated — it must not fail or delay the run.
@@ -881,6 +948,7 @@ export async function executeRun(deps: ResolvedDeps, exec: RunExecution): Promis
     const deliver = readNativeOrigin(kwargs)
       ? undefined
       : (deliverRecorded(deps, recordedDelivery) ?? deliverOnce(deps, exec, outcome));
+
     if (deliver) {
       // Handed to the caller rather than awaited here, when the caller asks for it. This `finally` runs
       // inside the thread's execution lock, so awaiting a hung target here blocks every other run on
@@ -897,6 +965,7 @@ export async function executeRun(deps: ResolvedDeps, exec: RunExecution): Promis
     delivery: Delivery | undefined,
   ): (() => Promise<void>) | undefined {
     if (!delivery) return undefined;
+
     return async () => {
       await attemptDelivery(
         {
@@ -927,6 +996,7 @@ export async function executeRun(deps: ResolvedDeps, exec: RunExecution): Promis
     const url = execution.kwargs.webhook;
     const sentAt = resolved.clock();
     const sentAtIso = sentAt.toISOString();
+
     const payload = {
       ...execution.run,
       status: settled.status,
@@ -946,7 +1016,9 @@ export async function executeRun(deps: ResolvedDeps, exec: RunExecution): Promis
       // and not the other silently dropped whatever the graph asked to send.
       ...(settled.reply !== undefined ? { reply: settled.reply } : {}),
     };
+
     let request: DeliveryRequest;
+
     try {
       request = createDeliveryRequest({
         payload,
@@ -962,13 +1034,16 @@ export async function executeRun(deps: ResolvedDeps, exec: RunExecution): Promis
       );
       return undefined;
     }
+
     return async () => {
       try {
         const denied = await deliveryTargetError(url, resolved.webhooks);
+
         if (denied) {
           resolved.logger.warn(`run ${runId}: ${denied}`);
           return;
         }
+
         await resolved.webhookDispatcher(
           url,
           request.payload,

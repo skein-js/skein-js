@@ -16,6 +16,7 @@ describe("official thread protocol SDK", () => {
     running = await startEchoServer();
     const client = new Client({ apiUrl: running.baseUrl });
     const thread = await client.threads.create({ metadata: { title: "extracted label" } });
+
     const results = await client.threads.search({
       select: ["thread_id"],
       extract: { label: "metadata.title", thread_id: "metadata.title" },
@@ -33,6 +34,7 @@ describe("official thread protocol SDK", () => {
     running = await startEchoServer();
     const client = new Client({ apiUrl: running.baseUrl });
     const thread = await client.threads.create();
+
     const run = (turn: number) =>
       client.runs.wait(thread.thread_id, "echo", {
         input: { messages: [{ role: "user", content: `category ${turn}` }] },
@@ -40,8 +42,10 @@ describe("official thread protocol SDK", () => {
     await run(1);
     await run(2);
     let cursor: string | undefined;
+
     for (const turns of [[1, 2], [3]]) {
       const controller = new AbortController();
+
       const iterator = client.threads
         .joinStream(thread.thread_id, {
           streamMode: ["lifecycle", "state_update"],
@@ -49,6 +53,7 @@ describe("official thread protocol SDK", () => {
           signal: controller.signal,
         })
         [Symbol.asyncIterator]();
+
       try {
         if (cursor) {
           const before = (await client.runs.list(thread.thread_id)).length;
@@ -122,8 +127,10 @@ describe("official thread protocol SDK", () => {
     running = await startEchoServer();
     const client = new Client({ apiUrl: running.baseUrl });
     const thread = await client.threads.create();
+
     for (let i = 0; i < 2; i++) {
       const controller = new AbortController();
+
       const response = await fetch(`${running.baseUrl}/threads/${thread.thread_id}/stream/events`, {
         method: "POST",
         headers: { "content-type": "application/json" },
@@ -133,6 +140,7 @@ describe("official thread protocol SDK", () => {
       expect(response.status).toBe(200);
       controller.abort();
     }
+
     expect(await client.runs.list(thread.thread_id)).toHaveLength(0);
   });
 
@@ -140,6 +148,7 @@ describe("official thread protocol SDK", () => {
     running = await startEchoServer();
     const client = new Client({ apiUrl: running.baseUrl });
     const thread = await client.threads.create();
+
     const takeTurn = (turn: number) =>
       client.runs.wait(thread.thread_id, "echo", {
         input: { messages: [{ role: "user", content: `turn ${turn}` }] },
@@ -147,13 +156,16 @@ describe("official thread protocol SDK", () => {
     await takeTurn(1);
 
     const controller = new AbortController();
+
     const events = client.threads
       .joinStream(thread.thread_id, { streamMode: "run_modes", signal: controller.signal })
       [Symbol.asyncIterator]();
+
     try {
       const firstEvent = events.next();
       // The SDK hides the subscription acknowledgement, so keep taking turns until the stream is live.
       let received: Awaited<typeof firstEvent> | undefined;
+
       for (let turn = 2; turn <= 6 && !received; turn++) {
         await takeTurn(turn);
         received = await Promise.race([
@@ -161,6 +173,7 @@ describe("official thread protocol SDK", () => {
           new Promise<undefined>((resolve) => setTimeout(() => resolve(undefined), 50)),
         ]);
       }
+
       expect(received?.done).toBe(false);
       let event = received!.value;
       while (event.event !== "values") event = (await events.next()).value;

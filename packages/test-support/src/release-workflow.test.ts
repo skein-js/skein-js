@@ -1,7 +1,7 @@
 // Exercise the actual Actions shell, with a disposable registry: a beta suffix must not hide
 // the recommended release or allow docs to deploy before every package is published.
 import { spawnSync } from "node:child_process";
-import { mkdtempSync, mkdirSync, readFileSync, rmSync, writeFileSync } from "node:fs";
+import { mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { createRequire } from "node:module";
 import { tmpdir } from "node:os";
 import path from "node:path";
@@ -41,6 +41,7 @@ const { GithubRemoteReleaseClient } = nxRequire(
     token: null,
   ) => GithubReleaseClient;
 };
+
 const root = fileURLToPath(new URL("../../../", import.meta.url));
 interface Step {
   name?: string;
@@ -55,20 +56,25 @@ interface Workflow {
     { needs?: string | string[]; with?: Record<string, string>; steps?: Step[] }
   >;
 }
+
 function readWorkflow(name: string): Workflow {
   return load(readFileSync(path.join(root, `.github/workflows/${name}.yml`), "utf8"));
 }
+
 function requireJob(workflow: Workflow, name: string) {
   const job = workflow.jobs[name];
   if (!job) throw new Error(`Missing workflow job: ${name}`);
   return job;
 }
+
 const release = readWorkflow("release");
+
 function releaseScript(name: string): string {
   const script = requireJob(release, "publish").steps?.find((step) => step.name === name)?.run;
   if (!script) throw new Error(`Missing release step: ${name}`);
   return script;
 }
+
 const fixtureDirectories: string[] = [];
 afterEach(() => {
   for (const directory of fixtureDirectories.splice(0)) rmSync(directory, { recursive: true });
@@ -78,6 +84,7 @@ function createRegistryFixture(published: boolean, latest: string, pendingReads 
   const directory = mkdtempSync(path.join(tmpdir(), "skein-release-"));
   fixtureDirectories.push(directory);
   mkdirSync(path.join(directory, "bin"));
+
   for (const [name, isPrivate] of [
     ["public", false],
     ["private", true],
@@ -88,6 +95,7 @@ function createRegistryFixture(published: boolean, latest: string, pendingReads 
       JSON.stringify({ name: `@fixture/${name}`, version: "1.0.0-beta.0", private: isPrivate }),
     );
   }
+
   writeFileSync(
     path.join(directory, "registry.json"),
     JSON.stringify({ published, latest, pendingReads }),
@@ -161,9 +169,11 @@ describe("GitHub release classification", () => {
       false,
       null,
     );
+
     client.createRelease = async () => {
       throw new Error("Fixture API failure");
     };
+
     const result = await client.syncRelease({
       version: "v1.0.0-beta.2",
       body: "Release notes",
@@ -182,15 +192,18 @@ describe("GitHub release classification", () => {
       const client = new GithubRemoteReleaseClient(null, false, null);
       const requests: { operation: string; payload: GithubReleasePayload }[] = [];
       const response = { id: 42, html_url: "https://example.com/releases/42" };
+
       client.createRelease = async (payload) => {
         requests.push({ operation: "create", payload });
         return response;
       };
+
       client.updateRelease = async (id, payload) => {
         expect(id).toBe(42);
         requests.push({ operation: "update", payload });
         return response;
       };
+
       const options = {
         version,
         body: "Release notes",
@@ -215,11 +228,13 @@ describe("GitHub release classification", () => {
 describe("release source and deployment gates", () => {
   it("recovers an explicit release tag and keeps CI, publishing and docs on its resolved SHA", () => {
     expect(release.on.workflow_dispatch?.inputs.release_tag.required).toBe(true);
+
     for (const job of ["ci", "docs"]) {
       expect(requireJob(release, job).with?.source_ref).toBe(
         "${{ needs.resolve-release.outputs.sha }}",
       );
     }
+
     expect(
       requireJob(release, "publish").steps?.find((step) =>
         step.uses?.startsWith("actions/checkout"),
@@ -235,6 +250,7 @@ describe("release source and deployment gates", () => {
 
   it("propagates the released source through every reusable workflow checkout", () => {
     let checkouts = 0;
+
     for (const workflowName of ["ci", "local-deployment", "docs"]) {
       for (const job of Object.values(readWorkflow(workflowName).jobs)) {
         for (const step of job.steps ?? []) {
@@ -244,6 +260,7 @@ describe("release source and deployment gates", () => {
         }
       }
     }
+
     expect(checkouts).toBeGreaterThan(10);
     expect(requireJob(readWorkflow("ci"), "local-deployment").with?.source_ref).toBe(
       "${{ inputs.source_ref || github.sha }}",

@@ -26,6 +26,7 @@ const local = await embedSqliteGraphs(
     sqlitePath: "/absolute/application-data/agents.sqlite",
   },
 );
+
 const runtime = createProtocolRuntime(local.deps);
 await runtime.service.assistants.registerGraphAssistants();
 const client = runtime.createNativeClient({
@@ -41,6 +42,7 @@ const receipt = await client.start(
     correlationId: "request-42",
   },
 );
+
 // Admission has committed; execution may still be pending.
 const run = await client.getRun(receipt.runId);
 const recovered = await client.getReceipt("approval-42");
@@ -78,6 +80,7 @@ After a run reaches `interrupted`, read its state and submit an answer with that
 
 ```ts
 const state = await client.getState(receipt.threadId);
+
 const answer = await client.resume(
   {
     thread_id: receipt.threadId,
@@ -165,6 +168,7 @@ import { createBullMqTransport } from "@skein-js/bullmq";
 import { createProtocolRuntime } from "@skein-js/agent-protocol";
 
 const outcomes = new Queue("agent-outcomes", { connection });
+
 const access = createBullMqTransport({
   commandQueue: "agent-commands",
   outcomeQueue: outcomes, // borrowed
@@ -173,6 +177,7 @@ const access = createBullMqTransport({
   // route: command => mapToAllowedGraph(command),
   // projectResult: (result, runId) => applicationProjection(result, runId),
 });
+
 const runtime = createProtocolRuntime({
   ...deps,
   webhookDispatcher: access.wrapDispatcher(existingDispatcher),

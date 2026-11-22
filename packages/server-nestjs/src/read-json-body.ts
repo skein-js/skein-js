@@ -27,6 +27,7 @@ export async function readJsonBody(req: NestRequest, retainRawBody = false): Pro
   for await (const chunk of req) chunks.push(chunk as Buffer);
   const text = Buffer.concat(chunks).toString("utf8");
   if (!text) return {};
+
   try {
     return JSON.parse(text);
   } catch {
@@ -45,6 +46,7 @@ export async function readJsonBody(req: NestRequest, retainRawBody = false): Pro
  */
 async function readRawBody(req: NestRequest): Promise<string> {
   if (req.rawBody) return new TextDecoder().decode(req.rawBody);
+
   if (req.body !== undefined) {
     throw SkeinHttpError.badRequest(
       "This route needs the unparsed request body, but a body parser has already consumed it. " +
@@ -52,6 +54,7 @@ async function readRawBody(req: NestRequest): Promise<string> {
       { code: "raw_body_unavailable" },
     );
   }
+
   const chunks: Buffer[] = [];
   for await (const chunk of req) chunks.push(chunk as Buffer);
   return Buffer.concat(chunks).toString("utf8");

@@ -2,7 +2,7 @@
 //
 // Global execution discovery lives in Runs; this view retains the conversation's state/history.
 
-import type { Thread, Message } from "@langchain/langgraph-sdk";
+import type { Message, Thread } from "@langchain/langgraph-sdk";
 import { ArrowLeft, RefreshCw } from "lucide-react";
 import { useEffect, useId, useRef, useState } from "react";
 
@@ -75,23 +75,30 @@ function ThreadList({ status }: { status: StatusFilter }) {
   const { navigate, query: routeQuery, segments } = useRoute();
   const workspace = useWorkspaceStore();
   const graph = routeQuery.get("graph") ?? "";
+
   const [graphDraft, setGraphDraft] = useState(graph),
     [exactId, setExactId] = useState("");
+
   const previousGraph = useRef(graph);
+
   if (previousGraph.current !== graph) {
     previousGraph.current = graph;
     setGraphDraft(graph);
   }
+
   const listRoute = `threads${routeQuery.size ? `?${routeQuery}` : ""}`;
   const viewingList = segments[0] === "threads" && segments.length === 1;
   useEffect(() => {
     if (viewingList) workspace?.getState().rememberThreadList(listRoute);
   }, [listRoute, viewingList, workspace]);
   const [selected, setSelected] = useState<Set<string>>(new Set());
+
   const [message, setMessage] = useState<string>(),
     [mutationError, setMutationError] = useState<string>(),
     [busy, setBusy] = useState(false);
+
   const confirm = useConfirmation();
+
   const threads = usePagedRows(
     (offset, limit, signal) =>
       client.threads.search({
@@ -124,6 +131,7 @@ function ThreadList({ status }: { status: StatusFilter }) {
     document.getElementById(`thread-${row}`)?.focus();
     workspace?.getState().rememberReturnRow(undefined);
   }, [threads.rows, workspace]);
+
   const prune = async (strategy: "delete" | "keep_latest") => {
     if (
       !(await confirm({
@@ -141,6 +149,7 @@ function ThreadList({ status }: { status: StatusFilter }) {
       return;
     setBusy(true);
     setMutationError(undefined);
+
     try {
       const result = await client.threads.prune([...selected], { strategy });
       if (strategy === "delete") for (const id of selected) workspace?.getState().forgetThread(id);
@@ -155,6 +164,7 @@ function ThreadList({ status }: { status: StatusFilter }) {
       setBusy(false);
     }
   };
+
   return (
     <>
       <div className="mb-4 grid gap-3 sm:grid-cols-2">
@@ -364,10 +374,12 @@ function ThreadDetail({ threadId }: { threadId: string }) {
   const tab = tabs.find((value) => value === query.get("tab"));
   const [client] = useState(() => createConsoleClient({}));
   const thread = useAsync((signal) => client.threads.get(threadId, { signal }), [threadId]);
+
   const state = useAsync(
     (signal) => client.threads.getState(threadId, undefined, { signal }),
     [threadId],
   );
+
   const runs = usePagedRows(
     (offset, limit, signal) => client.runs.list(threadId, { offset, limit, signal }),
     threadId,
@@ -375,6 +387,7 @@ function ThreadDetail({ threadId }: { threadId: string }) {
     undefined,
     `thread-runs:${threadId}`,
   );
+
   const latestRun = useAsync(
     (signal) => client.runs.list(threadId, { limit: 1, signal }),
     [threadId],
@@ -382,18 +395,22 @@ function ThreadDetail({ threadId }: { threadId: string }) {
 
   const messages = (state.data?.values as { messages?: Message[] } | undefined)?.messages;
   const selectedTab = tab ?? (messages ? "conversation" : "state");
+
   const viewingThread =
     segments[0] === "threads" && segments.length === 2 && segments[1] === threadId;
   useEffect(() => {
     if (viewingThread) workspace?.getState().rememberThreadTab(threadId, selectedTab);
   }, [threadId, selectedTab, viewingThread, workspace]);
+
   const reload = () => {
     state.reload();
     runs.reload();
     latestRun.reload();
     thread.reload();
   };
+
   const [explicitAssistant, setExplicitAssistant] = useState("");
+
   const assistantId =
     latestRun.data?.[0]?.assistant_id ??
     (typeof thread.data?.metadata?.assistant_id === "string"
@@ -580,9 +597,11 @@ function ThreadMetadataEditor({ thread, onSaved }: { thread: Thread; onSaved: ()
   const [draft, setDraft] = useState(JSON.stringify(thread.metadata ?? {}, null, 2));
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<Error>();
+
   const save = async () => {
     setBusy(true);
     setError(undefined);
+
     try {
       const metadata = JSON.parse(draft) as unknown;
       if (typeof metadata !== "object" || metadata === null || Array.isArray(metadata))
@@ -597,6 +616,7 @@ function ThreadMetadataEditor({ thread, onSaved }: { thread: Thread; onSaved: ()
       setBusy(false);
     }
   };
+
   return (
     <Panel title="Edit thread metadata" padded>
       <form

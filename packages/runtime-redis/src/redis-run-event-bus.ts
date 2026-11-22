@@ -146,6 +146,7 @@ class MessageMailbox {
       this.#wake = undefined;
       return;
     }
+
     this.#buffer.push(message);
     this.#wake?.();
     this.#wake = undefined;
@@ -265,6 +266,7 @@ export class RedisRunEventBus implements RunEventBus {
     } else {
       pipeline.xadd(streamKey, "*", FRAME_FIELD, encoded);
     }
+
     // Refreshed on every frame, not periodically. Once XADD and PUBLISH are pipelined, one more
     // command in the same batch costs no extra round trip — and the round trips were the whole
     // problem. Refreshing every N frames instead would leave a slow run (a frame every half-minute,
@@ -302,6 +304,7 @@ export class RedisRunEventBus implements RunEventBus {
     if (this.#disposed) {
       throw new Error("RedisRunEventBus was disposed; cannot open a new subscription.");
     }
+
     if (this.#pubsub) return this.#pubsub;
     const connection = this.#createClient(this.#url);
     connection.on("message", (channel: string, payload: string) => {
@@ -339,13 +342,16 @@ export class RedisRunEventBus implements RunEventBus {
   async #attach(channelKey: string, mailbox: MessageMailbox): Promise<void> {
     const connection = this.#pubsubConnection();
     let mailboxes = this.#mailboxesByChannel.get(channelKey);
+
     if (!mailboxes) {
       mailboxes = new Set();
       this.#mailboxesByChannel.set(channelKey, mailboxes);
     }
+
     mailboxes.add(mailbox);
 
     let subscribed = this.#subscriptions.get(channelKey);
+
     if (!subscribed) {
       subscribed = connection.subscribe(channelKey);
       // Hold a handler from the moment it is created: if a caller is finalized before SUBSCRIBE
@@ -355,6 +361,7 @@ export class RedisRunEventBus implements RunEventBus {
       subscribed.catch(() => undefined);
       this.#subscriptions.set(channelKey, subscribed);
     }
+
     await subscribed;
   }
 
@@ -385,6 +392,7 @@ export class RedisRunEventBus implements RunEventBus {
     outcome: { lastSeq: number; lastId: string; sawClose: boolean },
   ): AsyncGenerator<RunFrame> {
     let cursor = startId;
+
     for (;;) {
       const page = await this.#commands.xrange(
         this.#streamKey(runId),
@@ -397,11 +405,14 @@ export class RedisRunEventBus implements RunEventBus {
 
       for (const [id, fields] of page) {
         outcome.lastId = id;
+
         if (fields[0] === CLOSE_FIELD) {
           outcome.sawClose = true;
           return;
         }
+
         const frame = JSON.parse(fields[1] as string) as RunFrame;
+
         if (frame.seq > outcome.lastSeq) {
           outcome.lastSeq = frame.seq;
           yield frame;
@@ -446,12 +457,15 @@ export class RedisRunEventBus implements RunEventBus {
       // reason, so this is the second line of defence, not the first).
       for (;;) {
         const buffered = mailbox.takeBuffered();
+
         if (buffered) {
           if (buffered.type === "close") return;
+
           if (buffered.frame.seq > outcome.lastSeq) {
             outcome.lastSeq = buffered.frame.seq;
             yield buffered.frame;
           }
+
           continue;
         }
 
@@ -463,9 +477,11 @@ export class RedisRunEventBus implements RunEventBus {
         }
 
         let timer: ReturnType<typeof setTimeout> | undefined;
+
         const tick = new Promise<typeof CHECK_TICK>((resolve) => {
           timer = setTimeout(() => resolve(CHECK_TICK), this.#nextClosedCheckDelayMs());
         });
+
         const result = await Promise.race([mailbox.waitForMessage(), tick]);
         if (timer) clearTimeout(timer);
         if (result !== CHECK_TICK) continue; // a message landed; take it on the next pass

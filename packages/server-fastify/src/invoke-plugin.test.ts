@@ -23,9 +23,11 @@ async function startInvokeServer(): Promise<Running> {
   await app.listen({ port: 0, host: "127.0.0.1" });
 
   const address = app.server.address();
+
   if (address === null || typeof address === "string") {
     throw new Error("expected a bound TCP address");
   }
+
   return { baseUrl: `http://127.0.0.1:${address.port}`, close: () => app.close() };
 }
 

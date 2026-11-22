@@ -29,6 +29,7 @@ import { authFiltersToMetadataSubset } from "./auth-filters-to-metadata.js";
 /** Merge a filter's values into metadata so a created resource satisfies its own filter. */
 function stampFromFilters(metadata: Metadata | undefined, filters: AuthFilters): Metadata {
   const stamped: Metadata = { ...(metadata ?? {}) };
+
   for (const [key, value] of Object.entries(filters)) {
     if (typeof value === "string") {
       stamped[key] = value;
@@ -42,6 +43,7 @@ function stampFromFilters(metadata: Metadata | undefined, filters: AuthFilters):
       stamped[key] = [...new Set([...current, ...required])];
     }
   }
+
   return stamped;
 }
 
@@ -59,8 +61,10 @@ export function createAuthScopedStore(
   if (!filters) return inner;
   const matches = (metadata: Metadata | null | undefined): boolean =>
     engine.matchesFilters(metadata ?? undefined, filters);
+
   const stamp = (metadata: Metadata | null | undefined): Metadata =>
     stampFromFilters(metadata ?? undefined, filters);
+
   // The same filters as a metadata subset a driver can match, so ownership scoping is a WHERE clause
   // rather than a full read plus a JS pass.
   const ownershipMetadata = authFiltersToMetadataSubset(filters);
@@ -96,6 +100,7 @@ export function createAuthScopedStore(
         // the search schema passes unknown fields through, so a request body naming it must not be able
         // to influence the scoping — including when the ownership filter translates to nothing.
         const { enforcedMetadata: _fromCaller, ...requested } = query;
+
         const owned = await inner.threads.search({
           ...requested,
           ...(ownershipMetadata ? { enforcedMetadata: ownershipMetadata } : {}),
@@ -144,17 +149,21 @@ export function createAuthScopedStore(
         // thread is never handed back.
         if (input?.thread_id !== undefined) {
           const existing = await inner.threads.get(input.thread_id);
+
           if (existing && !matches(existing.metadata)) {
             throw SkeinHttpError.notFound(`Thread "${input.thread_id}" not found.`);
           }
         }
+
         return inner.threads.create({ ...input, metadata: stamp(input?.metadata) });
       },
       update: async (threadId, patch) => {
         const thread = await inner.threads.get(threadId);
+
         if (!thread || !matches(thread.metadata)) {
           throw SkeinHttpError.notFound(`Thread "${threadId}" not found.`);
         }
+
         // Re-stamp when the patch touches metadata, so a caller can't drop their own owner tag.
         const next =
           patch.metadata !== undefined ? { ...patch, metadata: stamp(patch.metadata) } : patch;
@@ -162,17 +171,21 @@ export function createAuthScopedStore(
       },
       copy: async (threadId) => {
         const thread = await inner.threads.get(threadId);
+
         if (!thread || !matches(thread.metadata)) {
           throw SkeinHttpError.notFound(`Thread "${threadId}" not found.`);
         }
+
         // The copy inherits the source's metadata (already owner-stamped), so it stays owned by the caller.
         return inner.threads.copy(threadId);
       },
       delete: async (threadId) => {
         const thread = await inner.threads.get(threadId);
+
         if (!thread || !matches(thread.metadata)) {
           throw SkeinHttpError.notFound(`Thread "${threadId}" not found.`);
         }
+
         return inner.threads.delete(threadId);
       },
     };
@@ -184,6 +197,7 @@ export function createAuthScopedStore(
             search: async (query) => {
               // Caller constraints cannot replace deployment ownership, including on direct scoped calls.
               const { enforcedMetadata: _fromCaller, ...requested } = query;
+
               const found = await inner.runs.search!({
                 ...requested,
                 ...(ownershipMetadata ? { enforcedMetadata: ownershipMetadata } : {}),
@@ -243,6 +257,7 @@ export function createAuthScopedStore(
             query?.status !== undefined ? { status: query.status } : undefined,
           )
         ).filter((run) => matches(run.metadata));
+
         const offset = query?.offset ?? 0;
         const end = query?.limit === undefined ? undefined : offset + query.limit;
         return matchingRuns.slice(offset, end);
@@ -297,16 +312,20 @@ export function createAuthScopedStore(
       // run failure reason on every auth-enabled deployment.
       setStatus: async (runId, status, error) => {
         const run = await inner.runs.get(runId);
+
         if (!run || !matches(run.metadata)) {
           throw SkeinHttpError.notFound(`Run "${runId}" not found.`);
         }
+
         return inner.runs.setStatus(runId, status, error);
       },
       delete: async (runId) => {
         const run = await inner.runs.get(runId);
+
         if (!run || !matches(run.metadata)) {
           throw SkeinHttpError.notFound(`Run "${runId}" not found.`);
         }
+
         return inner.runs.delete(runId);
       },
     };
@@ -369,6 +388,7 @@ export function createAuthScopedStore(
         // owned-rows-within-a-page. The caller's own `enforcedMetadata` is dropped first: it is the
         // server's field, and honouring a caller-supplied one would let them widen their own scope.
         const { enforcedMetadata: _fromCaller, ...requested } = query;
+
         const found = await inner.crons.search({
           ...requested,
           ...(ownershipMetadata ? { enforcedMetadata: ownershipMetadata } : {}),
@@ -387,9 +407,11 @@ export function createAuthScopedStore(
         inner.crons.create({ ...input, metadata: stamp(input.metadata) }),
       update: async (cronId: string, patch: Parameters<SkeinStore["crons"]["update"]>[1]) => {
         const cron = await inner.crons.get(cronId);
+
         if (!cron || !matches(cron.metadata)) {
           throw SkeinHttpError.notFound(`Cron "${cronId}" not found.`);
         }
+
         // Re-stamp when the patch touches metadata, so a caller can't drop their own owner tag and
         // orphan the cron out of their own listing.
         const next =
@@ -398,9 +420,11 @@ export function createAuthScopedStore(
       },
       delete: async (cronId: string) => {
         const cron = await inner.crons.get(cronId);
+
         if (!cron || !matches(cron.metadata)) {
           throw SkeinHttpError.notFound(`Cron "${cronId}" not found.`);
         }
+
         return inner.crons.delete(cronId);
       },
     };

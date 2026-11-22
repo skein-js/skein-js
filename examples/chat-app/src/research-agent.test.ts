@@ -13,6 +13,7 @@ describe("searchWeb", () => {
   it("returns a canned result when no TAVILY_API_KEY is set", async () => {
     const previous = process.env["TAVILY_API_KEY"];
     delete process.env["TAVILY_API_KEY"];
+
     try {
       const results = await searchWeb("skein-js");
       expect(results).toHaveLength(1);

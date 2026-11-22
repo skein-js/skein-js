@@ -88,6 +88,7 @@ describe("createShutdownHandler", () => {
   it("ignores a second signal instead of starting a second teardown", async () => {
     const close = vi.fn(() => Promise.resolve());
     const onShutdownStart = vi.fn();
+
     const shutdown = createShutdownHandler({
       forceExitMs: 8000,
       close,

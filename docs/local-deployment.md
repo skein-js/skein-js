@@ -30,6 +30,7 @@ const local = await embedSqliteGraphs(
     // maxPageSize, ttl, threadTtl and non-owned ProtocolDeps overrides are optional.
   },
 );
+
 const runtime = createProtocolRuntime(local.deps);
 await runtime.service.assistants.registerGraphAssistants();
 runtime.worker.start();

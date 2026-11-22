@@ -1,9 +1,9 @@
 import { randomUUID } from "node:crypto";
 
 import {
-  SkeinHttpError,
   isTerminalRunStatus,
   serializeWireJson,
+  SkeinHttpError,
   type AdmissionKey,
   type AdmissionReceipt,
   type AdmissionRepo,
@@ -41,6 +41,7 @@ async function replay(
     "SELECT fingerprint,run_id,thread_id,expires_at FROM idempotency_records WHERE scope=$1 AND key=$2",
     [input.scope, input.key],
   );
+
   const row = rows[0];
   if (!row || row.expires_at.getTime() <= Date.parse(input.now)) return;
   if (row.fingerprint !== input.fingerprint)
@@ -101,10 +102,12 @@ export function createPostgresAdmission(deps: NativePostgresDeps): AdmissionRepo
         const previous = await replay(client, input);
         if (previous) return previous;
         const prepared = JSON.parse(serializeWireJson(input.run)) as RunCreate;
+
         const { rows: threads } = await client.query<{ status: string }>(
           "SELECT status FROM threads WHERE thread_id=$1 FOR UPDATE",
           [prepared.thread_id],
         );
+
         const thread = threads[0];
         if (!thread) throw SkeinHttpError.notFound("Thread not found.");
         if (
@@ -118,6 +121,7 @@ export function createPostgresAdmission(deps: NativePostgresDeps): AdmissionRepo
           "SELECT run_id FROM runs WHERE thread_id=$1 AND status IN ('pending','running') FOR UPDATE",
           [prepared.thread_id],
         );
+
         const displaced = input.displacements ?? [];
         if (
           (input.guard.requireNoActiveRun && active.length) ||
@@ -126,6 +130,7 @@ export function createPostgresAdmission(deps: NativePostgresDeps): AdmissionRepo
               active.some((run) => !displaced.some((item) => item.runId === run.run_id))))
         )
           throw SkeinHttpError.conflict("Active runs changed.", { code: "thread_busy" });
+
         if (input.expectedRunId) {
           const { rows } = await client.query<{
             status: string;
@@ -145,6 +150,7 @@ EXISTS(SELECT 1 FROM native_resume_reservations WHERE expected_run_id=$1) AS res
               code: "stale_resume",
             });
         }
+
         for (const item of displaced) {
           input.signal?.throwIfAborted();
           const settled = await deps.settle(client, item.runId, item.settlement);
@@ -157,6 +163,7 @@ EXISTS(SELECT 1 FROM native_resume_reservations WHERE expected_run_id=$1) AS res
               prepared.multitask_strategy === "rollback" ? "rollback" : "interrupt",
             );
         }
+
         input.signal?.throwIfAborted();
         const run = await deps.insertRun(client, prepared);
         input.signal?.throwIfAborted();
@@ -179,11 +186,13 @@ EXISTS(SELECT 1 FROM native_resume_reservations WHERE expected_run_id=$1) AS res
 created_at::text,updated_at::text FROM runs WHERE run_id=$1`,
           [input.runId],
         );
+
         const run = rows[0];
         if (!run) throw SkeinHttpError.notFound("Run not found.");
         await client.query("SELECT thread_id FROM threads WHERE thread_id=$1 FOR UPDATE", [
           run.thread_id,
         ]);
+
         if (!isTerminalRunStatus(run.status)) {
           const settled = await deps.settle(client, run.run_id, {
             status: "cancelled",
@@ -192,6 +201,7 @@ created_at::text,updated_at::text FROM runs WHERE run_id=$1`,
           if (settled.run?.status === "cancelled")
             await dispatch(client, settled.run, "cancel", input.action);
         }
+
         return record(client, input, run);
       }),
     claimDispatches: (query) =>
@@ -204,12 +214,14 @@ created_at::text,updated_at::text FROM runs WHERE run_id=$1`,
           not_before: Date;
         };
         const limit = Math.max(1, Math.min(deps.pageLimit(query.limit ?? 100), 1000));
+
         const { rows } = await client.query<DispatchRow>(
           `SELECT run_id,thread_id,kind,action,not_before FROM native_dispatches
 WHERE kind='cancel' AND NOT dispatched AND (lease_until IS NULL OR lease_until<=$1::timestamptz)
 ORDER BY lease_until NULLS FIRST,run_id LIMIT $2 FOR UPDATE SKIP LOCKED`,
           [query.now, limit],
         );
+
         if (rows.length < limit) {
           // Ownership survives ACKs and terminal status until run deletion. Active rows use the
           // inflight runs index rather than scanning all historical admission receipts.
@@ -223,7 +235,9 @@ ORDER BY r.created_at,r.run_id LIMIT $2 FOR UPDATE OF d SKIP LOCKED`,
           );
           rows.push(...active.rows);
         }
+
         const claims: DispatchClaim[] = [];
+
         for (const row of rows) {
           const token = randomUUID();
           await client.query(
@@ -239,6 +253,7 @@ ORDER BY r.created_at,r.run_id LIMIT $2 FOR UPDATE OF d SKIP LOCKED`,
             ...(row.action ? { action: row.action } : {}),
           });
         }
+
         return claims;
       }),
     markDispatched: (runId, token) =>

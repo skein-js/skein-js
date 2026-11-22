@@ -20,10 +20,10 @@ import {
   END,
   getStore,
   interrupt,
-  type LangGraphRunnableConfig,
   messagesStateReducer,
   START,
   StateGraph,
+  type LangGraphRunnableConfig,
 } from "@langchain/langgraph";
 
 const SupportState = Annotation.Root({
@@ -102,6 +102,7 @@ function confirm(state: State): Partial<State> {
     question: `Just to confirm — you want to ${state.pendingAction}? Reply YES to go ahead.`,
     action: state.pendingAction,
   });
+
   const said = typeof answer === "string" ? answer : String(answer);
   return { confirmed: /^\s*(y|yes|yeah|yep|confirm|ok)\b/i.test(said) };
 }
@@ -120,6 +121,7 @@ function replyText(state: State): string {
       ? `${greeting} Ask me about an order, a refund, or your account.`
       : `${greeting} Thanks — I've noted: "${text}". Someone will follow up shortly.`;
   }
+
   return state.confirmed === true
     ? `Done — your ${state.pendingAction} is being processed. You'll get a confirmation shortly.`
     : "No problem — I haven't made any changes.";

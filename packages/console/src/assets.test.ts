@@ -41,6 +41,7 @@ describe("bundled assets", () => {
     const html = new TextDecoder().decode(index.asset.bytes);
     const referenced = [...html.matchAll(/(?:src|href)="\.\/([^"]+)"/g)].map((match) => match[1]);
     expect(referenced.length).toBeGreaterThan(0);
+
     for (const file of referenced) {
       expect(consoleAssetFiles()).toContain(file);
     }

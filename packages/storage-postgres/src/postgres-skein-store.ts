@@ -6,9 +6,15 @@
 import { randomUUID } from "node:crypto";
 
 import {
-  SkeinHttpError,
+  DEFAULT_MAX_PAGE_SIZE,
+  hasNamespaceWildcard,
   INFLIGHT_RUN_STATUSES,
+  isStoreFilterOperators,
   isTerminalRunStatus,
+  requireValidMaxPageSize,
+  serializeWireJson,
+  SkeinHttpError,
+  STORE_FILTER_OPERATORS,
   type Assistant,
   type AssistantCreate,
   type AssistantRepo,
@@ -45,29 +51,23 @@ import {
   type RunRepo,
   type RunResult,
   type RunSettlement,
-  type SettledRun,
-  serializeWireJson,
   type RunStatus,
   type SearchItem,
-  DEFAULT_MAX_PAGE_SIZE,
-  hasNamespaceWildcard,
-  isStoreFilterOperators,
-  requireValidMaxPageSize,
-  STORE_FILTER_OPERATORS,
-  type StoreItemFilter,
+  type SettledRun,
   type SkeinStore,
   type SkeinStoreSnapshot,
-  type StorePutOptions,
+  type StoreItemFilter,
   type StoreItemWriteOptions,
+  type StorePutOptions,
   type StoreRepo,
   type StoreSearchQuery,
   type StoreTtlConfig,
-  type ThreadTtlConfig,
   type Thread,
   type ThreadCreate,
   type ThreadRepo,
   type ThreadSearchQuery,
   type ThreadStatus,
+  type ThreadTtlConfig,
   type ThreadUpdate,
 } from "@skein-js/core";
 import { Pool, type PoolClient } from "pg";
@@ -170,6 +170,7 @@ export function createPostgresPool(url: string, options: PostgresPoolOptions = {
       : {}),
     ...(options.idleTimeoutMs !== undefined ? { idleTimeoutMillis: options.idleTimeoutMs } : {}),
   });
+
   // Applied with a `SET` on connect rather than as a startup parameter. A startup parameter would be
   // marginally cheaper, but PgBouncer and Supabase's pooler *reject* unrecognised ones outright
   // ("unsupported startup parameter"), so every connection would fail rather than degrade. `SET` is
@@ -183,6 +184,7 @@ export function createPostgresPool(url: string, options: PostgresPoolOptions = {
       client.query(`SET statement_timeout = ${timeout}`).catch(() => {});
     });
   }
+
   // An idle client can emit 'error' (server restart, dropped connection); without a listener
   // node-postgres re-emits it as an unhandled 'error' that crashes the process. The pool evicts
   // the bad client on its own, so swallowing here is safe — the next query gets a fresh client.
@@ -269,6 +271,7 @@ function requireIndexableDimensions(dims: number | undefined): number {
         `is its own limit. Got: ${String(dims)}.`,
     );
   }
+
   return dims;
 }
 
@@ -613,10 +616,12 @@ function isUniqueViolation(error: unknown): boolean {
 function assistantSearchWhere(query: AssistantSearchQuery): { where: string; params: unknown[] } {
   const params: unknown[] = [];
   const clauses: string[] = [];
+
   if (query.graph_id !== undefined) {
     params.push(query.graph_id);
     clauses.push(`graph_id = $${params.length}`);
   }
+
   if (query.name !== undefined) {
     params.push(query.name);
     clauses.push(
@@ -625,10 +630,12 @@ function assistantSearchWhere(query: AssistantSearchQuery): { where: string; par
         : `name = $${params.length}`,
     );
   }
+
   if (query.metadata && Object.keys(query.metadata).length > 0) {
     params.push(JSON.stringify(query.metadata));
     clauses.push(`metadata @> $${params.length}::jsonb`);
   }
+
   return { where: clauses.length > 0 ? `WHERE ${clauses.join(" AND ")}` : "", params };
 }
 
@@ -640,10 +647,12 @@ function assistantSearchWhere(query: AssistantSearchQuery): { where: string; par
 function threadSearchWhere(query: ThreadSearchQuery): { where: string; params: unknown[] } {
   const params: unknown[] = [];
   const clauses: string[] = [];
+
   if (query.metadata && Object.keys(query.metadata).length > 0) {
     params.push(JSON.stringify(query.metadata));
     clauses.push(`metadata @> $${params.length}::jsonb`);
   }
+
   for (const excluded of Array.isArray(query.excludeMetadata)
     ? query.excludeMetadata
     : query.excludeMetadata
@@ -652,6 +661,7 @@ function threadSearchWhere(query: ThreadSearchQuery): { where: string; params: u
     params.push(JSON.stringify(excluded));
     clauses.push(`NOT (metadata @> $${params.length}::jsonb)`);
   }
+
   // A second containment clause rather than one merged object, so a caller's filter and the
   // server's scoping can name the same key and correctly match nothing. Uses `threads_metadata_idx`
   // (GIN, jsonb_path_ops) the same way, which is what turns the auth path into an index lookup.
@@ -659,18 +669,22 @@ function threadSearchWhere(query: ThreadSearchQuery): { where: string; params: u
     params.push(JSON.stringify(query.enforcedMetadata));
     clauses.push(`metadata @> $${params.length}::jsonb`);
   }
+
   if (query.values && Object.keys(query.values).length > 0) {
     params.push(JSON.stringify(query.values));
     clauses.push(`values @> $${params.length}::jsonb`);
   }
+
   if (query.status) {
     params.push(query.status);
     clauses.push(`status = $${params.length}`);
   }
+
   if (query.ids) {
     params.push(query.ids);
     clauses.push(`thread_id = ANY($${params.length}::text[])`);
   }
+
   return { where: clauses.length > 0 ? `WHERE ${clauses.join(" AND ")}` : "", params };
 }
 
@@ -773,26 +787,32 @@ const rowToOccurrenceSeq = (row: { occurrence_seq: string }): number =>
 function cronSearchWhere(query: CronSearchQuery): { where: string; params: unknown[] } {
   const clauses: string[] = [];
   const params: unknown[] = [];
+
   if (query.assistant_id !== undefined) {
     params.push(query.assistant_id);
     clauses.push(`assistant_id = $${params.length}`);
   }
+
   if (query.thread_id !== undefined) {
     params.push(query.thread_id);
     clauses.push(`thread_id = $${params.length}`);
   }
+
   if (query.enabled !== undefined) {
     params.push(query.enabled);
     clauses.push(`enabled = $${params.length}`);
   }
+
   if (query.metadata !== undefined) {
     params.push(JSON.stringify(query.metadata));
     clauses.push(`metadata @> $${params.length}::jsonb`);
   }
+
   if (query.enforcedMetadata !== undefined) {
     params.push(JSON.stringify(query.enforcedMetadata));
     clauses.push(`metadata @> $${params.length}::jsonb`);
   }
+
   return { where: clauses.length > 0 ? `WHERE ${clauses.join(" AND ")}` : "", params };
 }
 
@@ -936,6 +956,7 @@ function itemFilterSql(filter: StoreItemFilter, params: unknown[]): string[] {
         predicates.push("false");
         continue;
       }
+
       params.push(key, JSON.stringify(condition));
       predicates.push(
         `value -> $${params.length - 1}::text IS NOT DISTINCT FROM $${params.length}::jsonb`,
@@ -991,6 +1012,7 @@ function itemFilterSql(filter: StoreItemFilter, params: unknown[]): string[] {
       }
     }
   }
+
   return predicates;
 }
 
@@ -1023,6 +1045,7 @@ export class PostgresSkeinStore implements SkeinStore {
       },
     });
   }
+
   readonly #pool: Pool;
   readonly #index?: StoreIndexConfig;
   readonly #ttl?: StoreTtlConfig;
@@ -1072,6 +1095,7 @@ export class PostgresSkeinStore implements SkeinStore {
     signal?: AbortSignal,
   ): Promise<T> {
     const client = await this.#pool.connect();
+
     try {
       signal?.throwIfAborted();
       await client.query("BEGIN");
@@ -1128,6 +1152,7 @@ export class PostgresSkeinStore implements SkeinStore {
     const dims = this.#index?.hnsw ? requireIndexableDimensions(this.#index.dims) : undefined;
     const client = await this.#pool.connect();
     let locked = false;
+
     try {
       // Exempt from any configured `statement_timeout`, for the same reason migrations are: the column
       // rewrite and the concurrent index build below are legitimately slow, and a cancelled build leaves
@@ -1152,6 +1177,7 @@ export class PostgresSkeinStore implements SkeinStore {
       if (dims !== undefined) await this.#dropInvalidHnswIndex(client);
 
       await client.query("BEGIN");
+
       try {
         try {
           await client.query("CREATE EXTENSION IF NOT EXISTS vector");
@@ -1166,6 +1192,7 @@ export class PostgresSkeinStore implements SkeinStore {
               `${error instanceof Error ? error.message : String(error)}`,
           );
         }
+
         await client.query("ALTER TABLE store_items ADD COLUMN IF NOT EXISTS embedding vector");
         if (dims !== undefined) await this.#pinEmbeddingDimension(client, dims);
         await client.query("COMMIT");
@@ -1182,6 +1209,7 @@ export class PostgresSkeinStore implements SkeinStore {
       if (locked) {
         await client.query("SELECT pg_advisory_unlock($1)", [PGVECTOR_SETUP_LOCK]).catch(() => {});
       }
+
       // Destroyed, never returned to the pool. This session ran `SET statement_timeout = 0` above, which
       // is session-level: a client handed back carrying it would silently exempt whatever query reused
       // it. Destroying makes the pool open a fresh connection, which runs the connect hook and gets the
@@ -1302,6 +1330,7 @@ export class PostgresSkeinStore implements SkeinStore {
         ] as const;
       }),
     );
+
     const itemOptions = new Map(snapshot.itemOptions ?? []);
     const threadRetention = new Map(snapshot.threadRetention ?? []);
 
@@ -1309,13 +1338,16 @@ export class PostgresSkeinStore implements SkeinStore {
     // client, and one call beats N). A failure is non-fatal: we warn and import the items without a
     // vector, so the migration still completes. Skipped/failed items simply get a null embedding.
     const embeddingByItem = new Map<string, string>();
+
     if (this.#index !== undefined && snapshot.items.length > 0) {
       const { dims, fields } = this.#index;
+
       try {
         const candidates = snapshot.items.filter(([id]) => {
           const index = itemOptions.get(id)?.index;
           return index !== false && index?.length !== 0;
         });
+
         const vectors = candidates.length
           ? await this.#index.embed(
               candidates.map(([id, item]) =>
@@ -1342,8 +1374,10 @@ export class PostgresSkeinStore implements SkeinStore {
     let skippedOrphanCrons = 0;
 
     const client = await this.#pool.connect();
+
     try {
       await client.query("BEGIN");
+
       for (const [, assistant] of snapshot.assistants) {
         await client.query(
           `INSERT INTO assistants
@@ -1364,11 +1398,13 @@ export class PostgresSkeinStore implements SkeinStore {
           ],
         );
       }
+
       // Version snapshots FK-reference assistants, so they go in after them. A version whose
       // assistant isn't part of the import is skipped (FK would abort the whole transaction).
       const importedAssistantIds = new Set(
         snapshot.assistants.map(([, assistant]) => assistant.assistant_id),
       );
+
       for (const [, version] of snapshot.assistantVersions ?? []) {
         if (!importedAssistantIds.has(version.assistant_id)) continue;
         await client.query(
@@ -1389,6 +1425,7 @@ export class PostgresSkeinStore implements SkeinStore {
           ],
         );
       }
+
       for (const [, thread] of snapshot.threads) {
         const policy = threadRetention.get(thread.thread_id);
         await client.query(
@@ -1413,11 +1450,13 @@ export class PostgresSkeinStore implements SkeinStore {
           ],
         );
       }
+
       for (const [, run] of snapshot.runs) {
         if (!importedThreadIds.has(run.thread_id)) {
           skippedOrphanRuns += 1;
           continue;
         }
+
         const kwargs = kwargsByRun.get(run.run_id) ?? null;
         await client.query(
           `INSERT INTO runs
@@ -1438,12 +1477,14 @@ export class PostgresSkeinStore implements SkeinStore {
           ],
         );
       }
+
       for (const [runId, result] of snapshot.runResults ?? []) {
         await client.query("UPDATE runs SET result=$2::jsonb WHERE run_id=$1 AND result IS NULL", [
           runId,
           serializeWireJson(result),
         ]);
       }
+
       // After threads, since a thread cron FK-references one. A cron whose thread is not part of
       // this import is skipped rather than aborting the transaction, exactly like runs above.
       // `auth` is deliberately not restored: it is not in the snapshot (a snapshot is written to
@@ -1454,6 +1495,7 @@ export class PostgresSkeinStore implements SkeinStore {
           skippedOrphanCrons += 1;
           continue;
         }
+
         await client.query(
           `INSERT INTO crons
              (cron_id, assistant_id, thread_id, schedule, timezone, end_time, next_run_date, enabled,
@@ -1478,13 +1520,16 @@ export class PostgresSkeinStore implements SkeinStore {
           ],
         );
       }
+
       for (const [id, item] of snapshot.items) {
         const settings = itemOptions.get(id);
+
         const retention = [
           settings?.ttlMinutes ?? null,
           settings?.expiresAt == null ? null : new Date(settings.expiresAt),
           settings?.index === undefined ? null : JSON.stringify(settings.index),
         ];
+
         // The `embedding` column only exists when a store index is configured (see migrate());
         // without one, insert the pgvector-free row so a stock Postgres never sees the column.
         const query =
@@ -1518,12 +1563,15 @@ export class PostgresSkeinStore implements SkeinStore {
               };
         await client.query(query.text, query.values);
       }
+
       await client.query("COMMIT");
+
       if (skippedOrphanRuns > 0) {
         console.warn(
           `skein: skipped ${skippedOrphanRuns} imported run(s) whose thread was not part of the import.`,
         );
       }
+
       if (skippedOrphanCrons > 0) {
         console.warn(
           `skein: skipped ${skippedOrphanCrons} imported cron(s) whose thread was not part of the import.`,
@@ -1558,6 +1606,7 @@ export class PostgresSkeinStore implements SkeinStore {
       // Always bounded: an absent limit means the first page, not the whole table.
       params.push(this.#pageLimit(query.limit));
       const limitClause = `LIMIT $${params.length}`;
+
       // `assistant_id` is a unique tiebreaker so OFFSET/LIMIT paging is stable when the primary sort
       // key ties — mirrors the memory driver's `ORDER BY <sortBy> <dir>, assistant_id <dir>`.
       const { rows } = await this.#pool.query<AssistantRow>(
@@ -1568,6 +1617,7 @@ export class PostgresSkeinStore implements SkeinStore {
     },
     count: async (query: AssistantSearchQuery) => {
       const { where, params } = assistantSearchWhere(query);
+
       const { rows } = await this.#pool.query<{ count: string }>(
         `SELECT count(*)::text AS count FROM assistants ${where}`,
         params,
@@ -1585,6 +1635,7 @@ export class PostgresSkeinStore implements SkeinStore {
       this.#withTransaction(async (client) => {
         const assistantId = input.assistant_id ?? randomUUID();
         let rows: AssistantRow[];
+
         try {
           ({ rows } = await client.query<AssistantRow>(
             `INSERT INTO assistants (assistant_id, graph_id, name, description, config, context, metadata)
@@ -1605,8 +1656,10 @@ export class PostgresSkeinStore implements SkeinStore {
           if (isUniqueViolation(error)) {
             throw SkeinHttpError.conflict(`Assistant "${assistantId}" already exists.`);
           }
+
           throw error;
         }
+
         const created = rows[0] as AssistantRow;
         // Seed version 1 from the row we just inserted, sharing its created_at.
         await client.query(
@@ -1679,14 +1732,17 @@ export class PostgresSkeinStore implements SkeinStore {
     listVersions: async (assistantId, query?: AssistantVersionsQuery) => {
       const params: unknown[] = [assistantId];
       let where = "WHERE assistant_id = $1";
+
       if (query?.metadata && Object.keys(query.metadata).length > 0) {
         params.push(JSON.stringify(query.metadata));
         where += ` AND metadata @> $${params.length}::jsonb`;
       }
+
       params.push(query?.offset ?? 0);
       const offsetParam = `$${params.length}`;
       params.push(this.#pageLimit(query?.limit));
       const limitClause = `LIMIT $${params.length}`;
+
       const { rows } = await this.#pool.query<AssistantVersionRow>(
         `SELECT * FROM assistant_versions ${where} ORDER BY version DESC OFFSET ${offsetParam} ${limitClause}`,
         params,
@@ -1699,6 +1755,7 @@ export class PostgresSkeinStore implements SkeinStore {
           "SELECT * FROM assistant_versions WHERE assistant_id = $1 AND version = $2",
           [assistantId, version],
         );
+
         if (!target.rows[0]) {
           // Distinguish an unknown assistant from an unknown version, matching the memory driver.
           const exists = await client.query("SELECT 1 FROM assistants WHERE assistant_id = $1", [
@@ -1710,7 +1767,9 @@ export class PostgresSkeinStore implements SkeinStore {
               : `Assistant "${assistantId}" not found.`,
           );
         }
+
         const snapshot = target.rows[0];
+
         const { rows } = await client.query<AssistantRow>(
           `UPDATE assistants SET
              graph_id = $2, name = $3, description = $4,
@@ -1746,6 +1805,7 @@ export class PostgresSkeinStore implements SkeinStore {
         ttl_strategy: "delete" | "keep_latest" | null;
         ttl_pinned: boolean;
       }>("SELECT ttl_minutes,ttl_strategy,ttl_pinned FROM threads WHERE thread_id=$1", [threadId]);
+
       const row = rows[0];
       return {
         ttl: row?.ttl_pinned ? null : (row?.ttl_minutes ?? this.#threadTtl?.defaultTtl),
@@ -1761,6 +1821,7 @@ export class PostgresSkeinStore implements SkeinStore {
     },
     search: async (query) => {
       const { where, params } = threadSearchWhere(query);
+
       // Whitelist the sort column — it is interpolated, never parameterized.
       const sortColumns = new Set([
         "thread_id",
@@ -1769,6 +1830,7 @@ export class PostgresSkeinStore implements SkeinStore {
         "updated_at",
         "state_updated_at",
       ]);
+
       const sortBy = sortColumns.has(query.sortBy ?? "") ? query.sortBy : "created_at";
       const direction = query.sortOrder === "asc" ? "ASC" : "DESC";
       params.push(query.offset ?? 0);
@@ -1776,6 +1838,7 @@ export class PostgresSkeinStore implements SkeinStore {
       // Always bounded: an absent limit means the first page, not the whole table.
       params.push(this.#pageLimit(query.limit));
       const limitClause = `LIMIT $${params.length}`;
+
       // `thread_id` is a unique tiebreaker so OFFSET/LIMIT paging is stable when the primary sort key
       // ties (equal timestamps/status) — without it Postgres row order is undefined across queries and
       // a page could drop or duplicate a row.
@@ -1787,6 +1850,7 @@ export class PostgresSkeinStore implements SkeinStore {
     },
     count: async (query) => {
       const { where, params } = threadSearchWhere(query);
+
       const { rows } = await this.#pool.query<{ count: string }>(
         `SELECT count(*)::text AS count FROM threads ${where}`,
         params,
@@ -1804,10 +1868,12 @@ export class PostgresSkeinStore implements SkeinStore {
     },
     create: async (input?: ThreadCreate) => {
       const threadId = input?.thread_id ?? randomUUID();
+
       // An absent `ttl` falls back to the configured default, so a create that says nothing still
       // expires under a configured policy; an explicit `null` pins the thread against any TTL.
       const ttlMinutes =
         input?.ttl === undefined ? (this.#threadTtl?.defaultTtl ?? null) : input.ttl;
+
       try {
         const { rows } = await this.#pool.query<ThreadRow>(
           `INSERT INTO threads (thread_id, status, metadata, ttl_minutes, expires_at, ttl_strategy, ttl_pinned)
@@ -1829,6 +1895,7 @@ export class PostgresSkeinStore implements SkeinStore {
         if (isUniqueViolation(error)) {
           throw SkeinHttpError.conflict(`Thread "${threadId}" already exists.`);
         }
+
         throw error;
       }
     },
@@ -1959,17 +2026,21 @@ export class PostgresSkeinStore implements SkeinStore {
       // The status filter joins the WHERE clause rather than filtering a page afterwards, so
       // `limit`/`offset` page the filtered set — see `RunListQuery.status`.
       let statusSql = "";
+
       if (query?.status !== undefined) {
         params.push(query.status);
         statusSql = ` AND status = $${params.length}`;
       }
+
       let paginationSql = "";
+
       if (query?.limit !== undefined) {
         params.push(query.offset ?? 0);
         const offsetParam = `$${params.length}`;
         params.push(query.limit);
         paginationSql = ` OFFSET ${offsetParam} LIMIT $${params.length}`;
       }
+
       const { rows } = await this.#pool.query<RunRow>(
         `SELECT ${RUN_COLUMNS} FROM runs WHERE thread_id = $1${statusSql} ORDER BY created_at, run_id${paginationSql}`,
         params,
@@ -2024,6 +2095,7 @@ export class PostgresSkeinStore implements SkeinStore {
         }>("SELECT thread_id, status FROM threads WHERE thread_id = $1 FOR UPDATE", [
           input.thread_id,
         ]);
+
         const thread = threadRows[0];
         // An unknown thread is not a guard refusal — see the memory driver, which throws the same 404
         // rather than reporting a mismatch the caller could retry into existence.
@@ -2053,11 +2125,13 @@ export class PostgresSkeinStore implements SkeinStore {
 AND ($2 <> 'running' OR status IN ('pending','running') OR NOT EXISTS(SELECT 1 FROM native_dispatches WHERE native_dispatches.run_id=runs.run_id)) RETURNING ${RUN_COLUMNS}`,
         [runId, status, error === undefined ? null : JSON.stringify(error)],
       );
+
       if (!rows[0]) {
         const effective = await this.runs.get(runId);
         if (effective) return effective;
         throw SkeinHttpError.notFound(`Run "${runId}" not found.`);
       }
+
       return rowToRun(rows[0]);
     },
     delete: async (runId) => {
@@ -2102,10 +2176,12 @@ AND ($2 <> 'running' OR status IN ('pending','running') OR NOT EXISTS(SELECT 1 F
     listActiveRuns: async (threadId) => {
       const params: unknown[] = [];
       let threadSql = "";
+
       if (threadId !== undefined) {
         params.push(threadId);
         threadSql = ` AND thread_id = $${params.length}`;
       }
+
       params.push(this.#pageLimit(undefined));
       const { rows } = await this.#pool.query<RunRow>(
         `SELECT ${RUN_COLUMNS} FROM runs WHERE status IN (${INFLIGHT_STATUS_SQL})${threadSql} ` +
@@ -2133,19 +2209,23 @@ AND ($2 <> 'running' OR status IN ('pending','running') OR NOT EXISTS(SELECT 1 F
           `SELECT ${RUN_COLUMNS} FROM runs WHERE run_id = $1 FOR UPDATE`,
           [runId],
         );
+
         const existing = locked[0];
+
         if (!existing) {
           return {
             run: null,
             delivery: await insertDelivery(client, runId, final.status, final.delivery),
           };
         }
+
         if (isTerminalRunStatus(existing.status)) {
           return {
             run: rowToRun(existing),
             delivery: await insertDelivery(client, runId, existing.status, final.delivery),
           };
         }
+
         const { rows: updated } = await client.query<RunRow>(
           `UPDATE runs SET status = $2, error = $3::jsonb, updated_at = now()
             WHERE run_id = $1 RETURNING ${RUN_COLUMNS}`,
@@ -2169,10 +2249,12 @@ AND ($2 <> 'running' OR status IN ('pending','running') OR NOT EXISTS(SELECT 1 F
     listByRun: async (runId, query) => {
       const params: unknown[] = [runId];
       let statusSql = "";
+
       if (query?.status !== undefined) {
         params.push(query.status);
         statusSql = ` AND status = $${params.length}`;
       }
+
       params.push(query?.offset ?? 0);
       const offsetParam = `$${params.length}`;
       params.push(this.#pageLimit(query?.limit));
@@ -2251,13 +2333,16 @@ AND ($2 <> 'running' OR status IN ('pending','running') OR NOT EXISTS(SELECT 1 F
                 "$3::timestamptz",
                 [deliveryId, result.error, result.nextAttemptAt],
               ];
+
       // The count is only overwritten when the caller supplies one — see `DeliveryAttemptResult`.
       const attempt = result.attempt;
       let attemptSql = "attempt";
+
       if (attempt !== undefined) {
         params.push(attempt);
         attemptSql = `$${params.length}`;
       }
+
       const { rows } = await this.#pool.query<DeliveryRow>(
         `UPDATE deliveries
             SET status = ${statusSql},
@@ -2303,6 +2388,7 @@ AND ($2 <> 'running' OR status IN ('pending','running') OR NOT EXISTS(SELECT 1 F
     },
     search: async (query) => {
       const { where, params } = cronSearchWhere(query);
+
       // Whitelist the sort column — it is interpolated, never parameterized.
       const sortColumns = new Set([
         "cron_id",
@@ -2315,6 +2401,7 @@ AND ($2 <> 'running' OR status IN ('pending','running') OR NOT EXISTS(SELECT 1 F
         // against either does not get a silent fallback to `created_at`.
         "end_time",
       ]);
+
       const sortBy = sortColumns.has(query.sortBy ?? "") ? query.sortBy : "created_at";
       const direction = query.sortOrder === "asc" ? "ASC" : "DESC";
       params.push(query.offset ?? 0);
@@ -2332,6 +2419,7 @@ AND ($2 <> 'running' OR status IN ('pending','running') OR NOT EXISTS(SELECT 1 F
     },
     count: async (query) => {
       const { where, params } = cronSearchWhere(query);
+
       const { rows } = await this.#pool.query<{ count: string }>(
         `SELECT count(*)::text AS count FROM crons ${where}`,
         params,
@@ -2340,6 +2428,7 @@ AND ($2 <> 'running' OR status IN ('pending','running') OR NOT EXISTS(SELECT 1 F
     },
     create: async (input: CronCreate) => {
       const cronId = input.cron_id ?? randomUUID();
+
       try {
         return await insertCron(this.#pool, cronId, input);
       } catch (error) {
@@ -2349,6 +2438,7 @@ AND ($2 <> 'running' OR status IN ('pending','running') OR NOT EXISTS(SELECT 1 F
         if (isUniqueViolation(error)) {
           throw SkeinHttpError.conflict(`Cron "${cronId}" already exists.`);
         }
+
         throw error;
       }
     },
@@ -2438,6 +2528,7 @@ AND ($2 <> 'running' OR status IN ('pending','running') OR NOT EXISTS(SELECT 1 F
           WHERE enabled AND next_run_date IS NOT NULL AND next_run_date <= $1::timestamptz`,
         [now],
       );
+
       const overdue = rows[0]?.overdue_ms;
       return overdue == null ? null : Math.round(Number(overdue));
     },
@@ -2461,6 +2552,7 @@ AND ($2 <> 'running' OR status IN ('pending','running') OR NOT EXISTS(SELECT 1 F
         );
         return rows[0] ? rowToItem(rows[0]) : null;
       }
+
       const { rows } = await this.#pool.query<ItemRow>(
         `SELECT namespace, key, value, created_at, updated_at, ttl_minutes, expires_at FROM store_items
          WHERE namespace = $1::text[] AND key = $2 AND ${NOT_EXPIRED}`,
@@ -2473,6 +2565,7 @@ AND ($2 <> 'running' OR status IN ('pending','running') OR NOT EXISTS(SELECT 1 F
     putWithOptions: async (namespace, key, value, options?: StoreItemWriteOptions) => {
       // A per-put ttl (minutes) wins; otherwise the configured default (null = never expires).
       const ttlMinutes = options?.ttl === undefined ? (this.#ttl?.defaultTtl ?? null) : options.ttl;
+
       // The `embedding` column only exists when a store index is configured (see migrate()); a
       // pgvector-free deployment writes the row without it, so a stock Postgres never sees `vector`.
       if (this.#index !== undefined) {
@@ -2480,6 +2573,7 @@ AND ($2 <> 'running' OR status IN ('pending','running') OR NOT EXISTS(SELECT 1 F
           options?.index === false || options?.index?.length === 0
             ? null
             : await this.#embed(textForValue(value, options?.index ?? this.#index.fields));
+
         const { rows } = await this.#pool.query<ItemRow>(
           `INSERT INTO store_items (namespace, key, value, embedding, ttl_minutes, expires_at, index_fields)
            VALUES ($1::text[], $2, $3::jsonb, $4::vector, $5, ${expiresAtSql("$5")}, $6::jsonb)
@@ -2498,6 +2592,7 @@ AND ($2 <> 'running' OR status IN ('pending','running') OR NOT EXISTS(SELECT 1 F
         );
         return rowToItem(rows[0] as ItemRow);
       }
+
       const { rows } = await this.#pool.query<ItemRow>(
         `INSERT INTO store_items (namespace, key, value, ttl_minutes, expires_at, index_fields)
          VALUES ($1::text[], $2, $3::jsonb, $4, ${expiresAtSql("$4")}, $5::jsonb)
@@ -2523,6 +2618,7 @@ AND ($2 <> 'running' OR status IN ('pending','running') OR NOT EXISTS(SELECT 1 F
     },
     search: async (query: StoreSearchQuery) => {
       const items = await this.#search(query);
+
       if (
         items.length &&
         (query.refreshTtl ?? (this.#ttl !== undefined && this.#ttl.refreshOnRead !== false))
@@ -2538,6 +2634,7 @@ AND ($2 <> 'running' OR status IN ('pending','running') OR NOT EXISTS(SELECT 1 F
           RETURNING items.namespace, items.key, items.expires_at`,
           [JSON.stringify(items.map(({ namespace, key }) => ({ namespace, key })))],
         );
+
         const expiryByKey = new Map(
           refreshed.rows.map((row) => [
             JSON.stringify([row.namespace, row.key]),
@@ -2549,6 +2646,7 @@ AND ($2 <> 'running' OR status IN ('pending','running') OR NOT EXISTS(SELECT 1 F
           expiresAt: expiryByKey.get(JSON.stringify([item.namespace, item.key])) ?? item.expiresAt,
         }));
       }
+
       return items;
     },
     listNamespaces: async (query) => {
@@ -2560,6 +2658,7 @@ AND ($2 <> 'running' OR status IN ('pending','running') OR NOT EXISTS(SELECT 1 F
       // `maxDepth` is a projection, not a post-filter: DISTINCT dedupes the *truncated* form, which is
       // the truncate-then-dedupe-then-sort-then-slice order the memory driver and LangGraph both use.
       let projection = "namespace";
+
       if (query?.maxDepth !== undefined) {
         params.push(query.maxDepth);
         projection = `namespace[1:$${params.length}]`;
@@ -2590,6 +2689,7 @@ AND ($2 <> 'running' OR status IN ('pending','running') OR NOT EXISTS(SELECT 1 F
       // succeed again, and the only symptom would be a table growing forever, since reads filter expired
       // rows out anyway. Batching makes each round independently committed, so progress is guaranteed.
       let swept = 0;
+
       for (;;) {
         // `ctid` rather than the primary key: it is the physical row pointer, so the subselect feeds the
         // delete without a second index lookup per row.
@@ -2600,6 +2700,7 @@ AND ($2 <> 'running' OR status IN ('pending','running') OR NOT EXISTS(SELECT 1 F
               LIMIT ${SWEEP_BATCH_ROWS}
            )`,
         );
+
         const deleted = rowCount ?? 0;
         swept += deleted;
         if (deleted < SWEEP_BATCH_ROWS) return swept;
@@ -2656,15 +2757,18 @@ AND ($2 <> 'running' OR status IN ('pending','running') OR NOT EXISTS(SELECT 1 F
             claim.now,
           ],
         );
+
         const won = rows[0];
         if (won) return { claimed: true, record: rowToIdempotencyRecord(won) };
         const { rows: incumbent } = await this.#pool.query<IdempotencyRow>(
           `SELECT ${IDEMPOTENCY_COLUMNS} FROM idempotency_records WHERE scope = $1 AND key = $2`,
           [claim.scope, claim.key],
         );
+
         const held = incumbent[0];
         if (held) return { claimed: false, record: rowToIdempotencyRecord(held) };
       }
+
       throw new Error(
         `Could not claim idempotency key after ${IDEMPOTENCY_CLAIM_ATTEMPTS} attempts — ` +
           "the record was repeatedly removed between the claim and the read.",
@@ -2704,6 +2808,7 @@ AND ($2 <> 'running' OR status IN ('pending','running') OR NOT EXISTS(SELECT 1 F
         `SELECT ${IDEMPOTENCY_COLUMNS} FROM idempotency_records WHERE scope = $1 AND key = $2`,
         [scope, key],
       );
+
       const row = rows[0];
       return row ? rowToIdempotencyRecord(row) : null;
     },
@@ -2729,6 +2834,7 @@ AND ($2 <> 'running' OR status IN ('pending','running') OR NOT EXISTS(SELECT 1 F
       // Against the caller's `now`, not the database's — see the contract. A database clock running
       // ahead of the application's would delete rows `claim` still treats as replayable.
       let swept = 0;
+
       for (;;) {
         const { rowCount } = await this.#pool.query(
           `DELETE FROM idempotency_records
@@ -2739,6 +2845,7 @@ AND ($2 <> 'running' OR status IN ('pending','running') OR NOT EXISTS(SELECT 1 F
             )`,
           [now],
         );
+
         const deleted = rowCount ?? 0;
         swept += deleted;
         if (deleted < SWEEP_BATCH_ROWS) return swept;
@@ -2752,14 +2859,17 @@ AND ($2 <> 'running' OR status IN ('pending','running') OR NOT EXISTS(SELECT 1 F
   async #embed(text: string): Promise<string> {
     if (!this.#index) throw new Error("Cannot embed without a configured store index.");
     const [vector] = await this.#index.embed([text]);
+
     if (!vector || vector.length === 0) {
       throw new Error("Store index embedder returned an empty vector.");
     }
+
     if (vector.length !== this.#index.dims) {
       throw new Error(
         `Store index embedder returned ${vector.length} dimensions, expected ${this.#index.dims}.`,
       );
     }
+
     return toVectorLiteral(vector);
   }
 
@@ -2772,9 +2882,11 @@ AND ($2 <> 'running' OR status IN ('pending','running') OR NOT EXISTS(SELECT 1 F
       const queryVector = await this.#embed(query.query);
       const params: unknown[] = [queryVector];
       let where = `embedding IS NOT NULL AND ${NOT_EXPIRED}`;
+
       if (usePrefix) {
         where += ` AND ${namespacePathSql(query.prefix as string[], "prefix", params)}`;
       }
+
       // Narrows the candidate set *before* the cosine ordering, so the page is the top-n of the
       // filtered rows rather than the filtered subset of the top-n.
       for (const predicate of itemFilterSql(query.filter ?? {}, params))
@@ -2784,6 +2896,7 @@ AND ($2 <> 'running' OR status IN ('pending','running') OR NOT EXISTS(SELECT 1 F
       // Always bounded: an absent limit means the first page, not the whole table.
       params.push(this.#pageLimit(query.limit));
       const limitClause = `LIMIT $${params.length}`;
+
       const { rows } = await this.#pool.query<ItemRow & { score: number }>(
         `SELECT namespace, key, value, created_at, updated_at, ttl_minutes, expires_at, 1 - (embedding <=> $1::vector) AS score
          FROM store_items WHERE ${where}
@@ -2795,9 +2908,11 @@ AND ($2 <> 'running' OR status IN ('pending','running') OR NOT EXISTS(SELECT 1 F
 
     const params: unknown[] = [];
     const conditions = [NOT_EXPIRED];
+
     if (usePrefix) {
       conditions.push(namespacePathSql(query.prefix as string[], "prefix", params));
     }
+
     conditions.push(...itemFilterSql(query.filter ?? {}, params));
     const clause = `WHERE ${conditions.join(" AND ")}`;
 
@@ -2812,6 +2927,7 @@ AND ($2 <> 'running' OR status IN ('pending','running') OR NOT EXISTS(SELECT 1 F
     // read; fixing it means aligning both drivers on one normalized text, which is a conformance-level
     // change and its own piece of work. Configure `store.index` for pgvector search to avoid it.
     let pagination = "";
+
     if (query.query === undefined) {
       params.push(query.offset ?? 0);
       const offsetParam = `$${params.length}`;

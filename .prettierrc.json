@@ -4,12 +4,5 @@
   "semi": true,
   "trailingComma": "all",
   "arrowParens": "always",
-  "overrides": [
-    {
-      "files": ["examples/{a2ui,github-playground,json-render}/**/*.{ts,mts,tsx}"],
-      "options": {
-        "plugins": ["./tools/prettier-playground-spacing.mjs"]
-      }
-    }
-  ]
+  "plugins": ["./tools/prettier-code-spacing.mjs"]
 }

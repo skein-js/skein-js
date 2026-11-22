@@ -29,10 +29,12 @@ async function pipeServerSentEvents(
 
   const iterator = events[Symbol.asyncIterator]();
   let clientDisconnected = false;
+
   const releaseOnClientClose = (): void => {
     clientDisconnected = true;
     void Promise.resolve(iterator.return?.(undefined)).catch(ignoreStreamError);
   };
+
   res.once("close", releaseOnClientClose);
   res.on("error", ignoreStreamError);
 
@@ -87,6 +89,7 @@ export function sendNodeError(
     if (!res.writableEnded) res.end();
     return;
   }
+
   // A 5xx is a *server* fault even when it is deliberate and typed, so it always reaches the log;
   // 4xx are the caller's problem and stay quiet. Without this a graph that cannot load would answer
   // with `graph_load_failed` and leave nothing behind — the CLI reports it at startup, but an
@@ -104,6 +107,7 @@ export function sendNodeError(
     );
     return;
   }
+
   logger?.error(`Unhandled error in the ${adapterName} adapter.`, error);
   res.writeHead(500, { "content-type": "application/json" });
   res.end(JSON.stringify({ status: 500, message: "Internal Server Error" }));

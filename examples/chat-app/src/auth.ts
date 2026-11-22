@@ -18,6 +18,7 @@ const authenticated = new Auth().authenticate(async (request) => {
   if (REQUIRED_API_KEY && request.headers.get("x-api-key") !== REQUIRED_API_KEY) {
     throw new HTTPException(401, { message: "Invalid or missing X-Api-Key." });
   }
+
   // A real app would verify a JWT / session here and derive a per-user identity; the demo uses one
   // user so the memory the research agent stores under `configurable.user_id` still lines up.
   return { identity: "demo-user", permissions: [] };

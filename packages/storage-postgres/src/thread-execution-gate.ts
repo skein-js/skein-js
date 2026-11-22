@@ -79,6 +79,7 @@ export function createPostgresThreadExecutionGate(
     // unlock on a dead socket would only throw.
     let connectionLost = false;
     const ownership = new AbortController();
+
     const onClientError = (error: Error): void => {
       connectionLost = true;
       ownership.abort(error);
@@ -88,7 +89,9 @@ export function createPostgresThreadExecutionGate(
         error,
       );
     };
+
     client.on("error", onClientError);
+
     const releaseClient = (destroy = false): void => {
       // Keep the listener through awaited cleanup queries. A socket error there otherwise crashes
       // the process before its rejected query can reach our catch. The pool installs its own idle
@@ -109,6 +112,7 @@ export function createPostgresThreadExecutionGate(
           "SELECT pg_try_advisory_lock($1) AS claimed",
           [key.toString()],
         );
+
         if (!result.rows[0]?.claimed) {
           releaseClient();
           return undefined;
@@ -127,6 +131,7 @@ export function createPostgresThreadExecutionGate(
       release: async () => {
         if (released) return;
         released = true;
+
         // The socket is already gone, and with it the session and its lock. Destroy the husk rather
         // than querying a dead connection, which would throw and route us through the failure branch
         // below to warn about a lock that Postgres has in fact already released.
@@ -134,6 +139,7 @@ export function createPostgresThreadExecutionGate(
           releaseClient(true);
           return;
         }
+
         try {
           // Unlock explicitly so a waiting peer proceeds immediately rather than when the socket tears
           // down, then undo the session-scoped `statement_timeout` this connection set. Both have to
@@ -161,6 +167,7 @@ export function createPostgresThreadExecutionGate(
       },
     };
   };
+
   return {
     acquire: async (threadId) => (await claim(threadId, true))!,
     tryAcquire: (threadId) => claim(threadId, false),

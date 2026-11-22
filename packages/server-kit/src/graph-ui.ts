@@ -27,6 +27,7 @@ async function readCompiledUi(
 ): Promise<UiFiles | undefined> {
   const root = path.join(configDir, "ui");
   let manifest: Record<string, { assets: string[] }>;
+
   try {
     manifest = JSON.parse(
       await readFile(path.join(root, "schemas.json"), "utf8"),
@@ -35,12 +36,15 @@ async function readCompiledUi(
     if ((error as NodeJS.ErrnoException).code === "ENOENT") return undefined;
     throw error;
   }
+
   const files: UiFiles = new Map();
+
   for (const graphId of Object.keys(config.ui ?? {})) {
     const assets = manifest[graphId]?.assets;
     if (!Array.isArray(assets) || !assets.length)
       throw new Error(`Built UI manifest has no assets for "${graphId}".`);
     const loaded: UiFile[] = [];
+
     for (const basename of assets) {
       if (
         typeof basename !== "string" ||
@@ -54,8 +58,10 @@ async function readCompiledUi(
         throw new Error("Built UI asset escapes its artifact directory.");
       loaded.push({ basename, contents: new Uint8Array(await readFile(filename)) });
     }
+
     files.set(graphId, loaded);
   }
+
   return files;
 }
 
@@ -66,9 +72,11 @@ export async function loadGraphUiHandler(
 ): Promise<((request: Request) => Promise<Response | undefined>) | undefined> {
   if (!config.ui || !Object.keys(config.ui).length) return undefined;
   let files = await readCompiledUi(config, configDir);
+
   if (!files) {
     const key = JSON.stringify([configDir, config.ui, config.ui_config]);
     let pending = watches.get(key);
+
     if (!pending) {
       pending = (async () => {
         const { build, watch } = await import(/* webpackIgnore: true */ "@langchain/langgraph-ui");
@@ -94,23 +102,29 @@ export async function loadGraphUiHandler(
       watches.set(key, pending);
       void pending.catch(() => watches.delete(key));
     }
+
     files = await pending;
   }
+
   const registry = files;
+
   return async (request) => {
     const url = new URL(request.url);
     const match = /^\/ui\/([^/]+)(?:\/([^/]+))?$/.exec(url.pathname);
     if (!match) return undefined;
     let graphId: string;
     let basename: string | undefined;
+
     try {
       graphId = decodeURIComponent(match[1]!);
       basename = match[2] ? decodeURIComponent(match[2]) : undefined;
     } catch {
       throw SkeinHttpError.badRequest("Invalid UI path encoding.");
     }
+
     const assets = registry.get(graphId);
     if (!assets?.length) return new Response("UI not found", { status: 404 });
+
     if (request.method === "GET" && basename) {
       const asset = assets.find((file) => file.basename === basename);
       if (!asset) return new Response("Asset not found", { status: 404 });
@@ -129,13 +143,16 @@ export async function loadGraphUiHandler(
         },
       });
     }
+
     if (request.method !== "POST" || basename) return undefined;
     let body: unknown;
+
     try {
       body = await request.json();
     } catch {
       throw SkeinHttpError.badRequest("UI bootstrap requires JSON.");
     }
+
     if (
       typeof body !== "object" ||
       body === null ||
@@ -150,10 +167,13 @@ export async function loadGraphUiHandler(
           originalNativeUrl(request),
         ).href,
       );
+
     const html = assets
       .filter((file) => file.basename.endsWith(".css"))
       .map((file) => `<link rel="stylesheet" href="${assetUrl(file.basename)}" />`);
+
     const script = assets.find((file) => file.basename.endsWith(".js"));
+
     if (script) {
       const stableName = graphId.replace(/[^a-zA-Z0-9]/g, "_");
       const render = `__LGUI_${stableName}.render(${JSON.stringify(body.name)}, "{{shadowRootId}}")`;
@@ -161,6 +181,7 @@ export async function loadGraphUiHandler(
         `<script src="${assetUrl(script.basename)}" onload="${escapeAttribute(render)}"></script>`,
       );
     }
+
     return new Response(html.join("\n"), {
       headers: { "content-type": "text/html; charset=utf-8" },
     });

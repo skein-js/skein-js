@@ -1,8 +1,11 @@
 import type { RunTelemetryContext, RunTelemetryEvent, TelemetrySink } from "@skein-js/core";
 import { describe, expect, it, vi } from "vitest";
 
-import type { PostHogTelemetryOptions } from "./posthog-telemetry.js";
-import { createPostHogTelemetry, type PostHogClientLike } from "./posthog-telemetry.js";
+import {
+  createPostHogTelemetry,
+  type PostHogClientLike,
+  type PostHogTelemetryOptions,
+} from "./posthog-telemetry.js";
 
 /** Build a sink that is definitely configured — the `undefined` case has its own tests. */
 function sink(options: PostHogTelemetryOptions): TelemetrySink {
@@ -218,6 +221,7 @@ describe("createPostHogTelemetry", () => {
       // the end hook. Reporting ~0s would drag PostHog's latency percentiles down with a lie; the
       // same policy token counts follow.
       const client = fakeClient();
+
       const handler = sink({ client }).callbacks?.(context)[0] as Record<
         string,
         (...args: unknown[]) => void

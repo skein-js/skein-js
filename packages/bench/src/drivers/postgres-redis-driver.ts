@@ -22,6 +22,7 @@ export const postgresRedisDriver: BenchDriver = {
     const containers: StartedResource[] = [];
     let postgres: StartedResource;
     let redis: StartedResource;
+
     try {
       postgres = await startPostgres();
       containers.push(postgres);
@@ -33,6 +34,7 @@ export const postgresRedisDriver: BenchDriver = {
     }
 
     const bootStartedAt = performance.now();
+
     const { deps, dispose } = await embedPostgresGraphs(
       { agent: graph as never },
       { postgresUri: postgres.url, redisUri: redis.url },
@@ -43,6 +45,7 @@ export const postgresRedisDriver: BenchDriver = {
       warm: true,
       worker: { maxConcurrency: runConcurrency },
     });
+
     const server = await skein.listen(0, "127.0.0.1");
     const bootMs = performance.now() - bootStartedAt;
 

@@ -1,9 +1,9 @@
-import { createServer } from "node:http";
 import { once } from "node:events";
+import { createServer } from "node:http";
 
 import { Client, StreamableHTTPClientTransport } from "@modelcontextprotocol/client";
-import { createExpressServer } from "@skein-js/express";
 import { createProtocolRuntime } from "@skein-js/agent-protocol";
+import { createExpressServer } from "@skein-js/express";
 import { embedInMemoryGraphs } from "@skein-js/server-kit";
 import { createDeepAgent, LangSmithSandbox } from "deepagents";
 import { createAgent, humanInTheLoopMiddleware, tool } from "langchain";
@@ -14,6 +14,7 @@ import { FixtureModel } from "./fixture-model.mjs";
 
 it("answers real upstream per-call review through the official modern MCP client", async () => {
   const sent = [];
+
   const send = tool(
     async ({ to }) => {
       sent.push(to);
@@ -21,6 +22,7 @@ it("answers real upstream per-call review through the official modern MCP client
     },
     { name: "send_email", description: "Send fixture email", schema: z.object({ to: z.string() }) },
   );
+
   const graph = createAgent({
     model: new FixtureModel([{ name: "send_email", args: { to: "original@example.com" } }]),
     tools: [send],
@@ -31,17 +33,21 @@ it("answers real upstream per-call review through the official modern MCP client
       }),
     ],
   });
+
   const server = await createExpressServer({ deps: embedInMemoryGraphs({ agent: graph }) });
   const listener = await server.listen(0, "127.0.0.1");
+
   const client = new Client(
     { name: "candidate-per-call", version: "1" },
     { versionNegotiation: { mode: "auto" }, capabilities: { elicitation: { form: {} } } },
   );
+
   let questions = 0;
   client.setRequestHandler("elicitation/create", () => {
     questions++;
     return { action: "accept", content: { decision: "edit", args: '{"to":"edited@example.com"}' } };
   });
+
   try {
     await client.connect(
       new StreamableHTTPClientTransport(new URL(`http://127.0.0.1:${listener.address().port}/mcp`)),
@@ -61,6 +67,7 @@ it("answers real upstream per-call review through the official modern MCP client
 
 it("uses the upstream remote sandbox backend and leaves provisioning/disposal with its host", async () => {
   const requests = [];
+
   const provider = createServer(async (request, response) => {
     let text = "";
     for await (const chunk of request) text += chunk;
@@ -70,6 +77,7 @@ it("uses the upstream remote sandbox backend and leaves provisioning/disposal wi
   }).listen(0, "127.0.0.1");
   await once(provider, "listening");
   let deleted = false;
+
   const sandbox = new LangSmithSandbox({
     sandbox: {
       name: "fixture-provider",
@@ -85,6 +93,7 @@ it("uses the upstream remote sandbox backend and leaves provisioning/disposal wi
       },
     },
   });
+
   const runtime = createProtocolRuntime(
     embedInMemoryGraphs({
       agent: createDeepAgent({
@@ -93,6 +102,7 @@ it("uses the upstream remote sandbox backend and leaves provisioning/disposal wi
       }),
     }),
   );
+
   try {
     await runtime.service.assistants.registerGraphAssistants();
     const { result } = await runtime.service.runs.createWait({
@@ -119,6 +129,7 @@ it.skipIf(process.env["SKEIN_TEST_LIVE_SANDBOX"] !== "1")(
     const snapshotId = process.env["SKEIN_TEST_SANDBOX_SNAPSHOT"];
     if (!snapshotId) throw new Error("Set SKEIN_TEST_SANDBOX_SNAPSHOT for the opted-in live test.");
     const sandbox = await LangSmithSandbox.create({ snapshotId });
+
     try {
       expect(await sandbox.execute("printf SKEIN_LIVE_SANDBOX_OK")).toMatchObject({
         exitCode: 0,

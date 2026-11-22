@@ -7,7 +7,7 @@ import { describe, expect, it } from "vitest";
 import catalog from "../../../scripts/scaffold-cases.json";
 
 import { buildProjectFiles } from "./project-files.js";
-import { MODEL_PROVIDERS, DEV_STORAGES, PACKAGE_MANAGERS } from "./scaffold-options.js";
+import { DEV_STORAGES, MODEL_PROVIDERS, PACKAGE_MANAGERS } from "./scaffold-options.js";
 
 describe("scaffold case catalog", () => {
   it("covers every option enum and keeps 33 installed cases", () => {
@@ -19,6 +19,7 @@ describe("scaffold case catalog", () => {
   });
   it("covers installed interaction sets", () => {
     const defaults = catalog.cases.filter((row) => row.layout === "standalone" && row.linting);
+
     const pairs = (
       rows: typeof catalog.cases,
       a: keyof (typeof rows)[number],
@@ -32,6 +33,7 @@ describe("scaffold case catalog", () => {
     expect(pairs(nx, "layout", "node").size).toBe(4);
     expect(pairs(nx, "layout", "tooling").size).toBe(8);
     expect(pairs(nx, "node", "tooling").size).toBe(8);
+
     for (const layout of ["integrated", "packages"]) {
       expect(
         new Set(nx.filter((row) => row.layout === layout).map((row) => row.provider)).size,
@@ -48,6 +50,7 @@ describe("scaffold case catalog", () => {
       "nx-integrated-both-node26",
       "nx-packages-neither-node26",
     ]);
+
     for (const row of additions) {
       const original = catalog.cases.find(
         (candidate) => candidate.id === row.id.replace(/-node26$/, ""),
@@ -100,6 +103,7 @@ describe("scaffold case catalog", () => {
         packageName: "agent",
         skeinVersionRange: "^0.19.0",
       });
+
       const manifest = JSON.parse(files.find((file) => file.path === "package.json")!.contents);
       expect(Boolean(manifest.scripts.lint)).toBe(options.linting);
       expect(Boolean(manifest.devDependencies.prettier)).toBe(options.linting);

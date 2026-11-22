@@ -47,29 +47,35 @@ function topLevelKeys(source: string, from: number): string[] {
   const start = source.indexOf("{", from);
   const keys: string[] = [];
   let depth = 0;
+
   for (let i = start; i < source.length; i += 1) {
     const char = source[i];
+
     if (char === "{" || char === "[" || char === "(") depth += 1;
     else if (char === "}" || char === "]" || char === ")") {
       depth -= 1;
       if (depth === 0) break;
     } else if (depth === 1 && (source[i - 1] === "\n" || source[i - 1] === "\t")) {
       const match = /^[ \t]*([a-z_][a-z0-9_]*)\s*:/.exec(source.slice(i, i + 80));
+
       if (match) {
         keys.push(match[1] as string);
         i += match[0].length - 1;
       }
     }
   }
+
   return [...new Set(keys)];
 }
 
 /** The keys of the request body one SDK client method sends. */
 function sdkBodyKeys(source: string, methodSignature: string): string[] {
   const methodAt = source.indexOf(methodSignature);
+
   if (methodAt === -1) {
     throw new Error(`method not found in the installed SDK: ${methodSignature}`);
   }
+
   // Every spelling the client uses: `const json = {` and `const payload = {` (assigned, then passed
   // as `json:`), and an inline `json: {`. The store methods use `payload`, and missing that spelling
   // is not a loud failure in the wrong direction — `sdkBodyKeys` throws rather than reporting an
@@ -114,9 +120,11 @@ describe("SDK request-body parity", () => {
   // either extractor quietly stops finding anything. Pin the shapes so a broken parse fails loudly.
   it("still reads both sides", () => {
     const runs = sdkClient("runs");
+
     for (const method of RUN_CREATE_METHODS) {
       expect(sdkBodyKeys(runs, method).length).toBeGreaterThan(15);
     }
+
     expect(sdkBodyKeys(sdkClient("threads"), "async create(payload)")).toContain("if_exists");
     expect(skeinSchemaKeys(skeinSchemas(), "runCreateSchema").length).toBeGreaterThan(15);
     expect(skeinSchemaKeys(skeinSchemas(), "threadCreateSchema")).toContain("if_exists");

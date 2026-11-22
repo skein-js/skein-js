@@ -1,8 +1,8 @@
 import {
-  type ConformanceStoreOptions,
   runSkeinStoreConformance,
   runStoreOptionsConformance,
   startPostgres,
+  type ConformanceStoreOptions,
   type StartedResource,
 } from "@skein-js/test-support";
 import { afterAll, beforeAll } from "vitest";

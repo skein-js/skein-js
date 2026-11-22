@@ -24,6 +24,7 @@ export async function loadConfigHttpHandler(
       "http.middleware_order supports auth_first only; authenticate before dispatching custom applications.",
     );
   }
+
   for (const key of ["backend", "type"] as const) {
     const selected = config.checkpointer?.[key];
     if (selected !== undefined && selected !== "default")
@@ -31,11 +32,13 @@ export async function loadConfigHttpHandler(
         `checkpointer.${key} is unsupported; inject an upstream saver through ProtocolDeps.checkpointer.`,
       );
   }
+
   if (config.checkpointer?.["path"] !== undefined)
     throw new SkeinConfigError(
       "checkpointer.path is unsupported; inject an upstream saver through ProtocolDeps.checkpointer.",
     );
   const app = config.http?.["app"];
+
   const ui =
     config.http?.disable_ui === true
       ? undefined
@@ -43,9 +46,11 @@ export async function loadConfigHttpHandler(
   if (app === undefined) return ui;
   if (typeof app !== "string") throw new SkeinConfigError("http.app must be a path:export string.");
   const spec = parseGraphSpec(app, options.configDir);
+
   const importer =
     options.importModule ??
     ((file: string) => import(pathToFileURL(file).href) as Promise<Record<string, unknown>>);
+
   const module = await importer(spec.sourceFile);
   const exported = module[spec.exportSymbol];
   let fetch: FetchApplication;
@@ -61,18 +66,22 @@ export async function loadConfigHttpHandler(
     throw new SkeinConfigError(
       `http.app "${app}" must export a Fetch function or an object with fetch().`,
     );
+
   return async (request) => {
     const applicationRequest = request.clone();
     let response: Response | undefined;
+
     try {
       response = await fetch(applicationRequest);
       if (!(response instanceof Response)) throw new TypeError("http.app must return a Response.");
+
       if (response.status === 404) {
         // A discarded response may itself stream the request clone. Cancellation must not wait
         // for the original body, which protocol fallthrough has yet to read.
         void response.body?.cancel().catch(() => undefined);
         return ui?.(request);
       }
+
       void request.body?.cancel().catch(() => undefined);
       return response;
     } finally {

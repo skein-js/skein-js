@@ -103,6 +103,7 @@ async function until(
     if (await predicate()) return;
     await new Promise((resolve) => setTimeout(resolve, 20));
   }
+
   throw new Error(`Timed out waiting for ${description}.`);
 }
 
@@ -211,6 +212,7 @@ describe("decoupled sources and destinations", () => {
     for (const role of ["finance", "hr", "manager"] as const) {
       const pending = approvalByRole(await pendingApprovals("approval-1"), role);
       const approver = refundApprovers.find((candidate) => candidate.role === role)!;
+
       const response = await sendApproval({
         conversationId: "approval-1",
         eventId: `whatsapp-approval-${role}`,
@@ -284,6 +286,7 @@ describe("decoupled sources and destinations", () => {
     await waitForThreadStatus("duplicate-approval", "interrupted");
     const hr = approvalByRole(await pendingApprovals("duplicate-approval"), "hr");
     const approver = refundApprovers.find((candidate) => candidate.role === "hr")!;
+
     const request = {
       conversationId: "duplicate-approval",
       eventId: "duplicate-hr-answer",
@@ -311,6 +314,7 @@ describe("decoupled sources and destinations", () => {
     });
     await waitForThreadStatus("concurrent-approval", "interrupted");
     const approvals = await pendingApprovals("concurrent-approval");
+
     const requests = (["hr", "finance"] as const).map((role) => {
       const approval = approvalByRole(approvals, role);
       const approver = refundApprovers.find((candidate) => candidate.role === role)!;
@@ -374,6 +378,7 @@ describe("decoupled sources and destinations", () => {
     expect(recordedEffects()).toHaveLength(1);
 
     const [failedDelivery] = await resolved.runtime.service.runs.listDeliveries(runId);
+
     const waitMs = Math.max(
       0,
       new Date(failedDelivery!.next_attempt_at).getTime() - Date.now() + 10,

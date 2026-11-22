@@ -27,4 +27,4 @@ const CardContent = React.forwardRef<HTMLDivElement, React.HTMLAttributes<HTMLDi
 );
 CardContent.displayName = "CardContent";
 
-export { Card, CardHeader, CardContent };
+export { Card, CardContent, CardHeader };

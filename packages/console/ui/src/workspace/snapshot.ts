@@ -1,11 +1,13 @@
 import { z } from "zod";
 
 const inputModeSchema = z.enum(["chat", "json"]);
+
 const workspaceDraftSchema = z.object({
   chat: z.string().optional().catch(undefined),
   json: z.string().optional().catch(undefined),
   mode: inputModeSchema.optional().catch(undefined),
 });
+
 const pagePositionSchema = z.object({
   queryKey: z.string(),
   pageSize: z.number().int().positive().safe(),
@@ -18,6 +20,7 @@ const pagePositionSchema = z.object({
         offsets.every((offset, index) => index === 0 || offset > offsets[index - 1]!),
     ),
 });
+
 const threadInspectionTabSchema = z.enum([
   "conversation",
   "runs",

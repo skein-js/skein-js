@@ -36,6 +36,7 @@ const frame = (seq: number): RunFrame => ({ seq, event: "values", data: { seq } 
 describe("buildRuntime — postgres + redis assembly", () => {
   it("connects + migrates Postgres and round-trips protocol resources", async () => {
     const runtime = await buildRuntime({ configPath, store: "postgres", queue: "redis" });
+
     try {
       // The store is migrated and usable: create an assistant + thread and read the thread back.
       const assistant = await runtime.deps.store.assistants.create({ graph_id: "echo" });
@@ -56,8 +57,10 @@ describe("buildRuntime — postgres + redis assembly", () => {
     // Two independent runtimes (as if two server instances) sharing the same Redis event bus.
     const instanceA = await buildRuntime({ configPath, store: "memory", queue: "redis" });
     const instanceB = await buildRuntime({ configPath, store: "memory", queue: "redis" });
+
     try {
       const runId = "cross-instance-run";
+
       const received = (async () => {
         const seqs: number[] = [];
         for await (const f of instanceB.deps.bus.subscribe(runId)) seqs.push(f.seq);
@@ -81,6 +84,7 @@ describe("buildRuntime — postgres + redis assembly", () => {
       "__fixtures__",
       "langgraph.embed.json",
     );
+
     // Vitest transforms the .ts embedder fixture; buildRuntime resolves it via store.index.embed.
     const runtime = await buildRuntime({
       configPath: embedConfigPath,
@@ -89,6 +93,7 @@ describe("buildRuntime — postgres + redis assembly", () => {
       importModule: (file: string): Promise<Record<string, unknown>> =>
         import(/* @vite-ignore */ file),
     });
+
     try {
       await runtime.deps.store.store.put(["docs"], "a", { text: "a fluffy cat" });
       await runtime.deps.store.store.put(["docs"], "b", { text: "a small kitten" });
@@ -105,6 +110,7 @@ describe("buildRuntime — postgres + redis assembly", () => {
   it("rejects with RuntimeConfigError when a selected driver's env var is missing", async () => {
     const saved = process.env["POSTGRES_URI"];
     delete process.env["POSTGRES_URI"];
+
     try {
       await expect(
         buildRuntime({ configPath, store: "postgres", queue: "memory" }),
@@ -119,6 +125,7 @@ describe("buildRuntime — postgres + redis assembly", () => {
     // dispose the Postgres pool/saver on the way out instead of leaking them (and still reject).
     const savedRedis = process.env["REDIS_URI"];
     delete process.env["REDIS_URI"];
+
     try {
       await expect(buildRuntime({ configPath, store: "postgres", queue: "redis" })).rejects.toThrow(
         /REDIS_URI/,

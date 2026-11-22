@@ -19,9 +19,11 @@ export async function startServer(port = 2024, host = "127.0.0.1"): Promise<Star
   const server = await createExpressServer({ config: configPath });
   const httpServer = await server.listen(port, host);
   const address = httpServer.address();
+
   if (address === null || typeof address === "string") {
     throw new Error("expected a bound TCP address");
   }
+
   return { server, url: `http://${host}:${address.port}`, close: () => server.close() };
 }
 

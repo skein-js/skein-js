@@ -15,6 +15,7 @@ const defaults: ScaffoldOptions = {
   linting: true,
   skeinVersionRange: "^0.19.0",
 };
+
 function inspect(files: Record<string, string | undefined>, target = "apps/agent") {
   return inspectWorkspace(
     {
@@ -26,6 +27,7 @@ function inspect(files: Record<string, string | undefined>, target = "apps/agent
     defaults,
   );
 }
+
 describe("workspace planning", () => {
   it("preserves YAML comments, globs, exclusions and unrelated configuration", () => {
     const plan = inspect({
@@ -67,6 +69,7 @@ describe("workspace planning", () => {
       "package.json":
         '{"workspaces":["apps/*"],"devDependencies":{"eslint":"^7.0.0","prettier":"^2.0.0"}}',
     });
+
     const files = buildProjectFiles({ ...defaults, ...plan.options });
     const manifest = JSON.parse(files.find((file) => file.path === "package.json")!.contents);
     expect(manifest.devDependencies.eslint).toBe(TOOLCHAIN_VERSIONS.eslint);
@@ -86,6 +89,7 @@ describe("workspace planning", () => {
       ".nvmrc": "22.14.0",
       "eslint.config.mjs": "existing",
     });
+
     const files = buildProjectFiles({ ...defaults, ...plan.options });
     const manifest = JSON.parse(files.find((file) => file.path === "package.json")!.contents);
     expect(files.some((file) => file.path === "eslint.config.mjs")).toBe(false);
@@ -131,6 +135,7 @@ describe("workspace planning", () => {
       const files = {
         "package.json": JSON.stringify({ packageManager: "pnpm@9.15.0", workspaces }),
       };
+
       const before = { ...files };
       const plan = inspect(files);
       expect(plan.registered).toBe(false);

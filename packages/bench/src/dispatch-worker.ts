@@ -3,6 +3,7 @@ import { createProtocolRuntime } from "@skein-js/agent-protocol";
 import { embedPostgresGraphs } from "@skein-js/runtime";
 
 const workload = Annotation.Root({ jobId: Annotation<string>(), durationMs: Annotation<number>() });
+
 const graph = new StateGraph(workload)
   .addNode("work", async (state, config) => {
     const threadId = config.configurable?.["thread_id"] as string;
@@ -22,6 +23,7 @@ const embedded = await embedPostgresGraphs(
     redisUri: process.env["DISPATCH_REDIS_URI"],
   },
 );
+
 const runtime = createProtocolRuntime(embedded.deps, {
   worker: { maxConcurrency: 4 },
   scheduler: { enabled: false },
@@ -42,6 +44,7 @@ process.on("message", (command: Command) => {
     switch (command.operation) {
       case "thread":
         return (await runtime.service.threads.create()).thread_id;
+
       case "enqueue": {
         const run = await runtime.service.runs.createBackground(command.threadId!, {
           assistant_id: "agent",
@@ -50,6 +53,7 @@ process.on("message", (command: Command) => {
         });
         return Date.parse(run.created_at);
       }
+
       case "start":
         runtime.worker.start();
         sampler = setInterval(() => {

@@ -1,11 +1,15 @@
 // Exercise the existing server matrix with disposable services, without fixed local ports.
 import { createRequire } from "node:module";
-import { run, root } from "./pack-local-consumer.mjs";
+
+import { root, run } from "./pack-local-consumer.mjs";
+
 const require = createRequire(
   new URL("../node_modules/testcontainers/package.json", import.meta.url),
 );
+
 const { GenericContainer, Wait } = require("testcontainers");
 let postgres, redis;
+
 try {
   postgres = await new GenericContainer("pgvector/pgvector:pg17")
     .withEnvironment({

@@ -90,6 +90,7 @@ describe("resolveTelemetry", () => {
       vi.doMock("@skein-js/otel", () => {
         throw new Error("Cannot find package '@skein-js/otel'");
       });
+
       try {
         return await run(await import("./resolve-telemetry.js"));
       } finally {

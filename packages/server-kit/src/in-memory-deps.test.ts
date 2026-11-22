@@ -1,4 +1,4 @@
-import { MessagesAnnotation, MemorySaver, StateGraph } from "@langchain/langgraph";
+import { MemorySaver, MessagesAnnotation, StateGraph } from "@langchain/langgraph";
 import type { GraphResolver, ProtocolDeps } from "@skein-js/agent-protocol";
 import { MemoryRunEventBus, MemoryRunQueue, MemorySkeinStore } from "@skein-js/storage-memory";
 import { describe, expect, it } from "vitest";
@@ -30,10 +30,12 @@ describe("graphMapToResolver", () => {
   it("loads the exact mapped graph (compiled graph or factory, uninvoked)", async () => {
     const echo = buildGraph();
     let factoryCalls = 0;
+
     const agent = () => {
       factoryCalls += 1;
       return buildGraph();
     };
+
     const resolver = graphMapToResolver({ echo, agent });
 
     expect(await resolver.load("echo")).toBe(echo);
@@ -70,6 +72,7 @@ describe("normalizeEmbeddableGraphs", () => {
   // real LangGraph graph untranslated, and the resume became a no-op with no error anywhere.
   it("binds a caller-supplied resolver's LangGraph graphs too", async () => {
     const graph = buildGraph();
+
     const resolver: GraphResolver = {
       ids: ["custom"],
       load: async () => graph,
@@ -87,6 +90,7 @@ describe("normalizeEmbeddableGraphs", () => {
       stream: () => (async function* () {})(),
       getState: async () => ({ values: {}, next: [], tasks: [] }),
     };
+
     const resolver: GraphResolver = {
       ids: ["plain"],
       load: async () => agent,

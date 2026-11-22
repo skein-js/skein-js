@@ -40,6 +40,7 @@ function throwingSink(name: string): TelemetrySink {
   const boom = (): never => {
     throw new Error(`${name} exploded`);
   };
+
   return {
     name,
     onRunEvent: boom,
@@ -106,10 +107,12 @@ describe("combineTelemetrySinks", () => {
 
     it("nests implementing sinks around the body, outermost first", async () => {
       const order: string[] = [];
+
       const contextual = (name: string): TelemetrySink => ({
         name,
         withRunContext: async (_context, body) => {
           order.push(`enter:${name}`);
+
           try {
             return await body();
           } finally {
@@ -132,6 +135,7 @@ describe("combineTelemetrySinks", () => {
       // The documented guarantee is that a sink cannot fail the run it observes. This was the one
       // method not covered by `guard`, so a sink whose tracer had shut down failed the graph run.
       const report = vi.fn();
+
       const broken: TelemetrySink = {
         name: "broken",
         withRunContext: () => {
@@ -148,10 +152,12 @@ describe("combineTelemetrySinks", () => {
     it("propagates the body's own failure rather than reporting it as a sink fault", async () => {
       // A graph that fails inside the context must surface as that failure, not be masked or retried.
       const report = vi.fn();
+
       const passthrough: TelemetrySink = {
         name: "passthrough",
         withRunContext: (_context, body) => body(),
       };
+
       let bodyRuns = 0;
 
       const combined = combineTelemetrySinks([passthrough], report);
@@ -181,6 +187,7 @@ describe("combineTelemetrySinks", () => {
     // method there — and that is the natural thing to write for a sink that does I/O. A dropped
     // rejection is an unhandled rejection, which on Node >=15 terminates the process.
     const report = vi.fn();
+
     const telemetry: TelemetrySink = {
       name: "async-bad",
       onRunEvent: (() =>
@@ -200,6 +207,7 @@ describe("combineTelemetrySinks", () => {
   it("does not disturb an async sink that resolves normally", async () => {
     const report = vi.fn();
     const seen: string[] = [];
+
     const telemetry: TelemetrySink = {
       name: "async-good",
       onRunEvent: ((event: { type: string }) => {

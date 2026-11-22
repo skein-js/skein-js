@@ -17,8 +17,10 @@ export function runThreadEventBusConformance(
       params: { namespace: [], timestamp: 0, data: { runId } },
     },
   });
+
   const usingBus = async (body: (bus: ThreadEventBus, threadId: string) => Promise<void>) => {
     const bus = await factory();
+
     try {
       await body(bus, randomUUID());
     } finally {

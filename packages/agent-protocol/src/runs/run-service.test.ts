@@ -13,16 +13,19 @@ async function serviceWithAssistants(deps = createFixtureDeps()) {
 
 async function waitFor(predicate: () => boolean, timeoutMs = 2000): Promise<void> {
   const start = Date.now();
+
   while (Date.now() - start < timeoutMs) {
     if (predicate()) return;
     await new Promise((resolve) => setTimeout(resolve, 10));
   }
+
   throw new Error("timed out waiting for condition");
 }
 
 describe("run service", () => {
   it("createWait runs to completion and returns the final values", async () => {
     const { service } = await serviceWithAssistants();
+
     const { result, runId, threadId } = await service.runs.createWait({
       assistant_id: "echo",
       input: { value: "hi" },
@@ -36,11 +39,13 @@ describe("run service", () => {
 
   it("createStream yields frames and ends the run in success", async () => {
     const { service } = await serviceWithAssistants();
+
     const { runId, frames } = await service.runs.createStream({
       assistant_id: "echo",
       input: { value: "yo" },
       stream_mode: "values",
     });
+
     const collected = await collect(frames);
     expect(collected.length).toBeGreaterThan(0);
     expect((await service.runs.get(runId)).status).toBe("success");
@@ -80,6 +85,7 @@ describe("run service", () => {
     const deps = createFixtureDeps();
     const { service } = await serviceWithAssistants(deps);
     const thread = await service.threads.create();
+
     const run = await service.runs.createBackground(thread.thread_id, {
       assistant_id: "echo",
       input: {},
@@ -90,6 +96,7 @@ describe("run service", () => {
 
     // The exact QueuedRun is on the queue: a consumer receives it.
     const received: unknown[] = [];
+
     const consumer = deps.queue.consume(async (queued) => {
       received.push(queued);
     });
@@ -100,20 +107,24 @@ describe("run service", () => {
 
   it("stamps the request's authenticated user onto the run's kwargs for the engine to inject", async () => {
     const deps = createFixtureDeps();
+
     const authUser = {
       identity: "u1",
       display_name: "u1",
       is_authenticated: true,
       permissions: ["read"],
     };
+
     const ctx = { ...createContext(deps), authUser, authScopes: ["run:write"] };
     const service = createProtocolServiceFromContext(ctx);
     await service.assistants.registerGraphAssistants();
     const thread = await service.threads.create();
+
     const run = await service.runs.createBackground(thread.thread_id, {
       assistant_id: "echo",
       input: {},
     });
+
     // Persisted opaquely so a worker on another instance reconstructs the principal via getKwargs.
     const kwargs = await deps.store.runs.getKwargs(run.run_id);
     expect(kwargs?.auth_user).toEqual(authUser);
@@ -124,6 +135,7 @@ describe("run service", () => {
     const deps = createFixtureDeps();
     const { service } = await serviceWithAssistants(deps);
     const thread = await service.threads.create();
+
     const run = await service.runs.createBackground(thread.thread_id, {
       assistant_id: "echo",
       input: {},
@@ -175,6 +187,7 @@ describe("run service", () => {
 
   it("returns plain values for a wait run that succeeded", async () => {
     const { service } = await serviceWithAssistants();
+
     const { result } = await service.runs.createWait({
       assistant_id: "echo",
       input: { value: "hi" },
@@ -242,6 +255,7 @@ describe("run service", () => {
     const deps = createFixtureDeps();
     const { service } = await serviceWithAssistants(deps);
     const thread = await deps.store.threads.create();
+
     const run = await deps.store.runs.create({
       thread_id: thread.thread_id,
       assistant_id: "echo",
@@ -253,12 +267,14 @@ describe("run service", () => {
   it("records server-owned background intent before admission, excluding inline requests", async () => {
     const deps = createFixtureDeps();
     const { service } = await serviceWithAssistants(deps);
+
     const request = {
       assistant_id: "echo",
       after_seconds: 60,
       queue_not_before: "1900-01-01T00:00:00.000Z",
       input: {},
     };
+
     const run = await service.runs.createStatelessBackground(request);
     const kwargs = await deps.store.runs.getKwargs(run.run_id);
     expect(Date.parse(kwargs!.queue_not_before!)).toBeGreaterThan(Date.now() + 59_000);
@@ -268,6 +284,7 @@ describe("run service", () => {
       queue_not_before: "1900-01-01T00:00:00.000Z",
       input: {},
     };
+
     const inline = await service.runs.createWait(inlineRequest);
     expect((await deps.store.runs.getKwargs(inline.runId))?.queue_not_before).toBeUndefined();
   });
@@ -288,6 +305,7 @@ describe("run service", () => {
     const deps = createFixtureDeps();
     const { service } = await serviceWithAssistants(deps);
     const thread = await service.threads.create();
+
     const run = await service.runs.createBackground(thread.thread_id, {
       assistant_id: "echo",
       input: {},

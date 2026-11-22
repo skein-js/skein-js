@@ -20,6 +20,7 @@ vi.mock("bullmq", () => ({
 
 beforeEach(() => {
   vi.resetAllMocks();
+
   for (const connection of [queueConnection, workerConnection]) {
     connection.waitUntilReady.mockResolvedValue(undefined);
     connection.close.mockResolvedValue(undefined);
@@ -37,6 +38,7 @@ describe("RedisDeliveryQueue teardown", () => {
     );
 
     const disposing = queue.dispose();
+
     try {
       expect(queueConnection.waitUntilReady).toHaveBeenCalledOnce();
       expect(queueConnection.close).not.toHaveBeenCalled();
@@ -44,6 +46,7 @@ describe("RedisDeliveryQueue teardown", () => {
       finishHandshake();
       await disposing;
     }
+
     expect(queueConnection.close).toHaveBeenCalledOnce();
   });
 
@@ -58,6 +61,7 @@ describe("RedisDeliveryQueue teardown", () => {
     );
 
     const closing = consumer.close();
+
     try {
       expect(workerConnection.waitUntilReady).toHaveBeenCalledOnce();
       expect(workerConnection.close).not.toHaveBeenCalled();
@@ -66,12 +70,14 @@ describe("RedisDeliveryQueue teardown", () => {
       await closing;
       await queue.dispose();
     }
+
     expect(workerConnection.close).toHaveBeenCalledWith(false);
   });
 
   it("closes a forced consumer without waiting for its handshake", async () => {
     const queue = new RedisDeliveryQueue("redis://unused");
     const consumer = queue.consume(async () => {});
+
     try {
       await consumer.close(true);
       expect(workerConnection.waitUntilReady).not.toHaveBeenCalled();

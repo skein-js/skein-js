@@ -44,6 +44,7 @@ describe("routed channels", () => {
       metadata: { tenant: "acme" },
       onExisting: "enqueue" as const,
     };
+
     const channel = composeRoutedChannel(source({ kind: "event", event }), new Map());
 
     expect(await channel.verify(request)).toEqual({ identity: "source:email" });
@@ -71,10 +72,12 @@ describe("routed channels", () => {
 
   it("dispatches a valid declared destination with run context", async () => {
     const delivery = vi.fn<(value: ChannelDestinationDelivery) => Promise<void>>(async () => {});
+
     const channel = composeRoutedChannel(
       source({ kind: "ignore" }),
       new Map([["whatsapp", delivery]]),
     );
+
     const reply = declaredReply({
       destination: "whatsapp",
       target: { to: "+254700000001" },
@@ -96,6 +99,7 @@ describe("routed channels", () => {
 
   it("ignores unmarked inferred replies", async () => {
     const delivery = vi.fn(async () => {});
+
     const channel = composeRoutedChannel(
       source({ kind: "ignore" }),
       new Map([["email", delivery]]),
@@ -112,6 +116,7 @@ describe("routed channels", () => {
 
   it("reads a literal stored v1 declaration", async () => {
     const delivery = vi.fn(async () => {});
+
     const channel = composeRoutedChannel(
       source({ kind: "ignore" }),
       new Map([["email", delivery]]),
@@ -220,10 +225,13 @@ describe("routed channels", () => {
     const original = vi.fn(async (_delivery: ChannelDestinationDelivery): Promise<void> => {
       throw new Error("provider unavailable");
     });
+
     const replacement = vi.fn(async (_delivery: ChannelDestinationDelivery): Promise<void> => {});
+
     const destinations = new Map<string, (delivery: ChannelDestinationDelivery) => Promise<void>>([
       ["email", original],
     ]);
+
     const channel = composeRoutedChannel(source({ kind: "ignore" }), destinations);
     destinations.set("email", replacement);
     destinations.set("later", replacement);

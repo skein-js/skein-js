@@ -5,8 +5,11 @@
 
 import { SkeinHttpError, type AuthAction, type AuthResource } from "@skein-js/core";
 
-import { storeItemTarget } from "../create-handlers.js";
-import type { ProtocolHandlers, ProtocolRequest } from "../create-handlers.js";
+import {
+  storeItemTarget,
+  type ProtocolHandlers,
+  type ProtocolRequest,
+} from "../create-handlers.js";
 
 /** The resource + action a route authorizes against. */
 export interface RouteAuthz {
@@ -193,6 +196,7 @@ function storeNamespace(
   // `namespace`, which is precisely the decoy bypass this function exists to close. Nothing in the type
   // system would force a new case, so the default must not be the permissive branch.
   if (ROUTE_AUTHZ[handler].resource !== "store") return undefined;
+
   switch (handler) {
     case "putStoreItem":
       return { path: stringArray(body["namespace"]), key: stringOrUndefined(body["key"]) };
@@ -205,6 +209,7 @@ function storeNamespace(
       const target = storeItemTarget(req);
       return { path: target.namespace, key: target.key };
     }
+
     case "searchStoreItems":
       return { path: stringArray(body["namespace_prefix"]) };
     case "listStoreNamespaces":
@@ -255,13 +260,16 @@ export function authValue(
 ): Record<string, unknown> {
   const body = typeof req.body === "object" && req.body !== null ? req.body : {};
   const merged: Record<string, unknown> = { ...req.query, ...body, ...req.params };
+
   const target = handler
     ? storeNamespace(handler, req, body as Record<string, unknown>)
     : undefined;
+
   if (target) {
     merged["namespace"] = target.path;
     if ("key" in target) merged["key"] = target.key;
   }
+
   return merged;
 }
 
@@ -282,9 +290,11 @@ const FRAMING_HEADERS = new Set(["content-length", "transfer-encoding", "connect
  */
 export function synthesizeRequest(req: ProtocolRequest): Request {
   const headers = new Headers();
+
   for (const [name, value] of Object.entries(req.headers)) {
     if (value !== undefined && !FRAMING_HEADERS.has(name.toLowerCase())) headers.set(name, value);
   }
+
   const method = req.method.toUpperCase();
   const carriesBody = method !== "GET" && method !== "HEAD" && req.body !== undefined;
   return new Request(req.url, {
@@ -401,6 +411,7 @@ export function rewrittenStoreTarget(input: {
   if (returned !== handed) return undefined;
 
   const namespace = rewrittenNamespaceField(handed["namespace"], before.namespace);
+
   const key = rewrittenKeyField(
     handed["key"],
     before.key,
@@ -418,6 +429,7 @@ function rewrittenNamespaceField(
   if (Array.isArray(after) && after.every((segment) => typeof segment === "string")) {
     return sameNamespace(after as string[], before) ? undefined : (after as string[]);
   }
+
   if (after === before) return undefined;
   throw new SkeinHttpError(
     500,
@@ -442,6 +454,7 @@ function rewrittenKeyField(
   addressable: boolean,
 ): string | undefined {
   if (after === before) return undefined;
+
   if (!addressable) {
     throw new SkeinHttpError(
       500,
@@ -451,6 +464,7 @@ function rewrittenKeyField(
       { code: "store_key_rewrite_invalid" },
     );
   }
+
   if (typeof after === "string") return after;
   throw new SkeinHttpError(
     500,

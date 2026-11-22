@@ -32,6 +32,7 @@ function run(command, args, options = {}) {
   const label = `${command} ${args.join(" ")}`;
   process.stdout.write(`\n$ ${label}\n`);
   const result = spawnSync(command, args, { stdio: "inherit", shell: false, ...options });
+
   if (result.status !== 0) {
     throw new Error(`Failed (exit ${result.status ?? "signal"}): ${label}`);
   }
@@ -56,12 +57,14 @@ async function unusedPort() {
 async function stopServer(server) {
   if (server.exitCode !== null || server.signalCode !== null) return;
   const exited = new Promise((resolve) => server.once("exit", resolve));
+
   try {
     if (process.platform === "win32" || server.pid === undefined) server.kill("SIGTERM");
     else process.kill(-server.pid, "SIGTERM");
   } catch (error) {
     if (error?.code !== "ESRCH") throw error;
   }
+
   await Promise.race([exited, new Promise((resolve) => setTimeout(resolve, 15_000))]);
 }
 
@@ -83,6 +86,7 @@ async function callTheServer(baseUrl) {
   }).then((response) => response.json());
 
   const reply = run?.messages?.at(-1)?.content;
+
   if (reply !== "echo: smoke") {
     throw new Error(
       `Expected "echo: smoke" from the scaffolded graph, got: ${JSON.stringify(reply)}`,
@@ -99,8 +103,10 @@ async function waitForServer(baseUrl, attempts = 60) {
     } catch {
       // Not listening yet.
     }
+
     await new Promise((resolve) => setTimeout(resolve, 1000));
   }
+
   throw new Error(`${baseUrl} never became ready`);
 }
 
@@ -164,6 +170,7 @@ async function smokeTest(provider, ownVersion) {
 
     // The generated script pins 2024; the last --port wins while still exercising that script.
     const port = await unusedPort();
+
     const dev = spawn("npm", ["run", "dev", "--", "--port", String(port)], {
       cwd: project,
       stdio: "inherit",
@@ -221,6 +228,7 @@ async function shipItSmokeTest(port, ownVersion) {
     // port already occupied can choose alternate loopback ports for this disposable smoke project.
     if (postgresPort !== "5432" || redisPort !== "6379") {
       const composePath = path.join(project, "compose.dev.yaml");
+
       const compose = readFileSync(composePath, "utf8")
         .replace("127.0.0.1:5432:5432", `127.0.0.1:${postgresPort}:5432`)
         .replace("127.0.0.1:6379:6379", `127.0.0.1:${redisPort}:6379`);
@@ -256,6 +264,7 @@ async function shipItSmokeTest(port, ownVersion) {
           REDIS_URI: `redis://localhost:${redisPort}`,
         },
       });
+
       // Raced against readiness below: a `start` that exits immediately is the exact failure this
       // test exists to catch, and without this it would be reported as a 120s readiness timeout
       // instead of as the exit code it actually was.
@@ -265,6 +274,7 @@ async function shipItSmokeTest(port, ownVersion) {
           reject(new Error(`\`npm start\` exited early (code ${code}, signal ${signal})`));
         });
       });
+
       try {
         const baseUrl = `http://127.0.0.1:${port}`;
         await Promise.race([waitForServer(baseUrl, 120), crashed]);

@@ -34,6 +34,7 @@ async function main(): Promise<void> {
 
   const results: ScenarioResult[] = [];
   const violations: InvariantViolation[] = [];
+
   for (const name of args.scenarios) {
     const base = findScenario(name);
     // `parseBenchArgs` validates names, so this is unreachable — but returning early beats a
@@ -69,6 +70,7 @@ async function main(): Promise<void> {
     process.exitCode = 1;
     return;
   }
+
   console.log("\nall bounds hold.");
 }
 

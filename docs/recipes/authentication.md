@@ -142,6 +142,7 @@ export async function authenticateRequest(request: Request) {
   const requestState = await clerk.authenticateRequest(request, {
     authorizedParties: [process.env.APP_ORIGIN!],
   });
+
   if (!requestState.isAuthenticated) {
     throw new HTTPException(401, { message: "Unauthorized" });
   }
@@ -178,6 +179,7 @@ const supabase = createClient(process.env.SUPABASE_URL!, process.env.SUPABASE_PU
 
 export async function authenticateRequest(request: Request) {
   const { data, error } = await supabase.auth.getClaims(requireBearerToken(request));
+
   if (error || !data || typeof data.claims.sub !== "string") {
     throw new HTTPException(401, { message: "Unauthorized" });
   }
@@ -256,9 +258,11 @@ export async function authenticateRequest(request: Request) {
     };
   } catch (error) {
     if (error instanceof HTTPException) throw error;
+
     if (error instanceof errors.JOSEError) {
       throw new HTTPException(401, { message: "Unauthorized" });
     }
+
     throw error;
   }
 }

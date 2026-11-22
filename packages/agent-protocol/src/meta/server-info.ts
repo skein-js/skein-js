@@ -64,6 +64,7 @@ function langsmithTracingEnabled(env: Record<string, string | undefined>): boole
  * which is why a test run under vitest passes regardless — the attribute is what makes plain `node` work.
  */
 let langgraphVersion: Promise<string | undefined> | undefined;
+
 function readLanggraphVersion(): Promise<string | undefined> {
   langgraphVersion ??= import("@langchain/langgraph/package.json", { with: { type: "json" } })
     .then((module) => (module as { default?: { version?: string } }).default?.version)

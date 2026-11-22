@@ -15,9 +15,11 @@ import { LifetimeInput, parseLifetime, RetentionSummary, type Retention } from "
 function toPath(namespace: readonly string[]): string {
   return namespace.join("/");
 }
+
 function fromPath(path: string): string[] {
   return path.split("/").filter(Boolean);
 }
+
 function itemIdentity(namespace: string[], key: string) {
   return JSON.stringify([namespace, key]);
 }
@@ -25,16 +27,21 @@ function itemIdentity(namespace: string[], key: string) {
 export function StoreView() {
   const [client] = useState(() => createConsoleClient({}));
   const confirm = useConfirmation();
+
   const [prefix, setPrefix] = useState(""),
     [filterText, setFilterText] = useState(""),
     [query, setQuery] = useState("");
+
   const [applied, setApplied] = useState({ prefix: "", filter: "", query: "" });
   const [editingKey, setEditingKey] = useState<string>();
   const [detail, setDetail] = useState<{ namespace: string[]; key: string }>();
+
   const [creating, setCreating] = useState(false),
     [normalRead, setNormalRead] = useState(false);
+
   const [actionError, setActionError] = useState<string>(),
     [busyKey, setBusyKey] = useState<string>();
+
   const namespaces = usePagedRows(
     (offset, limit, signal) =>
       client.store
@@ -48,15 +55,18 @@ export function StoreView() {
     applied.prefix,
     50,
   );
+
   const items = usePagedRows(
     async (offset, limit, signal) => {
       let filter: Record<string, unknown> | undefined;
+
       if (applied.filter.trim()) {
         const parsed: unknown = JSON.parse(applied.filter);
         if (!parsed || typeof parsed !== "object" || Array.isArray(parsed))
           return Promise.reject(new Error("Filter must be a JSON object."));
         filter = parsed as Record<string, unknown>;
       }
+
       return client.store
         .searchItems(fromPath(applied.prefix), {
           ...(filter ? { filter } : {}),
@@ -71,10 +81,12 @@ export function StoreView() {
     JSON.stringify([applied, normalRead]),
     50,
   );
+
   const reload = () => {
     items.reload();
     namespaces.reload();
   };
+
   const remove = async (namespace: string[], key: string) => {
     if (
       !(await confirm({
@@ -86,6 +98,7 @@ export function StoreView() {
       return;
     setBusyKey(itemIdentity(namespace, key));
     setActionError(undefined);
+
     try {
       await createConsoleClient({}).store.deleteItem(namespace, key);
       reload();
@@ -95,6 +108,7 @@ export function StoreView() {
       setBusyKey(undefined);
     }
   };
+
   return (
     <>
       <div className="mb-4 flex flex-wrap justify-between gap-3">
@@ -316,6 +330,7 @@ export function StoreView() {
     </>
   );
 }
+
 function StoreItemDetail({
   namespace,
   itemKey,
@@ -364,6 +379,7 @@ function StoreItemDetail({
     </Async>
   );
 }
+
 function CreateStoreItem({
   initialNamespace,
   onSaved,
@@ -403,6 +419,7 @@ function CreateStoreItem({
     </div>
   );
 }
+
 function StoreItemEditor({
   namespace,
   itemKey,
@@ -425,6 +442,7 @@ function StoreItemEditor({
       ttl === undefined ? "default" : ttl === null ? "none" : String(ttl),
     ),
     [busy, setBusy] = useState(false);
+
   const [error, setError] = useState<string>();
   const confirm = useConfirmation();
   return (
@@ -434,6 +452,7 @@ function StoreItemEditor({
         event.preventDefault();
         setBusy(true);
         setError(undefined);
+
         try {
           if (!itemKey.trim()) throw new Error("Enter an item key.");
           const parsed: unknown = JSON.parse(draft);

@@ -49,6 +49,7 @@ describe("express-basic over @langchain/langgraph-sdk", () => {
   // client rather than the handler table, so a path or verb mismatch in any adapter shows up here.
   it("blocks on runs.join and returns the settled run's final state", async () => {
     const thread = await client.threads.create();
+
     const run = await client.runs.create(thread.thread_id, "echo", {
       input: { messages: [{ role: "user", content: "joined" }] },
     });
@@ -119,6 +120,7 @@ describe("express-basic over @langchain/langgraph-sdk", () => {
 
     it("schedules onto an existing thread", async () => {
       const thread = await client.threads.create();
+
       const cron = await client.crons.createForThread(thread.thread_id, "echo", {
         schedule: "*/30 * * * *",
         input: { messages: [{ role: "user", content: "on a thread" }] },

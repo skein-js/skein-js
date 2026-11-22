@@ -24,9 +24,11 @@ export async function startServer(port = 2024, host = "127.0.0.1"): Promise<Star
   const server = await createNestServer({ config: configPath });
   await server.listen(port, host);
   const address = server.app.getHttpServer().address() as AddressInfo | null;
+
   if (address === null || typeof address === "string") {
     throw new Error("expected a bound TCP address");
   }
+
   return {
     server,
     url: `http://${host}:${address.port}`,

@@ -13,10 +13,12 @@ it("preserves prototype repository methods and private-field receivers in a froz
       return this.#inner.getKwargs(runId);
     }
   }
+
   for (const [name, method] of Object.entries(original)) {
     if (name !== "getKwargs" && typeof method === "function")
       Object.defineProperty(FactoryRuns.prototype, name, { value: method.bind(original) });
   }
+
   deps.store = Object.freeze({
     ...deps.store,
     runs: Object.freeze(new FactoryRuns()) as unknown as RunRepo,
@@ -38,6 +40,7 @@ it("preserves prototype repository methods and private-field receivers in a froz
       }),
   };
   const runtime = createProtocolRuntime(deps, { scheduler: { enabled: false } });
+
   try {
     await runtime.service.assistants.registerGraphAssistants();
     const thread = await deps.store.threads.create();
@@ -70,7 +73,9 @@ it("freezes the authorized assistant and preserves factory config and the reques
         moveThread = undefined;
         await move();
       }
+
       expect(id).toBe("allowed");
+
       return async ({ configurable }) => {
         factoryConfig = configurable;
         return {
@@ -83,6 +88,7 @@ it("freezes the authorized assistant and preserves factory config and the reques
     },
   };
   const runtime = createProtocolRuntime(deps, { scheduler: { enabled: false } });
+
   try {
     await runtime.service.assistants.registerGraphAssistants();
     const thread = await deps.store.threads.create();
@@ -101,6 +107,7 @@ it("freezes the authorized assistant and preserves factory config and the reques
         auth_scopes: ["last-writer-scope"],
       },
     });
+
     moveThread = async () => {
       await new Promise((resolve) => setTimeout(resolve, 5));
       await deps.store.runs.create({
@@ -109,10 +116,12 @@ it("freezes the authorized assistant and preserves factory config and the reques
         status: "pending",
       });
     };
+
     const client = runtime.createNativeClient({
       sourceId: "fixed",
       allowedAssistants: ["allowed"],
     });
+
     const user = {
       identity: "reader",
       display_name: "Reader",
@@ -140,6 +149,7 @@ it("freezes the authorized assistant and preserves factory config and the reques
 it("checks the real metadata fallback when the latest assistant is missing", async () => {
   const deps = createFixtureDeps();
   const runtime = createProtocolRuntime(deps, { scheduler: { enabled: false } });
+
   try {
     await runtime.service.assistants.registerGraphAssistants();
     const thread = await deps.store.threads.create({ metadata: { graph_id: "slow" } });
@@ -180,6 +190,7 @@ it("rejects a state target changed while acquiring the execution lease", async (
     },
   };
   const runtime = createProtocolRuntime(deps, { scheduler: { enabled: false } });
+
   try {
     await runtime.service.assistants.registerGraphAssistants();
     const client = runtime.createNativeClient({

@@ -13,6 +13,7 @@ export function runInteropHttpConformance(
 ): void {
   it(`${name} forwards selected headers while preserving explicit configuration and server-owned thread identity`, async () => {
     const server = await start({ configuredHeaders: true });
+
     try {
       const thread = (await (
         await fetch(server.baseUrl + "/threads", {
@@ -21,6 +22,7 @@ export function runInteropHttpConformance(
           body: "{}",
         })
       ).json()) as { thread_id: string };
+
       const response = await fetch(`${server.baseUrl}/threads/${thread.thread_id}/runs/wait`, {
         method: "POST",
         headers: { "content-type": "application/json", "x-tenant": "header", thread_id: "spoof" },
@@ -42,6 +44,7 @@ export function runInteropHttpConformance(
   });
   it(`${name} serves official modern MCP discovery, calls and human-input rounds`, async () => {
     const server = await start();
+
     const client = new Client(
       { name: "modern-adapter-proof", version: "1" },
       {
@@ -49,11 +52,13 @@ export function runInteropHttpConformance(
         capabilities: { elicitation: { form: {} } },
       },
     );
+
     let questions = 0;
     client.setRequestHandler("elicitation/create", () => {
       questions++;
       return { action: "accept", content: { response: "yes" } };
     });
+
     try {
       await client.connect(new StreamableHTTPClientTransport(new URL(server.baseUrl + "/mcp")));
       expect((await client.listTools()).tools.some((tool) => tool.name === "echo")).toBe(true);
@@ -81,6 +86,7 @@ export function runInteropHttpConformance(
       await server.close();
     }
   });
+
   for (const disabled of [
     {},
     { docs: true },
@@ -91,12 +97,15 @@ export function runInteropHttpConformance(
       // Embedded adapters may leave the health endpoint to their host. Flags must not change it.
       const baseline = await start();
       let healthStatus: number;
+
       try {
         healthStatus = (await fetch(baseline.baseUrl + "/ok")).status;
       } finally {
         await baseline.close();
       }
+
       const server = await start({ disable: disabled });
+
       try {
         const hidden = Boolean("docs" in disabled || "meta" in disabled);
         expect((await fetch(server.baseUrl + "/docs")).status).toBe(hidden ? 404 : 200);
@@ -114,12 +123,14 @@ export function runInteropHttpConformance(
 
   it(`${name} searches completed runs through the shared HTTP contract`, async () => {
     const server = await start();
+
     const post = (path: string, body: unknown) =>
       fetch(server.baseUrl + path, {
         method: "POST",
         headers: { "content-type": "application/json" },
         body: JSON.stringify(body),
       });
+
     try {
       const thread = (await (await post("/threads", {})).json()) as { thread_id: string };
       expect(
@@ -167,7 +178,9 @@ export function runInteropHttpConformance(
     } finally {
       await server.close();
     }
+
     const disabled = await start({ disable: { runs: true } });
+
     try {
       expect(
         (
@@ -197,7 +210,9 @@ export function runInteropHttpConformance(
       authorize: async (input) => ({ value: input.value }),
       matchesFilters: () => true,
     };
+
     const server = await start({ auth });
+
     try {
       for (const route of ["/openapi.json", "/docs", "/metrics"])
         expect((await fetch(server.baseUrl + route)).status).toBe(401);
@@ -217,6 +232,7 @@ export function runInteropHttpConformance(
   });
   it(`${name} serves discovery, MCP tools, and A2A tasks over HTTP`, async () => {
     const server = await start();
+
     const post = (path: string, body: unknown) =>
       fetch(server.baseUrl + path, {
         method: "POST",
@@ -226,6 +242,7 @@ export function runInteropHttpConformance(
         },
         body: JSON.stringify(body),
       });
+
     try {
       const spec = await (await fetch(`${server.baseUrl}/openapi.json`)).json();
       expect(spec).toMatchObject({

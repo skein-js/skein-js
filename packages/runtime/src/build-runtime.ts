@@ -11,44 +11,48 @@ import { readFile } from "node:fs/promises";
 import path from "node:path";
 
 import { MemorySaver } from "@langchain/langgraph";
-import { withStoreItems } from "@skein-js/agent-protocol";
-import type { GraphResolver, GraphSchemas, ProtocolDeps } from "@skein-js/agent-protocol";
+import {
+  withStoreItems,
+  type GraphResolver,
+  type GraphSchemas,
+  type ProtocolDeps,
+} from "@skein-js/agent-protocol";
 import {
   loadAuthEngine,
   loadChannels,
   loadConfig,
   parseLanggraphJson,
   type GraphRegistry,
-  type ModuleImporter,
+  type GraphSchemas as ConfigGraphSchemas,
   type LoadedChannel,
+  type ModuleImporter,
 } from "@skein-js/config";
-import type { GraphSchemas as ConfigGraphSchemas } from "@skein-js/config";
 import type { TelemetrySink } from "@skein-js/core";
 import {
-  inspectMemoryThreadStorage,
   cloneLangGraphCheckpoint,
+  inspectMemoryThreadStorage,
   langGraphResolver,
   SkeinBaseStore,
 } from "@skein-js/langgraph";
 import type { EmbeddedSqliteRuntime, embedSqliteGraphs } from "@skein-js/local";
 import {
-  loadConfigHttpHandler,
   corsFromHttpConfig,
+  loadConfigHttpHandler,
   loadReloadableInMemoryRuntime,
   resolveIdempotency,
-  resolveWebhooks,
+  resolveMaxPageSize,
+  resolveMemoryBusLimits,
+  resolveRunConcurrency,
   resolveStoreTtl,
   resolveThreadTtl,
-  resolveMaxPageSize,
-  resolveRunConcurrency,
-  resolveMemoryBusLimits,
+  resolveWebhooks,
   type DevStateSnapshot,
 } from "@skein-js/server-kit";
 import {
   MemoryRunEventBus,
-  MemoryThreadEventBus,
   MemoryRunQueue,
   MemorySkeinStore,
+  MemoryThreadEventBus,
 } from "@skein-js/storage-memory";
 import type { StoreIndexConfig } from "@skein-js/storage-postgres";
 import type { CorsOptions } from "cors";
@@ -166,12 +170,14 @@ async function resolveStoreIndex(
   options: { configDir: string; importModule?: ModuleImporter },
 ): Promise<StoreIndexConfig | undefined> {
   if (!index?.embed) return undefined;
+
   if (typeof index.dims !== "number") {
     throw new RuntimeConfigError(
       `store.index.embed is set but store.index.dims is missing — set the embedding dimensionality ` +
         `(e.g. 1536 for openai:text-embedding-3-small).`,
     );
   }
+
   const embed = await resolveEmbed(index.embed, options);
   return { dims: index.dims, fields: index.fields, embed, hnsw: index.hnsw };
 }
@@ -203,6 +209,7 @@ export async function buildRuntime(options: BuildRuntimeOptions): Promise<SkeinR
   if ((store === "sqlite") !== (queue === "sqlite")) {
     throw new RuntimeConfigError("SQLite requires --store sqlite --queue sqlite together.");
   }
+
   if (store === "sqlite" && (!options.sqlitePath || !path.isAbsolute(options.sqlitePath))) {
     throw new RuntimeConfigError("SQLite requires an explicit absolute sqlitePath.");
   }
@@ -216,17 +223,20 @@ export async function buildRuntime(options: BuildRuntimeOptions): Promise<SkeinR
     // (importing graphs) still happens exactly once, inside `loadReloadableInMemoryRuntime`.
     const configDir = path.dirname(configPath);
     const manifest = parseLanggraphJson(JSON.parse(await readFile(configPath, "utf8")));
+
     const telemetry = await resolveTelemetry({
       config: manifest.telemetry,
       configDir,
       importModule,
     });
+
     const runtime = await loadReloadableInMemoryRuntime(
       configPath,
       importModule,
       schemas,
       telemetry.length > 0 ? { telemetry } : undefined,
     );
+
     // The store-item sweeper, which the durable branch below also starts. The in-memory store already
     // expires items lazily on read once it has the config, but without this nothing ever *deletes*
     // them — a long-lived `skein start` (which takes this path whenever Redis and Postgres are absent)
@@ -241,6 +251,7 @@ export async function buildRuntime(options: BuildRuntimeOptions): Promise<SkeinR
     // refuse a config — so a refusal must still release whatever the store opened on import, and drain
     // the telemetry sinks resolved above. The durable branch below gets this from its own try/catch.
     let devStoreItems;
+
     try {
       devStoreItems = runtime.config.store?.adapter
         ? await resolveStoreAdapter(runtime.config.store.adapter, {
@@ -257,7 +268,9 @@ export async function buildRuntime(options: BuildRuntimeOptions): Promise<SkeinR
       for (const dispose of devDisposers) await dispose();
       throw error;
     }
+
     if (devStoreItems) runtime.deps.storeItems = devStoreItems;
+
     // Sweep the store the items actually live in. Pointed at the driver's own repo, a `store.ttl` +
     // `store.adapter` deployment would sweep an empty store forever while the adapted one grew.
     if (devStoreTtl) {
@@ -267,6 +280,7 @@ export async function buildRuntime(options: BuildRuntimeOptions): Promise<SkeinR
         devDisposers,
       );
     }
+
     // Filled in place rather than copied, matching how `resolveRuntimeDeps` fills the logger: a
     // reloadable runtime hands out the same deps object it keeps.
     if (serverVersion !== undefined) runtime.deps.serverVersion = serverVersion;
@@ -282,6 +296,7 @@ export async function buildRuntime(options: BuildRuntimeOptions): Promise<SkeinR
       snapshotState: () => runtime.snapshotState(),
       hydrateState: async (snapshot) => {
         runtime.hydrateState(snapshot);
+
         // The driver just took the whole snapshot, including its store items — but with an adapter those
         // items are unreachable there, because every reader goes through `storeItems`. Replay them so a
         // restored `.skein/dev-state.json` (or a one-time `langgraph dev` import) actually surfaces.
@@ -312,6 +327,7 @@ export async function buildRuntime(options: BuildRuntimeOptions): Promise<SkeinR
     // this through `loadReloadableInMemoryRuntime`, which reads the same block from its own config —
     // both paths, or the knob would work under `skein start` and do nothing under `skein dev`.
     const idempotency = resolveIdempotency(first.config.skein?.idempotency);
+
     // Delivery policy from langgraph.json `skein.webhooks`. Absence is *defaults*, not fire-once —
     // a run carrying a `webhook` owes a callback either way. The memory branch above resolves this
     // itself, for the reason that comment gives.
@@ -320,6 +336,7 @@ export async function buildRuntime(options: BuildRuntimeOptions): Promise<SkeinR
       disabled: first.config.http?.disable_webhooks,
       warn: (message) => console.warn(message),
     });
+
     // Bring-your-own long-term-memory store (`store.adapter`). Only the memory repo is replaced —
     // assistants, threads, runs, crons and idempotency keep using the driver above — and the
     // substitution happens in `resolveDeps` via `withStoreItems`, so the driver's `maxPageSize` and
@@ -342,9 +359,12 @@ export async function buildRuntime(options: BuildRuntimeOptions): Promise<SkeinR
         "SQLite does not support store.index. Use store.adapter to configure an external semantic store.",
       );
     }
+
     let localRuntime: EmbeddedSqliteRuntime | undefined;
+
     if (store === "sqlite") {
       let localModule: { embedSqliteGraphs: typeof embedSqliteGraphs };
+
       try {
         localModule = await import("@skein-js/local");
       } catch (error) {
@@ -357,6 +377,7 @@ export async function buildRuntime(options: BuildRuntimeOptions): Promise<SkeinR
           "SQLite needs @skein-js/local and @langchain/langgraph-checkpoint-sqlite. Install them with: npm install @skein-js/local @langchain/langgraph-checkpoint-sqlite@~1.0.4",
         );
       }
+
       localRuntime = await localModule.embedSqliteGraphs(resolver, {
         sqlitePath: options.sqlitePath!,
         maxPageSize: resolveMaxPageSize(),
@@ -373,6 +394,7 @@ export async function buildRuntime(options: BuildRuntimeOptions): Promise<SkeinR
     // `threadExecutionGate` comes with the Postgres store: it is the cross-instance per-thread
     // execution claim, and the memory driver has no second instance to coordinate with.
     const memoryCheckpointer = new MemorySaver();
+
     const {
       store: skeinStore,
       checkpointer,
@@ -510,6 +532,7 @@ export async function buildRuntime(options: BuildRuntimeOptions): Promise<SkeinR
       }),
       reloadGraphs: async () => {
         const next = await loadConfig({ configPath, importModule, staticSchemas: schemas });
+
         const httpHandler = await loadConfigHttpHandler(next.config, {
           configDir: next.configDir,
           importModule,

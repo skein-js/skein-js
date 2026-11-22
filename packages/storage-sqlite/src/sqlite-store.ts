@@ -1,44 +1,44 @@
 import { randomUUID } from "node:crypto";
 
 import {
-  type AdmissionRepo,
-  type AdmissionKey,
-  type AdmissionReceipt,
-  type DispatchClaim,
-  type RunSettlement,
-  type SettledRun,
   DEFAULT_MAX_PAGE_SIZE,
-  requireValidMaxPageSize,
   isMetadataSubset,
+  isTerminalRunStatus,
   matchesItemFilter,
   matchesNamespacePrefix,
   matchesNamespaceQuery,
-  isTerminalRunStatus,
-  SkeinHttpError,
-  type Assistant,
-  type AssistantVersion,
-  type AssistantRepo,
-  type Thread,
-  type ThreadRepo,
-  type Run,
-  type RunCreate,
-  type RunRepo,
-  type RunResult,
+  requireValidMaxPageSize,
   serializeWireJson,
-  type RunKwargs,
+  SkeinHttpError,
+  type AdmissionKey,
+  type AdmissionReceipt,
+  type AdmissionRepo,
+  type Assistant,
+  type AssistantRepo,
+  type AssistantVersion,
   type Cron,
-  type CronRepo,
   type CronClaim,
+  type CronRepo,
   type Delivery,
   type DeliveryCreate,
   type DeliveryRepo,
-  type StoreRepo,
-  type Item,
-  type SearchItem,
+  type DispatchClaim,
   type IdempotencyRecord,
   type IdempotencyRepo,
+  type Item,
+  type Run,
+  type RunCreate,
+  type RunKwargs,
+  type RunRepo,
+  type RunResult,
+  type RunSettlement,
+  type SearchItem,
+  type SettledRun,
   type SkeinStore,
+  type StoreRepo,
   type StoreTtlConfig,
+  type Thread,
+  type ThreadRepo,
   type ThreadTtlConfig,
 } from "@skein-js/core";
 import type { Database } from "better-sqlite3";
@@ -96,6 +96,7 @@ export class SqliteSkeinStore implements SkeinStore {
     const kwargs = this.database
       .prepare("SELECT kwargs FROM skein_runs WHERE key=?")
       .get(run.run_id) as { kwargs: string | null };
+
     const notBefore =
       kind === "run" && kwargs.kwargs
         ? ((JSON.parse(kwargs.kwargs) as RunKwargs).queue_not_before ?? nowIso())
@@ -112,6 +113,7 @@ VALUES(?,?,?,?,?) ON CONFLICT(run_id) DO UPDATE SET kind=excluded.kind,action=ex
     const result = final.result === undefined ? undefined : serializeWireJson(final.result);
     if (final.delivery) serializeWireJson(final.delivery);
     const existing = this.get<Run>("runs", id);
+
     const run =
       existing && !isTerminalRunStatus(existing.status)
         ? this.setRunStatus(id, final.status, final.error)
@@ -145,6 +147,7 @@ VALUES(?,?,?,?,?) ON CONFLICT(run_id) DO UPDATE SET kind=excluded.kind,action=ex
           "SELECT body FROM skein_runs WHERE thread_id=? AND status IN ('pending','running')",
           thread.thread_id,
         );
+
         const displaced = input.displacements ?? [];
         if (
           displaced.length &&
@@ -154,6 +157,7 @@ VALUES(?,?,?,?,?) ON CONFLICT(run_id) DO UPDATE SET kind=excluded.kind,action=ex
           throw SkeinHttpError.conflict("Active runs changed.", { code: "thread_busy" });
         if (input.guard.requireNoActiveRun && active.length)
           throw SkeinHttpError.conflict("Thread is busy.", { code: "thread_busy" });
+
         if (input.expectedRunId) {
           const expected = this.get<Run>("runs", input.expectedRunId);
           if (
@@ -167,6 +171,7 @@ VALUES(?,?,?,?,?) ON CONFLICT(run_id) DO UPDATE SET kind=excluded.kind,action=ex
               code: "stale_resume",
             });
         }
+
         for (const item of displaced) {
           input.signal?.throwIfAborted();
           const settled = this.settleRun(item.runId, item.settlement);
@@ -177,6 +182,7 @@ VALUES(?,?,?,?,?) ON CONFLICT(run_id) DO UPDATE SET kind=excluded.kind,action=ex
               prepared.multitask_strategy === "rollback" ? "rollback" : "interrupt",
             );
         }
+
         input.signal?.throwIfAborted();
         const run = this.createRun(prepared);
         if (input.expectedRunId)
@@ -193,6 +199,7 @@ VALUES(?,?,?,?,?) ON CONFLICT(run_id) DO UPDATE SET kind=excluded.kind,action=ex
         const replay = this.replayAdmission(input);
         if (replay) return replay;
         const existing = this.require<Run>("runs", input.runId);
+
         if (!isTerminalRunStatus(existing.status)) {
           const settled = this.settleRun(input.runId, {
             status: "cancelled",
@@ -200,6 +207,7 @@ VALUES(?,?,?,?,?) ON CONFLICT(run_id) DO UPDATE SET kind=excluded.kind,action=ex
           });
           this.dispatch(settled.run!, "cancel", input.action);
         }
+
         return this.recordAdmission(input, this.require<Run>("runs", input.runId));
       })(),
     claimDispatches: async (query) =>
@@ -208,6 +216,7 @@ VALUES(?,?,?,?,?) ON CONFLICT(run_id) DO UPDATE SET kind=excluded.kind,action=ex
           action: DispatchClaim["action"] | null;
         };
         const limit = Math.max(1, Math.min(this.limit(query.limit), 1000));
+
         const rows = this.database
           .prepare(
             `SELECT d.run_id AS runId,d.thread_id AS threadId,d.kind,d.action,d.not_before AS notBefore
@@ -241,6 +250,7 @@ AND (d.lease_until IS NULL OR d.lease_until<=?) ORDER BY r.key LIMIT ?`,
         .run(runId, token);
     },
   };
+
   readonly durable = true;
   readonly maxPageSize: number;
   constructor(
@@ -303,16 +313,19 @@ AND (d.lease_until IS NULL OR d.lease_until<=?) ORDER BY r.key LIMIT ?`,
   private limit(limit?: number): number {
     return Math.min(limit ?? this.maxPageSize, this.maxPageSize);
   }
+
   private get<T>(table: Table, key: string): T | null {
     const row = this.database.prepare(`SELECT body FROM skein_${table} WHERE key = ?`).get(key) as
       { body: string } | undefined;
     return row ? (JSON.parse(row.body) as T) : null;
   }
+
   private require<T>(table: Table, key: string): T {
     const row = this.get<T>(table, key);
     if (!row) throw SkeinHttpError.notFound(`${table} "${key}" not found.`);
     return row;
   }
+
   private write<T>(table: Table, key: string, row: T): T {
     this.database
       .prepare(
@@ -321,18 +334,22 @@ AND (d.lease_until IS NULL OR d.lease_until<=?) ORDER BY r.key LIMIT ?`,
       .run(key, json(row));
     return JSON.parse(json(row)) as T;
   }
+
   private insert<T>(table: Table, key: string, row: T): T {
     if (this.get(table, key)) throw SkeinHttpError.conflict(`${table} "${key}" already exists.`);
     return this.write(table, key, row);
   }
+
   private delete(table: Table, key: string): void {
     this.database.prepare(`DELETE FROM skein_${table} WHERE key=?`).run(key);
   }
+
   private rows<T>(sql: string, ...parameters: (string | number | null)[]): T[] {
     return (this.database.prepare(sql).all(...parameters) as { body: string }[]).map(
       ({ body }) => JSON.parse(body) as T,
     );
   }
+
   private search<T>(
     table: Table,
     id: string,
@@ -352,6 +369,7 @@ AND (d.lease_until IS NULL OR d.lease_until<=?) ORDER BY r.key LIMIT ?`,
       query.offset ?? 0,
     );
   }
+
   private count(table: Table, query: unknown): number {
     return (
       this.database
@@ -359,6 +377,7 @@ AND (d.lease_until IS NULL OR d.lease_until<=?) ORDER BY r.key LIMIT ?`,
         .get(json(query)) as { count: number }
     ).count;
   }
+
   private version(assistant: Assistant, createdAt = assistant.created_at): void {
     const { updated_at: _updated, ...version } = assistant;
     this.write("assistant_versions", pairKey(assistant.assistant_id, assistant.version), {
@@ -366,6 +385,7 @@ AND (d.lease_until IS NULL OR d.lease_until<=?) ORDER BY r.key LIMIT ?`,
       created_at: createdAt,
     });
   }
+
   readonly assistants: AssistantRepo = {
     get: async (id) => this.get("assistants", id),
     list: async () => this.search("assistants", "assistant_id", { sortOrder: "asc" }),
@@ -375,6 +395,7 @@ AND (d.lease_until IS NULL OR d.lease_until<=?) ORDER BY r.key LIMIT ?`,
       this.database.transaction(() => {
         const at = nowIso();
         const id = input.assistant_id ?? randomUUID();
+
         const row = this.insert<Assistant>("assistants", id, {
           assistant_id: id,
           graph_id: input.graph_id,
@@ -393,6 +414,7 @@ AND (d.lease_until IS NULL OR d.lease_until<=?) ORDER BY r.key LIMIT ?`,
     update: async (id, patch) =>
       this.database.transaction(() => {
         const existing = this.require<Assistant>("assistants", id);
+
         const highest = (
           this.database
             .prepare(
@@ -400,6 +422,7 @@ AND (d.lease_until IS NULL OR d.lease_until<=?) ORDER BY r.key LIMIT ?`,
             )
             .get(id) as { version: number }
         ).version;
+
         const row = this.write("assistants", id, {
           ...existing,
           graph_id: patch.graph_id ?? existing.graph_id,
@@ -434,6 +457,7 @@ AND (d.lease_until IS NULL OR d.lease_until<=?) ORDER BY r.key LIMIT ?`,
       });
     },
   };
+
   private threadRetention(id: string): { ttl?: number | null; strategy: "delete" | "keep_latest" } {
     const row = this.database
       .prepare("SELECT ttl_minutes,ttl_strategy,ttl_pinned FROM skein_threads WHERE key=?")
@@ -449,6 +473,7 @@ AND (d.lease_until IS NULL OR d.lease_until<=?) ORDER BY r.key LIMIT ?`,
       strategy: row?.ttl_strategy ?? this.options.threadTtl?.strategy ?? "delete",
     };
   }
+
   private threadExpiry(
     id: string,
     minutes?: number | null,
@@ -468,10 +493,12 @@ AND (d.lease_until IS NULL OR d.lease_until<=?) ORDER BY r.key LIMIT ?`,
         id,
       );
   }
+
   private projectThread(thread: Thread): Thread {
     const expiry = this.database
       .prepare("SELECT expires_at FROM skein_threads WHERE key=?")
       .get(thread.thread_id) as { expires_at: number | null };
+
     const retention = this.threadRetention(thread.thread_id);
     return {
       ...thread,
@@ -480,6 +507,7 @@ AND (d.lease_until IS NULL OR d.lease_until<=?) ORDER BY r.key LIMIT ?`,
       expires_at: expiry.expires_at == null ? null : new Date(expiry.expires_at).toISOString(),
     };
   }
+
   private projectItem<T extends Item>(item: T): T {
     const expiry = this.database
       .prepare("SELECT expires_at,ttl_minutes FROM skein_items WHERE key=?")
@@ -493,6 +521,7 @@ AND (d.lease_until IS NULL OR d.lease_until<=?) ORDER BY r.key LIMIT ?`,
       expiresAt: expiry.expires_at == null ? null : new Date(expiry.expires_at).toISOString(),
     };
   }
+
   readonly threads: ThreadRepo = {
     getTtl: async (id) => this.threadRetention(id),
     get: async (id) => {
@@ -512,6 +541,7 @@ AND (d.lease_until IS NULL OR d.lease_until<=?) ORDER BY r.key LIMIT ?`,
       this.database.transaction(() => {
         const at = nowIso();
         const id = input.thread_id ?? randomUUID();
+
         const row = this.insert<Thread>("threads", id, {
           thread_id: id,
           metadata: input.metadata ?? {},
@@ -531,6 +561,7 @@ AND (d.lease_until IS NULL OR d.lease_until<=?) ORDER BY r.key LIMIT ?`,
         const { error: oldError, ...rest } = existing;
         const error = patch.error === undefined ? oldError : patch.error;
         const at = nowIso();
+
         const row = this.write("threads", id, {
           ...rest,
           metadata: patch.metadata ?? existing.metadata,
@@ -554,6 +585,7 @@ AND (d.lease_until IS NULL OR d.lease_until<=?) ORDER BY r.key LIMIT ?`,
         const original = this.require<Thread>("threads", id);
         const copiedId = randomUUID();
         const at = nowIso();
+
         const row = this.write("threads", copiedId, {
           ...original,
           thread_id: copiedId,
@@ -578,9 +610,11 @@ AND (d.lease_until IS NULL OR d.lease_until<=?) ORDER BY r.key LIMIT ?`,
           ) as { key: string }[]
       ).map((row) => row.key),
   };
+
   private createRun(input: RunCreate): Run {
     const at = nowIso();
     const id = input.run_id ?? randomUUID();
+
     const row = this.insert<Run>("runs", id, {
       run_id: id,
       thread_id: input.thread_id,
@@ -595,6 +629,7 @@ AND (d.lease_until IS NULL OR d.lease_until<=?) ORDER BY r.key LIMIT ?`,
       this.database
         .prepare("UPDATE skein_runs SET kwargs=? WHERE key=?")
         .run(json(input.kwargs), id);
+
     if (row.status === "pending" && input.kwargs?.queue_not_before !== undefined) {
       const due = Date.parse(input.kwargs.queue_not_before);
       if (!Number.isFinite(due)) throw new Error("queue_not_before must be an ISO timestamp.");
@@ -602,10 +637,12 @@ AND (d.lease_until IS NULL OR d.lease_until<=?) ORDER BY r.key LIMIT ?`,
         .prepare("INSERT INTO skein_run_jobs(run_id,thread_id,due_at) VALUES (?,?,?)")
         .run(id, input.thread_id, due);
     }
+
     if (row.status === "pending" && input.kwargs?.queue_not_before !== undefined)
       this.notifyQueue();
     return row;
   }
+
   private hasActiveRun(threadId: string): boolean {
     return Boolean(
       this.database
@@ -615,6 +652,7 @@ AND (d.lease_until IS NULL OR d.lease_until<=?) ORDER BY r.key LIMIT ?`,
         .get(threadId),
     );
   }
+
   private setRunStatus(id: string, status: Run["status"], error?: Run["error"]): Run {
     const current = this.require<Run>("runs", id);
     if (
@@ -631,12 +669,15 @@ AND (d.lease_until IS NULL OR d.lease_until<=?) ORDER BY r.key LIMIT ?`,
       ...(error ? { error } : {}),
     });
   }
+
   readonly runs: RunRepo = {
     search: async (query) => {
       const clauses = ["skein_matches(body,?)"];
+
       const parameters: (string | number | null)[] = [
         json({ enforcedMetadata: query.enforcedMetadata }),
       ];
+
       for (const [column, value, operator] of [
         ["status", query.status, "="],
         ["thread_id", query.threadId, "="],
@@ -650,6 +691,7 @@ AND (d.lease_until IS NULL OR d.lease_until<=?) ORDER BY r.key LIMIT ?`,
         clauses.push(`${column} ${operator} ?`);
         parameters.push(value);
       }
+
       parameters.push(
         this.limit(Math.min(query.limit ?? 100, DEFAULT_MAX_PAGE_SIZE)),
         query.offset ?? 0,
@@ -728,6 +770,7 @@ AND (d.lease_until IS NULL OR d.lease_until<=?) ORDER BY r.key LIMIT ?`,
     finalizeWithDelivery: async (id, final) =>
       this.database.transaction(() => {
         const existing = this.get<Run>("runs", id);
+
         const run =
           existing && !isTerminalRunStatus(existing.status)
             ? this.setRunStatus(id, final.status, final.error)
@@ -738,8 +781,10 @@ AND (d.lease_until IS NULL OR d.lease_until<=?) ORDER BY r.key LIMIT ?`,
         };
       })(),
   };
+
   private claimCron(id: string, claim: CronClaim): Cron | null {
     const row = this.get<Cron>("crons", id);
+
     const token = this.database
       .prepare("SELECT occurrence_seq FROM skein_crons WHERE key=?")
       .get(id) as { occurrence_seq: number } | undefined;
@@ -753,6 +798,7 @@ AND (d.lease_until IS NULL OR d.lease_until<=?) ORDER BY r.key LIMIT ?`,
       updated_at: nowIso(),
     });
   }
+
   readonly crons: CronRepo = {
     get: async (id) => this.get("crons", id),
     search: async (query) => this.search("crons", "cron_id", query),
@@ -761,6 +807,7 @@ AND (d.lease_until IS NULL OR d.lease_until<=?) ORDER BY r.key LIMIT ?`,
       this.database.transaction(() => {
         const at = nowIso();
         const id = input.cron_id ?? randomUUID();
+
         const cron = this.insert<Cron>("crons", id, {
           cron_id: id,
           assistant_id: input.assistant_id,
@@ -786,9 +833,11 @@ AND (d.lease_until IS NULL OR d.lease_until<=?) ORDER BY r.key LIMIT ?`,
     update: async (id, patch) =>
       this.database.transaction(() => {
         const row = this.require<Cron>("crons", id);
+
         const definedPatch = Object.fromEntries(
           Object.entries(patch).filter(([, value]) => value !== undefined),
         );
+
         const updated = this.write("crons", id, {
           ...row,
           ...definedPatch,
@@ -832,6 +881,7 @@ AND (d.lease_until IS NULL OR d.lease_until<=?) ORDER BY r.key LIMIT ?`,
       return row.due ? Date.parse(now) - Date.parse(row.due) : null;
     },
   };
+
   readonly store: StoreRepo = {
     get: async (namespace, key, options) =>
       this.database.transaction(() => {
@@ -840,6 +890,7 @@ AND (d.lease_until IS NULL OR d.lease_until<=?) ORDER BY r.key LIMIT ?`,
           .prepare("DELETE FROM skein_items WHERE key=? AND expires_at<=?")
           .run(id, Date.now());
         const item = this.get<Item>("items", id);
+
         if (
           item &&
           (options?.refreshTtl ??
@@ -851,6 +902,7 @@ AND (d.lease_until IS NULL OR d.lease_until<=?) ORDER BY r.key LIMIT ?`,
             )
             .run(Date.now(), id);
         }
+
         return item ? this.projectItem(item) : null;
       })(),
     put: async (namespace, key, value, options) =>
@@ -860,6 +912,7 @@ AND (d.lease_until IS NULL OR d.lease_until<=?) ORDER BY r.key LIMIT ?`,
         const id = pairKey(namespace, key);
         const at = nowIso();
         const existing = this.get<Item>("items", id);
+
         const row = this.write("items", id, {
           namespace: [...namespace],
           key,
@@ -867,6 +920,7 @@ AND (d.lease_until IS NULL OR d.lease_until<=?) ORDER BY r.key LIMIT ?`,
           createdAt: existing?.createdAt ?? at,
           updatedAt: at,
         });
+
         const minutes =
           options?.ttl === undefined ? (this.options.ttl?.defaultTtl ?? null) : options.ttl;
         this.database
@@ -884,8 +938,10 @@ AND (d.lease_until IS NULL OR d.lease_until<=?) ORDER BY r.key LIMIT ?`,
       // Capture the original filter: JSON serialization would erase explicit undefined operands.
       this.database.function("skein_search_item", (bodyText, indexText) => {
         const item = JSON.parse(String(bodyText));
+
         const index =
           indexText == null ? undefined : (JSON.parse(String(indexText)) as false | string[]);
+
         const indexed =
           index && !index.includes("$")
             ? Object.fromEntries(index.map((field) => [field, item.value[field]]))
@@ -905,6 +961,7 @@ AND (d.lease_until IS NULL OR d.lease_until<=?) ORDER BY r.key LIMIT ?`,
         this.limit(query.limit),
         query.offset ?? 0,
       );
+
       if (
         query.refreshTtl ??
         (this.options.ttl !== undefined && this.options.ttl.refreshOnRead !== false)
@@ -916,6 +973,7 @@ AND (d.lease_until IS NULL OR d.lease_until<=?) ORDER BY r.key LIMIT ?`,
           for (const row of rows) refresh.run(Date.now(), pairKey(row.namespace, row.key));
         })();
       }
+
       const projected = rows.map((row) => this.projectItem(row));
       return query.query ? projected.map((row) => ({ ...row, score: 1 })) : projected;
     },
@@ -937,6 +995,7 @@ AND (d.lease_until IS NULL OR d.lease_until<=?) ORDER BY r.key LIMIT ?`,
     sweepExpired: async () =>
       this.database.prepare("DELETE FROM skein_items WHERE expires_at<=?").run(Date.now()).changes,
   };
+
   readonly idempotency: IdempotencyRepo = {
     get: async (scope, key) => this.get("idempotency", pairKey(scope, key)),
     claim: async (claim) =>
@@ -946,6 +1005,7 @@ AND (d.lease_until IS NULL OR d.lease_until<=?) ORDER BY r.key LIMIT ?`,
         if (existing && Date.parse(existing.expires_at) > Date.parse(claim.now))
           return { claimed: false, record: existing };
         const at = nowIso();
+
         const record = this.write<IdempotencyRecord>("idempotency", id, {
           scope: claim.scope,
           key: claim.key,
@@ -994,9 +1054,11 @@ AND (d.lease_until IS NULL OR d.lease_until<=?) ORDER BY r.key LIMIT ?`,
         .prepare("DELETE FROM skein_idempotency WHERE json_extract(body,'$.expires_at')<=?")
         .run(now).changes,
   };
+
   private insertDelivery(runId: string, status: Run["status"], input: DeliveryCreate): Delivery {
     return insertDelivery(this.database, runId, status, input);
   }
+
   private dueDeliveries(now: string, limit?: number): Delivery[] {
     return this.rows(
       "SELECT body FROM skein_deliveries WHERE json_extract(body,'$.status') IN ('pending','delivering') AND json_extract(body,'$.next_attempt_at')<=? ORDER BY json_extract(body,'$.next_attempt_at'),key LIMIT ?",
@@ -1004,6 +1066,7 @@ AND (d.lease_until IS NULL OR d.lease_until<=?) ORDER BY r.key LIMIT ?`,
       this.limit(limit),
     );
   }
+
   readonly deliveries: DeliveryRepo = {
     get: async (id) => this.get("deliveries", id),
     listByRun: async (id, query) =>

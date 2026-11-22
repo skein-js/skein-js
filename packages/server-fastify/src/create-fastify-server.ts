@@ -54,6 +54,7 @@ export async function createFastifyServer(
   let cors: CorsOptions | undefined;
   let logger: Logger | undefined;
   let routes: readonly RouteBinding[] | undefined;
+
   try {
     ({ runtime, cors, routes, logger } = await resolveProtocolRuntime(
       options,
@@ -92,6 +93,7 @@ export async function createFastifyServer(
     },
     close: async () => {
       await runtime.worker.stop();
+
       if (listening) {
         listening = false; // idempotent: a second close() is a no-op
         await app.close();

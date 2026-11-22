@@ -44,19 +44,23 @@ export async function preservesRecoveryInterrupt(
   // The preceding checkpoint names the tasks whose completion produced this checkpoint. Limit at
   // the saver, rather than materializing the thread's history just to preserve a breakpoint.
   let latest = true;
+
   const historyConfig = {
     configurable: {
       thread_id: snapshot.config?.configurable?.["thread_id"],
       checkpoint_ns: snapshot.config?.configurable?.["checkpoint_ns"] ?? "",
     },
   };
+
   for await (const previous of graph.getStateHistory(historyConfig, { limit: 2 })) {
     if (latest) {
       latest = false;
       continue;
     }
+
     return previous.next.some((node) => after === "*" || after.includes(node));
   }
+
   throw SkeinHttpError.conflict(
     "run_recovery_ambiguous: Cannot safely recover a configured interrupt: its preceding checkpoint is unavailable.",
     { code: "run_recovery_ambiguous" },

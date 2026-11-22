@@ -89,15 +89,18 @@ export async function acquireSessionAdvisoryLock(
   options: SessionAdvisoryLockOptions,
 ): Promise<void> {
   const deadline = Date.now() + options.timeoutMs;
+
   for (;;) {
     const held = await client.query<{ locked: boolean }>(
       "SELECT pg_try_advisory_lock($1) AS locked",
       [options.key],
     );
     if (held.rows[0]?.locked === true) return;
+
     if (Date.now() >= deadline) {
       throw new Error(options.timeoutMessage);
     }
+
     await sleep(LOCK_POLL_INTERVAL_MS);
   }
 }
@@ -131,6 +134,7 @@ export async function withSessionAdvisoryLock<T>(
 ): Promise<T> {
   const { key, lockName, timeoutMs = DEFAULT_LOCK_TIMEOUT_MS } = options;
   const client = await pool.connect();
+
   try {
     // Exempt from any configured `statement_timeout`, for the reason migrations are: a cancelled
     // lock wait would kill an instance that is merely waiting for a peer during a rolling deploy.
@@ -144,6 +148,7 @@ export async function withSessionAdvisoryLock<T>(
         `one died with it — check for idle sessions with ` +
         `\`SELECT * FROM pg_locks WHERE locktype = 'advisory'\`.`,
     });
+
     try {
       return await work();
     } finally {
@@ -183,9 +188,11 @@ export function selectPendingMigrations(
   appliedNames: readonly string[],
 ): SkeinMigration[] {
   const comparableCount = Math.min(appliedNames.length, migrations.length);
+
   for (let index = 0; index < comparableCount; index += 1) {
     const appliedName = appliedNames[index];
     const declaredName = migrations[index]?.name;
+
     if (appliedName !== declaredName) {
       throw new Error(
         `Migration order mismatch: the database has "${appliedName}" at position ${index + 1} but ` +
@@ -194,6 +201,7 @@ export function selectPendingMigrations(
       );
     }
   }
+
   const applied = new Set(appliedNames);
   return migrations.filter((migration) => !applied.has(migration.name));
 }
@@ -230,6 +238,7 @@ async function applyConcurrentMigration(
       );
     }
   }
+
   // Recorded only once every statement landed, which is what makes the retry above safe.
   await client.query(`INSERT INTO ${MIGRATIONS_TABLE} (name, run_on) VALUES ($1, NOW())`, [
     migration.name,
@@ -254,6 +263,7 @@ export async function applySkeinMigrations(
   // exempt whatever query reused it. Destroying it makes the pool open a fresh connection, which runs
   // the connect hook and gets the configured timeout.
   let discardClient = false;
+
   try {
     // Migrations are exempt from any configured `statement_timeout`. Schema DDL is legitimately slow —
     // `CREATE INDEX CONCURRENTLY` on a large table takes minutes — and a cancelled index build leaves
@@ -272,6 +282,7 @@ export async function applySkeinMigrations(
         `migrating, or a previous one died holding the lock — check for idle sessions with ` +
         `\`SELECT * FROM pg_locks WHERE locktype = 'advisory'\`.`,
     });
+
     try {
       await client.query(CREATE_MIGRATIONS_TABLE);
       // Read the ledger only after the lock: whoever waited sees the winner's committed rows and
@@ -279,6 +290,7 @@ export async function applySkeinMigrations(
       const applied = await client.query<{ name: string }>(
         `SELECT name FROM ${MIGRATIONS_TABLE} ORDER BY run_on, id`,
       );
+
       const pending = selectPendingMigrations(
         migrations,
         applied.rows.map((row) => row.name),
@@ -289,7 +301,9 @@ export async function applySkeinMigrations(
           await applyConcurrentMigration(client, migration);
           continue;
         }
+
         await client.query("BEGIN");
+
         try {
           // No values array — that keeps `pg` on the simple query protocol, which is what allows a
           // multi-statement migration body. The extended protocol would reject it.
@@ -307,6 +321,7 @@ export async function applySkeinMigrations(
           } catch {
             discardClient = true;
           }
+
           throw new Error(
             `Migration "${migration.name}" failed and was rolled back: ` +
               `${error instanceof Error ? error.message : String(error)}`,

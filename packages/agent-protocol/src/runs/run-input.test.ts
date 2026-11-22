@@ -75,6 +75,7 @@ describe("toGraphCallOptions", () => {
   });
   it("threads thread_id through configurable and always wins over caller config", () => {
     const signal = new AbortController().signal;
+
     const options = toGraphCallOptions(
       { config: { configurable: { thread_id: "other", foo: "bar" } }, stream_mode: "values" },
       "t1",

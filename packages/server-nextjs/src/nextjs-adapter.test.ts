@@ -26,7 +26,9 @@ function conformanceSuite(router: "app" | "pages"): void {
           headers: jsonHeaders,
           ...(body === undefined ? {} : { body: JSON.stringify(body) }),
         });
+
       const created = await request("/threads", "POST", { ttl: 30 });
+
       const thread = (await created.json()) as {
         thread_id: string;
         ttl: number;
@@ -48,6 +50,7 @@ function conformanceSuite(router: "app" | "pages"): void {
         flags: { per_run_timeout?: boolean };
       };
       expect(info.flags.per_run_timeout).toBe(true);
+
       for (const path of [
         `/threads/${thread.thread_id}/runs`,
         `/threads/${thread.thread_id}/runs/wait`,
@@ -82,6 +85,7 @@ function conformanceSuite(router: "app" | "pages"): void {
         headers: jsonHeaders,
         body: "{}",
       });
+
       const assistants = (await searchRes.json()) as Array<{
         assistant_id: string;
         graph_id: string;
@@ -94,6 +98,7 @@ function conformanceSuite(router: "app" | "pages"): void {
     it("runs the assistant CRUD + versioning lifecycle over HTTP", async () => {
       running = await startEchoServer({ router });
       const { baseUrl } = running;
+
       const post = (path: string, body: unknown) =>
         fetch(`${baseUrl}${path}`, {
           method: "POST",
@@ -203,6 +208,7 @@ function conformanceSuite(router: "app" | "pages"): void {
       const { baseUrl } = running;
 
       const controller = new AbortController();
+
       const res = await fetch(`${baseUrl}/runs/stream`, {
         method: "POST",
         headers: jsonHeaders,

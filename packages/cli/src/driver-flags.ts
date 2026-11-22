@@ -14,6 +14,7 @@ export function parseChoice<const T extends string>(choices: readonly T[], hint?
         `Must be one of: ${choices.join(", ")}.${hint ? ` ${hint}` : ""}`,
       );
     }
+
     return value as T;
   };
 }

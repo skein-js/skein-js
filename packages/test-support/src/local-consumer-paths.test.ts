@@ -23,6 +23,7 @@ it("uses the configured npm CLI with the current Node even when PATH has no npm"
   );
   vi.stubEnv("SKEIN_CONSUMER_NPM_CLI", entry);
   const arguments_ = ["install", "file:with space % #/package.tgz"];
+
   const result = run("npm", arguments_, {
     stdio: "pipe",
     encoding: "utf8",
@@ -41,6 +42,7 @@ it.each([
     dependencies: { "@skein-js/local": "workspace:*", external: "^1.0.0" },
     devDependencies: { "@skein-js/local": "workspace:*" },
   };
+
   const packed = { "@skein-js/local": filename };
   const manifest = installConsumer(directory, source, packed);
 

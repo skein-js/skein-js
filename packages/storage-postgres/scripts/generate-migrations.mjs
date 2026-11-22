@@ -65,18 +65,23 @@ const CONCURRENT_MARKER = /^\s*--\s*skein:concurrent\s*$/im;
  */
 function literalSemicolonState(body) {
   let inLiteral = false;
+
   for (let index = 0; index < body.length; index += 1) {
     const char = body[index];
+
     if (char === "'") {
       if (inLiteral && body[index + 1] === "'") {
         index += 1; // an escaped quote, still inside the literal
         continue;
       }
+
       inLiteral = !inLiteral;
       continue;
     }
+
     if (inLiteral && char === ";") return "hidden-semicolon";
   }
+
   return inLiteral ? "unparsable" : "safe";
 }
 
@@ -97,19 +102,23 @@ function splitConcurrentStatements(file, up) {
     .split("\n")
     .filter((line) => !/^\s*--/.test(line))
     .join("\n");
+
   if (body.includes("$$")) {
     throw new Error(
       `${file} is marked skein:concurrent but contains a dollar-quoted body, which this splitter ` +
         `cannot parse. Concurrent migrations may only contain single-statement index DDL.`,
     );
   }
+
   const literals = literalSemicolonState(body);
+
   if (literals === "hidden-semicolon") {
     throw new Error(
       `${file} is marked skein:concurrent but has a ';' inside a string literal, which this ` +
         `splitter would split on. Rewrite the predicate without it.`,
     );
   }
+
   if (literals === "unparsable") {
     throw new Error(
       `${file} is marked skein:concurrent but has an unterminated string literal, so this splitter ` +
@@ -117,13 +126,16 @@ function splitConcurrentStatements(file, up) {
         `it onto its own line.`,
     );
   }
+
   const statements = body
     .split(";")
     .map((statement) => statement.trim())
     .filter((statement) => statement !== "");
+
   if (statements.length === 0) {
     throw new Error(`${file} is marked skein:concurrent but has no statements.`);
   }
+
   for (const statement of statements) {
     if (!/^(CREATE|DROP)\s+INDEX\b/i.test(statement)) {
       throw new Error(
@@ -131,6 +143,7 @@ function splitConcurrentStatements(file, up) {
       );
     }
   }
+
   return statements;
 }
 
@@ -145,9 +158,11 @@ if (files.length === 0) throw new Error(`No .sql files found in ${migrationsDir}
 const migrations = await Promise.all(
   files.map(async (file) => {
     const name = path.basename(file, ".sql");
+
     if (!/^\d{4}_[a-z0-9_]+$/.test(name)) {
       throw new Error(`Migration filename must look like 0001_snake_case.sql, got: ${file}`);
     }
+
     const contents = await readFile(path.join(migrationsDir, file), "utf8");
     const up = extractUpMigration(contents);
     if (up.trim() === "") throw new Error(`Migration ${file} has an empty up section`);

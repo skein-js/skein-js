@@ -1,4 +1,4 @@
-import { mkdtemp, mkdir, rm, writeFile } from "node:fs/promises";
+import { mkdir, mkdtemp, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 
@@ -10,6 +10,7 @@ import { withNativePath } from "./native-http.js";
 
 it("serves a compiled UI at a mount prefix and escapes bootstrap component names", async () => {
   const directory = await mkdtemp(join(tmpdir(), "skein-ui-"));
+
   try {
     await mkdir(join(directory, "ui/public/agent"), { recursive: true });
     await writeFile(
@@ -25,6 +26,7 @@ it("serves a compiled UI at a mount prefix and escapes bootstrap component names
       { graphs: {}, ui: { agent: "./ui/public/agent/entrypoint.js" } } as LanggraphJson,
       { configDir: directory },
     );
+
     const native = withNativePath(
       new Request("https://example.com/api/ui/agent", {
         method: "POST",
@@ -33,6 +35,7 @@ it("serves a compiled UI at a mount prefix and escapes bootstrap component names
       }),
       "/ui/agent",
     );
+
     const response = await handler!(native);
     const html = await response!.text();
     expect(html).toContain('src="https://example.com/api/ui/agent/entrypoint.js"');

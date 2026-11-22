@@ -413,11 +413,13 @@ export type LanggraphJson = z.infer<typeof langgraphJsonSchema>;
 /** Validate parsed JSON against the {@link langgraphJsonSchema}, throwing on any violation. */
 export function parseLanggraphJson(raw: unknown): LanggraphJson {
   const result = langgraphJsonSchema.safeParse(raw);
+
   if (!result.success) {
     throw new SkeinConfigError("Invalid langgraph.json.", {
       cause: result.error,
       details: result.error.issues,
     });
   }
+
   return result.data;
 }

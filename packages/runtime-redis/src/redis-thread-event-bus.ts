@@ -43,6 +43,7 @@ export class RedisThreadEventBus implements ThreadEventBus {
     generation?: number,
   ): Promise<ThreadEvent | undefined> {
     const encoded = serializeWireJson(entry);
+
     const sequence = await this.#commands.eval(
       APPEND,
       4,
@@ -100,19 +101,23 @@ export class RedisThreadEventBus implements ThreadEventBus {
     signal?.addEventListener("abort", abort, { once: true });
     let lastId = "0-0";
     let cursor = afterSeq;
+
     try {
       if (signal?.aborted) return;
       const generation = Number((await reader.get(generationKey)) ?? 0);
       const highWater = Number((await reader.get(counterKey)) ?? 0);
       const first = await reader.xrange(streamKey, "-", "+", "COUNT", 1);
       const firstEntry = first[0] ? decodeEntry(first[0][1]) : undefined;
+
       if (
         cursor !== undefined &&
         (cursor > highWater || cursor < (firstEntry?.seq ?? highWater + 1) - 1)
       ) {
         throw cursorExpired();
       }
+
       cursor ??= Math.max(0, (firstEntry?.seq ?? highWater + 1) - 1);
+
       while (!signal?.aborted) {
         if (
           (await reader.exists(deletedKey)) ||
@@ -121,6 +126,7 @@ export class RedisThreadEventBus implements ThreadEventBus {
           return;
         const pages = await reader.xread("COUNT", 512, "BLOCK", 1000, "STREAMS", streamKey, lastId);
         if (!pages) continue;
+
         for (const [, entries] of pages) {
           for (const [id, fields] of entries) {
             lastId = id;
@@ -164,10 +170,12 @@ function decodeEntry(fields: string[]): ThreadEvent {
     ...JSON.parse(encoded),
     seq: Number(fields[fields.indexOf("seq") + 1]),
   } as ThreadEvent;
+
   if (entry.kind === "protocol") {
     entry.event.seq = entry.seq;
     entry.event.event_id = String(entry.seq);
   }
+
   return entry;
 }
 

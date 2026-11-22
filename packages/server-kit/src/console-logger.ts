@@ -47,7 +47,9 @@ export function createConsoleLogger(options: ConsoleLoggerOptions = {}): Logger 
   ): (message: string, meta?: unknown) => void {
     // Ranked once per level, not on every call — `level` is fixed for this closure.
     const rank = LEVELS.indexOf(level);
+
     if (rank < threshold) return () => {};
+
     return (message, meta) => {
       const rendered = formatLogMeta(meta);
       write(`${prefix} ${level}: ${message}${rendered ? `\n${rendered}` : ""}`);

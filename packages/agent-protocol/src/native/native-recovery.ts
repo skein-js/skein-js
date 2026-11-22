@@ -11,20 +11,25 @@ export function createNativeRecovery(context: ProtocolContext) {
   let timer: ReturnType<typeof setInterval> | undefined;
   let active: Promise<void> | undefined;
   let stopped = true;
+
   const tick = async () => {
     const admission = context.deps.store.admission;
     if (!admission || stopped) return;
     const now = context.deps.clock();
+
     const claims = await admission.claimDispatches({
       now: now.toISOString(),
       leaseUntil: new Date(now.getTime() + 30_000).toISOString(),
       limit: 100,
     });
+
     for (const claim of claims) {
       if (stopped) break;
+
       try {
         const run = await context.deps.store.runs.get(claim.runId);
         if (!run) continue;
+
         if (claim.kind === "cancel") {
           const reason =
             run.status === "interrupted"
@@ -67,6 +72,7 @@ export function createNativeRecovery(context: ProtocolContext) {
               },
             );
         }
+
         await admission.markDispatched(claim.runId, claim.token);
       } catch (error) {
         context.deps.logger.warn(
@@ -76,6 +82,7 @@ export function createNativeRecovery(context: ProtocolContext) {
       }
     }
   };
+
   const schedule = () => {
     if (active || stopped) return;
     active = tick()
@@ -86,6 +93,7 @@ export function createNativeRecovery(context: ProtocolContext) {
         active = undefined;
       });
   };
+
   return {
     start() {
       if (!stopped) return;

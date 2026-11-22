@@ -19,6 +19,7 @@ export function mountModelSettings(
   const error = document.querySelector<HTMLElement>("#model-error")!;
   const models: Partial<Record<ModelProvider, string>> = {};
   let activeProvider: ModelProvider = "vertex";
+
   let status: ModelConnection = {
     configured: false,
     provider: "vertex",
@@ -29,6 +30,7 @@ export function mountModelSettings(
     credentialsAvailable: { gemini: false, openai: false, anthropic: false },
     baseUrl: "http://127.0.0.1:11434",
   };
+
   function selectProvider() {
     error.textContent = "";
     const selected = provider.value as ModelProvider;
@@ -56,19 +58,23 @@ export function mountModelSettings(
         ? "Requests go to the configured Ollama server. No cloud API key is sent. Install a model that supports tools."
         : `Source material and tool context you send are processed by ${modelProviders[selected].label}. API keys entered here stay in backend memory until the app closes.`;
   }
+
   async function request(method = "GET", body?: unknown): Promise<ModelConnection> {
     const response = await fetch(`${connection.url}/app/model`, {
       method,
       headers: { authorization: `Bearer ${connection.token}`, "content-type": "application/json" },
       ...(body ? { body: JSON.stringify(body) } : {}),
     });
+
     const value = await response.json();
     if (!response.ok) throw new Error(value.message ?? "The model provider could not connect.");
     status = value;
     onChange(status);
     return status;
   }
+
   provider.onchange = selectProvider;
+
   document.querySelector<HTMLFormElement>("#model-form")!.onsubmit = (event) => {
     event.preventDefault();
     const button = document.querySelector<HTMLButtonElement>("#connect-model")!;
@@ -92,6 +98,7 @@ export function mountModelSettings(
         button.textContent = "Save & test connection";
       });
   };
+
   document.querySelector<HTMLButtonElement>("#disconnect-model")!.onclick = () => {
     void request("DELETE")
       .then(() => dialog.close())
@@ -99,6 +106,7 @@ export function mountModelSettings(
         error.textContent = failure.message;
       });
   };
+
   dialog.addEventListener("close", () => {
     key.value = "";
   });

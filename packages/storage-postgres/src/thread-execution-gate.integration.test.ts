@@ -39,6 +39,7 @@ describe("createPostgresThreadExecutionGate", () => {
       const destination = new URL(pg.url);
       const sockets = new Set<Socket>();
       let disconnected = false;
+
       const proxy = createServer((incoming) => {
         const upstream = connect(Number(destination.port), destination.hostname);
         sockets.add(incoming);
@@ -46,6 +47,7 @@ describe("createPostgresThreadExecutionGate", () => {
         let observed = Buffer.alloc(0);
         incoming.on("data", (chunk: Buffer) => {
           observed = Buffer.concat([observed, chunk]);
+
           if (observed.includes("pg_advisory_unlock")) {
             // A real network loss while the unmodified driver awaits its cleanup query. Killing a
             // backend through SQL sends a FATAL response first and misses this socket-error path.
@@ -78,11 +80,13 @@ describe("createPostgresThreadExecutionGate", () => {
           stdio: ["ignore", "ignore", "pipe", "ipc"],
         },
       );
+
       let errors = "";
       child.stderr!.on("data", (chunk) => {
         errors += String(chunk);
       });
       const exited = once(child, "exit", { signal: AbortSignal.timeout(10_000) });
+
       try {
         const [code] = await exited;
         expect(disconnected).toBe(true);
@@ -99,6 +103,7 @@ describe("createPostgresThreadExecutionGate", () => {
   it("does not wait for an occupied thread and permits an independent claim", async () => {
     const { gates, close } = twoInstances();
     const held = await gates[0]!.acquire("busy-try");
+
     try {
       expect(await gates[1]!.tryAcquire!("busy-try")).toBeUndefined();
       const cold = await gates[1]!.tryAcquire!("cold-try");
@@ -119,12 +124,14 @@ describe("createPostgresThreadExecutionGate", () => {
     const pool = createPostgresPool(pg.url, { poolMax: 1 });
     const gate = createPostgresThreadExecutionGate(pool);
     const held = await gate.acquire("pool-held");
+
     try {
       expect(await gate.tryAcquire!("another-thread")).toBeUndefined();
       expect(pool.waitingCount).toBe(0);
     } finally {
       await held.release();
     }
+
     const next = await gate.tryAcquire!("another-thread");
     expect(next).toBeDefined();
     await next!.release();
@@ -132,16 +139,19 @@ describe("createPostgresThreadExecutionGate", () => {
   });
   it("serializes two instances claiming the same thread", async () => {
     const { gates, close } = twoInstances();
+
     try {
       const [instanceA, instanceB] = gates as [
         ReturnType<typeof createPostgresThreadExecutionGate>,
         ReturnType<typeof createPostgresThreadExecutionGate>,
       ];
+
       const held = await instanceA.acquire("thread-1");
 
       // B's claim must not resolve while A holds it. Raced against a timer rather than asserted
       // immediately, so this fails if the lock is not actually taken rather than merely being slow.
       let bHasIt = false;
+
       const bClaim = instanceB.acquire("thread-1").then((lease) => {
         bHasIt = true;
         return lease;
@@ -163,11 +173,13 @@ describe("createPostgresThreadExecutionGate", () => {
 
   it("lets two instances hold different threads at once", async () => {
     const { gates, close } = twoInstances();
+
     try {
       const [instanceA, instanceB] = gates as [
         ReturnType<typeof createPostgresThreadExecutionGate>,
         ReturnType<typeof createPostgresThreadExecutionGate>,
       ];
+
       const a = await instanceA.acquire("thread-1");
       // Would block forever if the lock were per-database rather than per-thread.
       const b = await instanceB.acquire("thread-2");
@@ -186,6 +198,7 @@ describe("createPostgresThreadExecutionGate", () => {
       // threads immediately, with no TTL to wait out and no lease to expire mid-run.
       const crashing = createPostgresPool(pg.url, {});
       const survivor = createPostgresPool(pg.url, {});
+
       try {
         const lost = (await createPostgresThreadExecutionGate(crashing)[method]!("thread-1"))!;
 
@@ -197,6 +210,7 @@ describe("createPostgresThreadExecutionGate", () => {
         const key = threadLockKey("thread-1");
         const high = Number(BigInt.asIntN(32, key >> 32n));
         const low = Number(BigInt.asUintN(32, key));
+
         const { rows } = await survivor.query<{ killed: boolean }>(
           `SELECT pg_terminate_backend(pid) AS killed FROM pg_locks
           WHERE locktype = 'advisory' AND granted AND classid = $1 AND objid = $2`,
@@ -217,6 +231,7 @@ describe("createPostgresThreadExecutionGate", () => {
 
   it("is idempotent on release", async () => {
     const { gates, close } = twoInstances();
+
     try {
       const lease = await gates[0]!.acquire("thread-1");
       await lease.release();
@@ -232,6 +247,7 @@ describe("createPostgresThreadExecutionGate", () => {
     // cancelled with 57014 instead of waiting its turn.
     const holder = createPostgresPool(pg.url, {});
     const waiter = createPostgresPool(pg.url, { statementTimeoutMs: 200 });
+
     try {
       const held = await createPostgresThreadExecutionGate(holder).acquire("thread-1");
       const claim = createPostgresThreadExecutionGate(waiter).acquire("thread-1");
@@ -271,6 +287,7 @@ describe("runs_inflight_created_at_idx", () => {
   /** Isolate whether `sql` can use an ordered index scan with the partial predicate. */
   async function planForOrderedIndexScan(pool: Pool, sql: string, params: unknown[] = []) {
     const client = await pool.connect();
+
     try {
       // Disabling seq scans isolates the question this test is about: *can* the planner match the query
       // against the partial index's predicate. Left enabled, a small table is legitimately faster to scan
@@ -293,12 +310,15 @@ describe("runs_inflight_created_at_idx", () => {
     const store = await PostgresSkeinStore.connect(pg.url, {});
     await store.migrate();
     const pool = createPostgresPool(pg.url, {});
+
     try {
       const thread = await store.threads.create();
+
       for (let index = 0; index < 200; index += 1) {
         const run = await store.runs.create({ thread_id: thread.thread_id, assistant_id: "a" });
         if (index % 5 !== 0) await store.runs.setStatus(run.run_id, "success");
       }
+
       await pool.query("ANALYZE runs");
 
       // What `listActiveRuns` now sends: a literal list, built from INFLIGHT_RUN_STATUSES.

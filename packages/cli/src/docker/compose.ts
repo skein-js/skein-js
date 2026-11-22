@@ -31,6 +31,7 @@ function portMapping(options: ComposeOptions): string {
  */
 export function generateCompose(options: ComposeOptions): string {
   const ports = portMapping(options);
+
   // With an `.npmrc` the app build mounts it as the `id=npmrc` secret the Dockerfile expects; the
   // top-level `secrets:` block below points that id at the file on the host. Without one, keep the
   // terse `build: .` and emit no secrets block.
@@ -40,6 +41,7 @@ export function generateCompose(options: ComposeOptions): string {
       secrets:
         - npmrc`
     : `build: .`;
+
   const secretsBlock = options.npmrcPath
     ? `
 secrets:

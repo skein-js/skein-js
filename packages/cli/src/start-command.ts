@@ -16,13 +16,13 @@ import {
 } from "@skein-js/runtime";
 import {
   checkHeapHeadroom,
-  detectRuntimeCapabilities,
+  consoleMountFromHttpConfig,
   describeError,
   describePoolPressure,
-  consoleMountFromHttpConfig,
-  routesFromHttpConfig,
+  detectRuntimeCapabilities,
   resolveRunConcurrency,
   resolveShutdownGraceMs,
+  routesFromHttpConfig,
 } from "@skein-js/server-kit";
 
 import { readBakedSchemas } from "./baked-schemas.js";
@@ -101,6 +101,7 @@ export async function runStart(options: StartCommandOptions): Promise<void> {
   let runConcurrency: number;
   let shutdownGraceMs: number;
   let selectedRuntime: SkeinRuntimeName;
+
   try {
     const loaded = await loadConfig({ configPath });
     const runtimeSelection = resolveRuntimeSelection(loaded.config, options);
@@ -110,12 +111,14 @@ export async function runStart(options: StartCommandOptions): Promise<void> {
     // `capabilities.name` rather than a second hand-rolled detection: two sources of truth for the
     // same fact can disagree, and then this guard validates the wrong one.
     const actualRuntime = capabilities.name;
+
     if (actualRuntime !== selectedRuntime) {
       throw new Error(
         `artifact selected runtime ${selectedRuntime}, but it was launched with ${actualRuntime}. ` +
           `Use the generated image command or pass --runtime ${actualRuntime}.`,
       );
     }
+
     configDir = loaded.configDir;
     authPath = loaded.config.auth?.path;
     httpConfig = loaded.config.http;
@@ -150,6 +153,7 @@ export async function runStart(options: StartCommandOptions): Promise<void> {
   // bad POSTGRES_URI/REDIS_URI or a throwing graph import must surface as a clean error + exit 1, not
   // an unhandled rejection (buildRuntime tears down any partial resources itself before rejecting).
   let runtime: SkeinRuntime;
+
   try {
     runtime = await buildRuntime({
       configPath,
@@ -165,11 +169,13 @@ export async function runStart(options: StartCommandOptions): Promise<void> {
     process.exitCode = 1;
     return;
   }
+
   // A client can forge `x-auth-scheme: langsmith`; the compatibility bypass is never safe on a
   // production listener. `skein start` requires the project's real auth for Studio as well.
   if (runtime.deps.auth) {
     runtime.deps.auth = requireStudioCredentials(runtime.deps.auth);
   }
+
   // `exposeErrorStacks` stays off here: production logs the full stack (the adapter's `logger`
   // option below reaches the run engine), but never puts it on the wire.
   if (options.verbose) runtime.deps.logRunActivity = true;
@@ -181,6 +187,7 @@ export async function runStart(options: StartCommandOptions): Promise<void> {
   const host = options.hostExplicit ? options.host : envHost(options.host);
 
   let server: ProductionServer | undefined;
+
   try {
     const sharedOptions = {
       deps: runtime.deps,
@@ -193,13 +200,16 @@ export async function runStart(options: StartCommandOptions): Promise<void> {
       logger,
       worker: { maxConcurrency: runConcurrency, shutdownGraceMs },
     } as const;
+
     // Resolved on every runtime, not just the branch that can honour it: `resolveRequestLog` is what
     // validates `SKEIN_REQUEST_LOG`, and every sibling resolver in this codebase reads the environment
     // whether or not an explicit value wins, so a typo fails at boot instead of sitting unnoticed.
     const requestLog = resolveRequestLog(options.requestLog, false);
+
     if (selectedRuntime === "node") {
       // Loaded only on Node. Bun/Deno production artifacts never import Express or Node's HTTP shim.
       const { createExpressServer } = await import("@skein-js/express");
+
       const expressServer = await createExpressServer({
         ...sharedOptions,
         requestLog,
@@ -207,9 +217,11 @@ export async function runStart(options: StartCommandOptions): Promise<void> {
       // Opt-in only, unlike `skein dev`. The console can read and delete every thread, memory and
       // schedule on this server, so a deployed instance serves it exactly when its config says to.
       consoleMountPath = consoleMountFromHttpConfig(httpConfig);
+
       if (consoleMountPath !== undefined) {
         mountConsole(expressServer.app, { mountPath: consoleMountPath });
       }
+
       server = expressServer;
       await expressServer.listen(port, host);
     } else {
@@ -219,6 +231,7 @@ export async function runStart(options: StartCommandOptions): Promise<void> {
             `Fetch transport has no request-logging middleware. Failed runs are still reported.`,
         );
       }
+
       // Say so rather than silently ignoring it: `http.console` is a deliberate act, and a config that
       // asks for a console and gets none is exactly the kind of thing that is noticed months later.
       if (consoleMountFromHttpConfig(httpConfig) !== undefined) {
@@ -228,11 +241,14 @@ export async function runStart(options: StartCommandOptions): Promise<void> {
             `resolveConsoleRequest from @skein-js/console (docs/console.md).`,
         );
       }
+
       const { createSkeinFetchServer, startBunServer, startDenoServer } =
         await import("@skein-js/fetch");
+
       const fetchServer = await createSkeinFetchServer(sharedOptions);
       // Install a teardown immediately: native bind can throw synchronously after the worker starts.
       server = { close: fetchServer.close };
+
       if (selectedRuntime === "bun") {
         const listener = startBunServer(fetchServer.fetch, { port, hostname: host });
         server = {
@@ -248,6 +264,7 @@ export async function runStart(options: StartCommandOptions): Promise<void> {
             // Initiate listener shutdown first so no new requests enter, then let the worker finish
             // active streams before waiting for Deno's listener to report every connection closed.
             const listenerClosed = listener.shutdown();
+
             const [workerResult, listenerResult] = await Promise.allSettled([
               fetchServer.close(),
               listenerClosed,
@@ -268,6 +285,7 @@ export async function runStart(options: StartCommandOptions): Promise<void> {
     } finally {
       await runtime.dispose();
     }
+
     console.error(`skein: ${describeBindError(error, port)}`);
     process.exitCode = 1;
     return;

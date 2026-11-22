@@ -17,12 +17,10 @@ import { createInterface } from "node:readline/promises";
 import { Command, InvalidArgumentError } from "@commander-js/extra-typings";
 import {
   buildProjectFiles,
+  DEV_STORAGES,
   findWorkspace,
   formatProjectFiles,
   inspectWorkspace,
-} from "@skein-js/scaffold";
-import {
-  DEV_STORAGES,
   isModelProvider,
   isPackageManagerName,
   toPackageName,
@@ -52,6 +50,7 @@ function parseProvider(value: string): ModelProvider {
   if (!isModelProvider(value)) {
     throw new InvalidArgumentError("Expected one of: none, google, anthropic, openai.");
   }
+
   return value;
 }
 
@@ -59,6 +58,7 @@ function parsePackageManager(value: string): PackageManagerName {
   if (!isPackageManagerName(value)) {
     throw new InvalidArgumentError("Expected one of: npm, pnpm, yarn, bun.");
   }
+
   return value;
 }
 
@@ -103,6 +103,7 @@ const program = new Command()
   .version(scaffolderVersion, "-v, --version")
   .action(async (directoryArgument, options) => {
     const interactive = canPrompt({ yes: options.yes });
+
     const readline = interactive
       ? createInterface({ input: process.stdin, output: process.stdout })
       : undefined;
@@ -131,6 +132,7 @@ const program = new Command()
         throw new Error(
           "Choose a new project directory inside the workspace; its root cannot be scaffolded.",
         );
+
       if (workspace?.read("nx.json") !== undefined) {
         throw new Error(
           "This is an Nx workspace. Run nx g @skein-js/nx:application --directory=" +
@@ -138,6 +140,7 @@ const program = new Command()
             " (install @skein-js/nx first).",
         );
       }
+
       assertTargetDirectoryUsable(targetDirectory, { force: options.force });
       const linting = await resolveLinting({
         explicit:
@@ -164,6 +167,7 @@ const program = new Command()
       // directory exists — see `wouldNestInsideGitWorkTree`. Inside an existing work tree the answer
       // is no, because nesting a repository in someone's monorepo is never what they meant.
       const alreadyInRepo = wouldNestInsideGitWorkTree(targetDirectory);
+
       const git =
         options.git &&
         (!interactive ||
@@ -176,6 +180,7 @@ const program = new Command()
       // "." means "here", so the project is named after the directory it lands in.
       const resolvedName =
         projectName === "." ? path.basename(targetDirectory) : path.basename(projectName);
+
       const packageName = toPackageName(resolvedName);
 
       const scaffoldOptions: ScaffoldOptions = {
@@ -202,13 +207,16 @@ const program = new Command()
         options.workspaceUpdate &&
         (!interactive ||
           (await promptConfirm(ask, "Register the project in this workspace?", true)));
+
       const resolvedOptions: ScaffoldOptions = {
         ...scaffoldOptions,
         ...workspacePlan?.options,
         packageManager: workspacePlan?.packageManager ?? scaffoldOptions.packageManager,
       };
+
       const files = await formatProjectFiles(buildProjectFiles(resolvedOptions), targetDirectory);
       writeFilesToDisk(targetDirectory, files);
+
       if (workspace && workspacePlan) {
         if (updateWorkspace && workspacePlan.registration)
           writeFilesToDisk(workspace.root, [workspacePlan.registration]);
@@ -225,6 +233,7 @@ const program = new Command()
 
       const installed =
         install && runPackageManagerInstall(resolvedOptions.packageManager, targetDirectory);
+
       if (install && !installed) {
         process.stdout.write(
           `\n${red("Install failed.")} ${dim("Your project is written — run it yourself below.")}\n`,

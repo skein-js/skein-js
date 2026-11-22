@@ -5,9 +5,9 @@
 import type { BaseMessage } from "@langchain/core/messages";
 import { tool } from "@langchain/core/tools";
 import {
-  type BaseStore,
   getConfig,
   getStore,
+  type BaseStore,
   type LangGraphRunnableConfig,
 } from "@langchain/langgraph";
 import { z } from "zod";
@@ -47,6 +47,7 @@ export async function searchWeb(query: string): Promise<WebSearchResult[]> {
     });
     if (!response.ok) return cannedResults(query);
     const body = (await response.json()) as TavilyResponse;
+
     const results = (body.results ?? [])
       .filter((result) => result.url)
       .map((result) => ({
@@ -112,6 +113,7 @@ export function memoryNamespace(userId: string): string[] {
 export async function memoryKey(content: string): Promise<string> {
   const normalized = content.trim().toLowerCase().replace(/\s+/g, " ");
   const digest = await crypto.subtle.digest("SHA-256", new TextEncoder().encode(normalized));
+
   const hex = [...new Uint8Array(digest).slice(0, 8)]
     .map((byte) => byte.toString(16).padStart(2, "0"))
     .join("");
@@ -187,12 +189,14 @@ export const saveMemoryTool = tool(
 function latestUserText(messages: BaseMessage[]): string {
   for (let i = messages.length - 1; i >= 0; i -= 1) {
     const message = messages[i];
+
     if (message?.getType() === "human") {
       return typeof message.content === "string"
         ? message.content
         : JSON.stringify(message.content);
     }
   }
+
   return "";
 }
 

@@ -43,6 +43,7 @@ describe("development UI access", () => {
     const original = strictEngine();
     const keys = createDevUiAccessKeys();
     const engine = withDevUiAccessKey(original, keys);
+
     const context = await engine.authenticate(
       new Request("http://localhost/threads", { headers: { "x-api-key": keys.currentKey } }),
     );

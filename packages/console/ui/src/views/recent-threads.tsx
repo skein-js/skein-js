@@ -32,6 +32,7 @@ export function RecentThreads() {
 function RecentThreadList({ onOpen }: { onOpen: () => void }) {
   const [client] = useState(() => createConsoleClient({}));
   const [exactId, setExactId] = useState("");
+
   const threads = usePagedRows(
     (offset, limit, signal) =>
       client.threads.search({ offset, limit, sortBy: "updated_at", sortOrder: "desc", signal }),

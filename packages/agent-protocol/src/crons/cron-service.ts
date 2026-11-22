@@ -183,9 +183,11 @@ export function createCronService(ctx: ProtocolContext): CronService {
 
       // Resolved before the thread is touched, so a bad assistant id never leaves a cron behind.
       const assistant = await deps.store.assistants.get(input.assistant_id);
+
       if (!assistant) {
         throw SkeinHttpError.notFound(`Assistant "${input.assistant_id}" not found.`);
       }
+
       // A thread cron must name a thread that exists **and that this caller may run on**.
       //
       // Authorized against `threads:create_run` explicitly rather than relying on the request's own
@@ -270,6 +272,7 @@ export function createCronService(ctx: ProtocolContext): CronService {
       // be checked against the stored schedule, and vice versa.
       const schedule = patch.schedule ?? existing.schedule;
       const timezone = patch.timezone !== undefined ? patch.timezone : (existing.timezone ?? null);
+
       if (patch.schedule !== undefined || patch.timezone !== undefined) {
         assertValidCronSchedule(schedule, timezone);
       }
@@ -278,6 +281,7 @@ export function createCronService(ctx: ProtocolContext): CronService {
         patch.end_time !== undefined
           ? (toIsoUtc(patch.end_time) ?? null)
           : (existing.end_time ?? null);
+
       const enabled = patch.enabled ?? existing.enabled;
 
       // Recomputed whenever the patch touches anything that moves the next occurrence. Leaving it

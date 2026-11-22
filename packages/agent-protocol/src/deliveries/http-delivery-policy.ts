@@ -30,6 +30,7 @@ export function configureHttpDelivery(
   ])
     delete headers[name];
   const policy = webhooks?.url;
+
   const restrictsDestination =
     policy &&
     (webhooks?.requireHttps === true ||

@@ -34,6 +34,7 @@ export function wrapChannelDispatcher(options: WrapDispatcherOptions): Dispatche
     if (!target) return options.inner(url, payload, attempt);
 
     const registered = options.registry.get(target.channelName);
+
     if (!registered) {
       // The channel was configured when the run started and is not now — a config change between the
       // run and its delivery. Nothing to retry into, so fail loudly rather than silently dropping an
@@ -42,7 +43,9 @@ export function wrapChannelDispatcher(options: WrapDispatcherOptions): Dispatche
         `Cannot deliver: no channel named "${target.channelName}" is configured any more.`,
       );
     }
+
     const { channel } = registered;
+
     if (!channel.deliver) {
       // A channel with no `deliver` is legitimate — a GitHub webhook that comments from inside the
       // graph, say — so this is not an error. But a run that *was* given a reply target and cannot use

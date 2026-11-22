@@ -44,6 +44,7 @@ const ADAPTERS = [
 /** `name` → built entry file, for every workspace package that has been built. */
 function readBuiltPackages(): Map<string, string> {
   const entries = new Map<string, string>();
+
   for (const dir of readdirSync(packagesDir, { withFileTypes: true })) {
     if (!dir.isDirectory()) continue;
     const manifestPath = path.join(packagesDir, dir.name, "package.json");
@@ -52,6 +53,7 @@ function readBuiltPackages(): Map<string, string> {
     const entry = path.join(packagesDir, dir.name, "dist", "index.js");
     if (manifest.name && existsSync(entry)) entries.set(manifest.name, entry);
   }
+
   return entries;
 }
 
@@ -65,9 +67,11 @@ function readBuiltPackages(): Map<string, string> {
  */
 function staticSpecifiers(file: string): string[] {
   const source = readFileSync(file, "utf8");
+
   const withFrom = [
     ...source.matchAll(/(?:^|\n)\s*(?:import|export)[^;'"]*from\s*["']([^"']+)["']/g),
   ];
+
   const sideEffect = [...source.matchAll(/(?:^|\n)\s*import\s*["']([^"']+)["']/g)];
   return [...withFrom, ...sideEffect].map((match) => match[1] as string);
 }
@@ -89,10 +93,12 @@ function reachableSpecifiers(entry: string, builtPackages: Map<string, string>):
 
     for (const specifier of staticSpecifiers(file)) {
       reached.add(specifier);
+
       if (specifier.startsWith(".")) {
         queue.push(path.resolve(path.dirname(file), specifier));
         continue;
       }
+
       if (!specifier.startsWith("@skein-js/")) continue;
       // A workspace package, including a subpath export: `@skein-js/config/errors` maps to that
       // package's `dist/errors.js`, so a split that moves a symbol behind a subpath is followed
@@ -108,12 +114,15 @@ function reachableSpecifiers(entry: string, builtPackages: Map<string, string>):
       const subpath = specifier.slice(owner.length).replace(/^\//, "");
       const target = builtPackages.get(owner) as string;
       const resolved = subpath ? path.join(path.dirname(target), `${subpath}.js`) : target;
+
       if (!existsSync(resolved)) {
         throw new Error(`"${specifier}" resolved to ${resolved}, which does not exist.`);
       }
+
       queue.push(resolved);
     }
   }
+
   return reached;
 }
 
@@ -147,6 +156,7 @@ describe("adapter static import graph", () => {
       expect(entry, "Nx must build each new library before this guard runs").toBeTruthy();
       expect(existsSync((entry as string).replace(/\.js$/, ".d.ts"))).toBe(true);
       const reached = [...reachableSpecifiers(entry as string, builtPackages)];
+
       const forbidden = [
         "@skein-js/server-kit",
         "@skein-js/config",
@@ -208,6 +218,7 @@ describe("adapter static import graph", () => {
     const reached = [...reachableSpecifiers(entry as string, builtPackages)];
 
     const runtimePackages = ["@langchain/langgraph", "@langchain/langgraph-checkpoint"];
+
     const leaked = runtimePackages.filter((forbidden) =>
       reached.some((specifier) => specifier === forbidden || specifier.startsWith(`${forbidden}/`)),
     );

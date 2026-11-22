@@ -64,6 +64,7 @@ describe("snapshotToThreadState", () => {
       config: { configurable: { thread_id: "t1", checkpoint_id: "c1", checkpoint_ns: "" } },
       createdAt: "2026-01-01T00:00:00.000Z",
     });
+
     const state = snapshotToThreadState(snap);
     expect(state.values).toEqual({ value: "hi" });
     expect(state.checkpoint).toEqual({

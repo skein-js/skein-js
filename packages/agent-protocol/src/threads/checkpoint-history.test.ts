@@ -1,9 +1,9 @@
 import {
   Annotation,
   DeltaChannel,
-  StateGraph,
-  MemorySaver,
   emptyCheckpoint,
+  MemorySaver,
+  StateGraph,
   type CompiledGraph,
 } from "@langchain/langgraph";
 import { describe, expect, it, vi } from "vitest";
@@ -119,11 +119,14 @@ describe("checkpoint maintenance isolation", () => {
       const base = (await saver.getTuple(at(source)))!.checkpoint.id;
       await graph.invoke({ value: "second" }, at(source));
       const put = saver.put.bind(saver);
+
       const failing = vi.spyOn(saver, "put").mockImplementation((...args) => {
         if (args[0].configurable?.thread_id === source) throw new Error("Replay unavailable");
         return put(...args);
       });
+
       let failure: unknown;
+
       try {
         if (operation === "rollback") await rollbackThreadCheckpointsTo(saver, source, base);
         else await pruneThreadCheckpointsToLatest(saver, source);
@@ -132,6 +135,7 @@ describe("checkpoint maintenance isolation", () => {
       } finally {
         failing.mockRestore();
       }
+
       expect(failure).toBeInstanceOf(Error);
       const scratch = /survives under "([^"]+)"/.exec((failure as Error).message)?.[1];
       expect(scratch).toBeTruthy();
@@ -180,9 +184,11 @@ describe("checkpoint namespaces", () => {
 
 it("keeps the ancestor writes needed to reconstruct delta channels through prune and copy", async () => {
   const saver = new MemorySaver();
+
   const state = Annotation.Root({
     items: new DeltaChannel<string[], string>((items, writes) => [...items, ...writes]),
   });
+
   const graph = new StateGraph(state)
     .addNode("append", () => ({ items: "node" }))
     .addEdge("__start__", "append")

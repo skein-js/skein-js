@@ -11,6 +11,7 @@ import { embedSqliteGraphs } from "./index.js";
 const state = Annotation.Root({
   value: Annotation<string>({ reducer: (_previous, next) => next, default: () => "" }),
 });
+
 const graph = new StateGraph(state)
   .addNode("approve", () => ({
     value: interrupt("Approve local action?") ? "approved" : "declined",
@@ -24,10 +25,12 @@ describe("local assembly and upstream checkpoints", () => {
     const directory = await mkdtemp(join(tmpdir(), "skein-local-"));
     const sqlitePath = join(directory, "state.sqlite");
     let embedded = await embedSqliteGraphs({ approval: graph }, { sqlitePath });
+
     try {
       let runtime = createProtocolRuntime(embedded.deps, { scheduler: { enabled: false } });
       await runtime.service.assistants.registerGraphAssistants();
       const thread = await runtime.service.threads.create();
+
       const paused = await runtime.service.runs.createWait({
         thread_id: thread.thread_id,
         assistant_id: "approval",
@@ -86,6 +89,7 @@ describe("local assembly and upstream checkpoints", () => {
   it("initializes the saver before deletion of a never-run thread", async () => {
     const directory = await mkdtemp(join(tmpdir(), "skein-local-empty-"));
     const embedded = await embedSqliteGraphs({}, { sqlitePath: join(directory, "state.sqlite") });
+
     try {
       await embedded.deps.checkpointer.deleteThread("never-created");
     } finally {
@@ -99,13 +103,17 @@ it("polls persisted delivery leases after reopening without a separate delivery 
   const directory = await mkdtemp(join(tmpdir(), "skein-outbox-"));
   const sqlitePath = join(directory, "state.sqlite");
   let embedded = await embedSqliteGraphs({}, { sqlitePath });
+
   try {
     const thread = await embedded.deps.store.threads.create();
+
     const run = await embedded.deps.store.runs.create({
       thread_id: thread.thread_id,
       assistant_id: "a",
     });
+
     const at = new Date().toISOString();
+
     const final = await embedded.deps.store.runs.finalizeWithDelivery!(run.run_id, {
       status: "success",
       delivery: {
@@ -143,10 +151,12 @@ it("polls persisted delivery leases after reopening without a separate delivery 
 
 it("thread retention removes checkpoints through the existing protocol sweeper", async () => {
   const directory = await mkdtemp(join(tmpdir(), "skein-thread-ttl-"));
+
   const embedded = await embedSqliteGraphs(
     { approval: graph },
     { sqlitePath: join(directory, "state.sqlite"), threadTtl: { defaultTtl: 0.0001 } },
   );
+
   try {
     const runtime = createProtocolRuntime(embedded.deps);
     await runtime.service.assistants.registerGraphAssistants();
@@ -170,15 +180,18 @@ it("thread retention removes checkpoints through the existing protocol sweeper",
 
 it("forks a run and rolls checkpoint writes back through the upstream saver", async () => {
   const directory = await mkdtemp(join(tmpdir(), "skein-rollback-"));
+
   const echo = new StateGraph(state)
     .addNode("echo", (current) => ({ value: current.value }))
     .addEdge("__start__", "echo")
     .addEdge("echo", "__end__")
     .compile();
+
   const embedded = await embedSqliteGraphs(
     { echo },
     { sqlitePath: join(directory, "state.sqlite") },
   );
+
   try {
     const runtime = createProtocolRuntime(embedded.deps);
     await runtime.service.assistants.registerGraphAssistants();

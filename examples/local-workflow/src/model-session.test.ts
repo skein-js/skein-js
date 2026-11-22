@@ -38,6 +38,7 @@ it("honors explicit Vertex selection and the host's project without using unrela
   vi.stubEnv("GOOGLE_API_KEY", "unrelated-google-key");
   vi.stubEnv("OPENAI_API_KEY", "unrelated-openai-key");
   const session = createModelSession();
+
   const status = await session.initialize({
     provider: "openai",
     model: "another-model",
@@ -109,6 +110,7 @@ it.each(["gemini", "openai"] as const)(
     );
     const session = createModelSession();
     const secret = "test-only-session-key";
+
     const status = await session.connect({
       provider,
       model: provider === "gemini" ? "gemini-3-flash-preview" : "gpt-5-mini",
@@ -117,6 +119,7 @@ it.each(["gemini", "openai"] as const)(
     expect(status.configured).toBe(true);
     expect(JSON.stringify(status)).not.toContain(secret);
     expect(requests).toHaveLength(1);
+
     if (provider === "gemini") {
       expect(new URL(requests[0]!.url).hostname).toBe("generativelanguage.googleapis.com");
       expect(requests[0]!.headers.get("x-goog-api-key")).toBe(secret);
@@ -127,6 +130,7 @@ it.each(["gemini", "openai"] as const)(
       expect(payload.max_completion_tokens).toBe(1024);
       expect(payload.max_tokens).toBeUndefined();
     }
+
     session.disconnect();
     expect(session.status().configured).toBe(false);
     expect(session.status().credentialsAvailable[provider]).toBe(false);
@@ -178,6 +182,7 @@ it("keeps the working connection when a replacement key is rejected", async () =
 
 it("restores non-secret provider preferences but never reads a key from persisted preferences", async () => {
   const session = createModelSession();
+
   const status = await session.initialize({
     provider: "openai",
     model: "gpt-5-mini",

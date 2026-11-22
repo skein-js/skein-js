@@ -45,6 +45,7 @@ export function createDeliveryRequest(input: {
   // bytes rather than re-deriving them.
   const body = JSON.stringify(payload);
   const [signingKey] = input.secrets ?? [];
+
   const signature = signingKey
     ? signDelivery({
         secret: signingKey,

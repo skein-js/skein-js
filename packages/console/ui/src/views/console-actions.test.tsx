@@ -24,6 +24,7 @@ const client = vi.hoisted(() => ({
     getHistory: vi.fn(),
   },
 }));
+
 const deliveryClient = vi.hoisted(() => ({
   listRunDeliveries: vi.fn(),
   replayRunDelivery: vi.fn(),
@@ -172,6 +173,7 @@ describe("console mutations", () => {
     }));
     client.threads.getHistory.mockImplementation(async (_threadId, options) => {
       const before = options.before?.configurable?.checkpoint_id;
+
       const start = before
         ? history.findIndex((row) => row.checkpoint.checkpoint_id === before) + 1
         : 0;

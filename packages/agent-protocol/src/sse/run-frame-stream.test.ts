@@ -105,6 +105,7 @@ describe("streamEventToFrameBody", () => {
       run_id: runId,
       data: { chunk: [["tools:call-1"], "updates", { a: 1 }] },
     };
+
     const own = { event: "on_chain_stream", run_id: runId, data: { chunk: [[], "updates", 2] } };
     expect(streamEventToFrameBody(relayed, runId, ["updates"], true)).toEqual({
       event: "updates",

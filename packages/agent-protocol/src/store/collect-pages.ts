@@ -49,9 +49,11 @@ export async function collectPages<T>(options: {
     if (page.length === 0) return { rows, truncated: false };
     if (stride === 0) stride = page.length;
     scanned += page.length;
+
     for (const row of page) {
       if (!keep || keep(row)) rows.push(row);
     }
+
     // A short page means there is nothing after it.
     if (page.length < stride) return { rows, truncated: false };
     if (scanned >= maxRows) return { rows, truncated: true };

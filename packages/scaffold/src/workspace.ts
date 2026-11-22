@@ -15,6 +15,7 @@ import {
 } from "./scaffold-options.js";
 
 const dependencyMap = z.record(z.string()).optional();
+
 const manifestSchema = z
   .object({
     name: z.string().optional(),
@@ -72,6 +73,7 @@ export function hasWorkspaceMarker(read: WorkspaceSnapshot["read"]): boolean {
     return true;
   const contents = read("package.json");
   if (contents === undefined) return false;
+
   try {
     const manifest: unknown = JSON.parse(contents);
     // Detect the declaration independently of validation, so invalid workspaces still get diagnosed.
@@ -100,10 +102,13 @@ export function inspectWorkspace(
   const manifest = readManifest(source, "package.json");
   const yamlSource = read("pnpm-workspace.yaml");
   const pnpmManaged = manifest.packageManager?.startsWith("pnpm@") ?? false;
+
   const manifestPatterns = Array.isArray(manifest.workspaces)
     ? manifest.workspaces
     : (manifest.workspaces?.packages ?? []);
+
   const creatingPnpmWorkspace = pnpmManaged && yamlSource === undefined;
+
   // Migrate every package pattern, including exclusions, when creating pnpm's required YAML.
   const document =
     yamlSource !== undefined
@@ -122,6 +127,7 @@ export function inspectWorkspace(
     })
     .passthrough()
     .parse(document?.toJS() ?? {});
+
   const useYaml = document && (!manifest.packageManager || pnpmManaged);
   const patterns = useYaml ? (yaml.packages ?? []) : manifestPatterns;
   if (
@@ -131,15 +137,18 @@ export function inspectWorkspace(
   const matchesPackagePattern = patterns.some(
     (pattern) => !pattern.startsWith("!") && matchDirectory(pattern, target),
   );
+
   // Even a matching pattern needs to be written when pnpm has no workspace YAML yet.
   const registered = matchesPackagePattern && !creatingPnpmWorkspace;
   let registration: GeneratedFile | undefined;
+
   if (!registered) {
     if (useYaml && document) {
       if (!matchesPackagePattern) {
         if (!document.has("packages")) document.set("packages", []);
         document.addIn(["packages"], target);
       }
+
       registration = { path: "pnpm-workspace.yaml", contents: document.toString() };
     } else {
       const workspaces = Array.isArray(manifest.workspaces)
@@ -147,6 +156,7 @@ export function inspectWorkspace(
         : manifest.workspaces
           ? { ...manifest.workspaces, packages: [...manifest.workspaces.packages, target] }
           : [target];
+
       const indentation = source.match(/\n([\t ]+)"/)?.[1] ?? "  ";
       // Merge into the raw manifest so the user's key order survives the rewrite.
       const raw = JSON.parse(source) as Record<string, unknown>;
@@ -156,7 +166,9 @@ export function inspectWorkspace(
       };
     }
   }
+
   let packageManager: PackageManagerName | undefined;
+
   if (manifest.packageManager) {
     if (!/^(npm|pnpm|yarn|bun)@\d+\.\d+\.\d+(?:[-+][\w.-]+)?$/.test(manifest.packageManager))
       throw new Error("Invalid workspace packageManager: " + manifest.packageManager);
@@ -175,12 +187,14 @@ export function inspectWorkspace(
             ? "npm"
             : undefined;
   }
+
   const node = resolveNodeVersion(read(".nvmrc") ?? read(".node-version"));
   const notices = node.notice ? [node.notice] : [];
   if (yamlSource === undefined && pnpmManaged && manifest.workspaces !== undefined)
     notices.push("pnpm ignores package.json workspaces; registering in pnpm-workspace.yaml.");
   const relativeRoot = path.posix.relative(target, ".") || ".";
   const findConfig = (names: readonly string[]) => names.find((name) => read(name) !== undefined);
+
   const eslintConfig = findConfig([
     "eslint.config.mjs",
     "eslint.config.js",
@@ -225,9 +239,12 @@ export function inspectWorkspace(
       "prettier.config.cts",
       "prettier.config.mts",
     ]) ?? (manifest.prettier !== undefined ? "package.json" : undefined);
+
   const relative = (filename: string | undefined) =>
     filename ? path.posix.join(relativeRoot, filename) : undefined;
+
   const rootVersions = { ...manifest.dependencies, ...manifest.devDependencies };
+
   const tooling = {
     root: relativeRoot,
     rootEslint: defaults.linting && Boolean(eslintConfig) && rootVersions.eslint !== undefined,
@@ -237,11 +254,14 @@ export function inspectWorkspace(
     prettierConfig: defaults.linting ? relative(prettierConfig) : undefined,
     prettierIgnore: relative(findConfig([".prettierignore"])),
   };
+
   const baselineManifest = JSON.parse(
     buildProjectFiles(defaults).find((file) => file.path === "package.json")!.contents,
   ) as { dependencies: Record<string, string>; devDependencies: Record<string, string> };
+
   const wanted = { ...baselineManifest.dependencies, ...baselineManifest.devDependencies };
   const positivePatterns = patterns.filter((pattern) => !pattern.startsWith("!"));
+
   const siblings = (
     positivePatterns.length ? (snapshot.listPackagePaths?.(positivePatterns) ?? []) : []
   )
@@ -267,9 +287,11 @@ export function inspectWorkspace(
   // pnpm's default catalog may be spelled `catalog:` or `catalogs.default:`.
   const defaultCatalog = yaml.catalog ?? yaml.catalogs?.["default"];
   const dependencyVersions: Record<string, string> = {};
+
   for (const [name, tested] of Object.entries(wanted)) {
     const rootRange = rootVersions[name];
     const catalogRange = packageManager === "pnpm" ? defaultCatalog?.[name] : undefined;
+
     const candidates = rootRange
       ? [rootRange]
       : catalogRange
@@ -281,12 +303,15 @@ export function inspectWorkspace(
                 .filter((range): range is string => range !== undefined),
             ),
           ];
+
     if (candidates.length !== 1) {
       if (candidates.length > 1)
         notices.push(name + ": sibling ranges disagree; using tested " + tested + ".");
       continue;
     }
+
     const candidate = candidates[0]!;
+
     const resolved = candidate.startsWith("catalog:")
       ? candidate === "catalog:"
         ? defaultCatalog?.[name]
@@ -304,6 +329,7 @@ export function inspectWorkspace(
           "; using tested default.",
       );
   }
+
   return {
     packageManager,
     registration,

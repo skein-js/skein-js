@@ -12,9 +12,11 @@ export function parse<T>(
   subject = "request body",
 ): T {
   const result = schema.safeParse(raw);
+
   if (!result.success) {
     throw SkeinHttpError.badRequest(`Invalid ${subject}.`, { details: result.error.flatten() });
   }
+
   return result.data;
 }
 
@@ -24,8 +26,10 @@ export const pathParameterSchema = z.string().min(1);
 export function requireParam(params: Record<string, string>, name: string): string {
   const value = params[name];
   const result = pathParameterSchema.safeParse(value);
+
   if (!result.success) {
     throw SkeinHttpError.badRequest(`Missing path parameter "${name}".`);
   }
+
   return result.data;
 }

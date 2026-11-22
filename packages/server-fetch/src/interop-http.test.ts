@@ -32,6 +32,7 @@ runInteropHttpConformance("Fetch", async (options) => {
     .addEdge("__start__", "echo")
     .addEdge("echo", "__end__")
     .compile();
+
   const runtime = await createSkeinFetchServer({
     routes: filterSkeinRoutes(skeinRoutes, options?.disable ?? {}),
     deps: embedInMemoryGraphs(
@@ -44,6 +45,7 @@ runInteropHttpConformance("Fetch", async (options) => {
       },
     ),
   });
+
   const server = createServer((request, response) => {
     void (async () => {
       const native = await readNativeNodeRequest(

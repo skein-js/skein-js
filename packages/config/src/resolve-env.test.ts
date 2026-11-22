@@ -26,11 +26,13 @@ describe("parseEnvFile", () => {
 
 describe("resolveEnv", () => {
   const dirs: string[] = [];
+
   const makeConfigDir = async () => {
     const dir = await mkdtemp(path.join(tmpdir(), "skein-env-"));
     dirs.push(dir);
     return dir;
   };
+
   afterAll(async () => {
     const { rm } = await import("node:fs/promises");
     await Promise.all(dirs.map((dir) => rm(dir, { recursive: true, force: true })));

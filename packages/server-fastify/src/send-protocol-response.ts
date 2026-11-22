@@ -32,12 +32,14 @@ async function pipeServerSentEvents(
 
   const iterator = events[Symbol.asyncIterator]();
   let clientDisconnected = false;
+
   const releaseOnClientClose = (): void => {
     clientDisconnected = true;
     // Best-effort teardown: `return()` runs the frame generator's `finally`, unsubscribing from the
     // run's event bus once its next read settles.
     void Promise.resolve(iterator.return?.(undefined)).catch(ignoreStreamError);
   };
+
   res.once("close", releaseOnClientClose);
   res.on("error", ignoreStreamError);
 

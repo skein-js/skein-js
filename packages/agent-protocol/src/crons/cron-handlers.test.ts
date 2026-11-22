@@ -86,7 +86,9 @@ describe("cron handlers", () => {
     const get = await handlers.getCron(
       request({ method: "get", params: { cron_id: created.cron_id } }),
     );
+
     const search = await handlers.searchCrons(request({ body: {} }));
+
     const update = await handlers.updateCron(
       request({ method: "patch", params: { cron_id: created.cron_id }, body: { enabled: false } }),
     );

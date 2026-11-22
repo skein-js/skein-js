@@ -74,6 +74,7 @@ const schedules: Schedule[] = [
 // Replace what a previous run of this script registered, rather than stacking a second copy of every
 // schedule on top. Deleting only what we are about to recreate leaves anything you added by hand.
 const existing = await client.crons.search({ limit: 100 });
+
 for (const cron of existing) {
   if (schedules.some((entry) => entry.assistant === cron.assistant_id)) {
     await client.crons.delete(cron.cron_id);
@@ -91,6 +92,7 @@ for (const entry of schedules) {
     // which for a demo means the evidence disappears the moment it works.
     onRunCompleted: "keep",
   });
+
   const state = entry.enabled === false ? "paused" : `next ${cron.next_run_date ?? "—"}`;
   console.log(`${entry.assistant.padEnd(10)} ${entry.schedule.padEnd(12)} ${state}`);
   console.log(`${" ".repeat(11)}${entry.what}`);

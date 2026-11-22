@@ -12,11 +12,13 @@ import { createNestLogger } from "./nest-logger.js";
 /** A `LoggerService` recording the exact argument list each level received. */
 function capturingLoggerService(): LoggerService & { calls: { level: string; args: unknown[] }[] } {
   const calls: { level: string; args: unknown[] }[] = [];
+
   const record =
     (level: string) =>
     (...args: unknown[]): void => {
       calls.push({ level, args });
     };
+
   return {
     calls,
     log: record("log"),
@@ -117,11 +119,13 @@ describe("createNestLogger — against the real Nest facade", () => {
   /** Install a capturing `LoggerService` as Nest's global, the way `app.useLogger()` does. */
   function withGlobalLogger<T>(run: (calls: { level: string; args: unknown[] }[]) => T): T {
     const calls: { level: string; args: unknown[] }[] = [];
+
     const record =
       (level: string) =>
       (...args: unknown[]): void => {
         calls.push({ level, args });
       };
+
     const previous = (NestLoggerClass as unknown as { staticInstanceRef?: unknown })
       .staticInstanceRef;
     NestLoggerClass.overrideLogger({
@@ -130,6 +134,7 @@ describe("createNestLogger — against the real Nest facade", () => {
       warn: record("warn"),
       debug: record("debug"),
     });
+
     try {
       return run(calls);
     } finally {
@@ -173,12 +178,15 @@ describe("createNestLogger — against the real Nest facade", () => {
 describe("ConsoleLogger under a global logger override", () => {
   it("still writes when the global Nest logger is disabled", () => {
     const written: unknown[] = [];
+
     const stderr = vi.spyOn(process.stderr, "write").mockImplementation((chunk: unknown) => {
       written.push(chunk);
       return true;
     });
+
     const globals = NestLoggerClass as unknown as { staticInstanceRef?: unknown };
     const previous = globals.staticInstanceRef;
+
     try {
       // What `NestFactory.create(root, { logger: false })` does internally.
       NestLoggerClass.overrideLogger(false);

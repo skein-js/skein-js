@@ -10,6 +10,7 @@ class FakeMessage {
   toDict() {
     return { type: "ai", data: { content: this.content, additional_kwargs: {} } };
   }
+
   toJSON() {
     return { lc: 1, type: "constructor", id: ["langchain_core", "messages", "AIMessage"] };
   }

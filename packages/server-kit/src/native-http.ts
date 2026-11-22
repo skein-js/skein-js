@@ -27,6 +27,7 @@ export function toNativeRequest(
   for (const [name, value] of Object.entries(request.headers))
     if (value !== undefined) headers.set(name, value);
   const hasBody = !["GET", "HEAD"].includes(request.method.toUpperCase());
+
   const body = !hasBody
     ? undefined
     : (rawBody ??
@@ -62,6 +63,7 @@ export function readNativeNodeRequest(
   signal: AbortSignal | undefined,
   handler: (request: Request) => Promise<Response | undefined>,
 ): Promise<Request | undefined>;
+
 export async function readNativeNodeRequest(
   request: NativeNodeRequest,
   url: string,
@@ -77,6 +79,7 @@ export async function readNativeNodeRequest(
   for (const [name, value] of Object.entries(request.headers))
     headers[name] = Array.isArray(value) ? value.join(", ") : value;
   let rawBody = request.rawBody;
+
   if (
     !rawBody &&
     request.body === undefined &&
@@ -85,6 +88,7 @@ export async function readNativeNodeRequest(
   ) {
     const chunks: Uint8Array[] = [];
     let size = 0;
+
     for await (const chunk of request) {
       const bytes = chunk instanceof Uint8Array ? chunk : Buffer.from(String(chunk));
       size += bytes.byteLength;
@@ -92,9 +96,11 @@ export async function readNativeNodeRequest(
         throw SkeinHttpError.payloadTooLarge("Request body exceeds 102400 bytes.");
       chunks.push(bytes);
     }
+
     rawBody = Buffer.concat(chunks);
     request.rawBody = rawBody;
     const text = new TextDecoder().decode(rawBody);
+
     try {
       request.body = headers["content-type"]?.includes("application/json")
         ? text
@@ -105,6 +111,7 @@ export async function readNativeNodeRequest(
       throw SkeinHttpError.badRequest("Request body is not valid JSON.");
     }
   }
+
   const native = toNativeRequest(
     { method: request.method ?? "GET", url, headers, body: request.body, signal },
     rawBody,
@@ -123,15 +130,20 @@ export async function sendNativeResponse(
     if (name !== "set-cookie") target.setHeader(name, value);
   const cookies = response.headers.getSetCookie();
   if (cookies.length) target.setHeader("set-cookie", cookies);
+
   if (!response.body) {
     target.end();
     return;
   }
+
   const reader = response.body.getReader();
+
   const close = () => {
     void reader.cancel().catch(() => undefined);
   };
+
   target.once("close", close);
+
   try {
     for (;;) {
       const chunk = await reader.read();
@@ -143,6 +155,7 @@ export async function sendNativeResponse(
             target.removeListener("close", done);
             resolve();
           };
+
           target.once("drain", done);
           target.once("close", done);
         });

@@ -20,6 +20,7 @@ function isRecord(value: unknown): value is Record<string, unknown> {
 function messageType(node: Record<string, unknown>): string | undefined {
   if (typeof node["type"] === "string") return node["type"];
   const getType = node["_getType"];
+
   if (typeof getType === "function") {
     try {
       const type = (getType as () => unknown).call(node);
@@ -28,6 +29,7 @@ function messageType(node: Record<string, unknown>): string | undefined {
       return undefined;
     }
   }
+
   return undefined;
 }
 
@@ -49,6 +51,7 @@ export function extractToolActivity(data: unknown): {
     seen.add(node);
 
     const toolCalls = node["tool_calls"];
+
     if (Array.isArray(toolCalls)) {
       for (const call of toolCalls) {
         if (isRecord(call) && typeof call["name"] === "string" && call["name"].length > 0) {
@@ -81,6 +84,7 @@ export function extractToolActivity(data: unknown): {
   } catch {
     // Logging must never break a run.
   }
+
   return { calls, results };
 }
 
@@ -98,6 +102,7 @@ export function extractToolActivity(data: unknown): {
  */
 export function describeFailingNodes(snapshot: AgentStateSnapshot): string[] {
   const names: string[] = [];
+
   try {
     for (const task of snapshot.tasks ?? []) {
       if (task.error === undefined || task.error === null) continue;
@@ -106,12 +111,14 @@ export function describeFailingNodes(snapshot: AgentStateSnapshot): string[] {
   } catch {
     // best-effort — an unexpected snapshot shape must not break the run.
   }
+
   return names;
 }
 
 /** The interrupt prompts a paused snapshot is waiting on, as short strings (best-effort). */
 export function describeInterrupts(snapshot: AgentStateSnapshot): string[] {
   const prompts: string[] = [];
+
   try {
     for (const task of snapshot.tasks ?? []) {
       for (const interrupt of task.interrupts ?? []) {
@@ -122,5 +129,6 @@ export function describeInterrupts(snapshot: AgentStateSnapshot): string[] {
   } catch {
     // best-effort — an unexpected snapshot shape must not break the run.
   }
+
   return prompts;
 }

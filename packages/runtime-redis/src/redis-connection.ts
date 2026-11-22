@@ -28,6 +28,7 @@ function connectionSettled(client: Redis): Promise<void> {
       client.off("error", finish);
       resolve();
     };
+
     client.once("ready", finish);
     client.once("end", finish);
     client.once("error", finish);
@@ -42,14 +43,17 @@ function connectionSettled(client: Redis): Promise<void> {
  */
 export async function closeConnection(client: Redis): Promise<void> {
   if (client.status === "end") return;
+
   if (client.status === "wait") {
     // lazyConnect and never used — there is no socket and nothing in flight.
     client.disconnect();
     return;
   }
+
   if (client.status !== "ready") {
     await Promise.race([connectionSettled(client), sleepUnref(CONNECTION_SETTLE_TIMEOUT_MS)]);
   }
+
   // `quit()` drains in-flight commands where `disconnect()` flushes them as rejections, so prefer it.
   await Promise.race([
     client.quit().catch(() => undefined),
@@ -84,12 +88,14 @@ export async function settleBullConnection(resource: {
   // `blockingConnection` is not there yet), and an exception escaping here would skip the `close()`
   // the caller runs next — which is the one thing teardown genuinely must do.
   let settled: unknown;
+
   try {
     settled =
       typeof resource.waitUntilReady === "function" ? resource.waitUntilReady() : resource.client;
   } catch {
     return;
   }
+
   if (settled == null) return;
   await Promise.race([
     Promise.resolve(settled).then(

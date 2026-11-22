@@ -10,6 +10,7 @@ import { createDevLogger } from "./dev-logger.js";
 /** Capture what the logger wrote to a given console method. */
 function capture(method: "log" | "warn" | "error") {
   const lines: string[] = [];
+
   const spy = vi.spyOn(console, method).mockImplementation((line: unknown) => {
     lines.push(String(line));
   });
@@ -51,6 +52,7 @@ describe("createDevLogger — hostile meta", () => {
         throw new Error("nope");
       },
     };
+
     const unstringifiable = Object.create(null) as Record<string, unknown>;
     unstringifiable.self = unstringifiable;
 

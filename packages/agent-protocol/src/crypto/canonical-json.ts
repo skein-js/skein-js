@@ -37,8 +37,10 @@ function sortKeys(value: unknown): unknown {
   // (It is not prototype pollution: only this local object's prototype would move. It is a
   // fingerprint collision, which for an idempotency key is its own problem.)
   const sorted = Object.create(null) as Record<string, unknown>;
+
   for (const key of Object.keys(value as Record<string, unknown>).sort()) {
     sorted[key] = sortKeys((value as Record<string, unknown>)[key]);
   }
+
   return sorted;
 }

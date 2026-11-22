@@ -7,6 +7,7 @@ import type { RunControl } from "../runs/cancellation.js";
 export function observeDurableCancellation(deps: ResolvedDeps, runId: string, control: RunControl) {
   let stopped = false;
   let active: Promise<void> | undefined;
+
   const observe = async () => {
     const run = await deps.store.runs.get(runId);
     if (stopped || control.signal.aborted) return;
@@ -19,6 +20,7 @@ export function observeDurableCancellation(deps: ResolvedDeps, runId: string, co
             : "cancel",
       );
   };
+
   const timer = setInterval(() => {
     if (active || stopped || control.signal.aborted) return;
     active = observe()
@@ -30,6 +32,7 @@ export function observeDurableCancellation(deps: ResolvedDeps, runId: string, co
       });
   }, 1000);
   timer.unref();
+
   return async () => {
     stopped = true;
     clearInterval(timer);

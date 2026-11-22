@@ -71,6 +71,7 @@ export interface RunWorker {
  */
 function cancellableDelay(ms: number): { readonly elapsed: Promise<void>; cancel: () => void } {
   let timer: ReturnType<typeof setTimeout> | undefined;
+
   const elapsed = new Promise<void>((resolve) => {
     timer = setTimeout(resolve, ms);
   });
@@ -92,6 +93,7 @@ function logRunLifecycle(
   failure?: RunError,
 ): void {
   const message = status === "success" ? "Background run succeeded" : `Background run ${status}`;
+
   const meta = {
     run_id: run.run_id,
     // A summary that says a run failed but not why sends you hunting through the log for the
@@ -131,6 +133,7 @@ export function createRunWorker(ctx: ProtocolContext, options: RunWorkerOptions 
 
   const executeOne = async (queued: QueuedRun, partitioned: boolean): Promise<boolean> => {
     const run = await deps.store.runs.get(queued.run_id);
+
     // Skip a run that vanished (thread deleted) or was already finalized (cancelled while queued).
     // Such a run never reaches startRunExecution, so drop any rollback plan it carried rather than
     // leak it in the map.
@@ -138,9 +141,11 @@ export function createRunWorker(ctx: ProtocolContext, options: RunWorkerOptions 
       ctx.rollbackPlans.delete(queued.run_id);
       return true;
     }
+
     const kwargs = (await deps.store.runs.getKwargs(queued.run_id)) ?? {};
     const claimStartedAt = Date.now();
     let lease;
+
     try {
       lease = partitioned
         ? await tryAcquireThreadExecution(
@@ -153,11 +158,14 @@ export function createRunWorker(ctx: ProtocolContext, options: RunWorkerOptions 
       logRunLifecycle(deps.logger, run, "error", claimStartedAt, Date.now(), toRunError(error));
       throw error;
     }
+
     if (partitioned && !lease) return false;
+
     if (partitioned && stopping) {
       await lease!.release();
       return false;
     }
+
     inFlight.add(queued.run_id);
     // Wall-clock timing for the human-facing summary, so queue/exec durations line up with the
     // store-stamped `run.created_at`. Defaults to `error` so a run whose execution *throws* (not just
@@ -167,10 +175,12 @@ export function createRunWorker(ctx: ProtocolContext, options: RunWorkerOptions 
     const startedAt = Date.now();
     let status: RunStatus = "error";
     let failure: RunError | undefined;
+
     try {
       // `queuedAtMs` is the run's `created_at` — the same instant `run_queue_ms` measures from, so
       // the log summary and the telemetry event report one number, not two that nearly agree.
       const queuedAtMs = Date.parse(run.created_at);
+
       const outcome = await startRunExecution(
         ctx,
         run,
@@ -236,6 +246,7 @@ export function createRunWorker(ctx: ProtocolContext, options: RunWorkerOptions 
       // fulfills, the race can't propagate, and `drained` stays false so the abort runs.
       let drained = false;
       let drainFailure: unknown;
+
       const graceful = active.close().then(
         () => {
           drained = true;
@@ -244,12 +255,15 @@ export function createRunWorker(ctx: ProtocolContext, options: RunWorkerOptions 
           drainFailure = error;
         },
       );
+
       const deadline = cancellableDelay(shutdownGraceMs);
+
       try {
         await Promise.race([graceful, deadline.elapsed]);
       } finally {
         deadline.cancel();
       }
+
       if (!drained) {
         for (const runId of inFlight) control.abort(runId, "cancel");
         await graceful;
@@ -258,6 +272,7 @@ export function createRunWorker(ctx: ProtocolContext, options: RunWorkerOptions 
         // resolved `stop()` always means the store is consistent.
         await Promise.allSettled([...running]);
       }
+
       if (drainFailure !== undefined) {
         // Surfaced, not rethrown: `stop()` is best-effort teardown, and its caller is a signal
         // handler whose job is to exit cleanly regardless.

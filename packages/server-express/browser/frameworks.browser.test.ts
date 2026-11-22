@@ -46,6 +46,7 @@ declare global {
     readMedia(): Promise<{ mime: string; bytes: number[] }>;
   }
 }
+
 function createProgressTransformer(): StreamTransformer {
   const progress = StreamChannel.remote("progress");
   return {
@@ -80,6 +81,7 @@ entries["react-current"] = entries["react"]!;
 
 beforeAll(async () => {
   const bundles = new Map<string, string>();
+
   for (const [name, entry] of Object.entries(entries)) {
     const bundled = await build({
       stdin: {
@@ -122,9 +124,11 @@ beforeAll(async () => {
     });
     bundles.set(name, bundled.outputFiles[0]!.text);
   }
+
   // Bundle the actual example pages, resolving SDK imports from each example's dependencies.
   for (const name of ["react-usestream", "nextjs-app", "chat-app"]) {
     const exampleRoot = resolve("../../examples", name);
+
     const bundled = await build({
       stdin: {
         contents: `import {createElement} from 'react'; import {createRoot} from 'react-dom/client'; import Page from './app/page'; createRoot(document.getElementById('app')).render(createElement(Page));`,
@@ -145,6 +149,7 @@ beforeAll(async () => {
     });
     bundles.set(`example-${name}`, bundled.outputFiles[0]!.text);
   }
+
   const deps = createEchoDeps();
   threadBus = deps.threadBus!;
   const slow = new StateGraph(MessagesAnnotation)
@@ -166,16 +171,19 @@ beforeAll(async () => {
     .addEdge("__start__", "wait")
     .addEdge("wait", "__end__")
     .compile();
+
   const leaf = new StateGraph(MessagesAnnotation)
     .addNode("leaf", () => ({ messages: [new AIMessage("nested reply")] }))
     .addEdge("__start__", "leaf")
     .addEdge("leaf", "__end__")
     .compile();
+
   const nested = new StateGraph(MessagesAnnotation)
     .addNode("child", leaf)
     .addEdge("__start__", "child")
     .addEdge("child", "__end__")
     .compile();
+
   const media = new StateGraph(MessagesAnnotation)
     .addNode("image", () => ({
       messages: [
@@ -191,6 +199,7 @@ beforeAll(async () => {
     .withConfig<readonly [typeof createProgressTransformer]>({
       streamTransformers: [createProgressTransformer],
     });
+
   const mediaGraph = new StateGraph(MessagesAnnotation)
     .addNode("asset", media)
     .addEdge("__start__", "asset")
@@ -199,6 +208,7 @@ beforeAll(async () => {
     .withConfig<readonly [typeof createProgressTransformer]>({
       streamTransformers: [createProgressTransformer],
     });
+
   const base = createEchoResolver();
   const extras = { slow, nested, media: mediaGraph, agent: await base.load("echo") };
   deps.graphs = langGraphResolver({
@@ -207,6 +217,7 @@ beforeAll(async () => {
       id in extras ? (extras[id as keyof typeof extras] as never) : base.load(id),
     schemas: base.schemas,
   });
+
   deps.httpHandler = async (request) => {
     const path = new URL(request.url).pathname;
     if (path === "/harness")
@@ -222,6 +233,7 @@ beforeAll(async () => {
       });
     return undefined;
   };
+
   server = await startEchoServer({ deps });
   proxy = createServer((incoming, outgoing) => {
     const upstream = proxyRequest(
@@ -253,9 +265,11 @@ it.each(["react-usestream", "nextjs-app", "chat-app"])(
     const page = await browser.newPage();
     const failures: string[] = [];
     page.on("pageerror", (error) => failures.push(error.message));
+
     try {
       await page.goto(`${browserUrl}/harness?framework=example-${example}`);
       const input = page.locator("input, textarea");
+
       for (const message of ["first", "second"]) {
         await input.fill(message);
         await page.getByRole("button", { name: "Send", exact: true }).click();
@@ -263,12 +277,14 @@ it.each(["react-usestream", "nextjs-app", "chat-app"])(
           .poll(() => page.getByText(`echo: ${message}`, { exact: true }).count())
           .toBe(1);
       }
+
       if (example === "chat-app") {
         await page.getByRole("button", { name: "New chat", exact: true }).click();
         await expect.poll(() => page.getByTestId("assistant-message").count()).toBe(0);
         await page.getByTitle("first", { exact: true }).click();
         await expect.poll(() => page.getByText("echo: second", { exact: true }).count()).toBe(1);
       }
+
       expect(failures).toEqual([]);
     } finally {
       await page.close();
@@ -282,6 +298,7 @@ it.each(Object.keys(entries))(
     const page = await browser.newPage();
     const failures: string[] = [];
     page.on("pageerror", (error) => failures.push(error.message));
+
     try {
       await page.goto(`${browserUrl}/harness?framework=${framework}`);
       await page.waitForFunction(() => Boolean(window.stream));
@@ -325,6 +342,7 @@ it.each(Object.keys(entries))(
       if (!mediaThread) throw new Error("The SDK did not bind a media thread.");
       const tip = await threadBus.latestSequence(mediaThread);
       const captured = [];
+
       for await (const event of threadBus.subscribe(mediaThread, 0)) {
         if (event.kind === "protocol")
           captured.push([
@@ -334,6 +352,7 @@ it.each(Object.keys(entries))(
           ]);
         if (event.seq >= tip) break;
       }
+
       expect(
         captured.some(([method]) => method === "custom"),
         JSON.stringify(captured),

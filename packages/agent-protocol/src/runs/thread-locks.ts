@@ -15,6 +15,7 @@ export class ThreadLocks {
   tryAcquire(key: string): ThreadExecutionLease | undefined {
     if (this.#tails.has(key)) return undefined;
     let unlock!: () => void;
+
     const tail = new Promise<void>((resolve) => {
       unlock = resolve;
     });
@@ -35,12 +36,14 @@ export class ThreadLocks {
     const previous = this.#tails.get(key) ?? Promise.resolve();
     // Chain after the previous holder regardless of how it settled.
     const result = previous.then(task, task);
+
     // The stored tail swallows outcomes so one task's rejection can't reject the next waiter.
     const tail = result.then(
       () => undefined,
       () => undefined,
     );
     this.#tails.set(key, tail);
+
     try {
       return await result;
     } finally {
@@ -58,20 +61,24 @@ export async function tryAcquireThreadExecution(
 ): Promise<ThreadExecutionLease | undefined> {
   const local = locks.tryAcquire(threadId);
   if (!local) return undefined;
+
   try {
     if (gate && !gate.tryAcquire)
       throw new Error("Execution gate does not support nonblocking claims");
     const remote = await gate?.tryAcquire?.(threadId);
+
     if (gate && !remote) {
       await local.release();
       return undefined;
     }
+
     let released = false;
     return {
       ...(remote?.signal ? { signal: remote.signal } : {}),
       release: async () => {
         if (released) return;
         released = true;
+
         try {
           await remote?.release();
         } finally {
@@ -105,6 +112,7 @@ export async function withThreadExecution<T>(
   return locks.run(threadId, async () => {
     if (!gate) return task();
     let lease: ThreadExecutionLease;
+
     try {
       lease = await gate.acquire(threadId);
     } catch (error) {
@@ -112,6 +120,7 @@ export async function withThreadExecution<T>(
       // let two instances write one thread's checkpoints, which is what the gate exists to prevent.
       throw new Error(`could not claim thread "${threadId}" for execution`, { cause: error });
     }
+
     try {
       lease.signal?.throwIfAborted();
       return await task(lease.signal);

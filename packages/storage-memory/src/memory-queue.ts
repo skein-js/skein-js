@@ -59,6 +59,7 @@ export class MemoryRunQueue implements RunQueue {
     if (this.#items.some((queued) => queued.run_id === run.run_id)) return;
 
     const delayMs = options.delayMs ?? 0;
+
     if (delayMs > 0) {
       this.#holdUntil(run, Date.now() + delayMs);
       return;
@@ -80,6 +81,7 @@ export class MemoryRunQueue implements RunQueue {
           this.#holdUntil(run, dueAt);
           return;
         }
+
         this.#delayed.delete(run.run_id);
         this.#items.push({ ...run });
         this.#waiters.shift()?.();
@@ -139,12 +141,15 @@ class MemoryRunConsumer implements RunConsumer {
         await Promise.race(this.#inFlight);
         continue;
       }
+
       const next = this.items.shift();
+
       if (!next) {
         if (!this.#running) break;
         await new Promise<void>((resolve) => this.waiters.push(resolve)); // park until enqueue/close
         continue;
       }
+
       // Marked active *before* the processor starts and released only once it settles, so the whole
       // in-flight window is covered by `enqueue`'s dedupe — see `MemoryRunQueue.#active`.
       this.active.add(next.run_id);
@@ -262,6 +267,7 @@ function requirePositiveInteger(optionName: string, value: number): number {
       `MemoryRunEventBus ${optionName} must be a positive integer (got ${value}).`,
     );
   }
+
   return value;
 }
 
@@ -330,6 +336,7 @@ export class MemoryRunEventBus implements RunEventBus {
 
   #channel(runId: string): Channel {
     let channel = this.#channels.get(runId);
+
     if (!channel) {
       channel = {
         frames: [],
@@ -340,6 +347,7 @@ export class MemoryRunEventBus implements RunEventBus {
       };
       this.#channels.set(runId, channel);
     }
+
     return channel;
   }
 
@@ -365,6 +373,7 @@ export class MemoryRunEventBus implements RunEventBus {
    */
   #sweepFinishedIds(): void {
     const cutoff = this.#now() - this.#finishedIdTtlMs;
+
     for (const [runId, closedAt] of this.#finishedRunIds) {
       // Size backstop first: the TTL bounds this map in time but not in size, and a busy process can
       // close far more runs within 24h than it should hold ids for. Dropping the oldest costs only
@@ -374,6 +383,7 @@ export class MemoryRunEventBus implements RunEventBus {
         this.#finishedRunIds.delete(runId);
         continue;
       }
+
       if (closedAt >= cutoff) return;
       this.#finishedRunIds.delete(runId);
     }
@@ -451,6 +461,7 @@ export class MemoryRunEventBus implements RunEventBus {
     // concurrently with this generator being suspended.
     const position = { cursor: 0 };
     channel.readers.add(position);
+
     try {
       for (;;) {
         // `#trim` keeps this index current, so it is always a valid position in the live array. A
@@ -459,12 +470,14 @@ export class MemoryRunEventBus implements RunEventBus {
         // the client reconnect from its last id; reading on would hand it a silent hole in the
         // sequence, which under `values` mode is a corrupt view of the graph's state.
         if (position.cursor < 0) return;
+
         if (position.cursor < channel.frames.length) {
           const frame = channel.frames[position.cursor];
           position.cursor += 1;
           if (frame && frame.seq > afterSeq) yield frame;
           continue;
         }
+
         if (channel.closed) return;
         await new Promise<void>((resolve) => channel.waiters.push(resolve));
       }
@@ -473,6 +486,7 @@ export class MemoryRunEventBus implements RunEventBus {
       // Dropped first: a departed reader must stop holding frames back, or one abandoned subscription
       // would keep a run's whole output pinned for the rest of its life.
       channel.readers.delete(position);
+
       if (channel.subscribers === 0) {
         if (channel.frames.length === 0) {
           // No frames means nothing a later `join` could replay, so this channel carries no

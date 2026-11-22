@@ -18,6 +18,7 @@ function fakeWritable(capacity: number) {
   const emit = (event: string): void => {
     const forEvent = listeners.get(event);
     if (!forEvent) return;
+
     // Copy before iterating: a `once` listener removes itself, and `settle` removes the other two.
     for (const listener of [...forEvent]) {
       forEvent.delete(listener);
@@ -147,10 +148,12 @@ describe("the SSE write loop", () => {
   ): Promise<{ finallyRan: boolean; iteratorReturned: boolean }> {
     const outcome = { finallyRan: false, iteratorReturned: false };
     let clientDisconnected = false;
+
     const releaseOnClientClose = (): void => {
       clientDisconnected = true;
       void Promise.resolve(events.return?.(undefined));
     };
+
     res.once("close", releaseOnClientClose);
 
     try {
@@ -164,6 +167,7 @@ describe("the SSE write loop", () => {
       outcome.finallyRan = true;
       res.off("close", releaseOnClientClose);
     }
+
     outcome.iteratorReturned = true;
     return outcome;
   }
@@ -176,6 +180,7 @@ describe("the SSE write loop", () => {
    */
   function countingFrames(frame: string, limit = 10_000) {
     const state = { pulls: 0, finalized: false };
+
     const iterator: AsyncIterableIterator<string> = {
       [Symbol.asyncIterator]() {
         return iterator;

@@ -354,6 +354,7 @@ No run, your response. Required by real providers, not a convenience:
 if (payload.type === "url_verification") {
   return { kind: "respond", status: 200, body: { challenge: payload.challenge } };
 }
+
 // A slash command wants an immediate ephemeral acknowledgement.
 return { kind: "respond", status: 200, body: { response_type: "ephemeral", text: "On it…" } };
 ```

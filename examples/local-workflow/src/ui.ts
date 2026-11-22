@@ -37,6 +37,7 @@ export async function mountWorkflowUi(
   renderWorkspace(document.querySelector<HTMLElement>("#app")!, application);
   const select = <ElementType extends HTMLElement>(selector: string) =>
     document.querySelector<ElementType>(selector)!;
+
   const client = new Client<MeetingRecap, Partial<MeetingRecap>>({
     apiUrl: connection.url,
     defaultHeaders: { authorization: `Bearer ${connection.token}` },
@@ -45,16 +46,19 @@ export async function mountWorkflowUi(
       return init;
     },
   });
+
   const title = select<HTMLTextAreaElement>("#title");
   const notes = select<HTMLTextAreaElement>("#notes");
   const chat = select<HTMLElement>("#chat");
   const search = select<HTMLInputElement>("#recap-search");
   const errorNotice = select<HTMLElement>("#error");
+
   const activity = mountProtocolActivity(
     client,
     select<HTMLElement>("#protocol-activity"),
     branchDraft,
   );
+
   const modelSettings = mountModelSettings(connection, (status) => {
     select<HTMLElement>("#connection-label").textContent = status.configured
       ? `${status.providerLabel} ready`
@@ -65,6 +69,7 @@ export async function mountWorkflowUi(
     select<HTMLElement>("#connection-status").classList.toggle("connected", status.configured);
     select<HTMLElement>("#model-dot").classList.toggle("connected", status.configured);
   });
+
   let threadId: string | undefined;
   let assistantId: string | undefined;
   let recap: Partial<MeetingRecap> = {};
@@ -78,6 +83,7 @@ export async function mountWorkflowUi(
   let draftSave: ReturnType<typeof setTimeout> | undefined;
   let draftWrite: Promise<void> = Promise.resolve();
   let metadataWrite: Promise<void> = Promise.resolve();
+
   async function updateMetadata(id: string, patch: Record<string, unknown>): Promise<void> {
     metadataWrite = metadataWrite
       .catch(() => undefined)
@@ -87,6 +93,7 @@ export async function mountWorkflowUi(
       });
     await metadataWrite;
   }
+
   let threads: Thread<MeetingRecap>[] = [];
 
   function showError(error: unknown): void {
@@ -101,15 +108,18 @@ export async function mountWorkflowUi(
         : "Something went wrong. Your saved notes are still here.";
     errorNotice.hidden = false;
   }
+
   function setTab(tab: "notes" | "recap"): void {
     select<HTMLElement>("#notes-view").hidden = tab !== "notes";
     select<HTMLElement>("#recap-view").hidden = tab !== "recap";
     select<HTMLElement>("#notes-tab").setAttribute("aria-selected", String(tab === "notes"));
     select<HTMLElement>("#recap-tab").setAttribute("aria-selected", String(tab === "recap"));
   }
+
   function isStale(): boolean {
     return Boolean(recap.notes && recap.notes.trim() !== notes.value.trim());
   }
+
   function updateControls(): void {
     title.style.height = "auto";
     title.style.height = `${title.scrollHeight}px`;
@@ -150,13 +160,16 @@ export async function mountWorkflowUi(
     if (reading && !workBusy)
       select<HTMLButtonElement>("#start").innerHTML = `${icon("spark")}Create reading brief`;
   }
+
   function renderAnswer(body: HTMLElement, content: string): void {
     body.replaceChildren();
+
     for (const line of content.split("\n")) {
       if (!line.trim()) continue;
       const paragraph = document.createElement("p");
       paragraph.className = /^\s*[-*] /.test(line) ? "message-bullet" : "";
       const text = line.replace(/^#{1,4}\s+/, "").replace(/^\s*[-*] /, "• ");
+
       for (const part of text.split(/(\*\*[^*]+\*\*)/g)) {
         if (part.startsWith("**") && part.endsWith("**")) {
           const emphasis = document.createElement("strong");
@@ -164,17 +177,21 @@ export async function mountWorkflowUi(
           paragraph.append(emphasis);
         } else paragraph.append(document.createTextNode(part));
       }
+
       body.append(paragraph);
     }
   }
+
   function addMessage(kind: "user" | "assistant" | "activity", content: string): HTMLElement {
     const item = document.createElement("div");
     item.className = `chat-message ${kind}`;
+
     if (kind === "assistant") {
       const label = document.createElement("strong");
       label.textContent = reading ? "Reading companion" : "Daybook";
       item.append(label);
     }
+
     const body = document.createElement("div");
     body.className = "message-content";
     if (kind === "assistant") renderAnswer(body, content);
@@ -184,8 +201,10 @@ export async function mountWorkflowUi(
     chat.scrollTop = chat.scrollHeight;
     return body;
   }
+
   function renderChat(messages: StoredMessage[] = []): void {
     chat.replaceChildren();
+
     if (!messages.length) {
       const welcome = document.createElement("div");
       welcome.className = "assistant-welcome";
@@ -193,8 +212,10 @@ export async function mountWorkflowUi(
       chat.append(welcome);
       return;
     }
+
     for (const message of messages) {
       const kind = message.type ?? message.role;
+
       if (kind === "tool") {
         addMessage(
           "activity",
@@ -202,11 +223,13 @@ export async function mountWorkflowUi(
         );
         continue;
       }
+
       const content = textContent(message.content);
       if (content && ["human", "user", "ai", "assistant"].includes(kind ?? ""))
         addMessage(kind === "human" || kind === "user" ? "user" : "assistant", content);
     }
   }
+
   function renderRecap(): void {
     const hasRecap = Array.isArray(recap.actions);
     select<HTMLElement>("#empty-recap").hidden = hasRecap;
@@ -216,18 +239,22 @@ export async function mountWorkflowUi(
     select<HTMLTextAreaElement>("#recap-summary").readOnly = !reviewing;
     const decisions = select<HTMLElement>("#decisions");
     decisions.replaceChildren();
+
     for (const decision of recap.decisions ?? []) {
       const item = document.createElement("li");
       item.textContent = decision;
       decisions.append(item);
     }
+
     if (hasRecap && !decisions.children.length) {
       const item = document.createElement("li");
       item.textContent = "No decisions recorded.";
       decisions.append(item);
     }
+
     const actions = select<HTMLElement>("#actions");
     actions.replaceChildren();
+
     for (const [index, action] of (recap.actions ?? []).entries()) {
       const row = document.createElement("div");
       row.className = "action-row";
@@ -237,6 +264,7 @@ export async function mountWorkflowUi(
       row.append(count);
       const fields = document.createElement("div");
       fields.className = "action-fields";
+
       for (const [name, label, maximum] of [
         ["task", "Follow-up", 1000],
         ["owner", "Owner", 100],
@@ -254,34 +282,43 @@ export async function mountWorkflowUi(
         wrapper.append(input);
         fields.append(wrapper);
       }
+
       row.append(fields);
       actions.append(row);
     }
+
     select<HTMLElement>("#action-count").textContent = `${recap.actions?.length ?? 0} items`;
     select<HTMLElement>("#actions").hidden = reading;
     select<HTMLElement>("#reading-evidence").hidden = !reading;
+
     if (reading) {
       const questions = select<HTMLElement>("#reading-questions");
       questions.replaceChildren();
+
       for (const question of recap.questions ?? []) {
         const item = document.createElement("li");
         item.textContent = question;
         questions.append(item);
       }
+
       const quotes = select<HTMLElement>("#source-quotes");
       quotes.replaceChildren();
+
       for (const quote of recap.quotes ?? []) {
         const item = document.createElement("blockquote");
         item.textContent = quote;
         quotes.append(item);
       }
+
       select<HTMLElement>("#action-count").textContent =
         `${recap.questions?.length ?? 0} questions`;
     }
+
     select<HTMLElement>("#saved-result").hidden = recap.outcome !== "saved";
     select<HTMLElement>("#saved-path").textContent = recap.savedPath ?? "";
     updateControls();
   }
+
   async function optionalItem(namespace: string[], key: string) {
     try {
       return await client.store.getItem(namespace, key);
@@ -291,6 +328,7 @@ export async function mountWorkflowUi(
       throw error;
     }
   }
+
   async function refreshHistory(): Promise<void> {
     threads = await client.threads.search({
       metadata: { demo: demoKind },
@@ -300,8 +338,10 @@ export async function mountWorkflowUi(
     });
     await renderHistory();
   }
+
   async function renderHistory(): Promise<void> {
     const query = search.value.trim();
+
     const archived = query
       ? await client.store.searchItems([archiveNamespace], { query, limit: 50 })
       : undefined;
@@ -315,9 +355,11 @@ export async function mountWorkflowUi(
             archived?.items.some((item) => item.key === thread.thread_id),
         )
       : threads;
+
     const history = select<HTMLElement>("#history");
     history.replaceChildren();
     select<HTMLElement>("#meeting-count").textContent = String(threads.length);
+
     for (const meeting of matching) {
       const button = document.createElement("button");
       button.className = "history-item";
@@ -345,11 +387,14 @@ export async function mountWorkflowUi(
                 : "Notes";
       details.append(name, status);
       button.append(symbol, details);
+
       button.onclick = () => {
         void loadMeeting(meeting.thread_id).catch(showError);
       };
+
       history.append(button);
     }
+
     if (!matching.length) {
       const empty = document.createElement("p");
       empty.className = "history-empty";
@@ -363,10 +408,12 @@ export async function mountWorkflowUi(
       history.append(empty);
     }
   }
+
   async function persistDraft(): Promise<void> {
     if (loading || !threadId) return;
     if (draftSave) clearTimeout(draftSave);
     const id = threadId;
+
     const snapshot = {
       title: title.value.trim() || (reading ? "Untitled document" : "Untitled meeting"),
       notes: notes.value,
@@ -382,6 +429,7 @@ export async function mountWorkflowUi(
       });
     await draftWrite;
   }
+
   function scheduleSave(): void {
     if (loading) return;
     select<HTMLElement>("#save-status").textContent = "Saving…";
@@ -391,6 +439,7 @@ export async function mountWorkflowUi(
       void persistDraft().catch(showError);
     }, 600);
   }
+
   async function createMeeting(sample = false): Promise<void> {
     await persistDraft();
     const thread = await client.threads.create({
@@ -407,15 +456,18 @@ export async function mountWorkflowUi(
       },
     });
     await loadMeeting(thread.thread_id);
+
     if (sample) {
       const source = reading ? sampleReading : sampleMeeting;
       title.value = source.title;
       notes.value = source.notes;
     }
+
     await persistDraft();
     notes.focus();
     updateControls();
   }
+
   async function loadMeeting(id: string): Promise<void> {
     if (id === threadId && !loading) return;
     if (!loading) await persistDraft();
@@ -430,6 +482,7 @@ export async function mountWorkflowUi(
     recap = {};
     reviewing = false;
     errorNotice.hidden = true;
+
     try {
       const [thread, state, draft] = await Promise.all([
         client.threads.get(id),
@@ -460,6 +513,7 @@ export async function mountWorkflowUi(
       const active = (await client.runs.list(id, { limit: 30 })).find((run) =>
         ["pending", "running"].includes(run.status),
       );
+
       if (active) {
         loading = false;
         void watchWork(id, active.run_id).catch(showError);
@@ -471,6 +525,7 @@ export async function mountWorkflowUi(
       }
     }
   }
+
   async function refreshRecap(id: string): Promise<void> {
     const state = await client.threads.getState(id);
     if (id !== threadId) return;
@@ -480,6 +535,7 @@ export async function mountWorkflowUi(
     setTab("recap");
     await activity.refresh(id);
   }
+
   function progressFrame(
     frame: { event: string; data: unknown },
     toolRows: Map<string, HTMLElement>,
@@ -493,12 +549,14 @@ export async function mountWorkflowUi(
     if (frame.event !== "custom" || typeof frame.data !== "object" || !frame.data) return;
     const value = frame.data as { progress?: string; type?: string; name?: string; phase?: string };
     if (value.progress) select<HTMLElement>("#progress-label").textContent = value.progress;
+
     if (value.type === "tool" && value.name) {
       const row = toolRows.get(value.name) ?? addMessage("activity", value.progress ?? value.name);
       row.textContent = `${value.phase === "end" ? "✓" : "↳"} ${value.progress ?? value.name}`;
       toolRows.set(value.name, row);
     }
   }
+
   async function watchWork(id: string, runId: string): Promise<void> {
     const controller = new AbortController();
     workStream = controller;
@@ -508,6 +566,7 @@ export async function mountWorkflowUi(
       : "Preparing your recap…";
     updateControls();
     const rows = new Map<string, HTMLElement>();
+
     try {
       for await (const frame of client.runs.joinStream(id, runId, {
         streamMode: ["values", "custom"],
@@ -528,12 +587,15 @@ export async function mountWorkflowUi(
       }
     }
   }
+
   async function generate(): Promise<void> {
     if (!threadId || workBusy || !notes.value.trim()) return;
+
     if (!modelSettings.ready()) {
       modelSettings.open();
       return;
     }
+
     errorNotice.hidden = true;
     await persistDraft();
     const id = threadId;
@@ -563,6 +625,7 @@ export async function mountWorkflowUi(
     await refreshHistory();
     await watchWork(id, run.run_id);
   }
+
   function editedActions(): MeetingAction[] {
     return Array.from(
       select<HTMLElement>("#actions").querySelectorAll<HTMLElement>(".action-row"),
@@ -573,10 +636,12 @@ export async function mountWorkflowUi(
       }),
     );
   }
+
   async function approve(approved: boolean): Promise<void> {
     if (!threadId || workBusy) return;
     if (approved && !select<HTMLFormElement>("#review-form").reportValidity()) return;
     const id = threadId;
+
     const run = await client.runs.create(id, "workflow", {
       command: {
         resume: {
@@ -590,6 +655,7 @@ export async function mountWorkflowUi(
     });
     await watchWork(id, run.run_id);
   }
+
   async function branchDraft(checkpointId: string): Promise<void> {
     if (!threadId || workBusy) return;
     const original = threadId;
@@ -615,17 +681,21 @@ export async function mountWorkflowUi(
     });
     await watchWork(branch.thread_id, run.run_id);
   }
+
   async function sendMessage(message?: string): Promise<void> {
     const input = select<HTMLTextAreaElement>("#chat-input");
     const prompt = (message ?? input.value).trim();
     if (!prompt || !threadId || chatBusy) return;
+
     if (!modelSettings.ready()) {
       modelSettings.open();
       return;
     }
+
     const meetingId = threadId;
     errorNotice.hidden = true;
     input.value = "";
+
     if (!assistantId) {
       const thread = await client.threads.create({
         graphId: "assistant",
@@ -634,6 +704,7 @@ export async function mountWorkflowUi(
       assistantId = thread.thread_id;
       await updateMetadata(meetingId, { assistant_thread_id: assistantId });
     }
+
     const id = assistantId;
     if (chat.querySelector(".assistant-welcome")) chat.replaceChildren();
     addMessage("user", prompt);
@@ -645,6 +716,7 @@ export async function mountWorkflowUi(
     updateControls();
     const rows = new Map<string, HTMLElement>();
     let streamed = "";
+
     try {
       if (reading)
         await client.store.putItem(["reading-library"], meetingId, {
@@ -663,12 +735,14 @@ export async function mountWorkflowUi(
         },
         streamMode: ["messages", "custom", "values"],
       });
+
       for await (const frame of client.runs.joinStream(id, run.run_id, {
         streamMode: ["messages", "custom", "values"],
         signal: controller.signal,
       })) {
         if (meetingId !== threadId) continue;
         progressFrame(frame, rows);
+
         if (frame.event === "messages" || frame.event === "messages/partial") {
           const chunk = Array.isArray(frame.data) ? frame.data[0] : frame.data;
           streamed += textContent(chunk?.content);
@@ -676,6 +750,7 @@ export async function mountWorkflowUi(
           chat.scrollTop = chat.scrollHeight;
         }
       }
+
       const settled = await client.runs.get(id, run.run_id);
       if (["error", "timeout"].includes(settled.status))
         throw new Error("The assistant could not answer. Check Settings and try again.");
@@ -688,15 +763,19 @@ export async function mountWorkflowUi(
       }
     }
   }
+
   title.oninput = scheduleSave;
   notes.oninput = scheduleSave;
+
   notes.onblur = () => {
     void persistDraft().catch(showError);
   };
+
   select<HTMLButtonElement>("#new-meeting").onclick = () => {
     if (reading) select<HTMLInputElement>("#import-file").click();
     else void createMeeting().catch(showError);
   };
+
   select<HTMLInputElement>("#import-file").onchange = (event) => {
     const picker = event.target as HTMLInputElement;
     const file = picker.files?.[0];
@@ -717,37 +796,47 @@ export async function mountWorkflowUi(
       })
       .catch(showError);
   };
+
   select<HTMLButtonElement>("#sample").onclick = () => {
     void createMeeting(true).catch(showError);
   };
+
   select<HTMLButtonElement>("#start").onclick = () => {
     void generate().catch(showError);
   };
+
   select<HTMLButtonElement>("#approve").onclick = () => {
     void approve(true).catch(showError);
   };
+
   select<HTMLButtonElement>("#dismiss").onclick = () => {
     void approve(false).catch(showError);
   };
+
   select<HTMLButtonElement>("#notes-tab").onclick = () => setTab("notes");
   select<HTMLButtonElement>("#recap-tab").onclick = () => setTab("recap");
   select<HTMLFormElement>("#review-form").onsubmit = (event) => event.preventDefault();
+
   select<HTMLFormElement>("#chat-form").onsubmit = (event) => {
     event.preventDefault();
     void sendMessage().catch(showError);
   };
+
   for (const button of document.querySelectorAll<HTMLButtonElement>("[data-prompt]"))
     button.onclick = () => {
       void sendMessage(button.dataset["prompt"]).catch(showError);
     };
+
   for (const button of document.querySelectorAll<HTMLButtonElement>("[data-close]"))
     button.onclick = () => select<HTMLDialogElement>(`#${button.dataset["close"]}`).close();
   for (const id of ["#model-settings", "#connection-status"])
     select<HTMLButtonElement>(id).onclick = () => modelSettings.open();
+
   select<HTMLButtonElement>("#versions").onclick = () => {
     select<HTMLDialogElement>("#activity-dialog").showModal();
     if (threadId) void activity.refresh(threadId).catch(showError);
   };
+
   select<HTMLButtonElement>("#branch").onclick = () => {
     if (!threadId) return;
     void client.threads
@@ -761,6 +850,7 @@ export async function mountWorkflowUi(
       })
       .catch(showError);
   };
+
   select<HTMLButtonElement>("#project-settings").onclick = () => {
     void optionalItem(["meeting-workspace"], "project")
       .then((item) => {
@@ -771,6 +861,7 @@ export async function mountWorkflowUi(
       })
       .catch(showError);
   };
+
   select<HTMLFormElement>("#project-form").onsubmit = (event) => {
     event.preventDefault();
     void client.store
@@ -780,6 +871,7 @@ export async function mountWorkflowUi(
       .then(() => select<HTMLDialogElement>("#project-dialog").close())
       .catch(showError);
   };
+
   select<HTMLButtonElement>("#download").onclick = () => {
     if (!recap.actions || !recap.decisions) return;
     const url = URL.createObjectURL(
@@ -799,30 +891,37 @@ export async function mountWorkflowUi(
         { type: "text/markdown;charset=utf-8" },
       ),
     );
+
     const link = document.createElement("a");
     link.href = url;
     link.download = `${title.value.replace(/[^a-zA-Z0-9-]+/g, "-").slice(0, 80) || "meeting"}.md`;
     link.click();
     setTimeout(() => URL.revokeObjectURL(url), 1000);
   };
+
   let searchTimer: ReturnType<typeof setTimeout> | undefined;
+
   search.oninput = () => {
     if (searchTimer) clearTimeout(searchTimer);
     searchTimer = setTimeout(() => {
       void renderHistory().catch(showError);
     }, 200);
   };
+
   document.addEventListener("keydown", (event) => {
     if (!(event.metaKey || event.ctrlKey)) return;
+
     if (event.key.toLowerCase() === "n") {
       event.preventDefault();
       if (reading) select<HTMLInputElement>("#import-file").click();
       else void createMeeting().catch(showError);
     }
+
     if (event.key.toLowerCase() === "f") {
       event.preventDefault();
       search.focus();
     }
+
     if (event.key === "Enter" && document.activeElement === select<HTMLElement>("#chat-input")) {
       event.preventDefault();
       void sendMessage().catch(showError);
@@ -830,6 +929,7 @@ export async function mountWorkflowUi(
   });
   renderChat();
   updateControls();
+
   try {
     await modelSettings.refresh();
     await refreshHistory();

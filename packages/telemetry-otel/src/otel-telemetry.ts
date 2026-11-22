@@ -177,8 +177,10 @@ export function createOtelTelemetry(options: OtelTelemetryOptions = {}): Telemet
   const wantMetrics = options.metrics ?? true;
 
   let api: OtelApiLike | undefined = options.api;
+
   const apiReady: Promise<OtelApiLike | undefined> =
     api === undefined ? loadGlobalApi(scopeName, options.scopeVersion) : Promise.resolve(api);
+
   // Events that arrived before the dynamic import settled. Without this buffer the first run of a
   // process loses its `run.started`, and its `run.finished` then finds no span to close — a hole in
   // the trace exactly where a cold start is most worth looking at.
@@ -201,6 +203,7 @@ export function createOtelTelemetry(options: OtelTelemetryOptions = {}): Telemet
   let durationHistogram: OtelHistogram | undefined;
   let queueHistogram: OtelHistogram | undefined;
   let frameHistogram: OtelHistogram | undefined;
+
   const instruments = (meter: OtelMeter) => {
     runCounter ??= meter.createCounter("skein.runs", {
       description: "Runs that reached a terminal status, dimensioned by that status.",
@@ -242,6 +245,7 @@ export function createOtelTelemetry(options: OtelTelemetryOptions = {}): Telemet
           startTime: event.startedAt,
         }),
       );
+
       if (
         wantMetrics &&
         active.meter &&
@@ -254,12 +258,14 @@ export function createOtelTelemetry(options: OtelTelemetryOptions = {}): Telemet
         workerActive?.add(1, { "skein.graph.id": event.context.graphId });
         workerRuns.set(event.context.runId, event.context.graphId);
       }
+
       if (wantMetrics && active.meter && event.queuedMs !== undefined) {
         instruments(active.meter).queueHistogram.record(
           event.queuedMs,
           metricAttributes(event.context, "running"),
         );
       }
+
       return;
     }
 
@@ -267,16 +273,20 @@ export function createOtelTelemetry(options: OtelTelemetryOptions = {}): Telemet
     inFlight.delete(event.context.runId);
 
     const workerGraph = workerRuns.get(event.context.runId);
+
     if (workerGraph !== undefined) {
       workerActive?.add(-1, { "skein.graph.id": workerGraph });
       workerRuns.delete(event.context.runId);
     }
+
     if (span) {
       span.setAttribute("skein.run.status", event.status);
       span.setAttribute("skein.run.frames", event.frameCount);
+
       if (event.failingNodes?.length) {
         span.setAttribute("skein.run.failing_nodes", event.failingNodes.join(","));
       }
+
       if (isFailure(event.status)) {
         // The original `Error` is what carries the stack — a sink is server-side, so it gets it
         // whatever `exposeErrorStacks` says.
@@ -288,6 +298,7 @@ export function createOtelTelemetry(options: OtelTelemetryOptions = {}): Telemet
       } else {
         span.setStatus({ code: SPAN_STATUS_OK });
       }
+
       span.end(event.endedAt);
     }
 
@@ -297,6 +308,7 @@ export function createOtelTelemetry(options: OtelTelemetryOptions = {}): Telemet
         durationHistogram: histogram,
         frameHistogram: frames,
       } = instruments(active.meter);
+
       const attributes = metricAttributes(event.context, event.status);
       counter.add(1, attributes);
       histogram.record(event.durationMs, attributes);
@@ -314,6 +326,7 @@ export function createOtelTelemetry(options: OtelTelemetryOptions = {}): Telemet
       : {}),
     onHttpEvent(event) {
       if (!wantMetrics) return;
+
       const record = (resolved: OtelApiLike | undefined) => {
         if (!resolved?.meter) return;
         httpCounter ??= resolved.meter.createCounter("skein.http.requests", {
@@ -331,6 +344,7 @@ export function createOtelTelemetry(options: OtelTelemetryOptions = {}): Telemet
         httpCounter.add(1, attributes);
         httpDuration.record(event.durationMs, attributes);
       };
+
       if (api) record(api);
       else void apiReady.then(record);
     },
@@ -341,6 +355,7 @@ export function createOtelTelemetry(options: OtelTelemetryOptions = {}): Telemet
         if (buffered.length < MAX_IN_FLIGHT_SPANS) buffered.push(event);
         return;
       }
+
       handlers.emit(event);
     },
 
@@ -364,6 +379,7 @@ export function createOtelTelemetry(options: OtelTelemetryOptions = {}): Telemet
           // Nothing useful to do; teardown must not throw.
         }
       }
+
       inFlight.clear();
       for (const graphId of workerRuns.values())
         workerActive?.add(-1, { "skein.graph.id": graphId });

@@ -75,6 +75,7 @@ describe("collection pagination", () => {
   it("pages runs inside the repository instead of materializing the whole thread", async () => {
     const store = new MemorySkeinStore();
     const thread = await store.threads.create();
+
     for (let index = 0; index < 4; index += 1) {
       await store.runs.create({ thread_id: thread.thread_id, assistant_id: "agent" });
     }
@@ -90,6 +91,7 @@ describe("collection pagination", () => {
   it("returns every matching run when given no limit, past the page bound", async () => {
     const store = new MemorySkeinStore({ maxPageSize: 2 });
     const thread = await store.threads.create();
+
     for (let index = 0; index < 4; index += 1) {
       await store.runs.create({ thread_id: thread.thread_id, assistant_id: "agent" });
     }
@@ -104,6 +106,7 @@ describe("collection pagination", () => {
   it("bounds listActiveRuns at the page size", async () => {
     const store = new MemorySkeinStore({ maxPageSize: 2 });
     const thread = await store.threads.create();
+
     for (let index = 0; index < 4; index += 1) {
       await store.runs.create({ thread_id: thread.thread_id, assistant_id: "agent" });
     }

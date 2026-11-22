@@ -46,6 +46,7 @@ export function acceptsMessages(schemas: unknown): boolean {
     if (hasProperty(graph["input"], "messages")) return true;
     if (hasProperty(graph["state"], "messages")) return true;
   }
+
   return false;
 }
 
@@ -55,12 +56,14 @@ export function inputSchemaOf(schemas: unknown): SchemaLike | undefined {
   const record = schemas as Record<string, unknown>;
   const direct = record["input_schema"] ?? record["state_schema"];
   if (typeof direct === "object" && direct !== null) return direct as SchemaLike;
+
   for (const value of Object.values(record)) {
     if (typeof value !== "object" || value === null) continue;
     const graph = value as Record<string, unknown>;
     const nested = graph["input"] ?? graph["state"];
     if (typeof nested === "object" && nested !== null) return nested as SchemaLike;
   }
+
   return undefined;
 }
 
@@ -79,9 +82,11 @@ export function sampleInputFor(schemas: unknown): string {
   const properties = schema?.properties;
   if (!properties || Object.keys(properties).length === 0) return "{}";
   const sample: Record<string, unknown> = {};
+
   for (const [key, definition] of Object.entries(properties)) {
     sample[key] = blankFor(definition, schema, new Set());
   }
+
   return JSON.stringify(sample, null, 2);
 }
 
@@ -90,12 +95,14 @@ function resolveRef(reference: string, root: SchemaLike | undefined): unknown {
   for (const container of ["#/definitions/", "#/$defs/"]) {
     if (!reference.startsWith(container)) continue;
     const name = reference.slice(container.length);
+
     const definitions = (
       root as { definitions?: Record<string, unknown>; $defs?: Record<string, unknown> }
     )[container === "#/definitions/" ? "definitions" : "$defs"];
     if (definitions && Object.prototype.hasOwnProperty.call(definitions, name))
       return definitions[name];
   }
+
   return undefined;
 }
 
@@ -157,5 +164,6 @@ function blankFor(
       Object.entries(node.properties).map(([key, value]) => [key, blankFor(value, root, seen)]),
     );
   }
+
   return null;
 }

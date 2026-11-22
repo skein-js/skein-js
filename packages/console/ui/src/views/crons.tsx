@@ -21,10 +21,12 @@ import { Async, IdLink, Pagination, Panel, ShortId, Timestamp } from "./parts";
 export function CronsView() {
   const [client] = useState(() => createConsoleClient({}));
   const confirm = useConfirmation();
+
   const [error, setError] = useState<string>(),
     [busy, setBusy] = useState<string>(),
     [creating, setCreating] = useState(false),
     [editing, setEditing] = useState<Cron>();
+
   const crons = usePagedRows(
     (offset, limit, signal) =>
       client.crons.search({ offset, limit, sortBy: "next_run_date", signal }),
@@ -32,9 +34,11 @@ export function CronsView() {
     50,
     (signal) => client.crons.count({ signal }),
   );
+
   const perform = async (id: string, mutate: () => Promise<unknown>) => {
     setBusy(id);
     setError(undefined);
+
     try {
       await mutate();
       crons.reload();
@@ -44,6 +48,7 @@ export function CronsView() {
       setBusy(undefined);
     }
   };
+
   return (
     <>
       <div className="mb-4 flex justify-end">
@@ -206,21 +211,26 @@ export function CronsView() {
     </>
   );
 }
+
 function localDateTime(iso: string | null | undefined) {
   if (!iso) return "";
   const date = new Date(iso);
   return new Date(date.getTime() - date.getTimezoneOffset() * 60000).toISOString().slice(0, 16);
 }
+
 function ScheduleForm({ existing, onSaved }: { existing?: Cron; onSaved: () => void }) {
   const [assistantId, setAssistantId] = useState(existing?.assistant_id ?? ""),
     [threadId, setThreadId] = useState(existing?.thread_id ?? ""),
     [scope, setScope] = useState(existing?.thread_id ? "thread" : "stateless");
+
   const [schedule, setSchedule] = useState(existing?.schedule ?? "*/5 * * * *"),
     [timezone, setTimezone] = useState(existing?.timezone ?? "UTC"),
     [endTime, setEndTime] = useState(localDateTime(existing?.end_time));
+
   const [input, setInput] = useState("{}"),
     [completion, setCompletion] = useState<"delete" | "keep">("delete"),
     [busy, setBusy] = useState(false);
+
   const [error, setError] = useState<string>();
   return (
     <form
@@ -229,6 +239,7 @@ function ScheduleForm({ existing, onSaved }: { existing?: Cron; onSaved: () => v
         event.preventDefault();
         setBusy(true);
         setError(undefined);
+
         try {
           if (schedule.trim().split(/\s+/).length !== 5)
             throw new Error(
@@ -237,6 +248,7 @@ function ScheduleForm({ existing, onSaved }: { existing?: Cron; onSaved: () => v
           new Intl.DateTimeFormat("en", { timeZone: timezone || "UTC" }).format();
           const end = endTime ? new Date(endTime).toISOString() : undefined;
           const client = createConsoleClient({});
+
           if (existing) {
             const patch = {
               ...(schedule !== existing.schedule ? { schedule } : {}),
@@ -263,6 +275,7 @@ function ScheduleForm({ existing, onSaved }: { existing?: Cron; onSaved: () => v
               await client.crons.createForThread(threadId, assistantId, payload);
             } else await client.crons.create(assistantId, payload);
           }
+
           onSaved();
         } catch (caught) {
           setError(caught instanceof Error ? caught.message : String(caught));

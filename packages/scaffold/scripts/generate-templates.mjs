@@ -31,14 +31,17 @@ const outputFile = path.join(packageRoot, "src", "templates.generated.ts");
 async function findTemplateFiles(directory, prefix = "") {
   const entries = await readdir(directory, { withFileTypes: true });
   const found = [];
+
   for (const entry of entries.sort((a, b) => a.name.localeCompare(b.name))) {
     const relativePath = prefix === "" ? entry.name : `${prefix}/${entry.name}`;
+
     if (entry.isDirectory()) {
       found.push(...(await findTemplateFiles(path.join(directory, entry.name), relativePath)));
     } else if (entry.name.endsWith(".tmpl")) {
       found.push(relativePath);
     }
   }
+
   return found;
 }
 

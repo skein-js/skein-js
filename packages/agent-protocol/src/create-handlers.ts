@@ -14,9 +14,9 @@ import {
 } from "@skein-js/core";
 
 import {
-  operationContracts,
-  createOperationJson,
   createOperationEmpty,
+  createOperationJson,
+  operationContracts,
 } from "./http/operation-contracts.js";
 import { markRequestAdmission } from "./idempotency/admission-input.js";
 import { transferA2aOrigin } from "./interop/a2a-origin.js";
@@ -204,6 +204,7 @@ export function storeItemTarget(req: {
 }): { namespace: string[]; key: string } {
   const rawBody =
     typeof req.body === "object" && req.body !== null && !Array.isArray(req.body) ? req.body : {};
+
   const body = parse(operationContracts.getStoreItem.body, rawBody);
   const namespace = namespacePath(body.namespace) ?? namespaceFromQuery(req.query["namespace"]);
   const key = typeof body.key === "string" ? body.key : (queryValue(req.query["key"]) ?? "");
@@ -224,15 +225,18 @@ export function storeItemTarget(req: {
  */
 function requireStoreItemTarget(req: ProtocolRequest): { namespace: string[]; key: string } {
   const target = storeItemTarget(req);
+
   if (target.namespace.length === 0) {
     throw SkeinHttpError.badRequest(
       "A store item request must name a namespace: an array of strings in the body, or a " +
         "dot-separated `namespace` query parameter.",
     );
   }
+
   if (target.key.length === 0) {
     throw SkeinHttpError.badRequest("A store item request must name a `key`.");
   }
+
   return target;
 }
 
@@ -365,6 +369,7 @@ export function createProtocolHandlers(
 
     searchAssistants: async (req) => {
       const body = parse(operationContracts.searchAssistants.body, req.body ?? {});
+
       const query = {
         graph_id: body.graph_id,
         name: body.name,
@@ -375,6 +380,7 @@ export function createProtocolHandlers(
         sortBy: body.sort_by,
         sortOrder: body.sort_order,
       };
+
       const [assistants, total] = await Promise.all([
         service.assistants.search(query),
         service.assistants.count(query),
@@ -527,6 +533,7 @@ export function createProtocolHandlers(
 
     listThreads: async (req) => {
       const body = parse(operationContracts.listThreads.body, req.body ?? {});
+
       const threads = await service.threads.search({
         metadata: body.metadata,
         excludeMetadata: body.exclude_metadata,
@@ -639,10 +646,12 @@ export function createProtocolHandlers(
     // which spreads the checkpoint into `configurable` and lets the checkpointer resolve it.
     getThreadStateAtCheckpointFromBody: async (req) => {
       const threadId = requireParam(req.params, "thread_id");
+
       const body = parse(
         operationContracts.getThreadStateAtCheckpointFromBody.body,
         req.body ?? {},
       );
+
       const checkpointId = body.checkpoint?.checkpoint_id;
       return createOperationJson(
         "getThreadStateAtCheckpointFromBody",
@@ -745,6 +754,7 @@ export function createProtocolHandlers(
         operationContracts.listRunDeliveries.query,
         req.query,
       );
+
       const deliveries = await service.runs.listDeliveries(requireParam(req.params, "run_id"), {
         ...(limit !== undefined ? { limit } : {}),
         ...(offset !== undefined ? { offset } : {}),
@@ -800,6 +810,7 @@ export function createProtocolHandlers(
     joinRunStream: async (req) => {
       const runId = requireParam(req.params, "run_id");
       const frames = await service.runs.join(runId, afterSeqFrom(req));
+
       if (
         parse(operationContracts.joinRunStream.query, req.query).cancel_on_disconnect &&
         req.signal !== undefined
@@ -810,12 +821,14 @@ export function createProtocolHandlers(
         const cancelOnAbort = (): void => {
           void service.runs.cancel(runId).catch(() => undefined);
         };
+
         // The `aborted` check is not belt-and-braces: `join` above awaits, so a client that hangs up
         // during setup has already fired the event, and `addEventListener` on a settled signal never
         // fires again — the run would keep going for a caller that is provably gone.
         if (req.signal.aborted) cancelOnAbort();
         else req.signal.addEventListener("abort", cancelOnAbort, { once: true });
       }
+
       return sse("joinRunStream", { runId, frames });
     },
 
@@ -838,13 +851,16 @@ export function createProtocolHandlers(
     joinRun: async (req) => {
       const runId = requireParam(req.params, "run_id");
       const run = await service.runs.get(runId); // 404s when absent or not this caller's
+
       if (!isTerminalRunStatus(run.status)) {
         const frames = await service.runs.join(runId, 0);
+
         for await (const _frame of frames) {
           // Drain rather than forward: this route reports the outcome, not the transcript. The bus
           // closes when the run settles, which is what makes this the "block until done" wait.
         }
       }
+
       // Re-read for the settled row: the status above is stale by now for a run we just waited on.
       // `runs.get` *throws* on absence, and the row can legitimately be gone by the time we wake —
       // `cancel?action=rollback` deletes it, as does `on_completion: "delete"` cascading the thread.
@@ -854,6 +870,7 @@ export function createProtocolHandlers(
         if (error instanceof SkeinHttpError && error.status === 404) return undefined;
         throw error;
       });
+
       // A failed run must not read as an empty success — same `__error__` envelope `createWait` uses.
       // `error` is optional on the row, so fall back to the status rather than emitting a bare `{}`.
       if (settled && (settled.status === "error" || settled.status === "timeout")) {
@@ -863,6 +880,7 @@ export function createProtocolHandlers(
           },
         });
       }
+
       return createOperationJson("joinRun", (await service.threads.getState(run.thread_id)).values);
     },
 
@@ -877,6 +895,7 @@ export function createProtocolHandlers(
 
     cancelManyRuns: async (req) => {
       const body = parse(operationContracts.cancelManyRuns.body, req.body ?? {});
+
       const { cancelledRunIds, truncated } = await service.runs.cancelMany({
         threadId: body.thread_id,
         runIds: body.run_ids,
@@ -912,6 +931,7 @@ export function createProtocolHandlers(
 
     searchCrons: async (req) => {
       const body = parse(operationContracts.searchCrons.body, req.body ?? {});
+
       // Paired with a total, like assistants and threads — the SDK ignores the header, but a client
       // paging a cron list has no other way to know how far it goes.
       const [crons, total] = await Promise.all([
@@ -975,10 +995,12 @@ export function createProtocolHandlers(
     getThreadStream: async (req) => {
       // `stream_mode` is what the official SDK's `threads.joinStream` sends.
       const streamQuery = parse(operationContracts.getThreadStream.query, req.query);
+
       if (streamQuery.stream_mode !== undefined) {
         if (!service.threadStream.follow)
           throw SkeinHttpError.unprocessable("Thread subscriptions are unavailable.");
         const requested = streamQuery.stream_mode;
+
         const modes = (Array.isArray(requested) ? requested : [requested!]).flatMap((mode) =>
           mode.split(","),
         );
@@ -993,6 +1015,7 @@ export function createProtocolHandlers(
           ),
         };
       }
+
       const started = await service.threadStream.joinStream(
         requireParam(req.params, "thread_id"),
         afterSeqFrom(req),
@@ -1012,6 +1035,7 @@ export function createProtocolHandlers(
           ),
         );
       }
+
       const started = await service.threadStream.command(
         requireParam(req.params, "thread_id"),
         parse(operationContracts.postThreadCommands.body, req.body ?? {}) as CommandInput,
@@ -1079,6 +1103,7 @@ export function createProtocolHandlers(
 
     searchStoreItems: async (req) => {
       const body = parse(operationContracts.searchStoreItems.body, req.body ?? {});
+
       const items = await service.store.search({
         refreshTtl: body.refresh_ttl ?? undefined,
         prefix: body.namespace_prefix,
@@ -1092,6 +1117,7 @@ export function createProtocolHandlers(
 
     listStoreNamespaces: async (req) => {
       const body = parse(operationContracts.listStoreNamespaces.body, req.body ?? {});
+
       const namespaces = await service.store.listNamespaces({
         ...(body.prefix !== undefined ? { prefix: body.prefix } : {}),
         ...(body.suffix !== undefined ? { suffix: body.suffix } : {}),

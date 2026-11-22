@@ -128,6 +128,7 @@ import { createExpressServer } from "@skein-js/express";
 import { embedInMemoryGraphs } from "@skein-js/server-kit";
 
 const stateByThread = new Map<string, unknown>();
+
 const threadId = (c?: { configurable?: Record<string, unknown> }) =>
   String(c?.configurable?.["thread_id"] ?? "");
 

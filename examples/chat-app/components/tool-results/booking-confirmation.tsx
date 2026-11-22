@@ -2,7 +2,7 @@
 
 import { CheckCircle2, XCircle } from "lucide-react";
 
-import { type BookingResult, formatDuration } from "@/lib/tool-results";
+import { formatDuration, type BookingResult } from "@/lib/tool-results";
 
 /**
  * A `book_flight` result — the outcome after the user approved (or rejected) the human-in-the-loop

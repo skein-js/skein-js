@@ -66,6 +66,7 @@ describe("thread stream service — interrupt / resume", () => {
     const deps = createFixtureDeps();
     const service = await serviceWithAssistants(deps);
     const thread = await service.threads.create();
+
     const started = await service.threadStream.stream(thread.thread_id, {
       assistant_id: "interrupting",
       input: {},
@@ -116,12 +117,15 @@ describe("thread stream service — interrupt / resume", () => {
   // get a 404. A perf pass moved this onto `listActiveRuns`/`latestForThread` and this is what catches it.
   it("joins the caller's own run even when a newer run on the thread is another principal's", async () => {
     const inner = new MemorySkeinStore();
+
     const deps = createFixtureDeps({
       store: createAuthScopedStore(inner, ownerEngine, { owner: "alice" }, "threads"),
     });
+
     const service = await serviceWithAssistants(deps);
 
     const thread = await inner.threads.create({ metadata: { owner: "alice" } });
+
     const mine = await inner.runs.create({
       thread_id: thread.thread_id,
       assistant_id: "echo",
@@ -143,6 +147,7 @@ describe("thread stream service — interrupt / resume", () => {
   it("joins the current run's stream on an existing thread", async () => {
     const service = await serviceWithAssistants();
     const thread = await service.threads.create();
+
     const started = await service.threadStream.stream(thread.thread_id, {
       assistant_id: "echo",
       input: { value: "hi" },

@@ -19,12 +19,15 @@ async function verifyDesktop(application) {
   const directory = await mkdtemp(join(tmpdir(), "skein-model-proof-"));
   const token = randomBytes(32).toString("hex");
   const server = await startWorkflowServer(directory, token, { application });
+
   const client = new Client({
     apiUrl: server.url,
     defaultHeaders: { authorization: `Bearer ${token}` },
   });
+
   try {
     const thread = await client.threads.create();
+
     const input =
       application === "meetings"
         ? sampleMeeting
@@ -40,6 +43,7 @@ async function verifyDesktop(application) {
         content: input.notes,
       });
     const tools = new Set();
+
     for await (const frame of client.runs.stream(thread.thread_id, "workflow", {
       input,
       streamMode: ["custom", "values"],
@@ -48,6 +52,7 @@ async function verifyDesktop(application) {
       if (frame.event === "custom" && frame.data.type === "tool" && frame.data.phase === "end")
         tools.add(frame.data.name);
     }
+
     const state = await client.threads.getState(thread.thread_id);
     if (!state.next.includes("approve") || !state.values.summary || !tools.size)
       throw new Error(`${application}: expected real tools and a generated review`);
@@ -59,6 +64,7 @@ async function verifyDesktop(application) {
       throw new Error("Saved output lost its original source");
     const chat = await client.threads.create();
     let chunks = 0;
+
     for await (const frame of client.runs.stream(chat.thread_id, "assistant", {
       input: {
         messages: [
@@ -74,6 +80,7 @@ async function verifyDesktop(application) {
       if (frame.event === "error") throw new Error(JSON.stringify(frame.data));
       if (frame.event.startsWith("messages")) chunks++;
     }
+
     const conversation = await client.threads.getState(chat.thread_id);
     if (!chunks || conversation.values.messages.length < 2)
       throw new Error("Assistant conversation did not stream and persist");
@@ -85,6 +92,7 @@ async function verifyDesktop(application) {
     await rm(directory, { recursive: true, force: true });
   }
 }
+
 async function verifyPlanner() {
   const directory = await mkdtemp(join(tmpdir(), "skein-planner-model-proof-"));
   const tasks = join(directory, "tasks.md");
@@ -93,11 +101,14 @@ async function verifyPlanner() {
     { planner: buildDailyPlanner(directory, tasks) },
     { sqlitePath: join(directory, "state.sqlite") },
   );
+
   const runtime = createProtocolRuntime(embedded.deps, { scheduler: { enabled: false } });
+
   try {
     await runtime.service.assistants.registerGraphAssistants();
     const thread = await runtime.service.threads.create();
     const tools = new Set();
+
     const stream = await runtime.service.runs.createStream({
       thread_id: thread.thread_id,
       assistant_id: "planner",
@@ -107,11 +118,13 @@ async function verifyPlanner() {
       },
       stream_mode: ["custom", "values"],
     });
+
     for await (const frame of stream.frames) {
       if (frame.event === "error") throw new Error(JSON.stringify(frame.data));
       if (frame.event === "custom" && frame.data.type === "tool" && frame.data.phase === "end")
         tools.add(frame.data.name);
     }
+
     const state = await runtime.service.threads.getState(thread.thread_id);
     if (
       !state.next.includes("approve") ||
@@ -138,6 +151,7 @@ async function verifyPlanner() {
     await rm(directory, { recursive: true, force: true });
   }
 }
+
 await verifyDesktop("meetings");
 await verifyDesktop("reading");
 await verifyPlanner();

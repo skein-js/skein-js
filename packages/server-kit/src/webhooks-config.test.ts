@@ -41,6 +41,7 @@ describe("resolveWebhooks", () => {
           env: { OTHER_TOKEN: "private-value" },
         }),
       ).toThrow(/webhooks.headers/);
+
       try {
         resolveWebhooks(undefined, {
           compatible: { headers: { Authorization: template } },

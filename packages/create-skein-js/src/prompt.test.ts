@@ -22,6 +22,7 @@ describe("promptConfirm", () => {
     for (const yes of ["y", "Y", "yes", "YES", " yes "]) {
       expect(await promptConfirm(answering(yes).ask, "?", false)).toBe(true);
     }
+
     for (const no of ["n", "N", "no", "NO", " no "]) {
       expect(await promptConfirm(answering(no).ask, "?", true)).toBe(false);
     }

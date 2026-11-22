@@ -1,7 +1,9 @@
 import { copyFileSync, mkdirSync } from "node:fs";
+
 import { build } from "tsup";
 
 const example = process.argv[2];
+
 if (example === "local-workflow") {
   await build({ entry: ["src/index.ts", "src/ui.ts"], format: ["esm"], dts: true, clean: true });
 } else if (example === "local-cli") {

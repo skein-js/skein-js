@@ -12,6 +12,7 @@ function assertContainedPath(filePath: string): void {
   if (path.isAbsolute(filePath)) {
     throw new Error(`Refusing to write an absolute path: ${filePath}`);
   }
+
   if (filePath.split(/[\\/]/).includes("..")) {
     throw new Error(`Refusing to write a path that escapes the project root: ${filePath}`);
   }

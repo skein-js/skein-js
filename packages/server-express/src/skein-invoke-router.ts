@@ -13,8 +13,7 @@ import {
 } from "@skein-js/agent-protocol";
 import { resolveRuntimeDeps, type SkeinRuntimeOptions } from "@skein-js/server-kit";
 import cors from "cors";
-import express from "express";
-import type { Request, Response, Router } from "express";
+import express, { type Request, type Response, type Router } from "express";
 
 import { sendErrorResponse } from "./error-response.js";
 import { requireParsableLimit } from "./routes.js";
@@ -68,6 +67,7 @@ export async function skeinInvokeRouter(
       // completion (burning model tokens) for a response nobody will read.
       const disconnected = new AbortController();
       res.once("close", () => disconnected.abort(new Error("client disconnected")));
+
       try {
         const request = { ...toProtocolRequest(req), signal: disconnected.signal };
         await sendProtocolResponse(await invoke(request), res);

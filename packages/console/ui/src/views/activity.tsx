@@ -97,6 +97,7 @@ export function ActivityFeed({
         <ol className="space-y-3">
           {visible.map((frame) => {
             const payload = frame.data as { status?: string } | undefined;
+
             const title =
               frame.event === "updates"
                 ? `Output reported · ${
@@ -111,6 +112,7 @@ export function ActivityFeed({
                     : frame.event === "custom"
                       ? "Custom update"
                       : frame.event;
+
             const Icon =
               frame.event === "end" && payload?.status === "success"
                 ? CheckCircle2

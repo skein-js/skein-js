@@ -1,11 +1,12 @@
 import assert from "node:assert/strict";
-import { readFile, readdir } from "node:fs/promises";
+import { readdir, readFile } from "node:fs/promises";
 import path from "node:path";
 
 // Validate rendered output and custom-domain URLs rather than just config values.
 const root = path.resolve(import.meta.dirname, "..");
 const output = path.resolve(process.argv[2] ?? path.join(root, "docs/.vitepress/dist"));
 const site = new URL("https://skein.js.org/");
+
 const decodeEntities = (value) =>
   value.replace(/&(#x[\da-f]+|#\d+|amp|lt|gt|quot|apos);/gi, (_match, entity) => {
     if (entity.startsWith("#"))
@@ -16,6 +17,7 @@ const decodeEntities = (value) =>
       );
     return { amp: "&", lt: "<", gt: ">", quot: '"', apos: "'" }[entity.toLowerCase()];
   });
+
 const attributesOf = (tag) =>
   Object.fromEntries(
     [...tag.matchAll(/([\w:-]+)\s*=\s*(?:"([^"]*)"|'([^']*)')/g)].map((match) => [
@@ -23,15 +25,19 @@ const attributesOf = (tag) =>
       decodeEntities(match[2] ?? match[3]),
     ]),
   );
+
 const exactlyOne = (values, label) => {
   assert.equal(values.length, 1, `${label}: expected exactly one, got ${values.length}`);
   assert(values[0]?.trim(), `${label}: must not be empty`);
   return values[0];
 };
+
 const sitemap = await readFile(path.join(output, "sitemap.xml"), "utf8");
+
 const locations = [...sitemap.matchAll(/<loc>([^<]+)<\/loc>/g)].map((match) =>
   decodeEntities(match[1]),
 );
+
 const sitemapUrls = new Set(locations);
 assert(locations.length > 0, "Sitemap must contain pages");
 assert.equal(sitemapUrls.size, locations.length, "Sitemap must not duplicate URLs");
@@ -39,33 +45,42 @@ assert.equal(sitemapUrls.size, locations.length, "Sitemap must not duplicate URL
 const filenames = (await readdir(output, { recursive: true })).filter((name) =>
   name.endsWith(".html"),
 );
+
 const pageUrls = new Set();
 const titles = new Set();
 const descriptions = new Set();
+
 for (const filename of filenames) {
   const html = await readFile(path.join(output, filename), "utf8");
+
   const head = exactlyOne(
     [...html.matchAll(/<head\b[^>]*>([\s\S]*?)<\/head>/g)].map((match) => match[1]),
     `${filename} head`,
   );
+
   const tags = [...head.matchAll(/<(meta|link)\b[^>]*>/g)].map((match) => ({
     tag: match[1],
     ...attributesOf(match[0]),
   }));
+
   const metaValues = (attribute, key) =>
     tags.filter((tag) => tag.tag === "meta" && tag[attribute] === key).map((tag) => tag.content);
+
   const meta = (attribute, key) => exactlyOne(metaValues(attribute, key), `${filename} ${key}`);
   const robots = metaValues("name", "robots").join(",");
+
   if (filename === "404.html") {
     assert(/\bnoindex\b/i.test(robots), "404 page must be noindex");
     continue;
   }
+
   assert(!/\bnoindex\b/i.test(robots), `${filename}: published page must be indexable`);
   const route = filename
     .split(path.sep)
     .join("/")
     .replace(/(^|\/)index\.html$/, "$1")
     .replace(/\.html$/, "");
+
   const url = new URL(route, site).href;
   pageUrls.add(url);
   assert(sitemapUrls.has(url), `${filename}: missing from sitemap`);
@@ -104,6 +119,7 @@ for (const filename of filenames) {
   assert.equal(meta("property", "og:image:height"), "630");
   meta("property", "og:image:alt");
 }
+
 assert.deepEqual(pageUrls, sitemapUrls, "Sitemap must list only rendered, canonical pages");
 for (const route of ["", "deploy", "local-deployment", "getting-started", "storage", "embedding"])
   assert(pageUrls.has(new URL(route, site).href), `Missing deployment entry page: ${route}`);

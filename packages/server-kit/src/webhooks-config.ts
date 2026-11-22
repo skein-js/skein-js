@@ -73,11 +73,13 @@ export function resolveWebhooks(
   const config: WebhookDeliveryConfig = {};
   const compatible = options.compatible;
   if (options.disabled === true) config.disabled = true;
+
   if (compatible?.headers) {
     const prefix = compatible.env_prefix ?? "LG_WEBHOOK_";
     config.headers = Object.fromEntries(
       Object.entries(compatible.headers).map(([name, template]) => {
         const environmentTemplate = /\$\{\{\s*env\.([A-Za-z_][A-Za-z0-9_]*)\s*\}\}/g;
+
         const value = template.replace(environmentTemplate, (_match, variable: string) => {
           if (!variable.startsWith(prefix) || env[variable] === undefined)
             throw new SkeinConfigError(
@@ -89,15 +91,18 @@ export function resolveWebhooks(
           throw new SkeinConfigError(
             `webhooks.headers contains an unsupported template in header "${name}".`,
           );
+
         try {
           new Headers({ [name]: value });
         } catch {
           throw new SkeinConfigError(`webhooks.headers contains an invalid header "${name}".`);
         }
+
         return [name.toLowerCase(), value];
       }),
     );
   }
+
   if (compatible?.url) {
     const policy = compatible.url;
     config.url = {
@@ -112,8 +117,10 @@ export function resolveWebhooks(
     };
     if (policy.require_https === true) config.requireHttps = true;
   }
+
   if (secrets.length > 0) {
     config.secrets = secrets;
+
     // Warned about, not refused: it does work, and refusing would break a deployment mid-upgrade. But
     // a signing key in `langgraph.json` is a signing key in version control, which is the one thing a
     // signature is supposed to make impossible for an attacker to hold.
@@ -124,22 +131,27 @@ export function resolveWebhooks(
       );
     }
   }
+
   if (!raw) return config;
 
   const retries: NonNullable<WebhookDeliveryConfig["retries"]> = {};
   if (typeof raw.retries?.max_attempts === "number") retries.maxAttempts = raw.retries.max_attempts;
+
   if (typeof raw.retries?.initial_delay_ms === "number") {
     retries.initialDelayMs = raw.retries.initial_delay_ms;
   }
+
   if (Object.keys(retries).length > 0) config.retries = retries;
 
   if (typeof raw.max_payload_bytes === "number") config.maxPayloadBytes = raw.max_payload_bytes;
   if (typeof raw.retain_hours === "number") config.retainHours = raw.retain_hours;
+
   // An explicitly empty list is dropped rather than carried, so it cannot be read as "allow nothing"
   // — a policy no caller can have meant, whose symptom would be every callback dead on arrival.
   if (Array.isArray(raw.allowed_hosts) && raw.allowed_hosts.length > 0) {
     config.allowedHosts = [...raw.allowed_hosts];
   }
+
   if (typeof raw.require_https === "boolean")
     config.requireHttps = config.requireHttps === true || raw.require_https;
 

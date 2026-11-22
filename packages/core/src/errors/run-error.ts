@@ -89,11 +89,13 @@ function convert(
   seen.add(thrown);
 
   const cause = readProperty(thrown, "cause");
+
   if (cause !== undefined) {
     result.cause = convert(cause, includeStack, depth + 1, seen);
   }
 
   const aggregated = readProperty(thrown, "errors");
+
   if (Array.isArray(aggregated) && aggregated.length > 0) {
     result.errors = aggregated
       .slice(0, MAX_AGGREGATED_ERRORS)

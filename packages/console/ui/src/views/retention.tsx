@@ -12,6 +12,7 @@ export interface Retention {
   expiresAt?: string | null;
   ttl_strategy?: "delete" | "keep_latest";
 }
+
 export function RetentionSummary({
   retention,
   thread = false,
@@ -49,6 +50,7 @@ export function RetentionSummary({
     </div>
   );
 }
+
 export function parseLifetime(value: string): number | null | undefined {
   if (value === "default" || value === "unchanged") return undefined;
   if (value === "none") return null;
@@ -57,6 +59,7 @@ export function parseLifetime(value: string): number | null | undefined {
     throw new Error("Lifetime must be positive minutes, up to 5256000.");
   return minutes;
 }
+
 export function LifetimeInput({
   value,
   onChange,
@@ -97,6 +100,7 @@ export function LifetimeInput({
     </label>
   );
 }
+
 export function ThreadRetentionEditor({
   thread,
   onSaved,
@@ -107,6 +111,7 @@ export function ThreadRetentionEditor({
   const [lifetime, setLifetime] = useState("unchanged"),
     [strategy, setStrategy] = useState<"delete" | "keep_latest">(thread.ttl_strategy ?? "delete"),
     [busy, setBusy] = useState(false);
+
   const [error, setError] = useState<string>(),
     [saved, setSaved] = useState(false);
   return (
@@ -119,12 +124,14 @@ export function ThreadRetentionEditor({
           setBusy(true);
           setError(undefined);
           setSaved(false);
+
           try {
             const ttl = parseLifetime(lifetime);
             if (ttl === undefined)
               throw new Error("Choose a lifetime or no expiry before saving retention.");
             // The installed SDK forwards these values correctly; its declaration only names delete.
             const resource = createConsoleClient({}).threads;
+
             const update = resource.update.bind(resource) as (
               id: string,
               input: { ttl: number | null | { ttl: number; strategy: "delete" | "keep_latest" } },

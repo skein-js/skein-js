@@ -138,6 +138,7 @@ import { Client } from "@langchain/langgraph-sdk";
 const client = new Client({ apiUrl: "http://localhost:2024" });
 const assistantId = "echo";
 const thread = await client.threads.create();
+
 const reply = await client.runs.wait(thread.thread_id, assistantId, {
   input: { messages: [{ role: "user", content: "hello" }] },
 });

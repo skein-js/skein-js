@@ -25,11 +25,11 @@ import {
   SkeinHttpError,
   type Item,
   type SearchItem,
+  type StoreItemWriteOptions,
   type StoreNamespaceQuery,
+  type StoreReadOptions,
   type StoreRepo,
   type StoreSearchQuery,
-  type StoreReadOptions,
-  type StoreItemWriteOptions,
 } from "@skein-js/core";
 
 // `@langchain/langgraph` re-exports `Item` but not `SearchItem`; it's structurally an item + score.
@@ -65,10 +65,12 @@ function toLangGraphSearchItem(item: SearchItem): LangGraphSearchItem {
  */
 function namespaceQueryFromListOperation(operation: ListNamespacesOperation): StoreNamespaceQuery {
   const query: StoreNamespaceQuery = { limit: operation.limit, offset: operation.offset };
+
   for (const condition of operation.matchConditions ?? []) {
     if (condition.matchType === "prefix") query.prefix = condition.path as string[];
     if (condition.matchType === "suffix") query.suffix = condition.path as string[];
   }
+
   if (operation.maxDepth !== undefined) query.maxDepth = operation.maxDepth;
   return query;
 }
@@ -109,6 +111,7 @@ export class SkeinBaseStore extends BaseStore {
     options?: { ttl?: number | null },
   ): Promise<void> {
     const write: StoreItemWriteOptions = { ...options, index };
+
     if (this.repo.putWithOptions) await this.repo.putWithOptions(namespace, key, value, write);
     else {
       if (index !== undefined || options?.ttl === null)
@@ -151,6 +154,7 @@ export class SkeinBaseStore extends BaseStore {
     // injects this before dispatching to batch; we override the convenience methods, so apply it
     // here.) Without it a no-limit search would return every item under the prefix.
     const query: StoreSearchQuery = { prefix: namespacePrefix, limit: options?.limit ?? 10 };
+
     if (options?.refreshTtl !== undefined) {
       if (!this.repo.putWithOptions)
         throw SkeinHttpError.unprocessable(
@@ -158,6 +162,7 @@ export class SkeinBaseStore extends BaseStore {
         );
       query.refreshTtl = options.refreshTtl;
     }
+
     if (options?.query !== undefined) query.query = options.query;
     if (options?.offset !== undefined) query.offset = options.offset;
     // Validated, not cast. This path has no schema in front of it — a graph node's `filter` reaches
@@ -178,6 +183,7 @@ export class SkeinBaseStore extends BaseStore {
         `maxDepth must be an integer between 1 and ${MAX_NAMESPACE_DEPTH} (got ${options.maxDepth}).`,
       );
     }
+
     // `BaseStore.listNamespaces` defaults to 100 before dispatching to batch; the convenience methods
     // are overridden here, so the default is applied here too — same reasoning as `search`'s 10.
     return this.repo.listNamespaces({ ...options, limit: options?.limit ?? 100 });
@@ -199,6 +205,7 @@ export class SkeinBaseStore extends BaseStore {
       // offset — so it passes straight through.
       return this.search(search.namespacePrefix, search);
     }
+
     if ("value" in operation) {
       const put = operation as PutOperation;
       // A null value is a delete, per LangGraph's PutOperation contract.
@@ -216,10 +223,12 @@ export class SkeinBaseStore extends BaseStore {
                 : undefined),
           );
     }
+
     if ("key" in operation) {
       const get = operation as GetOperation;
       return this.get(get.namespace, get.key, get as GetOperation & StoreReadOptions);
     }
+
     return this.listNamespaces(namespaceQueryFromListOperation(operation));
   }
 }

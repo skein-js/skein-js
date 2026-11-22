@@ -49,6 +49,7 @@ function renderInterrupt(interrupts: Record<string, Interrupt[]> | undefined): u
     const first = raised[0];
     if (first && first.value !== undefined) return first.value;
   }
+
   return undefined;
 }
 
@@ -56,6 +57,7 @@ function renderInterrupt(interrupts: Record<string, Interrupt[]> | undefined): u
 function lastAiMessage(values: unknown): unknown {
   const messages = (values as { messages?: unknown })?.messages;
   if (!Array.isArray(messages)) return undefined;
+
   for (let index = messages.length - 1; index >= 0; index -= 1) {
     const message = messages[index] as { type?: string; role?: string; content?: unknown } | null;
     if (!message) continue;
@@ -64,6 +66,7 @@ function lastAiMessage(values: unknown): unknown {
     const kind = message.type ?? message.role;
     if (kind === "ai" || kind === "assistant") return message.content;
   }
+
   return undefined;
 }
 

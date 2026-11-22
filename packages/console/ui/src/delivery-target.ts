@@ -6,9 +6,11 @@
  */
 export function formatDeliveryTarget(target: string): string {
   const channelPrefix = "skein+channel://";
+
   if (target.startsWith(channelPrefix)) {
     const encodedName = target.slice(channelPrefix.length).split("/", 1)[0];
     if (!encodedName) return "<unparseable url>";
+
     try {
       return `channel · ${decodeURIComponent(encodedName)}`;
     } catch {

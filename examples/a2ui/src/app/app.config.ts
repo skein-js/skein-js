@@ -1,14 +1,14 @@
 import { provideA2UI, provideMarkdownRenderer } from "@a2ui/angular";
 import {
-  type ApplicationConfig,
-  Injector,
   inject,
+  Injector,
   provideBrowserGlobalErrorListeners,
   provideZonelessChangeDetection,
+  type ApplicationConfig,
 } from "@angular/core";
 
-import { UiSession } from "./ui-session";
 import { createUiCatalog } from "./native-catalog";
+import { UiSession } from "./ui-session";
 
 export const appConfig: ApplicationConfig = {
   providers: [

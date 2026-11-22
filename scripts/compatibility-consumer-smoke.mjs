@@ -1,5 +1,5 @@
 // A clean npm consumer outside the workspace. Every client uses its native HTTP transport.
-import { mkdtemp, writeFile, rm } from "node:fs/promises";
+import { mkdtemp, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import path from "node:path";
 import process from "node:process";
@@ -7,12 +7,14 @@ import process from "node:process";
 import { verifyA2uiConsumer } from "../packages/test-support/scripts/a2ui-consumer-smoke.mjs";
 
 import { verifyJsonRenderConsumer } from "./json-render-consumer-smoke.mjs";
-import { packWorkspace, run, installConsumer } from "./pack-local-consumer.mjs";
+import { installConsumer, packWorkspace, run } from "./pack-local-consumer.mjs";
 
 const directory = await mkdtemp(path.join(tmpdir(), "skein-compatibility-consumer-"));
+
 try {
   const packed = packWorkspace(path.join(directory, "packs"), ["github-playground"]);
   const consumer = path.join(directory, "consumer");
+
   const manifest = installConsumer(
     consumer,
     {
@@ -232,6 +234,7 @@ try {
     { cwd: consumer },
   );
   const standalone = path.join(directory, "standalone-protocol");
+
   const standaloneManifest = installConsumer(
     standalone,
     {

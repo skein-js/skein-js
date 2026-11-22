@@ -22,11 +22,13 @@ const nestingError = /Input nesting depth exceeds max \(256\)/;
 
 function createNestedAst(depth: number): BraceNode {
   let nested: BraceNode = { type: "text", value: "leaf" };
+
   for (let index = 0; index < depth; index++) {
     const parent: BraceNode = { type: "paren", nodes: [nested] };
     nested.parent = parent;
     nested = parent;
   }
+
   const root: BraceNode = { type: "root", nodes: [nested] };
   nested.parent = root;
   return root;
@@ -42,6 +44,7 @@ describe("braces security patch (GHSA-vfj7-8cjw-p6xm) — workspace installs", (
     const rootManifest = require("../../../package.json") as {
       pnpm?: { patchedDependencies?: Record<string, string> };
     };
+
     const installed = (require("braces/package.json") as { version: string }).version;
     expect(Object.keys(rootManifest.pnpm?.patchedDependencies ?? {})).toContain(
       `braces@${installed}`,

@@ -88,6 +88,7 @@ describe("skein delivery signatures", () => {
         ok: true,
       });
     }
+
     expect(
       verifySkeinSignature({ ...rotating, header: headerFor({ secret: "whsec_retired" }) }),
     ).toMatchObject({ ok: false, reason: "mismatch" });

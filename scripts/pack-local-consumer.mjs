@@ -1,11 +1,13 @@
 import { spawnSync } from "node:child_process";
-import { readdirSync, readFileSync, mkdirSync, copyFileSync, existsSync } from "node:fs";
+import { copyFileSync, existsSync, mkdirSync, readdirSync, readFileSync } from "node:fs";
 import path from "node:path";
 export const root = path.resolve(import.meta.dirname, "..");
+
 export function run(command, args, options = {}) {
   let executable = command;
   let arguments_ = args;
   const npmCli = process.env["SKEIN_CONSUMER_NPM_CLI"];
+
   if (command === "npm" && npmCli) {
     executable = process.execPath;
     arguments_ = [npmCli, ...args];
@@ -16,6 +18,7 @@ export function run(command, args, options = {}) {
     if (!shim) throw new Error(`Cannot locate ${command}.cmd`);
     const directory = path.dirname(shim);
     const entry = command === "npm" ? "bin/npm-cli.js" : "bin/pnpm.cjs";
+
     const script = [
       path.join(directory, "node_modules", command, entry),
       path.join(directory, "..", command, entry),
@@ -24,24 +27,29 @@ export function run(command, args, options = {}) {
     executable = process.execPath;
     arguments_ = [script, ...args];
   }
+
   const result = spawnSync(executable, arguments_, { stdio: "inherit", shell: false, ...options });
   if (result.status !== 0)
     throw new Error(`${command} failed (${result.status}): ${result.stderr ?? ""}`);
   return result;
 }
+
 export function packWorkspace(directory, extraExamples = []) {
   mkdirSync(directory, { recursive: true });
   const overrides = {};
+
   for (const parent of ["packages", "examples"])
     for (const entry of readdirSync(path.join(root, parent), { withFileTypes: true })) {
       if (!entry.isDirectory()) continue;
       const project = path.join(root, parent, entry.name);
       let manifest;
+
       try {
         manifest = JSON.parse(readFileSync(path.join(project, "package.json"), "utf8"));
       } catch {
         continue;
       }
+
       if (
         parent === "examples" &&
         entry.name !== "local-workflow" &&
@@ -54,13 +62,17 @@ export function packWorkspace(directory, extraExamples = []) {
         stdio: "pipe",
         encoding: "utf8",
       });
+
       const filename = result.stdout.trim().split(/\r?\n/).at(-1);
       overrides[manifest.name] = path.resolve(project, filename);
     }
+
   return overrides;
 }
+
 export function copyTree(source, destination) {
   mkdirSync(destination, { recursive: true });
+
   for (const entry of readdirSync(source, { withFileTypes: true })) {
     const from = path.join(source, entry.name),
       to = path.join(destination, entry.name);
@@ -68,6 +80,7 @@ export function copyTree(source, destination) {
     else copyFileSync(from, to);
   }
 }
+
 export function installConsumer(directory, manifest, overrides) {
   mkdirSync(directory, { recursive: true });
   // npm encodes file specs itself. A pre-encoded URL double-encodes characters such as the
@@ -75,6 +88,7 @@ export function installConsumer(directory, manifest, overrides) {
   const fileOverrides = Object.fromEntries(
     Object.entries(overrides).map(([name, filename]) => [name, `file:${filename}`]),
   );
+
   const resolveDependencies = (dependencies) =>
     Object.fromEntries(
       Object.entries(dependencies ?? {}).map(([name, version]) => [

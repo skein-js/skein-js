@@ -3,11 +3,11 @@ import { randomUUID } from "node:crypto";
 import {
   createProtocolRuntime,
   type AgentGraph,
-  type ThreadCheckpointer,
   type NativeClient,
+  type ThreadCheckpointer,
 } from "@skein-js/agent-protocol";
 import { SkeinHttpError, type AdmissionReceipt } from "@skein-js/core";
-import { MemorySkeinStore, MemoryRunQueue, MemoryRunEventBus } from "@skein-js/storage-memory";
+import { MemoryRunEventBus, MemoryRunQueue, MemorySkeinStore } from "@skein-js/storage-memory";
 import { startRedis, type StartedResource } from "@skein-js/test-support";
 import { Queue, QueueEvents } from "bullmq";
 import Redis, { Cluster } from "ioredis";
@@ -30,13 +30,16 @@ async function fixture(cap = 2048, eventsAutorun = true, resource = redis) {
   const name = `{native-${randomUUID()}}`;
   const commands = new Queue(`${name}-commands`, { connection });
   const outcomes = new Queue(`${name}-outcomes`, { connection });
+
   const events = new QueueEvents(commands.name, {
     connection,
     autorun: eventsAutorun,
     lastEventId: "0-0",
   });
+
   const store = new MemorySkeinStore();
   const states = new Map<string, unknown>();
+
   const graph: AgentGraph = {
     async *stream(input, options) {
       const threadId = (options as { configurable: { thread_id: string } }).configurable.thread_id;
@@ -51,6 +54,7 @@ async function fixture(cap = 2048, eventsAutorun = true, resource = redis) {
       };
     },
   };
+
   const checkpointer: ThreadCheckpointer = {
     async getTuple() {
       return undefined;
@@ -68,6 +72,7 @@ async function fixture(cap = 2048, eventsAutorun = true, resource = redis) {
       /* none */
     },
   };
+
   const transport = createBullMqTransport({
     commandQueue: commands.name,
     outcomeQueue: outcomes,
@@ -75,6 +80,7 @@ async function fixture(cap = 2048, eventsAutorun = true, resource = redis) {
     maxMessageBytes: cap,
     authenticate: async () => ({}),
   });
+
   const runtime = createProtocolRuntime(
     {
       store,
@@ -94,6 +100,7 @@ async function fixture(cap = 2048, eventsAutorun = true, resource = redis) {
     allowedAssistants: ["agent"],
     outcomeTarget: transport.outcomeTarget,
   });
+
   const send = async (command: BullMqCommand) => {
     const job = await commands.add("skein.command.v1", command, {
       attempts: 3,
@@ -101,6 +108,7 @@ async function fixture(cap = 2048, eventsAutorun = true, resource = redis) {
     });
     return job.waitUntilFinished(events, 10_000);
   };
+
   return {
     store,
     runtime,
@@ -138,6 +146,7 @@ describe("BullMQ native access over Redis", () => {
     async (_label, fields, code) => {
       const f = await fixture(1024);
       const admit = vi.spyOn(f.client, "start");
+
       try {
         await f.transport.start(f.client);
         await expect(
@@ -161,6 +170,7 @@ describe("BullMQ native access over Redis", () => {
 
   it("forwards execution duration from a BullMQ start command into persisted run kwargs", async () => {
     const f = await fixture();
+
     try {
       await f.transport.start(f.client);
       const receipt = (await f.send({
@@ -185,8 +195,10 @@ describe("BullMQ native access over Redis", () => {
 
   it("retries a state read whose target changed during authorization", async () => {
     const f = await fixture();
+
     try {
       const receipt = await f.client.start({ assistant_id: "agent", input: {} });
+
       const read = vi
         .spyOn(f.client, "getState")
         .mockRejectedValueOnce(
@@ -208,6 +220,7 @@ describe("BullMQ native access over Redis", () => {
   it("keeps original command meaning when a host router mutates its input or changes its route", async () => {
     const f = await fixture();
     let selected = "agent";
+
     const access = createBullMqTransport({
       commandQueue: f.commands.name,
       outcomeQueue: f.outcomes,
@@ -220,6 +233,7 @@ describe("BullMQ native access over Redis", () => {
         return command;
       },
     });
+
     try {
       await access.start(f.client);
       const command: BullMqCommand = {
@@ -228,6 +242,7 @@ describe("BullMQ native access over Redis", () => {
         operation: "start",
         input: { assistant_id: "requested", input: {} },
       };
+
       const first = (await f.send(command)) as AdmissionReceipt;
       expect(first.idempotencyKey).toBe("routed");
       selected = "outside";
@@ -240,6 +255,7 @@ describe("BullMQ native access over Redis", () => {
   });
   it("permanently rejects asynchronous native authorization failures without spending all retries", async () => {
     const f = await fixture();
+
     try {
       await f.transport.start(f.client);
       const job = await f.commands.add(
@@ -263,9 +279,11 @@ describe("BullMQ native access over Redis", () => {
 
   it("applies host output projection without passing truncated output off as a whole result", async () => {
     const f = await fixture();
+
     const project = vi.fn((result: { values: Record<string, unknown> }) => ({
       allowed: result.values["answer"],
     }));
+
     const access = createBullMqTransport({
       commandQueue: f.commands.name,
       outcomeQueue: f.outcomes,
@@ -273,10 +291,12 @@ describe("BullMQ native access over Redis", () => {
       authenticate: async () => ({}),
       projectResult: project,
     });
+
     try {
       const dispatch = access.wrapDispatcher(async () => {
         throw new Error("wrong destination");
       });
+
       const payload = {
         run_id: randomUUID(),
         thread_id: randomUUID(),
@@ -284,6 +304,7 @@ describe("BullMQ native access over Redis", () => {
         status: "success",
         values: { answer: "public", secret: "private" },
       };
+
       const eventId = randomUUID();
       await dispatch(access.outcomeTarget, payload, {
         deliveryId: eventId,
@@ -311,13 +332,16 @@ describe("BullMQ native access over Redis", () => {
   it("observes admission completed before the command event loop starts", async () => {
     const f = await fixture(2048, false);
     const borrowed = new Redis(redis.url, { maxRetriesPerRequest: null });
+
     const access = createBullMqTransport({
       commandQueue: f.commands.name,
       outcomeQueue: f.outcomes,
       connection: borrowed,
       authenticate: async () => ({}),
     });
+
     let eventsRunning: Promise<void> | undefined;
+
     try {
       // A ready Redis connection does not mean QueueEvents has issued its first stream read.
       await f.events.waitUntilReady();
@@ -327,16 +351,21 @@ describe("BullMQ native access over Redis", () => {
         operation: "start",
         input: { assistant_id: "agent", input: {} },
       });
+
       let notifyPendingCheck!: () => void;
+
       const pendingChecked = new Promise<void>((resolve) => {
         notifyPendingCheck = resolve;
       });
+
       // v6 moved the finished-status operation behind its public backend. v5's existing fixture
       // uses the job's script façade. Both barriers observe the actual pending result before start.
       const getBackend = Reflect.get(f.commands, "getBackend") as (() => unknown) | undefined;
+
       const scripts = (getBackend ? getBackend.call(f.commands) : Reflect.get(job, "scripts")) as {
         isFinished(jobId: string, returnValue: boolean): Promise<[number, string]>;
       };
+
       const isFinished = scripts.isFinished.bind(scripts);
       vi.spyOn(scripts, "isFinished").mockImplementation(async (...args) => {
         const result = await isFinished(...args);
@@ -365,12 +394,14 @@ describe("BullMQ native access over Redis", () => {
   it("preserves a borrowed ioredis connection after stopping its worker", async () => {
     const f = await fixture();
     const borrowed = new Redis(redis.url, { maxRetriesPerRequest: null });
+
     const access = createBullMqTransport({
       commandQueue: f.commands.name,
       outcomeQueue: f.outcomes,
       connection: borrowed,
       authenticate: async () => ({}),
     });
+
     try {
       await access.start(f.client);
       expect(
@@ -393,18 +424,22 @@ describe("BullMQ native access over Redis", () => {
     const cluster = await startRedis({ cluster: true });
     const url = new URL(cluster.url);
     const node = { host: url.hostname, port: Number(url.port) };
+
     const borrowed = new Cluster([node], {
       // The single-node cluster advertises its container address; the host uses the mapped port.
       natMap: { "127.0.0.1:6379": node },
       redisOptions: { maxRetriesPerRequest: null },
     });
+
     const f = await fixture(2048, true, cluster);
+
     const access = createBullMqTransport({
       commandQueue: f.commands.name,
       outcomeQueue: f.outcomes,
       connection: borrowed,
       authenticate: async () => ({}),
     });
+
     try {
       await access.start(f.client);
       expect(
@@ -427,6 +462,7 @@ describe("BullMQ native access over Redis", () => {
   });
   it("consumes only after explicit start, acknowledges acceptance, and deduplicates after job removal", async () => {
     const f = await fixture();
+
     try {
       const command: BullMqCommand = {
         version: 1,
@@ -435,6 +471,7 @@ describe("BullMQ native access over Redis", () => {
         operation: "start",
         input: { assistant_id: "agent", input: { answer: "approved" } },
       };
+
       const pending = await f.commands.add("skein.command.v1", command);
       expect(await pending.getState()).toBe("waiting");
       await f.transport.start(f.client);
@@ -467,6 +504,7 @@ describe("BullMQ native access over Redis", () => {
 
   it("retrieves a large retained result in bounded authorized digest-checked chunks", async () => {
     const f = await fixture(1024);
+
     try {
       const receipt = await f.client.start({
         assistant_id: "agent",
@@ -476,6 +514,7 @@ describe("BullMQ native access over Redis", () => {
       f.runtime.worker.start();
       await expect.poll(async () => (await f.client.getRun(receipt.runId)).status).toBe("success");
       let authorizations = 0;
+
       const bound: NativeClient = {
         ...f.client,
         getResult: async (...args) => {
@@ -495,6 +534,7 @@ describe("BullMQ native access over Redis", () => {
       const chunks: Buffer[] = [];
       let offset = 0;
       let digest: string | undefined;
+
       do {
         const part = (await f.send({
           version: 1,
@@ -509,6 +549,7 @@ describe("BullMQ native access over Redis", () => {
         digest = part.digest;
         offset = part.nextOffset ?? -1;
       } while (offset !== -1);
+
       expect(JSON.parse(Buffer.concat(chunks).toString()).values.answer).toHaveLength(9000);
       expect(authorizations).toBe(chunks.length);
       await expect(
@@ -528,8 +569,10 @@ describe("BullMQ native access over Redis", () => {
 
   it("retains event identity after publication-before-ack and removal from the broker", async () => {
     const f = await fixture();
+
     try {
       const deliveryId = randomUUID();
+
       const payload = {
         run_id: randomUUID(),
         thread_id: randomUUID(),
@@ -537,9 +580,11 @@ describe("BullMQ native access over Redis", () => {
         status: "success",
         values: { answer: "x".repeat(8000) },
       };
+
       const dispatch = f.transport.wrapDispatcher(async () => {
         throw new Error("wrong destination");
       });
+
       const attempt = { deliveryId, attempt: 1, headers: {}, body: JSON.stringify(payload) };
       await dispatch(f.transport.outcomeTarget, payload, attempt);
       const first = await f.outcomes.getJob(deliveryId);

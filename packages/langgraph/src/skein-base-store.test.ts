@@ -50,6 +50,7 @@ describe("SkeinBaseStore", () => {
 
   it("dispatches mixed operations through batch()", async () => {
     const store = newStore();
+
     // The precise per-op result typing isn't the point here; assert the runtime dispatch.
     const [putResult, getResult, searchResult, namespaces] = (await store.batch([
       { namespace: ["docs"], key: "r1", value: { title: "Report" } },

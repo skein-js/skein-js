@@ -15,6 +15,7 @@ import type { FastifyBaseLogger } from "fastify";
 /** Pino's conventional bindings for a value skein passes as `meta`. */
 function toBindings(meta: unknown): Record<string, unknown> | undefined {
   if (meta === undefined || meta === null) return undefined;
+
   if (isRunFailureReport(meta)) {
     return {
       // `err` is the key pino's standard error serializer looks for — it expands the message, type,
@@ -29,6 +30,7 @@ function toBindings(meta: unknown): Record<string, unknown> | undefined {
       ...(meta.failingNodes.length > 0 ? { failing_nodes: meta.failingNodes } : {}),
     };
   }
+
   if (meta instanceof Error) return { err: meta };
   if (typeof meta === "object") return meta as Record<string, unknown>;
   // A primitive can't be spread into bindings; give it a field rather than dropping it.

@@ -40,12 +40,14 @@ function findInstalledVersion(
   try {
     const issuer = path.join(fromDir, "__skein_resolver__.js");
     const pnp = resolvers.findPnpApi?.(issuer);
+
     if (pnp) {
       // Native lookup bypasses PnP. The unqualified bare request gives the package root without
       // requiring an entrypoint or consulting an exported (possibly nested) package.json.
       const packageRoot = pnp.resolveToUnqualified(pkg, issuer, { considerBuiltins: false });
       return packageRoot ? readVersion(path.join(packageRoot, "package.json"), pkg) : undefined;
     }
+
     // A bare specifier returns the package root even when its manifest export points into dist/,
     // and does not require a root entrypoint. Resolving a file first would select nested metadata.
     const pkgJsonPath = resolvers.findPackageJSON(pkg, issuer);

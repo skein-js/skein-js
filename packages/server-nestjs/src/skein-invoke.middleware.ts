@@ -52,6 +52,7 @@ export class SkeinInvokeMiddleware implements NestMiddleware {
     // Scheme is intentionally not derived from the spoofable `x-forwarded-proto`; this URL only feeds
     // the auth handler's synthesized Request. A malformed `Host` falls through rather than 500-ing.
     let url: URL;
+
     try {
       url = new URL(rawUrl, `http://${host}`);
     } catch {
@@ -62,6 +63,7 @@ export class SkeinInvokeMiddleware implements NestMiddleware {
     // Strip `app.setGlobalPrefix()` — Nest bakes it into the mount path but leaves it on the request,
     // and the invoke route is anchored at the mount root. See `SkeinMiddleware` for the full rationale.
     const skeinPathname = stripBasePath(url.pathname, this.appConfig?.getGlobalPrefix() ?? "");
+
     if (skeinPathname === null) {
       next();
       return;
@@ -75,15 +77,18 @@ export class SkeinInvokeMiddleware implements NestMiddleware {
       const requested = Array.isArray(req.headers["access-control-request-method"])
         ? req.headers["access-control-request-method"][0]
         : req.headers["access-control-request-method"];
+
       if (cors && requested && this.invoke.match(requested, skeinPathname)) {
         sendNodePreflight(req.headers, res, cors);
         return;
       }
+
       next();
       return;
     }
 
     const match = this.invoke.match(method, skeinPathname);
+
     if (!match) {
       next();
       return;
@@ -98,6 +103,7 @@ export class SkeinInvokeMiddleware implements NestMiddleware {
 
     try {
       const body = await readJsonBody(req);
+
       const request = {
         ...toProtocolRequest(req, url, match.params, body),
         signal: disconnected.signal,

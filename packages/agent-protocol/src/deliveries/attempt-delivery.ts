@@ -77,6 +77,7 @@ export async function attemptDelivery(
   };
 
   const disallowed = await deliveryTargetError(delivery.url, deps.webhooks);
+
   if (disallowed) {
     // Dead on the spot rather than retried: no number of attempts makes a disallowed host allowed,
     // and recording it is what keeps this visible in the delivery list instead of being a callback
@@ -86,16 +87,19 @@ export async function attemptDelivery(
   }
 
   const sentAt = deps.clock();
+
   const request = toDeliveryRequest({
     delivery,
     attempt: delivery.attempt,
     sentAt,
     ...(deps.webhooks?.secrets ? { secrets: deps.webhooks.secrets } : {}),
   });
+
   // The POST is caught on its own, NOT in a try that also wraps the record below. Wrapping both
   // would misread a database blip *after* a successful POST as a failed delivery — scheduling a
   // retry, and so a second POST, for a callback the receiver already has.
   let dispatchFailure: { cause: unknown } | undefined;
+
   try {
     await deps.webhookDispatcher(
       delivery.url,
@@ -166,9 +170,11 @@ function failureResult(
   error: unknown,
 ): DeliveryAttemptResult {
   const message = error instanceof Error ? error.message : String(error);
+
   if (isFinalAttempt(delivery.attempt, deps.webhooks?.retries)) {
     return { outcome: "dead", error: message };
   }
+
   // With a queue, `next_attempt_at` is not the schedule — the queue holds that — but it is still when
   // the recovery sweep starts looking, so it stays close to the real next attempt plus a margin. Long
   // enough that the sweep does not race an ordinary retry; short enough that a job lost to a crash is

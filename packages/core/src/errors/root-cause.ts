@@ -40,6 +40,7 @@ function readProperty(source: object, key: string): unknown {
 export function rootCause(thrown: unknown): unknown {
   const seen = new WeakSet<object>();
   let current = thrown;
+
   for (let depth = 0; depth < MAX_CAUSE_DEPTH; depth += 1) {
     if (typeof current !== "object" || current === null) return current;
     if (seen.has(current)) return current;
@@ -48,6 +49,7 @@ export function rootCause(thrown: unknown): unknown {
     if (cause === undefined || cause === null) return current;
     current = cause;
   }
+
   return current;
 }
 
@@ -59,6 +61,7 @@ export function rootCause(thrown: unknown): unknown {
  */
 export function rootCauseMessage(thrown: unknown): string {
   const root = rootCause(thrown);
+
   if (!(root instanceof Error)) {
     try {
       return String(root);
@@ -66,6 +69,7 @@ export function rootCauseMessage(thrown: unknown): string {
       return Object.prototype.toString.call(root);
     }
   }
+
   const message = readProperty(root, "message");
   if (typeof message === "string" && message.length > 0) return message;
   const name = readProperty(root, "name");

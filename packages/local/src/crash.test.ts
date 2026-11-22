@@ -16,11 +16,13 @@ it("retains a real graph checkpoint after SIGKILL without replaying its input", 
   const directory = await mkdtemp(join(tmpdir(), "skein-graph-kill-"));
   const filename = join(directory, "state.sqlite");
   const counter = join(directory, "executions.txt");
+
   const graphModule = pathToFileURL(
     createRequire(import.meta.url)
       .resolve("@langchain/langgraph")
       .replace(/\.cjs$/, ".js"),
   ).href;
+
   const localModule = new URL("../dist/index.js", import.meta.url).href;
   const protocolModule = new URL("../../agent-protocol/dist/index.js", import.meta.url).href;
   const childFile = join(directory, "child.mjs");
@@ -46,6 +48,7 @@ it("retains a real graph checkpoint after SIGKILL without replaying its input", 
   child.stderr?.on("data", (chunk) => {
     errors += String(chunk);
   });
+
   try {
     const [message] = (await Promise.race([
       once(child, "message"),
@@ -56,6 +59,7 @@ it("retains a real graph checkpoint after SIGKILL without replaying its input", 
     child.kill("SIGKILL");
     await once(child, "exit");
     const state = Annotation.Root({ value: Annotation<string>() });
+
     const graph = new StateGraph(state)
       .addNode("save", () => {
         throw new Error("Input must not replay");
@@ -65,8 +69,10 @@ it("retains a real graph checkpoint after SIGKILL without replaying its input", 
       .addEdge("save", "blocked")
       .addEdge("blocked", "__end__")
       .compile();
+
     const local = await embedSqliteGraphs({ proof: graph }, { sqlitePath: filename });
     const runtime = createProtocolRuntime(local.deps);
+
     try {
       expect((await runtime.service.threads.getState(message.threadId)).values).toEqual({
         value: "checkpointed",
@@ -88,6 +94,7 @@ it("retains a real graph checkpoint after SIGKILL without replaying its input", 
       child.kill("SIGKILL");
       await exited;
     }
+
     await rm(directory, { recursive: true, force: true });
   }
 });

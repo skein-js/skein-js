@@ -56,6 +56,7 @@ function createRun(threadId: string, key: string): ProtocolRequest {
 describe("idempotent run creation — two instances, one Postgres", () => {
   it("admits exactly one of 50 concurrent identical creates and replays it to the other 49", async () => {
     const [a, b] = await Promise.all([startInstance(), startInstance()]);
+
     try {
       const thread = await a.deps.store.threads.create();
       const request = createRun(thread.thread_id, "provider-retry-1");
@@ -80,6 +81,7 @@ describe("idempotent run creation — two instances, one Postgres", () => {
         (r): r is Awaited<ReturnType<typeof a.runtime.handlers.createBackgroundRun>> =>
           !(r instanceof Error),
       );
+
       const runIds = new Set(settled.map((r) => (r as { body: { run_id: string } }).body.run_id));
       expect(runIds).toEqual(new Set([runs[0]?.run_id]));
 
@@ -95,6 +97,7 @@ describe("idempotent run creation — two instances, one Postgres", () => {
     // The cross-instance replay in isolation, without the concurrency: a provider retry that lands on
     // a different pod must still be answered from the record rather than starting a second run.
     const [a, b] = await Promise.all([startInstance(), startInstance()]);
+
     try {
       const thread = await a.deps.store.threads.create();
       const request = createRun(thread.thread_id, "provider-retry-2");
@@ -117,6 +120,7 @@ describe("idempotent run creation — two instances, one Postgres", () => {
 
   it("refuses the same key with a different body from either instance", async () => {
     const [a, b] = await Promise.all([startInstance(), startInstance()]);
+
     try {
       const thread = await a.deps.store.threads.create();
       await a.runtime.handlers.createBackgroundRun(createRun(thread.thread_id, "provider-retry-3"));

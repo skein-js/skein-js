@@ -89,7 +89,7 @@
       "inputs": [
         "default",
         "{workspaceRoot}/eslint.config.mjs",
-        "{workspaceRoot}/tools/playground-spacing.mjs"
+        "{workspaceRoot}/tools/code-spacing.mjs"
       ],
       "cache": true
     }

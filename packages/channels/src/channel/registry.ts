@@ -78,6 +78,7 @@ export function buildChannelRegistry(input: BuildRegistryInput): ChannelRegistry
         `skein.channels.${name} has no "assistant" — name the graph its events run.`,
       );
     }
+
     // A UUID is allowed through unchecked: it addresses an assistant created over the API, which does
     // not exist yet at boot. A name, though, has to match a graph we actually serve.
     if (!isUuid(config.assistant) && !input.graphIds.includes(config.assistant)) {
@@ -86,6 +87,7 @@ export function buildChannelRegistry(input: BuildRegistryInput): ChannelRegistry
           `deployment's graphs (${input.graphIds.join(", ") || "none"}).`,
       );
     }
+
     for (const allowed of config.allowedAssistants ?? []) {
       if (!isUuid(allowed) && !input.graphIds.includes(allowed)) {
         throw configError(
@@ -94,6 +96,7 @@ export function buildChannelRegistry(input: BuildRegistryInput): ChannelRegistry
         );
       }
     }
+
     if (config.publicUrl !== undefined) {
       try {
         new URL(config.publicUrl);
@@ -107,12 +110,14 @@ export function buildChannelRegistry(input: BuildRegistryInput): ChannelRegistry
     const explicitIdentity = channel.name;
     assertChannelName(explicitIdentity, `skein.channels.${name} channel`);
     const identityOwner = identityOwners.get(explicitIdentity);
+
     if (identityOwner !== undefined && identityOwner !== name) {
       throw configError(
         `skein.channels.${name} resolves to channel name "${explicitIdentity}", which collides ` +
           `with configured channel "${identityOwner}". Channel names must be unique.`,
       );
     }
+
     identityOwners.set(explicitIdentity, name);
 
     const value = { channel, config };
@@ -136,6 +141,7 @@ export function buildChannelRegistry(input: BuildRegistryInput): ChannelRegistry
  */
 function asChannel(module: LoadedChannelExport, name: string): Channel {
   const candidate = module as Partial<Channel> | null;
+
   if (
     typeof candidate !== "object" ||
     candidate === null ||
@@ -147,6 +153,7 @@ function asChannel(module: LoadedChannelExport, name: string): Channel {
         `\`parseEvent\` functions.`,
     );
   }
+
   // **Not** `{ ...candidate }`. A spread copies own enumerable properties only, so a channel written
   // as a class passes the checks above (its methods live on the prototype and `typeof` finds them)
   // and then throws `channel.verify is not a function` on the first real request. Naming it without
@@ -155,6 +162,7 @@ function asChannel(module: LoadedChannelExport, name: string): Channel {
   if (candidate.name === undefined) {
     Object.defineProperty(candidate, "name", { value: name, enumerable: true, configurable: true });
   }
+
   return candidate as Channel;
 }
 

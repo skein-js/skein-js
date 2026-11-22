@@ -64,10 +64,12 @@ export function createNestLogger(options: NestLoggerOptions = {}): Logger {
         target.error(`${message}\n${runFailureIdentity(meta)}`, describeError(meta.error), context);
         return;
       }
+
       if (meta instanceof Error) {
         target.error(message, describeError(meta), context);
         return;
       }
+
       target.error(withMeta(message, meta), undefined, context);
     },
   };

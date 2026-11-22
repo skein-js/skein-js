@@ -22,18 +22,22 @@ afterAll(async () => {
 
 it("continues a killed Redis worker from its committed Postgres checkpoint without replaying input", async () => {
   const graph = buildRecoveryGraph(() => embedded.deps);
+
   const embedded: EmbeddedPostgresRuntime = await embedPostgresGraphs(
     { recovery: graph },
     { postgresUri: postgres.url, redisUri: redis.url },
   );
+
   const runtime = createProtocolRuntime(embedded.deps, { scheduler: { enabled: false } });
   await runtime.service.assistants.registerGraphAssistants();
   const thread = await runtime.service.threads.create();
+
   const run = await runtime.service.runs.createBackground(thread.thread_id, {
     assistant_id: "recovery",
     input: { total: 1 },
     durability: "sync",
   });
+
   const child = fork(
     fileURLToPath(new URL("./__fixtures__/recovery-worker.mjs", import.meta.url)),
     {
@@ -43,11 +47,13 @@ it("continues a killed Redis worker from its committed Postgres checkpoint witho
       stdio: ["ignore", "ignore", "inherit", "ipc"],
     },
   );
+
   const frames = (async () => {
     const received = [];
     for await (const frame of embedded.deps.bus.subscribe(run.run_id)) received.push(frame);
     return received;
   })();
+
   try {
     expect((await once(child, "message", { signal: AbortSignal.timeout(20_000) }))[0]).toBe(
       "checkpointed",
@@ -108,6 +114,7 @@ it("continues a killed Redis worker from its committed Postgres checkpoint witho
       child.kill("SIGKILL");
       await exit;
     }
+
     await runtime.worker.stop();
     await embedded.deps.bus.close(run.run_id);
     await frames;

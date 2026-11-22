@@ -66,16 +66,19 @@ describe("toRunError", () => {
 
   it("truncates a cause chain deeper than five levels", () => {
     let thrown = new Error("level-8");
+
     for (let level = 7; level >= 0; level -= 1) {
       thrown = new Error(`level-${level}`, { cause: thrown });
     }
 
     let described = toRunError(thrown);
     let depth = 0;
+
     while (described.cause) {
       described = described.cause;
       depth += 1;
     }
+
     expect(depth).toBe(5);
   });
 
@@ -85,6 +88,7 @@ describe("toRunError", () => {
       [new Error("node a failed"), new TypeError("node b failed")],
       "Multiple errors occurred during superstep 3",
     );
+
     const described = toRunError(thrown);
     expect(described.message).toBe("Multiple errors occurred during superstep 3");
     expect(described.errors).toEqual([

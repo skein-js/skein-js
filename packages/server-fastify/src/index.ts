@@ -5,8 +5,8 @@
 // Convenience assemblers — the common entry points.
 export { createFastifyServer } from "./create-fastify-server.js";
 export type { SkeinFastifyServer, SkeinFastifyServerOptions } from "./create-fastify-server.js";
-export { skeinPlugin, registerSkeinHandlers } from "./skein-plugin.js";
-export type { SkeinPluginOptions, HandlerRoutesOptions } from "./skein-plugin.js";
+export { registerSkeinHandlers, skeinPlugin } from "./skein-plugin.js";
+export type { HandlerRoutesOptions, SkeinPluginOptions } from "./skein-plugin.js";
 
 // Logging. `skeinPlugin` already defaults to the host's `fastify.log`, so failed runs land in the
 // app's log stream without wiring — `createFastifyLogger` is for pointing skein at a *specific* pino
@@ -28,4 +28,4 @@ export { sendErrorResponse } from "./error-response.js";
 // The route table + runtime resolution live in the shared packages; re-export the route table so
 // Fastify callers can reach it without importing @skein-js/agent-protocol directly.
 export { skeinRoutes } from "@skein-js/agent-protocol";
-export type { SkeinRuntimeOptions, RunWorkerOptions } from "@skein-js/server-kit";
+export type { RunWorkerOptions, SkeinRuntimeOptions } from "@skein-js/server-kit";

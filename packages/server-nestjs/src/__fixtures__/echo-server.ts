@@ -10,11 +10,11 @@ import type { AddressInfo } from "node:net";
 import { AIMessage, type BaseMessage } from "@langchain/core/messages";
 import type { RunnableConfig } from "@langchain/core/runnables";
 import {
-  type CompiledGraph,
   interrupt,
   MemorySaver,
   MessagesAnnotation,
   StateGraph,
+  type CompiledGraph,
 } from "@langchain/langgraph";
 import {
   filterSkeinRoutes,
@@ -53,6 +53,7 @@ function buildEchoGraph(): CompiledGraph<string> {
       return { messages: [new AIMessage(`approved: ${String(interrupt("approve?"))}`)] };
     return { messages: [new AIMessage(`echo: ${text}`)] };
   }
+
   return new StateGraph(MessagesAnnotation)
     .addNode("echo", echo)
     .addEdge("__start__", "echo")
@@ -136,8 +137,10 @@ export async function startEchoServer(
   });
   await server.listen(0, "127.0.0.1");
   const address = server.app.getHttpServer().address() as AddressInfo | null;
+
   if (address === null || typeof address === "string") {
     throw new Error("expected a bound TCP address");
   }
+
   return { baseUrl: `http://127.0.0.1:${address.port}`, server, close: () => server.close() };
 }

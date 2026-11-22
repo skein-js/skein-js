@@ -26,9 +26,11 @@ afterEach(async () => {
 /** A correctly signed Twilio-shaped delivery. */
 function twilioRequest(params: Record<string, string>) {
   const body = new URLSearchParams(params).toString();
+
   const signable = Object.entries(params)
     .sort(([a], [b]) => (a < b ? -1 : 1))
     .reduce((acc, [key, value]) => acc + key + value, url);
+
   const signature = createHmac("sha1", "test_auth_token").update(signable, "utf8").digest("base64");
   return {
     method: "POST",
@@ -52,6 +54,7 @@ async function until(predicate: () => Promise<boolean>, what: string): Promise<v
     if (await predicate()) return;
     await new Promise((resolve) => setTimeout(resolve, 20));
   }
+
   throw new Error(`timed out waiting for ${what}`);
 }
 

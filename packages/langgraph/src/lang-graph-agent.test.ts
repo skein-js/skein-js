@@ -51,11 +51,13 @@ describe("langGraphAgent", () => {
         },
       };
     };
+
     const compiled = new StateGraph(State)
       .addNode("step", () => ({ value: "custom" }))
       .addEdge("__start__", "step")
       .compile()
       .withConfig<readonly [typeof factory]>({ streamTransformers: [factory] });
+
     const events = await drain(langGraphAgent(compiled).streamProtocol!({ value: "start" }, {}));
     expect(events).toContainEqual(
       expect.objectContaining({
@@ -68,6 +70,7 @@ describe("langGraphAgent", () => {
   });
   it("streams v3 once through a branded graph with the per-call checkpointer", async () => {
     let executions = 0;
+
     const compiled = new StateGraph(State)
       .addNode("step", () => {
         executions++;
@@ -75,9 +78,11 @@ describe("langGraphAgent", () => {
       })
       .addEdge("__start__", "step")
       .compile();
+
     const bound = langGraphAgent(compiled);
     const saver = new MemorySaver();
     const perCall = Object.assign(Object.create(bound), { checkpointer: saver }) as AgentGraph;
+
     const events = await drain(
       perCall.streamProtocol!({ value: "in" }, { configurable: { thread_id: "protocol-binding" } }),
     );
@@ -95,6 +100,7 @@ describe("langGraphAgent", () => {
     // A stand-in graph that reports what its `stream` was actually handed. Using a spy rather than a
     // real run keeps the assertion on the *translation*, which is the part that regressed.
     let received: unknown;
+
     const spy: AgentGraph = {
       stream(input) {
         received = input;
@@ -104,6 +110,7 @@ describe("langGraphAgent", () => {
         return { values: {}, next: [], tasks: [] };
       },
     };
+
     // `builder` is what marks a compiled graph; without it the binding correctly declines to wrap.
     const compiled = Object.assign(spy, { builder: {} });
 
@@ -120,6 +127,7 @@ describe("langGraphAgent", () => {
   // the wrong graph — a wrong answer rather than an error.
   it("carries every command field through, not just resume/update/goto", async () => {
     let received: Record<string, unknown> | undefined;
+
     const compiled = Object.assign(
       {
         stream(input: unknown) {
@@ -145,6 +153,7 @@ describe("langGraphAgent", () => {
 
   it("leaves a non-command input untouched", async () => {
     let received: unknown;
+
     const compiled = Object.assign(
       {
         stream(input: unknown) {
@@ -168,6 +177,7 @@ describe("langGraphAgent", () => {
   // state to a discarded saver, silently.
   it("delegates with `this`, so a later clone's attachments win", async () => {
     let seenCheckpointer: unknown;
+
     const compiled = Object.assign(
       {
         stream(this: { checkpointer?: unknown }) {
@@ -209,12 +219,14 @@ describe("isLangGraphCompiled", () => {
 describe("langGraphResolver", () => {
   it("uses a public compiled inner graph without touching wrapper resource setters", async () => {
     const graph = buildInterruptingGraph();
+
     const agent = {
       graph,
       set checkpointer(_value: unknown) {
         throw new Error("wrapper private state");
       },
     } as unknown as AgentGraph;
+
     const resolved = await langGraphResolver({
       ids: ["agent"],
       load: async () => agent,
@@ -226,6 +238,7 @@ describe("langGraphResolver", () => {
   // envelope reached a real graph untranslated and HITL resume became a silent no-op.
   it("binds a LangGraph graph a resolver hands back", async () => {
     const graph = buildInterruptingGraph();
+
     const resolved = await langGraphResolver({
       ids: ["hitl"],
       load: async () => graph,
@@ -243,6 +256,7 @@ describe("langGraphResolver", () => {
       stream: () => (async function* () {})(),
       getState: async () => ({ values: {}, next: [], tasks: [] }),
     };
+
     const resolved = await langGraphResolver({
       ids: ["plain"],
       load: async () => agent,
@@ -254,6 +268,7 @@ describe("langGraphResolver", () => {
 
   it("memoizes, so load() stays identity-stable", async () => {
     const graph = buildInterruptingGraph();
+
     const resolver = langGraphResolver({
       ids: ["hitl"],
       load: async () => graph,
@@ -265,6 +280,7 @@ describe("langGraphResolver", () => {
 
   it("tracks a resolver whose ids change, rather than pinning them at wrap time", () => {
     let ids = ["a"];
+
     const resolver = langGraphResolver({
       get ids() {
         return ids;

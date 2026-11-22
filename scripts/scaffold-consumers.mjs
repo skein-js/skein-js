@@ -1,13 +1,13 @@
 #!/usr/bin/env node
 // Current-commit consumers. Registry smoke remains a separate CI job.
-import { spawn, spawnSync } from "node:child_process";
+import { spawn } from "node:child_process";
 import { createHash } from "node:crypto";
 import {
   existsSync,
   mkdirSync,
   mkdtempSync,
-  readFileSync,
   readdirSync,
+  readFileSync,
   realpathSync,
   writeFileSync,
 } from "node:fs";
@@ -15,17 +15,21 @@ import { createRequire } from "node:module";
 import { createServer } from "node:net";
 import { tmpdir } from "node:os";
 import path from "node:path";
+
 import { format, resolveConfig } from "prettier";
 
-import { packWorkspace, root, run, installConsumer } from "./pack-local-consumer.mjs";
+import { installConsumer, packWorkspace, root, run } from "./pack-local-consumer.mjs";
 
 const catalog = JSON.parse(readFileSync(path.join(root, "scripts/scaffold-cases.json"), "utf8"));
 const args = process.argv.slice(2);
+
 const flag = (name, fallback) =>
   args.find((argument) => argument.startsWith(name + "="))?.slice(name.length + 1) ??
   (args.includes(name) ? args[args.indexOf(name) + 1] : fallback);
+
 const packDirectory = path.resolve(flag("--packs", path.join(root, "dist/scaffold-packs")));
 const mode = args[0];
+
 if (mode === "prepare-managers") {
   const directory = path.resolve(flag("--directory", path.join(tmpdir(), "skein-scaffold-tools")));
   run("npm", [
@@ -41,10 +45,12 @@ if (mode === "prepare-managers") {
   );
   process.exit(0);
 }
+
 function writeJson(filename, contents) {
   mkdirSync(path.dirname(filename), { recursive: true });
   writeFileSync(filename, JSON.stringify(contents, null, 2) + "\n");
 }
+
 async function writeFormattedFixture(filename, contents) {
   writeFileSync(
     filename,
@@ -55,6 +61,7 @@ async function writeFormattedFixture(filename, contents) {
     }),
   );
 }
+
 if (mode === "pack") {
   const packed = packWorkspace(packDirectory);
   writeJson(
@@ -63,8 +70,10 @@ if (mode === "pack") {
       Object.entries(packed).map(([name, filename]) => [name, path.basename(filename)]),
     ),
   );
+
   for (const name of ["@skein-js/nx", "create-skein-js"]) {
     const archive = packed[name];
+
     const manifest = JSON.parse(
       run("tar", ["-xOf", archive, "package/package.json"], {
         stdio: "pipe",
@@ -74,6 +83,7 @@ if (mode === "pack") {
     );
     if (manifest.dependencies?.["@skein-js/scaffold"])
       throw new Error("Private runtime dependency in " + name);
+
     for (const filename of ["dist/index.js", "dist/index.d.ts"]) {
       const source = run("tar", ["-xOf", archive, "package/" + filename], {
         stdio: "pipe",
@@ -84,6 +94,7 @@ if (mode === "pack") {
         throw new Error("Private import in " + name + "/" + filename);
     }
   }
+
   writeFileSync(
     path.join(packDirectory, "matrix.json"),
     JSON.stringify({
@@ -92,6 +103,7 @@ if (mode === "pack") {
   );
   process.exit(0);
 }
+
 if (mode === "matrix") {
   // One runner per case; all artifacts come from the single pack job.
   process.stdout.write(
@@ -99,11 +111,13 @@ if (mode === "matrix") {
   );
   process.exit(0);
 }
+
 const overrides = Object.fromEntries(
   Object.entries(JSON.parse(readFileSync(path.join(packDirectory, "index.json"), "utf8"))).map(
     ([name, filename]) => [name, path.join(packDirectory, filename)],
   ),
 );
+
 function install(directory, manager) {
   run(
     manager,
@@ -124,10 +138,12 @@ function install(directory, manager) {
     },
   );
 }
+
 async function substitute(directory, manager) {
   const filename = path.join(directory, "package.json");
   const original = JSON.parse(readFileSync(filename, "utf8"));
   const converted = installConsumer(directory, original, overrides);
+
   if (manager === "pnpm") {
     converted.pnpm = {
       ...original.pnpm,
@@ -135,27 +151,35 @@ async function substitute(directory, manager) {
     };
     delete converted.overrides;
   }
+
   if (manager === "yarn") {
     converted.resolutions = converted.overrides;
     delete converted.overrides;
   }
+
   if (manager === "bun") converted.trustedDependencies = ["better-sqlite3", "esbuild", "nx"];
   await writeFormattedFixture(filename, JSON.stringify(converted));
 }
+
 function locatePackage(owner, name) {
   const resolver = createRequire(owner);
+
   for (const directory of resolver.resolve.paths(name) ?? []) {
     const filename = path.join(directory, name, "package.json");
     if (existsSync(filename)) return realpathSync(filename);
   }
+
   throw new Error("Cannot resolve " + name + " from " + owner);
 }
+
 function verifyProvenance(directory, requireRuntime = true) {
   const seen = new Set();
+
   const visit = (filename) => {
     if (seen.has(filename)) return;
     seen.add(filename);
     const manifest = JSON.parse(readFileSync(filename, "utf8"));
+
     if (overrides[manifest.name]) {
       const packedManifest = JSON.parse(
         run("tar", ["-xOf", overrides[manifest.name], "package/package.json"], {
@@ -164,6 +188,7 @@ function verifyProvenance(directory, requireRuntime = true) {
           maxBuffer: 64 * 1024 * 1024,
         }).stdout,
       );
+
       for (const field of [
         "version",
         "dependencies",
@@ -192,11 +217,13 @@ function verifyProvenance(directory, requireRuntime = true) {
         stdio: "pipe",
         maxBuffer: 64 * 1024 * 1024,
       }).stdout;
+
       const actual = readFileSync(path.join(path.dirname(filename), "dist/index.js"));
       const digest = (value) => createHash("sha256").update(value).digest("hex");
       if (digest(expected) !== digest(actual))
         throw new Error("Registry/stale artifact resolved for " + manifest.name);
     }
+
     for (const name of Object.keys({
       ...manifest.dependencies,
       ...(filename === path.join(directory, "package.json") ? manifest.devDependencies : {}),
@@ -205,10 +232,12 @@ function verifyProvenance(directory, requireRuntime = true) {
         visit(locatePackage(filename, name));
     }
   };
+
   visit(path.join(directory, "package.json"));
   if (requireRuntime && seen.size < 3)
     throw new Error("Transitive Skein provenance was not exercised.");
 }
+
 async function unusedPort() {
   const server = createServer();
   await new Promise((resolve, reject) => {
@@ -219,15 +248,19 @@ async function unusedPort() {
   await new Promise((resolve) => server.close(resolve));
   return port;
 }
+
 async function stop(server) {
   if (server.exitCode !== null || server.signalCode !== null) return;
   const exited = new Promise((resolve) => server.once("exit", resolve));
+
   try {
     process.kill(-server.pid, "SIGTERM");
   } catch (error) {
     if (error.code !== "ESRCH") throw error;
   }
+
   let timeout;
+
   try {
     await Promise.race([
       exited,
@@ -238,8 +271,10 @@ async function stop(server) {
   } finally {
     clearTimeout(timeout);
   }
+
   if (server.exitCode === null && server.signalCode === null) process.kill(-server.pid, "SIGKILL");
 }
+
 async function exerciseServer(command, arguments_, directory, environment, port) {
   const server = spawn(command, arguments_, {
     cwd: directory,
@@ -247,21 +282,29 @@ async function exerciseServer(command, arguments_, directory, environment, port)
     stdio: "inherit",
     env: environment,
   });
+
   try {
     const base = "http://127.0.0.1:" + port;
     let ready = false;
+
     for (let attempt = 0; attempt < 120; attempt++) {
       if (server.exitCode !== null)
         throw new Error("Server exited before readiness: " + server.exitCode);
+
       try {
         if ((await fetch(base + "/ok", { signal: AbortSignal.timeout(2000) })).ok) {
           ready = true;
           break;
         }
-      } catch {}
+      } catch {
+        // The server may still be starting.
+      }
+
       await new Promise((resolve) => setTimeout(resolve, 500));
     }
+
     if (!ready) throw new Error("Server never became ready");
+
     const post = async (route, body) => {
       const response = await fetch(base + route, {
         method: "POST",
@@ -272,7 +315,9 @@ async function exerciseServer(command, arguments_, directory, environment, port)
       if (!response.ok) throw new Error(route + ": " + (await response.text()));
       return response.json();
     };
+
     const thread = await post("/threads", {});
+
     const reply = await post("/threads/" + thread.thread_id + "/runs/wait", {
       assistant_id: "echo",
       input: { messages: [{ role: "user", content: "matrix" }] },
@@ -283,6 +328,7 @@ async function exerciseServer(command, arguments_, directory, environment, port)
     await stop(server);
   }
 }
+
 function scaffoldRoot(directory, row) {
   const packageManager = {
     npm: "npm@10.9.2",
@@ -290,6 +336,7 @@ function scaffoldRoot(directory, row) {
     yarn: "yarn@4.9.2",
     bun: "bun@1.3.0",
   }[row.packageManager];
+
   const manifest = {
     name: "consumer-workspace",
     private: true,
@@ -299,6 +346,7 @@ function scaffoldRoot(directory, row) {
   };
   if (row.layout !== "integrated") manifest.workspaces = ["packages/*"];
   if (row.entry === "nx") manifest.devDependencies.nx = "23.2.1";
+
   if (["eslint", "both"].includes(row.tooling)) {
     Object.assign(manifest.devDependencies, {
       ...(row.tooling === "both" ? { eslint: "^9.17.0" } : {}),
@@ -310,6 +358,7 @@ function scaffoldRoot(directory, row) {
       'import js from "@eslint/js";\nimport tseslint from "typescript-eslint";\n\nexport default tseslint.config(\n  { ignores: ["**/.skein/**", "**/node_modules/**"] },\n  js.configs.recommended,\n  ...tseslint.configs.recommended,\n);\n',
     );
   }
+
   if (["prettier", "both"].includes(row.tooling)) {
     if (row.tooling === "both") manifest.devDependencies.prettier = "^3.9.6";
     writeJson(path.join(directory, ".prettierrc.json"), {
@@ -322,6 +371,7 @@ function scaffoldRoot(directory, row) {
       "node_modules/\n.skein/\n**/.skein/\n.nx/\n",
     );
   }
+
   if (row.packageManager === "pnpm" && row.layout !== "integrated")
     writeFileSync(
       path.join(directory, "pnpm-workspace.yaml"),
@@ -329,6 +379,7 @@ function scaffoldRoot(directory, row) {
     );
   if (row.packageManager === "yarn")
     writeFileSync(path.join(directory, ".yarnrc.yml"), "nodeLinker: node-modules\n");
+
   if (row.entry === "nx") {
     manifest.devDependencies["@skein-js/nx"] = "file:" + overrides["@skein-js/nx"];
     writeJson(path.join(directory, "nx.json"), {
@@ -336,9 +387,11 @@ function scaffoldRoot(directory, row) {
     });
     writeJson(path.join(directory, "tsconfig.base.json"), { compilerOptions: { strict: true } });
   }
+
   writeFileSync(path.join(directory, ".nvmrc"), row.node + "\n");
   writeJson(path.join(directory, "package.json"), manifest);
 }
+
 async function exerciseCase(row) {
   const expectedMajor = row.node.split(".")[0];
   if (
@@ -350,6 +403,7 @@ async function exerciseCase(row) {
   const standalone = row.layout === "standalone";
   const project = path.join(workspace, standalone ? "agent" : "apps/agent");
   const manager = row.packageManager;
+
   const env = {
     ...process.env,
     NX_DAEMON: "false",
@@ -358,10 +412,13 @@ async function exerciseCase(row) {
     OPENAI_API_KEY: "dummy",
     ANTHROPIC_API_KEY: "dummy",
   };
+
   let composeStarted = false;
   const composeProject = "skein-" + path.basename(workspace).toLowerCase();
+
   try {
     if (!standalone) scaffoldRoot(workspace, row);
+
     if (row.entry === "nx") {
       await substitute(workspace, manager);
       install(workspace, manager);
@@ -444,18 +501,21 @@ async function exerciseCase(row) {
         { cwd: workspace, env },
       );
     }
+
     if (row.entry === "nx") {
       await writeFormattedFixture(
         path.join(project, "src/plugin-types.ts"),
         'import type { generateApplication } from "@skein-js/nx";\n\nexport type ApplicationGenerator = typeof generateApplication;\n',
       );
     }
+
     if (row.storage === "sqlite") {
       const manifestPath = path.join(project, "package.json");
       const manifest = JSON.parse(readFileSync(manifestPath, "utf8"));
       for (const target of ["dev", "start"])
         manifest.scripts[target] += " --sqlite-path .skein/matrix.sqlite";
       await writeFormattedFixture(manifestPath, JSON.stringify(manifest));
+
       if (row.entry === "nx") {
         const configurationPath = path.join(project, "project.json");
         const configuration = JSON.parse(readFileSync(configurationPath, "utf8"));
@@ -464,6 +524,7 @@ async function exerciseCase(row) {
         await writeFormattedFixture(configurationPath, JSON.stringify(configuration));
       }
     }
+
     const graphFile = path.join(project, "src/echo-graph.ts");
     await writeFormattedFixture(
       graphFile,
@@ -472,6 +533,7 @@ async function exerciseCase(row) {
     );
     const dependencyFixture = row.entry === "nx" && row.tooling === "neither" && row.linting;
     const library = path.join(workspace, "libs/shared");
+
     if (dependencyFixture) {
       mkdirSync(path.join(library, "src"), { recursive: true });
       writeJson(path.join(library, "package.json"), {
@@ -513,6 +575,7 @@ async function exerciseCase(row) {
           readFileSync(graphFile, "utf8"),
       );
     }
+
     const installRoot = standalone ? project : workspace;
     if (manager === "yarn")
       writeFileSync(path.join(installRoot, ".yarnrc.yml"), "nodeLinker: node-modules\n");
@@ -522,11 +585,13 @@ async function exerciseCase(row) {
     install(installRoot, manager);
     verifyProvenance(installRoot, standalone || row.layout === "integrated");
     if (!standalone && row.layout !== "integrated") verifyProvenance(project);
+
     const execute = (target) => {
       if (row.entry === "nx")
         return run(manager, ["exec", "nx", "run", "apps-agent:" + target], { cwd: workspace, env });
       return run(manager, ["run", target], { cwd: project, env });
     };
+
     for (const target of [
       "typecheck",
       "test",
@@ -534,9 +599,11 @@ async function exerciseCase(row) {
       "build",
     ])
       execute(target);
+
     if (dependencyFixture) {
       const assertArtifact = (sentinel) => {
         const artifact = path.join(project, ".skein/build");
+
         const contents = readdirSync(artifact, { recursive: true })
           .map(String)
           .filter((name) => /\.(?:m?js|json)$/.test(name))
@@ -545,6 +612,7 @@ async function exerciseCase(row) {
         if (!contents.includes(sentinel))
           throw new Error("Build reused stale workspace dependency: " + sentinel);
       };
+
       assertArtifact("workspace-cache-v1");
       // Warm the app cache, then change only a dependency source. Both its build ordering and
       // the app's dependency inputs must work for the artifact to contain the new value.
@@ -557,10 +625,12 @@ async function exerciseCase(row) {
       assertArtifact("workspace-cache-v2");
       execute("test");
     }
+
     if (row.storage !== "sqlite") {
       run("docker", ["info"], { stdio: "ignore" }); // Required; absence is a failure.
       const postgres = await unusedPort(),
         redis = await unusedPort();
+
       const compose = path.join(project, "compose.dev.yaml");
       writeFileSync(
         compose,
@@ -577,11 +647,14 @@ async function exerciseCase(row) {
         { cwd: project },
       );
     }
+
     const devPort = await unusedPort();
+
     const invoke = (target) =>
       row.entry === "nx"
         ? [manager, ["exec", "nx", "run", "apps-agent:" + target], workspace]
         : [manager, ["run", target], project];
+
     const [devCommand, devArgs, devCwd] = invoke("dev");
     await exerciseServer(
       devCommand,
@@ -617,10 +690,12 @@ async function exerciseCase(row) {
       });
   }
 }
+
 const selected = flag("--case", undefined);
 const rows = catalog.cases.filter((row) => !selected || row.id === selected);
 if (!rows.length) throw new Error("Unknown case " + selected);
 let failures = 0;
+
 for (const row of rows) {
   try {
     await exerciseCase(row);
@@ -629,4 +704,5 @@ for (const row of rows) {
     process.stderr.write(row.id + ": " + error.stack + "\n");
   }
 }
+
 if (failures) throw new Error(failures + " consumer cases failed");

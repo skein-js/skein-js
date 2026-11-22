@@ -170,11 +170,13 @@ type LanggraphRun = z.infer<typeof langgraphRunSchema>;
  */
 async function readSuperjsonFile<T>(filepath: string): Promise<T | null> {
   let text: string;
+
   try {
     text = await readFile(filepath, "utf8");
   } catch {
     return null;
   }
+
   try {
     return langgraphSuperjson.parse<T>(text) ?? null;
   } catch (error) {
@@ -187,12 +189,14 @@ async function readSuperjsonFile<T>(filepath: string): Promise<T | null> {
 /** Validate a decoded value against a schema, throwing a concise, boundary-named error on mismatch. */
 function validateShape<T>(schema: z.ZodType<T>, value: unknown, label: string): T {
   const result = schema.safeParse(value);
+
   if (!result.success) {
     const detail = result.error.issues
       .map((issue) => `${issue.path.join(".") || "(root)"}: ${issue.message}`)
       .join("; ");
     throw new Error(`Invalid LangGraph ${label}: ${detail}`);
   }
+
   return result.data;
 }
 
@@ -313,12 +317,14 @@ export async function readLanggraphDevState(
 
   const ops = opsRaw ? validateShape(langgraphOpsSchema, opsRaw, OPS_FILE) : null;
   const storeFile = storeRaw ? validateShape(langgraphStoreFileSchema, storeRaw, STORE_FILE) : null;
+
   const checkpointerFile = checkpointerRaw
     ? validateShape(langgraphCheckpointerSchema, checkpointerRaw, CHECKPOINTER_FILE)
     : null;
 
   const runEntries = Object.entries(ops?.runs ?? {});
   const items: [string, Item][] = [];
+
   if (storeFile?.data) {
     for (const namespaceItems of storeFile.data.values()) {
       for (const stored of namespaceItems.values()) {
@@ -350,6 +356,7 @@ export async function readLanggraphDevState(
   };
 
   let checkpoints: CheckpointerSnapshot = { storage: {}, writes: {} };
+
   if (checkpointerFile) {
     // The decoded `{ storage, writes }` are already `MemorySaver`'s runtime maps (Uint8Array
     // blobs), so we borrow a saver and reuse skein's own base64 snapshotter — no new format code.
@@ -410,6 +417,7 @@ async function copyCheckpoints(
 
   for (const tuple of tuples) {
     const configurable = tuple.config.configurable ?? {};
+
     const putConfig = {
       configurable: {
         thread_id: configurable.thread_id,
@@ -418,6 +426,7 @@ async function copyCheckpoints(
         checkpoint_id: tuple.parentConfig?.configurable?.checkpoint_id,
       },
     };
+
     const stored = await target.put(
       putConfig,
       tuple.checkpoint,
@@ -426,11 +435,13 @@ async function copyCheckpoints(
     );
 
     const writesByTask = new Map<string, [string, unknown][]>();
+
     for (const [taskId, channel, value] of tuple.pendingWrites ?? []) {
       const writes = writesByTask.get(taskId) ?? [];
       writes.push([channel, value]);
       writesByTask.set(taskId, writes);
     }
+
     for (const [taskId, writes] of writesByTask) {
       await target.putWrites(stored, writes, taskId);
     }
@@ -455,6 +466,7 @@ export async function loadSnapshotIntoStore(
         "Use the in-memory or Postgres driver, or implement restore() on your SkeinStore.",
     );
   }
+
   await store.restore(snapshot.store);
   await copyCheckpoints(snapshot.checkpoints, checkpointer);
 }

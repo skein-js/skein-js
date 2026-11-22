@@ -14,8 +14,14 @@
 // an agent that automates triage and one that just adds a queue of approvals to your day — and it
 // gives the console's graph diagram a decision to draw.
 
-import { Annotation, END, interrupt, START, StateGraph } from "@langchain/langgraph";
-import type { LangGraphRunnableConfig } from "@langchain/langgraph";
+import {
+  Annotation,
+  END,
+  interrupt,
+  START,
+  StateGraph,
+  type LangGraphRunnableConfig,
+} from "@langchain/langgraph";
 
 import { createClassifier } from "./classifier.js";
 import { requireTriageItem, type TriageItem, type Verdict } from "./triage-sources.js";
@@ -66,12 +72,14 @@ function requireStore(
   config: LangGraphRunnableConfig,
 ): NonNullable<LangGraphRunnableConfig["store"]> {
   const store = config.store;
+
   if (!store) {
     throw new Error(
       "no long-term store on the run config — the triage example needs one. Under `skein dev` it " +
         "is wired automatically; check that the server was started by the skein CLI.",
     );
   }
+
   return store;
 }
 
@@ -114,6 +122,7 @@ async function gather(state: State, config: LangGraphRunnableConfig): Promise<Pa
 
 async function classify(state: State): Promise<Partial<State>> {
   const classifier = createClassifier();
+
   const verdict = await classifier.classify(state.item, {
     conventions: state.conventions,
     related: state.related,
@@ -132,13 +141,16 @@ function critique(state: State): Partial<State> {
   const verdict = state.verdict;
   if (!verdict) return {};
   const corrected: Verdict = { ...verdict };
+
   if (corrected.category === "spam") {
     corrected.reply = "";
     corrected.severity = "low";
   }
+
   if (corrected.category === "question" && corrected.severity === "high") {
     corrected.severity = "medium";
   }
+
   return { verdict: corrected };
 }
 
@@ -161,6 +173,7 @@ export function routeForApproval(state: State): "approve" | "record" {
 function explainRoute(state: State): Partial<State> {
   const verdict = state.verdict;
   if (!verdict) return { routedBecause: "no verdict — asking a human" };
+
   if (verdict.category === "spam") {
     // Recorded, not rejected. `approved: false` reads like "a human said no", and `record` skips the
     // store write for it — so spam never settled: the next sweep found no decision, re-dispatched it,
@@ -168,12 +181,14 @@ function explainRoute(state: State): Partial<State> {
     // decision is exactly how a queue stops showing you the same spam every five minutes.
     return { routedBecause: "spam — filed without asking", approved: true };
   }
+
   if (verdict.severity === "low" && verdict.category !== "bug") {
     return {
       routedBecause: `low-severity ${verdict.category} — recorded without asking`,
       approved: true,
     };
   }
+
   return { routedBecause: `${verdict.severity} ${verdict.category} — needs a human` };
 }
 
@@ -188,10 +203,12 @@ function askForApproval(state: State): Partial<State> {
     verdict: state.verdict,
     decidedBy: state.decidedBy,
   });
+
   // `true`/`false` from the console's Approve/Reject; a string is an edited reply.
   if (typeof answer === "string") {
     return { approved: true, verdict: { ...(state.verdict as Verdict), reply: answer } };
   }
+
   return { approved: answer === true };
 }
 
@@ -203,6 +220,7 @@ async function record(state: State, config: LangGraphRunnableConfig): Promise<Pa
   if (state.approved !== true) {
     return { outcome: `not recorded — ${state.routedBecause ?? "rejected"}` };
   }
+
   const store = requireStore(config);
   await store.put(DECISIONS_NAMESPACE, state.item.sourceId, {
     url: state.item.url,

@@ -44,6 +44,7 @@ const STACK_FRAME = /^\s*at (?:.*?\s+\()?(.+?):(\d+):(\d+)\)?\s*$/;
  */
 export function findUserFrame(frames: string | undefined): StackLocation | undefined {
   if (!frames) return undefined;
+
   for (const raw of frames.split("\n")) {
     const match = STACK_FRAME.exec(raw);
     if (!match) continue;
@@ -55,6 +56,7 @@ export function findUserFrame(frames: string | undefined): StackLocation | undef
     if (!resolved.startsWith("/") && !/^[A-Za-z]:[\\/]/.test(resolved)) continue;
     return { file: resolved, line: Number(line), column: Number(column) };
   }
+
   return undefined;
 }
 
@@ -90,6 +92,7 @@ export function renderCodeFrame(location: StackLocation, sourceRoot: string): st
   if (!isInside(sourceRoot, location.file)) return undefined;
 
   let source: string;
+
   try {
     source = readFileSync(location.file, "utf8");
   } catch {
@@ -104,15 +107,18 @@ export function renderCodeFrame(location: StackLocation, sourceRoot: string): st
   const gutterWidth = String(last).length;
 
   const rendered: string[] = [];
+
   for (let lineNumber = first; lineNumber <= last; lineNumber += 1) {
     const isOffending = lineNumber === location.line;
     const gutter = String(lineNumber).padStart(gutterWidth, " ");
     rendered.push(`${isOffending ? ">" : " "} ${gutter} | ${lines[lineNumber - 1] ?? ""}`);
+
     if (isOffending && location.column > 0) {
       const caretPad = " ".repeat(Math.max(0, location.column - 1));
       rendered.push(`  ${" ".repeat(gutterWidth)} | ${caretPad}^`);
     }
   }
+
   return rendered.join("\n");
 }
 

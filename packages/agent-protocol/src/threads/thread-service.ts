@@ -228,6 +228,7 @@ export function createThreadService(ctx: ProtocolContext): ThreadService {
     resolveConfigurable?: () => Promise<Record<string, unknown> | undefined>,
   ): Promise<AgentGraph> => {
     const resolved = await loadGraphOrThrow(deps.graphs, graphId, deps.exposeErrorStacks === true);
+
     // A factory graph must be built with the same `configurable` the run engine uses, so a graph whose
     // shape depends on run config is reconstructed identically here.
     const graph =
@@ -244,8 +245,10 @@ export function createThreadService(ctx: ProtocolContext): ThreadService {
     // request, and sorting a full `listByThread` in here meant a driver returned every run of the thread
     // (with its `kwargs` on Postgres) so that one `assistant_id` could be read off the newest.
     const latest = await deps.store.runs.latestForThread(threadId);
+
     if (latest) {
       const assistant = await deps.store.assistants.get(latest.assistant_id);
+
       if (assistant) {
         // Rebuild the factory with the run's own sanitized config — what the engine built it from —
         // so its shape matches the checkpoints it wrote. That also means server-owned keys
@@ -268,6 +271,7 @@ export function createThreadService(ctx: ProtocolContext): ThreadService {
         });
       }
     }
+
     // No run to infer the graph from — fall back to the thread's own `graph_id`. A thread seeded by
     // `supersteps` at creation has state but has never run, and without this its state would read back
     // empty: the write would land in the checkpointer with nothing able to open it again. The run is
@@ -299,6 +303,7 @@ export function createThreadService(ctx: ProtocolContext): ThreadService {
 
     const states: ThreadState[] = [];
     const limit = options?.limit ?? DEFAULT_THREAD_HISTORY_LIMIT;
+
     // The limit goes *into* `getStateHistory`, not just into a `break`. `PostgresSaver.list` only emits
     // a SQL `LIMIT` when it is given one, and otherwise runs a single query that materializes every
     // checkpoint row — including its `channel_values` — before yielding the first snapshot. Breaking out
@@ -321,6 +326,7 @@ export function createThreadService(ctx: ProtocolContext): ThreadService {
       states.push(snapshotToThreadState(snapshot));
       if (states.length >= limit) break;
     }
+
     return states;
   };
 
@@ -347,15 +353,18 @@ export function createThreadService(ctx: ProtocolContext): ThreadService {
    */
   const requireSuperstepGraph = (metadata: Metadata | undefined): string => {
     const graphId = metadata?.["graph_id"];
+
     if (typeof graphId !== "string" || graphId.length === 0) {
       throw SkeinHttpError.badRequest(
         "supersteps need a graph to write against, and a thread being created has no run to infer " +
           "one from. Pass graphId (the SDK folds it into metadata.graph_id).",
       );
     }
+
     if (!graphsInclude(graphId)) {
       throw SkeinHttpError.badRequest(`Unknown graph "${graphId}" in metadata.graph_id.`);
     }
+
     return graphId;
   };
 
@@ -393,12 +402,14 @@ export function createThreadService(ctx: ProtocolContext): ThreadService {
     await requireThread(threadId);
     // Abort any run still executing on this thread before the rows disappear.
     const runs = await deps.store.runs.listByThread(threadId);
+
     for (const run of runs) {
       if (!isTerminalRunStatus(run.status)) {
         control.abort(run.run_id, "cancel");
         await deps.bus.close(run.run_id);
       }
     }
+
     // Checkpoints before the row, and not best-effort: a failure leaves the thread in place, so the
     // caller's retry of `DELETE` finishes the erasure. Row-first would strand unreachable checkpoints.
     // A run still unwinding from the abort above sweeps any checkpoint it writes after this, once it
@@ -406,6 +417,7 @@ export function createThreadService(ctx: ProtocolContext): ThreadService {
     await deps.checkpointer.deleteThread(threadId);
     await deps.store.threads.delete(threadId);
     await deps.threadBus?.deleteThread(threadId);
+
     // Erasure has to reach the idempotency records too. A recorded response outlives its run by
     // design — that is what makes a replay possible — and for `POST /runs/wait` that response *is*
     // the graph's final state. Without this, deleting a thread would leave a full copy of the
@@ -446,9 +458,11 @@ export function createThreadService(ctx: ProtocolContext): ThreadService {
       // one — a thread belonging to another principal still reads as absent rather than being handed
       // back here.
       let thread: Thread;
+
       const generation = create.thread_id
         ? await deps.threadBus?.generation(create.thread_id)
         : undefined;
+
       try {
         thread = await deps.store.threads.create(create as unknown as ThreadCreate);
         await deps.threadBus?.publish(
@@ -484,6 +498,7 @@ export function createThreadService(ctx: ProtocolContext): ThreadService {
         // Re-read so the response carries the seeded values/status rather than the pre-write row.
         return (await deps.store.threads.get(thread.thread_id)) ?? thread;
       }
+
       return thread;
     },
 
@@ -498,6 +513,7 @@ export function createThreadService(ctx: ProtocolContext): ThreadService {
     async prune({ threadIds, strategy = "delete" }) {
       let prunedCount = 0;
       const busyThreadIds: string[] = [];
+
       for (const threadId of new Set(threadIds)) {
         // A thread that is gone — or that this caller does not own, which the auth-scoped store makes
         // indistinguishable from gone — is skipped, not counted, and never 404s the batch. That is what
@@ -521,6 +537,7 @@ export function createThreadService(ctx: ProtocolContext): ThreadService {
           busyThreadIds.push(threadId);
           continue;
         }
+
         await withThreadExecution(
           ctx.executionLocks,
           deps.threadExecutionGate,
@@ -530,6 +547,7 @@ export function createThreadService(ctx: ProtocolContext): ThreadService {
               busyThreadIds.push(threadId);
               return;
             }
+
             if (
               await pruneThreadCheckpointsToLatest(
                 deps.checkpointer,
@@ -542,6 +560,7 @@ export function createThreadService(ctx: ProtocolContext): ThreadService {
           },
         );
       }
+
       if (busyThreadIds.length > 0) {
         // Logged rather than silent: the count already tells the caller these were not pruned, but an
         // operator retrying a prune needs to know *why* some ids keep not being counted.
@@ -550,6 +569,7 @@ export function createThreadService(ctx: ProtocolContext): ThreadService {
             `thread has an active run. Retry once they settle: ${busyThreadIds.slice(0, 10).join(", ")}`,
         );
       }
+
       return { pruned_count: prunedCount };
     },
 
@@ -584,14 +604,17 @@ export function createThreadService(ctx: ProtocolContext): ThreadService {
       // a phantom active run that no worker drives and no engine finalizes, permanently blocking new
       // runs on the copy (hasActiveRun) and pinning its thread status to busy.
       const sourceRuns = await deps.store.runs.listByThread(threadId);
+
       const copiedRunIds = new Map(
         sourceRuns
           .filter((run) => isTerminalRunStatus(run.status))
           .map((run) => [run.run_id, randomUUID()]),
       );
+
       for (const run of [...sourceRuns].sort((a, b) => a.created_at.localeCompare(b.created_at))) {
         if (!isTerminalRunStatus(run.status)) continue;
         let kwargs = await deps.store.runs.getKwargs(run.run_id);
+
         if (kwargs) {
           const {
             native_origin: _native,
@@ -601,6 +624,7 @@ export function createThreadService(ctx: ProtocolContext): ThreadService {
           } = kwargs as typeof kwargs & { native_origin?: unknown };
           kwargs = _native || _delivery ? copied : { ...copied, ...(webhook ? { webhook } : {}) };
         }
+
         const origin = readA2aOrigin(kwargs);
         if (origin && kwargs)
           kwargs = {
@@ -638,6 +662,7 @@ export function createThreadService(ctx: ProtocolContext): ThreadService {
           multitask_strategy: run.multitask_strategy,
           ...(kwargs ? { kwargs } : {}),
         });
+
         if (deps.store.runs.getResult && deps.store.runs.recordResult) {
           const result = await deps.store.runs.getResult(run.run_id);
           if (result)
@@ -649,11 +674,13 @@ export function createThreadService(ctx: ProtocolContext): ThreadService {
             });
         }
       }
+
       // The copy has no run of its own in flight, so a source that was mid-run ("busy") must not
       // carry that status over — reset it to idle so the copy isn't stuck looking active.
       if (copy.status === "busy") {
         return deps.store.threads.update(copy.thread_id, { status: "idle" });
       }
+
       return copy;
     },
 
@@ -677,10 +704,12 @@ export function createThreadService(ctx: ProtocolContext): ThreadService {
       // insufficient for `GET /threads/{id}/state` and contradict what `AgentGraph` promises.
       const graph = await loadThreadGraph(threadId);
       if (!graph) return emptyThreadState(threadId);
+
       if (graph.getStateHistory && !options?.checkpoint && !options?.subgraphs) {
         const [current] = await readHistory(threadId, { limit: 1 }, graph);
         return current ?? emptyThreadState(threadId);
       }
+
       const snapshot = await graph.getState(
         {
           configurable: {
@@ -729,17 +758,20 @@ export function createThreadService(ctx: ProtocolContext): ThreadService {
           // any activity check, so a non-owned thread reads as absent (never a 409-vs-404 activity oracle),
           // and 422s a thread that has never produced a graph.
           const graph = await loadThreadGraph(threadId);
+
           if (!graph) {
             throw SkeinHttpError.unprocessable(
               `Thread "${threadId}" has no graph to update state on.`,
             );
           }
+
           // Forking rewrites the checkpoint tip, so it must not race a run mid-write (LangGraph 409).
           if (await deps.store.runs.hasActiveRun(threadId)) {
             throw SkeinHttpError.conflict(
               `Thread "${threadId}" is busy; wait for its active run to finish before updating state.`,
             );
           }
+
           // Server-owned identity is forced LAST so a client-supplied `checkpoint` object can never
           // redirect the write to another thread — belt-and-suspenders with checkpointSchema, which
           // already strips unknown keys. Only checkpoint_id/ns/map are honored from the client.
@@ -775,6 +807,7 @@ export function createThreadService(ctx: ProtocolContext): ThreadService {
             generation,
           );
           const next = (nextConfig.configurable ?? {}) as Record<string, unknown>;
+
           const checkpoint: Checkpoint = {
             thread_id: threadId,
             checkpoint_ns: (next["checkpoint_ns"] as string | undefined) ?? "",

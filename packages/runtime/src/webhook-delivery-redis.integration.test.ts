@@ -50,6 +50,7 @@ afterEach(async () => {
 async function startReceiver(failFirst = 0) {
   const received: Record<string, unknown>[] = [];
   let refused = 0;
+
   const server: Server = createServer((request, response) => {
     let body = "";
     request.on("data", (chunk) => (body += String(chunk)));
@@ -59,6 +60,7 @@ async function startReceiver(failFirst = 0) {
         response.writeHead(503).end();
         return;
       }
+
       received.push(JSON.parse(body) as Record<string, unknown>);
       response.writeHead(200).end();
     });
@@ -66,6 +68,7 @@ async function startReceiver(failFirst = 0) {
   await new Promise<void>((resolve) => server.listen(0, "127.0.0.1", resolve));
   const address = server.address();
   const port = typeof address === "object" && address ? address.port : 0;
+
   const receiver = {
     url: `http://127.0.0.1:${port}/hook`,
     received,
@@ -94,6 +97,7 @@ async function startInstance(queueName: string, overrides: Partial<ProtocolDeps>
       },
     },
   );
+
   const runtime = createProtocolRuntime(embedded.deps);
   await runtime.service.assistants.registerGraphAssistants();
   runtime.worker.start();
@@ -109,6 +113,7 @@ async function runWithWebhook(
   webhook: string,
 ): Promise<string> {
   const thread = await runtime.service.threads.create();
+
   const { runId } = await runtime.service.runs.createWait({
     thread_id: thread.thread_id,
     assistant_id: "echo",
@@ -172,6 +177,7 @@ describe("durable outbound delivery — Postgres outbox, BullMQ schedule", () =>
     // never saw the run, picks the job up.
     const receiver = await startReceiver(1);
     const queueName = "skein-test-handover";
+
     const embeddedA = await embedPostgresGraphs(
       { echo: buildGraph() },
       {
@@ -183,6 +189,7 @@ describe("durable outbound delivery — Postgres outbox, BullMQ schedule", () =>
         },
       },
     );
+
     const runtimeA = createProtocolRuntime(embeddedA.deps);
     await runtimeA.service.assistants.registerGraphAssistants();
     const runId = await runWithWebhook(runtimeA, receiver.url);
@@ -229,6 +236,7 @@ describe("durable outbound delivery — Postgres outbox, BullMQ schedule", () =>
         },
       },
     );
+
     const runtime = createProtocolRuntime(embedded.deps);
     await runtime.service.assistants.registerGraphAssistants();
     let disposed = false;
@@ -237,6 +245,7 @@ describe("durable outbound delivery — Postgres outbox, BullMQ schedule", () =>
     });
 
     const thread = await runtime.service.threads.create();
+
     const { runId } = await runtime.service.runs.createWait({
       thread_id: thread.thread_id,
       assistant_id: "echo",

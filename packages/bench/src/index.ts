@@ -27,8 +27,8 @@ export {
   forceGarbageCollection,
   MemorySampler,
   type MemoryReading,
-  type MemorySamples,
   type MemorySamplerOptions,
+  type MemorySamples,
 } from "./harness/sampler.js";
 export { trackSocketBuffers, type SocketBufferProbe } from "./harness/socket-buffer-probe.js";
 export {

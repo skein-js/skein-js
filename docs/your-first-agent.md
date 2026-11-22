@@ -204,6 +204,7 @@ const getWeather = tool(
     const geo = await fetch(
       `https://geocoding-api.open-meteo.com/v1/search?name=${encodeURIComponent(city)}&count=1`,
     ).then((response) => response.json());
+
     const place = geo.results?.[0];
     if (!place) return `I couldn't find ${city}.`;
 

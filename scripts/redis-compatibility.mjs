@@ -1,4 +1,4 @@
-import { readFileSync, writeFileSync, mkdirSync } from "node:fs";
+import { mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import { createRequire } from "node:module";
 import path from "node:path";
 
@@ -10,15 +10,18 @@ const selected = (name) => {
     throw new Error(`--${name}=<exact 5.x or 6.x version> is required`);
   return value;
 };
+
 const bullmq = selected("bullmq");
 const ioredis = selected("ioredis");
 const projects = ["packages/runtime-redis", "packages/bullmq", "examples/native-transports"];
+
 const originals = new Map(
   [...projects.map((project) => `${project}/package.json`), "pnpm-lock.yaml"].map((filename) => [
     filename,
     readFileSync(path.join(root, filename)),
   ]),
 );
+
 const reportDirectory = path.join(root, "dist/redis-compatibility");
 mkdirSync(reportDirectory, { recursive: true });
 const report = {
@@ -27,11 +30,13 @@ const report = {
   resolved: [],
   passed: false,
 };
+
 const nx = (...arguments_) =>
   run("pnpm", ["exec", "nx", ...arguments_], {
     cwd: root,
     env: { ...process.env, CI: "true", NX_DAEMON: "false" },
   });
+
 try {
   // Select only the direct dependency owners. Never replace BullMQ 5's own pinned ioredis.
   for (const project of projects) {
@@ -41,7 +46,9 @@ try {
     manifest.dependencies.ioredis = ioredis;
     writeFileSync(filename, JSON.stringify(manifest, null, 2) + "\n");
   }
+
   run("pnpm", ["install", "--no-frozen-lockfile"], { cwd: root });
+
   for (const project of projects) {
     const require = createRequire(path.join(root, project, "package.json"));
     const bull = require("bullmq/package.json");
@@ -59,6 +66,7 @@ try {
       bullmqClient: bullClient,
     });
   }
+
   process.stdout.write(JSON.stringify(report, null, 2) + "\n");
   nx(
     "run-many",
@@ -103,5 +111,6 @@ try {
   // Also restore installed links, so a local matrix run cannot leave its selected major behind.
   run("pnpm", ["install", "--frozen-lockfile"], { cwd: root });
 }
+
 if (!report.passed) throw new Error("Redis compatibility validation did not complete");
 process.stdout.write(`REDIS_COMPATIBILITY_OK ${JSON.stringify(report)}\n`);

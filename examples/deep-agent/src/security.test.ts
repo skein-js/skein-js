@@ -73,11 +73,13 @@ describe("the briefing assistant keeps users apart", () => {
     const alice = harness.clientFor("async-alice");
     const bob = harness.clientFor("async-bob");
     const aliceThread = await alice.threads.create();
+
     const started = await say(
       alice,
       aliceThread.thread_id,
       "Start a deep dive on private child marker",
     );
+
     const original = Object.values(started.asyncTasks!)[0]!;
     const forged = { ...original, description: undefined };
     await expect
@@ -86,6 +88,7 @@ describe("the briefing assistant keeps users apart", () => {
     await expect(bob.threads.getState(original.threadId)).rejects.toThrow(/404/);
 
     const bobThread = await bob.threads.create();
+
     const checked = (await bob.runs.wait(bobThread.thread_id, ASSISTANT, {
       input: {
         asyncTasks: { [original.taskId]: forged },
@@ -109,38 +112,48 @@ describe("the briefing assistant keeps users apart", () => {
     let release!: () => void;
     let markEntered!: () => void;
     let markSettled!: () => void;
+
     const held = new Promise<void>((resolve) => {
       release = resolve;
     });
+
     const entered = new Promise<void>((resolve) => {
       markEntered = resolve;
     });
+
     const settled = new Promise<void>((resolve) => {
       markSettled = resolve;
     });
+
     const spy = vi
       .spyOn(ScriptedChatModel.prototype, "_generate")
       .mockImplementation(async function (this: ScriptedChatModel, messages) {
         const request = messages.filter((message) => message.getType() === "human").at(-1);
+
         if (request?.content === "held child cancellation marker") {
           markEntered();
           await held;
+
           try {
             return await generate.call(this, messages);
           } finally {
             markSettled();
           }
         }
+
         return generate.call(this, messages);
       });
+
     try {
       const client = harness.clientFor("cancel-alice");
       const thread = await client.threads.create();
+
       const started = await say(
         client,
         thread.thread_id,
         "Start a deep dive on held child cancellation marker",
       );
+
       const task = Object.values(started.asyncTasks!)[0]!;
       await entered;
       expect((await client.runs.get(task.threadId, task.runId)).status).toBe("running");
@@ -174,8 +187,10 @@ describe("the briefing assistant keeps users apart", () => {
     const { deps } = await loadInMemoryRuntime(
       fileURLToPath(new URL("../langgraph.json", import.meta.url)),
     );
+
     const originalLoad = deps.graphs.load.bind(deps.graphs);
     const state = Annotation.Root({ written: Annotation<boolean>() });
+
     const compiled = new StateGraph(state)
       .addNode("write", async () => {
         const result = await new StoreBackend().write("/legacy-note.md", "legacy namespace marker");
@@ -193,6 +208,7 @@ describe("the briefing assistant keeps users apart", () => {
           : originalLoad(id),
     };
     const server = await createExpressServer({ deps });
+
     try {
       const thread = await server.runtime.service.threads.create();
       await server.runtime.service.runs.createWait({

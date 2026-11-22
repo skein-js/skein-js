@@ -22,6 +22,7 @@ it("serves discovery for enabled routes, offline docs, exact saver payload sizes
     }),
   };
   const running = await startEchoServer({ deps, disable: { crons: true } });
+
   try {
     const spec = (await (await fetch(`${running.baseUrl}/openapi.json`)).json()) as {
       openapi: string;
@@ -57,6 +58,7 @@ it("serves discovery for enabled routes, offline docs, exact saver payload sizes
     });
     expect((await fetch(`${running.baseUrl}/metrics?format=unknown`)).status).toBe(400);
     const thread = await running.server.runtime.service.threads.create();
+
     const empty = (await (
       await fetch(`${running.baseUrl}/threads/${thread.thread_id}/storage`)
     ).json()) as ThreadStorage;
@@ -79,6 +81,7 @@ it("serves discovery for enabled routes, offline docs, exact saver payload sizes
 
 it("returns explicit unavailable errors for custom savers and missing metric collectors", async () => {
   const running = await startEchoServer();
+
   try {
     const thread = await running.server.runtime.service.threads.create();
     expect((await fetch(`${running.baseUrl}/threads/${thread.thread_id}/storage`)).status).toBe(

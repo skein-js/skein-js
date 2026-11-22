@@ -28,7 +28,9 @@ export function createMcpHandler(
       headers,
       signal: request.signal,
     });
+
     const legacy = await isLegacyRequest(native, request.body);
+
     const factory = () => {
       const server = new Server(
         { name: "skein-js", version: "1" },
@@ -42,6 +44,7 @@ export function createMcpHandler(
         const assistants = mcpJsonBody<Assistant[]>(
           await table.searchAssistants({ ...request, body: { limit: 100, offset }, params: {} }),
         );
+
         const tools: Tool[] = await Promise.all(
           assistants.map(async (assistant) => {
             const schemas = mcpJsonBody<Record<string, unknown>>(
@@ -51,7 +54,9 @@ export function createMcpHandler(
                 params: { assistant_id: assistant.assistant_id },
               }),
             );
+
             const graphSchemas = schemas[assistant.graph_id] as Record<string, unknown> | undefined;
+
             const input = (schemas["input_schema"] ?? graphSchemas?.["input_schema"]) as
               Tool["inputSchema"] | undefined;
             return {
@@ -89,16 +94,20 @@ export function createMcpHandler(
       );
       return server;
     };
+
     let response: Response;
     let close: () => Promise<void>;
+
     if (legacy) {
       // Keep the established JSON legacy exchange; SDK's default fallback otherwise chooses SSE.
       const server = factory();
+
       const transport = new WebStandardStreamableHTTPServerTransport({
         sessionIdGenerator: undefined,
         enableJsonResponse: true,
       });
       close = () => server.close();
+
       try {
         await server.connect(transport);
         response = await transport.handleRequest(native, { parsedBody: request.body });
@@ -110,6 +119,7 @@ export function createMcpHandler(
       // No related notifications are emitted, so the SDK's auto mode produces a JSON exchange.
       const http = createSdkMcpHandler(factory, { legacy: "reject" });
       close = http.close;
+
       try {
         response = await http.fetch(native, { parsedBody: request.body });
       } catch (error) {
@@ -117,11 +127,13 @@ export function createMcpHandler(
         throw error;
       }
     }
+
     try {
       const body = await response.text();
       const responseHeaders = Object.fromEntries(response.headers);
       if (!body) return { kind: "empty", status: response.status, headers: responseHeaders };
       const output = JSON.parse(body) as { error?: { code?: number } };
+
       const status =
         !legacy && (output.error?.code === -32602 || output.error?.code === -32021)
           ? 400

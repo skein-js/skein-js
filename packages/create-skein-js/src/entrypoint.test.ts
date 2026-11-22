@@ -1,5 +1,5 @@
 import { spawnSync } from "node:child_process";
-import { mkdtempSync, readFileSync, existsSync, writeFileSync, rmSync, readdirSync } from "node:fs";
+import { existsSync, mkdtempSync, readdirSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import path from "node:path";
 
@@ -7,11 +7,13 @@ import { check, resolveConfig } from "prettier";
 import { afterEach, describe, expect, it } from "vitest";
 
 const directories: string[] = [];
+
 function createRoot() {
   const directory = mkdtempSync(path.join(tmpdir(), "skein-entrypoint-"));
   directories.push(directory);
   return directory;
 }
+
 function invoke(root: string, args: string[], target = "apps/agent") {
   return spawnSync(
     process.execPath,
@@ -25,6 +27,7 @@ function invoke(root: string, args: string[], target = "apps/agent") {
     { cwd: root, encoding: "utf8", env: { ...process.env, CI: "true" } },
   );
 }
+
 afterEach(() => {
   for (const directory of directories.splice(0))
     rmSync(directory, { recursive: true, force: true });
@@ -34,6 +37,7 @@ describe("headless entrypoint", () => {
     "rejects the %s workspace root even with --force without writes",
     (kind) => {
       const root = createRoot();
+
       const manifest = JSON.stringify({
         name: "keep-root",
         ...(kind === "npm" ? { workspaces: ["apps/*"] } : {}),
@@ -53,6 +57,7 @@ describe("headless entrypoint", () => {
   it("formats new files with inherited style without requiring a root Prettier dependency", async () => {
     const root = createRoot();
     const manifest = '{"workspaces":["apps/*"]}';
+
     const config =
       '{"singleQuote":true,"semi":false,"printWidth":80,"overrides":[{"files":"*.ts","options":{"tabWidth":4}}]}';
     writeFileSync(path.join(root, "package.json"), manifest);
@@ -124,12 +129,14 @@ describe("headless entrypoint", () => {
     const result = invoke(root, optOut ? ["--yes", "--no-workspace-update"] : ["--yes"]);
     expect(result.status, result.stderr).toBe(0);
     expect(existsSync(path.join(root, "pnpm-workspace.yaml"))).toBe(!optOut);
+
     if (!optOut) {
       const registration = readFileSync(path.join(root, "pnpm-workspace.yaml"), "utf8");
       expect(registration).toContain("apps/*");
       expect(registration).toContain("!apps/private/**");
       expect(registration).not.toContain("apps/agent");
     }
+
     expect(readFileSync(path.join(root, "package.json"), "utf8")).toBe(manifest);
   });
   it("rejects a pnpm exclusion before creating its workspace YAML", () => {

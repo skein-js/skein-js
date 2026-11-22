@@ -71,6 +71,7 @@ describe("createSkeinInvokeRouteHandlers", () => {
     const outside = await handlers().POST(
       new Request("http://localhost/somewhere/else", { method: "POST", body: "{}" }),
     );
+
     const nested = await handlers().POST(
       new Request(`http://localhost${BASE}/echo/extra`, { method: "POST", body: "{}" }),
     );

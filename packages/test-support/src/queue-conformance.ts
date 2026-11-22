@@ -26,10 +26,12 @@ async function collect(iterable: AsyncIterable<RunFrame>): Promise<RunFrame[]> {
 
 async function waitFor(predicate: () => boolean, timeoutMs = 2000): Promise<void> {
   const start = Date.now();
+
   while (Date.now() - start < timeoutMs) {
     if (predicate()) return;
     await new Promise((resolve) => setTimeout(resolve, 10));
   }
+
   throw new Error("timed out waiting for condition");
 }
 
@@ -46,11 +48,13 @@ async function waitFor(predicate: () => boolean, timeoutMs = 2000): Promise<void
 export function runRunQueueConformance(label: string, makeQueue: RunQueueFactory): void {
   describe(`RunQueue conformance — ${label}`, () => {
     const created: unknown[] = [];
+
     const make = async (): Promise<RunQueue> => {
       const queue = await makeQueue();
       created.push(queue);
       return queue;
     };
+
     afterEach(async () => {
       for (const instance of created.splice(0))
         if (isDisposable(instance)) await instance.dispose();
@@ -59,6 +63,7 @@ export function runRunQueueConformance(label: string, makeQueue: RunQueueFactory
     it("delivers enqueued runs to a consumer in FIFO order", async () => {
       const queue = await make();
       const received: string[] = [];
+
       const consumer = queue.consume(async (run) => {
         received.push(run.run_id);
       });
@@ -84,6 +89,7 @@ export function runRunQueueConformance(label: string, makeQueue: RunQueueFactory
       await queue.enqueue({ run_id: "other", thread_id: "t" });
 
       const received: string[] = [];
+
       const consumer = queue.consume(async (run) => {
         received.push(run.run_id);
       });
@@ -100,6 +106,7 @@ export function runRunQueueConformance(label: string, makeQueue: RunQueueFactory
       await queue.enqueue({ run_id: "early", thread_id: "t" });
 
       const received: string[] = [];
+
       const consumer = queue.consume(async (run) => {
         received.push(run.run_id);
       });
@@ -114,6 +121,7 @@ export function runRunQueueConformance(label: string, makeQueue: RunQueueFactory
       const queue = await make();
       const received: string[] = [];
       let delayedRunStartedAt = 0;
+
       const consumer = queue.consume(async (run) => {
         received.push(run.run_id);
         if (run.run_id === "later") delayedRunStartedAt = Date.now();
@@ -137,6 +145,7 @@ export function runRunQueueConformance(label: string, makeQueue: RunQueueFactory
     it("treats a zero delay as an ordinary enqueue", async () => {
       const queue = await make();
       const received: string[] = [];
+
       const consumer = queue.consume(async (run) => {
         received.push(run.run_id);
       });
@@ -160,6 +169,7 @@ export function runRunQueueConformance(label: string, makeQueue: RunQueueFactory
 
       const received: string[] = [];
       let delayedRunStartedAt = 0;
+
       const consumer = queue.consume(async (run) => {
         received.push(run.run_id);
         delayedRunStartedAt = Date.now();
@@ -186,11 +196,13 @@ export function runRunQueueConformance(label: string, makeQueue: RunQueueFactory
 export function runRunEventBusConformance(label: string, makeBus: RunEventBusFactory): void {
   describe(`RunEventBus conformance — ${label}`, () => {
     const created: unknown[] = [];
+
     const make = async (): Promise<RunEventBus> => {
       const bus = await makeBus();
       created.push(bus);
       return bus;
     };
+
     afterEach(async () => {
       for (const instance of created.splice(0))
         if (isDisposable(instance)) await instance.dispose();
@@ -228,6 +240,7 @@ export function runRunEventBusConformance(label: string, makeBus: RunEventBusFac
 
     it("carries subgraph namespaces through live delivery, replay and resume unchanged", async () => {
       const bus = await make();
+
       const frames: RunFrame[] = [
         { seq: 1, event: "updates", data: { root: true } },
         { seq: 2, event: "updates", namespace: ["tools:call_1"], data: { child: true } },
@@ -238,6 +251,7 @@ export function runRunEventBusConformance(label: string, makeBus: RunEventBusFac
           data: ["token"],
         },
       ];
+
       const live = collect(bus.subscribe("r"));
       await new Promise((resolve) => setTimeout(resolve, 50));
       for (const published of frames) await bus.publish("r", published);

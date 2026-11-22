@@ -38,10 +38,12 @@ function readMigrationsFromDisk(): { name: string; up: string; statements?: stri
       const contents = readFileSync(path.join(migrationsDir, file), "utf8");
       const upStart = contents.search(sectionMarker("up"));
       const downStart = contents.search(sectionMarker("down"));
+
       const up =
         upStart < 0
           ? contents
           : contents.slice(upStart, downStart < upStart ? undefined : downStart);
+
       const name = path.basename(file, ".sql");
       // A concurrent migration carries its statements pre-split, since `CREATE INDEX CONCURRENTLY`
       // cannot run inside the transaction the normal multi-statement path implies.
@@ -91,6 +93,7 @@ describe("SKEIN_MIGRATIONS", () => {
 
     expect(indexed).toBeDefined();
     expect(indexed?.sort()).toEqual([...INFLIGHT_RUN_STATUSES].sort());
+
     // And they really are the non-terminal ones, so the index covers the set the guard calls inflight.
     for (const status of indexed ?? []) {
       expect(isTerminalRunStatus(status as RunStatus)).toBe(false);
@@ -105,6 +108,7 @@ describe("SKEIN_MIGRATIONS", () => {
 
     for (const migration of concurrent) {
       expect(migration.statements?.length).toBeGreaterThan(0);
+
       for (const statement of migration.statements ?? []) {
         expect(statement).toMatch(/^(CREATE|DROP)\s+INDEX\b/i);
         expect(statement).not.toContain(";");

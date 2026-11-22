@@ -43,6 +43,7 @@ interface Receiver {
 async function startReceiver(): Promise<Receiver> {
   const received: Record<string, unknown>[] = [];
   const state = { down: false };
+
   const server: Server = createServer((request, response) => {
     let body = "";
     request.on("data", (chunk) => (body += String(chunk)));
@@ -51,6 +52,7 @@ async function startReceiver(): Promise<Receiver> {
         response.writeHead(503).end();
         return;
       }
+
       received.push(JSON.parse(body) as Record<string, unknown>);
       response.writeHead(200).end();
     });
@@ -102,6 +104,7 @@ async function runWithWebhook(
   webhook: string,
 ): Promise<string> {
   const thread = await runtime.service.threads.create();
+
   const { runId } = await runtime.service.runs.createWait({
     thread_id: thread.thread_id,
     assistant_id: "echo",
@@ -129,13 +132,16 @@ describe("durable outbound delivery — memory store, in-memory queue, no Docker
 
     // Sixty seconds of outage, walked forward one tick at a time.
     const outageStart = nowMs();
+
     while (nowMs() - outageStart < 60_000) {
       advance(5_000);
       await runtime.deliveryWorker.tickOnce();
     }
+
     expect(receiver.received).toHaveLength(0);
 
     receiver.down = false;
+
     for (const _ of [0, 1, 2, 3]) {
       advance(30_000);
       await runtime.deliveryWorker.tickOnce();
@@ -165,7 +171,9 @@ describe("durable outbound delivery — memory store, in-memory queue, no Docker
       advance(15_000);
       await runtime.deliveryWorker.tickOnce();
     }
+
     receiver.down = false;
+
     for (const _ of [0, 1, 2, 3, 4]) {
       advance(60_000);
       await runtime.deliveryWorker.tickOnce();
@@ -186,6 +194,7 @@ describe("durable outbound delivery — memory store, in-memory queue, no Docker
     const { runtime, deps } = await startServer({ clock, webhooks });
 
     const runId = await runWithWebhook(runtime, receiver.url);
+
     for (const _ of [0, 1, 2, 3]) {
       advance(30_000);
       await runtime.deliveryWorker.tickOnce();
@@ -203,6 +212,7 @@ describe("durable outbound delivery — memory store, in-memory queue, no Docker
     const receiver = await startReceiver();
     cleanup.push(() => receiver.close());
     const { clock } = movableClock();
+
     const { runtime, deps } = await startServer({
       clock,
       webhooks: { allowedHosts: ["hooks.allowed.test"] },

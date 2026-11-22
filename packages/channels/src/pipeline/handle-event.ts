@@ -83,6 +83,7 @@ export async function handleInboundEvent(
   deps: PipelineDeps,
 ): Promise<ProtocolResponse> {
   const { channel, config } = registered;
+
   const request = buildInboundRequest(raw, {
     ...(config.publicUrl ? { publicUrl: config.publicUrl } : {}),
   });
@@ -90,6 +91,7 @@ export async function handleInboundEvent(
   // 1. Verify, before anything is parsed. A signature covers bytes and a URL; touching either first
   //    is what makes verification impossible rather than merely inconvenient.
   const principal = await channel.verify(request);
+
   if (principal === false) {
     return { kind: "json", status: 401, body: { message: "Invalid signature." } };
   }
@@ -104,10 +106,12 @@ export async function handleInboundEvent(
   //    row through is what keeps the two from drifting apart silently.
   // 3. Parse. The one genuinely provider-specific step.
   const outcome = await channel.parseEvent(request);
+
   if (outcome.kind === "ignore") {
     await deps.authorize(principal, ROUTE_AUTHZ.handleInboundEvent);
     return { kind: "json", status: 204, body: undefined };
   }
+
   if (outcome.kind === "respond") {
     await deps.authorize(principal, ROUTE_AUTHZ.handleInboundEvent);
     return {
@@ -121,6 +125,7 @@ export async function handleInboundEvent(
   const event = outcome.event;
   const assistantId = resolveAssistant(event, registered);
   const resolvedThreadId = event.threadId ?? threadIdForChannelKey(channel.name, event.threadKey);
+
   const authContext = await deps.authorize(principal, ROUTE_AUTHZ.handleInboundEvent, {
     ...event,
     thread_id: resolvedThreadId,
@@ -140,6 +145,7 @@ export async function handleInboundEvent(
     deps,
   );
   if (claim.kind === "replay") return claim.response;
+
   if (claim.kind === "reused") {
     // Permanent, so the provider must not retry it — distinct from the in-flight 409 below, which it
     // should. Not silently replayed: see the note in `claim-key.ts`.
@@ -152,6 +158,7 @@ export async function handleInboundEvent(
       },
     };
   }
+
   if (claim.kind === "in_flight") {
     // A concurrent retry is still running. 409 rather than a duplicate run — the provider will try
     // again, and by then the first attempt has recorded its answer.
@@ -166,6 +173,7 @@ export async function handleInboundEvent(
   // afterwards failed" — releasing the key in the second case invites the provider's retry to create
   // a *second* run for one message, which is the exact failure the key exists to prevent.
   let created: { runId: string } | undefined;
+
   try {
     // 5. Resolve the thread. Deterministic, so the same phone number always resumes the same
     //    conversation, and get-or-create so a first message costs no special case.
@@ -280,9 +288,11 @@ function isThreadStatusMismatch(error: unknown): boolean {
  */
 function resolveAssistant(event: InboundEvent, registered: RegisteredChannel): string {
   const requested = event.assistantId;
+
   if (requested === undefined || requested === registered.config.assistant) {
     return registered.config.assistant;
   }
+
   if (!registered.config.allowedAssistants?.includes(requested)) {
     throw SkeinHttpError.forbidden(
       `Channel "${registered.channel.name}" asked to run "${requested}", which is not in its ` +
@@ -290,7 +300,8 @@ function resolveAssistant(event: InboundEvent, registered: RegisteredChannel): s
       { code: "assistant_not_allowed" },
     );
   }
+
   return requested;
 }
 
-export type { ClaimOutcome, Channel };
+export type { Channel, ClaimOutcome };

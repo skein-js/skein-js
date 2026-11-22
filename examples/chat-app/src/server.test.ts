@@ -28,6 +28,7 @@ describe.skipIf(!hasKey)(
 
     it("waits for a research reply on a fresh thread", async () => {
       const thread = await client.threads.create();
+
       const values = (await client.runs.wait(thread.thread_id, "research", {
         input: { messages: [{ role: "user", content: "In one sentence, what is TypeScript?" }] },
       })) as { messages?: Array<{ type?: string; content?: unknown }> };
@@ -40,12 +41,14 @@ describe.skipIf(!hasKey)(
     it("streams the reply without an error frame", async () => {
       const thread = await client.threads.create();
       const chunks: string[] = [];
+
       for await (const chunk of client.runs.stream(thread.thread_id, "research", {
         input: { messages: [{ role: "user", content: "Name three primary colors." }] },
         streamMode: "messages",
       })) {
         chunks.push(JSON.stringify(chunk));
       }
+
       expect(chunks.length).toBeGreaterThan(0);
       expect(chunks.join("\n")).not.toContain('"event":"error"');
     }, 60_000);
@@ -55,6 +58,7 @@ describe.skipIf(!hasKey)(
       // `useStream` renders), NOT in the messages-mode streaming deltas (those are plain strings) —
       // so assert against the completed messages via runs.wait.
       const thread = await client.threads.create();
+
       const values = (await client.runs.wait(thread.thread_id, "research", {
         input: {
           messages: [

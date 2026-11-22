@@ -85,6 +85,7 @@ describe("query projections match the schema", () => {
   // the wrong fix, since it would restore the cost on every list.
   it("still reads the omitted columns through their own accessors", async () => {
     const thread = await store.threads.create({});
+
     const run = await store.runs.create({
       thread_id: thread.thread_id,
       assistant_id: "a",

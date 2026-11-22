@@ -43,6 +43,7 @@ export function buildInboundRequest(
   let formCache: Record<string, string> | undefined;
 
   const headers: Record<string, string> = {};
+
   for (const [name, value] of Object.entries(raw.headers)) {
     // Lower-cased, because a channel comparing header names should not have to know whether it is
     // behind Node's http server (which lower-cases) or a Fetch `Headers` (which also does, but only
@@ -66,6 +67,7 @@ export function buildInboundRequest(
         formCache = {};
         for (const [key, value] of new URLSearchParams(text)) formCache[key] = value;
       }
+
       return formCache;
     },
   };

@@ -56,6 +56,7 @@ export function InterruptPanel({
 
   const resume = async (raw: string) => {
     let value: unknown;
+
     try {
       value = JSON.parse(raw);
     } catch {
@@ -63,19 +64,23 @@ export function InterruptPanel({
       // failing on the difference between `approve` and `"approve"`.
       value = raw;
     }
+
     setSubmittedValue(value);
     setBusy(true);
     onObserving?.(true);
     setError(undefined);
+
     try {
       if (assistantId === undefined) {
         throw new Error(
           "No assistant to resume with: this thread has no runs to read one from. Start the run from your app instead.",
         );
       }
+
       // `input: null` plus a resume command is what continues an interrupted graph — the run picks up
       // from the checkpoint the interrupt parked on rather than starting over.
       const client = createConsoleClient({});
+
       const resumed = await client.runs.create(threadId, assistantId, {
         input: null,
         command: { resume: value },
@@ -84,6 +89,7 @@ export function InterruptPanel({
       onResumed();
       const controller = new AbortController();
       observation.current = controller;
+
       for await (const frame of client.runs.joinStream(threadId, resumed.run_id, {
         signal: controller.signal,
         cancelOnDisconnect: false,
@@ -91,6 +97,7 @@ export function InterruptPanel({
         onFrame?.(String(frame.event), frame.data);
         if (String(frame.event) === "error") throw new Error(JSON.stringify(frame.data));
       }
+
       onResumed();
     } catch (caught) {
       setError(caught instanceof Error ? caught : new Error(String(caught)));

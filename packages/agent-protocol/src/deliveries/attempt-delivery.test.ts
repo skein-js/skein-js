@@ -14,6 +14,7 @@ const NOW = new Date("2026-01-01T00:00:00.000Z");
 /** Collects what was logged, so the "never rejects" cases can prove they reported rather than hid. */
 function collectingLogger() {
   const errors: string[] = [];
+
   const logger: Logger = {
     debug: () => {},
     info: () => {},
@@ -46,6 +47,7 @@ function delivery(overrides: Partial<Delivery> = {}): Delivery {
 /** A `DeliveryRepo` that only records — the rest of the surface is not on this path. */
 function recordingRepo() {
   const recorded: DeliveryAttemptResult[] = [];
+
   const repo = {
     recordAttempt: vi.fn(async (_id: string, result: DeliveryAttemptResult) => {
       recorded.push(result);
@@ -145,9 +147,11 @@ describe("attemptDelivery", () => {
   // run, and the worker's tick must not lose the rest of its batch to one bad receiver.
   it("never rejects, even when recording the outcome is the thing that fails", async () => {
     const dispatch = vi.fn<WebhookDispatcher>().mockResolvedValue(undefined);
+
     const repo = {
       recordAttempt: vi.fn().mockRejectedValue(new Error("database gone")),
     } as unknown as DeliveryRepo;
+
     const { logger, errors } = collectingLogger();
 
     // Resolves rather than throws, and says so in the log. The row keeps its lease, so the next
@@ -178,9 +182,11 @@ describe("attemptDelivery", () => {
   // stateless thread, and a 500 on a run that actually succeeded).
   it("does not reject when the store fails while refusing a disallowed host", async () => {
     const dispatch = vi.fn<WebhookDispatcher>().mockResolvedValue(undefined);
+
     const repo = {
       recordAttempt: vi.fn().mockRejectedValue(new Error("database gone")),
     } as unknown as DeliveryRepo;
+
     const { logger, errors } = collectingLogger();
 
     expect(
@@ -199,6 +205,7 @@ describe("attemptDelivery", () => {
     const dispatch = vi.fn<WebhookDispatcher>().mockRejectedValue(new Error("503"));
     const { repo, recorded } = recordingRepo();
     const { logger, errors } = collectingLogger();
+
     const deliveryQueue = {
       schedule: vi.fn().mockRejectedValue(new Error("redis is down")),
       consume: () => ({ close: async () => {} }),
@@ -319,6 +326,7 @@ describe("attemptDelivery", () => {
 
   it("does nothing on a store with no deliveries repo", async () => {
     const dispatch = vi.fn<WebhookDispatcher>().mockResolvedValue(undefined);
+
     const deps = {
       store: {},
       webhookDispatcher: dispatch,

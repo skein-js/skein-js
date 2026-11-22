@@ -57,6 +57,7 @@ export function projectEnvPaths(config: LanggraphJson, configDir: string): strin
 function readConventionalDotEnv(dir: string): Record<string, string> {
   const envPath = path.join(dir, ".env");
   if (!existsSync(envPath)) return {};
+
   try {
     return parseEnvFile(readFileSync(envPath, "utf8"));
   } catch {
@@ -79,8 +80,10 @@ export async function applyProjectEnv(
 ): Promise<void> {
   const declaredEnvPath =
     typeof config.env === "string" ? path.resolve(configDir, config.env) : undefined;
+
   const conventional =
     declaredEnvPath === path.join(configDir, ".env") ? {} : readConventionalDotEnv(configDir);
+
   // A second conventional `.env`, at the lowest precedence, for a command whose config does not sit
   // in the project. `skein start` is the only such command: it serves a *build*, so `configDir` is
   // `.skein/build`, and a build deliberately carries no `.env` — it is the Docker build context, and
@@ -92,6 +95,7 @@ export async function applyProjectEnv(
       ? readConventionalDotEnv(options.alsoReadDotEnvIn)
       : {};
   applyEnv({ ...extra, ...conventional, ...(await resolveEnv(config, configDir)) });
+
   if (declaredEnvPath !== undefined && !existsSync(declaredEnvPath) && !warnedMissingEnvFile) {
     warnedMissingEnvFile = true;
     console.warn(`skein: env file "${config.env}" not found; continuing without it.`);

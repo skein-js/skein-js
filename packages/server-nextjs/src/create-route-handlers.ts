@@ -48,10 +48,12 @@ export interface SkeinRouteHandlers {
 /** Query params from a URL, keeping repeated keys as `string[]`. */
 function toQuery(url: URL): ProtocolRequest["query"] {
   const query: Record<string, string | string[]> = {};
+
   for (const key of new Set(url.searchParams.keys())) {
     const all = url.searchParams.getAll(key);
     query[key] = all.length > 1 ? all : (all[0] as string);
   }
+
   return query;
 }
 
@@ -64,8 +66,10 @@ async function toProtocolRequest(
   retainRawBody = false,
 ): Promise<ProtocolRequest> {
   let body: unknown;
+
   if (request.method !== "GET" && request.method !== "HEAD") {
     const text = await request.text();
+
     // A route that asked for text gets it undecoded — a form-encoded provider request would otherwise
     // 400 here before its handler ever ran, and the bytes a signature covers would be gone.
     if (retainRawBody) {
@@ -79,6 +83,7 @@ async function toProtocolRequest(
       }
     }
   }
+
   return {
     method: request.method,
     // Report the skein-relative absolute URL (mount prefix stripped). NOTE: this does NOT match the
@@ -101,6 +106,7 @@ export function createSkeinRouteHandlers(options: SkeinRouteHandlerOptions): Ske
   const basePath = options.basePath ?? "/api";
   // Next.js owns no logger to default to, so this may well be undefined.
   const optionLogger = options.logger === false ? undefined : options.logger;
+
   // This handler's own option outranks the resolved runtime's logger. The runtime is memoized by
   // config path / deps identity (runtime-singleton.ts), so two route files sharing a `langgraph.json`
   // share one runtime — and whichever served the first request would otherwise decide where the
@@ -116,11 +122,13 @@ export function createSkeinRouteHandlers(options: SkeinRouteHandlerOptions): Ske
     // Resolve the runtime first (memoized) so the effective CORS can fall back to the config's
     // `http.cors` — matching the Express/Fastify adapters — rather than only honoring `options.cors`.
     let resolved: Awaited<ReturnType<typeof getSkeinRuntime>>;
+
     try {
       resolved = await getSkeinRuntime(options);
     } catch (error) {
       return webErrorResponse(error, {}, optionLogger);
     }
+
     // Explicit `options.cors` (incl. an explicit `false`) wins; otherwise fall back to config CORS.
     const cors: CorsSetting | false | undefined = options.cors ?? resolved.cors;
 
@@ -136,14 +144,17 @@ export function createSkeinRouteHandlers(options: SkeinRouteHandlerOptions): Ske
       resolved.runtime.handleRequest as unknown as
         Record<symbol, ((method: string, url: string) => boolean) | undefined> | undefined
     )?.[Symbol.for("@skein-js/native-request-matcher")];
+
     if (
       resolved.runtime.handleRequest &&
       nativeMatcher?.(request.method, `${url.origin}${skeinPathname}${url.search}`) !== false
     ) {
       const nativeRequest = withNativePath(request, skeinPathname);
       let native: Response | undefined;
+
       try {
         native = await resolved.runtime.handleRequest?.(nativeRequest);
+
         if (native) {
           const headers = new Headers(native.headers);
           for (const [key, value] of Object.entries(extraHeaders)) headers.set(key, value);
@@ -161,7 +172,9 @@ export function createSkeinRouteHandlers(options: SkeinRouteHandlerOptions): Ske
         void (native ? request : nativeRequest).body?.cancel().catch(() => undefined);
       }
     }
+
     const match = routeMatcherFor(resolved.routes)(request.method, skeinPathname);
+
     if (!match) {
       return new Response(JSON.stringify({ status: 404, message: "Not Found" }), {
         status: 404,
@@ -177,6 +190,7 @@ export function createSkeinRouteHandlers(options: SkeinRouteHandlerOptions): Ske
         match.params,
         match.binding.retainRawBody ?? false,
       );
+
       const invoke = resolved.runtime.handlers[match.binding.handler];
       if (!invoke) return new Response("Not found", { status: 404, headers: extraHeaders });
       const response = await invoke(

@@ -21,11 +21,13 @@ export function readWorkspaceGeneration(): string {
 
 export function resolveWorkspaceConnection(apiUrl: string): string {
   let target: URL;
+
   try {
     target = new URL(apiUrl);
   } catch {
     return `invalid-target:${readWorkspaceGeneration()}`;
   }
+
   target.username = "";
   target.password = "";
   target.search = "";
@@ -40,6 +42,7 @@ export function invalidateWorkspaceConnection(): void {
   } catch {
     // Session storage may still be available when local storage is disabled.
   }
+
   try {
     for (const key of Object.keys(sessionStorage))
       if (key.startsWith(WORKSPACE_STORAGE_PREFIX)) sessionStorage.removeItem(key);

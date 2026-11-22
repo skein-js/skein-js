@@ -47,6 +47,7 @@ export async function loadChannels(
       import(pathToFileURL(sourceFile).href) as Promise<Record<string, unknown>>);
 
   const loaded: Record<string, LoadedChannel> = {};
+
   for (const [name, config] of Object.entries(channels)) {
     loaded[name] = {
       module: await importChannelModule(name, config.path, options.configDir, importModule),
@@ -55,6 +56,7 @@ export async function loadChannels(
       ...(config.public_url ? { publicUrl: config.public_url } : {}),
     };
   }
+
   return loaded;
 }
 
@@ -78,6 +80,7 @@ async function importChannelModule(
 
   const { sourceFile, exportSymbol } = parseGraphSpec(spec, configDir);
   let module: Record<string, unknown>;
+
   try {
     module = await importModule(sourceFile);
   } catch (cause) {
@@ -86,6 +89,7 @@ async function importChannelModule(
       { cause },
     );
   }
+
   // Reported here rather than left to the registry's structural check, because "the file loaded but
   // has no such export" and "the export is not a channel" are different mistakes with different
   // fixes, and the second message would send you looking at the wrong thing.
@@ -96,6 +100,7 @@ async function importChannelModule(
         `export (available: ${available}).`,
     );
   }
+
   return module[exportSymbol];
 }
 

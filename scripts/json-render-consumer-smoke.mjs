@@ -9,6 +9,7 @@ import { installConsumer, root, run } from "./pack-local-consumer.mjs";
 export async function verifyJsonRenderConsumer(directory, packed) {
   const example = path.join(root, "examples/json-render");
   const original = JSON.parse(await readFile(path.join(example, "package.json"), "utf8"));
+
   const manifest = installConsumer(
     directory,
     {
@@ -24,6 +25,7 @@ export async function verifyJsonRenderConsumer(directory, packed) {
   await writeFile(path.join(directory, "package.json"), JSON.stringify(manifest, null, 2));
   run("npm", ["install", "--no-audit", "--no-fund"], { cwd: directory });
   await mkdir(path.join(directory, "src"));
+
   for (const filename of [
     "auth.ts",
     "catalog.ts",
@@ -36,6 +38,7 @@ export async function verifyJsonRenderConsumer(directory, packed) {
   ]) {
     await copyFile(path.join(example, "src", filename), path.join(directory, "src", filename));
   }
+
   // Compile the real graph and inject generation only at this consumer's test entry point.
   await writeFile(
     path.join(directory, "src/fixture-graph.ts"),

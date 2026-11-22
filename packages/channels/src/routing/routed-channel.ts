@@ -94,9 +94,11 @@ export function composeRoutedChannel(
       const intent = readDestinationIntent(outcome.reply);
       if (!intent) return;
       const destination = destinationSnapshot.get(intent.destination);
+
       if (!destination) {
         throw new Error(`No channel destination named "${intent.destination}" is configured.`);
       }
+
       const delivery = {
         runId: outcome.runId,
         threadId: outcome.threadId,
@@ -119,6 +121,7 @@ function readDestinationIntent(reply: unknown): ChannelDestinationIntent | undef
   ) {
     return undefined;
   }
+
   const parsed = destinationDeclarationSchema.parse(reply)[DESTINATION_MARKER].intent;
   return {
     destination: parsed.destination,
@@ -131,14 +134,18 @@ function snapshotDestinations(
   destinations: ReadonlyMap<string, DestinationCallback>,
 ): ReadonlyMap<string, DestinationCallback> {
   const snapshot = new Map<string, DestinationCallback>();
+
   for (const [name, destination] of destinations) {
     if (name.trim().length === 0)
       throw new SkeinConfigError("A channel destination name cannot be empty.");
+
     if (typeof destination !== "function") {
       throw new SkeinConfigError(`Channel destination "${name}" must be a function.`);
     }
+
     snapshot.set(name, destination);
   }
+
   return snapshot;
 }
 
@@ -146,6 +153,7 @@ function assertSource(source: ChannelSource): void {
   if (typeof source.name !== "string" || source.name.trim().length === 0) {
     throw new SkeinConfigError("A routed channel source must have a non-empty name.");
   }
+
   if (typeof source.verify !== "function" || typeof source.parseEvent !== "function") {
     throw new SkeinConfigError("A routed channel source must implement verify and parseEvent.");
   }
@@ -161,36 +169,44 @@ function snapshotJsonValue(value: unknown, ancestors = new Set<object>()): JsonS
   if (value === null || typeof value === "string" || typeof value === "boolean") {
     return { valid: true, value };
   }
+
   if (typeof value === "number") {
     return Number.isFinite(value) ? { valid: true, value } : { valid: false };
   }
+
   if (typeof value !== "object" || ancestors.has(value)) return { valid: false };
 
   ancestors.add(value);
+
   try {
     if (Object.getOwnPropertySymbols(value).length > 0) return { valid: false };
+
     if (Array.isArray(value)) {
       // `Array#every` skips holes, but JSON serialization turns them into `null`. Reject that silent
       // shape change, along with enumerable properties that are not array elements.
       if (Object.keys(value).length !== value.length) return { valid: false };
       const snapshot: JsonSnapshot[] = [];
+
       for (let index = 0; index < value.length; index += 1) {
         if (!Object.prototype.hasOwnProperty.call(value, index)) return { valid: false };
         const entry = snapshotJsonValue(value[index], ancestors);
         if (!entry.valid) return entry;
         snapshot.push(entry.value);
       }
+
       return { valid: true, value: snapshot };
     }
 
     const prototype = Object.getPrototypeOf(value);
     if (prototype !== Object.prototype && prototype !== null) return { valid: false };
     const entries: Array<[string, JsonSnapshot]> = [];
+
     for (const [key, candidate] of Object.entries(value)) {
       const entry = snapshotJsonValue(candidate, ancestors);
       if (!entry.valid) return entry;
       entries.push([key, entry.value]);
     }
+
     // `Object.fromEntries` defines `__proto__` as data instead of invoking its legacy setter.
     return { valid: true, value: Object.fromEntries(entries) };
   } catch {

@@ -11,8 +11,8 @@ import { PostgresStore } from "@langchain/langgraph-checkpoint-postgres/store";
 import { fromBaseStore, withStoreItems } from "@skein-js/agent-protocol";
 import { MemorySkeinStore } from "@skein-js/storage-memory";
 import {
-  startPostgres,
   runSkeinStoreConformance,
+  startPostgres,
   type StartedResource,
 } from "@skein-js/test-support";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
@@ -40,6 +40,7 @@ const freshStore = async (options?: { maxPageSize?: number }) => {
     const items = await store.search(namespace, { limit: 1000 });
     for (const item of items) await store.delete(item.namespace, item.key);
   }
+
   return withStoreItems(
     new MemorySkeinStore(options),
     fromBaseStore(store, options?.maxPageSize ? { maxPageSize: options.maxPageSize } : {}),

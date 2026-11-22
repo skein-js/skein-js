@@ -23,11 +23,13 @@ async function waitForStatus(
   timeoutMs = 3000,
 ) {
   const start = Date.now();
+
   while (Date.now() - start < timeoutMs) {
     const run = await service.runs.get(runId).catch(() => null);
     if (run?.status === status) return;
     await new Promise((resolve) => setTimeout(resolve, 10));
   }
+
   throw new Error(`timed out waiting for run ${runId} to reach ${status}`);
 }
 
@@ -49,6 +51,7 @@ describe("multitask strategies", () => {
     const handlers = createProtocolHandlers(service);
     const thread = await service.threads.create();
     const activeId = await startActiveRun(service, thread.thread_id);
+
     try {
       for (const name of ["createWaitRun", "createStreamRun", "createBackgroundRun"] as const) {
         await expect(
@@ -62,6 +65,7 @@ describe("multitask strategies", () => {
           }),
         ).rejects.toMatchObject({ status: 422, code: "thread_busy" });
       }
+
       const command = await handlers.postThreadCommands({
         method: "POST",
         url: "http://localhost/",

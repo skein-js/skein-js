@@ -223,6 +223,7 @@ describe("advanceCronOccurrence", () => {
 
   it("never returns a time in the past, however far behind the cron is", () => {
     const now = new Date("2026-08-01T12:00:00.000Z");
+
     const next = advanceCronOccurrence({
       schedule: "* * * * *",
       from: "2020-01-01T00:00:00Z",

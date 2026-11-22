@@ -81,6 +81,7 @@ describe("connectPostgresStore — concurrent boot", () => {
     const pools = Array.from({ length: 12 }, () =>
       createPostgresPool(fresh.url, { poolMax: 2, statementTimeoutMs: 0 }),
     );
+
     try {
       const results = await Promise.allSettled(
         pools.map((pool) =>
@@ -118,6 +119,7 @@ describe("connectPostgresStore — concurrent boot", () => {
     );
 
     expect(boots).toHaveLength(5);
+
     for (const boot of boots) {
       expect(boot.store).toBeTruthy();
       expect(boot.checkpointer).toBeTruthy();

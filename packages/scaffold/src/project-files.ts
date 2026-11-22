@@ -77,6 +77,7 @@ function templateValuesFor(options: ScaffoldOptions): TemplateValues {
  */
 export function buildProjectFiles(options: ScaffoldOptions): readonly GeneratedFile[] {
   const values = templateValuesFor(options);
+
   // `extras` is for the one thing a single shared value map cannot express: the same template
   // rendered twice, differing per output file. Only `.env`/`.env.example` need it — see below.
   const fromTemplate = (

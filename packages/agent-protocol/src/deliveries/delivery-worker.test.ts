@@ -2,8 +2,14 @@
 // test here waits on a timer, so none of them can be flaky for a reason that has nothing to do with
 // delivery.
 
-import type { Delivery, DeliveryCreate, RunStatus } from "@skein-js/core";
-import type { DeliveryQueue, QueuedDelivery, ScheduleDeliveryOptions } from "@skein-js/core";
+import {
+  type Delivery,
+  type DeliveryCreate,
+  type DeliveryQueue,
+  type QueuedDelivery,
+  type RunStatus,
+  type ScheduleDeliveryOptions,
+} from "@skein-js/core";
 import { MemorySkeinStore } from "@skein-js/storage-memory";
 import { describe, expect, it, vi } from "vitest";
 
@@ -16,6 +22,7 @@ const START = new Date("2026-01-01T00:00:00.000Z");
 
 function collectingLogger() {
   const errors: string[] = [];
+
   const logger: Logger = {
     debug: () => {},
     info: () => {},
@@ -28,6 +35,7 @@ function collectingLogger() {
 /** A `DeliveryQueue` that records what it was asked to schedule instead of talking to Redis. */
 function stubQueue() {
   const scheduled: { delivery: QueuedDelivery; options?: ScheduleDeliveryOptions }[] = [];
+
   const queue: DeliveryQueue = {
     schedule: async (delivery, options) => {
       scheduled.push({ delivery, ...(options ? { options } : {}) });
@@ -60,6 +68,7 @@ async function seedDelivery(
 ): Promise<Delivery> {
   const thread = await store.threads.create();
   const run = await store.runs.create({ thread_id: thread.thread_id, assistant_id: "a" });
+
   const { delivery } = await store.runs.finalizeWithDelivery!(run.run_id, {
     status,
     delivery: {
@@ -79,6 +88,7 @@ describe("delivery worker", () => {
     const store = new MemorySkeinStore();
     const delivery = await seedDelivery(store);
     const dispatch = vi.fn<WebhookDispatcher>().mockResolvedValue(undefined);
+
     const worker = createDeliveryWorker({
       store,
       webhookDispatcher: dispatch,
@@ -99,6 +109,7 @@ describe("delivery worker", () => {
       next_attempt_at: new Date(START.getTime() + 60_000).toISOString(),
     });
     const dispatch = vi.fn<WebhookDispatcher>().mockResolvedValue(undefined);
+
     const worker = createDeliveryWorker({
       store,
       webhookDispatcher: dispatch,
@@ -114,6 +125,7 @@ describe("delivery worker", () => {
     const store = new MemorySkeinStore();
     const { clock, advance } = movableClock();
     let attempts = 0;
+
     const dispatch = vi.fn<WebhookDispatcher>().mockImplementation(async () => {
       attempts += 1;
       if (attempts === 1) throw new Error("receiver is down");
@@ -143,12 +155,14 @@ describe("delivery worker", () => {
     // Leased exactly as the engine leases it, then abandoned: the inline attempt claimed the row,
     // started the POST, and the process died before it could record an outcome.
     const lease = deliveryLeaseMs(1, 5_000);
+
     const delivery = await seedDelivery(store, {
       next_attempt_at: new Date(START.getTime() + lease).toISOString(),
     });
     expect((await store.deliveries!.get(delivery.delivery_id))?.status).toBe("delivering");
 
     const dispatch = vi.fn<WebhookDispatcher>().mockResolvedValue(undefined);
+
     const worker = createDeliveryWorker({
       store,
       webhookDispatcher: dispatch,
@@ -169,6 +183,7 @@ describe("delivery worker", () => {
     const store = new MemorySkeinStore();
     await seedDelivery(store);
     const dispatch = vi.fn<WebhookDispatcher>().mockResolvedValue(undefined);
+
     const make = () =>
       createDeliveryWorker({
         store,
@@ -190,6 +205,7 @@ describe("delivery worker", () => {
     const dispatch = vi.fn<WebhookDispatcher>().mockImplementation(async (url: string) => {
       if (url.includes("bad")) throw new Error("down");
     });
+
     const worker = createDeliveryWorker({
       store,
       webhookDispatcher: dispatch,
@@ -208,6 +224,7 @@ describe("delivery worker", () => {
     const store = new MemorySkeinStore();
     for (const _ of [0, 1, 2]) await seedDelivery(store, { next_attempt_at: inPast() });
     const claimDue = vi.spyOn(store.deliveries!, "claimDue");
+
     const worker = createDeliveryWorker(
       {
         store,
@@ -232,6 +249,7 @@ describe("delivery worker", () => {
     const { logger, errors } = collectingLogger();
     const scheduled: string[] = [];
     let calls = 0;
+
     const queue: DeliveryQueue = {
       schedule: async (delivery) => {
         calls += 1;
@@ -241,6 +259,7 @@ describe("delivery worker", () => {
       consume: () => ({ close: async () => {} }),
       durable: true,
     };
+
     const worker = createDeliveryWorker({
       store,
       webhookDispatcher: vi.fn<WebhookDispatcher>().mockResolvedValue(undefined),
@@ -299,6 +318,7 @@ describe("delivery worker", () => {
     // *count* would stretch "every ten minutes" into every ten hours.
     const store = new MemorySkeinStore();
     const { clock, advance } = movableClock();
+
     const worker = createDeliveryWorker({
       store,
       webhookDispatcher: vi.fn<WebhookDispatcher>().mockResolvedValue(undefined),
@@ -306,6 +326,7 @@ describe("delivery worker", () => {
       clock,
       deliveryQueue: stubQueue().queue,
     });
+
     const sweepExpired = vi.spyOn(store.deliveries!, "sweepExpired");
 
     await worker.tickOnce();
@@ -346,6 +367,7 @@ describe("delivery worker", () => {
     const store = new MemorySkeinStore();
     const { queue, scheduled } = stubQueue();
     const seeded = await seedDelivery(store, { next_attempt_at: inPast() });
+
     const worker = createDeliveryWorker({
       store,
       webhookDispatcher: vi.fn<WebhookDispatcher>().mockResolvedValue(undefined),
@@ -370,6 +392,7 @@ describe("delivery worker", () => {
     const { queue, scheduled } = stubQueue();
     const delivery = await seedDelivery(store, { next_attempt_at: inPast() });
     const dispatch = vi.fn<WebhookDispatcher>().mockResolvedValue(undefined);
+
     const worker = createDeliveryWorker({
       store,
       webhookDispatcher: dispatch,
@@ -386,6 +409,7 @@ describe("delivery worker", () => {
 
   it("is a no-op on a store with no deliveries repo", async () => {
     const dispatch = vi.fn<WebhookDispatcher>().mockResolvedValue(undefined);
+
     const worker = createDeliveryWorker({
       store: {},
       webhookDispatcher: dispatch,
@@ -432,6 +456,7 @@ describe("delivery worker", () => {
     await seedDelivery(store);
     let release: (() => void) | undefined;
     let finished = false;
+
     const dispatch = vi.fn<WebhookDispatcher>().mockImplementation(
       () =>
         new Promise<void>((resolve) => {
@@ -441,6 +466,7 @@ describe("delivery worker", () => {
           };
         }),
     );
+
     const worker = createDeliveryWorker(
       {
         store,

@@ -3,7 +3,7 @@ import { resolve } from "node:path";
 
 import { describe, expect, it } from "vitest";
 
-import { RECOMMENDED_NODE_MAJOR, SUPPORTED_NODE_RANGE, resolveNodeVersion } from "./node-policy.js";
+import { RECOMMENDED_NODE_MAJOR, resolveNodeVersion, SUPPORTED_NODE_RANGE } from "./node-policy.js";
 
 describe("Node policy", () => {
   it("matches the reusable CI baseline", () => {

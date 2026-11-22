@@ -15,12 +15,12 @@ import type { IncomingMessage, ServerResponse } from "node:http";
 import { copyThreadIdIntoBody, type ProtocolRequest } from "@skein-js/agent-protocol";
 import {
   applyNodeCors,
+  readNativeNodeRequest,
+  routeMatcherFor,
+  sendNativeResponse,
   sendNodeError,
   sendNodePreflight,
   sendNodeResponse,
-  routeMatcherFor,
-  readNativeNodeRequest,
-  sendNativeResponse,
   stripBasePath,
   type CorsSetting,
   type Logger,
@@ -46,10 +46,12 @@ export type SkeinPagesHandler = (req: SkeinPagesRequest, res: ServerResponse) =>
 
 function toQuery(url: URL): ProtocolRequest["query"] {
   const query: Record<string, string | string[]> = {};
+
   for (const key of new Set(url.searchParams.keys())) {
     const all = url.searchParams.getAll(key);
     query[key] = all.length > 1 ? all : (all[0] as string);
   }
+
   return query;
 }
 
@@ -57,9 +59,11 @@ function toSingleValueHeaders(
   headers: IncomingMessage["headers"],
 ): Record<string, string | undefined> {
   const flattened: Record<string, string | undefined> = {};
+
   for (const [name, value] of Object.entries(headers)) {
     flattened[name] = Array.isArray(value) ? value[0] : value;
   }
+
   return flattened;
 }
 
@@ -67,6 +71,7 @@ function toSingleValueHeaders(
 export function createSkeinPagesHandler(options: SkeinPagesHandlerOptions): SkeinPagesHandler {
   const basePath = options.basePath ?? "/api";
   const optionLogger = options.logger === false ? undefined : options.logger;
+
   // This handler's own option outranks the shared memoized runtime's. See create-route-handlers.ts.
   const loggerFor = (resolved: { logger?: Logger }): Logger | undefined =>
     options.logger === false ? undefined : (optionLogger ?? resolved.logger);
@@ -75,13 +80,16 @@ export function createSkeinPagesHandler(options: SkeinPagesHandlerOptions): Skei
     const host = req.headers.host ?? "localhost";
     // Guard the URL construction: a malformed `Host` header would otherwise throw here.
     let url: URL;
+
     try {
       url = new URL(req.url ?? "/", `http://${host}`);
     } catch {
       res.writeHead(400).end();
       return;
     }
+
     const skeinPathname = stripBasePath(url.pathname, basePath);
+
     if (skeinPathname === null) {
       res.writeHead(404).end();
       return;
@@ -90,12 +98,14 @@ export function createSkeinPagesHandler(options: SkeinPagesHandlerOptions): Skei
     // Resolve the runtime first (memoized) so the effective CORS can fall back to the config's
     // `http.cors`, matching the Express/Fastify adapters.
     let resolved: Awaited<ReturnType<typeof getSkeinRuntime>>;
+
     try {
       resolved = await getSkeinRuntime(options);
     } catch (error) {
       sendNodeError(error, res, optionLogger, "skein Next.js");
       return;
     }
+
     const cors: CorsSetting | false | undefined = options.cors ?? resolved.cors;
 
     if ((req.method ?? "GET").toUpperCase() === "OPTIONS") {
@@ -103,6 +113,7 @@ export function createSkeinPagesHandler(options: SkeinPagesHandlerOptions): Skei
       else res.writeHead(404).end();
       return;
     }
+
     if (cors) applyNodeCors(req.headers, res, cors);
 
     // The resolved table, so a group disabled by `http.disable_*` 404s here instead of being served.
@@ -114,7 +125,9 @@ export function createSkeinPagesHandler(options: SkeinPagesHandlerOptions): Skei
           undefined,
           resolved.runtime.handleRequest,
         );
+
         const response = native ? await resolved.runtime.handleRequest(native) : undefined;
+
         if (response) {
           await sendNativeResponse(response, res);
           return;
@@ -123,7 +136,9 @@ export function createSkeinPagesHandler(options: SkeinPagesHandlerOptions): Skei
         sendNodeError(error, res, loggerFor(resolved), "skein Next.js");
         return;
       }
+
     const match = routeMatcherFor(resolved.routes)(req.method ?? "GET", skeinPathname);
+
     if (!match) {
       res.writeHead(404, { "content-type": "application/json" });
       res.end(JSON.stringify({ status: 404, message: "Not Found" }));
@@ -145,11 +160,14 @@ export function createSkeinPagesHandler(options: SkeinPagesHandlerOptions): Skei
         headers: toSingleValueHeaders(req.headers),
         signal: disconnected.signal,
       };
+
       const invoke = resolved.runtime.handlers[match.binding.handler];
+
       if (!invoke) {
         res.writeHead(404).end();
         return;
       }
+
       const response = await invoke(
         match.binding.foldThreadIdIntoBody ? copyThreadIdIntoBody(request) : request,
       );

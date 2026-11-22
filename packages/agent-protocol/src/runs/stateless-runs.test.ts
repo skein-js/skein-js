@@ -45,10 +45,12 @@ const bodyOf = <T>(response: ProtocolResponse): T => {
 /** Poll until `predicate` holds — the background worker settles a run asynchronously. */
 async function waitFor(predicate: () => Promise<boolean> | boolean, timeoutMs = 2000) {
   const start = Date.now();
+
   while (Date.now() - start < timeoutMs) {
     if (await predicate()) return;
     await new Promise((resolve) => setTimeout(resolve, 10));
   }
+
   throw new Error("timed out waiting for condition");
 }
 
@@ -142,6 +144,7 @@ describe("Content-Location on run creation", () => {
     const stateless = await handlers.createStatelessRun(
       request({ body: { assistant_id: "echo", input: {} } }),
     );
+
     const statelessRun = (stateless as { body: { run_id: string; thread_id: string } }).body;
     expect(stateless.headers?.["content-location"]).toBe(
       `/threads/${statelessRun.thread_id}/runs/${statelessRun.run_id}`,
@@ -159,6 +162,7 @@ describe("Content-Location on run creation", () => {
         body: { assistant_id: "echo", input: {} },
       }),
     );
+
     const backgroundRun = (background as { body: { run_id: string } }).body;
     expect(background.headers?.["content-location"]).toBe(
       `/threads/${thread.thread_id}/runs/${backgroundRun.run_id}`,
@@ -167,6 +171,7 @@ describe("Content-Location on run creation", () => {
 
   it("names the run on a streaming response too", async () => {
     const { handlers } = await harness();
+
     const response = await handlers.createStreamRun(
       request({ body: { assistant_id: "echo", input: { value: "hi" }, stream_mode: "values" } }),
     );
@@ -193,9 +198,11 @@ describe("on_completion", () => {
 
   it("still deletes the thread when its checkpoints cannot be deleted", async () => {
     const deps = createFixtureDeps();
+
     deps.checkpointer.deleteThread = async () => {
       throw new Error("checkpointer unavailable");
     };
+
     const { service } = await harness(deps);
 
     const { threadId } = await service.runs.createWait({
@@ -338,6 +345,7 @@ describe("POST /runs/cancel (cancelMany)", () => {
     // see other principals' runs by design), so it must never reach a client.
     const deps = createFixtureDeps({ store: new MemorySkeinStore({ maxPageSize: 2 }) });
     const { service, handlers } = await harness(deps);
+
     for (let index = 0; index < 3; index += 1) {
       const thread = await service.threads.create();
       await service.runs.createBackground(thread.thread_id, { assistant_id: "echo" });
@@ -358,6 +366,7 @@ describe("POST /runs/cancel (cancelMany)", () => {
     const { deps, service, handlers } = await harness();
     const thread = await service.threads.create();
     const pending = await service.runs.createBackground(thread.thread_id, { assistant_id: "echo" });
+
     const running = await deps.store.runs.create({
       thread_id: thread.thread_id,
       assistant_id: "echo",
@@ -409,6 +418,7 @@ describe("cancel ?action / ?wait", () => {
       assistant_id: "echo",
       status: "running",
     });
+
     const base =
       (await service.threads.history(thread.thread_id))[0]?.checkpoint.checkpoint_id ?? undefined;
     ctx.runBaseCheckpoints.set(running.run_id, base);
@@ -431,6 +441,7 @@ describe("cancel ?action / ?wait", () => {
       input: { value: "one" },
     });
     const baseline = (await service.threads.history(thread.thread_id)).length;
+
     const running = await deps.store.runs.create({
       thread_id: thread.thread_id,
       assistant_id: "echo",
@@ -447,6 +458,7 @@ describe("cancel ?action / ?wait", () => {
   it("returns only once an executing run's engine has unwound when wait=1", async () => {
     const { ctx, deps, service, handlers } = await harness();
     const thread = await service.threads.create();
+
     // `slow` blocks until aborted, so the run is genuinely mid-execution when the cancel lands.
     const { runId, frames } = await service.runs.createStream({
       thread_id: thread.thread_id,

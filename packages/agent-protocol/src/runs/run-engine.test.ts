@@ -14,16 +14,20 @@ async function seed(
   input: unknown = { value: "hi" },
 ) {
   const resolved = resolveDeps(deps);
+
   const assistant = await resolved.store.assistants.create({
     graph_id: graphId,
     assistant_id: graphId,
   });
+
   const thread = await resolved.store.threads.create();
+
   const run: Run = await resolved.store.runs.create({
     thread_id: thread.thread_id,
     assistant_id: assistant.assistant_id,
     status: "pending",
   });
+
   const kwargs = { input, stream_mode: "values" as const };
   return { deps: resolved, run, threadId: thread.thread_id, kwargs };
 }
@@ -112,6 +116,7 @@ describe("executeRun", () => {
       { ...createFixtureDeps(), exposeErrorStacks: true },
       "throwing-with-cause",
     );
+
     const shownFrames = collect(shown.deps.bus.subscribe(shown.run.run_id, 0));
     await executeRun(shown.deps, {
       run: shown.run,
@@ -138,6 +143,7 @@ describe("executeRun", () => {
 
     // A later healthy run on the same thread must not keep reporting the old failure.
     const echo = await failed.deps.store.assistants.create({ graph_id: "echo", assistant_id: "e" });
+
     const next = await failed.deps.store.runs.create({
       thread_id: failed.threadId,
       assistant_id: echo.assistant_id,
@@ -183,6 +189,7 @@ describe("executeRun", () => {
     const { deps, run, kwargs } = await seed(createFixtureDeps(), "store", {
       value: "remember me",
     });
+
     const control = new RunControlRegistry().register(run.run_id);
 
     const outcome = await executeRun(deps, { run, kwargs, control });
@@ -199,6 +206,7 @@ describe("executeRun", () => {
     const { deps, run, kwargs } = await seed(createFixtureDeps(), "config-store", {
       value: "remember me",
     });
+
     const control = new RunControlRegistry().register(run.run_id);
 
     const outcome = await executeRun(deps, { run, kwargs, control });

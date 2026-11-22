@@ -39,13 +39,16 @@ export function draftMeeting(notes: string): Pick<MeetingRecap, "actions" | "dec
     };
   const actions: MeetingAction[] = [];
   const decisions: string[] = [];
+
   for (const line of notes.split(/\r?\n/)) {
     const trimmed = line.trim();
     const decision = /^Decision:\s*(.+)$/i.exec(trimmed);
+
     if (decision) {
       decisions.push(decision[1]!);
       continue;
     }
+
     const action = /^[-*]\s+(?:\[ \]\s*)?([^:|]+):\s*([^|]+)(?:\|\s*(.+))?$/.exec(trimmed);
     if (action)
       actions.push({
@@ -54,6 +57,7 @@ export function draftMeeting(notes: string): Pick<MeetingRecap, "actions" | "dec
         due: action[3]?.trim() ?? "Not set",
       });
   }
+
   return { actions, decisions };
 }
 

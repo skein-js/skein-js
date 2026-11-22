@@ -11,6 +11,7 @@ describe("weatherFor", () => {
     const weather = weatherFor("Tokyo");
     expect(weather.location).toBe("Tokyo");
     expect(weather.forecast).toHaveLength(5);
+
     for (const day of weather.forecast) {
       expect(day.highC).toBeGreaterThanOrEqual(day.lowC);
       expect(["sunny", "cloudy", "rainy", "snowy", "windy"]).toContain(day.condition);

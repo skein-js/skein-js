@@ -1,6 +1,6 @@
 import {
-  Bot,
   BookOpen,
+  Bot,
   Clock,
   Database,
   LayoutDashboard,
@@ -27,7 +27,7 @@ import { OverviewView } from "@/views/overview";
 import { RunsView } from "@/views/runs";
 import { StoreView } from "@/views/store";
 import { ThreadsView } from "@/views/threads";
-import { WorkspaceProvider, WorkspaceStorageNotice, useWorkspaceStore } from "@/workspace/provider";
+import { useWorkspaceStore, WorkspaceProvider, WorkspaceStorageNotice } from "@/workspace/provider";
 
 const NAV = [
   {
@@ -111,6 +111,7 @@ function ConsoleShell() {
   const resourcePath = segments.join("/");
   useEffect(() => {
     const row = workspace?.getState().returnRow;
+
     const target =
       section === "threads" && segments.length === 1 && row
         ? document.getElementById(`thread-${row}`)
@@ -237,6 +238,7 @@ function ConsoleShell() {
 function Body({ segments, query }: { segments: readonly string[]; query: URLSearchParams }) {
   // `threads/:threadId/runs/:runId` is the deepest route; everything else is one or two segments.
   const [section, id, nested, nestedId] = segments;
+
   switch (section) {
     // `undefined` only shows for the instant before the redirect above lands.
     case undefined:

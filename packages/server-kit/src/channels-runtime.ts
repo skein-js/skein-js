@@ -7,20 +7,20 @@
 // exists, which is the goal it was designed against. A static import here would drag the package into
 // every skein server on npm.
 
-import type {
-  ProtocolDeps,
-  ProtocolContext,
-  ProtocolHandlerExtras,
-  ProtocolRequest,
-  ProtocolResponse,
-  ProtocolService,
-  RouteBinding,
-  RouteAuthz,
-  WebhookDispatcher,
+import {
+  createAuthScopedStore,
+  createProtocolServiceFromContext,
+  type ProtocolContext,
+  type ProtocolDeps,
+  type ProtocolHandlerExtras,
+  type ProtocolRequest,
+  type ProtocolResponse,
+  type ProtocolService,
+  type RouteAuthz,
+  type RouteBinding,
+  type WebhookDispatcher,
 } from "@skein-js/agent-protocol";
-import { createAuthScopedStore, createProtocolServiceFromContext } from "@skein-js/agent-protocol";
-import { SkeinConfigError } from "@skein-js/config";
-import type { LoadedChannel } from "@skein-js/config";
+import { SkeinConfigError, type LoadedChannel } from "@skein-js/config";
 import {
   SkeinHttpError,
   type AdmissionKey,
@@ -71,6 +71,7 @@ export async function resolveChannels(
   if (names.length === 0) return undefined;
 
   const channels = await importChannelsPackage(names);
+
   const registry = channels.buildChannelRegistry({
     channels: Object.fromEntries(
       Object.entries(input.channels).map(([name, loaded]) => [
@@ -194,6 +195,7 @@ function buildPipelineDeps(context: ProtocolContext, allowedAssistants: readonly
             claim: async (input: Parameters<typeof deps.store.idempotency.claim>[0]) => {
               const authorizeRecorded = async (record: { run_id?: string; thread_id?: string }) => {
                 const run = record.run_id ? await deps.store.runs.get(record.run_id) : null;
+
                 if (run) {
                   const assistant = await deps.store.assistants.get(run.assistant_id);
                   if (
@@ -205,8 +207,10 @@ function buildPipelineDeps(context: ProtocolContext, allowedAssistants: readonly
                       { code: "assistant_not_allowed" },
                     );
                 }
+
                 if (!deps.auth) return;
                 const threadId = run?.thread_id ?? record.thread_id;
+
                 const decision = await deps.auth.authorize({
                   resource: "threads",
                   action: "create_run",
@@ -216,6 +220,7 @@ function buildPipelineDeps(context: ProtocolContext, allowedAssistants: readonly
                     ...(run ? { run_id: run.run_id, assistant_id: run.assistant_id } : {}),
                   },
                 });
+
                 const store = decision.filters
                   ? createAuthScopedStore(deps.store, deps.auth, decision.filters, "threads")
                   : deps.store;
@@ -224,10 +229,12 @@ function buildPipelineDeps(context: ProtocolContext, allowedAssistants: readonly
                 if (record.run_id && !(await store.runs.get(record.run_id)))
                   throw SkeinHttpError.notFound("Run not found.");
               };
+
               // A committed acceptance remains recoverable when the provider response was never recorded.
               const accepted = deps.store.admission
                 ? await deps.store.idempotency.get(`admission ${input.scope}`, input.key)
                 : null;
+
               if (
                 accepted &&
                 accepted.expires_at > input.now &&
@@ -244,6 +251,7 @@ function buildPipelineDeps(context: ProtocolContext, allowedAssistants: readonly
                   },
                 };
               }
+
               const result = await deps.store.idempotency.claim(input);
               if (!result.claimed && result.record.status === "done")
                 await authorizeRecorded(result.record);

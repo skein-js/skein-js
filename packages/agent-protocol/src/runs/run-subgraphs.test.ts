@@ -4,7 +4,7 @@
 // real parent graph that runs a compiled child graph as a node, which is how LangGraph nests subgraphs
 // (Deep Agents' subagents arrive the same way, from inside a tool).
 
-import { Annotation, type CompiledGraph, interrupt, StateGraph } from "@langchain/langgraph";
+import { Annotation, interrupt, StateGraph, type CompiledGraph } from "@langchain/langgraph";
 import type { Run, RunFrame, RunKwargs } from "@skein-js/core";
 import { describe, expect, it } from "vitest";
 
@@ -68,6 +68,7 @@ async function harness() {
     "parent-silent": fixtureLangGraphAgent(buildParentGraph(false)),
     "parent-pausing": fixtureLangGraphAgent(buildParentGraph(true, true)),
   };
+
   const resolver = {
     ...createFixtureResolver(),
     ids: Object.keys(graphs),
@@ -75,6 +76,7 @@ async function harness() {
     schemas: async (graphId: string): Promise<GraphSchemas> =>
       ({ [graphId]: { graph_id: graphId } }) as unknown as GraphSchemas,
   };
+
   const deps = createFixtureDeps({ graphs: resolver });
   const service = createProtocolServiceFromContext(createContext(deps));
   await service.assistants.registerGraphAssistants();
@@ -85,6 +87,7 @@ const eventNames = (frames: RunFrame[]): string[] =>
   frames.map((frame) =>
     frame.namespace?.length ? `${frame.event}|${frame.namespace.join("|")}` : frame.event,
   );
+
 const namespaced = (frames: RunFrame[]): RunFrame[] =>
   frames.filter((frame) => (frame.namespace?.length ?? 0) > 0);
 
@@ -92,6 +95,7 @@ describe("stream_subgraphs", () => {
   it("keeps subgraph streaming through thread streams and interrupted commands", async () => {
     const { service } = await harness();
     const thread = await service.threads.create();
+
     const paused = await service.threadStream.stream(thread.thread_id, {
       assistant_id: "parent-pausing",
       input: { value: "hi" },
@@ -105,6 +109,7 @@ describe("stream_subgraphs", () => {
       stream_mode: ["updates", "custom"],
       stream_subgraphs: true,
     });
+
     const frames = await collect(resumed.frames);
     expect(frames.some((frame) => frame.namespace?.[0]?.startsWith("delegate:"))).toBe(true);
     expect((await service.threads.get(thread.thread_id)).status).toBe("idle");
@@ -121,6 +126,7 @@ describe("stream_subgraphs", () => {
       stream_mode: ["updates", "custom"],
       stream_subgraphs: true,
     });
+
     const frames = await collect(started.frames);
 
     // The child's own node update and custom write, named after the parent node it ran in.
@@ -153,6 +159,7 @@ describe("stream_subgraphs", () => {
   it("replays namespaced frames unchanged to a client that joins the run", async () => {
     const { service } = await harness();
     const thread = await service.threads.create();
+
     const started = await service.runs.createStream({
       thread_id: thread.thread_id,
       assistant_id: "parent",
@@ -160,6 +167,7 @@ describe("stream_subgraphs", () => {
       stream_mode: ["updates", "custom"],
       stream_subgraphs: true,
     });
+
     const live = await collect(started.frames);
 
     const replayed = await collect(await service.runs.join(started.runId, 0));
@@ -181,6 +189,7 @@ describe("stream_subgraphs", () => {
       stream_mode: ["events", "custom"],
       stream_subgraphs: true,
     });
+
     const frames = await collect(started.frames);
 
     expect(eventNames(frames)).toEqual(
@@ -199,16 +208,19 @@ describe("stream_subgraphs", () => {
 
       async function replyOf(assistantId: string, subgraphs?: boolean) {
         const thread = await resolved.store.threads.create();
+
         const run: Run = await resolved.store.runs.create({
           thread_id: thread.thread_id,
           assistant_id: assistantId,
           status: "pending",
         });
+
         const kwargs: RunKwargs = {
           input: { value: "hi" },
           stream_mode: [...streamMode],
           ...(subgraphs !== undefined ? { stream_subgraphs: subgraphs } : {}),
         };
+
         const control = new RunControlRegistry().register(run.run_id);
         return (await executeRun(resolved, { run, kwargs, control })).reply;
       }

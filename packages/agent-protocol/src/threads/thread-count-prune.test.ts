@@ -102,6 +102,7 @@ describe("POST /threads/prune", () => {
   it("keep_latest trims the history but keeps the thread and its current state", async () => {
     const { deps, service, handlers } = await harness();
     const thread = await service.threads.create();
+
     for (const value of ["one", "two", "three"]) {
       await service.runs.createWait({
         thread_id: thread.thread_id,
@@ -109,6 +110,7 @@ describe("POST /threads/prune", () => {
         input: { value },
       });
     }
+
     const before = await service.threads.history(thread.thread_id);
     expect(before.length).toBeGreaterThan(1);
     const tip = before[0];
@@ -153,6 +155,7 @@ describe("POST /threads/prune", () => {
     const { deps, service, handlers } = await harness();
     const busy = await service.threads.create();
     const prunable = await service.threads.create();
+
     for (const value of ["one", "two", "three"]) {
       await service.runs.createWait({
         thread_id: prunable.thread_id,
@@ -160,6 +163,7 @@ describe("POST /threads/prune", () => {
         input: { value },
       });
     }
+
     await service.runs.createBackground(busy.thread_id, { assistant_id: "echo" });
 
     const response = await handlers.pruneThreads(

@@ -86,6 +86,7 @@ export function graphMapToResolver(graphs: Record<string, EmbeddableGraph>): Gra
     ids,
     load: async (graphId) => {
       const graph = graphs[graphId];
+
       if (graph == null) {
         const known = ids.join(", ") || "none";
         // Distinguish a genuinely-unknown id from a known key whose value is nullish (e.g. a lazy
@@ -97,6 +98,7 @@ export function graphMapToResolver(graphs: Record<string, EmbeddableGraph>): Gra
             : `Unknown graph "${graphId}" (known: ${known}).`,
         );
       }
+
       // Widen the open generics to the engine's `CompiledGraph<string>` / `CompiledGraphFactory`.
       return graph as ResolvedGraph;
     },

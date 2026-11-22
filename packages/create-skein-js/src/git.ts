@@ -25,11 +25,13 @@ export function isInsideGitWorkTree(directory: string): boolean {
  */
 function nearestExistingDirectory(directory: string): string {
   let current = path.resolve(directory);
+
   while (!existsSync(current)) {
     const parent = path.dirname(current);
     if (parent === current) return current; // filesystem root; give up rather than loop
     current = parent;
   }
+
   return current;
 }
 
@@ -67,6 +69,7 @@ export function initializeGitRepository(
   if (options.allowNested !== true && isInsideGitWorkTree(projectDirectory)) {
     return "skipped-existing-repo";
   }
+
   if (!git(projectDirectory, "init", "-b", "main")) return "failed";
   if (!git(projectDirectory, "add", "-A")) return "failed";
   return git(projectDirectory, "commit", "-m", "chore: scaffold skein-js project")

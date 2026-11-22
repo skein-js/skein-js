@@ -70,6 +70,7 @@ export function writeWithBackpressure(
       res.off("error", settle);
       resolve();
     };
+
     res.once("drain", settle);
     res.once("close", settle);
     res.once("error", settle);

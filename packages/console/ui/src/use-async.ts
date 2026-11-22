@@ -35,11 +35,13 @@ export function useAsync<T>(
     loading: boolean;
     fetchedAt?: number;
   }>({ loading: true });
+
   const previousDependencies = useRef<readonly unknown[] | undefined>(undefined);
   const [reloadToken, setReloadToken] = useState(0);
 
   useEffect(() => {
     const controller = new AbortController();
+
     const changed =
       previousDependencies.current === undefined ||
       deps.some(

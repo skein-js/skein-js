@@ -9,7 +9,6 @@
 // `if_exists`, the `delete_threads` cascade, and compiling a graph for introspection.
 
 import {
-  type AuthFilters,
   isSkeinHttpError,
   SkeinHttpError,
   type Assistant,
@@ -19,6 +18,7 @@ import {
   type AssistantUpdate,
   type AssistantVersion,
   type AssistantVersionsQuery,
+  type AuthFilters,
   type Thread,
 } from "@skein-js/core";
 
@@ -118,6 +118,7 @@ export function createAssistantService(
     // being applied to every matching thread afterwards.
     const engine = deps.auth;
     let ownership: AuthFilters | undefined;
+
     if (engine?.enabled && ctx.authUser) {
       try {
         ({ filters: ownership } = await engine.authorize({
@@ -130,6 +131,7 @@ export function createAssistantService(
         return []; // caller not permitted to delete threads → cascade none
       }
     }
+
     const enforcedMetadata = authFiltersToMetadataSubset(ownership);
 
     // Every matching thread, not a page of them: this chooses what to delete. Stopping at the page
@@ -151,6 +153,7 @@ export function createAssistantService(
           }
         : {}),
     });
+
     // Beyond any realistic assistant, but say so rather than reporting a partial cascade as complete:
     // the assistant row is deleted afterwards, so whatever is left behind can't be cleaned up here.
     if (truncated) {
@@ -159,6 +162,7 @@ export function createAssistantService(
           `${owned.length} will be deleted and the rest left behind. Delete them via /threads.`,
       );
     }
+
     return owned;
   };
 
@@ -190,14 +194,17 @@ export function createAssistantService(
   return {
     async registerGraphAssistants() {
       const registered: Assistant[] = [];
+
       for (const graphId of deps.graphs.ids) {
         // assistant_id === graph_id, seeded once. get-before-create keeps it idempotent; if a
         // concurrent boot wins the race, create throws 409 and we fall back to the row it wrote.
         const existing = await deps.store.assistants.get(graphId);
+
         if (existing) {
           registered.push(existing);
           continue;
         }
+
         try {
           registered.push(
             await deps.store.assistants.create({ graph_id: graphId, assistant_id: graphId }),
@@ -205,14 +212,17 @@ export function createAssistantService(
         } catch (error) {
           if (isSkeinHttpError(error) && error.status === 409) {
             const now = await deps.store.assistants.get(graphId);
+
             if (now) {
               registered.push(now);
               continue;
             }
           }
+
           throw error;
         }
       }
+
       return registered;
     },
 
@@ -231,6 +241,7 @@ export function createAssistantService(
 
     async create({ ifExists, ...input }) {
       requireGraph(input.graph_id);
+
       // Atomic if_exists: let the store enforce uniqueness (it throws 409 on a duplicate id) rather
       // than a racy get-then-create. do_nothing recovers the existing row; raise re-throws the 409.
       try {
@@ -245,6 +256,7 @@ export function createAssistantService(
           const existing = await deps.store.assistants.get(input.assistant_id);
           if (existing) return existing;
         }
+
         throw error;
       }
     },
@@ -256,6 +268,7 @@ export function createAssistantService(
 
     async delete(assistantId, options) {
       await requireAssistant(assistantId);
+
       if (options?.deleteThreads) {
         // Threads carry their most-recent run's `assistant_id` in metadata (stamped by the run
         // service), so the store's subset-match search finds them. Delete each via the thread service
@@ -264,6 +277,7 @@ export function createAssistantService(
         const owned = await deletableThreads(assistantId);
         await Promise.all(owned.map((thread) => threads.delete(thread.thread_id)));
       }
+
       await deps.store.assistants.delete(assistantId);
     },
 
@@ -279,6 +293,7 @@ export function createAssistantService(
     async drawGraph(assistantId, options) {
       const assistant = await requireAssistant(assistantId);
       const graph = requireAgentCapability(await compileGraph(assistant), "getGraphAsync");
+
       const drawable = await graph.getGraphAsync({
         ...(assistant.config ?? {}),
         xray: options?.xray,
@@ -295,6 +310,7 @@ export function createAssistantService(
       // subgraphs is what tells us which namespaces exist (and honors namespace/recurse filters).
       const rootGraphId = Object.keys(schemas).find((key) => !key.includes("|"));
       const result: GraphSchemas = {};
+
       for await (const [namespace] of graph.getSubgraphsAsync(
         options?.namespace,
         options?.recurse,
@@ -304,6 +320,7 @@ export function createAssistantService(
           (rootGraphId !== undefined ? schemas[rootGraphId] : undefined);
         if (schema !== undefined) result[namespace] = schema;
       }
+
       return result;
     },
   };

@@ -42,9 +42,11 @@ export type ResolvedGraph = CompiledGraph<string> | CompiledGraphFactory;
  */
 export function parseGraphSpec(spec: string, baseDir: string): GraphSpec {
   const [userFile, exportSymbol] = spec.split(":", 2);
+
   if (!userFile) {
     throw new SkeinConfigError(`Invalid graph spec "${spec}" — expected "path:export".`);
   }
+
   return {
     sourceFile: path.resolve(baseDir, userFile),
     exportSymbol: exportSymbol || "default",
@@ -81,10 +83,13 @@ function afterResolve(graphLike: unknown): CompiledGraph<string> {
   const graph = isUncompiledBuilder(graphLike)
     ? graphLike.compile()
     : (graphLike as CompiledGraph<string>);
+
   const inner = (graph as { graph?: unknown }).graph;
+
   if (inner != null && typeof inner === "object" && isCompiledGraphLike(inner)) {
     return inner as CompiledGraph<string>;
   }
+
   return graph;
 }
 
@@ -99,6 +104,7 @@ export async function loadGraph(
   importModule: ModuleImporter = nativeImport,
 ): Promise<ResolvedGraph> {
   let module: Record<string, unknown>;
+
   try {
     module = await importModule(spec.sourceFile);
   } catch (cause) {
@@ -107,6 +113,7 @@ export async function loadGraph(
 
   const exportSymbol = spec.exportSymbol || "default";
   const exported = module[exportSymbol];
+
   // `== null` catches both a missing export and an explicit `null`/`undefined` one.
   if (exported == null) {
     throw new SkeinConfigError(`Module "${spec.sourceFile}" has no export "${exportSymbol}".`);
@@ -116,5 +123,6 @@ export async function loadGraph(
     const factory = exported as CompiledGraphFactory;
     return async (config) => afterResolve(await factory(config));
   }
+
   return afterResolve(exported);
 }

@@ -8,7 +8,7 @@ export { SkeinModule } from "./skein.module.js";
 // The middleware, for callers wiring their own module.
 export { SkeinMiddleware } from "./skein.middleware.js";
 // DI tokens (the resolved runtime is exported from the module for advanced use).
-export { SKEIN_RUNTIME, SKEIN_LOGGER, SKEIN_CORS, SKEIN_INVOKE } from "./tokens.js";
+export { SKEIN_CORS, SKEIN_INVOKE, SKEIN_LOGGER, SKEIN_RUNTIME } from "./tokens.js";
 
 // The simplified serving surface: every graph as a plain `POST /invoke/:graph_id` endpoint, for
 // non-chat workloads. See docs/serving-a-single-graph.md.
@@ -33,7 +33,7 @@ export type { Logger } from "@skein-js/server-kit";
 // Low-level mappers, for callers composing their own routing. The Node response serializers are
 // shared and re-exported from @skein-js/server-kit for convenience.
 export { toProtocolRequest } from "./to-protocol-request.js";
-export { sendNodeResponse, sendNodeError } from "@skein-js/server-kit";
+export { sendNodeError, sendNodeResponse } from "@skein-js/server-kit";
 
 // Runtime-resolution option shape (shared across skein adapters).
-export type { SkeinRuntimeOptions, RunWorkerOptions } from "@skein-js/server-kit";
+export type { RunWorkerOptions, SkeinRuntimeOptions } from "@skein-js/server-kit";

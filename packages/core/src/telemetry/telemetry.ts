@@ -169,8 +169,10 @@ function guard(
       // A reporter that throws would defeat the whole point of this guard.
     }
   };
+
   try {
     const returned = body();
+
     // Duck-typed rather than `instanceof Promise`, so a thenable from another realm is caught too.
     if (typeof (returned as { then?: unknown } | undefined)?.then === "function") {
       void (returned as Promise<unknown>).then(undefined, fail);
@@ -199,6 +201,7 @@ export function combineTelemetrySinks(
   report?: TelemetrySinkErrorReporter,
 ): TelemetrySink {
   const active = sinks.filter((sink): sink is TelemetrySink => sink != null);
+
   const name =
     active.length === 1 ? (active[0]?.name ?? "none") : `[${active.map((s) => s.name).join(", ")}]`;
 
@@ -207,12 +210,14 @@ export function combineTelemetrySinks(
     context: RunTelemetryContext,
   ): T[] => {
     const merged: T[] = [];
+
     for (const sink of active) {
       guard(sink.name, report, () => {
         const produce = method(sink);
         if (produce) merged.push(...produce.call(sink, context));
       });
     }
+
     return merged;
   };
 
@@ -258,9 +263,11 @@ export function combineTelemetrySinks(
     traceTags: (context) => collect((sink) => sink.traceTags, context),
     traceMetadata(context) {
       const merged: Record<string, unknown> = {};
+
       for (const sink of active) {
         guard(sink.name, report, () => Object.assign(merged, sink.traceMetadata?.(context)));
       }
+
       return merged;
     },
     // Omitted entirely when nothing implements it, so `withRunTelemetryContext` can take its fast path.
@@ -273,29 +280,35 @@ export function combineTelemetrySinks(
             body: () => Promise<T>,
           ): Promise<T> {
             let wrapped = body;
+
             for (const sink of [...active].reverse()) {
               if (!sink.withRunContext) continue;
               const inner = wrapped;
+
               wrapped = async () => {
                 // Guarded like every other method here: a sink may not perturb the run it observes.
                 // `guard()` can't be reused because this one has to return the body's value.
                 let started: Promise<T> | undefined;
                 const runBody = () => (started ??= inner());
+
                 try {
                   return await sink.withRunContext!(context, runBody);
                 } catch (error) {
                   // The body ran: its outcome IS the run's outcome, including a genuine graph failure.
                   // Only a sink that broke *before* running it gets reported and bypassed.
                   if (started) return started;
+
                   try {
                     report?.(error, sink.name);
                   } catch {
                     // A reporter that throws would defeat the point of the guard.
                   }
+
                   return runBody();
                 }
               };
             }
+
             return wrapped();
           },
         }

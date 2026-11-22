@@ -4,11 +4,12 @@ import { describe, expect, it, vi } from "vitest";
 
 import {
   createSkeinFetchServer,
-  toFetchResponse,
   DEFAULT_MAX_BODY_BYTES,
+  toFetchResponse,
 } from "./skein-fetch-server.js";
 
 const State = Annotation.Root({ value: Annotation<string>() });
+
 const graph = new StateGraph(State)
   .addNode("echo", (state) => ({ value: `echo: ${state.value ?? ""}` }))
   .addEdge("__start__", "echo")
@@ -35,6 +36,7 @@ describe("toFetchResponse", () => {
   it("pulls SSE frames on demand and cancels the source on disconnect", async () => {
     let requestedFrames = 0;
     const released = vi.fn();
+
     async function* frames(): AsyncGenerator<string> {
       try {
         for (;;) {
@@ -84,6 +86,7 @@ describe("request body bound", () => {
       deps: embedInMemoryGraphs({ echo: graph }),
       maxBodyBytes: 64,
     });
+
     try {
       const declared = await server.fetch(
         new Request("http://localhost/threads", {
@@ -97,6 +100,7 @@ describe("request body bound", () => {
       // No content-length: the count has to come from the stream, or the bound is bypassable by
       // simply not declaring a length.
       let pushed = 0;
+
       const chunked = await server.fetch(
         new Request("http://localhost/threads", {
           method: "POST",
@@ -137,6 +141,7 @@ describe("request body bound", () => {
 describe("createSkeinFetchServer", () => {
   it("dispatches a real protocol request through the Fetch boundary", async () => {
     const server = await createSkeinFetchServer({ deps: embedInMemoryGraphs({ echo: graph }) });
+
     try {
       const response = await server.fetch(
         new Request("http://localhost/threads", {
@@ -157,6 +162,7 @@ describe("createSkeinFetchServer", () => {
 it("completes terminal stream joins with a fresh completion marker and buffered replay", async () => {
   const deps = embedInMemoryGraphs({ echo: graph });
   const thread = await deps.store.threads.create();
+
   const run = await deps.store.runs.create({
     thread_id: thread.thread_id,
     assistant_id: "echo",
@@ -164,6 +170,7 @@ it("completes terminal stream joins with a fresh completion marker and buffered 
   });
   await deps.bus.publish(run.run_id, { seq: 1, event: "values", data: { retained: true } });
   const server = await createSkeinFetchServer({ deps });
+
   try {
     const response = await server.fetch(
       new Request(`http://localhost/threads/${thread.thread_id}/runs/${run.run_id}/stream`, {
@@ -194,6 +201,7 @@ it("dispatches native Fetch applications before protocol routing without consumi
     },
   );
   const server = await createSkeinFetchServer({ deps });
+
   try {
     const custom = await server.fetch(new Request("http://localhost/info"));
     expect(custom.status).toBe(201);
@@ -230,6 +238,7 @@ it("keeps protocol JSON readable after native authentication inspects its body",
   );
   deps.httpHandler = async () => undefined;
   const server = await createSkeinFetchServer({ deps });
+
   try {
     const thread = await server.fetch(
       new Request("http://localhost/threads", {
@@ -247,6 +256,7 @@ it("keeps protocol JSON readable after native authentication inspects its body",
 
 it("projects retention and validates execution timeout through Fetch", async () => {
   const server = await createSkeinFetchServer({ deps: embedInMemoryGraphs({ echo: graph }) });
+
   const request = (path: string, method: string, body?: unknown) =>
     server.fetch(
       new Request(`http://localhost${path}`, {
@@ -255,6 +265,7 @@ it("projects retention and validates execution timeout through Fetch", async () 
         ...(body === undefined ? {} : { body: JSON.stringify(body) }),
       }),
     );
+
   try {
     const thread = await (await request("/threads", "POST", { ttl: 30 })).json();
     expect(thread).toMatchObject({ ttl: 30, expires_at: expect.any(String) });

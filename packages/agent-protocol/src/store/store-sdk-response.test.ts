@@ -38,6 +38,7 @@ beforeAll(async () => {
 
   overrideFetchImplementation(async (input: unknown, init?: RequestInit) => {
     const url = new URL(String(input));
+
     const route = STORE_ROUTES.find(
       ([method, path]) => method === (init?.method ?? "GET") && path === url.pathname,
     );

@@ -1,4 +1,4 @@
-import { Annotation, StateGraph, interrupt } from "@langchain/langgraph";
+import { Annotation, interrupt, StateGraph } from "@langchain/langgraph";
 
 export function approvalGraph(onExecute = () => {}) {
   const state = Annotation.Root({ answer: Annotation() });

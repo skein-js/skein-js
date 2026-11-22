@@ -47,10 +47,12 @@ describe("idempotency sweeper", () => {
     // The reschedule is in a `finally` and the catch never rethrows, so one bad tick must not end
     // sweeping for the life of the process.
     const store = new MemorySkeinStore();
+
     const sweepExpired = vi
       .fn<() => Promise<number>>()
       .mockRejectedValueOnce(new Error("connection reset"))
       .mockResolvedValue(3);
+
     const sweeper = createIdempotencySweeper({
       store: { idempotency: { ...store.idempotency, sweepExpired } },
       logger: silentLogger,
@@ -63,6 +65,7 @@ describe("idempotency sweeper", () => {
   it("stop() waits out a sweep already in flight", async () => {
     let settled = false;
     const store = new MemorySkeinStore();
+
     const sweeper = createIdempotencySweeper(
       {
         store: {

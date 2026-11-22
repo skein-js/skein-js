@@ -245,6 +245,7 @@ describe("createOtelTelemetry", () => {
       active: () => ({ root: true }),
       with: (_context, body) => {
         active = true;
+
         try {
           return body();
         } finally {

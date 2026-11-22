@@ -34,11 +34,13 @@ export function isInterruptedSnapshot(snapshot: AgentStateSnapshot): boolean {
  */
 export function collectInterrupts(snapshot: AgentStateSnapshot): Record<string, Interrupt[]> {
   const byTask: Record<string, Interrupt[]> = {};
+
   for (const task of snapshot.tasks) {
     if (task.interrupts && task.interrupts.length > 0) {
       byTask[task.id] = [...task.interrupts];
     }
   }
+
   return byTask;
 }
 
@@ -85,6 +87,7 @@ export function toCheckpoint(config: AgentStateSnapshot["config"] | undefined): 
 function toTaskError(error: unknown): string | null {
   if (error === undefined || error === null) return null;
   if (typeof error === "string") return error;
+
   try {
     return JSON.stringify(error) ?? String(error);
   } catch {

@@ -48,6 +48,7 @@ export const whatsappSource = {
   },
   parseEvent(request) {
     const message = whatsappEventSchema.parse(request.json());
+
     if (message.kind === "approval") {
       const actor = principalForWhatsAppNumber(message.from);
       return {
@@ -69,6 +70,7 @@ export const whatsappSource = {
         },
       };
     }
+
     return {
       kind: "event",
       event: {

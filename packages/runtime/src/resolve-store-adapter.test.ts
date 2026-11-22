@@ -69,6 +69,7 @@ describe("resolveStoreAdapter", () => {
 
   it("wraps an import failure, keeping the underlying cause", async () => {
     const boom = new Error("bad import");
+
     const failing: ModuleImporter = async () => {
       throw boom;
     };

@@ -100,7 +100,9 @@ describe("a configured channel", () => {
       },
       `${echoChannel.replace("parseEvent:", "deliver: async () => {},\n  parseEvent:")}`,
     );
+
     const resolved = await resolveProtocolRuntime({ config: configPath });
+
     const response = await resolved.runtime.handlers.listChannels!({
       method: "GET",
       url: "http://127.0.0.1:2024/channels",
@@ -148,6 +150,7 @@ describe("a configured channel", () => {
       { skein: { channels: { twilio: { path: "./channel.ts:channel", assistant: "support" } } } },
       echoChannel,
     );
+
     const resolved = await resolveProtocolRuntime({ config: configPath });
 
     const response = await resolved.runtime.handlers.handleInboundEvent({
@@ -170,6 +173,7 @@ describe("a configured channel", () => {
       { skein: { channels: { twilio: { path: "./channel.ts:channel", assistant: "support" } } } },
       echoChannel,
     );
+
     const resolved = await resolveProtocolRuntime({ config: configPath });
 
     const response = await resolved.runtime.handlers.handleInboundEvent({
@@ -222,12 +226,14 @@ describe("authorization scopes the request it authorized", () => {
       },
       channelSource,
     );
+
     const auth = new Auth()
       .authenticate(() => ({ identity: "unused-by-channels", permissions: [] }))
       .on("threads", async ({ user }) => {
         expect(user.permissions).toEqual([]);
         return { owner: await ownerFor(user.identity) };
       });
+
     const configDir = path.dirname(configPath);
     return resolveProtocolRuntime({
       config: configPath,
@@ -253,10 +259,12 @@ describe("authorization scopes the request it authorized", () => {
       '{ identity: "channel:twilio:+254" }',
       '{ identity: request.headers["x-user"], metadata: {identity:"forged",permissions:["admin"],is_authenticated:false} }',
     );
+
     const resolved = await withOwnershipAuth(source, async (identity) => {
       await new Promise((resolve) => setTimeout(resolve, identity === "alice" ? 30 : 1));
       return identity;
     });
+
     try {
       const submit = (identity: string) =>
         resolved.runtime.handlers.handleInboundEvent({
@@ -274,6 +282,7 @@ describe("authorization scopes the request it authorized", () => {
       await Promise.all([submit("alice"), submit("bob")]);
       const threads = await resolved.runtime.service.threads.search({});
       expect(threads.map((thread) => thread.metadata?.["owner"]).sort()).toEqual(["alice", "bob"]);
+
       for (const thread of threads) {
         const run = (await resolved.runtime.service.runs.listByThread(thread.thread_id))[0]!;
         expect(run.metadata?.["owner"]).toBe(thread.metadata?.["owner"]);
@@ -285,9 +294,11 @@ describe("authorization scopes the request it authorized", () => {
 
   it("reauthorizes recorded resources before replaying a provider receipt", async () => {
     let revoked = false;
+
     const resolved = await withOwnershipAuth(echoChannel, (identity) =>
       revoked ? "new-owner" : identity,
     );
+
     try {
       expect((await deliver(resolved)).status).toBe(202);
       revoked = true;

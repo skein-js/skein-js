@@ -2,8 +2,7 @@ import type { Delivery } from "@skein-js/core";
 import { describe, expect, it, vi } from "vitest";
 
 import { createFixtureDeps } from "../__fixtures__/deps.js";
-import { resolveDeps } from "../deps.js";
-import { fetchWebhookDispatcher } from "../deps.js";
+import { fetchWebhookDispatcher, resolveDeps } from "../deps.js";
 import { createProtocolRuntime } from "../runtime.js";
 
 import { attemptDelivery } from "./attempt-delivery.js";
@@ -15,6 +14,7 @@ import { configureHttpDelivery } from "./http-delivery-policy.js";
 describe("configured HTTP webhook policy", () => {
   it("applies headers, signing and destination restrictions to a custom store without an outbox", async () => {
     const dispatch = vi.fn(async (..._arguments: unknown[]) => undefined);
+
     const deps = createFixtureDeps({
       webhookDispatcher: dispatch,
       webhooks: {
@@ -56,6 +56,7 @@ describe("configured HTTP webhook policy", () => {
     ).rejects.toMatchObject({ status: 422 });
     const thread = await deps.store.threads.create();
     const run = await deps.store.runs.create({ thread_id: thread.thread_id, assistant_id: "echo" });
+
     const { delivery } = await deps.store.runs.finalizeWithDelivery!(run.run_id, {
       status: "success",
       delivery: {
@@ -66,6 +67,7 @@ describe("configured HTTP webhook policy", () => {
         expires_at: new Date(Date.now() + 60_000).toISOString(),
       },
     });
+
     const replay = vi.spyOn(deps.store.deliveries!, "retryNow");
     await expect(
       runtime.service.runs.replayDelivery(run.run_id, delivery!.delivery_id),
@@ -76,6 +78,7 @@ describe("configured HTTP webhook policy", () => {
     const fetcher = vi.fn(async (_input: string, _init?: unknown) => ({ ok: true, status: 200 }));
     vi.stubGlobal("fetch", fetcher);
     const dispatcher = fetchWebhookDispatcher;
+
     const { attempt, payload } = toDeliveryRequest({
       delivery: {
         delivery_id: "delivery",
@@ -86,6 +89,7 @@ describe("configured HTTP webhook policy", () => {
       sentAt: new Date("2026-11-09T00:00:00Z"),
       secrets: ["signing-key"],
     });
+
     const configured = configureHttpDelivery(attempt, "https://receiver.example", {
       headers: {
         Authorization: "credential",
@@ -94,6 +98,7 @@ describe("configured HTTP webhook policy", () => {
       },
       url: { allowedDomains: ["receiver.example"] },
     });
+
     try {
       await dispatcher("https://receiver.example", payload, configured);
       expect(fetcher).toHaveBeenCalledWith(
@@ -161,18 +166,22 @@ describe("configured HTTP webhook policy", () => {
     "keeps disabled HTTP payloads as visible dead letters through the %s path without suppressing host outcomes",
     async (path) => {
       const dispatch = vi.fn(async () => undefined);
+
       const resolved = resolveDeps(
         createFixtureDeps({
           webhooks: { disabled: true, headers: { authorization: "private-value" } },
           webhookDispatcher: dispatch,
         }),
       );
+
       const assistant = await resolved.store.assistants.create({ graph_id: "echo" });
       const thread = await resolved.store.threads.create();
+
       const run = await resolved.store.runs.create({
         thread_id: thread.thread_id,
         assistant_id: assistant.assistant_id,
       });
+
       const deliver = async (url: string) => {
         const { delivery } = await resolved.store.runs.finalizeWithDelivery!(run.run_id, {
           status: "success",
@@ -193,13 +202,16 @@ describe("configured HTTP webhook policy", () => {
           });
         return resolved.store.deliveries!.get(delivery!.delivery_id);
       };
+
       const blocked = await deliver("https://receiver.example/path");
       expect(blocked?.status).toBe("dead");
       expect(blocked?.last_error).toContain("disabled");
       expect(dispatch).not.toHaveBeenCalled();
+
       for (const target of ["skein+channel://configured", "skein-bullmq://configured"]) {
         expect((await deliver(target))?.status).toBe("delivered");
       }
+
       for (const call of dispatch.mock.calls) expect(call).not.toContain("private-value");
       expect(JSON.stringify(dispatch.mock.calls)).not.toContain("private-value");
     },

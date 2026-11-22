@@ -3,6 +3,7 @@ import { z } from "zod";
 
 const metadata = z.record(z.unknown());
 const timestamp = z.string();
+
 export const assistant = z
   .object({
     assistant_id: z.string(),
@@ -17,6 +18,7 @@ export const assistant = z
     version: z.number(),
   })
   .passthrough();
+
 export const interrupt = z
   .object({
     id: z.string().optional(),
@@ -26,6 +28,7 @@ export const interrupt = z
     ns: z.array(z.string()).optional(),
   })
   .passthrough();
+
 export const thread = z
   .object({
     ttl: z.number().nullable().optional(),
@@ -44,6 +47,7 @@ export const thread = z
     interrupts: z.record(z.array(interrupt)).optional(),
   })
   .passthrough();
+
 export const run = z
   .object({
     run_id: z.string(),
@@ -70,6 +74,7 @@ export const run = z
       .optional(),
   })
   .passthrough();
+
 export const checkpoint = z
   .object({
     thread_id: z.string().optional(),
@@ -78,6 +83,7 @@ export const checkpoint = z
     checkpoint_map: z.record(z.unknown()).nullish(),
   })
   .passthrough();
+
 export const task = z
   .object({
     id: z.string(),
@@ -89,6 +95,7 @@ export const task = z
     state: z.unknown().optional(),
   })
   .passthrough();
+
 export const state = z
   .object({
     values: z.unknown(),
@@ -100,6 +107,7 @@ export const state = z
     tasks: z.array(task),
   })
   .passthrough();
+
 export const cron = z
   .object({
     cron_id: z.string(),
@@ -118,6 +126,7 @@ export const cron = z
     updated_at: timestamp,
   })
   .passthrough();
+
 export const item = z
   .object({
     ttl: z.number().nullable().optional(),
@@ -130,7 +139,9 @@ export const item = z
     updated_at: timestamp,
   })
   .passthrough();
+
 const size = z.object({ count: z.number().nonnegative(), bytes: z.number().nonnegative() });
+
 export const storage = z.object({
   thread_id: z.string(),
   total_bytes: z.number().nonnegative(),

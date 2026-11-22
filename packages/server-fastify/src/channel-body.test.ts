@@ -69,6 +69,7 @@ async function projectWithChannel(): Promise<string> {
 describe("a form-encoded provider request over Fastify", () => {
   it("reaches the channel instead of being refused 415", async () => {
     const server = await createFastifyServer({ config: await projectWithChannel() });
+
     close = async () => {
       await server.runtime.worker.stop();
       await server.close();
@@ -93,10 +94,12 @@ describe("a form-encoded provider request over Fastify", () => {
     // with nothing left to verify, and every genuine event answered 401. Only form-encoded providers
     // worked, which is precisely what the first test happened to cover.
     const server = await createFastifyServer({ config: await projectWithChannel() });
+
     close = async () => {
       await server.runtime.worker.stop();
       await server.close();
     };
+
     const payload = JSON.stringify({ MessageSid: "SM-9", From: "slack:U1", Body: "hi" });
 
     const response = await server.app.inject({
@@ -115,6 +118,7 @@ describe("a form-encoded provider request over Fastify", () => {
     // The catch-all is less specific than the JSON parser, so it never takes a request the JSON
     // parser would have handled.
     const server = await createFastifyServer({ config: await projectWithChannel() });
+
     close = async () => {
       await server.runtime.worker.stop();
       await server.close();

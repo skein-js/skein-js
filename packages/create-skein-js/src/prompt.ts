@@ -75,6 +75,7 @@ export async function promptChoice<T extends string>(
   defaultValue: T,
 ): Promise<T> {
   const defaultIndex = choices.findIndex((choice) => choice.value === defaultValue);
+
   const lines = [
     bold(question),
     ...choices.map((choice, index) => {

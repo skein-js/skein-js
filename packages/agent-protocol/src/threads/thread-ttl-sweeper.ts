@@ -82,7 +82,9 @@ export function createThreadTtlSweeper(
       now: clock().toISOString(),
       limit: scanLimit,
     });
+
     let collected = 0;
+
     for (const threadId of expired) {
       try {
         const policy = await deps.store.threads.getTtl?.(threadId);
@@ -103,6 +105,7 @@ export function createThreadTtlSweeper(
         deps.logger.warn(`thread ${threadId}: TTL sweep could not delete it; continuing.`, error);
       }
     }
+
     if (collected > 0) deps.logger.info(`thread TTL sweep collected ${collected} thread(s).`);
     return { listed: expired.length, collected };
   };
@@ -116,6 +119,7 @@ export function createThreadTtlSweeper(
    */
   const loop = async (): Promise<void> => {
     let full = false;
+
     try {
       // On what the scan *listed*, not what it collected. A batch where a few deletes threw is still
       // a full batch — more is due — and treating it as a short one would park the backlog for a

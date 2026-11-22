@@ -45,34 +45,41 @@ function buildFixtureAgent(compiled: AgentGraph): AgentGraph {
   wrapped.stream = function (this: AgentGraph, input: unknown, options?: unknown) {
     return stream.call(this, toGraphInput(input), options);
   };
+
   if (streamEvents) {
     wrapped.streamEvents = function (this: AgentGraph, input: unknown, options?: unknown) {
       return streamEvents.call(this, toGraphInput(input), options);
     };
+
     wrapped.streamProtocol = async function (this: AgentGraph, input: unknown, options?: unknown) {
       // v3 uses private fields: a prototype clone does not carry the runtime's private brand.
       // withConfig creates a real graph instance; only this call's attachments are copied onto it.
       const configurable = compiled as AgentGraph & {
         withConfig?: (config: Record<string, unknown>) => AgentGraph;
       };
+
       const target = configurable.withConfig?.({}) ?? this;
+
       if (target !== this) {
         for (const key of ["checkpointer", "store"] as const) {
           if (key in this)
             Object.assign(target, { [key]: (this as unknown as Record<string, unknown>)[key] });
         }
       }
+
       return (await streamEvents.call(target, toGraphInput(input), {
         ...(typeof options === "object" && options !== null ? options : {}),
         version: "v3",
       })) as AsyncIterable<ThreadProtocolEvent>;
     };
   }
+
   if (invoke) {
     wrapped.invoke = function (this: AgentGraph, input: unknown, options?: unknown) {
       return invoke.call(this, toGraphInput(input), options);
     };
   }
+
   if (bulkUpdateState) {
     wrapped.bulkUpdateState = function (
       this: AgentGraph,
@@ -96,5 +103,6 @@ function buildFixtureAgent(compiled: AgentGraph): AgentGraph {
       return bulkUpdateState.call(this, config, translated);
     };
   }
+
   return wrapped;
 }

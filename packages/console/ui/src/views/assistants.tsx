@@ -35,6 +35,7 @@ export function AssistantsView({ assistantId }: { assistantId?: string }) {
 
 function AssistantList() {
   const [client] = useState(() => createConsoleClient({}));
+
   const assistants = usePagedRows(
     (offset, limit, signal) => client.assistants.search({ offset, limit, signal }),
     "assistants",
@@ -116,18 +117,22 @@ function AssistantList() {
 function AssistantDetail({ assistantId }: { assistantId: string }) {
   const workspace = useWorkspaceStore();
   const [client] = useState(() => createConsoleClient({}));
+
   const assistant = useAsync(
     (signal) => client.assistants.get(assistantId, { signal }),
     [assistantId],
   );
+
   const graph = useAsync(
     (signal) => client.assistants.getGraph(assistantId, { signal }),
     [assistantId],
   );
+
   const schemas = useAsync(
     (signal) => client.assistants.getSchemas(assistantId, { signal }),
     [assistantId],
   );
+
   const versions = usePagedRows(
     (offset, limit, signal) =>
       client.assistants.getVersions(assistantId, { offset, limit, signal }),
@@ -283,6 +288,7 @@ export function describeAssistant(assistant: unknown): string | undefined {
 function AssistantEditor({ assistant, onSaved }: { assistant: Assistant; onSaved: () => void }) {
   const [client] = useState(() => createConsoleClient({}));
   const existing = assistant as Assistant & { description?: string; context?: unknown };
+
   const initial = {
     graphId: assistant.graph_id,
     name: assistant.name ?? "",
@@ -291,6 +297,7 @@ function AssistantEditor({ assistant, onSaved }: { assistant: Assistant; onSaved
     context: JSON.stringify(existing.context ?? null, null, 2),
     metadata: JSON.stringify(assistant.metadata ?? {}, null, 2),
   };
+
   const [draft, setDraft] = useState(initial);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<Error>();
@@ -298,17 +305,21 @@ function AssistantEditor({ assistant, onSaved }: { assistant: Assistant; onSaved
   const save = async () => {
     setBusy(true);
     setError(undefined);
+
     try {
       const patch: Parameters<typeof client.assistants.update>[1] = {};
       if (draft.graphId !== initial.graphId) patch.graphId = draft.graphId;
       if (draft.name !== initial.name) patch.name = draft.name;
       if (draft.description !== initial.description) patch.description = draft.description;
+
       if (draft.config !== initial.config) {
         const config = JSON.parse(draft.config) as unknown;
         if (!isRecord(config)) throw new Error("Config must be a JSON object.");
         patch.config = config;
       }
+
       if (draft.context !== initial.context) patch.context = JSON.parse(draft.context) as unknown;
+
       if (draft.metadata !== initial.metadata) {
         const metadata = JSON.parse(draft.metadata) as unknown;
         if (!isRecord(metadata)) throw new Error("Metadata must be a JSON object.");
@@ -321,6 +332,7 @@ function AssistantEditor({ assistant, onSaved }: { assistant: Assistant; onSaved
           );
         patch.metadata = metadata;
       }
+
       if (Object.keys(patch).length === 0) return;
       await client.assistants.update(assistant.assistant_id, patch);
       onSaved();

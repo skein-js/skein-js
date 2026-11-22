@@ -17,6 +17,7 @@ import {
 } from "@skein-js/storage-memory";
 
 type Resolver = Parameters<typeof langGraphResolver>[0];
+
 function buildGraph(kind: string) {
   return new StateGraph(MessagesAnnotation)
     .addNode("research", () => ({
@@ -42,6 +43,7 @@ function buildGraph(kind: string) {
       if (kind === "failure")
         throw new Error("The document source is unavailable. Try another source.");
       if (kind === "slow") await pause(1500, undefined, { signal: config.signal });
+
       if (kind === "approval") {
         const response = interrupt({
           question: "Edit the proposed document title",
@@ -49,6 +51,7 @@ function buildGraph(kind: string) {
         });
         return { messages: [new AIMessage(`Saved title: ${JSON.stringify(response)}`)] };
       }
+
       const model = new FakeStreamingChatModel({
         responses: [
           new AIMessage(
@@ -57,6 +60,7 @@ function buildGraph(kind: string) {
         ],
         sleep: 2,
       });
+
       const response = await model.invoke(state.messages, config);
       return { messages: [response] };
     })
@@ -66,13 +70,16 @@ function buildGraph(kind: string) {
     .addEdge("answer", "__end__")
     .compile();
 }
+
 export async function startConsoleFixture(mountPath = "/console", apiPrefix = "") {
   const ids = ["research", "approval", "failure", "slow"];
   const graphs = new Map(ids.map((id) => [id, buildGraph(id)]));
+
   const input = {
     type: "object",
     properties: { messages: { type: "array", items: { type: "object" } } },
   };
+
   const resolver: Resolver = {
     ids,
     load: async (id) => {
@@ -85,7 +92,9 @@ export async function startConsoleFixture(mountPath = "/console", apiPrefix = ""
         [id]: { input, state: input, output: input, config: { type: "object" } },
       }) as unknown as Awaited<ReturnType<Resolver["schemas"]>>,
   };
+
   const store = new MemorySkeinStore({ maxPageSize: 3 });
+
   const server = await createExpressServer({
     scheduler: { enabled: false },
     channels: {
@@ -124,12 +133,14 @@ export async function startConsoleFixture(mountPath = "/console", apiPrefix = ""
       },
     },
   });
+
   const assetRoot = resolve(dirname(fileURLToPath(import.meta.url)), "../dist");
   server.app.use(async (req, res, next) => {
     if (req.path === mountPath) return res.redirect(302, `${mountPath}/`);
     if (!req.path.startsWith(`${mountPath}/`)) return next();
     const asset = resolve(assetRoot, req.path.slice(mountPath.length + 1) || "index.html");
     if (!asset.startsWith(assetRoot + sep)) return res.sendStatus(404);
+
     try {
       res.type(extname(asset));
       return res.send(await readFile(asset));
@@ -144,16 +155,19 @@ export async function startConsoleFixture(mountPath = "/console", apiPrefix = ""
   const proxy = apiPrefix
     ? createServer((incoming, response) => {
         const path = incoming.url ?? "/";
+
         if (!path.startsWith(mountPath) && !path.startsWith(`${apiPrefix}/`)) {
           response.writeHead(404);
           response.end();
           return;
         }
+
         const apiPath = path.startsWith(mountPath)
           ? path
           : path.startsWith(`${apiPrefix}/`)
             ? path.slice(apiPrefix.length)
             : path;
+
         const forwarded = proxyRequest(
           {
             host: "127.0.0.1",
@@ -189,6 +203,7 @@ export async function startConsoleFixture(mountPath = "/console", apiPrefix = ""
         proxy.closeAllConnections();
         await new Promise<void>((resolve) => proxy.close(() => resolve()));
       }
+
       await server.close();
     },
   };

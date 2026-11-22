@@ -9,6 +9,7 @@ const timestamp = z
   // can throw, so malformed timestamps become boundary errors instead of server failures.
   .refine((value) => Number.isFinite(Date.parse(value)), "Invalid datetime")
   .transform((value) => new Date(value).toISOString());
+
 export const runSearchSchema = z
   .object({
     status: z.enum(RUN_STATUSES as [RunStatus, ...RunStatus[]]).optional(),

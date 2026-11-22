@@ -15,6 +15,7 @@ const MAX_TITLE_LENGTH = 60;
 /** Load the saved chats, most recently updated first. Safe to call before hydration (returns []). */
 export function loadChats(): ChatSummary[] {
   if (typeof window === "undefined") return [];
+
   try {
     const raw = window.localStorage.getItem(STORAGE_KEY);
     if (!raw) return [];
@@ -34,9 +35,11 @@ export function upsertChat(
 ): ChatSummary[] {
   const trimmed = title.trim().slice(0, MAX_TITLE_LENGTH) || "New chat";
   const existing = chats.find((chat) => chat.threadId === threadId);
+
   const next = existing
     ? chats.map((chat) => (chat.threadId === threadId ? { ...chat, updatedAt: now } : chat))
     : [...chats, { threadId, title: trimmed, updatedAt: now }];
+
   const sorted = [...next].sort((a, b) => b.updatedAt - a.updatedAt);
   persist(sorted);
   return sorted;
@@ -44,6 +47,7 @@ export function upsertChat(
 
 function persist(chats: ChatSummary[]): void {
   if (typeof window === "undefined") return;
+
   try {
     window.localStorage.setItem(STORAGE_KEY, JSON.stringify(chats));
   } catch {

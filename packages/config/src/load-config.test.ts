@@ -32,6 +32,7 @@ describe("loadConfig", () => {
     const result = (await echo.invoke({ messages: [{ role: "user", content: "hi" }] })) as {
       messages: Array<{ content: unknown }>;
     };
+
     const last = result.messages.at(-1);
     expect(last?.content).toBe("echo: hi");
   });
@@ -49,6 +50,7 @@ describe("loadConfig", () => {
 
   it("routes graph loading through a custom importModule (used by `skein dev`'s vite loader)", async () => {
     const imported: string[] = [];
+
     const { graphs } = await loadConfig({
       cwd: exampleDir,
       importModule: async (sourceFile) => {
@@ -71,6 +73,7 @@ describe("loadConfig", () => {
     // schemas are baked at build time and served from a map. Point the source at a non-existent file
     // to prove `getStaticGraphSchema` is never called (it would throw trying to read it).
     const baked = { graph: { graph_id: "echo", state: {} } };
+
     const { graphs } = await loadConfig({
       cwd: exampleDir,
       staticSchemas: { echo: baked as never },

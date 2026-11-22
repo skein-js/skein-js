@@ -33,6 +33,7 @@ describe("embedPostgresGraphs — durable in-code embedding", () => {
       { echo: buildGraph() },
       { postgresUri: pg.url, redisUri: redis.url },
     );
+
     try {
       // The store is migrated and usable: create an assistant + thread and read the thread back.
       const assistant = await deps.store.assistants.create({ graph_id: "echo" });
@@ -51,8 +52,10 @@ describe("embedPostgresGraphs — durable in-code embedding", () => {
     const saved = { pg: process.env["POSTGRES_URI"], redis: process.env["REDIS_URI"] };
     process.env["POSTGRES_URI"] = pg.url;
     process.env["REDIS_URI"] = redis.url;
+
     try {
       const { deps, dispose } = await embedPostgresGraphs({ echo: buildGraph() });
+
       try {
         const thread = await deps.store.threads.create();
         expect(typeof thread.thread_id).toBe("string");
@@ -68,11 +71,13 @@ describe("embedPostgresGraphs — durable in-code embedding", () => {
   it("falls back to an in-memory queue + bus when no Redis URL is configured (single instance)", async () => {
     const savedRedis = process.env["REDIS_URI"];
     delete process.env["REDIS_URI"];
+
     try {
       const { deps, dispose } = await embedPostgresGraphs(
         { echo: buildGraph() },
         { postgresUri: pg.url }, // no redisUri, REDIS_URI unset → in-memory queue/bus
       );
+
       try {
         expect(deps.queue).toBeInstanceOf(MemoryRunQueue);
         expect(deps.bus).toBeInstanceOf(MemoryRunEventBus);
@@ -95,6 +100,7 @@ describe("embedPostgresGraphs — durable in-code embedding", () => {
       kitten: [0.9, 0.1, 0],
       car: [0, 1, 0],
     };
+
     const embed = async (texts: string[]): Promise<number[][]> =>
       texts.map((text) => {
         for (const [word, point] of Object.entries(POINTS)) if (text.includes(word)) return point;
@@ -105,6 +111,7 @@ describe("embedPostgresGraphs — durable in-code embedding", () => {
       { echo: buildGraph() },
       { postgresUri: pg.url, redisUri: redis.url, index: { dims: 3, fields: ["text"], embed } },
     );
+
     try {
       await deps.store.store.put(["docs"], "a", { text: "a fluffy cat" });
       await deps.store.store.put(["docs"], "b", { text: "a small kitten" });
@@ -121,6 +128,7 @@ describe("embedPostgresGraphs — durable in-code embedding", () => {
   it("rejects with RuntimeConfigError when POSTGRES_URI is missing", async () => {
     const saved = process.env["POSTGRES_URI"];
     delete process.env["POSTGRES_URI"];
+
     try {
       await expect(embedPostgresGraphs({ echo: buildGraph() })).rejects.toThrow(RuntimeConfigError);
     } finally {

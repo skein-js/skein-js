@@ -10,6 +10,7 @@ import { Json } from "./parts";
 
 export function CreateAssistant({ graphIds }: { graphIds: string[] }) {
   const [open, setOpen] = useState(false);
+
   const [draft, setDraft] = useState({
     graphId: "",
     name: "",
@@ -18,11 +19,14 @@ export function CreateAssistant({ graphIds }: { graphIds: string[] }) {
     context: "null",
     metadata: "{}",
   });
+
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string>();
+
   const create = async () => {
     setBusy(true);
     setError(undefined);
+
     try {
       const config: unknown = JSON.parse(draft.config),
         metadata: unknown = JSON.parse(draft.metadata);
@@ -51,6 +55,7 @@ export function CreateAssistant({ graphIds }: { graphIds: string[] }) {
       setBusy(false);
     }
   };
+
   return (
     <>
       <Button onClick={() => setOpen(true)}>New Assistant</Button>
@@ -169,6 +174,7 @@ export function DeleteAssistant({ assistant }: { assistant: Assistant }) {
             return;
           setBusy(true);
           setError(undefined);
+
           try {
             await createConsoleClient({}).assistants.delete(assistant.assistant_id, {
               deleteThreads: cascade,
@@ -203,6 +209,7 @@ export function RestoreAssistantVersion({
 }) {
   const [open, setOpen] = useState(false),
     [busy, setBusy] = useState(false);
+
   const [error, setError] = useState<string>();
   const confirm = useConfirmation();
   return (
@@ -235,6 +242,7 @@ export function RestoreAssistantVersion({
             )
               return;
             setBusy(true);
+
             try {
               await createConsoleClient({}).assistants.setLatest(
                 version.assistant_id,

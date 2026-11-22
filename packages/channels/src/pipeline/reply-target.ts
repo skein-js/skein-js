@@ -40,6 +40,7 @@ export function parseChannelDeliveryUrl(url: string): ChannelDeliveryTarget | un
   const slash = rest.indexOf("/");
   if (slash <= 0) return undefined;
   const channelName = decodeURIComponent(rest.slice(0, slash));
+
   try {
     const replyTo: unknown = JSON.parse(
       Buffer.from(rest.slice(slash + 1), "base64url").toString("utf8"),

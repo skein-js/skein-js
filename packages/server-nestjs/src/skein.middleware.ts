@@ -64,6 +64,7 @@ export class SkeinMiddleware implements NestMiddleware {
     // the auth handler's synthesized Request (which must not derive trust from it). Guard the parse so
     // a malformed `Host` header falls through to `next()` instead of 500-ing the whole app.
     let url: URL;
+
     try {
       url = new URL(rawUrl, `http://${host}`);
     } catch {
@@ -78,6 +79,7 @@ export class SkeinMiddleware implements NestMiddleware {
     // app after this provider is constructed. (Nest never routes the bare prefix root — `/api` with no
     // trailing slash — to middleware at all; no skein route lives at `/`, so that gap is harmless.)
     const skeinPathname = stripBasePath(url.pathname, this.appConfig?.getGlobalPrefix() ?? "");
+
     if (skeinPathname === null) {
       next();
       return;
@@ -91,10 +93,12 @@ export class SkeinMiddleware implements NestMiddleware {
     // own OPTIONS handling is untouched.
     if (method === "OPTIONS") {
       const requestedMethod = firstHeader(req.headers["access-control-request-method"]);
+
       if (cors && requestedMethod && this.matchRoute(requestedMethod, skeinPathname)) {
         sendNodePreflight(req.headers, res, cors);
         return;
       }
+
       next();
       return;
     }
@@ -102,6 +106,7 @@ export class SkeinMiddleware implements NestMiddleware {
     if (this.resolved.runtime.handleRequest)
       try {
         const controller = new AbortController();
+
         const native = await readNativeNodeRequest(
           req,
           `${url.origin}${skeinPathname}${url.search}`,
@@ -110,6 +115,7 @@ export class SkeinMiddleware implements NestMiddleware {
         );
         if (native) res.once("close", () => controller.abort());
         const response = native ? await this.resolved.runtime.handleRequest(native) : undefined;
+
         if (response) {
           if (cors) applyNodeCors(req.headers, res, cors);
           await sendNativeResponse(response, res);
@@ -119,7 +125,9 @@ export class SkeinMiddleware implements NestMiddleware {
         sendNodeError(error, res, this.logger ?? undefined, "skein NestJS");
         return;
       }
+
     const match = this.matchRoute(method, skeinPathname);
+
     if (!match) {
       next();
       return;
@@ -133,15 +141,19 @@ export class SkeinMiddleware implements NestMiddleware {
 
     try {
       const body = await readJsonBody(req, match.binding.retainRawBody ?? false);
+
       const request = {
         ...toProtocolRequest(req, url, match.params, body),
         signal: disconnected.signal,
       };
+
       const invoke = this.resolved.runtime.handlers[match.binding.handler];
+
       if (!invoke) {
         res.writeHead(404).end();
         return;
       }
+
       const response = await invoke(
         match.binding.foldThreadIdIntoBody ? copyThreadIdIntoBody(request) : request,
       );

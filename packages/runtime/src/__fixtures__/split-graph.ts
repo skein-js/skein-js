@@ -16,11 +16,14 @@ export function buildSplitGraph() {
           config.signal?.removeEventListener("abort", abort);
           resolve();
         };
+
         const timer = setTimeout(finish, state.delay ?? 50);
+
         const abort = () => {
           clearTimeout(timer);
           reject(config.signal?.reason);
         };
+
         config.signal?.addEventListener("abort", abort, { once: true });
         if (config.signal?.aborted) abort();
       });

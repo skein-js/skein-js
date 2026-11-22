@@ -54,11 +54,13 @@ function safeStringify(value: unknown): string {
  */
 function renderRecord(meta: object): string {
   let entries: [string, unknown][];
+
   try {
     entries = Object.entries(meta as Record<string, unknown>);
   } catch {
     return safeString(meta);
   }
+
   return entries
     .map(([key, value]) => {
       const rendered =

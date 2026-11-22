@@ -3,8 +3,7 @@
 // runtime can share one context (and thus one cancellation registry) with the background worker.
 
 import { createAssistantService, type AssistantService } from "./assistants/assistant-service.js";
-import type { ProtocolContext } from "./context.js";
-import { createContext } from "./context.js";
+import { createContext, type ProtocolContext } from "./context.js";
 import { createCronService, type CronService } from "./crons/cron-service.js";
 import type { ProtocolDeps } from "./deps.js";
 import { createMetaService, type MetaService } from "./meta/server-info.js";

@@ -30,6 +30,7 @@ async function resolveStateTarget(store: SkeinStore, threadId: string) {
   if (!thread) throw SkeinHttpError.notFound("Thread not found.");
   const latest = await store.runs.latestForThread(threadId);
   const assistant = latest ? await store.assistants.get(latest.assistant_id) : null;
+
   const assistantId = assistant
     ? latest!.assistant_id
     : typeof thread.metadata?.["graph_id"] === "string"
@@ -64,6 +65,7 @@ export async function readNativeState(
         });
       const thread = await createProtocolServiceFromContext(scoped).threads.get(threadId);
       const store = scoped.deps.store;
+
       // Admissions do not hold the execution lease. Freeze these lookups so a newly pending run
       // cannot change the factory after authorization; its checkpoint writes wait for this lease.
       const frozen: ProtocolContext = {

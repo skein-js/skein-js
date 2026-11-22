@@ -8,6 +8,7 @@ import { hasWorkspaceMarker, type WorkspaceSnapshot } from "./workspace.js";
 /** Read only; never creates a directory or changes a workspace during discovery. */
 export function findWorkspace(target: string): WorkspaceSnapshot | undefined {
   let directory = path.resolve(target);
+
   while (true) {
     const read = (filename: string): string | undefined => {
       const absolute = path.join(directory, filename);
@@ -15,6 +16,7 @@ export function findWorkspace(target: string): WorkspaceSnapshot | undefined {
         ? readFileSync(absolute, "utf8")
         : undefined;
     };
+
     if (hasWorkspaceMarker(read)) {
       const root = directory;
       return {
@@ -37,6 +39,7 @@ export function findWorkspace(target: string): WorkspaceSnapshot | undefined {
               ),
       };
     }
+
     const parent = path.dirname(directory);
     if (parent === directory) return undefined;
     directory = parent;

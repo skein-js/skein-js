@@ -43,6 +43,7 @@ function sameOriginApiBase(): string {
  */
 function readBaseUrlOverride(): string | undefined {
   const fromQuery = new URLSearchParams(window.location.search).get("baseUrl");
+
   if (fromQuery !== null && fromQuery !== "") {
     if (isSameOrigin(fromQuery) || confirmForeignTarget(fromQuery)) {
       if (window.localStorage.getItem(BASE_URL_STORAGE_KEY) !== fromQuery)
@@ -50,8 +51,10 @@ function readBaseUrlOverride(): string | undefined {
       window.localStorage.setItem(BASE_URL_STORAGE_KEY, fromQuery);
       return fromQuery;
     }
+
     return window.localStorage.getItem(BASE_URL_STORAGE_KEY) ?? undefined;
   }
+
   return window.localStorage.getItem(BASE_URL_STORAGE_KEY) ?? undefined;
 }
 
@@ -102,11 +105,13 @@ export function resolveApiKey(): string | undefined {
 
 export function setApiKey(key: string | undefined): void {
   invalidateWorkspaceConnection();
+
   if (key === undefined || key === "") {
     window.localStorage.removeItem(API_KEY_STORAGE_KEY);
     window.localStorage.removeItem(API_KEY_OWNER_STORAGE_KEY);
     return;
   }
+
   window.localStorage.setItem(API_KEY_STORAGE_KEY, key);
   // Whichever server is current when the key is entered is the one it belongs to.
   window.localStorage.setItem(API_KEY_OWNER_STORAGE_KEY, resolveApiUrl());
@@ -138,6 +143,7 @@ export function createConsoleClient(submission?: {
             if (submission.executionTimeoutMs === undefined && submission.completion === undefined)
               return { ...init, headers };
             const payload = JSON.parse(String(init.body));
+
             const extend = (request: Record<string, unknown>) => ({
               ...request,
               ...(submission.executionTimeoutMs === undefined
@@ -259,12 +265,15 @@ export interface ServerInfo {
 
 export async function fetchServerInfo(signal?: AbortSignal): Promise<ServerInfo> {
   const apiKey = resolveApiKey();
+
   const response = await fetch(`${resolveApiUrl()}/info`, {
     headers: apiKey ? { "x-api-key": apiKey } : {},
     ...(signal ? { signal } : {}),
   });
+
   if (!response.ok) {
     throw new Error(`GET /info failed: ${response.status} ${response.statusText}`);
   }
+
   return (await response.json()) as ServerInfo;
 }

@@ -19,12 +19,15 @@ it("reconnects the official SDK through another API instance while one queued gr
   let executions = 0;
   let release!: () => void;
   let started!: () => void;
+
   const executing = new Promise<void>((resolve) => {
     started = resolve;
   });
+
   const released = new Promise<void>((resolve) => {
     release = resolve;
   });
+
   const graph = new StateGraph(MessagesAnnotation)
     .addNode("echo", async () => {
       executions++;
@@ -35,6 +38,7 @@ it("reconnects the official SDK through another API instance while one queued gr
     .addEdge("__start__", "echo")
     .addEdge("echo", "__end__")
     .compile();
+
   const shared = createEchoDeps();
   shared.queue = queue;
   shared.graphs = langGraphResolver({
@@ -46,6 +50,7 @@ it("reconnects the official SDK through another API instance while one queued gr
   const second = await startEchoServer({ deps: { ...shared, threadBus: secondBus } });
   let target = first.baseUrl;
   let replicaSubscriptions = 0;
+
   const proxy = createServer((incoming, outgoing) => {
     if (target === second.baseUrl && incoming.url?.endsWith("/stream/events"))
       replicaSubscriptions++;
@@ -65,14 +70,19 @@ it("reconnects the official SDK through another API instance while one queued gr
   const address = proxy.address();
   if (!address || typeof address === "string") throw new Error("Expected a listening proxy");
   let connected!: () => void;
+
   const initialConnection = new Promise<void>((resolve) => {
     connected = resolve;
   });
+
   let reconnected!: () => void;
+
   const resumed = new Promise<void>((resolve) => {
     reconnected = resolve;
   });
+
   const client = new Client({ apiUrl: `http://127.0.0.1:${address.port}` });
+
   const stream = client.threads.stream({
     assistantId: "echo",
     onConnected: ({ kind }) => {
@@ -80,6 +90,7 @@ it("reconnects the official SDK through another API instance while one queued gr
       else connected();
     },
   });
+
   try {
     await stream.run.start({ input: { messages: [{ role: "user", content: "once" }] } });
     await executing;
@@ -96,6 +107,7 @@ it("reconnects the official SDK through another API instance while one queued gr
     expect(executions).toBe(1);
     expect(await client.runs.list(stream.threadId)).toHaveLength(1);
     const stopped = new AbortController();
+
     const follower = new Client({ apiUrl: second.baseUrl }).threads
       .joinStream(stream.threadId, {
         streamMode: ["lifecycle", "state_update"],
@@ -103,6 +115,7 @@ it("reconnects the official SDK through another API instance while one queued gr
         signal: stopped.signal,
       })
       [Symbol.asyncIterator]();
+
     try {
       const started = (await follower.next()).value;
       const finished = (await follower.next()).value;

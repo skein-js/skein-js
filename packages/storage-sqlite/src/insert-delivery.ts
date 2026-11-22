@@ -17,6 +17,7 @@ export function insertDelivery(
   claimed = true,
 ): Delivery {
   const at = new Date().toISOString();
+
   const delivery: Delivery = {
     delivery_id: input.delivery_id ?? randomUUID(),
     run_id: runId,

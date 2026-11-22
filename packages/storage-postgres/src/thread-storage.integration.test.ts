@@ -8,6 +8,7 @@ import { inspectPostgresThreadStorage } from "./thread-storage.js";
 it("accounts for stored JSONB, versioned channel blobs and pending writes in one saver", async () => {
   const postgres = await startPostgres();
   const pool = new Pool({ connectionString: postgres.url });
+
   try {
     const saver = new PostgresSaver(pool);
     await saver.setup();
@@ -19,6 +20,7 @@ it("accounts for stored JSONB, versioned channel blobs and pending writes in one
       channel_versions: { value: 1 },
       versions_seen: {},
     };
+
     const config = await saver.put(
       { configurable: { thread_id: "thread", checkpoint_ns: "" } },
       checkpoint,
@@ -27,6 +29,7 @@ it("accounts for stored JSONB, versioned channel blobs and pending writes in one
     );
     await saver.putWrites(config, [["value", "pending".repeat(10_000)]], "task");
     const sizes = await inspectPostgresThreadStorage(pool, "thread");
+
     const { rows } = await pool.query<{ bytes: number }>(
       "SELECT (pg_column_size(checkpoint)+pg_column_size(metadata))::float8 AS bytes FROM checkpoints WHERE thread_id=$1",
       ["thread"],
@@ -36,6 +39,7 @@ it("accounts for stored JSONB, versioned channel blobs and pending writes in one
       "SELECT pg_column_size(blob)::float8 AS stored, octet_length(blob)::float8 AS logical FROM checkpoint_blobs WHERE thread_id=$1",
       ["thread"],
     );
+
     const writes = await pool.query<{ stored: number; logical: number }>(
       "SELECT pg_column_size(blob)::float8 AS stored, octet_length(blob)::float8 AS logical FROM checkpoint_writes WHERE thread_id=$1",
       ["thread"],

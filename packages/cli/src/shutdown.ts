@@ -46,9 +46,11 @@ export interface ShutdownHandlerOptions {
 export function createShutdownHandler(options: ShutdownHandlerOptions): () => void {
   const { forceExitMs, close, onShutdownStart, exit = (code) => process.exit(code) } = options;
   let shuttingDown = false;
+
   return () => {
     if (shuttingDown) return;
     shuttingDown = true;
+
     // Caught, not rethrown: a throw here would escape the signal listener as an uncaught exception,
     // killing the process before the drain below — the one thing that settles in-flight runs — had a
     // chance to run. The guard above is already set, so a second signal won't retry either.
@@ -57,6 +59,7 @@ export function createShutdownHandler(options: ShutdownHandlerOptions): () => vo
     } catch (error) {
       console.error(`skein: pre-shutdown step failed: ${describe(error)}`);
     }
+
     // `unref` so a fast, clean shutdown isn't held open by this timer.
     const forceExit = setTimeout(() => exit(0), forceExitMs);
     forceExit.unref();

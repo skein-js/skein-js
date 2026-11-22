@@ -36,6 +36,7 @@ function harness(
   } = {},
 ) {
   const calls = { createBackgroundRun: 0, createStreamRun: 0, createRunBatch: 0 };
+
   const respond =
     options.respond ??
     (async (): Promise<ProtocolResponse> => ({
@@ -61,6 +62,7 @@ function harness(
   } as unknown as ProtocolHandlers;
 
   const store = new MemorySkeinStore();
+
   const handlers = createIdempotentHandlers(inner, {
     store,
     clock: () => new Date(),
@@ -131,9 +133,11 @@ describe("createIdempotentHandlers", () => {
     // Rather than blocking on it: holding the connection ties up a socket for the length of a run and
     // times out in most proxies anyway.
     let release: () => void = () => {};
+
     const gate = new Promise<void>((resolve) => {
       release = resolve;
     });
+
     const { handlers } = harness({
       respond: async () => {
         await gate;
@@ -152,6 +156,7 @@ describe("createIdempotentHandlers", () => {
     // Failures are never recorded — pinning a transient 503 for the retention would make a momentary
     // outage permanent for that key.
     let attempt = 0;
+
     const { handlers, calls } = harness({
       respond: async () => {
         attempt += 1;
@@ -183,9 +188,11 @@ describe("createIdempotentHandlers", () => {
     // worlds: the caller sees an error, the run exists anyway, and every retry 409s against the
     // orphaned claim until it expires.
     const store = new MemorySkeinStore();
+
     const inner = {
       createBackgroundRun: async () => ({ kind: "json", status: 200, body: { run_id: "r-1" } }),
     } as unknown as ProtocolHandlers;
+
     const handlers = createIdempotentHandlers(inner, {
       store: {
         ...store,
@@ -209,6 +216,7 @@ describe("createIdempotentHandlers", () => {
     // The security case. Both callers send `k-1`; each must get their own run.
     const seen: string[] = [];
     let next = 0;
+
     const { handlers, calls } = harness({
       respond: async () => ({ kind: "json", status: 200, body: { run_id: `r-${(next += 1)}` } }),
       overrides: {
@@ -223,6 +231,7 @@ describe("createIdempotentHandlers", () => {
     const alice = await handlers.createBackgroundRun(
       request({ headers: { "idempotency-key": "k-1", "x-principal": "alice" } }),
     );
+
     const bob = await handlers.createBackgroundRun(
       request({ headers: { "idempotency-key": "k-1", "x-principal": "bob" } }),
     );
@@ -302,6 +311,7 @@ describe("createIdempotentHandlers", () => {
     // A replay answers from the record and never reaches the authorizing table, so without this the
     // authorization taken when the key was claimed would stand for the whole retention window.
     let revoked = false;
+
     const { handlers } = harness({
       overrides: {
         authorizeReplay: async () => {

@@ -12,10 +12,12 @@ import { DEFAULT_MAX_ATTEMPTS, remainingQueueAttempts } from "./delivery-config.
 /** Total wait across every retry a delivery gets, with jitter pinned to its midpoint. */
 function horizonMs(maxAttempts: number, initialDelayMs = 1_000): number {
   let total = 0;
+
   for (let attempt = 1; attempt < maxAttempts; attempt += 1) {
     // 0.5 draws the midpoint of the jitter window, i.e. 90% of the undithered delay.
     total += nextAttemptDelayMs(attempt, { maxAttempts, initialDelayMs }, () => 0.5);
   }
+
   return total;
 }
 
@@ -32,10 +34,12 @@ describe("delivery backoff", () => {
     // The goal the whole outbox exists for: a receiver down for a minute still gets its callback.
     let elapsed = 0;
     let attempt = 1;
+
     while (elapsed < 60_000 && attempt < DEFAULT_MAX_ATTEMPTS) {
       elapsed += nextAttemptDelayMs(attempt, {}, () => 0.5);
       attempt += 1;
     }
+
     expect(elapsed).toBeGreaterThanOrEqual(60_000);
     // Reached with attempts to spare — the margin is the point, not the exact number.
     expect(attempt).toBeLessThan(DEFAULT_MAX_ATTEMPTS);

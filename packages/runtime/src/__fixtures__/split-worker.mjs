@@ -15,6 +15,7 @@ process.on("message", async (message) => {
     await runtime.service.runs.cancel(message.cancel);
     return;
   }
+
   if (message !== "stop") return;
   await runtime.worker.stop();
   await embedded.dispose();

@@ -50,6 +50,7 @@ describe("loadAuthEngine", () => {
     const auth = new Auth().authenticate(() => {
       throw new HTTPException(401, { message: "no key" });
     });
+
     const engine = await engineFor(auth);
     await expect(engine!.authenticate(new Request("http://x/threads"))).rejects.toSatisfy(
       (error: unknown) => isSkeinHttpError(error) && error.status === 401,
@@ -70,6 +71,7 @@ describe("loadAuthEngine", () => {
   it("returns a filter from a matching on-handler", async () => {
     const auth = new Auth().authenticate(() => "u").on("threads:create", () => ({ owner: "u" }));
     const engine = await engineFor(auth);
+
     const result = await engine!.authorize({
       resource: "threads",
       action: "create",
@@ -93,7 +95,9 @@ describe("loadAuthEngine", () => {
       .on("*", () => ({ scope: "wildcard" }))
       .on("threads", () => ({ scope: "resource" }))
       .on("threads:create", () => ({ scope: "exact" }));
+
     const engine = await engineFor(auth);
+
     const result = await engine!.authorize({
       resource: "threads",
       action: "create",
@@ -106,6 +110,7 @@ describe("loadAuthEngine", () => {
   it("allows (no filters) when no handler matches or there is no user", async () => {
     const auth = new Auth().authenticate(() => "u").on("store:put", () => ({ owner: "u" }));
     const engine = await engineFor(auth);
+
     const noHandler = await engine!.authorize({
       resource: "threads",
       action: "read",

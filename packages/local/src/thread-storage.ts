@@ -9,10 +9,12 @@ export function inspectSqliteThreadStorage(database: Database, threadId: string)
         `SELECT count(*) AS count, coalesce(sum(${expression}),0) AS bytes FROM ${table} WHERE thread_id=?`,
       )
       .get(threadId) as { count: number; bytes: number };
+
   const checkpoints = count(
     "checkpoints",
     "coalesce(length(checkpoint),0)+coalesce(length(metadata),0)",
   );
+
   const pending_writes = count("writes", "coalesce(length(value),0)");
   return {
     thread_id: threadId,

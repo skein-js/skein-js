@@ -44,6 +44,7 @@ describe("renderTemplate", () => {
       runServices: "npm run dev:services",
       runDevPostgres: "npm run dev:postgres",
     };
+
     const withoutProvider = { ...withProvider, hasProvider: false };
 
     // Inline form: the newline after the closing tag is real content, and dropping it would put the

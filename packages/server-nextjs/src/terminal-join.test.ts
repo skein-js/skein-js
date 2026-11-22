@@ -5,6 +5,7 @@ import { createEchoDeps, startEchoServer } from "./__fixtures__/echo-server.js";
 it("completes terminal stream joins with replay and a lost bus marker (app)", async () => {
   const deps = createEchoDeps();
   const thread = await deps.store.threads.create();
+
   const run = await deps.store.runs.create({
     thread_id: thread.thread_id,
     assistant_id: "echo",
@@ -12,6 +13,7 @@ it("completes terminal stream joins with replay and a lost bus marker (app)", as
   });
   await deps.bus.publish(run.run_id, { seq: 1, event: "values", data: { retained: true } });
   const server = await startEchoServer({ deps, router: "app" });
+
   try {
     const response = await fetch(
       `${server.baseUrl}/threads/${thread.thread_id}/runs/${run.run_id}/stream`,
@@ -26,6 +28,7 @@ it("completes terminal stream joins with replay and a lost bus marker (app)", as
 it("completes terminal stream joins with replay and a lost bus marker (pages)", async () => {
   const deps = createEchoDeps();
   const thread = await deps.store.threads.create();
+
   const run = await deps.store.runs.create({
     thread_id: thread.thread_id,
     assistant_id: "echo",
@@ -33,6 +36,7 @@ it("completes terminal stream joins with replay and a lost bus marker (pages)", 
   });
   await deps.bus.publish(run.run_id, { seq: 1, event: "values", data: { retained: true } });
   const server = await startEchoServer({ deps, router: "pages" });
+
   try {
     const response = await fetch(
       `${server.baseUrl}/threads/${thread.thread_id}/runs/${run.run_id}/stream`,

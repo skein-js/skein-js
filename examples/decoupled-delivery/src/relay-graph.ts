@@ -79,6 +79,7 @@ function routeDelivery(
     if (!state.refundAmount || !state.refundReason) {
       throw new Error("A refund approval needs an amount and reason.");
     }
+
     declareChannelDestinationDelivery(config.writer, {
       destination: "whatsapp-approval-batch",
       target: { refundId: state.conversationId },
@@ -116,6 +117,7 @@ function collectRefundApproval(
   const role = state.approvalRole;
   const assignedPrincipal = state.assignedPrincipal;
   const whatsappNumber = state.approvalWhatsappNumber;
+
   if (!role || !assignedPrincipal || !whatsappNumber) {
     throw new Error("The approval task is missing its role assignment.");
   }
@@ -132,7 +134,9 @@ function collectRefundApproval(
         reason: state.refundReason,
       }),
     );
+
     const authenticatedActor = config.configurable?.["langgraph_auth_user_id"];
+
     if (candidate.actor === assignedPrincipal && authenticatedActor === assignedPrincipal) {
       return { decisions: [{ role, ...candidate }] };
     }

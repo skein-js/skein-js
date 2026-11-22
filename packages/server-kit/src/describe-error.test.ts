@@ -14,6 +14,7 @@ describe("describeError", () => {
     const wrapped = new Error("Failed to import graph module.", {
       cause: new Error("ENOENT: no such file", { cause: new Error("root") }),
     });
+
     const described = describeError(wrapped);
 
     expect(described).toContain("Failed to import graph module.");

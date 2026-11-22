@@ -15,18 +15,22 @@ export function createOpenApiDocument(
   version = "unknown",
 ) {
   const paths: Record<string, Record<string, unknown>> = {};
+
   const convert = (schema: Parameters<typeof zodToJsonSchema>[0]) =>
     zodToJsonSchema(schema, { target: "openApi3", $refStrategy: "none" });
+
   for (const route of routes) {
     if (!handlers[route.handler]) continue;
     const contract = operationContracts[route.handler];
     const path = route.path.replace(/:([A-Za-z_]+)/g, "{$1}");
+
     const parameters: object[] = [...route.path.matchAll(/:([A-Za-z_]+)/g)].map(([, name]) => ({
       name,
       in: "path",
       required: true,
       schema: convert(pathParameterSchema),
     }));
+
     if ("query" in contract) {
       const querySchema = convert(contract.query) as {
         properties?: Record<string, unknown>;
@@ -40,13 +44,16 @@ export function createOpenApiDocument(
           required: querySchema.required?.includes(name) ?? false,
         });
     }
+
     if ("headers" in contract) {
       const headers = convert(contract.headers) as { properties?: Record<string, unknown> };
       for (const [name, schema] of Object.entries(headers.properties ?? {}))
         parameters.push({ name, in: "header", schema });
     }
+
     const validator = "body" in contract ? contract.body : undefined;
     const requestSchema = validator ? convert(validator) : undefined;
+
     const content =
       contract.kind === "empty"
         ? undefined
@@ -58,6 +65,7 @@ export function createOpenApiDocument(
                 ? { "text/event-stream": { schema: { type: "string" } } }
                 : {}),
             };
+
     const responses = {
       ...("external" in contract && contract.external
         ? {}
@@ -122,6 +130,7 @@ export function createOpenApiDocument(
           : responses,
     };
   }
+
   for (const diagnostic of enabledNativeDiagnostics(
     routes.filter((route) => Boolean(handlers[route.handler])),
   )) {
@@ -144,6 +153,7 @@ export function createOpenApiDocument(
       },
     };
   }
+
   return {
     openapi: "3.0.3",
     info: { title: "Skein Agent Server", version },

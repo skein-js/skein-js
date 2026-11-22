@@ -39,6 +39,7 @@ const renderOptions = { escape: (value: unknown) => String(value) };
  */
 export function renderTemplate(templateKey: string, values: TemplateValues): string {
   const source = TEMPLATE_SOURCES[templateKey];
+
   if (source === undefined) {
     throw new Error(`No template named "${templateKey}".`);
   }

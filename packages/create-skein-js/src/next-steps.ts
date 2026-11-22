@@ -3,8 +3,7 @@
 // Pure — it returns lines and the caller prints them — so what a user is told at the end of a
 // scaffold is a plain unit test rather than something only observable by running the binary.
 
-import { PROVIDER_DETAILS } from "@skein-js/scaffold";
-import type { ScaffoldOptions } from "@skein-js/scaffold";
+import { PROVIDER_DETAILS, type ScaffoldOptions } from "@skein-js/scaffold";
 
 import { bold, cyan, dim, yellow } from "./colors.js";
 import type { GitOutcome } from "./git.js";
@@ -65,12 +64,15 @@ export function describeNextSteps(
       `  ${cyan(`${options.packageManager} install`)}   ${dim(`— from the workspace root (${outcome.workspaceRoot})`)}`,
     );
   }
+
   if (outcome.relativeDirectory !== ".") {
     lines.push(`  ${cyan(`cd ${outcome.relativeDirectory}`)}`);
   }
+
   if (outcome.workspaceRoot === undefined && !outcome.installed) {
     lines.push(`  ${cyan(`${options.packageManager} install`)}`);
   }
+
   // Listed as a *step*, in sequence and in color, rather than as a footnote after the URLs. Someone
   // who scrolls past a dim aside gets a graph that fails to load on first boot, and the reason for it
   // is then something they have to read out of a stack trace instead of out of this list.
@@ -84,12 +86,14 @@ export function describeNextSteps(
       `  ${yellow(`Set ${provider.apiKeyEnvVar} in .env`)}   ${dim(`— uncomment it; get a key at ${provider.consoleUrl}`)}`,
     );
   }
+
   // On the durable axis `dev` needs Postgres and Redis, so the very first command we print would
   // otherwise fail with nothing running. Listed as its own step for the same reason the API key is:
   // a footnote after the URLs is a footnote people scroll past.
   if (options.devStorage === "postgres") {
     lines.push(`  ${cyan(runCommand(options, "dev:services"))}   ${dim("— Postgres + Redis")}`);
   }
+
   lines.push(`  ${cyan(runCommand(options, "dev"))}`, "");
 
   lines.push(

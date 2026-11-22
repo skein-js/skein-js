@@ -29,9 +29,11 @@ it("separates authorized API admission/streams from worker execution, cancellati
     { split: buildSplitGraph() },
     { postgresUri: postgres.url, redisUri: redis.url, overrides: { auth: splitAuth } },
   );
+
   const api = createProtocolRuntime(embedded.deps);
   await api.service.assistants.registerGraphAssistants();
   const expiredReads = vi.spyOn(embedded.deps.store.threads, "listExpired");
+
   // API owner does not start worker/maintenance. The child is the only consumer and loop owner.
   const child = fork(fileURLToPath(new URL("./__fixtures__/split-worker.mjs", import.meta.url)), {
     // Node 22.14 requires an opt-in for the worker's TypeScript graph fixture.
@@ -39,6 +41,7 @@ it("separates authorized API admission/streams from worker execution, cancellati
     env: { ...process.env, POSTGRES_URI: postgres.url, REDIS_URI: redis.url },
     stdio: ["ignore", "ignore", "inherit", "ipc"],
   });
+
   const request = (body: unknown, params = {}, user = "alice"): ProtocolRequest => ({
     method: "POST",
     url: "http://localhost/",
@@ -47,6 +50,7 @@ it("separates authorized API admission/streams from worker execution, cancellati
     query: {},
     body,
   });
+
   const json = async <T>(
     name: keyof ProtocolHandlers,
     body: unknown,
@@ -59,12 +63,15 @@ it("separates authorized API admission/streams from worker execution, cancellati
     if (response.kind !== "json") throw new Error("Expected JSON");
     return response.body as T;
   };
+
   let stopped = false;
+
   try {
     expect((await once(child, "message", { signal: AbortSignal.timeout(20_000) }))[0]).toBe(
       "ready",
     );
     const thread = await json<Thread>("createThread", {});
+
     const run = await json<Run>(
       "createBackgroundRun",
       { assistant_id: "split", input: { value: "background", delay: 200 } },
@@ -94,6 +101,7 @@ it("separates authorized API admission/streams from worker execution, cancellati
       await json("createWaitRun", { assistant_id: "split", input: { value: "inline" } }),
     ).toMatchObject({ ownerPid: process.pid, caller: "alice" });
     const inlineThread = await json<Thread>("createThread", {});
+
     const inline = json("createWaitRun", {
       thread_id: inlineThread.thread_id,
       assistant_id: "split",
@@ -144,6 +152,7 @@ it("separates authorized API admission/streams from worker execution, cancellati
       child.kill("SIGKILL");
       await exit;
     }
+
     await api.worker.stop();
     await embedded.dispose();
   }

@@ -12,6 +12,7 @@ it("nonblocking claims respect local holders and release against blocking waiter
   expect(held).toBeDefined();
   expect(await tryAcquireThreadExecution(locks, undefined, "t")).toBeUndefined();
   let entered = false;
+
   const waiting = locks.run("t", async () => {
     entered = true;
   });
@@ -26,14 +27,17 @@ it("nonblocking claims respect local holders and release against blocking waiter
 
 it("releases a local reservation on backend contention or failure", async () => {
   const locks = new ThreadLocks();
+
   const gate: ThreadExecutionGate = {
     acquire: vi.fn(),
     tryAcquire: async () => undefined,
   };
   expect(await tryAcquireThreadExecution(locks, gate, "t")).toBeUndefined();
+
   gate.tryAcquire = async () => {
     throw new Error("backend lost");
   };
+
   await expect(tryAcquireThreadExecution(locks, gate, "t")).rejects.toThrow("could not claim");
   const recovered = await tryAcquireThreadExecution(locks, undefined, "t");
   expect(recovered).toBeDefined();
@@ -89,6 +93,7 @@ describe("withThreadExecution", () => {
     // Proceeding is the unsafe direction: it would let two instances write one thread's checkpoints,
     // which is the corruption the gate exists to prevent.
     const task = vi.fn(async () => "should not run");
+
     const failing: ThreadExecutionGate = {
       acquire: () => Promise.reject(new Error("postgres is unreachable")),
     };

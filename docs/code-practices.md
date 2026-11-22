@@ -141,20 +141,18 @@ fields and operation IDs. The contract coverage and response conformance tests m
 
 - **ESLint (flat config) and Prettier** are the source of truth for style, **run through Nx**
   — never bare `eslint`/`prettier`. `eslint.config.mjs` and `.prettierrc.json` live at the
-  repo root; `@nx/eslint` infers the `lint` target, and formatting is Nx's built-in Prettier.
-  Prettier formats code, templates, and docs. ESLint checks correctness and import order.
-- The Angular A2UI and React json-render playgrounds and their shared GitHub example also check
-  named import order, blank lines around blocks and between multiline declarations, and async
-  TypeScript rules. ESLint and Prettier share the multiline declaration rule, so formatting
-  adds the blank lines automatically and consecutive one-line declarations can stay together.
-  Angular checks include inline templates and accessibility. React checks include Hooks, JSX,
-  and accessibility.
-  Apply fixable rules with `pnpm exec nx run-many -p example-a2ui,example-json-render,example-github-playground -t lint --fix`,
-  then format through Nx.
+  repo root. Project lint targets and the root tooling target use the same ESLint rules for
+  imports and unused declarations. Prettier formats code, templates, and docs through Nx.
+- ESLint and Prettier share rules for blank lines around statement blocks, class members, and
+  adjacent JavaScript and TypeScript declarations when either declaration spans multiple lines.
+  Consecutive one-line declarations can stay together. Run `pnpm lint:fix` to fix imports and
+  other lint issues, then `pnpm format` to apply Prettier.
+- Framework and type-aware checks follow the relevant project configuration. The playgrounds
+  check async TypeScript usage against their tsconfigs. The Angular playground also checks
+  inline templates and accessibility. The React playground checks Hooks, JSX, and accessibility.
 - **`pnpm lint` (`nx run-many -t lint`) / `pnpm format` (`nx format:write`)** must be clean
   before pushing. CI checks formatting across the workspace and fails on ESLint warnings.
-  The pre-commit hook checks staged formatting and runs ESLint for affected projects, including
-  the playgrounds.
+  The pre-commit hook checks staged formatting and runs ESLint for affected projects and tooling.
 
 ### Commits & PRs
 

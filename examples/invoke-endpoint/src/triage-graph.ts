@@ -29,9 +29,11 @@ function classify(state: typeof TicketState.State): { category: string } {
 function prioritize(state: typeof TicketState.State): { priority: string } {
   const text = state.text.toLowerCase();
   const urgent = URGENT_KEYWORDS.some((k) => text.includes(k));
+
   if (urgent && (state.category === "bug" || state.category === "billing")) {
     return { priority: "P1" };
   }
+
   return { priority: urgent ? "P2" : "P3" };
 }
 

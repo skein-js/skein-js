@@ -28,6 +28,7 @@ async function scopedRuns() {
   const inner = new MemorySkeinStore();
   const scoped = createAuthScopedStore(inner, ownerEngine, { owner: "alice" }, "threads");
   const thread = await inner.threads.create({ metadata: { owner: "alice" } });
+
   const run = await scoped.runs.create({
     thread_id: thread.thread_id,
     assistant_id: "a",
@@ -39,11 +40,13 @@ describe("createAuthScopedStore", () => {
   it("retains optional TTL reads only for owned threads and supporting drivers", async () => {
     const inner = new MemorySkeinStore();
     const scoped = createAuthScopedStore(inner, ownerEngine, { owner: "alice" }, "threads");
+
     const owned = await inner.threads.create({
       metadata: { owner: "alice" },
       ttl: 5,
       ttlStrategy: "keep_latest",
     });
+
     const foreign = await inner.threads.create({
       metadata: { owner: "bob" },
       ttl: 7,
@@ -57,6 +60,7 @@ describe("createAuthScopedStore", () => {
     await expect(scoped.threads.getTtl!(foreign.thread_id)).rejects.toMatchObject({ status: 404 });
     await expect(scoped.threads.getTtl!("missing")).rejects.toMatchObject({ status: 404 });
     const { getTtl: _ttl, ...legacyThreads } = inner.threads;
+
     const legacy = createAuthScopedStore(
       { ...inner, threads: legacyThreads },
       ownerEngine,
@@ -81,6 +85,7 @@ describe("createAuthScopedStore", () => {
       scoped.runs.recordResult!(foreign.run_id, { values: { answer: "replace" } }),
     ).rejects.toMatchObject({ status: 404 });
     const { recordResult: _write, getResult: _read, ...legacyRuns } = inner.runs;
+
     const legacy = createAuthScopedStore(
       { ...inner, runs: legacyRuns },
       ownerEngine,
@@ -102,6 +107,7 @@ describe("createAuthScopedStore", () => {
       const inner = new MemorySkeinStore();
       const scoped = createAuthScopedStore(inner, ownerEngine, { owner: "alice" }, "threads");
       const thread = await inner.threads.create({ metadata: { owner: "alice" } });
+
       // Created on the *inner* store, so it carries no `owner: alice` stamp.
       const foreign = await inner.runs.create({
         thread_id: thread.thread_id,
@@ -140,6 +146,7 @@ describe("createAuthScopedStore", () => {
 
   it("forwards a run's failure reason through setStatus", async () => {
     const { inner, scoped, run } = await scopedRuns();
+
     const failure = {
       error: "TypeError",
       name: "TypeError",
@@ -160,6 +167,7 @@ describe("createAuthScopedStore", () => {
   it("finds the caller's threads past the driver's page bound", async () => {
     const inner = new MemorySkeinStore({ maxPageSize: 3 });
     const scoped = createAuthScopedStore(inner, ownerEngine, { owner: "alice" }, "threads");
+
     // Alice's three are the *oldest*, and search defaults to created_at DESC, so they fall outside the
     // first page of three entirely.
     for (const owner of ["alice", "alice", "alice", "bob", "bob", "bob"]) {
@@ -175,6 +183,7 @@ describe("createAuthScopedStore", () => {
   it("pages the caller's own threads with limit/offset, not the driver's rows", async () => {
     const inner = new MemorySkeinStore({ maxPageSize: 3 });
     const scoped = createAuthScopedStore(inner, ownerEngine, { owner: "alice" }, "threads");
+
     for (const owner of ["alice", "alice", "alice", "bob", "bob", "bob"]) {
       await inner.threads.create({ metadata: { owner } });
     }
@@ -226,6 +235,7 @@ describe("createAuthScopedStore", () => {
   it("scopes list to the caller's own threads, past the page bound", async () => {
     const inner = new MemorySkeinStore({ maxPageSize: 3 });
     const scoped = createAuthScopedStore(inner, ownerEngine, { owner: "alice" }, "threads");
+
     // Alice's are the newest here, so an ascending `list` page of three would hold only bob's.
     for (const owner of ["bob", "bob", "bob", "alice", "alice"]) {
       await inner.threads.create({ metadata: { owner } });
@@ -246,6 +256,7 @@ describe("createAuthScopedStore", () => {
       matchesFilters: (metadata: Metadata | undefined) =>
         typeof metadata?.["owner"] === "string" && metadata["owner"].startsWith("a"),
     } as unknown as AuthEngine;
+
     const inner = new MemorySkeinStore();
     // `{}` translates to no clause at all, so every row reaches the in-process filter.
     const scoped = createAuthScopedStore(inner, oddOwnerEngine, { owner: {} }, "threads");
@@ -262,6 +273,7 @@ describe("createAuthScopedStore", () => {
     const inner = new MemorySkeinStore();
     const scoped = createAuthScopedStore(inner, ownerEngine, { owner: "bob" }, "threads");
     const thread = await inner.threads.create({ metadata: { owner: "alice" } });
+
     const run = await inner.runs.create({
       thread_id: thread.thread_id,
       assistant_id: "a",
@@ -275,6 +287,7 @@ describe("createAuthScopedStore", () => {
 it("preserves genuine search capability absence in the scoped store", () => {
   const inner = new MemorySkeinStore();
   const { search: _search, ...runs } = inner.runs;
+
   const scoped = createAuthScopedStore(
     { ...inner, runs },
     ownerEngine,

@@ -9,18 +9,17 @@
 // docs/embedding.md.
 
 import { MemorySaver } from "@langchain/langgraph";
-import { withStoreItems } from "@skein-js/agent-protocol";
-import type { GraphResolver, ProtocolDeps } from "@skein-js/agent-protocol";
+import { withStoreItems, type GraphResolver, type ProtocolDeps } from "@skein-js/agent-protocol";
 import { cloneLangGraphCheckpoint, SkeinBaseStore } from "@skein-js/langgraph";
 import {
   normalizeEmbeddableGraphs,
   resolveMaxPageSize,
-  resolveRunConcurrency,
   resolveMemoryBusLimits,
+  resolveRunConcurrency,
   resolveWebhooks,
   type EmbeddableGraph,
 } from "@skein-js/server-kit";
-import { MemoryRunEventBus, MemoryThreadEventBus, MemoryRunQueue } from "@skein-js/storage-memory";
+import { MemoryRunEventBus, MemoryRunQueue, MemoryThreadEventBus } from "@skein-js/storage-memory";
 import type { StoreIndexConfig } from "@skein-js/storage-postgres";
 
 import {
@@ -142,6 +141,7 @@ export async function embedPostgresGraphs(
     ) {
       throw new RuntimeConfigError(`poolMax must be an integer >= 1 (got ${options.poolMax}).`);
     }
+
     // Same treatment for the timeouts, so the in-code path and the environment path agree. Left
     // unchecked these fail in ways that are hard to trace: `pg` reads `0` as falsy and waits forever,
     // a negative `connectionTimeoutMs` makes `setTimeout` fire immediately so *every* connect
@@ -156,6 +156,7 @@ export async function embedPostgresGraphs(
         throw new RuntimeConfigError(`${name} must be an integer >= 0 (got ${value}).`);
       }
     }
+
     // Explicit options win over env-derived tuning; the env is still read + validated (a bad
     // PG_POOL_MAX throws) so both sources agree, matching `buildRuntime`.
     const connectionOptions = {
@@ -185,6 +186,7 @@ export async function embedPostgresGraphs(
         runConcurrency: resolveRunConcurrency(),
         disposers,
       });
+
     // Pointed at whichever store the items actually live in. `overrides.storeItems` is a bring-your-own
     // long-term store (docs/storage.md), and aimed at the driver's own repo the sweeper would tidy an
     // empty table forever while the adapted one grew — the same mistake `buildRuntime` avoids.
@@ -199,6 +201,7 @@ export async function embedPostgresGraphs(
     // process-local queue is a footgun for a helper people reach for to deploy (see the redisUri doc).
     const redisUrl =
       blankToUndefined(options.redisUri) ?? blankToUndefined(process.env["REDIS_URI"]);
+
     if (!redisUrl) {
       console.warn(
         "skein: embedPostgresGraphs has no Redis URL (redisUri / REDIS_URI) — using an in-memory run " +
@@ -206,6 +209,7 @@ export async function embedPostgresGraphs(
           "process-local and streaming isn't fanned across instances. Set a Redis URL to scale out.",
       );
     }
+
     // No Redis means the in-memory bus in production. Bound it from the environment rather than
     // leaving it at the constructor defaults — this is the path a Postgres-only deployment runs on,
     // and it is the one that has to survive weeks of uptime.
@@ -214,6 +218,7 @@ export async function embedPostgresGraphs(
     // follows the docs sends **unsigned** callbacks and cannot tell — an explicit `overrides.webhooks`
     // still wins, since it is spread last onto `deps`.
     const webhooks = options.overrides?.webhooks ?? resolveWebhooks(undefined);
+
     const { queue, bus, threadBus, deliveryQueue, abortChannel } = redisUrl
       ? connectRedisQueue({
           url: redisUrl,

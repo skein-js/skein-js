@@ -64,6 +64,7 @@ export function isThreadCommandEnvelope(body: unknown): boolean {
 export function createThreadProtocolService(ctx: ProtocolContext, runs: RunService) {
   const { deps } = ctx;
   const threads = createThreadService(ctx);
+
   const requireBus = () => {
     if (!deps.threadBus)
       throw SkeinHttpError.unprocessable("Thread subscriptions require a thread event bus.", {
@@ -77,11 +78,14 @@ export function createThreadProtocolService(ctx: ProtocolContext, runs: RunServi
   const start = async (threadId: string, params: Record<string, unknown>, resume?: unknown) => {
     requireBus();
     const thread = await findThread(threadId);
+
     const latest = (await deps.store.runs.listByThread(threadId)).sort((a, b) =>
       b.created_at.localeCompare(a.created_at),
     )[0];
+
     const assistantId =
       params["assistant_id"] ?? thread?.metadata?.["assistant_id"] ?? latest?.assistant_id;
+
     const payload = runCreateSchema.parse({
       ...params,
       assistant_id: assistantId,
@@ -91,6 +95,7 @@ export function createThreadProtocolService(ctx: ProtocolContext, runs: RunServi
         ? { input: undefined, command: { resume, update: params["update"], goto: params["goto"] } }
         : {}),
     }) as CreateRunInput;
+
     // Resolve before admission so an old custom agent fails without leaving a broken queued run.
     const assistant =
       typeof assistantId === "string" ? await deps.store.assistants.get(assistantId) : null;
@@ -114,11 +119,13 @@ export function createThreadProtocolService(ctx: ProtocolContext, runs: RunServi
     const abort = () => stopped.abort();
     signal?.addEventListener("abort", abort, { once: true });
     if (signal?.aborted) stopped.abort();
+
     const close = () => {
       stopped.abort();
       ctx.threadStreams?.delete(stopped);
       signal?.removeEventListener("abort", abort);
     };
+
     try {
       const bus = requireBus();
       const generation = await bus.generation(threadId);
@@ -133,6 +140,7 @@ export function createThreadProtocolService(ctx: ProtocolContext, runs: RunServi
       throw error;
     }
   };
+
   return {
     async follow(
       threadId: string,
@@ -152,6 +160,7 @@ export function createThreadProtocolService(ctx: ProtocolContext, runs: RunServi
           try {
             if (!(await connection.isCurrent())) return;
             yield ": subscribed\n\n";
+
             for await (const entry of connection.source) {
               if (!(await connection.isCurrent()) || !(await deps.store.threads.get(threadId)))
                 return;
@@ -178,10 +187,12 @@ export function createThreadProtocolService(ctx: ProtocolContext, runs: RunServi
           message: "Commands require a nonnegative integer id, method and object params.",
         };
       const { id, method, params } = parsed.data;
+
       try {
         switch (method) {
           case "run.start": {
             const thread = await findThread(threadId);
+
             const run = await start(
               threadId,
               params,
@@ -189,6 +200,7 @@ export function createThreadProtocolService(ctx: ProtocolContext, runs: RunServi
             );
             return { type: "success", id, result: { run_id: run.run_id } };
           }
+
           case "input.respond": {
             const thread = await threads.get(threadId);
             if (thread.status !== "interrupted")
@@ -198,11 +210,13 @@ export function createThreadProtocolService(ctx: ProtocolContext, runs: RunServi
               .min(1)
               .optional()
               .parse(params["responses"]);
+
             const resume = responses
               ? Object.fromEntries(
                   responses.map((response) => [response.interrupt_id, response.response]),
                 )
               : { [z.string().min(1).parse(params["interrupt_id"])]: params["response"] };
+
             const pending = new Set(
               Object.values(thread.interrupts ?? {})
                 .flat()
@@ -218,11 +232,14 @@ export function createThreadProtocolService(ctx: ProtocolContext, runs: RunServi
             await start(threadId, params, resume);
             return { type: "success", id, result: {} };
           }
+
           case "state.get": {
             const namespace = z.array(z.string()).optional().parse(params["namespace"]) ?? [];
+
             const state = await threads.getState(threadId, {
               checkpoint: { checkpoint_ns: namespace.join("|") },
             });
+
             const keys = z.array(z.string()).optional().parse(params["keys"]);
             const values = state.values;
             return {
@@ -243,8 +260,10 @@ export function createThreadProtocolService(ctx: ProtocolContext, runs: RunServi
               },
             };
           }
+
           case "state.listCheckpoints": {
             const namespace = z.array(z.string()).optional().parse(params["namespace"]) ?? [];
+
             const history = await threads.history(threadId, {
               checkpoint: { checkpoint_ns: namespace.join("|") },
               limit: z.number().int().positive().max(1000).optional().parse(params["limit"]),
@@ -265,6 +284,7 @@ export function createThreadProtocolService(ctx: ProtocolContext, runs: RunServi
               },
             };
           }
+
           case "state.fork": {
             const checkpointId = z.string().min(1).parse(params["checkpoint_id"]);
             await threads.get(threadId);
@@ -282,18 +302,21 @@ export function createThreadProtocolService(ctx: ProtocolContext, runs: RunServi
               };
             const fork = await threads.copy(threadId);
             let run;
+
             try {
               run = await start(fork.thread_id, { ...params, checkpoint_id: checkpointId });
             } catch (error) {
               await threads.delete(fork.thread_id);
               throw error;
             }
+
             return {
               type: "success",
               id,
               result: { run_id: run.run_id, thread_id: fork.thread_id },
             };
           }
+
           case "agent.getTree": {
             const thread = await threads.get(threadId);
             const state = await threads.getState(threadId, { subgraphs: true });
@@ -308,6 +331,7 @@ export function createThreadProtocolService(ctx: ProtocolContext, runs: RunServi
                     : "completed";
             return { type: "success", id, result: { tree } };
           }
+
           default:
             return {
               type: "error",
@@ -353,23 +377,28 @@ export function createThreadProtocolService(ctx: ProtocolContext, runs: RunServi
       const cursor = filter.since ?? (await requireBus().latestSequence(threadId));
       const connection = await connect(threadId, replayCursor, signal);
       const baseline: ThreadProtocolEvent[] = [];
+
       try {
         if (filter.since === undefined) {
           const thread = await findThread(threadId);
+
           if (thread) {
             const state = await threads.getState(threadId, { subgraphs: true });
+
             const collectState = (snapshot: ThreadState, namespace: string[]) => {
               baseline.push({
                 type: "event",
                 method: "values",
                 params: { namespace, timestamp: Date.now(), data: snapshot.values },
               });
+
               for (const task of snapshot.tasks) {
                 const childNamespace = task.state?.checkpoint.checkpoint_ns?.split("|") ?? [
                   ...namespace,
                   `${task.name}:${task.id}`,
                 ];
                 if (task.state) collectState(task.state, childNamespace);
+
                 for (const interrupt of task.interrupts ?? []) {
                   if (interrupt.id)
                     baseline.push({
@@ -384,6 +413,7 @@ export function createThreadProtocolService(ctx: ProtocolContext, runs: RunServi
                 }
               }
             };
+
             collectState(state, []);
             const latest = (await deps.store.runs.listByThread(threadId)).sort((a, b) =>
               b.created_at.localeCompare(a.created_at),
@@ -413,11 +443,13 @@ export function createThreadProtocolService(ctx: ProtocolContext, runs: RunServi
         connection.close();
         throw error;
       }
+
       const encoded = async function* () {
         try {
           if (!(await connection.isCurrent())) return;
           yield ": subscribed\n\n";
           if (baseline.length && !(await deps.store.threads.get(threadId))) return;
+
           const encodeBaseline = function* () {
             for (const [index, event] of baseline.entries()) {
               if (!matchesFilter(filter, event)) continue;
@@ -428,22 +460,27 @@ export function createThreadProtocolService(ctx: ProtocolContext, runs: RunServi
               });
             }
           };
+
           let baselinePending = replayCursor < cursor;
           if (!baselinePending) yield* encodeBaseline();
+
           for await (const entry of connection.source) {
             if (!(await connection.isCurrent()) || !(await deps.store.threads.get(threadId)))
               return;
+
             // Replay publication order first, then the state baseline, then live events.
             if (baselinePending && entry.seq > cursor) {
               yield* encodeBaseline();
               baselinePending = false;
             }
+
             if (
               entry.kind === "protocol" &&
               (await deps.store.runs.get(entry.runId)) &&
               matchesFilter(filter, entry.event)
             )
               yield encodeProtocolEvent(entry.event);
+
             if (baselinePending && entry.seq >= cursor) {
               yield* encodeBaseline();
               baselinePending = false;
@@ -456,6 +493,7 @@ export function createThreadProtocolService(ctx: ProtocolContext, runs: RunServi
           connection.close();
         }
       };
+
       return withSseHeartbeats(encoded());
     },
   };
@@ -464,6 +502,7 @@ export function createThreadProtocolService(ctx: ProtocolContext, runs: RunServi
 function matchesFilter(filter: ThreadEventFilter, event: ThreadProtocolEvent): boolean {
   const channel = event.method.startsWith("input.") ? "input" : event.method;
   const data = event.params.data;
+
   const custom =
     event.method === "custom" && typeof data === "object" && data !== null && "name" in data
       ? `custom:${String(data.name)}`

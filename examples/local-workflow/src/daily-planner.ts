@@ -24,6 +24,7 @@ export const sampleTasks = `# Today's task inbox
 - Clean up old screenshots. No deadline. Estimate: 30 minutes.
 - Reply to the venue email before 4 pm. Estimate: 15 minutes.
 Available focus time: about 3 hours. Keep a little room for interruptions.\n`;
+
 const planSchema = z.object({
   summary: z.string(),
   blocks: z.array(z.object({ timebox: z.string(), task: z.string(), reason: z.string() })).max(8),
@@ -35,6 +36,7 @@ export type DailyPlan = z.infer<typeof planSchema> & {
   outcome: "review" | "saved" | "dismissed";
   savedPath: string;
 };
+
 export function dailyPlanMarkdown(plan: DailyPlan): string {
   return [
     "# Your daily plan",
@@ -55,6 +57,7 @@ export function dailyPlanMarkdown(plan: DailyPlan): string {
     "",
   ].join("\n");
 }
+
 export function buildDailyPlanner(
   directory: string,
   tasksFilename: string,
@@ -82,6 +85,7 @@ export function buildDailyPlanner(
     .addNode("plan", async (current, config) => {
       const writer = getWriter();
       let plan: z.infer<typeof planSchema>;
+
       if (options.fixture)
         plan = {
           summary: "Make room for the proposal, the blocked copy review and the launch issue.",
@@ -147,6 +151,7 @@ export function buildDailyPlanner(
             },
           ),
         ];
+
         try {
           const agent = createAgent({
             model: options.createModel?.() ?? createModelSession().createModel(),
@@ -155,6 +160,7 @@ export function buildDailyPlanner(
               "You are Dayplan, a practical daily planning assistant. Read the task inbox and recent plans with your tools. Respect stated deadlines and available time. Never schedule more minutes than the available time. Leave a small buffer; split a large task or defer it explicitly when everything does not fit. Avoid inventing tasks or pretending an estimate is certain. Explain priorities and what to defer. Never claim to change a task file or save a plan; the user reviews the plan first.",
             responseFormat: toolStrategy(planSchema),
           });
+
           const result = await agent.invoke(
             { messages: [{ role: "user", content: current.request }] },
             { ...config, recursionLimit: 16 },
@@ -164,6 +170,7 @@ export function buildDailyPlanner(
           throw new Error(modelErrorMessage(error));
         }
       }
+
       return { ...plan, outcome: "review" as const, savedPath: "" };
     })
     .addNode("approve", (current) => {
@@ -186,11 +193,13 @@ export function buildDailyPlanner(
       const markdown = dailyPlanMarkdown(current);
       const revision = createHash("sha256").update(markdown).digest("hex");
       const filename = join(plans, `${encodeURIComponent(id)}-${revision}.md`);
+
       try {
         await writeFile(filename, markdown, { flag: "wx" });
       } catch (error) {
         if ((error as NodeJS.ErrnoException).code !== "EEXIST") throw error;
       }
+
       await getStore()?.put(["daily-plans"], id, {
         summary: current.summary,
         blocks: current.blocks,

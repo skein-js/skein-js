@@ -24,6 +24,7 @@ export function OverviewView() {
   const [client] = useState(() => createConsoleClient());
 
   const info = useAsync((signal) => fetchServerInfo(signal), []);
+
   const counts = useAsync(async (signal) => {
     // Counted rather than measured off a page of results: `search` with a limit tells you how many
     // rows came back, which is a different number and quietly caps at the page size.
@@ -35,6 +36,7 @@ export function OverviewView() {
       client.threads.count({ status: "interrupted", signal }),
       client.threads.count({ status: "error", signal }),
     ]);
+
     const [assistants, threads, crons, waiting, failed] = results.map((result) =>
       result.status === "fulfilled" ? result.value : undefined,
     );
@@ -51,6 +53,7 @@ export function OverviewView() {
         ),
     };
   }, []);
+
   const recent = useAsync(
     (signal) =>
       client.threads.search({ limit: 10, sortBy: "updated_at", sortOrder: "desc", signal }),

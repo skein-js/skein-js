@@ -114,6 +114,7 @@ export default withMermaid(
 
       const description =
         pageData.frontmatter.description ?? describePage(readFileSync(source, "utf8"));
+
       // index.md's H1 is already "skein-js — Overview", so the default " | skein-js" suffix renders
       // "skein-js — Overview | skein-js". Suppress it wherever the heading already names the project —
       // the <title> is the single most valuable string on the page for search.

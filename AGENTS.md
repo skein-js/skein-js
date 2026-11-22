@@ -79,7 +79,8 @@ and consistent targets across packages. Every root `pnpm` script is a thin wrapp
 Nx target — there are no bare `eslint`/`prettier`/`vitest` invocations.
 
 - `build` / `typecheck` / `test-integration` are defined per project in `project.json`.
-- `lint` is inferred by the **`@nx/eslint`** plugin from the root `eslint.config.mjs`.
+- `lint` is inferred by **`@nx/eslint`** from the root `eslint.config.mjs`. The root
+  `workspace-tooling` target uses the same config for scripts and build tooling.
 - `test` is inferred by the **`@nx/vite`** plugin from each project's `vitest.config.ts`.
 - Formatting is **Nx's built-in Prettier** (`nx format:write` / `nx format:check`).
 

@@ -41,6 +41,7 @@ describe("allowedOrigin", () => {
       origin: (_o: string | undefined, cb: (e: Error | null, ok: boolean) => void) =>
         cb(null, true),
     };
+
     const deny = {
       origin: (_o: string | undefined, cb: (e: Error | null, ok: boolean) => void) =>
         cb(null, false),

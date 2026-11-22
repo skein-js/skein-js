@@ -59,9 +59,11 @@ export function migrateDatabase(database: Database): void {
     const versions = database
       .prepare("SELECT version FROM skein_migrations ORDER BY version")
       .all() as { version: number }[];
+
     if (versions.some(({ version }) => version > migrations.length)) {
       throw new Error("This SQLite database requires a newer version of @skein-js/storage-sqlite.");
     }
+
     for (let index = 0; index < migrations.length; index++) {
       if (versions.some(({ version }) => version === index + 1)) continue;
       database.exec(migrations[index]!);

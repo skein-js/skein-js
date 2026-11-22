@@ -12,14 +12,14 @@ import {
   type GraphSchema,
   type RunAbortChannel,
   type RunEventBus,
-  type ThreadEventBus,
-  type ThreadStorage,
   type RunQueue,
   type SkeinStore,
   type StoreRepo,
-  type ThreadExecutionGate,
-  type ThreadTtlConfig,
   type TelemetrySink,
+  type ThreadEventBus,
+  type ThreadExecutionGate,
+  type ThreadStorage,
+  type ThreadTtlConfig,
 } from "@skein-js/core";
 
 import { SIGNATURE_HEADER } from "./crypto/sign-delivery.js";
@@ -431,21 +431,27 @@ export function webhookTimeoutMs(): number {
 export const fetchWebhookDispatcher: WebhookDispatcher = async (url, payload, attempt) => {
   // Only http(s): reject other schemes (`file:`, `data:`, …) up front rather than hand them to fetch.
   let scheme: string;
+
   try {
     scheme = new URL(url).protocol;
   } catch {
     throw new Error(`Webhook URL ${redactWebhookUrl(url)} is not a valid absolute URL`);
   }
+
   if (scheme !== "http:" && scheme !== "https:") {
     throw new Error(`Webhook URL scheme "${scheme}" is not allowed (only http/https)`);
   }
+
   const send = (globalThis as { fetch?: GlobalFetch }).fetch;
+
   if (!send) {
     throw new Error("global fetch is unavailable; inject a webhookDispatcher to deliver webhooks");
   }
+
   const timeoutMs = webhookTimeoutMs();
   const signal = timeoutSignal(timeoutMs);
   let response: Awaited<ReturnType<GlobalFetch>>;
+
   try {
     response = await send(url, {
       method: "POST",
@@ -469,8 +475,10 @@ export const fetchWebhookDispatcher: WebhookDispatcher = async (url, payload, at
         cause: error,
       });
     }
+
     throw error;
   }
+
   if (!response.ok) {
     throw new Error(
       `Webhook POST to ${redactWebhookUrl(url)} failed with status ${response.status}`,
@@ -508,6 +516,7 @@ export interface ResolvedDeps extends ProtocolDeps {
 
 export function resolveDeps(deps: ProtocolDeps): ResolvedDeps {
   const logger = deps.logger ?? noopLogger;
+
   const sinks =
     deps.telemetry === undefined
       ? []

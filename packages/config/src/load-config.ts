@@ -71,11 +71,13 @@ export interface LoadConfigOptions {
 
 async function readJsonFile(filePath: string): Promise<unknown> {
   let text: string;
+
   try {
     text = await readFile(filePath, "utf8");
   } catch (cause) {
     throw new SkeinConfigError(`Could not read langgraph.json at "${filePath}".`, { cause });
   }
+
   try {
     return JSON.parse(text);
   } catch (cause) {
@@ -112,12 +114,14 @@ export async function loadConfig(options: LoadConfigOptions = {}): Promise<Skein
   const config = parseLanggraphJson(await readJsonFile(configPath));
 
   const specs = new Map<string, GraphSpec>();
+
   for (const [graphId, spec] of Object.entries(config.graphs)) {
     specs.set(graphId, parseGraphSpec(spec, configDir));
   }
 
   const graphCache = new Map<string, Promise<ResolvedGraph>>();
   const schemaCache = new Map<string, Promise<GraphSchemas>>();
+
   const specFor = (graphId: string): GraphSpec => {
     const spec = specs.get(graphId);
     if (!spec) throw new SkeinConfigError(`Unknown graph "${graphId}".`);
@@ -155,6 +159,7 @@ export async function loadConfig(options: LoadConfigOptions = {}): Promise<Skein
         if (!baked) throw new SkeinConfigError(`No precomputed schema for graph "${graphId}".`);
         return baked;
       }
+
       const spec = specFor(graphId);
       // Static analysis of the TypeScript source — no module execution — so this works the same
       // whether graphs load natively or through a custom `importModule` (vite `skein dev`).

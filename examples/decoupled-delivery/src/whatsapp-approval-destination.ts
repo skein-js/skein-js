@@ -17,6 +17,7 @@ export async function whatsappApprovalDestination(
   delivery: ChannelDestinationDelivery,
 ): Promise<void> {
   const pending = Object.values(delivery.interrupts ?? {}).flat();
+
   for (const item of pending) {
     const approval = approvalInterruptSchema.parse(item.value);
     const interruptId = item.id;

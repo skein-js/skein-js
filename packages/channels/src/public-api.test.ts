@@ -13,6 +13,7 @@ it("exports the routed-channel contract from the package root", () => {
     target: null,
     payload: { subject: "Hello" },
   };
+
   const destination = async (_delivery: ChannelDestinationDelivery): Promise<void> => {};
 
   expect(composeRoutedChannel).toBeTypeOf("function");

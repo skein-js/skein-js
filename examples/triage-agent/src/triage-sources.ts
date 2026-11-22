@@ -165,6 +165,7 @@ export async function fetchOpenIssues(
 ): Promise<TriageItem[]> {
   const url = `https://api.github.com/repos/${repo}/issues?state=open&per_page=${options.limit ?? 5}`;
   const token = process.env["GITHUB_TOKEN"];
+
   const response = await fetch(url, {
     headers: {
       accept: "application/vnd.github+json",
@@ -172,9 +173,11 @@ export async function fetchOpenIssues(
     },
     ...(options.signal ? { signal: options.signal } : {}),
   });
+
   if (!response.ok) {
     throw new Error(`GitHub returned ${response.status} ${response.statusText} for ${repo}`);
   }
+
   return normalizeGitHubIssues(await response.json());
 }
 
@@ -199,6 +202,7 @@ const SEVERITIES = new Set(["low", "medium", "high"]);
 export function parseVerdict(raw: string): Verdict {
   const fenced = /```(?:json)?\s*([\s\S]*?)```/.exec(raw);
   const candidate = (fenced?.[1] ?? raw).trim();
+
   try {
     const parsed = JSON.parse(candidate) as Partial<Verdict>;
     return {

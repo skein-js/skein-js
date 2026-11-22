@@ -9,8 +9,8 @@
 // and a headless browser in every contributor's install is a poor trade for that. It is resolved
 // from examples/chat-app, which already needs it for e2e tests.
 
-import { createRequire } from "node:module";
 import { mkdir } from "node:fs/promises";
+import { createRequire } from "node:module";
 import path from "node:path";
 import { fileURLToPath, pathToFileURL } from "node:url";
 
@@ -18,10 +18,12 @@ const repoRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), ".."
 
 const require = createRequire(import.meta.url);
 let chromium;
+
 try {
   const entry = require.resolve("@playwright/test", {
     paths: [path.join(repoRoot, "examples/chat-app")],
   });
+
   // `@playwright/test` is CJS, so a dynamic import lands the exports under `default`.
   const playwright = await import(pathToFileURL(entry).href);
   chromium = playwright.chromium ?? playwright.default?.chromium;
@@ -31,6 +33,7 @@ try {
   );
   process.exit(1);
 }
+
 const source = path.join(repoRoot, "docs/.vitepress/og-card.html");
 const output = path.join(repoRoot, "docs/public/og.png");
 

@@ -40,6 +40,7 @@ export function useRunStream(threadId: string, runId: string, enabled = true): R
     phase: "connecting",
     dropped: 0,
   });
+
   // Frames arrive far faster than React should re-render, so they land here first and are flushed on
   // an animation frame. Without this, a token stream re-renders the tree per token.
   const pending = useRef<RunFrame[]>([]);
@@ -76,6 +77,7 @@ export function useRunStream(threadId: string, runId: string, enabled = true): R
 
     (async () => {
       const client = createConsoleClient();
+
       try {
         for await (const chunk of client.runs.joinStream(threadId, runId, {
           signal: controller.signal,
@@ -93,6 +95,7 @@ export function useRunStream(threadId: string, runId: string, enabled = true): R
             pending.current = pending.current.slice(-MAX_FRAMES);
           scheduleFlush();
         }
+
         if (!controller.signal.aborted) {
           flush();
           setState((previous) => ({ ...previous, phase: "ended" }));

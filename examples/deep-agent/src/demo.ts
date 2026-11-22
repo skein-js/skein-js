@@ -12,6 +12,7 @@ const client = new Client({
   apiUrl: process.env["SKEIN_URL"] ?? "http://127.0.0.1:2024",
   defaultHeaders: { "x-user": process.env["DEMO_USER"] ?? "demo-user" },
 });
+
 const assistant = "briefing-assistant";
 
 type Message = { type?: string; content?: unknown };
@@ -38,6 +39,7 @@ await ask(setup.thread_id, "Remember that I prefer short briefings in bullet poi
 type ModelUpdate = { messages?: { tool_calls?: { name: string }[] }[] };
 const thread = await client.threads.create();
 console.log("\nyou › Brief me on heat pumps.");
+
 for await (const chunk of client.runs.stream(thread.thread_id, assistant, {
   input: { messages: [{ role: "user", content: "Brief me on heat pumps." }] },
   streamMode: ["updates"],
@@ -50,9 +52,11 @@ for await (const chunk of client.runs.stream(thread.thread_id, assistant, {
   const calls = decision.messages?.at(-1)?.tool_calls?.map((call) => call.name) ?? [];
   console.log(`   ${who} · ${calls.length > 0 ? `→ ${calls.join(", ")}` : "writes its reply"}`);
 }
+
 const state = await client.threads.getState(thread.thread_id);
 console.log(`assistant › ${lastReply(state.values)}`);
 const files = (state.values as { files?: Record<string, { content?: unknown }> }).files ?? {};
+
 for (const [path, file] of Object.entries(files)) {
   const content = file.content;
   console.log(`\n── ${path} ──\n${Array.isArray(content) ? content.join("\n") : String(content)}`);
@@ -65,11 +69,13 @@ await client.runs.wait(thread.thread_id, assistant, {
 });
 const pending = await client.threads.getState(thread.thread_id);
 type ApprovalRequest = { actionRequests?: { name: string; args: { to?: string } }[] };
+
 for (const request of pending.tasks.flatMap((task) => task.interrupts)) {
   for (const action of (request.value as ApprovalRequest).actionRequests ?? []) {
     console.log(`   (paused: ${action.name} to ${action.args.to} needs approval — approving)`);
   }
 }
+
 const resumed = await client.runs.wait(thread.thread_id, assistant, {
   command: { resume: { decisions: [{ type: "approve" }] } },
 });

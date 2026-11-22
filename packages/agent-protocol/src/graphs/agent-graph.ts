@@ -169,5 +169,6 @@ export function requireAgentCapability<K extends AgentGraphCapability>(
       { code: "agent_capability_missing", details: { capability } },
     );
   }
+
   return graph as AgentGraph & Required<Pick<AgentGraph, K>>;
 }

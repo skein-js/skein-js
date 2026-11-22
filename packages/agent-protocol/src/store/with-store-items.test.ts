@@ -66,6 +66,7 @@ describe("withStoreItems", () => {
 describe("ProtocolDeps.storeItems", () => {
   it("is folded into deps.store by resolveDeps, so no reader needs to know", async () => {
     const source = new InMemoryStore();
+
     const resolved = resolveDeps({
       ...createFixtureDeps(),
       storeItems: fromBaseStore(source),
@@ -88,6 +89,7 @@ describe("ProtocolDeps.storeItems", () => {
     // HTTP handler then reads it back. Both must be looking at the source store, or one path is
     // substituted and the other silently is not.
     const source = new InMemoryStore();
+
     const runtime = createProtocolRuntime({
       ...createFixtureDeps(),
       storeItems: fromBaseStore(source),

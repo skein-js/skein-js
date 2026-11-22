@@ -1,8 +1,8 @@
 import { AIMessage } from "@langchain/core/messages";
 import { Client } from "@langchain/langgraph-sdk";
+import { SkeinHttpError } from "@skein-js/core";
 import { createExpressServer } from "@skein-js/express";
 import { embedInMemoryGraphs } from "@skein-js/server-kit";
-import { SkeinHttpError } from "@skein-js/core";
 import { createDeepAgent } from "deepagents";
 import { expect, it } from "vitest";
 
@@ -45,11 +45,12 @@ const auth = {
 };
 
 async function mount() {
-  let url;
   let release;
+
   const blocked = new Promise((resolve) => {
     release = resolve;
   });
+
   const calls = [];
   class ChildModel extends FixtureModel {
     async _generate(messages, _options, _runManager) {
@@ -65,6 +66,7 @@ async function mount() {
     }
   }
   const child = createDeepAgent({ model: new ChildModel() });
+
   const agent = (config) =>
     createDeepAgent({
       model: new TaskModel(),
@@ -80,19 +82,22 @@ async function mount() {
         },
       ],
     });
+
   const deps = embedInMemoryGraphs({ agent, child });
   const server = await createExpressServer({ deps: { ...deps, auth } });
   const listener = await server.listen(0, "127.0.0.1");
-  url = `http://127.0.0.1:${listener.address().port}`;
+  const url = `http://127.0.0.1:${listener.address().port}`;
   const client = (user) => new Client({ apiUrl: url, defaultHeaders: { "x-user": user } });
   return { url, client, calls, release, close: () => server.close(), deps };
 }
 
 it("keeps two runtimes and concurrent callers isolated for explicit-URL forks, queued updates and media", async () => {
   const mounts = await Promise.all([mount(), mount()]);
+
   try {
     for (const mounted of mounts) {
       const callers = ["alice", "bob"].map((user) => ({ user, client: mounted.client(user) }));
+
       const tasks = await Promise.all(
         callers.map(async ({ client, user }) => {
           const parent = await client.threads.create();
@@ -102,6 +107,7 @@ it("keeps two runtimes and concurrent callers isolated for explicit-URL forks, q
           const started = await client.runs.wait(parent.thread_id, "agent", {
             input: { messages: [{ role: "user", content: "start" }] },
           });
+
           const task = Object.values(started.asyncTasks ?? {})[0];
           expect(task, JSON.stringify(started)).toBeDefined();
           return { client, user, parent, task };
@@ -115,12 +121,14 @@ it("keeps two runtimes and concurrent callers isolated for explicit-URL forks, q
           .threads.get(tasks[0].task.threadId),
       ).rejects.toThrow();
       await expect.poll(() => mounted.calls.length).toBeGreaterThanOrEqual(2);
+
       for (const { client, user, parent, task } of tasks) {
         const childRuns = await client.runs.list(task.threadId);
         expect(childRuns[0].status).toBe("running");
         const queued = await client.runs.wait(parent.thread_id, "agent", {
           input: { messages: [{ role: "user", content: `update ${task.taskId}` }] },
         });
+
         const update = queued.asyncTasks[task.taskId];
         expect(update.status).toBe("pending");
         expect(update.supersededRunIds).toContain(task.runId);
@@ -132,7 +140,9 @@ it("keeps two runtimes and concurrent callers isolated for explicit-URL forks, q
           `PRIVATE_FORK_CONTEXT_${user === "alice" ? "bob" : "alice"}`,
         );
       }
+
       mounted.release();
+
       for (const { client, parent, task } of tasks) {
         await expect
           .poll(async () =>
@@ -168,6 +178,7 @@ it("keeps two runtimes and concurrent callers isolated for explicit-URL forks, q
 it("delivers an application-owned parent notification through authorized atomic admission", async () => {
   const mounted = await mount();
   const client = mounted.client("alice");
+
   const post = (threadId, user, key) =>
     fetch(`${mounted.url}/threads/${threadId}/runs`, {
       method: "POST",
@@ -179,6 +190,7 @@ it("delivers an application-owned parent notification through authorized atomic 
         multitask_strategy: "reject",
       }),
     });
+
   try {
     const parent = await client.threads.create();
     const denied = await post(parent.thread_id, "bob", "child-completion");

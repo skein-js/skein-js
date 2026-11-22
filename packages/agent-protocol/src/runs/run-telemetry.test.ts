@@ -92,6 +92,7 @@ describe("emitRunEvent", () => {
   it("swallows a throwing sink and warns instead of failing the run", () => {
     const warn = vi.fn();
     const logger = { debug: vi.fn(), info: vi.fn(), warn, error: vi.fn() } satisfies Logger;
+
     const telemetry: TelemetrySink = {
       name: "bad",
       onRunEvent: () => {
@@ -189,6 +190,7 @@ describe("telemetryCallOptions", () => {
     const boom = (): never => {
       throw new Error("nope");
     };
+
     const telemetry: TelemetrySink = {
       name: "bad",
       traceMetadata: boom,

@@ -35,11 +35,13 @@ function safeStringify(value: unknown): string {
  * as a compact `key=value` block, anything else stringified. Returns "" when there's nothing. */
 function metaBlock(meta: unknown): string {
   if (meta === undefined || meta === null) return "";
+
   if (meta instanceof Error) {
     // Prefer the stack (it includes the message) and follow the `cause` chain, so a wrapped error
     // (e.g. a config error whose `cause` is the real import failure) doesn't lose its origin.
     return `\n${indent(dim(describeError(meta)))}`;
   }
+
   if (typeof meta === "object") {
     // Reading the entries is guarded because `Object.entries` *invokes getters*, and rendering is
     // guarded because a cyclic value defeats `JSON.stringify` — either would throw out of a logger
@@ -47,11 +49,13 @@ function metaBlock(meta: unknown): string {
     // `formatLogMeta`: this block is colored and two-space-aligned, and matching that exactly is
     // more coupling than the shared line is worth.
     let entries: [string, unknown][];
+
     try {
       entries = Object.entries(meta as Record<string, unknown>);
     } catch {
       return `\n${indent(dim(safeString(meta)))}`;
     }
+
     const pairs = entries.map(([key, value]) => {
       const rendered =
         typeof value === "object" && value !== null ? safeStringify(value) : safeString(value);
@@ -59,6 +63,7 @@ function metaBlock(meta: unknown): string {
     });
     return pairs.length ? `\n${INDENT}${pairs.join("  ")}` : "";
   }
+
   return `\n${indent(dim(String(meta)))}`;
 }
 
@@ -73,6 +78,7 @@ function runFailureBlock(report: RunFailureReport, sourceRoot: string): string {
     labelled("assistant", report.assistantId),
     labelled("thread", report.threadId),
   ];
+
   // Omitted entirely when LangGraph gave us nothing — no `unknown` placeholder, no guess.
   if (report.failingNodes.length > 0) {
     rows.push(labelled("node", report.failingNodes.join(", ")));
@@ -90,6 +96,7 @@ function runFailureBlock(report: RunFailureReport, sourceRoot: string): string {
  * colored by status class (2xx green, 3xx cyan, 4xx yellow, 5xx red). Other messages pass through. */
 function paintHttp(message: string): string {
   if (message.startsWith("<-- ")) return dim(message);
+
   if (message.startsWith("--> ")) {
     const status = Number(message.match(/ (\d{3}) \d+ms$/)?.[1]);
     if (status >= 500) return red(message);
@@ -97,6 +104,7 @@ function paintHttp(message: string): string {
     if (status >= 300) return cyan(message);
     return green(message);
   }
+
   return message;
 }
 
@@ -105,9 +113,11 @@ function line(prefix: string, message: string, sourceRoot: string, meta?: unknow
   if (isRunFailureReport(meta)) {
     return `${prefix} ${bold(message)}\n${runFailureBlock(meta, sourceRoot)}`;
   }
+
   if (isGraphLoadFailureReport(meta)) {
     return `${prefix} ${bold(message)}\n${graphLoadFailureBlock(meta, sourceRoot)}`;
   }
+
   return `${prefix} ${paintHttp(message)}${metaBlock(meta)}`;
 }
 

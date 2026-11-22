@@ -3,6 +3,7 @@ import type { ProtocolHandler, ProtocolHandlers, ProtocolRequest } from "../crea
 import type { ProtocolDeps } from "../deps.js";
 
 const CONFIGURED_REQUEST = Symbol("configured-http-request");
+
 const RUN_CREATES = new Set([
   "createWaitRun",
   "createStreamRun",
@@ -45,9 +46,11 @@ function withHeaderConfig(
   if (Array.isArray(body)) return body.map((entry) => withHeaderConfig(entry, headers));
   if (typeof body !== "object" || body === null) return body;
   const input = body as Record<string, unknown>;
+
   if (commands && ("method" in input || "id" in input)) {
     return { ...input, params: withHeaderConfig(input["params"] ?? {}, headers) };
   }
+
   const config = input["config"];
   // Invalid body/config types still reach the normal boundary validator unchanged.
   if (
@@ -80,6 +83,7 @@ export function configureRequestHeaders(
   return Object.fromEntries(
     Object.entries(handlers).map(([name, handler]) => {
       if (!handler) return [name, handler];
+
       const configured: ProtocolHandler = async (original) => {
         const request = {
           ...original,
@@ -94,6 +98,7 @@ export function configureRequestHeaders(
             : {}),
           [CONFIGURED_REQUEST]: true,
         };
+
         if (
           deps.loggingHeaders &&
           !(CONFIGURED_REQUEST in original) &&
@@ -101,6 +106,7 @@ export function configureRequestHeaders(
         ) {
           if (deps.auth) await resolveAuthContext(deps.auth, request);
           const selected = selectHeaders(request.headers, deps.loggingHeaders);
+
           const headers = Object.fromEntries(
             Object.entries(selected).map(([key, value]) => [
               key,
@@ -111,8 +117,10 @@ export function configureRequestHeaders(
           );
           deps.logger?.info("HTTP request headers", { route: name, headers });
         }
+
         return handler(request);
       };
+
       return [name, configured];
     }),
   ) as unknown as ProtocolHandlers;

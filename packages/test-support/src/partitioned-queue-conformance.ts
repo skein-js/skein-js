@@ -8,12 +8,14 @@ export function runPartitionedRunQueueConformance(label: string, makeQueue: RunQ
   describe(`Partitioned RunQueue conformance — ${label}`, () => {
     const queues: RunQueue[] = [];
     const consumers: RunConsumer[] = [];
+
     const make = async () => {
       const queue = await makeQueue();
       queues.push(queue);
       expect(queue.consumePartitioned).toBeTypeOf("function");
       return queue;
     };
+
     const consume = (
       queue: RunQueue,
       process: (run: QueuedRun) => Promise<boolean>,
@@ -23,8 +25,10 @@ export function runPartitionedRunQueueConformance(label: string, makeQueue: RunQ
       consumers.push(consumer);
       return consumer;
     };
+
     afterEach(async () => {
       for (const consumer of consumers.splice(0)) await consumer.close(true);
+
       for (const queue of queues.splice(0)) {
         if ("dispose" in queue) await (queue as RunQueue & { dispose(): Promise<void> }).dispose();
       }
@@ -32,6 +36,7 @@ export function runPartitionedRunQueueConformance(label: string, makeQueue: RunQ
 
     it("retains a busy head and deduplicates it while other threads progress", async () => {
       const queue = await make();
+
       for (const [run_id, thread_id] of [
         ["head", "hot"],
         ["tail", "hot"],
@@ -39,6 +44,7 @@ export function runPartitionedRunQueueConformance(label: string, makeQueue: RunQ
       ]) {
         await queue.enqueue({ run_id: run_id!, thread_id: thread_id! });
       }
+
       let available = false;
       let attempts = 0;
       const handled: string[] = [];
@@ -47,6 +53,7 @@ export function runPartitionedRunQueueConformance(label: string, makeQueue: RunQ
           attempts++;
           if (!available) return false;
         }
+
         handled.push(run.run_id);
         return true;
       });
@@ -64,6 +71,7 @@ export function runPartitionedRunQueueConformance(label: string, makeQueue: RunQ
 
     it("serializes a partition while filling capacity with independent threads", async () => {
       const queue = await make();
+
       for (const [run_id, thread_id] of [
         ["head", "hot"],
         ["tail", "hot"],
@@ -71,10 +79,13 @@ export function runPartitionedRunQueueConformance(label: string, makeQueue: RunQ
       ]) {
         await queue.enqueue({ run_id: run_id!, thread_id: thread_id! });
       }
+
       let release!: () => void;
+
       const held = new Promise<void>((resolve) => {
         release = resolve;
       });
+
       const started: string[] = [];
       let active = 0;
       let peak = 0;
@@ -83,15 +94,18 @@ export function runPartitionedRunQueueConformance(label: string, makeQueue: RunQ
         async (run) => {
           started.push(run.run_id);
           peak = Math.max(peak, ++active);
+
           try {
             if (run.run_id === "head") await held;
           } finally {
             active--;
           }
+
           return true;
         },
         2,
       );
+
       try {
         await expect.poll(() => started.includes("cold")).toBe(true);
         expect(started).not.toContain("tail");
@@ -99,6 +113,7 @@ export function runPartitionedRunQueueConformance(label: string, makeQueue: RunQ
       } finally {
         release();
       }
+
       await expect.poll(() => started.includes("tail"), { timeout: 4000 }).toBe(true);
     });
 
@@ -125,16 +140,21 @@ export function runPartitionedRunQueueConformance(label: string, makeQueue: RunQ
       await queue.enqueue({ run_id: "tail", thread_id: "hot" });
       await queue.enqueue({ run_id: "cold", thread_id: "cold" });
       let release!: () => void;
+
       const held = new Promise<void>((resolve) => {
         release = resolve;
       });
+
       const started: string[] = [];
+
       const process = async (run: QueuedRun) => {
         started.push(run.run_id);
         if (run.run_id === "head") await held;
         return true;
       };
+
       consume(queue, process);
+
       try {
         await expect.poll(() => started).toEqual(["head"]);
         consume(queue, process);
@@ -143,6 +163,7 @@ export function runPartitionedRunQueueConformance(label: string, makeQueue: RunQ
       } finally {
         release();
       }
+
       await expect.poll(() => started, { timeout: 4000 }).toEqual(["head", "cold", "tail"]);
     });
 
@@ -150,6 +171,7 @@ export function runPartitionedRunQueueConformance(label: string, makeQueue: RunQ
       const queue = await make();
       await queue.enqueue({ run_id: "deferred", thread_id: "t" });
       let attempted = false;
+
       const first = consume(queue, async () => {
         attempted = true;
         return false;
@@ -182,14 +204,17 @@ export function runPartitionedRunQueueConformance(label: string, makeQueue: RunQ
       await queue.enqueue({ run_id: "running", thread_id: "t" });
       let release!: () => void;
       let started = false;
+
       const held = new Promise<void>((resolve) => {
         release = resolve;
       });
+
       const consumer = consume(queue, async () => {
         started = true;
         await held;
         return true;
       });
+
       try {
         await expect.poll(() => started).toBe(true);
         await consumer.close(true);

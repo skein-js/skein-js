@@ -6,8 +6,8 @@
 
 import {
   isTerminalRunStatus,
-  type RunKwargs,
   type Run,
+  type RunKwargs,
   type RunTrigger,
   type ThreadExecutionLease,
 } from "@skein-js/core";
@@ -47,11 +47,13 @@ export async function startRunExecution(
   let removeLeaseListener: (() => void) | undefined;
   let executionLeaseLost = false;
   let engineStarted = false;
+
   const withClaim = async (
     task: (signal?: AbortSignal) => Promise<RunOutcome>,
   ): Promise<RunOutcome> => {
     if (!executionLease)
       return withThreadExecution(executionLocks, deps.threadExecutionGate, threadId, task);
+
     try {
       executionLease.signal?.throwIfAborted();
       return await task(executionLease.signal);
@@ -59,6 +61,7 @@ export async function startRunExecution(
       await executionLease.release();
     }
   };
+
   try {
     // Serialize per thread: a second run on a busy thread blocks here until the active run's
     // execution (below) settles and releases the claim — giving enqueue its ordering and letting an
@@ -70,22 +73,28 @@ export async function startRunExecution(
           executionLeaseLost = true;
           runControl.abort("cancel");
         };
+
         leaseSignal.addEventListener("abort", abortForLostLease, { once: true });
         removeLeaseListener = () => leaseSignal.removeEventListener("abort", abortForLostLease);
         leaseSignal.throwIfAborted();
       }
+
       // A recovered job may wait behind its original execution or a cancellation. Reread while
       // holding the execution claim, before rollback can remove another run's checkpoints.
       const current = await deps.store.runs.get(runId);
       leaseSignal?.throwIfAborted();
+
       if (!current || isTerminalRunStatus(current.status)) {
         rollbackPlans.delete(runId);
         return { status: current?.status ?? "cancelled", values: {} };
       }
+
       const recovering = current.status === "running";
+
       const executionKwargs = recovering
         ? ((await deps.store.runs.getKwargs(runId)) ?? kwargs)
         : kwargs;
+
       // A `rollback` run drops the displaced run's writes now that it has settled (we hold the lock
       // it released), then removes its row so the run "never happened". Best-effort on the checkpoint
       // side — a failure to revert must not strand the new run.
@@ -97,9 +106,11 @@ export async function startRunExecution(
       const plan = recovering
         ? undefined
         : (rollbackPlans.get(runId) ?? storedRollbackPlan(kwargs));
+
       if (plan) {
         rollbackPlans.delete(runId);
         leaseSignal?.throwIfAborted();
+
         if (plan.revertToCheckpoint !== false) {
           try {
             await rollbackThreadCheckpointsTo(
@@ -123,9 +134,12 @@ export async function startRunExecution(
             );
           }
         }
+
         leaseSignal?.throwIfAborted();
+
         for (const displacedId of plan.displacedRunIds) {
           leaseSignal?.throwIfAborted();
+
           try {
             // Native receipts/results remain reconcilable after rollback. Explicit deletion still
             // removes them; legacy runs keep their established rollback deletion behavior.
@@ -136,6 +150,7 @@ export async function startRunExecution(
           }
         }
       }
+
       leaseSignal?.throwIfAborted();
       engineStarted = true;
       return await executeRun(deps, {
@@ -184,6 +199,7 @@ export async function startRunExecution(
     if (deliverWebhook) await deliverWebhook();
     control.clear(runId);
     runBaseCheckpoints.delete(runId);
+
     if (engineStarted && !executionLeaseLost) {
       await deleteThreadIfRunOwnedIt(ctx, run, kwargs);
       if (runControl.reason.current === "cancel") await deleteCheckpointsOfDeletedThread(ctx, run);
@@ -202,6 +218,7 @@ export async function startRunExecution(
  */
 async function deleteCheckpointsOfDeletedThread(ctx: ProtocolContext, run: Run): Promise<void> {
   const { deps } = ctx;
+
   try {
     if (await deps.store.threads.get(run.thread_id)) return;
     await deps.checkpointer.deleteThread(run.thread_id);
@@ -237,6 +254,7 @@ async function deleteThreadIfRunOwnedIt(
   const { deps } = ctx;
   const settled = await deps.store.runs.get(run.run_id);
   if (settled?.status === "interrupted") return;
+
   // Best-effort by construction: the run itself succeeded, and failing it now — after the client has
   // its result and the webhook has fired — would report a completed run as broken. The two deletes are
   // independent, so a checkpointer failure still removes the thread row.
@@ -248,6 +266,7 @@ async function deleteThreadIfRunOwnedIt(
       error,
     );
   }
+
   try {
     await deps.store.threads.delete(run.thread_id);
     await deps.threadBus?.deleteThread(run.thread_id);

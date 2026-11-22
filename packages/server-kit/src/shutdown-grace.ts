@@ -16,11 +16,13 @@ const SHUTDOWN_GRACE_ENV_VAR = "SKEIN_SHUTDOWN_GRACE_MS";
 
 function requireNonNegativeInteger(source: string, raw: string | number): number {
   const parsed = Number(raw);
+
   if (!Number.isInteger(parsed) || parsed < 0) {
     throw new SkeinConfigError(
       `${source} must be a non-negative integer in milliseconds (got "${String(raw)}").`,
     );
   }
+
   return parsed;
 }
 

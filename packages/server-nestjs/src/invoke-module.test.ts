@@ -4,8 +4,7 @@
 
 import type { AddressInfo } from "node:net";
 
-import { Controller, Get, Module } from "@nestjs/common";
-import type { INestApplication } from "@nestjs/common";
+import { Controller, Get, Module, type INestApplication } from "@nestjs/common";
 import { NestFactory } from "@nestjs/core";
 import { afterEach, describe, expect, it } from "vitest";
 
@@ -38,9 +37,11 @@ async function startInvokeServer(): Promise<Running> {
   const app: INestApplication = await NestFactory.create(AppModule, { logger: false });
   await app.listen(0, "127.0.0.1");
   const address = app.getHttpServer().address() as AddressInfo | null;
+
   if (address === null || typeof address === "string") {
     throw new Error("expected a bound TCP address");
   }
+
   return { baseUrl: `http://127.0.0.1:${address.port}`, close: () => app.close() };
 }
 

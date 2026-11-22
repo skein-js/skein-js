@@ -38,6 +38,7 @@ async function until(predicate: () => Promise<boolean> | boolean, description: s
     if (await predicate()) return;
     await new Promise((resolve) => setTimeout(resolve, 20));
   }
+
   throw new Error(`Timed out waiting for ${description}.`);
 }
 
@@ -72,11 +73,13 @@ export async function runRefundDemo(write: DemoWriter = console.log): Promise<vo
     const thread = await resolved.runtime.service.threads.get(`relay:${conversationId}`);
     const approvals = Object.values(thread.interrupts ?? {}).flat() as PendingApproval[];
     write("2. LangGraph paused on three parallel approvals:");
+
     for (const approval of approvals) {
       write(`   - ${approval.value.role} -> ${approval.value.whatsappNumber}`);
     }
 
     const decisionOrder = ["finance", "hr", "manager"] as const;
+
     for (const role of decisionOrder) {
       const pending = approvals.find((approval) => approval.value.role === role);
       const approver = refundApprovers.find((candidate) => candidate.role === role);
@@ -104,14 +107,17 @@ export async function runRefundDemo(write: DemoWriter = console.log): Promise<vo
 
     await until(() => recordedEffects().length === 4, "final refund email");
     const settled = await resolved.runtime.service.threads.get(`relay:${conversationId}`);
+
     const values = settled.values as unknown as {
       decisions: Array<{ role: string; actor: string; outcome: string; providerEventId: string }>;
     };
+
     const finalEmail = recordedEffects()[3];
 
     write(`4. Final destination: email -> ${JSON.stringify(finalEmail?.target)}.`);
     write(`   ${JSON.stringify(finalEmail?.payload)}`);
     write("5. Checkpointed decision audit trail:");
+
     for (const decision of values.decisions) {
       write(
         `   - ${decision.role}: ${decision.outcome} by ${decision.actor} (${decision.providerEventId})`,
@@ -123,6 +129,7 @@ export async function runRefundDemo(write: DemoWriter = console.log): Promise<vo
 }
 
 const entryPath = process.argv[1];
+
 if (entryPath && import.meta.url === pathToFileURL(entryPath).href) {
   await runRefundDemo();
 }

@@ -41,6 +41,7 @@ async function startDev(bin: string, port: number): Promise<ChildProcess> {
   );
   await new Promise<void>((resolve, reject) => {
     const timer = setTimeout(() => reject(new Error("timed out waiting for skein dev")), 25_000);
+
     const onData = (buffer: Buffer) => {
       // The banner prints this on stdout only after `server.listen` succeeds (see banner.ts).
       if (buffer.toString().includes("Server running at")) {
@@ -49,6 +50,7 @@ async function startDev(bin: string, port: number): Promise<ChildProcess> {
         resolve();
       }
     };
+
     child.stdout?.on("data", onData);
     child.stderr?.on("data", (b: Buffer) => process.stderr.write(b));
     child.once("exit", (code) =>

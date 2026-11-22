@@ -37,5 +37,6 @@ export function requireValidMaxPageSize(value: number): number {
       `maxPageSize must be a positive integer no larger than ${Number.MAX_SAFE_INTEGER} (got ${value}).`,
     );
   }
+
   return value;
 }

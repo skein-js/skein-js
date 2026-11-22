@@ -73,10 +73,12 @@ function sanitizeConfigurable(
 ): Record<string, unknown> {
   if (!configurable) return {};
   const clean: Record<string, unknown> = {};
+
   for (const [key, value] of Object.entries(configurable)) {
     if (RESERVED_CONFIGURABLE_KEYS.has(key) || key.startsWith("__")) continue;
     clean[key] = value;
   }
+
   return clean;
 }
 

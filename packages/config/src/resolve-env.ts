@@ -15,6 +15,7 @@ import type { LanggraphJson } from "./langgraph-json.js";
  */
 export function parseEnvFile(text: string): Record<string, string> {
   const env: Record<string, string> = {};
+
   for (const rawLine of text.split(/\r?\n/)) {
     const line = rawLine.trim();
     if (line === "" || line.startsWith("#")) continue;
@@ -28,11 +29,14 @@ export function parseEnvFile(text: string): Record<string, string> {
 
     let value = withoutExport.slice(eq + 1).trim();
     const quote = value[0];
+
     if ((quote === '"' || quote === "'") && value.endsWith(quote) && value.length >= 2) {
       value = value.slice(1, -1);
     }
+
     env[key] = value;
   }
+
   return env;
 }
 
@@ -51,10 +55,12 @@ export async function resolveEnv(
 
   const envPath = path.resolve(configDir, env);
   let text: string;
+
   try {
     text = await readFile(envPath, "utf8");
   } catch {
     return {};
   }
+
   return parseEnvFile(text);
 }

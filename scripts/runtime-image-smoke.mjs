@@ -22,6 +22,7 @@ const artifactFixture = path.join(repoRoot, "packages/test-support/fixtures/runt
 
 const args = new Map();
 const flags = new Set();
+
 for (let i = 2; i < process.argv.length; i += 1) {
   const arg = process.argv[i];
   if (!arg.startsWith("--")) continue;
@@ -31,8 +32,10 @@ for (let i = 2; i < process.argv.length; i += 1) {
     i += 1;
   } else flags.add(arg.slice(2));
 }
+
 const runtime = args.get("runtime") ?? "node";
 const runtimeVersion = args.get("runtime-version");
+
 if (!["node", "bun", "deno"].includes(runtime)) {
   console.error(`unknown runtime "${runtime}" (expected node, bun, or deno)`);
   process.exit(2);
@@ -47,12 +50,15 @@ const hostPort = { node: 8321, bun: 8322, deno: 8323 }[runtime];
 const context = path.join(repoRoot, ".profiles", "image-smoke", runtime);
 
 const sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
+
 const run = (file, argv, options = {}) =>
   execFileSync(file, argv, { encoding: "utf8", stdio: "pipe", ...options });
+
 const quiet = (file, argv) => spawnSync(file, argv, { stdio: "ignore" });
 
 const failures = [];
 let checks = 0;
+
 function check(label, condition, detail) {
   checks += 1;
   console.log(`  ${condition ? "ok  " : "FAIL"} ${label}${detail ? ` — ${detail}` : ""}`);
@@ -62,6 +68,7 @@ function check(label, condition, detail) {
 function assembleContext() {
   rmSync(context, { recursive: true, force: true });
   mkdirSync(context, { recursive: true });
+
   for (const entry of ["langgraph.json", "schemas.json", "graphs"]) {
     cpSync(path.join(artifactFixture, entry), path.join(context, entry), { recursive: true });
   }
@@ -71,9 +78,11 @@ function assembleContext() {
   const form = runtime === "deno" ? "directory" : "tarball";
   const vendored = vendorLocalPackages(path.join(context, "vendor"), form);
   const fileSpec = (name) => `file:vendor/${vendored.get(name)}`;
+
   const testSupport = JSON.parse(
     readFileSync(path.join(repoRoot, "packages/test-support/package.json"), "utf8"),
   );
+
   // Only the tarball form needs these: it keeps each package's published cross-references, and an
   // override is the only thing that redirects them. The directory form rewrote the manifests instead.
   const overrides =
@@ -149,6 +158,7 @@ async function waitForPostgres() {
     if (probe.status === 0) return;
     await sleep(500);
   }
+
   throw new Error("Postgres never became ready");
 }
 
@@ -157,9 +167,11 @@ async function waitForApp() {
     const state = spawnSync("docker", ["inspect", "-f", "{{.State.Running}}", appName], {
       encoding: "utf8",
     });
+
     if (state.stdout?.trim() === "false") {
       throw new Error(`container exited early:\n${run("docker", ["logs", appName])}`);
     }
+
     try {
       const response = await fetch(`http://127.0.0.1:${hostPort}/ok`, {
         signal: AbortSignal.timeout(2000),
@@ -168,8 +180,10 @@ async function waitForApp() {
     } catch {
       // not listening yet
     }
+
     await sleep(500);
   }
+
   throw new Error(`app never became ready:\n${run("docker", ["logs", appName])}`);
 }
 
@@ -188,6 +202,7 @@ function cleanup() {
     console.log(`\n--keep: left ${appName}, ${pgName}, ${redisName}, and ${context} in place.`);
     return;
   }
+
   quiet("docker", ["rm", "-f", appName, pgName, redisName]);
   quiet("docker", ["network", "rm", network]);
   rmSync(context, { recursive: true, force: true });
@@ -206,6 +221,7 @@ async function main() {
 
   if (runtime === "node") {
     const expectedMajor = runtimeVersion?.split(".")[0] ?? "26";
+
     const actualVersion = run("docker", [
       "run",
       "--rm",
@@ -262,6 +278,7 @@ async function main() {
 
   console.log("one streaming run");
   const thread = await api("POST", "/threads", {});
+
   const streamResponse = await fetch(
     `http://127.0.0.1:${hostPort}/threads/${thread.thread_id}/runs/stream`,
     {
@@ -274,6 +291,7 @@ async function main() {
       }),
     },
   );
+
   const body = await streamResponse.text();
   const frames = body.split("\n\n").filter((frame) => frame.includes("event:"));
   // The assertion that caught the Deno permission defect: the run fails *inside* a 200 response, so
@@ -318,6 +336,7 @@ async function main() {
   );
 
   console.log(`\n${checks - failures.length}/${checks} checks passed for the ${runtime} image`);
+
   if (failures.length > 0) {
     console.error(`\n${runtime} image FAILED:\n${failures.map((f) => `  - ${f}`).join("\n")}`);
     process.exitCode = 1;

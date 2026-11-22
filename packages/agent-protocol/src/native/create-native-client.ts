@@ -41,6 +41,7 @@ const sourceSchema = z
     outcomeTarget: z.string().url().optional(),
   })
   .strict();
+
 const optionsSchema = z
   .object({
     idempotencyKey: z
@@ -92,6 +93,7 @@ export function createNativeClientFromContext(
 ): NativeClient {
   const source = parse(sourceSchema, sourceInput);
   const { deps } = context;
+
   const optionsFor = (input: NativeCallOptions = {}): NativeCallOptions => {
     const options = parse(optionsSchema, input);
     if (deps.auth?.enabled && !options.authContext?.user.is_authenticated)
@@ -100,8 +102,10 @@ export function createNativeClientFromContext(
       );
     return options;
   };
+
   const scopeFor = (options: NativeCallOptions) =>
     `native ${JSON.stringify([source.sourceId, options.authContext?.user.identity ?? ""])}`;
+
   const authorize = async (
     action: "create_run" | "read" | "update",
     value: Record<string, unknown>,
@@ -126,6 +130,7 @@ export function createNativeClientFromContext(
           : deps,
     };
   };
+
   const allowAssistant = async (assistantId: string): Promise<void> => {
     const assistant = await deps.store.assistants.get(assistantId);
     if (
@@ -136,6 +141,7 @@ export function createNativeClientFromContext(
         code: "assistant_not_allowed",
       });
   };
+
   const ownedRun = async (
     runId: string,
     action: "read" | "update" | "create_run",
@@ -150,11 +156,13 @@ export function createNativeClientFromContext(
       { run_id: runId, thread_id: run.thread_id, assistant_id: run.assistant_id },
       options,
     );
+
     const service = createProtocolServiceFromContext(targeted);
     await service.threads.get(run.thread_id);
     await service.runs.get(runId);
     return { run, scoped: targeted };
   };
+
   const lookup = async (
     key: string,
     options: NativeCallOptions,
@@ -174,8 +182,10 @@ export function createNativeClientFromContext(
     await ownedRun(record.run_id, action, options);
     return { idempotencyKey: key, threadId: record.thread_id, runId: record.run_id };
   };
+
   const admissionKey = (operation: unknown, options: NativeCallOptions): AdmissionKey => {
     let fingerprint: string;
+
     try {
       fingerprint = createHash("sha256")
         .update(
@@ -193,6 +203,7 @@ export function createNativeClientFromContext(
         code: "invalid_native_input",
       });
     }
+
     return {
       scope: scopeFor(options),
       key: options.idempotencyKey ?? randomUUID(),
@@ -203,6 +214,7 @@ export function createNativeClientFromContext(
       ).toISOString(),
     };
   };
+
   const requireAdmission = () => {
     if (!deps.store.admission || !deps.store.runs.settle || !deps.store.runs.getResult)
       throw SkeinHttpError.notImplemented(
@@ -211,6 +223,7 @@ export function createNativeClientFromContext(
       );
     return deps.store.admission;
   };
+
   const start = async (
     raw: NativeStartInput,
     options: NativeCallOptions,
@@ -225,11 +238,13 @@ export function createNativeClientFromContext(
       throw SkeinHttpError.notFound(`Assistant "${input.assistant_id}" not found.`);
     const threadId =
       input.thread_id ?? threadIdForAdmission(origin.admission.scope, origin.admission.key);
+
     const scoped = await authorize("create_run", { ...input, thread_id: threadId }, options);
     const service = createProtocolServiceFromContext(scoped);
     admissionSignal?.throwIfAborted();
     assertNativeDeadline(origin.deadlineAt, deps.clock());
     const deadline = createNativeAdmissionDeadline(origin.deadlineAt, deps.clock, admissionSignal);
+
     try {
       if (!input.thread_id || input.if_not_exists === "create")
         await service.threads.create({
@@ -260,6 +275,7 @@ export function createNativeClientFromContext(
       deadline.dispose();
     }
   };
+
   return {
     start: async (input, callOptions) => {
       const options = optionsFor(callOptions);
@@ -327,6 +343,7 @@ export function createNativeClientFromContext(
           .strict(),
         input.expected,
       );
+
       const { run } = await ownedRun(expected.runId, "create_run", options);
       if (run.thread_id !== input.thread_id || expected.checkpoint.thread_id !== input.thread_id)
         throw SkeinHttpError.conflict("Resume target belongs to another thread.", {
@@ -401,13 +418,16 @@ export function createNativeClientFromContext(
         { operation: "cancel", runId, action: options.action ?? "interrupt" },
         options,
       );
+
       const prior = await lookup(admission.key, options, "update", admission.fingerprint);
       let receipt = prior;
+
       if (!receipt) {
         assertNativeDeadline(options.deadlineAt, deps.clock());
         const origin = (await import("./native-origin.js")).readNativeOrigin(
           await deps.store.runs.getKwargs(runId),
         );
+
         const delivery = origin
           ? nativeDelivery(deps, { ...run, status: "cancelled" }, origin)
           : undefined;
@@ -420,11 +440,14 @@ export function createNativeClientFromContext(
           ...(delivery ? { delivery } : {}),
         });
       }
+
       const service = createProtocolServiceFromContext(scoped);
+
       const latest = await service.runs.cancel(
         runId,
         markRecoveringCancellation({ action: options.action, wait: false }),
       );
+
       // A best-effort rollback may have swallowed a gate failure. The requested wait is not proof.
       if (options.wait) {
         try {
@@ -445,6 +468,7 @@ export function createNativeClientFromContext(
           );
         }
       }
+
       const stopped =
         options.wait === true ||
         (!deps.threadExecutionGate && !deps.abortChannel && !context.control.isTracking(runId));

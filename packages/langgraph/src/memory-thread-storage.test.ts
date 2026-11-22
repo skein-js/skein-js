@@ -6,6 +6,7 @@ import { inspectMemoryThreadStorage } from "./memory-thread-storage.js";
 it("counts the actual saver buffers across namespaces and excludes other threads", async () => {
   const saver = new MemorySaver();
   const metadata = { source: "loop" as const, step: 1, parents: {} };
+
   for (const [owner, namespace] of [
     ["thread", ""],
     ["thread", "child:task"],
@@ -18,6 +19,7 @@ it("counts the actual saver buffers across namespaces and excludes other threads
     );
     await saver.putWrites(config, [["value", "stored bytes"]], "task");
   }
+
   const result = inspectMemoryThreadStorage(saver, "thread");
   expect(result.checkpoints.count).toBe(2);
   expect(result.pending_writes.count).toBe(2);
