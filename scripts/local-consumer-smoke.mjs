@@ -1,10 +1,11 @@
 import assert from "node:assert/strict";
-import { mkdtemp, writeFile, readFile, rm, stat } from "node:fs/promises";
+import { spawn } from "node:child_process";
+import { mkdtemp, readFile, rm, stat, writeFile } from "node:fs/promises";
+import { createServer } from "node:net";
 import { tmpdir } from "node:os";
 import path from "node:path";
-import { spawn } from "node:child_process";
-import { createServer } from "node:net";
-import { packWorkspace, root, run, installConsumer } from "./pack-local-consumer.mjs";
+
+import { installConsumer, packWorkspace, root, run } from "./pack-local-consumer.mjs";
 
 console.log("Packed-consumer npm version:");
 run("npm", ["--version"]);
@@ -13,6 +14,7 @@ run("npm", ["--version"]);
 const temporary = await mkdtemp(path.join(tmpdir(), "skein-packed-local-~ path-"));
 const packed = packWorkspace(path.join(temporary, "packages"));
 const consumer = path.join(temporary, "consumer");
+
 try {
   const manifest = installConsumer(
     consumer,
@@ -119,6 +121,7 @@ try {
     run("npm", ["run", script], { cwd: scaffold });
   const entry = path.join(scaffold, "node_modules/skein-js/dist/index.js");
   const filename = path.join(scaffold, ".skein/state.sqlite");
+
   async function serve(command, config) {
     const reservation = createServer();
     await new Promise((resolve) => reservation.listen(0, "127.0.0.1", resolve));
@@ -144,6 +147,7 @@ try {
       ],
       { cwd: scaffold, env: { ...process.env, NODE_PATH: "" }, stdio: ["ignore", "pipe", "pipe"] },
     );
+
     let output = "";
     child.stdout.on("data", (chunk) => {
       output += chunk;
@@ -151,16 +155,19 @@ try {
     child.stderr.on("data", (chunk) => {
       output += chunk;
     });
+
     try {
       // The CLI banner prints the actual server address; do not race another listener for a port.
       for (let attempt = 0; attempt < 200; attempt++) {
         if (child.exitCode !== null) throw new Error(output);
+
         try {
           const response = await fetch(`http://127.0.0.1:${port}/threads`, {
             method: "POST",
             headers: { "content-type": "application/json" },
             body: "{}",
           });
+
           if (response.ok) {
             console.log(`SCAFFOLD_${command.toUpperCase()}_OK`);
             return;
@@ -168,8 +175,10 @@ try {
         } catch {
           /* still starting */
         }
+
         await new Promise((resolve) => setTimeout(resolve, 50));
       }
+
       throw new Error(`Scaffold ${command} did not start: ${output}`);
     } finally {
       if (child.exitCode === null && child.signalCode === null) {
@@ -179,6 +188,7 @@ try {
       }
     }
   }
+
   await serve("dev", "langgraph.json");
   await serve("start", ".skein/build/langgraph.json");
   console.log("PACKED_SCAFFOLD_OK");

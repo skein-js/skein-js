@@ -10,6 +10,7 @@ describe("detectRuntimeCapabilities", () => {
   it("reports Node memory without inventing a heap limit", () => {
     const on = vi.fn();
     const off = vi.fn();
+
     const capabilities = detectRuntimeCapabilities({
       process: {
         version: "v22.20.0",
@@ -57,6 +58,7 @@ describe("detectRuntimeCapabilities", () => {
 
   it("uses Deno's native environment, signals, and honest memory fields", () => {
     const values = new Map<string, string>();
+
     const capabilities = detectRuntimeCapabilities({
       Deno: {
         version: { deno: "2.9.4" },

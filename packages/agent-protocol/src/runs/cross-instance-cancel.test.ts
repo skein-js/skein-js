@@ -37,10 +37,12 @@ function createLoopbackChannel(): RunAbortChannel & { published: RunAbortRequest
 
 async function waitFor(predicate: () => Promise<boolean> | boolean, timeoutMs = 2000) {
   const start = Date.now();
+
   while (Date.now() - start < timeoutMs) {
     if (await predicate()) return;
     await new Promise((resolve) => setTimeout(resolve, 10));
   }
+
   throw new Error("timed out waiting for condition");
 }
 
@@ -92,10 +94,12 @@ describe("RunControlRegistry with an abort channel", () => {
 
   it("survives a publish failure without failing the cancel", async () => {
     const warn = vi.fn();
+
     const failing: RunAbortChannel = {
       requestAbort: () => Promise.reject(new Error("redis is down")),
       subscribe: () => ({ close: async () => {} }),
     };
+
     const ctx = createContext(createFixtureDeps());
     ctx.control.useAbortChannel(failing, {
       debug: vi.fn(),
@@ -119,6 +123,7 @@ describe("two runtimes sharing one abort channel", () => {
     const deps = createFixtureDeps(); // one store/queue/bus, as two replicas would share
     const executing = createProtocolRuntime({ ...deps, abortChannel: channel });
     let receivingContext!: ReturnType<typeof createContext>;
+
     const receiving = createProtocolRuntime(
       { ...deps, abortChannel: channel },
       {
@@ -131,6 +136,7 @@ describe("two runtimes sharing one abort channel", () => {
     await executing.service.assistants.registerGraphAssistants();
 
     const thread = await executing.service.threads.create();
+
     // `slow` blocks until aborted, so the run is genuinely mid-flight on instance A.
     const { runId, frames } = await executing.service.runs.createStream({
       thread_id: thread.thread_id,
@@ -225,6 +231,7 @@ describe("two runtimes sharing one abort channel", () => {
     // remember a second teardown call.
     const channel = createLoopbackChannel();
     const close = vi.fn(async () => {});
+
     const runtime = createProtocolRuntime({
       ...createFixtureDeps(),
       abortChannel: { ...channel, subscribe: () => ({ close }) },

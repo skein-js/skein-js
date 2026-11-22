@@ -13,6 +13,7 @@ const POINTS: Record<string, [number, number, number]> = {
   kitten: [0.9, 0.1, 0],
   car: [0, 1, 0],
 };
+
 const fakeEmbed: EmbedFunction = async (texts) =>
   texts.map((text) => {
     for (const [word, point] of Object.entries(POINTS)) if (text.includes(word)) return point;
@@ -128,6 +129,7 @@ describe("PostgresSkeinStore semantic search with store.index.hnsw", () => {
     const hnswStore = await PostgresSkeinStore.connect(pg.url, {
       index: { dims: 3, fields: ["text"], embed: fakeEmbed, hnsw: true },
     });
+
     try {
       await hnswStore.migrate();
 
@@ -163,6 +165,7 @@ describe("PostgresSkeinStore semantic search with store.index.hnsw", () => {
     const seeded = await PostgresSkeinStore.connect(pg.url, {
       index: { dims: 3, fields: ["text"], embed: fakeEmbed },
     });
+
     try {
       await seeded.truncateAll();
       await seeded.store.put(["docs"], "seed", { text: "a fluffy cat" });
@@ -173,6 +176,7 @@ describe("PostgresSkeinStore semantic search with store.index.hnsw", () => {
     const mismatched = await PostgresSkeinStore.connect(pg.url, {
       index: { dims: 99, fields: ["text"], embed: fakeEmbed, hnsw: true },
     });
+
     try {
       // Matched on the ALTER wrapper specifically, not just "store.index.hnsw" — that substring is in
       // the `dims` guard message too, so a regression that rejected 99 during validation instead of
@@ -201,6 +205,7 @@ describe("PostgresSkeinStore semantic search with store.index.hnsw", () => {
     const store = await PostgresSkeinStore.connect(pg.url, {
       index: { dims, fields: ["text"], embed: fakeEmbed, hnsw: true },
     });
+
     try {
       await expect(store.migrate()).rejects.toThrow(/store\.index\.dims to be an integer/);
     } finally {
@@ -222,10 +227,12 @@ describe("PostgresSkeinStore semantic search with store.index.hnsw", () => {
     // guarantee itself rests on the lock, not on this.
     await inspect.query(`DROP INDEX IF EXISTS store_items_embedding_hnsw_idx`);
     const options = { dims: 3, fields: ["text"], embed: fakeEmbed, hnsw: true };
+
     const [first, second] = await Promise.all([
       PostgresSkeinStore.connect(pg.url, { index: options }),
       PostgresSkeinStore.connect(pg.url, { index: options }),
     ]);
+
     try {
       // Neither may reject, and the result must be one valid index.
       await Promise.all([first.migrate(), second.migrate()]);
@@ -256,13 +263,16 @@ describe("PostgresSkeinStore semantic search with store.index.hnsw", () => {
     const waitingStore = await PostgresSkeinStore.connect(waiterUrl.toString(), {
       index: { dims: 3, fields: ["text"], embed: fakeEmbed, hnsw: true },
     });
+
     const waitForAdvisoryLockAttempt = async (excludedPid?: number): Promise<number> => {
       const deadline = Date.now() + 5_000;
+
       for (;;) {
         const { rows } = await inspect.query<{ pid: number; query: string }>(
           `SELECT pid, query FROM pg_stat_activity WHERE application_name = $1`,
           [waiterApplicationName],
         );
+
         const attempt = rows.find(
           ({ pid, query }) => pid !== excludedPid && /pg_(?:try_)?advisory_lock/.test(query),
         );
@@ -271,7 +281,9 @@ describe("PostgresSkeinStore semantic search with store.index.hnsw", () => {
         await new Promise((resolve) => setTimeout(resolve, 10));
       }
     };
+
     let migration: Promise<void> | undefined;
+
     try {
       // Keep both values byte-identical to their production constants. Holding the migration lock
       // lets us identify that first pool session before releasing it; applySkeinMigrations destroys
@@ -323,6 +335,7 @@ describe("PostgresSkeinStore semantic search with store.index.hnsw", () => {
     const store = await PostgresSkeinStore.connect(pg.url, {
       index: { dims: 3, fields: ["text"], embed: fakeEmbed, hnsw: true },
     });
+
     try {
       await store.migrate();
     } finally {

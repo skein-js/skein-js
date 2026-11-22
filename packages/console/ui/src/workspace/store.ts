@@ -106,6 +106,7 @@ export function createWorkspaceStore(
                 }
               }),
             );
+
             const threadTabs = { ...state.threadTabs };
             delete threadTabs[threadId];
             return {

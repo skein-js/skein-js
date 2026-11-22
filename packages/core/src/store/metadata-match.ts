@@ -16,11 +16,13 @@ export function isMetadataSubset(subject: unknown, filter: unknown): boolean {
 function jsonbContains(subject: unknown, filter: unknown): boolean {
   // Scalars (and null): plain equality, like `'1'::jsonb @> '1'::jsonb`.
   if (filter === null || typeof filter !== "object") return subject === filter;
+
   // Array filter: every element must be contained in some element of the subject array (set semantics).
   if (Array.isArray(filter)) {
     if (!Array.isArray(subject)) return false;
     return filter.every((wanted) => subject.some((candidate) => jsonbContains(candidate, wanted)));
   }
+
   // Object filter: match on a subset of keys, recursively. An empty object matches any value.
   const entries = Object.entries(filter as Record<string, unknown>);
   if (entries.length === 0) return true;

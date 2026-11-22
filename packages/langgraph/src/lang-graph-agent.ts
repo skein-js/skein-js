@@ -80,30 +80,37 @@ export function langGraphAgent(compiled: AgentGraph): AgentGraph {
   wrapped.stream = function (this: AgentGraph, input: unknown, options?: unknown) {
     return stream.call(this, toGraphInput(input), options);
   };
+
   if (streamEvents) {
     wrapped.streamEvents = function (this: AgentGraph, input: unknown, options?: unknown) {
       return streamEvents.call(this, toGraphInput(input), options);
     };
+
     wrapped.streamProtocol = async function* (this: AgentGraph, input: unknown, options?: unknown) {
       // v3 uses private fields: a prototype clone does not carry the runtime's private brand.
       // withConfig creates a real graph instance; only this call's attachments are copied onto it.
       const configurable = compiled as AgentGraph & {
         withConfig?: (config: Record<string, unknown>) => AgentGraph;
       };
+
       const target = configurable.withConfig?.({}) ?? this;
+
       if (target !== this) {
         for (const key of ["checkpointer", "store"] as const) {
           if (key in this)
             Object.assign(target, { [key]: (this as unknown as Record<string, unknown>)[key] });
         }
       }
+
       const events = (await streamEvents.call(target, toGraphInput(input), {
         ...(typeof options === "object" && options !== null ? options : {}),
         version: "v3",
       })) as AsyncIterable<ThreadProtocolEvent>;
+
       for await (const original of events) {
         // Agent Server message namespaces identify the graph scope; the emitting node is separate.
         const node = original.method === "messages" ? original.params.node : undefined;
+
         const event =
           original.method === "messages" &&
           node &&
@@ -128,11 +135,13 @@ export function langGraphAgent(compiled: AgentGraph): AgentGraph {
       }
     };
   }
+
   if (invoke) {
     wrapped.invoke = function (this: AgentGraph, input: unknown, options?: unknown) {
       return invoke.call(this, toGraphInput(input), options);
     };
   }
+
   if (bulkUpdateState) {
     // Superstep seeding carries a command in each update's `values` slot rather than as the call's
     // input, so it needs its own conversion — the envelope is nested two levels down.
@@ -144,5 +153,6 @@ export function langGraphAgent(compiled: AgentGraph): AgentGraph {
       return bulkUpdateState.call(this, config, toGraphSupersteps(supersteps));
     };
   }
+
   return wrapped;
 }

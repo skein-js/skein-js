@@ -28,8 +28,10 @@ export function resolveIdempotency(raw: RawIdempotency | undefined): Idempotency
   const config: IdempotencyConfig = {};
   if (typeof raw.retention_hours === "number") config.retentionHours = raw.retention_hours;
   if (typeof raw.in_flight_minutes === "number") config.inFlightMinutes = raw.in_flight_minutes;
+
   if (typeof raw.sweep_interval_minutes === "number") {
     config.sweepIntervalMinutes = raw.sweep_interval_minutes;
   }
+
   return Object.keys(config).length > 0 ? config : undefined;
 }

@@ -37,10 +37,12 @@ export function serializeWireJson(value: unknown): string {
     value,
     function (this: Record<string, unknown>, key: string, serialized: unknown) {
       const raw = this[key];
+
       if (isWireDictConvertible(raw)) {
         const { type, data } = raw.toDict();
         return { ...data, type };
       }
+
       return serialized;
     },
   );

@@ -10,11 +10,11 @@ import type { AddressInfo } from "node:net";
 import { AIMessage, type BaseMessage } from "@langchain/core/messages";
 import type { RunnableConfig } from "@langchain/core/runnables";
 import {
-  type CompiledGraph,
   interrupt,
   MemorySaver,
   MessagesAnnotation,
   StateGraph,
+  type CompiledGraph,
 } from "@langchain/langgraph";
 import {
   filterSkeinRoutes,
@@ -54,6 +54,7 @@ function buildEchoGraph(): CompiledGraph<string> {
       return { messages: [new AIMessage(`approved: ${String(interrupt("approve?"))}`)] };
     return { messages: [new AIMessage(`echo: ${text}`)] };
   }
+
   return new StateGraph(MessagesAnnotation)
     .addNode("echo", echo)
     .addEdge("__start__", "echo")
@@ -96,12 +97,15 @@ async function readBody(req: IncomingMessage): Promise<Buffer> {
 /** Build a Web `Request` from a Node request + already-read body buffer. */
 function toWebRequest(req: IncomingMessage, body: Buffer): Request {
   const headers = new Headers();
+
   for (const [name, value] of Object.entries(req.headers)) {
     if (Array.isArray(value)) for (const v of value) headers.append(name, v);
     else if (value !== undefined) headers.set(name, value);
   }
+
   const method = req.method ?? "GET";
   const hasBody = body.length > 0 && method !== "GET" && method !== "HEAD";
+
   const init: RequestInit & { duplex?: "half" } = {
     method,
     headers,
@@ -113,12 +117,15 @@ function toWebRequest(req: IncomingMessage, body: Buffer): Request {
 /** Pump a Web `Response` back onto the Node response, cancelling the source when the client hangs up. */
 async function writeWebResponse(response: Response, res: ServerResponse): Promise<void> {
   res.writeHead(response.status, Object.fromEntries(response.headers));
+
   if (!response.body) {
     res.end();
     return;
   }
+
   const reader = response.body.getReader();
   res.on("close", () => void reader.cancel().catch(() => {}));
+
   try {
     for (;;) {
       const { done, value } = await reader.read();
@@ -128,6 +135,7 @@ async function writeWebResponse(response: Response, res: ServerResponse): Promis
   } catch {
     // Client closed mid-stream; nothing more to write.
   }
+
   if (!res.writableEnded) res.end();
 }
 
@@ -151,12 +159,14 @@ export async function startEchoServer(options: {
       ? { configurableHeaders: { includes: ["x-*", "thread_id"] } }
       : {}),
   };
+
   const appHandlers: SkeinRouteHandlers = createSkeinRouteHandlers({
     deps,
     cors: options.cors,
     routes: filterSkeinRoutes(skeinRoutes, options.disable ?? {}),
     basePath: "",
   });
+
   const pagesHandler = createSkeinPagesHandler({
     deps,
     cors: options.cors,
@@ -167,6 +177,7 @@ export async function startEchoServer(options: {
   const server: Server = createServer((req, res) => {
     void (async () => {
       const body = await readBody(req);
+
       if (options.router === "pages") {
         const pagesReq = req as IncomingMessage & { body?: unknown };
         pagesReq.body = body.length ? JSON.parse(body.toString("utf8")) : undefined;

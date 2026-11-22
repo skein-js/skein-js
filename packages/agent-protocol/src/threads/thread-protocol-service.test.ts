@@ -18,16 +18,19 @@ const ownerEngine = {
 it("filters run visibility for lifecycle and captured state during replay and live delivery", async () => {
   const deps = createFixtureDeps();
   const thread = await deps.store.threads.create({ metadata: { owner: "alice" } });
+
   const mine = await deps.store.runs.create({
     thread_id: thread.thread_id,
     assistant_id: "echo",
     metadata: { owner: "alice" },
   });
+
   const theirs = await deps.store.runs.create({
     thread_id: thread.thread_id,
     assistant_id: "echo",
     metadata: { owner: "bob" },
   });
+
   const publish = async (runId: string, value: string) => {
     await deps.threadBus!.publish(thread.thread_id, {
       kind: "state",
@@ -58,6 +61,7 @@ it("filters run visibility for lifecycle and captured state during replay and li
       state,
     });
   };
+
   await publish(theirs.run_id, "hidden replay");
   await publish(mine.run_id, "visible replay");
   const service = createProtocolServiceFromContext(
@@ -66,7 +70,9 @@ it("filters run visibility for lifecycle and captured state during replay and li
       store: createAuthScopedStore(deps.store, ownerEngine, { owner: "alice" }, "threads"),
     }),
   );
+
   const stopped = new AbortController();
+
   const iterator = (
     await service.threadStream.follow!(
       thread.thread_id,
@@ -75,6 +81,7 @@ it("filters run visibility for lifecycle and captured state during replay and li
       stopped.signal,
     )
   )[Symbol.asyncIterator]();
+
   try {
     await iterator.next();
     expect((await iterator.next()).value).toContain(mine.run_id);
@@ -93,16 +100,19 @@ it("filters run visibility for lifecycle and captured state during replay and li
 it("filters namespaces and caller visibility during replay and live delivery", async () => {
   const deps = createFixtureDeps();
   const thread = await deps.store.threads.create({ metadata: { owner: "alice" } });
+
   const mine = await deps.store.runs.create({
     thread_id: thread.thread_id,
     assistant_id: "echo",
     metadata: { owner: "alice" },
   });
+
   const theirs = await deps.store.runs.create({
     thread_id: thread.thread_id,
     assistant_id: "echo",
     metadata: { owner: "bob" },
   });
+
   const publish = (runId: string, namespace: string[], value: string) =>
     deps.threadBus!.publish(thread.thread_id, {
       kind: "protocol",
@@ -122,13 +132,17 @@ it("filters namespaces and caller visibility during replay and live delivery", a
       store: createAuthScopedStore(deps.store, ownerEngine, { owner: "alice" }, "threads"),
     }),
   );
+
   const controller = new AbortController();
+
   const stream = await service.threadStream.subscribe!(
     thread.thread_id,
     { channels: ["values"], namespaces: [["child"]], depth: 0, since: 0 },
     controller.signal,
   );
+
   const iterator = stream[Symbol.asyncIterator]();
+
   try {
     expect((await iterator.next()).value).toContain(": subscribed");
     expect((await iterator.next()).value).toContain("visible replay");
@@ -147,6 +161,7 @@ it("replays retained publication order before a current state baseline for late 
   const service = createProtocolServiceFromContext(createContext(deps));
   await service.assistants.registerGraphAssistants();
   const thread = await service.threads.create();
+
   const result = await service.runs.createWait({
     thread_id: thread.thread_id,
     assistant_id: "echo",
@@ -163,12 +178,15 @@ it("replays retained publication order before a current state baseline for late 
       },
     });
   const stopped = new AbortController();
+
   const stream = await service.threadStream.subscribe!(
     thread.thread_id,
     { channels: ["values"] },
     stopped.signal,
   );
+
   const iterator = stream[Symbol.asyncIterator]();
+
   try {
     await iterator.next();
     const frames = [];
@@ -231,10 +249,12 @@ describe("thread command envelopes", () => {
   it("forks a stored checkpoint from a custom agent whose snapshot omits createdAt", async () => {
     const deps = createFixtureDeps();
     const load = deps.graphs.load;
+
     deps.graphs.load = async (id) => {
       const graph = await load(id);
       if (typeof graph === "function") throw new Error("Expected fixture agent.");
       const custom = Object.create(graph) as typeof graph;
+
       custom.getState = async function (config, options) {
         const { createdAt: _timestamp, ...snapshot } = await graph.getState.call(
           this,
@@ -243,8 +263,10 @@ describe("thread command envelopes", () => {
         );
         return snapshot;
       };
+
       return custom;
     };
+
     const service = createProtocolServiceFromContext(createContext(deps));
     await service.assistants.registerGraphAssistants();
     const thread = await service.threads.create();
@@ -287,24 +309,30 @@ it("does not send a stale baseline if a thread incarnation changes during state 
   const original = deps.graphs.load;
   let captured!: () => void;
   let release!: () => void;
+
   const entered = new Promise<void>((resolve) => {
     captured = resolve;
   });
+
   const held = new Promise<void>((resolve) => {
     release = resolve;
   });
+
   deps.graphs.load = async (id) => {
     const graph = await original(id);
     if (typeof graph === "function") throw new Error("Expected fixture graph.");
     const wrapped = Object.create(graph) as typeof graph;
+
     wrapped.getState = async function (config, options) {
       const snapshot = await graph.getState!.call(this, config, options);
       captured();
       await held;
       return snapshot;
     };
+
     return wrapped;
   };
+
   const subscribed = service.threadStream.subscribe!(thread.thread_id, { channels: ["values"] });
   await entered;
   await deps.threadBus!.deleteThread(thread.thread_id);

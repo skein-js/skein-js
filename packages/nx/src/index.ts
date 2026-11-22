@@ -8,13 +8,13 @@ import {
   logger,
   NX_VERSION,
   visitNotIgnoredFiles,
-  type Tree,
   type TargetConfiguration,
+  type Tree,
 } from "@nx/devkit";
 import {
   buildProjectFiles,
-  inspectWorkspace,
   formatProjectFiles,
+  inspectWorkspace,
   toPackageName,
   type DevStorage,
   type ModelProvider,
@@ -67,6 +67,7 @@ export async function generateApplication(tree: Tree, options: ApplicationOption
     packageManager: "pnpm",
     skeinVersionRange: "^" + version,
   };
+
   // One walk, only when the workspace has package patterns; inspectWorkspace filters by pattern.
   const listPackagePaths = () => {
     const packagePaths: string[] = [];
@@ -75,6 +76,7 @@ export async function generateApplication(tree: Tree, options: ApplicationOption
     });
     return packagePaths;
   };
+
   const workspace = inspectWorkspace(
     {
       root: tree.root,
@@ -84,6 +86,7 @@ export async function generateApplication(tree: Tree, options: ApplicationOption
     },
     defaults,
   );
+
   const base = tree.exists("tsconfig.base.json")
     ? "tsconfig.base.json"
     : tree.exists("tsconfig.json")
@@ -96,16 +99,20 @@ export async function generateApplication(tree: Tree, options: ApplicationOption
     packageManager: workspace.packageManager ?? "pnpm",
     typescriptBase: path.posix.relative(directory, base),
   };
+
   const files = buildProjectFiles(resolved);
   const manifestFile = files.find((file) => file.path === "package.json")!;
+
   const manifest = JSON.parse(manifestFile.contents) as {
     dependencies?: Record<string, string>;
     devDependencies?: Record<string, string>;
     scripts: Record<string, string>;
   };
+
   const packageLayout =
     tree.exists("pnpm-workspace.yaml") ||
     JSON.parse(tree.read("package.json")!.toString()).workspaces !== undefined;
+
   if (!packageLayout) {
     for (const [dependency, required] of Object.entries({
       ...manifest.dependencies,
@@ -122,6 +129,7 @@ export async function generateApplication(tree: Tree, options: ApplicationOption
         );
     }
   }
+
   // All validation above is read-only, including dry runs and conflicts.
   for (const file of files) {
     if (file.preserveIfPresent && tree.exists(directory + "/" + file.path)) continue;
@@ -136,6 +144,7 @@ export async function generateApplication(tree: Tree, options: ApplicationOption
         : file.contents,
     );
   }
+
   if (packageLayout && workspace.registration)
     tree.write(workspace.registration.path, workspace.registration.contents);
   if (!packageLayout)
@@ -147,6 +156,7 @@ export async function generateApplication(tree: Tree, options: ApplicationOption
       true,
     );
   const targets: Record<string, TargetConfiguration> = {};
+
   for (const [target, command] of Object.entries(manifest.scripts)) {
     targets[target] = {
       executor: "nx:run-commands",
@@ -174,6 +184,7 @@ export async function generateApplication(tree: Tree, options: ApplicationOption
       ...(target === "start" ? { dependsOn: ["build"] } : {}),
     };
   }
+
   addProjectConfiguration(tree, name, {
     root: directory,
     sourceRoot: directory + "/src",

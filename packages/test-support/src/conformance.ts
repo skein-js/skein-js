@@ -68,6 +68,7 @@ export function runSkeinStoreConformance(
 
       it("honors an explicit assistant_id, name, and description", async () => {
         const store = await makeStore();
+
         const created = await store.assistants.create({
           assistant_id: "fixed",
           graph_id: "agent",
@@ -99,6 +100,7 @@ export function runSkeinStoreConformance(
 
       it("seeds version 1 on create and lists it", async () => {
         const store = await makeStore();
+
         const { assistant_id } = await store.assistants.create({
           graph_id: "agent",
           metadata: { env: "dev" },
@@ -115,6 +117,7 @@ export function runSkeinStoreConformance(
 
       it("mints a new version on update, mirroring the patched fields onto the live row", async () => {
         const store = await makeStore();
+
         const { assistant_id } = await store.assistants.create({
           graph_id: "agent",
           name: "v1",
@@ -156,6 +159,7 @@ export function runSkeinStoreConformance(
 
       it("filters version history by metadata subset", async () => {
         const store = await makeStore();
+
         const { assistant_id } = await store.assistants.create({
           graph_id: "agent",
           metadata: { env: "dev" },
@@ -170,6 +174,7 @@ export function runSkeinStoreConformance(
 
       it("rolls back to an existing version via setLatest without minting a new one", async () => {
         const store = await makeStore();
+
         const { assistant_id } = await store.assistants.create({
           graph_id: "agent",
           metadata: { env: "dev" },
@@ -210,6 +215,7 @@ export function runSkeinStoreConformance(
 
       it("merges metadata on update, preserving sibling keys (LangGraph parity)", async () => {
         const store = await makeStore();
+
         const { assistant_id } = await store.assistants.create({
           graph_id: "agent",
           metadata: { team: "core", owner: "ada" },
@@ -482,11 +488,13 @@ export function runSkeinStoreConformance(
           { values: { turns: 2 } },
           { ids: [busy.thread_id] },
         ];
+
         for (const filter of filters) {
           expect(await store.threads.count(filter)).toBe(
             (await store.threads.search(filter)).length,
           );
         }
+
         expect(await store.threads.count({})).toBe(3);
         expect(await store.threads.count({ metadata: { graph_id: "chat" } })).toBe(2);
       });
@@ -500,10 +508,12 @@ export function runSkeinStoreConformance(
         // relies entirely on the thread_id tiebreaker. Walking every page must cover each row exactly
         // once (no drops, no duplicates).
         const seen: string[] = [];
+
         for (let offset = 0; offset < 5; offset += 2) {
           const page = await store.threads.search({ sortBy: "status", limit: 2, offset });
           seen.push(...page.map((t) => t.thread_id));
         }
+
         expect(seen).toHaveLength(5);
         expect(new Set(seen).size).toBe(5);
         expect([...seen].sort()).toEqual([...created].sort());
@@ -540,8 +550,10 @@ export function runSkeinStoreConformance(
           const first = await seedThread(store);
           const second = await seedThread(store);
           const ownerRuns = [];
+
           for (let index = 0; index < 6; index++) {
             const owned = index % 2 === 0;
+
             const run = await store.runs.create({
               thread_id: owned ? first : second,
               assistant_id: owned ? "target" : "other",
@@ -551,14 +563,17 @@ export function runSkeinStoreConformance(
             });
             if (owned) ownerRuns.push(run);
           }
+
           expect(typeof store.runs.search).toBe("function");
           const search = store.runs.search!.bind(store.runs);
+
           const query = {
             status: "error" as const,
             assistantId: "target",
             threadId: first,
             enforcedMetadata: { owner: "alice", groups: ["readers"] },
           };
+
           const firstPage = await search({ ...query, limit: 2 });
           const secondPage = await search({ ...query, limit: 2, offset: 2 });
           expect(firstPage).toHaveLength(2);
@@ -570,21 +585,25 @@ export function runSkeinStoreConformance(
           expect(await search({ ...query, assistantId: "missing" })).toEqual([]);
           expect(await search({ ...query, threadId: "missing" })).toEqual([]);
           expect(await search({ ...query, enforcedMetadata: { owner: "bob" } })).toEqual([]);
+
           for (const run of firstPage) {
             expect(run).not.toHaveProperty("kwargs");
             expect(run).not.toHaveProperty("result");
           }
+
           firstPage[0]!.metadata = { changed: true };
           expect((await search(query))[0]!.metadata).toMatchObject({ owner: "alice" });
         });
         it("applies inclusive lower/exclusive upper timestamp bounds independently", async () => {
           const store = await makeStore();
           const thread_id = await seedThread(store);
+
           const run = await store.runs.create({
             thread_id,
             assistant_id: "agent",
             status: "error",
           });
+
           const search = store.runs.search!.bind(store.runs);
           const epoch = "1970-01-01T00:00:00.000Z";
           const future = "9999-01-01T00:00:00.000Z";
@@ -705,9 +724,11 @@ export function runSkeinStoreConformance(
       it("pages runs by thread", async () => {
         const store = await makeStore();
         const thread_id = await seedThread(store);
+
         for (let index = 0; index < 3; index += 1) {
           await store.runs.create({ thread_id, assistant_id: "a" });
         }
+
         const all = await store.runs.listByThread(thread_id);
         expect(await store.runs.listByThread(thread_id, { offset: 1, limit: 1 })).toEqual([all[1]]);
       });
@@ -720,10 +741,12 @@ export function runSkeinStoreConformance(
         const store = await makeStore();
         const thread_id = await seedThread(store);
         const created = [];
+
         for (let index = 0; index < 3; index += 1) {
           created.push(await store.runs.create({ thread_id, assistant_id: "a" }));
           await new Promise((resolve) => setTimeout(resolve, 2));
         }
+
         const newest = [...created].sort((a, b) => b.created_at.localeCompare(a.created_at))[0];
 
         expect((await store.runs.latestForThread(thread_id))?.run_id).toBe(newest?.run_id);
@@ -753,6 +776,7 @@ export function runSkeinStoreConformance(
       it("picks the same latest run on repeat calls when created_at ties", async () => {
         const store = await makeStore();
         const thread_id = await seedThread(store);
+
         for (let index = 0; index < 5; index += 1) {
           await store.runs.create({ thread_id, assistant_id: "a" });
         }
@@ -815,6 +839,7 @@ export function runSkeinStoreConformance(
         const store = await makeStore();
         const thread_id = await seedThread(store);
         const run = await store.runs.create({ thread_id, assistant_id: "a" });
+
         const failure = {
           error: "TypeError",
           name: "TypeError",
@@ -895,6 +920,7 @@ export function runSkeinStoreConformance(
       it("records a base checkpoint onto a run's kwargs, keeping the rest intact", async () => {
         const store = await makeStore();
         const thread_id = await seedThread(store);
+
         const run = await store.runs.create({
           thread_id,
           assistant_id: "a",
@@ -916,6 +942,7 @@ export function runSkeinStoreConformance(
         // its checkpoints alone. Collapsing them would wipe history the run never wrote.
         const store = await makeStore();
         const thread_id = await seedThread(store);
+
         // Created with kwargs, as every run skein makes is — so this asserts the *key* is absent from a
         // real blob, not that the blob itself is missing.
         const untouched = await store.runs.create({
@@ -960,6 +987,7 @@ export function runSkeinStoreConformance(
         // instance created it.
         const store = await makeStore();
         const thread_id = await seedThread(store);
+
         const run = await store.runs.create({
           thread_id,
           assistant_id: "a",
@@ -1145,6 +1173,7 @@ export function runSkeinStoreConformance(
       it("round-trips a run's opaque kwargs and returns null for an unknown run", async () => {
         const store = await makeStore();
         const thread_id = await seedThread(store);
+
         const run = await store.runs.create({
           thread_id,
           assistant_id: "a",
@@ -1221,6 +1250,7 @@ export function runSkeinStoreConformance(
       it("round-trips every field, including a thread and an explicit id", async () => {
         const store = await makeStore();
         const { thread_id } = await store.threads.create();
+
         const created = await store.crons.create({
           cron_id: "fixed",
           assistant_id: "a",
@@ -1263,6 +1293,7 @@ export function runSkeinStoreConformance(
       // several share an occurrence — otherwise one driver can starve the same crons every tick.
       it("orders a due scan by cron_id when occurrences tie", async () => {
         const store = await makeStore();
+
         for (const cronId of ["c", "a", "b"]) {
           await seedDueCron(store, { cron_id: cronId });
         }
@@ -1341,6 +1372,7 @@ export function runSkeinStoreConformance(
 
       it("pages a search with limit and offset", async () => {
         const store = await makeStore();
+
         for (const cronId of ["a", "b", "c"]) {
           await store.crons.create({ cron_id: cronId, assistant_id: "a", schedule: "* * * * *" });
         }
@@ -1358,6 +1390,7 @@ export function runSkeinStoreConformance(
 
       it("counts every match, ignoring limit and offset", async () => {
         const store = await makeStore();
+
         for (const cronId of ["a", "b", "c"]) {
           await store.crons.create({ cron_id: cronId, assistant_id: "a", schedule: "* * * * *" });
         }
@@ -1369,6 +1402,7 @@ export function runSkeinStoreConformance(
 
       it("patches only the fields it is given", async () => {
         const store = await makeStore();
+
         const created = await store.crons.create({
           assistant_id: "a",
           schedule: "0 9 * * *",
@@ -1386,6 +1420,7 @@ export function runSkeinStoreConformance(
       // `COALESCE` alone cannot express that, which is why both drivers carry a "was it supplied" flag.
       it("treats end_time and timezone as tri-state on update", async () => {
         const store = await makeStore();
+
         const created = await store.crons.create({
           assistant_id: "a",
           schedule: "* * * * *",
@@ -1407,6 +1442,7 @@ export function runSkeinStoreConformance(
 
       it("merges metadata on update rather than replacing it", async () => {
         const store = await makeStore();
+
         const created = await store.crons.create({
           assistant_id: "a",
           schedule: "* * * * *",
@@ -1491,6 +1527,7 @@ export function runSkeinStoreConformance(
         const { thread_id } = await store.threads.create();
         const cron = await seedDueCron(store, { thread_id });
         const [due] = await store.crons.listDue({ dueAt: "2020-01-02T00:00:00.000Z" });
+
         const claim = {
           expectedSeq: due?.occurrenceSeq ?? 0,
           nextRunDate: "2030-01-01T00:00:00.000Z",
@@ -1500,6 +1537,7 @@ export function runSkeinStoreConformance(
           thread_id,
           assistant_id: "a",
         });
+
         const second = await store.crons.claimAndCreateRun(cron.cron_id, claim, {
           thread_id,
           assistant_id: "a",
@@ -1582,12 +1620,14 @@ export function runSkeinStoreConformance(
 
       it("round-trips the cron's principal, and keeps it off the wire row", async () => {
         const store = await makeStore();
+
         const user = {
           identity: "ada",
           display_name: "Ada",
           is_authenticated: true,
           permissions: ["runs:write"],
         };
+
         const cron = await store.crons.create({
           assistant_id: "a",
           schedule: "* * * * *",
@@ -1633,11 +1673,13 @@ export function runSkeinStoreConformance(
       it("deletes a thread's crons along with the thread", async () => {
         const store = await makeStore();
         const { thread_id } = await store.threads.create();
+
         const threadCron = await store.crons.create({
           assistant_id: "a",
           schedule: "* * * * *",
           thread_id,
         });
+
         const stateless = await store.crons.create({ assistant_id: "a", schedule: "* * * * *" });
 
         await store.threads.delete(thread_id);
@@ -2047,6 +2089,7 @@ export function runSkeinStoreConformance(
     describe("idempotency", () => {
       const wait = (ms: number): Promise<void> => new Promise((resolve) => setTimeout(resolve, ms));
       const inMs = (ms: number): string => new Date(Date.now() + ms).toISOString();
+
       const aClaim = (
         overrides?: Partial<Parameters<SkeinStore["idempotency"]["claim"]>[0]>,
       ): Parameters<SkeinStore["idempotency"]["claim"]>[0] => ({
@@ -2097,6 +2140,7 @@ export function runSkeinStoreConformance(
         expect(results.filter((r) => r.claimed)).toHaveLength(1);
         // And every loser was told about the same winner.
         const winner = results.find((r) => r.claimed)?.record.claim_id;
+
         for (const loser of results.filter((r) => !r.claimed)) {
           expect(loser.record.claim_id).toBe(winner);
         }
@@ -2218,6 +2262,7 @@ export function runSkeinStoreConformance(
         // the graph's final state — so deleting a thread has to take it with it, or a full copy of
         // the conversation survives in a table no API surfaces.
         const store = await makeStore();
+
         const record = async (key: string, threadId: string): Promise<void> => {
           await store.idempotency.claim(aClaim({ key, claim_id: `c-${key}` }));
           await store.idempotency.record("POST /threads/t/runs alice", key, `c-${key}`, {
@@ -2228,6 +2273,7 @@ export function runSkeinStoreConformance(
             expires_at: inMs(86_400_000),
           });
         };
+
         await record("doomed", "t-1");
         await record("spared", "t-2");
         // An in-flight claim has no thread yet — it must survive, or a delete would strand a caller
@@ -2311,12 +2357,14 @@ export function runSkeinStoreConformance(
       } {
         const { deliveries } = store;
         const finalize = store.runs.finalizeWithDelivery;
+
         if (!deliveries || !finalize) {
           throw new Error(
             `Driver implements ${deliveries ? "deliveries" : "runs.finalizeWithDelivery"} but not ` +
               `${deliveries ? "runs.finalizeWithDelivery" : "deliveries"} — a delivery outbox needs both.`,
           );
         }
+
         return { deliveries, finalize: finalize.bind(store.runs) };
       }
 
@@ -2450,6 +2498,7 @@ export function runSkeinStoreConformance(
         const store = await makeStore();
         const { deliveries, finalize } = outboxOf(store);
         const { runId, threadId } = await seedRun(store);
+
         const { delivery } = await finalize(runId, {
           status: "success",
           delivery: deliveryFor(threadId, { next_attempt_at: inMs(-1_000) }),
@@ -2495,14 +2544,17 @@ export function runSkeinStoreConformance(
         // returning rows in storage order rather than due order fails here.
         const dueAtOffsets = [-1_000, -5_000, -3_000];
         const created = [];
+
         for (const offset of dueAtOffsets) {
           const run = await store.runs.create({ thread_id, assistant_id: "a" });
+
           const { delivery } = await finalize(run.run_id, {
             status: "success",
             delivery: deliveryFor(thread_id, { next_attempt_at: inMs(offset) }),
           });
           created.push({ id: delivery.delivery_id, offset });
         }
+
         const expected = [...created]
           .sort((a, b) => a.offset - b.offset)
           .slice(0, 2)
@@ -2520,6 +2572,7 @@ export function runSkeinStoreConformance(
         const store = await makeStore();
         const { deliveries, finalize } = outboxOf(store);
         const { runId, threadId } = await seedRun(store);
+
         const { delivery } = await finalize(runId, {
           status: "success",
           delivery: deliveryFor(threadId, { next_attempt_at: inMs(-1_000) }),
@@ -2553,6 +2606,7 @@ export function runSkeinStoreConformance(
         const store = await makeStore();
         const { deliveries, finalize } = outboxOf(store);
         const { runId, threadId } = await seedRun(store);
+
         const { delivery } = await finalize(runId, {
           status: "success",
           delivery: deliveryFor(threadId, { next_attempt_at: inMs(-1_000) }),
@@ -2567,14 +2621,17 @@ export function runSkeinStoreConformance(
         const { deliveries, finalize } = outboxOf(store);
         const { thread_id } = await store.threads.create();
         const created = [];
+
         for (const offset of [-1_000, -5_000, -3_000]) {
           const run = await store.runs.create({ thread_id, assistant_id: "a" });
+
           const { delivery } = await finalize(run.run_id, {
             status: "success",
             delivery: deliveryFor(thread_id, { next_attempt_at: inMs(offset) }),
           });
           created.push({ id: delivery.delivery_id, offset });
         }
+
         const expected = [...created]
           .sort((a, b) => a.offset - b.offset)
           .slice(0, 2)
@@ -2589,6 +2646,7 @@ export function runSkeinStoreConformance(
         const store = await makeStore();
         const { deliveries, finalize } = outboxOf(store);
         const { runId, threadId } = await seedRun(store);
+
         const { delivery } = await finalize(runId, {
           status: "success",
           delivery: deliveryFor(threadId),
@@ -2607,10 +2665,12 @@ export function runSkeinStoreConformance(
         const store = await makeStore();
         const { deliveries, finalize } = outboxOf(store);
         const { runId, threadId } = await seedRun(store);
+
         const { delivery } = await finalize(runId, {
           status: "success",
           delivery: deliveryFor(threadId),
         });
+
         const nextAttemptAt = inMs(120_000);
 
         const settled = await deliveries.recordAttempt(delivery.delivery_id, {
@@ -2631,6 +2691,7 @@ export function runSkeinStoreConformance(
         const store = await makeStore();
         const { deliveries, finalize } = outboxOf(store);
         const { runId, threadId } = await seedRun(store);
+
         const { delivery } = await finalize(runId, {
           status: "success",
           delivery: deliveryFor(threadId),
@@ -2653,6 +2714,7 @@ export function runSkeinStoreConformance(
         const store = await makeStore();
         const { deliveries, finalize } = outboxOf(store);
         const { runId, threadId } = await seedRun(store);
+
         const { delivery } = await finalize(runId, {
           status: "success",
           delivery: deliveryFor(threadId),
@@ -2678,6 +2740,7 @@ export function runSkeinStoreConformance(
         const store = await makeStore();
         const { deliveries, finalize } = outboxOf(store);
         const { runId, threadId } = await seedRun(store);
+
         const { delivery } = await finalize(runId, {
           status: "success",
           delivery: deliveryFor(threadId),
@@ -2703,6 +2766,7 @@ export function runSkeinStoreConformance(
         const store = await makeStore();
         const { deliveries, finalize } = outboxOf(store);
         const { runId, threadId } = await seedRun(store);
+
         const { delivery } = await finalize(runId, {
           status: "success",
           delivery: deliveryFor(threadId),
@@ -2724,6 +2788,7 @@ export function runSkeinStoreConformance(
         const store = await makeStore();
         const { deliveries, finalize } = outboxOf(store);
         const { runId, threadId } = await seedRun(store);
+
         const { delivery } = await finalize(runId, {
           status: "success",
           delivery: deliveryFor(threadId),
@@ -2738,6 +2803,7 @@ export function runSkeinStoreConformance(
         const store = await makeStore();
         const { deliveries, finalize } = outboxOf(store);
         const { runId, threadId } = await seedRun(store);
+
         const { delivery } = await finalize(runId, {
           status: "success",
           delivery: deliveryFor(threadId),
@@ -2757,6 +2823,7 @@ export function runSkeinStoreConformance(
         const { deliveries, finalize } = outboxOf(store);
         const { runId, threadId } = await seedRun(store);
         const created = [];
+
         for (const _ of [0, 1, 2]) {
           const { delivery } = await finalize(runId, {
             status: "success",
@@ -2765,6 +2832,7 @@ export function runSkeinStoreConformance(
           created.push(delivery);
           await new Promise((resolve) => setTimeout(resolve, 2));
         }
+
         const expected = [...created]
           .sort((a, b) => b.created_at.localeCompare(a.created_at))
           .map((row) => row.delivery_id);
@@ -2777,6 +2845,7 @@ export function runSkeinStoreConformance(
         const { deliveries, finalize } = outboxOf(store);
         const { runId, threadId } = await seedRun(store);
         const other = await seedRun(store);
+
         const { delivery: mine } = await finalize(runId, {
           status: "success",
           delivery: deliveryFor(threadId),
@@ -2799,6 +2868,7 @@ export function runSkeinStoreConformance(
         const store = await makeStore({ maxPageSize: 2 });
         const { deliveries, finalize } = outboxOf(store);
         const { runId, threadId } = await seedRun(store);
+
         for (const _ of [0, 1, 2]) {
           await finalize(runId, { status: "success", delivery: deliveryFor(threadId) });
         }
@@ -2810,15 +2880,18 @@ export function runSkeinStoreConformance(
         const store = await makeStore();
         const { deliveries, finalize } = outboxOf(store);
         const { runId, threadId } = await seedRun(store);
+
         const { delivery: swept } = await finalize(runId, {
           status: "success",
           delivery: deliveryFor(threadId, { expires_at: inMs(-1_000) }),
         });
+
         // Terminal but not yet expired.
         const { delivery: kept } = await finalize(runId, {
           status: "success",
           delivery: deliveryFor(threadId, { expires_at: inMs(3_600_000) }),
         });
+
         // In-flight, and expired — still not sweepable, because it has not been delivered yet.
         const { delivery: inFlight } = await finalize(runId, {
           status: "success",
@@ -2898,6 +2971,7 @@ export function runSkeinStoreConformance(
 
       it("bounds the batch it reports", async () => {
         const store = await makeStore();
+
         for (const id of ["a", "b", "c"]) {
           await store.threads.create({ thread_id: id, ttl: tinyTtlMinutes });
         }
@@ -2972,6 +3046,7 @@ export function runSkeinStoreConformance(
 
       it("pages the restricted set, not the whole table", async () => {
         const store = await makeStore();
+
         for (const owner of ["alice", "bob", "alice", "bob", "alice"]) {
           await store.threads.create({ metadata: { owner } });
         }
@@ -2980,6 +3055,7 @@ export function runSkeinStoreConformance(
           enforcedMetadata: { owner: "alice" },
           limit: 2,
         });
+
         const next = await store.threads.search({
           enforcedMetadata: { owner: "alice" },
           limit: 2,
@@ -3015,10 +3091,12 @@ export function runSkeinStoreConformance(
       it("bounds threads.list to the oldest rows, ordered the same on every driver", async () => {
         const store = await makeStore({ maxPageSize: 2 });
         const created: Thread[] = [];
+
         for (const index of [0, 1, 2, 3, 4]) {
           created.push(await store.threads.create({ metadata: { index } }));
           await new Promise((resolve) => setTimeout(resolve, 2));
         }
+
         const expected = [...created]
           .sort((a, b) => a.created_at.localeCompare(b.created_at))
           .slice(0, 2)
@@ -3054,6 +3132,7 @@ export function runSkeinStoreConformance(
 
       it("bounds assistants.search but not assistants.count", async () => {
         const store = await makeStore({ maxPageSize: 2 });
+
         for (const index of [0, 1, 2, 3, 4]) {
           await store.assistants.create({ graph_id: "agent", name: `a${index}` });
         }
@@ -3077,6 +3156,7 @@ export function runSkeinStoreConformance(
 
       it("bounds threads.search but not threads.count", async () => {
         const store = await makeStore({ maxPageSize: 2 });
+
         for (const index of [0, 1, 2, 3, 4]) {
           await store.threads.create({ metadata: { index } });
         }
@@ -3089,6 +3169,7 @@ export function runSkeinStoreConformance(
 
       it("bounds store.search when no limit is given", async () => {
         const store = await makeStore({ maxPageSize: 2 });
+
         for (const index of [0, 1, 2, 3, 4]) {
           await store.store.put(["ns"], `k${index}`, { index });
         }
@@ -3128,6 +3209,7 @@ export function runSkeinStoreConformance(
       it("isolates stored runs from objects returned by the list paths", async () => {
         const store = await makeStore();
         const { thread_id } = await store.threads.create();
+
         const { run_id } = await store.runs.create({
           thread_id,
           assistant_id: "agent",

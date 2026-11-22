@@ -1,4 +1,4 @@
-import { mkdtemp, readFile, readdir, rm, writeFile } from "node:fs/promises";
+import { mkdtemp, readdir, readFile, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 
@@ -18,20 +18,24 @@ afterEach(async () => {
     directories.splice(0).map((directory) => rm(directory, { recursive: true, force: true })),
   );
 });
+
 async function createDirectory() {
   const directory = await mkdtemp(join(tmpdir(), "skein-local-app-test-"));
   directories.push(directory);
   return directory;
 }
+
 async function openRuntime(directory: string, application: "reading" | "planner") {
   const graph =
     application === "reading"
       ? buildWorkflow(directory, { fixture: true, application: "reading" })
       : buildDailyPlanner(directory, join(directory, "tasks.md"), { fixture: true });
+
   const embedded = await embedSqliteGraphs(
     { workflow: graph },
     { sqlitePath: join(directory, "state.sqlite") },
   );
+
   const runtime = createProtocolRuntime(embedded.deps, { scheduler: { enabled: false } });
   await runtime.service.assistants.registerGraphAssistants();
   return {
@@ -47,6 +51,7 @@ it("reopens a reading review, preserves exact source excerpts, and saves the rev
   const directory = await createDirectory();
   const first = await openRuntime(directory, "reading");
   let threadId: string;
+
   try {
     threadId = (await first.service.threads.create()).thread_id;
     await first.service.runs.createWait({
@@ -65,7 +70,9 @@ it("reopens a reading review, preserves exact source excerpts, and saves the rev
   } finally {
     await first.dispose();
   }
+
   const reopened = await openRuntime(directory, "reading");
+
   try {
     await reopened.service.runs.createWait({
       thread_id: threadId!,
@@ -74,6 +81,7 @@ it("reopens a reading review, preserves exact source excerpts, and saves the rev
     });
     const brief = (await reopened.service.threads.getState(threadId!))
       .values as unknown as MeetingRecap;
+
     const markdown = await readFile(brief.savedPath, "utf8");
     expect(markdown).toContain("My own reading takeaway.");
     expect(markdown).toContain("## Source excerpts");
@@ -92,6 +100,7 @@ it.each([true, false])(
     await writeFile(join(directory, "tasks.md"), sampleTasks);
     const first = await openRuntime(directory, "planner");
     let threadId: string;
+
     try {
       threadId = (await first.service.threads.create()).thread_id;
       await first.service.runs.createWait({
@@ -104,7 +113,9 @@ it.each([true, false])(
     } finally {
       await first.dispose();
     }
+
     const reopened = await openRuntime(directory, "planner");
+
     try {
       await reopened.service.runs.createWait({
         thread_id: threadId!,

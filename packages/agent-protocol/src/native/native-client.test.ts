@@ -9,6 +9,7 @@ const runtimes: ProtocolRuntime[] = [];
 afterEach(async () => {
   await Promise.all(runtimes.splice(0).map((runtime) => runtime.worker.stop()));
 });
+
 async function fixture() {
   const deps = createFixtureDeps();
   const runtime = createProtocolRuntime(deps, { scheduler: { enabled: false } });
@@ -29,6 +30,7 @@ describe("native admission", () => {
     const stream = vi.fn(async function* () {
       yield ["values", {}];
     });
+
     const deps = createFixtureDeps();
     deps.graphs = {
       ids: ["race"],
@@ -37,13 +39,16 @@ describe("native admission", () => {
     };
     const setStatus = deps.store.runs.setStatus.bind(deps.store.runs);
     let raced = false;
+
     deps.store.runs.setStatus = async (id, status, error) => {
       if (status === "running") {
         raced = true;
         await deps.store.runs.settle!(id, { status: "cancelled" });
       }
+
       return setStatus(id, status, error);
     };
+
     const runtime = createProtocolRuntime(deps, { scheduler: { enabled: false } });
     runtimes.push(runtime);
     await runtime.service.assistants.registerGraphAssistants();
@@ -56,6 +61,7 @@ describe("native admission", () => {
   });
   it("stops admission when the held lease is lost during intervening authorization", async () => {
     const lost = new AbortController();
+
     const auth: AuthEngine = {
       enabled: false,
       studioAuthDisabled: false,
@@ -67,12 +73,14 @@ describe("native admission", () => {
         return { value };
       },
     };
+
     const deps = createFixtureDeps({
       auth,
       threadExecutionGate: {
         acquire: async () => ({ signal: lost.signal, release: async () => undefined }),
       },
     });
+
     const runtime = createProtocolRuntime(deps, { scheduler: { enabled: false } });
     runtimes.push(runtime);
     await runtime.service.assistants.registerGraphAssistants();
@@ -109,6 +117,7 @@ describe("native admission", () => {
       sourceId: "duration",
       allowedAssistants: ["slow"],
     });
+
     const receipt = await client.start(
       { assistant_id: "slow", input: {}, timeout_ms: 20 },
       { idempotencyKey: "duration" },
@@ -129,6 +138,7 @@ describe("native admission", () => {
       allowedAssistants: [assistantId],
       outcomeTarget: "https://receiver.example/outcome",
     });
+
     const receipt = await client.start({ assistant_id: assistantId, input: {} });
     runtime.worker.start();
     const status = assistantId === "slow" ? "timeout" : "error";
@@ -163,6 +173,7 @@ describe("native admission", () => {
       allowedAssistants: ["opaque"],
       outcomeTarget: "https://receiver.example/outcome",
     });
+
     const receipt = await client.start({ assistant_id: "opaque", input: {} });
     runtime.worker.start();
     await expect.poll(async () => (await client.getRun(receipt.runId)).status).toBe("success");
@@ -177,11 +188,13 @@ describe("native admission", () => {
 
   it("retains results while excluding live native obligations from snapshots and copies", async () => {
     const { runtime, deps } = await fixture();
+
     const client = runtime.createNativeClient({
       sourceId: "snapshot",
       allowedAssistants: ["echo"],
       outcomeTarget: "https://receiver.example/outcome",
     });
+
     const receipt = await client.start({ assistant_id: "echo", input: { value: "retained" } });
     runtime.worker.start();
     await expect.poll(async () => (await client.getRun(receipt.runId)).status).toBe("success");
@@ -222,6 +235,7 @@ describe("native admission", () => {
       allowedAssistants: ["echo"],
       outcomeTarget: "https://receiver.example/outcome",
     });
+
     const receipt = await client.start(
       { assistant_id: "echo", input: { value: "expired" }, after_seconds: 60 },
       { idempotencyKey: "expires", deadlineAt: "2026-10-25T00:00:01.000Z" },
@@ -257,10 +271,12 @@ describe("native admission", () => {
       resume: "approved",
       timeout_ms: 1000,
     };
+
     const [a, b] = await Promise.allSettled([
       client.resume(input, { idempotencyKey: "answer-a" }),
       client.resume(input, { idempotencyKey: "answer-b" }),
     ]);
+
     const accepted = [a, b].find((answer) => answer.status === "fulfilled");
     expect([a, b].filter((answer) => answer.status === "fulfilled")).toHaveLength(1);
     if (accepted?.status !== "fulfilled") throw new Error("Missing admitted resume");
@@ -286,7 +302,9 @@ describe("native admission", () => {
       user: { identity, display_name: identity, is_authenticated: true, permissions: [] },
       scopes: [],
     });
+
     let revoked = false;
+
     const auth: AuthEngine = {
       enabled: true,
       studioAuthDisabled: false,
@@ -297,12 +315,14 @@ describe("native admission", () => {
       },
       matchesFilters: (metadata, filters) => metadata?.["owner"] === filters?.["owner"],
     };
+
     const runtime = createProtocolRuntime(createFixtureDeps({ auth }), {
       scheduler: { enabled: false },
     });
     runtimes.push(runtime);
     await runtime.service.assistants.registerGraphAssistants();
     const client = runtime.createNativeClient({ sourceId: "shared", allowedAssistants: ["echo"] });
+
     const [a, b] = await Promise.all(
       ["alice", "bob"].map((identity) =>
         client.start(
@@ -344,11 +364,13 @@ describe("native admission", () => {
 
   it("recovers the original route and absolute budget using the adapter's original command", async () => {
     const { client, deps } = await fixture();
+
     const options = {
       idempotencyKey: "routed",
       idempotencyInput: { intent: "approve" },
       deadlineAt: "2030-01-01T00:00:00.000Z",
     };
+
     const first = await client.start({ assistant_id: "echo" }, options);
     expect(
       await client.start(
@@ -372,9 +394,11 @@ describe("native admission", () => {
     const { deps, runtime } = await fixture();
     const thread = await runtime.service.threads.create();
     const record = deps.store.idempotency.record;
+
     deps.store.idempotency.record = async () => {
       throw new Error("lost response recording");
     };
+
     const request = {
       method: "POST",
       url: `http://localhost/threads/${thread.thread_id}/runs`,
@@ -383,6 +407,7 @@ describe("native admission", () => {
       headers: { "idempotency-key": "http-lost" },
       body: { assistant_id: "echo" },
     };
+
     const first = await runtime.handlers.createBackgroundRun(request);
     deps.store.idempotency.record = record;
     const next = await runtime.handlers.createBackgroundRun({ ...request });
@@ -393,6 +418,7 @@ describe("native admission", () => {
   });
   it("replays one accepted run before and after execution, including concurrent calls", async () => {
     const { deps, runtime, client } = await fixture();
+
     const receipts = await Promise.all(
       Array.from({ length: 6 }, () =>
         client.start(
@@ -420,9 +446,11 @@ describe("native admission", () => {
   it("retains acceptance when enqueue fails and recovers owned dispatch", async () => {
     const { deps, runtime, client } = await fixture();
     const enqueue = deps.queue.enqueue.bind(deps.queue);
+
     deps.queue.enqueue = async () => {
       throw new Error("queue unavailable");
     };
+
     const receipt = await client.start(
       { assistant_id: "echo", input: { value: "recovered" } },
       { idempotencyKey: "lost-ack" },
@@ -435,11 +463,13 @@ describe("native admission", () => {
 
   it("records a pending cancellation outcome without executing the graph", async () => {
     const { deps, runtime } = await fixture();
+
     const client = runtime.createNativeClient({
       sourceId: "cancel",
       allowedAssistants: ["echo"],
       outcomeTarget: "https://receiver.example/outcomes",
     });
+
     const receipt = await client.start({ assistant_id: "echo", input: { value: "never" } });
     const cancelled = await client.cancel(receipt.runId, { idempotencyKey: "cancel" });
     expect(cancelled).toMatchObject({ status: "cancelled", stopped: true });

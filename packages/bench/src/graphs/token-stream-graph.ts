@@ -4,8 +4,7 @@
 // dial frame count, frame size, and production rate independently.
 
 import { AIMessageChunk } from "@langchain/core/messages";
-import { END, START, StateGraph } from "@langchain/langgraph";
-import { MessagesAnnotation } from "@langchain/langgraph";
+import { END, MessagesAnnotation, START, StateGraph } from "@langchain/langgraph";
 
 /** Shape of the synthetic token stream a scenario asks for. */
 export interface TokenStreamGraphOptions {
@@ -41,6 +40,7 @@ export function createTokenStreamGraph(options: TokenStreamGraphOptions) {
   const graph = new StateGraph(MessagesAnnotation)
     .addNode("stream", async (_state, config) => {
       const writer = config?.writer;
+
       for (let index = 0; index < frames; index += 1) {
         const chunk = new AIMessageChunk({ content: `${index}:${filler}` });
         // `custom` mode goes straight through the engine's chunk path without the model plumbing a
@@ -48,6 +48,7 @@ export function createTokenStreamGraph(options: TokenStreamGraphOptions) {
         writer?.(chunk);
         if (delayMs > 0) await sleep(delayMs);
       }
+
       return { messages: [new AIMessageChunk({ content: "done" })] };
     })
     .addEdge(START, "stream")

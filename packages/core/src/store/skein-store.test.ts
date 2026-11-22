@@ -34,6 +34,7 @@ describe("INFLIGHT_RUN_STATUSES", () => {
     for (const status of INFLIGHT_RUN_STATUSES) {
       expect(isTerminalRunStatus(status)).toBe(false);
     }
+
     expect([...INFLIGHT_RUN_STATUSES, ...TERMINAL_RUN_STATUSES].sort()).toEqual(
       [...RUN_STATUSES].sort(),
     );

@@ -33,6 +33,7 @@ describe("delivery-request", () => {
 
   it("signs the payload with the first secret", () => {
     const secret = "whsec_test_secret";
+
     const request = createDeliveryRequest({
       deliveryId: "del-123",
       attempt: 2,

@@ -7,9 +7,11 @@ export const modelProviders = {
   anthropic: { label: "Anthropic", model: "claude-sonnet-5-5" },
   ollama: { label: "Ollama", model: "qwen3:8b" },
 } as const;
+
 export function usesApiKey(provider: ModelProvider): provider is ApiKeyProvider {
   return provider === "gemini" || provider === "openai" || provider === "anthropic";
 }
+
 export interface ModelConnection {
   provider: ModelProvider;
   providerLabel: string;

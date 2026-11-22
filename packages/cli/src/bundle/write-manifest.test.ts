@@ -26,6 +26,7 @@ describe("buildProductionConfig", () => {
       ...base,
       auth: { path: "./src/auth.ts:auth", disable_studio_auth: true, dev_ui_access: true },
     };
+
     const config = buildProductionConfig(withAuth, {
       graphs: { agent: "./graphs/agent.js:graph", echo: "./graphs/echo.js:default" },
       auth: "./auth.js:auth",
@@ -38,6 +39,7 @@ describe("buildProductionConfig", () => {
       ...base,
       store: { index: { embed: "./src/embed.ts:embed", dims: 1536, fields: ["text"] } },
     };
+
     const config = buildProductionConfig(withEmbed, {
       graphs: base.graphs,
       embed: "./embed.js:embed",
@@ -94,6 +96,7 @@ describe("buildArtifactPackageJson", () => {
       "skein-js": "0.3.0",
       "@langchain/openai": "0.3.1",
     });
+
     const parsed = JSON.parse(json) as {
       name: string;
       private: boolean;

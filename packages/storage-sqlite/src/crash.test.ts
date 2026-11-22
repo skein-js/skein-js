@@ -34,6 +34,7 @@ describe("process loss", () => {
       child.stderr?.on("data", (chunk) => {
         errors += String(chunk);
       });
+
       try {
         const message = (await Promise.race([
           once(child, "message"),
@@ -44,8 +45,10 @@ describe("process loss", () => {
         child.kill("SIGKILL");
         await once(child, "exit");
         const reopened = await openSqliteStorage({ filename });
+
         try {
           const run = await reopened.store.runs.get(message[0].run.run_id);
+
           if (mode === "before-commit") {
             expect(run).toBeNull();
             expect(
@@ -60,7 +63,9 @@ describe("process loss", () => {
             expect(run?.status).toBe("error");
             expect(run?.error?.name).toBe("ProcessLostError");
           }
+
           const received: string[] = [];
+
           const consumer = reopened.queue.consume(async (job) => {
             received.push(job.run_id);
           });

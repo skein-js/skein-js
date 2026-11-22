@@ -51,6 +51,7 @@ export async function skeinRouter(options: SkeinRouterOptions): Promise<SkeinRou
   // No framework fallback: Express has no logger of its own to borrow, and a library should not
   // decide on its host's behalf to start writing to stdout.
   const { runtime, cors, routes, logger } = await resolveProtocolRuntime(options);
+
   const router = createHandlerRouter(runtime.handlers, {
     // Explicit option wins; otherwise the table the config's `http.disable_*` flags left behind.
     routes: options.routes ?? routes,

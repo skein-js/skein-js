@@ -36,6 +36,7 @@ export async function resolveNativeAuthContext(
   if (!engine.studioAuthDisabled && request.headers.get("x-auth-scheme") === "langsmith") {
     return { user: STUDIO_USER, scopes: [] };
   }
+
   return engine.authenticate(request);
 }
 

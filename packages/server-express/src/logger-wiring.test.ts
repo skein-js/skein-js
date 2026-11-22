@@ -6,7 +6,7 @@
 // The other half is that an opt-in logger must actually reach the run engine. It did not before this
 // wiring existed — the option only ever fed request lines and adapter faults.
 
-import { type CompiledGraph, MessagesAnnotation, StateGraph } from "@langchain/langgraph";
+import { MessagesAnnotation, StateGraph, type CompiledGraph } from "@langchain/langgraph";
 import type { GraphResolver, GraphSchemas } from "@skein-js/agent-protocol";
 import type { Logger } from "@skein-js/server-kit";
 import { describe, expect, it } from "vitest";
@@ -17,11 +17,13 @@ import { skeinRouter } from "./skein-router.js";
 /** A `Logger` recording what it was told. */
 function capturingLogger(): Logger & { entries: { level: string; message: string }[] } {
   const entries: { level: string; message: string }[] = [];
+
   const record =
     (level: string) =>
     (message: string): void => {
       entries.push({ level, message });
     };
+
   return {
     entries,
     debug: record("debug"),
@@ -39,6 +41,7 @@ function withExplodingGraph(deps: ReturnType<typeof createEchoDeps>): typeof dep
     })
     .addEdge("__start__", "boom")
     .compile() as unknown as CompiledGraph<string>;
+
   const graphs: GraphResolver = {
     ids: ["boom"],
     load: async () => graph,
@@ -50,6 +53,7 @@ function withExplodingGraph(deps: ReturnType<typeof createEchoDeps>): typeof dep
 describe("Express adapter — logger wiring", () => {
   it("installs no logger of its own", async () => {
     const { runtime, logger } = await skeinRouter({ deps: createEchoDeps() });
+
     try {
       expect(logger).toBeUndefined();
     } finally {
@@ -59,10 +63,12 @@ describe("Express adapter — logger wiring", () => {
 
   it("carries an explicit logger through to the engine", async () => {
     const logger = capturingLogger();
+
     const { runtime, logger: resolved } = await skeinRouter({
       deps: withExplodingGraph(createEchoDeps()),
       logger,
     });
+
     try {
       expect(resolved).toBe(logger);
 
@@ -81,9 +87,11 @@ describe("Express adapter — logger wiring", () => {
 
   it("prefers an injected deps.logger over nothing", async () => {
     const logger = capturingLogger();
+
     const { runtime, logger: resolved } = await skeinRouter({
       deps: { ...createEchoDeps(), logger },
     });
+
     try {
       expect(resolved).toBe(logger);
     } finally {

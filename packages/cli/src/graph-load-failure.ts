@@ -82,6 +82,7 @@ export function graphLoadFailureBlock(report: GraphLoadFailureReport, sourceRoot
   const location = root instanceof Error ? userFrameForStack(root) : undefined;
 
   const rows = [labelled("graph", report.graphId)];
+
   if (frame && location) {
     rows.push(labelled("source", `${path.relative(sourceRoot, location.file)}:${location.line}`));
   }

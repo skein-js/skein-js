@@ -14,29 +14,36 @@ export function consumePartitionedMemoryRuns(
   let consuming = true;
   const running = new Set<Promise<void>>();
   const deferred = new Map<string, ReturnType<typeof setTimeout>>();
+
   const wake = (): void => {
     for (const notify of waiters.splice(0)) notify();
   };
+
   const releaseThread = (threadId: string): void => {
     claimedThreads.delete(threadId);
     deferred.delete(threadId);
     wake();
   };
+
   const loop = (async () => {
     while (consuming) {
       if (running.size >= concurrency) {
         await Promise.race(running);
         continue;
       }
+
       const index = items.findIndex((item) => !claimedThreads.has(item.thread_id));
+
       if (index < 0) {
         await new Promise<void>((resolve) => waiters.push(resolve));
         continue;
       }
+
       const run = items.splice(index, 1)[0]!;
       active.add(run.run_id);
       claimedThreads.add(run.thread_id);
       let busy = false;
+
       const task = Promise.resolve()
         .then(() => tryProcess(run))
         .then((handled) => {
@@ -62,11 +69,14 @@ export function consumePartitionedMemoryRuns(
   return {
     async close(force = false) {
       consuming = false;
+
       for (const [threadId, timer] of deferred) {
         clearTimeout(timer);
         releaseThread(threadId);
       }
+
       wake();
+
       if (!force) {
         await loop;
         await Promise.all(running);

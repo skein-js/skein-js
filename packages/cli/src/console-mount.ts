@@ -41,6 +41,7 @@ export function mountConsole(
     // `req.url` carries the query; `req.path` does not. The bare-mount redirect needs it, or
     // `/console?baseUrl=…` loses its override on the way to `/console/`.
     const search = req.originalUrl.slice(req.originalUrl.indexOf("?") + 1);
+
     const resolution = resolveConsoleRequest(req.path, {
       mountPath,
       ...(req.originalUrl.includes("?") ? { search } : {}),

@@ -25,13 +25,16 @@ interface BusDiagnostics {
 function busProbes(bus: MemoryRunEventBus): Record<string, SamplerProbe> {
   const diagnostics = bus as unknown as BusDiagnostics;
   const probes: Record<string, SamplerProbe> = {};
+
   if (typeof diagnostics.bufferedFrameCount === "number") {
     probes["busBufferedFrames"] = () => (bus as unknown as BusDiagnostics).bufferedFrameCount ?? 0;
   }
+
   if (typeof diagnostics.trackedChannelCount === "number") {
     probes["busTrackedChannels"] = () =>
       (bus as unknown as BusDiagnostics).trackedChannelCount ?? 0;
   }
+
   return probes;
 }
 
@@ -52,6 +55,7 @@ export const memoryDriver: BenchDriver = {
       warm: true,
       worker: { maxConcurrency: runConcurrency },
     });
+
     // Port 0: the OS picks a free one, so parallel scenario runs never collide on a fixed port.
     const server = await skein.listen(0, "127.0.0.1");
     const bootMs = performance.now() - bootStartedAt;

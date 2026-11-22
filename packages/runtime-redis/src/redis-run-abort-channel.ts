@@ -45,11 +45,13 @@ const ABORT_REASONS = new Set<RunAbortReason>(["cancel", "timeout", "interrupt",
  */
 function parseAbortRequest(payload: string): RunAbortRequest | undefined {
   let parsed: unknown;
+
   try {
     parsed = JSON.parse(payload);
   } catch {
     return undefined;
   }
+
   if (typeof parsed !== "object" || parsed === null) return undefined;
   const { run_id: runId, reason } = parsed as { run_id?: unknown; reason?: unknown };
   if (typeof runId !== "string" || runId.length === 0) return undefined;
@@ -92,10 +94,12 @@ export class RedisRunAbortChannel implements RunAbortChannel {
 
     subscriber.on("message", (_channel, payload: string) => {
       const request = parseAbortRequest(payload);
+
       if (!request) {
         this.#onError(new Error(`ignored a malformed abort message: ${payload.slice(0, 120)}`));
         return;
       }
+
       try {
         listener(request);
       } catch (error) {

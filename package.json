@@ -16,6 +16,9 @@
   "engines": {
     "node": "^22.14.0 || ^24.0.0 || ^26.0.0"
   },
+  "nx": {
+    "includedScripts": []
+  },
   "scripts": {
     "prepare": "git rev-parse --git-dir > /dev/null 2>&1 && git config core.hooksPath .githooks || true",
     "build": "nx run-many -t build",

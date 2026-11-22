@@ -39,10 +39,10 @@ import {
   truncateNamespaceDepth,
   type Item,
   type SearchItem,
+  type StoreItemWriteOptions,
   type StoreNamespaceQuery,
   type StorePutOptions,
   type StoreReadOptions,
-  type StoreItemWriteOptions,
   type StoreRepo,
   type StoreSearchQuery,
 } from "@skein-js/core";
@@ -249,11 +249,13 @@ export function fromBaseStore(store: BaseStoreLike, options?: FromBaseStoreOptio
   /** Every distinct namespace the source knows, drained in pages. */
   const drainNamespaces = async (): Promise<string[][]> => {
     const namespaces: string[][] = [];
+
     for (let offset = 0; namespaces.length < scanLimit; offset += SOURCE_PAGE_SIZE) {
       const page = await store.listNamespaces({ limit: SOURCE_PAGE_SIZE, offset });
       namespaces.push(...page);
       if (page.length < SOURCE_PAGE_SIZE) break;
     }
+
     return namespaces;
   };
 
@@ -302,8 +304,10 @@ export function fromBaseStore(store: BaseStoreLike, options?: FromBaseStoreOptio
     let scanned = 0;
     let sourceScored = false;
     const done = (): boolean => scanned >= scanLimit || (enough?.(kept.length) ?? false);
+
     for (const prefix of prefixes) {
       if (done()) break;
+
       for (let offset = 0; !done(); offset += SOURCE_PAGE_SIZE) {
         const page = await store.search(prefix, {
           limit: SOURCE_PAGE_SIZE,
@@ -312,6 +316,7 @@ export function fromBaseStore(store: BaseStoreLike, options?: FromBaseStoreOptio
           ...(query !== undefined ? { query } : {}),
         });
         scanned += page.length;
+
         for (const raw of page) {
           const item = toWireSearchItem(raw);
           if (item.score !== undefined) sourceScored = true;
@@ -320,9 +325,11 @@ export function fromBaseStore(store: BaseStoreLike, options?: FromBaseStoreOptio
           seen.add(identity);
           if (keep(item)) kept.push(item);
         }
+
         if (page.length < SOURCE_PAGE_SIZE) break;
       }
     }
+
     return { kept, sourceScored };
   };
 
@@ -332,6 +339,7 @@ export function fromBaseStore(store: BaseStoreLike, options?: FromBaseStoreOptio
         "This BaseStore does not expose per-item TTL refresh controls.",
       );
   };
+
   // Scans skip refresh, so only the returned page gets the store's refresh-on-read — unless the caller
   // opted out, in which case there is nothing to do.
   const refreshPage = async (items: SearchItem[], refreshTtl?: boolean) => {
@@ -347,6 +355,7 @@ export function fromBaseStore(store: BaseStoreLike, options?: FromBaseStoreOptio
       );
     return items;
   };
+
   const repo: StoreRepo = {
     get: async (namespace, key, readOptions) => {
       requireReadOptions(readOptions);
@@ -365,18 +374,21 @@ export function fromBaseStore(store: BaseStoreLike, options?: FromBaseStoreOptio
             "discarded. Use a store exposing `sweepExpiredItems()` (e.g. `PostgresStore`), or omit `ttl`.",
         );
       }
+
       // An explicit per-item `ttl` wins over the configured default, matching both bundled drivers.
       const ttl = putOptions?.ttl === undefined ? options?.defaultTtl : putOptions.ttl;
       if (ttl === null && ttlSupported && !optionAware)
         throw SkeinHttpError.unprocessable(
           "This BaseStore does not expose explicit no-expiry writes.",
         );
+
       if (optionAware) await store.putWithOptions!(namespace, key, value, { ...putOptions, ttl });
       else if (ttl !== undefined) {
         await (store.put as TtlAwarePut)(namespace, key, value, putOptions?.index, { ttl });
       } else {
         await (store.put as TtlAwarePut)(namespace, key, value, putOptions?.index);
       }
+
       const written = await store.get(namespace, key);
       // Racy by construction — see the class doc. A concurrent delete leaves nothing to read back, and
       // reporting the value just written beats failing a write that succeeded.
@@ -459,6 +471,7 @@ export function fromBaseStore(store: BaseStoreLike, options?: FromBaseStoreOptio
       const matched = (await drainNamespaces()).filter((namespace) =>
         matchesNamespaceQuery(namespace, query),
       );
+
       const truncated =
         query?.maxDepth === undefined ? matched : truncateNamespaceDepth(matched, query.maxDepth);
       return truncated.sort(compareNamespaces).slice(offset, offset + limit);

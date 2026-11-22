@@ -67,6 +67,7 @@ export function fanOutRunSignals(options: FanOutOptions): void {
     // indicator expired mid-run, silently.
     const keepaliveMs = channel.signals?.keepaliveMs;
     const keepaliveKind = wants.has("keepalive") ? "keepalive" : "progress";
+
     const keepalive = keepaliveMs
       ? setInterval(() => {
           if (settled || Date.now() - started > (options.maxMs ?? DEFAULT_MAX_MS)) {
@@ -75,6 +76,7 @@ export function fanOutRunSignals(options: FanOutOptions): void {
             clearInterval(keepalive);
             return;
           }
+
           void emit({ kind: keepaliveKind, runId } as RunSignal);
         }, keepaliveMs)
       : undefined;
@@ -83,6 +85,7 @@ export function fanOutRunSignals(options: FanOutOptions): void {
 
     try {
       if (wants.has("progress")) await emit({ kind: "progress", runId });
+
       for await (const frame of frames.subscribe(runId)) {
         if (Date.now() - started > (options.maxMs ?? DEFAULT_MAX_MS)) break;
         if (!wants.has("progress")) continue;

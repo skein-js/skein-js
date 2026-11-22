@@ -24,10 +24,12 @@ export function instrumentHttpHandlers(
   return Object.fromEntries(
     Object.entries(handlers).map(([name, handler]) => {
       if (!handler) return [name, handler];
+
       const measured: ProtocolHandler = async (request) => {
         if (INTERNAL_REQUEST in request) return handler(request);
         const started = performance.now();
         let status = 500;
+
         try {
           const response = await handler(request);
           status = response.status;
@@ -45,6 +47,7 @@ export function instrumentHttpHandlers(
           });
         }
       };
+
       return [name, measured];
     }),
   ) as unknown as ProtocolHandlers;

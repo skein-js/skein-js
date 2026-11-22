@@ -21,6 +21,7 @@ export function WorkspaceProvider({ children }: { children: ReactNode }) {
   useEffect(() => {
     const changed = (event: StorageEvent) => {
       if (!isConnectionStorageKey(event.key)) return;
+
       // Retire this tab's snapshot too; sessionStorage is not shared between tabs.
       try {
         for (const key of Object.keys(sessionStorage))
@@ -28,11 +29,13 @@ export function WorkspaceProvider({ children }: { children: ReactNode }) {
       } catch {
         /* The new provider reports persistence availability. */
       }
+
       setBinding({
         connection: resolveWorkspaceConnection(resolveApiUrl()),
         revision: createWorkspaceGeneration(),
       });
     };
+
     window.addEventListener("storage", changed);
     return () => window.removeEventListener("storage", changed);
   }, []);
@@ -60,6 +63,7 @@ function ConnectionWorkspace({
     void hydration.current.finally(() => {
       if (mounted) setReady(true);
     });
+
     return () => {
       mounted = false;
     };

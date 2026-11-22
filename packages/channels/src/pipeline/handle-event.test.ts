@@ -47,6 +47,7 @@ function depsOf(overrides: Partial<PipelineDeps> = {}) {
   const store = new MemorySkeinStore();
   const threads = new Map<string, "idle" | "busy" | "interrupted" | "error">();
   const created: Parameters<PipelineDeps["createRun"]>[0][] = [];
+
   const deps: PipelineDeps = {
     idempotency: store.idempotency,
     clock: () => new Date("2026-01-01T00:00:00.000Z"),
@@ -75,6 +76,7 @@ describe("the inbound pipeline", () => {
     // Ordering matters, not just the outcome: a signature covers bytes and a URL, so anything that
     // parses first makes verification impossible rather than merely inconvenient.
     const parseEvent = vi.fn();
+
     const response = await handleInboundEvent(
       registeredOf(channelOf({ verify: () => false, parseEvent })),
       request,
@@ -201,6 +203,7 @@ describe("retries", () => {
     const harness = depsOf({
       createRun: vi.fn().mockRejectedValue(new Error("database is down")),
     });
+
     const registered = registeredOf(channelOf());
 
     await expect(handleInboundEvent(registered, request, harness.deps)).rejects.toThrow(
@@ -237,6 +240,7 @@ describe("retries", () => {
     // deliveries as the same event, and deriving one from the body would collide on a customer
     // legitimately sending "yes" twice.
     const harness = depsOf();
+
     const channel = channelOf({
       parseEvent: () => ({ kind: "event", event: { threadKey: "k", input: {} } }),
     });

@@ -35,6 +35,7 @@ it.each(["app", "pages"] as const)(
       },
     );
     const running = await startEchoServer({ deps, router });
+
     try {
       const info = await fetch(`${running.baseUrl}/info`);
       expect(info.status).toBe(201);

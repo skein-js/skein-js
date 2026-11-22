@@ -25,6 +25,7 @@ describe.skipIf(!hasKey)("gemini-chat over @langchain/langgraph-sdk (live Gemini
 
   it("waits for a Gemini reply on a fresh thread", async () => {
     const thread = await client.threads.create();
+
     const values = (await client.runs.wait(thread.thread_id, "gemini", {
       input: { messages: [{ role: "user", content: "Say hello in one short sentence." }] },
     })) as { messages?: Array<{ type?: string; content?: unknown }> };

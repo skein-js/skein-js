@@ -93,6 +93,7 @@ describe("assistant service", () => {
 
   it("updates by minting a new version, lists history newest-first, and rolls back", async () => {
     const { service } = makeService();
+
     const created = await service.create({
       graph_id: "echo",
       assistant_id: "a",
@@ -139,6 +140,7 @@ describe("assistant service", () => {
     const { service, deps } = makeService({ store: new MemorySkeinStore({ maxPageSize: 2 }) });
     await service.create({ graph_id: "echo", assistant_id: "a" });
     const mine = [];
+
     for (let index = 0; index < 5; index += 1) {
       mine.push(await deps.store.threads.create({ metadata: { assistant_id: "a" } }));
     }
@@ -159,7 +161,9 @@ describe("assistant service", () => {
         throw SkeinHttpError.forbidden("nope");
       },
     } as AuthEngine;
+
     const deps = createFixtureDeps({ auth: denyingEngine });
+
     // A principal is required: with no authenticated user the cascade is unscoped by design (that is the
     // no-auth path), so the deny branch would never be reached.
     const ctx: ProtocolContext = {
@@ -172,6 +176,7 @@ describe("assistant service", () => {
       },
       authScopes: [],
     };
+
     const service = createAssistantService(ctx, createThreadService(ctx));
     await service.create({ graph_id: "echo", assistant_id: "a" });
     const thread = await deps.store.threads.create({ metadata: { assistant_id: "a" } });
@@ -184,16 +189,19 @@ describe("assistant service", () => {
 
   it("delete_threads scopes the cascade to the caller's own threads when auth is configured", async () => {
     const deps = createFixtureDeps({ auth: ownerScopedEngine("ada") });
+
     const ctx: ProtocolContext = {
       ...createContext(deps),
       authUser: { identity: "ada", display_name: "ada", is_authenticated: true, permissions: [] },
       authScopes: [],
     };
+
     const service = createAssistantService(ctx, createThreadService(ctx));
     await service.create({ graph_id: "echo", assistant_id: "a" });
     const mine = await ctx.deps.store.threads.create({
       metadata: { assistant_id: "a", owner: "ada" },
     });
+
     const theirs = await ctx.deps.store.threads.create({
       metadata: { assistant_id: "a", owner: "bob" },
     });

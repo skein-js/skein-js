@@ -42,19 +42,23 @@ const TEXT_EXTENSIONS = new Set([".html", ".js", ".css", ".json", ".svg"]);
 async function listFiles(dir, prefix = "") {
   const entries = await readdir(dir, { withFileTypes: true });
   const files = [];
+
   for (const entry of entries) {
     const relativePath = prefix === "" ? entry.name : `${prefix}/${entry.name}`;
+
     if (entry.isDirectory()) {
       files.push(...(await listFiles(path.join(dir, entry.name), relativePath)));
     } else {
       files.push(relativePath);
     }
   }
+
   return files.sort();
 }
 
 async function main() {
   let files;
+
   try {
     files = await listFiles(uiDistDir);
   } catch (error) {
@@ -64,6 +68,7 @@ async function main() {
           `(\`nx build console\` does it for you).`,
       );
     }
+
     throw error;
   }
 
@@ -72,15 +77,18 @@ async function main() {
   }
 
   const assets = [];
+
   for (const file of files) {
     const extension = path.extname(file).toLowerCase();
     const contentType = CONTENT_TYPES[extension];
+
     if (contentType === undefined) {
       throw new Error(
         `No content type for "${file}". Add ${extension} to CONTENT_TYPES in ` +
           `scripts/generate-assets.mjs — serving it as the wrong type is worse than failing here.`,
       );
     }
+
     const bytes = await readFile(path.join(uiDistDir, file));
     const isText = TEXT_EXTENSIONS.has(extension);
     assets.push({
@@ -93,6 +101,7 @@ async function main() {
   }
 
   const totalBytes = assets.reduce((total, asset) => total + asset.byteLength, 0);
+
   const entries = assets
     .map(
       (asset) =>

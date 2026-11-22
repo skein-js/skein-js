@@ -5,14 +5,15 @@ import type { ProtocolHandlers, ProtocolResponse } from "../create-handlers.js";
 import * as wire from "../meta/response-schemas.js";
 import { runSearchSchema } from "../runs/run-search-schema.js";
 import {
-  threadEventFilterSchema,
   threadCommandEnvelopeSchema,
+  threadEventFilterSchema,
 } from "../threads/thread-protocol-service.js";
 import * as schemas from "../validation/schemas.js";
 
 import * as query from "./query-schemas.js";
 
 const opaqueObject = z.object({}).passthrough();
+
 // Store reads and deletes accept either a body target or query parameters. Invalid body fields
 // retain their established fallback-to-query behavior; the resolved target is still required.
 const storeTargetBody = z
@@ -24,7 +25,9 @@ const storeTargetBody = z
     key: z.string().optional().catch(undefined),
   })
   .passthrough();
+
 const replayHeaders = z.object({ "last-event-id": z.string().optional() });
+
 const delivery = z.object({
   delivery_id: z.string(),
   run_id: z.string(),
@@ -51,16 +54,20 @@ interface OperationContract {
   kind: "json" | "empty" | "sse" | "mixed";
   status: number;
 }
+
 function createJsonContract<R extends ZodTypeAny, B extends ZodTypeAny | undefined = undefined>(
   response: R,
   body?: B,
 ) {
   return { response, body: body as B, kind: "json" as const, status: 200 as const };
 }
+
 function createStreamContract<B extends ZodTypeAny | undefined = undefined>(body?: B) {
   return { response: z.string(), body: body as B, kind: "sse" as const, status: 200 as const };
 }
+
 const emptyContract = { response: z.never(), kind: "empty" as const, status: 204 as const };
+
 /** Every built-in handler has a contract; adding a handler fails typecheck until it is described. */
 export const operationContracts = {
   handleMcp: {
@@ -277,6 +284,7 @@ export function createOperationJson<N extends keyof typeof operationContracts>(
 ): ProtocolResponse {
   return { kind: "json", status: operationContracts[name].status, body, headers };
 }
+
 export function createOperationEmpty(name: keyof typeof operationContracts): ProtocolResponse {
   return { kind: "empty", status: operationContracts[name].status };
 }

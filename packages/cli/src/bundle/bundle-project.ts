@@ -13,8 +13,8 @@ import { fileURLToPath } from "node:url";
 
 import { loadConfig, parseGraphSpec } from "@skein-js/config";
 import {
-  providerEmbedPackage,
   isCustomFunctionPath,
+  providerEmbedPackage,
   telemetryRuntimePackages,
 } from "@skein-js/runtime";
 import type { build as viteBuild, Plugin } from "vite";
@@ -104,6 +104,7 @@ export function assertEveryImportIsPinned(
   const results = (Array.isArray(bundle) ? bundle : [bundle]).filter(
     (result) => "output" in result,
   );
+
   // Collected across every result before the scan: a chunk may import one emitted in another output.
   const emittedFiles = new Set(results.flatMap((result) => result.output.map((i) => i.fileName)));
   const imported = new Set<string>();
@@ -113,6 +114,7 @@ export function assertEveryImportIsPinned(
     for (const item of result.output) {
       if (item.type !== "chunk") continue;
       chunksInspected += 1;
+
       for (const specifier of [...item.imports, ...item.dynamicImports]) {
         // Sibling chunks appear here alongside externals, as relative paths or emitted filenames.
         if (specifier.startsWith(".") || specifier.startsWith("\0")) continue;
@@ -205,11 +207,13 @@ function externalizeNodeModules(externals: ExternalImporters): Plugin {
       if (isBuiltin(source) || source.startsWith("node:")) return { id: source, external: true };
 
       const resolved = await this.resolve(source, importer, { ...options, skipSelf: true });
+
       // Unresolvable, or vite already externalized it (its answer for most published packages).
       if (!resolved || resolved.external) {
         recordExternal(externals, source, importer);
         return resolved ?? { id: source, external: true };
       }
+
       // A real file inside node_modules. Vite compiles some of these in — it declines to externalize
       // a package that resolves only through a bare `main` field — but the artifact runs beside an
       // installed `node_modules`, so keeping the package external is both cheaper and safer: one copy
@@ -218,6 +222,7 @@ function externalizeNodeModules(externals: ExternalImporters): Plugin {
         recordExternal(externals, source, importer);
         return { id: source, external: true };
       }
+
       // Workspace source through a tsconfig-path alias, or a package the runtime could not import
       // as-is (a `.ts` entry) → bundle it.
       return resolved;
@@ -244,12 +249,14 @@ export async function bundleProject(options: BundleProjectOptions): Promise<Buil
   const rewrites: ManifestRewrites = { graphs: {} };
 
   const usedGraphNames = new Set<string>();
+
   for (const graphId of graphs.ids) {
     const spec = graphs.spec(graphId);
     const entryKey = `graphs/${uniqueSafeName(graphId, usedGraphNames)}`;
     input[entryKey] = spec.sourceFile;
     rewrites.graphs[graphId] = `./${entryKey}.js:${spec.exportSymbol}`;
   }
+
   if (config.http?.app !== undefined) {
     if (typeof config.http.app !== "string")
       throw new Error("http.app must be a path:export string.");
@@ -257,16 +264,19 @@ export async function bundleProject(options: BundleProjectOptions): Promise<Buil
     input["http-app"] = appSpec.sourceFile;
     rewrites.httpApp = `./http-app.js:${appSpec.exportSymbol}`;
   }
+
   if (config.auth?.path) {
     const spec = parseGraphSpec(config.auth.path, configDir);
     input["auth"] = spec.sourceFile;
     rewrites.auth = `./auth.js:${spec.exportSymbol}`;
   }
+
   if (config.store?.index?.embed && isCustomFunctionPath(config.store.index.embed)) {
     const spec = parseGraphSpec(config.store.index.embed, configDir);
     input["embed"] = spec.sourceFile;
     rewrites.embed = `./embed.js:${spec.exportSymbol}`;
   }
+
   // A bring-your-own store (`store.adapter`) is the same shape as auth and the custom embedder: a
   // `path:export` spec pointing at the user's own module. Bundled and repointed for the same reason —
   // and it matters more here than most, because the adapter is what the whole `/store/*` surface runs on.
@@ -275,10 +285,12 @@ export async function bundleProject(options: BundleProjectOptions): Promise<Buil
     input["store-adapter"] = spec.sourceFile;
     rewrites.storeAdapter = `./store-adapter.js:${spec.exportSymbol}`;
   }
+
   // Custom telemetry sinks are `path:export` specs like auth/embed, so they need the same treatment:
   // bundled into the artifact and repointed at the emitted JS. Without this the production config
   // would still name a `.ts` file that isn't in the image, and the container would fail to boot.
   const telemetryPaths = config.telemetry?.paths ?? [];
+
   if (telemetryPaths.length > 0) {
     rewrites.telemetryPaths = telemetryPaths.map((pathSpec, index) => {
       const spec = parseGraphSpec(pathSpec, configDir);
@@ -291,6 +303,7 @@ export async function bundleProject(options: BundleProjectOptions): Promise<Buil
   // Bundle and precompute schemas concurrently — the bundler produces JS, the schema pass reads the
   // original TS source; independent inputs, so run them together.
   const externals: ExternalImporters = new Map();
+
   const [bundle, schemas] = await Promise.all([
     build({
       root: workspaceRoot,
@@ -341,6 +354,7 @@ export async function bundleProject(options: BundleProjectOptions): Promise<Buil
     // to be searched as well — see `resolveInstalledVersion`.
     const peerTree = [configDir, path.dirname(fileURLToPath(import.meta.url))];
     const dependencies: Record<string, string> = {};
+
     // The project answers first, and only what it cannot see falls back to the importers: a package
     // declared on an inlined workspace lib rather than on the app is invisible from `configDir` under
     // pnpm's strict layout, and only a walk-up from the importing file finds it.
@@ -357,10 +371,13 @@ export async function bundleProject(options: BundleProjectOptions): Promise<Buil
         packageResolvers,
       );
     }
+
     dependencies["skein-js"] = skeinVersion;
+
     for (const peer of SKEIN_RUNTIME_PEERS) {
       dependencies[peer] = resolveInstalledVersion(peer, peerTree, packageResolvers);
     }
+
     // Runtime deps the bundle can't discover from graph imports, so they must be pinned explicitly:
     //  • a `provider:model` embed dynamically imports `@langchain/<provider>` (never a code import);
     //  • a declared `telemetry` provider dynamically imports its `@skein-js/*` adapter;
@@ -369,9 +386,11 @@ export async function bundleProject(options: BundleProjectOptions): Promise<Buil
     const embedPkg = config.store?.index?.embed && providerEmbedPackage(config.store.index.embed);
     if (embedPkg)
       dependencies[embedPkg] = resolveInstalledVersion(embedPkg, projectTree, packageResolvers);
+
     for (const pkg of telemetryRuntimePackages(config.telemetry)) {
       dependencies[pkg] = resolveInstalledVersion(pkg, projectTree, packageResolvers);
     }
+
     for (const dep of config.dependencies ?? []) {
       // Skip local-path deps (".", "./pkg") — those are the project's own source, already bundled.
       if (dep.startsWith(".") || dep.startsWith("/")) continue;
@@ -382,6 +401,7 @@ export async function bundleProject(options: BundleProjectOptions): Promise<Buil
     assertEveryImportIsPinned(bundle, dependencies);
 
     await mkdir(outDir, { recursive: true });
+
     if (config.http?.disable_ui !== true && config.ui && Object.keys(config.ui).length) {
       const { build: buildUi } = await import("@langchain/langgraph-ui");
       const output = path.join(outDir, "ui");
@@ -397,6 +417,7 @@ export async function bundleProject(options: BundleProjectOptions): Promise<Buil
         }),
       );
     }
+
     const productionConfig = buildProductionConfig(config, rewrites);
     await Promise.all([
       writeFile(

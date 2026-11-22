@@ -110,10 +110,12 @@ export function truncateNamespaceDepth(
   maxDepth: number,
 ): string[][] {
   const seen = new Map<string, string[]>();
+
   for (const namespace of namespaces) {
     const truncated = namespace.slice(0, maxDepth);
     seen.set(JSON.stringify(truncated), truncated);
   }
+
   return [...seen.values()];
 }
 
@@ -129,10 +131,12 @@ export function truncateNamespaceDepth(
  */
 export function compareNamespaces(a: readonly string[], b: readonly string[]): number {
   const shared = Math.min(a.length, b.length);
+
   for (let index = 0; index < shared; index += 1) {
     const left = a[index] as string;
     const right = b[index] as string;
     if (left !== right) return left < right ? -1 : 1;
   }
+
   return a.length - b.length;
 }

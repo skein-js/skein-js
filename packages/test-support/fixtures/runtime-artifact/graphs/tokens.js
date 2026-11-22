@@ -30,10 +30,12 @@ export const graph = new StateGraph(MessagesAnnotation)
           new AIMessageChunk({ content: `approved: ${String(interrupt("approve runtime?"))}` }),
         ],
       };
+
     for (let index = 0; index < frames; index += 1) {
       config?.writer?.(new AIMessageChunk({ content: `${index}:${filler}` }));
       if (delayMs > 0) await sleep(delayMs);
     }
+
     return { messages: [new AIMessageChunk({ content: "done" })] };
   })
   .addEdge(START, "stream")

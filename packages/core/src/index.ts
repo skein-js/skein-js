@@ -91,14 +91,14 @@ export type {
   RunCreateGuard,
   RunFinalization,
   RunKwargs,
-  RunResult,
   RunListQuery,
-  RunSearchQuery,
   RunRepo,
+  RunResult,
+  RunSearchQuery,
   SkeinStore,
   SkeinStoreSnapshot,
-  StorePutOptions,
   StoreItemWriteOptions,
+  StorePutOptions,
   StoreReadOptions,
   StoreRepo,
   StoreSearchQuery,
@@ -163,12 +163,12 @@ export type {
 } from "./queue/delivery-queue.js";
 
 // Run queue + streaming pub/sub contract.
-export type { ThreadEvent, ThreadEventInput, ThreadEventBus } from "./queue/thread-event-bus.js";
+export type { ThreadEvent, ThreadEventBus, ThreadEventInput } from "./queue/thread-event-bus.js";
 export type { Event as ThreadProtocolEvent } from "@langchain/protocol";
 export type {
-  EventStreamRequest as ThreadEventFilter,
   CommandResponse as ThreadCommandSuccess,
   ErrorResponse as ThreadCommandError,
+  EventStreamRequest as ThreadEventFilter,
 } from "@langchain/protocol";
 export type {
   EnqueueOptions,
@@ -200,11 +200,11 @@ export { rootCause, rootCauseMessage } from "./errors/root-cause.js";
 // A third surface alongside logs and the wire; see docs/observability.md.
 export { anySinkWantsRunEvents, combineTelemetrySinks } from "./telemetry/telemetry.js";
 export type {
+  HttpTelemetryEvent,
   RunFinishedEvent,
   RunStartedEvent,
   RunTelemetryContext,
   RunTelemetryEvent,
-  HttpTelemetryEvent,
   RunTrigger,
   TelemetrySink,
   TelemetrySinkErrorReporter,

@@ -32,10 +32,12 @@ it("rejects a state target that changes during authorization", async () => {
         moveThread = undefined;
         await move();
       }
+
       return { value };
     },
   };
   const runtime = createProtocolRuntime(deps, { scheduler: { enabled: false } });
+
   try {
     await runtime.service.assistants.registerGraphAssistants();
     const thread = await runtime.service.threads.create();
@@ -44,6 +46,7 @@ it("rejects a state target that changes during authorization", async () => {
       assistant_id: "allowed",
       input: {},
     });
+
     moveThread = async () => {
       await new Promise((resolve) => setTimeout(resolve, 5));
       await runtime.service.runs.createWait({
@@ -52,10 +55,12 @@ it("rejects a state target that changes during authorization", async () => {
         input: {},
       });
     };
+
     const client = runtime.createNativeClient({
       sourceId: "limited",
       allowedAssistants: ["allowed"],
     });
+
     const options = {
       authContext: {
         user: {
@@ -80,6 +85,7 @@ it("rejects a state target that changes during authorization", async () => {
 
 it("rejects commands that expire during authorization without creating a thread or receipt", async () => {
   let now = new Date("2026-10-25T00:00:00Z");
+
   const deps = createFixtureDeps({
     clock: () => now,
     auth: {
@@ -90,7 +96,9 @@ it("rejects commands that expire during authorization without creating a thread 
       },
     },
   });
+
   const runtime = createProtocolRuntime(deps, { scheduler: { enabled: false } });
+
   try {
     await runtime.service.assistants.registerGraphAssistants();
     const client = runtime.createNativeClient({
@@ -121,16 +129,20 @@ it("does not confirm execution stop after a swallowed rollback lease failure", a
       },
     },
   });
+
   const runtime = createProtocolRuntime(deps, { scheduler: { enabled: false } });
+
   try {
     await runtime.service.assistants.registerGraphAssistants();
     const thread = await deps.store.threads.create();
+
     const run = await deps.store.runs.create({
       thread_id: thread.thread_id,
       assistant_id: "echo",
       status: "running",
       kwargs: { base_checkpoint_id: "base" },
     });
+
     const client = runtime.createNativeClient({
       sourceId: "stop-proof",
       allowedAssistants: ["echo"],
@@ -152,7 +164,9 @@ it("refuses remote stop confirmation without a cross-instance execution gate", a
       subscribe: () => ({ close: async () => undefined }),
     },
   });
+
   const runtime = createProtocolRuntime(deps, { scheduler: { enabled: false } });
+
   try {
     await runtime.service.assistants.registerGraphAssistants();
     const client = runtime.createNativeClient({ sourceId: "no-gate", allowedAssistants: ["echo"] });
@@ -171,18 +185,22 @@ it("rechecks deadlines after displacement preparation without cancelling the pre
   let now = new Date("2026-10-25T00:00:00Z");
   const deps = createFixtureDeps({ clock: () => now });
   const runtime = createProtocolRuntime(deps, { scheduler: { enabled: false } });
+
   try {
     await runtime.service.assistants.registerGraphAssistants();
     const client = runtime.createNativeClient({
       sourceId: "deadline-lock",
       allowedAssistants: ["echo"],
     });
+
     const first = await client.start({ assistant_id: "echo", input: {} });
     const listActiveRuns = deps.store.runs.listActiveRuns.bind(deps.store.runs);
+
     deps.store.runs.listActiveRuns = async (threadId) => {
       now = new Date("2026-10-25T00:00:02Z");
       return listActiveRuns(threadId);
     };
+
     await expect(
       client.start(
         {
@@ -209,12 +227,15 @@ it("carries deadline expiry through a driver admission wait without committing a
   const deps = createFixtureDeps();
   const admitRun = deps.store.admission!.admitRun.bind(deps.store.admission);
   let entered = false;
+
   deps.store.admission!.admitRun = async (input) => {
     entered = true;
     await new Promise((resolve) => setTimeout(resolve, 500));
     return admitRun(input);
   };
+
   const runtime = createProtocolRuntime(deps, { scheduler: { enabled: false } });
+
   try {
     await runtime.service.assistants.registerGraphAssistants();
     const client = runtime.createNativeClient({
@@ -242,6 +263,7 @@ it.each(["checkpoint_id", "checkpoint", "if_thread_status", "multitask_strategy"
   "rejects runtime strict-resume override %s before admission",
   async (field) => {
     const runtime = createProtocolRuntime(createFixtureDeps(), { scheduler: { enabled: false } });
+
     try {
       await runtime.service.assistants.registerGraphAssistants();
       const client = runtime.createNativeClient({

@@ -7,10 +7,12 @@ export function useFrameBuffer() {
   const pending = useRef<RunFrame[]>([]),
     sequence = useRef(0),
     scheduled = useRef<number | undefined>(undefined);
+
   const [snapshot, setSnapshot] = useState<{ frames: RunFrame[]; dropped: number }>({
     frames: [],
     dropped: 0,
   });
+
   const flush = useCallback(() => {
     if (scheduled.current !== undefined) window.cancelAnimationFrame(scheduled.current);
     scheduled.current = undefined;
@@ -23,6 +25,7 @@ export function useFrameBuffer() {
       return { frames, dropped: Math.max(0, count - frames.length) };
     });
   }, []);
+
   const append = useCallback(
     (event: string, payload: unknown) => {
       pending.current.push({ seq: sequence.current++, event, data: payload });
@@ -31,6 +34,7 @@ export function useFrameBuffer() {
     },
     [flush],
   );
+
   const clear = useCallback(() => {
     if (scheduled.current !== undefined) window.cancelAnimationFrame(scheduled.current);
     scheduled.current = undefined;

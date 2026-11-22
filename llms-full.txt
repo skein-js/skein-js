@@ -677,6 +677,7 @@ const getWeather = tool(
     const geo = await fetch(
       `https://geocoding-api.open-meteo.com/v1/search?name=${encodeURIComponent(city)}&count=1`,
     ).then((response) => response.json());
+
     const place = geo.results?.[0];
     if (!place) return `I couldn't find ${city}.`;
 
@@ -932,6 +933,7 @@ import { Client } from "@langchain/langgraph-sdk";
 const client = new Client({ apiUrl: "http://localhost:2024" });
 const assistantId = "echo";
 const thread = await client.threads.create();
+
 const reply = await client.runs.wait(thread.thread_id, assistantId, {
   input: { messages: [{ role: "user", content: "hello" }] },
 });
@@ -1435,6 +1437,7 @@ it.skipIf(!apiUrl)(
       apiUrl,
       apiKey: process.env.SKEIN_TEST_API_KEY,
     });
+
     const thread = await client.threads.create();
 
     try {
@@ -1751,6 +1754,7 @@ const rt = await buildRuntime({
   store: "postgres",
   queue: "redis",
 });
+
 const server = await createExpressServer({
   deps: rt.deps,
   channels: rt.channels,
@@ -3021,6 +3025,7 @@ const local = await embedSqliteGraphs(
     // maxPageSize, ttl, threadTtl and non-owned ProtocolDeps overrides are optional.
   },
 );
+
 const runtime = createProtocolRuntime(local.deps);
 await runtime.service.assistants.registerGraphAssistants();
 runtime.worker.start();
@@ -3203,6 +3208,7 @@ const local = await embedSqliteGraphs(
     sqlitePath: "/absolute/application-data/agents.sqlite",
   },
 );
+
 const runtime = createProtocolRuntime(local.deps);
 await runtime.service.assistants.registerGraphAssistants();
 const client = runtime.createNativeClient({
@@ -3218,6 +3224,7 @@ const receipt = await client.start(
     correlationId: "request-42",
   },
 );
+
 // Admission has committed; execution may still be pending.
 const run = await client.getRun(receipt.runId);
 const recovered = await client.getReceipt("approval-42");
@@ -3255,6 +3262,7 @@ After a run reaches `interrupted`, read its state and submit an answer with that
 
 ```ts
 const state = await client.getState(receipt.threadId);
+
 const answer = await client.resume(
   {
     thread_id: receipt.threadId,
@@ -3342,6 +3350,7 @@ import { createBullMqTransport } from "@skein-js/bullmq";
 import { createProtocolRuntime } from "@skein-js/agent-protocol";
 
 const outcomes = new Queue("agent-outcomes", { connection });
+
 const access = createBullMqTransport({
   commandQueue: "agent-commands",
   outcomeQueue: outcomes, // borrowed
@@ -3350,6 +3359,7 @@ const access = createBullMqTransport({
   // route: command => mapToAllowedGraph(command),
   // projectResult: (result, runId) => applicationProjection(result, runId),
 });
+
 const runtime = createProtocolRuntime({
   ...deps,
   webhookDispatcher: access.wrapDispatcher(existingDispatcher),
@@ -4380,6 +4390,7 @@ const tenantLabel = (identity: string) =>
 
 auth.on("store", ({ user, value }) => {
   const namespace = value.namespace; // server-derived; absent means "every namespace" on search
+
   if (!namespace?.length || namespace[0] !== tenantLabel(user.identity)) {
     throw new HTTPException(403, { message: "Out of scope." });
   }
@@ -5464,6 +5475,7 @@ const forked = await client.threads.updateState(threadId, {
   values: { messages: editedMessages },
   checkpointId, // omit to fork from the tip
 });
+
 // The SDK returns a checkpoint config; the new id is on `configurable`.
 const forkedId = forked.configurable?.["checkpoint_id"] as string;
 
@@ -6849,6 +6861,7 @@ No run, your response. Required by real providers, not a convenience:
 if (payload.type === "url_verification") {
   return { kind: "respond", status: 200, body: { challenge: payload.challenge } };
 }
+
 // A slash command wants an immediate ephemeral acknowledgement.
 return { kind: "respond", status: 200, body: { response_type: "ephemeral", text: "On it…" } };
 ```
@@ -10254,6 +10267,7 @@ const whatsappDeliverySchema = z.object({
   target: z.object({ to: z.string().min(1) }),
   payload: z.object({ body: z.string().min(1) }),
 });
+
 const emailDeliverySchema = z.object({
   target: z.object({ to: z.string().email() }),
   payload: z.object({ subject: z.string(), body: z.string() }),
@@ -10566,9 +10580,11 @@ import {
 
 function memoryNamespace({ config }: StoreBackendContext): string[] {
   const userId = config?.configurable?.langgraph_auth_user_id;
+
   if (typeof userId !== "string" || userId.length === 0) {
     throw new Error("Durable memory requires an authenticated user.");
   }
+
   const component = userId.replace(
     /[^A-Za-z0-9\-_.@+:]/g,
     (character) => `~${character.codePointAt(0)!.toString(16)}~`,
@@ -10832,6 +10848,7 @@ Export this graph as `greeter` in `langgraph.json`, then run `skein dev`:
 import { Annotation, interrupt, StateGraph } from "@langchain/langgraph";
 
 const state = Annotation.Root({ greeting: Annotation<string> });
+
 export const graph = new StateGraph(state)
   .addNode("ask", () => ({ greeting: `Hello, ${interrupt("What is your name?")}!` }))
   .addEdge("__start__", "ask")
@@ -11450,6 +11467,7 @@ export async function authenticateRequest(request: Request) {
   const requestState = await clerk.authenticateRequest(request, {
     authorizedParties: [process.env.APP_ORIGIN!],
   });
+
   if (!requestState.isAuthenticated) {
     throw new HTTPException(401, { message: "Unauthorized" });
   }
@@ -11486,6 +11504,7 @@ const supabase = createClient(process.env.SUPABASE_URL!, process.env.SUPABASE_PU
 
 export async function authenticateRequest(request: Request) {
   const { data, error } = await supabase.auth.getClaims(requireBearerToken(request));
+
   if (error || !data || typeof data.claims.sub !== "string") {
     throw new HTTPException(401, { message: "Unauthorized" });
   }
@@ -11564,9 +11583,11 @@ export async function authenticateRequest(request: Request) {
     };
   } catch (error) {
     if (error instanceof HTTPException) throw error;
+
     if (error instanceof errors.JOSEError) {
       throw new HTTPException(401, { message: "Unauthorized" });
     }
+
     throw error;
   }
 }
@@ -12170,6 +12191,7 @@ const assembled = await buildRuntime({
   store: "memory",
   queue: "memory",
 });
+
 const { runtime, routes: routeBindings } = await resolveProtocolRuntime({
   deps: assembled.deps,
   channels: assembled.channels,
@@ -12184,16 +12206,20 @@ const routes = routeBindings.map((r) => ({
 const server = createServer(async (req, res) => {
   try {
     const url = new URL(req.url ?? "/", `http://${req.headers.host ?? "localhost"}`);
+
     const match = routes.find(
       (r) => r.method === req.method?.toLowerCase() && r.regex.test(url.pathname),
     );
+
     if (!match) {
       res.writeHead(404).end();
       return;
     }
+
     const params = match.regex.exec(url.pathname)?.groups ?? {};
 
     const body = await readJson(req); // parse the JSON body (omitted for brevity)
+
     let protocolRequest = {
       method: req.method,
       url: url.href,
@@ -12202,6 +12228,7 @@ const server = createServer(async (req, res) => {
       body,
       headers: req.headers, // already lowercased by Node
     };
+
     // Thread-scoped run routes: fold the path thread_id into the body.
     if (match.foldThreadIdIntoBody && params.thread_id) {
       protocolRequest = {
@@ -12400,6 +12427,7 @@ import { createExpressServer } from "@skein-js/express";
 import { embedInMemoryGraphs } from "@skein-js/server-kit";
 
 const stateByThread = new Map<string, unknown>();
+
 const threadId = (c?: { configurable?: Record<string, unknown> }) =>
   String(c?.configurable?.["thread_id"] ?? "");
 

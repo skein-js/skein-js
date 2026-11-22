@@ -102,6 +102,7 @@ describe("cron scheduler", () => {
 
     it("advances the cron past the occurrence it just fired", async () => {
       const h = await harness();
+
       const cron = await h.service.crons.create({
         assistant_id: h.assistantId,
         schedule: "0 * * * *",
@@ -128,6 +129,7 @@ describe("cron scheduler", () => {
 
     it("does not fire a disabled cron", async () => {
       const h = await harness();
+
       const cron = await h.service.crons.create({
         assistant_id: h.assistantId,
         schedule: "0 * * * *",
@@ -142,6 +144,7 @@ describe("cron scheduler", () => {
     // occurrence — the outage replaying as a burst is worse than the outage.
     it("fires once after a long outage and lands in the future", async () => {
       const h = await harness();
+
       const cron = await h.service.crons.create({
         assistant_id: h.assistantId,
         schedule: "*/5 * * * *",
@@ -159,6 +162,7 @@ describe("cron scheduler", () => {
 
     it("retires a cron whose end_time has passed after its last fire", async () => {
       const h = await harness();
+
       const cron = await h.service.crons.create({
         assistant_id: h.assistantId,
         schedule: "0 * * * *",
@@ -216,6 +220,7 @@ describe("cron scheduler", () => {
     // stateless cron's per-fire threads, then the runs on them, each tagged with the same id.
     it("stamps cron_id onto the fired run and its thread", async () => {
       const h = await harness();
+
       const cron = await h.service.crons.create({
         assistant_id: h.assistantId,
         schedule: "0 * * * *",
@@ -318,6 +323,7 @@ describe("cron scheduler", () => {
 
     it("stamps the creating principal's owner tag onto the fired run and its thread", async () => {
       const h = await harness({ auth: ownerScopedEngine() });
+
       // Written through the store with an `auth` sidecar — the shape the service persists when the
       // request that created the cron carried a principal.
       const withAuth = await h.store.crons.create({
@@ -365,7 +371,9 @@ describe("cron scheduler", () => {
           throw SkeinHttpError.forbidden("revoked");
         },
       };
+
       const h = await harness({ auth: denying });
+
       const cron = await h.store.crons.create({
         assistant_id: h.assistantId,
         schedule: "0 * * * *",
@@ -424,6 +432,7 @@ describe("cron scheduler", () => {
   describe("failure handling", () => {
     it("counts a failed fire, leaves the cron enabled, and still advances it", async () => {
       const h = await harness();
+
       const cron = await h.service.crons.create({
         assistant_id: h.assistantId,
         schedule: "0 * * * *",
@@ -470,10 +479,12 @@ describe("cron scheduler", () => {
     // distinguishes "nothing is due" from "nothing is running the crons".
     it("reports how far behind the most overdue cron is", async () => {
       const h = await harness();
+
       const cron = await h.service.crons.create({
         assistant_id: h.assistantId,
         schedule: "0 * * * *",
       });
+
       // Simulate a dead scheduler: the occurrence passed and nobody advanced it.
       const missed = new Date(h.clock.now.getTime() - 300_000).toISOString();
       await h.store.crons.update(cron.cron_id, { next_run_date: missed });
@@ -545,6 +556,7 @@ describe("cron scheduler", () => {
     it("never re-enqueues a running run", async () => {
       const h = await harness({}, { unqueuedRunGraceMs: 300_000 });
       const thread = await h.service.threads.create();
+
       const run = await h.store.runs.create({
         thread_id: thread.thread_id,
         assistant_id: h.assistantId,
@@ -559,6 +571,7 @@ describe("cron scheduler", () => {
     it("never re-enqueues a finished run", async () => {
       const h = await harness({}, { unqueuedRunGraceMs: 300_000 });
       const thread = await h.service.threads.create();
+
       const run = await h.store.runs.create({
         thread_id: thread.thread_id,
         assistant_id: h.assistantId,
@@ -575,15 +588,18 @@ describe("cron scheduler", () => {
     it("does not double-queue a run that is already waiting", async () => {
       const h = await harness();
       const thread = await h.service.threads.create();
+
       const run = await h.store.runs.create({
         thread_id: thread.thread_id,
         assistant_id: h.assistantId,
       });
+
       const queue = new MemoryRunQueue();
       await queue.enqueue({ run_id: run.run_id, thread_id: thread.thread_id });
       await queue.enqueue({ run_id: run.run_id, thread_id: thread.thread_id });
 
       const delivered: string[] = [];
+
       const consumer = queue.consume(async (queued) => {
         delivered.push(queued.run_id);
       });
@@ -627,6 +643,7 @@ describe("cron scheduler", () => {
 
     it("fires nothing more after stop()", async () => {
       const h = await harness();
+
       const scheduler = createCronScheduler(
         createContext(
           createFixtureDeps({ store: h.store, queue: h.queue, clock: () => h.clock.now }),
@@ -691,6 +708,7 @@ describe("cron scheduler", () => {
     it("warns once at startup when the store is not durable", async () => {
       const h = await harness();
       const warn = vi.fn();
+
       const ctx = createContext(
         createFixtureDeps({
           store: h.store,
@@ -698,6 +716,7 @@ describe("cron scheduler", () => {
           logger: { debug: vi.fn(), info: vi.fn(), warn, error: vi.fn() },
         }),
       );
+
       const scheduler = createCronScheduler(ctx, { tickMs: 10_000, jitterSeed: 0 });
 
       scheduler.start();

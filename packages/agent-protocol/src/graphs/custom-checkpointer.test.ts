@@ -14,10 +14,12 @@ it.each(["memory", "sqlite"])(
   "uses a programmatically supplied upstream %s saver for history, copy and prune without taking its ownership",
   async (backend) => {
     const directory = await mkdtemp(join(tmpdir(), "skein-saver-proof-"));
+
     const storage =
       backend === "sqlite"
         ? await openSqliteStorage({ filename: join(directory, "state.sqlite") })
         : undefined;
+
     const saver = storage ? new SqliteSaver(storage.database) : new MemorySaver();
     // Public setup/read, including upstream lazy initialization. The host owns saver resources.
     await saver.getTuple({ configurable: { thread_id: "setup" } });
@@ -27,6 +29,7 @@ it.each(["memory", "sqlite"])(
         ...(storage ? { store: storage.store, queue: storage.queue } : {}),
       }),
     );
+
     try {
       await runtime.service.assistants.registerGraphAssistants();
       const { threadId } = await runtime.service.runs.createWait({

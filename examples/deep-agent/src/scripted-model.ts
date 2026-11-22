@@ -63,10 +63,13 @@ function currentTurn(messages: BaseMessage[]): { request: string; results: ToolR
     (message) =>
       message.getType() === "human" && message.additional_kwargs["lc_source"] !== "async_subagent",
   );
+
   const turn = messages.slice(at + 1);
+
   const callNames = new Map(
     turn.flatMap((message) => ((message as AIMessage).tool_calls ?? []).map((c) => [c.id, c.name])),
   );
+
   const results = (turn.filter((message) => message.getType() === "tool") as ToolMessage[]).map(
     (result) => ({
       name: result.name ?? callNames.get(result.tool_call_id) ?? "",
@@ -80,6 +83,7 @@ function currentTurn(messages: BaseMessage[]): { request: string; results: ToolR
 function latestBriefing(messages: BaseMessage[]): { path: string; content: string } | undefined {
   for (const message of [...messages].reverse()) {
     const calls = (message as AIMessage).tool_calls ?? [];
+
     const draft = calls.find(
       (call) =>
         call.name === "write_file" && String(call.args["file_path"]).startsWith("/briefings/"),
@@ -87,6 +91,7 @@ function latestBriefing(messages: BaseMessage[]): { path: string; content: strin
     if (draft)
       return { path: String(draft.args["file_path"]), content: String(draft.args["content"]) };
   }
+
   return undefined;
 }
 
@@ -94,11 +99,13 @@ function latestBriefing(messages: BaseMessage[]): { path: string; content: strin
 function deepDiveId(request: string, messages: BaseMessage[]): string | undefined {
   const named = TASK_ID.exec(request)?.[0];
   if (named) return named;
+
   for (const message of [...messages].reverse()) {
     if (message.getType() !== "tool") continue;
     const launched = /taskId: ([\w-]+)/.exec(textOf(message));
     if (launched) return launched[1];
   }
+
   return undefined;
 }
 
@@ -116,8 +123,10 @@ function draftBriefing(topic: string, notes: string, preferences: string): strin
     .split("\n")
     .map((line) => line.replace(/^[-*]\s*/, "").trim())
     .filter((line) => line && !line.endsWith(":"));
+
   const concise = /\b(short|concise|brief)\b/i.test(preferences);
   const kept = concise ? points.slice(0, 2) : points;
+
   const body = /\bbullet/i.test(preferences)
     ? kept.map((point) => `- ${point}`).join("\n")
     : kept.join(" ");
@@ -128,6 +137,7 @@ function draftBriefing(topic: string, notes: string, preferences: string): strin
 function nextBriefingStep(topic: string, results: ToolResult[]): AIMessage {
   const last = results.at(-1);
   if (!last) return call("read_file", { file_path: PREFERENCES_FILE });
+
   switch (last.name) {
     case "read_file":
       return call("write_todos", {
@@ -143,8 +153,10 @@ function nextBriefingStep(topic: string, results: ToolResult[]): AIMessage {
         subagent_type: "researcher",
         description: `Research ${topic} for a one-page briefing.`,
       });
+
     case "task": {
       const preferencesResult = results.find((result) => result.name === "read_file");
+
       const preferences =
         preferencesResult && !/not found/i.test(preferencesResult.content)
           ? preferencesResult.content
@@ -154,6 +166,7 @@ function nextBriefingStep(topic: string, results: ToolResult[]): AIMessage {
         content: draftBriefing(topic, last.content, preferences),
       });
     }
+
     default:
       return say(
         `Your briefing on ${topic} is ready in ${briefingFileFor(topic)}. ` +
@@ -165,6 +178,7 @@ function nextBriefingStep(topic: string, results: ToolResult[]): AIMessage {
 /** What the assistant says once a single-tool request has its result. */
 function reportResult(result: ToolResult, request: string): AIMessage {
   const { content } = result;
+
   switch (result.name) {
     case "write_file":
       return say("Got it — I'll keep that in mind for every future briefing.");
@@ -178,6 +192,7 @@ function reportResult(result: ToolResult, request: string): AIMessage {
       return say(
         content.startsWith("Emailed") ? content : `I didn't send the briefing. ${content}`,
       );
+
     case "start_async_task": {
       const id = /taskId: ([\w-]+)/.exec(content)?.[1];
       const topic = /deep dive (?:on|into)\s+(.+)/i.exec(request)?.[1];
@@ -188,6 +203,7 @@ function reportResult(result: ToolResult, request: string): AIMessage {
           )
         : say(content);
     }
+
     default:
       return say(content);
   }
@@ -198,6 +214,7 @@ export function nextAssistantMessage(messages: BaseMessage[]): AIMessage {
   const { request, results } = currentTurn(messages);
 
   const briefing = /\bbrief(?:ing)?\s+(?:me\s+)?(?:on|about)\s+(.+)/i.exec(request);
+
   if (briefing && !/\bemail\b|\bsend\b/i.test(request)) {
     return nextBriefingStep(trimTopic(briefing[1]!), results);
   }
@@ -206,6 +223,7 @@ export function nextAssistantMessage(messages: BaseMessage[]): AIMessage {
   if (done) return reportResult(done, request);
 
   const email = /\b(?:email|send)\b.*\bbriefing\b.*\bto\s+(\S+@\S+?)[.?!]*$/i.exec(request);
+
   if (email) {
     const draft = latestBriefing(messages);
     if (!draft) return say("There's no briefing in this conversation yet — ask me for one first.");
@@ -221,6 +239,7 @@ export function nextAssistantMessage(messages: BaseMessage[]): AIMessage {
   }
 
   const startDeepDive = /\b(?:start|run|kick off)\b.*\bdeep dive (?:on|into)\s+(.+)/i.exec(request);
+
   if (startDeepDive) {
     return call("start_async_task", {
       agentName: "deep-researcher",
@@ -246,6 +265,7 @@ export function nextAssistantMessage(messages: BaseMessage[]): AIMessage {
 /** The researcher's notes on whatever it was last asked — labelled as offline sample material. */
 export function nextResearcherMessage(messages: BaseMessage[]): AIMessage {
   const { request } = currentTurn(messages);
+
   const subject = trimTopic(request)
     .replace(/^research\s+/i, "")
     .replace(/\s+for a one-page briefing$/i, "");

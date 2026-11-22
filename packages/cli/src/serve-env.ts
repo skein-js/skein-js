@@ -41,8 +41,10 @@ export function envHost(fallback: string): string {
  */
 export function describeBindError(error: unknown, port: number): string {
   const code = (error as NodeJS.ErrnoException).code;
+
   if (code === "EADDRINUSE") {
     return `port ${port} is already in use. Stop the other process or pass --port.`;
   }
+
   return `failed to start server: ${error instanceof Error ? error.message : String(error)}`;
 }

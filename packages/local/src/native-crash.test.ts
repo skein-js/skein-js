@@ -4,7 +4,7 @@ import { mkdtemp, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 
-import { StateGraph, Annotation } from "@langchain/langgraph";
+import { Annotation, StateGraph } from "@langchain/langgraph";
 import { createProtocolRuntime } from "@skein-js/agent-protocol";
 import { expect, it } from "vitest";
 
@@ -16,6 +16,7 @@ it("reconciles a killed native execution and its receipt/outcome without replayi
   const childFile = join(directory, "child.mjs");
   const localEntry = new URL("../dist/index.js", import.meta.url).href;
   const agentEntry = new URL("../../agent-protocol/dist/index.js", import.meta.url).href;
+
   const graphEntry = new URL("../node_modules/@langchain/langgraph/dist/index.js", import.meta.url)
     .href;
   await writeFile(
@@ -34,6 +35,7 @@ it("reconciles a killed native execution and its receipt/outcome without replayi
   child.stderr?.on("data", (chunk) => {
     errors += String(chunk);
   });
+
   try {
     const receipt = await new Promise<{ runId: string; threadId: string; idempotencyKey: string }>(
       (resolve, reject) => {
@@ -48,6 +50,7 @@ it("reconciles a killed native execution and its receipt/outcome without replayi
     child.kill("SIGKILL");
     await once(child, "exit");
     let executions = 0;
+
     const graph = new StateGraph(Annotation.Root({ answer: Annotation<string> }))
       .addNode("wait", () => {
         executions++;
@@ -56,9 +59,11 @@ it("reconciles a killed native execution and its receipt/outcome without replayi
       .addEdge("__start__", "wait")
       .addEdge("wait", "__end__")
       .compile();
+
     const local = await embedSqliteGraphs({ agent: graph }, { sqlitePath: filename });
     const runtime = createProtocolRuntime(local.deps, { scheduler: { enabled: false } });
     const client = runtime.createNativeClient({ sourceId: "daemon", allowedAssistants: ["agent"] });
+
     try {
       expect(await client.getReceipt("work")).toEqual(receipt);
       expect(await client.getRun(receipt.runId)).toMatchObject({
@@ -86,6 +91,7 @@ it("reconciles a killed native execution and its receipt/outcome without replayi
       child.kill("SIGKILL");
       await once(child, "exit");
     }
+
     await rm(directory, { recursive: true, force: true });
   }
 }, 15_000);

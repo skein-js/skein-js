@@ -14,12 +14,14 @@ import { SkeinConfigError } from "@skein-js/config/errors";
 /** Parse `raw` as a positive integer, naming `source` in the error so a bad value is traceable. */
 export function requirePositiveInteger(source: string, raw: string | number): number {
   const parsed = Number(raw);
+
   // `Number.isSafeInteger`, not `isInteger`: `1e21` is an integer, but it stringifies in exponential
   // notation and overflows a Postgres bigint, so it passes boot validation and then breaks every query
   // that uses it. Nothing this validates is a legitimate count above 2^53.
   if (!Number.isSafeInteger(parsed) || parsed <= 0) {
     throw new SkeinConfigError(`${source} must be a positive integer (got "${String(raw)}").`);
   }
+
   return parsed;
 }
 
@@ -39,5 +41,6 @@ export function positiveIntegerFromEnv(
     if (raw === undefined || raw.trim() === "") continue;
     return requirePositiveInteger(name, raw);
   }
+
   return undefined;
 }

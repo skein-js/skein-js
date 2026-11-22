@@ -85,6 +85,7 @@ export function resolveConsoleAsset(
   options: { mountPath?: string; search?: string } = {},
 ): ConsoleResolution {
   const mountPath = options.mountPath ?? "/console";
+
   if (pathWithinMount === "") {
     // Carry the query across. `/console?baseUrl=…` is the documented way to point a console at a
     // remote deployment, and dropping the query on the redirect silently discarded exactly that.
@@ -93,9 +94,11 @@ export function resolveConsoleAsset(
   }
 
   const requested = pathWithinMount.replace(/^\/+/, "");
+
   // Preserve the old icon URL while sharing the docs' smaller vector mark.
   const file =
     requested === "" ? "index.html" : requested === "favicon.ico" ? "favicon.svg" : requested;
+
   const asset = Object.prototype.hasOwnProperty.call(CONSOLE_ASSETS, file)
     ? CONSOLE_ASSETS[file]
     : undefined;

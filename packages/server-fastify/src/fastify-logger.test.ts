@@ -11,11 +11,13 @@ import { createFastifyLogger } from "./fastify-logger.js";
 /** A pino-shaped logger recording the exact arguments each level received. */
 function capturingPino(): FastifyBaseLogger & { calls: { level: string; args: unknown[] }[] } {
   const calls: { level: string; args: unknown[] }[] = [];
+
   const record =
     (level: string) =>
     (...args: unknown[]): void => {
       calls.push({ level, args });
     };
+
   return {
     calls,
     level: "info",

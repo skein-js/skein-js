@@ -41,12 +41,14 @@ export function resolveConsoleRequest(
   options: ConsoleMountOptions = {},
 ): ConsoleResolution {
   const mountPath = normalizeMountPath(options.mountPath);
+
   if (pathname === mountPath) {
     return resolveConsoleAsset("", {
       mountPath,
       ...(options.search !== undefined ? { search: options.search } : {}),
     });
   }
+
   if (!pathname.startsWith(`${mountPath}/`)) return { kind: "miss" };
   return resolveConsoleAsset(pathname.slice(mountPath.length), { mountPath });
 }

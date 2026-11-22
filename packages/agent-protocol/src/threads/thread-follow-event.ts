@@ -6,6 +6,7 @@ import { encodeFrame } from "../sse/sse.js";
 export function encodeThreadFollowEvent(entry: ThreadEvent, modes: readonly string[]): string[] {
   const encode = (event: string, payload: unknown) =>
     `id: ${entry.seq}\nevent: ${event}\ndata: ${serializeWireJson(payload)}\n\n`;
+
   if (entry.kind === "state") {
     if (entry.lifecycle && entry.runId)
       return modes.includes("lifecycle") || modes.includes("run_modes")
@@ -26,6 +27,7 @@ export function encodeThreadFollowEvent(entry: ThreadEvent, modes: readonly stri
     if (modes.includes("thread_state")) frames.push(encode("thread_state", entry.thread));
     return frames;
   }
+
   if (entry.kind !== "run") return [];
   const { frame } = entry;
   if (modes.includes("run_modes") || modes.includes(frame.event))

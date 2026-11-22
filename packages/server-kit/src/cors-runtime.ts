@@ -30,15 +30,18 @@ export function allowedOrigin(
   // when combined with credentials, so a `{ credentials: true }` misconfig fails safe (as on Express).
   if (origin === undefined || origin === "*") return "*";
   if (typeof origin === "string") return origin;
+
   if (Array.isArray(origin)) {
     return requestOrigin && origin.includes(requestOrigin) ? requestOrigin : undefined;
   }
+
   if (origin instanceof RegExp) {
     // Full-string match (anchored), mirroring cors-config so `trusted\.com` can't substring-match
     // `trusted.com.attacker.io`. Strip `g` to avoid `lastIndex` statefulness across requests.
     const anchored = new RegExp(`^(?:${origin.source})$`, origin.flags.replace("g", ""));
     return requestOrigin && anchored.test(requestOrigin) ? requestOrigin : undefined;
   }
+
   if (typeof origin === "function") {
     // `cors`-package style: `origin(requestOrigin, (err, allow) => …)`. The function form produced by
     // cors-config (from `allow_origin_regex`) calls back synchronously; capture its verdict.
@@ -53,6 +56,7 @@ export function allowedOrigin(
     if (typeof verdict === "string") return verdict;
     return undefined;
   }
+
   return undefined;
 }
 
@@ -89,9 +93,11 @@ export function corsPreflightHeaders(
   const allowedHeaders =
     (cors !== true ? joinList(cors.allowedHeaders) : undefined) ?? requestedHeaders;
   if (allowedHeaders) headers["access-control-allow-headers"] = allowedHeaders;
+
   if (cors !== true && typeof cors.maxAge === "number") {
     headers["access-control-max-age"] = String(cors.maxAge);
   }
+
   return headers;
 }
 

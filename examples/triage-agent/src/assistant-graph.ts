@@ -13,8 +13,14 @@
 
 import { AIMessage, type BaseMessage } from "@langchain/core/messages";
 import { ChatGoogleGenerativeAI } from "@langchain/google-genai";
-import { Annotation, END, messagesStateReducer, START, StateGraph } from "@langchain/langgraph";
-import type { LangGraphRunnableConfig } from "@langchain/langgraph";
+import {
+  Annotation,
+  END,
+  messagesStateReducer,
+  START,
+  StateGraph,
+  type LangGraphRunnableConfig,
+} from "@langchain/langgraph";
 
 const AssistantState = Annotation.Root({
   messages: Annotation<BaseMessage[]>({ reducer: messagesStateReducer, default: () => [] }),
@@ -56,6 +62,7 @@ async function answer(
   ]);
 
   const records = decisions.map((entry) => entry.value as Decision);
+
   const rules = conventions
     .map((entry) => (typeof entry.value["text"] === "string" ? entry.value["text"] : ""))
     .filter((text) => text !== "");
@@ -65,6 +72,7 @@ async function answer(
       model: process.env["GOOGLE_MODEL"] ?? "gemini-3.5-flash-lite",
       temperature: 0,
     });
+
     const reply = await model.invoke([
       {
         role: "user",
@@ -96,14 +104,17 @@ function describe(decision: Decision): string {
  */
 function summarize(question: string, records: Decision[], rules: string[]): string {
   const lines: string[] = [];
+
   if (records.length === 0) {
     lines.push("Nothing has been triaged yet — run the `sweep` graph and approve an item first.");
   } else {
     const byCategory = new Map<string, number>();
+
     for (const record of records) {
       const key = record.category ?? "unknown";
       byCategory.set(key, (byCategory.get(key) ?? 0) + 1);
     }
+
     const breakdown = [...byCategory.entries()]
       .sort((a, b) => b[1] - a[1])
       .map(([category, count]) => `${count} ${category}`)
@@ -112,9 +123,11 @@ function summarize(question: string, records: Decision[], rules: string[]): stri
     lines.push("");
     lines.push(...records.slice(0, 8).map(describe));
   }
+
   if (rules.length > 0) {
     lines.push("", `Conventions in effect: ${rules.join("; ")}`);
   }
+
   lines.push(
     "",
     `(Answered from the store — no model was called. Set GOOGLE_API_KEY and I will reason about "${question}" instead.)`,

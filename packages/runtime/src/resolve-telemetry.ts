@@ -133,6 +133,7 @@ async function buildProviderSink(
   decision: ProviderDecision,
 ): Promise<TelemetrySink | undefined> {
   let module: Record<string, unknown>;
+
   try {
     module = (await import(provider.package)) as Record<string, unknown>;
   } catch {
@@ -142,10 +143,13 @@ async function buildProviderSink(
         `(and its peer SDK — see docs/observability.md).`,
     );
   }
+
   const factory = module[provider.exportName];
+
   if (typeof factory !== "function") {
     throw new RuntimeConfigError(`${provider.package} does not export "${provider.exportName}".`);
   }
+
   // A factory returns `undefined` when its own configuration is incomplete — no API key, say.
   //
   // What happens next depends on who asked for the provider, and the distinction is the whole point:
@@ -158,6 +162,7 @@ async function buildProviderSink(
   const sink = (factory as (options: Record<string, unknown>) => TelemetrySink | undefined)(
     decision.options,
   );
+
   if (!sink && decision.declared) {
     throw new RuntimeConfigError(
       `telemetry.${name} is enabled in langgraph.json but its required configuration is incomplete; ` +
@@ -165,6 +170,7 @@ async function buildProviderSink(
         `\`telemetry.${name}\` entry to run without it.`,
     );
   }
+
   return sink;
 }
 
@@ -174,18 +180,23 @@ async function loadCustomSink(
   options: ResolveTelemetryOptions,
 ): Promise<TelemetrySink> {
   const { sourceFile, exportSymbol } = parseGraphSpec(spec, options.configDir);
+
   const importer: ModuleImporter =
     options.importModule ??
     ((file) => import(pathToFileURL(file).href) as Promise<Record<string, unknown>>);
+
   const module = await importer(sourceFile);
   const exported = module[exportSymbol];
+
   if (exported === undefined) {
     throw new RuntimeConfigError(
       `telemetry path "${spec}" — module "${sourceFile}" has no export "${exportSymbol}".`,
     );
   }
+
   // Accept either a sink or a factory returning one, so a user's module can read its own config.
   const sink = typeof exported === "function" ? (exported as () => unknown)() : exported;
+
   if (
     typeof sink !== "object" ||
     sink === null ||
@@ -196,6 +207,7 @@ async function loadCustomSink(
         `or a function returning one.`,
     );
   }
+
   return sink as TelemetrySink;
 }
 
@@ -220,6 +232,7 @@ export async function resolveTelemetry(options: ResolveTelemetryOptions): Promis
         provider.readsEnv && decision.options["env"] === undefined
           ? { ...(decision.declared ? { enableTracing: true } : {}), ...decision.options, env }
           : decision.options;
+
       const sink = await buildProviderSink(name, provider, {
         ...decision,
         options: factoryOptions,

@@ -12,11 +12,13 @@ import { useState } from "react";
 /** Flatten a message's `content` to display text (models may return string | parts | null). */
 function messageText(content: unknown): string {
   if (typeof content === "string") return content;
+
   if (Array.isArray(content)) {
     return content
       .map((part) => (typeof part === "string" ? part : ((part as { text?: string }).text ?? "")))
       .join("");
   }
+
   if (content == null) return "";
   return JSON.stringify(content);
 }
@@ -36,6 +38,7 @@ export default function Page() {
   // available on the client; the SSR fallback is never fetched (the client re-renders before submit).
   const apiUrl =
     typeof window === "undefined" ? "http://localhost:2024/api" : `${window.location.origin}/api`;
+
   const thread = useStream({ apiUrl, assistantId });
 
   return (

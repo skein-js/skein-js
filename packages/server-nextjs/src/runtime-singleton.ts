@@ -50,6 +50,7 @@ function resolveOnce<K extends object | string, T>(
   resolve: () => Promise<T>,
 ): Cached<T> {
   let resolved = cache.get(key);
+
   if (!resolved) {
     resolved = resolve().catch((error: unknown) => {
       cache.delete(key); // don't cache a rejection — a transient failure must be retryable
@@ -57,6 +58,7 @@ function resolveOnce<K extends object | string, T>(
     });
     cache.set(key, resolved);
   }
+
   return resolved;
 }
 
@@ -74,6 +76,7 @@ function memoizeByOptions<T>(
   if (typeof options.config === "string") {
     return resolveOnce(globalMap<T>(configKey), options.config, resolve);
   }
+
   return resolveOnce(globalWeakMap<T>(depsKey), options.deps, resolve);
 }
 

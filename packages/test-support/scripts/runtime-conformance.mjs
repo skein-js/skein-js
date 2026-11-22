@@ -27,10 +27,13 @@ const cliEntry = path.join(repoRoot, "packages/cli/dist/index.js");
 const denoHome = path.join(repoRoot, ".profiles", "deno-home");
 
 const args = new Map();
+
 for (let i = 2; i < process.argv.length; i += 2) {
   args.set(process.argv[i].replace(/^--/, ""), process.argv[i + 1]);
 }
+
 const runtime = args.get("runtime") ?? "node";
+
 if (!["node", "bun", "deno"].includes(runtime)) {
   console.error(`unknown runtime "${runtime}" (expected node, bun, or deno)`);
   process.exit(2);
@@ -44,12 +47,15 @@ const startedServers = [];
 
 const failures = [];
 let checks = 0;
+
 function check(label, condition, detail) {
   checks += 1;
+
   if (condition) {
     console.log(`  ok   ${label}`);
     return true;
   }
+
   failures.push(detail === undefined ? label : `${label} — ${detail}`);
   console.log(`  FAIL ${label}${detail === undefined ? "" : ` — ${detail}`}`);
   return false;
@@ -69,6 +75,7 @@ function startServer(port, env = {}) {
     "--host",
     "127.0.0.1",
   ];
+
   const options = {
     cwd: repoRoot,
     env: {
@@ -114,10 +121,12 @@ function startServer(port, env = {}) {
 
 async function waitForReady(port, server, timeoutMs = 60_000) {
   const deadline = Date.now() + timeoutMs;
+
   while (Date.now() < deadline) {
     if (server.child.exitCode !== null) {
       throw new Error(`server exited early (${server.child.exitCode}):\n${server.output.join("")}`);
     }
+
     try {
       const response = await fetch(`http://127.0.0.1:${port}/ok`, {
         signal: AbortSignal.timeout(2000),
@@ -126,8 +135,10 @@ async function waitForReady(port, server, timeoutMs = 60_000) {
     } catch {
       // not listening yet
     }
+
     await sleep(200);
   }
+
   throw new Error(`server never became ready:\n${server.output.join("")}`);
 }
 
@@ -160,10 +171,12 @@ async function stopServer(server, signal = "SIGTERM", timeoutMs = 20_000) {
 async function collectStream(stream) {
   const frames = [];
   const errors = [];
+
   for await (const chunk of stream) {
     frames.push(chunk);
     if (chunk.event === "error") errors.push(chunk.data);
   }
+
   return { frames, errors };
 }
 
@@ -200,11 +213,13 @@ async function main() {
       capabilities: { elicitation: { form: {} } },
     },
   );
+
   let questions = 0;
   mcp.setRequestHandler("elicitation/create", () => {
     questions++;
     return { action: "accept", content: { response: "yes" } };
   });
+
   try {
     await mcp.connect(new StreamableHTTPClientTransport(new URL("http://127.0.0.1:2610/mcp")));
     check(
@@ -236,6 +251,7 @@ async function main() {
 
   console.log("threads + streaming run");
   const thread = await client.threads.create();
+
   const streamed = await collectStream(
     client.runs.stream(thread.thread_id, assistantId, {
       input: { messages: [{ role: "human", content: "go" }] },
@@ -256,6 +272,7 @@ async function main() {
   );
 
   console.log("runs.list — the SDK always sends limit/offset");
+
   // `wait` rather than `create`: the default multitask strategy is `reject`, so firing several runs at
   // one thread is a 422 by design. Each of these settles before the next starts.
   for (let i = 0; i < 3; i += 1) {
@@ -263,6 +280,7 @@ async function main() {
       input: { messages: [{ role: "human", content: `bg ${i}` }] },
     });
   }
+
   const limited = await client.runs.list(thread.thread_id, { limit: 2 });
   check("a client-supplied limit is honoured", limited.length === 2, `got ${limited.length}`);
   const offset = await client.runs.list(thread.thread_id, { limit: 2, offset: 2 });
@@ -287,6 +305,7 @@ async function main() {
     });
     return { status: response.status, rows: await response.json() };
   };
+
   const searched = await search(0);
   const searchedNext = await search(2);
   check(
@@ -338,14 +357,18 @@ async function main() {
         ? { ...init, body: JSON.stringify({ ...JSON.parse(init.body), timeout_ms: 5 }) }
         : init,
   });
+
   const timedRun = await timeoutClient.runs.create(null, assistantId, {
     input: { messages: [{ role: "human", content: "timeout" }] },
   });
+
   let timedStatus = timedRun.status;
+
   for (let attempt = 0; attempt < 100 && !TERMINAL.includes(timedStatus); attempt += 1) {
     await sleep(20);
     timedStatus = (await client.runs.get(timedRun.thread_id, timedRun.run_id)).status;
   }
+
   check("requested execution timeout settles as timeout", timedStatus === "timeout", timedStatus);
 
   console.log("store");
@@ -370,14 +393,17 @@ async function main() {
 
   console.log("cross-instance join (two servers, one Postgres + Redis)");
   const secondary = startServer(2611, { MATRIX_FRAMES: "40", MATRIX_FRAME_BYTES: "256" });
+
   try {
     await waitForReady(2611, secondary);
     const other = new Client({ apiUrl: "http://127.0.0.1:2611" });
     const shared = await client.threads.create();
+
     const background = await client.runs.create(shared.thread_id, assistantId, {
       input: { messages: [{ role: "human", content: "cross" }] },
       streamMode: ["custom"],
     });
+
     // Started on the primary, joined from the secondary: this only works if frames travel through
     // Redis rather than through the process that happens to be executing the run.
     const joined = await collectStream(other.runs.joinStream(shared.thread_id, background.run_id));
@@ -389,6 +415,7 @@ async function main() {
     check("no error frame across instances", joined.errors.length === 0);
 
     console.log("burst retention (same measurement twice — a ratio, not a number)");
+
     const burst = async () => {
       const threads = await Promise.all(Array.from({ length: 20 }, () => client.threads.create()));
       await Promise.all(
@@ -404,6 +431,7 @@ async function main() {
       await sleep(2000);
       return rssBytes(primary.child.pid);
     };
+
     const first = await burst();
     const second = await burst();
     // Absolute RSS is unusable on a shared runner; the ratio between two identical bursts is not. A
@@ -434,6 +462,7 @@ async function main() {
   }
 
   console.log(`\n${checks - failures.length}/${checks} checks passed on ${runtime}`);
+
   if (failures.length > 0) {
     console.error(`\n${runtime} FAILED:\n${failures.map((f) => `  - ${f}`).join("\n")}`);
     process.exit(1);
@@ -442,11 +471,13 @@ async function main() {
 
 main().catch((error) => {
   console.error(`\n${runtime} harness error:`, error);
+
   for (const server of startedServers) {
     console.error(
       `\n--- server :${server.port} (exit ${server.child.exitCode}) ---\n${server.output.join("")}`,
     );
     if (server.child.exitCode === null) server.child.kill("SIGKILL");
   }
+
   process.exit(1);
 });

@@ -43,6 +43,7 @@ describe.each(everyProvider)("a project scaffolded with --provider %s", (provide
     const config = JSON.parse(files.find((file) => file.path === "langgraph.json")!.contents) as {
       env: string;
     };
+
     const emitted = new Set(files.map((file) => file.path));
 
     expect(emitted.has(config.env)).toBe(true);
@@ -56,6 +57,7 @@ describe.each(everyProvider)("a project scaffolded with --provider %s", (provide
     // is `.env`. `.env.example` must, because it is the only one of the two a fresh clone gets.
     expect(dotEnv).not.toMatch(/copy this file to `?\.env/i);
     expect(example).toMatch(/copy this file to `?\.env/i);
+
     // Only the header differs. Compared from the first divider rather than by line count, because
     // the two headers are deliberately different lengths — everything a reader would actually set
     // has to stay identical, or the "reference copy" stops being one.
@@ -65,6 +67,7 @@ describe.each(everyProvider)("a project scaffolded with --provider %s", (provide
       expect(divider, "no `# ---` divider to compare bodies from").toBeGreaterThan(-1);
       return contents.slice(divider);
     };
+
     expect(body(dotEnv)).toBe(body(example));
     expect(body(dotEnv)).toContain("POSTGRES_URI=");
 
@@ -91,6 +94,7 @@ describe.each(everyProvider)("a project scaffolded with --provider %s", (provide
   it("emits paths that are unique, relative and inside the project", () => {
     const paths = files.map((file) => file.path);
     expect(new Set(paths).size).toBe(paths.length);
+
     for (const filePath of paths) {
       expect(filePath.startsWith("/"), `${filePath} is absolute`).toBe(false);
       expect(filePath.split("/").includes(".."), `${filePath} escapes the root`).toBe(false);
@@ -118,6 +122,7 @@ describe.each(everyProvider)("a project scaffolded with --provider %s", (provide
     const config = JSON.parse(files.find((file) => file.path === "langgraph.json")!.contents) as {
       graphs: Record<string, string>;
     };
+
     const emitted = new Set(files.map((file) => file.path));
 
     for (const spec of Object.values(config.graphs)) {
@@ -141,12 +146,14 @@ describe.each(everyProvider)("a project scaffolded with --provider %s", (provide
     const alwaysLoaded = files.filter(
       (file) => file.path.endsWith(".ts") && file.path !== "src/agent-graph.ts",
     );
+
     for (const file of alwaysLoaded) {
       expect(file.contents, `${file.path} reads the environment`).not.toMatch(/process\.env/);
     }
 
     if (provider === "none") {
       const keyNames = Object.values(PROVIDER_DETAILS).map((details) => details.apiKeyEnvVar);
+
       for (const file of files) {
         for (const keyName of keyNames) {
           expect(file.contents, `${file.path} mentions ${keyName}`).not.toContain(keyName);
@@ -180,6 +187,7 @@ describe.each(everyProvider)("a project scaffolded with --provider %s", (provide
         /* setParentNodes */ false,
         ts.ScriptKind.TS,
       );
+
       // `parseDiagnostics` is internal but is the only way to see syntax errors without a Program,
       // and a Program would need the generated project's dependencies installed.
       const diagnostics = (source as unknown as { parseDiagnostics: readonly ts.Diagnostic[] })
@@ -201,6 +209,7 @@ describe.each(everyProvider)("a project scaffolded with --provider %s", (provide
       ".md": "markdown",
       ".yaml": "yaml",
     };
+
     const prettierConfig = await resolveConfig("project.ts");
 
     for (const file of files) {
@@ -226,6 +235,7 @@ describe("provider selection", () => {
     const agentGraph = buildProjectFiles(optionsFor(provider)).find(
       (file) => file.path === "src/agent-graph.ts",
     )!;
+
     const details = PROVIDER_DETAILS[provider];
 
     expect(agentGraph.contents).toContain(`import { ${details.modelClass} }`);
@@ -245,10 +255,12 @@ describe("provider selection", () => {
     // for a new package fails here instead of in someone's fresh project.
     for (const provider of ["anthropic", "openai", "google", "none"] as const) {
       const files = buildProjectFiles(optionsFor(provider));
+
       const manifest = JSON.parse(files.find((file) => file.path === "package.json")!.contents) as {
         dependencies?: Record<string, string>;
         devDependencies?: Record<string, string>;
       };
+
       const declared = new Set([
         ...Object.keys(manifest.dependencies ?? {}),
         ...Object.keys(manifest.devDependencies ?? {}),

@@ -15,11 +15,13 @@ async function seed(stream_mode: StreamMode | StreamMode[]) {
   const deps = resolveDeps(createFixtureDeps());
   const assistant = await deps.store.assistants.create({ graph_id: "echo", assistant_id: "echo" });
   const thread = await deps.store.threads.create();
+
   const run: Run = await deps.store.runs.create({
     thread_id: thread.thread_id,
     assistant_id: assistant.assistant_id,
     status: "pending",
   });
+
   const control = new RunControlRegistry().register(run.run_id);
   const kwargs: RunKwargs = { input: { value: "hi" }, stream_mode };
   return { deps, run, control, kwargs };

@@ -4,14 +4,14 @@
 // thread state leaks between them) and the long-term store is still reachable via `getStore()`.
 
 import {
-  SkeinHttpError,
   isSkeinHttpError,
+  SkeinHttpError,
   type AuthEngine,
   type RunTelemetryEvent,
 } from "@skein-js/core";
 import { describe, expect, it } from "vitest";
 
-import { createFixtureDeps, collect } from "../__fixtures__/deps.js";
+import { collect, createFixtureDeps } from "../__fixtures__/deps.js";
 import type { ProtocolRequest, ProtocolResponse } from "../create-handlers.js";
 import type { ProtocolDeps } from "../deps.js";
 
@@ -101,6 +101,7 @@ describe("createGraphInvokeHandler", () => {
   it("emits a complete lifecycle and runs graph work in the telemetry context", async () => {
     const events: RunTelemetryEvent[] = [];
     let contextEntries = 0;
+
     const invoke = createGraphInvokeHandler(
       createFixtureDeps({
         telemetry: {
@@ -124,6 +125,7 @@ describe("createGraphInvokeHandler", () => {
 
   it("finishes streaming telemetry only after the stream is consumed", async () => {
     const events: RunTelemetryEvent[] = [];
+
     const invoke = createGraphInvokeHandler(
       createFixtureDeps({
         telemetry: { name: "recording", onRunEvent: (event) => events.push(event) },
@@ -230,6 +232,7 @@ describe("createGraphInvokeHandler", () => {
 
     it("logs a mid-stream failure even though it never becomes an HTTP status", async () => {
       const errors: { message: string; meta?: unknown }[] = [];
+
       const invoke = createGraphInvokeHandler(
         createFixtureDeps({
           logger: {
@@ -312,6 +315,7 @@ describe("createGraphInvokeHandler", () => {
     it("judges the policy against the executed graph, not a body-supplied graph_id", async () => {
       const seen: unknown[] = [];
       const engine = fakeEngine();
+
       const spying: AuthEngine = {
         ...engine,
         authorize: async (input) => {
@@ -319,6 +323,7 @@ describe("createGraphInvokeHandler", () => {
           return engine.authorize(input);
         },
       };
+
       const invoke = createGraphInvokeHandler(authedDeps(spying));
 
       await invoke(

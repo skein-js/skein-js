@@ -1,11 +1,12 @@
-import { mkdtemp, writeFile, readFile, rm, mkdir, readdir } from "node:fs/promises";
+import { spawn } from "node:child_process";
+import { createHash } from "node:crypto";
+import { mkdir, mkdtemp, readdir, readFile, rm, writeFile } from "node:fs/promises";
 import { createRequire } from "node:module";
 import { tmpdir } from "node:os";
 import path from "node:path";
-import { createHash } from "node:crypto";
-import { spawn } from "node:child_process";
 import { pathToFileURL } from "node:url";
-import { packWorkspace, root, run, installConsumer, copyTree } from "./pack-local-consumer.mjs";
+
+import { copyTree, installConsumer, packWorkspace, root, run } from "./pack-local-consumer.mjs";
 const host = process.argv[2];
 const interactive = process.argv.includes("--interactive");
 const envArgument = process.argv.find((value) => value.startsWith("--env-file="));
@@ -17,6 +18,7 @@ const project = path.join(root, "examples", `desktop-${host}`);
 const require = createRequire(path.join(project, "package.json"));
 const temporary = await mkdtemp(path.join(tmpdir(), `skein-packed-${host}-`));
 const consumer = path.join(temporary, "app");
+
 async function launch(executable, args = [], extra = {}) {
   const environment = {
     ...process.env,
@@ -26,10 +28,12 @@ async function launch(executable, args = [], extra = {}) {
   if (interactive) delete environment.SKEIN_EXAMPLE_SMOKE;
   delete environment.ELECTRON_RUN_AS_NODE;
   const { realpath } = await import("node:fs/promises");
+
   const child = spawn(await realpath(executable), args, {
     env: environment,
     stdio: ["ignore", "pipe", "pipe"],
   });
+
   let output = "";
   for (const stream of [child.stdout, child.stderr])
     stream.on("data", (chunk) => {
@@ -41,6 +45,7 @@ async function launch(executable, args = [], extra = {}) {
       `\n${host === "electron" ? "Daybook" : "Reading Room"} is open. Close the application to stop this command.\n`,
     );
   const timer = interactive ? undefined : setTimeout(() => child.kill("SIGKILL"), 60_000);
+
   const code = await new Promise((resolve, reject) => {
     child.once("error", reject);
     child.once("exit", resolve);
@@ -49,6 +54,7 @@ async function launch(executable, args = [], extra = {}) {
   if (code !== 0 || (!interactive && !output.includes(`PACKAGED_${host.toUpperCase()}_OK`)))
     throw new Error(`Packaged ${host} failed (${code}): ${output}`);
 }
+
 try {
   const packed = packWorkspace(path.join(temporary, "packages"));
   const original = JSON.parse(await readFile(path.join(project, "package.json"), "utf8"));
@@ -56,6 +62,7 @@ try {
   await writeFile(path.join(consumer, "package.json"), JSON.stringify(manifest, null, 2));
   copyTree(path.join(project, "dist"), path.join(consumer, "dist"));
   run("npm", ["install", "--no-audit", "--no-fund"], { cwd: consumer });
+
   if (host === "electron") {
     const { rebuild } = await import(pathToFileURL(require.resolve("@electron/rebuild")).href);
     const electronVersion = require("electron/package.json").version;
@@ -67,6 +74,7 @@ try {
       force: true,
     });
     const { packager } = await import(pathToFileURL(require.resolve("@electron/packager")).href);
+
     const outputs = await packager({
       dir: consumer,
       out: path.join(temporary, "release"),
@@ -82,12 +90,14 @@ try {
       platform: process.platform,
       arch: process.arch,
     });
+
     if (process.platform === "darwin") {
       const bundle = path.join(outputs[0], "Daybook.app");
       // Generated local proof only. Shipping applications choose their own signing/notarization.
       run("codesign", ["--force", "--deep", "--sign", "-", bundle]);
       run("codesign", ["--verify", "--deep", "--strict", bundle]);
     }
+
     const packagedRoot =
       process.platform === "darwin"
         ? path.join(outputs[0], "Daybook.app/Contents/Resources/app")
@@ -163,6 +173,7 @@ try {
       { cwd: project },
     );
     const release = path.join(project, "src-tauri/target/release");
+
     if (platform === "darwin")
       await launch(
         path.join(release, "bundle/macos/Reading Room.app/Contents/MacOS/skein-local-example"),

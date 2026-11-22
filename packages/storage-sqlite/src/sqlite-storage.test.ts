@@ -2,10 +2,10 @@ import { mkdtemp, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 
-import { runPartitionedRunQueueConformance } from "@skein-js/test-support";
 import {
-  runSkeinStoreConformance,
+  runPartitionedRunQueueConformance,
   runRunQueueConformance,
+  runSkeinStoreConformance,
   runStoreOptionsConformance,
 } from "@skein-js/test-support";
 import { afterEach, describe, expect, it } from "vitest";
@@ -13,8 +13,10 @@ import { afterEach, describe, expect, it } from "vitest";
 import { openSqliteStorage, type SqliteStorage, type SqliteStorageOptions } from "./index.js";
 
 const resources: { storage: SqliteStorage; directory: string }[] = [];
+
 async function open(options: Partial<SqliteStorageOptions> = {}): Promise<SqliteStorage> {
   const directory = await mkdtemp(join(tmpdir(), "skein-sqlite-"));
+
   const storage = await openSqliteStorage({
     filename: join(directory, "state.sqlite"),
     ...options,
@@ -22,6 +24,7 @@ async function open(options: Partial<SqliteStorageOptions> = {}): Promise<Sqlite
   resources.push({ storage, directory });
   return storage;
 }
+
 afterEach(async () => {
   for (const { storage, directory } of resources.splice(0)) {
     await storage.dispose();
@@ -35,14 +38,17 @@ it("retains projected expiry and queued execution budgets after reopening the fi
   const storage = await open();
   const thread = await storage.store.threads.create({ ttl: 30, ttlStrategy: "keep_latest" });
   const item = await storage.store.store.put(["retention"], "item", { value: true }, { ttl: 15 });
+
   const run = await storage.store.runs.create({
     thread_id: thread.thread_id,
     assistant_id: "agent",
     kwargs: { timeout_ms: 25, queue_not_before: new Date(Date.now() + 60000).toISOString() },
   });
+
   const filename = storage.database.name;
   await storage.dispose();
   const reopened = await openSqliteStorage({ filename });
+
   try {
     expect(await reopened.store.threads.get(thread.thread_id)).toMatchObject({
       ttl: 30,
@@ -64,15 +70,19 @@ describe("durability and ownership", () => {
     const filename = storage.database.name;
     const thread = await storage.store.threads.create();
     const due = new Date(Date.now() + 100).toISOString();
+
     const run = await storage.store.runs.create({
       thread_id: thread.thread_id,
       assistant_id: "agent",
       kwargs: { queue_not_before: due },
     });
+
     const original = storage.database
       .prepare("SELECT sequence,due_at FROM skein_run_jobs WHERE run_id=?")
       .get(run.run_id);
+
     let probed = false;
+
     const first = storage.queue.consumePartitioned!(async () => {
       probed = true;
       return false;
@@ -87,6 +97,7 @@ describe("durability and ownership", () => {
     await storage.dispose();
     const reopened = await openSqliteStorage({ filename });
     let consumer;
+
     try {
       expect((await reopened.store.runs.get(run.run_id))?.status).toBe("pending");
       const handled: string[] = [];
@@ -104,6 +115,7 @@ describe("durability and ownership", () => {
     const storage = await open();
     const filename = storage.database.name;
     const thread = await storage.store.threads.create();
+
     const run = await storage.store.runs.create({
       thread_id: thread.thread_id,
       assistant_id: "agent",
@@ -115,6 +127,7 @@ describe("durability and ownership", () => {
     );
     await storage.dispose();
     const reopened = await openSqliteStorage({ filename });
+
     try {
       expect(await reopened.store.runs.getResult!(run.run_id)).toEqual({
         values: { answer: "retained" },
@@ -139,6 +152,7 @@ describe("durability and ownership", () => {
     const filename = storage.database.name;
     const thread = await storage.store.threads.create();
     const due = new Date(Date.now() + 60_000).toISOString();
+
     const run = await storage.store.runs.create({
       thread_id: thread.thread_id,
       assistant_id: "agent",
@@ -157,6 +171,7 @@ describe("durability and ownership", () => {
     });
     await storage.dispose();
     const reopened = await openSqliteStorage({ filename });
+
     try {
       expect((await reopened.store.runs.get(run.run_id))?.status).toBe("pending");
       expect(await reopened.store.runs.getKwargs(run.run_id)).toMatchObject({
@@ -192,6 +207,7 @@ describe("durability and ownership", () => {
     });
     await storage.dispose();
     const reopened = await openSqliteStorage({ filename, maxPageSize: 1 });
+
     try {
       expect(await reopened.store.runs.listActiveRuns()).toEqual([]);
       expect((await reopened.store.runs.get(paused.run_id))?.status).toBe("interrupted");
@@ -216,6 +232,7 @@ describe("durability and ownership", () => {
   }, 30_000);
   it("rolls back cron advancement if run admission fails", async () => {
     const storage = await open();
+
     const cron = await storage.store.crons.create({
       assistant_id: "agent",
       schedule: "* * * * *",
@@ -274,6 +291,7 @@ it("rolls back an entire migration when one statement fails", async () => {
   let database = new Database(filename);
   database.exec("CREATE TABLE skein_items (collision TEXT)");
   database.close();
+
   try {
     await expect(openSqliteStorage({ filename })).rejects.toThrow(/already exists/);
     database = new Database(filename);
@@ -292,15 +310,19 @@ it("rolls back an entire migration when one statement fails", async () => {
 it("wakes an existing consumer for atomic admission before the later enqueue call", async () => {
   const storage = await open();
   const thread = await storage.store.threads.create();
+
   let received: (value: string) => void = () => {};
+
   const delivered = new Promise<string>((resolve) => {
     received = resolve;
   });
+
   const consumer = storage.queue.consume(async (job) => {
     expect(storage.database.inTransaction).toBe(false);
     expect(await storage.store.runs.get(job.run_id)).not.toBeNull();
     received(job.run_id);
   });
+
   try {
     const run = await storage.store.runs.create({
       thread_id: thread.thread_id,
@@ -318,12 +340,14 @@ it("repairs a failed attempt's busy thread without cancelling its queued backlog
   const filename = storage.database.name;
   const thread = await storage.store.threads.create({ status: "busy" });
   const due = new Date(Date.now() + 60_000).toISOString();
+
   const active = await storage.store.runs.create({
     thread_id: thread.thread_id,
     assistant_id: "agent",
     status: "running",
     kwargs: { queue_not_before: due },
   });
+
   const pending = await storage.store.runs.create({
     thread_id: thread.thread_id,
     assistant_id: "agent",
@@ -331,6 +355,7 @@ it("repairs a failed attempt's busy thread without cancelling its queued backlog
   });
   await storage.dispose();
   const reopened = await openSqliteStorage({ filename });
+
   try {
     expect((await reopened.store.runs.get(active.run_id))?.error?.name).toBe("ProcessLostError");
     expect((await reopened.store.threads.get(thread.thread_id))?.status).toBe("error");
@@ -369,6 +394,7 @@ it("reopens per-item indexing, no-expiry writes and thread retention policy", as
     ttl: { defaultTtl: 60 },
     threadTtl: { defaultTtl: 60 },
   });
+
   try {
     expect(
       (await reopened.store.store.search({ prefix: ["notes"], query: "needle" })).map(
@@ -414,11 +440,13 @@ it("upgrades historical search indexes and retains exact tied pages after reopen
   const filename = storage.database.name;
   await storage.dispose();
   const reopened = await openSqliteStorage({ filename });
+
   try {
     const first = await reopened.store.runs.search!({
       limit: 2,
       enforcedMetadata: { owner: "alice" },
     });
+
     const next = await reopened.store.runs.search!({ limit: 2, offset: 2 });
     expect([...first, ...next].map((run) => run.run_id)).toEqual(["😀", "\uE000", "a"]);
     expect(

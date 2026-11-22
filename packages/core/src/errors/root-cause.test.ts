@@ -17,9 +17,11 @@ describe("rootCause", () => {
   it("stops at the depth cap rather than walking forever", () => {
     // Ten links, cap is five — the result is a link, never undefined.
     let error = new Error("depth-10");
+
     for (let level = 9; level >= 0; level -= 1) {
       error = new Error(`depth-${level}`, { cause: error });
     }
+
     expect(rootCause(error)).toBeInstanceOf(Error);
     expect((rootCause(error) as Error).message).toBe("depth-5");
   });

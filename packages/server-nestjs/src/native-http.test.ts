@@ -7,6 +7,7 @@ it.each(["server"] as const)(
   async (router) => {
     void router;
     const deps = createEchoDeps();
+
     deps.httpHandler = async (request) => {
       const path = new URL(request.url).pathname;
       if (path === "/info")
@@ -24,7 +25,9 @@ it.each(["server"] as const)(
         });
       return undefined;
     };
+
     const running = await startEchoServer({ deps });
+
     try {
       const info = await fetch(`${running.baseUrl}/info`);
       expect(info.status).toBe(201);

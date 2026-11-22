@@ -160,9 +160,11 @@ describe("generateDockerfile", () => {
     // `unexpected argument`. Both the build-time graph probe and the HEALTHCHECK use it, so a flag
     // here fails the image build and pins the container permanently unhealthy. Both reproduced.
     const out = generateDockerfile({ runtime: "deno", runtimeVersion: "2.9.4", port: 8123 });
+
     for (const line of out.split("\n").filter((l) => l.includes("deno eval"))) {
       expect(line).not.toMatch(/--allow-(net|env|read|sys|ffi|write|run)/);
     }
+
     // `deno run` — the CMD — is the opposite: it must carry the explicit grants.
     expect(out).toContain('CMD ["deno", "run", "--allow-net", "--allow-env"');
   });

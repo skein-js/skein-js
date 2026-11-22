@@ -67,10 +67,12 @@ export async function claimEventKey(
   // The principal is part of the scope, so two tenants sending a provider event id that happens to
   // collide cannot replay each other's answers.
   const scope = `POST /channels/${input.channelName} ${input.principal.identity}`;
+
   const claimId = createHash("sha256")
     .update(`${scope}:${key}:${input.rawBody}`)
     .digest("hex")
     .slice(0, 32);
+
   const now = deps.clock();
   const fingerprint = fingerprintOf(input.rawBody);
 
@@ -90,6 +92,7 @@ export async function claimEventKey(
     // message is silently dropped. A provider reusing an event id for different content is a bug on
     // their side or a forgery on someone else's, and neither should be answered with a stale success.
     if (incumbent.fingerprint !== fingerprint) return { kind: "reused" };
+
     if (incumbent.status === "done" && incumbent.response) {
       const recorded = incumbent.response as { status?: number; body?: unknown };
       return {
@@ -97,6 +100,7 @@ export async function claimEventKey(
         response: { kind: "json", status: recorded.status ?? 202, body: recorded.body },
       };
     }
+
     return { kind: "in_flight" };
   }
 

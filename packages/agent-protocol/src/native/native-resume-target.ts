@@ -19,6 +19,7 @@ export async function verifyNativeResumeTarget(
     interruptIds: target.interruptIds,
   });
   signal?.throwIfAborted();
+
   for (const [namespace, checkpointId] of Object.entries(target.checkpoint.checkpoint_map ?? {})) {
     // Never pass the caller's ID or map to this read: it must resolve the authoritative tip.
     const current = await deps.checkpointer.getTuple({

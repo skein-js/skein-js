@@ -56,6 +56,7 @@ describe("wrapChannelDispatcher", () => {
   it("passes an ordinary webhook straight through", async () => {
     const inner = vi.fn().mockResolvedValue(undefined);
     const deliver = vi.fn().mockResolvedValue(undefined);
+
     const dispatch = wrapChannelDispatcher({
       registry: registryOf({ name: "twilio", verify: vi.fn(), parseEvent: vi.fn(), deliver }),
       inner,
@@ -70,6 +71,7 @@ describe("wrapChannelDispatcher", () => {
 
   it("forwards only the stable delivery ID and attempt to destination callbacks", async () => {
     const deliver = vi.fn().mockResolvedValue(undefined);
+
     const dispatch = wrapChannelDispatcher({
       registry: registryOf({ name: "twilio", verify: vi.fn(), parseEvent: vi.fn(), deliver }),
       inner: vi.fn(),
@@ -89,6 +91,7 @@ describe("wrapChannelDispatcher", () => {
 
   it("routes a channel target to the channel, with the reply resolved", async () => {
     const deliver = vi.fn().mockResolvedValue(undefined);
+
     const dispatch = wrapChannelDispatcher({
       registry: registryOf({ name: "twilio", verify: vi.fn(), parseEvent: vi.fn(), deliver }),
       inner: vi.fn(),
@@ -108,6 +111,7 @@ describe("wrapChannelDispatcher", () => {
 
   it("keeps inferred interrupt delivery unchanged for a directly implemented channel", async () => {
     const deliver = vi.fn().mockResolvedValue(undefined);
+
     const dispatch = wrapChannelDispatcher({
       registry: registryOf({ name: "twilio", verify: vi.fn(), parseEvent: vi.fn(), deliver }),
       inner: vi.fn(),
@@ -162,6 +166,7 @@ describe("wrapChannelDispatcher", () => {
     // conversation forever: the run waits for an answer to a question nobody was asked, and no
     // timeout will ever fire.
     const warn = vi.fn();
+
     const dispatch = wrapChannelDispatcher({
       registry: registryOf({
         name: "twilio",
@@ -184,6 +189,7 @@ describe("wrapChannelDispatcher", () => {
 
   it("does not warn when a successful run simply has nothing to say", async () => {
     const warn = vi.fn();
+
     const dispatch = wrapChannelDispatcher({
       registry: registryOf({
         name: "twilio",

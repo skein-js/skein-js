@@ -22,8 +22,10 @@ export function resolveRuntimeSelection(
   options: RuntimeSelectionOptions = {},
 ): ResolvedRuntimeSelection {
   const name = options.runtime ?? config.skein?.runtime?.name ?? "node";
+
   const configuredVersion =
     config.skein?.runtime?.name === name ? config.skein.runtime.version : undefined;
+
   const legacyNodeVersion = name === "node" ? config.node_version : undefined;
   return {
     name,

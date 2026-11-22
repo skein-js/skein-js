@@ -69,6 +69,7 @@ export async function startRedis(options: { cluster?: boolean } = {}): Promise<S
       if (assigned.exitCode !== 0 || !assigned.output.includes("OK"))
         throw new Error(`Could not assign Redis Cluster slots: ${assigned.output}`);
       const deadline = Date.now() + 10_000;
+
       for (;;) {
         const state = await container.exec(["redis-cli", "CLUSTER", "INFO"]);
         if (state.output.includes("cluster_state:ok")) break;

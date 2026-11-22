@@ -72,6 +72,7 @@ export function Async<T>({
       </>
     );
   }
+
   if (state.loading && state.data === undefined) {
     return (
       <div className="flex items-center justify-center gap-2 py-12 text-[13px] text-muted-foreground">
@@ -80,9 +81,11 @@ export function Async<T>({
       </div>
     );
   }
+
   if (state.data === undefined || (Array.isArray(state.data) && state.data.length === 0)) {
     return <Empty>{empty ?? "Nothing here."}</Empty>;
   }
+
   return <>{children(state.data)}</>;
 }
 
@@ -175,9 +178,11 @@ export function StatusBadge({ status }: { status: string | null | undefined }) {
 export function Timestamp({ value }: { value: string | null | undefined }) {
   if (!value) return <span className="text-muted-foreground">—</span>;
   const date = new Date(value);
+
   if (Number.isNaN(date.getTime())) {
     return <span className="text-muted-foreground">{value}</span>;
   }
+
   return (
     <span className="text-[13px] text-muted-foreground" title={date.toISOString()}>
       {formatRelative(date)}
@@ -234,6 +239,7 @@ export function formatRelative(date: Date, now: number = Date.now()): string {
     const count = Math.round(magnitude / per);
     if (count < max) return ahead ? `in ${count}${unit}` : `${count}${unit} ago`;
   }
+
   if (!ahead) return date.toLocaleDateString();
   const days = Math.round(magnitude / DAY_SECONDS);
   return days < 30 ? `in ${days}d` : `in ${Math.round(magnitude / MONTH_SECONDS)}mo`;

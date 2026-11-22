@@ -6,8 +6,7 @@ import { describe, expect, it, vi } from "vitest";
 import { createFixtureDeps } from "../__fixtures__/deps.js";
 import { createContext } from "../context.js";
 import { createProtocolHandlers } from "../create-handlers.js";
-import { createProtocolServiceFromContext } from "../service.js";
-import type { ProtocolService } from "../service.js";
+import { createProtocolServiceFromContext, type ProtocolService } from "../service.js";
 
 /** A finished run that owes a callback, plus the delivery recorded alongside it. */
 async function seedDelivery(
@@ -17,6 +16,7 @@ async function seedDelivery(
 ): Promise<{ runId: string; threadId: string; delivery: Delivery }> {
   const thread = await service.threads.create();
   const run = await deps.store.runs.create({ thread_id: thread.thread_id, assistant_id: "echo" });
+
   const { delivery } = await deps.store.runs.finalizeWithDelivery!(run.run_id, {
     status: "success",
     delivery: {
@@ -136,9 +136,11 @@ describe("a run's deliveries", () => {
 
   it("hands a replayed delivery straight to the queue when there is one", async () => {
     const schedule = vi.fn().mockResolvedValue(undefined);
+
     const deps = createFixtureDeps({
       deliveryQueue: { schedule, consume: () => ({ close: async () => {} }), durable: true },
     });
+
     const service = createProtocolServiceFromContext(createContext(deps));
     await service.assistants.registerGraphAssistants();
     const { runId, delivery } = await seedDelivery(service, deps);
@@ -169,6 +171,7 @@ describe("a run's deliveries", () => {
         durable: true,
       },
     });
+
     const service = createProtocolServiceFromContext(createContext(deps));
     await service.assistants.registerGraphAssistants();
     const { runId, delivery } = await seedDelivery(service, deps);

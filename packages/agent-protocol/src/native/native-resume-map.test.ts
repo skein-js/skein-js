@@ -1,6 +1,6 @@
 import { randomUUID } from "node:crypto";
 
-import { Annotation, MemorySaver, StateGraph, interrupt } from "@langchain/langgraph";
+import { Annotation, interrupt, MemorySaver, StateGraph } from "@langchain/langgraph";
 import { expect, it } from "vitest";
 
 import { createFixtureDeps } from "../__fixtures__/deps.js";
@@ -12,6 +12,7 @@ import { toCheckpoint } from "../threads/thread-mirror.js";
 async function fixture() {
   const state = Annotation.Root({ value: Annotation<string> });
   let preparations = 0;
+
   const leaf = new StateGraph(state)
     .addNode("prepare", () => {
       preparations++;
@@ -22,17 +23,21 @@ async function fixture() {
     .addEdge("prepare", "ask")
     .addEdge("ask", "__end__")
     .compile();
+
   const child = new StateGraph(state)
     .addNode("leaf", leaf)
     .addEdge("__start__", "leaf")
     .addEdge("leaf", "__end__")
     .compile();
+
   const saver = new MemorySaver();
+
   const graph = new StateGraph(state)
     .addNode("child", child)
     .addEdge("__start__", "child")
     .addEdge("child", "__end__")
     .compile({ checkpointer: saver });
+
   const deps = createFixtureDeps({
     checkpointer: saver,
     graphs: {
@@ -41,6 +46,7 @@ async function fixture() {
       load: async () => fixtureLangGraphAgent(graph as unknown as AgentGraph),
     },
   });
+
   const runtime = createProtocolRuntime(deps, { scheduler: { enabled: false } });
   await runtime.service.assistants.registerGraphAssistants();
   const client = runtime.createNativeClient({ sourceId: "nested", allowedAssistants: ["nested"] });
@@ -49,10 +55,12 @@ async function fixture() {
   await expect.poll(async () => (await client.getRun(first.runId)).status).toBe("interrupted");
   await runtime.worker.stop();
   const checkpoint = (await client.getState(first.threadId)).checkpoint;
+
   const root = await graph.getState(
     { configurable: { thread_id: first.threadId } },
     { subgraphs: true },
   );
+
   const childState = root.tasks[0]!.state as typeof root;
   const leafState = childState.tasks[0]!.state as typeof root;
   const nested = toCheckpoint(leafState.config)!;
@@ -80,6 +88,7 @@ it.each(["earlier", "missing", "foreign", "mixed"])(
   async (variant) => {
     const fixtureState = await fixture();
     const { runtime, client, first, checkpoint, nested, earlier } = fixtureState;
+
     try {
       const checkpointMap =
         variant === "missing"
@@ -117,6 +126,7 @@ it.each(["omitted", "empty", "current", "official-nested"])(
   async (variant) => {
     const fixtureState = await fixture();
     const { runtime, client, first, checkpoint, nested } = fixtureState;
+
     try {
       const target =
         variant === "official-nested"
@@ -133,6 +143,7 @@ it.each(["omitted", "empty", "current", "official-nested"])(
                         [nested.checkpoint_ns]: nested.checkpoint_id!,
                       },
             };
+
       const answer = await client.resume({
         assistant_id: "nested",
         thread_id: first.threadId,
@@ -145,6 +156,7 @@ it.each(["omitted", "empty", "current", "official-nested"])(
         .toMatch(/^(success|interrupted)$/);
       // Explicit nested coordinates retain LangGraph's existing nested time-travel behavior.
       expect(fixtureState.preparations()).toBe(variant === "official-nested" ? 2 : 1);
+
       if (variant === "omitted" || variant === "empty") {
         expect((await client.getRun(answer.runId)).status).toBe("success");
         expect((await client.getResult(answer.runId)).values).toEqual({ value: "answer:approved" });
@@ -158,6 +170,7 @@ it.each(["omitted", "empty", "current", "official-nested"])(
 it("revalidates mapped namespaces before invocation and retains an accepted receipt", async () => {
   const fixtureState = await fixture();
   const { runtime, client, first, checkpoint, nested, saver } = fixtureState;
+
   try {
     const input = {
       assistant_id: "nested",
@@ -171,7 +184,9 @@ it("revalidates mapped namespaces before invocation and retains an accepted rece
         },
       },
     };
+
     const answer = await client.resume(input, { idempotencyKey: "answer" });
+
     const tip = (await saver.getTuple({
       configurable: { thread_id: first.threadId, checkpoint_ns: nested.checkpoint_ns },
     }))!;

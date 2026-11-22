@@ -53,16 +53,20 @@ export async function resolveCompiledGraph(
   // Wrapping here would spend one of that chain's five levels and rename the error for no gain. The
   // invoke handler, which answers over HTTP directly, maps the failure at its own call site.
   const resolved = await graphs.load(graphId);
+
   const shared =
     typeof resolved === "function"
       ? await resolved({ configurable: attachments.configurable })
       : resolved;
+
   // Prototype clone: methods resolve through the chain with `this` bound to the clone, so our own
   // `checkpointer` shadows the shared instance's without ever writing to it.
   const graph = Object.create(shared) as AgentGraph;
+
   if (attachments.checkpointer !== undefined) {
     (graph as { checkpointer?: unknown }).checkpointer = attachments.checkpointer;
   }
+
   if (attachments.store !== undefined) (graph as { store?: unknown }).store = attachments.store;
   return graph;
 }

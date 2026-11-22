@@ -10,10 +10,10 @@
 // static files at build time and embedded as string constants, so nothing here reads the filesystem
 // and the package bundles cleanly into a consumer's server. See docs/bundling.md.
 
-export { resolveConsoleAsset, consoleAssetFiles } from "./assets.js";
-export type { ConsoleAsset, ResolvedConsoleAsset, ConsoleResolution } from "./assets.js";
+export { consoleAssetFiles, resolveConsoleAsset } from "./assets.js";
+export type { ConsoleAsset, ConsoleResolution, ResolvedConsoleAsset } from "./assets.js";
 
-export { resolveConsoleRequest, consoleAssetHeaders, normalizeMountPath } from "./mount.js";
+export { consoleAssetHeaders, normalizeMountPath, resolveConsoleRequest } from "./mount.js";
 export type { ConsoleMountOptions } from "./mount.js";
 
 export { CONSOLE_ASSETS_BYTES } from "./assets.generated.js";

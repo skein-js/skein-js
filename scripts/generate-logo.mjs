@@ -64,6 +64,7 @@ function arcLengthTable(box, steps = 8000) {
   const lengths = [0];
   let total = 0;
   let previous = null;
+
   for (let i = 0; i <= steps; i++) {
     const t = (i / steps) * TAU;
     const [x, y] = curve(t);
@@ -73,17 +74,20 @@ function arcLengthTable(box, steps = 8000) {
     if (i > 0) lengths.push(total);
     previous = point;
   }
+
   return { parameters, lengths, total };
 }
 
 const search = (values, target) => {
   let low = 0;
   let high = values.length - 1;
+
   while (low < high - 1) {
     const mid = (low + high) >> 1;
     if (values[mid] < target) low = mid;
     else high = mid;
   }
+
   return low;
 };
 
@@ -104,16 +108,19 @@ function arcRanges(strokeWidth, box) {
 function arcToBeziers([startT, endT], box) {
   const end = endT < startT ? endT + TAU : endT;
   const step = (end - startT) / PIECES_PER_ARC;
+
   const at = (t) => {
     const [x, y] = curve(t);
     return [x * box.scale + box.offsetX, y * box.scale + box.offsetY];
   };
+
   const slope = (t) => {
     const [x, y] = derivative(t);
     return [x * box.scale, y * box.scale];
   };
 
   let d = "";
+
   for (let piece = 0; piece < PIECES_PER_ARC; piece++) {
     const a = startT + piece * step;
     const b = a + step;
@@ -126,6 +133,7 @@ function arcToBeziers([startT, endT], box) {
     if (piece === 0) d += `M${round(from[0])} ${round(from[1])}`;
     d += `C${round(control1[0])} ${round(control1[1])} ${round(control2[0])} ${round(control2[1])} ${round(to[0])} ${round(to[1])}`;
   }
+
   return d;
 }
 
@@ -166,10 +174,12 @@ const files = {
 };
 
 await mkdir(outDir, { recursive: true });
+
 for (const [name, contents] of Object.entries(files)) {
   await writeFile(path.join(outDir, name), contents, "utf8");
   console.log(`Wrote docs/public/${name} (${contents.length} bytes)`);
 }
+
 await mkdir(consoleAssetDir, { recursive: true });
 await writeFile(path.join(consoleAssetDir, "skein-knot.svg"), files["favicon.svg"], "utf8");
 console.log("Wrote packages/console/ui/src/assets/skein-knot.svg");
@@ -180,10 +190,12 @@ console.log("Wrote packages/console/ui/src/assets/skein-knot.svg");
 // that runs a few times a year.
 const require = createRequire(import.meta.url);
 let chromium;
+
 try {
   const entry = require.resolve("@playwright/test", {
     paths: [path.join(repoRoot, "examples/chat-app")],
   });
+
   const playwright = await import(pathToFileURL(entry).href);
   chromium = playwright.chromium ?? playwright.default?.chromium;
 } catch {
@@ -198,7 +210,9 @@ if (chromium) {
     html,body{margin:0;width:180px;height:180px}
     body{background:#fff;display:flex;align-items:center;justify-content:center}
   </style>${ramped(RAMP_LIGHT).replace("<svg", '<svg width="144" height="144"')}`;
+
   const browser = await chromium.launch();
+
   const tab = await browser.newPage({
     viewport: { width: 180, height: 180 },
     deviceScaleFactor: 1,

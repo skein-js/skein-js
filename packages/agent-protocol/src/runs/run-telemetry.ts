@@ -49,6 +49,7 @@ export function toRunTelemetryContext(
     trigger,
     streamModes: normalizeModes(kwargs.stream_mode),
   };
+
   // `auth_user.identity` is the authenticated principal, present only when an AuthEngine ran.
   const identity = kwargs.auth_user?.identity;
   if (typeof identity === "string" && identity.length > 0) context.userId = identity;
@@ -65,6 +66,7 @@ export function toRunTelemetryContext(
  */
 export function emitRunEvent(deps: ResolvedDeps, event: RunTelemetryEvent): void {
   if (!deps.telemetryEnabled) return;
+
   try {
     deps.telemetry.onRunEvent?.(event);
   } catch (error) {
@@ -102,6 +104,7 @@ export function telemetryCallOptions(
   if (!deps.telemetryEnabled) return {};
 
   const fromSinks = deps.telemetry.traceMetadata?.(context) ?? {};
+
   const metadata: Record<string, unknown> = {
     ...fromSinks,
     run_id: context.runId,

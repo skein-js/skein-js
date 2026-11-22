@@ -32,6 +32,7 @@ A catch-all route re-exports the per-method handlers:
 import { createSkeinRouteHandlers } from "@skein-js/nextjs";
 
 export const runtime = "nodejs"; // the background run worker needs a long-lived Node process
+
 export const { GET, POST, PUT, PATCH, DELETE, OPTIONS } = createSkeinRouteHandlers({
   config: "./langgraph.json",
 });

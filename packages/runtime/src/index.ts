@@ -11,8 +11,8 @@ export type {
 } from "./build-runtime.js";
 export { embedPostgresGraphs } from "./embed-postgres-graphs.js";
 export type {
-  EmbedPostgresGraphsOptions,
   EmbeddedPostgresRuntime,
+  EmbedPostgresGraphsOptions,
 } from "./embed-postgres-graphs.js";
 // Re-exported so callers can type their in-code graph map from one package alongside the helper.
 export type { EmbeddableGraph } from "@skein-js/server-kit";
@@ -22,10 +22,10 @@ export { RuntimeConfigError } from "./errors.js";
 export { postgresConnectionOptions } from "./drivers.js";
 export type { PostgresConnectionOptions } from "./drivers.js";
 export {
-  resolveEmbed,
+  embedRuntimePackage,
   isCustomFunctionPath,
   providerEmbedPackage,
-  embedRuntimePackage,
+  resolveEmbed,
   type ResolveEmbedOptions,
 } from "./resolve-embed.js";
 // Bring-your-own long-term-memory store: `langgraph.json`'s `store.adapter` resolved to the `StoreRepo`

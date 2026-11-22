@@ -95,12 +95,14 @@ export async function streamRunSlowly(
     });
 
     const deadline = startedAt + timeoutMs;
+
     while (!finished) {
       if (performance.now() > deadline) {
         throw new Error(`slow client timed out after ${timeoutMs}ms (${frames} frames)`);
       }
 
       const chunk = socket.read() as Buffer | null;
+
       if (chunk === null) {
         // Nothing buffered locally yet — wait briefly rather than spinning.
         await sleep(throttleMs > 0 ? throttleMs : 5);
@@ -113,14 +115,17 @@ export async function streamRunSlowly(
         const headerEnd = pending.indexOf("\r\n\r\n");
         if (headerEnd === -1) continue;
         const statusLine = pending.slice(0, pending.indexOf("\r\n"));
+
         if (!statusLine.includes(" 200 ")) {
           throw new Error(`slow client got a non-200 response: ${statusLine}`);
         }
+
         headersDone = true;
         pending = pending.slice(headerEnd + 4);
       }
 
       let separator = pending.indexOf("\n\n");
+
       while (separator !== -1) {
         frames += 1;
         const now = performance.now();

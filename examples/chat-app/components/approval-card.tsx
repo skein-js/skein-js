@@ -3,7 +3,7 @@
 import { Check, Plane, X } from "lucide-react";
 
 import { Button } from "@/components/ui/button";
-import { type FlightApprovalRequest, formatDuration } from "@/lib/tool-results";
+import { formatDuration, type FlightApprovalRequest } from "@/lib/tool-results";
 
 /**
  * The human-in-the-loop gate. When `book_flight` calls LangGraph's `interrupt()`, the run pauses and

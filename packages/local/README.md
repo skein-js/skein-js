@@ -25,6 +25,7 @@ const local = await embedSqliteGraphs(
     sqlitePath: "/absolute/application-data/state.sqlite",
   },
 );
+
 const runtime = createProtocolRuntime(local.deps);
 await runtime.service.assistants.registerGraphAssistants();
 runtime.worker.start();

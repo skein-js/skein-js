@@ -44,6 +44,7 @@ export function toCorsOptions(config: LanggraphCorsConfig): CorsOptions {
   // An origin is allowed if it is in `allow_origins` OR matches `allow_origin_regex` — Starlette
   // treats the two as additive, not mutually exclusive.
   const allowAll = config.allow_origins?.includes("*") ?? false;
+
   if (config.allow_origin_regex !== undefined) {
     // Anchor to a full-string match like Starlette's `re.fullmatch`; the non-capturing group keeps
     // top-level `a|b` alternations correct. A bare `.test()` matches substrings, so an unanchored
@@ -62,6 +63,7 @@ export function toCorsOptions(config: LanggraphCorsConfig): CorsOptions {
   }
 
   if (config.allow_methods !== undefined) options.methods = config.allow_methods;
+
   if (config.allow_headers !== undefined) {
     // An explicitly empty list is left empty. `allow_headers: []` is a deliberate "permit no custom
     // request headers" posture, and widening it would hand back a header the operator excluded on
@@ -77,6 +79,7 @@ export function toCorsOptions(config: LanggraphCorsConfig): CorsOptions {
             ...ALWAYS_ALLOWED_HEADERS.filter((header) => !configured.has(header)),
           ];
   }
+
   if (config.allow_credentials !== undefined) options.credentials = config.allow_credentials;
   if (config.max_age !== undefined) options.maxAge = config.max_age;
 
@@ -118,9 +121,11 @@ export function disabledRoutesFromHttpConfig(http: unknown): DisabledRouteGroups
   if (typeof http !== "object" || http === null) return {};
   const flags = http as Record<string, unknown>;
   const disabled: DisabledRouteGroups = {};
+
   for (const [flag, group] of Object.entries(DISABLE_FLAGS)) {
     if (flags[flag] === true) disabled[group] = true;
   }
+
   return disabled;
 }
 

@@ -7,7 +7,7 @@ import { BookingConfirmation } from "@/components/tool-results/booking-confirmat
 import { FlightResults } from "@/components/tool-results/flight-results";
 import { WeatherCard } from "@/components/tool-results/weather-card";
 import { Card, CardContent } from "@/components/ui/card";
-import { type ToolCall, toolLabel } from "@/lib/messages";
+import { toolLabel, type ToolCall } from "@/lib/messages";
 import { parseBooking, parseFlights, parseWeather } from "@/lib/tool-results";
 
 const ICONS: Record<string, ComponentType<{ className?: string }>> = {
@@ -25,9 +25,11 @@ function primaryArg(call: ToolCall): string | undefined {
   if (typeof args["query"] === "string") return args["query"];
   if (typeof args["content"] === "string") return args["content"];
   if (typeof args["location"] === "string") return args["location"];
+
   if (typeof args["from"] === "string" && typeof args["to"] === "string") {
     return `${args["from"]} → ${args["to"]}`;
   }
+
   if (typeof args["flightId"] === "string") return args["flightId"];
   return undefined;
 }
@@ -42,14 +44,17 @@ function structuredResult(name: string, result: string): ReactNode {
     const weather = parseWeather(result);
     return weather ? <WeatherCard weather={weather} /> : null;
   }
+
   if (name === "search_flights") {
     const flights = parseFlights(result);
     return flights ? <FlightResults result={flights} /> : null;
   }
+
   if (name === "book_flight") {
     const booking = parseBooking(result);
     return booking ? <BookingConfirmation booking={booking} /> : null;
   }
+
   return null;
 }
 

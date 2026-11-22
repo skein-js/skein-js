@@ -13,8 +13,8 @@
 // So the engine here is deliberately key-accurate rather than convenient.
 
 import {
-  SkeinHttpError,
   isSkeinHttpError,
+  SkeinHttpError,
   type AuthEngine,
   type AuthFilters,
 } from "@skein-js/core";
@@ -48,6 +48,7 @@ function keyAccurateEngine(
       const key = [`${resource}:${action}`, resource, `*:${action}`, "*"].find(
         (candidate) => registered[candidate],
       );
+
       const handler = key ? registered[key] : undefined;
       if (!handler || !context) return { filters: undefined, value };
       return { filters: handler(context.user.identity), value };
@@ -133,6 +134,7 @@ describe("cron authorization", () => {
 
     it("hides another tenant's cron on read, as a 404", async () => {
       const { runtime, assistantId } = await withRuntime(threadsOnly());
+
       const victim = await createCronAs(runtime, "alice", {
         assistant_id: assistantId,
         schedule: "0 9 * * *",
@@ -148,6 +150,7 @@ describe("cron authorization", () => {
 
     it("refuses to update or delete another tenant's cron", async () => {
       const { runtime, assistantId } = await withRuntime(threadsOnly());
+
       const victim = await createCronAs(runtime, "alice", {
         assistant_id: assistantId,
         schedule: "0 9 * * *",
@@ -183,6 +186,7 @@ describe("cron authorization", () => {
     // caller cannot even read would let them inject turns into another tenant's conversation.
     it("refuses to attach a schedule to another tenant's thread", async () => {
       const { runtime, assistantId } = await withRuntime(threadsOnly());
+
       const victimThread = bodyOf(
         await runtime.handlers.createThread(asUser("alice", { body: {} })),
       ) as { thread_id: string };
@@ -213,6 +217,7 @@ describe("cron authorization", () => {
 
     it("still allows attaching a schedule to the caller's own thread", async () => {
       const { runtime, assistantId } = await withRuntime(threadsOnly());
+
       const ownThread = bodyOf(
         await runtime.handlers.createThread(asUser("alice", { body: {} })),
       ) as {
@@ -236,6 +241,7 @@ describe("cron authorization", () => {
         // Deliberately a different key, so which handler ran is observable.
         crons: (identity) => ({ cronOwner: identity }),
       });
+
       const { runtime, assistantId } = await withRuntime(engine);
       await createCronAs(runtime, "alice", { assistant_id: assistantId, schedule: "0 9 * * *" });
 
@@ -257,7 +263,9 @@ describe("cron authorization", () => {
         // Every caller shares one cron scope, so the crons branch's gate would let anything through.
         crons: () => ({ tenant: "shared" }),
       });
+
       const { runtime, assistantId } = await withRuntime(engine);
+
       const victimThread = bodyOf(
         await runtime.handlers.createThread(asUser("alice", { body: {} })),
       ) as { thread_id: string };
@@ -285,6 +293,7 @@ describe("cron authorization", () => {
           return { filters: undefined, value: {} };
         },
       };
+
       const { runtime, assistantId } = await withRuntime(engine);
 
       await expectStatus(

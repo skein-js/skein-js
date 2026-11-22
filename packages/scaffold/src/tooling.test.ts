@@ -10,6 +10,7 @@ describe("independent inherited tooling", () => {
     (tool) => {
       for (const declared of [false, true]) {
         const config = tool === "eslint" ? "eslint.config.mjs" : ".prettierrc.json";
+
         const snapshot: Record<string, string> = {
           "package.json": JSON.stringify({
             workspaces: ["apps/*"],
@@ -17,6 +18,7 @@ describe("independent inherited tooling", () => {
           }),
           [config]: "{}",
         };
+
         const defaults = {
           projectName: "agent",
           packageName: "agent",
@@ -26,10 +28,12 @@ describe("independent inherited tooling", () => {
           packageManager: "npm",
           skeinVersionRange: "^0.19.0",
         } as const;
+
         const plan = inspectWorkspace(
           { root: "/repo", target: "apps/agent", read: (name) => snapshot[name] },
           defaults,
         );
+
         const files = buildProjectFiles({ ...defaults, ...plan.options });
         const manifest = JSON.parse(files.find((file) => file.path === "package.json")!.contents);
         expect(Boolean(manifest.devDependencies[tool])).toBe(!declared);
@@ -58,6 +62,7 @@ describe("independent inherited tooling", () => {
           prettierConfig: profile !== "eslint" ? "../../.prettierrc.json" : undefined,
         },
       });
+
       const ignore = files.find((file) => file.path === ".prettierignore")!.contents;
       for (const lockfile of ["pnpm-lock.yaml", "package-lock.json", "yarn.lock", "bun.lock"])
         expect(ignore).toContain(lockfile);

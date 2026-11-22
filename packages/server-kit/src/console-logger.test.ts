@@ -8,11 +8,13 @@ import { createConsoleLogger } from "./console-logger.js";
 /** Capture what reaches `console`, without letting it print into the test output. */
 function captureConsole(): { lines: string[] } {
   const lines: string[] = [];
+
   const record =
     () =>
     (line: string): void => {
       lines.push(line);
     };
+
   vi.spyOn(console, "debug").mockImplementation(record());
   vi.spyOn(console, "log").mockImplementation(record());
   vi.spyOn(console, "warn").mockImplementation(record());

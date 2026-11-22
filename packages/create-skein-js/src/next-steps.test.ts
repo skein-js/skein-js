@@ -41,6 +41,7 @@ describe("describeNextSteps", () => {
       installed: false,
       workspaceRoot: ".",
     });
+
     const install = lines.findIndex((line) => line.includes("pnpm install"));
     const cd = lines.findIndex((line) => line.includes("cd my-agent"));
     expect(lines[install]).toContain("workspace root");

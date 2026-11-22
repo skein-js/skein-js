@@ -15,6 +15,7 @@ import {
 } from "./model-preferences.js";
 
 const providerInput = z.enum(["vertex", "gemini", "openai", "anthropic", "ollama"]);
+
 const preferencesInput = z.object({
   provider: providerInput,
   model: z
@@ -42,6 +43,7 @@ const preferencesInput = z.object({
     .regex(/^[a-z][a-z0-9-]{1,40}$/)
     .default("global"),
 });
+
 const connectionInput = preferencesInput.extend({
   apiKey: z.string().trim().min(1).max(1024).optional(),
 });
@@ -49,11 +51,13 @@ type Preferences = z.infer<typeof preferencesInput>;
 
 export function modelErrorMessage(error: unknown, provider?: ModelProvider): string {
   const message = error instanceof Error ? error.message : String(error);
+
   if (provider === "ollama") {
     if (/404|not found/i.test(message))
       return "This model is not installed in Ollama. Pull the selected model with ollama pull, then connect again.";
     return "Ollama could not finish the request. Start Ollama, check its server URL and choose an installed model that supports tools.";
   }
+
   const label = provider ? modelProviders[provider].label : "The model provider";
   if (/billing|prepayment|credits.*deplet|insufficient_quota/i.test(message))
     return `${label} requires available API credits or billing. Check the selected account or project in Settings.`;
@@ -71,14 +75,17 @@ export function modelErrorMessage(error: unknown, provider?: ModelProvider): str
 /** Provider selection belongs to the application. Credentials never enter saved preferences or graph state. */
 export function createModelSession() {
   const environment = process.env;
+
   const keys: Partial<Record<ApiKeyProvider, string>> = {
     gemini: environment["GOOGLE_API_KEY"] || environment["GEMINI_API_KEY"],
     openai: environment["OPENAI_API_KEY"],
     anthropic: environment["ANTHROPIC_API_KEY"],
   };
+
   const explicitProvider = environment["MODEL_PROVIDER"]
     ? providerInput.parse(environment["MODEL_PROVIDER"])
     : undefined;
+
   const inferredProvider: ModelProvider = keys.openai
     ? "openai"
     : keys.anthropic
@@ -88,6 +95,7 @@ export function createModelSession() {
         : environment["OLLAMA_BASE_URL"] || environment["OLLAMA_MODEL"]
           ? "ollama"
           : "vertex";
+
   function environmentModel(provider: ModelProvider) {
     return (
       environment["MODEL_NAME"] ||
@@ -102,6 +110,7 @@ export function createModelSession() {
       ]
     );
   }
+
   let preferences: Preferences = preferencesInput.parse({
     provider: explicitProvider ?? inferredProvider,
     model:
@@ -111,7 +120,9 @@ export function createModelSession() {
     location: environment["GOOGLE_CLOUD_LOCATION"] ?? "global",
     baseUrl: environment["OLLAMA_BASE_URL"] ?? "http://127.0.0.1:11434",
   });
+
   let enabled = true;
+
   function buildModel(settings: Preferences, key?: string, maxOutputTokens = 8192) {
     if (settings.provider === "ollama")
       return new ChatOllama({
@@ -121,6 +132,7 @@ export function createModelSession() {
         checkOrPullModel: false,
         maxRetries: 0,
       });
+
     if (settings.provider === "anthropic") {
       if (!key) throw new Error("Enter an Anthropic API key in Settings or set ANTHROPIC_API_KEY.");
       return new ChatAnthropic({
@@ -130,6 +142,7 @@ export function createModelSession() {
         maxRetries: 1,
       });
     }
+
     if (settings.provider === "openai") {
       if (!key) throw new Error("Enter an OpenAI API key in Settings or set OPENAI_API_KEY.");
       return new ChatOpenAI({
@@ -139,6 +152,7 @@ export function createModelSession() {
         maxRetries: 1,
       });
     }
+
     if (settings.provider === "gemini") {
       if (!key) throw new Error("Enter a Gemini API key in Settings or set GOOGLE_API_KEY.");
       return new ChatGoogle({
@@ -149,6 +163,7 @@ export function createModelSession() {
         maxOutputTokens,
       });
     }
+
     return new ChatGoogle({
       // Prevent an unrelated GOOGLE_API_KEY from selecting Vertex Express Mode.
       apiKey: "",
@@ -160,9 +175,11 @@ export function createModelSession() {
       maxOutputTokens,
     });
   }
+
   function selectedKey(provider = preferences.provider) {
     return usesApiKey(provider) ? keys[provider] : undefined;
   }
+
   function status(): ModelConnection {
     return {
       ...preferences,
@@ -183,6 +200,7 @@ export function createModelSession() {
       },
     };
   }
+
   return {
     createModel() {
       if (!enabled) throw new Error("Connect a model in Settings to use the assistant.");
@@ -223,8 +241,10 @@ export function createModelSession() {
       )
         throw new Error("Enter your Google Cloud project ID.");
       const key = settings.apiKey ?? selectedKey(settings.provider);
+
       try {
         const candidate = buildModel(settings, key, 1024);
+
         const connection =
           settings.provider === "ollama"
             ? candidate.bindTools([
@@ -242,6 +262,7 @@ export function createModelSession() {
       } catch (error) {
         throw new Error(modelErrorMessage(error, settings.provider));
       }
+
       preferences = preferencesInput.parse(settings);
       if (usesApiKey(settings.provider) && key) keys[settings.provider] = key;
       enabled = true;

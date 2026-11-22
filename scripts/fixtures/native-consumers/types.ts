@@ -1,9 +1,9 @@
 import {
   createProtocolRuntime,
-  type ProtocolDeps,
   type NativeClient,
-  type NativeStartInput,
   type NativeResumeInput,
+  type NativeStartInput,
+  type ProtocolDeps,
 } from "@skein-js/agent-protocol";
 import {
   createBullMqTransport,
@@ -12,15 +12,19 @@ import {
 } from "@skein-js/bullmq";
 import { Queue } from "bullmq";
 import { Cluster, Redis } from "ioredis";
+
 export function bind(deps: ProtocolDeps) {
   const outcomeQueue = new Queue("outcomes", { connection: { host: "localhost" } });
+
   const options: BullMqTransportOptions<typeof outcomeQueue> = {
     commandQueue: "commands",
     outcomeQueue,
     connection: new Redis({ lazyConnect: true, maxRetriesPerRequest: null }),
     authenticate: async () => ({}),
   };
+
   const transport = createBullMqTransport(options);
+
   const clusterTransport = createBullMqTransport({
     commandQueue: "cluster-commands",
     outcomeQueue: new Queue("{outcomes}", { connection: { host: "localhost" } }),
@@ -30,17 +34,21 @@ export function bind(deps: ProtocolDeps) {
     }),
     authenticate: async () => ({}),
   });
+
   const runtime = createProtocolRuntime({
     ...deps,
     webhookDispatcher: transport.wrapDispatcher(async () => {}),
   });
+
   const client: NativeClient = runtime.createNativeClient({
     sourceId: "typed-consumer",
     allowedAssistants: ["agent"],
     outcomeTarget: transport.outcomeTarget,
   });
+
   const input: NativeStartInput = { assistant_id: "agent", input: {}, timeout_ms: 1000 };
   const command: BullMqCommand = { version: 1, commandId: "one", operation: "start", input };
+
   const resume: NativeResumeInput = {
     assistant_id: "agent",
     thread_id: "thread",

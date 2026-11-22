@@ -22,9 +22,11 @@ const resolver: GraphResolver = {
   ids: ["echo", "agent"],
   load: async (graphId) => {
     if (graphId === "echo") return echo as unknown as Loaded;
+
     if (graphId === "agent") {
       return (await import("../graphs/agent-graph")).graph as unknown as Loaded;
     }
+
     throw new Error(`Unknown graph "${graphId}".`);
   },
   schemas: async (graphId) => ({ [graphId]: { graph_id: graphId } }) as unknown as GraphSchemas,

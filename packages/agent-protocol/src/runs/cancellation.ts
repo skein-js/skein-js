@@ -61,17 +61,21 @@ export class RunControlRegistry {
   /** Start tracking a run and return its abort signal + reason box. */
   register(runId: string): RunControl {
     const existing = this.#entries.get(runId);
+
     if (existing) {
       existing.registrations++;
       return { signal: existing.controller.signal, reason: existing.reason, abort: existing.abort };
     }
+
     const controller = new AbortController();
     const reason: { current: AbortReason | null } = { current: null };
+
     const abort = (next: AbortReason): void => {
       // First reason wins; aborting twice is a no-op on the already-aborted controller.
       if (reason.current === null) reason.current = next;
       controller.abort();
     };
+
     this.#entries.set(runId, { registrations: 1, controller, reason, abort });
     return { signal: controller.signal, reason, abort };
   }

@@ -13,6 +13,7 @@ import { authFiltersToMetadataSubset } from "./auth-filters-to-metadata.js";
 // exercises the engine end to end.
 function isAuthMatching(metadata: Metadata | undefined, filters?: AuthFilters): boolean {
   if (filters == null) return true;
+
   for (const [key, value] of Object.entries(filters)) {
     if (typeof value === "object" && value != null) {
       if (value.$eq) {
@@ -27,6 +28,7 @@ function isAuthMatching(metadata: Metadata | undefined, filters?: AuthFilters): 
       return false;
     }
   }
+
   return true;
 }
 
@@ -74,6 +76,7 @@ describe("authFiltersToMetadataSubset", () => {
   // The load-bearing property. If this ever fails, an auth-enabled deployment is losing rows.
   it("never excludes a row the auth engine would accept", () => {
     const wronglyExcluded: string[] = [];
+
     for (const filters of FILTER_CASES) {
       for (const metadata of METADATA_CASES) {
         if (isAuthMatching(metadata, filters) && !driverAccepts(metadata, filters)) {
@@ -81,6 +84,7 @@ describe("authFiltersToMetadataSubset", () => {
         }
       }
     }
+
     expect(wronglyExcluded).toEqual([]);
   });
 
@@ -91,7 +95,9 @@ describe("authFiltersToMetadataSubset", () => {
     const expressible = FILTER_CASES.filter(
       (filters) => authFiltersToMetadataSubset(filters) !== undefined,
     );
+
     const divergent: string[] = [];
+
     for (const filters of expressible) {
       for (const metadata of METADATA_CASES) {
         if (isAuthMatching(metadata, filters) !== driverAccepts(metadata, filters)) {
@@ -99,6 +105,7 @@ describe("authFiltersToMetadataSubset", () => {
         }
       }
     }
+
     expect(divergent).toEqual([]);
   });
 

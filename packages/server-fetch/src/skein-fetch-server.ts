@@ -47,10 +47,12 @@ export interface SkeinFetchServer {
 
 function toQuery(url: URL): ProtocolRequest["query"] {
   const query: Record<string, string | string[]> = {};
+
   for (const key of new Set(url.searchParams.keys())) {
     const values = url.searchParams.getAll(key);
     query[key] = values.length > 1 ? values : (values[0] as string);
   }
+
   return query;
 }
 
@@ -64,29 +66,35 @@ function toQuery(url: URL): ProtocolRequest["query"] {
  */
 async function readBoundedText(request: Request, maxBodyBytes: number): Promise<string> {
   const declared = Number(request.headers.get("content-length"));
+
   if (Number.isFinite(declared) && declared > maxBodyBytes) {
     throw SkeinHttpError.payloadTooLarge(`Request body exceeds ${maxBodyBytes} bytes.`);
   }
+
   if (!request.body) return request.text();
 
   const decoder = new TextDecoder();
   const reader = request.body.getReader();
   let received = 0;
   let text = "";
+
   try {
     for (;;) {
       const { done, value } = await reader.read();
       if (done) break;
       received += value.byteLength;
+
       if (received > maxBodyBytes) {
         throw SkeinHttpError.payloadTooLarge(`Request body exceeds ${maxBodyBytes} bytes.`);
       }
+
       text += decoder.decode(value, { stream: true });
     }
   } finally {
     // Release the connection instead of leaving a half-read body attached to it.
     await reader.cancel().catch(() => {});
   }
+
   return text + decoder.decode();
 }
 
@@ -99,8 +107,10 @@ async function toProtocolRequest(
   retainRawBody = false,
 ): Promise<ProtocolRequest> {
   let body: unknown;
+
   if (request.method !== "GET" && request.method !== "HEAD") {
     const text = await readBoundedText(request, maxBodyBytes);
+
     // A route that asked for text gets it undecoded. Parsing first would 400 every form-encoded
     // provider request before its handler ran, and would destroy the bytes a signature covers.
     if (retainRawBody) {
@@ -113,6 +123,7 @@ async function toProtocolRequest(
       }
     }
   }
+
   return {
     method: request.method,
     url: `${url.origin}${skeinPathname}${url.search}`,
@@ -134,8 +145,10 @@ function createSseStream(events: AsyncIterable<string>): ReadableStream<Uint8Arr
     {
       async pull(controller) {
         if (finished) return;
+
         try {
           const next = await iterator.next();
+
           if (next.done) {
             finished = true;
             controller.close();
@@ -188,6 +201,7 @@ function errorResponse(
   logger?: Logger,
 ): Response {
   const headers = { "content-type": "application/json", ...extraHeaders };
+
   // A 5xx is a *server* fault even when it is deliberate and typed, so it always reaches the log;
   // 4xx are the caller's problem and stay quiet. Without this a graph that cannot load would answer
   // with `graph_load_failed` and leave nothing behind — the CLI reports it at startup, but an
@@ -196,6 +210,7 @@ function errorResponse(
     if (error.status >= 500) {
       logger?.error(`Request failed: ${error.message}`, error);
     }
+
     return new Response(
       JSON.stringify({
         status: error.status,
@@ -206,6 +221,7 @@ function errorResponse(
       { status: error.status, headers },
     );
   }
+
   logger?.error("Unhandled error in the skein Fetch adapter.", error);
   return new Response(JSON.stringify({ status: 500, message: "Internal Server Error" }), {
     status: 500,
@@ -229,6 +245,7 @@ function createFetchHandler(
     const url = new URL(request.url);
     const skeinPathname = stripBasePath(url.pathname, basePath);
     if (skeinPathname === null) return new Response(null, { status: 404 });
+
     if (skeinPathname === "/ok" && request.method === "GET") {
       return new Response(JSON.stringify({ ok: true }), {
         status: 200,
@@ -251,19 +268,23 @@ function createFetchHandler(
     const extraHeaders = cors
       ? corsResponseHeaders(request.headers.get("origin") ?? undefined, cors)
       : {};
+
     // Avoid teeing ordinary protocol bodies when only diagnostics use native routing.
     const nativeMatcher = (
       resolved.runtime.handleRequest as unknown as
         Record<symbol, ((method: string, url: string) => boolean) | undefined> | undefined
     )?.[Symbol.for("@skein-js/native-request-matcher")];
+
     if (
       resolved.runtime.handleRequest &&
       nativeMatcher?.(request.method, `${url.origin}${skeinPathname}${url.search}`) !== false
     ) {
       const nativeRequest = withNativePath(request, skeinPathname);
       let native: Response | undefined;
+
       try {
         native = await resolved.runtime.handleRequest?.(nativeRequest);
+
         if (native) {
           const headers = new Headers(native.headers);
           for (const [key, value] of Object.entries(extraHeaders)) headers.set(key, value);
@@ -281,7 +302,9 @@ function createFetchHandler(
         void (native ? request : nativeRequest).body?.cancel().catch(() => undefined);
       }
     }
+
     const match = matchRoute(request.method, skeinPathname);
+
     if (!match) {
       return new Response(JSON.stringify({ status: 404, message: "Not Found" }), {
         status: 404,
@@ -298,6 +321,7 @@ function createFetchHandler(
         maxBodyBytes,
         match.binding.retainRawBody ?? false,
       );
+
       const invoke = resolved.runtime.handlers[match.binding.handler];
       if (!invoke) return new Response("Not found", { status: 404, headers: extraHeaders });
       const response = await invoke(

@@ -20,9 +20,9 @@ import {
 } from "@skein-js/express";
 import { buildRuntime, type QueueDriver, type StoreDriver } from "@skein-js/runtime";
 import {
-  routesFromHttpConfig,
   resolveRunConcurrency,
   resolveShutdownGraceMs,
+  routesFromHttpConfig,
 } from "@skein-js/server-kit";
 import { describeSnapshot, readLanggraphDevState } from "@skein-js/server-kit/dev";
 
@@ -89,6 +89,7 @@ const AUTOSAVE_MS = 2000;
 export async function runDev(options: DevCommandOptions): Promise<void> {
   const configPath = path.resolve(process.cwd(), options.config);
   const sqlitePath = path.resolve(process.cwd(), options.sqlitePath ?? ".skein/state.sqlite");
+
   const sqliteArtifacts =
     options.store === "sqlite"
       ? [sqlitePath, `${sqlitePath}-wal`, `${sqlitePath}-shm`, `${sqlitePath}-journal`]
@@ -115,11 +116,13 @@ export async function runDev(options: DevCommandOptions): Promise<void> {
     `**/${STATE_DIR}/**`,
     ...sqliteArtifacts.map((filename) => filename.replaceAll("\\", "/")),
   ]);
+
   // The dev server's console logger — colored, `info:`-prefixed output that drives per-request
   // logging, the background-run summaries, the startup banner, and engine warnings. Its failure-block
   // code frame is bounded to the workspace vite serves from: wide enough for an aliased lib above the
   // project dir, closed to everything else.
   const devLogger = createDevLogger({ sourceRoot: loader.workspaceRoot });
+
   const runtime = await buildRuntime({
     configPath,
     importModule: loader.importModule,
@@ -129,31 +132,38 @@ export async function runDev(options: DevCommandOptions): Promise<void> {
     // The CLI knows its own version and the engine deliberately does not — see cli-version.ts.
     serverVersion: skeinCliVersion(),
   });
+
   // Fall back to PORT/HOST env only when the flag wasn't passed explicitly (so an explicit --port
   // always wins). Resolved after applyProjectEnv above, so a PORT in the project's .env counts.
   const port = options.portExplicit ? options.port : envPort(options.port);
   const host = options.hostExplicit ? options.host : envHost(options.host);
   const enableDevUiAccess = devUiAccessEnabled(options.devUiAccess, config.auth?.dev_ui_access);
+
   if (enableDevUiAccess && !isLoopbackHost(host)) {
     await Promise.allSettled([loader.close(), runtime.dispose()]);
     throw new Error("Dev UI access requires a loopback --host (127.0.0.1, ::1, or localhost).");
   }
+
   const devUiKeys = enableDevUiAccess && runtime.deps.auth ? createDevUiAccessKeys() : undefined;
+
   if (runtime.deps.auth) {
     runtime.deps.auth = devUiKeys
       ? withDevUiAccessKey(runtime.deps.auth, devUiKeys)
       : requireStudioCredentials(runtime.deps.auth);
   }
+
   // Flag → LangGraph-compat alias → SKEIN_RUN_CONCURRENCY → N_JOBS_PER_WORKER → default. Resolved
   // after applyProjectEnv above, so a value in the project's .env counts — the PORT/HOST rule.
   const runConcurrency = resolveRunConcurrency(options.concurrency ?? options.nJobsPerWorker);
   // On-disk snapshotting only applies to the all-memory runtime; durable drivers persist inherently.
   const canPersist = options.persist && runtime.snapshotState !== undefined;
+
   if (options.persist && runtime.snapshotState === undefined) {
     console.log(
       `skein: state persists in ${options.store}/${options.queue}; skipping .skein snapshot.`,
     );
   }
+
   // `store.adapter` replaces the long-term store with the user's own, so its items are not in the memory
   // driver's snapshot and cannot be — dumping somebody's Postgres into `.skein/` every two seconds is not a
   // thing to do quietly. Said out loud, because the shape a user reaches for first is an `InMemoryStore`,
@@ -164,6 +174,7 @@ export async function runDev(options: DevCommandOptions): Promise<void> {
         "(use a durable store to keep them across restarts).",
     );
   }
+
   if (canPersist && existsSync(stateFile)) {
     try {
       await runtime.hydrateState?.(JSON.parse(readFileSync(stateFile, "utf8")) as DevStateSnapshot);
@@ -177,6 +188,7 @@ export async function runDev(options: DevCommandOptions): Promise<void> {
     // branch won't run again. Guarded so a format mismatch never blocks startup.
     try {
       const imported = await readLanggraphDevState(path.join(configDir, LANGGRAPH_DIR));
+
       if (imported) {
         await runtime.hydrateState?.(imported);
         const counts = describeSnapshot(imported);
@@ -201,6 +213,7 @@ export async function runDev(options: DevCommandOptions): Promise<void> {
 
   let server: SkeinExpressServer;
   let consoleMountPath: string | undefined;
+
   try {
     server = await createExpressServer({
       deps: runtime.deps,
@@ -216,6 +229,7 @@ export async function runDev(options: DevCommandOptions): Promise<void> {
       requestLog: resolveRequestLog(options.requestLog, true),
       worker: { maxConcurrency: runConcurrency, shutdownGraceMs },
     });
+
     // On by default in `dev` — a local dev server is exactly where you want to see your threads and
     // runs, and asking for a flag first means most people never find it. `skein start` is the
     // opposite: the console is full API power over threads, store and crons, so a production server
@@ -223,6 +237,7 @@ export async function runDev(options: DevCommandOptions): Promise<void> {
     if (options.console !== false) {
       consoleMountPath = mountConsole(server.app).mountPath;
     }
+
     await server.listen(port, host);
   } catch (error) {
     // `skeinRouter` starts the run worker before `listen`; without these closes a bind failure
@@ -232,6 +247,7 @@ export async function runDev(options: DevCommandOptions): Promise<void> {
     process.exitCode = 1;
     return;
   }
+
   printBanner(
     {
       host,
@@ -262,8 +278,10 @@ export async function runDev(options: DevCommandOptions): Promise<void> {
   rotateDevUiKey?.unref();
 
   let lastSaved: string | undefined;
+
   const saveState = () => {
     if (!canPersist || runtime.snapshotState === undefined) return;
+
     try {
       const serialized = JSON.stringify(runtime.snapshotState());
       if (serialized === lastSaved) return; // unchanged since the last write — skip the disk churn
@@ -275,6 +293,7 @@ export async function runDev(options: DevCommandOptions): Promise<void> {
   };
 
   let autosave: NodeJS.Timeout | undefined;
+
   if (canPersist) {
     autosave = setInterval(saveState, AUTOSAVE_MS);
     autosave.unref();
@@ -284,6 +303,7 @@ export async function runDev(options: DevCommandOptions): Promise<void> {
     let reloading = false;
     let dirty = false;
     let pending: NodeJS.Timeout | undefined;
+
     const reload = async () => {
       // If a reload is already running, remember that more changes arrived and re-run once it's done,
       // so edits saved mid-reload are never dropped.
@@ -291,7 +311,9 @@ export async function runDev(options: DevCommandOptions): Promise<void> {
         dirty = true;
         return;
       }
+
       reloading = true;
+
       try {
         console.log("skein: change detected, reloading…");
         // Re-read the project's env first, so the fix for the failure the last reload reported —
@@ -311,16 +333,19 @@ export async function runDev(options: DevCommandOptions): Promise<void> {
         devLogger.error("reload failed", error);
       } finally {
         reloading = false;
+
         if (dirty) {
           dirty = false;
           void reload();
         }
       }
     };
+
     // `.env` sits inside the project but is not part of any module graph, so vite has no reason to
     // watch it. Add it explicitly: uncommenting an API key there is the fix for the failure the
     // startup report just printed, and it should land the same way a source edit does.
     loader.watcher.add(projectEnvPaths(config, configDir));
+
     const onFileEvent = (file: string): void => {
       // Defense in depth against a self-triggered loop: never reload on our own state writes.
       if (sqliteArtifacts.includes(path.resolve(file))) return;
@@ -328,6 +353,7 @@ export async function runDev(options: DevCommandOptions): Promise<void> {
       if (pending) clearTimeout(pending);
       pending = setTimeout(() => void reload(), RELOAD_DEBOUNCE_MS);
     };
+
     loader.watcher.on("change", onFileEvent);
     // `add` too, not just `change`: the watcher runs with `ignoreInitial`, so a path that does not
     // exist yet reports its creation as `add`. Writing a `.env` for the first time — the very case

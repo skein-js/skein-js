@@ -40,11 +40,13 @@ afterEach(async () => {
 /** A virgin database on the shared container, so each case migrates from nothing. */
 async function createScratchDatabase(name: string): Promise<string> {
   const admin = new Pool({ connectionString: pg.url });
+
   try {
     await admin.query(`CREATE DATABASE "${name}"`);
   } finally {
     await admin.end();
   }
+
   const url = new URL(pg.url);
   url.pathname = `/${name}`;
   return url.toString();
@@ -158,6 +160,7 @@ describe("applySkeinMigrations", () => {
       `SELECT indexname FROM pg_indexes
         WHERE schemaname = 'public' AND tablename IN ('threads', 'assistants', 'runs', 'store_items')`,
     );
+
     const indexes = rows.map((row) => row.indexname);
 
     expect(indexes).toEqual(
@@ -198,14 +201,17 @@ describe("applySkeinMigrations", () => {
     // The point of the migration: `POST /threads/search` was a sequential scan plus a sort.
     const pool = await connectScratch("migrate_index_used");
     await applySkeinMigrations(pool);
+
     for (let index = 0; index < 2000; index += 1) {
       await pool.query(`INSERT INTO threads (thread_id) VALUES ($1)`, [`t-${index}`]);
     }
+
     await pool.query("ANALYZE threads");
 
     const { rows } = await pool.query<{ "QUERY PLAN": string }>(
       `EXPLAIN SELECT * FROM threads ORDER BY created_at DESC, thread_id DESC LIMIT 20`,
     );
+
     const plan = rows.map((row) => row["QUERY PLAN"]).join("\n");
     expect(plan).toContain("threads_created_at_thread_id_idx");
   });
@@ -229,6 +235,7 @@ describe("applySkeinMigrations", () => {
       `EXPLAIN SELECT * FROM runs WHERE thread_id = $1 ORDER BY created_at DESC, run_id DESC LIMIT 1`,
       ["t-1"],
     );
+
     const plan = rows.map((row) => row["QUERY PLAN"]).join("\n");
     expect(plan).toContain("runs_thread_id_created_at_idx");
     expect(plan).not.toContain("Seq Scan");
@@ -244,18 +251,21 @@ describe("applySkeinMigrations", () => {
     // matters here is that the clause is indexable at all.
     const pool = await connectScratch("migrate_ownership_index_used");
     await applySkeinMigrations(pool);
+
     for (let index = 0; index < 2000; index += 1) {
       await pool.query(`INSERT INTO threads (thread_id, metadata) VALUES ($1, $2)`, [
         `t-${index}`,
         JSON.stringify({ owner: index === 0 ? "alice" : `bob-${index}` }),
       ]);
     }
+
     await pool.query("ANALYZE threads");
 
     const { rows } = await pool.query<{ "QUERY PLAN": string }>(
       `EXPLAIN SELECT count(*) FROM threads WHERE metadata @> $1::jsonb`,
       [JSON.stringify({ owner: "alice" })],
     );
+
     const plan = rows.map((row) => row["QUERY PLAN"]).join("\n");
     expect(plan).toContain("threads_metadata_idx");
     expect(plan).not.toContain("Seq Scan");
@@ -364,6 +374,7 @@ describe("applySkeinMigrations", () => {
 
   it("rolls back a failing migration, names it, and stays retryable", async () => {
     const pool = await connectScratch("migrate_failure");
+
     const broken = [
       { name: "0001_init", up: "CREATE TABLE only_good (id text PRIMARY KEY)" },
       {
@@ -453,8 +464,10 @@ describe("PostgresSkeinStore.migrate", () => {
     expect(searchMigration).toBeGreaterThan(0);
     await applySkeinMigrations(pool, { migrations: SKEIN_MIGRATIONS.slice(0, searchMigration) });
     const store = await PostgresSkeinStore.connect(url);
+
     try {
       const thread = await store.threads.create();
+
       // Random hex avoids compression hiding btree tuple-size failures. The near-limit run ID fits
       // the existing primary key; terminal rows never entered the legacy inflight composite index.
       const identifiers = [
@@ -514,12 +527,14 @@ describe("PostgresSkeinStore.migrate", () => {
     const nativeMigration = SKEIN_MIGRATIONS.findIndex(
       (migration) => migration.name === "0015_native_admission",
     );
+
     for (const migration of SKEIN_MIGRATIONS.slice(0, nativeMigration)) {
       for (const statement of migration.statements ?? [migration.up]) await pool.query(statement);
       await pool.query("INSERT INTO skein_migrations(name,run_on) VALUES($1,now())", [
         migration.name,
       ]);
     }
+
     await pool.query("INSERT INTO threads(thread_id,status) VALUES('existing-thread','idle')");
     await pool.query(
       "INSERT INTO runs(run_id,thread_id,assistant_id,status,result) VALUES('existing-run','existing-thread','agent','success',$1::jsonb)",
@@ -531,6 +546,7 @@ describe("PostgresSkeinStore.migrate", () => {
     );
     expect(await applySkeinMigrations(pool)).toEqual(["0015_native_admission", "0016_run_search"]);
     const store = await PostgresSkeinStore.connect(url);
+
     try {
       expect(await store.runs.getResult!("existing-run")).toEqual({
         values: { answer: "retained" },
@@ -557,6 +573,7 @@ describe("PostgresSkeinStore.migrate", () => {
   it("migrates on its own pool and leaves the store usable", async () => {
     const url = await createScratchDatabase("migrate_store_smoke");
     const store = await PostgresSkeinStore.connect(url);
+
     try {
       await store.migrate();
       await store.migrate(); // idempotent on the boot path too
@@ -615,6 +632,7 @@ describe("createPostgresPool connection tuning", () => {
     );
 
     const store = await PostgresSkeinStore.connect(url);
+
     try {
       expect(await store.store.sweepExpired()).toBe(5001);
       const { rows } = await pool.query<{ count: string }>("SELECT count(*) FROM store_items");

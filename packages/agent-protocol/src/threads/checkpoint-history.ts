@@ -32,28 +32,36 @@ function referencedCheckpoints(
   const byCoordinate = new Map(
     tuples.map((tuple) => [`${checkpointNamespace(tuple)}\0${tuple.checkpoint.id}`, tuple]),
   );
+
   const kept = new Set(seeds);
   const visited = new WeakSet<object>();
+
   const visit = (value: unknown): void => {
     if (typeof value !== "object" || value === null || visited.has(value)) return;
     visited.add(value);
     const record = value as Record<string, unknown>;
+
     const add = (namespace: string, id: string) => {
       const tuple = byCoordinate.get(`${namespace}\0${id}`);
+
       if (tuple && !kept.has(tuple)) {
         kept.add(tuple);
         visit(tuple);
       }
     };
+
     if (typeof record["checkpoint_id"] === "string")
       add(String(record["checkpoint_ns"] ?? ""), record["checkpoint_id"]);
+
     for (const field of ["checkpoint_map", "parents"]) {
       const coordinates = record[field];
+
       if (coordinates && typeof coordinates === "object") {
         for (const [namespace, id] of Object.entries(coordinates))
           if (typeof id === "string") add(namespace, id);
       }
     }
+
     // Delta channels reconstruct values from ancestor writes until their next full snapshot.
     // These are dependencies of the current state, just like explicit child coordinates.
     const counters = (record["metadata"] as Record<string, unknown> | undefined)?.[
@@ -63,6 +71,7 @@ function referencedCheckpoints(
       visit(record["parentConfig"]);
     for (const [key, child] of Object.entries(record)) if (key !== "parentConfig") visit(child);
   };
+
   for (const tuple of seeds) visit(tuple);
   return tuples.filter((tuple) => kept.has(tuple));
 }
@@ -82,6 +91,7 @@ async function replayCheckpoints(
     signal?.throwIfAborted();
     const ns = (tuple.config.configurable?.checkpoint_ns as string | undefined) ?? "";
     const parentId = tuple.parentConfig?.configurable?.checkpoint_id as string | undefined;
+
     const putConfig = {
       configurable: { thread_id: targetId, checkpoint_ns: ns, checkpoint_id: parentId },
     };
@@ -91,6 +101,7 @@ async function replayCheckpoints(
       tuple.metadata ?? {},
       tuple.checkpoint.channel_versions,
     );
+
     if (tuple.pendingWrites && tuple.pendingWrites.length > 0) {
       const writeConfig = {
         configurable: {
@@ -99,13 +110,16 @@ async function replayCheckpoints(
           checkpoint_id: tuple.checkpoint.id,
         },
       };
+
       // pendingWrites are [taskId, channel, value]; putWrites takes [channel, value] per taskId.
       const byTask = new Map<string, [string, unknown][]>();
+
       for (const [taskId, channel, value] of tuple.pendingWrites) {
         const writes = byTask.get(taskId) ?? [];
         writes.push([channel, value]);
         byTask.set(taskId, writes);
       }
+
       for (const [taskId, writes] of byTask) {
         signal?.throwIfAborted();
         await checkpointer.putWrites(writeConfig, writes, taskId);
@@ -126,6 +140,7 @@ async function listCheckpoints(
   limit?: number,
 ): Promise<ThreadCheckpointTuple[]> {
   const tuples: ThreadCheckpointTuple[] = [];
+
   for await (const tuple of checkpointer.list(
     { configurable: { thread_id: threadId } },
     limit === undefined ? undefined : { limit },
@@ -133,6 +148,7 @@ async function listCheckpoints(
     tuples.push(tuple);
     if (limit !== undefined && tuples.length >= limit) break;
   }
+
   return tuples;
 }
 
@@ -146,6 +162,7 @@ async function replaceCheckpointHistory(
   signal?: AbortSignal,
 ): Promise<void> {
   let scratchThreadId: string;
+
   do {
     signal?.throwIfAborted();
     scratchThreadId = `${threadId}::skein-${operation}:${randomUUID()}`;
@@ -154,6 +171,7 @@ async function replaceCheckpointHistory(
   // Save before erasure, and retain this copy if replacing the original fails.
   signal?.throwIfAborted();
   await replayCheckpoints(checkpointer, scratchThreadId, tuples, cloneCheckpoint, signal);
+
   try {
     signal?.throwIfAborted();
     await checkpointer.deleteThread(threadId);
@@ -165,6 +183,7 @@ async function replaceCheckpointHistory(
       { cause: error },
     );
   }
+
   // A cleanup failure must not turn a successful replacement into an apparent failed operation.
   signal?.throwIfAborted();
   await checkpointer.deleteThread(scratchThreadId).catch(() => undefined);
@@ -208,10 +227,12 @@ export async function pruneThreadCheckpointsToLatest(
   // Cross-namespace references can name older child tips; inspect their coordinates before pruning.
   const tuples = await listCheckpoints(checkpointer, threadId);
   const latestByNamespace = new Map<string, ThreadCheckpointTuple>();
+
   for (const tuple of tuples) {
     const namespace = checkpointNamespace(tuple);
     if (!latestByNamespace.has(namespace)) latestByNamespace.set(namespace, tuple);
   }
+
   const keep = referencedCheckpoints(tuples, [...latestByNamespace.values()]);
   if (keep.length === tuples.length) return false;
 
@@ -221,6 +242,7 @@ export async function pruneThreadCheckpointsToLatest(
   const coordinates = new Set(
     keep.map((tuple) => `${checkpointNamespace(tuple)}\0${tuple.checkpoint.id}`),
   );
+
   const rootedKeep = keep
     .map((tuple) => {
       const parent = tuple.parentConfig?.configurable;
@@ -265,12 +287,14 @@ export async function rollbackThreadCheckpointsTo(
   signal?: AbortSignal,
 ): Promise<void> {
   signal?.throwIfAborted();
+
   if (baseCheckpointId === undefined) {
     await checkpointer.deleteThread(threadId);
     return;
   }
 
   const tuples = await listCheckpoints(checkpointer, threadId);
+
   const byId = new Map(
     tuples
       .filter((tuple) => checkpointNamespace(tuple) === "")
@@ -282,6 +306,7 @@ export async function rollbackThreadCheckpointsTo(
   const keep: ThreadCheckpointTuple[] = [];
   let cursor: string | undefined = baseCheckpointId;
   const seen = new Set<string>();
+
   while (cursor !== undefined && byId.has(cursor) && !seen.has(cursor)) {
     seen.add(cursor);
     const tuple = byId.get(cursor)!;
@@ -293,11 +318,13 @@ export async function rollbackThreadCheckpointsTo(
   // otherwise only child history preceding the rollback tip survives.
   const base = byId.get(baseCheckpointId)!;
   const timestamp = (base.checkpoint as unknown as { ts?: string }).ts;
+
   for (const tuple of tuples) {
     const childTimestamp = (tuple.checkpoint as unknown as { ts?: string }).ts;
     if (checkpointNamespace(tuple) && timestamp && childTimestamp && childTimestamp <= timestamp)
       keep.push(tuple);
   }
+
   const retained = referencedCheckpoints(tuples, keep).reverse();
   await replaceCheckpointHistory(
     checkpointer,

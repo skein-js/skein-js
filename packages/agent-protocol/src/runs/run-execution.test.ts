@@ -9,6 +9,7 @@ it("reuses a preclaimed lease and rereads terminal status before rollback effect
   const acquire = vi.fn(async () => {
     throw new Error("Must not reacquire");
   });
+
   const deps = createFixtureDeps({ threadExecutionGate: { acquire } });
   const ctx = createContext(deps);
   const thread = await deps.store.threads.create();
@@ -43,12 +44,15 @@ it.each(["blocking", "preclaimed"])(
     const deps = createFixtureDeps();
     const context = createContext(deps);
     const thread = await deps.store.threads.create();
+
     const displaced = await deps.store.runs.create({
       thread_id: thread.thread_id,
       assistant_id: "echo",
       status: "success",
     });
+
     const run = await deps.store.runs.create({ thread_id: thread.thread_id, assistant_id: "echo" });
+
     const kwargs = {
       rollback_plan: {
         revert_to_checkpoint: { base_checkpoint_id: null },
@@ -91,18 +95,22 @@ it.each(["blocking", "preclaimed"])(
     const lost = new AbortController();
     const release = vi.fn(async () => undefined);
     const lease = { signal: lost.signal, release };
+
     const deps = createFixtureDeps({
       threadExecutionGate: {
         acquire: async () => lease,
       },
     });
+
     const context = createContext(deps);
     const thread = await deps.store.threads.create();
+
     const displaced = await deps.store.runs.create({
       thread_id: thread.thread_id,
       assistant_id: "echo",
       status: "success",
     });
+
     const run = await deps.store.runs.create({ thread_id: thread.thread_id, assistant_id: "echo" });
     vi.spyOn(deps.checkpointer, "list").mockImplementation(async function* () {
       lost.abort(new Error("execution connection lost"));
@@ -140,6 +148,7 @@ it.each(["blocking", "preclaimed"])(
     const lost = new AbortController();
     const release = vi.fn(async () => undefined);
     const lease = { signal: lost.signal, release };
+
     const deps = createFixtureDeps({
       threadExecutionGate: {
         acquire: async () => lease,
@@ -148,13 +157,16 @@ it.each(["blocking", "preclaimed"])(
     await deps.store.assistants.create({ assistant_id: "echo", graph_id: "echo" });
     const thread = await deps.store.threads.create();
     const run = await deps.store.runs.create({ thread_id: thread.thread_id, assistant_id: "echo" });
+
     const stream = vi.fn(async function* () {
       yield ["values", {}];
     });
+
     deps.graphs.load = async () => {
       lost.abort(new Error("execution connection lost"));
       return { stream, getState: async () => ({ values: {}, next: [], tasks: [] }) };
     };
+
     expect(
       (
         await startRunExecution(

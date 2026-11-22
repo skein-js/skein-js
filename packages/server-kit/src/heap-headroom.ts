@@ -71,6 +71,7 @@ export function readContainerMemoryLimit(
     if (bytes >= Number.MAX_SAFE_INTEGER) continue;
     return bytes;
   }
+
   return undefined;
 }
 
@@ -108,6 +109,7 @@ export function describeHeapHeadroom(
   ) {
     return { heapLimitBytes, containerLimitBytes, warning: undefined };
   }
+
   // Leaves room for everything that is not the old space: V8's other spaces, Buffers, the
   // Postgres/Redis clients' sockets, and the runtime itself.
   const suggestedMb = Math.floor((containerLimitBytes * HEAP_LIMIT_SUGGEST_FRACTION) / 1048576);

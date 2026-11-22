@@ -1,0 +1,26 @@
+{
+  "name": "workspace-tooling",
+  "$schema": "./node_modules/nx/schemas/project-schema.json",
+  "targets": {
+    "lint": {
+      "executor": "nx:run-commands",
+      "options": { "command": "eslint eslint.config.mjs scripts tools" },
+      "inputs": [
+        "{workspaceRoot}/eslint.config.mjs",
+        "{workspaceRoot}/scripts/**/*",
+        "{workspaceRoot}/tools/**/*",
+        "{workspaceRoot}/pnpm-lock.yaml"
+      ]
+    },
+    "test": {
+      "executor": "nx:run-commands",
+      "options": { "command": "node --test tools/code-spacing.test.mjs" },
+      "inputs": [
+        "{workspaceRoot}/.prettierrc.json",
+        "{workspaceRoot}/eslint.config.mjs",
+        "{workspaceRoot}/tools/**/*",
+        "{workspaceRoot}/pnpm-lock.yaml"
+      ]
+    }
+  }
+}

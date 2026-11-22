@@ -85,16 +85,20 @@ export function ConfirmationProvider({ children }: { children: ReactNode }) {
       pending?.resolve(false);
       setPending(undefined);
     };
+
     window.addEventListener("hashchange", cancel);
+
     return () => {
       window.removeEventListener("hashchange", cancel);
       pending?.resolve(false);
     };
   }, [pending]);
+
   const settle = (answer: boolean) => {
     pending?.resolve(answer);
     setPending(undefined);
   };
+
   return (
     <ConfirmationContext.Provider
       value={(confirmation) =>
@@ -125,6 +129,7 @@ export function ConfirmationProvider({ children }: { children: ReactNode }) {
     </ConfirmationContext.Provider>
   );
 }
+
 export function useConfirmation() {
   return useContext(ConfirmationContext);
 }

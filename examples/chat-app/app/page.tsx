@@ -12,7 +12,7 @@ import { ThinkingBlock } from "@/components/thinking-block";
 import { ToolCallCard } from "@/components/tool-call-card";
 import { Button } from "@/components/ui/button";
 import { Textarea } from "@/components/ui/textarea";
-import { type ChatSummary, loadChats, upsertChat } from "@/lib/history";
+import { loadChats, upsertChat, type ChatSummary } from "@/lib/history";
 import { answerText, roleOf, thinkingText, toolCalls, toolResultsByCall } from "@/lib/messages";
 import { parseApproval } from "@/lib/tool-results";
 
@@ -72,12 +72,14 @@ export default function Page() {
   function send(text: string) {
     const trimmed = text.trim();
     if (!trimmed || thread.isLoading) return;
+
     if (threadId) {
       setChats((prev) => upsertChat(prev, threadId, trimmed, Date.now())); // bump recency
     } else {
       pendingTitle.current = trimmed; // titles the thread once onThreadId fires
       awaitingNewThread.current = true;
     }
+
     thread.submit({ messages: [{ role: "user", content: trimmed }] });
     setInput("");
   }

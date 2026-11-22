@@ -23,8 +23,10 @@ const MessageRow = memo(function MessageRow({ message }: { message: Message }) {
     tool_call_id?: string;
     tool_calls?: { id?: string; name: string; args: unknown }[];
   };
+
   const role: string =
     (message as { type?: string; role?: string }).type ?? shape.role ?? "unknown";
+
   const human = role === "human" || role === "user";
   const tool = role === "tool";
   return (

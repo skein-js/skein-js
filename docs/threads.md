@@ -76,6 +76,7 @@ const forked = await client.threads.updateState(threadId, {
   values: { messages: editedMessages },
   checkpointId, // omit to fork from the tip
 });
+
 // The SDK returns a checkpoint config; the new id is on `configurable`.
 const forkedId = forked.configurable?.["checkpoint_id"] as string;
 

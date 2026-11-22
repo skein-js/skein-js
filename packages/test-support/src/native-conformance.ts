@@ -5,6 +5,7 @@ import { describe, expect, it } from "vitest";
 
 const now = "2026-10-25T00:00:00.000Z";
 const later = "2026-10-26T00:00:00.000Z";
+
 const identity = (key = randomUUID()): AdmissionKey => ({
   scope: "native-conformance",
   key,
@@ -37,11 +38,13 @@ export function runNativeConformance(makeStore: () => SkeinStore | Promise<Skein
       if (!store.admission) return;
       expect(typeof store.runs.settle).toBe("function");
       const thread = await store.threads.create();
+
       const input = {
         ...identity(),
         run: { thread_id: thread.thread_id, assistant_id: "a", kwargs: { queue_not_before: now } },
         guard: { requireNoActiveRun: true },
       };
+
       const receipts = await Promise.all(
         Array.from({ length: 8 }, () => store.admission!.admitRun(input)),
       );
@@ -115,6 +118,7 @@ export function runNativeConformance(makeStore: () => SkeinStore | Promise<Skein
       const store = await makeStore();
       if (!store.admission) return;
       const thread = await store.threads.create();
+
       const previous = await store.runs.create({
         thread_id: thread.thread_id,
         assistant_id: "a",
@@ -147,6 +151,7 @@ export function runNativeConformance(makeStore: () => SkeinStore | Promise<Skein
       if (!store.runs.settle) return;
       const thread = await store.threads.create();
       const run = await store.runs.create({ thread_id: thread.thread_id, assistant_id: "a" });
+
       const delivery: DeliveryCreate = {
         delivery_id: randomUUID(),
         thread_id: thread.thread_id,
@@ -155,6 +160,7 @@ export function runNativeConformance(makeStore: () => SkeinStore | Promise<Skein
         next_attempt_at: now,
         expires_at: later,
       };
+
       const first = await store.runs.settle(run.run_id, {
         status: "success",
         result: { values: { answer: "first" } },
@@ -182,6 +188,7 @@ export function runNativeConformance(makeStore: () => SkeinStore | Promise<Skein
       const store = await makeStore();
       if (!store.admission) return;
       const thread = await store.threads.create();
+
       const input = {
         ...identity(),
         run: { thread_id: thread.thread_id, assistant_id: "a", kwargs: { input: BigInt(42) } },

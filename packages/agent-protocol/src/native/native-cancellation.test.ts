@@ -10,18 +10,23 @@ import { createProtocolServiceFromContext } from "../service.js";
 it("keeps failed cancellation publications recoverable until a successful retry", async () => {
   let offset = 0;
   let connected = false;
+
   const requestAbort = vi.fn(async () => {
     if (!connected) throw new Error("pubsub disconnected");
   });
+
   const channel: RunAbortChannel = {
     requestAbort,
     subscribe: () => ({ close: async () => undefined }),
   };
+
   const deps = createFixtureDeps({
     abortChannel: channel,
     clock: () => new Date(Date.now() + offset),
   });
+
   const runtime = createProtocolRuntime(deps, { scheduler: { enabled: false } });
+
   try {
     await runtime.service.assistants.registerGraphAssistants();
     const client = runtime.createNativeClient({ sourceId: "retry", allowedAssistants: ["slow"] });
@@ -59,16 +64,19 @@ it.each(["native", "service"])(
   async (source) => {
     // A successful Redis publish with zero subscribers cannot be distinguished from delivery.
     const requestAbort = vi.fn(async () => undefined);
+
     const channel: RunAbortChannel = {
       requestAbort,
       subscribe: () => ({ close: async () => undefined }),
     };
+
     const deps = createFixtureDeps({ abortChannel: channel });
     const owner = createContext(deps);
     const service = createProtocolServiceFromContext(owner);
     const executor = createRunWorker(owner); // No admission recovery loop on the owner.
     const receiver = createProtocolRuntime(deps, { scheduler: { enabled: false } });
     let runId: string | undefined;
+
     try {
       await service.assistants.registerGraphAssistants();
       const client = receiver.createNativeClient({

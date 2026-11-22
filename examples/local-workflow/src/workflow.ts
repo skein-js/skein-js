@@ -25,6 +25,7 @@ const meetingInput = z.object({
   title: z.string().trim().min(1).max(200),
   notes: z.string().trim().min(1).max(30_000),
 });
+
 const reviewDecision = z.union([
   z.boolean().transform((approved) => ({ approved, actions: undefined, summary: undefined })),
   z.object({
@@ -124,11 +125,13 @@ export function buildWorkflow(directory: string, options: MeetingAgentOptions = 
       // Fresh approvals create revisions; replaying the same approved content keeps its path.
       const revision = createHash("sha256").update(markdown).digest("hex");
       const filename = join(recaps, `${threadId}-${revision}.md`);
+
       try {
         await writeFile(filename, markdown, { flag: "wx" });
       } catch (error) {
         if ((error as NodeJS.ErrnoException).code !== "EEXIST") throw error;
       }
+
       const store = getStore();
       if (!store) throw new Error("A persistent store is required for the meeting archive.");
       await store.put(

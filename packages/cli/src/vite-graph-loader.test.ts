@@ -1,4 +1,4 @@
-import { mkdtemp, mkdir, rm, writeFile } from "node:fs/promises";
+import { mkdir, mkdtemp, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import path from "node:path";
 
@@ -7,11 +7,13 @@ import { afterAll, describe, expect, it } from "vitest";
 import { createViteGraphLoader } from "./vite-graph-loader.js";
 
 const dirs: string[] = [];
+
 const makeTempDir = async (prefix: string) => {
   const dir = await mkdtemp(path.join(tmpdir(), prefix));
   dirs.push(dir);
   return dir;
 };
+
 afterAll(async () => {
   await Promise.all(dirs.map((dir) => rm(dir, { recursive: true, force: true })));
 });
@@ -45,6 +47,7 @@ describe("createViteGraphLoader tsconfig paths", () => {
     await writeFile(graphFile, "import { foo } from '@myorg/js';\nexport const graph = foo;\n");
 
     const loader = await createViteGraphLoader(appDir);
+
     try {
       const module = await loader.importModule(graphFile);
       expect(module["graph"]).toBe("from-aliased-lib");
@@ -65,6 +68,7 @@ describe("createViteGraphLoader env files", () => {
     await writeFile(path.join(root, "graph.ts"), "export const graph = { id: 'ok' } as const;\n");
 
     const loader = await createViteGraphLoader(root);
+
     try {
       expect(await loader.importModule(path.join(root, "graph.ts"))).toHaveProperty("graph");
 

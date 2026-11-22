@@ -10,10 +10,12 @@ describe("MCP protocol transport", () => {
     const runtime = createProtocolRuntime(createFixtureDeps());
     await runtime.service.assistants.registerGraphAssistants();
     const client = new Client({ name: "conformance", version: "1" });
+
     const transport = new StreamableHTTPClientTransport(new URL("http://localhost/mcp"), {
       fetch: async (input, init) => {
         const request = new Request(input, init);
         const body = request.method === "POST" ? await request.json() : undefined;
+
         const response = await runtime.handlers.handleMcp!({
           method: request.method,
           url: request.url,
@@ -30,6 +32,7 @@ describe("MCP protocol transport", () => {
         });
       },
     });
+
     try {
       await client.connect(transport);
       expect((await client.listTools()).tools.map((tool) => tool.name)).toContain("echo");

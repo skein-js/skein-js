@@ -1,6 +1,9 @@
 import type { RunFrame } from "@skein-js/core";
-import { runPartitionedRunQueueConformance } from "@skein-js/test-support";
-import { runRunEventBusConformance, runRunQueueConformance } from "@skein-js/test-support";
+import {
+  runPartitionedRunQueueConformance,
+  runRunEventBusConformance,
+  runRunQueueConformance,
+} from "@skein-js/test-support";
 import { describe, expect, it } from "vitest";
 
 import { MemoryRunEventBus, MemoryRunQueue } from "./memory-queue.js";
@@ -23,6 +26,7 @@ describe("MemoryRunQueue", () => {
     let active = 0;
     let peak = 0;
     const release: Array<() => void> = [];
+
     const consumer = queue.consume(
       async () => {
         active += 1;
@@ -78,10 +82,12 @@ describe("MemoryRunEventBus", () => {
 
   it("evicts the oldest closed runs beyond the retention cap (bounded memory)", async () => {
     const bus = new MemoryRunEventBus({ maxRetainedRuns: 2 });
+
     for (const runId of ["a", "b", "c"]) {
       await bus.publish(runId, frame(1));
       await bus.close(runId);
     }
+
     // "a"'s buffer was dropped (oldest beyond the cap of 2): a late join replays nothing and
     // completes at once (closed tombstone — no hang). "b"/"c" still replay their buffered frame.
     expect(await collect(bus.subscribe("a"))).toEqual([]);
@@ -147,6 +153,7 @@ describe("MemoryRunEventBus bounds", () => {
     // Matches `RedisRunEventBus`'s 24h closed marker. The two drivers implement one contract, so a
     // late join must not depend on which is configured.
     let now = 1_000_000;
+
     const bus = new MemoryRunEventBus({
       maxRetainedRuns: 1,
       finishedIdTtlMs: 60_000,
@@ -185,6 +192,7 @@ describe("MemoryRunEventBus bounds", () => {
     // its TTL — has to create a channel to wait on. Each one would otherwise strand a channel
     // permanently, which is growth on exactly the path this bounding work exists to close.
     const bus = new MemoryRunEventBus();
+
     const readers = Array.from({ length: 100 }, (_unused, index) =>
       collect(bus.subscribe(`unknown-${index}`)),
     );
@@ -234,9 +242,11 @@ describe("MemoryRunEventBus bounds", () => {
     await bus.publish("r", frame(1));
 
     const seen: number[] = [];
+
     const reader = (async () => {
       for await (const received of bus.subscribe("r")) {
         seen.push(received.seq);
+
         // Outrun the reader while it is suspended in this yield.
         if (received.seq === 1) {
           for (let seq = 2; seq <= 20; seq += 1) await bus.publish("r", frame(seq));
@@ -261,6 +271,7 @@ describe("MemoryRunEventBus bounds", () => {
     // would truncate this healthy reader.
     const bus = new MemoryRunEventBus({ maxFramesPerRun: 3 });
     const seen: number[] = [];
+
     const reader = (async () => {
       for await (const received of bus.subscribe("r")) seen.push(received.seq);
     })();
@@ -269,6 +280,7 @@ describe("MemoryRunEventBus bounds", () => {
       await bus.publish("r", frame(seq));
       await Promise.resolve(); // let the reader consume before the next publish trims
     }
+
     await bus.close("r");
     await reader;
 

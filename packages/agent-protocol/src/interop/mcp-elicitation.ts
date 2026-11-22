@@ -14,6 +14,7 @@ import { canonicalJson } from "../crypto/canonical-json.js";
 import { sha256Hex } from "../crypto/hash.js";
 
 const objectSchema = z.record(z.unknown());
+
 const relaySchema = z.object({
   message: z.string(),
   mode: z.enum(["form", "url"]).default("form"),
@@ -21,11 +22,13 @@ const relaySchema = z.object({
   requested_schema: objectSchema.optional(),
   url: z.string().optional(),
 });
+
 const actionSchema = z.object({
   name: z.string(),
   args: objectSchema,
   description: z.string().optional(),
 });
+
 const reviewSchema = z.object({
   actionName: z.string().optional(),
   action_name: z.string().optional(),
@@ -57,11 +60,13 @@ function form(message: string, schema: Record<string, unknown>): InputRequest {
 
 function relayRequest(value: unknown): InputRequest {
   const request = relaySchema.parse(value);
+
   if (request.mode === "form") {
     const schema = request.requestedSchema ?? request.requested_schema;
     if (!schema) throw new Error("A form needs requestedSchema.");
     return form(request.message, schema);
   }
+
   const url = new URL(request.url ?? "");
   if (
     !url.hostname ||
@@ -108,6 +113,7 @@ export function mcpQuestions(result: RunResult): {
   inputRequests: InputRequests;
 } {
   const interrupts = Object.values(result.interrupts ?? {}).flat();
+
   const prompts = interrupts.map((interrupt, index): Prompt => {
     if (!interrupt.id) throw new Error("The interrupt has no resumable ID.");
     const value = interrupt.value;
@@ -128,8 +134,10 @@ export function mcpQuestions(result: RunResult): {
         ],
       };
     const payload = objectSchema.parse(value);
+
     if (payload["type"] === "mcp_elicitation") {
       const requests = payload["requests"];
+
       const entries: [string, unknown][] = Array.isArray(requests)
         ? requests.map((entry) => {
             const parsed = objectSchema.parse(entry);
@@ -148,24 +156,30 @@ export function mcpQuestions(result: RunResult): {
         })),
       };
     }
+
     const perCall = payload["type"] === "tool_approval";
     const camelCase = "actionRequests" in payload;
+
     const actions = perCall
       ? [actionSchema.parse(payload)]
       : z
           .array(actionSchema)
           .nonempty()
           .parse(payload[camelCase ? "actionRequests" : "action_requests"]);
+
     const reviews = perCall
       ? []
       : z.array(reviewSchema).parse(payload[camelCase ? "reviewConfigs" : "review_configs"]);
+
     const responseSchema = objectSchema
       .optional()
       .parse((interrupt as unknown as Record<string, unknown>)["response_schema"]);
+
     const proposed = actions.map((action, actionIndex) => {
       const config = reviews.find(
         (review) => (review.actionName ?? review.action_name) === action.name,
       );
+
       // In per-call mode the schema, not a server default, selects the allowed decisions.
       const allowed = perCall
         ? decisionsFromSchema(responseSchema)
@@ -195,11 +209,13 @@ function decisionsFromSchema(schema: Record<string, unknown> | undefined): strin
   if (!schema) throw new Error("Tool review needs its response schema.");
   // Read offered discriminator constants only; validation itself remains with the SDK validator.
   const offered = new Set<string>();
+
   const visit = (value: unknown) => {
     if (Array.isArray(value)) {
       value.forEach(visit);
       return;
     }
+
     if (value === null || typeof value !== "object") return;
     const record = value as Record<string, unknown>;
     const properties = record["properties"] as Record<string, unknown> | undefined;
@@ -210,6 +226,7 @@ function decisionsFromSchema(schema: Record<string, unknown> | undefined): strin
         if (typeof choice === "string") offered.add(choice);
     for (const child of Object.values(record)) visit(child);
   };
+
   visit(schema);
   return ["approve", "edit", "reject", "respond"].filter((decision) => offered.has(decision));
 }
@@ -224,30 +241,38 @@ export async function mcpResumeAnswers(
   responses: Record<string, unknown> | undefined,
 ): Promise<{ missing: true } | { resume: Record<string, unknown> } | { error: string }> {
   let missing = false;
+
   const answers = new Map<
     string,
     { action: "accept" | "decline" | "cancel"; content?: Record<string, unknown> }
   >();
+
   for (const { key, request } of prompts.flatMap((prompt) => prompt.questions)) {
     const response = inputResponse(responses, key);
+
     if (response.kind === "missing") {
       if (responses && Object.hasOwn(responses, key))
         invalidMcpAnswer("Invalid elicitation answer.");
       missing = true;
       continue;
     }
+
     if (response.kind !== "elicit") invalidMcpAnswer("Expected an elicitation answer.");
     if (request.method !== "elicitation/create") throw new Error("Unexpected input request.");
+
     if (response.action === "accept") {
       if (request.params.mode === "url") {
         if (response.content !== undefined)
           invalidMcpAnswer("A URL elicitation answer must not contain content.");
       } else await validateContent(request.params.requestedSchema, response.content);
     }
+
     answers.set(key, response);
   }
+
   if (missing) return { missing: true };
   const resume: Record<string, unknown> = Object.create(null) as Record<string, unknown>;
+
   for (const prompt of prompts) {
     if (prompt.kind === "relay") {
       resume[prompt.id] = {
@@ -286,11 +311,13 @@ export async function mcpResumeAnswers(
             ...(typeof message === "string" && message.trim() ? { message } : {}),
           };
         let args: unknown;
+
         try {
           args = JSON.parse(z.string().parse(content["args"]));
         } catch {
           invalidMcpAnswer("Edited arguments must be a JSON object.");
         }
+
         if (!objectSchema.safeParse(args).success)
           invalidMcpAnswer("Edited arguments must be a JSON object.");
         return {
@@ -306,5 +333,6 @@ export async function mcpResumeAnswers(
       resume[prompt.id] = decision;
     }
   }
+
   return { resume };
 }

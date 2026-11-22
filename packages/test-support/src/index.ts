@@ -3,9 +3,9 @@ export { startPostgres, startRedis, type StartedResource } from "./containers.js
 export { runThreadEventBusConformance } from "./thread-event-conformance.js";
 export { runPartitionedRunQueueConformance } from "./partitioned-queue-conformance.js";
 export {
+  runSkeinStoreConformance,
   type ConformanceCapabilities,
   type ConformanceStoreOptions,
-  runSkeinStoreConformance,
   type SkeinStoreFactory,
 } from "./conformance.js";
 export {

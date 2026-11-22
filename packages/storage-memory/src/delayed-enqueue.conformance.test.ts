@@ -8,6 +8,7 @@ import { MemoryRunQueue } from "./memory-queue.js";
 runRunQueueConformance("memory with a stalled subsequent enqueue", (): RunQueue => {
   const queue = new MemoryRunQueue();
   let finishDelayedRun!: () => void;
+
   const delayedRunFinished = new Promise<void>((resolve) => {
     finishDelayedRun = resolve;
   });

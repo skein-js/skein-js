@@ -55,6 +55,7 @@ export async function runScenario(options: RunScenarioOptions): Promise<Scenario
   });
 
   const server = await driver.start({ graph, runConcurrency });
+
   const sampler = new MemorySampler({
     intervalMs: SAMPLE_INTERVAL_MS,
     probes: server.probes,

@@ -1,22 +1,22 @@
 import {
   AgentCard,
+  formatSSEEvent,
   Message,
   Part,
   Role,
   Task,
   TaskState,
-  formatSSEEvent,
   type SendMessageRequest,
   type StreamResponse,
 } from "@a2a-js/sdk";
 import { LegacyJsonRpcTransportHandler } from "@a2a-js/sdk/compat/v0_3/server";
 import {
-  TaskNotFoundError,
-  TaskNotCancelableError,
-  RequestMalformedError,
-  UnsupportedOperationError,
   JsonRpcUnsupportedOperationError,
+  RequestMalformedError,
+  TaskNotCancelableError,
+  TaskNotFoundError,
   toJsonRpcError,
+  UnsupportedOperationError,
 } from "@a2a-js/sdk/errors";
 import {
   JsonRpcTransportHandler,
@@ -66,11 +66,13 @@ function contentParts(content: unknown): Part[] {
   if (!Array.isArray(content)) return [Part.fromJSON({ data: content })];
   return content.flatMap((block: Record<string, unknown>) => {
     if (typeof block["text"] === "string") return [Part.fromJSON({ text: block["text"] })];
+
     if (block["type"] === "image_url") {
       const image = block["image_url"];
       const url = typeof image === "string" ? image : (image as { url?: string })?.url;
       if (url) return [Part.fromJSON({ url, mediaType: "image/*" })];
     }
+
     if (block["source_type"] === "url" || block["source_type"] === "base64")
       return [
         Part.fromJSON({
@@ -132,21 +134,28 @@ export function createA2aHandler(
 ): ProtocolHandler {
   return async (request) => {
     const table = internalProtocolHandlers(handlers());
+
     const assistantId =
       request.params["assistant_id"] ??
       String(request.query["assistant_id"] ?? process.env["DEFAULT_A2A_ASSISTANT_ID"] ?? "");
+
     const call = <T>(
       name: keyof ProtocolHandlers,
       params: Record<string, string>,
       body?: unknown,
       query: ProtocolRequest["query"] = {},
     ) => table[name]!({ ...request, params, body, query }).then(bodyOf<T>);
+
     const assistant = await call<Assistant>("getAssistant", { assistant_id: assistantId });
+
     const modes = assistant.metadata?.["a2a"] as
       { input_modes?: unknown; output_modes?: unknown } | undefined;
+
     const mediaModes = (value: unknown) =>
       value === undefined ? ["text/plain"] : z.array(z.string().min(1)).min(1).parse(value);
+
     const publicUrl = process.env["LANGGRAPH_API_URL"] ?? new URL(request.url).origin;
+
     const card = AgentCard.fromJSON({
       name: assistant.name,
       description: assistant.description ?? assistant.name,
@@ -191,11 +200,13 @@ export function createA2aHandler(
         },
       };
     const raw = rawResult.data;
+
     const rpcError = (error: unknown): ProtocolResponse => ({
       kind: "json",
       status: 200,
       body: { jsonrpc: "2.0", id: raw["id"] ?? null, error: toJsonRpcError(error) },
     });
+
     const supported = [
       "SendMessage",
       "SendStreamingMessage",
@@ -219,6 +230,7 @@ export function createA2aHandler(
     const configuration = (params["configuration"] ?? {}) as Record<string, unknown>;
     const streaming = raw.method === "SendStreamingMessage" || raw.method === "message/stream";
     let scope: "context" | "task" = "context";
+
     try {
       if (!streaming)
         scope = z
@@ -260,8 +272,10 @@ export function createA2aHandler(
       if (!origin || origin.rootId) throw new TaskNotFoundError();
       return owned;
     };
+
     const listRuns = async (threadId: string) => {
       const runs: Run[] = [];
+
       for (let offset = 0; ; offset += 100) {
         const page = await call<Run[]>("listThreadRuns", { thread_id: threadId }, undefined, {
           limit: "100",
@@ -270,13 +284,16 @@ export function createA2aHandler(
         runs.push(...page);
         if (page.length < 100) break;
       }
+
       return runs.sort(
         (a, b) => a.created_at.localeCompare(b.created_at) || a.run_id.localeCompare(b.run_id),
       );
     };
+
     const taskLineage = async (root: Run, runs: Run[]) => {
       const lineage = [root];
       let current = root;
+
       const candidates = await Promise.all(
         runs
           .filter((run) => run.assistant_id === assistantId)
@@ -285,7 +302,9 @@ export function createA2aHandler(
             origin: readA2aOrigin(await context.deps.store.runs.getKwargs(run.run_id)),
           })),
       );
+
       const visited = new Set([root.run_id]);
+
       for (;;) {
         const next = candidates.find(
           (candidate) =>
@@ -299,6 +318,7 @@ export function createA2aHandler(
         lineage.push(current);
       }
     };
+
     const taskFor = async (id: string, historyLength?: number): Promise<Task> => {
       const root = await readRun(id);
       const runs = await listRuns(root.thread_id);
@@ -306,13 +326,16 @@ export function createA2aHandler(
       const latest = lineage.at(-1) ?? root;
       const result = await context.deps.store.runs.getResult?.(latest.run_id);
       const values = (result?.values ?? {}) as Record<string, unknown>;
+
       const messages = Array.isArray(values["messages"])
         ? (values["messages"] as Array<Record<string, unknown>>)
         : [];
+
       const parts =
         latest.status === "success"
           ? contentParts(result?.reply ?? messages.at(-1)?.["content"] ?? values)
           : [];
+
       const artifacts =
         latest.status === "interrupted"
           ? [
@@ -337,18 +360,22 @@ export function createA2aHandler(
                 },
               ]
             : [];
+
       let history = scope === "context" ? runs : lineage;
       history = history.filter(
         (run) => run.assistant_id === assistantId && run.metadata?.["skein_a2a"],
       );
       const historyMessages: unknown[] = [];
+
       for (const run of history) {
         if (!readA2aOrigin(await context.deps.store.runs.getKwargs(run.run_id))) continue;
         const original = run.metadata?.["skein_a2a_message"];
         if (original) historyMessages.push(original);
         const previous = await context.deps.store.runs.getResult?.(run.run_id);
+
         if (run.status === "success" && previous) {
           const messages = (previous.values as Record<string, unknown>)["messages"];
+
           const last = Array.isArray(messages)
             ? (messages.at(-1) as { content?: unknown } | undefined)
             : undefined;
@@ -367,6 +394,7 @@ export function createA2aHandler(
           );
         }
       }
+
       return Task.fromJSON({
         id,
         contextId: root.thread_id,
@@ -383,6 +411,7 @@ export function createA2aHandler(
               : historyMessages.slice(-historyLength),
       });
     };
+
     const begin = async (input: SendMessageRequest): Promise<{ id: string; run: Run }> => {
       if (!context.deps.store.runs.recordResult || !context.deps.store.runs.getResult)
         throw new UnsupportedOperationError("This store cannot retain A2A task results.");
@@ -393,6 +422,7 @@ export function createA2aHandler(
       let expectedRunId: string | undefined;
       let previousResult: RunResult | null | undefined;
       let resume: unknown;
+
       if (message.taskId) {
         const task = await taskFor(message.taskId, 0);
         if (threadId && threadId !== task.contextId) throw new TaskNotFoundError();
@@ -420,6 +450,7 @@ export function createA2aHandler(
               .map((part) => part.content!.value)
               .join("\n");
       }
+
       if (threadId) await call("getThread", { thread_id: threadId });
       else
         threadId = bodyOf<{ thread_id: string }>(
@@ -429,6 +460,7 @@ export function createA2aHandler(
         ...(message.taskId ? { rootId: message.taskId } : {}),
         ...(expectedRunId ? { expectedRunId, checkpoint: previousResult?.checkpoint } : {}),
       };
+
       const body = markA2aBody(
         {
           assistant_id: assistantId,
@@ -449,6 +481,7 @@ export function createA2aHandler(
         },
         origin,
       );
+
       const create = async () => {
         if (expectedRunId) {
           try {
@@ -457,8 +490,10 @@ export function createA2aHandler(
             throw new UnsupportedOperationError("Task no longer owns the interrupted checkpoint.");
           }
         }
+
         return call<Run>("createBackgroundRun", { thread_id: threadId }, body);
       };
+
       const run = expectedRunId
         ? await withThreadExecution(
             context.executionLocks,
@@ -469,15 +504,18 @@ export function createA2aHandler(
         : await create();
       return { id: message.taskId || run.run_id, run };
     };
+
     const wait = async (run: Run) =>
       table.joinRun({
         ...request,
         params: { thread_id: run.thread_id, run_id: run.run_id },
         query: {},
       });
+
     const unsupported = async (): Promise<never> => {
       throw new UnsupportedOperationError();
     };
+
     const handler: A2ARequestHandler = {
       getAgentCard: async () => card,
       getAuthenticatedExtendedAgentCard: async () => card,
@@ -494,12 +532,15 @@ export function createA2aHandler(
           started.run.run_id,
           0,
         );
+
         for await (const frame of frames) {
           if (request.signal?.aborted) return;
           if (frame.event !== "messages" && frame.event !== "messages-tuple") continue;
           const payload = JSON.parse(serializeWireJson(frame.data)) as unknown;
+
           const message = (Array.isArray(payload) ? payload[0] : payload) as
             { content?: unknown } | undefined;
+
           const parts = contentParts(message?.content ?? "");
           if (parts.length)
             yield {
@@ -523,6 +564,7 @@ export function createA2aHandler(
               },
             };
         }
+
         const task = await taskFor(started.id, 0);
         for (const artifact of task.artifacts)
           yield {
@@ -568,6 +610,7 @@ export function createA2aHandler(
         const threads: Array<{ thread_id: string }> = input.contextId
           ? [{ thread_id: input.contextId }]
           : [];
+
         if (!input.contextId)
           for (let offset = 0; ;) {
             const page = await call<Array<{ thread_id: string }>>(
@@ -579,7 +622,9 @@ export function createA2aHandler(
             threads.push(...page);
             offset += page.length;
           }
+
         const tasks: Task[] = [];
+
         for (const thread of threads)
           for (const run of await listRuns(thread.thread_id)) {
             if (run.assistant_id !== assistantId || !run.metadata?.["skein_a2a"]) continue;
@@ -587,6 +632,7 @@ export function createA2aHandler(
             if (origin && origin.rootId === undefined)
               tasks.push(await taskFor(run.run_id, input.historyLength));
           }
+
         const after = input.statusTimestampAfter
           ? Date.parse(input.statusTimestampAfter)
           : undefined;
@@ -624,10 +670,13 @@ export function createA2aHandler(
         yield await unsupported();
       },
     };
+
     const legacy = raw.method.includes("/");
+
     const transport = legacy
       ? new LegacyJsonRpcTransportHandler(handler)
       : new JsonRpcTransportHandler(handler);
+
     const result = await transport.handle(
       raw,
       new ServerCallContext({ requestedVersion: legacy ? "0.3" : "1.0" }),

@@ -37,6 +37,7 @@ function parts(content: unknown): ContentPartLike[] {
       })
       .filter((part): part is ContentPartLike => part !== null);
   }
+
   if (typeof content === "string") return [{ type: "text", text: content }];
   return [];
 }
@@ -76,9 +77,11 @@ export function toolLabel(name: string): string {
 export function roleOf(message: MessageLike): Role {
   if (message.type === "human") return "human";
   if (message.type === "tool") return "tool";
+
   if (message.type === "ai" || message.type === "assistant" || message.type === undefined) {
     return "ai";
   }
+
   // system / remove / function — not part of the visible transcript.
   return "other";
 }
@@ -96,13 +99,16 @@ export function toolResultsByCall(messages: MessageLike[]): Map<string, string> 
     const calls = toolCalls(message);
     if (calls.length === 0) return;
     const followingToolMessages: MessageLike[] = [];
+
     for (let j = messageIndex + 1; j < messages.length && roleOf(messages[j]!) === "tool"; j++) {
       followingToolMessages.push(messages[j]!);
     }
+
     calls.forEach((call, callIndex) => {
       const byId = call.id
         ? followingToolMessages.find((tool) => tool.tool_call_id === call.id)
         : undefined;
+
       const match = byId ?? followingToolMessages[callIndex];
       if (match) results.set(`${messageIndex}-${callIndex}`, answerText(match.content));
     });

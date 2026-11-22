@@ -29,6 +29,7 @@ async function fixture(pauses = false, overrides: RunKwargs = {}) {
     .addEdge("first", "second")
     .addEdge("second", "__end__")
     .compile();
+
   const deps = createFixtureDeps({
     graphs: {
       ...createFixtureResolver(),
@@ -36,23 +37,28 @@ async function fixture(pauses = false, overrides: RunKwargs = {}) {
       load: async () => fixtureLangGraphAgent(graph),
     },
   });
+
   const context = createContext(deps);
   const assistant = await deps.store.assistants.create({ graph_id: "recovery" });
   const thread = await deps.store.threads.create();
   const input = { total: 1 };
   const kwargs: RunKwargs = { input, durability: "sync", ...overrides };
+
   const run = await deps.store.runs.create({
     thread_id: thread.thread_id,
     assistant_id: assistant.assistant_id,
     kwargs,
   });
+
   const checkpointed = Object.assign(Object.create(graph) as typeof graph, {
     checkpointer: withCheckpointRunIdentity(deps.checkpointer, run.run_id),
   });
+
   const config = {
     configurable: { thread_id: thread.thread_id },
     metadata: { run_id: run.run_id },
   };
+
   const recover = () => startRunExecution(context, run, kwargs, { trigger: "background" });
   return { deps, graph: checkpointed, context, run, thread, input, kwargs, config, recover };
 }
@@ -60,6 +66,7 @@ async function fixture(pauses = false, overrides: RunKwargs = {}) {
 describe("same-run checkpoint recovery", () => {
   it("supports frozen structural savers and preserves a class saver's constructor and owner", async () => {
     const saver = createFixtureDeps().checkpointer;
+
     const frozen = Object.freeze({
       getTuple: saver.getTuple.bind(saver),
       list: saver.list.bind(saver),
@@ -67,6 +74,7 @@ describe("same-run checkpoint recovery", () => {
       putWrites: saver.putWrites.bind(saver),
       deleteThread: saver.deleteThread.bind(saver),
     });
+
     const wrapped = withCheckpointRunIdentity(frozen, "run");
     expect(await wrapped.getTuple({ configurable: { thread_id: "empty" } })).toBeUndefined();
     expect(Object.keys(wrapped)).toEqual(Object.keys(frozen));
@@ -84,6 +92,7 @@ describe("same-run checkpoint recovery", () => {
     const f = await fixture();
     await f.graph.invoke(f.input, { ...f.config, interruptAfter: ["first"], durability: "sync" });
     const snapshot = await f.graph.getState(f.config);
+
     const pruned = {
       stream: f.graph.stream.bind(f.graph),
       getState: f.graph.getState.bind(f.graph),
@@ -99,6 +108,7 @@ describe("same-run checkpoint recovery", () => {
     const checkpointer = createFixtureDeps().checkpointer;
     const put = vi.spyOn(checkpointer, "put").mockResolvedValue({});
     const wrapped = withCheckpointRunIdentity(checkpointer, "run");
+
     for (const metadata of ["opaque", null, [1, 2], new Date("2026-11-09T00:00:00Z")]) {
       await wrapped.put({}, { id: "checkpoint" }, metadata, {});
       expect(put.mock.calls.at(-1)?.[2]).toBe(metadata);

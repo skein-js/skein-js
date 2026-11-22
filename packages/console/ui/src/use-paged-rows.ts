@@ -26,15 +26,19 @@ export function usePagedRows<Row>(
   location?: { offset: number; onOffsetChange: (offset: number) => void },
 ) {
   const workspace = useWorkspaceStore();
+
   const saved = useWorkspace((state) =>
     persistenceKey ? state?.pages[`${persistenceKey}:${queryKey}`] : undefined,
   );
+
   const [localPosition, setLocalPosition] = useState<PagePosition>({
     queryKey,
     pageSize,
     offsets: firstPageOffsets,
   });
+
   const position = saved ?? localPosition;
+
   const setPosition = useCallback(
     (next: PagePosition) => {
       if (workspace && persistenceKey)
@@ -43,11 +47,14 @@ export function usePagedRows<Row>(
     },
     [workspace, persistenceKey],
   );
+
   const storedOffsets =
     position.queryKey === queryKey && position.pageSize === pageSize
       ? position.offsets
       : firstPageOffsets;
+
   const locationIndex = location ? storedOffsets.indexOf(location.offset) : -1;
+
   const offsets = location
     ? locationIndex >= 0
       ? storedOffsets.slice(0, locationIndex + 1)
@@ -55,18 +62,21 @@ export function usePagedRows<Row>(
         ? firstPageOffsets
         : [Math.max(0, location.offset - pageSize), location.offset]
     : storedOffsets;
+
   const page = offsets.length - 1;
   const offset = offsets[page]!;
   // The most rows the server has returned in one response. The page cap (`SKEIN_MAX_PAGE_SIZE`) is at
   // least this, so a shorter page cannot have been cut by it. Only this survives reloads: whether a
   // collection *ended* stops being true as soon as a row is added.
   const largestResponse = useRef(0);
+
   const result = useAsync(
     async (signal) => {
       const [fetched, total] = await Promise.all([
         load(offset, pageSize + 1, signal),
         count?.(signal),
       ]);
+
       const rows = fetched.slice(0, pageSize);
       // A short response can reflect the server's page cap, even when more rows exist.
       const mayBeCapped = fetched.length >= largestResponse.current;
@@ -89,6 +99,7 @@ export function usePagedRows<Row>(
     },
     [queryKey, page, offset, pageSize],
   );
+
   const current =
     result.data?.queryKey === queryKey &&
     result.data.page === page &&
@@ -96,6 +107,7 @@ export function usePagedRows<Row>(
     result.data.pageSize === pageSize
       ? result.data
       : undefined;
+
   const loading = result.loading || (current === undefined && !result.error);
 
   // A deletion can empty the last page. Return to the preceding page instead of leaving an
@@ -128,6 +140,7 @@ export function usePagedRows<Row>(
     page,
     previous: () => {
       const visitedOffset = page > 0 ? offsets[page - 1]! : 0;
+
       // A bookmarked URL may have no visited page history. Respect a smaller server cap
       // when walking back instead of jumping over rows by the requested page size.
       const previousOffset = location

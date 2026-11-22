@@ -29,6 +29,7 @@ describe("cron service", () => {
   describe("create", () => {
     it("creates a stateless cron and derives its next run", async () => {
       const service = await serviceWithAssistants();
+
       const cron = await service.crons.create({
         assistant_id: await anyAssistantId(service),
         schedule: "0 9 * * *",
@@ -47,6 +48,7 @@ describe("cron service", () => {
     // figures of them a year with nobody watching.
     it("defaults a stateless cron to deleting its per-fire thread", async () => {
       const service = await serviceWithAssistants();
+
       const cron = await service.crons.create({
         assistant_id: await anyAssistantId(service),
         schedule: "0 9 * * *",
@@ -57,6 +59,7 @@ describe("cron service", () => {
 
     it("honours an explicit on_run_completed on a stateless cron", async () => {
       const service = await serviceWithAssistants();
+
       const cron = await service.crons.create({
         assistant_id: await anyAssistantId(service),
         schedule: "0 9 * * *",
@@ -70,6 +73,7 @@ describe("cron service", () => {
     it("leaves on_run_completed absent on a thread cron", async () => {
       const service = await serviceWithAssistants();
       const { thread_id } = await service.threads.create();
+
       const cron = await service.crons.create({
         assistant_id: await anyAssistantId(service),
         schedule: "0 9 * * *",
@@ -83,6 +87,7 @@ describe("cron service", () => {
 
     it("reads the schedule in the given timezone", async () => {
       const service = await serviceWithAssistants();
+
       const cron = await service.crons.create({
         assistant_id: await anyAssistantId(service),
         schedule: "0 9 * * *",
@@ -96,6 +101,7 @@ describe("cron service", () => {
 
     it("stores a disabled cron as dormant", async () => {
       const service = await serviceWithAssistants();
+
       const cron = await service.crons.create({
         assistant_id: await anyAssistantId(service),
         schedule: "0 9 * * *",
@@ -108,6 +114,7 @@ describe("cron service", () => {
 
     it("stores a cron whose end_time has passed as dormant", async () => {
       const service = await serviceWithAssistants();
+
       const cron = await service.crons.create({
         assistant_id: await anyAssistantId(service),
         schedule: "0 9 * * *",
@@ -121,6 +128,7 @@ describe("cron service", () => {
     // the graph on a fire rather than being silently dropped.
     it("stores the run half of the body as the replayed payload", async () => {
       const service = await serviceWithAssistants();
+
       const cron = await service.crons.create({
         assistant_id: await anyAssistantId(service),
         schedule: "0 9 * * *",
@@ -222,6 +230,7 @@ describe("cron service", () => {
   describe("update", () => {
     it("recomputes next_run_date when the schedule changes", async () => {
       const service = await serviceWithAssistants();
+
       const created = await service.crons.create({
         assistant_id: await anyAssistantId(service),
         schedule: "0 9 * * *",
@@ -233,6 +242,7 @@ describe("cron service", () => {
 
     it("recomputes next_run_date when the timezone changes", async () => {
       const service = await serviceWithAssistants();
+
       const created = await service.crons.create({
         assistant_id: await anyAssistantId(service),
         schedule: "0 9 * * *",
@@ -247,6 +257,7 @@ describe("cron service", () => {
 
     it("goes dormant when disabled", async () => {
       const service = await serviceWithAssistants();
+
       const created = await service.crons.create({
         assistant_id: await anyAssistantId(service),
         schedule: "0 9 * * *",
@@ -261,6 +272,7 @@ describe("cron service", () => {
     // fire again — the bug that makes pause/resume a one-way door.
     it("re-arms when re-enabled", async () => {
       const service = await serviceWithAssistants();
+
       const created = await service.crons.create({
         assistant_id: await anyAssistantId(service),
         schedule: "0 9 * * *",
@@ -274,6 +286,7 @@ describe("cron service", () => {
 
     it("goes dormant when an end_time in the past is set", async () => {
       const service = await serviceWithAssistants();
+
       const created = await service.crons.create({
         assistant_id: await anyAssistantId(service),
         schedule: "0 9 * * *",
@@ -287,6 +300,7 @@ describe("cron service", () => {
 
     it("re-arms when a past end_time is cleared with null", async () => {
       const service = await serviceWithAssistants();
+
       const created = await service.crons.create({
         assistant_id: await anyAssistantId(service),
         schedule: "0 9 * * *",
@@ -300,6 +314,7 @@ describe("cron service", () => {
 
     it("leaves end_time and timezone alone when they are omitted", async () => {
       const service = await serviceWithAssistants();
+
       const created = await service.crons.create({
         assistant_id: await anyAssistantId(service),
         schedule: "0 9 * * *",
@@ -314,6 +329,7 @@ describe("cron service", () => {
 
     it("merges metadata rather than replacing it", async () => {
       const service = await serviceWithAssistants();
+
       const created = await service.crons.create({
         assistant_id: await anyAssistantId(service),
         schedule: "0 9 * * *",
@@ -328,6 +344,7 @@ describe("cron service", () => {
     // anybody asked for.
     it("replaces the payload wholesale when run fields are patched", async () => {
       const service = await serviceWithAssistants();
+
       const created = await service.crons.create({
         assistant_id: await anyAssistantId(service),
         schedule: "0 9 * * *",
@@ -341,6 +358,7 @@ describe("cron service", () => {
 
     it("keeps the payload when the patch carries no run fields", async () => {
       const service = await serviceWithAssistants();
+
       const created = await service.crons.create({
         assistant_id: await anyAssistantId(service),
         schedule: "0 9 * * *",
@@ -353,6 +371,7 @@ describe("cron service", () => {
 
     it("validates a new schedule against the stored timezone, and vice versa", async () => {
       const service = await serviceWithAssistants();
+
       const created = await service.crons.create({
         assistant_id: await anyAssistantId(service),
         schedule: "0 9 * * *",
@@ -376,6 +395,7 @@ describe("cron service", () => {
 
   it("deletes a cron", async () => {
     const service = await serviceWithAssistants();
+
     const created = await service.crons.create({
       assistant_id: await anyAssistantId(service),
       schedule: "0 9 * * *",

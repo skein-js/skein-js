@@ -35,6 +35,7 @@ const flags = new Set(
 
 const failures = [];
 let checks = 0;
+
 function check(label, condition, detail) {
   checks += 1;
   console.log(`  ${condition ? "ok  " : "FAIL"} ${label}${detail ? ` — ${detail}` : ""}`);
@@ -66,10 +67,12 @@ function useVendoredPackages() {
 
 function cleanup() {
   if (runningContainer) spawnSync("docker", ["rm", "-f", runningContainer], { stdio: "ignore" });
+
   if (flags.has("keep")) {
     console.log(`\n--keep: left image ${tag} and ${artifactDir} in place.`);
     return;
   }
+
   spawnSync("docker", ["rmi", "-f", tag], { stdio: "ignore" });
   rmSync(path.join(projectDir, ".skein"), { recursive: true, force: true });
   rmSync(path.join(projectDir, "node_modules"), { recursive: true, force: true });
@@ -81,6 +84,7 @@ async function main() {
   if (!existsSync(skeinCli)) {
     throw new Error(`${skeinCli} is missing — run \`nx run-many -t build\` first`);
   }
+
   rmSync(path.join(projectDir, ".skein"), { recursive: true, force: true });
 
   // The fixture declares its own dependencies and is not a workspace package, so the root install
@@ -106,6 +110,7 @@ async function main() {
     typeof pinned["date-fns"] === "string",
     `pinned: ${Object.keys(pinned).join(", ")}`,
   );
+
   if (failures.length > 0) {
     console.log(`\n${checks - failures.length}/${checks} checks passed`);
     process.exitCode = 1;
@@ -150,17 +155,23 @@ async function main() {
   const binding = execFileSync("docker", ["port", runningContainer, "2024"], {
     encoding: "utf8",
   }).trim();
+
   const url = `http://${binding}`;
   let ready = false;
+
   for (let attempt = 0; attempt < 60; attempt++) {
     try {
       if ((await fetch(`${url}/ok`)).ok) {
         ready = true;
         break;
       }
-    } catch {}
+    } catch {
+      // The server may still be starting.
+    }
+
     await new Promise((resolve) => setTimeout(resolve, 500));
   }
+
   if (!ready)
     throw new Error(
       `Production image did not start: ${execFileSync("docker", ["logs", runningContainer], { encoding: "utf8" })}`,
@@ -174,6 +185,7 @@ async function main() {
     headers: { "content-type": "application/json" },
     body: JSON.stringify({ name: "card" }),
   });
+
   const html = await bootstrap.text();
   check(
     "production image serves the compiled UI bootstrap",
@@ -208,6 +220,7 @@ async function main() {
     headers: { "content-type": "application/json" },
     body: JSON.stringify({ status: "success", assistant_id: "agent", limit: 1 }),
   });
+
   const found = await searched.json();
   check(
     "production image serves driver-backed run search and its generated contract",

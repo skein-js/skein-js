@@ -25,9 +25,11 @@ export function resolveThreadTtl(raw: RawThreadTtl | undefined): ThreadTtlConfig
   const ttl: ThreadTtlConfig = {};
   if (raw.strategy === "keep_latest") ttl.strategy = raw.strategy;
   if (typeof raw.default_ttl === "number") ttl.defaultTtl = raw.default_ttl;
+
   if (typeof raw.sweep_interval_minutes === "number") {
     ttl.sweepIntervalMinutes = raw.sweep_interval_minutes;
   }
+
   return Object.keys(ttl).length > 0 ? ttl : undefined;
 }
 
@@ -47,8 +49,10 @@ export function resolveStoreTtl(raw: RawStoreTtl | undefined): StoreTtlConfig | 
   const ttl: StoreTtlConfig = {};
   if (typeof raw.default_ttl === "number") ttl.defaultTtl = raw.default_ttl;
   if (typeof raw.refresh_on_read === "boolean") ttl.refreshOnRead = raw.refresh_on_read;
+
   if (typeof raw.sweep_interval_minutes === "number") {
     ttl.sweepIntervalMinutes = raw.sweep_interval_minutes;
   }
+
   return Object.keys(ttl).length > 0 ? ttl : undefined;
 }

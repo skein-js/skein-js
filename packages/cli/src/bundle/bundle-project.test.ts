@@ -1,4 +1,4 @@
-import { cp, mkdtemp, mkdir, readdir, readFile, rm, writeFile } from "node:fs/promises";
+import { cp, mkdir, mkdtemp, readdir, readFile, rm, writeFile } from "node:fs/promises";
 import nodeModule, { isBuiltin } from "node:module";
 import { tmpdir } from "node:os";
 import path from "node:path";
@@ -26,6 +26,7 @@ const appDir = path.resolve(
   fileURLToPath(new URL(".", import.meta.url)),
   "__fixtures__/monorepo/apps/app",
 );
+
 const libDir = path.resolve(appDir, "../../libs/lib");
 const outDir = path.join(appDir, ".skein", "build");
 const artifactConfig = path.join(outDir, "langgraph.json");
@@ -115,6 +116,7 @@ it("builds and starts an artifact with disabled graph UI without reading its mis
     configPath,
     JSON.stringify({ ...config, ui: { echo: "./missing-ui.tsx" }, http: { disable_ui: true } }),
   );
+
   try {
     await bundleProject({
       configPath,
@@ -128,6 +130,7 @@ it("builds and starts an artifact with disabled graph UI without reading its mis
       store: "memory",
       queue: "memory",
     });
+
     try {
       expect(runtime.deps.httpHandler).toBeUndefined();
     } finally {
@@ -170,11 +173,13 @@ afterAll(async () => {
 async function bareImportsInArtifact(): Promise<string[]> {
   const entries = await readdir(outDir, { recursive: true, withFileTypes: true });
   const specifiers = new Set<string>();
+
   for (const entry of entries) {
     if (!entry.isFile() || !entry.name.endsWith(".js")) continue;
     // Skip the simulated install — only the bundle's own output describes the artifact's imports.
     if (entry.parentPath.includes("node_modules")) continue;
     const code = await readFile(path.join(entry.parentPath, entry.name), "utf8");
+
     for (const [, specifier] of code.matchAll(/(?:from|import)\s*\(?\s*["']([^"']+)["']/g)) {
       if (!specifier || specifier.startsWith(".") || specifier.startsWith("#")) continue;
       // `isBuiltin`, not a `node:` prefix check: rolldown's CJS interop emits bare `fs`/`crypto` too,
@@ -183,12 +188,14 @@ async function bareImportsInArtifact(): Promise<string[]> {
       specifiers.add(specifier);
     }
   }
+
   return [...specifiers];
 }
 
 describe("bundleProject", () => {
   it("serves compiled UI and custom HTTP exports from an isolated artifact without source files", async () => {
     const directory = await mkdtemp(path.join(tmpdir(), "skein-http-artifact-"));
+
     try {
       await cp(outDir, directory, { recursive: true });
       const production = JSON.parse(await readFile(path.join(directory, "langgraph.json"), "utf8"));
@@ -200,6 +207,7 @@ describe("bundleProject", () => {
         queue: "memory",
         schemas: JSON.parse(await readFile(path.join(directory, "schemas.json"), "utf8")),
       });
+
       try {
         const custom = await runtime.deps.httpHandler!(
           new Request("http://localhost/custom", { method: "POST", body: "payload" }),
@@ -290,6 +298,7 @@ describe("bundleProject", () => {
               pkg === name ? directory : path.dirname(nodeModule.findPackageJSON(pkg, source)!),
           }
         : null;
+
     try {
       const built = await bundleProject({ configPath, outDir: output, skeinVersion: "9.9.9-test" });
       expect(built.externals[name]).toBe("8.7.6");
@@ -327,6 +336,7 @@ describe("bundleProject", () => {
       configPath,
       JSON.stringify({ ...config, dependencies: [name], http: { disable_ui: true } }),
     );
+
     try {
       const dependencyArtifact = await bundleProject({
         configPath,
@@ -356,6 +366,7 @@ describe("bundleProject", () => {
       const configPath = path.join(appDir, "invalid-dependency.json");
       const output = `${outDir}-invalid-dependency`;
       const config = JSON.parse(await readFile(path.join(appDir, "langgraph.json"), "utf8"));
+
       if (manifest !== undefined) {
         await mkdir(directory, { recursive: true });
         await writeFile(
@@ -363,10 +374,12 @@ describe("bundleProject", () => {
           typeof manifest === "string" ? manifest : JSON.stringify(manifest),
         );
       }
+
       await writeFile(
         configPath,
         JSON.stringify({ ...config, dependencies: [name], http: { disable_ui: true } }),
       );
+
       try {
         await expect(
           bundleProject({ configPath, outDir: output, skeinVersion: "9.9.9-test" }),
@@ -427,6 +440,7 @@ describe("bundleProject", () => {
       string,
       never
     >;
+
     // No importModule → graphs load through native import() of the compiled JS, exactly as in the
     // production image. The aliased lib was inlined at build time and both externals resolve from the
     // node_modules trees around the artifact, so a correct output proves bundling *and* execution.
@@ -436,12 +450,14 @@ describe("bundleProject", () => {
       queue: "memory",
       schemas,
     });
+
     try {
       const resolved = await runtime.deps.graphs.load("agent");
       const loaded = typeof resolved === "function" ? await resolved({}) : resolved;
       // `invoke` is optional on `AgentGraph` (a non-LangGraph agent need not implement it); a bundled
       // LangGraph graph always has it, so narrow rather than assert.
       const graph = requireAgentCapability(loaded, "invoke");
+
       const result = (await graph.invoke({ messages: [{ role: "user", content: "hi" }] })) as {
         messages: Array<{ content: unknown }>;
       };

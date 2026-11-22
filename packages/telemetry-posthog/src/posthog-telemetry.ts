@@ -90,12 +90,14 @@ function runProperties(context: RunTelemetryContext): Record<string, unknown> {
  */
 function readTokenUsage(output: unknown): { input?: number; output?: number; total?: number } {
   const llmOutput = (output as { llmOutput?: Record<string, unknown> } | undefined)?.llmOutput;
+
   // Modern LangChain puts normalized counts on the message itself (`usage_metadata`), which is the
   // one shape that agrees across providers. `llmOutput.tokenUsage` is the older OpenAI-shaped path,
   // still emitted by several integrations, so both are checked — normalized first.
   const message = (
     output as { generations?: { message?: { usage_metadata?: Record<string, unknown> } }[][] }
   )?.generations?.[0]?.[0]?.message?.usage_metadata;
+
   const source =
     message ??
     (llmOutput?.["tokenUsage"] as Record<string, unknown> | undefined) ??
@@ -107,6 +109,7 @@ function readTokenUsage(output: unknown): { input?: number; output?: number; tot
       const value = source[name];
       if (typeof value === "number") return value;
     }
+
     return undefined;
   };
 
@@ -125,10 +128,12 @@ function readTokenUsage(output: unknown): { input?: number; output?: number; tot
 function readModelName(extraParams: unknown): string | undefined {
   const invocation = (extraParams as { invocation_params?: Record<string, unknown> } | undefined)
     ?.invocation_params;
+
   for (const key of ["model", "model_name", "modelName", "deployment"]) {
     const value = invocation?.[key];
     if (typeof value === "string" && value.length > 0) return value;
   }
+
   return undefined;
 }
 
@@ -286,6 +291,7 @@ export function createPostHogTelemetry(
       client.capture(event);
       return;
     }
+
     // Bounded: a host that never installs `posthog-node` must not accumulate events forever.
     if (buffered && buffered.length < MAX_BUFFERED_EVENTS) buffered.push(event);
   };
@@ -300,6 +306,7 @@ export function createPostHogTelemetry(
       } catch {
         // `posthog-node` not installed — nothing to send to.
       }
+
       const pending = buffered ?? [];
       buffered = undefined;
       if (client) for (const event of pending) client.capture(event);

@@ -7,6 +7,7 @@ import type { GraphSchemas } from "@skein-js/config";
 function findBuiltConfig(configDir: string): string | undefined {
   const artifactDir = path.join(configDir, ".skein", "build");
   const configFile = path.join(artifactDir, "langgraph.json");
+
   try {
     if (
       statSync(configFile, { throwIfNoEntry: false })?.isFile() &&
@@ -17,6 +18,7 @@ function findBuiltConfig(configDir: string): string | undefined {
   } catch {
     // A hint is best-effort: a failed probe must not replace the missing-schema diagnostic.
   }
+
   return undefined;
 }
 
@@ -28,6 +30,7 @@ function quoteCommandPath(filePath: string): string {
 function missingSchemasMessage(configDir: string, cwd: string): string {
   const message = "no schemas.json next to the config — `skein start` expects a built artifact. ";
   const builtConfig = findBuiltConfig(configDir);
+
   if (builtConfig) {
     const configArgument = quoteCommandPath(path.relative(cwd, builtConfig));
     return (
@@ -36,6 +39,7 @@ function missingSchemasMessage(configDir: string, cwd: string): string {
       `Use \`-c ${configArgument}\` in your original \`skein start\` command, keeping its other options.`
     );
   }
+
   return message + "Run `skein build` (or `skein up`), or use `skein dev` for a source project.";
 }
 
@@ -45,8 +49,10 @@ export function readBakedSchemas(
   cwd = process.cwd(),
 ): Record<string, GraphSchemas> {
   const schemasFile = path.join(configDir, "schemas.json");
+
   if (!existsSync(schemasFile)) {
     throw new Error(missingSchemasMessage(configDir, cwd));
   }
+
   return JSON.parse(readFileSync(schemasFile, "utf8")) as Record<string, GraphSchemas>;
 }

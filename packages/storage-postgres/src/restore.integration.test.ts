@@ -160,6 +160,7 @@ describe("PostgresSkeinStore.restore", () => {
     // `restore` is documented as the lossless sink for migration tooling, so a snapshot that
     // records *why* a run failed has to arrive with that intact.
     const snapshot = fixture();
+
     const failure = {
       error: "TypeError",
       name: "TypeError",

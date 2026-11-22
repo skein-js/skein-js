@@ -3,7 +3,7 @@ import { createServer } from "node:http";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 
-import { SendMessageRequest, GetTaskRequest, TaskState, type Task } from "@a2a-js/sdk";
+import { GetTaskRequest, SendMessageRequest, TaskState, type Task } from "@a2a-js/sdk";
 import { ClientFactory } from "@a2a-js/sdk/client";
 import { SqliteSaver } from "@langchain/langgraph-checkpoint-sqlite";
 import { openSqliteStorage, type SqliteStorage } from "@skein-js/storage-sqlite";
@@ -17,6 +17,7 @@ it.each(["memory", "sqlite"])(
   async (backend) => {
     const directory = await mkdtemp(join(tmpdir(), "skein-a2a-"));
     let storage: SqliteStorage | undefined;
+
     const openDeps = async () => {
       const configurableHeaders = { includes: ["x-*"] };
       if (backend === "memory") return createFixtureDeps({ configurableHeaders });
@@ -30,6 +31,7 @@ it.each(["memory", "sqlite"])(
         configurableHeaders,
       });
     };
+
     let runtime = createProtocolRuntime(await openDeps());
     await runtime.service.assistants.registerGraphAssistants();
     runtime.worker.start();
@@ -39,6 +41,7 @@ it.each(["memory", "sqlite"])(
         for await (const chunk of request) chunks.push(Buffer.from(chunk));
         const url = new URL(request.url!, `http://${request.headers.host}`);
         const body = chunks.length ? JSON.parse(Buffer.concat(chunks).toString()) : undefined;
+
         const result = await runtime.handlers.handleA2a!({
           method: request.method!,
           url: url.href,
@@ -63,11 +66,13 @@ it.each(["memory", "sqlite"])(
     });
     await new Promise<void>((resolve) => server.listen(0, "127.0.0.1", resolve));
     const address = server.address() as { port: number };
+
     try {
       const client = await new ClientFactory().createFromUrl(
         `http://127.0.0.1:${address.port}`,
         "/.well-known/agent-card.json?assistant_id=echo",
       );
+
       const first = (await client.sendMessage(
         SendMessageRequest.fromJSON({
           message: { messageId: "first", role: "ROLE_USER", parts: [{ data: { value: "first" } }] },
@@ -88,18 +93,21 @@ it.each(["memory", "sqlite"])(
         threadIds: [first.contextId],
         strategy: "keep_latest",
       });
+
       if (storage) {
         await runtime.worker.stop();
         await storage.dispose();
         runtime = createProtocolRuntime(await openDeps());
         runtime.worker.start();
       }
+
       const restored = await client.getTask(GetTaskRequest.fromJSON({ id: first.id }));
       expect(restored.artifacts).toEqual(first.artifacts);
       const hitl = await new ClientFactory().createFromUrl(
         `http://127.0.0.1:${address.port}`,
         "/.well-known/agent-card.json?assistant_id=interrupting",
       );
+
       const interrupted = (await hitl.sendMessage(
         SendMessageRequest.fromJSON({
           message: { messageId: "ask", role: "ROLE_USER", parts: [{ data: { value: "ask" } }] },
@@ -191,13 +199,16 @@ it("rejects unsupported persistence before creating a thread or run", async () =
 it("does not expose a computed artifact when cancellation wins result settlement", async () => {
   const deps = createFixtureDeps();
   const record = deps.store.runs.recordResult!;
+
   deps.store.runs.recordResult = async (id, result) => {
     await record(id, result);
     await deps.store.runs.setStatus(id, "cancelled");
   };
+
   const runtime = createProtocolRuntime(deps);
   await runtime.service.assistants.registerGraphAssistants();
   runtime.worker.start();
+
   try {
     const response = await runtime.handlers.handleA2a!({
       method: "POST",
@@ -245,6 +256,7 @@ it("lists tasks without artifacts unless the caller asks for them", async () => 
       headers: {},
       body: { jsonrpc: "2.0", id, method, params },
     });
+
   try {
     await rpc(1, "SendMessage", {
       message: { messageId: "listed", role: "ROLE_USER", parts: [{ data: { value: "hi" } }] },

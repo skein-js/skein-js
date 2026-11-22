@@ -50,6 +50,7 @@ export const STRUCTURED_TOOL_NAMES = new Set(["get_weather", "search_flights", "
 /** Parse a tool-result string as JSON, returning null on any error (never throws). */
 export function safeParse(json: string | undefined): unknown {
   if (!json) return null;
+
   try {
     return JSON.parse(json);
   } catch {
@@ -64,6 +65,7 @@ function isObject(value: unknown): value is Record<string, unknown> {
 /** Parse a `get_weather` result, or null if it isn't a well-formed weather payload. */
 export function parseWeather(json: string | undefined): WeatherResult | null {
   const value = safeParse(json);
+
   if (
     !isObject(value) ||
     typeof value["location"] !== "string" ||
@@ -71,6 +73,7 @@ export function parseWeather(json: string | undefined): WeatherResult | null {
   ) {
     return null;
   }
+
   return value as unknown as WeatherResult;
 }
 
@@ -84,9 +87,11 @@ export function parseFlights(json: string | undefined): FlightSearchResult | nul
 /** Parse a `book_flight` result, or null if it isn't a well-formed booking payload. */
 export function parseBooking(json: string | undefined): BookingResult | null {
   const value = safeParse(json);
+
   if (!isObject(value) || (value["status"] !== "booked" && value["status"] !== "cancelled")) {
     return null;
   }
+
   return value as unknown as BookingResult;
 }
 
@@ -95,6 +100,7 @@ export function parseApproval(value: unknown): FlightApprovalRequest | null {
   if (!isObject(value) || value["type"] !== "approval" || value["action"] !== "book_flight") {
     return null;
   }
+
   if (!isObject(value["flight"])) return null;
   return value as unknown as FlightApprovalRequest;
 }

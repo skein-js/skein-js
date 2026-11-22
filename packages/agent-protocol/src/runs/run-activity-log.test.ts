@@ -21,11 +21,13 @@ interface CapturedLine {
 /** A logger that records every line, with its level and structured meta, for assertions. */
 function capturingLogger(): Logger & { entries: CapturedLine[]; lines: string[] } {
   const entries: CapturedLine[] = [];
+
   const record =
     (level: CapturedLine["level"]) =>
     (message: string, meta?: unknown): void => {
       entries.push({ level, message, meta });
     };
+
   return {
     entries,
     get lines() {

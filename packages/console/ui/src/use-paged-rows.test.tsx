@@ -7,6 +7,7 @@ describe("usePagedRows", () => {
   it("walks backward through capped pages from a bookmarked URL without visited history", async () => {
     const rows = Array.from({ length: 10 }, (_, index) => index);
     const onOffsetChange = vi.fn();
+
     const { result, rerender } = renderHook(
       ({ offset }) =>
         usePagedRows(
@@ -20,6 +21,7 @@ describe("usePagedRows", () => {
       { initialProps: { offset: 8 } },
     );
     await waitFor(() => expect(result.current.rows).toEqual([8, 9]));
+
     for (const offset of [6, 4, 2, 0]) {
       act(() => result.current.previous());
       expect(onOffsetChange).toHaveBeenLastCalledWith(offset);
@@ -30,6 +32,7 @@ describe("usePagedRows", () => {
   it("restores URL offsets and retains visited boundaries when the server caps pages", async () => {
     const rows = ["a", "b", "c", "d", "e"];
     const onOffsetChange = vi.fn();
+
     const { result, rerender } = renderHook(
       ({ offset }) =>
         usePagedRows(
@@ -58,6 +61,7 @@ describe("usePagedRows", () => {
   it("moves through page boundaries and resets when the query changes", async () => {
     const rows = ["a", "b", "c", "d", "e"];
     const load = vi.fn(async (offset: number, limit: number) => rows.slice(offset, offset + limit));
+
     const { result, rerender } = renderHook(({ queryKey }) => usePagedRows(load, queryKey, 2), {
       initialProps: { queryKey: "all" },
     });
@@ -105,9 +109,11 @@ describe("usePagedRows", () => {
 
   it("finds rows added to a collection that filled the server cap exactly", async () => {
     const rows = Array.from({ length: 50 }, (_, index) => index);
+
     const load = vi.fn(async (offset: number, limit: number) =>
       rows.slice(offset, offset + Math.min(limit, 50)),
     );
+
     const { result } = renderHook(() => usePagedRows(load, "capped", 50));
     await waitFor(() => expect(result.current.rows).toHaveLength(50));
     expect(result.current.hasNext).toBe(false);
@@ -124,13 +130,17 @@ describe("usePagedRows", () => {
     { cap: 17, withCount: false },
   ])("visits every row with server cap $cap and count=$withCount", async ({ cap, withCount }) => {
     const rows = Array.from({ length: 123 }, (_, index) => index);
+
     const load = vi.fn(async (offset: number, limit: number) =>
       rows.slice(offset, offset + Math.min(limit, cap)),
     );
+
     const { result } = renderHook(() =>
       usePagedRows(load, "capped", 50, withCount ? async () => rows.length : undefined),
     );
+
     const visited: number[] = [];
+
     for (let offset = 0; offset < rows.length; offset += cap) {
       await waitFor(() => expect(result.current.rows).toEqual(rows.slice(offset, offset + cap)));
       expect(result.current.offset).toBe(offset);
@@ -138,6 +148,7 @@ describe("usePagedRows", () => {
       expect(result.current.hasNext).toBe(offset + cap < rows.length);
       if (result.current.hasNext) act(() => result.current.next());
     }
+
     expect(visited).toEqual(rows);
 
     const previousOffset = result.current.offset - cap;

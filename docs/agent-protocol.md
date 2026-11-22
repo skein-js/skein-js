@@ -584,6 +584,7 @@ const tenantLabel = (identity: string) =>
 
 auth.on("store", ({ user, value }) => {
   const namespace = value.namespace; // server-derived; absent means "every namespace" on search
+
   if (!namespace?.length || namespace[0] !== tenantLabel(user.identity)) {
     throw new HTTPException(403, { message: "Out of scope." });
   }

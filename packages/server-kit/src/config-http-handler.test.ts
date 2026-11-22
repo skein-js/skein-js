@@ -43,6 +43,7 @@ it("loads Fetch exports with their receiver and falls through on 404 without con
       return new Response("missing", { status: 404 });
     },
   };
+
   const handler = await loadConfigHttpHandler(
     { graphs: {}, http: { app: "./app.ts:app" } } as LanggraphJson,
     {
@@ -53,6 +54,7 @@ it("loads Fetch exports with their receiver and falls through on 404 without con
       },
     },
   );
+
   const response = await handler!(
     new Request("http://localhost/info", { method: "POST", body: "body" }),
   );
@@ -68,10 +70,12 @@ it("loads a real exported Hono application and falls through when it has no matc
   const app = new Hono().post("/custom", async (context) =>
     context.json({ body: await context.req.json() }),
   );
+
   const handler = await loadConfigHttpHandler(
     { graphs: {}, http: { app: "./custom.ts:app" } } as LanggraphJson,
     { configDir: process.cwd(), importModule: async () => ({ app }) },
   );
+
   const response = await handler!(
     new Request("http://localhost/custom", {
       method: "POST",
@@ -95,11 +99,14 @@ it.each([200, 404])(
         }),
       },
     );
+
     const request = new Request("http://localhost/threads", {
       method: "POST",
       body: "streamed body",
     });
+
     const response = await handler!(request);
+
     if (status === 404) {
       expect(response).toBeUndefined();
       expect(await request.text()).toBe("streamed body");

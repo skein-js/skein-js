@@ -118,6 +118,7 @@ const whatsappDeliverySchema = z.object({
   target: z.object({ to: z.string().min(1) }),
   payload: z.object({ body: z.string().min(1) }),
 });
+
 const emailDeliverySchema = z.object({
   target: z.object({ to: z.string().email() }),
   payload: z.object({ subject: z.string(), body: z.string() }),

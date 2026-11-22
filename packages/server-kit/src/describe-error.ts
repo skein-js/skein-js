@@ -42,6 +42,7 @@ function describe(thrown: unknown, depth: number, seen: WeakSet<object>): string
   // Structural, so this covers SkeinConfigError and SkeinHttpError without importing either — and
   // keeps working if a duplicated install makes `instanceof` lie.
   const details = readProperty(thrown, "details");
+
   if (details !== undefined) {
     const rendered = safeStringify(details);
     if (rendered !== undefined) described += `\ndetails: ${rendered}`;

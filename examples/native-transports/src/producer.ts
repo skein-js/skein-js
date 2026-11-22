@@ -10,9 +10,9 @@ import { Queue, QueueEvents, Worker } from "bullmq";
 import {
   commandId,
   commandQueueName,
-  resolveRedisConnectionOptions,
   outcomeQueueName,
   receiverPath,
+  resolveRedisConnectionOptions,
 } from "./settings.js";
 
 await mkdir(dirname(receiverPath), { recursive: true });
@@ -23,9 +23,11 @@ inbox.exec(
 const insert = inbox.prepare(
   "INSERT INTO outcomes VALUES (?, ?, ?) ON CONFLICT(event_id) DO NOTHING",
 );
+
 const connection = resolveRedisConnectionOptions();
 const commands = new Queue(commandQueueName, { connection });
 const events = new QueueEvents(commandQueueName, { connection, lastEventId: "0-0" });
+
 const receiver = new Worker<BullMqOutcome>(
   outcomeQueueName,
   async (job) => {
@@ -35,6 +37,7 @@ const receiver = new Worker<BullMqOutcome>(
   },
   { connection },
 );
+
 const send = async (command: BullMqCommand) => {
   const job = await commands.add("skein.command.v1", command, {
     attempts: 5,
@@ -44,16 +47,19 @@ const send = async (command: BullMqCommand) => {
   });
   return job.waitUntilFinished(events, 15_000) as Promise<unknown>;
 };
+
 const read = async (request: Extract<BullMqCommand, { operation: "state.get" | "result.get" }>) => {
   const bytes: Buffer[] = [];
   let offset = 0;
   let digest: string | undefined;
+
   for (;;) {
     const part = (await send({ ...request, offset, ...(digest ? { digest } : {}) })) as BullMqChunk;
     if (part.offset !== offset || (digest && digest !== part.digest))
       throw new Error("Unexpected chunk.");
     digest = part.digest;
     bytes.push(Buffer.from(part.content, "base64"));
+
     if (part.nextOffset === null) {
       const whole = Buffer.concat(bytes);
       if (
@@ -63,9 +69,11 @@ const read = async (request: Extract<BullMqCommand, { operation: "state.get" | "
         throw new Error("Result digest mismatch.");
       return JSON.parse(whole.toString("utf8")) as unknown;
     }
+
     offset = part.nextOffset;
   }
 };
+
 try {
   const receipt = (await send({
     version: 1,
@@ -76,6 +84,7 @@ try {
       input: { request: "Publish the release notes" },
     },
   })) as AdmissionReceipt;
+
   // Use the original run's retained checkpoint so re-running this producer sends identical meaning,
   // even if the thread has advanced. A human UI can also use authorized state.get for a fresh turn.
   const first = (await read({
@@ -84,6 +93,7 @@ try {
     operation: "result.get",
     runId: receipt.runId,
   })) as Pick<ThreadState, "checkpoint">;
+
   const answer = (await send({
     version: 1,
     commandId: `${commandId}-answer`,
@@ -95,12 +105,14 @@ try {
       resume: "approve",
     },
   })) as AdmissionReceipt;
+
   const result = await read({
     version: 1,
     commandId: `${commandId}-result`,
     operation: "result.get",
     runId: answer.runId,
   });
+
   for (
     let attempt = 0;
     !inbox.prepare("SELECT 1 FROM outcomes WHERE run_id = ?").get(answer.runId);
@@ -110,6 +122,7 @@ try {
       throw new Error("Outcome did not arrive; reconcile using the retained result.");
     await new Promise((resolve) => setTimeout(resolve, 20));
   }
+
   console.log(
     JSON.stringify(
       {

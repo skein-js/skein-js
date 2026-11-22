@@ -1,9 +1,9 @@
 // Existing application configuration must keep the same meaning as streaming gains subgraphs.
 import {
   Annotation,
+  StateGraph,
   type CompiledGraph,
   type LangGraphRunnableConfig,
-  StateGraph,
 } from "@langchain/langgraph";
 import { describe, expect, it } from "vitest";
 
@@ -26,6 +26,7 @@ const ReportState = Annotation.Root({
 
 async function harness(authenticated = false) {
   const factoryCalls: Array<Record<string, unknown> | undefined> = [];
+
   const compiled = new StateGraph(ReportState)
     .addNode("report", (_state, config: LangGraphRunnableConfig) => ({
       seen: config.configurable ?? {},
@@ -34,6 +35,7 @@ async function harness(authenticated = false) {
     .addEdge("__start__", "report")
     .addEdge("report", "__end__")
     .compile();
+
   const resolver = {
     ...createFixtureResolver(),
     ids: ["reporting"],
@@ -44,6 +46,7 @@ async function harness(authenticated = false) {
     schemas: async (): Promise<GraphSchemas> =>
       ({ reporting: { graph_id: "reporting" } }) as unknown as GraphSchemas,
   };
+
   const context = createContext(createFixtureDeps({ graphs: resolver }));
   if (authenticated)
     context.authUser = {
@@ -60,6 +63,7 @@ async function harness(authenticated = false) {
 describe("run configuration compatibility", () => {
   it("supplies authoritative execution metadata without telemetry while keeping application routing IDs", async () => {
     const { service } = await harness();
+
     const { result, runId, threadId } = await service.runs.createWait({
       assistant_id: "reporting",
       input: {},
@@ -77,11 +81,13 @@ describe("run configuration compatibility", () => {
   it("keeps legacy assistant/graph keys and the same factory config on state reconstruction", async () => {
     const { service, factoryCalls } = await harness(true);
     const thread = await service.threads.create();
+
     const configurable = {
       assistant_id: "application-routing-id",
       graph_id: "application-graph-id",
       keep: "me",
     };
+
     const { result } = await service.runs.createWait({
       thread_id: thread.thread_id,
       assistant_id: "reporting",
@@ -128,6 +134,7 @@ describe("run configuration compatibility", () => {
 
     // Another principal reads the thread. The run's config shapes the graph; Alice does not.
     const bob = { identity: "bob", display_name: "Bob", is_authenticated: true, permissions: [] };
+
     const asBob = createProtocolServiceFromContext({
       ...context,
       authUser: bob,

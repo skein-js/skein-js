@@ -35,6 +35,7 @@ export function nextAttemptDelayMs(
   random: () => number = Math.random,
 ): number {
   const initial = retries.initialDelayMs ?? DEFAULT_INITIAL_DELAY_MS;
+
   // `attempt` counts from 1, so the first retry waits `initial` rather than twice it.
   //
   // Clamped, and not for tidiness: the schema bounds `max_attempts` only by `.positive()`, so a few
@@ -45,6 +46,7 @@ export function nextAttemptDelayMs(
     Math.round(initial * 2 ** Math.max(0, attempt - 1)),
     MAX_ATTEMPT_DELAY_MS,
   );
+
   const floor = ceiling * (1 - JITTER_FRACTION);
   return Math.floor(random() * ceiling * JITTER_FRACTION + floor);
 }

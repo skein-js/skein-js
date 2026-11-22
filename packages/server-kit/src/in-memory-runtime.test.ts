@@ -97,6 +97,7 @@ describe("loadReloadableInMemoryRuntime", () => {
         params: {},
         query: {},
       };
+
       const response = await runtime.handlers.createWaitRun(request);
       expect(response.status).toBe(200);
       const [run] = await runtime.service.runs.search!({ limit: 1 });
@@ -132,6 +133,7 @@ describe("loadReloadableInMemoryRuntime", () => {
     await protocol.service.assistants.registerGraphAssistants();
 
     const thread = await protocol.service.threads.create();
+
     const { result } = await protocol.service.runs.createWait({
       thread_id: thread.thread_id,
       assistant_id: "remember",

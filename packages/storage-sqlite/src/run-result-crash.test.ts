@@ -29,6 +29,7 @@ it.each([false, true])(
     child.stderr?.on("data", (chunk) => {
       errors += String(chunk);
     });
+
     try {
       const [message] = (await Promise.race([
         once(child, "message"),
@@ -39,6 +40,7 @@ it.each([false, true])(
       child.kill("SIGKILL");
       await once(child, "exit");
       const reopened = await openSqliteStorage({ filename });
+
       try {
         expect(await reopened.store.runs.getResult!(message.runId)).toEqual({
           values: { answer: "original" },

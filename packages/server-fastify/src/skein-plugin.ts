@@ -15,8 +15,8 @@ import {
 import {
   resolveProtocolRuntime,
   sendNativeResponse,
-  toNativeRequest,
   stripBasePath,
+  toNativeRequest,
   withNativePath,
   type CorsOptions,
   type SkeinRuntimeOptions,
@@ -24,9 +24,9 @@ import {
 import type {
   FastifyInstance,
   FastifyPluginAsync,
-  HTTPMethods,
-  FastifyRequest,
   FastifyReply,
+  FastifyRequest,
+  HTTPMethods,
 } from "fastify";
 
 import { sendErrorResponse } from "./error-response.js";
@@ -79,6 +79,7 @@ export async function prepareSkeinContext(
     // `@fastify/cors` is an optional peer — only needed when CORS is on. Load it lazily so the
     // adapter installs cleanly without it, and give a clear error if it is enabled but missing.
     let fastifyCors: FastifyPluginAsync<Record<string, unknown>>;
+
     try {
       fastifyCors = (await import("@fastify/cors")).default as unknown as FastifyPluginAsync<
         Record<string, unknown>
@@ -89,6 +90,7 @@ export async function prepareSkeinContext(
           "or disable CORS.",
       );
     }
+
     await fastify.register(
       fastifyCors,
       (options.cors === true ? { origin: true } : options.cors) as Record<string, unknown>,
@@ -105,6 +107,7 @@ export async function prepareSkeinContext(
   } catch {
     // Already replaced in this context by the other skein plugin — the parser below is identical.
   }
+
   // Fastify ships parsers for `application/json` and `text/plain` and nothing else, so an unmatched
   // content type is `FST_ERR_CTP_INVALID_MEDIA_TYPE` — a **415 before any handler runs**. That makes a
   // form-encoded provider request (Twilio, a Slack slash command) unreachable on this adapter, which
@@ -117,6 +120,7 @@ export async function prepareSkeinContext(
       .filter((route) => route.retainRawBody)
       .map((route) => route.path),
   );
+
   if (options.handleRequest) {
     try {
       fastify.addContentTypeParser("*", { parseAs: "buffer" }, (req, body, done) => {
@@ -157,16 +161,20 @@ export async function prepareSkeinContext(
   fastify.addContentTypeParser("application/json", { parseAs: "string" }, (req, body, done) => {
     const raw = typeof body === "string" ? body : body.toString();
     if (options.handleRequest) nativeRawBodies.set(req, Buffer.from(raw));
+
     // A channel verifies a signature over these bytes; parsing them first makes that impossible.
     if (wantsRawBody(req.url)) {
       done(null, raw);
       return;
     }
+
     const text = raw.trim();
+
     if (text === "") {
       done(null, {});
       return;
     }
+
     try {
       done(null, JSON.parse(text));
     } catch (error) {
@@ -191,6 +199,7 @@ export async function registerSkeinHandlers(
     options.handleRequest as unknown as
       Record<symbol, ((method: string, url: string) => boolean) | undefined> | undefined
   )?.[Symbol.for("@skein-js/native-request-matcher")];
+
   const dispatchNative = async (req: FastifyRequest, reply: FastifyReply) => {
     if (!options.handleRequest) return false;
     const request = toProtocolRequest(req);
@@ -210,6 +219,7 @@ export async function registerSkeinHandlers(
     await sendNativeResponse(response, reply.raw);
     return true;
   };
+
   if (options.handleRequest)
     fastify.route({
       method: ["GET", "POST", "PUT", "PATCH", "DELETE", "HEAD"],
@@ -234,9 +244,11 @@ export async function registerSkeinHandlers(
         // SSE path hijacks the reply and writes to the raw socket, so that is where the close lands.
         const disconnected = new AbortController();
         reply.raw.once("close", () => disconnected.abort(new Error("client disconnected")));
+
         try {
           if (await dispatchNative(req, reply)) return;
           const request = { ...toProtocolRequest(req), signal: disconnected.signal };
+
           const response = await invoke(
             binding.foldThreadIdIntoBody ? copyThreadIdIntoBody(request) : request,
           );
@@ -244,6 +256,7 @@ export async function registerSkeinHandlers(
         } catch (error) {
           sendErrorResponse(error, reply, options.logger);
         }
+
         // Returning the (sent or hijacked) reply tells Fastify the response is fully handled.
         return reply;
       },

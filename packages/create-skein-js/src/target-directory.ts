@@ -52,6 +52,7 @@ export function assertTargetDirectoryUsable(
 ): void {
   if (options.force) return;
   const blockingEntries = findBlockingEntries(targetDirectory);
+
   if (blockingEntries.length > 0) {
     throw new TargetDirectoryNotEmptyError(targetDirectory, blockingEntries);
   }

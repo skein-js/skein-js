@@ -5,11 +5,11 @@
 import { AIMessage, type BaseMessage } from "@langchain/core/messages";
 import type { RunnableConfig } from "@langchain/core/runnables";
 import {
-  type CompiledGraph,
   interrupt,
   MemorySaver,
   MessagesAnnotation,
   StateGraph,
+  type CompiledGraph,
 } from "@langchain/langgraph";
 import {
   filterSkeinRoutes,
@@ -23,9 +23,9 @@ import type { AuthEngine } from "@skein-js/core";
 import { cloneLangGraphCheckpoint, langGraphResolver, SkeinBaseStore } from "@skein-js/langgraph";
 import {
   MemoryRunEventBus,
-  MemoryThreadEventBus,
   MemoryRunQueue,
   MemorySkeinStore,
+  MemoryThreadEventBus,
 } from "@skein-js/storage-memory";
 import type { CorsOptions } from "cors";
 
@@ -54,6 +54,7 @@ function buildEchoGraph(): CompiledGraph<string> {
       return { messages: [new AIMessage(`approved: ${String(interrupt("approve?"))}`)] };
     return { messages: [new AIMessage(`echo: ${text}`)] };
   }
+
   return new StateGraph(MessagesAnnotation)
     .addNode("echo", echo)
     .addEdge("__start__", "echo")
@@ -77,6 +78,7 @@ function buildInterruptGraph(): CompiledGraph<string> {
     const approval = interrupt("approve?");
     return { messages: [new AIMessage(`approved: ${String(approval)}`)] };
   }
+
   return new StateGraph(MessagesAnnotation)
     .addNode("ask", ask)
     .addEdge("__start__", "ask")
@@ -150,10 +152,13 @@ export async function startEchoServer(
     cors: options.cors,
     ...(options.disable ? { routes: filterSkeinRoutes(skeinRoutes, options.disable) } : {}),
   });
+
   const httpServer = await server.listen(0, "127.0.0.1");
   const address = httpServer.address();
+
   if (address === null || typeof address === "string") {
     throw new Error("expected a bound TCP address");
   }
+
   return { baseUrl: `http://127.0.0.1:${address.port}`, server, close: () => server.close() };
 }

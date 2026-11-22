@@ -73,11 +73,13 @@ const server = createServer((request, response) => {
   request.on("data", (chunk: Buffer) => chunks.push(chunk));
   request.on("end", () => {
     const raw = Buffer.concat(chunks).toString("utf8");
+
     const verified = verifySkeinSignature({
       header: request.headers["x-skein-signature"] as string | undefined,
       body: raw,
       secrets: SECRETS,
     });
+
     if (!verified.ok) {
       // 401, and nothing else happens. A forged callback and a replayed one both land here: the
       // signature covers the timestamp, so a captured callback stops verifying once it is outside
@@ -89,6 +91,7 @@ const server = createServer((request, response) => {
 
     const deliveryId = request.headers["x-skein-delivery-id"] as string | undefined;
     const attempt = request.headers["x-skein-attempt"] as string | undefined;
+
     if (deliveryId && processed.has(deliveryId)) {
       // Already done. Answer 200 — a non-2xx would make the sender retry a callback this receiver
       // has, in fact, fully handled.

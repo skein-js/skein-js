@@ -45,6 +45,7 @@ function geminiClassifier(): Classifier {
     async classify(item, context) {
       const model = new ChatGoogleGenerativeAI({ model: MODEL, temperature: 0 });
       const response = await model.invoke([{ role: "user", content: prompt(item, context) }]);
+
       const raw =
         typeof response.content === "string" ? response.content : JSON.stringify(response.content);
       return parseVerdict(raw);
@@ -57,6 +58,7 @@ function prompt(item: TriageItem, context: ClassifierContext): string {
     context.conventions.length > 0
       ? `\n\nConventions this project already follows:\n${context.conventions.map((line) => `- ${line}`).join("\n")}`
       : "";
+
   const related =
     context.related.length > 0
       ? `\n\nAlready triaged and possibly related:\n${context.related.map((line) => `- ${line}`).join("\n")}`
@@ -100,8 +102,10 @@ function rulesClassifier(): Classifier {
     label: "offline rules",
     classify(item, context) {
       const haystack = `${item.title}\n${item.body}\n${item.labels.join(" ")}`;
+
       const category =
         CATEGORY_RULES.find((rule) => rule.test.test(haystack))?.category ?? "question";
+
       const severity =
         category === "spam"
           ? "low"

@@ -24,18 +24,23 @@ const FILTERS = [
   "updated_after",
   "updated_before",
 ] as const;
+
 const STATUSES = ["pending", "running", "success", "error", "timeout", "interrupted", "cancelled"];
 
 export function RunsView() {
   const [client] = useState(createSkeinConsoleClient);
   const { query, navigate } = useRoute();
+
   const filters = Object.fromEntries(
     FILTERS.flatMap((key) => (query.get(key) ? [[key, query.get(key)!]] : [])),
   );
+
   const filterKey = JSON.stringify(filters);
   const requestedOffset = Number(query.get("offset") ?? 0);
+
   const offset =
     Number.isSafeInteger(requestedOffset) && requestedOffset >= 0 ? requestedOffset : 0;
+
   const runs = usePagedRows(
     (offset, limit, signal) => client.searchRuns({ ...filters, offset, limit }, signal),
     filterKey,
@@ -51,6 +56,7 @@ export function RunsView() {
       },
     },
   );
+
   const status =
     typeof runs.error === "object" && runs.error && "status" in runs.error
       ? runs.error.status
@@ -64,10 +70,12 @@ export function RunsView() {
           event.preventDefault();
           const fields = new FormData(event.currentTarget);
           const selection = new URLSearchParams();
+
           for (const key of FILTERS) {
             const value = String(fields.get(key) ?? "").trim();
             if (value) selection.set(key, value);
           }
+
           navigate(`runs${selection.size ? `?${selection}` : ""}`);
         }}
       >

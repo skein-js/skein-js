@@ -16,9 +16,11 @@ async function verifyModelSettingsAuth(url: string, token: string): Promise<void
         throw new Error(`Model settings accepted an unauthenticated ${method} caller`);
     }
   }
+
   const response = await fetch(`${url}/app/model`, {
     headers: { authorization: `Bearer ${token}` },
   });
+
   const settings = (await response.json()) as Record<string, unknown>;
   if (
     !response.ok ||
@@ -31,6 +33,7 @@ async function verifyModelSettingsAuth(url: string, token: string): Promise<void
 /** The same proof runs against packaged desktop backends and the ordinary server adapter. */
 export async function smokeWorkflow(url: string, token: string): Promise<void> {
   await verifyModelSettingsAuth(url, token);
+
   for (const headers of [{}, { "x-auth-scheme": "langsmith" }] as Record<string, string>[]) {
     const response = await fetch(`${url}/threads/search`, {
       method: "POST",
@@ -40,14 +43,18 @@ export async function smokeWorkflow(url: string, token: string): Promise<void> {
     if (response.status !== 401)
       throw new Error(`Unauthenticated request returned ${response.status}`);
   }
+
   const client = new Client<MeetingRecap, Partial<MeetingRecap>>({
     apiUrl: url,
     defaultHeaders: { authorization: `Bearer ${token}` },
   });
+
   const thread = await client.threads.create({
     metadata: { demo: "meeting-follow-up", title: sampleMeeting.title },
   });
+
   let progress = false;
+
   const background = await client.runs.create(thread.thread_id, "workflow", {
     input: sampleMeeting,
     streamMode: ["values", "custom"],
@@ -78,6 +85,7 @@ export async function smokeWorkflow(url: string, token: string): Promise<void> {
   if (!archived.items.some((item) => item.key === thread.thread_id))
     throw new Error("Reviewed recap was not searchable in the shared store");
   const history = await client.threads.getHistory(thread.thread_id);
+
   const draft = history.find(
     (checkpoint) => checkpoint.next.includes("approve") && checkpoint.values.outcome === "review",
   );
@@ -99,9 +107,11 @@ export async function smokeWorkflow(url: string, token: string): Promise<void> {
     input: null,
     streamMode: ["values", "custom"],
   });
+
   for await (const _frame of client.runs.joinStream(branch.thread_id, forked.run_id)) {
     /* Wait for the real background attempt. */
   }
+
   const branchState = await client.threads.getState(branch.thread_id);
   if (!branchState.next.includes("approve") || branchState.values.actions[0]?.due !== "Friday")
     throw new Error("Branch did not restore the original review independently of the saved result");
@@ -135,6 +145,7 @@ export async function smokeReadingWorkflow(url: string, token: string): Promise<
     apiUrl: url,
     defaultHeaders: { authorization: `Bearer ${token}` },
   });
+
   const thread = await client.threads.create({
     metadata: { demo: "reading-room", title: sampleReading.title },
   });
@@ -146,6 +157,7 @@ export async function smokeReadingWorkflow(url: string, token: string): Promise<
     input: { ...sampleReading, documentId: thread.thread_id, application: "reading" },
     streamMode: ["custom", "values"],
   });
+
   let progress = false;
   for await (const frame of client.runs.joinStream(thread.thread_id, run.run_id))
     if (frame.event === "custom") progress = true;

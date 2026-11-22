@@ -3,8 +3,7 @@
 // worker both touch the same cancellation registry, so cancelling a background run actually aborts
 // it, and the scheduler creates runs through the same store the worker drains.
 
-import { SkeinHttpError } from "@skein-js/core";
-import type { DeliveryConsumer } from "@skein-js/core";
+import { SkeinHttpError, type DeliveryConsumer } from "@skein-js/core";
 
 import { createAuthScopedStore } from "./auth/auth-scoped-store.js";
 import {
@@ -156,12 +155,15 @@ export function createProtocolRuntime(
   const context = createContext({ ...deps, cronsEnabled });
   const service = createProtocolServiceFromContext(context);
   const nativeRecovery = createNativeRecovery(context);
+
   // When an auth engine is injected, every request is authenticated + authorized through one
   // transport-neutral seam; without it, the handler table is unchanged (unauthenticated, as before).
   const handlerExtras = {
     ...(typeof options.handlers === "function" ? options.handlers(context) : options.handlers),
   };
+
   const mountedRoutes = options.routes ?? skeinRoutes;
+
   const matchAuthExemptRoute = createRouteMatcher(
     mountedRoutes.filter((route) => isProtocolAuthExempt(route.handler)),
   );
@@ -177,6 +179,7 @@ export function createProtocolRuntime(
   const authorized = deps.auth
     ? createAuthorizingHandlers(context, deps.auth, handlerExtras)
     : createProtocolHandlers(service, handlerExtras);
+
   // Idempotency wraps the authorizing table from **outside**, because a key's scope has to include
   // the principal — without it, one tenant guessing another's key would be handed that tenant's
   // recorded response. The cost is one extra `authenticate` on requests that actually carry a key
@@ -187,6 +190,7 @@ export function createProtocolRuntime(
   // It reads the *base* store deliberately, not the per-request auth-scoped one: the scope string
   // already carries the principal, so a second ownership filter would only be able to disagree.
   const authEngine = deps.auth;
+
   const idempotentHandlers = createIdempotentHandlers(authorized, {
     store: context.deps.store,
     clock: context.deps.clock,
@@ -211,12 +215,14 @@ export function createProtocolRuntime(
             // consistency rather than a fix — but a payload that differs between first call and replay
             // is exactly the divergence `authValue` exists to prevent.
             const value = authValue(req, handlerName);
+
             const primary = await authEngine.authorize({
               resource: route.resource,
               action: route.action,
               value,
               context: authContext,
             });
+
             const fallback =
               !primary.filters && route.fallbackResource
                 ? await authEngine.authorize({
@@ -226,6 +232,7 @@ export function createProtocolRuntime(
                     context: authContext,
                   })
                 : undefined;
+
             const filters = primary.filters ?? fallback?.filters;
             if (!filters || recordedThreadId === undefined) return;
             const scoped = createAuthScopedStore(
@@ -234,6 +241,7 @@ export function createProtocolRuntime(
               filters,
               route.resource,
             );
+
             // Absent reads as "not yours" here exactly as it does everywhere else, so a revoked
             // caller gets the same 404 a fresh request would rather than a distinguishing 403.
             if (!(await scoped.threads.get(recordedThreadId))) {
@@ -243,12 +251,15 @@ export function createProtocolRuntime(
         }
       : {}),
   });
+
   const handlers = instrumentHttpHandlers(
     configureRequestHeaders(idempotentHandlers, context.deps),
     context.deps.telemetry,
   );
+
   const worker = createRunWorker(context, options.worker);
   const scheduler = createCronScheduler(context, options.scheduler);
+
   // Always built, NOT gated on `checkpointer.ttl` being configured. A per-thread `ttl` on
   // `POST /threads` sets an expiry whether or not the server has a default, so gating the loop on the
   // config block would validate that field, write `expires_at`, and then let the thread live forever
@@ -268,6 +279,7 @@ export function createProtocolRuntime(
         ? { sweepIntervalMinutes: deps.threadTtl.sweepIntervalMinutes }
         : {}),
   );
+
   // Always built, for the same reason the thread sweeper is: a caller can send `Idempotency-Key`
   // whether or not the server configured a retention, and the records it writes have to be
   // collected. Cheap when unused — one `DELETE` matching nothing, on an unref'd hourly timer.
@@ -305,6 +317,7 @@ export function createProtocolRuntime(
         "only sent if that dispatcher forwards `attempt.headers` and sends `attempt.body` verbatim.",
     );
   }
+
   // The queue's consumer, when there is a queue. This is what actually retries a callback in
   // production when configured. Without it, `deliveryWorker` claims persisted due rows directly,
   // including leases left by a process that stopped during delivery.
@@ -314,6 +327,7 @@ export function createProtocolRuntime(
   // table, or a test that never started it, would quietly take deliveries and, on teardown, abandon
   // them. Everything else here hangs off `worker.start()`/`worker.stop()`; so does this.
   let deliveryConsumer: DeliveryConsumer | undefined;
+
   const consumeDeliveries = (): DeliveryConsumer | undefined =>
     deps.deliveryQueue?.consume((attempt) =>
       processDelivery(
@@ -351,16 +365,20 @@ export function createProtocolRuntime(
         const docs = diagnostic?.name === "docs";
         const metrics = diagnostic?.name === "metrics";
         if (!deps.httpHandler && !docs && !metrics) return undefined;
+
         if (deps.auth && !matchAuthExemptRoute(request.method, new URL(request.url).pathname)) {
           const authenticatedRequest = request.clone();
+
           try {
             await resolveNativeAuthContext(deps.auth, authenticatedRequest);
           } finally {
             void authenticatedRequest.body?.cancel().catch(() => undefined);
           }
         }
+
         const custom = await deps.httpHandler?.(request);
         if (custom) return custom;
+
         if (metrics) {
           const collector = context.deps.telemetry.collectMetrics;
           if (!collector)
@@ -368,27 +386,33 @@ export function createProtocolRuntime(
               "Metrics require a host-owned collector on a telemetry sink.",
             );
           const url = new URL(request.url);
+
           const { format: requested } = parse(
             metricsQuerySchema,
             { format: url.searchParams.get("format") ?? undefined },
             "metrics query",
           );
+
           const format =
             requested === "json" ||
             (requested === undefined && request.headers.get("accept")?.includes("application/json"))
               ? "json"
               : "prometheus";
+
           let collected;
+
           try {
             collected = await collector(format);
           } catch (error) {
             throw new SkeinHttpError(503, "Metric collection failed.", { cause: error });
           }
+
           return new Response(collected.body, {
             status: diagnostic.status,
             headers: { "content-type": collected.contentType },
           });
         }
+
         return docs
           ? new Response(apiDocsHtml(), {
               status: diagnostic?.status,

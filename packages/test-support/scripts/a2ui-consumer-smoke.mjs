@@ -16,12 +16,14 @@ import {
 export async function verifyA2uiConsumer(directory, packed) {
   const example = path.join(root, "examples/a2ui");
   const original = JSON.parse(await readFile(path.join(example, "package.json"), "utf8"));
+
   const angularTools = Object.fromEntries(
     ["@angular/build", "@angular/cli", "@angular/compiler", "@angular/compiler-cli"].map((name) => [
       name,
       original.devDependencies[name],
     ]),
   );
+
   const manifest = installConsumer(
     directory,
     {
@@ -187,6 +189,7 @@ export async function verifyA2uiConsumer(directory, packed) {
 
 if (process.argv[1] && path.resolve(process.argv[1]) === fileURLToPath(import.meta.url)) {
   const directory = await mkdtemp(path.join(tmpdir(), "skein-a2ui-consumer-"));
+
   try {
     await verifyA2uiConsumer(
       path.join(directory, "consumer"),

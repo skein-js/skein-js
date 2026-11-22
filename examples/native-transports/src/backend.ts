@@ -28,6 +28,7 @@ const principal: AuthContext = {
   },
   scopes: [],
 };
+
 const auth: AuthEngine = {
   enabled: true,
   studioAuthDisabled: false,
@@ -45,10 +46,12 @@ const auth: AuthEngine = {
 };
 await mkdir(dirname(sqlitePath), { recursive: true });
 const connection = connectRedis();
+
 const outcomes = new Queue(outcomeQueueName, {
   connection: resolveRedisConnectionOptions(),
   defaultJobOptions: { removeOnComplete: 100, removeOnFail: 100 },
 });
+
 const transport = createBullMqTransport({
   commandQueue: commandQueueName,
   outcomeQueue: outcomes,
@@ -65,12 +68,15 @@ const transport = createBullMqTransport({
     checkpoint: result.checkpoint,
   }),
 });
+
 let local: EmbeddedSqliteRuntime | undefined;
 let server: SkeinExpressServer | undefined;
 let closing: Promise<void> | undefined;
+
 const close = () =>
   (closing ??= (async () => {
     const errors: unknown[] = [];
+
     for (const dispose of [
       () => transport.stop(),
       () => server?.close(),
@@ -84,8 +90,10 @@ const close = () =>
         errors.push(error);
       }
     }
+
     if (errors.length) throw new AggregateError(errors, "Example shutdown failed.");
   })());
+
 try {
   local = await embedSqliteGraphs(
     { approval: approvalGraph },
@@ -115,6 +123,7 @@ try {
   await close();
   throw error;
 }
+
 for (const signal of ["SIGINT", "SIGTERM"] as const)
   process.once(signal, () => {
     void close().catch((error: unknown) => {

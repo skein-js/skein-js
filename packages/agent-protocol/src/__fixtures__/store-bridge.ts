@@ -22,12 +22,14 @@ class FixtureStoreBridge extends BaseStore {
 
   async batch<Op extends readonly Operation[]>(operations: Op): Promise<OperationResults<Op>> {
     const results: unknown[] = [];
+
     for (const operation of operations) {
       if ("key" in operation && "value" in operation && operation.value !== null) {
         await this.repo.put([...operation.namespace], operation.key, operation.value);
         results.push(undefined);
         continue;
       }
+
       if ("key" in operation) {
         const item = await this.repo.get([...operation.namespace], operation.key);
         results.push(
@@ -43,8 +45,10 @@ class FixtureStoreBridge extends BaseStore {
         );
         continue;
       }
+
       throw new Error("FixtureStoreBridge implements only get/put");
     }
+
     return results as OperationResults<Op>;
   }
 }

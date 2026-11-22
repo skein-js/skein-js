@@ -33,6 +33,7 @@ describe("encodeFrame", () => {
       namespace: ["tools:1\r\ndata: {}\n\nevent: end\nid: 999"],
       data: 1,
     };
+
     const lines = encodeFrame(frame).split("\n");
     expect(lines.filter((line) => line.startsWith("event: "))).toEqual([
       "event: updates|tools:1data: {}event: endid: 999",
@@ -89,6 +90,7 @@ describe("toSseEvents", () => {
       yield { seq: 1, event: "values", data: 1 };
       yield { seq: 2, event: "values", data: 2 };
     }
+
     const out: string[] = [];
     for await (const chunk of toSseEvents(frames(), async () => "success")) out.push(chunk);
 
@@ -101,6 +103,7 @@ describe("toSseEvents", () => {
     async function* frames(): AsyncIterable<RunFrame> {
       yield { seq: 1, event: "error", data: { message: "boom" } };
     }
+
     const out: string[] = [];
     for await (const chunk of toSseEvents(frames(), async () => "error")) out.push(chunk);
 
@@ -120,6 +123,7 @@ describe("toSseEvents heartbeats", () => {
     }
 
     const out: string[] = [];
+
     for await (const chunk of toSseEvents(frames(), async () => "success", { heartbeatMs: 20 })) {
       out.push(chunk);
     }
@@ -148,6 +152,7 @@ describe("toSseEvents heartbeats", () => {
     }
 
     const out: string[] = [];
+
     for await (const chunk of toSseEvents(frames(), async () => "success", { heartbeatMs: 50 })) {
       out.push(chunk);
     }
@@ -162,9 +167,11 @@ describe("toSseEvents heartbeats", () => {
     }
 
     const out: string[] = [];
+
     for await (const chunk of toSseEvents(frames(), async () => "success", { heartbeatMs: 10 })) {
       out.push(chunk);
     }
+
     // Well past several intervals: a timer left armed after the terminal event would show up here.
     await idleFor(40);
 
@@ -179,6 +186,7 @@ describe("toSseEvents heartbeats", () => {
     }
 
     const out: string[] = [];
+
     for await (const chunk of toSseEvents(frames(), async () => "success", { heartbeatMs: 0 })) {
       out.push(chunk);
     }
@@ -190,6 +198,7 @@ describe("toSseEvents heartbeats", () => {
     // A client that hangs up mid-stream must release the bus subscription rather than leave it
     // live-tailing a run nobody reads.
     let closed = false;
+
     const frames: AsyncIterable<RunFrame> = {
       [Symbol.asyncIterator]: () => ({
         next: async () => ({ done: false, value: { seq: 1, event: "values", data: 1 } }),

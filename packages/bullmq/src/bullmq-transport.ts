@@ -14,7 +14,7 @@ import {
   SkeinHttpError,
   type RunResult,
 } from "@skein-js/core";
-import { Worker, UnrecoverableError, type ConnectionOptions, type Job, type Queue } from "bullmq";
+import { UnrecoverableError, Worker, type ConnectionOptions, type Job, type Queue } from "bullmq";
 import type { Cluster, Redis } from "ioredis";
 import { z } from "zod";
 
@@ -59,6 +59,7 @@ const key = z
   .min(1)
   .max(255)
   .regex(/^[\x20-\x7e]+$/);
+
 const chunkFields = {
   offset: z.number().int().nonnegative().optional(),
   digest: z
@@ -66,11 +67,13 @@ const chunkFields = {
     .regex(/^[a-f0-9]{64}$/)
     .optional(),
 };
+
 const base = {
   version: z.literal(1),
   commandId: key,
   correlationId: z.string().max(255).optional(),
 };
+
 const commandSchema = z.discriminatedUnion("operation", [
   z.object({ ...base, operation: z.literal("start"), input: z.record(z.unknown()) }).strict(),
   z.object({ ...base, operation: z.literal("resume"), input: z.record(z.unknown()) }).strict(),
@@ -141,6 +144,7 @@ function chunk(
     });
   // Reserve framing space and account for base64 expansion. The final bound is checked below.
   const end = Math.min(bytes.length, offset + Math.floor(((cap - 512) * 3) / 4));
+
   const result: BullMqChunk = {
     encoding: "base64",
     digest,
@@ -162,6 +166,7 @@ const transientCodes = new Set([
   "idempotency_key_in_flight",
   "run_result_pending",
 ]);
+
 function classify(error: unknown): never {
   if (
     isSkeinHttpError(error) &&
@@ -184,6 +189,7 @@ export function createBullMqTransport<OutcomeQueue extends OutcomeQueueTarget>(
 ): BullMqTransport;
 // Keep the original signature last so Parameters<typeof createBullMqTransport> retains its Queue.
 export function createBullMqTransport(options: BullMqTransportOptions): BullMqTransport;
+
 export function createBullMqTransport(
   options: BullMqTransportOptions<OutcomeQueueTarget>,
 ): BullMqTransport {
@@ -197,22 +203,28 @@ export function createBullMqTransport(
   let starting: Promise<void> | undefined;
   let stopping: Promise<void> | undefined;
   let running: Promise<void> | undefined;
+
   const processCommand = async (client: NativeClient, job: Job): Promise<unknown> => {
     try {
       const original = parseCommand(job.data, cap);
+
       const { correlationId: _diagnostic, ...meaning } = JSON.parse(
         serializeWireJson(original),
       ) as BullMqCommand;
+
       const authenticated = await options.authenticate(job);
+
       const command = options.route
         ? parseCommand(await options.route(structuredClone(original)), cap)
         : original;
+
       const call: NativeCallOptions = {
         ...authenticated,
         idempotencyKey: original.commandId,
         idempotencyInput: meaning,
         ...(original.correlationId ? { correlationId: original.correlationId } : {}),
       };
+
       switch (command.operation) {
         case "start":
           return await client.start(command.input as NativeStartInput, call);
@@ -224,14 +236,17 @@ export function createBullMqTransport(
             action: command.action,
             wait: command.wait,
           });
+
         case "run.get": {
           const run = await client.getRun(command.runId, call);
           return chunk(run, command, cap);
         }
+
         case "receipt.get":
           return await client.getReceipt(command.idempotencyKey, call);
         case "state.get":
           return chunk(await client.getState(command.threadId, call), command, cap);
+
         case "result.get": {
           const result = await client.getResult(command.runId, call);
           return chunk(
@@ -245,6 +260,7 @@ export function createBullMqTransport(
       classify(error);
     }
   };
+
   return {
     outcomeTarget,
     wrapDispatcher: (inner) => async (url, payload, attempt) => {
@@ -286,10 +302,12 @@ export function createBullMqTransport(
               )
           : payload,
       };
+
       if (Buffer.byteLength(serializeWireJson(event)) > cap) {
         delete event.outcome;
         event.truncated = true;
       }
+
       if (Buffer.byteLength(serializeWireJson(event)) > cap)
         throw new Error("BullMQ outcome identity exceeds the message bound.");
       await options.outcomeQueue.add("skein.run.settled.v1", event, { jobId: event.eventId });
@@ -309,6 +327,7 @@ export function createBullMqTransport(
         });
         worker = owned;
         owned.on("error", (error) => logger.warn("BullMQ command worker error", error));
+
         try {
           await owned.waitUntilReady();
           running = owned
@@ -320,6 +339,7 @@ export function createBullMqTransport(
           throw error;
         }
       })();
+
       try {
         await starting;
       } finally {
@@ -336,6 +356,7 @@ export function createBullMqTransport(
         await running;
         running = undefined;
       })();
+
       try {
         await stopping;
       } finally {

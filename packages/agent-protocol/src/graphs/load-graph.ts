@@ -12,7 +12,7 @@
 // itself through `toRunError`, which carries the whole `cause` chain to the `error` frame and the run
 // row, so wrapping there would only add a link to a depth-capped chain and rename the error.
 
-import { rootCauseMessage, SkeinHttpError, isSkeinHttpError } from "@skein-js/core";
+import { isSkeinHttpError, rootCauseMessage, SkeinHttpError } from "@skein-js/core";
 
 import type { GraphResolver, ResolvedGraph } from "../deps.js";
 

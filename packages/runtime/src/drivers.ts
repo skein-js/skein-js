@@ -9,18 +9,18 @@
 import { PostgresSaver } from "@langchain/langgraph-checkpoint-postgres";
 import type { ProtocolDeps, WebhookDeliveryConfig } from "@skein-js/agent-protocol";
 import {
+  RedisDeliveryQueue,
   RedisRunAbortChannel,
   RedisRunEventBus,
-  RedisThreadEventBus,
-  RedisDeliveryQueue,
   RedisRunQueue,
+  RedisThreadEventBus,
   type RedisRunEventBusOptions,
 } from "@skein-js/redis";
 import {
   CHECKPOINTER_MIGRATIONS_LOCK,
   createPostgresPool,
-  inspectPostgresThreadStorage,
   createPostgresThreadExecutionGate,
+  inspectPostgresThreadStorage,
   PostgresSkeinStore,
   withSessionAdvisoryLock,
   type PostgresSkeinStoreOptions,
@@ -85,9 +85,11 @@ const DEFAULT_STATEMENT_TIMEOUT_MS = 30_000;
 /** Read a required connection env var, or throw an actionable {@link RuntimeConfigError}. */
 export function requireEnv(name: string, driver: string): string {
   const value = process.env[name];
+
   if (!value) {
     throw new RuntimeConfigError(`The "${driver}" driver requires ${name} to be set.`);
   }
+
   return value;
 }
 
@@ -103,9 +105,11 @@ function integerFromEnv(name: string, minimum: number): number | undefined {
   // something rather than nothing.
   if (raw === undefined || raw.trim() === "") return undefined;
   const value = Number(raw);
+
   if (!Number.isInteger(value) || value < minimum) {
     throw new RuntimeConfigError(`${name} must be an integer >= ${minimum} (got "${raw}").`);
   }
+
   return value;
 }
 
@@ -177,6 +181,7 @@ export async function connectPostgresStore(args: {
 > {
   const { url, index, ttl, threadTtl, connectionOptions, maxPageSize, runConcurrency, disposers } =
     args;
+
   const store = await PostgresSkeinStore.connect(url, {
     ...(index ? { index } : {}),
     ...(ttl ? { ttl } : {}),
@@ -206,6 +211,7 @@ export async function connectPostgresStore(args: {
     statementTimeoutMs: 0,
     poolMax: 2,
   });
+
   try {
     await withSessionAdvisoryLock(
       setupPool,
@@ -334,6 +340,7 @@ export function startStoreTtlSweeper(
   disposers: Disposer[],
 ): void {
   const everyMs = (ttl.sweepIntervalMinutes ?? 60) * 60_000;
+
   const sweeper = setInterval(() => {
     store.store.sweepExpired().catch((error) => {
       console.error("skein: store TTL sweep failed", error);

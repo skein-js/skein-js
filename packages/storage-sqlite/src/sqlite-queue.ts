@@ -1,4 +1,4 @@
-import { toRunError, type RunQueue, type QueuedRun, type RunConsumerOptions } from "@skein-js/core";
+import { toRunError, type QueuedRun, type RunConsumerOptions, type RunQueue } from "@skein-js/core";
 import type { Database } from "better-sqlite3";
 
 /** One owner can notify consumers directly; only delayed work needs a timer. */
@@ -10,9 +10,11 @@ export function createSqliteQueue(database: Database): RunQueue & {
   const listeners = new Set<() => void>();
   let disposed = false;
   const deferredThreads = new Map<string, ReturnType<typeof setTimeout>>();
+
   const wake = (): void => {
     for (const listener of listeners) listener();
   };
+
   const consume = (
     process: (run: QueuedRun) => Promise<boolean | void>,
     options: RunConsumerOptions | undefined,
@@ -26,8 +28,10 @@ export function createSqliteQueue(database: Database): RunQueue & {
     let scheduled = false;
     let timer: ReturnType<typeof setTimeout> | undefined;
     const running = new Set<Promise<void>>();
+
     const claim = database.transaction(() => {
       const excluded = partitioned ? [...deferredThreads.keys()] : [];
+
       const job = database
         .prepare(
           `SELECT run_id,thread_id FROM skein_run_jobs j WHERE status='waiting' AND due_at<=?
@@ -42,6 +46,7 @@ export function createSqliteQueue(database: Database): RunQueue & {
           .run(job.run_id);
       return job;
     });
+
     const notify = (): void => {
       if (closed || disposed || scheduled) return;
       scheduled = true;
@@ -50,19 +55,23 @@ export function createSqliteQueue(database: Database): RunQueue & {
         tick();
       });
     };
+
     const tick = (): void => {
       if (closed || disposed) return;
       if (timer) clearTimeout(timer);
       timer = undefined;
+
       while (running.size < concurrency) {
         const job = claim();
         if (!job) break;
         let handled = true;
+
         const attempt = Promise.resolve()
           .then(() => process(job))
           .then((result) => {
             if (partitioned && result === false) {
               handled = false;
+
               if (!deferredThreads.has(job.thread_id)) {
                 const timer = setTimeout(() => {
                   deferredThreads.delete(job.thread_id);
@@ -92,8 +101,10 @@ export function createSqliteQueue(database: Database): RunQueue & {
           });
         running.add(attempt);
       }
+
       if (running.size >= concurrency) return;
       const excluded = partitioned ? [...deferredThreads.keys()] : [];
+
       const next = database
         .prepare(
           `SELECT min(due_at) AS due_at FROM skein_run_jobs j WHERE status='waiting'
@@ -101,11 +112,13 @@ export function createSqliteQueue(database: Database): RunQueue & {
               ${excluded.length ? `AND thread_id NOT IN (${excluded.map(() => "?").join(",")})` : ""}`,
         )
         .get(...excluded) as { due_at: number | null };
+
       if (next.due_at !== null) {
         timer = setTimeout(notify, Math.min(2_147_483_647, Math.max(1, next.due_at - Date.now())));
         timer.unref();
       }
     };
+
     const consumer = {
       async close(force = false): Promise<void> {
         closed = true;
@@ -120,6 +133,7 @@ export function createSqliteQueue(database: Database): RunQueue & {
     notify();
     return consumer;
   };
+
   return {
     wake,
     async enqueue(run, options) {

@@ -42,6 +42,7 @@ export function useRoute(): {
   const raw = useSyncExternalStore(subscribe, currentHash, () => "");
   const navigate = useCallback(navigateRoute, []);
   const [path, search = ""] = raw.split("?");
+
   const segments = (path ?? "")
     .split("/")
     .filter((segment) => segment !== "")

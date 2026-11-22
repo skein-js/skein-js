@@ -19,7 +19,9 @@ const LIMIT = 1000 * MB;
 /** A monitor whose samples are driven by hand, collecting the warnings it emits. */
 function monitorOn(usagePercents: number[], options: Partial<HeapPressureMonitorOptions> = {}) {
   const warnings: string[] = [];
+
   let tick = (): void => {};
+
   let cleared = 0;
   let index = 0;
 
@@ -46,6 +48,7 @@ function monitorOn(usagePercents: number[], options: Partial<HeapPressureMonitor
     tick();
     index += 1;
   };
+
   return { warnings, step, monitor, clearCount: () => cleared };
 }
 

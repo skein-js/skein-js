@@ -1,5 +1,5 @@
 // A separate installed peer graph: never upgrade the retained 1.15.1 example implicitly.
-import { mkdtemp, readFile, writeFile, rm } from "node:fs/promises";
+import { mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import path from "node:path";
 
@@ -8,11 +8,14 @@ import { copyTree, installConsumer, packWorkspace, root, run } from "./pack-loca
 const directory =
   process.env["SKEIN_DEEP_CONSUMER_REUSE"] ??
   (await mkdtemp(path.join(tmpdir(), "skein-deepagents-candidate-")));
+
 let passed = false;
+
 try {
   const consumer = path.join(directory, "consumer");
   if (!process.env["SKEIN_DEEP_CONSUMER_REUSE"]) {
     const packed = packWorkspace(path.join(directory, "packs"));
+
     const manifest = installConsumer(
       consumer,
       {

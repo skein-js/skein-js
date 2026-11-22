@@ -65,6 +65,7 @@ export async function createViteGraphLoader(
   // dir). Reuse vite's own workspace-root detection (pnpm-workspace.yaml / lerna.json / a
   // `workspaces` package.json) so the file-serving allowlist matches what vite would pick by default.
   const workspaceRoot = searchForWorkspaceRoot(root);
+
   const server: ViteDevServer = await createServer({
     root,
     configFile: false,
@@ -99,6 +100,7 @@ export async function createViteGraphLoader(
     },
     optimizeDeps: { noDiscovery: true },
   });
+
   const runner: ModuleRunner = createServerModuleRunner(server.environments.ssr, { hmr: false });
 
   return {

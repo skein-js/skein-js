@@ -15,10 +15,13 @@ interface CapturedLine {
 it("finishes an independent run while a queued thread's backend claim is busy", async () => {
   let available = false;
   let releases = 0;
+
   const acquire = vi.fn(async () => {
     throw new Error("Must not wait");
   });
+
   const logger = capturingLogger();
+
   const deps = createFixtureDeps({
     logger,
     threadExecutionGate: {
@@ -33,26 +36,32 @@ it("finishes an independent run while a queued thread's backend claim is busy", 
             },
     },
   });
+
   const ctx = createContext(deps);
   const service = createProtocolServiceFromContext(ctx);
   await service.assistants.registerGraphAssistants();
   const busyThread = (await service.threads.create()).thread_id;
   const cold = await service.threads.create();
+
   const head = await service.runs.createBackground(busyThread, {
     assistant_id: "echo",
     input: { value: "one" },
   });
+
   const tail = await service.runs.createBackground(busyThread, {
     assistant_id: "echo",
     input: { value: "two" },
     multitask_strategy: "enqueue",
   });
+
   const independent = await service.runs.createBackground(cold.thread_id, {
     assistant_id: "echo",
     input: { value: "cold" },
   });
+
   const worker = createRunWorker(ctx, { maxConcurrency: 1 });
   worker.start();
+
   try {
     await waitFor(async () => (await service.runs.get(independent.run_id)).status === "success");
     expect((await service.runs.get(head.run_id)).status).toBe("pending");
@@ -74,6 +83,7 @@ it("uses legacy consumption when an injected gate only supports blocking acquisi
   const deps = createFixtureDeps({
     threadExecutionGate: { acquire: async () => ({ release: async () => undefined }) },
   });
+
   const consume = vi.spyOn(deps.queue, "consume");
   const partitioned = vi.spyOn(deps.queue, "consumePartitioned");
   const worker = createRunWorker(createContext(deps));
@@ -86,9 +96,11 @@ it("uses legacy consumption when an injected gate only supports blocking acquisi
 it("executes through the blocking gate when an injected queue lacks partitioned consumption", async () => {
   const acquire = vi.fn(async () => ({ release }));
   const release = vi.fn(async () => undefined);
+
   const tryAcquire = vi.fn(async () => {
     throw new Error("Must use the legacy claim");
   });
+
   const deps = createFixtureDeps({ threadExecutionGate: { acquire, tryAcquire } });
   const original = deps.queue;
   const consume = vi.fn(original.consume.bind(original));
@@ -97,17 +109,21 @@ it("executes through the blocking gate when an injected queue lacks partitioned 
   const service = createProtocolServiceFromContext(ctx);
   await service.assistants.registerGraphAssistants();
   const thread = await service.threads.create();
+
   const run = await service.runs.createBackground(thread.thread_id, {
     assistant_id: "echo",
     input: {},
   });
+
   const worker = createRunWorker(ctx);
   worker.start();
+
   try {
     await waitFor(async () => (await service.runs.get(run.run_id)).status === "success");
   } finally {
     await worker.stop();
   }
+
   expect(consume).toHaveBeenCalledOnce();
   expect(acquire).toHaveBeenCalledWith(thread.thread_id);
   expect(release).toHaveBeenCalledOnce();
@@ -117,10 +133,13 @@ it("executes through the blocking gate when an injected queue lacks partitioned 
 it("does not execute a run cancelled while its nonblocking claim is acquiring", async () => {
   let entered = false;
   let finishClaim!: (lease: { release(): Promise<void> }) => void;
+
   const claim = new Promise<{ release(): Promise<void> }>((resolve) => {
     finishClaim = resolve;
   });
+
   const release = vi.fn(async () => undefined);
+
   const deps = createFixtureDeps({
     threadExecutionGate: {
       acquire: vi.fn(),
@@ -130,17 +149,21 @@ it("does not execute a run cancelled while its nonblocking claim is acquiring", 
       },
     },
   });
+
   const ctx = createContext(deps);
   const service = createProtocolServiceFromContext(ctx);
   await service.assistants.registerGraphAssistants();
   const thread = await service.threads.create();
+
   const run = await service.runs.createBackground(thread.thread_id, {
     assistant_id: "echo",
     input: {},
   });
+
   const load = vi.spyOn(deps.graphs, "load");
   const worker = createRunWorker(ctx);
   worker.start();
+
   try {
     await waitFor(async () => entered);
     expect((await service.runs.cancel(run.run_id)).status).toBe("cancelled");
@@ -150,6 +173,7 @@ it("does not execute a run cancelled while its nonblocking claim is acquiring", 
     finishClaim({ release });
     await worker.stop();
   }
+
   expect((await service.runs.get(run.run_id)).status).toBe("cancelled");
   expect(load).not.toHaveBeenCalled();
   expect(release).toHaveBeenCalledOnce();
@@ -158,10 +182,13 @@ it("does not execute a run cancelled while its nonblocking claim is acquiring", 
 it("defers a claim that finishes acquiring after shutdown begins", async () => {
   let entered = false;
   let finishClaim!: (lease: { release(): Promise<void> }) => void;
+
   const claim = new Promise<{ release(): Promise<void> }>((resolve) => {
     finishClaim = resolve;
   });
+
   const release = vi.fn(async () => undefined);
+
   const deps = createFixtureDeps({
     threadExecutionGate: {
       acquire: vi.fn(),
@@ -171,14 +198,17 @@ it("defers a claim that finishes acquiring after shutdown begins", async () => {
       },
     },
   });
+
   const ctx = createContext(deps);
   const service = createProtocolServiceFromContext(ctx);
   await service.assistants.registerGraphAssistants();
   const thread = await service.threads.create();
+
   const run = await service.runs.createBackground(thread.thread_id, {
     assistant_id: "echo",
     input: {},
   });
+
   const worker = createRunWorker(ctx, { maxConcurrency: 1 });
   worker.start();
   await waitFor(async () => entered);
@@ -206,10 +236,12 @@ function capturingLogger(): Logger & { infos: CapturedLine[]; errors: CapturedLi
 
 async function waitFor(predicate: () => Promise<boolean>, timeoutMs = 2000): Promise<void> {
   const start = Date.now();
+
   while (Date.now() - start < timeoutMs) {
     if (await predicate()) return;
     await new Promise((resolve) => setTimeout(resolve, 10));
   }
+
   throw new Error("timed out waiting for condition");
 }
 
@@ -235,6 +267,7 @@ describe("run worker", () => {
       maxConcurrency === undefined ? {} : { maxConcurrency },
     );
     worker.start();
+
     try {
       expect(consumedWith).toEqual({ concurrency: expected });
     } finally {
@@ -249,8 +282,10 @@ describe("run worker", () => {
     await service.assistants.registerGraphAssistants();
     const worker = createRunWorker(ctx);
     worker.start();
+
     try {
       const thread = await service.threads.create();
+
       const run = await service.runs.createBackground(thread.thread_id, {
         assistant_id: "echo",
         input: { value: "hi" },
@@ -270,8 +305,10 @@ describe("run worker", () => {
     await service.assistants.registerGraphAssistants();
     const worker = createRunWorker(ctx);
     worker.start();
+
     try {
       const thread = await service.threads.create();
+
       const run = await service.runs.createBackground(thread.thread_id, {
         assistant_id: "echo",
         input: { value: "hi" },
@@ -298,8 +335,10 @@ describe("run worker", () => {
     await service.assistants.registerGraphAssistants();
     const worker = createRunWorker(ctx);
     worker.start();
+
     try {
       const thread = await service.threads.create();
+
       const run = await service.runs.createBackground(thread.thread_id, {
         assistant_id: "throwing",
         input: {},
@@ -320,6 +359,7 @@ describe("run worker", () => {
     const service = createProtocolServiceFromContext(ctx);
     await service.assistants.registerGraphAssistants();
     const thread = await service.threads.create();
+
     const run = await service.runs.createBackground(thread.thread_id, {
       assistant_id: "slow",
       input: {},
@@ -328,6 +368,7 @@ describe("run worker", () => {
 
     const worker = createRunWorker(ctx);
     worker.start();
+
     try {
       await new Promise((resolve) => setTimeout(resolve, 100));
       expect((await service.runs.get(run.run_id)).status).toBe("cancelled");
@@ -345,6 +386,7 @@ describe("run worker", () => {
     worker.start();
 
     const thread = await service.threads.create();
+
     const run = await service.runs.createBackground(thread.thread_id, {
       assistant_id: "slow",
       input: {},
@@ -382,6 +424,7 @@ describe("run worker", () => {
     worker.start();
 
     const thread = await service.threads.create();
+
     const run = await service.runs.createBackground(thread.thread_id, {
       assistant_id: "slow",
       input: {},
@@ -403,6 +446,7 @@ describe("run worker", () => {
     worker.start();
 
     const thread = await service.threads.create();
+
     const run = await service.runs.createBackground(thread.thread_id, {
       assistant_id: "slow",
       input: {},

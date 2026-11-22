@@ -74,6 +74,7 @@ export const writeLlmAssets = async (siteConfig: SiteConfig) => {
   await Promise.all(
     BUNDLES.map(async (name) => {
       const source = join(repoRoot, name);
+
       // Absent rather than fatal: `llms-full.txt` is generated, so a fresh clone that has not run
       // `pnpm docs:llms` yet would otherwise fail the build — and the docs build is what gates the
       // Pages deploy. A missing bundle costs one dropdown entry a 404; it must not cost the deploy.
@@ -81,6 +82,7 @@ export const writeLlmAssets = async (siteConfig: SiteConfig) => {
         console.warn(`[llm-assets] ${name} not found at the repo root — run \`pnpm docs:llms\`.`);
         return;
       }
+
       await copyFile(source, join(siteConfig.outDir, name));
     }),
   );
@@ -115,12 +117,14 @@ export const llmAssetsDevPlugin = (): Plugin => ({
     if (!siteConfig) return;
 
     const repoRoot = resolve(siteConfig.srcDir, "..");
+
     // Served twin path → file on disk. `siteConfig.rewrites.inv` would answer the second half, but
     // this map answers both halves at once: a miss means "not a page on this site", which is what
     // keeps the three `srcExclude`d contributor docs from being readable here.
     const sourceOf = new Map(
       pagesOf(siteConfig).map(({ sourceFile, servedPath }) => [twinPath(servedPath), sourceFile]),
     );
+
     const base = server.config.base;
 
     server.middlewares.use((req, res, next) => {

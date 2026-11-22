@@ -229,6 +229,7 @@ const assembled = await buildRuntime({
   store: "memory",
   queue: "memory",
 });
+
 const { runtime, routes: routeBindings } = await resolveProtocolRuntime({
   deps: assembled.deps,
   channels: assembled.channels,
@@ -243,16 +244,20 @@ const routes = routeBindings.map((r) => ({
 const server = createServer(async (req, res) => {
   try {
     const url = new URL(req.url ?? "/", `http://${req.headers.host ?? "localhost"}`);
+
     const match = routes.find(
       (r) => r.method === req.method?.toLowerCase() && r.regex.test(url.pathname),
     );
+
     if (!match) {
       res.writeHead(404).end();
       return;
     }
+
     const params = match.regex.exec(url.pathname)?.groups ?? {};
 
     const body = await readJson(req); // parse the JSON body (omitted for brevity)
+
     let protocolRequest = {
       method: req.method,
       url: url.href,
@@ -261,6 +266,7 @@ const server = createServer(async (req, res) => {
       body,
       headers: req.headers, // already lowercased by Node
     };
+
     // Thread-scoped run routes: fold the path thread_id into the body.
     if (match.foldThreadIdIntoBody && params.thread_id) {
       protocolRequest = {

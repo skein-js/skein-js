@@ -17,7 +17,9 @@ export async function verifyResumeTarget(
   const runs = (await deps.store.runs.listByThread(threadId))
     .filter((run) => run.run_id !== runId)
     .sort((a, b) => b.created_at.localeCompare(a.created_at) || b.run_id.localeCompare(a.run_id));
+
   const checkpoint = target.checkpoint;
+
   const current = await deps.checkpointer.getTuple({
     configurable: { thread_id: threadId, checkpoint_ns: checkpoint?.checkpoint_ns ?? "" },
   });
@@ -30,6 +32,7 @@ export async function verifyResumeTarget(
     throw SkeinHttpError.conflict("The resume target no longer owns the interrupted checkpoint.", {
       code: "stale_resume",
     });
+
   if (target.interruptIds?.length) {
     const thread = await deps.store.threads.get(threadId);
     const pending = Object.values(thread?.interrupts ?? {}).flat();

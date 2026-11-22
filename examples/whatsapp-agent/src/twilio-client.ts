@@ -57,6 +57,7 @@ export function createTwilioClient(credentials: TwilioCredentials): TwilioClient
       headers: { authorization, "content-type": "application/x-www-form-urlencoded" },
       body: new URLSearchParams(form).toString(),
     });
+
     if (!response.ok) {
       throw new Error(`twilio ${response.status}: ${await response.text()}`);
     }

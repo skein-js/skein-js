@@ -74,11 +74,13 @@ describe("the briefing assistant", () => {
       (await erin.threads.create()).thread_id,
       "Brief me on solar panels.",
     );
+
     const draft = JSON.stringify(briefing.files?.[briefingFileFor("solar panels")]);
     expect(draft).toContain("- Why it matters now");
 
     // Preferences are per person: someone else's briefing is still written as prose.
     const finn = harness.clientFor("finn");
+
     const theirs = await say(
       finn,
       (await finn.threads.create()).thread_id,
@@ -153,6 +155,7 @@ describe("the briefing assistant", () => {
     it("sends it with your edits", async () => {
       const client = harness.clientFor("gus");
       const threadId = await draftAndAskToEmail(client);
+
       const edited = {
         type: "edit",
         editedAction: {
@@ -199,6 +202,7 @@ describe("the briefing assistant", () => {
       thread.thread_id,
       "Tell the deep dive to focus on costs in Europe.",
     );
+
     const nextRunId = followed.asyncTasks![task.taskId]!.runId;
     await expect
       .poll(async () => (await client.runs.get(task.threadId, nextRunId)).status)

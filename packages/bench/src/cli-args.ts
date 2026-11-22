@@ -28,9 +28,11 @@ function requireValue(flag: string, value: string | undefined): string {
 
 function parsePositiveInt(flag: string, raw: string): number {
   const value = Number(raw);
+
   if (!Number.isInteger(value) || value <= 0) {
     throw new BenchArgsError(`${flag} must be a positive integer, got "${raw}".`);
   }
+
   return value;
 }
 
@@ -50,26 +52,33 @@ export function parseBenchArgs(argv: readonly string[]): BenchArgs {
 
   for (let index = 0; index < argv.length; index += 1) {
     const flag = argv[index];
+
     switch (flag) {
       case "--driver": {
         const value = requireValue(flag, argv[++index]);
+
         if (value !== "memory" && value !== "postgres-redis") {
           throw new BenchArgsError(
             `--driver must be "memory" or "postgres-redis", got "${value}".`,
           );
         }
+
         args.driver = value;
         break;
       }
+
       case "--scenario": {
         const value = requireValue(flag, argv[++index]);
         const known = SCENARIOS.map((scenario) => scenario.name);
+
         if (!known.includes(value)) {
           throw new BenchArgsError(`unknown scenario "${value}". Known: ${known.join(", ")}.`);
         }
+
         args.scenarios = [value];
         break;
       }
+
       case "--streams":
         args.streams = parsePositiveInt(flag, requireValue(flag, argv[++index]));
         break;

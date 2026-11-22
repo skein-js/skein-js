@@ -8,22 +8,20 @@
 import { randomUUID } from "node:crypto";
 
 import {
-  type AdmissionRepo,
-  type AdmissionKey,
-  type AdmissionReceipt,
-  type DispatchClaim,
-  type RunSettlement,
-  type SettledRun,
   compareNamespaces,
   DEFAULT_MAX_PAGE_SIZE,
-  requireValidMaxPageSize,
   isMetadataSubset,
   isTerminalRunStatus,
   matchesItemFilter,
   matchesNamespacePrefix,
   matchesNamespaceQuery,
+  requireValidMaxPageSize,
+  serializeWireJson,
   SkeinHttpError,
   truncateNamespaceDepth,
+  type AdmissionKey,
+  type AdmissionReceipt,
+  type AdmissionRepo,
   type Assistant,
   type AssistantCreate,
   type AssistantRepo,
@@ -42,6 +40,7 @@ import {
   type DeliveryAttemptResult,
   type DeliveryCreate,
   type DeliveryRepo,
+  type DispatchClaim,
   type DueDeliveriesQuery,
   type FinalizedRun,
   type GuardedRunCreate,
@@ -57,21 +56,22 @@ import {
   type RunKwargs,
   type RunRepo,
   type RunResult,
-  serializeWireJson,
+  type RunSettlement,
   type RunStatus,
   type SearchItem,
+  type SettledRun,
   type SkeinStore,
   type SkeinStoreSnapshot,
-  type StorePutOptions,
   type StoreItemWriteOptions,
+  type StorePutOptions,
   type StoreRepo,
   type StoreSearchQuery,
   type StoreTtlConfig,
-  type ThreadTtlConfig,
   type Thread,
   type ThreadCreate,
   type ThreadRepo,
   type ThreadSearchQuery,
+  type ThreadTtlConfig,
   type ThreadUpdate,
 } from "@skein-js/core";
 
@@ -199,6 +199,7 @@ export class MemorySkeinStore implements SkeinStore {
     string,
     DispatchClaim & { leaseUntil?: string; dispatched?: boolean }
   >();
+
   readonly #resumeReservations = new Map<string, string>();
   readonly #admittedRunIds = new Set<string>();
 
@@ -260,6 +261,7 @@ export class MemorySkeinStore implements SkeinStore {
     const preparedDelivery = final.delivery;
     const existing = this.#runs.get(runId);
     let run = existing;
+
     if (run && !isTerminalRunStatus(run.status)) {
       const { error: _previous, ...rest } = run;
       run = write(this.#runs, runId, {
@@ -269,6 +271,7 @@ export class MemorySkeinStore implements SkeinStore {
         ...(final.error ? { error: final.error } : {}),
       });
     }
+
     if (run && run.status === final.status && normalized && !this.#runResults.has(runId))
       this.#runResults.set(runId, normalized);
     const delivery = preparedDelivery
@@ -296,6 +299,7 @@ export class MemorySkeinStore implements SkeinStore {
       const active = [...this.#runs.values()].filter(
         (run) => run.thread_id === thread.thread_id && !isTerminalRunStatus(run.status),
       );
+
       const displaced = JSON.parse(serializeWireJson(input.displacements ?? [])) as NonNullable<
         typeof input.displacements
       >;
@@ -307,6 +311,7 @@ export class MemorySkeinStore implements SkeinStore {
         throw SkeinHttpError.conflict("Active runs changed.", { code: "thread_busy" });
       if (input.guard.requireNoActiveRun && active.length)
         throw SkeinHttpError.conflict("Thread is busy.", { code: "thread_busy" });
+
       if (input.expectedRunId) {
         const expected = this.#runs.get(input.expectedRunId);
         const reservation = this.#resumeReservations.get(input.expectedRunId);
@@ -321,11 +326,14 @@ export class MemorySkeinStore implements SkeinStore {
             code: "stale_resume",
           });
       }
+
       for (const item of displaced) {
         if (item.settlement.result) serializeWireJson(item.settlement.result);
         if (item.settlement.delivery) serializeWireJson(item.settlement.delivery);
       }
+
       input.signal?.throwIfAborted();
+
       for (const item of displaced) {
         const settled = this.#settle(item.runId, item.settlement);
         if (settled.run)
@@ -335,6 +343,7 @@ export class MemorySkeinStore implements SkeinStore {
             prepared.multitask_strategy === "rollback" ? "rollback" : "interrupt",
           );
       }
+
       const run = this.#createRun(prepared);
       if (input.expectedRunId) this.#resumeReservations.set(input.expectedRunId, run.run_id);
       this.#dispatch(run, "run");
@@ -346,6 +355,7 @@ export class MemorySkeinStore implements SkeinStore {
       const existing = this.#runs.get(input.runId);
       if (!existing) throw SkeinHttpError.notFound("Run not found.");
       if (input.delivery) serializeWireJson(input.delivery);
+
       if (!isTerminalRunStatus(existing.status)) {
         const settled = this.#settle(input.runId, {
           status: "cancelled",
@@ -353,16 +363,20 @@ export class MemorySkeinStore implements SkeinStore {
         });
         this.#dispatch(settled.run!, "cancel", input.action);
       }
+
       return this.#recordAdmission(input, this.#runs.get(input.runId)!);
     },
     claimDispatches: async (query) => {
       const claimed: DispatchClaim[] = [];
+
       for (const [runId, intent] of this.#dispatches) {
         const run = this.#runs.get(runId);
+
         if (!run) {
           this.#dispatches.delete(runId);
           continue;
         }
+
         if (
           (intent.kind === "run" && isTerminalRunStatus(run.status)) ||
           (intent.kind === "cancel" && intent.dispatched)
@@ -370,12 +384,14 @@ export class MemorySkeinStore implements SkeinStore {
           this.#dispatches.delete(runId);
           continue;
         }
+
         if (intent.leaseUntil && intent.leaseUntil > query.now) continue;
         if (claimed.length >= Math.max(1, Math.min(this.#pageLimit(query.limit), 1000))) break;
         intent.token = randomUUID();
         intent.leaseUntil = query.leaseUntil;
         claimed.push(clone(intent));
       }
+
       return claimed;
     },
     markDispatched: async (runId, token) => {
@@ -386,6 +402,7 @@ export class MemorySkeinStore implements SkeinStore {
 
   #createRun(input: RunCreate): Run {
     const at = nowIso();
+
     const run: Run = {
       run_id: input.run_id ?? randomUUID(),
       thread_id: input.thread_id,
@@ -401,6 +418,7 @@ export class MemorySkeinStore implements SkeinStore {
     if (input.kwargs) this.#runKwargs.set(run.run_id, clone(input.kwargs));
     return stored;
   }
+
   readonly #assistants = new Map<string, Assistant>();
   // Immutable version snapshots, keyed by `versionKey(assistant_id, version)`. The live #assistants
   // row always mirrors the currently-active version; this map is the append-only history.
@@ -438,6 +456,7 @@ export class MemorySkeinStore implements SkeinStore {
     string,
     { ttl?: number | null; strategy: "delete" | "keep_latest" }
   >();
+
   readonly #threadExpiry = new Map<string, number>();
   readonly #threadTtl?: ThreadTtlConfig;
 
@@ -463,16 +482,19 @@ export class MemorySkeinStore implements SkeinStore {
     strategy?: "delete" | "keep_latest",
   ): void {
     const current = this.#threadRetention.get(threadId);
+
     const minutes =
       ttlMinutes === undefined ? (current ? current.ttl : this.#threadTtl?.defaultTtl) : ttlMinutes;
     this.#threadRetention.set(threadId, {
       ttl: minutes,
       strategy: strategy ?? current?.strategy ?? this.#threadTtl?.strategy ?? "delete",
     });
+
     if (minutes === null || minutes === undefined) {
       this.#threadExpiry.delete(threadId);
       return;
     }
+
     this.#threadExpiry.set(threadId, Date.now() + minutes * 60_000);
   }
 
@@ -506,6 +528,7 @@ export class MemorySkeinStore implements SkeinStore {
       this.#itemExpiry.delete(id);
       return;
     }
+
     this.#itemExpiry.set(id, { expiresAt: Date.now() + ttlMinutes * 60_000, ttlMinutes });
   }
 
@@ -522,6 +545,7 @@ export class MemorySkeinStore implements SkeinStore {
   #maybeRefresh(id: string, refresh?: boolean): void {
     if (!(refresh ?? (this.#ttl !== undefined && this.#ttl.refreshOnRead !== false))) return;
     const entry = this.#itemExpiry.get(id);
+
     if (entry?.ttlMinutes != null) {
       this.#itemExpiry.set(id, { ...entry, expiresAt: Date.now() + entry.ttlMinutes * 60_000 });
     }
@@ -586,9 +610,11 @@ export class MemorySkeinStore implements SkeinStore {
   /** Highest version number recorded for an assistant, or 0 when it has no history yet. */
   #maxVersionOf(assistantId: string): number {
     let max = 0;
+
     for (const version of this.#assistantVersions.values()) {
       if (version.assistant_id === assistantId && version.version > max) max = version.version;
     }
+
     return max;
   }
 
@@ -624,6 +650,7 @@ export class MemorySkeinStore implements SkeinStore {
         isMetadataSubset(thread.metadata, query.enforcedMetadata) &&
         isMetadataSubset(thread.values, query.values),
     );
+
     const sortBy = query.sortBy ?? "created_at";
     const direction = query.sortOrder === "asc" ? 1 : -1;
     const compare = (a: string, b: string): number => (a < b ? -1 : a > b ? 1 : 0);
@@ -647,6 +674,7 @@ export class MemorySkeinStore implements SkeinStore {
             : assistant.name === query.name)) &&
         isMetadataSubset(assistant.metadata, query.metadata),
     );
+
     const sortBy = query.sortBy ?? "created_at";
     const direction = query.sortOrder === "asc" ? 1 : -1;
     const compare = (a: string, b: string): number => (a < b ? -1 : a > b ? 1 : 0);
@@ -677,12 +705,15 @@ export class MemorySkeinStore implements SkeinStore {
     get: async (assistantId) => readOne(this.#assistants, assistantId),
     create: async (input: AssistantCreate) => {
       const assistantId = input.assistant_id ?? randomUUID();
+
       // Reject a duplicate id (matches the Postgres driver): the service turns this 409 into
       // if_exists handling, and registerGraphAssistants tolerates it on a concurrent boot.
       if (this.#assistants.has(assistantId)) {
         throw SkeinHttpError.conflict(`Assistant "${assistantId}" already exists.`);
       }
+
       const at = nowIso();
+
       const assistant: Assistant = {
         assistant_id: assistantId,
         graph_id: input.graph_id,
@@ -705,6 +736,7 @@ export class MemorySkeinStore implements SkeinStore {
       // New version is max(existing) + 1, NOT the live row's version — after a setLatest rollback
       // the live version is lower than the max, and active+1 would collide with an existing snapshot.
       const next = this.#maxVersionOf(assistantId) + 1;
+
       const updated: Assistant = {
         ...existing,
         graph_id: patch.graph_id ?? existing.graph_id,
@@ -731,6 +763,7 @@ export class MemorySkeinStore implements SkeinStore {
             isMetadataSubset(version.metadata, query?.metadata),
         )
         .sort((a, b) => b.version - a.version);
+
       const offset = query?.offset ?? 0;
       return versions.slice(offset, offset + this.#pageLimit(query?.limit)).map(clone);
     },
@@ -738,11 +771,13 @@ export class MemorySkeinStore implements SkeinStore {
       const existing = this.#assistants.get(assistantId);
       if (!existing) throw SkeinHttpError.notFound(`Assistant "${assistantId}" not found.`);
       const target = this.#assistantVersions.get(versionKey(assistantId, version));
+
       if (!target) {
         throw SkeinHttpError.notFound(
           `Version ${version} of assistant "${assistantId}" not found.`,
         );
       }
+
       const updated: Assistant = {
         ...existing,
         graph_id: target.graph_id,
@@ -787,13 +822,16 @@ export class MemorySkeinStore implements SkeinStore {
     },
     create: async (input?: ThreadCreate) => {
       const threadId = input?.thread_id ?? randomUUID();
+
       // Reject a duplicate id (matches the Postgres driver): the service turns this 409 into
       // if_exists handling. Without it a re-used id silently *overwrote* the thread — resetting its
       // created_at, metadata, status, values and interrupts, so an interrupted thread read as idle.
       if (this.#threads.has(threadId)) {
         throw SkeinHttpError.conflict(`Thread "${threadId}" already exists.`);
       }
+
       const at = nowIso();
+
       const thread: Thread = {
         thread_id: threadId,
         created_at: at,
@@ -815,6 +853,7 @@ export class MemorySkeinStore implements SkeinStore {
       // is dropped rather than set to null when cleared, so a healthy thread carries no `error`.
       const { error: _replaced, ...withoutError } = existing;
       const error = patch.error === undefined ? existing.error : patch.error;
+
       const updated: Thread = {
         ...withoutError,
         metadata: patch.metadata ?? existing.metadata,
@@ -839,6 +878,7 @@ export class MemorySkeinStore implements SkeinStore {
       const existing = this.#threads.get(threadId);
       if (!existing) throw SkeinHttpError.notFound(`Thread "${threadId}" not found.`);
       const at = nowIso();
+
       const copy: Thread = {
         ...clone(existing),
         thread_id: randomUUID(),
@@ -871,6 +911,7 @@ export class MemorySkeinStore implements SkeinStore {
       this.#threads.delete(threadId);
       this.#threadExpiry.delete(threadId);
       this.#threadRetention.delete(threadId);
+
       // Cascade: a deleted thread's runs (and their kwargs) go with it.
       for (const [runId, run] of this.#runs) {
         if (run.thread_id === threadId) {
@@ -880,6 +921,7 @@ export class MemorySkeinStore implements SkeinStore {
           this.#forgetAdmission(runId);
         }
       }
+
       // Thread crons go too, mirroring the Postgres driver's `ON DELETE CASCADE`. This is what makes
       // "a cron whose thread was deleted" a state that cannot exist, rather than one the scheduler
       // has to handle every time it fires.
@@ -928,11 +970,13 @@ export class MemorySkeinStore implements SkeinStore {
       // every run in the process to return one thread's cost ~2.4µs per stored run — 41ms of
       // synchronous event loop at 20k runs, on the default dev/embedded driver.
       const matched: Run[] = [];
+
       for (const run of this.#runs.values()) {
         if (run.thread_id !== threadId) continue;
         if (query?.status !== undefined && run.status !== query.status) continue;
         matched.push(run);
       }
+
       // Deliberately unbounded when the caller gives no limit (`runs.listByThread` is one of the two
       // reads the page bound exempts), so the fallback limit is "the rest of the matches".
       return clonePage(matched, query?.offset ?? 0, query?.limit ?? matched.length);
@@ -942,8 +986,10 @@ export class MemorySkeinStore implements SkeinStore {
     // `run_id` descending, matching the Postgres driver's ORDER BY.
     latestForThread: async (threadId) => {
       let latest: Run | undefined;
+
       for (const run of this.#runs.values()) {
         if (run.thread_id !== threadId) continue;
+
         if (
           latest === undefined ||
           run.created_at > latest.created_at ||
@@ -952,6 +998,7 @@ export class MemorySkeinStore implements SkeinStore {
           latest = run;
         }
       }
+
       return latest ? clone(latest) : null;
     },
     create: async (input: RunCreate) => this.#createRun(input),
@@ -963,9 +1010,11 @@ export class MemorySkeinStore implements SkeinStore {
       // Checked explicitly because this driver has no foreign key to do it: the Postgres driver refuses
       // an unknown thread (its `SELECT … FOR UPDATE` finds no row), and the two must not disagree.
       if (!this.#threads.has(input.thread_id)) return null;
+
       for (const run of this.#runs.values()) {
         if (run.thread_id === input.thread_id && !isTerminalRunStatus(run.status)) return null;
       }
+
       return this.runs.create(input);
     },
     // Same single-turn atomicity as `createIfThreadIdle` above, and the same standing warning: every
@@ -979,9 +1028,11 @@ export class MemorySkeinStore implements SkeinStore {
       // An unknown thread is not a guard refusal — it is the same "no row to lock" the Postgres
       // driver reports, and the protocol layer answers it 404 rather than 409.
       if (!thread) throw SkeinHttpError.notFound(`Thread "${input.thread_id}" not found.`);
+
       if (guard.threadStatusIn && !guard.threadStatusIn.includes(thread.status)) {
         return { refused: "thread_status_mismatch", status: thread.status };
       }
+
       if (guard.requireNoActiveRun) {
         for (const run of this.#runs.values()) {
           if (run.thread_id === input.thread_id && !isTerminalRunStatus(run.status)) {
@@ -989,6 +1040,7 @@ export class MemorySkeinStore implements SkeinStore {
           }
         }
       }
+
       // `create`'s body has no `await`, so the row is written before this yields — the same reason
       // `createIfThreadIdle` can `return` the promise directly.
       const created = this.runs.create(input);
@@ -1035,6 +1087,7 @@ export class MemorySkeinStore implements SkeinStore {
       for (const run of this.#runs.values()) {
         if (run.thread_id === threadId && !isTerminalRunStatus(run.status)) return true;
       }
+
       return false;
     },
     // `threadId` omitted sweeps every thread (see the `RunRepo.listActiveRuns` contract). Bounded like
@@ -1045,11 +1098,13 @@ export class MemorySkeinStore implements SkeinStore {
       // cancel and cron-sweep paths, where cloning first meant copying every run in the process to
       // return the handful that are still inflight.
       const matched: Run[] = [];
+
       for (const run of this.#runs.values()) {
         if (threadId !== undefined && run.thread_id !== threadId) continue;
         if (isTerminalRunStatus(run.status)) continue;
         matched.push(run);
       }
+
       return clonePage(matched, 0, this.#pageLimit(undefined));
     },
     // Atomic for free, and deliberately written to stay that way — the same rule `createIfThreadIdle`
@@ -1062,18 +1117,22 @@ export class MemorySkeinStore implements SkeinStore {
     // status race. See the Postgres driver for the reasoning behind each.
     finalizeWithDelivery: async (runId, final: RunFinalization): Promise<FinalizedRun> => {
       const existing = this.#runs.get(runId);
+
       if (!existing) {
         return { run: null, delivery: this.#insertDelivery(runId, final.status, final.delivery) };
       }
+
       if (isTerminalRunStatus(existing.status)) {
         return {
           run: clone(existing),
           delivery: this.#insertDelivery(runId, existing.status, final.delivery),
         };
       }
+
       // Inlined rather than delegating to `setStatus`: that method is `async`, and awaiting it here
       // would put a suspension point between the read above and the insert below.
       const { error: _replaced, ...rest } = existing;
+
       const run = write(this.#runs, runId, {
         ...rest,
         status: final.status,
@@ -1098,6 +1157,7 @@ export class MemorySkeinStore implements SkeinStore {
     claimed = true,
   ): Delivery {
     const at = nowIso();
+
     // `delivering` / `attempt: 1`, not `pending`: the engine attempts the first delivery inline, and
     // a row that started life pending would be picked up by a worker and delivered a second time.
     const delivery: Delivery = {
@@ -1128,11 +1188,13 @@ export class MemorySkeinStore implements SkeinStore {
    */
   #dueDeliveries(now: string): Delivery[] {
     const due: Delivery[] = [];
+
     for (const delivery of this.#deliveries.values()) {
       if (delivery.status !== "pending" && delivery.status !== "delivering") continue;
       if (delivery.next_attempt_at > now) continue;
       due.push(delivery);
     }
+
     return due.sort((a, b) =>
       a.next_attempt_at === b.next_attempt_at
         ? a.delivery_id.localeCompare(b.delivery_id)
@@ -1144,11 +1206,13 @@ export class MemorySkeinStore implements SkeinStore {
     get: async (deliveryId) => readOne(this.#deliveries, deliveryId),
     listByRun: async (runId, query) => {
       const matched: Delivery[] = [];
+
       for (const delivery of this.#deliveries.values()) {
         if (delivery.run_id !== runId) continue;
         if (query?.status !== undefined && delivery.status !== query.status) continue;
         matched.push(delivery);
       }
+
       // Newest first, tie-broken on delivery_id descending — the contract's determinism promise, and
       // the Postgres driver's `ORDER BY created_at DESC, delivery_id DESC`.
       matched.sort((a, b) =>
@@ -1190,6 +1254,7 @@ export class MemorySkeinStore implements SkeinStore {
       // keeps it, or a replay would have nothing to resend.
       // The count is only overwritten when the caller supplies one — see `DeliveryAttemptResult`.
       const attempt = result.attempt ?? existing.attempt;
+
       const settled: Delivery =
         result.outcome === "delivered"
           ? { ...existing, status: "delivered", payload: null, last_error: null, attempt }
@@ -1218,12 +1283,14 @@ export class MemorySkeinStore implements SkeinStore {
     },
     sweepExpired: async (now) => {
       let removed = 0;
+
       for (const [id, delivery] of this.#deliveries) {
         if (delivery.status !== "delivered" && delivery.status !== "dead") continue;
         if (delivery.expires_at > now) continue;
         this.#deliveries.delete(id);
         removed += 1;
       }
+
       return removed;
     },
   };
@@ -1243,6 +1310,7 @@ export class MemorySkeinStore implements SkeinStore {
         // The server's own scoping, AND-ed with the caller's filter — see `enforcedMetadata`.
         isMetadataSubset(cron.metadata, query.enforcedMetadata),
     );
+
     const sortBy = query.sortBy ?? "created_at";
     const direction = query.sortOrder === "asc" ? 1 : -1;
     const compare = (a: string, b: string): number => (a < b ? -1 : a > b ? 1 : 0);
@@ -1273,10 +1341,13 @@ export class MemorySkeinStore implements SkeinStore {
     count: async (query: CronSearchQuery) => this.#matchingCrons(query).length,
     create: async (input: CronCreate) => {
       const cronId = input.cron_id ?? randomUUID();
+
       if (this.#crons.has(cronId)) {
         throw SkeinHttpError.conflict(`Cron "${cronId}" already exists.`);
       }
+
       const at = nowIso();
+
       const cron: Cron = {
         cron_id: cronId,
         assistant_id: input.assistant_id,
@@ -1367,11 +1438,13 @@ export class MemorySkeinStore implements SkeinStore {
     maxOverdueMs: async (now) => {
       const at = Date.parse(now);
       let worst: number | null = null;
+
       for (const cron of this.#crons.values()) {
         if (!cron.enabled || cron.next_run_date == null) continue;
         const overdue = at - Date.parse(cron.next_run_date);
         if (overdue >= 0 && (worst === null || overdue > worst)) worst = overdue;
       }
+
       return worst;
     },
   };
@@ -1381,12 +1454,14 @@ export class MemorySkeinStore implements SkeinStore {
       const id = itemKey(namespace, key);
       const found = this.#items.get(id);
       if (!found) return null;
+
       // Lazy expiry: an expired item reads as absent even before the sweeper deletes it.
       if (this.#isExpired(id)) {
         this.#items.delete(id);
         this.#itemExpiry.delete(id);
         return null;
       }
+
       this.#maybeRefresh(id, options?.refreshTtl);
       return this.#projectItem(found);
     },
@@ -1396,6 +1471,7 @@ export class MemorySkeinStore implements SkeinStore {
       const id = itemKey(namespace, key);
       const at = nowIso();
       const existing = this.#items.get(id);
+
       const item: Item = {
         namespace: [...namespace],
         key,
@@ -1403,6 +1479,7 @@ export class MemorySkeinStore implements SkeinStore {
         createdAt: existing?.createdAt ?? at,
         updatedAt: at,
       };
+
       const stored = clone(item);
       this.#items.set(id, stored);
       // A per-put ttl wins; otherwise the configured default (null = never expires).
@@ -1422,6 +1499,7 @@ export class MemorySkeinStore implements SkeinStore {
     },
     search: async (query: StoreSearchQuery) => {
       const needle = query.query?.toLowerCase();
+
       // Stored references, filtered in place; only the page is cloned and scored below.
       const matches: SearchItem[] = [...this.#items.entries()]
         .filter(([id]) => !this.#isExpired(id))
@@ -1454,18 +1532,23 @@ export class MemorySkeinStore implements SkeinStore {
       // Key by JSON.stringify (not join) so distinct namespaces whose segments contain the
       // separator can't collide.
       const seen = new Map<string, string[]>();
+
       for (const [id, item] of this.#items.entries()) {
         if (this.#isExpired(id)) continue;
+
         if (matchesNamespaceQuery(item.namespace, query)) {
           seen.set(JSON.stringify(item.namespace), item.namespace);
         }
       }
+
       let namespaces = [...seen.values()].map((namespace) => [...namespace]);
+
       // Truncate before sorting and paging, so `{ maxDepth: 1, limit: 10 }` pages ten roots rather
       // than the roots of the first ten namespaces.
       if (query?.maxDepth !== undefined) {
         namespaces = truncateNamespaceDepth(namespaces, query.maxDepth);
       }
+
       namespaces.sort(compareNamespaces);
       // Always bounded, like every other list path: an absent limit means the first page, not every
       // namespace in the store.
@@ -1474,6 +1557,7 @@ export class MemorySkeinStore implements SkeinStore {
     },
     sweepExpired: async () => {
       let removed = 0;
+
       for (const id of [...this.#itemExpiry.keys()]) {
         if (this.#isExpired(id)) {
           this.#items.delete(id);
@@ -1481,6 +1565,7 @@ export class MemorySkeinStore implements SkeinStore {
           removed += 1;
         }
       }
+
       return removed;
     },
   };
@@ -1493,13 +1578,16 @@ export class MemorySkeinStore implements SkeinStore {
     claim: async (claim: IdempotencyClaim) => {
       const id = idempotencyKey(claim.scope, claim.key);
       const existing = this.#idempotency.get(id);
+
       // An expired incumbent is taken over rather than reported, so a claimant that died mid-request
       // frees its key without waiting on the sweeper. The takeover resets `response`/`run_id`: the
       // dead claim's recording must never be replayed against this claim's fingerprint.
       if (existing && Date.parse(existing.expires_at) > Date.parse(claim.now)) {
         return { claimed: false, record: clone(existing) };
       }
+
       const at = nowIso();
+
       const record = write(this.#idempotency, id, {
         key: claim.key,
         scope: claim.scope,
@@ -1542,33 +1630,39 @@ export class MemorySkeinStore implements SkeinStore {
     get: async (scope, key) => readOne(this.#idempotency, idempotencyKey(scope, key)),
     deleteByThread: async (threadId) => {
       let removed = 0;
+
       for (const [id, record] of [...this.#idempotency.entries()]) {
         if (record.thread_id === threadId) {
           this.#idempotency.delete(id);
           removed += 1;
         }
       }
+
       return removed;
     },
     deleteByRun: async (runId) => {
       let removed = 0;
+
       for (const [id, record] of [...this.#idempotency.entries()]) {
         if (record.run_id === runId) {
           this.#idempotency.delete(id);
           removed += 1;
         }
       }
+
       return removed;
     },
     sweepExpired: async (now) => {
       const cutoff = Date.parse(now);
       let removed = 0;
+
       for (const [id, record] of [...this.#idempotency.entries()]) {
         if (Date.parse(record.expires_at) <= cutoff) {
           this.#idempotency.delete(id);
           removed += 1;
         }
       }
+
       return removed;
     },
   };
@@ -1612,6 +1706,7 @@ export class MemorySkeinStore implements SkeinStore {
       map.clear();
       for (const [id, row] of rows) map.set(id, clone(row));
     };
+
     fill(this.#assistants, snapshot.assistants);
     fill(this.#assistantVersions, snapshot.assistantVersions ?? []);
     fill(this.#threads, snapshot.threads);
@@ -1641,16 +1736,19 @@ export class MemorySkeinStore implements SkeinStore {
     this.#threadExpiry.clear();
     this.#threadRetention.clear();
     for (const threadId of this.#threads.keys()) this.#setThreadExpiry(threadId, undefined);
+
     for (const [id, policy] of snapshot.threadRetention ?? []) {
       this.#threadRetention.set(id, { ttl: policy.ttl, strategy: policy.strategy });
       if (policy.expiresAt != null) this.#threadExpiry.set(id, policy.expiresAt);
       else this.#threadExpiry.delete(id);
     }
+
     // Credentials are deliberately not in the snapshot — it is written to `.skein/` on disk. So a
     // restored cron keeps its `user_id` but loses the principal behind it, and the scheduler refuses
     // to fire that combination rather than running it unowned (see `fireCron`). On an
     // unauthenticated server there is no `user_id` to begin with, so `skein dev` is unaffected.
     this.#cronAuth.clear();
+
     // Backfill a version snapshot for any assistant restored from a pre-versioning dev-state file
     // (which has no assistantVersions), so getVersions/setLatest work and the next update mints
     // max+1 with no gap. Uses the row's current version, since older history wasn't persisted.
@@ -1662,9 +1760,11 @@ export class MemorySkeinStore implements SkeinStore {
         );
       }
     }
+
     // Older snapshots have no item options; their items retain the previous no-expiry behavior.
     this.#itemExpiry.clear();
     this.#itemIndexes.clear();
+
     for (const [id, options] of snapshot.itemOptions ?? []) {
       if (options.index !== undefined) this.#itemIndexes.set(id, clone(options.index));
       if (options.expiresAt != null && options.ttlMinutes != null)
@@ -1683,17 +1783,20 @@ export class MemorySkeinStore implements SkeinStore {
     const add = <T>(map: Map<string, T>, rows: [string, T][]): void => {
       for (const [id, row] of rows) if (!map.has(id)) map.set(id, clone(row));
     };
+
     add(this.#assistants, snapshot.assistants);
     add(this.#assistantVersions, snapshot.assistantVersions ?? []);
     const newThreadIds = new Set(
       snapshot.threads.filter(([id]) => !this.#threads.has(id)).map(([id]) => id),
     );
     add(this.#threads, snapshot.threads);
+
     for (const [id, policy] of snapshot.threadRetention ?? []) {
       if (!newThreadIds.has(id)) continue;
       this.#threadRetention.set(id, { ttl: policy.ttl, strategy: policy.strategy });
       if (policy.expiresAt != null) this.#threadExpiry.set(id, policy.expiresAt);
     }
+
     add(this.#runs, snapshot.runs);
     add(
       this.#runKwargs,
@@ -1704,12 +1807,14 @@ export class MemorySkeinStore implements SkeinStore {
       snapshot.items.filter(([id]) => !this.#items.has(id)).map(([id]) => id),
     );
     add(this.#items, snapshot.items);
+
     for (const [id, options] of snapshot.itemOptions ?? []) {
       if (!newItemIds.has(id)) continue;
       if (options.index !== undefined) this.#itemIndexes.set(id, clone(options.index));
       if (options.expiresAt != null && options.ttlMinutes != null)
         this.#itemExpiry.set(id, { expiresAt: options.expiresAt, ttlMinutes: options.ttlMinutes });
     }
+
     // Crons go in after threads, since a thread cron references one. A cron whose thread is absent
     // from the import is skipped rather than restored dangling — the same rule the Postgres driver's
     // foreign key enforces for it, and what `runs` already does there.
@@ -1719,6 +1824,7 @@ export class MemorySkeinStore implements SkeinStore {
         ([, cron]) => cron.thread_id == null || this.#threads.has(cron.thread_id),
       ),
     );
+
     for (const cronId of this.#crons.keys()) {
       if (!this.#cronSeq.has(cronId)) this.#cronSeq.set(cronId, 0);
     }

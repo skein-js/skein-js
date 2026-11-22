@@ -15,6 +15,7 @@ async function until<T>(read: () => Promise<T>, complete: (value: T) => boolean)
     if (complete(value)) return value;
     await new Promise((resolve) => setTimeout(resolve, 20));
   }
+
   throw new Error("Timed out waiting for the UI workflow.");
 }
 

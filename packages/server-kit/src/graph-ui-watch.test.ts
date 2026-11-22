@@ -11,13 +11,16 @@ it("rebuilds development UI through the upstream watcher without retaining a tes
   const filename = path.join(directory, "ui.tsx");
   await writeFile(filename, 'export default {card:()=>"INITIAL_MARKER"};');
   const entry = pathToFileURL(path.join(process.cwd(), "dist/index.js")).href;
+
   const source = `import {createInterface} from 'node:readline';import {loadConfigHttpHandler} from ${JSON.stringify(entry)};
     const handler=await loadConfigHttpHandler({graphs:{},ui:{agent:'./ui.tsx'}},{configDir:${JSON.stringify(directory)}});
     const report=async()=>{const html=await (await handler(new Request('http://localhost/ui/agent',{method:'POST',headers:{'content-type':'application/json'},body:'{"name":"card"}'}))).text();const asset=/<script src="([^"]+)"/.exec(html)[1];const code=await (await handler(new Request(asset))).text();console.log(JSON.stringify({initial:code.includes('INITIAL_MARKER'),updated:code.includes('UPDATED_MARKER')}));};
     await report();for await(const line of createInterface({input:process.stdin})){if(line==='probe')await report();}`;
+
   const child = spawn(process.execPath, ["--input-type=module", "-e", source], {
     stdio: ["pipe", "pipe", "pipe"],
   });
+
   let output = "";
   let errors = "";
   child.stdout.on("data", (chunk) => {
@@ -29,6 +32,7 @@ it("rebuilds development UI through the upstream watcher without retaining a tes
   const probe = setInterval(() => {
     if (!child.stdin.destroyed) child.stdin.write("probe\n");
   }, 200);
+
   try {
     await expect
       .poll(() => output, { timeout: 15_000, message: errors })

@@ -18,6 +18,7 @@ describe("AgentGraph", () => {
         default: () => [],
       }),
     });
+
     const compiled = new StateGraph(State)
       .addNode("echo", (state) => ({ messages: [...state.messages] }))
       .addEdge("__start__", "echo")
@@ -111,6 +112,7 @@ describe("requireAgentCapability", () => {
   // the fix — `POST /threads/{id}/state` and `GET /assistants/{id}/graph` both returned 500.
   it("throws a 422 naming the capability, not an unhandled TypeError", () => {
     let thrown: unknown;
+
     try {
       requireAgentCapability(minimal, "updateState");
     } catch (error) {
@@ -131,6 +133,7 @@ describe("requireAgentCapability", () => {
   it("uses a status the LangGraph SDK will not retry", () => {
     const sdkNoRetry = [400, 401, 402, 403, 404, 405, 406, 407, 408, 409, 422];
     let status: number | undefined;
+
     try {
       requireAgentCapability(minimal, "getGraphAsync");
     } catch (error) {

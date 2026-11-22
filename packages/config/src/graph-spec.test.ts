@@ -46,6 +46,7 @@ describe("parseGraphSpec", () => {
 
 const fixture = fileURLToPath(new URL("./__fixtures__/graphs.ts", import.meta.url));
 const spec = (exportSymbol: string): GraphSpec => ({ sourceFile: fixture, exportSymbol });
+
 const isRunnable = (g: unknown): boolean =>
   typeof (g as { invoke?: unknown }).invoke === "function";
 

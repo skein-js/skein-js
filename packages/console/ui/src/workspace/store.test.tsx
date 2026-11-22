@@ -2,9 +2,9 @@ import { act, cleanup, render, screen, waitFor } from "@testing-library/react";
 import { StrictMode } from "react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
-import { WorkspaceProvider, useWorkspace, useWorkspaceStore } from "./provider";
+import { useWorkspace, useWorkspaceStore, WorkspaceProvider } from "./provider";
 import { getThreadInspectionTab, parseWorkspaceSnapshot } from "./snapshot";
-import { createWorkspaceStore, createDraftKey, type WorkspaceStore } from "./store";
+import { createDraftKey, createWorkspaceStore, type WorkspaceStore } from "./store";
 
 beforeEach(() => {
   sessionStorage.clear();
@@ -74,6 +74,7 @@ describe("workspace persistence", () => {
     "keeps memory usable when %s fails",
     async (method) => {
       const failure = vi.fn();
+
       const storage = {
         getItem: () => null,
         setItem: () => {},
@@ -82,9 +83,11 @@ describe("workspace persistence", () => {
         key: () => null,
         length: 0,
       };
+
       storage[method] = () => {
         throw new Error("Storage denied");
       };
+
       const store = createWorkspaceStore(method, failure, () => storage);
       await store.persist.rehydrate();
       expect(() => store.getState().updateDraft("draft", { chat: "Still here" })).not.toThrow();
@@ -130,16 +133,19 @@ describe("workspace persistence", () => {
 it("hydrates before mounting editors under StrictMode and keeps selector subscribers isolated", async () => {
   let activeStore: ReturnType<typeof useWorkspaceStore>;
   let renders = 0;
+
   function Editor() {
     activeStore = useWorkspaceStore();
     const draft = useWorkspace((state) => state?.drafts.editor?.chat ?? "");
     return <input aria-label="Restored draft" value={draft} readOnly />;
   }
+
   function Unrelated() {
     useWorkspace((state) => state?.lastWorkspace);
     renders++;
     return null;
   }
+
   const connection = `${location.origin}:${crypto.randomUUID()}`;
   localStorage.setItem("skein-console:workspace-generation", connection.split(":").at(-1)!);
   // The default jsdom mount resolves to the origin API root.
@@ -171,6 +177,7 @@ it.each([
   ["Second workspace", "First workspace"],
 ])("isolates provider memory under StrictMode (%s first)", async (firstLabel, secondLabel) => {
   const stores = new Map<string, WorkspaceStore>();
+
   function Editor({ label }: { label: string }) {
     const store = useWorkspaceStore();
     const draft = useWorkspace((state) => state?.drafts.editor?.chat ?? "");
@@ -178,6 +185,7 @@ it.each([
     if (store) stores.set(label, store);
     return <input aria-label={label} value={draft} readOnly />;
   }
+
   render(
     <StrictMode>
       <WorkspaceProvider>

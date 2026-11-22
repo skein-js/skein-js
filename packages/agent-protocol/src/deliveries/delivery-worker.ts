@@ -82,9 +82,11 @@ export function createDeliveryWorker(
   options: DeliveryWorkerOptions = {},
 ): DeliveryWorker {
   const clock = deps.clock ?? ((): Date => new Date());
+
   const everyMs =
     options.pollIntervalMs ??
     (deps.deliveryQueue ? DEFAULT_SWEEP_POLL_INTERVAL_MS : DEFAULT_DELIVERY_POLL_INTERVAL_MS);
+
   const batchSize = options.batchSize ?? DEFAULT_DELIVERY_BATCH_SIZE;
 
   let running = false;
@@ -98,6 +100,7 @@ export function createDeliveryWorker(
     if (!deliveries) return summary;
 
     const now = clock();
+
     if (deps.deliveryQueue) {
       // **Read, do not claim.** Recovery re-schedules what it finds, and scheduling is idempotent on
       // the delivery id — so overlapping a job the queue is merely holding costs nothing. Claiming
@@ -106,10 +109,12 @@ export function createDeliveryWorker(
       // due instead of hours, and so what makes a lost enqueue recoverable on the next pass.
       const due = await deliveries.listDue({ now: now.toISOString(), limit: batchSize });
       summary.claimed = due.length;
+
       for (const delivery of due) {
         deps.logger.warn(
           `delivery ${delivery.delivery_id}: no queued job found; re-scheduling it (attempt ${delivery.attempt})`,
         );
+
         try {
           await deps.deliveryQueue.schedule(
             { delivery_id: delivery.delivery_id },
@@ -140,6 +145,7 @@ export function createDeliveryWorker(
         limit: batchSize,
       });
       summary.claimed = claimed.length;
+
       // Sequential rather than concurrent: a backlog is usually a backlog against *one* receiver that
       // is already struggling, and firing a batch at it in parallel is how a retry storm becomes the
       // outage. The batch is bounded, and every instance drains its own share.
@@ -164,16 +170,19 @@ export function createDeliveryWorker(
     // deployments that have the most rows — settled deliveries, dead ones still holding their whole
     // payload, accumulating forever.
     const nowMs = clock().getTime();
+
     if (lastSweptAtMs === undefined || nowMs - lastSweptAtMs >= SWEEP_INTERVAL_MS) {
       lastSweptAtMs = nowMs;
       // Plain `now`. A delivery's `expires_at` was already set to its creation time plus the
       // configured retention, so subtracting the retention again here would apply it twice and keep
       // every settled row for double what `retain_hours` says.
       summary.swept = await deliveries.sweepExpired(new Date(nowMs).toISOString());
+
       if (summary.swept > 0) {
         deps.logger.info(`delivery sweep removed ${summary.swept} settled delivery/deliveries.`);
       }
     }
+
     return summary;
   };
 

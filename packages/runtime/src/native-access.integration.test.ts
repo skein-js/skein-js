@@ -1,4 +1,4 @@
-import { Annotation, StateGraph, interrupt } from "@langchain/langgraph";
+import { Annotation, interrupt, StateGraph } from "@langchain/langgraph";
 import { createProtocolRuntime } from "@skein-js/agent-protocol";
 import { MemoryRunQueue } from "@skein-js/storage-memory";
 import { startPostgres, startRedis, type StartedResource } from "@skein-js/test-support";
@@ -18,6 +18,7 @@ afterAll(async () => {
 it("rejects an old child checkpoint map on real Postgres without replaying preparation", async () => {
   const state = Annotation.Root({ answer: Annotation<string> });
   let preparations = 0;
+
   const child = new StateGraph(state)
     .addNode("prepare", () => {
       preparations++;
@@ -28,16 +29,20 @@ it("rejects an old child checkpoint map on real Postgres without replaying prepa
     .addEdge("prepare", "ask")
     .addEdge("ask", "__end__")
     .compile();
+
   const graph = new StateGraph(state)
     .addNode("child", child)
     .addEdge("__start__", "child")
     .addEdge("child", "__end__")
     .compile();
+
   const assembly = await embedPostgresGraphs(
     { nestedMap: graph },
     { postgresUri: postgres.url, redisUri: redis.url },
   );
+
   const runtime = createProtocolRuntime(assembly.deps, { scheduler: { enabled: false } });
+
   try {
     await runtime.service.assistants.registerGraphAssistants();
     const client = runtime.createNativeClient({
@@ -57,9 +62,11 @@ it("rejects an old child checkpoint map on real Postgres without replaying prepa
       history.push(tuple);
     const namespace = history.find((tuple) => tuple.config.configurable?.["checkpoint_ns"])!.config
       .configurable!["checkpoint_ns"] as string;
+
     const current = (await assembly.deps.checkpointer.getTuple({
       configurable: { thread_id: first.threadId, checkpoint_ns: namespace },
     }))!;
+
     const earlier = history.find(
       (tuple) =>
         tuple.config.configurable?.["checkpoint_ns"] === namespace &&
@@ -94,11 +101,14 @@ it("rejects an old child checkpoint map on real Postgres without replaying prepa
 
 it("stops HTTP-origin execution after Redis accepts a cancellation publish without delivering it", async () => {
   let entered!: () => void;
+
   const started = new Promise<void>((resolve) => {
     entered = resolve;
   });
+
   let stopped = false;
   const state = Annotation.Root({ answer: Annotation<string> });
+
   const graph = new StateGraph(state)
     .addNode("wait", async (_state, config) => {
       entered();
@@ -117,11 +127,13 @@ it("stops HTTP-origin execution after Redis accepts a cancellation publish witho
     .addEdge("__start__", "wait")
     .addEdge("wait", "__end__")
     .compile();
+
   const assemblies = await Promise.all(
     [0, 1].map(() =>
       embedPostgresGraphs({ lostAbort: graph }, { postgresUri: postgres.url, redisUri: redis.url }),
     ),
   );
+
   // A disconnected subscriber misses a successful Redis PUBLISH. Retrying publication cannot prove
   // delivery; durable status observation on the execution owner is necessary.
   const ownerChannel = assemblies[0]!.deps.abortChannel!;
@@ -131,9 +143,11 @@ it("stops HTTP-origin execution after Redis accepts a cancellation publish witho
   };
   const owner = createProtocolRuntime(assemblies[0]!.deps, { scheduler: { enabled: false } });
   const receiver = createProtocolRuntime(assemblies[1]!.deps, { scheduler: { enabled: false } });
+
   try {
     await owner.service.assistants.registerGraphAssistants();
     const thread = await owner.service.threads.create();
+
     const run = await owner.service.runs.createBackground(thread.thread_id, {
       assistant_id: "lostAbort",
       input: {},
@@ -144,6 +158,7 @@ it("stops HTTP-origin execution after Redis accepts a cancellation publish witho
       sourceId: "cross-instance",
       allowedAssistants: ["lostAbort"],
     });
+
     const cancelled = await client.cancel(run.run_id, {
       idempotencyKey: "lost-publish",
       wait: true,
@@ -159,19 +174,23 @@ it("stops HTTP-origin execution after Redis accepts a cancellation publish witho
 
 it("two replicas reserve one answer and recover admission after producer enqueue failure", async () => {
   const state = Annotation.Root({ answer: Annotation<string> });
+
   const graph = new StateGraph(state)
     .addNode("approve", () => ({ answer: interrupt("approve?") }))
     .addEdge("__start__", "approve")
     .addEdge("approve", "__end__")
     .compile();
+
   const assemblies = await Promise.all(
     [0, 1].map(() =>
       embedPostgresGraphs({ approval: graph }, { postgresUri: postgres.url, redisUri: redis.url }),
     ),
   );
+
   const runtimes = assemblies.map(({ deps }) =>
     createProtocolRuntime(deps, { scheduler: { enabled: false } }),
   );
+
   const clients = runtimes.map((runtime) =>
     runtime.createNativeClient({
       sourceId: "replicas",
@@ -179,12 +198,15 @@ it("two replicas reserve one answer and recover admission after producer enqueue
       outcomeTarget: "https://receiver.example/native",
     }),
   );
+
   try {
     await runtimes[0]!.service.assistants.registerGraphAssistants();
     const enqueue = assemblies[0]!.deps.queue.enqueue.bind(assemblies[0]!.deps.queue);
+
     assemblies[0]!.deps.queue.enqueue = async () => {
       throw new Error("producer lost Redis after COMMIT");
     };
+
     const first = await clients[0]!.start(
       { assistant_id: "approval", input: {} },
       { idempotencyKey: "original" },
@@ -195,12 +217,14 @@ it("two replicas reserve one answer and recover admission after producer enqueue
       .poll(async () => (await clients[1]!.getRun(first.runId)).status, { timeout: 10_000 })
       .toBe("interrupted");
     const checkpoint = (await clients[1]!.getResult(first.runId)).checkpoint!;
+
     const input = {
       assistant_id: "approval",
       thread_id: first.threadId,
       expected: { runId: first.runId, checkpoint },
       resume: "approved",
     };
+
     const answers = await Promise.allSettled(
       clients.map((client, index) => client.resume(input, { idempotencyKey: `answer-${index}` })),
     );
@@ -226,33 +250,42 @@ it("two replicas reserve one answer and recover admission after producer enqueue
 
 it("serializes a state write with resume admission and rejects the checkpoint it displaced", async () => {
   const state = Annotation.Root({ answer: Annotation<string> });
+
   const graph = new StateGraph(state)
     .addNode("approve", () => ({ answer: interrupt("approve?") }))
     .addEdge("__start__", "approve")
     .addEdge("approve", "__end__")
     .compile();
+
   const assemblies = await Promise.all(
     [0, 1].map(() =>
       embedPostgresGraphs({ stateRace: graph }, { postgresUri: postgres.url, redisUri: redis.url }),
     ),
   );
+
   const runtimes = assemblies.map(({ deps }) =>
     createProtocolRuntime(deps, { scheduler: { enabled: false } }),
   );
+
   let enterWrite!: () => void;
   let releaseWrite!: () => void;
+
   const entered = new Promise<void>((resolve) => {
     enterWrite = resolve;
   });
+
   const released = new Promise<void>((resolve) => {
     releaseWrite = resolve;
   });
+
   const saver = assemblies[1]!.deps.checkpointer;
   const put = saver.put.bind(saver);
+
   const client = runtimes[0]!.createNativeClient({
     sourceId: "state-race",
     allowedAssistants: ["stateRace"],
   });
+
   try {
     await runtimes[0]!.service.assistants.registerGraphAssistants();
     runtimes[0]!.worker.start();
@@ -261,16 +294,19 @@ it("serializes a state write with resume admission and rejects the checkpoint it
       .poll(async () => (await client.getRun(receipt.runId)).status, { timeout: 10_000 })
       .toBe("interrupted");
     const checkpoint = (await client.getResult(receipt.runId)).checkpoint!;
+
     saver.put = async (...args) => {
       enterWrite();
       await released;
       return put(...args);
     };
+
     const write = runtimes[1]!.service.threads.updateState(receipt.threadId, {
       values: { answer: "manual" },
     });
     await entered;
     let answerFinished = false;
+
     const answer = expect(
       client
         .resume(
@@ -306,6 +342,7 @@ it("serializes a state write with resume admission and rejects the checkpoint it
 it("recovers an acknowledged job lost with its queue without adopting an unrelated pending run", async () => {
   let invocations = 0;
   const state = Annotation.Root({ answer: Annotation<string> });
+
   const graph = new StateGraph(state)
     .addNode("execute", () => {
       invocations++;
@@ -314,37 +351,47 @@ it("recovers an acknowledged job lost with its queue without adopting an unrelat
     .addEdge("__start__", "execute")
     .addEdge("execute", "__end__")
     .compile();
+
   const assembly = await embedPostgresGraphs(
     { recover: graph },
     { postgresUri: postgres.url, redisUri: redis.url },
   );
+
   // A real Postgres store with a process-local execution queue is a supported embedded deployment.
   const original = createProtocolRuntime(
     { ...assembly.deps, queue: new MemoryRunQueue() },
     { scheduler: { enabled: false } },
   );
+
   const recoveredQueue = new MemoryRunQueue();
+
   const recovered = createProtocolRuntime(
     { ...assembly.deps, queue: recoveredQueue, clock: () => new Date(Date.now() + 60_000) },
     { scheduler: { enabled: false } },
   );
+
   const source = { sourceId: "lost-queue", allowedAssistants: ["recover"] };
   const client = original.createNativeClient(source);
+
   try {
     await original.service.assistants.registerGraphAssistants();
     const receipt = await client.start(
       { assistant_id: "recover", input: {} },
       { idempotencyKey: "accepted" },
     );
+
     const now = new Date();
+
     const claims = await assembly.deps.store.admission!.claimDispatches({
       now: now.toISOString(),
       leaseUntil: new Date(now.getTime() + 30_000).toISOString(),
     });
+
     const claim = claims.find((item) => item.runId === receipt.runId)!;
     expect(claim).toBeDefined();
     await assembly.deps.store.admission!.markDispatched(claim.runId, claim.token);
     const unrelatedThread = await assembly.deps.store.threads.create();
+
     const unrelated = await assembly.deps.store.runs.create({
       thread_id: unrelatedThread.thread_id,
       assistant_id: "recover",

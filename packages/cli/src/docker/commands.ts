@@ -97,6 +97,7 @@ function defaultImageTag(configDir: string): string {
     .basename(configDir)
     .toLowerCase()
     .replace(/[^a-z0-9._-]+/g, "-");
+
   const trimmed = base.replace(/^[-.]+|[-.]+$/g, "");
   return trimmed.length > 0 ? trimmed : "skein-app";
 }
@@ -111,11 +112,13 @@ function defaultImageTag(configDir: string): string {
 function resolveNpmrcSecret(npmrc: string | undefined): string | null | undefined {
   if (npmrc === undefined) return undefined;
   const resolved = path.resolve(process.cwd(), npmrc);
+
   if (!existsSync(resolved)) {
     console.error(`skein: --npmrc file not found: ${resolved}`);
     process.exitCode = 1;
     return null;
   }
+
   return resolved;
 }
 
@@ -183,12 +186,14 @@ export async function runDockerfile(options: DockerfileCommandOptions): Promise<
     "skein: this Dockerfile builds against a `.skein/build` artifact (run `skein build`), " +
       "not the project root.",
   );
+
   if (options.output !== undefined) {
     const target = path.resolve(process.cwd(), options.output);
     writeFileSync(target, contents);
     console.log(`skein: wrote ${target}.`);
     return;
   }
+
   process.stdout.write(contents);
 }
 
@@ -213,6 +218,7 @@ export async function runBuild(options: BuildCommandOptions): Promise<void> {
   if (!options.artifactOnly && !requireDocker()) return;
 
   let artifactDir: string;
+
   try {
     artifactDir = await prepareArtifact(context, runtime);
   } catch (error) {
@@ -234,11 +240,13 @@ export async function runBuild(options: BuildCommandOptions): Promise<void> {
     ["build", "-t", tag, "-f", path.join(artifactDir, DOCKERFILE_NAME), ...secretArgs, "."],
     artifactDir,
   );
+
   if (!succeeded(result)) {
     console.error(`skein: docker build failed (${describeExit(result)}).`);
     process.exitCode = 1;
     return;
   }
+
   console.log(`skein: built image "${tag}".`);
 }
 
@@ -259,6 +267,7 @@ export async function runUp(options: UpCommandOptions): Promise<void> {
   if (!requireDocker()) return;
 
   let artifactDir: string;
+
   try {
     artifactDir = await prepareArtifact(context, runtime, [
       {
@@ -285,6 +294,7 @@ export async function runUp(options: UpCommandOptions): Promise<void> {
     ["compose", "-f", COMPOSE_NAME, "up", "--build"],
     artifactDir,
   );
+
   // Ctrl-C is the normal way to stop `compose up`, so only a genuine non-zero exit is an error.
   if (!succeeded(result) && !wasInterrupted(result)) {
     console.error(`skein: docker compose up failed (${describeExit(result)}).`);

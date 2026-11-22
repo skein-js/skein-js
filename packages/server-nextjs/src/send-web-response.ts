@@ -14,10 +14,12 @@ function sseStream(events: AsyncIterable<string>): ReadableStream<Uint8Array> {
     async pull(controller) {
       try {
         const next = await iterator.next();
+
         if (next.done) {
           controller.close();
           return;
         }
+
         controller.enqueue(encoder.encode(next.value));
       } catch (error) {
         controller.error(error);
@@ -62,6 +64,7 @@ export function webErrorResponse(
   logger?: Logger,
 ): Response {
   const headers = { "content-type": "application/json", ...extraHeaders };
+
   // A 5xx is a *server* fault even when it is deliberate and typed, so it always reaches the log;
   // 4xx are the caller's problem and stay quiet. Without this a graph that cannot load would answer
   // with `graph_load_failed` and leave nothing behind — the CLI reports it at startup, but an
@@ -70,6 +73,7 @@ export function webErrorResponse(
     if (error.status >= 500) {
       logger?.error(`Request failed: ${error.message}`, error);
     }
+
     return new Response(
       JSON.stringify({
         status: error.status,
@@ -80,6 +84,7 @@ export function webErrorResponse(
       { status: error.status, headers },
     );
   }
+
   // Unexpected fault — surface it server-side (App Router has no res to attach to), then return a
   // generic 500 so no internal detail leaks to the client.
   logger?.error("Unhandled error in the skein Next.js adapter.", error);

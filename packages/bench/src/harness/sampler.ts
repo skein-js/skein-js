@@ -98,6 +98,7 @@ export class MemorySampler {
     const { rss, heapUsed } = process.memoryUsage();
     this.#samples.rssBytes.push(rss);
     this.#samples.heapUsedBytes.push(heapUsed);
+
     for (const [name, probe] of Object.entries(this.#probes)) {
       this.#samples.probes[name]?.push(probe());
     }

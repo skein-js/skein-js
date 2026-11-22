@@ -18,8 +18,8 @@ import {
   type GraphRegistry,
   type GraphSchemas as ConfigGraphSchemas,
   type LanggraphJson,
-  type ModuleImporter,
   type LoadedChannel,
+  type ModuleImporter,
 } from "@skein-js/config";
 import { MemorySkeinStore } from "@skein-js/storage-memory";
 import type { CorsOptions } from "cors";
@@ -80,6 +80,7 @@ export async function loadInMemoryRuntime(
     importModule,
     staticSchemas,
   });
+
   const deps = embedInMemoryGraphs(toGraphResolver(graphs));
   deps.webhooks = resolveWebhooks(config.skein?.webhooks, {
     compatible: config.webhooks,
@@ -164,6 +165,7 @@ export async function loadReloadableInMemoryRuntime(
   // engine reads it, not the store. It has to be resolved on this path anyway, or `skein.idempotency`
   // would tune retention under `skein start` and be silently ignored under `skein dev`.
   const idempotency = resolveIdempotency(first.config.skein?.idempotency);
+
   // Same story for `skein.webhooks`: resolved here as well as in `buildRuntime`'s durable branch, or
   // a retry policy would work under `skein start` and silently do nothing under `skein dev`.
   const webhooks = resolveWebhooks(first.config.skein?.webhooks, {
@@ -171,12 +173,15 @@ export async function loadReloadableInMemoryRuntime(
     disabled: first.config.http?.disable_webhooks,
     warn: (message) => console.warn(message),
   });
+
   const store = new MemorySkeinStore({
     maxPageSize: resolveMaxPageSize(),
     ...(threadTtl ? { threadTtl } : {}),
     ...(storeTtl ? { ttl: storeTtl } : {}),
   });
+
   const checkpointer = new MemorySaver();
+
   // Built *through* `embedInMemoryGraphs` rather than by hand. Hand-assembling this is how `skein dev`
   // came to run without `storeBridge`, `cloneCheckpoint` and `ephemeralCheckpointer` — the three deps
   // that bind the engine to LangGraph — while the embed paths had them all along. The engine reaches
@@ -225,6 +230,7 @@ export async function loadReloadableInMemoryRuntime(
     configDir: first.configDir,
     reloadGraphs: async () => {
       const next = await loadConfig({ configPath, importModule, staticSchemas });
+
       const httpHandler = await loadConfigHttpHandler(next.config, {
         configDir: next.configDir,
         importModule,

@@ -13,6 +13,7 @@ import { z } from "zod";
 
 const CATALOG_ID = basicCatalog.id;
 export const promptSchema = z.string().trim().min(1).max(2000);
+
 export const conversationSchema = z.array(
   z
     .object({

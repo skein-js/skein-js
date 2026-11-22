@@ -20,10 +20,13 @@ export function mountProtocolActivity(
     </div>`;
   const select = <ElementType extends HTMLElement>(selector: string) =>
     root.querySelector<ElementType>(selector)!;
+
   const requests = select<HTMLOListElement>("#protocol-requests");
+
   select<HTMLButtonElement>("#branch-draft").onclick = () => {
     void onBranch(select<HTMLSelectElement>("#checkpoint-choice").value);
   };
+
   return {
     recordRequest(url: URL, init: RequestInit) {
       const item = document.createElement("li");
@@ -44,28 +47,34 @@ export function mountProtocolActivity(
         client.runs.list(threadId, { limit: 30 }),
         client.threads.getHistory(threadId, { limit: 50 }),
       ]);
+
       const list = select<HTMLOListElement>("#run-history");
       list.replaceChildren();
+
       for (const run of [...runs].reverse()) {
         const item = document.createElement("li");
         const label = run.metadata?.["demo_action"] ?? "Workflow run";
         item.textContent = `${label} · ${run.status} · ${new Date(run.created_at).toLocaleTimeString()}`;
         list.append(item);
       }
+
       select<HTMLElement>("#checkpoint-count").textContent =
         `${checkpoints.length} persisted checkpoints. Select an earlier review to explore another outcome.`;
       const drafts = checkpoints.filter(
         (checkpoint) =>
           checkpoint.next.includes("approve") && checkpoint.values.outcome === "review",
       );
+
       const choices = select<HTMLSelectElement>("#checkpoint-choice");
       choices.replaceChildren();
+
       for (const [index, checkpoint] of drafts.entries()) {
         const option = document.createElement("option");
         option.value = checkpoint.checkpoint.checkpoint_id!;
         option.textContent = `Review draft ${drafts.length - index} · ${checkpoint.values.actions.length} follow-ups`;
         choices.append(option);
       }
+
       select<HTMLElement>("#branch-controls").hidden = drafts.length === 0;
     },
   };

@@ -17,6 +17,7 @@ import {
   type Metadata,
   type MultitaskStrategy,
   type Run,
+  type RunAdmission,
   type RunCreate,
   type RunError,
   type RunFrame,
@@ -25,7 +26,6 @@ import {
   type RunSearchQuery,
   type RunStatus,
   type RunTrigger,
-  type RunAdmission,
   type StreamMode,
   type Thread,
   type ThreadStatus,
@@ -38,10 +38,10 @@ import { a2aKwargs } from "../interop/a2a-origin.js";
 import { mcpKwargs } from "../interop/mcp-origin.js";
 import {
   assertNativeDeadline,
-  nativeKwargs,
-  readNativeOrigin,
   isRecoveringCancellation,
+  nativeKwargs,
   readAdmissionSignal,
+  readNativeOrigin,
 } from "../native/native-origin.js";
 import {
   nativeDelivery,
@@ -323,6 +323,7 @@ export function toKwargs(
   if (input.webhook !== undefined) kwargs.webhook = input.webhook;
   // Server-owned fork target: taken from the validated top-level field, never from client config.
   const configurable = input.config?.configurable;
+
   const configCheckpoint =
     configurable && typeof configurable === "object"
       ? {
@@ -340,6 +341,7 @@ export function toKwargs(
             : {}),
         }
       : undefined;
+
   const checkpoint = input.checkpoint ?? configCheckpoint;
   if (checkpoint !== undefined) kwargs.checkpoint = checkpoint;
   const checkpointId = input.checkpoint_id ?? checkpoint?.checkpoint_id;
@@ -347,11 +349,13 @@ export function toKwargs(
   if (input.durability !== undefined) kwargs.durability = input.durability;
   else if (input.checkpoint_during !== undefined)
     kwargs.durability = input.checkpoint_during ? "async" : "exit";
+
   // Scopes only ride along with a principal; storing them alone would be meaningless.
   if (authUser !== undefined) {
     kwargs.auth_user = authUser;
     if (authScopes !== undefined) kwargs.auth_scopes = authScopes;
   }
+
   return kwargs;
 }
 
@@ -373,10 +377,13 @@ export function createRunService(ctx: ProtocolContext): RunService {
     if (runBaseCheckpoints.has(runId)) {
       return { recorded: true, checkpointId: runBaseCheckpoints.get(runId) };
     }
+
     const kwargs = await deps.store.runs.getKwargs(runId);
+
     if (kwargs === null || !("base_checkpoint_id" in kwargs)) {
       return { recorded: false, checkpointId: undefined };
     }
+
     return { recorded: true, checkpointId: kwargs.base_checkpoint_id ?? undefined };
   };
 
@@ -405,6 +412,7 @@ export function createRunService(ctx: ProtocolContext): RunService {
     ) {
       return; // already tagged with this graph/assistant — skip the redundant write
     }
+
     try {
       await deps.store.threads.update(thread.thread_id, {
         metadata: {
@@ -426,6 +434,7 @@ export function createRunService(ctx: ProtocolContext): RunService {
     const existing = await deps.store.threads.get(threadId);
     if (existing) return existing;
     const generation = await deps.threadBus?.generation(threadId);
+
     try {
       const thread = await deps.store.threads.create({ thread_id: threadId });
       await deps.threadBus?.publish(
@@ -439,6 +448,7 @@ export function createRunService(ctx: ProtocolContext): RunService {
         const raced = await deps.store.threads.get(threadId);
         if (raced) return raced;
       }
+
       throw error;
     }
   };
@@ -471,6 +481,7 @@ export function createRunService(ctx: ProtocolContext): RunService {
   // guard immediately, while the execution lock still holds the displacing run until this one stops.
   const cancelActiveRun = async (run: Run, reason: "interrupt" | "rollback"): Promise<void> => {
     const terminal: RunStatus = reason === "interrupt" ? "interrupted" : "cancelled";
+
     if (readNativeOrigin(await deps.store.runs.getKwargs(run.run_id))) {
       await settleNativeRun(deps, run, {
         status: reason === "interrupt" ? "interrupted" : "cancelled",
@@ -479,6 +490,7 @@ export function createRunService(ctx: ProtocolContext): RunService {
       control.abort(run.run_id, reason);
       return;
     }
+
     if (run.status === "pending") {
       await deps.store.runs.setStatus(run.run_id, terminal);
       await deps.bus.close(run.run_id);
@@ -503,6 +515,7 @@ export function createRunService(ctx: ProtocolContext): RunService {
       const native = readNativeOrigin(kwargs);
       const admissionKey = native?.admission ?? ctx.admission ?? readInputAdmission(input);
       const displacements: NonNullable<RunAdmission["displacements"]>[number][] = [];
+
       const displace = async (run: Run, reason: "interrupt" | "rollback") => {
         if (!admissionKey) return cancelActiveRun(run, reason);
         const origin = readNativeOrigin(await deps.store.runs.getKwargs(run.run_id));
@@ -532,6 +545,7 @@ export function createRunService(ctx: ProtocolContext): RunService {
               "Atomic admission context requires a background run.",
             );
           const identified = { ...create, run_id: create.run_id ?? randomUUID() };
+
           const template = native
             ? nativeDelivery(
                 deps,
@@ -548,6 +562,7 @@ export function createRunService(ctx: ProtocolContext): RunService {
                 native,
               )
             : undefined;
+
           const admittedCreate = template
             ? { ...identified, kwargs: { ...identified.kwargs, terminal_delivery: template } }
             : identified;
@@ -568,6 +583,7 @@ export function createRunService(ctx: ProtocolContext): RunService {
           if (!run) throw SkeinHttpError.notFound("Accepted run was deleted.");
           if (receipt.runId === admittedCreate.run_id) {
             admittedRuns.add(run);
+
             for (const displaced of displacements) {
               control.abort(displaced.runId, strategy === "rollback" ? "rollback" : "interrupt");
               const deliveryId = displaced.settlement.delivery?.delivery_id;
@@ -580,11 +596,14 @@ export function createRunService(ctx: ProtocolContext): RunService {
           } else admissionReplays.add(run);
           return run;
         }
+
         if (!input.if_thread_status) {
           if (!requireNoActiveRun) return deps.store.runs.create(create);
           return (await deps.store.runs.createIfThreadIdle(create)) ?? "thread_busy";
         }
+
         const guardedCreate = deps.store.runs.createIfThreadMatches;
+
         if (!guardedCreate) {
           // Refused rather than silently degraded to a read-then-create: a non-atomic fallback looks
           // like it works until two replicas race, which is the failure this field exists to prevent.
@@ -596,6 +615,7 @@ export function createRunService(ctx: ProtocolContext): RunService {
             { code: "if_thread_status_unsupported" },
           );
         }
+
         const result = await guardedCreate.call(deps.store.runs, create, {
           ...(requireNoActiveRun ? { requireNoActiveRun: true } : {}),
           threadStatusIn: input.if_thread_status,
@@ -628,6 +648,7 @@ export function createRunService(ctx: ProtocolContext): RunService {
           },
           true,
         );
+
         if (created === "thread_busy") {
           // Matches @langchain/langgraph-api: 422, with the same message.
           throw SkeinHttpError.unprocessable(
@@ -635,12 +656,14 @@ export function createRunService(ctx: ProtocolContext): RunService {
             { code: "thread_busy" },
           );
         }
+
         return created;
       }
 
       const active = await deps.store.runs.listActiveRuns(threadId);
 
       let rollbackPlan: RollbackPlan | undefined;
+
       if (active.length > 0) {
         if (strategy === "interrupt") {
           for (const run of active) await displace(run, "interrupt");
@@ -649,10 +672,12 @@ export function createRunService(ctx: ProtocolContext): RunService {
           // in-process note once the run settles. A displaced run with no recorded base never wrote
           // checkpoints.
           let revertToCheckpoint: RollbackPlan["revertToCheckpoint"] = false;
+
           for (const run of active) {
             const base = await readBaseCheckpoint(run.run_id);
             if (base.recorded) revertToCheckpoint = { baseCheckpointId: base.checkpointId };
           }
+
           rollbackPlan = { revertToCheckpoint, displacedRunIds: active.map((run) => run.run_id) };
           for (const run of active) await displace(run, "rollback");
         }
@@ -679,6 +704,7 @@ export function createRunService(ctx: ProtocolContext): RunService {
         },
         false,
       );
+
       // Unreachable: `guardedInsert` only reports `thread_busy` when asked to check, which is the
       // `reject` branch above. Narrowing rather than asserting, so a future caller that does ask here
       // has to decide what it means instead of getting a `Run` that is a string.
@@ -688,6 +714,7 @@ export function createRunService(ctx: ProtocolContext): RunService {
           { code: "thread_busy" },
         );
       }
+
       // Also noted in-process, as the fast path for the common single-instance case: the executing run
       // then needs no read to discover it has work to do first.
       if (rollbackPlan) ctx.rollbackPlans.set(created.run_id, rollbackPlan);
@@ -717,6 +744,7 @@ export function createRunService(ctx: ProtocolContext): RunService {
     if (input.webhook !== undefined && deps.webhooks?.disabled) {
       throw SkeinHttpError.unprocessable("HTTP webhooks are disabled by http.disable_webhooks.");
     }
+
     const assistant = await requireAssistant(input.assistant_id);
     const thread = await resolveThread();
     // "Stateless" is *the caller named no thread*, matching LangGraph's own `threadId == null` test —
@@ -747,6 +775,7 @@ export function createRunService(ctx: ProtocolContext): RunService {
   const enqueueBackgroundRun = async (run: Run, afterSeconds?: number): Promise<Run> => {
     if (admissionReplays.has(run)) return run;
     const stored = admittedRuns.has(run) ? await deps.store.runs.getKwargs(run.run_id) : null;
+
     const delayMs = stored?.queue_not_before
       ? Math.max(0, Date.parse(stored.queue_not_before) - deps.clock().getTime())
       : Math.max(0, afterSeconds ?? 0) * 1000;
@@ -783,17 +812,20 @@ export function createRunService(ctx: ProtocolContext): RunService {
     signal?: AbortSignal,
   ): (() => void) => {
     if (input.on_disconnect !== "cancel" || signal === undefined) return () => undefined;
+
     const onAbort = (): void => {
       void cancelRun(runId).catch((error: unknown) => {
         deps.logger.warn(`run ${runId}: cancel on client disconnect failed`, error);
       });
     };
+
     // Already gone by the time the run was created — cancel rather than wait for an event that has
     // been and gone.
     if (signal.aborted) {
       onAbort();
       return () => undefined;
     }
+
     signal.addEventListener("abort", onAbort, { once: true });
     return () => signal.removeEventListener("abort", onAbort);
   };
@@ -877,6 +909,7 @@ export function createRunService(ctx: ProtocolContext): RunService {
     // Read before the abort: the engine clears its in-process note as the run settles, so reading it
     // afterwards could find nothing and the revert would wipe the thread instead of trimming it.
     const rollingBack = options?.action === "rollback";
+
     const base = rollingBack
       ? await readBaseCheckpoint(runId)
       : { recorded: false, checkpointId: undefined };
@@ -911,6 +944,7 @@ export function createRunService(ctx: ProtocolContext): RunService {
         async () => undefined,
       );
     }
+
     return (await deps.store.runs.get(runId)) ?? { ...run, status: "cancelled" };
   };
 
@@ -933,12 +967,15 @@ export function createRunService(ctx: ProtocolContext): RunService {
     if (query.runIds !== undefined) {
       return { runIds: [...new Set(query.runIds)], truncated: false };
     }
+
     if (query.threadId !== undefined) await requireThread(query.threadId);
     const inflight = await deps.store.runs.listActiveRuns(query.threadId);
+
     const wanted =
       query.status === undefined || query.status === "all"
         ? inflight
         : inflight.filter((run) => run.status === query.status);
+
     // A driver that does not publish its bound simply never reports truncation, rather than having one
     // guessed for it — `maxPageSize` is optional so an existing third-party driver still conforms.
     const pageBound = deps.store.maxPageSize;
@@ -969,12 +1006,15 @@ export function createRunService(ctx: ProtocolContext): RunService {
       const { run, kwargs } = await prepareRun(input, () =>
         resolveRunThread(input.thread_id, input.if_not_exists),
       );
+
       // Armed before the delay, not after: a caller that hangs up *while waiting out* `after_seconds`
       // has disconnected just as surely as one that hangs up mid-run.
       const disarm = cancelOnDisconnect(run.run_id, input, options?.signal);
+
       try {
         await holdInlineRun(input.after_seconds);
         const outcome = await runInline(run, kwargs, "wait");
+
         // A failed run must not read as an empty success. There are no headers left to turn into a
         // status (the run already executed), so the failure travels in the body under `__error__` —
         // the key `@langchain/langgraph-api` uses for exactly this. We match the key but not its
@@ -991,7 +1031,9 @@ export function createRunService(ctx: ProtocolContext): RunService {
       const { run, kwargs } = await prepareRun(input, () =>
         resolveRunThread(input.thread_id, input.if_not_exists),
       );
+
       const disarm = cancelOnDisconnect(run.run_id, input, options?.signal);
+
       // Kick off execution; the subscription below replays from seq 0 (frames are buffered), so
       // nothing is lost between starting the run and subscribing. An `after_seconds` delay is awaited
       // *inside* this promise rather than before returning, so the response — and its
@@ -1035,9 +1077,11 @@ export function createRunService(ctx: ProtocolContext): RunService {
       // store write burst by the batch size for no latency the caller can use — the runs are
       // background work either way. In order, so a failure part-way leaves a comprehensible prefix.
       const created: Run[] = [];
+
       for (const input of inputs) {
         created.push(await startStatelessBackgroundRun(input));
       }
+
       return created;
     },
 
@@ -1063,6 +1107,7 @@ export function createRunService(ctx: ProtocolContext): RunService {
     async cancelMany(query) {
       const targets = await resolveCancelTargets(query);
       const cancelledRunIds: string[] = [];
+
       for (const runId of targets.runIds) {
         try {
           await cancelRun(runId, query);
@@ -1076,6 +1121,7 @@ export function createRunService(ctx: ProtocolContext): RunService {
           throw error;
         }
       }
+
       // The whole-server sweep reads a *bounded* page of inflight runs, so "I cancelled everything I
       // saw" is not "everything is cancelled" — say so rather than let a truncated sweep read as a
       // complete one.
@@ -1085,6 +1131,7 @@ export function createRunService(ctx: ProtocolContext): RunService {
             `more may still be inflight. Call it again to continue.`,
         );
       }
+
       return { cancelledRunIds, truncated: targets.truncated };
     },
 
@@ -1092,10 +1139,12 @@ export function createRunService(ctx: ProtocolContext): RunService {
       if (!(await deps.store.runs.get(runId))) {
         throw SkeinHttpError.notFound(`Run "${runId}" not found.`);
       }
+
       // Stop it first if it's still executing, so nothing writes to a deleted run.
       control.abort(runId, "cancel");
       ctx.rollbackPlans.delete(runId); // a deleted run won't execute, so its plan must not linger
       await deps.store.runs.delete(runId);
+
       // Erasure reaches the run's recorded idempotency response too — the run-level counterpart of
       // what `ThreadService.delete` does. A recorded response outlives its run by design so a retry
       // can replay it, and for `POST /runs/wait` that response *is* the graph's final state; without
@@ -1116,9 +1165,11 @@ export function createRunService(ctx: ProtocolContext): RunService {
 
     async join(runId, afterSeq = 0) {
       const run = await deps.store.runs.get(runId);
+
       if (!run) {
         throw SkeinHttpError.notFound(`Run "${runId}" not found.`);
       }
+
       // A terminal run's completion marker can be gone — the process restarted over a durable store,
       // or the bus's retention expired — and a subscriber would then wait forever. Closing restores
       // it; the drivers treat a close of a run they still know is closed as a no-op, so polling a
@@ -1145,23 +1196,28 @@ export function createRunService(ctx: ProtocolContext): RunService {
       await requireRun(runId);
       const deliveries = deps.store.deliveries;
       const existing = await deliveries?.get(deliveryId);
+
       // Checked against the run in the path, so a delivery id cannot be used to reach a callback
       // belonging to a run the caller has no access to.
       if (!existing || existing.run_id !== runId) {
         throw SkeinHttpError.notFound(`Delivery "${deliveryId}" not found for run "${runId}".`);
       }
+
       if (deps.webhooks?.disabled && /^https?:/i.test(existing.url)) {
         throw SkeinHttpError.unprocessable(
           "HTTP webhook replay is disabled by http.disable_webhooks.",
         );
       }
+
       const replayed = await deliveries?.retryNow(deliveryId, deps.clock().toISOString());
+
       if (!replayed) {
         throw SkeinHttpError.conflict(
           `Delivery "${deliveryId}" was already delivered, so its payload is gone and there is ` +
             "nothing left to resend.",
         );
       }
+
       // Handed straight to the queue where there is one, so a replay is immediate rather than waiting
       // for the recovery sweep to notice it.
       if (deps.deliveryQueue) {
@@ -1190,6 +1246,7 @@ export function createRunService(ctx: ProtocolContext): RunService {
           );
         }
       }
+
       return replayed;
     },
   };

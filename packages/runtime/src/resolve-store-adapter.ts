@@ -107,6 +107,7 @@ function assertTtlHonourable(
   ttl: StoreTtlConfig | undefined,
 ): void {
   if (!requestsExpiry(ttl)) return;
+
   if (!supportsStoreTtl(store)) {
     throw new RuntimeConfigError(
       `store.ttl is configured, but the store.adapter "${adapter}" cannot expire items — TTL is not ` +
@@ -114,6 +115,7 @@ function assertTtlHonourable(
         `(e.g. \`PostgresStore\`) is needed to honour it. Remove store.ttl, or use such a store.`,
     );
   }
+
   if (requestsRefreshOnRead(ttl)) {
     throw new RuntimeConfigError(
       `store.ttl asks for refresh-on-read (it defaults to enabled), but a store.adapter cannot honour ` +
@@ -197,11 +199,13 @@ export async function resolveStoreAdapter(
   options: ResolveStoreAdapterOptions,
 ): Promise<StoreRepo> {
   const { sourceFile, exportSymbol } = parseGraphSpec(adapter, options.configDir);
+
   const importer: ModuleImporter =
     options.importModule ??
     ((file) => import(pathToFileURL(file).href) as Promise<Record<string, unknown>>);
 
   let module: Record<string, unknown>;
+
   try {
     module = await importer(sourceFile);
   } catch (cause) {
@@ -212,11 +216,13 @@ export async function resolveStoreAdapter(
   }
 
   const exported = module[exportSymbol];
+
   if (exported == null) {
     throw new RuntimeConfigError(
       `store.adapter "${adapter}" — module "${sourceFile}" has no export "${exportSymbol}".`,
     );
   }
+
   if (typeof exported !== "object") {
     throw new RuntimeConfigError(
       `store.adapter "${adapter}" — export "${exportSymbol}" is ${typeof exported}, expected a ` +
@@ -231,6 +237,7 @@ export async function resolveStoreAdapter(
     registerStoreShutdown(exported, options.disposers);
     assertIndexNotConfigured(adapter, options.indexConfigured);
     assertTtlHonourable(adapter, exported, options.ttl);
+
     // `BaseStore` declares `start()` for initialization. Called here so a store needing it fails at boot
     // with this error rather than at whichever request first touches an uninitialized connection —
     // idempotent on both bundled LangGraph stores, and skipped when the store does not declare it.
@@ -245,6 +252,7 @@ export async function resolveStoreAdapter(
         );
       }
     }
+
     return fromBaseStore(exported, {
       ...(options.maxPageSize !== undefined ? { maxPageSize: options.maxPageSize } : {}),
       ...(options.scanLimit !== undefined ? { scanLimit: options.scanLimit } : {}),
@@ -254,12 +262,14 @@ export async function resolveStoreAdapter(
   }
 
   const missing = missingStoreRepoMethod(exported);
+
   if (missing) {
     throw new RuntimeConfigError(
       `store.adapter "${adapter}" — export "${exportSymbol}" is neither a LangGraph \`BaseStore\` ` +
         `(no \`batch\` method) nor a complete skein \`StoreRepo\` (no \`${missing}\` method).`,
     );
   }
+
   assertIndexNotConfigured(adapter, options.indexConfigured);
   assertStoreRepoTtlNotConfigured(adapter, options.ttl);
   return exported as StoreRepo;

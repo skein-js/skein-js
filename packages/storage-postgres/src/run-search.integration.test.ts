@@ -84,6 +84,7 @@ it("retains inflight indexes and provides indexed historical status/ownership se
   });
   expect(found).toHaveLength(2);
   expect(found.map((run) => run.run_id)).toEqual(["run-200", "run-300"]);
+
   for (const run of found) {
     expect(run).not.toHaveProperty("kwargs");
     expect(run).not.toHaveProperty("result");

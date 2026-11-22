@@ -8,16 +8,15 @@ import {
   createProtocolRuntime,
   fetchWebhookDispatcher,
   skeinRoutes,
-  type RunWorker,
+  type CronSchedulerOptions,
   type Logger,
   type ProtocolDeps,
   type ProtocolRuntime,
   type RouteBinding,
-  type CronSchedulerOptions,
+  type RunWorker,
   type RunWorkerOptions,
 } from "@skein-js/agent-protocol";
-import type { LoadedChannel } from "@skein-js/config";
-import type { ModuleImporter } from "@skein-js/config";
+import { type LoadedChannel, type ModuleImporter } from "@skein-js/config";
 import type { CorsOptions } from "cors";
 
 import { resolveCronTickMs } from "./cron-tick.js";
@@ -264,6 +263,7 @@ export async function resolveProtocolRuntime(
   }
 
   const mountedRoutes = channelSurface ? [...routes, ...channelSurface.routes] : routes;
+
   const runtime = createProtocolRuntime(deps, {
     routes: mountedRoutes,
     ...(channelSurface ? { handlers: channelSurface.handlers } : {}),
@@ -281,6 +281,7 @@ export async function resolveProtocolRuntime(
     },
   });
   await runtime.service.assistants.registerGraphAssistants();
+
   if (options.warm) {
     await Promise.all(
       deps.graphs.ids.map((graphId) =>
@@ -290,6 +291,7 @@ export async function resolveProtocolRuntime(
       ),
     );
   }
+
   runtime.worker.start();
 
   // Watch heap usage for the life of the worker. Started here rather than in each adapter for the same

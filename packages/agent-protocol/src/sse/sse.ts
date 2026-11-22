@@ -107,14 +107,18 @@ async function* withIdleTicks<T>(
 ): AsyncIterable<T | typeof IDLE_TICK> {
   const iterator = frames[Symbol.asyncIterator]();
   let pending: Promise<IteratorResult<T>> | undefined;
+
   try {
     for (;;) {
       pending ??= iterator.next();
       let timer: ReturnType<typeof setTimeout> | undefined;
+
       const idle = new Promise<typeof IDLE_TICK>((resolve) => {
         timer = setTimeout(() => resolve(IDLE_TICK), heartbeatMs);
       });
+
       let settled: IteratorResult<T> | typeof IDLE_TICK;
+
       try {
         settled = await Promise.race([pending, idle]);
       } finally {
@@ -122,10 +126,12 @@ async function* withIdleTicks<T>(
         // the event loop open for the rest of the interval.
         clearTimeout(timer);
       }
+
       if (settled === IDLE_TICK) {
         yield IDLE_TICK; // `pending` stays in flight and is raced again next turn
         continue;
       }
+
       pending = undefined;
       if (settled.done === true) return;
       yield settled.value;
@@ -152,14 +158,17 @@ export async function* toSseEvents(
 ): AsyncIterable<string> {
   const heartbeatMs = options.heartbeatMs ?? DEFAULT_SSE_HEARTBEAT_MS;
   let sawErrorFrame = false;
+
   for await (const frame of heartbeatMs > 0 ? withIdleTicks(frames, heartbeatMs) : frames) {
     if (frame === IDLE_TICK) {
       yield SSE_HEARTBEAT;
       continue;
     }
+
     if (frame.event === "error") sawErrorFrame = true;
     yield encodeFrame(frame);
   }
+
   const status = await finalStatus();
   // Default to "success" only if the run row vanished (deleted mid-stream); otherwise report truth.
   const terminal = status ?? "success";

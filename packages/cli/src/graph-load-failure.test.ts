@@ -24,6 +24,7 @@ function report(error: unknown, graphId = "agent"): GraphLoadFailureReport {
 /** A logger that records `(message, meta)` pairs. */
 function recordingLogger() {
   const errors: { message: string; meta: unknown }[] = [];
+
   const logger = {
     debug: () => {},
     info: () => {},

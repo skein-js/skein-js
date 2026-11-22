@@ -25,6 +25,7 @@ it("records the console documentation walkthrough", async () => {
   await mkdir(directory, { recursive: true });
   const fixture = await startConsoleFixture();
   let browser: Browser | undefined;
+
   try {
     browser = await chromium.launch({ headless: true });
     const context = await browser.newContext({
@@ -33,6 +34,7 @@ it("records the console documentation walkthrough", async () => {
       reducedMotion: "reduce",
       recordVideo: { dir: directory, size: { width: 1280, height: 800 } },
     });
+
     const page = await context.newPage();
     page.setDefaultTimeout(10000);
     const errors: string[] = [];

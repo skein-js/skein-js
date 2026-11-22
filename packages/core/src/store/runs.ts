@@ -4,8 +4,8 @@
 import type { AuthUser } from "../auth/auth.js";
 import type { RunError } from "../errors/run-error.js";
 import type {
-  Config,
   Checkpoint,
+  Config,
   DefaultValues,
   Interrupt,
   Metadata,

@@ -1,8 +1,7 @@
 import { timingSafeEqual } from "node:crypto";
 import { join } from "node:path";
 
-import type { AuthEngine } from "@skein-js/core";
-import { SkeinHttpError } from "@skein-js/core";
+import { SkeinHttpError, type AuthEngine } from "@skein-js/core";
 import { createExpressServer } from "@skein-js/express";
 import { embedSqliteGraphs } from "@skein-js/local";
 
@@ -19,6 +18,7 @@ function hasLaunchCredential(authorization: string | undefined, token: string): 
   const expected = Buffer.from(`Bearer ${token}`);
   return supplied.length === expected.length && timingSafeEqual(supplied, expected);
 }
+
 function bearerAuth(token: string): AuthEngine {
   return {
     enabled: true,
@@ -53,6 +53,7 @@ export async function startWorkflowServer(
   if (!token) throw new Error("The host must supply a per-launch bearer token.");
   const session = createModelSession();
   const agentOptions = { ...options, createModel: options.createModel ?? session.createModel };
+
   const embedded = await embedSqliteGraphs(
     {
       workflow: buildWorkflow(directory, agentOptions),
@@ -60,6 +61,7 @@ export async function startWorkflowServer(
     },
     { sqlitePath: join(directory, "state.sqlite"), overrides: { auth: bearerAuth(token) } },
   );
+
   try {
     const preference = await embedded.deps.store.store.get(["meeting-workspace"], "model");
     if (!options.fixture) await session.initialize(preference?.value);
@@ -79,6 +81,7 @@ export async function startWorkflowServer(
         response.status(401).json({ message: "Launch credential required." });
         return;
       }
+
       response.json({ ...session.status(), fixture: Boolean(options.fixture) });
     });
     server.app.post("/app/model", async (request, response) => {
@@ -86,6 +89,7 @@ export async function startWorkflowServer(
         response.status(401).json({ message: "Launch credential required." });
         return;
       }
+
       try {
         const status = await session.connect(request.body);
         await embedded.deps.store.store.put(["meeting-workspace"], "model", {
@@ -107,6 +111,7 @@ export async function startWorkflowServer(
         response.status(401).json({ message: "Launch credential required." });
         return;
       }
+
       session.disconnect();
       // Kept with the saved choice, so the next launch stays disconnected until the user reconnects.
       const saved = await embedded.deps.store.store.get(["meeting-workspace"], "model");

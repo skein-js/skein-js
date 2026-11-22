@@ -72,6 +72,7 @@ function readPublishablePackages(): WorkspacePackage[] {
 }
 
 const publishablePackages = readPublishablePackages();
+
 const libraryPackages = publishablePackages.filter(
   (pkg) => !BIN_ONLY_PACKAGES.has(pkg.manifest.name as string),
 );
@@ -86,6 +87,7 @@ describe("publishable package manifests", () => {
   it("keeps every published package on the workspace Node support policy", () => {
     const workspace = JSON.parse(readFileSync(path.join(packagesDir, "../package.json"), "utf8"));
     expect(workspace.engines.node).toBe("^22.14.0 || ^24.0.0 || ^26.0.0");
+
     for (const pkg of publishablePackages) {
       expect(pkg.manifest.engines, pkg.manifest.name as string).toEqual(workspace.engines);
     }
@@ -110,6 +112,7 @@ describe("publishable package manifests", () => {
         ...((pkg.manifest.dependencies ?? {}) as Record<string, string>),
         ...((pkg.manifest.optionalDependencies ?? {}) as Record<string, string>),
       };
+
       const unbounded = Object.entries(installed).filter(
         ([, range]) => !isBoundedDependencyRange(range),
       );

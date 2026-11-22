@@ -101,6 +101,7 @@ export function storeItemFilterProblem(value: unknown): string | null {
     if (isStoreFilterScalar(condition)) continue;
 
     const operators: readonly string[] = STORE_FILTER_OPERATORS;
+
     const conditionKeys =
       condition !== null && typeof condition === "object" && !Array.isArray(condition)
         ? Object.keys(condition)
@@ -124,22 +125,27 @@ export function storeItemFilterProblem(value: unknown): string | null {
         // matches nothing. Both are silent, so both are refused.
         return `filter."${key}" has unknown operator "${operator}". Supported: ${STORE_FILTER_OPERATORS.join(", ")}.`;
       }
+
       if (operator === "$in" || operator === "$nin") {
         if (!Array.isArray(operand) || !operand.every(isStoreFilterScalar)) {
           return `filter."${key}".${operator} must be an array of scalars.`;
         }
+
         continue;
       }
+
       if (operator === "$eq" || operator === "$ne") {
         if (!isStoreFilterScalar(operand)) return `filter."${key}".${operator} must be a scalar.`;
         continue;
       }
+
       // Ordering compares numbers only — see `matchesItemFilter`.
       if (typeof operand !== "number" || Number.isNaN(operand)) {
         return `filter."${key}".${operator} must be a number.`;
       }
     }
   }
+
   return null;
 }
 

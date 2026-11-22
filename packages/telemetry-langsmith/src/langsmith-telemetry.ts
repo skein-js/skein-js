@@ -56,6 +56,7 @@ function readEnv(env: Environment, ...names: string[]): string | undefined {
     const value = env[name];
     if (typeof value === "string" && value.length > 0) return value;
   }
+
   return undefined;
 }
 

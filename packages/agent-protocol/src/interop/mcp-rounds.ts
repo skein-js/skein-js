@@ -35,6 +35,7 @@ export function mcpJsonBody<T>(response: ProtocolResponse): T {
   if (response.kind !== "json") throw new Error("Expected a JSON service response.");
   return response.body as T;
 }
+
 export function mcpToolResult(output: unknown, error = false): CallToolResult {
   const serialized = serializeWireJson(output);
   const normalized: unknown = JSON.parse(serialized);
@@ -65,6 +66,7 @@ export async function callMcpTool(options: {
   const auth = deps.auth ? await resolveAuthContext(deps.auth, request) : undefined;
   const scope = `mcp-round-v1 ${canonicalJson([auth?.user.identity ?? "", assistantId, sha256Hex(canonicalJson(args))])}`;
   const resultsSupported = !!deps.store.runs.recordResult && !!deps.store.runs.getResult;
+
   const call = async <T>(name: "getThread" | "getRun", round: Round): Promise<T> =>
     mcpJsonBody<T>(
       await table[name]({
@@ -73,9 +75,11 @@ export async function callMcpTool(options: {
         params: { thread_id: round.threadId, run_id: round.runId },
       }),
     );
+
   const expiryFor = async (round: Round, durationMs: number): Promise<string> => {
     const thread = await call<Thread>("getThread", round);
     const ttl = await deps.store.threads.getTtl?.(round.threadId);
+
     const threadDeadline = thread.expires_at
       ? Date.parse(thread.expires_at)
       : typeof ttl?.ttl === "number"
@@ -89,11 +93,13 @@ export async function callMcpTool(options: {
       ),
     ).toISOString();
   };
+
   const readOutput = async (round: Round): Promise<{ run: Run; result: RunResult | null }> => {
     await call("getThread", round);
     const run = await call<Run>("getRun", round);
     return { run, result: resultsSupported ? await deps.store.runs.getResult!(round.runId) : null };
   };
+
   const makeResult = async (round: Round, output: unknown): Promise<McpToolResult> => {
     const { run, result } = await readOutput(round);
     if (run.status === "cancelled") return mcpToolResult("The tool call was cancelled.", true);
@@ -109,6 +115,7 @@ export async function callMcpTool(options: {
         true,
       );
     let questions: ReturnType<typeof mcpQuestions>;
+
     try {
       questions = mcpQuestions(result);
     } catch (error) {
@@ -117,6 +124,7 @@ export async function callMcpTool(options: {
         true,
       );
     }
+
     if (!Object.keys(questions.inputRequests).length)
       return mcpToolResult(
         "This tool stopped at a static breakpoint. Resume it through the run/thread API.",
@@ -142,11 +150,13 @@ export async function callMcpTool(options: {
     });
     return inputRequired({ inputRequests: questions.inputRequests, requestState: state });
   };
+
   const execute = async (body: object): Promise<{ round: Round; output: unknown }> => {
     // The round owns resume deduplication; a caller's key must not collide with a different round.
     const headers = { ...request.headers };
     if (modern) delete headers["idempotency-key"];
     const response = await table.createWaitRun({ ...request, headers, params: {}, body });
+
     const location = /^\/threads\/([^/]+)\/runs\/([^/]+)$/.exec(
       response.headers?.["content-location"] ?? "",
     );
@@ -159,10 +169,12 @@ export async function callMcpTool(options: {
 
   let state = options.requestState;
   let initialRound: Round | undefined;
+
   if (state === undefined) {
     const thread = modern
       ? mcpJsonBody<Thread>(await table.createThread({ ...request, params: {}, body: {} }))
       : undefined;
+
     const started = await execute(
       markMcpBody(
         {
@@ -175,11 +187,13 @@ export async function callMcpTool(options: {
         {},
       ),
     );
+
     const output = await makeResult(started.round, started.output);
     if (!("resultType" in output) || !options.inputResponses) return output;
     state = output.requestState;
     initialRound = started.round;
   }
+
   if (typeof state !== "string" || !/^[A-Za-z0-9_-]{43}$/.test(state))
     invalidMcpAnswer("Invalid or expired requestState");
   const record = await deps.store.idempotency.get(scope, state);
@@ -198,12 +212,15 @@ export async function callMcpTool(options: {
   )
     invalidMcpAnswer("Invalid or expired requestState");
   let questions: ReturnType<typeof mcpQuestions>;
+
   try {
     questions = mcpQuestions(result);
   } catch {
     invalidMcpAnswer("The pending input cannot be asked over MCP.");
   }
+
   let answers: Awaited<ReturnType<typeof mcpResumeAnswers>>;
+
   try {
     answers = await mcpResumeAnswers(questions.prompts, options.inputResponses);
   } catch (error) {
@@ -213,11 +230,13 @@ export async function callMcpTool(options: {
         .catch(() => undefined);
     throw error;
   }
+
   if ("missing" in answers)
     return inputRequired({ requestState: state, inputRequests: questions.inputRequests });
   const fingerprint = sha256Hex(canonicalJson(answers));
   const answerScope = `${scope} answers`;
   const claimId = randomUUID();
+
   const claimed = await deps.store.idempotency.claim({
     scope: answerScope,
     key: state,
@@ -228,27 +247,33 @@ export async function callMcpTool(options: {
   });
   if (claimed.record.fingerprint !== fingerprint)
     invalidMcpAnswer("This round already accepted different answers.");
+
   const replay = async (recorded: typeof claimed.record): Promise<McpToolResult> => {
     // Physical record erasure is best-effort. Authorization and resource existence must still
     // hold for the run which produced the cached output, not only its interrupted predecessor.
     if (recorded.run_id) await readOutput({ threadId: round.threadId, runId: recorded.run_id });
     return recorded.response!.body as McpToolResult;
   };
+
   if (!claimed.claimed && claimed.record.response) return replay(claimed.record);
   // The association is saved with pending admission, before invocation. Never guess that a lost
   // inline request can be retried as a new resume, even when its response record was not written.
   const attempts = await deps.store.runs.listByThread(round.threadId);
   const existing = [] as Run[];
+
   for (const attempt of attempts) {
     const origin = readMcpOrigin(await deps.store.runs.getKwargs(attempt.run_id));
+
     if (origin?.roundState === state) {
       if (origin.answerFingerprint !== fingerprint)
         invalidMcpAnswer("This round already accepted different answers.");
       existing.push(attempt);
     }
   }
+
   let response: McpToolResult;
   let outputRound = round;
+
   if (existing.length) {
     const attempt = existing[0]!;
     const completed = await readOutput({ threadId: round.threadId, runId: attempt.run_id });
@@ -319,6 +344,7 @@ export async function callMcpTool(options: {
       throw error;
     }
   }
+
   const acceptedState = state;
   return withThreadExecution(
     context.executionLocks,

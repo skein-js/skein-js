@@ -77,12 +77,15 @@ function parseStreamChunk(
   subgraphs: boolean,
 ): { mode: StreamMode; namespace: string[]; data: unknown } | null {
   if (!Array.isArray(chunk)) return null;
+
   if (subgraphs && chunk.length === 3 && isNamespace(chunk[0]) && isStreamMode(chunk[1])) {
     return { mode: chunk[1], namespace: chunk[0], data: chunk[2] };
   }
+
   if (chunk.length === 2 && isStreamMode(chunk[0])) {
     return { mode: chunk[0], namespace: [], data: chunk[1] };
   }
+
   return null;
 }
 
@@ -127,13 +130,16 @@ export function streamEventToFrameBody(
   subgraphs = false,
 ): RunFrameBody | null {
   if (event.tags?.includes("langsmith:hidden")) return null;
+
   if (event.event === "on_chain_stream" && event.run_id === runId) {
     const parts = parseStreamChunk(event.data?.chunk, subgraphs);
+
     if (parts) {
       return graphModes.includes(parts.mode)
         ? modeFrameBody(parts.mode, parts.namespace, parts.data)
         : null;
     }
   }
+
   return { event: "events", namespace: [], data: event };
 }

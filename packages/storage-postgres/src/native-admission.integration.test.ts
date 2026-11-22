@@ -37,13 +37,16 @@ it("rejects a lease lost while waiting for another connection's thread lock", as
   ]);
   const controller = new AbortController();
   const admission = key();
+
   const pending = store.admission.admitRun({
     ...admission,
     signal: controller.signal,
     run: { thread_id: thread.thread_id, assistant_id: "agent" },
     guard: { requireNoActiveRun: true },
   });
+
   const rejected = expect(pending).rejects.toThrow("lease lost");
+
   try {
     await expect
       .poll(
@@ -68,6 +71,7 @@ it("rejects a lease lost while waiting for another connection's thread lock", as
     holder.release();
   }
 }, 10_000);
+
 async function waitForSleep(query: string) {
   await expect
     .poll(
@@ -87,6 +91,7 @@ async function waitForSleep(query: string) {
 
 it("rolls back run, receipt, reservation and dispatch if abort is observed before COMMIT", async () => {
   const thread = await store.threads.create();
+
   const interrupted = await store.runs.create({
     thread_id: thread.thread_id,
     assistant_id: "agent",
@@ -95,9 +100,11 @@ it("rolls back run, receipt, reservation and dispatch if abort is observed befor
   await admin.query(
     "CREATE FUNCTION test_native_pause() RETURNS trigger LANGUAGE plpgsql AS $$ BEGIN PERFORM pg_sleep(0.4); RETURN NEW; END $$; CREATE TRIGGER test_native_pause BEFORE INSERT ON idempotency_records FOR EACH ROW EXECUTE FUNCTION test_native_pause()",
   );
+
   try {
     const controller = new AbortController();
     const admission = key();
+
     const pending = store.admission.admitRun({
       ...admission,
       signal: controller.signal,
@@ -105,6 +112,7 @@ it("rolls back run, receipt, reservation and dispatch if abort is observed befor
       guard: { requireNoActiveRun: true },
       expectedRunId: interrupted.run_id,
     });
+
     // Observe the rejection immediately so the intentionally aborted operation is always handled.
     const rejected = expect(pending).rejects.toThrow("lease lost");
     await waitForSleep("INSERT INTO idempotency_records%");
@@ -143,9 +151,11 @@ it("keeps the receipt authoritative when abort races an already-dispatched COMMI
   await admin.query(
     "CREATE FUNCTION test_native_commit_pause() RETURNS trigger LANGUAGE plpgsql AS $$ BEGIN PERFORM pg_sleep(0.4); RETURN NEW; END $$; CREATE CONSTRAINT TRIGGER test_native_commit_pause AFTER INSERT ON runs DEFERRABLE INITIALLY DEFERRED FOR EACH ROW EXECUTE FUNCTION test_native_commit_pause()",
   );
+
   try {
     const controller = new AbortController();
     const admission = key();
+
     const pending = store.admission.admitRun({
       ...admission,
       signal: controller.signal,

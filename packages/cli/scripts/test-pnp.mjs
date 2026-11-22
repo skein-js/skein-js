@@ -15,10 +15,12 @@ assert.equal(
 );
 
 const directory = realpathSync(mkdtempSync(path.join(tmpdir(), "skein-yarn-pnp-")));
+
 const writeJson = (filename, value) => {
   mkdirSync(path.dirname(filename), { recursive: true });
   writeFileSync(filename, JSON.stringify(value) + "\n");
 };
+
 const env = {
   ...process.env,
   YARN_ENABLE_NETWORK: "false",
@@ -74,6 +76,7 @@ try {
     name: "@fixture/subpath-sdk",
     version: "3.2.1",
   });
+
   // A PnP-managed issuer must not accidentally select an unrelated physical node_modules tree.
   for (const name of ["@fixture/subpath-sdk", "@fixture/unlisted"]) {
     writeJson(path.join(first, "node_modules", name, "package.json"), {
@@ -81,6 +84,7 @@ try {
       version: "99.0.0",
     });
   }
+
   const probe = path.join(first, "check-resolution.mjs");
   copyFileSync(
     path.resolve(import.meta.dirname, "../src/bundle/__fixtures__/pnp/check-resolution.mjs"),

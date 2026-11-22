@@ -56,23 +56,28 @@ export function ChatView({
     if (resume) navigateRoute(`playground/${encodeURIComponent(resume)}`, true);
   }, [resume]);
   const [client] = useState(() => createConsoleClient({}));
+
   const assistants = usePagedRows(
     (offset, limit, signal) => client.assistants.search({ offset, limit, signal }),
     "playground-assistants",
     25,
     (signal) => client.assistants.count({ signal }),
   );
+
   const [selection, setSelection] = useState<{
     assistantId: string;
     threadId?: string;
     sessionKey?: string;
   }>();
+
   const explicitAssistant = !threadId ? requestedAssistant : undefined;
+
   const requested = useAsync(
     async (signal) =>
       explicitAssistant ? client.assistants.get(explicitAssistant, { signal }) : undefined,
     [explicitAssistant],
   );
+
   const restored = useAsync(
     async (signal) => {
       if (!threadId) return undefined;
@@ -91,23 +96,29 @@ export function ChatView({
     },
     [threadId],
   );
+
   // An owned submission updates selection before the hash event arrives. Keep the same
   // session through both renders; an external route change starts a different session.
   const [previousThreadId, setPreviousThreadId] = useState(threadId);
+
   if (previousThreadId !== threadId) {
     setPreviousThreadId(threadId);
     if (selection?.threadId !== threadId) setSelection(undefined);
   }
+
   const knownSelection = selection?.assistantId;
+
   const selected =
     knownSelection ??
     (threadId
       ? (restored.data?.assistantId ??
         (remembered?.threadId === threadId ? remembered.assistantId : undefined))
       : (explicitAssistant ?? remembered?.assistantId ?? assistants.rows?.[0]?.assistant_id));
+
   const sessionKey = selection?.sessionKey ?? threadId ?? "new";
   const startingFresh = Boolean(selection?.sessionKey && !selection.threadId);
   const [, refreshFreshIntent] = useState(0);
+
   const initializingFresh = Boolean(
     fresh && !threadId && selected && window.history.state?.freshWorkspace !== true,
   );
@@ -250,18 +261,22 @@ function Session({
   const workspace = useWorkspaceStore();
   const draftIdentity = useRef(createDraftKey(threadId, assistantId));
   const storedDraft = useWorkspace((state) => state?.drafts[draftIdentity.current]);
+
   const inspectionTab = useWorkspace((state) =>
     threadId ? getThreadInspectionTab(state?.threadTabs, threadId) : undefined,
   );
+
   const capabilities = useAsync((signal) => fetchServerInfo(signal), []);
   const [options, setOptions] = useState(DEFAULT_RUN_OPTIONS);
   const [batchRuns, setBatchRuns] = useState<{ run_id: string; thread_id: string }[]>([]);
   const [localMode, setLocalMode] = useState<InputMode | undefined>();
   const requestedMode = storedDraft?.mode ?? localMode;
+
   const setMode = (mode: InputMode) => {
     setLocalMode(mode);
     workspace?.getState().updateDraft(draftIdentity.current, { mode });
   };
+
   /**
    * One draft per mode.
    *
@@ -270,6 +285,7 @@ function Session({
    */
   const [localDrafts, setLocalDrafts] = useState<WorkspaceDraft>({ chat: "" });
   const drafts = storedDraft ?? localDrafts;
+
   const setDrafts = useCallback(
     (update: (current: WorkspaceDraft) => WorkspaceDraft) => {
       if (workspace)
@@ -283,6 +299,7 @@ function Session({
     },
     [workspace],
   );
+
   const clearSubmittedDraft = useCallback(
     (mode: InputMode, submittedDraft: string) => {
       if (workspace)
@@ -296,6 +313,7 @@ function Session({
     },
     [workspace],
   );
+
   const [messages, setMessages] = useState<Message[]>([]);
   const [values, setValues] = useState<unknown>();
   const [running, setRunning] = useState(false);
@@ -306,6 +324,7 @@ function Session({
   const [error, setError] = useState<Error | undefined>();
   const [activeNode, setActiveNode] = useState<string | undefined>();
   const [visited, setVisited] = useState<ReadonlySet<string>>(new Set());
+
   const {
     frames,
     dropped,
@@ -313,6 +332,7 @@ function Session({
     clear: clearFrames,
     flush: flushFrames,
   } = useFrameBuffer();
+
   const [terminalStatus, setTerminalStatus] = useState<string>();
   const [inspector, setInspector] = useState<"activity" | "graph" | "state">("activity");
   const [inspectorOpen, setInspectorOpen] = useState(true);
@@ -330,6 +350,7 @@ function Session({
    * the conversation in half.
    */
   const activeThread = useRef<string | undefined>(threadId);
+
   const adoptThread = useCallback(
     (id: string) => {
       const previous = draftIdentity.current;
@@ -340,6 +361,7 @@ function Session({
     },
     [assistantId, onThreadCreated, workspace],
   );
+
   /** When the last run finished. Thread state fetched before this is stale and must not be applied. */
   const ranUntil = useRef(0);
 
@@ -347,6 +369,7 @@ function Session({
     (signal) => client.assistants.getSchemas(assistantId, { signal }),
     [assistantId],
   );
+
   const graph = useAsync(
     (signal) => client.assistants.getGraph(assistantId, { signal }),
     [assistantId],
@@ -405,6 +428,7 @@ function Session({
   }, [messages, running, history.frames]);
 
   const draft = mode ? (drafts[mode] ?? (mode === "json" ? sampleInputFor(schemas.data) : "")) : "";
+
   const setDraft = useCallback(
     (value: string) => setDrafts((current) => (mode ? { ...current, [mode]: value } : current)),
     [mode, setDrafts],
@@ -439,7 +463,9 @@ function Session({
         idempotencyKey: parsedOptions.idempotencyKey,
         completion: options.target === "stateless" ? options.completion : undefined,
       });
+
       let input: Record<string, unknown>;
+
       if (mode === "chat") {
         const id = parsedOptions.idempotencyKey
           ? `console-${parsedOptions.idempotencyKey}`
@@ -448,6 +474,7 @@ function Session({
         input = { messages: [{ id, role: "human", content: draft }] };
       } else {
         const parsed: unknown = JSON.parse(draft);
+
         if (options.target === "batch") {
           if (
             !Array.isArray(parsed) ||
@@ -476,6 +503,7 @@ function Session({
           clearSubmittedDraft("json", draft);
           return;
         }
+
         if (!parsed || typeof parsed !== "object" || Array.isArray(parsed))
           throw new Error("Graph input must be a JSON object.");
         input = parsed as Record<string, unknown>;
@@ -484,6 +512,7 @@ function Session({
       // The thread is created on first send rather than on mount, so opening the playground and
       // walking away does not litter the thread list with empties.
       let target = options.target === "stateless" ? null : options.threadId || activeThread.current;
+
       if (target === undefined) {
         const created = await client.threads.create({ metadata: { source: "console-playground" } });
         target = created.thread_id;
@@ -492,12 +521,14 @@ function Session({
         if (controller.signal.aborted) return;
         navigateRoute(`playground/${encodeURIComponent(target)}`, true);
       }
+
       if (target && target !== activeThread.current) {
         activeThread.current = target;
         adoptThread(target);
         if (controller.signal.aborted) return;
         navigateRoute(`playground/${encodeURIComponent(target)}`, true);
       }
+
       const payload = {
         input,
         streamMode: options.capture,
@@ -510,24 +541,29 @@ function Session({
         },
         signal: controller.signal,
       };
+
       const background = Boolean(
         parsedOptions.afterSeconds ||
         parsedOptions.idempotencyKey ||
         options.target === "stateless",
       );
+
       const createdRun = background
         ? await submissionClient.runs.create(target ?? null, assistantId, payload)
         : undefined;
+
       if (createdRun) {
         target = createdRun.thread_id;
         setRunIdentity({ threadId: target, runId: createdRun.run_id });
         adoptThread(target);
+
         {
           activeThread.current = target;
           if (controller.signal.aborted) return;
           navigateRoute(`playground/${encodeURIComponent(target)}`, true);
         }
       }
+
       const chunks = createdRun
         ? submissionClient.runs.joinStream(target ?? null, createdRun.run_id, {
             signal: controller.signal,
@@ -545,11 +581,14 @@ function Session({
       for await (const chunk of chunks) {
         if (controller.signal.aborted) break;
         appendFrame(String(chunk.event), chunk.data);
+
         if (String(chunk.event) === "messages" || String(chunk.event) === "messages-tuple") {
           const tuple = chunk.data as unknown as [Message, Record<string, unknown>];
+
           if (Array.isArray(tuple) && tuple[0]) {
             const id = messageChunks.current.add(tuple[0], tuple[1]);
             const assembled = messageChunks.current.get(id)?.chunk;
+
             if (assembled) {
               const message = toMessageDict(assembled);
               setMessages((previous) => {
@@ -560,14 +599,17 @@ function Session({
               });
             }
           }
+
           continue;
         }
+
         if (chunk.event === "values") {
           const next = chunk.data as { messages?: Message[] } | undefined;
           setValues(chunk.data);
           if (next?.messages) setMessages(next.messages);
           continue;
         }
+
         if (chunk.event === "updates") {
           // `{ [nodeName]: partialState }`. This names the node that just produced output, so the
           // highlight trails execution by a step rather than predicting it.
@@ -575,8 +617,10 @@ function Session({
             setActiveNode(node);
             setVisited((previous) => new Set(previous).add(node));
           }
+
           continue;
         }
+
         // A run that throws does not reject this loop — it reports itself as a frame and the stream
         // ends normally. Ignoring these is why a failed run looked like nothing happening at all.
         if (chunk.event === "error") {
@@ -584,13 +628,16 @@ function Session({
           setError(new Error(describeRunFailure(chunk.data)));
           continue;
         }
+
         // `end` carries the terminal status. The SDK's event union does not name it (skein
         // synthesizes the frame), so it is read through a widened type rather than left unhandled.
         const frame = chunk as { event: string; data?: { status?: string } };
+
         if (frame.event === "end") {
           const status = frame.data?.status;
           observedStatus = status;
           setTerminalStatus(status);
+
           if (
             !reportedFailure &&
             status !== undefined &&
@@ -602,6 +649,7 @@ function Session({
           }
         }
       }
+
       if (!controller.signal.aborted) {
         if (
           !reportedFailure &&
@@ -616,6 +664,7 @@ function Session({
           );
         }
       }
+
       if (
         options.target === "stateless" &&
         options.completion === "delete" &&
@@ -660,27 +709,35 @@ function Session({
 
   const displayedFrames = observeHistory ? history.frames : frames;
   const displayedDropped = observeHistory ? history.dropped : dropped;
+
   const observedEnd = observeHistory
     ? ([...history.frames].reverse().find((frame) => frame.event === "end")?.data as
         { status?: string } | undefined)
     : undefined;
+
   const observedStatus = observeHistory
     ? (observedEnd?.status ?? initialRun?.status)
     : terminalStatus;
+
   const observingInFlight =
     observeHistory &&
     !observedEnd &&
     (initialRun?.status === "running" || initialRun?.status === "pending");
+
   const observedValues = observeHistory
     ? [...history.frames].reverse().find((frame) => frame.event === "values")?.data
     : undefined;
+
   const displayedValues = observedValues ?? values;
+
   const displayedMessages = observeHistory
     ? ((observedValues as { messages?: Message[] } | undefined)?.messages ?? messages)
     : messages;
+
   const observedFailure = observeHistory
     ? [...history.frames].reverse().find((frame) => frame.event === "error")?.data
     : undefined;
+
   const observedNodes = useMemo(
     () =>
       new Set(
@@ -692,7 +749,9 @@ function Session({
       ),
     [displayedFrames],
   );
+
   const executionRunning = running || observingInFlight;
+
   const cancellableRun =
     runIdentity ??
     (observingInFlight && threadId && initialRun
@@ -725,8 +784,10 @@ function Session({
               error ??
               (observedFailure ? new Error(describeRunFailure(observedFailure)) : undefined),
           });
+
   const inspectorId = useId();
   const drawerInspectorId = useId();
+
   const inspectorBody = (panelId: string) => (
     <>
       <Tabs
@@ -972,6 +1033,7 @@ function Session({
                     }
                     onObserving={(observing) => {
                       setRunning(observing);
+
                       if (observing) {
                         setSubmitted(true);
                         setRunIdentity(undefined);
@@ -984,6 +1046,7 @@ function Session({
                     }}
                     onFrame={(event, payload) => {
                       appendFrame(event, payload);
+
                       if (event === "values") {
                         setValues(payload);
                         const next = payload as { messages?: Message[] };
@@ -1139,6 +1202,7 @@ function Hint({ children }: { children: ReactNode }) {
  */
 function describeRunFailure(data: unknown): string {
   if (typeof data === "string") return data;
+
   if (typeof data === "object" && data !== null) {
     const frame = data as { error?: unknown; message?: unknown };
     const name = typeof frame.error === "string" ? frame.error : undefined;
@@ -1147,5 +1211,6 @@ function describeRunFailure(data: unknown): string {
     if (message) return message;
     if (name) return name;
   }
+
   return `Run failed: ${JSON.stringify(data)}`;
 }

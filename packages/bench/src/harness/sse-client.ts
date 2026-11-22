@@ -76,6 +76,7 @@ export async function streamRun(
       // Count completed records and keep only the trailing partial one, so `pending` never grows
       // with the response — the client must not become the thing that leaks.
       let separator = pending.indexOf("\n\n");
+
       while (separator !== -1) {
         frames += 1;
         const now = performance.now();
@@ -107,9 +108,11 @@ export async function createThread(baseUrl: string): Promise<string> {
     headers: { "content-type": "application/json" },
     body: "{}",
   });
+
   if (!response.ok) {
     throw new Error(`thread create failed: ${response.status} ${await response.text()}`);
   }
+
   const thread = (await response.json()) as { thread_id: string };
   return thread.thread_id;
 }

@@ -1,19 +1,24 @@
 // Deliberately uses only the preserved a2e1a8e public API, through package-root imports.
 import assert from "node:assert/strict";
 import { resolve } from "node:path";
-import { embedSqliteGraphs } from "@skein-js/local";
+
 import { createProtocolRuntime } from "@skein-js/agent-protocol";
+import { embedSqliteGraphs } from "@skein-js/local";
+
 import { approvalGraph } from "./approval.mjs";
 
 const local = await embedSqliteGraphs(
   { approval: approvalGraph() },
   { sqlitePath: resolve("baseline.sqlite") },
 );
+
 const runtime = createProtocolRuntime(local.deps, { scheduler: { enabled: false } });
+
 try {
   await runtime.service.assistants.registerGraphAssistants();
   const thread = await runtime.service.threads.create();
   const now = new Date();
+
   const claim = await local.deps.store.idempotency.claim({
     scope: "baseline-worker",
     key: "command",
@@ -34,6 +39,7 @@ try {
     undefined,
   );
   runtime.worker.start();
+
   for (
     let index = 0;
     (await local.deps.store.runs.get(first.run_id)).status !== "interrupted";
@@ -42,7 +48,9 @@ try {
     assert.ok(index < 500);
     await new Promise((resolve) => setTimeout(resolve, 20));
   }
+
   const later = new Date(Date.now() + 1000);
+
   const retry = await local.deps.store.idempotency.claim({
     scope: "baseline-worker",
     key: "command",

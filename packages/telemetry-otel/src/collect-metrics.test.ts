@@ -11,6 +11,7 @@ class HostMetricReader extends MetricReader {
 it("collects the host's instruments with official Prometheus and OTLP JSON serializers", async () => {
   const reader = new HostMetricReader();
   const provider = new MeterProvider({ readers: [reader] });
+
   const sink = createOtelTelemetry({
     metricReader: reader,
     api: {
@@ -22,6 +23,7 @@ it("collects the host's instruments with official Prometheus and OTLP JSON seria
       },
     },
   });
+
   try {
     sink.onHttpEvent?.({
       type: "request.finished",

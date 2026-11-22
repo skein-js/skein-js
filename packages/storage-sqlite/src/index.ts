@@ -22,11 +22,13 @@ export interface SqliteStorage {
   database: Database;
   dispose(): Promise<void>;
 }
+
 export async function openSqliteStorage(options: SqliteStorageOptions): Promise<SqliteStorage> {
   if (!isAbsolute(options.filename))
     throw new Error("SQLite filename must be an absolute file path.");
   await mkdir(dirname(options.filename), { recursive: true });
   const database = new DatabaseConstructor(options.filename, { timeout: 5000 });
+
   try {
     database.pragma("locking_mode = EXCLUSIVE");
     database.pragma("journal_mode = WAL");

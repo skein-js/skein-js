@@ -7,8 +7,13 @@
 
 import { pathToFileURL } from "node:url";
 
-import type { AuthContext, AuthEngine, AuthFilters, AuthUser } from "@skein-js/core";
-import { SkeinHttpError } from "@skein-js/core";
+import {
+  SkeinHttpError,
+  type AuthContext,
+  type AuthEngine,
+  type AuthFilters,
+  type AuthUser,
+} from "@skein-js/core";
 
 import { SkeinConfigError } from "./errors.js";
 import { parseGraphSpec, type ModuleImporter } from "./graph-spec.js";
@@ -64,6 +69,7 @@ function toSkeinError(error: unknown): never {
   if (isHttpException(error)) {
     throw new SkeinHttpError(error.status, error.message || "Unauthorized", { cause: error });
   }
+
   throw error;
 }
 
@@ -78,6 +84,7 @@ function normalizeUser(response: unknown): AuthContext {
     };
     return { user, scopes: [] };
   }
+
   if (
     typeof response === "object" &&
     response !== null &&
@@ -86,6 +93,7 @@ function normalizeUser(response: unknown): AuthContext {
   ) {
     const raw = response as Record<string, unknown> & { identity: string };
     const scopes = Array.isArray(raw.permissions) ? (raw.permissions as string[]) : [];
+
     const user: AuthUser = {
       ...raw,
       permissions: scopes,
@@ -94,6 +102,7 @@ function normalizeUser(response: unknown): AuthContext {
     };
     return { user, scopes };
   }
+
   throw new SkeinHttpError(
     500,
     "Invalid auth response — return a string identity or an object with an `identity` property.",
@@ -125,6 +134,7 @@ function createAuthEngine(
 
     async authenticate(request) {
       if (!handlers.authenticate) return undefined;
+
       try {
         return normalizeUser(await handlers.authenticate(request));
       } catch (error) {
@@ -134,12 +144,15 @@ function createAuthEngine(
 
     async authorize({ resource, action, value, context }) {
       const callbacks = handlers.callbacks;
+
       // Priority mirrors langgraph-api: exact event, then resource, then action, then wildcard.
       const key = [`${resource}:${action}`, resource, `*:${action}`, "*"].find(
         (candidate) => callbacks?.[candidate],
       );
+
       const handler = key ? callbacks?.[key] : undefined;
       if (!handler || !context) return { filters: undefined, value };
+
       try {
         const result = await handler({
           event: `${resource}:${action}`,
@@ -151,12 +164,14 @@ function createAuthEngine(
         });
         if (result == null || result === true) return { filters: undefined, value };
         if (result === false) throw new SkeinHttpError(403, "Forbidden.");
+
         if (typeof result !== "object") {
           throw new SkeinHttpError(
             500,
             `Auth handler returned an invalid result — expected a filter object, null, or a boolean, got "${typeof result}".`,
           );
         }
+
         return { filters: result as AuthFilters, value };
       } catch (error) {
         toSkeinError(error);
@@ -181,10 +196,13 @@ export async function loadAuthEngine(
   if (!auth) return undefined;
 
   const spec = parseGraphSpec(auth.path, options.configDir);
+
   const importModule =
     options.importModule ??
     ((file: string) => import(pathToFileURL(file).href) as Promise<Record<string, unknown>>);
+
   let module: Record<string, unknown>;
+
   try {
     module = await importModule(spec.sourceFile);
   } catch (cause) {
@@ -192,11 +210,13 @@ export async function loadAuthEngine(
   }
 
   const exported = module[spec.exportSymbol];
+
   if (exported == null) {
     throw new SkeinConfigError(
       `Auth module "${spec.sourceFile}" has no export "${spec.exportSymbol}".`,
     );
   }
+
   if (!isAuthInstance(exported)) {
     throw new SkeinConfigError(
       `Auth export "${auth.path}" is not an \`Auth\` instance from \`@langchain/langgraph-sdk/auth\`.`,
@@ -206,6 +226,7 @@ export async function loadAuthEngine(
   // Imported here, not at module scope: this line is only reached when a `langgraph.json` declares an
   // `auth` block, so a deployment without one never loads `@langchain/langgraph-api`.
   const { isAuthMatching } = await import("@langchain/langgraph-api/auth");
+
   const engine = createAuthEngine(
     exported["~handlerCache"],
     auth.disable_studio_auth ?? true,

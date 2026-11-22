@@ -10,9 +10,11 @@ import type { Request } from "express";
 /** Flatten `IncomingHttpHeaders` (some values are `string[]`) to the single-value map handlers read. */
 function toSingleValueHeaders(headers: IncomingHttpHeaders): Record<string, string | undefined> {
   const flattened: Record<string, string | undefined> = {};
+
   for (const [name, value] of Object.entries(headers)) {
     flattened[name] = Array.isArray(value) ? value[0] : value;
   }
+
   return flattened;
 }
 

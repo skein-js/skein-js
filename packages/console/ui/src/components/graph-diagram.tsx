@@ -51,6 +51,7 @@ export function GraphDiagram({
   };
 
   const positions = new Map<string, Point & { rank: number }>();
+
   for (const node of layout.nodes) {
     positions.set(node.id, {
       ...centreOf(node.rank, node.column, node.rowSize),

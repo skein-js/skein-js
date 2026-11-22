@@ -18,6 +18,7 @@ function fakeRedis(options: { deferSubscribe?: boolean } = {}) {
   const pendingSubscribes: Array<() => void> = [];
   /** Channels the shared connection is subscribed to — the fake's half of the routing contract. */
   const subscribed = new Set<string>();
+
   const record = (...args: unknown[]): void => {
     commands.push(args.map(String));
   };
@@ -71,9 +72,11 @@ function fakeRedis(options: { deferSubscribe?: boolean } = {}) {
       },
       subscribe: async (channel) => {
         record("subscribe", channel);
+
         if (options.deferSubscribe) {
           await new Promise<void>((resolve) => pendingSubscribes.push(resolve));
         }
+
         subscribed.add(channel);
         return 1;
       },
@@ -86,6 +89,7 @@ function fakeRedis(options: { deferSubscribe?: boolean } = {}) {
         if (event === "message") {
           channelHandlers.push(listener as unknown as (c: string, p: string) => void);
         }
+
         return client;
       },
       off: () => client,
@@ -148,6 +152,7 @@ describe("RedisRunEventBus.publish", () => {
 
   it("bounds the stream with approximate MAXLEN trimming", async () => {
     const redis = fakeRedis();
+
     const bus = new RedisRunEventBus("redis://x", {
       createClient: redis.createClient,
       streamMaxLen: 1234,
@@ -162,6 +167,7 @@ describe("RedisRunEventBus.publish", () => {
 
   it("leaves the stream untrimmed when MAXLEN is disabled", async () => {
     const redis = fakeRedis();
+
     const bus = new RedisRunEventBus("redis://x", {
       createClient: redis.createClient,
       streamMaxLen: 0,

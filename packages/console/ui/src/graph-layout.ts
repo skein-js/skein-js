@@ -66,17 +66,21 @@ export function layoutGraph(nodes: readonly GraphNode[], edges: readonly GraphEd
   const acyclic = edges.filter((edge) => !backEdges.has(edgeKey(edge)));
 
   const bound = nodes.length + 1;
+
   for (let pass = 0; pass < bound; pass += 1) {
     let moved = false;
+
     for (const edge of acyclic) {
       const source = rank.get(edge.source);
       const target = rank.get(edge.target);
       if (source === undefined || target === undefined) continue;
+
       if (target < source + 1) {
         rank.set(edge.target, source + 1);
         moved = true;
       }
     }
+
     if (!moved) break;
   }
 
@@ -85,6 +89,7 @@ export function layoutGraph(nodes: readonly GraphNode[], edges: readonly GraphEd
   if (rank.has(END)) rank.set(END, maxRank);
 
   const byRank = new Map<number, GraphNode[]>();
+
   for (const node of nodes) {
     const nodeRank = rank.get(node.id) ?? 0;
     const row = byRank.get(nodeRank) ?? [];
@@ -93,6 +98,7 @@ export function layoutGraph(nodes: readonly GraphNode[], edges: readonly GraphEd
   }
 
   const laidOut: LaidOutNode[] = [];
+
   for (const [nodeRank, row] of [...byRank.entries()].sort((a, b) => a[0] - b[0])) {
     row.forEach((node, column) => {
       laidOut.push({
@@ -132,6 +138,7 @@ function findBackEdges(
   edges: readonly GraphEdge[],
 ): ReadonlySet<string> {
   const outgoing = new Map<string, GraphEdge[]>();
+
   for (const edge of edges) {
     const list = outgoing.get(edge.source) ?? [];
     list.push(edge);
@@ -157,23 +164,28 @@ function findBackEdges(
       const frame = stack[stack.length - 1];
       if (frame === undefined) break;
       const candidates = outgoing.get(frame.id) ?? [];
+
       if (frame.next >= candidates.length) {
         onStack.delete(frame.id);
         finished.add(frame.id);
         stack.pop();
         continue;
       }
+
       const edge = candidates[frame.next];
       frame.next += 1;
       if (edge === undefined) continue;
+
       if (onStack.has(edge.target)) {
         back.add(edgeKey(edge));
         continue;
       }
+
       if (finished.has(edge.target)) continue;
       onStack.add(edge.target);
       stack.push({ id: edge.target, next: 0 });
     }
   }
+
   return back;
 }

@@ -6,13 +6,13 @@
 export { createProtocolRuntime } from "./runtime.js";
 export type { ProtocolRuntime, ProtocolRuntimeOptions } from "./runtime.js";
 export type {
-  NativeClient,
-  NativeSourceOptions,
   NativeCallOptions,
-  NativeStartInput,
+  NativeCancellation,
+  NativeClient,
   NativeResumeInput,
   NativeResumeTarget,
-  NativeCancellation,
+  NativeSourceOptions,
+  NativeStartInput,
 } from "./native/native-client.js";
 
 // The framework-agnostic service (embed directly), and the advanced shared-context building blocks.

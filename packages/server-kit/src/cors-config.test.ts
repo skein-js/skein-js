@@ -14,6 +14,7 @@ import {
 function originPredicate(config: LanggraphCorsConfig): (candidate: string | undefined) => boolean {
   const { origin } = toCorsOptions(config);
   if (typeof origin !== "function") throw new Error("expected a function origin");
+
   return (candidate) => {
     let allowed = false;
     origin(candidate, (_err, result) => {

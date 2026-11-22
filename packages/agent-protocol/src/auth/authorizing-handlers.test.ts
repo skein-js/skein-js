@@ -4,8 +4,8 @@
 // per-request store is swapped but the cancellation registry is shared.
 
 import {
-  SkeinHttpError,
   isSkeinHttpError,
+  SkeinHttpError,
   type AuthEngine,
   type AuthFilters,
 } from "@skein-js/core";
@@ -51,10 +51,12 @@ function fakeEngine(options: FakeEngineOptions = {}): AuthEngine {
         if (typeof clause === "string") return actual === clause;
         if (typeof clause === "object" && typeof clause.$eq === "string")
           return actual === clause.$eq;
+
         if (typeof clause === "object" && clause.$contains !== undefined) {
           const required = Array.isArray(clause.$contains) ? clause.$contains : [clause.$contains];
           return Array.isArray(actual) && required.every((member) => actual.includes(member));
         }
+
         return true;
       });
     },
@@ -171,6 +173,7 @@ describe("authorizing handlers", () => {
     const response = await runtime.handlers.createThread(
       asUser("alice", { method: "POST", body: {} }),
     );
+
     const thread = (response as { body: { metadata: Record<string, unknown> } }).body;
     expect(thread.metadata.owner).toBe("alice");
   });
@@ -179,6 +182,7 @@ describe("authorizing handlers", () => {
     const created = await runtime.handlers.createThread(
       asUser("alice", { method: "POST", body: {} }),
     );
+
     const threadId = (created as { body: { thread_id: string } }).body.thread_id;
 
     const asBob = (overrides: Partial<ProtocolRequest>) =>
@@ -203,6 +207,7 @@ describe("authorizing handlers", () => {
     const listed = await runtime.handlers.listThreads(
       asUser("alice", { method: "POST", body: {} }),
     );
+
     const threads = (listed as { body: { metadata: Record<string, unknown> }[] }).body;
     expect(threads).toHaveLength(2);
     expect(threads.every((thread) => thread.metadata.owner === "alice")).toBe(true);
@@ -212,9 +217,11 @@ describe("authorizing handlers", () => {
     const denying = createProtocolRuntime(
       createFixtureDeps({ auth: fakeEngine({ deny: (_r, action) => action === "delete" }) }),
     );
+
     const created = await denying.handlers.createThread(
       asUser("alice", { method: "POST", body: {} }),
     );
+
     const threadId = (created as { body: { thread_id: string } }).body.thread_id;
     await expectStatus(
       denying.handlers.deleteThread(
@@ -228,9 +235,11 @@ describe("authorizing handlers", () => {
     const denying = createProtocolRuntime(
       createFixtureDeps({ auth: fakeEngine({ deny: (_r, action) => action === "update" }) }),
     );
+
     const created = await denying.handlers.createThread(
       asUser("alice", { method: "POST", body: {} }),
     );
+
     const threadId = (created as { body: { thread_id: string } }).body.thread_id;
 
     // A state fork maps to the `update` action, so the update-denying principal is refused.
@@ -251,6 +260,7 @@ describe("authorizing handlers", () => {
     const created = await runtime.handlers.createThread(
       asUser("alice", { method: "POST", body: {} }),
     );
+
     const threadId = (created as { body: { thread_id: string } }).body.thread_id;
 
     await expectStatus(
@@ -296,20 +306,24 @@ describe("authorizing handlers", () => {
   describe("principal injection", () => {
     // Own the store so we can read back the stored kwargs; the auth wrapper only swaps it per request.
     const store = new MemorySkeinStore();
+
     const withAuth = async (auth: AuthEngine) => {
       const runtime = createProtocolRuntime(createFixtureDeps({ store, auth }));
       await runtime.service.assistants.registerGraphAssistants();
       return runtime;
     };
+
     const startBackgroundRun = async (runtime: ProtocolRuntime, req: ProtocolRequest) => {
       const created = await runtime.handlers.createThread({ ...req, method: "POST", body: {} });
       const threadId = (created as { body: { thread_id: string } }).body.thread_id;
+
       const started = await runtime.handlers.createBackgroundRun({
         ...req,
         method: "POST",
         params: { thread_id: threadId },
         body: { assistant_id: "echo", input: {} },
       });
+
       const runId = (started as { body: { run_id: string } }).body.run_id;
       return store.runs.getKwargs(runId);
     };
@@ -332,6 +346,7 @@ describe("authorizing handlers", () => {
           };
         },
       };
+
       const kwargs = await startBackgroundRun(await withAuth(engine), asUser("alice"));
       expect(kwargs?.auth_user?.identity).toBe("alice");
       expect(kwargs?.auth_user?.["workspaceId"]).toBe("ws-1");
@@ -342,6 +357,7 @@ describe("authorizing handlers", () => {
         ...fakeEngine(),
         authorize: async ({ value }) => ({ filters: undefined, value }),
       };
+
       const kwargs = await startBackgroundRun(await withAuth(openEngine), asUser("bob"));
       expect(kwargs?.auth_user?.identity).toBe("bob");
     });
@@ -359,6 +375,7 @@ describe("authorizing handlers", () => {
     const created = await runtime.handlers.createThread(
       asUser("alice", { method: "POST", body: {} }),
     );
+
     const threadId = (created as { body: { thread_id: string } }).body.thread_id;
 
     const started = await runtime.handlers.createBackgroundRun(
@@ -368,6 +385,7 @@ describe("authorizing handlers", () => {
         body: { assistant_id: "echo", input: {} },
       }),
     );
+
     const run = (started as { body: { run_id: string; metadata: Record<string, unknown> } }).body;
     expect(run.metadata.owner).toBe("alice");
 
@@ -389,6 +407,7 @@ describe("authorizing handlers", () => {
     const created = await runtime.handlers.createThread(
       asUser("alice", { method: "POST", body: {} }),
     );
+
     const aliceThreadId = (created as { body: { thread_id: string } }).body.thread_id;
 
     // Bob runs against Alice's thread_id (the thread-scoped `/threads/{id}/runs/wait` path folds the
@@ -420,9 +439,11 @@ describe("authorizing handlers", () => {
         auth: fakeEngine({ filterFor: (identity) => ({ readers: { $contains: identity } }) }),
       }),
     );
+
     const created = await membership.handlers.createThread(
       asUser("alice", { method: "POST", body: {} }),
     );
+
     const thread = (created as { body: { thread_id: string; metadata: Record<string, unknown> } })
       .body;
     expect(thread.metadata.readers).toEqual(["alice"]);
@@ -462,6 +483,7 @@ describe("store reads are not tenant-scoped without a store handler", () => {
     const response = await target.handlers.searchStoreItems(
       asUser("alice", { method: "POST", body }),
     );
+
     const { items } = (response as { body: { items: { value: { text: string } }[] } }).body;
     return items.map((item) => item.value.text).sort();
   };
@@ -489,6 +511,7 @@ describe("store reads are not tenant-scoped without a store handler", () => {
     const response = await runtime.handlers.listStoreNamespaces(
       asUser("alice", { method: "POST", body: {} }),
     );
+
     const { namespaces } = (response as { body: { namespaces: string[][] } }).body;
 
     expect(namespaces).toEqual([
@@ -561,6 +584,7 @@ describe("@auth.on.store rewriting value", () => {
     const response = await runtime.handlers.searchStoreItems(
       asUser("alice", { method: "POST", body: { namespace_prefix: ["bob", "memories"] } }),
     );
+
     const { items } = (response as { body: { items: { value: { text: string } }[] } }).body;
 
     expect(items.map((item) => item.value.text)).toEqual(["alice"]);
@@ -776,6 +800,7 @@ describe("@auth.on.store rewriting value", () => {
     );
 
     expect(storeRoutes.length).toBeGreaterThan(0);
+
     for (const [name, route] of storeRoutes) {
       expect(
         route.fallbackResource,
@@ -797,12 +822,14 @@ describe("auth payload is server-derived, not caller-supplied", () => {
     authorize: async ({ resource, value, context }) => {
       if (resource === "store" && context) {
         const namespace = (value as { namespace?: unknown }).namespace;
+
         const rooted =
           Array.isArray(namespace) &&
           namespace.length > 0 &&
           namespace[0] === context.user.identity;
         if (!rooted) throw SkeinHttpError.forbidden("Out of scope.");
       }
+
       return { filters: undefined, value };
     },
   });
@@ -811,6 +838,7 @@ describe("auth payload is server-derived, not caller-supplied", () => {
 
   beforeEach(async () => {
     runtime = createProtocolRuntime(createFixtureDeps({ auth: scopedByNamespace() }));
+
     // Seeded through the store service directly: the point here is the authz payload, and going via
     // `putStoreItem` as bob would be refused by the very handler under test.
     for (const owner of ["alice", "bob"]) {
@@ -850,6 +878,7 @@ describe("auth payload is server-derived, not caller-supplied", () => {
     const response = await runtime.handlers.searchStoreItems(
       asUser("alice", { method: "POST", body: { namespace_prefix: ["alice"] } }),
     );
+
     const { items } = (response as { body: { items: { value: { text: string } }[] } }).body;
     expect(items.map((item) => item.value.text)).toEqual(["alice-secret"]);
   });
@@ -904,6 +933,7 @@ describe("auth payload is server-derived, not caller-supplied", () => {
     // `requireParam(req.params, "thread_id")` — ran on the victim's. A handler returning ownership
     // filters was still covered by the scoped store, but a check-only handler was not covered at all.
     let seen: unknown;
+
     const capturing: AuthEngine = {
       ...fakeEngine(),
       authorize: async ({ value }) => {
@@ -911,6 +941,7 @@ describe("auth payload is server-derived, not caller-supplied", () => {
         return { filters: undefined, value };
       },
     };
+
     const captured = createProtocolRuntime(createFixtureDeps({ auth: capturing }));
 
     await expectStatus(
@@ -929,6 +960,7 @@ describe("auth payload is server-derived, not caller-supplied", () => {
   it("stamps `key` from the same read as `namespace`, so both name the item the endpoint uses", async () => {
     // Same class as the namespace bug: authorizing one key while the endpoint deletes another.
     let seen: { namespace?: unknown; key?: unknown } = {};
+
     const capturing: AuthEngine = {
       ...fakeEngine(),
       authorize: async ({ resource, value }) => {
@@ -936,6 +968,7 @@ describe("auth payload is server-derived, not caller-supplied", () => {
         return { filters: undefined, value };
       },
     };
+
     const captured = createProtocolRuntime(createFixtureDeps({ auth: capturing }));
 
     await captured.handlers.deleteStoreItem(
@@ -952,6 +985,7 @@ describe("auth payload is server-derived, not caller-supplied", () => {
     // `value.namespace.join(".")` in a ported handler would throw a TypeError on a string, surfacing
     // as a 500 from inside authorize on every `GET /store/items`.
     let seen: unknown;
+
     const capturing: AuthEngine = {
       ...fakeEngine(),
       authorize: async ({ resource, value }) => {
@@ -959,6 +993,7 @@ describe("auth payload is server-derived, not caller-supplied", () => {
         return { filters: undefined, value };
       },
     };
+
     const captured = createProtocolRuntime(createFixtureDeps({ auth: capturing }));
     await captured.service.store.put(["alice", "memories"], "note", { text: "alice-secret" });
 
@@ -977,10 +1012,13 @@ describe("thread protocol authorization", () => {
         auth: fakeEngine({ deny: (_resource, action) => action === "create_run" }),
       }),
     );
+
     const created = await runtime.handlers.createThread(
       asUser("alice", { method: "POST", body: {} }),
     );
+
     const threadId = (created as { body: { thread_id: string } }).body.thread_id;
+
     const request = (method: string) =>
       asUser("alice", {
         method: "POST",
@@ -999,16 +1037,19 @@ describe("thread protocol authorization", () => {
     const deps = createFixtureDeps({ auth: fakeEngine() });
     const runtime = createProtocolRuntime(deps);
     const thread = await deps.store.threads.create({ metadata: { owner: "alice" } });
+
     const visible = await deps.store.runs.create({
       thread_id: thread.thread_id,
       assistant_id: "echo",
       metadata: { owner: "alice" },
     });
+
     const hidden = await deps.store.runs.create({
       thread_id: thread.thread_id,
       assistant_id: "echo",
       metadata: { owner: "bob" },
     });
+
     const publish = (runId: string, secret: string) =>
       deps.threadBus!.publish(thread.thread_id, {
         kind: "protocol",
@@ -1022,6 +1063,7 @@ describe("thread protocol authorization", () => {
     await publish(hidden.run_id, "hidden replay");
     await publish(visible.run_id, "visible replay");
     const controller = new AbortController();
+
     const response = await runtime.handlers.postThreadEvents!(
       asUser("alice", {
         method: "POST",
@@ -1048,6 +1090,7 @@ it.each<AuthFilters>([
   { groups: { $contains: ["readers", "writers"] } },
 ])("searches only owned run pages using declared filters %j", async (filters) => {
   const store = new MemorySkeinStore({ maxPageSize: 2 });
+
   for (let index = 0; index < 6; index++) {
     const owner = index % 2 === 0 ? "alice" : "bob";
     const thread = await store.threads.create({ metadata: { owner } });
@@ -1058,12 +1101,15 @@ it.each<AuthFilters>([
       metadata: { owner, groups: owner === "alice" ? ["readers", "writers"] : ["other"] },
     });
   }
+
   const runtime = createProtocolRuntime(
     createFixtureDeps({ store, auth: fakeEngine({ filterFor: () => filters }) }),
   );
+
   const first = await runtime.handlers.searchRuns!(
     asUser("alice", { method: "POST", body: { limit: 2, enforcedMetadata: { owner: "bob" } } }),
   );
+
   const next = await runtime.handlers.searchRuns!(
     asUser("alice", { method: "POST", body: { limit: 2, offset: 2 } }),
   );
@@ -1103,11 +1149,13 @@ it("fails the entire run search when a custom matcher is stricter than its decla
     metadata: { owner: "alice", confidential: true },
   });
   const engine = fakeEngine();
+
   const auth: AuthEngine = {
     ...engine,
     matchesFilters: (metadata, filters) =>
       engine.matchesFilters(metadata, filters) && metadata?.["confidential"] !== true,
   };
+
   const runtime = createProtocolRuntime(createFixtureDeps({ store, auth }));
   await expectStatus(
     runtime.handlers.searchRuns!(asUser("alice", { method: "POST", body: {} })),

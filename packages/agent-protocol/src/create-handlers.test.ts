@@ -34,6 +34,7 @@ function recordingResolver(calls: (CheckpointListOptions | undefined)[]): GraphR
       return new Proxy(graph as object, {
         get(target, property, receiver) {
           if (property !== "getStateHistory") return Reflect.get(target, property, receiver);
+
           return (config: unknown, options?: CheckpointListOptions) => {
             calls.push(options);
             return (
@@ -54,6 +55,7 @@ function request(): ProtocolRequest {
 
 async function historyHandler() {
   const calls: (CheckpointListOptions | undefined)[] = [];
+
   const service = createProtocolServiceFromContext(
     createContext(createFixtureDeps({ graphs: recordingResolver(calls) })),
   );
@@ -180,6 +182,7 @@ describe("listThreadRuns pagination", () => {
     await service.assistants.registerGraphAssistants();
     const handlers = createProtocolHandlers(service);
     const thread = await service.threads.create();
+
     for (let index = 0; index < count; index += 1) {
       await service.runs.createWait({
         thread_id: thread.thread_id,
@@ -187,6 +190,7 @@ describe("listThreadRuns pagination", () => {
         input: { value: `run ${index}` },
       });
     }
+
     const list = async (query: Record<string, string>) =>
       handlers.listThreadRuns({
         ...request(),
@@ -215,6 +219,7 @@ describe("listThreadRuns pagination", () => {
     const { list } = await threadWithRuns(4);
 
     const first = (await list({ limit: "2" })) as { body: Array<{ run_id: string }> };
+
     const second = (await list({ limit: "2", offset: "2" })) as {
       body: Array<{ run_id: string }>;
     };
@@ -260,6 +265,7 @@ describe("joinRun", () => {
   it("returns the settled run's final state", async () => {
     const { service, handlers } = await fixtureHandlers();
     const thread = await service.threads.create();
+
     const { runId } = await service.runs.createWait({
       thread_id: thread.thread_id,
       assistant_id: "echo",
@@ -282,17 +288,20 @@ describe("joinRun", () => {
     // waits forever. Modelled here by a bus that never yields for a forgotten run — so a handler that
     // subscribed unconditionally would hang, and this test would time out rather than pass.
     const neverSettles = new Promise<never>(() => undefined);
+
     const forgetfulBus: RunEventBus = {
       publish: async () => undefined,
       close: async () => undefined,
       subscribe: () => ({ [Symbol.asyncIterator]: () => ({ next: () => neverSettles }) }),
     };
+
     const service = createProtocolServiceFromContext(
       createContext(createFixtureDeps({ bus: forgetfulBus })),
     );
     await service.assistants.registerGraphAssistants();
     const handlers = createProtocolHandlers(service);
     const thread = await service.threads.create();
+
     const { runId } = await service.runs.createWait({
       thread_id: thread.thread_id,
       assistant_id: "echo",
@@ -312,6 +321,7 @@ describe("joinRun", () => {
   it("reports a failed run as __error__ rather than an empty success", async () => {
     const { service, handlers } = await fixtureHandlers();
     const thread = await service.threads.create();
+
     const { runId } = await service.runs.createWait({
       thread_id: thread.thread_id,
       assistant_id: "throwing",
@@ -337,6 +347,7 @@ describe("joinRun", () => {
     const service = createProtocolServiceFromContext(createContext(createFixtureDeps()));
     await service.assistants.registerGraphAssistants();
     const thread = await service.threads.create();
+
     const { runId } = await service.runs.createWait({
       thread_id: thread.thread_id,
       assistant_id: "echo",
@@ -344,6 +355,7 @@ describe("joinRun", () => {
     });
 
     let reads = 0;
+
     const handlers = createProtocolHandlers({
       ...service,
       runs: {
@@ -383,6 +395,7 @@ describe("joinRun", () => {
   it("ignores ?cancel_on_disconnect instead of rejecting it", async () => {
     const { service, handlers } = await fixtureHandlers();
     const thread = await service.threads.create();
+
     const { runId } = await service.runs.createWait({
       thread_id: thread.thread_id,
       assistant_id: "echo",
@@ -450,6 +463,7 @@ describe("getThreadStateAtCheckpointFromBody", () => {
     // graph actually receives, since both namespaces return a 200 either way.
     const seen: Array<Record<string, unknown> | undefined> = [];
     const inner = createFixtureResolver();
+
     const recording: GraphResolver = {
       ...inner,
       load: async (graphId) => {
@@ -457,6 +471,7 @@ describe("getThreadStateAtCheckpointFromBody", () => {
         return new Proxy(graph as object, {
           get(target, property, receiver) {
             if (property !== "getState") return Reflect.get(target, property, receiver);
+
             return (config: { configurable?: Record<string, unknown> }) => {
               seen.push(config.configurable);
               return (target as { getState: (c: unknown) => unknown }).getState(config);
@@ -465,6 +480,7 @@ describe("getThreadStateAtCheckpointFromBody", () => {
         }) as ResolvedGraph;
       },
     };
+
     const service = createProtocolServiceFromContext(
       createContext(createFixtureDeps({ graphs: recording })),
     );
@@ -659,6 +675,7 @@ describe("store handlers", () => {
       ...request(),
       body: { namespace: ["users", "1"], key: "profile", value: { name: "Ada" } },
     });
+
     const got = await handlers.getStoreItem({
       ...request(),
       query: { namespace: "users.1", key: "profile" },
@@ -775,6 +792,7 @@ describe("store handlers", () => {
     const { service } = await fixtureHandlers();
     const seen: unknown[] = [];
     const listNamespaces = service.store.listNamespaces.bind(service.store);
+
     service.store.listNamespaces = async (query) => {
       seen.push(query);
       return listNamespaces(query);

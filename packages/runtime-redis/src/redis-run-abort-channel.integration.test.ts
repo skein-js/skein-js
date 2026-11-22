@@ -18,10 +18,12 @@ afterAll(async () => {
 /** Resolves once `predicate` holds, or throws — pub/sub delivery is asynchronous. */
 async function waitFor(predicate: () => boolean, timeoutMs = 3000): Promise<void> {
   const start = Date.now();
+
   while (Date.now() - start < timeoutMs) {
     if (predicate()) return;
     await new Promise((resolve) => setTimeout(resolve, 10));
   }
+
   throw new Error("timed out waiting for condition");
 }
 
@@ -32,6 +34,7 @@ describe("RedisRunAbortChannel", () => {
     const listener = new RedisRunAbortChannel(redis.url);
     const received: { run_id: string; reason: string }[] = [];
     const subscription = listener.subscribe((request) => received.push(request));
+
     try {
       // The subscribe is asynchronous, so publish until it lands rather than racing it once.
       await waitFor(() => {
@@ -54,10 +57,12 @@ describe("RedisRunAbortChannel", () => {
     const first = new RedisRunAbortChannel(redis.url);
     const second = new RedisRunAbortChannel(redis.url);
     const heard: string[] = [];
+
     const subscriptions = [
       first.subscribe(() => heard.push("first")),
       second.subscribe(() => heard.push("second")),
     ];
+
     try {
       await waitFor(() => {
         void publisher.requestAbort({ run_id: "run-2", reason: "interrupt" });
@@ -77,11 +82,14 @@ describe("RedisRunAbortChannel", () => {
     // engine and decide which terminal status a run settles to.
     const publisher = new RedisRunAbortChannel(redis.url);
     const errors: unknown[] = [];
+
     const listener = new RedisRunAbortChannel(redis.url, {
       onError: (error) => errors.push(error),
     });
+
     const delivered: unknown[] = [];
     const subscription = listener.subscribe((request) => delivered.push(request));
+
     try {
       // *Only* malformed messages are ever published to this listener, so `delivered` staying empty
       // cannot be a timing artifact of a valid one landing late. `reason` is not one skein recognizes.
@@ -104,6 +112,7 @@ describe("RedisRunAbortChannel", () => {
     const listener = new RedisRunAbortChannel(redis.url);
     const received: unknown[] = [];
     const subscription = listener.subscribe((request) => received.push(request));
+
     try {
       await waitFor(() => {
         void publisher.requestAbort({ run_id: "run-5", reason: "cancel" });

@@ -200,6 +200,7 @@ export function createCronScheduler(
     // `skein dev`, and every server with no `auth` block — this would be one extra round trip per
     // occurrence for a value nothing downstream reads.
     const auth = deps.auth?.enabled ? await deps.store.crons.getAuth(cron.cron_id) : null;
+
     // A cron that recorded an owner but has lost the principal behind it must not fire. The
     // principal is what the run executes as and what scopes the thread it writes to, so firing
     // anyway would produce unowned runs on an auth-enabled server — and would keep producing them
@@ -215,6 +216,7 @@ export function createCronScheduler(
           `identity to execute as; recreate the cron to re-attach one`,
       );
     }
+
     const { store: fireStore, ownerMetadata } = await storeForFire(cron, auth);
     const stateless = cron.thread_id == null;
 
@@ -234,6 +236,7 @@ export function createCronScheduler(
     if (!thread) throw new Error(`thread "${cron.thread_id}" not found`);
 
     const payload = cron.payload as Record<string, unknown>;
+
     const kwargs = toKwargs(
       {
         ...payload,
@@ -283,6 +286,7 @@ export function createCronScheduler(
       if (stateless) {
         await fireStore.threads.delete(thread.thread_id).catch(() => undefined);
       }
+
       return { outcome: "lost" };
     }
 
@@ -320,6 +324,7 @@ export function createCronScheduler(
   ): Promise<number> => {
     const staleBefore = now.getTime() - unqueuedRunGraceMs;
     let requeued = 0;
+
     // `listActiveRuns()` with no thread reads the inflight partial index and is page-bounded, so
     // this cannot pull an unbounded backlog into memory.
     for (const run of await deps.store.runs.listActiveRuns()) {
@@ -340,6 +345,7 @@ export function createCronScheduler(
         `run ${run.run_id} was pending with no queue entry for over ${unqueuedRunGraceMs}ms; re-enqueued.`,
       );
     }
+
     return requeued;
   };
 
@@ -352,6 +358,7 @@ export function createCronScheduler(
     // minutes with nothing saying the batch was capped.
     const scanLimit = Math.min(batchSize, deps.store.maxPageSize ?? batchSize);
     const due = await deps.store.crons.listDue({ dueAt: now.toISOString(), limit: scanLimit });
+
     const summary: CronTickSummary = {
       ...EMPTY_SUMMARY,
       scanned: due.length,
@@ -375,6 +382,7 @@ export function createCronScheduler(
 
       try {
         const result = await fireCron(cron, occurrenceSeq, nextRunDate);
+
         if (result.outcome === "fired") {
           summary.fired += 1;
           justEnqueued.add(result.runId);
@@ -422,6 +430,7 @@ export function createCronScheduler(
    */
   const loop = async (): Promise<void> => {
     let truncated = false;
+
     try {
       const summary = await withTimeout(tickOnce(), tickTimeoutMs, "cron tick");
       reportTick(summary);
@@ -450,12 +459,14 @@ export function createCronScheduler(
     start() {
       if (!enabled || running) return;
       running = true;
+
       if (deps.store.durable === false) {
         deps.logger.warn(
           "crons are stored in a non-durable store: every schedule is lost when this process exits. " +
             "Use the postgres store to persist them (`skein dev` snapshots them to .skein/ instead).",
         );
       }
+
       // The period is fixed; only the *phase* is jittered, once. A rolling deploy boots every
       // replica within a second of the others, so unjittered they tick in lockstep and every tick is
       // an N-way race for the same rows. One offset de-phases them for good, where re-jittering each

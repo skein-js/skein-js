@@ -18,6 +18,7 @@ function buildGraph() {
 // test. Save/restore the env we mutate so the cases stay independent.
 describe("embedPostgresGraphs — config validation (no connection)", () => {
   const saved: Record<string, string | undefined> = {};
+
   const stash = (name: string) => {
     saved[name] = process.env[name];
     delete process.env[name];

@@ -31,6 +31,7 @@ describe("nestjs-app (embedded) — own controller + Agent Protocol", () => {
 
   it("serves the Agent Protocol under the app's global prefix (echo graph via the SDK)", async () => {
     const thread = await client.threads.create();
+
     const values = await client.runs.wait(thread.thread_id, "echo", {
       input: { messages: [{ role: "user", content: "hello" }] },
     });

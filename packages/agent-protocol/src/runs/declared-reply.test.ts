@@ -6,8 +6,12 @@ import { describe, expect, it, vi } from "vitest";
 import { createFixtureDeps, createFixtureResolver } from "../__fixtures__/deps.js";
 import { declaringGraph, echoGraph } from "../__fixtures__/graphs.js";
 import { fixtureLangGraphAgent } from "../__fixtures__/lang-graph-binding.js";
-import type { GraphSchemas, ResolvedGraph } from "../deps.js";
-import { resolveDeps, type WebhookDispatcher } from "../deps.js";
+import {
+  resolveDeps,
+  type GraphSchemas,
+  type ResolvedGraph,
+  type WebhookDispatcher,
+} from "../deps.js";
 
 import { RunControlRegistry } from "./cancellation.js";
 import { DECLARED_REPLY_KEY, readDeclaredReply, replyWith } from "./declared-reply.js";
@@ -38,6 +42,7 @@ describe("a declared reply in the callback", () => {
   // A resolver local to this file rather than another entry in the shared fixture map: two tests
   // assert the exact list of fixture graphs, so adding one there is a change to their subject.
   const graphs = { declaring: declaringGraph, echo: echoGraph };
+
   const resolver = {
     ...createFixtureResolver(),
     ids: Object.keys(graphs),
@@ -52,16 +57,19 @@ describe("a declared reply in the callback", () => {
     const deps = resolveDeps(createFixtureDeps({ webhookDispatcher: dispatch, graphs: resolver }));
     await deps.store.assistants.create({ graph_id: graphId, assistant_id: graphId });
     const thread = await deps.store.threads.create();
+
     const run: Run = await deps.store.runs.create({
       thread_id: thread.thread_id,
       assistant_id: graphId,
       status: "pending",
     });
+
     const kwargs: RunKwargs = {
       input: { value: "hi" },
       webhook: "https://example.test/hook",
       stream_mode: ["values", "custom"],
     };
+
     const control = new RunControlRegistry().register(run.run_id);
     const outcome = await executeRun(deps, { run, kwargs, control });
     return { dispatch, outcome };
@@ -96,11 +104,13 @@ describe("a declared reply in the callback", () => {
     const deps = resolveDeps(createFixtureDeps({ webhookDispatcher: dispatch, graphs: resolver }));
     await deps.store.assistants.create({ graph_id: "declaring", assistant_id: "declaring" });
     const thread = await deps.store.threads.create();
+
     const run: Run = await deps.store.runs.create({
       thread_id: thread.thread_id,
       assistant_id: "declaring",
       status: "pending",
     });
+
     const withoutOutbox = {
       ...deps,
       store: Object.assign(Object.create(Object.getPrototypeOf(deps.store) as object), deps.store, {

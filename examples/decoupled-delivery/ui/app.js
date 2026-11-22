@@ -35,6 +35,7 @@ const state = {
   seenDeliveries: 0,
   submittedInterrupts: new Set(),
 };
+
 const fields = document.querySelector("#fields");
 const form = document.querySelector("#event-form");
 const activityList = document.querySelector("#activity-list");
@@ -47,6 +48,7 @@ const emptyResult = document.querySelector("#empty-result");
 function renderFields() {
   fields.replaceChildren();
   const scenario = scenarios[state.scenario];
+
   for (const [name, label, type, value] of scenario.fields) {
     const wrapper = document.createElement("label");
     const labelText = document.createElement("span");
@@ -95,6 +97,7 @@ async function request(url, options) {
 function renderDeliveries(deliveries) {
   emptyResult.classList.toggle("hidden", deliveries.length > 0);
   deliveryList.replaceChildren();
+
   for (const delivery of deliveries) {
     const card = document.createElement("article");
     card.className = "delivery-card";
@@ -115,6 +118,7 @@ function renderDeliveries(deliveries) {
     );
     deliveryList.append(card);
   }
+
   if (deliveries.length > state.seenDeliveries) {
     deliveries
       .slice(state.seenDeliveries)
@@ -129,6 +133,7 @@ function renderApprovals(interrupts) {
   );
   approvals.classList.toggle("hidden", pendingInterrupts.length === 0);
   approvalList.replaceChildren();
+
   for (const interrupt of pendingInterrupts) {
     const value = interrupt.value;
     const card = document.createElement("article");
@@ -140,12 +145,14 @@ function renderApprovals(interrupts) {
     );
     const controls = document.createElement("div");
     controls.className = "decision";
+
     for (const decision of ["reject", "approve"]) {
       const button = textElement("button", "", decision[0].toUpperCase() + decision.slice(1));
       button.dataset.decision = decision;
       button.addEventListener("click", () => decide(interrupt, button.dataset.decision, card));
       controls.append(button);
     }
+
     card.append(
       heading,
       textElement("p", "", `KES ${Number(value.amount).toLocaleString()} · ${value.reason}`),
@@ -158,6 +165,7 @@ function renderApprovals(interrupts) {
 async function decide(interrupt, decision, card) {
   state.submittedInterrupts.add(interrupt.id);
   card.classList.add("busy");
+
   try {
     await request("/api/whatsapp", {
       method: "POST",
@@ -191,6 +199,7 @@ async function poll() {
   graphStatus.textContent = current.thread.status;
   renderApprovals(current.thread.interrupts ?? []);
   renderDeliveries(current.deliveries ?? []);
+
   if (["busy", "interrupted"].includes(current.thread.status)) {
     clearTimeout(state.timer);
     state.timer = setTimeout(() => void poll(), 400);
@@ -209,15 +218,19 @@ form.addEventListener("submit", async (event) => {
   emptyResult.classList.remove("hidden");
   graphStatus.textContent = "Starting";
   form.classList.add("busy");
+
   try {
     await request("/api/reset", { method: "POST" });
     const values = Object.fromEntries(new FormData(form));
+
     const base = {
       ...values,
       eventId: crypto.randomUUID(),
       conversationId: state.conversationId,
     };
+
     const isInstruction = state.scenario === "instruction";
+
     const payload = isInstruction
       ? { ...base, kind: "instruction" }
       : {

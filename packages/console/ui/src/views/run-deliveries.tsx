@@ -20,12 +20,14 @@ import { Async, Pagination, Panel, ShortId, StatusBadge, Timestamp } from "./par
 export function RunDeliveries({ threadId, runId }: { threadId: string; runId: string }) {
   const [client] = useState(() => createSkeinConsoleClient());
   const confirm = useConfirmation();
+
   const deliveries = usePagedRows(
     async (offset, limit, signal) =>
       (await client.listRunDeliveries(threadId, runId, offset, limit, signal)).deliveries,
     `${threadId}:${runId}`,
     20,
   );
+
   const [replay, setReplay] = useState<{ deliveryId?: string; error?: Error }>({});
 
   const replayDelivery = async (delivery: DeliverySummary) => {
@@ -39,6 +41,7 @@ export function RunDeliveries({ threadId, runId }: { threadId: string; runId: st
     )
       return;
     setReplay({ deliveryId: delivery.delivery_id });
+
     try {
       // Do not retain or render the mutation response: refresh the sanitized list representation.
       await client.replayRunDelivery(threadId, runId, delivery.delivery_id);

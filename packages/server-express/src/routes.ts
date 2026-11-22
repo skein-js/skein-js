@@ -13,8 +13,7 @@ import {
 } from "@skein-js/agent-protocol";
 import { readNativeNodeRequest, sendNativeResponse } from "@skein-js/server-kit";
 import cors, { type CorsOptions } from "cors";
-import express from "express";
-import type { Request, Response, Router } from "express";
+import express, { type Request, type Response, type Router } from "express";
 
 import { sendErrorResponse } from "./error-response.js";
 import { sendProtocolResponse } from "./send-protocol-response.js";
@@ -61,10 +60,12 @@ export interface HandlerRouterOptions {
  */
 export function requireParsableLimit(limit: string | number | undefined): void {
   if (limit === undefined) return;
+
   if (typeof limit === "number") {
     if (Number.isFinite(limit) && limit > 0) return;
     throw new TypeError(`json.limit must be a positive number of bytes (got ${limit}).`);
   }
+
   // The same grammar `bytes.parse` accepts: a number with an optional unit suffix.
   if (/^\d+(\.\d+)?\s*(b|kb|mb|gb|tb|pb)?$/i.test(limit.trim())) return;
   throw new TypeError(
@@ -103,6 +104,7 @@ export function createHandlerRouter(
       .filter((route) => route.retainRawBody)
       .map((route) => route.path),
   );
+
   if (textRoutes.size > 0) {
     // `type` is applied **after** the caller's options, not before. Spreading `options.json` last let
     // a host that narrowed it (say `type: "application/json"`) silently un-match every other content
@@ -133,6 +135,7 @@ export function createHandlerRouter(
       const disconnected = new AbortController();
       const close = () => disconnected.abort();
       res.once("close", close);
+
       try {
         if (rawBodies.has(req)) Object.assign(req, { rawBody: rawBodies.get(req) });
         const native = await readNativeNodeRequest(
@@ -141,11 +144,14 @@ export function createHandlerRouter(
           disconnected.signal,
           options.handleRequest!,
         );
+
         const response = native ? await options.handleRequest!(native) : undefined;
+
         if (response) {
           await sendNativeResponse(response, res);
           return;
         }
+
         res.removeListener("close", close);
         next();
       } catch (error) {
@@ -163,8 +169,10 @@ export function createHandlerRouter(
       // the frame iterator is torn down.
       const disconnected = new AbortController();
       res.once("close", () => disconnected.abort(new Error("client disconnected")));
+
       try {
         const request = { ...toProtocolRequest(req), signal: disconnected.signal };
+
         const response = await invoke(
           binding.foldThreadIdIntoBody ? copyThreadIdIntoBody(request) : request,
         );

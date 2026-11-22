@@ -16,14 +16,17 @@ const templatesDir = path.join(packageRoot, "templates");
 async function findTemplateFiles(directory: string, prefix = ""): Promise<string[]> {
   const entries = await readdir(directory, { withFileTypes: true });
   const found: string[] = [];
+
   for (const entry of entries) {
     const relativePath = prefix === "" ? entry.name : `${prefix}/${entry.name}`;
+
     if (entry.isDirectory()) {
       found.push(...(await findTemplateFiles(path.join(directory, entry.name), relativePath)));
     } else if (entry.name.endsWith(".tmpl")) {
       found.push(relativePath);
     }
   }
+
   return found.sort();
 }
 

@@ -10,8 +10,7 @@ import "reflect-metadata";
 import type { AddressInfo } from "node:net";
 import { fileURLToPath, pathToFileURL } from "node:url";
 
-import { Body, Controller, Get, Module, Post } from "@nestjs/common";
-import type { INestApplication } from "@nestjs/common";
+import { Body, Controller, Get, Module, Post, type INestApplication } from "@nestjs/common";
 import { NestFactory } from "@nestjs/core";
 import { SkeinModule } from "@skein-js/nestjs";
 
@@ -60,9 +59,11 @@ export async function startServer(port = 2024, host = "127.0.0.1"): Promise<Star
   app.enableShutdownHooks(); // so the skein run worker drains on close()
   await app.listen(port, host);
   const address = app.getHttpServer().address() as AddressInfo | null;
+
   if (address === null || typeof address === "string") {
     throw new Error("expected a bound TCP address");
   }
+
   return { app, url: `http://${host}:${address.port}`, close: () => app.close() };
 }
 

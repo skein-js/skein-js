@@ -50,6 +50,7 @@ function toEmbedFunction(value: unknown, source: string): EmbedFunction {
   if (typeof value === "function") {
     return value as EmbedFunction;
   }
+
   if (
     typeof value === "object" &&
     value !== null &&
@@ -59,6 +60,7 @@ function toEmbedFunction(value: unknown, source: string): EmbedFunction {
     const embeddings = value as EmbeddingsLike;
     return (texts) => embeddings.embedDocuments(texts);
   }
+
   throw new RuntimeConfigError(
     `store.index.embed "${source}" must resolve to a function (texts: string[]) => number[][] ` +
       `or a LangChain Embeddings instance.`,
@@ -101,29 +103,36 @@ async function resolvePathEmbed(
   options: ResolveEmbedOptions,
 ): Promise<EmbedFunction> {
   const { sourceFile, exportSymbol } = parseGraphSpec(embed, options.configDir);
+
   const importer: ModuleImporter =
     options.importModule ??
     ((file) => import(pathToFileURL(file).href) as Promise<Record<string, unknown>>);
+
   const module = await importer(sourceFile);
   const exported = module[exportSymbol];
+
   if (exported === undefined) {
     throw new RuntimeConfigError(
       `store.index.embed "${embed}" — module "${sourceFile}" has no export "${exportSymbol}".`,
     );
   }
+
   return toEmbedFunction(exported, embed);
 }
 
 /** Resolve form (2): dynamically import the provider package and instantiate its `Embeddings`. */
 async function resolveProviderEmbed(provider: string, model: string): Promise<EmbedFunction> {
   const entry = PROVIDERS[provider];
+
   if (!entry) {
     throw new RuntimeConfigError(
       `Unknown embeddings provider "${provider}". Supported: ${Object.keys(PROVIDERS).join(", ")}. ` +
         `Or point store.index.embed at a "./path:export" custom embedder.`,
     );
   }
+
   let module: Record<string, unknown>;
+
   try {
     module = (await import(entry.package)) as Record<string, unknown>;
   } catch {
@@ -132,10 +141,13 @@ async function resolveProviderEmbed(provider: string, model: string): Promise<Em
         `(and set the provider's API key).`,
     );
   }
+
   const EmbeddingsClass = module[entry.exportName];
+
   if (typeof EmbeddingsClass !== "function") {
     throw new RuntimeConfigError(`${entry.package} does not export "${entry.exportName}".`);
   }
+
   const embeddings = new (EmbeddingsClass as EmbeddingsConstructor)({ model });
   return (texts) => embeddings.embedDocuments(texts);
 }
@@ -148,12 +160,15 @@ export async function resolveEmbed(
   if (isCustomFunctionPath(embed)) {
     return resolvePathEmbed(embed, options);
   }
+
   const separator = embed.indexOf(":");
+
   if (separator === -1) {
     throw new RuntimeConfigError(
       `store.index.embed "${embed}" must be "provider:model" (e.g. "openai:text-embedding-3-small") ` +
         `or a "./path:export" custom embedder.`,
     );
   }
+
   return resolveProviderEmbed(embed.slice(0, separator), embed.slice(separator + 1));
 }

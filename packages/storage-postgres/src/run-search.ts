@@ -4,6 +4,7 @@ import type { RunSearchQuery } from "@skein-js/core";
 export function runSearchWhere(query: RunSearchQuery): { where: string; params: unknown[] } {
   const clauses: string[] = [];
   const params: unknown[] = [];
+
   for (const [column, value, operator] of [
     ["status", query.status, "="],
     ["assistant_id", query.assistantId, "="],
@@ -17,9 +18,11 @@ export function runSearchWhere(query: RunSearchQuery): { where: string; params: 
     params.push(value);
     clauses.push(`${column} ${operator} $${params.length}`);
   }
+
   if (query.enforcedMetadata && Object.keys(query.enforcedMetadata).length > 0) {
     params.push(JSON.stringify(query.enforcedMetadata));
     clauses.push(`metadata @> $${params.length}::jsonb`);
   }
+
   return { where: clauses.length ? `WHERE ${clauses.join(" AND ")}` : "", params };
 }

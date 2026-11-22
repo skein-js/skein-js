@@ -123,6 +123,7 @@ describe("thread service", () => {
     const deps = createFixtureDeps();
     const service = await serviceWithAssistants(deps);
     const thread = await service.threads.create();
+
     const run = await service.runs.createBackground(thread.thread_id, {
       assistant_id: "echo",
       input: {},
@@ -139,6 +140,7 @@ describe("thread service", () => {
     const deps = createFixtureDeps();
     const service = await serviceWithAssistants(deps);
     const thread = await service.threads.create();
+
     const { runId, frames } = await service.runs.createStream({
       thread_id: thread.thread_id,
       assistant_id: "slow",
@@ -148,6 +150,7 @@ describe("thread service", () => {
     expect((await deps.store.runs.get(runId))?.status).toBe("running");
     const checkpointDeletes: string[] = [];
     const deleteCheckpoints = deps.checkpointer.deleteThread.bind(deps.checkpointer);
+
     deps.checkpointer.deleteThread = async (threadId) => {
       checkpointDeletes.push(threadId);
       await deleteCheckpoints(threadId);
@@ -155,6 +158,7 @@ describe("thread service", () => {
 
     await service.threads.delete(thread.thread_id);
     await collect(frames);
+
     for (let attempt = 0; attempt < 100 && checkpointDeletes.length < 2; attempt += 1) {
       await new Promise((resolve) => setTimeout(resolve, 10));
     }
@@ -170,6 +174,7 @@ describe("thread service", () => {
     const service = await serviceWithAssistants(deps);
     const thread = await service.threads.create();
     const other = await service.threads.create();
+
     const record = async (key: string, threadId: string): Promise<void> => {
       await deps.store.idempotency.claim({
         key,
@@ -186,6 +191,7 @@ describe("thread service", () => {
         expires_at: new Date(Date.now() + 86_400_000).toISOString(),
       });
     };
+
     await record("doomed", thread.thread_id);
     await record("spared", other.thread_id);
 
@@ -381,6 +387,7 @@ describe("thread history bounds", () => {
         return new Proxy(graph as object, {
           get(target, property, receiver) {
             if (property !== "getStateHistory") return Reflect.get(target, property, receiver);
+
             return (config: unknown, options?: CheckpointListOptions) => {
               calls.push(options);
               return (
@@ -402,6 +409,7 @@ describe("thread history bounds", () => {
     const service = await serviceWithAssistants(
       createFixtureDeps({ graphs: recordingResolver(calls) }),
     );
+
     const thread = await service.threads.create();
     await service.runs.createWait({
       thread_id: thread.thread_id,

@@ -18,6 +18,7 @@ export function ThreadActions({
   const [busy, setBusy] = useState(false);
   const [message, setMessage] = useState<string>();
   const [error, setError] = useState<string>();
+
   const perform = async (action: "copy" | "delete" | "keep_latest") => {
     if (
       action !== "copy" &&
@@ -34,8 +35,10 @@ export function ThreadActions({
     setBusy(true);
     setError(undefined);
     setMessage(undefined);
+
     try {
       const client = createConsoleClient({});
+
       if (action === "copy") {
         const copied = await client.threads.copy(threadId);
         window.location.hash = routeHref(`threads/${copied.thread_id}`);
@@ -58,6 +61,7 @@ export function ThreadActions({
       setBusy(false);
     }
   };
+
   return (
     <div className="mb-4">
       <div className="flex flex-wrap gap-2">

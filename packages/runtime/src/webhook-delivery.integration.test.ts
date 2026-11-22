@@ -17,8 +17,11 @@
 import { createServer, type Server } from "node:http";
 
 import { MessagesAnnotation, StateGraph } from "@langchain/langgraph";
-import { createProtocolRuntime, deliveryLeaseMs } from "@skein-js/agent-protocol";
-import type { ProtocolDeps } from "@skein-js/agent-protocol";
+import {
+  createProtocolRuntime,
+  deliveryLeaseMs,
+  type ProtocolDeps,
+} from "@skein-js/agent-protocol";
 import { startPostgres, type StartedResource } from "@skein-js/test-support";
 import { afterAll, afterEach, beforeAll, describe, expect, it } from "vitest";
 
@@ -51,6 +54,7 @@ afterEach(async () => {
 async function startReceiver() {
   const received: Record<string, unknown>[] = [];
   const state = { down: false };
+
   const server: Server = createServer((request, response) => {
     let body = "";
     request.on("data", (chunk) => (body += String(chunk)));
@@ -59,6 +63,7 @@ async function startReceiver() {
         response.writeHead(503).end();
         return;
       }
+
       received.push(JSON.parse(body) as Record<string, unknown>);
       response.writeHead(200).end();
     });
@@ -66,6 +71,7 @@ async function startReceiver() {
   await new Promise<void>((resolve) => server.listen(0, "127.0.0.1", resolve));
   const address = server.address();
   const port = typeof address === "object" && address ? address.port : 0;
+
   const receiver = {
     url: `http://127.0.0.1:${port}/hook`,
     received,
@@ -86,6 +92,7 @@ async function startInstance(overrides: Partial<ProtocolDeps> = {}) {
     { echo: buildGraph() },
     { postgresUri: pg.url, overrides },
   );
+
   const runtime = createProtocolRuntime(embedded.deps);
   await runtime.service.assistants.registerGraphAssistants();
   cleanup.push(() => embedded.dispose());
@@ -110,6 +117,7 @@ describe("durable outbound delivery — Postgres store, no Redis, two instances"
       clock: fixedClock(diedAt),
       webhookDispatcher: () => Promise.reject(new Error("process died mid-POST")),
     });
+
     const originalRecord = instanceA.deps.store.deliveries!.recordAttempt.bind(
       instanceA.deps.store.deliveries,
     );
@@ -117,6 +125,7 @@ describe("durable outbound delivery — Postgres store, no Redis, two instances"
       Promise.reject(new Error("process died before recording"));
 
     const thread = await instanceA.runtime.service.threads.create();
+
     const { runId } = await instanceA.runtime.service.runs.createWait({
       thread_id: thread.thread_id,
       assistant_id: "echo",
@@ -134,10 +143,12 @@ describe("durable outbound delivery — Postgres store, no Redis, two instances"
 
     // The engine's inline attempt is a batch of one, so that is the lease it took.
     const lease = deliveryLeaseMs(1, 5_000);
+
     // Instance B has never heard of this run. It finds the delivery only because the lease lapsed.
     const instanceB = await startInstance({
       clock: fixedClock(new Date(diedAt.getTime() + lease + 1_000)),
     });
+
     // Before the lease lapses, B must not touch it — or a slow POST would go out twice.
     const early = await startInstance({
       clock: fixedClock(new Date(diedAt.getTime() + lease - 1_000)),
@@ -165,6 +176,7 @@ describe("durable outbound delivery — Postgres store, no Redis, two instances"
     const producer = await startInstance({ clock: fixedClock(at) });
 
     const thread = await producer.runtime.service.threads.create();
+
     const { runId } = await producer.runtime.service.runs.createWait({
       thread_id: thread.thread_id,
       assistant_id: "echo",
@@ -176,6 +188,7 @@ describe("durable outbound delivery — Postgres store, no Redis, two instances"
 
     receiver.setDown(false);
     const later = fixedClock(new Date(at.getTime() + 600_000));
+
     const [first, second, third] = await Promise.all([
       startInstance({ clock: later }),
       startInstance({ clock: later }),
@@ -202,6 +215,7 @@ describe("durable outbound delivery — Postgres store, no Redis, two instances"
     const producer = await startInstance({ clock: fixedClock(at) });
 
     const thread = await producer.runtime.service.threads.create();
+
     const { runId } = await producer.runtime.service.runs.createWait({
       thread_id: thread.thread_id,
       assistant_id: "echo",
@@ -214,6 +228,7 @@ describe("durable outbound delivery — Postgres store, no Redis, two instances"
       const ticker = await startInstance({ clock: fixedClock(new Date(at.getTime() + offsetMs)) });
       await ticker.runtime.deliveryWorker.tickOnce();
     }
+
     expect(receiver.received).toHaveLength(0);
     expect(await producer.deps.store.deliveries!.listByRun(runId, { status: "dead" })).toEqual([]);
 

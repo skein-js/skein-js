@@ -23,6 +23,7 @@ describe("@skein-js/express adapter", () => {
         headers: jsonHeaders,
         ...(body === undefined ? {} : { body: JSON.stringify(body) }),
       });
+
     const created = await request("/threads", "POST", { ttl: 30 });
     const thread = (await created.json()) as { thread_id: string; ttl: number; expires_at: string };
     expect(thread.ttl).toBe(30);
@@ -41,6 +42,7 @@ describe("@skein-js/express adapter", () => {
       flags: { per_run_timeout?: boolean };
     };
     expect(info.flags.per_run_timeout).toBe(true);
+
     for (const path of [
       `/threads/${thread.thread_id}/runs`,
       `/threads/${thread.thread_id}/runs/wait`,
@@ -75,6 +77,7 @@ describe("@skein-js/express adapter", () => {
       headers: jsonHeaders,
       body: "{}",
     });
+
     const assistants = (await searchRes.json()) as Array<{
       assistant_id: string;
       graph_id: string;
@@ -87,6 +90,7 @@ describe("@skein-js/express adapter", () => {
   it("runs the assistant CRUD + versioning lifecycle over HTTP", async () => {
     running = await startEchoServer();
     const { baseUrl } = running;
+
     const post = (path: string, body: unknown) =>
       fetch(`${baseUrl}${path}`, {
         method: "POST",
@@ -200,6 +204,7 @@ describe("@skein-js/express adapter", () => {
   it("time travels: updates state at a checkpoint, reads it back, and forks a run", async () => {
     running = await startEchoServer();
     const { baseUrl } = running;
+
     const post = (path: string, body: unknown) =>
       fetch(`${baseUrl}${path}`, {
         method: "POST",
@@ -225,6 +230,7 @@ describe("@skein-js/express adapter", () => {
     const history = (await (await post(`/threads/${tid}/history`, {})).json()) as Array<{
       checkpoint: { checkpoint_id: string };
     }>;
+
     const tip = history[0]?.checkpoint.checkpoint_id;
     expect(typeof tip).toBe("string");
 
@@ -290,6 +296,7 @@ describe("@skein-js/express adapter", () => {
     const { baseUrl } = running;
 
     const controller = new AbortController();
+
     const res = await fetch(`${baseUrl}/runs/stream`, {
       method: "POST",
       headers: jsonHeaders,
@@ -323,6 +330,7 @@ describe("@skein-js/express adapter", () => {
     const { baseUrl } = running;
 
     const controller = new AbortController();
+
     const res = await fetch(`${baseUrl}/runs/stream`, {
       method: "POST",
       headers: jsonHeaders,
@@ -334,6 +342,7 @@ describe("@skein-js/express adapter", () => {
       }),
       signal: controller.signal,
     });
+
     const runPath = res.headers.get("content-location");
     expect(runPath).toBeTruthy();
 
@@ -425,6 +434,7 @@ describe("http.disable_* route flags", () => {
       headers: jsonHeaders,
       body: "{}",
     });
+
     const { thread_id } = (await created.json()) as { thread_id: string };
 
     // Grouped by resource family rather than path prefix, so these go with `runs`.

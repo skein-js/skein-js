@@ -21,6 +21,7 @@ function requestLogger(logger: Logger): RequestHandler {
     const startedAt = Date.now();
     logger.info(`<-- ${req.method} ${req.originalUrl}`);
     let logged = false;
+
     const log = () => {
       if (logged) return;
       logged = true;
@@ -28,6 +29,7 @@ function requestLogger(logger: Logger): RequestHandler {
         `--> ${req.method} ${req.originalUrl} ${res.statusCode} ${Date.now() - startedAt}ms`,
       );
     };
+
     res.once("finish", log);
     res.once("close", log);
     next();
@@ -107,6 +109,7 @@ export async function createExpressServer(
             });
           })
         : Promise.resolve();
+
       const [workerResult, httpResult] = await Promise.allSettled([
         runtime.worker.stop(),
         httpClosed,

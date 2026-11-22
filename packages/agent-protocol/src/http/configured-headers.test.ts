@@ -8,6 +8,7 @@ import { createProtocolRuntime } from "../runtime.js";
 
 async function fixture() {
   const values = new Map<string, Record<string, unknown>>();
+
   const graph: AgentGraph = {
     async *stream(_input, options) {
       const config = options as { configurable: Record<string, unknown> };
@@ -22,7 +23,9 @@ async function fixture() {
       };
     },
   };
+
   const logger = { debug: vi.fn(), info: vi.fn(), warn: vi.fn(), error: vi.fn() };
+
   const auth: AuthEngine = {
     enabled: true,
     studioAuthDisabled: true,
@@ -39,6 +42,7 @@ async function fixture() {
     },
     matchesFilters: () => true,
   };
+
   const deps = createFixtureDeps({
     graphs: { ids: ["report"], load: async () => graph, schemas: async () => ({}) },
     auth,
@@ -46,6 +50,7 @@ async function fixture() {
     configurableHeaders: { includes: ["x-*", "langgraph_*"], excludes: ["x-secret"] },
     loggingHeaders: { includes: ["*"] },
   });
+
   const runtime = createProtocolRuntime(deps);
   await runtime.service.assistants.registerGraphAssistants();
   const request = (body: unknown, headers = {}): ProtocolRequest => ({
@@ -62,11 +67,13 @@ async function fixture() {
 describe("configured headers through authorized admission", () => {
   it("uses explicit body values and authenticated identity ahead of selected caller headers", async () => {
     const f = await fixture();
+
     const body = {
       assistant_id: "report",
       input: {},
       config: { configurable: { "x-tenant": "body", langgraph_auth_user_id: "spoof" } },
     };
+
     const response = await f.runtime.handlers.createWaitRun(
       f.request(body, {
         "X-Tenant": "header",
@@ -87,12 +94,14 @@ describe("configured headers through authorized admission", () => {
   it("fingerprints forwarded configuration and logs authenticated replays with secrets redacted", async () => {
     const f = await fixture();
     const body = { assistant_id: "report", input: {} };
+
     const headers = {
       "idempotency-key": "same",
       "x-tenant": "one",
       authorization: "private-value",
       "x-api-key": "private-value",
     };
+
     const first = await f.runtime.handlers.createWaitRun(f.request(body, headers));
     const replay = await f.runtime.handlers.createWaitRun(f.request(body, headers));
     expect(replay.headers?.["idempotent-replay"]).toBe("true");
@@ -118,10 +127,12 @@ describe("configured headers through authorized admission", () => {
 
   it("persists selected headers on every batch item without changing its original body", async () => {
     const f = await fixture();
+
     const body = [
       { assistant_id: "report", input: {} },
       { assistant_id: "report", input: {} },
     ];
+
     const response = await f.runtime.handlers.createRunBatch(
       f.request(body, { "x-tenant": "batch" }),
     );
@@ -151,6 +162,7 @@ describe("configured headers through authorized admission", () => {
       const pending = Object.values(
         (await runtime.service.threads.get(thread.thread_id)).interrupts ?? {},
       ).flat();
+
       const body =
         generation === "legacy"
           ? { resume: "yes" }
@@ -159,6 +171,7 @@ describe("configured headers through authorized admission", () => {
               method: "input.respond",
               params: { interrupt_id: pending[0]!.id, response: "yes" },
             };
+
       const response = await runtime.handlers.postThreadCommands({
         method: "POST",
         url: `http://localhost/threads/${thread.thread_id}/commands`,
@@ -167,10 +180,12 @@ describe("configured headers through authorized admission", () => {
         headers: { "X-Tenant": "command" },
         body,
       });
+
       if (response.kind === "sse")
         for await (const _event of response.events) {
           /* drain execution */
         }
+
       const runs = await deps.store.runs.listByThread(thread.thread_id);
       expect(runs).toHaveLength(2);
       const resumed = runs.find((run) => run.status === "pending" || run.status === "success")!;

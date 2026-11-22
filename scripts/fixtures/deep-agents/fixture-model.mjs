@@ -8,19 +8,24 @@ export class FixtureModel extends BaseChatModel {
     this.seen = [];
     this.boundToolNames = [];
   }
+
   _llmType() {
     return "skein-candidate-fixture";
   }
+
   bindTools(tools) {
     this.boundToolNames = tools.map((tool) => tool.name);
     return this;
   }
+
   async _generate(messages) {
     this.seen.push(messages);
     const turn = messages.slice(
       messages.findLastIndex((message) => message.getType() === "human") + 1,
     );
+
     const step = this.steps[turn.filter((message) => message.getType() === "tool").length];
+
     const message = step
       ? new AIMessage({
           content: "",

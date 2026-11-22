@@ -40,11 +40,13 @@ export interface CronOccurrenceQuery {
  */
 export function assertValidCronSchedule(schedule: string, timezone?: string | null): void {
   const fields = schedule.trim().split(/\s+/);
+
   if (schedule.trim().length === 0 || fields.length !== CRON_FIELD_COUNT) {
     throw SkeinHttpError.unprocessable(
       `cron must be a standard 5-field expression; got ${fields.length} field(s) in "${schedule}".`,
     );
   }
+
   try {
     // Evaluated, not merely constructed: croner defers both expression semantics and timezone
     // resolution to the first `nextRun`, so constructing alone would accept a zone that never works.

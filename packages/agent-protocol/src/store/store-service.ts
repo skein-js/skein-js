@@ -5,9 +5,9 @@ import {
   SkeinHttpError,
   type Item,
   type SearchItem,
+  type StoreItemWriteOptions,
   type StoreNamespaceQuery,
   type StorePutOptions,
-  type StoreItemWriteOptions,
   type StoreReadOptions,
   type StoreSearchQuery,
 } from "@skein-js/core";
@@ -52,11 +52,13 @@ export function createStoreService(deps: ResolvedDeps): StoreService {
           "The configured store does not support per-operation TTL options.",
         );
       const item = await deps.store.store.get(namespace, key, options);
+
       if (!item) {
         throw SkeinHttpError.notFound(
           `Store item "${key}" not found in namespace [${namespace.join(", ")}].`,
         );
       }
+
       return item;
     },
 

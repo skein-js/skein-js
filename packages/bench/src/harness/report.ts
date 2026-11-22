@@ -40,6 +40,7 @@ export function describeEnvironment(cpus: number): BenchEnvironment {
 /** Human-readable block for one result. */
 export function formatResult(result: ScenarioResult): string {
   const { memory } = result;
+
   const lines = [
     `scenario: ${result.scenario} · driver: ${result.driver} · streams: ${result.streams}`,
     "",
@@ -68,8 +69,10 @@ export function formatMarkdownTable(results: readonly ScenarioResult[]): string 
     "| scenario | driver | streams | RSS peak | RSS settled | SSE buffered | frames/s | p99 |",
     "| --- | --- | --- | --- | --- | --- | --- | --- |",
   ];
+
   const rows = results.map((result) => {
     const buffered = result.memory.probePeaks["sseBufferedBytes"];
+
     const cells = [
       result.scenario,
       result.driver,

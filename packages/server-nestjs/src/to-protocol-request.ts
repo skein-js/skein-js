@@ -20,19 +20,23 @@ export interface NodeProtocolRequest {
 /** Flatten `IncomingHttpHeaders` (some values are `string[]`) to the single-value map handlers read. */
 function toSingleValueHeaders(headers: IncomingHttpHeaders): Record<string, string | undefined> {
   const flattened: Record<string, string | undefined> = {};
+
   for (const [name, value] of Object.entries(headers)) {
     flattened[name] = Array.isArray(value) ? value[0] : value;
   }
+
   return flattened;
 }
 
 /** Query params from a parsed URL, keeping repeated keys as `string[]` (matching qs-style parsing). */
 function toQuery(url: URL): ProtocolRequest["query"] {
   const query: Record<string, string | string[]> = {};
+
   for (const key of new Set(url.searchParams.keys())) {
     const all = url.searchParams.getAll(key);
     query[key] = all.length > 1 ? all : (all[0] as string);
   }
+
   return query;
 }
 

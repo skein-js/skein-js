@@ -41,12 +41,14 @@ export async function embedSqliteGraphs(
   options: EmbedSqliteGraphsOptions,
 ): Promise<EmbeddedSqliteRuntime> {
   const threadTtl = options.threadTtl ?? options.overrides?.threadTtl;
+
   const storage = await openSqliteStorage({
     filename: options.sqlitePath,
     maxPageSize: options.maxPageSize,
     ttl: options.ttl,
     threadTtl,
   });
+
   try {
     const checkpointer = new SqliteSaver(storage.database);
     // deleteThread does not initialize upstream tables. A public read does, without making state.
@@ -54,6 +56,7 @@ export async function embedSqliteGraphs(
     const store = options.overrides?.storeItems
       ? withStoreItems(storage.store, options.overrides.storeItems)
       : storage.store;
+
     const deps: ProtocolDeps = {
       ...options.overrides,
       store,
@@ -68,6 +71,7 @@ export async function embedSqliteGraphs(
       ephemeralCheckpointer: () => new MemorySaver(),
       threadTtl,
     };
+
     const timer = options.ttl
       ? setInterval(
           () => {

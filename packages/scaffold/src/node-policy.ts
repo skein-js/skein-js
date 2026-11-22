@@ -8,13 +8,16 @@ export const SUPPORTED_NODE_RANGE = "^22.14.0 || ^24.0.0 || ^26.0.0";
 export function resolveNodeVersion(pin: string | undefined): { version: string; notice?: string } {
   if (pin === undefined) return { version: RECOMMENDED_NODE_MAJOR };
   const normalized = pin.trim().replace(/^v/, "");
+
   if (!/^\d+(?:\.\d+){0,2}$/.test(normalized)) {
     return {
       version: RECOMMENDED_NODE_MAJOR,
       notice: `Could not resolve Node alias "${pin.trim()}" offline; using tested Node ${RECOMMENDED_NODE_MAJOR}.`,
     };
   }
+
   const parts = normalized.split(".");
+
   const minimum =
     parts.length === 1 && parts[0] === "22"
       ? "22.14.0"

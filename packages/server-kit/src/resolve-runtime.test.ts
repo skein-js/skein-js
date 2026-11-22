@@ -58,6 +58,7 @@ async function consumeOptionsFor(worker?: {
   const queue = new RecordingRunQueue();
   const deps = embedInMemoryGraphs({ echo: buildGraph() }, { queue });
   const { runtime } = await resolveProtocolRuntime({ deps, ...(worker ? { worker } : {}) });
+
   try {
     return queue.consumedWith;
   } finally {
@@ -97,11 +98,13 @@ describe("resolveProtocolRuntime — worker concurrency", () => {
 /** A `Logger` that records what it was told, for asserting what actually reached the engine. */
 function capturingLogger(): Logger & { entries: { level: string; message: string }[] } {
   const entries: { level: string; message: string }[] = [];
+
   const record =
     (level: string) =>
     (message: string): void => {
       entries.push({ level, message });
     };
+
   return {
     entries,
     debug: record("debug"),
@@ -120,6 +123,7 @@ describe("resolveRuntimeDeps — logger precedence", () => {
 
   it("fills the hole with the adapter's framework default", async () => {
     const framework = capturingLogger();
+
     const { deps, logger } = await resolveRuntimeDeps(
       { deps: embedInMemoryGraphs(graphs) },
       framework,
@@ -131,6 +135,7 @@ describe("resolveRuntimeDeps — logger precedence", () => {
   it("prefers an injected deps.logger over the framework default", async () => {
     const injected = capturingLogger();
     const framework = capturingLogger();
+
     const { deps } = await resolveRuntimeDeps(
       { deps: { ...embedInMemoryGraphs(graphs), logger: injected } },
       framework,
@@ -140,6 +145,7 @@ describe("resolveRuntimeDeps — logger precedence", () => {
 
   it("lets an explicit option win over the framework default", async () => {
     const explicit = capturingLogger();
+
     const { deps } = await resolveRuntimeDeps(
       { deps: embedInMemoryGraphs(graphs), logger: explicit },
       capturingLogger(),
@@ -151,6 +157,7 @@ describe("resolveRuntimeDeps — logger precedence", () => {
     // The one field that is never overwritten: filling in place is what keeps post-mount
     // configuration live (see resolveRuntimeDeps), and that is only safe if it only ever fills holes.
     const injected = capturingLogger();
+
     const { deps } = await resolveRuntimeDeps(
       { deps: { ...embedInMemoryGraphs(graphs), logger: injected }, logger: capturingLogger() },
       capturingLogger(),
@@ -169,6 +176,7 @@ describe("resolveRuntimeDeps — logger precedence", () => {
 
   it("leaves an injected deps.logger standing even when told to stay out of it", async () => {
     const injected = capturingLogger();
+
     const { deps } = await resolveRuntimeDeps(
       { deps: { ...embedInMemoryGraphs(graphs), logger: injected }, logger: false },
       capturingLogger(),
@@ -202,6 +210,7 @@ describe("resolveRuntimeDeps — logger precedence", () => {
 
   it("reaches the engine, so a graph that throws is actually reported", async () => {
     const logger = capturingLogger();
+
     const exploding = new StateGraph(MessagesAnnotation)
       .addNode("boom", () => {
         throw new Error("kaboom");
@@ -213,6 +222,7 @@ describe("resolveRuntimeDeps — logger precedence", () => {
       { deps: embedInMemoryGraphs({ boom: exploding }) },
       logger,
     );
+
     // The streaming surface: once headers are sent a failure can't be an HTTP status, so the engine
     // logs it itself rather than handing it to the transport. That makes it the cheapest proof that
     // `deps.logger` is live — nothing but the engine could have written this line.
@@ -226,6 +236,7 @@ describe("resolveRuntimeDeps — logger precedence", () => {
     });
 
     if (response.kind !== "sse") throw new Error(`expected an SSE response, got ${response.kind}`);
+
     for await (const _event of response.events) {
       // Drain: the graph only runs as the stream is consumed.
     }

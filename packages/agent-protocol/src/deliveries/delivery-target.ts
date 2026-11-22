@@ -17,11 +17,13 @@ export async function deliveryTargetError(
   if (!config?.url) return undefined;
   const policy = config.url;
   let url: URL;
+
   try {
     url = new URL(target);
   } catch {
     return "webhook URL is not a valid absolute URL";
   }
+
   if (policy.maxUrlLength !== undefined && target.length > policy.maxUrlLength)
     return "webhook URL exceeds webhooks.url.max_url_length";
   const host = url.hostname.toLowerCase().replace(/^\[|\]$/g, "");
@@ -39,6 +41,7 @@ export async function deliveryTargetError(
   if (policy.allowedPorts && !policy.allowedPorts.includes(port))
     return "webhook port is not in webhooks.url.allowed_ports";
   if (!policy.disableLoopback) return undefined;
+
   try {
     const addresses = isIP(host) ? [{ address: host }] : await lookup(host, { all: true });
     if (addresses.some(({ address }) => isLoopbackAddress(address)))
@@ -46,6 +49,7 @@ export async function deliveryTargetError(
   } catch {
     return "webhook destination could not be resolved for webhooks.url.disable_loopback";
   }
+
   return undefined;
 }
 
@@ -80,11 +84,13 @@ export function disallowedHost(url: string, allowedHosts?: readonly string[]): s
   // caller — so applying them here would only break replies the deployment configured itself.
   if (isServerDerivedTarget(url)) return undefined;
   let host: string;
+
   try {
     host = new URL(url).hostname;
   } catch {
     return `webhook URL ${redactWebhookUrl(url)} is not a valid absolute URL`;
   }
+
   // Exact hostname match, deliberately: a suffix match on "example.com" would also accept
   // "notexample.com", which is the classic way an allowlist stops being one.
   return allowedHosts.includes(host)
@@ -99,11 +105,13 @@ export function insecureTransport(url: string, requireHttps?: boolean): string |
   // protect — the channel's own transport is its business, and it never reaches the outbox's fetch.
   if (isServerDerivedTarget(url)) return undefined;
   let protocol: string;
+
   try {
     protocol = new URL(url).protocol;
   } catch {
     return `webhook URL ${redactWebhookUrl(url)} is not a valid absolute URL`;
   }
+
   return protocol === "https:"
     ? undefined
     : `webhook URL uses ${protocol} and skein.webhooks.require_https is set`;

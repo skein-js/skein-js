@@ -53,10 +53,12 @@ export function langGraphResolver(resolver: GraphResolver): GraphResolver {
     },
     load: async (graphId): Promise<ResolvedGraph> => {
       const resolved = await resolver.load(graphId);
+
       if (typeof resolved === "function") {
         return async (config: { configurable?: Record<string, unknown> }) =>
           wrapOnce((await resolved(config)) as AgentGraph);
       }
+
       return wrapOnce(resolved as AgentGraph);
     },
     schemas: (graphId) => resolver.schemas(graphId),

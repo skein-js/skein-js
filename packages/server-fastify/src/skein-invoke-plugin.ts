@@ -46,6 +46,7 @@ export const skeinInvokePlugin: FastifyPluginAsync<SkeinInvokePluginOptions> = a
     options,
     createFastifyLogger(fastify.log),
   );
+
   const invoke = createGraphInvokeHandler(deps, { streamMode: options.streamMode });
 
   await prepareSkeinContext(fastify, {
@@ -63,12 +64,14 @@ export const skeinInvokePlugin: FastifyPluginAsync<SkeinInvokePluginOptions> = a
         // completion (burning model tokens) for a response nobody will read.
         const disconnected = new AbortController();
         reply.raw.once("close", () => disconnected.abort(new Error("client disconnected")));
+
         try {
           const request = { ...toProtocolRequest(req), signal: disconnected.signal };
           await sendProtocolResponse(await invoke(request), reply);
         } catch (error) {
           sendErrorResponse(error, reply, logger);
         }
+
         // Returning the (sent or hijacked) reply tells Fastify the response is fully handled.
         return reply;
       },

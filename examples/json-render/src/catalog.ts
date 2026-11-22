@@ -11,10 +11,12 @@ import { z } from "zod";
 const promptSchema = z.string().trim().min(1).max(2000);
 export const promptRequestSchema = z.object({ prompt: promptSchema }).strict();
 export const revisionSchema = promptRequestSchema.extend({ generationId: z.uuid() });
+
 export const requestSchema = z.union([
   promptRequestSchema,
   revisionSchema.extend({ action: z.literal("reviseUi") }),
 ]);
+
 export const decisionSchema = z
   .object({ generationId: z.string().uuid(), approved: z.boolean() })
   .strict();

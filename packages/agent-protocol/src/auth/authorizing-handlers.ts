@@ -37,9 +37,11 @@ export function createAuthorizingHandlers(
   const names = Object.keys(ROUTE_AUTHZ) as (keyof ProtocolHandlers)[];
 
   const wrapped = {} as ProtocolHandlers;
+
   for (const name of names) {
     const baseHandler = baseHandlers[name];
     if (!baseHandler) continue;
+
     // `GET /info` is served unauthenticated, matching `@langchain/langgraph-api`, whose auth middleware
     // opens with an explicit `if (c.req.path === "/info") return next()`. It is a *capability
     // handshake*: Studio and monitoring clients probe it before they have credentials, so 401-ing it
@@ -68,19 +70,24 @@ export function createAuthorizingHandlers(
       wrapped[name] = baseHandler;
       continue;
     }
+
     const route = ROUTE_AUTHZ[name];
+
     wrapped[name] = async (req) => {
       const authContext: AuthContext | undefined = await resolveAuthContext(engine, req);
+
       // The handler name is passed so store routes get their `namespace` normalized to the shape the
       // SDK declares, server-derived rather than taken from the body — see `authValue`.
       const commandBody =
         name === "postThreadCommands" && isThreadCommandEnvelope(req.body)
           ? (req.body as { params?: unknown }).params
           : undefined;
+
       const value = authValue(
         commandBody && typeof commandBody === "object" ? { ...req, body: commandBody } : req,
         name,
       );
+
       // The server's own reading, captured before the handler runs, so a rewrite can be told from it. The
       // namespace is **copied**: aliasing the array made an *in-place* rewrite
       // (`value.namespace[0] = identity`) invisible — and worse, inconsistently so, since for
@@ -88,14 +95,17 @@ export function createAuthorizingHandlers(
       // `get`/`delete` it is a fresh array parsed from the query and the rewrite silently did nothing.
       // Scoping that works on three routes and fails on two is the worst of the available outcomes.
       const namespaceValue = value["namespace"];
+
       const targetBefore = {
         namespace: Array.isArray(namespaceValue) ? [...(namespaceValue as string[])] : undefined,
         key: value["key"],
       };
+
       const commandMethod =
         name === "postThreadCommands" && isThreadCommandEnvelope(req.body)
           ? (req.body as { method?: unknown }).method
           : undefined;
+
       const action =
         commandMethod === "state.fork"
           ? "update"
@@ -105,6 +115,7 @@ export function createAuthorizingHandlers(
                 commandMethod.startsWith("subscription."))
             ? "read"
             : route.action;
+
       const primary = await engine.authorize({
         resource: route.resource,
         action,
@@ -158,8 +169,10 @@ export function createAuthorizingHandlers(
               context: authContext,
             })
           : undefined;
+
       const filters = primary.filters ?? fallback?.filters;
       const forkFilters = [];
+
       if (commandMethod === "state.fork") {
         for (const forkAction of ["read", "create", "create_run"] as const) {
           const permission = await engine.authorize({
@@ -171,6 +184,7 @@ export function createAuthorizingHandlers(
           if (permission.filters) forkFilters.push(permission.filters);
         }
       }
+
       let scopedStore = filters
         ? createAuthScopedStore(context.deps.store, engine, filters, route.resource)
         : context.deps.store;
@@ -194,6 +208,7 @@ export function createAuthorizingHandlers(
             ? context.deps
             : { ...context.deps, store: scopedStore },
       };
+
       const handler = createProtocolHandlers(
         createProtocolServiceFromContext(requestContext),
         extras,
@@ -201,5 +216,6 @@ export function createAuthorizingHandlers(
       return handler!(scopedRequest);
     };
   }
+
   return wrapped;
 }

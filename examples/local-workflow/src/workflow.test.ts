@@ -1,4 +1,4 @@
-import { mkdtemp, readFile, readdir, rm } from "node:fs/promises";
+import { mkdtemp, readdir, readFile, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 
@@ -15,6 +15,7 @@ afterEach(async () => {
     directories.splice(0).map((directory) => rm(directory, { recursive: true, force: true })),
   );
 });
+
 async function openMeetingRuntime(directory?: string) {
   const location = directory ?? (await mkdtemp(join(tmpdir(), "skein-meeting-test-")));
   if (!directory) directories.push(location);
@@ -22,6 +23,7 @@ async function openMeetingRuntime(directory?: string) {
     { workflow: buildWorkflow(location, { fixture: true }) },
     { sqlitePath: join(location, "state.sqlite") },
   );
+
   const runtime = createProtocolRuntime(embedded.deps, { scheduler: { enabled: false } });
   await runtime.service.assistants.registerGraphAssistants();
   return {
@@ -37,6 +39,7 @@ async function openMeetingRuntime(directory?: string) {
 it("keeps review pending across reopening, then saves the user's corrected follow-ups", async () => {
   const first = await openMeetingRuntime();
   let threadId: string;
+
   try {
     const thread = await first.service.threads.create();
     threadId = thread.thread_id;
@@ -51,7 +54,9 @@ it("keeps review pending across reopening, then saves the user's corrected follo
   } finally {
     await first.dispose();
   }
+
   const reopened = await openMeetingRuntime(first.location);
+
   try {
     const paused = await reopened.service.threads.getState(threadId!);
     const recap = paused.values as unknown as MeetingRecap;
@@ -85,6 +90,7 @@ it("keeps review pending across reopening, then saves the user's corrected follo
 
 it("finishes a skipped review without writing a recap file", async () => {
   const runtime = await openMeetingRuntime();
+
   try {
     const thread = await runtime.service.threads.create();
     await runtime.service.runs.createWait({
@@ -108,6 +114,7 @@ it("finishes a skipped review without writing a recap file", async () => {
 
 it("preserves unstructured notes without inventing decisions or assignments", async () => {
   const runtime = await openMeetingRuntime();
+
   try {
     const thread = await runtime.service.threads.create();
     const notes = "We talked about the community garden. Nothing has been assigned yet.";
@@ -135,8 +142,10 @@ it("preserves unstructured notes without inventing decisions or assignments", as
 
 it("saves fresh approvals as immutable revisions and keeps identical content idempotent", async () => {
   const runtime = await openMeetingRuntime();
+
   try {
     const threadId = (await runtime.service.threads.create()).thread_id;
+
     const approveRecap = async (summary: string) => {
       await runtime.service.runs.createWait({
         thread_id: threadId,

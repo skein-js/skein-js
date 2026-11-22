@@ -134,10 +134,12 @@ export function startHeapPressureMonitor(
       if (percent < rearmPercent) warned = false;
       return;
     }
+
     if (percent < warnPercent) return;
 
     warned = true;
     const extra = context?.() ?? {};
+
     // Named parts rather than a bare percentage: this line is read once, in an incident, by someone
     // deciding whether to scale out, lower concurrency, or go looking for a leak.
     const details = [
@@ -195,10 +197,12 @@ export function resolveHeapPressureOptions(
 function percentFromEnv(raw: string | undefined): number | undefined {
   if (raw === undefined || raw.trim() === "") return undefined;
   const value = Number(raw);
+
   if (!Number.isInteger(value) || value < 0 || value > 100) {
     throw new SkeinConfigError(
       `SKEIN_HEAP_WARN_PERCENT must be an integer between 0 and 100 (got "${raw}").`,
     );
   }
+
   return value;
 }

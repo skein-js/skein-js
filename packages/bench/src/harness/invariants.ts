@@ -58,6 +58,7 @@ function probe(result: ScenarioResult, name: string): number | undefined {
  */
 export function checkInvariants(scenario: Scenario, result: ScenarioResult): InvariantViolation[] {
   const violations: InvariantViolation[] = [];
+
   const fail = (invariant: string, detail: string): void => {
     violations.push({ scenario: result.scenario, invariant, detail });
   };
@@ -65,8 +66,10 @@ export function checkInvariants(scenario: Scenario, result: ScenarioResult): Inv
   // P1 — SSE backpressure. The server writes into the socket and waits for drain, so an undelivered
   // backlog stays in the client's and the kernel's buffers, not on the server's heap.
   const bufferedBytes = probe(result, "sseBufferedBytes");
+
   if (bufferedBytes !== undefined) {
     const perStream = bufferedBytes / result.streams;
+
     if (perStream > MAX_SSE_BUFFERED_BYTES_PER_STREAM) {
       fail(
         "P1 sse-backpressure",
@@ -81,6 +84,7 @@ export function checkInvariants(scenario: Scenario, result: ScenarioResult): Inv
   // P3 — bus retention. Finished runs stay replayable for a late join, but only the most recent N: a
   // channel per run held forever was the original leak.
   const trackedChannels = probe(result, "busTrackedChannels");
+
   if (trackedChannels !== undefined && trackedChannels > DEFAULT_MEMORY_BUS_MAX_RETAINED_RUNS) {
     fail(
       "P3 bus-retention",
@@ -92,8 +96,10 @@ export function checkInvariants(scenario: Scenario, result: ScenarioResult): Inv
   // P3 — per-run frame cap. `long-run` is the scenario that reaches it; the others stay far below, so
   // this only ever binds where eviction is actually exercised.
   const bufferedFrames = probe(result, "busBufferedFrames");
+
   if (bufferedFrames !== undefined && trackedChannels !== undefined) {
     const cap = DEFAULT_MEMORY_BUS_MAX_FRAMES_PER_RUN * Math.max(trackedChannels, 1);
+
     if (bufferedFrames > cap) {
       fail(
         "P3 bus-frame-cap",
@@ -109,6 +115,7 @@ export function checkInvariants(scenario: Scenario, result: ScenarioResult): Inv
   // (metadata, terminal) and pinning that total would fail on an unrelated protocol change.
   if (scenario.expectsCompleteDelivery) {
     const produced = scenario.streams * scenario.frames;
+
     if (result.totalFrames < produced) {
       fail(
         "delivery",

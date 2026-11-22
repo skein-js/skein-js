@@ -393,13 +393,16 @@ export function createRouteMatcher<HandlerName>(
     binding,
     regex: new RegExp(`^${binding.path.replace(/:(\w+)/g, "(?<$1>[^/]+)")}$`),
   }));
+
   return (method, pathname) => {
     const wanted = method.toLowerCase();
+
     for (const { binding, regex } of compiled) {
       if (binding.method !== wanted) continue;
       const match = regex.exec(pathname);
       if (match) return { binding, params: decodeParams(match.groups) };
     }
+
     return undefined;
   };
 }
@@ -418,6 +421,7 @@ export const matchSkeinRoute: RouteMatcher = createRouteMatcher(skeinRoutes);
  */
 function decodeParams(groups: Record<string, string> | undefined): Record<string, string> {
   const params: Record<string, string> = {};
+
   for (const [key, value] of Object.entries(groups ?? {})) {
     try {
       params[key] = decodeURIComponent(value);
@@ -425,5 +429,6 @@ function decodeParams(groups: Record<string, string> | undefined): Record<string
       params[key] = value;
     }
   }
+
   return params;
 }

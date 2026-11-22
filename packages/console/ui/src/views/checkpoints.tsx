@@ -40,6 +40,7 @@ export function CheckpointHistory({
   const [cursors, setCursors] = useState<string[]>([]);
   const before = cursors.at(-1);
   const client = createConsoleClient();
+
   const history = useAsync(
     async (signal) => ({
       before,
@@ -51,8 +52,10 @@ export function CheckpointHistory({
     }),
     [threadId, before],
   );
+
   const snapshots =
     history.data && history.data.before === before ? history.data.snapshots : undefined;
+
   const loading = history.loading || (snapshots === undefined && !history.error);
   const rows = snapshots?.slice(0, 20);
   const hasNext = (snapshots?.length ?? 0) > 20 && !!rows?.at(-1)?.checkpoint?.checkpoint_id;
@@ -172,8 +175,10 @@ function CheckpointDetail({
     setBusy(true);
     setError(undefined);
     setNote(undefined);
+
     try {
       let target = checkpointId;
+
       if (mode !== "run") {
         const values = JSON.parse(draft ?? JSON.stringify(state.data?.values ?? {}, null, 2));
         // Writing at a past checkpoint creates a *new* checkpoint whose parent is that one. The
@@ -182,12 +187,14 @@ function CheckpointDetail({
         const forkedId = forked.configurable?.["checkpoint_id"];
         if (typeof forkedId === "string") target = forkedId;
       }
+
       if (mode === "fork") {
         setNote(`Forked to ${target.slice(0, 8)}… — the original branch is unchanged.`);
       } else {
         if (assistantId === undefined) {
           throw new Error("No assistant to run with: this thread has no runs to read one from.");
         }
+
         // `input: null` + a checkpoint: resume the graph from that point rather than starting over.
         const created = await client.runs.create(threadId, assistantId, {
           input: null,
@@ -195,6 +202,7 @@ function CheckpointDetail({
         });
         setNote(`Started run ${created.run_id.slice(0, 8)}… from ${target.slice(0, 8)}….`);
       }
+
       onForked();
     } catch (caught) {
       setError(caught instanceof Error ? caught : new Error(String(caught)));

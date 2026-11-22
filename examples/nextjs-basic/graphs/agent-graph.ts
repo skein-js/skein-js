@@ -46,6 +46,7 @@ const getWeather = tool(
     const geo = (await fetch(
       `https://geocoding-api.open-meteo.com/v1/search?name=${encodeURIComponent(city)}&count=1`,
     ).then((response) => response.json())) as GeocodeResponse;
+
     const place = geo.results?.[0];
     if (!place) return `I couldn't find a place called "${city}".`;
 
@@ -53,11 +54,13 @@ const getWeather = tool(
       `https://api.open-meteo.com/v1/forecast?latitude=${place.latitude}&longitude=${place.longitude}` +
         `&current=temperature_2m,wind_speed_10m,weather_code`,
     ).then((response) => response.json())) as ForecastResponse;
+
     const current = forecast.current;
     if (!current) return `I couldn't fetch the current weather for ${place.name}.`;
 
     const conditions =
       WEATHER_CODES[current.weather_code] ?? `weather code ${current.weather_code}`;
+
     const where = place.country ? `${place.name}, ${place.country}` : place.name;
     return `Current weather in ${where}: ${conditions}, ${current.temperature_2m}°C, wind ${current.wind_speed_10m} km/h.`;
   },

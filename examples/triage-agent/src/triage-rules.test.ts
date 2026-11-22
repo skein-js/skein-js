@@ -55,6 +55,7 @@ describe("offline classifier", () => {
     const classifier = createClassifier();
     const issues = fixtureIssues(10);
     const byTitle = new Map<string, Verdict>();
+
     for (const issue of issues) {
       byTitle.set(issue.title, await classifier.classify(issue, { conventions: [], related: [] }));
     }

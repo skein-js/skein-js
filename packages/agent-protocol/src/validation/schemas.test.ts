@@ -43,6 +43,7 @@ describe("validation", () => {
         expect.objectContaining({ status: 400 }),
       );
     }
+
     // `null` still means "pin this thread", and a sane lifetime still passes.
     expect(parse(threadCreateSchema, { ttl: null })).toEqual({ ttl: null });
     expect(parse(threadCreateSchema, { ttl: { ttl: 60, strategy: "delete" } })).toMatchObject({

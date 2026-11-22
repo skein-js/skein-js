@@ -22,11 +22,13 @@ function toNamespaceComponent(identity: string): string {
 /** `["memories", <user>]` — the caller's own memory, shared by every thread they start. */
 export function memoryNamespaceFor(context: StoreBackendContext): string[] {
   const userId = context.config?.configurable?.["langgraph_auth_user_id"];
+
   if (typeof userId !== "string" || userId.length === 0) {
     // No principal means no `auth` is configured. Refuse rather than pool everyone's memory together.
     throw new Error(
       "Durable memory needs an authenticated user; configure `auth` in langgraph.json.",
     );
   }
+
   return ["memories", toNamespaceComponent(userId)];
 }

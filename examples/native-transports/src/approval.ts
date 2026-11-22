@@ -1,4 +1,4 @@
-import { Annotation, StateGraph, interrupt } from "@langchain/langgraph";
+import { Annotation, interrupt, StateGraph } from "@langchain/langgraph";
 
 const approval = Annotation.Root({ request: Annotation<string>, decision: Annotation<string> });
 

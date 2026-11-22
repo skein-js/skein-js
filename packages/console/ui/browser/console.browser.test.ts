@@ -10,6 +10,7 @@ import { startConsoleFixture } from "./fixture-server.js";
 let browser: Browser;
 let fixture: Awaited<ReturnType<typeof startConsoleFixture>>;
 let client: Client;
+
 async function newPage(options: Parameters<Browser["newPage"]>[0] = {}) {
   const page = await browser.newPage(options);
   page.setDefaultTimeout(10000);
@@ -19,8 +20,10 @@ async function newPage(options: Parameters<Browser["newPage"]>[0] = {}) {
   });
   return page;
 }
+
 afterEach(async (context) => {
   if (!browser || context.task.result?.state !== "fail") return;
+
   for (const browserContext of browser.contexts())
     for (const page of browserContext.pages()) {
       console.error("Failed page:", await page.locator("body").innerText());
@@ -31,12 +34,14 @@ afterEach(async (context) => {
       });
     }
 });
+
 async function openAssistant(page: Page, assistant: string) {
   const thread = await client.threads.create({ metadata: { assistant_id: assistant } });
   await page.goto(`${fixture.url}${fixture.mountPath}/#/playground/${thread.thread_id}`);
   await expect(page.getByRole("button", { name: "Send message", exact: true })).toBeVisible();
   return thread.thread_id;
 }
+
 beforeAll(async () => {
   await mkdir(resolve("../../../dist/console-screenshots"), { recursive: true });
   fixture = await startConsoleFixture();
@@ -111,9 +116,11 @@ it("shows global run-search capability and authorization failures without stale 
 it("pages run search in the URL and supports keyboard filtering on a narrow screen", async () => {
   const page = await newPage({ viewport: { width: 390, height: 844 } });
   let release!: () => void;
+
   const pending = new Promise<void>((resolve) => {
     release = resolve;
   });
+
   let requests = 0;
   await page.route("**/runs/search", async (route) => {
     requests++;
@@ -209,6 +216,7 @@ it("returns from Threads to the same Playground with isolated drafts and no subm
   await page.keyboard.press("Escape");
   await expect(page.getByRole("button", { name: "Recent threads", exact: true })).toBeFocused();
   let releaseSchema!: () => void;
+
   const schemaReady = new Promise<void>((resolve) => {
     releaseSchema = resolve;
   });
@@ -218,11 +226,13 @@ it("returns from Threads to the same Playground with isolated drafts and no subm
   });
   await page.getByRole("button", { name: "New thread", exact: true }).click();
   await expect(message).toHaveValue("");
+
   try {
     await expect(message).toBeDisabled();
   } finally {
     releaseSchema();
   }
+
   await expect(message).toBeEnabled();
   expect(submissions).toBe(1);
   await message.fill("Fresh workspace draft");
@@ -278,10 +288,12 @@ it("does not persist streamed frames or write workspace state as events arrive",
   await page.evaluate(() => {
     const original = Storage.prototype.setItem;
     Object.assign(window, { workspaceWrites: 0 });
+
     Storage.prototype.setItem = function (key, value) {
       if (this === sessionStorage && key.startsWith("skein-console:workspace:")) {
         Object.assign(window, { workspaceWrites: Reflect.get(window, "workspaceWrites") + 1 });
       }
+
       original.call(this, key, value);
     };
   });
@@ -335,6 +347,7 @@ it("discovers an actual prefixed API and launches an off-page Assistant without 
   const prefixed = await startConsoleFixture("/api/console", "/api");
   const page = await newPage();
   const prefixedClient = new Client({ apiUrl: `${prefixed.url}/api` });
+
   try {
     expect((await fetch(`${prefixed.url}/info`)).status).toBe(404);
     const thread = await prefixedClient.threads.create({ metadata: { assistant_id: "research" } });
@@ -428,6 +441,7 @@ it("keeps a usable in-memory workspace and composer when session storage rejects
   const page = await newPage({ viewport: { width: 390, height: 844 } });
   await page.addInitScript(() => {
     const original = Storage.prototype.setItem;
+
     Storage.prototype.setItem = function (key, value) {
       if (this === sessionStorage) throw new DOMException("Quota exceeded", "QuotaExceededError");
       original.call(this, key, value);
@@ -583,11 +597,13 @@ it("renders light and dark themes at all planned sizes without page overflow and
   await page.getByRole("textbox", { name: "Message", exact: true }).fill("Find useful documents");
   await page.getByRole("button", { name: "Send message", exact: true }).click();
   await expect(page.getByText("Run completed", { exact: true })).toBeVisible();
+
   for (const theme of ["light", "dark"]) {
     await page.evaluate((value) => {
       localStorage.setItem("skein-console:theme", value);
     }, theme);
     await page.reload();
+
     for (const width of [390, 768, 1280, 1600]) {
       await page.setViewportSize({ width, height: 1000 });
       await expect(page.getByRole("heading", { name: "Playground", exact: true })).toBeVisible();
@@ -601,6 +617,7 @@ it("renders light and dark themes at all planned sizes without page overflow and
       });
     }
   }
+
   await page.setViewportSize({ width: 390, height: 1000 });
   await page.getByRole("button", { name: "Open navigation" }).click();
   await expect(page.getByRole("dialog")).toBeVisible();
@@ -847,6 +864,7 @@ it("reads, overwrites, and deletes memory while requiring an explicit fallback f
 
 it("edits scheduling fields without changing the saved payload and keeps threads when deleting an Assistant", async () => {
   const page = await newPage();
+
   const schedule = await client.crons.create("research", {
     schedule: "0 9 * * 1-5",
     input: { messages: [], custom: "preserve me" },
@@ -876,6 +894,7 @@ it("edits scheduling fields without changing the saved payload and keeps threads
     graphId: "research",
     name: "Temporary Assistant",
   });
+
   const thread = await client.threads.create({
     metadata: { assistant_id: assistant.assistant_id },
   });
@@ -964,8 +983,10 @@ it("captures current documentation screens in light and dark themes", async () =
   await expect
     .poll(async () => (await fixture.store.deliveries!.listByRun(run.run_id))[0]?.last_error)
     .toContain("HTTP 503");
+
   for (const theme of ["light", "dark"]) {
     await page.evaluate((value) => localStorage.setItem("skein-console:theme", value), theme);
+
     for (const [name, route] of [
       ["playground", `playground/${conversation}`],
       ["overview", "overview"],
@@ -1021,6 +1042,7 @@ it("captures current documentation screens in light and dark themes", async () =
         path: resolve(directory, `${name}-${theme}.png`),
         fullPage: true,
       });
+
       if (name === "playground") {
         await page.getByRole("button", { name: "Recent threads", exact: true }).click();
         await expect(
@@ -1034,9 +1056,11 @@ it("captures current documentation screens in light and dark themes", async () =
         await page.keyboard.press("Escape");
       }
     }
+
     const detailDirectory = resolve(directory, "details");
     await mkdir(detailDirectory, { recursive: true });
     await page.goto(`${fixture.url}/console/#/threads/${conversation}`);
+
     for (const tab of ["State", "Runs", "Details", "Checkpoints"]) {
       await page.getByRole("tab", { name: tab, exact: true }).click();
       if (tab === "Details")
@@ -1051,6 +1075,7 @@ it("captures current documentation screens in light and dark themes", async () =
         fullPage: true,
       });
     }
+
     await page.getByRole("button", { name: "Open", exact: true }).first().click();
     await expect(page.getByRole("button", { name: "Fork here", exact: true })).toBeVisible();
     await page.screenshot({
@@ -1059,6 +1084,7 @@ it("captures current documentation screens in light and dark themes", async () =
       fullPage: true,
     });
     await page.goto(`${fixture.url}/console/#/threads/${run.thread_id}/runs/${run.run_id}`);
+
     for (const tab of ["Raw events", "Deliveries", "Details"]) {
       await page.getByRole("tab", { name: tab, exact: true }).click();
       if (tab === "Deliveries")
@@ -1075,12 +1101,14 @@ it("captures current documentation screens in light and dark themes", async () =
       });
     }
   }
+
   await page.close();
 });
 
 it("keeps resource layouts within the viewport with readable theme contrast", async () => {
   const page = await newPage();
   const thread = await client.threads.create();
+
   const routes = [
     "assistants/research",
     `threads/${thread.thread_id}`,
@@ -1089,12 +1117,15 @@ it("keeps resource layouts within the viewport with readable theme contrast", as
     "store",
     "crons",
   ];
+
   for (const theme of ["light", "dark"]) {
     await page.goto(`${fixture.url}/console/`);
     await page.evaluate((value) => localStorage.setItem("skein-console:theme", value), theme);
     await page.reload();
+
     for (const width of [390, 768, 1280, 1600]) {
       await page.setViewportSize({ width, height: 1000 });
+
       for (const route of routes) {
         await page.goto(`${fixture.url}/console/#/${route}`);
         await expect(page.getByRole("heading", { level: 1 })).toBeVisible();
@@ -1108,6 +1139,7 @@ it("keeps resource layouts within the viewport with readable theme contrast", as
         ).toBe(true);
       }
     }
+
     const contrast = await page.evaluate(() => {
       const luminance = (color: string) => {
         const channels = color
@@ -1120,6 +1152,7 @@ it("keeps resource layouts within the viewport with readable theme contrast", as
           });
         return channels[0]! * 0.2126 + channels[1]! * 0.7152 + channels[2]! * 0.0722;
       };
+
       const sample = document.createElement("div");
       document.body.append(sample);
       const results = [
@@ -1144,6 +1177,7 @@ it("keeps resource layouts within the viewport with readable theme contrast", as
     });
     for (const ratio of contrast) expect(ratio).toBeGreaterThanOrEqual(4.5);
   }
+
   await page.close();
 });
 
@@ -1159,10 +1193,12 @@ it("creates threads lazily and keeps ordinary submissions available when capabil
   await page.goto(`${fixture.url}/console/#/playground`);
   await expect(page.getByRole("combobox", { name: "Assistant", exact: true })).toBeVisible();
   await expect(page.getByRole("button", { name: "Send message", exact: true })).toBeVisible();
+
   if (!(await page.locator('option[value="research"]').count())) {
     await page.getByRole("button", { name: "Next", exact: true }).click();
     await expect(page.locator('option[value="research"]')).toHaveCount(1);
   }
+
   await page.getByRole("combobox", { name: "Assistant", exact: true }).selectOption("research");
   await expect(page.getByRole("button", { name: "Send message", exact: true })).toBeVisible();
   await expect(page.getByText("Input schema unavailable", { exact: true })).toBeVisible();
@@ -1193,6 +1229,7 @@ it("keeps the sidebar and composer inside short viewports while output and advan
   await page.getByRole("button", { name: "Send message", exact: true }).click();
   await expect(page.getByText("Run completed", { exact: true })).toBeVisible();
   const output = page.getByRole("region", { name: "Conversation output", exact: true });
+
   for (const viewport of [
     { width: 1440, height: 760 },
     { width: 1280, height: 640 },
@@ -1221,6 +1258,7 @@ it("keeps the sidebar and composer inside short viewports while output and advan
       fullPage: true,
     });
   }
+
   await page.setViewportSize({ width: 1280, height: 640 });
   await page.getByText("Advanced run options", { exact: true }).click();
   await page.getByLabel("Idempotency key (optional)", { exact: true }).fill("viewport-proof");

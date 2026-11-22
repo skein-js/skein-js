@@ -13,11 +13,11 @@ import type { SkeinRuntimeName } from "@skein-js/config";
 import { runDev } from "./dev-command.js";
 import { runBuild, runDockerfile, runUp } from "./docker/commands.js";
 import {
+  parseImportStore,
   parseQueue,
   parseStartQueue,
   parseStartStore,
   parseStore,
-  parseImportStore,
 } from "./driver-flags.js";
 import { runImportLanggraph } from "./import-command.js";
 import { DEFAULT_CONTAINER_PORT, DEFAULT_DEV_PORT } from "./serve-env.js";
@@ -29,9 +29,11 @@ const { version } = require("../package.json") as { version: string };
 /** Parse a `--port` value into a valid port number, rejecting anything else. */
 function parsePort(value: string): number {
   const port = Number(value);
+
   if (!Number.isInteger(port) || port < 0 || port > 65535) {
     throw new InvalidArgumentError("Port must be an integer between 0 and 65535.");
   }
+
   return port;
 }
 
@@ -39,9 +41,11 @@ function parsePort(value: string): number {
 function parsePositiveInt(label: string) {
   return (value: string): number => {
     const parsed = Number(value);
+
     if (!Number.isInteger(parsed) || parsed <= 0) {
       throw new InvalidArgumentError(`${label} must be a positive integer.`);
     }
+
     return parsed;
   };
 }

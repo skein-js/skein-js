@@ -22,6 +22,7 @@ describe("buildRuntime — all-memory (skein dev)", () => {
       store: "memory",
       queue: "memory",
     });
+
     try {
       // The durable branch below sets these three, and this branch once did not — so a node's
       // `config.store`/`getStore()` was `undefined`, a thread copy re-`put` the source thread's own
@@ -42,7 +43,9 @@ describe("buildRuntime — all-memory (skein dev)", () => {
       store: "memory",
       queue: "memory",
     });
+
     let resolved: Awaited<ReturnType<typeof resolveProtocolRuntime>> | undefined;
+
     try {
       expect(Object.keys(assembled.channels ?? {})).toEqual(["fixture"]);
       resolved = await resolveProtocolRuntime({
@@ -69,6 +72,7 @@ describe("buildRuntime — all-memory (skein dev)", () => {
       store: "memory",
       queue: "memory",
     });
+
     try {
       expect(runtime.deps.storeItems).toBeDefined();
 
@@ -93,6 +97,7 @@ describe("buildRuntime — all-memory (skein dev)", () => {
       store: "memory",
       queue: "memory",
     });
+
     try {
       // Taken from the runtime itself rather than hand-built, so the test cannot drift from the
       // snapshot's real shape — only the one item under test is injected.
@@ -127,6 +132,7 @@ describe("buildRuntime — all-memory (skein dev)", () => {
       store: "memory",
       queue: "memory",
     });
+
     try {
       expect(runtime.deps.storeItems).toBeUndefined();
     } finally {

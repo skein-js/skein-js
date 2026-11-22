@@ -23,11 +23,13 @@ describe("thread events across instances", () => {
     const producer = new RedisThreadEventBus(redis.url);
     const replica = new RedisThreadEventBus(redis.url);
     const id = randomUUID();
+
     const entry = {
       kind: "run" as const,
       runId: "one",
       frame: { seq: 1, event: "values" as const, data: {} },
     };
+
     try {
       await producer.publish(id, entry);
       const iterator = replica.subscribe(id, 1)[Symbol.asyncIterator]();

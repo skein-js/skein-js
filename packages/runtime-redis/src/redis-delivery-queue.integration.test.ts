@@ -26,6 +26,7 @@ describe("RedisDeliveryQueue immediate teardown", () => {
     for (let iteration = 0; iteration < 10; iteration += 1) {
       const queue = new RedisDeliveryQueue(redis.url, { queueName: `delivery-${randomUUID()}` });
       const consumer = queue.consume(async () => {});
+
       try {
         await expect(consumer.close()).resolves.toBeUndefined();
       } finally {

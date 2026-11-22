@@ -6,7 +6,7 @@
 // `run_status` so the body can never contradict the run row, and `webhook_sent_at`, which describes
 // the attempt rather than the run.
 
-import type { Delivery, DefaultValues, Interrupt, Run } from "@skein-js/core";
+import type { DefaultValues, Delivery, Interrupt, Run } from "@skein-js/core";
 
 import { DEFAULT_MAX_PAYLOAD_BYTES } from "./delivery-config.js";
 
@@ -67,6 +67,7 @@ export interface BuiltDeliveryPayload {
 export function buildDeliveryPayload(input: BuildDeliveryPayloadInput): BuiltDeliveryPayload {
   const { status: _replaced, ...run } = input.run;
   const hasInterrupts = input.interrupts !== undefined && Object.keys(input.interrupts).length > 0;
+
   const payload: Record<string, unknown> = {
     ...run,
     values: input.values,
@@ -76,6 +77,7 @@ export function buildDeliveryPayload(input: BuildDeliveryPayloadInput): BuiltDel
     ...(hasInterrupts ? { interrupts: input.interrupts } : {}),
     ...(input.reply !== undefined ? { reply: input.reply } : {}),
   };
+
   const cap = input.maxPayloadBytes ?? DEFAULT_MAX_PAYLOAD_BYTES;
   const bytes = byteLength(JSON.stringify(payload));
   if (bytes <= cap) return { payload, truncated: false, bytes };
@@ -86,9 +88,11 @@ export function buildDeliveryPayload(input: BuildDeliveryPayloadInput): BuiltDel
   // strand exactly the conversations this field exists to unstrand, so state goes first.
   const truncatedValues = { ...payload, values: marker("values", bytes, cap) };
   const afterValues = byteLength(JSON.stringify(truncatedValues));
+
   if (!hasInterrupts || afterValues <= cap) {
     return { payload: truncatedValues, truncated: true, bytes };
   }
+
   return {
     payload: { ...truncatedValues, interrupts: marker("interrupts", bytes, cap) },
     truncated: true,

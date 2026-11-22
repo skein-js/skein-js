@@ -35,12 +35,14 @@ function providerRequest(channel: "email" | "whatsapp", secret: string, body: un
 async function readJson(request: IncomingMessage): Promise<unknown> {
   const chunks: Buffer[] = [];
   let requestBytes = 0;
+
   for await (const chunk of request) {
     const buffer = Buffer.from(chunk);
     requestBytes += buffer.byteLength;
     if (requestBytes > maxRequestBytes) throw new Error("Request body is too large");
     chunks.push(buffer);
   }
+
   const body = Buffer.concat(chunks).toString("utf8");
   return body ? JSON.parse(body) : {};
 }
@@ -71,6 +73,7 @@ export async function startDemoUi(options: { port?: number } = {}): Promise<Demo
     try {
       const url = new URL(request.url ?? "/", "http://127.0.0.1");
       const staticFile = staticFiles.get(url.pathname);
+
       if (request.method === "GET" && staticFile) {
         response.writeHead(200, {
           "content-security-policy":
@@ -106,10 +109,12 @@ export async function startDemoUi(options: { port?: number } = {}): Promise<Demo
 
       if (request.method === "GET" && url.pathname === "/api/state") {
         const conversationId = url.searchParams.get("conversationId");
+
         if (!conversationId) {
           sendJson(response, 400, { error: "conversationId is required" });
           return;
         }
+
         try {
           const thread = await resolved.runtime.service.threads.get(`relay:${conversationId}`);
           sendJson(response, 200, {
@@ -123,6 +128,7 @@ export async function startDemoUi(options: { port?: number } = {}): Promise<Demo
         } catch {
           sendJson(response, 200, { thread: null, deliveries: recordedEffects() });
         }
+
         return;
       }
 
@@ -153,8 +159,10 @@ export async function startDemoUi(options: { port?: number } = {}): Promise<Demo
 }
 
 const entryPath = process.argv[1];
+
 if (entryPath && import.meta.url === pathToFileURL(entryPath).href) {
   const demoUi = await startDemoUi();
+
   for (const signal of ["SIGINT", "SIGTERM"] as const) {
     process.once(signal, () => void demoUi.stop().then(() => process.exit(0)));
   }

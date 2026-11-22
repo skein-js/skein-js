@@ -50,6 +50,7 @@ export async function recordDelivery(effect: RecordedEffect): Promise<void> {
   if (completedDeliveries.has(idempotencyKey)) return;
 
   const remaining = failuresRemaining.get(effect.destination) ?? 0;
+
   if (remaining > 0) {
     failuresRemaining.set(effect.destination, remaining - 1);
     throw new Error(`${effect.destination} is temporarily unavailable`);
@@ -59,7 +60,9 @@ export async function recordDelivery(effect: RecordedEffect): Promise<void> {
     typeof effect.target === "object" && effect.target !== null && "to" in effect.target
       ? String(effect.target.to)
       : "";
+
   const targetRemaining = targetFailuresRemaining.get(target) ?? 0;
+
   if (targetRemaining > 0) {
     targetFailuresRemaining.set(target, targetRemaining - 1);
     throw new Error(`${effect.destination} is temporarily unavailable for ${target}`);

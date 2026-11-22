@@ -33,6 +33,7 @@ async function runToCompletion(overrides: Partial<ProtocolDeps>, assistantId = "
 
 const started = (sink: { events: RunTelemetryEvent[] }) =>
   sink.events.find((event) => event.type === "run.started");
+
 const finished = (sink: { events: RunTelemetryEvent[] }) =>
   sink.events.find((event) => event.type === "run.finished");
 
@@ -121,6 +122,7 @@ describe("run telemetry", () => {
     const boom = (): never => {
       throw new Error("sink exploded");
     };
+
     const telemetry: TelemetrySink = {
       name: "hostile",
       onRunEvent: boom,
@@ -128,6 +130,7 @@ describe("run telemetry", () => {
       traceMetadata: boom,
       traceTags: boom,
     };
+
     const warn = vi.fn();
     const logger = { debug: vi.fn(), info: vi.fn(), warn, error: vi.fn() };
 
@@ -187,6 +190,7 @@ describe("run telemetry", () => {
 
   it("stamps trace identity onto the graph call so a tracer can attribute it", async () => {
     const seen: Record<string, unknown>[] = [];
+
     // A sink whose only job is to observe the context it is asked about — the same context the
     // engine turns into the graph call's `metadata`.
     const telemetry: TelemetrySink = {

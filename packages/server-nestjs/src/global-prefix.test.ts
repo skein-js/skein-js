@@ -9,8 +9,7 @@ import "reflect-metadata";
 import type { ServerResponse } from "node:http";
 import type { AddressInfo } from "node:net";
 
-import type { INestApplication } from "@nestjs/common";
-import { Controller, Get, Module } from "@nestjs/common";
+import { Controller, Get, Module, type INestApplication } from "@nestjs/common";
 import { NestFactory } from "@nestjs/core";
 import { resolveProtocolRuntime } from "@skein-js/server-kit";
 import { afterEach, describe, expect, it } from "vitest";
@@ -52,9 +51,11 @@ async function startPrefixedServer(prefix: string): Promise<Running> {
   app.enableShutdownHooks();
   await app.listen(0, "127.0.0.1");
   const address = app.getHttpServer().address() as AddressInfo | null;
+
   if (address === null || typeof address === "string") {
     throw new Error("expected a bound TCP address");
   }
+
   return { baseUrl: `http://127.0.0.1:${address.port}`, close: () => app.close() };
 }
 
@@ -67,9 +68,11 @@ async function startPrefixedInvokeServer(prefix: string): Promise<Running> {
   app.setGlobalPrefix(prefix);
   await app.listen(0, "127.0.0.1");
   const address = app.getHttpServer().address() as AddressInfo | null;
+
   if (address === null || typeof address === "string") {
     throw new Error("expected a bound TCP address");
   }
+
   return { baseUrl: `http://127.0.0.1:${address.port}`, close: () => app.close() };
 }
 
@@ -157,6 +160,7 @@ describe("SkeinMiddleware constructed by hand", () => {
     // construction must keep working — an unguarded `appConfig.getGlobalPrefix()` would TypeError
     // here and 500 every request. No config simply means no global prefix.
     const resolved = await resolveProtocolRuntime({ deps: createEchoDeps() });
+
     try {
       const middleware = new SkeinMiddleware(resolved, null, null);
       let passedThrough = false;

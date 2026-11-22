@@ -41,19 +41,23 @@ export function buildProductionConfig(
   if (rewrites.auth && config.auth) {
     config.auth = { ...config.auth, path: rewrites.auth };
   }
+
   if (config.auth) delete config.auth.dev_ui_access;
+
   if (rewrites.embed && config.store?.index) {
     config.store = {
       ...config.store,
       index: { ...config.store.index, embed: rewrites.embed },
     };
   }
+
   // A bring-your-own store is a `path:export` spec like auth and the custom embedder, so it needs the
   // same repointing — otherwise the production config still names `./src/my-store.ts`, which is not in
   // the image, and the server fails at boot with "failed to import module".
   if (rewrites.storeAdapter && config.store) {
     config.store = { ...config.store, adapter: rewrites.storeAdapter };
   }
+
   if (rewrites.telemetryPaths && config.telemetry) {
     config.telemetry = { ...config.telemetry, paths: rewrites.telemetryPaths };
   }
@@ -77,6 +81,7 @@ export function buildArtifactPackageJson(
   const sorted = Object.fromEntries(
     Object.entries(dependencies).sort(([a], [b]) => a.localeCompare(b)),
   );
+
   const pkg = {
     name: `${appName}-skein-artifact`,
     version: "0.0.0",

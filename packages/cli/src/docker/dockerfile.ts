@@ -72,8 +72,10 @@ export function generateDockerfile(options: DockerfileOptions): string {
   // that does not exist, failing the build with an opaque manifest-not-found instead of using the
   // tested default.
   const defaultVersion = DEFAULT_RUNTIME_VERSIONS[runtime];
+
   const runtimeVersion =
     options.runtimeVersion ?? (runtime === "node" ? nodeVersion : undefined) ?? defaultVersion;
+
   const install =
     runtime === "node"
       ? [
@@ -92,6 +94,7 @@ export function generateDockerfile(options: DockerfileOptions): string {
             `    --mount=type=secret,id=npmrc,target=/root/.npmrc \\`,
             `    DENO_DIR=/deno-dir deno install --allow-scripts`,
           ];
+
   const healthCommand =
     runtime === "node"
       ? `node -e "const r=Number(process.env.PORT);const p=Number.isInteger(r)&&r>=0&&r<=65535?r:${port};fetch('http://127.0.0.1:'+p+'/ok').then(r=>process.exit(r.ok?0:1)).catch(()=>process.exit(1))"`
@@ -102,6 +105,7 @@ export function generateDockerfile(options: DockerfileOptions): string {
           // so passing them makes the probe exit non-zero forever — an image that reports unhealthy no
           // matter how well it is serving. Same reason the compatibility probe below carries none.
           `deno eval "const r=Number(Deno.env.get('PORT'));const p=Number.isInteger(r)&&r>=0&&r<=65535?r:${port};fetch('http://127.0.0.1:'+p+'/ok').then(r=>Deno.exit(r.ok?0:1)).catch(()=>Deno.exit(1))"`;
+
   const command =
     runtime === "node"
       ? // No `--runtime node`: node is already the default, and the artifact pins `skein-js` to the
@@ -113,7 +117,9 @@ export function generateDockerfile(options: DockerfileOptions): string {
       : runtime === "bun"
         ? `["bun", "/app/node_modules/skein-js/dist/index.js", "start", "--runtime", "bun", "--store", "postgres", "--queue", "redis", "--host", "0.0.0.0"]`
         : `["deno", "run", "--allow-net", "--allow-env", "--allow-read=/app", "--allow-sys", "--allow-ffi=/app/node_modules", "/app/node_modules/skein-js/dist/index.js", "start", "--runtime", "deno", "--store", "postgres", "--queue", "redis", "--host", "0.0.0.0"]`;
+
   const user = runtime === "node" ? "node" : runtime === "bun" ? "bun" : "deno";
+
   const compatibilityProbe =
     runtime === "deno"
       ? // `deno eval` takes no permission flags — see the health command above.

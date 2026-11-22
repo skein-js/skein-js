@@ -14,6 +14,7 @@ export function withCheckpointRunIdentity(
       { ...Object.getOwnPropertyDescriptor(checkpointer, key), configurable: true },
     ]),
   );
+
   const facade = Object.create(
     Object.getPrototypeOf(checkpointer),
     descriptors,
@@ -21,6 +22,7 @@ export function withCheckpointRunIdentity(
   return new Proxy(facade, {
     get(_facade, property) {
       const target = checkpointer;
+
       if (property === "put") {
         return (
           ...[config, checkpoint, metadata, versions]: Parameters<ThreadCheckpointer["put"]>
@@ -38,6 +40,7 @@ export function withCheckpointRunIdentity(
             versions,
           );
       }
+
       const member: unknown = Reflect.get(target, property, target);
       // Savers may use private fields. Delegate every other method with its real owner, while
       // preserving runtime-specific optional methods and data on the supplied saver.

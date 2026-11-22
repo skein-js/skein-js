@@ -6,7 +6,7 @@
 // one thing that is genuinely fiddly here — see the form trade-off below.
 
 import { execFileSync } from "node:child_process";
-import { mkdirSync, readFileSync, readdirSync, rmSync, writeFileSync } from "node:fs";
+import { mkdirSync, readdirSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 
@@ -40,11 +40,13 @@ export function vendorLocalPackages(vendorDir, form) {
   for (const dir of readdirSync(path.join(repoRoot, "packages"))) {
     const manifestPath = path.join(repoRoot, "packages", dir, "package.json");
     let manifest;
+
     try {
       manifest = JSON.parse(readFileSync(manifestPath, "utf8"));
     } catch {
       continue;
     }
+
     if (manifest.private) continue;
 
     const before = new Set(readdirSync(vendorDir));
@@ -58,6 +60,7 @@ export function vendorLocalPackages(vendorDir, form) {
       vendored.set(manifest.name, tarball);
       continue;
     }
+
     const target = path.join(vendorDir, path.basename(tarball, ".tgz"));
     mkdirSync(target, { recursive: true });
     // --strip-components=1 drops the `package/` prefix every npm tarball carries.
@@ -71,14 +74,17 @@ export function vendorLocalPackages(vendorDir, form) {
       const manifestPath = path.join(vendorDir, dir, "package.json");
       const manifest = JSON.parse(readFileSync(manifestPath, "utf8"));
       delete manifest.devDependencies;
+
       for (const field of ["dependencies", "peerDependencies", "optionalDependencies"]) {
         const deps = manifest[field];
         if (!deps) continue;
+
         for (const name of Object.keys(deps)) {
           const sibling = vendored.get(name);
           if (sibling) deps[name] = `file:../${sibling}`;
         }
       }
+
       writeFileSync(manifestPath, `${JSON.stringify(manifest, null, 2)}\n`);
     }
   }
@@ -97,8 +103,10 @@ export function vendorLocalPackages(vendorDir, form) {
 export function spliceVendorCopy(dockerfilePath) {
   const dockerfile = readFileSync(dockerfilePath, "utf8");
   const anchor = "COPY package.json ./";
+
   if (!dockerfile.includes(anchor)) {
     throw new Error(`generated Dockerfile no longer contains "${anchor}" — update this splice`);
   }
+
   writeFileSync(dockerfilePath, dockerfile.replace(anchor, `${anchor}\nCOPY vendor ./vendor`));
 }

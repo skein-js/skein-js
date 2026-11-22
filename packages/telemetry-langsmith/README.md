@@ -47,6 +47,7 @@ import { embedInMemoryGraphs } from "@skein-js/server-kit";
 import { createExpressServer } from "@skein-js/express";
 
 const telemetry = createLangSmithTelemetry();
+
 const server = await createExpressServer({
   deps: embedInMemoryGraphs({ agent }, { overrides: telemetry ? { telemetry } : {} }),
 });

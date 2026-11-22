@@ -12,6 +12,7 @@ Export this graph as `greeter` in `langgraph.json`, then run `skein dev`:
 import { Annotation, interrupt, StateGraph } from "@langchain/langgraph";
 
 const state = Annotation.Root({ greeting: Annotation<string> });
+
 export const graph = new StateGraph(state)
   .addNode("ask", () => ({ greeting: `Hello, ${interrupt("What is your name?")}!` }))
   .addEdge("__start__", "ask")

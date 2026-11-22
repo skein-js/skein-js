@@ -137,13 +137,16 @@ export function createIdempotentHandlers(
   const newClaimId = options.newClaimId ?? randomUUID;
 
   const wrapped = { ...handlers };
+
   for (const name of UNSUPPORTED_STREAM_CREATES) {
     wrapped[name] = rejectKeyOnStream(handlers[name]);
   }
+
   for (const name of RECORDABLE_CREATES) {
     wrapped[name] = async (req) => {
       const key = req.headers["idempotency-key"];
       if (key === undefined || key === "") return handlers[name](req);
+
       if (key.length > MAX_KEY_LENGTH || !VALID_KEY.test(key)) {
         throw SkeinHttpError.unprocessable(
           `Idempotency-Key must be at most ${MAX_KEY_LENGTH} printable ASCII characters.`,
@@ -177,6 +180,7 @@ export function createIdempotentHandlers(
             { code: "idempotency_key_reused" },
           );
         }
+
         // The original is still running. 409 rather than blocking on it: holding the connection
         // would tie up a socket for the length of a run and time out in most proxies anyway.
         if (record.status !== "done" || !record.response) {
@@ -185,6 +189,7 @@ export function createIdempotentHandlers(
             { code: "idempotency_key_in_flight", details: { retry_after_seconds: 1 } },
           );
         }
+
         // Authorization is re-checked before the recorded body goes back out. Without this, a replay
         // would answer from the record without ever reaching the authorizing table, so a principal
         // whose access was revoked after the original create would keep receiving the run's output —
@@ -208,6 +213,7 @@ export function createIdempotentHandlers(
           now: new Date(now).toISOString(),
           expiresAt: new Date(now + retentionMs).toISOString(),
         });
+
       try {
         response = await handlers[name](req);
       } catch (error) {
@@ -215,9 +221,11 @@ export function createIdempotentHandlers(
           name === "createBackgroundRun" && options.store.admission
             ? await options.store.idempotency.get(`admission ${scope}`, key)
             : null;
+
         if (accepted?.run_id) {
           await options.authorizeReplay?.(req, name, accepted.thread_id);
           const run = await options.store.runs.get(accepted.run_id);
+
           if (run)
             response = {
               kind: "json",
@@ -245,6 +253,7 @@ export function createIdempotentHandlers(
 
       const runId = runIdOf(response.body);
       const threadId = threadIdOf(response);
+
       try {
         await options.store.idempotency.record(scope, key, claimId, {
           status: response.status,
@@ -265,9 +274,11 @@ export function createIdempotentHandlers(
         );
         await release(options, scope, key, claimId);
       }
+
       return response;
     };
   }
+
   return wrapped;
 }
 

@@ -6,6 +6,7 @@ import { createProtocolServiceFromContext } from "../service.js";
 
 async function readEvent(iterator: AsyncIterator<string>) {
   let timer: ReturnType<typeof setTimeout> | undefined;
+
   try {
     const frame = await Promise.race([
       iterator.next(),
@@ -34,6 +35,7 @@ describe("official thread stream categories", () => {
       await service.assistants.registerGraphAssistants();
       const thread = await service.threads.create();
       const controller = new AbortController();
+
       const iterator = (
         await service.threadStream.follow!(
           thread.thread_id,
@@ -42,9 +44,11 @@ describe("official thread stream categories", () => {
           controller.signal,
         )
       )[Symbol.asyncIterator]();
+
       try {
         await iterator.next();
         const reading = readEvent(iterator);
+
         const run = await service.runs.createWait({
           thread_id: thread.thread_id,
           assistant_id: assistant,
@@ -70,6 +74,7 @@ describe("official thread stream categories", () => {
     await service.assistants.registerGraphAssistants();
     const thread = await service.threads.create();
     const controller = new AbortController();
+
     const iterator = (
       await service.threadStream.follow!(
         thread.thread_id,
@@ -78,16 +83,20 @@ describe("official thread stream categories", () => {
         controller.signal,
       )
     )[Symbol.asyncIterator]();
+
     try {
       expect((await iterator.next()).value).toContain(": subscribed");
       let cursor = 0;
+
       for (const value of ["first", "second"]) {
         const reading = readEvent(iterator);
+
         const run = await service.runs.createWait({
           thread_id: thread.thread_id,
           assistant_id: "echo",
           input: { value },
         });
+
         const started = await reading;
         const done = await readEvent(iterator);
         const updated = await readEvent(iterator);
@@ -134,9 +143,11 @@ describe("official thread stream categories", () => {
         input: { value },
       });
     const controller = new AbortController();
+
     const iterator = (
       await service.threadStream.follow!(thread.thread_id, ["state_update"], 0, controller.signal)
     )[Symbol.asyncIterator]();
+
     try {
       await iterator.next();
       expect((await readEvent(iterator)).data).toMatchObject({
@@ -162,6 +173,7 @@ describe("official thread stream categories", () => {
       input: { value: "before" },
     });
     const controller = new AbortController();
+
     const iterator = (
       await service.threadStream.follow!(
         thread.thread_id,
@@ -170,6 +182,7 @@ describe("official thread stream categories", () => {
         controller.signal,
       )
     )[Symbol.asyncIterator]();
+
     try {
       await iterator.next();
       const reading = readEvent(iterator);

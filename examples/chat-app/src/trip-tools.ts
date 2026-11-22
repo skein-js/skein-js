@@ -39,6 +39,7 @@ function seedFrom(text: string): number {
 export function weatherFor(location: string): WeatherResult {
   const seed = seedFrom(location.toLowerCase());
   const baseTemp = 6 + (seed % 22); // 6–27°C, stable per location
+
   const forecast = WEEKDAYS.slice(0, 5).map((day, index) => {
     const highC = baseTemp + ((seed >> index) % 6);
     return {
@@ -108,6 +109,7 @@ function minutesToClock(totalMinutes: number): string {
 export function flightsFor(from: string, to: string): FlightSearchResult {
   const route = `${code(from)}${code(to)}`;
   const seed = seedFrom(route);
+
   const flights = Array.from({ length: 4 }, (_unused, index): Flight => {
     const departMinutes = 6 * 60 + index * 3 * 60 + (seed % 45); // spread across the day
     const durationMin = 120 + ((seed >> index) % 9) * 30; // 2h–6h
@@ -178,9 +180,11 @@ export function lookupFlight(flightId: string): Flight | undefined {
 export const bookFlightTool = tool(
   async ({ flightId }: { flightId: string }) => {
     const flight = lookupFlight(flightId);
+
     if (!flight) {
       return JSON.stringify({ status: "cancelled", flightId } satisfies BookingResult);
     }
+
     // Pause the run and hand the flight to the UI for explicit approval. On resume, `interrupt()`
     // returns whatever the client passed as the command's `resume` value.
     const decision = interrupt<BookingApprovalRequest, BookingDecision>({
@@ -188,9 +192,11 @@ export const bookFlightTool = tool(
       action: "book_flight",
       flight,
     });
+
     if (!decision?.approved) {
       return JSON.stringify({ status: "cancelled", flightId, flight } satisfies BookingResult);
     }
+
     const confirmation = `SKN-${flight.id.replace(/[^A-Z0-9]/g, "")}`;
     return JSON.stringify({
       status: "booked",

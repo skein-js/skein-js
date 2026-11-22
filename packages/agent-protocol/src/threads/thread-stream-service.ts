@@ -10,9 +10,9 @@ import {
   type Metadata,
   type StreamMode,
   type Thread,
-  type ThreadEventFilter,
-  type ThreadCommandSuccess,
   type ThreadCommandError,
+  type ThreadCommandSuccess,
+  type ThreadEventFilter,
 } from "@skein-js/core";
 
 import type { ProtocolContext } from "../context.js";
@@ -128,22 +128,28 @@ export function createThreadStreamService(
 
     async command(threadId, input) {
       const thread = await requireThread(threadId);
+
       if (thread.status !== "interrupted") {
         throw SkeinHttpError.conflict(`Thread "${threadId}" is not interrupted.`, {
           code: "thread_not_interrupted",
         });
       }
+
       const command =
         input.command ?? (input.resume !== undefined ? { resume: input.resume } : undefined);
+
       if (!command) {
         throw SkeinHttpError.badRequest("A command must provide `command` or `resume`.");
       }
+
       const assistantId = input.assistant_id ?? (await latestRunAssistant(thread));
+
       if (!assistantId) {
         throw SkeinHttpError.badRequest(
           "Cannot resume: no assistant_id and no prior run on the thread.",
         );
       }
+
       const runInput: CreateRunInput = {
         thread_id: threadId,
         assistant_id: assistantId,

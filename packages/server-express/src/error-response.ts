@@ -24,6 +24,7 @@ export function sendErrorResponse(error: unknown, res: Response, logger?: Logger
     if (error.status >= 500) {
       logger?.error(`Request failed: ${error.message}`, error);
     }
+
     res.status(error.status).json({
       status: error.status,
       message: error.message,

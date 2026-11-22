@@ -105,6 +105,7 @@ function createRunSignal(
 
   const controller = new AbortController();
   let timeoutReached = false;
+
   const timer =
     timeoutMs === undefined
       ? undefined
@@ -112,6 +113,7 @@ function createRunSignal(
           timeoutReached = true;
           controller.abort(new Error(`Run exceeded ${timeoutMs}ms`));
         }, timeoutMs);
+
   const onCallerAbort = () => controller.abort(callerSignal?.reason);
   if (callerSignal?.aborted) onCallerAbort();
   else callerSignal?.addEventListener("abort", onCallerAbort);
@@ -155,12 +157,14 @@ function streamModeFromQuery(
   const raw = Array.isArray(value) ? value : value === undefined ? [] : value.split(",");
   const modes = raw.map((mode) => mode.trim()).filter((mode) => mode.length > 0);
   if (modes.length === 0) return undefined;
+
   if (modes.includes("events")) {
     throw SkeinHttpError.badRequest(
       'Stream mode "events" is not supported on the invoke surface; use the Agent Protocol run ' +
         "endpoints for token-level events.",
     );
   }
+
   return parse(streamModeQuerySchema, modes, "stream_mode query parameter");
 }
 
@@ -186,6 +190,7 @@ export function createGraphInvokeHandler(
     // BEFORE the graph-exists check on purpose: 404-ing an unknown id first would let an
     // unauthenticated caller enumerate which graph ids exist by telling 404 apart from 401.
     let authContext: AuthContext | undefined;
+
     if (deps.auth) {
       authContext = await resolveAuthContext(deps.auth, req);
       await deps.auth.authorize({
@@ -214,6 +219,7 @@ export function createGraphInvokeHandler(
     // a stack logged on every request. Mapped here rather than inside `resolveCompiledGraph` so the
     // run engine, which shares it, keeps reporting through `toRunError` untouched.
     let graph;
+
     try {
       graph = await resolveCompiledGraph(deps.graphs, graphId, {
         configurable: Object.keys(factoryConfigurable).length > 0 ? factoryConfigurable : undefined,
@@ -225,6 +231,7 @@ export function createGraphInvokeHandler(
     }
 
     const threadId = randomUUID();
+
     const configurable = withAuthUser(
       { thread_id: threadId },
       authContext?.user,
@@ -243,6 +250,7 @@ export function createGraphInvokeHandler(
           ...(authContext?.user.identity ? { userId: authContext.user.identity } : {}),
         }
       : undefined;
+
     const trace = telemetryContext ? telemetryCallOptions(deps, telemetryContext) : {};
     // The body IS the input — no `{ input }` envelope. An absent body becomes `{}` (run with the
     // state's defaults) rather than `null`, which LangGraph rejects with an opaque `EmptyInputError`;
@@ -256,9 +264,11 @@ export function createGraphInvokeHandler(
 
     if (!wantsEventStream(req)) {
       const startedAt = deps.clock();
+
       if (telemetryContext) {
         emitRunEvent(deps, { type: "run.started", context: telemetryContext, startedAt });
       }
+
       try {
         // `invoke` is optional on `AgentGraph`; this surface is defined in terms of it, so an agent
         // without one gets a handled 422 rather than an unhandled TypeError.
@@ -269,6 +279,7 @@ export function createGraphInvokeHandler(
             ...trace,
           }),
         );
+
         if (telemetryContext) {
           const endedAt = deps.clock();
           emitRunEvent(deps, {
@@ -280,11 +291,13 @@ export function createGraphInvokeHandler(
             endedAt,
           });
         }
+
         return { kind: "json", status: 200, body: output };
       } catch (error) {
         if (telemetryContext) {
           const endedAt = deps.clock();
           const cause = toError(error);
+
           const status: RunStatus = timedOut()
             ? "timeout"
             : req.signal?.aborted
@@ -305,6 +318,7 @@ export function createGraphInvokeHandler(
               : {}),
           });
         }
+
         throw error;
       } finally {
         dispose();
@@ -314,16 +328,21 @@ export function createGraphInvokeHandler(
     const streamMode = toGraphStreamModes(
       streamModeFromQuery(req.query["stream_mode"]) ?? options.streamMode ?? "values",
     );
+
     // Track the outcome so the synthesized terminal event reports `error` when the graph throws.
     let status: RunStatus = "success";
+
     const frames = async function* (): AsyncIterable<RunFrame> {
       let seq = 0;
       const startedAt = deps.clock();
+
       if (telemetryContext) {
         emitRunEvent(deps, { type: "run.started", context: telemetryContext, startedAt });
       }
+
       let cause: Error | undefined;
       let wireError: ReturnType<typeof toRunError> | undefined;
+
       try {
         const stream = await withRunTelemetryContext(deps, telemetryContext, async () =>
           graph.stream(input, {
@@ -333,7 +352,9 @@ export function createGraphInvokeHandler(
             ...trace,
           }),
         );
+
         const iterator = stream[Symbol.asyncIterator]();
+
         for (;;) {
           const next = await withRunTelemetryContext(deps, telemetryContext, () => iterator.next());
           if (next.done) break;
@@ -354,6 +375,7 @@ export function createGraphInvokeHandler(
         deps.logger?.error(`Graph "${graphId}" failed: ${wireError.message}`, cause);
       } finally {
         if (status === "success" && req.signal?.aborted) status = "cancelled";
+
         if (telemetryContext) {
           const endedAt = deps.clock();
           emitRunEvent(deps, {
@@ -367,9 +389,11 @@ export function createGraphInvokeHandler(
             ...(cause ? { cause } : {}),
           });
         }
+
         dispose();
       }
     };
+
     return { kind: "sse", status: 200, events: toSseEvents(frames(), async () => status) };
   };
 }

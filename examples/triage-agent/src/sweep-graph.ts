@@ -15,8 +15,13 @@
 //     back*. That turns "LangGraph Platform has no equivalent of this" from a claim in a README into a
 //     number in the sweep's own output: `replayed 6`.
 
-import { Annotation, END, START, StateGraph } from "@langchain/langgraph";
-import type { LangGraphRunnableConfig } from "@langchain/langgraph";
+import {
+  Annotation,
+  END,
+  START,
+  StateGraph,
+  type LangGraphRunnableConfig,
+} from "@langchain/langgraph";
 import { Client } from "@langchain/langgraph-sdk";
 
 import {
@@ -103,12 +108,14 @@ function requireStore(
   config: LangGraphRunnableConfig,
 ): NonNullable<LangGraphRunnableConfig["store"]> {
   const store = config.store;
+
   if (!store) {
     throw new Error(
       "no long-term store on the run config — the triage example needs one. Under `skein dev` it " +
         "is wired automatically; check that the server was started by the skein CLI.",
     );
   }
+
   return store;
 }
 
@@ -134,8 +141,10 @@ async function filterDecided(
 
   const fresh: TriageItem[] = [];
   const skipped: string[] = [];
+
   for (const item of state.fetched) {
     const decided = await store.get(DECISIONS_NAMESPACE, item.sourceId);
+
     if (decided) {
       const value = decided.value as { category?: string; severity?: string };
       skipped.push(
@@ -145,6 +154,7 @@ async function filterDecided(
       fresh.push(item);
     }
   }
+
   return { fresh, skipped };
 }
 
@@ -176,6 +186,7 @@ async function dispatch(state: State, config: LangGraphRunnableConfig): Promise<
 
   for (const item of state.fresh) {
     const key = dedupeKey(resolveSource(), item);
+
     try {
       // A thread per item, *named* after the item. The explicit id is what makes this work at all:
       // `ifExists` only applies when a `threadId` is supplied, so without one every sweep mints a new
@@ -200,6 +211,7 @@ async function dispatch(state: State, config: LangGraphRunnableConfig): Promise<
       // A client carrying this item's idempotency key. A second sweep of the same item replays the
       // original response instead of starting a second run.
       const idempotent = selfClient({ "Idempotency-Key": key });
+
       const run = await idempotent.runs.create(thread.thread_id, TRIAGE_ASSISTANT, {
         input: { item },
         // Best-effort completion notice; absent unless configured, so the example needs no listener.
@@ -211,9 +223,11 @@ async function dispatch(state: State, config: LangGraphRunnableConfig): Promise<
       // Getting the *same* run id back is the idempotency key doing its job, and the only way to
       // observe that from outside is to have remembered what the first sweep produced.
       const replayed = previousRunId === run.run_id;
+
       if (!replayed) {
         await store.put(DISPATCH_NAMESPACE, key, { runId: run.run_id, threadId: thread.thread_id });
       }
+
       dispatched.push({ key, threadId: thread.thread_id, runId: run.run_id, replayed });
     } catch (error) {
       // One bad item must not fail the sweep: the next occurrence would then never dispatch the good
@@ -235,6 +249,7 @@ async function dispatch(state: State, config: LangGraphRunnableConfig): Promise<
 async function report(state: State, config: LangGraphRunnableConfig): Promise<Partial<State>> {
   const started = state.dispatched.filter((entry) => !entry.replayed).length;
   const replayed = state.dispatched.length - started;
+
   const summary =
     `swept ${state.fetched.length} from ${resolveSource()} — ` +
     `${started} dispatched, ${replayed} replayed, ${state.skipped.length} already decided` +

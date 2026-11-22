@@ -1,6 +1,6 @@
 // The callback body: what is stored once, and what is supplied per attempt.
 
-import type { Delivery, DefaultValues, Run } from "@skein-js/core";
+import type { DefaultValues, Delivery, Run } from "@skein-js/core";
 import { describe, expect, it } from "vitest";
 
 import { buildDeliveryPayload, toDeliveryBody } from "./delivery-payload.js";
@@ -153,6 +153,7 @@ describe("pending interrupts", () => {
 
   it("drops interrupts only when truncating values was not enough", () => {
     const huge = { "task-1": [{ value: { question: "z".repeat(2000) } }] };
+
     const { payload } = built({
       values: { transcript: "y".repeat(2000) } as unknown as DefaultValues,
       interrupts: huge,

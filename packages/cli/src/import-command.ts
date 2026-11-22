@@ -51,14 +51,17 @@ export async function runImportLanggraph(options: ImportLanggraphOptions): Promi
     : path.join(configDir, LANGGRAPH_DIR);
 
   const snapshot = await readLanggraphDevState(sourceDir);
+
   if (snapshot === null) {
     console.log(`skein: no LangGraph dev state found at ${sourceDir}; nothing to import.`);
     return;
   }
+
   const counts = describeSnapshot(snapshot);
 
   if (options.store === "memory") {
     const stateFile = devStateFile(configDir);
+
     if (existsSync(stateFile) && !options.force) {
       console.error(
         `skein: ${path.relative(process.cwd(), stateFile)} already exists. ` +
@@ -67,6 +70,7 @@ export async function runImportLanggraph(options: ImportLanggraphOptions): Promi
       process.exitCode = 1;
       return;
     }
+
     writeDevStateFile(stateFile, JSON.stringify(snapshot));
     console.log(
       `skein: imported ${summarize(counts)} → ${path.relative(process.cwd(), stateFile)}.`,
@@ -81,6 +85,7 @@ export async function runImportLanggraph(options: ImportLanggraphOptions): Promi
   // module fails to import under plain Node. The loader is closed once the import completes.
   await applyProjectEnv(config, configDir);
   const loader = await createViteGraphLoader(configDir);
+
   try {
     const runtime = await buildRuntime({
       configPath,
@@ -88,10 +93,12 @@ export async function runImportLanggraph(options: ImportLanggraphOptions): Promi
       store: "postgres",
       queue: "memory",
     });
+
     try {
       // Bulk-loaded through the driver, which is what `restore()` is: it writes ids and timestamps
       // verbatim, and only a driver can do that.
       await loadSnapshotIntoStore(snapshot, runtime.deps.store, runtime.deps.checkpointer);
+
       // But a `store.adapter` deployment reads its long-term memory somewhere else entirely, so the
       // items `restore()` just wrote into the driver's own table would be unreachable. Replay them
       // through the adapter — the only path that has one — so the memories actually arrive. Item
@@ -107,5 +114,6 @@ export async function runImportLanggraph(options: ImportLanggraphOptions): Promi
   } finally {
     await loader.close();
   }
+
   console.log(`skein: imported ${summarize(counts)} into Postgres.`);
 }

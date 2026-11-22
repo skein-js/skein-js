@@ -3,7 +3,7 @@
 // `PostgresSaver` checkpointer and the Postgres `SkeinStore` (so the fork target survives a fresh
 // `getKwargs` load, the crash-recovery path). Proves the feature is not MemorySaver-specific.
 
-import { Annotation, type CompiledGraph, MemorySaver, StateGraph } from "@langchain/langgraph";
+import { Annotation, MemorySaver, StateGraph, type CompiledGraph } from "@langchain/langgraph";
 import {
   createContext,
   createProtocolServiceFromContext,
@@ -57,6 +57,7 @@ async function serviceOnPostgres() {
     runConcurrency: resolveRunConcurrency(),
     disposers,
   });
+
   const deps: ProtocolDeps = {
     store,
     checkpointer,
@@ -70,6 +71,7 @@ async function serviceOnPostgres() {
     queue: new MemoryRunQueue(),
     bus: new MemoryRunEventBus(),
   };
+
   const service = createProtocolServiceFromContext(createContext(deps));
   await service.assistants.registerGraphAssistants();
   return { service, store };
@@ -79,10 +81,12 @@ describe("time travel — postgres store + PostgresSaver checkpointer", () => {
   it("prunes a thread without overwriting another thread at the former scratch ID", async () => {
     const { service } = await serviceOnPostgres();
     const source = await service.threads.create();
+
     const victim = await service.threads.create({
       thread_id: `${source.thread_id}::skein-prune`,
       metadata: { owner: "another-user" },
     });
+
     for (const [threadId, value] of [
       [source.thread_id, "first"],
       [source.thread_id, "latest"],
@@ -94,6 +98,7 @@ describe("time travel — postgres store + PostgresSaver checkpointer", () => {
         input: { value },
       });
     }
+
     const victimHistory = await service.threads.history(victim.thread_id);
     expect(victimHistory.length).toBeGreaterThan(0);
 

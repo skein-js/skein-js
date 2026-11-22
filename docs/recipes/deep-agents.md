@@ -24,9 +24,11 @@ import {
 
 function memoryNamespace({ config }: StoreBackendContext): string[] {
   const userId = config?.configurable?.langgraph_auth_user_id;
+
   if (typeof userId !== "string" || userId.length === 0) {
     throw new Error("Durable memory requires an authenticated user.");
   }
+
   const component = userId.replace(
     /[^A-Za-z0-9\-_.@+:]/g,
     (character) => `~${character.codePointAt(0)!.toString(16)}~`,

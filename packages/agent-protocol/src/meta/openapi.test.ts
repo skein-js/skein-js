@@ -12,6 +12,7 @@ import { createOpenApiDocument } from "./openapi.js";
 describe("optional run and retention API contract", () => {
   it("documents the duration boundary and retention projections without requiring them", () => {
     const service = createProtocolServiceFromContext(createContext(createFixtureDeps()));
+
     const document = createOpenApiDocument(skeinRoutes, createProtocolHandlers(service)) as {
       paths: Record<
         string,
@@ -37,6 +38,7 @@ describe("optional run and retention API contract", () => {
         >
       >;
     };
+
     const request = document.paths["/runs"]!.post!.requestBody!.content["application/json"]!.schema;
     expect(request.properties.timeout_ms).toMatchObject({
       type: "integer",
@@ -59,6 +61,7 @@ describe("optional run and retention API contract", () => {
     const handlers = createProtocolHandlers(
       createProtocolServiceFromContext(createContext(createFixtureDeps())),
     );
+
     const spec = createOpenApiDocument(skeinRoutes, handlers);
     expect(spec.paths["/metrics"]!.get).toMatchObject({
       parameters: expect.arrayContaining([

@@ -37,10 +37,12 @@ export interface SkeinInvokeRouteHandlers {
 /** Query params from a URL, keeping repeated keys as `string[]`. */
 function toQuery(url: URL): ProtocolRequest["query"] {
   const query: Record<string, string | string[]> = {};
+
   for (const key of new Set(url.searchParams.keys())) {
     const all = url.searchParams.getAll(key);
     query[key] = all.length > 1 ? all : (all[0] as string);
   }
+
   return query;
 }
 
@@ -50,6 +52,7 @@ function graphIdFromPath(pathname: string, basePath: string): string | null {
   if (!pathname.startsWith(`${prefix}/`)) return null;
   const rest = pathname.slice(prefix.length + 1);
   if (rest === "" || rest.includes("/")) return null;
+
   // Decode so `%20` reaches the resolver as a space, matching what the Express/Fastify routers hand
   // over. A malformed escape (`%zz`) is left as-is rather than throwing — same rule as the protocol
   // matcher's `decodeParams`; without this guard `decodeURIComponent` raises an uncaught URIError.
@@ -66,9 +69,11 @@ export function createSkeinInvokeRouteHandlers(
 ): SkeinInvokeRouteHandlers {
   const basePath = options.basePath ?? "/api/invoke";
   const optionLogger = options.logger === false ? undefined : options.logger;
+
   // This handler's own option outranks the shared memoized runtime's. See create-route-handlers.ts.
   const loggerFor = (resolved: { logger?: Logger }): Logger | undefined =>
     options.logger === false ? undefined : (optionLogger ?? resolved.logger);
+
   // Built once for these options (the deps behind them are memoized too), not per request.
   let invoke: ReturnType<typeof createGraphInvokeHandler> | undefined;
 
@@ -78,24 +83,29 @@ export function createSkeinInvokeRouteHandlers(
     if (graphId === null) return new Response(null, { status: 404 });
 
     let resolved: Awaited<ReturnType<typeof getSkeinInvokeDeps>>;
+
     try {
       resolved = await getSkeinInvokeDeps(options);
     } catch (error) {
       return webErrorResponse(error, {}, optionLogger);
     }
+
     // Explicit `options.cors` (incl. an explicit `false`) wins; otherwise fall back to config CORS.
     const cors: CorsSetting | false | undefined =
       options.cors ?? (resolved.cors as CorsSetting | undefined);
+
     const extraHeaders = cors ? corsHeaders(request, cors) : {};
 
     try {
       const text = await request.text();
       let body: unknown;
+
       try {
         body = text ? JSON.parse(text) : {};
       } catch {
         throw SkeinHttpError.badRequest("Request body is not valid JSON.");
       }
+
       invoke ??= createGraphInvokeHandler(resolved.deps, { streamMode: options.streamMode });
       const response = await invoke({
         method: request.method,
@@ -115,6 +125,7 @@ export function createSkeinInvokeRouteHandlers(
 
   const optionsHandler = async (request: Request): Promise<Response> => {
     let cors: CorsSetting | false | undefined = options.cors;
+
     if (cors === undefined) {
       try {
         cors = (await getSkeinInvokeDeps(options)).cors as CorsSetting | undefined;
@@ -122,6 +133,7 @@ export function createSkeinInvokeRouteHandlers(
         cors = undefined;
       }
     }
+
     return cors ? preflightResponse(request, cors) : new Response(null, { status: 404 });
   };
 

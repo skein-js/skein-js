@@ -11,8 +11,10 @@ import { inspectSqliteThreadStorage } from "./thread-storage.js";
 it("reports actual SQLite checkpoint and pending-write blob lengths", async () => {
   const directory = await mkdtemp(join(tmpdir(), "skein-storage-"));
   const storage = await openSqliteStorage({ filename: join(directory, "state.sqlite") });
+
   try {
     const saver = new SqliteSaver(storage.database);
+
     const checkpoint = {
       v: 4,
       id: "checkpoint",
@@ -21,6 +23,7 @@ it("reports actual SQLite checkpoint and pending-write blob lengths", async () =
       channel_versions: { value: 1 },
       versions_seen: {},
     };
+
     const config = await saver.put(
       { configurable: { thread_id: "thread", checkpoint_ns: "" } },
       checkpoint,
@@ -28,6 +31,7 @@ it("reports actual SQLite checkpoint and pending-write blob lengths", async () =
     );
     await saver.putWrites(config, [["value", "pending"]], "task");
     const result = inspectSqliteThreadStorage(storage.database, "thread");
+
     const expected = storage.database
       .prepare(
         "SELECT length(checkpoint)+length(metadata) AS bytes FROM checkpoints WHERE thread_id=?",

@@ -24,6 +24,7 @@ describe("@skein-js/fastify adapter", () => {
         headers: jsonHeaders,
         ...(body === undefined ? {} : { body: JSON.stringify(body) }),
       });
+
     const created = await request("/threads", "POST", { ttl: 30 });
     const thread = (await created.json()) as { thread_id: string; ttl: number; expires_at: string };
     expect(thread.ttl).toBe(30);
@@ -42,6 +43,7 @@ describe("@skein-js/fastify adapter", () => {
       flags: { per_run_timeout?: boolean };
     };
     expect(info.flags.per_run_timeout).toBe(true);
+
     for (const path of [
       `/threads/${thread.thread_id}/runs`,
       `/threads/${thread.thread_id}/runs/wait`,
@@ -76,6 +78,7 @@ describe("@skein-js/fastify adapter", () => {
       headers: jsonHeaders,
       body: "{}",
     });
+
     const assistants = (await searchRes.json()) as Array<{
       assistant_id: string;
       graph_id: string;
@@ -88,6 +91,7 @@ describe("@skein-js/fastify adapter", () => {
   it("runs the assistant CRUD + versioning lifecycle over HTTP", async () => {
     running = await startEchoServer();
     const { baseUrl } = running;
+
     const post = (path: string, body: unknown) =>
       fetch(`${baseUrl}${path}`, {
         method: "POST",
@@ -221,6 +225,7 @@ describe("@skein-js/fastify adapter", () => {
     const { baseUrl } = running;
 
     const controller = new AbortController();
+
     const res = await fetch(`${baseUrl}/runs/stream`, {
       method: "POST",
       headers: jsonHeaders,

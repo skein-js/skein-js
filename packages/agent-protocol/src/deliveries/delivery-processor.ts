@@ -53,6 +53,7 @@ export async function processDelivery(
   const attempt = delivery.attempt + 1;
 
   const disallowed = await deliveryTargetError(delivery.url, deps.webhooks);
+
   if (disallowed) {
     deps.logger.warn(`delivery ${delivery.delivery_id}: ${disallowed}`);
     await deliveries.recordAttempt(delivery.delivery_id, { outcome: "dead", error: disallowed });
@@ -73,6 +74,7 @@ export async function processDelivery(
     );
   } catch (error) {
     const message = error instanceof Error ? error.message : String(error);
+
     if (context.isFinalAttempt) {
       deps.logger.error(
         `delivery ${delivery.delivery_id} to ${redactWebhookUrl(delivery.url)} is dead after ${attempt} attempt(s)`,
@@ -88,6 +90,7 @@ export async function processDelivery(
       // dead letter already lives somewhere an operator can replay it from.
       return;
     }
+
     deps.logger.warn(
       `delivery ${delivery.delivery_id} to ${redactWebhookUrl(delivery.url)} failed (attempt ${attempt}); retrying`,
       error,

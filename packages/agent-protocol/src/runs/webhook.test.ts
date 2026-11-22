@@ -21,16 +21,20 @@ import { executeRun } from "./run-engine.js";
 
 async function seed(overrides: Partial<ProtocolDeps>, graphId = "echo", kwargs: RunKwargs = {}) {
   const deps = resolveDeps(createFixtureDeps(overrides));
+
   const assistant = await deps.store.assistants.create({
     graph_id: graphId,
     assistant_id: graphId,
   });
+
   const thread = await deps.store.threads.create();
+
   const run: Run = await deps.store.runs.create({
     thread_id: thread.thread_id,
     assistant_id: assistant.assistant_id,
     status: "pending",
   });
+
   const control = new RunControlRegistry().register(run.run_id);
   return { deps, run, control, kwargs };
 }
@@ -38,6 +42,7 @@ async function seed(overrides: Partial<ProtocolDeps>, graphId = "echo", kwargs: 
 describe("run-completion webhooks", () => {
   it("POSTs the settled run to the webhook URL on success", async () => {
     const dispatch = vi.fn<WebhookDispatcher>().mockResolvedValue(undefined);
+
     const { deps, run, control, kwargs } = await seed({ webhookDispatcher: dispatch }, "echo", {
       input: { value: "hi" },
       webhook: "https://example.test/hook",
@@ -61,6 +66,7 @@ describe("run-completion webhooks", () => {
 
   it("includes the error message when the run fails", async () => {
     const dispatch = vi.fn<WebhookDispatcher>().mockResolvedValue(undefined);
+
     const { deps, run, control, kwargs } = await seed({ webhookDispatcher: dispatch }, "throwing", {
       input: {},
       webhook: "https://example.test/hook",
@@ -74,6 +80,7 @@ describe("run-completion webhooks", () => {
 
   it("does not fire when no webhook is set", async () => {
     const dispatch = vi.fn<WebhookDispatcher>().mockResolvedValue(undefined);
+
     const { deps, run, control, kwargs } = await seed({ webhookDispatcher: dispatch }, "echo", {
       input: { value: "hi" },
     });
@@ -84,6 +91,7 @@ describe("run-completion webhooks", () => {
 
   it("a delivery failure is swallowed — the run still settles", async () => {
     const dispatch = vi.fn<WebhookDispatcher>().mockRejectedValue(new Error("network down"));
+
     const { deps, run, control, kwargs } = await seed({ webhookDispatcher: dispatch }, "echo", {
       input: { value: "hi" },
       webhook: "https://example.test/hook",
@@ -108,9 +116,11 @@ describe("webhook delivery and the thread lock", () => {
   /** A dispatcher that never settles, plus a promise that resolves once it has been called. */
   function hangingDispatcher() {
     let called: () => void = () => {};
+
     const wasCalled = new Promise<void>((resolve) => {
       called = resolve;
     });
+
     const dispatch = vi.fn<WebhookDispatcher>(() => {
       called();
       return new Promise<void>(() => {});
@@ -150,9 +160,11 @@ describe("webhook delivery and the thread lock", () => {
   // Deferring must not turn delivery into fire-and-forget: shutdown would then exit mid-POST.
   it("still awaits the delivery before the run settles", async () => {
     let release: () => void = () => {};
+
     const delivered = new Promise<void>((resolve) => {
       release = resolve;
     });
+
     const dispatch = vi.fn<WebhookDispatcher>(() => delivered);
     const ctx = createContext(createFixtureDeps({ webhookDispatcher: dispatch }));
     const service = createProtocolServiceFromContext(ctx);
@@ -160,6 +172,7 @@ describe("webhook delivery and the thread lock", () => {
     const thread = await service.threads.create();
 
     let settled = false;
+
     const run = service.runs
       .createWait({
         thread_id: thread.thread_id,
@@ -189,10 +202,12 @@ describe("webhook delivery and the thread lock", () => {
     const deps = createFixtureDeps({ webhookDispatcher: dispatch });
     // Break the thread mirror, which the engine writes after a graph failure.
     const update = deps.store.threads.update.bind(deps.store.threads);
+
     deps.store.threads.update = async (threadId, patch) => {
       if (patch.status === "error") throw new Error("store unavailable");
       return update(threadId, patch);
     };
+
     const ctx = createContext(deps);
     const service = createProtocolServiceFromContext(ctx);
     await service.assistants.registerGraphAssistants();
@@ -217,6 +232,7 @@ describe("webhook delivery and the thread lock", () => {
 describe("the run-completion outbox", () => {
   it("records the delivery alongside the run's terminal status", async () => {
     const dispatch = vi.fn<WebhookDispatcher>().mockResolvedValue(undefined);
+
     const { deps, run, control, kwargs } = await seed({ webhookDispatcher: dispatch }, "echo", {
       input: { value: "hi" },
       webhook: "https://example.test/hook",
@@ -240,6 +256,7 @@ describe("the run-completion outbox", () => {
     // Today this is where a notification disappears: the POST fails, the failure is logged, and
     // nothing remembers a callback was owed.
     const dispatch = vi.fn<WebhookDispatcher>().mockRejectedValue(new Error("receiver is down"));
+
     const { deps, run, control, kwargs } = await seed({ webhookDispatcher: dispatch }, "echo", {
       input: { value: "hi" },
       webhook: "https://example.test/hook",
@@ -259,10 +276,12 @@ describe("the run-completion outbox", () => {
   // run back a millisecond later must not find it saying something else.
   it("stamps the delivery with the winner's status when a cancel beat the engine", async () => {
     const dispatch = vi.fn<WebhookDispatcher>().mockResolvedValue(undefined);
+
     const { deps, run, control, kwargs } = await seed({ webhookDispatcher: dispatch }, "echo", {
       input: { value: "hi" },
       webhook: "https://example.test/hook",
     });
+
     // Stand in for `cancelRun`, which writes the terminal status with a bare `setStatus` and
     // deliberately races the engine: the moment the run goes `running`, the cancel lands on top.
     // Hooked on that write rather than left to timing, so the race is the same on every run of this
@@ -294,10 +313,12 @@ describe("the run-completion outbox", () => {
   it("falls back to one best-effort POST on a store with no deliveries repo", async () => {
     // A third-party driver that has not adopted the outbox keeps working, with today's semantics.
     const dispatch = vi.fn<WebhookDispatcher>().mockResolvedValue(undefined);
+
     const { deps, run, control, kwargs } = await seed({ webhookDispatcher: dispatch }, "echo", {
       input: { value: "hi" },
       webhook: "https://example.test/hook",
     });
+
     const withoutOutbox = {
       ...deps,
       store: Object.assign(Object.create(Object.getPrototypeOf(deps.store) as object), deps.store, {
@@ -325,6 +346,7 @@ describe("the run-completion outbox", () => {
   it("signs the best-effort POST when webhook secrets are configured", async () => {
     const dispatch = vi.fn<WebhookDispatcher>().mockResolvedValue(undefined);
     const secret = "whsec_test_secret";
+
     const { deps, run, control, kwargs } = await seed(
       { webhookDispatcher: dispatch, webhooks: { secrets: [secret] } },
       "echo",
@@ -333,6 +355,7 @@ describe("the run-completion outbox", () => {
         webhook: "https://example.test/hook",
       },
     );
+
     const withoutOutbox = {
       ...deps,
       store: Object.assign(Object.create(Object.getPrototypeOf(deps.store) as object), deps.store, {
@@ -363,10 +386,12 @@ describe("the run-completion outbox", () => {
   // that never happened, and `X-Skein-Delivery-Id` powerless against them because the ids differ.
   it("records exactly one delivery even when settling the run twice", async () => {
     const dispatch = vi.fn<WebhookDispatcher>().mockResolvedValue(undefined);
+
     const { deps, run, control, kwargs } = await seed({ webhookDispatcher: dispatch }, "echo", {
       input: { value: "hi" },
       webhook: "https://example.test/hook",
     });
+
     // Blow up after the run has been finalized, exactly where the thread mirror writes.
     const update = deps.store.threads.update.bind(deps.store.threads);
     let mirrored = false;
@@ -375,6 +400,7 @@ describe("the run-completion outbox", () => {
         mirrored = true;
         throw new Error("thread mirror failed");
       }
+
       return update(threadId, patch);
     });
 
@@ -390,21 +416,26 @@ describe("the run-completion outbox", () => {
   // `error` — the callback machinery deciding the run's outcome, which it must never do.
   it("does not fail a run whose final state cannot be serialized", async () => {
     const dispatch = vi.fn<WebhookDispatcher>().mockResolvedValue(undefined);
+
     const { deps, run, control, kwargs } = await seed({ webhookDispatcher: dispatch }, "echo", {
       input: { value: "hi" },
       webhook: "https://example.test/hook",
     });
+
     // Thrown only for the delivery body, so the store's own serialization is unaffected — this
     // stands in for a final state carrying a BigInt or a cycle.
     const stringify = JSON.stringify.bind(JSON);
+
     const spy = vi.spyOn(JSON, "stringify").mockImplementation((value, ...rest) => {
       if (value !== null && typeof value === "object" && "run_started_at" in value) {
         throw new TypeError("Do not know how to serialize a BigInt");
       }
+
       return stringify(value, ...(rest as []));
     });
 
     let outcome;
+
     try {
       outcome = await executeRun(deps, { run, kwargs, control });
     } finally {
@@ -429,6 +460,7 @@ describe("the run-completion outbox", () => {
     // row clears its payload by design (see the `DeliveryRepo` contract) — the body a receiver sees is
     // the thing under test.
     const dispatch = vi.fn<WebhookDispatcher>().mockResolvedValue(undefined);
+
     const { deps, run, control, kwargs } = await seed(
       { webhookDispatcher: dispatch },
       "interrupting",
@@ -451,6 +483,7 @@ describe("the run-completion outbox", () => {
   it("leaves the callback shape untouched for a run that is not waiting", async () => {
     // The compatibility half: adding a field must not change what an existing receiver already parses.
     const dispatch = vi.fn<WebhookDispatcher>().mockResolvedValue(undefined);
+
     const { deps, run, control, kwargs } = await seed({ webhookDispatcher: dispatch }, "echo", {
       input: { value: "hi" },
       webhook: "https://example.test/hook",
@@ -463,6 +496,7 @@ describe("the run-completion outbox", () => {
 
   it("truncates an oversized payload inside the body, and says so on the row", async () => {
     const dispatch = vi.fn<WebhookDispatcher>().mockRejectedValue(new Error("down"));
+
     const { deps, run, control, kwargs } = await seed(
       { webhookDispatcher: dispatch, webhooks: { maxPayloadBytes: 200 } },
       "echo",

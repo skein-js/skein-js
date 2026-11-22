@@ -8,6 +8,7 @@ import { createProtocolRuntime } from "../runtime.js";
 
 it("authenticates before a custom Fetch application and leaves the body available", async () => {
   const httpHandler = vi.fn(async (request: Request) => new Response(await request.text()));
+
   const auth = {
     studioAuthDisabled: true,
     authenticate: async (request: Request) => {
@@ -17,6 +18,7 @@ it("authenticates before a custom Fetch application and leaves the body availabl
       return undefined;
     },
   } as unknown as AuthEngine;
+
   const runtime = createProtocolRuntime(createFixtureDeps({ auth, httpHandler }));
   await expect(
     runtime.handleRequest!(
@@ -38,6 +40,7 @@ it("preserves mounted public handshakes and provider-authenticated callbacks wit
   const authenticate = vi.fn(async () => {
     throw SkeinHttpError.unauthorized("Missing deployment token");
   });
+
   const auth: AuthEngine = {
     enabled: true,
     studioAuthDisabled: true,
@@ -45,7 +48,9 @@ it("preserves mounted public handshakes and provider-authenticated callbacks wit
     authorize: async ({ value }) => ({ value }),
     matchesFilters: () => true,
   };
+
   const httpHandler = vi.fn(async () => undefined);
+
   const runtime = createProtocolRuntime(createFixtureDeps({ auth, httpHandler }), {
     routes: [
       ...skeinRoutes,
@@ -84,6 +89,7 @@ it("preserves mounted public handshakes and provider-authenticated callbacks wit
   ).rejects.toMatchObject({ status: 401 });
   expect(authenticate).not.toHaveBeenCalled();
   expect(httpHandler).toHaveBeenCalledTimes(2);
+
   for (const [method, path] of [
     ["GET", "/docs"],
     ["GET", "/metrics"],
@@ -104,7 +110,9 @@ it("does not exempt custom routes when their public protocol group is disabled",
       throw SkeinHttpError.unauthorized("Missing token");
     },
   } as unknown as AuthEngine;
+
   const httpHandler = vi.fn(async () => new Response("custom"));
+
   const runtime = createProtocolRuntime(createFixtureDeps({ auth, httpHandler }), {
     routes: skeinRoutes.filter((route) => route.group !== "meta"),
   });

@@ -37,6 +37,7 @@ Then point the [`@langchain/langgraph-sdk`](https://github.com/langchain-ai/lang
 import { Client } from "@langchain/langgraph-sdk";
 const client = new Client({ apiUrl: "http://127.0.0.1:2024" });
 const thread = await client.threads.create();
+
 const reply = await client.runs.wait(thread.thread_id, "echo", {
   input: { messages: [{ role: "user", content: "hello" }] },
 });

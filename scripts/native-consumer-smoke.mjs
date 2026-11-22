@@ -1,19 +1,25 @@
-import { mkdtemp, writeFile, rm } from "node:fs/promises";
+import { mkdtemp, rm, writeFile } from "node:fs/promises";
+import { createRequire } from "node:module";
 import { tmpdir } from "node:os";
 import path from "node:path";
-import { createRequire } from "node:module";
+
 import { GenericContainer, Wait } from "testcontainers";
-import { packWorkspace, installConsumer, copyTree, root, run } from "./pack-local-consumer.mjs";
+
+import { copyTree, installConsumer, packWorkspace, root, run } from "./pack-local-consumer.mjs";
 
 const directory = await mkdtemp(path.join(tmpdir(), "skein-native-consumer-"));
+
 const selectedVersion = (name, fallback) =>
   process.argv.find((argument) => argument.startsWith(`--${name}=`))?.split("=")[1] ?? fallback;
+
 const bullmqVersion = selectedVersion("bullmq", "^6.0.0");
 const ioredisVersion = selectedVersion("ioredis", "^6.0.0");
 let postgres, redis;
+
 try {
   const packed = packWorkspace(path.join(directory, "packs"));
   const consumer = path.join(directory, "consumer");
+
   const manifest = installConsumer(
     consumer,
     {
@@ -41,6 +47,7 @@ try {
   run("npm", ["install", "--no-audit", "--no-fund", "--prefer-offline"], { cwd: consumer });
   const consumerRequire = createRequire(path.join(consumer, "package.json"));
   const actualVersions = {};
+
   for (const [owner, require] of [
     ["consumer", consumerRequire],
     ["@skein-js/bullmq", createRequire(consumerRequire.resolve("@skein-js/bullmq"))],
@@ -53,6 +60,7 @@ try {
   ]) {
     const bull = require("bullmq/package.json").version;
     const redis = require("ioredis/package.json").version;
+
     for (const [actual, selected] of [
       [bull, bullmqVersion],
       [redis, ioredisVersion],
@@ -62,8 +70,10 @@ try {
       if (selected.startsWith("^") && actual.split(".")[0] !== selected.slice(1).split(".")[0])
         throw new Error(`Wrong packed major for ${owner}: ${actual}`);
     }
+
     actualVersions[owner] = { bullmq: bull, ioredis: redis };
   }
+
   console.log("PACKED_REDIS_VERSIONS", JSON.stringify(actualVersions));
   run(
     "npm",
@@ -112,6 +122,7 @@ try {
   // Retain a real pnpm lockfile across a host-only BullMQ major upgrade. Unlike the aligned matrix,
   // this can leave the adapter on v5 while its borrowed outcome Queue is produced by host v6.
   const upgrade = path.join(directory, "upgrade");
+
   const upgradeManifest = installConsumer(
     upgrade,
     {

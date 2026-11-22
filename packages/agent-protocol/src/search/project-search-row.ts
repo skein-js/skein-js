@@ -4,6 +4,7 @@ export const EXTRACT_PATH = /^(values|metadata|config|interrupts)(?:\.[A-Za-z0-9
 function extractValue(row: object, path: string): unknown {
   let value: unknown = row;
   const segments = path.match(/[A-Za-z0-9_$-]+|\[-?\d+\]/g) ?? [];
+
   for (const segment of segments) {
     if (segment.startsWith("[")) {
       if (!Array.isArray(value)) return null;
@@ -14,6 +15,7 @@ function extractValue(row: object, path: string): unknown {
       value = (value as Record<string, unknown>)[segment];
     }
   }
+
   return value ?? null;
 }
 

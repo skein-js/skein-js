@@ -76,12 +76,14 @@ export class RedisDeliveryQueue implements DeliveryQueue {
 
   async schedule(delivery: QueuedDelivery, options: ScheduleDeliveryOptions = {}): Promise<void> {
     const jobId = `${JOB_NAME}-${delivery.delivery_id}`;
+
     if (options.replace) {
       // Removed rather than left to `add`'s idempotency: an existing delayed job would make the add
       // a no-op, so a replay would quietly wait out the schedule it was asked to skip. Tolerated if
       // it fails — the job may be active or already gone, and the add below is what matters.
       await this.#queue.remove(jobId).catch(() => undefined);
     }
+
     await this.#queue.add(
       JOB_NAME,
       { delivery_id: delivery.delivery_id },

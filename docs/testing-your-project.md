@@ -89,6 +89,7 @@ it.skipIf(!apiUrl)(
       apiUrl,
       apiKey: process.env.SKEIN_TEST_API_KEY,
     });
+
     const thread = await client.threads.create();
 
     try {

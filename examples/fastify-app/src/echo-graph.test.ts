@@ -1,5 +1,5 @@
 import { HumanMessage } from "@langchain/core/messages";
-import { describe, it, expect } from "vitest";
+import { describe, expect, it } from "vitest";
 
 import { graph } from "./echo-graph.js";
 

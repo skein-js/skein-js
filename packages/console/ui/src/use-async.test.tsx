@@ -7,6 +7,7 @@ describe("useAsync resource lifecycle", () => {
   it("ignores an old response after changing resource and aborts it", async () => {
     let complete!: (value: string) => void;
     let firstSignal!: AbortSignal;
+
     const { result, rerender } = renderHook(
       ({ id }) =>
         useAsync(
@@ -17,6 +18,7 @@ describe("useAsync resource lifecycle", () => {
                 complete = resolve;
               });
             }
+
             return Promise.resolve("second result");
           },
           [id],
@@ -38,6 +40,7 @@ describe("useAsync resource lifecycle", () => {
       .mockImplementation(() => {
         throw new Error("server offline");
       });
+
     const { result } = renderHook(() => useAsync(load, []));
     await waitFor(() => expect(result.current.data).toBe("last read"));
     act(() => result.current.reload());

@@ -1,15 +1,15 @@
 import {
   serializeWireJson,
-  type DeliveryCreate,
   type Delivery,
+  type DeliveryCreate,
   type Run,
   type RunResult,
   type RunSettlement,
 } from "@skein-js/core";
 
 import {
-  DEFAULT_RETAIN_HOURS,
   DEFAULT_MAX_PAYLOAD_BYTES,
+  DEFAULT_RETAIN_HOURS,
   remainingQueueAttempts,
 } from "../deliveries/delivery-config.js";
 import { buildDeliveryPayload } from "../deliveries/delivery-payload.js";
@@ -26,6 +26,7 @@ export function nativeDelivery(
   if (!origin.outcomeTarget) return;
   const now = deps.clock().toISOString();
   let built: ReturnType<typeof buildDeliveryPayload>;
+
   try {
     built = buildDeliveryPayload({
       run,
@@ -45,6 +46,7 @@ export function nativeDelivery(
       bytes: 0,
     };
   }
+
   let payload: Record<string, unknown> = {
     ...built.payload,
     ...(built.truncated ? { payload_truncated: true } : {}),
@@ -53,6 +55,7 @@ export function nativeDelivery(
     ...(origin.correlationId ? { correlation_id: origin.correlationId } : {}),
     ...(result?.checkpoint ? { checkpoint: result.checkpoint } : {}),
   };
+
   if (
     Buffer.byteLength(serializeWireJson(payload)) >
     (deps.webhooks?.maxPayloadBytes ?? DEFAULT_MAX_PAYLOAD_BYTES)
@@ -68,6 +71,7 @@ export function nativeDelivery(
     };
     built.truncated = true;
   }
+
   return {
     delivery_id: origin.deliveryId,
     thread_id: run.thread_id,
@@ -90,6 +94,7 @@ export async function settleNativeRun(
   if (!deps.store.runs.settle)
     throw new Error("Native settlement capability was removed after admission.");
   let result = final.result;
+
   if (result) {
     try {
       result = JSON.parse(serializeWireJson(result)) as RunResult;
@@ -98,6 +103,7 @@ export async function settleNativeRun(
       result = undefined;
     }
   }
+
   const delivery = origin
     ? nativeDelivery(
         deps,
@@ -106,6 +112,7 @@ export async function settleNativeRun(
         result,
       )
     : undefined;
+
   const settled = await deps.store.runs.settle(run.run_id, {
     status: final.status,
     ...(final.error ? { error: final.error } : {}),
@@ -128,6 +135,7 @@ export async function scheduleNativeOutcome(
     delivery.status === "dead"
   )
     return;
+
   try {
     await deps.deliveryQueue.schedule(
       { delivery_id: delivery.delivery_id },

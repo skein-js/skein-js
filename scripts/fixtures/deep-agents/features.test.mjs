@@ -1,4 +1,4 @@
-import { mkdtemp, mkdir, writeFile, rm } from "node:fs/promises";
+import { mkdir, mkdtemp, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 
@@ -15,6 +15,7 @@ import {
 import { tool } from "langchain";
 import { expect, it } from "vitest";
 import { z } from "zod";
+
 import { FixtureModel } from "./fixture-model.mjs";
 
 async function serve(graph) {
@@ -38,11 +39,14 @@ it("discovers, pins and refreshes upstream skills without Skein-specific middlew
   const directory = await mkdtemp(join(tmpdir(), "skein-candidate-skills-"));
   await mkdir(join(directory, "skills/fixture"), { recursive: true });
   const filename = join(directory, "skills/fixture/SKILL.md");
+
   const skill = (text) =>
     `---\nname: fixture\ndescription: Candidate fixture skill\n---\n${text}\n`;
   await writeFile(filename, skill("INITIAL_SKILL_INSTRUCTION"));
+
   try {
     const model = new FixtureModel();
+
     const { run } = await serve(
       createDeepAgent({
         model,
@@ -50,6 +54,7 @@ it("discovers, pins and refreshes upstream skills without Skein-specific middlew
         skills: ["/skills/"],
       }),
     );
+
     const first = await run({
       messages: [{ role: "user", content: "Use the fixture skill" }],
       pinnedSkills: ["fixture"],
@@ -76,13 +81,16 @@ it("enforces upstream filesystem permissions and retains permitted file writes",
     { name: "read_file", args: { file_path: "/private/secret.txt" } },
     { name: "write_file", args: { file_path: "/public/note.txt", content: "permitted" } },
   ]);
+
   const { run } = await serve(
     createDeepAgent({
       model,
       permissions: [{ operations: ["read"], paths: ["/private/**"], mode: "deny" }],
     }),
   );
+
   const timestamp = new Date().toISOString();
+
   const { result } = await run({
     messages: [{ role: "user", content: "Read private then write public" }],
     files: {
@@ -94,6 +102,7 @@ it("enforces upstream filesystem permissions and retains permitted file writes",
       },
     },
   });
+
   const tools = model.seen.flat().filter((message) => message.getType() === "tool");
   expect(JSON.stringify(tools)).not.toContain("SECRET_MUST_NOT_REACH_MODEL");
   expect(JSON.stringify(tools)).toMatch(/denied|permission/i);
@@ -102,11 +111,13 @@ it("enforces upstream filesystem permissions and retains permitted file writes",
 
 it("offloads a real large tool result with upstream filesystem middleware", async () => {
   const model = new FixtureModel([{ name: "large_result", args: {} }]);
+
   const large = tool(async () => "OFFLOAD_CONTENT_".repeat(2000), {
     name: "large_result",
     description: "Large fixture result",
     schema: z.object({}),
   });
+
   const { run } = await serve(
     createDeepAgent({
       model,
@@ -114,6 +125,7 @@ it("offloads a real large tool result with upstream filesystem middleware", asyn
       middleware: [createFilesystemMiddleware({ toolTokenLimitBeforeEvict: 20 })],
     }),
   );
+
   const { result } = await run({ messages: [{ role: "user", content: "Get the large result" }] });
   expect(Object.keys(result.files)).toContainEqual(expect.stringContaining("tool_results"));
   const latestTools = model.seen.at(-1).filter((message) => message.getType() === "tool");
@@ -123,9 +135,11 @@ it("offloads a real large tool result with upstream filesystem middleware", asyn
 
 it("summarizes and offloads history with the upstream summarization middleware", async () => {
   const directory = await mkdtemp(join(tmpdir(), "skein-candidate-history-"));
+
   try {
     const model = new FixtureModel();
     const backend = new FilesystemBackend({ rootDir: directory, virtualMode: true });
+
     const { run } = await serve(
       createDeepAgent({
         model,
@@ -139,6 +153,7 @@ it("summarizes and offloads history with the upstream summarization middleware",
         ],
       }),
     );
+
     const messages = Array.from({ length: 8 }, (_, index) => ({
       role: index % 2 ? "assistant" : "user",
       content: `Historical message ${index}`,
@@ -161,9 +176,11 @@ it("runs the official QuickJS interpreter tool inside the served graph", async (
   const model = new FixtureModel([
     { name: "eval", args: { code: "[1,2,3].reduce((sum,value)=>sum+value,0)" } },
   ]);
+
   const { run } = await serve(
     createDeepAgent({ model, middleware: [createCodeInterpreterMiddleware()] }),
   );
+
   const { result } = await run({ messages: [{ role: "user", content: "Compute the sum" }] });
   expect(JSON.stringify(result.messages.filter((message) => message.type === "tool"))).toContain(
     "6",
@@ -176,10 +193,12 @@ it("reopens upstream binary file checkpoint state from a real SQLite file", asyn
   const graph = createDeepAgent({ model: new FixtureModel() });
   let embedded = await embedSqliteGraphs({ agent: graph }, { sqlitePath: filename });
   let runtime = createProtocolRuntime(embedded.deps);
+
   try {
     await runtime.service.assistants.registerGraphAssistants();
     const timestamp = new Date().toISOString();
     const bytes = new Uint8Array([137, 80, 78, 71, 0, 255]);
+
     const { threadId } = await runtime.service.runs.createWait({
       assistant_id: "agent",
       input: {
@@ -194,6 +213,7 @@ it("reopens upstream binary file checkpoint state from a real SQLite file", asyn
         },
       },
     });
+
     const run = await embedded.deps.store.runs.latestForThread(threadId);
     if (run.error) throw new Error(JSON.stringify(run.error));
     await runtime.worker.stop();

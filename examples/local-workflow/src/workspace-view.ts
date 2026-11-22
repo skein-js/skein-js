@@ -13,9 +13,11 @@ const paths: Record<string, string> = {
   branch:
     '<circle cx="6" cy="5" r="2"/><circle cx="6" cy="19" r="2"/><circle cx="18" cy="6" r="2"/><path d="M6 7v10M8 15c6 0 10-2 10-7"/>',
 };
+
 export function icon(name: string): string {
   return `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">${paths[name] ?? paths["note"]}</svg>`;
 }
+
 export function renderWorkspace(
   root: HTMLElement,
   application: "meetings" | "reading" = "meetings",

@@ -137,6 +137,7 @@ describe("buildChannelRegistry", () => {
         config: { assistant: "support" },
       },
     };
+
     const channels = Object.fromEntries(
       order.map((name) => [name, definitions[name as keyof typeof definitions]]),
     );
@@ -152,6 +153,7 @@ describe("buildChannelRegistry", () => {
       verify() {
         return { identity: "channel:twilio:+254" };
       }
+
       parseEvent() {
         return { kind: "ignore" as const };
       }

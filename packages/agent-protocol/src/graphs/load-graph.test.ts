@@ -28,6 +28,7 @@ describe("loadGraphOrThrow", () => {
     const configError = new Error('Failed to import graph module "/app/src/agent-graph.ts".', {
       cause: new Error('GOOGLE_API_KEY is not set — the "agent" graph needs it.'),
     });
+
     const resolver = resolverThat(async () => {
       throw configError;
     });
@@ -49,6 +50,7 @@ describe("loadGraphOrThrow", () => {
     const resolver = resolverThat(async () => {
       throw new Error("boom");
     });
+
     const thrown = (await loadGraphOrThrow(resolver, "agent", true).catch(
       (error: unknown) => error,
     )) as SkeinHttpError;
@@ -62,6 +64,7 @@ describe("loadGraphOrThrow", () => {
     const cause = new Error("Failed to import graph module.", {
       cause: new Error("connect ECONNREFUSED 10.0.3.14:5432"),
     });
+
     const resolver = resolverThat(async () => {
       throw cause;
     });
@@ -80,6 +83,7 @@ describe("loadGraphOrThrow", () => {
 
   it("passes a SkeinHttpError through, so an unknown id stays a 4xx", async () => {
     const notFound = SkeinHttpError.notFound('Unknown graph "nope".');
+
     const resolver = resolverThat(async () => {
       throw notFound;
     });

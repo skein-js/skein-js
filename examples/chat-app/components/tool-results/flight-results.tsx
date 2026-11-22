@@ -2,7 +2,7 @@
 
 import { ArrowRight, Plane } from "lucide-react";
 
-import { type FlightSearchResult, formatDuration } from "@/lib/tool-results";
+import { formatDuration, type FlightSearchResult } from "@/lib/tool-results";
 
 /**
  * A `search_flights` result rendered as one card per option (cheapest first, as the tool sorts them).

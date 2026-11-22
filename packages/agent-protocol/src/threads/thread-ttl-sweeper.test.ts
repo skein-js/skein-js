@@ -49,6 +49,7 @@ describe("thread TTL sweeper", () => {
     // The whole reason this sweeper is not `startStoreTtlSweeper` with a different table.
     const { store, service, sweeper } = await harness();
     const thread = await service.threads.create();
+
     const run = await store.runs.create({
       thread_id: thread.thread_id,
       assistant_id: "echo",
@@ -181,6 +182,7 @@ describe("runtime wiring", () => {
   it("sweeps on its own interval once the worker starts", async () => {
     const store = new MemorySkeinStore({ threadTtl: { defaultTtl: 40 / 60_000 } });
     const { createProtocolRuntime } = await import("../runtime.js");
+
     const runtime = createProtocolRuntime({
       ...createFixtureDeps(),
       store,
@@ -190,6 +192,7 @@ describe("runtime wiring", () => {
     const thread = await runtime.service.threads.create();
 
     runtime.worker.start();
+
     try {
       await vi.waitFor(async () => {
         expect(await store.threads.get(thread.thread_id)).toBeNull();
@@ -204,6 +207,7 @@ it("prunes an expired keep_latest thread and refreshes its window on state write
   const store = new MemorySkeinStore({
     threadTtl: { defaultTtl: 40 / 60_000, strategy: "keep_latest" },
   });
+
   const deps = { ...createFixtureDeps(), store };
   const service = createProtocolServiceFromContext(createContext(deps));
   await service.assistants.registerGraphAssistants();

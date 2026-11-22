@@ -7,8 +7,8 @@ import { SqliteSaver } from "@langchain/langgraph-checkpoint-sqlite";
 import {
   Client,
   StreamableHTTPClientTransport,
-  type InputRequiredResult,
   type CallToolResult,
+  type InputRequiredResult,
 } from "@modelcontextprotocol/client";
 import { SkeinHttpError, type AuthEngine } from "@skein-js/core";
 import { openSqliteStorage } from "@skein-js/storage-sqlite";
@@ -30,6 +30,7 @@ async function harness(
   callerHeaders: () => Record<string, string> = () => ({}),
 ) {
   let effects = 0;
+
   const parallel = new StateGraph(state)
     .addNode("askLeft", () => ({ left: interrupt("Left?") }))
     .addNode("askRight", () => ({ right: interrupt("Right?") }))
@@ -42,6 +43,7 @@ async function harness(
     .addEdge(["askLeft", "askRight"], "finish")
     .addEdge("finish", "__end__")
     .compile();
+
   const relay = new StateGraph(state)
     .addNode("relay", () => ({
       left: interrupt({
@@ -62,6 +64,7 @@ async function harness(
     .addEdge("__start__", "relay")
     .addEdge("relay", "__end__")
     .compile();
+
   const review = new StateGraph(state)
     .addNode("review", () => ({
       left: interrupt({
@@ -74,11 +77,13 @@ async function harness(
     .addEdge("__start__", "review")
     .addEdge("review", "__end__")
     .compile();
+
   const ordinary = new StateGraph(state)
     .addNode("answer", () => ({ left: "ordinary" }))
     .addEdge("__start__", "answer")
     .addEdge("answer", "__end__")
     .compile();
+
   const cancellable = new StateGraph(state)
     .addNode("wait", async (_state, config) => {
       if (!config.signal) throw new Error("Missing run signal");
@@ -92,7 +97,9 @@ async function harness(
     .addEdge("__start__", "wait")
     .addEdge("wait", "__end__")
     .compile();
+
   const graphs = { parallel, relay, review, ordinary, cancellable };
+
   const deps = createFixtureDeps({
     graphs: {
       ids: Object.keys(graphs),
@@ -101,10 +108,12 @@ async function harness(
     },
     ...overrides,
   });
+
   const runtime = createProtocolRuntime(deps);
   await runtime.service.assistants.registerGraphAssistants();
   const requests: unknown[] = [];
   const responses: { status: number; body: unknown }[] = [];
+
   const client = new Client(
     { name: "elicitation-proof", version: "1" },
     {
@@ -116,6 +125,7 @@ async function harness(
       inputRequired: { autoFulfill: false },
     },
   );
+
   const transport = new StreamableHTTPClientTransport(new URL("http://localhost/mcp"), {
     fetch: async (input, init) => {
       const native = new Request(input, init);
@@ -158,19 +168,23 @@ describe("official modern MCP elicitation", () => {
   it("cancels an executing inline run when the official client aborts its request", async () => {
     const f = await harness();
     const controller = new AbortController();
+
     try {
       const pending = f.client.request(
         { method: "tools/call", params: { name: "cancellable", arguments: {} } },
         { allowInputRequired: true, signal: controller.signal },
       );
+
       const completed = pending.then(
         () => ({ rejected: false }),
         () => ({ rejected: true }),
       );
+
       const latest = async () => {
         const thread = (await f.runtime.service.threads.list())[0];
         return thread ? f.deps.store.runs.latestForThread(thread.thread_id) : null;
       };
+
       await expect.poll(async () => (await latest())?.status).toBe("running");
       controller.abort();
       expect(await completed).toEqual({ rejected: true });
@@ -184,6 +198,7 @@ describe("official modern MCP elicitation", () => {
   it("honors actual thread expiry even when later writes changed updated_at before collection", async () => {
     let now = new Date();
     const f = await harness({ clock: () => now });
+
     try {
       const first = paused(await f.call("parallel"));
       const thread = (await f.runtime.service.threads.list())[0]!;
@@ -205,14 +220,18 @@ describe("official modern MCP elicitation", () => {
   it("reopens a pending round from SQLite and replays the accepted answer without re-execution", async () => {
     const directory = await mkdtemp(join(tmpdir(), "skein-mcp-round-"));
     let storage = await openSqliteStorage({ filename: join(directory, "round.sqlite") });
+
     const overrides = () => ({
       store: storage.store,
       queue: storage.queue,
       checkpointer: new SqliteSaver(storage.database),
     });
+
     let f = await harness(overrides());
+
     try {
       const first = paused(await f.call("parallel"));
+
       const answers = Object.fromEntries(
         Object.keys(first.inputRequests!).map((key) => [
           key,
@@ -246,8 +265,10 @@ describe("official modern MCP elicitation", () => {
 
   it("accepts valid first-call answers through the official client's inputResponses contract", async () => {
     const f = await harness();
+
     try {
       const template = paused(await f.call("parallel"));
+
       const answers = Object.fromEntries(
         Object.keys(template.inputRequests!).map((key) => [
           key,
@@ -267,8 +288,10 @@ describe("official modern MCP elicitation", () => {
     "does not replay output from a deleted resumed run after %s",
     async (failure) => {
       const f = await harness();
+
       try {
         const first = paused(await f.call("parallel"));
+
         const answers = Object.fromEntries(
           Object.keys(first.inputRequests!).map((key) => [
             key,
@@ -278,6 +301,7 @@ describe("official modern MCP elicitation", () => {
         vi.spyOn(f.deps.store.idempotency, "deleteByRun").mockRejectedValue(
           new Error("unavailable"),
         );
+
         if (failure === "late record") {
           const record = f.deps.store.idempotency.record.bind(f.deps.store.idempotency);
           vi.spyOn(f.deps.store.idempotency, "record").mockImplementation(
@@ -288,14 +312,17 @@ describe("official modern MCP elicitation", () => {
             },
           );
         }
+
         expect(
           await f.call("parallel", { requestState: first.requestState, inputResponses: answers }),
         ).toMatchObject({ isError: false });
+
         if (failure === "failed erasure") {
           const thread = (await f.runtime.service.threads.list())[0]!;
           const resumed = await f.deps.store.runs.latestForThread(thread.thread_id);
           await f.runtime.service.runs.delete(resumed!.run_id);
         }
+
         await expect(
           f.call("parallel", { requestState: first.requestState, inputResponses: answers }),
         ).rejects.toThrow();
@@ -308,6 +335,7 @@ describe("official modern MCP elicitation", () => {
   it("binds state to the caller and reauthorizes completed replays after revocation", async () => {
     let caller = "alice";
     let revoked = false;
+
     const auth: AuthEngine = {
       enabled: true,
       studioAuthDisabled: true,
@@ -328,9 +356,12 @@ describe("official modern MCP elicitation", () => {
       },
       matchesFilters: (metadata, filters) => metadata?.["owner"] === filters?.["owner"],
     };
+
     const f = await harness({ auth }, "both", () => ({ "x-user": caller }));
+
     try {
       const first = paused(await f.call("parallel"));
+
       const answers = Object.fromEntries(
         Object.keys(first.inputRequests!).map((key) => [
           key,
@@ -357,8 +388,10 @@ describe("official modern MCP elicitation", () => {
 
   it("does not revive a cancelled round or a superseded checkpoint", async () => {
     const f = await harness();
+
     try {
       const first = paused(await f.call("parallel"));
+
       const cancelled = Object.fromEntries(
         Object.keys(first.inputRequests!).map((key) => [key, { action: "cancel" }]),
       );
@@ -377,7 +410,9 @@ describe("official modern MCP elicitation", () => {
       const oldThreads = new Set(
         (await f.runtime.service.threads.list()).map((thread) => thread.thread_id),
       );
+
       const second = paused(await f.call("parallel"));
+
       const latest = (await f.runtime.service.threads.list()).find(
         (entry) => !oldThreads.has(entry.thread_id),
       )!;
@@ -396,6 +431,7 @@ describe("official modern MCP elicitation", () => {
     "reports missing elicitation capability for a %s client",
     async (capability) => {
       const f = await harness({}, capability);
+
       try {
         await expect(f.call("relay")).rejects.toMatchObject({ code: -32021 });
         expect(f.responses.at(-1)?.status).toBe(400);
@@ -411,6 +447,7 @@ describe("official modern MCP elicitation", () => {
       const f = await harness();
       if (capability !== "write-only") f.deps.store.runs.recordResult = undefined;
       if (capability !== "read-only") f.deps.store.runs.getResult = undefined;
+
       try {
         expect(await f.call("ordinary")).toMatchObject({
           isError: false,
@@ -429,14 +466,17 @@ describe("official modern MCP elicitation", () => {
 
   it("arbitrates concurrent answers and rejects a changed answer after acceptance", async () => {
     const f = await harness();
+
     try {
       const first = paused(await f.call("parallel"));
+
       const answers = Object.fromEntries(
         Object.keys(first.inputRequests!).map((key) => [
           key,
           { action: "accept", content: { response: "ok" } },
         ]),
       );
+
       const attempts = await Promise.allSettled([
         f.call("parallel", { requestState: first.requestState, inputResponses: answers }),
         f.call("parallel", { requestState: first.requestState, inputResponses: answers }),
@@ -461,6 +501,7 @@ describe("official modern MCP elicitation", () => {
   });
   it("asks parallel questions together, reasks missing answers and resumes/replays once", async () => {
     const f = await harness();
+
     try {
       const first = paused(await f.call("parallel"));
       const keys = Object.keys(first.inputRequests!);
@@ -504,6 +545,7 @@ describe("official modern MCP elicitation", () => {
 
   it("relays form and URL answers with original keys and validates before resuming", async () => {
     const f = await harness();
+
     try {
       const first = paused(await f.call("relay"));
       expect(Object.keys(first.inputRequests!)).toEqual(["name", "connect"]);
@@ -533,9 +575,11 @@ describe("official modern MCP elicitation", () => {
     "translates a %s tool review without changing its tool name",
     async (decision) => {
       const f = await harness();
+
       try {
         const first = paused(await f.call("review"));
         const key = Object.keys(first.inputRequests!)[0]!;
+
         const response = await f.call("review", {
           requestState: first.requestState,
           inputResponses: {
@@ -572,6 +616,7 @@ describe("official modern MCP elicitation", () => {
   it("refuses modified state, another tool/arguments, expired state and erased threads", async () => {
     let now = new Date("2026-11-09T00:00:00Z");
     const f = await harness({ clock: () => now });
+
     try {
       const first = paused(await f.call("parallel"));
       for (const [tool, stateValue, args] of [
@@ -589,6 +634,7 @@ describe("official modern MCP elicitation", () => {
       const oldThreads = new Set(
         (await f.runtime.service.threads.list()).map((thread) => thread.thread_id),
       );
+
       const second = paused(await f.call("parallel"));
       const threads = await f.runtime.service.threads.list();
       await f.runtime.service.threads.delete(

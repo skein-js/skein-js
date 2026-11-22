@@ -22,11 +22,14 @@ describe("cancellation", () => {
   it("stops rollback cancellation when its execution lease is lost during the checkpoint read", async () => {
     const lost = new AbortController();
     const release = vi.fn(async () => undefined);
+
     const deps = createFixtureDeps({
       threadExecutionGate: { acquire: async () => ({ signal: lost.signal, release }) },
     });
+
     const service = await serviceWithAssistants(deps);
     const thread = await service.threads.create();
+
     const run = await deps.store.runs.create({
       thread_id: thread.thread_id,
       assistant_id: "echo",
@@ -77,6 +80,7 @@ describe("cancellation", () => {
     const service = createProtocolServiceFromContext(ctx);
     await service.assistants.registerGraphAssistants();
     const thread = await service.threads.create();
+
     const run = await service.runs.createBackground(thread.thread_id, {
       assistant_id: "echo",
       input: {},
@@ -88,6 +92,7 @@ describe("cancellation", () => {
     // The job is still queued, but terminal — a running worker consumes and skips it (stays cancelled).
     const worker = createRunWorker(ctx);
     worker.start();
+
     try {
       await tick(80);
       expect((await service.runs.get(run.run_id)).status).toBe("cancelled");
@@ -104,15 +109,19 @@ describe("cancellation", () => {
     "uses the smaller requested or deployment execution budget ($host/$requested)",
     async ({ host, requested }) => {
       const deps = resolveDeps(createFixtureDeps({ runTimeoutMs: host }));
+
       const assistant = await deps.store.assistants.create({
         graph_id: "slow",
         assistant_id: "slow",
       });
+
       const thread = await deps.store.threads.create();
+
       const run = await deps.store.runs.create({
         thread_id: thread.thread_id,
         assistant_id: assistant.assistant_id,
       });
+
       const control = new RunControlRegistry().register(run.run_id);
       expect(
         (await executeRun(deps, { run, kwargs: { input: {}, timeout_ms: requested }, control }))
@@ -127,11 +136,13 @@ describe("cancellation", () => {
     const thread = await deps.store.threads.create();
     const run = await deps.store.runs.create({ thread_id: thread.thread_id, assistant_id: "slow" });
     const control = new RunControlRegistry().register(run.run_id);
+
     const kwargs = {
       input: {},
       timeout_ms: 1000,
       native_origin: { sourceId: "duration", deadlineAt: new Date(Date.now() + 20).toISOString() },
     };
+
     const outcome = await executeRun(deps, { run, kwargs, control });
     expect(outcome.status).toBe("timeout");
     expect(control.reason.current).toBe("timeout");
@@ -141,6 +152,7 @@ describe("cancellation", () => {
     const deps = createFixtureDeps();
     const service = await serviceWithAssistants(deps);
     const thread = await service.threads.create();
+
     const run = await service.runs.createBackground(thread.thread_id, {
       assistant_id: "slow",
       input: {},
@@ -151,6 +163,7 @@ describe("cancellation", () => {
     expect((await deps.store.runs.get(run.run_id))?.status).toBe("pending");
     const worker = createRunWorker(createContext(deps));
     worker.start();
+
     try {
       await expect
         .poll(async () => (await deps.store.runs.get(run.run_id))?.status, { timeout: 3000 })
@@ -162,16 +175,20 @@ describe("cancellation", () => {
 
   it("times out a run that overruns runTimeoutMs", async () => {
     const deps = resolveDeps(createFixtureDeps({ runTimeoutMs: 40 }));
+
     const assistant = await deps.store.assistants.create({
       graph_id: "slow",
       assistant_id: "slow",
     });
+
     const thread = await deps.store.threads.create();
+
     const run: Run = await deps.store.runs.create({
       thread_id: thread.thread_id,
       assistant_id: assistant.assistant_id,
       status: "pending",
     });
+
     const control = new RunControlRegistry().register(run.run_id);
 
     const outcome = await executeRun(deps, { run, kwargs: { input: {} }, control });

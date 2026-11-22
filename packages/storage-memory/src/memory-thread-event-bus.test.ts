@@ -30,6 +30,7 @@ describe("thread event retention", () => {
   });
   it("evicts the least recently published history, not a thread that is still publishing", async () => {
     const bus = new MemoryThreadEventBus();
+
     const publish = (threadId: string) =>
       bus.publish(threadId, {
         kind: "run",

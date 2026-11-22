@@ -79,6 +79,7 @@ describe("if_not_exists on run create", () => {
 
     it("reuses the thread when it already exists, rather than replacing it", async () => {
       const { deps, service } = await harness();
+
       const existing = await service.threads.create({
         thread_id: "known",
         metadata: { keep: "me" },

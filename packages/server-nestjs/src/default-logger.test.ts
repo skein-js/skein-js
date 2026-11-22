@@ -27,11 +27,13 @@ import { SKEIN_CORS } from "./tokens.js";
 /** A `LoggerService` recording every line Nest is asked to write. */
 function capturingLoggerService(): LoggerService & { lines: { level: string; text: string }[] } {
   const lines: { level: string; text: string }[] = [];
+
   const record =
     (level: string) =>
     (message: unknown): void => {
       lines.push({ level, text: String(message) });
     };
+
   return {
     lines,
     log: record("log"),
@@ -79,9 +81,11 @@ async function startEmbedded(
   running = app;
 
   const address = app.getHttpServer().address() as AddressInfo | null;
+
   if (address === null || typeof address === "string") {
     throw new Error("expected a bound TCP address");
   }
+
   return { baseUrl: `http://127.0.0.1:${address.port}`, captured };
 }
 
@@ -123,11 +127,13 @@ describe("SkeinModule — logging by default", () => {
 
   it("writes to an explicit logger instead of Nest's", async () => {
     const explicit: { level: string; message: string }[] = [];
+
     const record =
       (level: string) =>
       (message: string): void => {
         explicit.push({ level, message });
       };
+
     const { baseUrl, captured } = await startEmbedded({
       deps: createEchoDeps(),
       logger: {
@@ -147,13 +153,16 @@ describe("SkeinModule — logging by default", () => {
     // Dropping the middle parameter would not fail loudly for an untyped caller — `cors` would
     // silently receive the Logger, and CORS headers would go wrong rather than absent.
     const resolved = await resolveProtocolRuntime({ deps: createEchoDeps() });
+
     try {
       const legacy = SkeinModule.forResolvedRuntime(
         resolved,
         { debug() {}, info() {}, warn() {}, error() {} },
         true,
       );
+
       const modern = SkeinModule.forResolvedRuntime(resolved, true);
+
       // Both shapes must land `true` in the CORS slot, not a logger object.
       const corsOf = (module: { providers?: unknown[] }): unknown =>
         (module.providers ?? [])

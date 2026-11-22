@@ -20,11 +20,13 @@ import { useState } from "react";
  */
 function messageText(content: unknown): string {
   if (typeof content === "string") return content;
+
   if (Array.isArray(content)) {
     return content
       .map((part) => (typeof part === "string" ? part : ((part as { text?: string }).text ?? "")))
       .join("");
   }
+
   if (content == null) return "";
   return JSON.stringify(content);
 }
@@ -35,6 +37,7 @@ function speakerFor(type: string): { label: string; color: string } {
   if (type === "tool") return { label: "tool", color: "#e0af68" };
   return { label: "agent", color: "#9ece6a" };
 }
+
 export default function Page() {
   const apiUrl = process.env.NEXT_PUBLIC_SKEIN_URL ?? "http://localhost:2024";
   const assistantId = process.env.NEXT_PUBLIC_SKEIN_ASSISTANT_ID ?? "gemini";

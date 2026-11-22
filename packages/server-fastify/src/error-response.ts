@@ -24,6 +24,7 @@ export function sendErrorResponse(error: unknown, reply: FastifyReply, logger?: 
     if (error.status >= 500) {
       logger?.error(`Request failed: ${error.message}`, error);
     }
+
     reply.status(error.status).send({
       status: error.status,
       message: error.message,

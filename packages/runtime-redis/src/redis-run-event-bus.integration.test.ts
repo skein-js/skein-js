@@ -40,6 +40,7 @@ describe("RedisRunEventBus cross-instance", () => {
     const prefix = `skein:test:${randomUUID()}`;
     const publisher = new RedisRunEventBus(redis.url, { keyPrefix: prefix });
     const joiner = new RedisRunEventBus(redis.url, { keyPrefix: prefix });
+
     try {
       const received = collect(joiner.subscribe("run-x"));
       await new Promise((resolve) => setTimeout(resolve, 50)); // let the joiner's SUBSCRIBE land
@@ -57,6 +58,7 @@ describe("RedisRunEventBus cross-instance", () => {
 
   it("completes (does not hang) when joining a closed run whose frame stream has expired", async () => {
     const prefix = `skein:test:${randomUUID()}`;
+
     // The backstop interval is set absurdly high *on purpose*: it makes this a test of the one eager
     // close-check the subscriber makes before live-tailing, not of the periodic one. If the eager check
     // regressed, this hangs for ten minutes rather than passing a beat later — which is exactly the
@@ -65,7 +67,9 @@ describe("RedisRunEventBus cross-instance", () => {
       keyPrefix: prefix,
       closedCheckIntervalMs: 600_000,
     });
+
     const raw = new Redis(redis.url);
+
     try {
       await bus.publish("gone", frame(1));
       await bus.close("gone");
@@ -91,6 +95,7 @@ describe("RedisRunEventBus cross-instance", () => {
   it("does not poll while idle — the close check is a backstop, not a heartbeat", async () => {
     const prefix = `skein:test:${randomUUID()}`;
     let existsCalls = 0;
+
     const bus = new RedisRunEventBus(redis.url, {
       keyPrefix: prefix,
       createClient: (url, options) => {
@@ -104,6 +109,7 @@ describe("RedisRunEventBus cross-instance", () => {
         return client;
       },
     });
+
     try {
       const received = collect(bus.subscribe("idle-run"));
       // Long enough that a 1s poll would have fired several times over.
@@ -125,6 +131,7 @@ describe("RedisRunEventBus cross-instance", () => {
     const prefix = `skein:test:${randomUUID()}`;
     const bus = new RedisRunEventBus(redis.url, { keyPrefix: prefix });
     const raw = new Redis(redis.url);
+
     try {
       await bus.publish("done", frame(1));
       await bus.close("done");
@@ -144,6 +151,7 @@ describe("RedisRunEventBus cross-instance", () => {
     const prefix = `skein:test:${randomUUID()}`;
     const bus = new RedisRunEventBus(redis.url, { keyPrefix: prefix, streamMaxLen: 100 });
     const raw = new Redis(redis.url);
+
     try {
       for (let seq = 1; seq <= 5000; seq += 1) await bus.publish("big", frame(seq));
 
@@ -163,6 +171,7 @@ describe("RedisRunEventBus cross-instance", () => {
     // where an off-by-one would silently repeat or skip a frame.
     const prefix = `skein:test:${randomUUID()}`;
     const bus = new RedisRunEventBus(redis.url, { keyPrefix: prefix, closedCheckIntervalMs: 50 });
+
     try {
       for (let seq = 1; seq <= 1200; seq += 1) await bus.publish("long", frame(seq));
       await bus.close("long");
@@ -177,6 +186,7 @@ describe("RedisRunEventBus cross-instance", () => {
   it("keeps every subscriber fed from one shared pub/sub connection", async () => {
     const prefix = `skein:test:${randomUUID()}`;
     const bus = new RedisRunEventBus(redis.url, { keyPrefix: prefix, closedCheckIntervalMs: 50 });
+
     try {
       const received = Promise.all([
         collect(bus.subscribe("shared")),
@@ -207,6 +217,7 @@ describe("RedisRunEventBus cross-instance", () => {
     // quietly yields `undefined` — the disconnect below would be a no-op and this would pass without
     // testing anything.
     const opened: Redis[] = [];
+
     const bus = new RedisRunEventBus(redis.url, {
       keyPrefix: prefix,
       closedCheckIntervalMs: 50,
@@ -216,6 +227,7 @@ describe("RedisRunEventBus cross-instance", () => {
         return client;
       },
     });
+
     try {
       const received = collect(bus.subscribe("flaky"));
       await new Promise((resolve) => setTimeout(resolve, 100));
