@@ -7,8 +7,8 @@ import { Client } from "@langchain/langgraph-sdk";
 import { MemoryRunEventBus } from "@skein-js/storage-memory";
 import { describe, expect, it } from "vitest";
 
-import { fixtureResponse } from "./generation-fixture.js";
-import { generateImmediateText, rendererMetadata, startHarness } from "./test-harness.js";
+import { fixtureResponse, generateImmediateText, rendererMetadata } from "./generation-fixture.js";
+import { startHarness } from "./test-harness.js";
 import { prepareUiRun } from "./ui-client.js";
 import { parseSavedUi, uiSurfaceIds, type SavedUi } from "./ui-contract.js";
 import { createUiSession } from "./ui-session.js";
@@ -32,7 +32,7 @@ function action(
   };
 }
 
-describe("trip session over the official HTTP SDK", () => {
+describe("A2UI session over the official HTTP SDK", () => {
   it("streams, approves without regeneration, revises through bound form input, deletes notes and reopens", async () => {
     let generations = 0;
 

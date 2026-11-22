@@ -10,7 +10,7 @@ export const GeneratedUi = createRenderer(catalog, {
       {children}
     </article>
   ),
-  Text: ({ element: { props } }) => <p className="plan-summary">{props.text}</p>,
+  Text: ({ element: { props } }) => <p>{props.text}</p>,
   Grid: ({ element: { props }, children }) => (
     <div
       className="metric-grid"
@@ -62,7 +62,7 @@ export const GeneratedUi = createRenderer(catalog, {
     </ol>
   ),
   Button: ({ element: { props }, emit }) => (
-    <button className="secondary" type="button" onClick={() => emit("press")}>
+    <button type="button" onClick={() => emit("press")}>
       {props.label}
     </button>
   ),
@@ -87,9 +87,7 @@ export const GeneratedUi = createRenderer(catalog, {
             required
             placeholder="Describe a change to the interface"
           />
-          <button className="secondary" type="submit">
-            Update UI
-          </button>
+          <button type="submit">Update UI</button>
         </div>
       </form>
     );

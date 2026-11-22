@@ -23,6 +23,7 @@ GOOGLE_API_KEY=YOUR_API_KEY
 ```
 
 Start the frontend and graph server with `pnpm dev:all`. Open [the playground](http://127.0.0.1:3007).
+If `GOOGLE_API_KEY` is missing or blank, Skein reports an error when it loads the graph.
 GitHub lookups use the public REST API and its anonymous quota.
 
 ## Try a prompt and revise the result {#use-the-chat-playground}

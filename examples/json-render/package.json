@@ -20,15 +20,10 @@
   },
   "devDependencies": {
     "@playwright/test": "1.61.1",
-    "@skein-js/agent-protocol": "workspace:*",
     "@skein-js/express": "workspace:*",
-    "@skein-js/langgraph": "workspace:*",
-    "@skein-js/server-kit": "workspace:*",
-    "@skein-js/storage-memory": "workspace:*",
     "@types/react": "^19.0.2",
     "@types/react-dom": "^19.0.2",
     "@vitejs/plugin-react": "6.0.5",
-    "skein-js": "workspace:*",
-    "tsx": "4.22.4"
+    "skein-js": "workspace:*"
   }
 }

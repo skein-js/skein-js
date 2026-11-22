@@ -3,7 +3,7 @@ import { describe, expect, it } from "vitest";
 
 import { validateUiSpec, type CommittedUi } from "./catalog.js";
 import { fixtureSpecStream } from "./generation-fixture.js";
-import { createUiStream, type StreamFrame, type UiEvent } from "./ui-events.js";
+import { createUiStream, type UiEvent } from "./ui-events.js";
 
 const generationId = "32cf59ea-785c-43eb-81ce-f936d533d956";
 const otherGeneration = "7f4aa0d1-6602-49a5-b128-06ac9aad4450";
@@ -11,7 +11,7 @@ const text = fixtureSpecStream({ prompt: "Plan a café visit ☕ 🌱" });
 const expected = validateUiSpec(compileSpecStream(text));
 const baseline: CommittedUi = { spec: expected, generationId: otherGeneration, chunkCount: 1 };
 
-const frame = (event: UiEvent, namespace = "custom"): StreamFrame => ({
+const frame = (event: UiEvent, namespace = "custom") => ({
   event: namespace,
   data: event,
 });

@@ -22,7 +22,8 @@ GOOGLE_API_KEY=YOUR_API_KEY
 ```
 
 Use a model that supports tool calling. The shared example package includes the Gemini integration
-and accepts the `google-genai:` alias. GitHub requests use the
+and accepts the `google-genai:` alias. If `GOOGLE_API_KEY` is missing or blank, Skein reports an error
+when it loads the graph. GitHub requests use the
 [anonymous REST API quota](https://docs.github.com/en/rest/using-the-rest-api/rate-limits-for-the-rest-api).
 
 ```sh
@@ -51,9 +52,10 @@ composer for retry. Dismissing notes preserves text already entered in the feedb
 - The [shared GitHub agent](../github-playground/README.md) uses a model node to select tools and a
   LangGraph `ToolNode` to execute them. It feeds the results into a second model call for rendering.
 - `generation.ts` supplies this example's renderer format. `ui-generation.ts` parses Direct JSON into A2UI messages and validates the three surfaces.
-- `ui-graph.ts` exports the compiled graph. Validated renderer actions go to a LangGraph
-  `ToolNode`. `reviseUi` sends feedback to the generation node and `dismissNotes` removes the
-  notes surface. New generations checkpoint the UI before the review interrupt.
+- `live-graph.ts` checks the server's Gemini settings and exports the graph from `ui-graph.ts`.
+  Validated renderer actions go to a LangGraph `ToolNode`. `reviseUi` sends feedback to the
+  generation node and `dismissNotes` removes the notes surface. New generations checkpoint the
+  UI before the review interrupt.
 - `ui-session.ts` uses the LangGraph SDK for runs, restoration, and cancellation.
   `app/ui-session.ts` passes messages to the Angular renderer and tracks its mounted surfaces.
 - `app/app.ts` composes the conversation, prompt composer, and JSON inspector. Each Angular

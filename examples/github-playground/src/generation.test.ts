@@ -137,3 +137,12 @@ it("requires model configuration before it attempts a lookup", async () => {
   await expect(collectUi()).rejects.toThrow("Set JSON_RENDER_MODEL");
   expect(fetchRequest).not.toHaveBeenCalled();
 });
+
+it.each([undefined, "   "])("rejects a missing or blank Gemini key (%j)", async (apiKey) => {
+  vi.stubEnv("GOOGLE_API_KEY", apiKey);
+  const fetchRequest = vi.fn();
+  vi.stubGlobal("fetch", fetchRequest);
+
+  await expect(collectUi()).rejects.toThrow("Set GOOGLE_API_KEY");
+  expect(fetchRequest).not.toHaveBeenCalled();
+});

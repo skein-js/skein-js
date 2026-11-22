@@ -128,7 +128,7 @@ const generateUi = async (state: typeof UiState.State, config: LangGraphRunnable
 };
 
 const reviewUi = (state: typeof UiState.State) => {
-  if (!state.ui) throw new Error("Generate a plan before reviewing it");
+  if (!state.ui) throw new Error("Generate a UI before reviewing it");
   const decision = decisionSchema.parse(
     interrupt({
       kind: "review-ui",
@@ -137,7 +137,7 @@ const reviewUi = (state: typeof UiState.State) => {
     }),
   );
   if (decision.generationId !== state.ui.generationId)
-    throw new Error("This approval belongs to an older plan");
+    throw new Error("This approval belongs to an older UI");
   return { approved: decision.approved };
 };
 

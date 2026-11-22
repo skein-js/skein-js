@@ -23,7 +23,7 @@ function gate() {
   return { promise, release };
 }
 
-describe("plan session over the official HTTP SDK", () => {
+describe("json-render session over the official HTTP SDK", () => {
   it("blocks a stale tab from replacing another tab's pending review", async () => {
     const harness = await startHarness(generateImmediateText);
     const first = createUiSession(harness.clientFor());

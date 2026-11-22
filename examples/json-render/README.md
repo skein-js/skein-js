@@ -22,7 +22,8 @@ GOOGLE_API_KEY=YOUR_API_KEY
 ```
 
 Use a model that supports tool calling. The shared example package includes the Gemini integration
-and accepts the `google-genai:` alias. GitHub requests use the
+and accepts the `google-genai:` alias. If `GOOGLE_API_KEY` is missing or blank, Skein reports an error
+when it loads the graph. GitHub requests use the
 [anonymous REST API quota](https://docs.github.com/en/rest/using-the-rest-api/rate-limits-for-the-rest-api).
 
 ```sh
@@ -53,9 +54,9 @@ saved UI remains available and you can retry the prompt from the composer.
   model's JSONL patches to the upstream compiler.
 - `app/generated-ui.tsx` creates the React renderer once. The app supplies the action handler
   for the current saved view.
-- `ui-graph.ts` exports the compiled graph. Its `ToolNode` checks the revision against the saved
-  generation and sends the feedback to the same model node as a chat prompt. The review node
-  pauses after the new UI is saved.
+- `live-graph.ts` checks the server's Gemini settings and exports the graph from `ui-graph.ts`.
+  The graph's `ToolNode` checks the revision against the saved generation and sends the feedback
+  to the same model node as a chat prompt. The review node pauses after the new UI is saved.
 - `ui-session.ts` uses the LangGraph SDK to submit prompts and revisions, restore saved views, and
   cancel runs.
 

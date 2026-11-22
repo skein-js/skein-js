@@ -8,13 +8,27 @@ import { githubTools } from "./github-tools.js";
 
 const LookupState = new StateSchema({ messages: MessagesValue });
 
+type ModelSetting = "A2UI_MODEL" | "JSON_RENDER_MODEL";
+
 interface GitHubUiRequest {
-  modelSetting: "A2UI_MODEL" | "JSON_RENDER_MODEL";
+  modelSetting: ModelSetting;
   prompt: string;
   systemPrompt: string;
   previousUi: unknown;
   rendererContext?: Record<string, unknown>;
   signal?: AbortSignal;
+}
+
+/** Validate the server's Gemini configuration before loading the graph or calling the model. */
+export function readGitHubUiModel(modelSetting: ModelSetting): string {
+  if (!process.env["GOOGLE_API_KEY"]?.trim()) {
+    throw new Error("Set GOOGLE_API_KEY in the server environment or .env to use Gemini.");
+  }
+
+  const model = process.env[modelSetting]?.trim();
+  if (!model) throw new Error(`Set ${modelSetting} to a LangChain provider:model string.`);
+
+  return model.replace(/^google-genai:/, "google:");
 }
 
 /** Select and run public GitHub lookups, then stream the renderer's format from the same model. */
@@ -26,11 +40,7 @@ export async function* streamGitHubUi({
   rendererContext,
   signal,
 }: GitHubUiRequest): AsyncIterable<string> {
-  const configuredModel = process.env[modelSetting]?.trim();
-  if (!configuredModel)
-    throw new Error(`Set ${modelSetting} to a LangChain provider:model string.`);
-
-  const model = await initChatModel(configuredModel.replace(/^google-genai:/, "google:"), {
+  const model = await initChatModel(readGitHubUiModel(modelSetting), {
     configurableFields: [],
   });
 

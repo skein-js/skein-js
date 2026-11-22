@@ -8,13 +8,14 @@ const eventBase = {
   generationId: z.string().uuid(),
   sequence: z.number().int().nonnegative(),
 };
-export const uiEventSchema = z.discriminatedUnion("phase", [
+
+const uiEventSchema = z.discriminatedUnion("phase", [
   z.object({ ...eventBase, phase: z.literal("start"), sequence: z.literal(0) }).strict(),
   z.object({ ...eventBase, phase: z.literal("chunk"), text: z.string() }).strict(),
   z.object({ ...eventBase, phase: z.literal("complete") }).strict(),
 ]);
 export type UiEvent = z.infer<typeof uiEventSchema>;
-export type StreamFrame = { event: string; data: unknown; id?: string };
+type StreamFrame = { event: string; data: unknown };
 
 /** One compiler per run; this object survives reconnections, but never crosses threads/runs. */
 export function createUiStream(baseline: CommittedUi | null) {
@@ -106,7 +107,6 @@ export function createUiStream(baseline: CommittedUi | null) {
       return {
         spec: preview ? structuredClone(preview) : null,
         generationId,
-        chunkCount: complete ? lastSequence - 1 : undefined,
         gap,
         preview: hasPreview && !gap,
         complete,

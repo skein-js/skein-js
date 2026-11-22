@@ -176,7 +176,6 @@ h1 {
   color: #375d46;
   font-weight: 700;
 }
-.surface-card,
 .ui-card {
   padding: 1.3rem;
   border: 1px solid #e0e6dc;
@@ -200,17 +199,6 @@ h2 {
 }
 .generated:disabled {
   opacity: 0.8;
-}
-a2ui-v09-surface {
-  display: block;
-}
-a2ui-v09-row {
-  flex-wrap: wrap;
-  gap: 0.75rem;
-}
-a2ui-v09-row a2ui-v09-card {
-  flex: 1;
-  min-width: 140px;
 }
 .review {
   border: 1px solid #d9e4cb;
@@ -249,7 +237,6 @@ a2ui-v09-row a2ui-v09-card {
 }
 .composer-dock {
   flex-shrink: 0;
-  position: static;
   padding: 1rem clamp(1rem, 5vw, 5rem);
   background: linear-gradient(transparent, #fafbf9 1rem);
 }
@@ -306,7 +293,6 @@ a2ui-v09-row a2ui-v09-card {
   min-width: 0;
   border-left: 1px solid #e0e5dc;
   background: #f7f8f6;
-  position: static;
   height: 100%;
   overflow: auto;
 }
@@ -437,7 +423,6 @@ td {
     grid-template-rows: minmax(0, 1fr) auto;
   }
   .inspector {
-    position: static;
     max-height: 25dvh;
     height: auto;
     border-left: 0;
@@ -453,13 +438,11 @@ td {
     padding: 1rem;
     flex-wrap: wrap;
   }
-  .site-header nav {
-    gap: 0.5rem;
-  }
   .platform {
     margin-left: auto;
   }
   .site-header nav {
+    gap: 0.5rem;
     width: 100%;
     margin: 0;
     justify-content: flex-end;
