@@ -5,12 +5,37 @@ then add conversation state, human approval, background work, or durable deploym
 Each section explains the user decision and links to a practical guide.
 
 ```mermaid
-flowchart LR
-  Y["<b>Yours</b><br/>model · prompt · tools"]
-  L["<b>LangGraph</b><br/>state · nodes · edges · interrupt"]
-  S["<b>skein</b><br/>runs · threads · memory<br/>schedules · callbacks · streaming"]
-  Y --> L --> S
-  class Y accent
+---
+config:
+  flowchart:
+    nodeSpacing: 16
+    rankSpacing: 8
+    padding: 8
+    subGraphTitleMargin:
+      top: 8
+      bottom: 12
+---
+flowchart TB
+  accTitle: Responsibilities in a Skein-hosted agent
+  accDescr {
+    You define the state schema, nodes, and edges and choose the models, prompts, and tools.
+    LangGraph.js executes the graph, handles interrupts, writes checkpoints, and emits stream events.
+    Skein hosts the graph and provides the API, runs, threads, storage, stream delivery, schedules, and callbacks.
+  }
+  subgraph hosting["<b>Skein hosts it</b>"]
+    direction TB
+    hostingServices@{ shape: text, label: "API · runs · threads<br/>Storage · stream delivery<br/>Schedules · callbacks" }
+    subgraph execution["<b>LangGraph.js executes it</b>"]
+      direction TB
+      executionFeatures@{ shape: text, label: "Interrupts · checkpoints<br/>Stream events" }
+      authoredGraph["<b>You define the graph</b><br/>State schema · nodes · edges<br/>Models · prompts · tools"]
+      executionFeatures ~~~ authoredGraph
+    end
+    hostingServices ~~~ execution
+  end
+  classDef details fill:none,stroke:none
+  class hostingServices,executionFeatures details
+  class authoredGraph accent
 ```
 
 Read it through once; after that it is a map — find the pressure you are under and follow the link.
@@ -37,9 +62,9 @@ often try again. Bound that in the graph, not in hope.
 
 ## Control flow — LangGraph's
 
-Nodes and edges: what runs, and what runs next. Cycles are expected — an agent loop _is_ a node that
-routes back to the model. skein serves whatever you compile and wraps none of it, which is why the
-same graph runs on LangGraph Platform.
+You define the graph's state, nodes, and edges. LangGraph executes the nodes and follows the edges
+to decide what runs next. In an agent loop, an edge can route execution back to the model. Skein
+hosts the compiled graph, which also runs on LangGraph Platform.
 
 → [LangGraph essentials](./langgraph-essentials.md)
 
@@ -59,7 +84,7 @@ _second_ run with a 422 and leaves the first alone.
 Use checkpoints when a conversation must continue from saved state, pause for approval, or branch
 from an earlier point. Inspect them in the [console](./console.md#time-travel) to test those paths.
 
-LangGraph saves state at every node boundary; skein persists it. One mechanism, four consequences:
+LangGraph writes checkpoints after each superstep through the checkpointer Skein configures.
 
 ```mermaid
 flowchart LR
@@ -72,9 +97,9 @@ flowchart LR
 ```
 
 > [!WARNING]
-> **No checkpointer, none of the above** — and nothing warns you. Runs start empty and resume quietly
-> does nothing. `skein dev`, `embedInMemoryGraphs` and `embedPostgresGraphs` all configure one; the
-> mistake is constructing your own and handing it to `.compile()`.
+> Conversation state and interrupt/resume require a checkpointer. `skein dev`, `embedInMemoryGraphs`,
+> and `embedPostgresGraphs` configure one for you. Call `.compile()` without passing a checkpointer
+> so Skein can supply the one for your deployment.
 
 A related trap arrives with it. A run carries four bags — `input`, `context`, `config.configurable`,
 `metadata` — and only `input` becomes state the agent remembers.
@@ -92,10 +117,10 @@ ticket number, a phone number — and your system needs no mapping table.
 
 A thread remembers a conversation, not a person. Two stores, two lifetimes:
 
-|                  | Scope                                      | Written by             |
-| ---------------- | ------------------------------------------ | ---------------------- |
-| **Checkpointer** | One thread                                 | skein, every step      |
-| **Store**        | Namespaces you choose, across every thread | Your nodes, explicitly |
+|                  | Scope                                      | Written by                |
+| ---------------- | ------------------------------------------ | ------------------------- |
+| **Checkpointer** | One thread                                 | LangGraph, each superstep |
+| **Store**        | Namespaces you choose, across every thread | Your nodes, explicitly    |
 
 **The trap:** a user's name in the thread. They start a new conversation and the agent has forgotten.
 Facts about a person go in the store; facts about this conversation stay in state.
@@ -172,8 +197,8 @@ outbox and do not require Redis.
 
 ## What was yours all along
 
-The model, the prompt and the tools — the reason your agent is _your_ agent. The graph is
-LangGraph's. Everything else is plumbing skein exists so you do not write.
+You define the graph and choose its models, prompts, and tools. LangGraph executes the graph.
+Skein hosts it and provides the API, run management, and storage.
 
 Want it as a lookup table instead of a story? [Features](./features.md). Want the graph model itself?
 [LangGraph essentials](./langgraph-essentials.md).
