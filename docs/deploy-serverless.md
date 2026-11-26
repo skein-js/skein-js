@@ -1,8 +1,9 @@
 # Vercel, Netlify, Lambda — what works and what doesn't
 
-Short answer: **you can serve skein's HTTP surface from a serverless function, but you cannot run
-background runs there.** If you want the full Agent Protocol, deploy the container
-([deploy.md](./deploy.md)) and keep serverless for your UI.
+**Postgres and Redis are required for Skein’s standard production server.** Host your frontend
+on Vercel, Netlify, or another serverless platform and run Skein on a separate, long-running
+host. Set both service URLs on that backend so queued work can continue after the request ends.
+[Choose a backend deployment platform](./deploy.md#pick-a-platform)
 
 This page exists because "deploy LangGraph on Vercel" is a reasonable thing to try, and the failure
 mode is quiet — everything looks fine until a background run never finishes.
@@ -25,8 +26,8 @@ Several other things follow from the same property:
 - **No `SIGTERM` drain.** Nothing gets the chance to settle in-flight runs terminally.
 - **Boot cost on every cold scale-out.** skein runs migrations, seeds assistants, and warms graphs at
   startup — that's a container-lifetime cost, not a per-request one.
-- **One Postgres pool per instance.** Serverless concurrency multiplies pools quickly; you'd need a
-  pooler in front regardless.
+- **Postgres connections.** Serverless concurrency multiplies database connections. Check your
+  [connection budget](./deploy.md#connection-budget) before scaling out.
 
 ## What does work
 
@@ -38,9 +39,9 @@ If you keep to **inline runs**, the work happens _during_ the request, and a fun
 - `POST /threads/{id}/runs/stream` — works where the platform supports streaming responses and your
   `maxDuration` covers the whole run.
 
-Use Postgres for state (a serverless-friendly one with a pooled endpoint for the _runtime_, though
-note boot migrations want a direct endpoint), and accept that `POST /threads/{id}/runs` — the
-background variant — is off the menu.
+For an inline-only embedding, use a [direct Postgres connection](./deploy.md#tls-to-the-database)
+for state and checkpoints. Use the long-running backend for the queued
+`POST /threads/{id}/runs` route.
 
 ## The shape that actually works
 
@@ -55,7 +56,8 @@ Vercel (Next.js UI, useStream)  ──►  skein container on Cloud Run / Fly / 
 
 This is what [`examples/nextjs-app`](https://github.com/skein-js/skein-js/tree/main/examples/nextjs-app) is shaped like, and it keeps the
 `useStream` developer experience while letting background runs, webhooks and long-running work
-behave. See [react-sdk.md](./react-sdk.md) for the client side.
+behave. Point the frontend at the Skein API URL and keep `POSTGRES_URI` and `REDIS_URI` in the
+backend’s secrets. See [react-sdk.md](./react-sdk.md) for the client side.
 
 ## If you deploy the Next.js adapter to Vercel anyway
 

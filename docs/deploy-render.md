@@ -1,48 +1,64 @@
 # Deploy on Render
 
-Render builds from a `Dockerfile` in your repo (or pulls a pre-built image), and offers managed
-Postgres and Key Value (Redis) in the same dashboard — so a skein deployment is three linked services
-and two environment variables.
+**Postgres and Redis are required for Skein’s standard production server.** On Render, use
+Render Postgres and Key Value alongside a web service that runs your prebuilt Skein image.
 
 Everything platform-agnostic — environment variables, pool sizing, probes, scaling caveats — is in
 [deploy.md](./deploy.md).
 
 ## Before you start
 
-A Render account and a Git repo. Render builds remotely, so no local Docker is needed.
+A Render account and a container registry Render can pull from. To use the Blueprint below, keep
+`render.yaml` in a Git repo connected to Render.
 
-## 1. Commit the Dockerfile
+<span id="1-commit-the-dockerfile"></span>
+<span id="_1-commit-the-dockerfile"></span>
+
+## 1. Build and push the image
+
+Sign in to the registry. From the graph project directory, build and push your image. Replace the
+example registry path with your own:
 
 ```bash
-skein dockerfile -o Dockerfile
+export DOCKER_DEFAULT_PLATFORM=linux/amd64
+IMAGE=ghcr.io/your-org/skein-app:v1
+skein build -t "$IMAGE"
+docker push "$IMAGE"
 ```
-
-Commit it, and make sure your build produces the `.skein/build` artifact the Dockerfile expects
-(`skein build`).
 
 ## 2. Provision Postgres + Key Value
 
-Create a **Postgres** instance and a **Key Value** instance from the dashboard, in the same region as
-the web service. Render's Postgres supports pgvector, so semantic search works if you set
-`store.index`.
+1. In the Dashboard, choose **New → Postgres**. Select the web service’s region and copy the
+   **Internal Database URL** from **Connect**. Skein sets up the schema at boot. Render Postgres
+   provides pgvector if you enable semantic search with `store.index`.
+2. Choose **New → Key Value** in the same region and workspace. Choose a paid instance with
+   persistence for production, select **`noeviction`** as the maxmemory policy, and copy the
+   **Internal URL** from **Connect**. Keep external access disabled.
 
-Set the Key Value instance's maxmemory policy to **`noeviction`** — BullMQ's job data must not be
-evicted.
+[Render Postgres](https://render.com/docs/postgresql-creating-connecting) ·
+[Render Key Value](https://render.com/docs/key-value)
 
 ## 3. Deploy the web service
 
-Create a **Web Service** with runtime **Docker**, set **Health Check Path** to `/ok`, and add the two
-environment variables using the internal connection strings.
+Choose **New → Web Service → Existing Image** and enter the image tag. Select the same region
+and workspace as both databases, set **Health Check Path** to `/ok`, and map the Postgres Internal
+Database URL to `POSTGRES_URI` and the Key Value Internal URL to `REDIS_URI`. Add any model or
+tool secrets the graph needs. [Deploying an image on Render](https://render.com/docs/deploying-an-image)
 
-Or declare the whole stack as a blueprint:
+Alternatively, deploy all three services with a [Blueprint](https://render.com/docs/blueprint-spec).
+Replace `image.url` with the image you pushed. This example uses paid plans in Oregon and restricts
+both databases to internal access. Configure registry credentials if the image is private.
 
 ```yaml
 # render.yaml
 services:
   - type: web
     name: skein-app
-    runtime: docker
-    dockerfilePath: ./Dockerfile
+    runtime: image
+    image:
+      url: ghcr.io/your-org/skein-app:v1
+    region: oregon
+    plan: 0.5c-512mb
     healthCheckPath: /ok
     envVars:
       - key: POSTGRES_URI
@@ -58,17 +74,27 @@ services:
         value: "5"
       - key: SKEIN_RUN_CONCURRENCY
         value: "5"
+  - type: keyvalue
+    name: skein-kv
+    region: oregon
+    plan: 256mb
+    maxmemoryPolicy: noeviction
+    persistenceMode: journal-snapshot
+    ipAllowList: []
 
 databases:
   - name: skein-postgres
-    plan: basic-256mb
+    region: oregon
+    plan: 0.1c-256mb
+    ipAllowList: []
 ```
 
 Render injects `PORT` and skein binds it, so there is nothing to configure there.
 
 ## 4. Verify
 
-Run the [verification sequence](./deploy.md#verify-a-deployment) against your
+Configure [application auth](./deploy.md#5-auth--read-this-before-you-expose-it) before accepting
+public traffic. Run the [verification sequence](./deploy.md#verify-a-deployment) against your
 `https://skein-app.onrender.com` URL.
 
 ## Render caveats
@@ -85,9 +111,9 @@ top of Render's.
 
 ### Use internal connection strings
 
-The internal URLs keep database traffic off the public internet and out of your bandwidth budget. If
-you must use an external Postgres URL with a self-signed certificate, set
-`DATABASE_SSL_NO_VERIFY=true`.
+The internal URLs keep database traffic on Render’s private network. If you enable Key Value
+authentication for internal connections, use the authenticated internal URL. For external
+connections, follow the service’s published TLS settings.
 
 ### Streaming
 

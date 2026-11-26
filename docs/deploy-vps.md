@@ -1,20 +1,21 @@
 # Deploy on a VPS (plain Docker)
 
-The lowest-ceremony deployment there is: one box, Docker, and a TLS terminator in front. No platform,
-no control plane, no per-seat pricing — which is the whole reason skein ships an ordinary image.
+**Postgres and Redis are required for Skein’s standard production server.** Use the Compose
+example to run both on the VPS with persistent volumes, or connect the app to managed services.
 
 Everything platform-agnostic — environment variables, pool sizing, probes, scaling caveats — is in
 [deploy.md](./deploy.md).
 
 ## The quickest version
 
-If you already have a Postgres and a Redis:
+If you already have reachable services, put their direct Postgres and writable Redis URLs in an
+untracked, owner-readable `skein.env` file as `POSTGRES_URI` and `REDIS_URI`. Follow the provider’s
+TLS settings and include any model or tool credentials the graph needs.
 
 ```bash
 skein build -t my-agent
-docker run -d --name my-agent -p 8123:8123 \
-  -e POSTGRES_URI="postgresql://user:password@host:5432/skein" \
-  -e REDIS_URI="redis://host:6379" \
+docker run -d --name my-agent -p 127.0.0.1:8123:8123 \
+  --env-file skein.env \
   --restart unless-stopped --init \
   my-agent
 curl -s localhost:8123/ok      # {"ok":true}
@@ -25,16 +26,17 @@ health-checks.
 
 ## A real deployment with Compose
 
-`skein up` already generates a working `compose.yaml` (app + Postgres + Redis) into `.skein/build`.
-That file is regenerated on every `skein up`, so copy it out before editing:
+`skein build` creates the app image. Save the Compose example below separately as `compose.yaml`
+in your project directory.
 
 ```bash
 skein build -t my-agent
-cp .skein/build/compose.yaml ./compose.yaml
 ```
 
-Then adjust it for a real box — a strong database password, no published database ports, and pinned
-image tags:
+Add `POSTGRES_PASSWORD` to an untracked `.env` file beside `compose.yaml` and restrict the file to
+mode `0600`. Use a strong URL-safe password, such as the output of `openssl rand -hex 32`, so
+Compose can insert it directly into the Postgres URL. For model or tool credentials, add an
+`env_file` entry under `app` pointing to a separate, owner-readable file.
 
 ```yaml
 services:
@@ -44,7 +46,7 @@ services:
     ports:
       - "127.0.0.1:8123:8123" # only the reverse proxy reaches it
     environment:
-      POSTGRES_URI: postgresql://postgres:${POSTGRES_PASSWORD}@postgres:5432/skein
+      POSTGRES_URI: postgresql://postgres:${POSTGRES_PASSWORD:?set POSTGRES_PASSWORD in .env}@postgres:5432/skein
       REDIS_URI: redis://redis:6379
       PG_POOL_MAX: "5"
       SKEIN_RUN_CONCURRENCY: "5"
@@ -56,10 +58,10 @@ services:
     stop_grace_period: 30s # must exceed the drain window above
 
   postgres:
-    # pgvector image only needed if langgraph.json sets store.index; postgres:16 is fine otherwise.
-    image: pgvector/pgvector:pg16
+    # Use pgvector/pgvector:pg16 if langgraph.json sets store.index.
+    image: postgres:16
     environment:
-      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?set POSTGRES_PASSWORD in .env}
       POSTGRES_DB: skein
     volumes:
       - pgdata:/var/lib/postgresql/data
@@ -71,7 +73,9 @@ services:
 
   redis:
     image: redis:7
-    command: ["redis-server", "--maxmemory-policy", "noeviction"]
+    command: ["redis-server", "--maxmemory-policy", "noeviction", "--appendonly", "yes"]
+    volumes:
+      - redisdata:/data
     healthcheck:
       test: ["CMD", "redis-cli", "ping"]
       interval: 5s
@@ -80,11 +84,16 @@ services:
 
 volumes:
   pgdata:
+  redisdata:
 ```
 
 ```bash
 docker compose up -d
 ```
+
+Skein initializes the Postgres schema on boot. The named volumes keep Postgres state and Redis
+queue and replay data across container replacements. The database ports are available only on the
+Compose network.
 
 ## Run it as a service
 
@@ -203,7 +212,7 @@ Run the [verification sequence](./deploy.md#verify-a-deployment) against your do
 - **Auth.** A public VPS is the easiest place to forget that
   [skein's auth is off by default](./deploy.md#5-auth--read-this-before-you-expose-it). Configure
   `auth.path`, or keep the box behind a VPN or an authenticating proxy.
-- **Backups.** The Postgres volume is your entire state — threads, runs, checkpoints, store items.
+- **Backups.** The Postgres volume holds threads, runs, checkpoints, and store items.
   `docker compose exec postgres pg_dump -U postgres skein | gzip > backup.sql.gz`, on a schedule,
   stored off the box.
 - **Updates.** `skein build -t my-agent && docker compose up -d`. Migrations run on boot; there is no

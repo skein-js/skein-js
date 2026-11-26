@@ -1,8 +1,8 @@
 # Deploy on AWS (App Runner or ECS Fargate)
 
-Two ways to run the skein image on AWS. **App Runner** is the closest analogue to Cloud Run — give it
-an image, get a URL — and is the lower-effort choice. **ECS Fargate** is more setup but gives you a
-long stop timeout, real background-run behavior, and fits teams already running ECS.
+**Postgres and Redis are required for Skein’s standard production server.** Use private RDS for
+PostgreSQL and ElastiCache with ECS Fargate. Existing App Runner customers can use the same database
+setup for inline runs. [App Runner availability](https://docs.aws.amazon.com/apprunner/latest/dg/apprunner-availability-change.html)
 
 Both share the same registry, database, and secret plumbing. Everything platform-agnostic —
 environment variables, pool sizing, probes, scaling caveats — is in [deploy.md](./deploy.md).
@@ -22,59 +22,68 @@ aws ecr create-repository --repository-name $REPO
 aws ecr get-login-password --region $AWS_REGION \
   | docker login --username AWS --password-stdin $ACCOUNT.dkr.ecr.$AWS_REGION.amazonaws.com
 
-skein build -t $REPO
-docker tag $REPO $IMAGE
-docker push $IMAGE
+skein build --artifact-only
+curl -fsS https://truststore.pki.rds.amazonaws.com/global/global-bundle.pem \
+  -o .skein/build/rds-ca-bundle.pem
+docker build -t "$IMAGE" .skein/build
+docker push "$IMAGE"
 ```
+
+The image includes the RDS CA bundle at `/app/rds-ca-bundle.pem` for certificate verification.
+
+<span id="provision-postgres-and-redis"></span>
 
 ### 2. Postgres and Redis
 
-**RDS for PostgreSQL** (15+ has pgvector, needed only if you set `store.index`) and **ElastiCache for
-Redis or Valkey**. Put both in the same VPC as the service, and set the Redis maxmemory policy to
-`noeviction`.
+1. In **RDS → Databases → Create database**, choose **PostgreSQL**, select the app’s VPC and a
+   private DB subnet group, and set **Public access** to **No**. Create a database and a role
+   that owns it so Skein can run migrations at boot. For `store.index`, choose a Postgres version
+   with pgvector and enable it with a privileged role if needed. Copy the DB instance’s writer
+   **Endpoint** and **Port** from **Connectivity & security**. Make the RDS CA bundle available
+   to the container at the path in your `POSTGRES_URI`:
 
-Keep both connection strings in **Secrets Manager** and inject them by reference rather than as
-plaintext environment variables.
+   ```text
+   postgresql://USER:PASSWORD@RDS_ENDPOINT:5432/DATABASE?sslmode=verify-full&sslrootcert=/app/rds-ca-bundle.pem
+   ```
+
+   [Create an RDS instance](https://docs.aws.amazon.com/AmazonRDS/latest/UserGuide/USER_CreateDBInstance.html) ·
+   [RDS PostgreSQL TLS](https://docs.aws.amazon.com/AmazonRDS/latest/UserGuide/PostgreSQL.Concepts.General.SSL.html)
+
+2. In **ElastiCache**, create a **node-based** Valkey or Redis OSS deployment with **cluster
+   mode disabled** in private subnets in that VPC. Use a custom parameter group for the engine
+   family with `maxmemory-policy=noeviction`. Enable in-transit encryption and configure an
+   AUTH token. Copy the writable **Primary endpoint** and port from the deployment details
+   for `REDIS_URI`:
+
+   ```text
+   rediss://:AUTH_TOKEN@PRIMARY_ENDPOINT:6379
+   ```
+
+   [Create an ElastiCache deployment](https://docs.aws.amazon.com/AmazonElastiCache/latest/dg/Clusters.Create.html) ·
+   [ElastiCache parameter groups](https://docs.aws.amazon.com/AmazonElastiCache/latest/dg/ParameterGroups.Engine.html) ·
+   [ElastiCache AUTH](https://docs.aws.amazon.com/AmazonElastiCache/latest/dg/auth.html)
+
+3. URL-encode any reserved characters in the credentials. In **Secrets Manager**, create two
+   secrets, `skein/postgres-uri` and `skein/redis-uri`. Store each raw URI as the entire secret
+   value using the plaintext editor, then copy both full secret ARNs. Use these ARNs in the
+   service configuration below.
 
 ### 3. Security groups
 
-The service's security group needs egress to the database security groups on 5432 and 6379, and the
-database groups need matching ingress. Both engines are private-subnet resources — nothing here
-should be publicly reachable.
+Allow the service’s security group to reach the RDS and ElastiCache security groups on ports 5432
+and 6379. On each database group, allow inbound traffic on its port from the service group. For App
+Runner, use the VPC connector’s security group as the source.
 
 ## App Runner
 
-You declare the port App Runner routes to; it also sets `PORT` in the container to match, and skein
-binds it. Either way the answer is **8123**, the port the image exposes.
-
-```bash
-aws apprunner create-service \
-  --service-name skein-app \
-  --source-configuration '{
-    "ImageRepository": {
-      "ImageIdentifier": "'"$IMAGE"'",
-      "ImageRepositoryType": "ECR",
-      "ImageConfiguration": {
-        "Port": "8123",
-        "RuntimeEnvironmentSecrets": {
-          "POSTGRES_URI": "arn:aws:secretsmanager:…:skein/postgres-uri",
-          "REDIS_URI": "arn:aws:secretsmanager:…:skein/redis-uri"
-        },
-        "RuntimeEnvironmentVariables": {
-          "PG_POOL_MAX": "5",
-          "SKEIN_RUN_CONCURRENCY": "5"
-        }
-      }
-    }
-  }' \
-  --health-check-configuration '{
-    "Protocol": "HTTP", "Path": "/ok",
-    "Interval": 20, "Timeout": 5, "HealthyThreshold": 1, "UnhealthyThreshold": 5
-  }' \
-  --instance-configuration '{"Cpu":"1 vCPU","Memory":"2 GB"}'
-```
-
-To reach a private RDS or ElastiCache, attach a **VPC connector** (`NetworkConfiguration.EgressConfiguration`).
+For an existing App Runner account, create or update a service from the ECR image. Set the
+container port to **8123** and use an HTTP health check at **`/ok`**. Choose an ECR access role
+for the image and a separate instance role with `secretsmanager:GetSecretValue` on the two secrets.
+Add them as secret-backed environment variables named `POSTGRES_URI` and `REDIS_URI`. Set outbound
+networking to a **VPC connector** that can reach both databases. If your graphs call public API
+endpoints, the connector’s subnets need outbound internet access through a NAT gateway.
+[App Runner secret access](https://docs.aws.amazon.com/apprunner/latest/dg/env-variable.html) ·
+[App Runner outbound networking](https://docs.aws.amazon.com/apprunner/latest/dg/network-vpc.html)
 
 ### App Runner caveats
 
@@ -87,13 +96,18 @@ To reach a private RDS or ElastiCache, attach a **VPC connector** (`NetworkConfi
 
 ## ECS Fargate
 
-A task definition, a service, and an ALB. The parts that matter:
+Create an ECS task execution role with access to pull from ECR, write to the CloudWatch log group,
+and read both secrets via `secretsmanager:GetSecretValue`. Include `kms:Decrypt` if you use a
+customer-managed KMS key. Create the log group, then register the task definition with the
+execution role ARN, image URL, and both secret ARNs substituted. If the graph needs model or tool
+credentials, add their Secrets Manager references too. [ECS task execution role](https://docs.aws.amazon.com/AmazonECS/latest/developerguide/task_execution_IAM_role.html)
 
 ```json
 {
   "family": "skein-app",
   "networkMode": "awsvpc",
   "requiresCompatibilities": ["FARGATE"],
+  "executionRoleArn": "arn:aws:iam::ACCOUNT:role/skeinTaskExecutionRole",
   "cpu": "1024",
   "memory": "2048",
   "containerDefinitions": [
@@ -107,8 +121,14 @@ A task definition, a service, and an ALB. The parts that matter:
         { "name": "SKEIN_SHUTDOWN_GRACE_MS", "value": "20000" }
       ],
       "secrets": [
-        { "name": "POSTGRES_URI", "valueFrom": "arn:aws:secretsmanager:…:skein/postgres-uri" },
-        { "name": "REDIS_URI", "valueFrom": "arn:aws:secretsmanager:…:skein/redis-uri" }
+        {
+          "name": "POSTGRES_URI",
+          "valueFrom": "arn:aws:secretsmanager:REGION:ACCOUNT:secret:skein/postgres-uri-SUFFIX"
+        },
+        {
+          "name": "REDIS_URI",
+          "valueFrom": "arn:aws:secretsmanager:REGION:ACCOUNT:secret:skein/redis-uri-SUFFIX"
+        }
       ],
       "healthCheck": {
         "command": [
@@ -134,8 +154,10 @@ A task definition, a service, and an ALB. The parts that matter:
 }
 ```
 
-Point the ALB target group's health check at **`/ok`** on port 8123, with a healthy threshold that
-tolerates the ~20s boot.
+Run the task as a Fargate service in private subnets using the service security group. The tasks
+need outbound access to ECR, CloudWatch Logs, and Secrets Manager through NAT or VPC endpoints.
+Attach an Application Load Balancer with an IP target group on port 8123 and an HTTP health check
+at **`/ok`**. Give the service time for boot migrations before health checks can replace a task.
 
 ### ECS caveats
 
@@ -153,5 +175,7 @@ tolerates the ~20s boot.
 
 ## Verify
 
-Run the [verification sequence](./deploy.md#verify-a-deployment) against your App Runner URL or the
-ALB's DNS name.
+Run the [verification sequence](./deploy.md#verify-a-deployment) against your service URL. On App
+Runner, use the inline run and checkpoint checks. On ECS Fargate, continue through the queued run
+and stream replay checks. Configure [application auth](./deploy.md#5-auth--read-this-before-you-expose-it)
+before accepting public traffic.

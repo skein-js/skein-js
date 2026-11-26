@@ -1,7 +1,7 @@
 # Deploy on Fly.io
 
-Fly runs your container as Machines close to your users, with private networking between apps. It
-builds straight from a `Dockerfile` in your repo, so the skein image needs no registry of its own.
+**Postgres and Redis are required for Skein’s standard production server.** Use Fly Managed
+Postgres and Upstash Redis in the same Fly organization and primary region as the app.
 
 Everything platform-agnostic — environment variables, pool sizing, probes, scaling caveats — is in
 [deploy.md](./deploy.md).
@@ -11,46 +11,53 @@ Everything platform-agnostic — environment variables, pool sizing, probes, sca
 Install `flyctl` and log in (`fly auth login`). Fly builds remotely by default, so you don't need
 Docker locally and the architecture is handled for you.
 
-## 1. Commit the Dockerfile
+<span id="1-commit-the-dockerfile"></span>
+<span id="_1-commit-the-dockerfile"></span>
+
+## 1. Create the app and build the artifact
 
 ```bash
-skein dockerfile -o Dockerfile
+APP=your-unique-skein-app
+fly apps create "$APP"
+skein build --artifact-only
 ```
 
-Commit it. Note the build context: the Dockerfile builds a `.skein/build` artifact, so run
-`skein build` in CI (or before `fly deploy`) to produce it — Fly deploys the directory containing the
-artifact.
+Use the app name you created in `fly.toml` below. The artifact includes the bundled graphs and
+Dockerfile in `.skein/build`, which Fly uses as its remote build context.
 
 ## 2. Provision Postgres + Redis
 
+1. Run `fly mpg create` and select the app’s organization and region. In the cluster’s **Connect**
+   tab, copy the **Direct URL** with the `direct.…flympg.net` hostname for `POSTGRES_URI`. The
+   pooled URL uses PgBouncer. Skein needs a direct session for migrations and run locks. Managed
+   Postgres ships pgvector for graphs that use `store.index`. [Fly Postgres connections](https://fly.io/docs/mpg/client-configuration/)
+2. Run `fly redis create` and select the same organization and primary region. Leave eviction
+   disabled. Run `fly redis status YOUR_REDIS_NAME` and copy the **Private URL** for `REDIS_URI`.
+   This is the native Redis endpoint reachable from your Fly app. [Fly Redis](https://fly.io/redis/)
+
+Load the copied URLs into your shell and stage both as app secrets. Add any model or tool secrets
+your graph needs the same way.
+
 ```bash
-fly postgres create      # or use Fly Managed Postgres, or any external provider
-fly redis create         # Upstash Redis, provisioned through Fly
+fly secrets set --stage --app "$APP" \
+  "POSTGRES_URI=$POSTGRES_URI" \
+  "REDIS_URI=$REDIS_URI"
 ```
-
-Fly's unmanaged Postgres is a database _you_ operate — fine for smaller deployments, but read Fly's
-docs on what they do and don't take responsibility for. Managed Postgres or an external provider
-(Neon, Supabase) is the lower-effort choice.
-
-Attach them and set the two variables skein reads:
-
-```bash
-fly secrets set \
-  POSTGRES_URI="postgres://…" \
-  REDIS_URI="redis://…"
-```
-
-Prefer the `.internal` (6PN private network) hostnames. Private traffic is plaintext inside your
-organization's network, so no TLS configuration is needed.
 
 ## 3. Configure and deploy
 
+Save this as `fly.toml` in the graph project directory. Match the app name and region to the
+resources above. Configure [application auth](./deploy.md#5-auth--read-this-before-you-expose-it)
+before taking public traffic.
+
 ```toml
 # fly.toml
-app = "my-skein-app"
+app = "your-unique-skein-app"
 primary_region = "iad"
 
-[build]
+# Allow time for Skein to drain runs on shutdown.
+kill_signal = "SIGTERM"
+kill_timeout = "15s"
 
 [http_service]
   internal_port = 8123          # must match the port the app binds; see the note below
@@ -69,20 +76,16 @@ primary_region = "iad"
 [env]
   PG_POOL_MAX = "5"
   SKEIN_RUN_CONCURRENCY = "5"
-
-# Fly's default kill_timeout is 5s — too tight for skein's drain plus abort.
-kill_signal = "SIGTERM"
-kill_timeout = "15s"
 ```
 
 ```bash
-fly deploy
+fly deploy .skein/build --config "$PWD/fly.toml"
 ```
 
 ## 4. Verify
 
 Run the [verification sequence](./deploy.md#verify-a-deployment) against
-`https://my-skein-app.fly.dev`.
+`https://YOUR_APP.fly.dev`, using the app you created in step 1.
 
 ## Fly caveats
 

@@ -44,21 +44,22 @@ model fixtures where a predictable response is needed.
 
 ## The recipes
 
-| Page                                                       | Covers                                                                        |
-| ---------------------------------------------------------- | ----------------------------------------------------------------------------- |
-| [Serving](./serving.md)                                    | Pick an adapter, serve a graph as a plain endpoint, CORS for a browser        |
-| [Running agents](./running-agents.md)                      | Background runs, crons, idempotency, human-in-the-loop, run timeouts          |
-| [Coupled WhatsApp workflow](./coupled-channel.md)          | A workflow with the same provider as source and destination                   |
-| [Cross-provider workflow](./decoupled-channel-delivery.md) | Email source → LangGraph workflow → allowlisted WhatsApp/email destinations   |
-| [Memory](./memory.md)                                      | `getStore()`, semantic search, and the dedup trap                             |
-| [Deep Agents](./deep-agents.md) _(experimental)_           | Files, per-user memory, streamed subagents, approval and async subagents      |
-| [Human input over MCP](./mcp-human-input.md)               | Official client form/URL questions, tool review and resumable answers         |
-| [Separate API and workers](./split-api-worker.md)          | Published runtime composition, background scaling and lifecycle ownership     |
-| [Streaming UI with json-render](./json-render.md)          | Catalog-driven UI generation, progressive rendering, restoration and actions  |
-| [Angular UI with A2UI](./a2ui.md)                          | Native Angular surfaces, bound form actions, checkpointed review and recovery |
-| [Authenticating requests](./authentication.md)             | Better Auth, Clerk, Supabase, Firebase, OIDC/JWT, and authorization policy    |
-| [Production](./production.md)                              | Auth, run-completion webhooks, durable storage and deploying                  |
-| [Local apps and SQLite](../local-deployment.md)            | Desktop, CLI, and daemon hosts with one owned database file                   |
+| Page                                                           | Covers                                                                        |
+| -------------------------------------------------------------- | ----------------------------------------------------------------------------- |
+| [Serving](./serving.md)                                        | Pick an adapter, serve a graph as a plain endpoint, CORS for a browser        |
+| [Running agents](./running-agents.md)                          | Background runs, crons, idempotency, human-in-the-loop, run timeouts          |
+| [Coupled WhatsApp workflow](./coupled-channel.md)              | A workflow with the same provider as source and destination                   |
+| [Cross-provider workflow](./decoupled-channel-delivery.md)     | Email source → LangGraph workflow → allowlisted WhatsApp/email destinations   |
+| [Memory](./memory.md)                                          | `getStore()`, semantic search, and the dedup trap                             |
+| [Deep Agents](./deep-agents.md) _(experimental)_               | Files, per-user memory, streamed subagents, approval and async subagents      |
+| [Human input over MCP](./mcp-human-input.md)                   | Official client form/URL questions, tool review and resumable answers         |
+| [Separate API and workers](./split-api-worker.md)              | Published runtime composition, background scaling and lifecycle ownership     |
+| [Streaming UI with json-render](./json-render.md)              | Catalog-driven UI generation, progressive rendering, restoration and actions  |
+| [Angular UI with A2UI](./a2ui.md)                              | Native Angular surfaces, bound form actions, checkpointed review and recovery |
+| [Authenticating requests](./authentication.md)                 | Better Auth, Clerk, Supabase, Firebase, OIDC/JWT, and authorization policy    |
+| [Production](./production.md)                                  | Auth, run-completion webhooks, durable storage and deploying                  |
+| [Deploy with Postgres and Redis](../deploy.md#pick-a-platform) | Provision both services for the standard production server on your platform   |
+| [Local apps and SQLite](../local-deployment.md)                | Desktop, CLI, and daemon hosts with one owned database file                   |
 
 ## Which example shows what
 

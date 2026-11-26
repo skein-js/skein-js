@@ -1,6 +1,8 @@
 # Production
 
-Locking it down, being told when work finishes, and running it durably.
+**Postgres and Redis are required for Skein’s standard production server.** Postgres stores
+threads, runs, and checkpoints. Redis powers background jobs and stream replay. Start with the
+[Postgres and Redis setup for your hosting platform](../deploy.md#pick-a-platform).
 
 ## Custom auth
 
@@ -97,9 +99,10 @@ const rt = await buildRuntime({
 // pass { deps: rt.deps, channels: rt.channels } to an adapter; call rt.dispose() on shutdown
 ```
 
-Or use the CLI: `skein build` produces a deployable image, `skein up` brings up app + Postgres + Redis via
-Compose, and `skein dev --store postgres --queue redis` runs the durable stack locally. Redis is optional
-for one instance and **required for more than one**.
+Use `skein build` to produce the production image. Use `skein up` to try the app with Postgres
+and Redis in Compose, or point `skein dev --store postgres --queue redis` at services you already
+run locally. A [single-instance embedding](../embedding.md#going-to-production) can use Postgres
+with a process-local queue.
 
 ## Deploy it
 

@@ -1,15 +1,26 @@
 # Deploy on Kubernetes
 
-The skein image is an ordinary stateless HTTP container: a Deployment, a Service, a Secret, and two
-probes. Nothing about it needs an operator or a CRD.
+**Postgres and Redis are required for Skein’s standard production server.** Use a Deployment and
+Service for the Skein image, and pass both database URLs to its Pods through a Secret.
 
 Everything platform-agnostic — environment variables, pool sizing, probes, scaling caveats — is in
 [deploy.md](./deploy.md).
 
 ## Before you start
 
-A cluster, a registry your nodes can pull from, and a Postgres and Redis they can reach — managed
-services or in-cluster, either is fine.
+You need a cluster, a namespace, and a registry your nodes can pull from.
+
+### Provision Postgres and Redis
+
+For managed services, use the [Cloud SQL and Memorystore setup](./deploy-cloud-run.md#provision-postgres-and-redis)
+or the [RDS and ElastiCache setup](./deploy-aws.md#provision-postgres-and-redis) as a provisioning guide.
+Configure DNS and network access from your Pods to the database endpoints. Use the provider’s
+direct TCP Postgres URL for Pods unless you have set up a local database proxy. The Cloud Run
+socket path in the Cloud SQL guide is specific to Cloud Run.
+
+For in-cluster databases, use persistent storage and private Services. Use the writable service
+endpoints and set Redis to `noeviction`. In either setup, give the Postgres role permission to
+migrate the application database. Use pgvector only when the graph project enables `store.index`.
 
 ## 1. Push the image
 
@@ -21,16 +32,23 @@ docker push registry.example.com/skein-app:v1
 
 ## 2. Manifests
 
+Put the two URLs in a local, untracked `skein-secrets.env` file with mode `0600`. Use raw
+`KEY=value` lines with the keys `POSTGRES_URI` and `REDIS_URI`. Include any model or tool
+credentials the graph expects. Create the Secret in the namespace where you’ll apply the
+manifest. Repeat the command pipeline when you rotate a credential, then restart the Deployment
+to load the new values. [Kubernetes Secrets](https://kubernetes.io/docs/tasks/configmap-secret/managing-secret-using-kubectl/)
+
+```bash
+NAMESPACE=your-existing-namespace
+kubectl -n "$NAMESPACE" create secret generic skein-secrets \
+  --from-env-file=skein-secrets.env --dry-run=client -o yaml \
+  | kubectl -n "$NAMESPACE" apply -f -
+```
+
+Save the manifest below as `skein.yaml`, substitute your image, and run
+`kubectl -n "$NAMESPACE" apply -f skein.yaml`.
+
 ```yaml
-apiVersion: v1
-kind: Secret
-metadata:
-  name: skein-secrets
-type: Opaque
-stringData:
-  POSTGRES_URI: postgresql://user:password@postgres:5432/skein
-  REDIS_URI: redis://redis:6379
----
 apiVersion: apps/v1
 kind: Deployment
 metadata:
@@ -60,8 +78,7 @@ spec:
               value: "5"
             - name: SKEIN_SHUTDOWN_GRACE_MS
               value: "20000"
-          # Boot runs migrations, seeds assistants and warms graphs before listening, so a
-          # responding /ok means fully ready. Give it a generous failure budget.
+          # Give boot migrations time before checking HTTP liveness.
           startupProbe:
             httpGet: { path: /ok, port: 8123 }
             periodSeconds: 5
@@ -76,7 +93,8 @@ spec:
             requests: { cpu: "250m", memory: "512Mi" }
             limits: { memory: "1Gi" }
           securityContext:
-            # The image already runs as USER node; make that explicit and immutable.
+            # Numeric UID of the node user in the default image.
+            runAsUser: 1000
             runAsNonRoot: true
             allowPrivilegeEscalation: false
             readOnlyRootFilesystem: true
@@ -115,7 +133,7 @@ metadata:
 ## 4. Verify
 
 ```bash
-kubectl port-forward svc/skein-app 8123:80
+kubectl -n "$NAMESPACE" port-forward svc/skein-app 8123:80
 ```
 
 Then run the [verification sequence](./deploy.md#verify-a-deployment) against

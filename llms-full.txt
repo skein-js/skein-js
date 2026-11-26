@@ -9863,21 +9863,22 @@ model fixtures where a predictable response is needed.
 
 ## The recipes
 
-| Page                                                       | Covers                                                                        |
-| ---------------------------------------------------------- | ----------------------------------------------------------------------------- |
-| [Serving](./serving.md)                                    | Pick an adapter, serve a graph as a plain endpoint, CORS for a browser        |
-| [Running agents](./running-agents.md)                      | Background runs, crons, idempotency, human-in-the-loop, run timeouts          |
-| [Coupled WhatsApp workflow](./coupled-channel.md)          | A workflow with the same provider as source and destination                   |
-| [Cross-provider workflow](./decoupled-channel-delivery.md) | Email source → LangGraph workflow → allowlisted WhatsApp/email destinations   |
-| [Memory](./memory.md)                                      | `getStore()`, semantic search, and the dedup trap                             |
-| [Deep Agents](./deep-agents.md) _(experimental)_           | Files, per-user memory, streamed subagents, approval and async subagents      |
-| [Human input over MCP](./mcp-human-input.md)               | Official client form/URL questions, tool review and resumable answers         |
-| [Separate API and workers](./split-api-worker.md)          | Published runtime composition, background scaling and lifecycle ownership     |
-| [Streaming UI with json-render](./json-render.md)          | Catalog-driven UI generation, progressive rendering, restoration and actions  |
-| [Angular UI with A2UI](./a2ui.md)                          | Native Angular surfaces, bound form actions, checkpointed review and recovery |
-| [Authenticating requests](./authentication.md)             | Better Auth, Clerk, Supabase, Firebase, OIDC/JWT, and authorization policy    |
-| [Production](./production.md)                              | Auth, run-completion webhooks, durable storage and deploying                  |
-| [Local apps and SQLite](../local-deployment.md)            | Desktop, CLI, and daemon hosts with one owned database file                   |
+| Page                                                           | Covers                                                                        |
+| -------------------------------------------------------------- | ----------------------------------------------------------------------------- |
+| [Serving](./serving.md)                                        | Pick an adapter, serve a graph as a plain endpoint, CORS for a browser        |
+| [Running agents](./running-agents.md)                          | Background runs, crons, idempotency, human-in-the-loop, run timeouts          |
+| [Coupled WhatsApp workflow](./coupled-channel.md)              | A workflow with the same provider as source and destination                   |
+| [Cross-provider workflow](./decoupled-channel-delivery.md)     | Email source → LangGraph workflow → allowlisted WhatsApp/email destinations   |
+| [Memory](./memory.md)                                          | `getStore()`, semantic search, and the dedup trap                             |
+| [Deep Agents](./deep-agents.md) _(experimental)_               | Files, per-user memory, streamed subagents, approval and async subagents      |
+| [Human input over MCP](./mcp-human-input.md)                   | Official client form/URL questions, tool review and resumable answers         |
+| [Separate API and workers](./split-api-worker.md)              | Published runtime composition, background scaling and lifecycle ownership     |
+| [Streaming UI with json-render](./json-render.md)              | Catalog-driven UI generation, progressive rendering, restoration and actions  |
+| [Angular UI with A2UI](./a2ui.md)                              | Native Angular surfaces, bound form actions, checkpointed review and recovery |
+| [Authenticating requests](./authentication.md)                 | Better Auth, Clerk, Supabase, Firebase, OIDC/JWT, and authorization policy    |
+| [Production](./production.md)                                  | Auth, run-completion webhooks, durable storage and deploying                  |
+| [Deploy with Postgres and Redis](../deploy.md#pick-a-platform) | Provision both services for the standard production server on your platform   |
+| [Local apps and SQLite](../local-deployment.md)                | Desktop, CLI, and daemon hosts with one owned database file                   |
 
 ## Which example shows what
 
@@ -11889,7 +11890,9 @@ For the full request lifecycle, route-to-permission map, and store-scoping traps
 
 # Production
 
-Locking it down, being told when work finishes, and running it durably.
+**Postgres and Redis are required for Skein’s standard production server.** Postgres stores
+threads, runs, and checkpoints. Redis powers background jobs and stream replay. Start with the
+[Postgres and Redis setup for your hosting platform](../deploy.md#pick-a-platform).
 
 ## Custom auth
 
@@ -11986,9 +11989,10 @@ const rt = await buildRuntime({
 // pass { deps: rt.deps, channels: rt.channels } to an adapter; call rt.dispose() on shutdown
 ```
 
-Or use the CLI: `skein build` produces a deployable image, `skein up` brings up app + Postgres + Redis via
-Compose, and `skein dev --store postgres --queue redis` runs the durable stack locally. Redis is optional
-for one instance and **required for more than one**.
+Use `skein build` to produce the production image. Use `skein up` to try the app with Postgres
+and Redis in Compose, or point `skein dev --store postgres --queue redis` at services you already
+run locally. A [single-instance embedding](../embedding.md#going-to-production) can use Postgres
+with a process-local queue.
 
 ## Deploy it
 
@@ -12575,6 +12579,10 @@ Reading it is the fastest way to see what a complete binding looks like.
 
 # Deploy anywhere
 
+**Postgres and Redis are required for Skein’s standard production server.** Postgres stores threads,
+runs, and LangGraph checkpoints. Redis powers background jobs and stream replay. Provision both
+before starting the server, then set `POSTGRES_URI` and `REDIS_URI` in its environment.
+
 ## Choose a deployment
 
 | Option                | Use it for                                            | Storage and host                                                           |
@@ -12635,14 +12643,14 @@ request/response graph and wrong for anything scheduled or fired-and-forgotten.
 - **Postgres + Redis** — Cloud SQL + Memorystore, or any hosted
 - **Background runs** — ⚠️ needs `--no-cpu-throttling` + `--min-instances=1`
 - **Scales to zero** — yes — queued runs stall until a request
-- **Stop-signal window** — 10s default, configurable
+- **Stop-signal window** — 10s
 
 → [Google Cloud Run guide](./deploy-cloud-run.md)
 
 == Railway
 
-- **Deploy from** — Dockerfile in repo
-- **Postgres + Redis** — Railway plugins
+- **Deploy from** — prebuilt image in a registry
+- **Postgres + Redis** — Railway database templates
 - **Background runs** — ✅ default
 - **Scales to zero** — no
 - **Stop-signal window** — ~30s
@@ -12651,8 +12659,8 @@ request/response graph and wrong for anything scheduled or fired-and-forgotten.
 
 == Fly.io
 
-- **Deploy from** — Dockerfile in repo
-- **Postgres + Redis** — Fly Postgres / Upstash Redis
+- **Deploy from** — remote build of the Skein artifact
+- **Postgres + Redis** — Fly Managed Postgres + Upstash Redis
 - **Background runs** — ⚠️ needs `min_machines_running = 1`
 - **Scales to zero** — yes, if auto-stop is on
 - **Stop-signal window** — `kill_timeout` (5s default)
@@ -12661,7 +12669,7 @@ request/response graph and wrong for anything scheduled or fired-and-forgotten.
 
 == Render
 
-- **Deploy from** — Dockerfile or image
+- **Deploy from** — prebuilt image in a registry
 - **Postgres + Redis** — Render Postgres + Key Value
 - **Background runs** — ⚠️ paid instance (free ones spin down)
 - **Scales to zero** — free tier only
@@ -12671,6 +12679,7 @@ request/response graph and wrong for anything scheduled or fired-and-forgotten.
 
 == AWS App Runner
 
+- **Availability** — existing App Runner customers
 - **Deploy from** — push image to ECR
 - **Postgres + Redis** — RDS + ElastiCache
 - **Background runs** — ⚠️ CPU throttled between requests
@@ -12711,9 +12720,9 @@ request/response graph and wrong for anything scheduled or fired-and-forgotten.
 
 == Serverless
 
-- **Deploy from** — n/a — not a container
-- **Postgres + Redis** — any hosted
-- **Background runs** — ❌ not supported
+- **Deploy from** — host the frontend in serverless and run Skein on a separate server
+- **Postgres + Redis** — configured on the Skein server
+- **Background runs** — execute on the Skein server
 - **Scales to zero** — yes
 - **Stop-signal window** — none
 
@@ -12731,8 +12740,9 @@ request/response graph and wrong for anything scheduled or fired-and-forgotten.
 
 ## What the image already does for you
 
-`skein build` produces the image; `skein dockerfile` prints the same Dockerfile if you'd rather commit
-it and let your platform build it. Either way:
+`skein build` bundles your graphs and builds the image. To build the image elsewhere, run
+`skein build --artifact-only` and use the resulting `.skein/build` directory as the Docker build
+context. The image:
 
 - **Binds the port the platform gives it.** The CMD passes no `--port`, so the server binds `$PORT`
   when one is injected (Railway, Render, Cloud Run and AWS App Runner all do). When nothing is
@@ -12763,12 +12773,10 @@ it and let your platform build it. Either way:
   `docker build --secret id=npmrc,src=$HOME/.npmrc` for the standalone Dockerfile. See
   [langgraph-cli-compat.md](./langgraph-cli-compat.md).
 
-**Migrations run automatically on boot.** There is no `skein migrate` step. On startup skein applies
-its schema (tracked in a `skein_migrations` table), sets up LangGraph's checkpoint tables, registers
-one assistant per declared graph, and — because `skein start` warms graphs — imports every graph
-module. All of that finishes _before_ the server starts listening. Migrations take their own advisory
-lock, so several instances booting at once during a rolling deploy is safe — the ones that don't win
-the lock **wait**, then find nothing to apply.
+**Migrations run automatically on boot.** Skein applies its schema, sets up LangGraph’s checkpoint
+tables, and registers one assistant per graph before serving requests. Use a database role that
+can create and update the schema. Concurrent instances wait for the migration lock before
+continuing. Graph warming runs separately and can continue after the server starts listening.
 
 That covers **both** schemas, on two separate lock keys: skein's own, and LangGraph's checkpoint
 tables. The second one is skein's lock around someone else's migration —
@@ -12847,38 +12855,35 @@ platform would have done, which on a VM is a
 
 ### 1. A Postgres
 
-Set `POSTGRES_URI`. It holds protocol resources (assistants, threads, runs, store items) and
-LangGraph checkpoints. The base schema needs **no extensions**.
+Set `POSTGRES_URI` to the database’s **direct connection URL**. Skein uses the same connection
+settings for startup migrations and run execution, both of which use session-level advisory
+locks. The base schema needs **no extensions**.
 
 pgvector is needed **only if you set `store.index` in `langgraph.json`** for semantic search. skein
 runs `CREATE EXTENSION IF NOT EXISTS vector` on boot, which can only enable an extension the server
 already has — it cannot install one. If it's missing, boot fails with an error telling you so.
 
-| Provider            | pgvector available                                         |
-| ------------------- | ---------------------------------------------------------- |
-| Cloud SQL (PG 13+)  | ✅ (`vector` is a supported extension)                     |
-| AWS RDS (PG 15+)    | ✅                                                         |
-| Neon                | ✅                                                         |
-| Supabase            | ✅ (enabled by default)                                    |
-| Render Postgres     | ✅                                                         |
-| Railway             | ⚠️ use the **pgvector template**, not the default Postgres |
-| `postgres:16` image | ❌ — use `pgvector/pgvector:pg16`                          |
+| Provider             | pgvector available                                         |
+| -------------------- | ---------------------------------------------------------- |
+| Cloud SQL (PG 13+)   | ✅ (`vector` is a supported extension)                     |
+| AWS RDS (PG 15+)     | ✅                                                         |
+| Neon                 | ✅                                                         |
+| Supabase             | ✅ (enabled by default)                                    |
+| Render Postgres      | ✅                                                         |
+| Fly Managed Postgres | ✅                                                         |
+| Railway              | ⚠️ use the **pgvector template**, not the default Postgres |
+| `postgres:16` image  | ❌ — use `pgvector/pgvector:pg16`                          |
 
 ### 2. A Redis
 
-Set `REDIS_URI`. skein uses it for the run queue (BullMQ) and for cross-instance stream pub/sub with
-replay. Configure the instance with `maxmemory-policy noeviction` — BullMQ's job data must not be
-evicted.
+Set `REDIS_URI` to a writable Redis protocol endpoint. Use `redis://` or `rediss://` according to
+the provider’s TLS settings. BullMQ and the event bus use persistent Redis connections, so choose
+the TCP endpoint when a provider also offers an HTTP API. Use a single-shard endpoint and set
+`maxmemory-policy noeviction` or disable eviction in the provider’s settings to protect queued jobs.
 
-**The image requires it, and so does the entrypoint.** Its CMD runs
-`skein start --store postgres --queue redis` — but those are also `skein start`'s own defaults now, and
-it _rejects_ `--store memory` / `--queue memory` outright. Overriding the CMD, or running the binary by
-hand, can no longer produce a production server whose queue is process-local and whose state disappears
-on restart. The redis
-queue driver fails the boot if `REDIS_URI` is unset. (Redis is only _optional_ on the in-code
-embedding path — `embedPostgresGraphs` falls back to an in-memory queue and bus when no Redis URL is
-given, which keeps state durable but limits you to a single instance. See
-[embedding.md](./embedding.md#going-to-production).)
+The production image and standard `skein start` use `--queue redis`. In-code
+[`embedPostgresGraphs`](./embedding.md#going-to-production) can use a process-local queue and bus
+when you omit Redis, which limits that arrangement to one instance.
 
 ### 3. The port
 
@@ -12889,12 +12894,10 @@ answer **8123**.
 
 ### 4. A health probe
 
-Point it at **`/ok`**. It's a dependency-free liveness check that deliberately does _not_ touch
-Postgres or Redis, so a transient database blip can't flap an otherwise healthy instance.
-
-It also works as a **startup/readiness probe**: migrations, assistant registration and graph warming
-all complete before the server binds, so a responding `/ok` genuinely means "fully booted". Budget
-your startup probe accordingly — the image's own estimate is 20 seconds.
+Point the platform probe at **`/ok`**. It confirms the HTTP server is listening and stays
+independent of Postgres and Redis. Allow time for boot migrations before the first successful
+response, then use the [deployment verification](#verify-a-deployment) to check the graph, database,
+and queue.
 
 <span id="5-auth--read-this-before-you-expose-it"></span>
 
@@ -13013,7 +13016,7 @@ NODE_OPTIONS="--enable-source-maps --max-old-space-size=153"
 
 `skein start` also warns when run concurrency exceeds `PG_POOL_MAX`, for the same reason: runs then queue
 waiting for a connection rather than executing, which looks like flat throughput rather than like a pool
-limit. Budget **two** pools per instance (store + checkpointer).
+limit. Budget [three pools per instance](#connection-budget).
 
 ### Heap pressure while running
 
@@ -13053,13 +13056,12 @@ loudly instead of silently reverting to the default.
 
 ### TLS to the database
 
-A URL with `?sslmode=require` and a real CA chain needs nothing extra — `pg` honors `sslmode`. For a
-database presenting a self-signed certificate, set `DATABASE_SSL_NO_VERIFY=true`. Over a private
-network (Railway's `*.railway.internal`, a VPC, a Unix socket) you need neither.
+Follow your provider’s TLS instructions. Keep its TLS settings when you copy a connection URL.
+For a provider-specific certificate authority, make its CA bundle available in the container and
+use `sslrootcert` in the Postgres URL. Network privacy and TLS are independent settings.
 
-If your provider offers a **pooled** connection endpoint (PgBouncer and friends), use the **direct**
-endpoint instead. Boot migrations take a session-level advisory lock, which transaction-mode pooling
-does not preserve.
+Select the **direct** endpoint in your provider’s connection settings. Transaction-mode poolers
+cannot preserve the session locks Skein uses for boot migrations and per-thread execution.
 
 ### Graceful shutdown
 
@@ -13074,7 +13076,7 @@ actually grants — past that, you're just being SIGKILLed mid-drain:
 
 | Platform      | Window between SIGTERM and SIGKILL        |
 | ------------- | ----------------------------------------- |
-| Cloud Run     | 10s default, configurable                 |
+| Cloud Run     | 10s                                       |
 | Railway       | ~30s                                      |
 | Fly.io        | `kill_timeout` in `fly.toml` (5s default) |
 | Render        | ~30s                                      |
@@ -13154,40 +13156,48 @@ an hour), so a dropped connection is recoverable. See [streaming.md](./streaming
 
 ## Verify a deployment
 
-Every platform guide points here. Substitute your service's base URL.
+Set `BASE` to your service URL. Use the assistant ID returned by the search and input your graph
+accepts. This example uses a chat graph. If your deployment requires authentication, include the
+credentials your configuration expects on the protocol requests.
 
 ```bash
 BASE=https://your-service.example.com
 
 # 1. Liveness — the same probe your platform uses.
-curl -s $BASE/ok                                    # {"ok":true}
+curl -fsS "$BASE/ok"                                # {"ok":true}
 
 # 2. Your graphs registered as assistants at boot.
-curl -s -X POST $BASE/assistants/search \
+curl -fsS -X POST "$BASE/assistants/search" \
   -H 'content-type: application/json' -d '{"limit":10}'
 
-# 3. An inline streaming run — exercises SSE and Postgres checkpointing end to end.
-THREAD=$(curl -s -X POST $BASE/threads -H 'content-type: application/json' -d '{}' \
+# 3. Start an inline run and read the checkpoint saved in Postgres.
+PAYLOAD='{"assistant_id":"agent","input":{"messages":[{"role":"user","content":"hi"}]},"stream_mode":"values"}'
+THREAD=$(curl -fsS -X POST "$BASE/threads" -H 'content-type: application/json' -d '{}' \
   | node -pe 'JSON.parse(require("fs").readFileSync(0)).thread_id')
-curl -N -X POST $BASE/threads/$THREAD/runs/stream \
-  -H 'content-type: application/json' \
-  -d '{"assistant_id":"agent","input":{"messages":[{"role":"user","content":"hi"}]}}'
-
-# 4. A BACKGROUND run — the one that catches CPU-throttling platforms. It returns immediately;
-#    the work happens after the request ends, which is exactly when a throttled instance freezes.
-RUN=$(curl -s -X POST $BASE/threads/$THREAD/runs \
-  -H 'content-type: application/json' \
-  -d '{"assistant_id":"agent","input":{"messages":[{"role":"user","content":"hi"}]}}' \
-  | node -pe 'JSON.parse(require("fs").readFileSync(0)).run_id')
-
-# 5. Join it mid-flight (replayed from Redis), then confirm it finished.
-curl -N $BASE/threads/$THREAD/runs/$RUN/stream
-curl -s $BASE/threads/$THREAD/runs/$RUN | node -pe 'JSON.parse(require("fs").readFileSync(0)).status'
+curl -fsSN -X POST "$BASE/threads/$THREAD/runs/stream" \
+  -H 'content-type: application/json' -d "$PAYLOAD"
+curl -fsS "$BASE/threads/$THREAD/state"
 ```
 
-Step 4 is the one worth actually running. A background run that never leaves `pending`/`running` while
-the service is idle means the platform is suspending your instance between requests — see that
-platform's guide.
+Check that the state includes a checkpoint ID and the expected graph values. For deployments that
+support background work, continue in the same shell:
+
+```bash
+# 4. Queue a background run.
+RUN=$(curl -fsS -X POST "$BASE/threads/$THREAD/runs" \
+  -H 'content-type: application/json' -d "$PAYLOAD" \
+  | node -pe 'JSON.parse(require("fs").readFileSync(0)).run_id')
+
+# Repeat until status is "success" for this run.
+curl -fsS "$BASE/threads/$THREAD/runs/$RUN"
+
+# 5. After the run succeeds, replay its retained values frames from Redis.
+curl -fsSN "$BASE/threads/$THREAD/runs/$RUN/stream"
+```
+
+Run the background check while the service has no other traffic. If the run stays in `pending` or
+`running`, check the worker logs for Redis connection or authentication errors and confirm the
+platform keeps a worker running between requests.
 
 ## Environment variables
 
@@ -13658,6 +13668,9 @@ Official references: [Node CLI profiling](https://nodejs.org/api/cli.html#--cpu-
 
 # Deploy on Google Cloud Run
 
+**Postgres and Redis are required for Skein’s standard production server.** This guide provisions
+Cloud SQL for PostgreSQL and Memorystore for Redis, then connects both to Cloud Run.
+
 Cloud Run runs your container, scales it, and bills per request — a good fit for skein, with **one
 sharp edge**: by default Cloud Run throttles a container's CPU to near-zero between requests, and
 skein's background runs do their work _after_ the request that created them has returned. Get that
@@ -13674,7 +13687,9 @@ once:
 ```bash
 export PROJECT_ID=your-project REGION=us-central1 REPO=skein SERVICE=skein-app
 gcloud config set project $PROJECT_ID
-gcloud services enable run.googleapis.com artifactregistry.googleapis.com secretmanager.googleapis.com
+gcloud services enable run.googleapis.com artifactregistry.googleapis.com \
+  secretmanager.googleapis.com sqladmin.googleapis.com redis.googleapis.com \
+  compute.googleapis.com iam.googleapis.com
 ```
 
 ## 1. Build and push the image
@@ -13692,42 +13707,79 @@ docker tag $SERVICE $IMAGE
 docker push $IMAGE
 ```
 
+<span id="provision-postgres-and-redis"></span>
+
 ## 2. Provision Postgres + Redis
 
-Anything reachable works. Two shapes are common:
+1. In **Cloud SQL → Create instance**, choose **PostgreSQL** and use the same region as Cloud Run.
+   For the built-in Cloud Run socket connection below, enable a public IP and leave authorized
+   networks empty. Cloud Run reaches it through the Cloud SQL Auth Proxy. Create a database and a
+   password-authenticated role that owns it. If `store.index` is enabled, ensure the database
+   supports pgvector and enable it with a privileged role if the app role cannot. Copy the
+   **instance connection name** (`PROJECT:REGION:INSTANCE`). Use this format for `POSTGRES_URI`,
+   with the actual database name and URL-encoded credentials:
 
-**Managed outside GCP** (Neon, Supabase, Upstash, Redis Cloud) — simplest, no VPC needed, and the
-connection strings work as-is. Use the **direct** Postgres endpoint, not a pooled one
-([why](./deploy.md#tls-to-the-database)).
+   ```text
+   postgresql://USER:PASSWORD@/DATABASE?host=/cloudsql/PROJECT:REGION:INSTANCE
+   ```
 
-**GCP-native** — Cloud SQL and Memorystore:
+   [Create a Cloud SQL instance](https://docs.cloud.google.com/sql/docs/postgres/create-instance) ·
+   [Cloud Run socket and private IP options](https://docs.cloud.google.com/sql/docs/postgres/connect-run)
 
-- **Cloud SQL** attaches over a Unix socket, which needs no TLS configuration. `POSTGRES_URI` is
-  handed straight to `pg`, so the socket form works:
-  ```text
-  postgresql://USER:PASSWORD@/DATABASE?host=/cloudsql/PROJECT:REGION:INSTANCE
-  ```
-  Add `--add-cloudsql-instances=PROJECT:REGION:INSTANCE` to the deploy below.
-- **Memorystore** is only reachable from inside your VPC, so the service needs Direct VPC egress or a
-  Serverless VPC Access connector (`--network`/`--subnet`, or `--vpc-connector`).
+2. Choose a VPC and a subnet in the Cloud Run region for Direct VPC egress. Set `VPC_NETWORK`
+   to that network name and create a non-sharded Memorystore for Redis instance with AUTH and
+   eviction disabled:
 
-Store both URIs in Secret Manager rather than passing them as plain environment variables —
-`gcloud run services describe` prints env vars in cleartext:
+   ```bash
+   gcloud redis instances create skein-redis --region="$REGION" \
+     --network="$VPC_NETWORK" --tier=standard --size=1 --redis-version=redis_7_2 \
+     --enable-auth --redis-config=maxmemory-policy=noeviction
+   gcloud redis instances describe skein-redis --region="$REGION" --format='value(host,port)'
+   ```
+
+   Get the AUTH string from the instance details or with
+   `gcloud redis instances get-auth-string skein-redis --region="$REGION"`. For this
+   private TCP configuration, use `redis://:URL_ENCODED_AUTH_STRING@HOST:PORT`. If you enable
+   in-transit encryption, use `rediss://` and configure the provider’s CA trust in the container.
+
+   [Connect Memorystore to Cloud Run](https://docs.cloud.google.com/memorystore/docs/redis/connect-redis-instance-cloud-run) ·
+   [Supported Redis settings](https://docs.cloud.google.com/memorystore/docs/redis/supported-redis-configurations)
+
+### Store the URLs and grant runtime access
+
+Load both URLs into your shell without committing them. Create a dedicated service account,
+grant it Cloud SQL Client, and give it access to the two Secret Manager secrets:
 
 ```bash
+RUNTIME_SA="skein-runtime@$PROJECT_ID.iam.gserviceaccount.com"
+gcloud iam service-accounts create skein-runtime
+gcloud projects add-iam-policy-binding "$PROJECT_ID" \
+  --member="serviceAccount:$RUNTIME_SA" --role=roles/cloudsql.client
+
 printf '%s' "$POSTGRES_URI" | gcloud secrets create skein-postgres-uri --data-file=-
-printf '%s' "$REDIS_URI"    | gcloud secrets create skein-redis-uri --data-file=-
+printf '%s' "$REDIS_URI" | gcloud secrets create skein-redis-uri --data-file=-
+for secret in skein-postgres-uri skein-redis-uri; do
+  gcloud secrets add-iam-policy-binding "$secret" \
+    --member="serviceAccount:$RUNTIME_SA" --role=roles/secretmanager.secretAccessor
+done
 ```
 
-Grant the service's runtime service account `roles/secretmanager.secretAccessor`.
+The identity deploying Cloud Run also needs permission to act as the runtime service account.
+Add graph credentials using the same Secret Manager integration. [Cloud Run secrets](https://docs.cloud.google.com/run/docs/configuring/services/secrets)
 
 ## 3. Deploy
 
+Set `INSTANCE_CONNECTION_NAME`, `VPC_NETWORK`, and `VPC_SUBNET` to the values from the previous step.
+
 ```bash
-gcloud run deploy $SERVICE \
-  --image=$IMAGE \
-  --region=$REGION \
+gcloud run deploy "$SERVICE" \
+  --image="$IMAGE" \
+  --region="$REGION" \
   --port=8123 \
+  --execution-environment=gen2 \
+  --service-account="$RUNTIME_SA" \
+  --add-cloudsql-instances="$INSTANCE_CONNECTION_NAME" \
+  --network="$VPC_NETWORK" --subnet="$VPC_SUBNET" --vpc-egress=private-ranges-only \
   --set-secrets=POSTGRES_URI=skein-postgres-uri:latest,REDIS_URI=skein-redis-uri:latest \
   --set-env-vars=PG_POOL_MAX=5,SKEIN_RUN_CONCURRENCY=5 \
   --no-cpu-throttling \
@@ -13738,6 +13790,10 @@ gcloud run deploy $SERVICE \
   --no-allow-unauthenticated
 ```
 
+If you use externally hosted services with publicly reachable endpoints, use their direct Postgres
+and native Redis TCP URLs in Secret Manager. Omit the Cloud SQL attachment and VPC flags when
+neither endpoint requires them.
+
 The flags that matter, and why:
 
 | Flag                                        | Why                                                                                                     |
@@ -13746,7 +13802,7 @@ The flags that matter, and why:
 | `--no-cpu-throttling` + `--min-instances=1` | **Required for background runs.** See [below](#background-runs-need-cpu-outside-requests).              |
 | `--timeout=3600`                            | The ceiling on a streaming SSE run; skein imposes none of its own.                                      |
 | `--no-allow-unauthenticated`                | skein's auth is off by default — see [the warning](./deploy.md#5-auth--read-this-before-you-expose-it). |
-| `PG_POOL_MAX=5`                             | Two pools per instance × instances vs. your database's cap ([budget](./deploy.md#connection-budget)).   |
+| `PG_POOL_MAX=5`                             | Three pools per instance × instances vs. your database's cap ([budget](./deploy.md#connection-budget)). |
 
 Cloud Run's built-in health checking uses the container port; you can also declare an explicit
 startup probe on `GET /ok` with a ~30s failure budget, since boot runs migrations before listening.
@@ -13787,16 +13843,15 @@ Don't put Cloud CDN in front of the streaming routes; it buffers.
 
 ### Connections vs. autoscaling
 
-Each instance opens two Postgres pools, so a burst to `--max-instances=10` with `PG_POOL_MAX=10`
-wants 200 connections. Cap `--max-instances`, keep `PG_POOL_MAX` small, or front Cloud SQL with the
-Auth Proxy or a pooler.
+Each instance opens three Postgres pools, so a burst to `--max-instances=10` with `PG_POOL_MAX=10`
+can use up to 300 connections. Size both limits against your database’s
+[connection budget](./deploy.md#connection-budget).
 
 ### Shutdown
 
-Cloud Run sends `SIGTERM` and SIGKILLs 10 seconds later by default. skein drains in-flight runs for
-5s, aborts the rest so they land in a terminal status, and exits — comfortably inside that window. If
-you raise `SKEIN_SHUTDOWN_GRACE_MS`, raise Cloud Run's termination grace period to match, or you'll
-be killed mid-drain.
+Cloud Run sends `SIGTERM` and gives the container 10 seconds before `SIGKILL`. Keep Skein’s
+default 5-second drain window to leave time for aborting the remaining runs and closing the
+database connections. [Cloud Run shutdown contract](https://docs.cloud.google.com/run/docs/container-contract#instance-shutdown)
 
 Note that Cloud Run has no `init` process. The image is fine as-is, but if your graphs spawn child
 processes you'll want `tini` — add it via `dockerfile_lines` in `langgraph.json`.
