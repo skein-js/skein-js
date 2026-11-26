@@ -36,8 +36,9 @@ the HTTP and streaming API around your graphs.
 
 ## What you get
 
-- **Conversation state and long-term memory.** Keep conversation history and recall information
-  across threads. Use Postgres for shared servers or SQLite for local persistence.
+- **Conversation state and long-term memory.** Save each conversation's state in a thread so the
+  agent can use earlier turns in follow-up replies. Use long-term memory to recall information across
+  conversations. Use Postgres for shared servers or SQLite for local persistence.
   [State and persistence](./docs/state-and-context.md) · [Memory](./docs/memory.md)
 - **Streaming with standard LangGraph clients.** Deliver tokens, tool activity, and graph updates as
   they happen. Connect with the LangGraph SDK and its frontend bindings, including React's
@@ -71,8 +72,8 @@ npm run dev
 ```
 
 Accept the scaffolder's defaults to install dependencies and start with an echo graph that needs no
-API key, database service, or Docker. Open <http://localhost:2024/console>, create a thread, and send a
-message. The server runs at <http://localhost:2024>.
+API key, database service, or Docker. Open <http://localhost:2024/console>, start a thread (a new
+conversation), and send a message. The server runs at <http://localhost:2024>.
 
 [Your first agent](./docs/your-first-agent.md) walks through adding a model and tools, then deploying.
 For workspace setup and generator options, see [scaffolding](./docs/scaffolding.md).
@@ -518,8 +519,9 @@ That's the **skein console**, served by your own process — no account, no host
 In Playground, choose the **echo** Assistant, send "hello", and watch the run execute. You will get `echo: hello` back, because
 the graph you just created echoes its input.
 
-This is worth doing before anything else: everything below is about changing what happens between
-your message and that reply, and it helps to have seen the loop close.
+The conversation you just started is a **thread**. Send another message in that thread and LangGraph
+loads the saved state, including the messages the echo graph keeps. Start a new thread for a separate
+conversation.
 
 Run the generated graph tests in a second terminal:
 
@@ -700,6 +702,9 @@ Pass it in — `createAgent({ model, tools: [getWeather] })` — and ask "what's
 Nairobi?". The console shows the model deciding to call the tool, the result coming back, and the
 final answer. (Open-Meteo needs no API key of its own.)
 
+In the same conversation, ask “How warm is that in Fahrenheit?” The agent passes the earlier
+messages to the model, so it can use the Nairobi answer to understand what “that” means.
+
 The `description` and `schema` are how the model knows when to use it. Write them for a reader who
 has no other context, because that is exactly the model's situation.
 
@@ -719,6 +724,9 @@ for await (const event of client.runs.stream(thread.thread_id, "agent", {
   console.log(event.event, event.data);
 }
 ```
+
+Keep `thread.thread_id` and reuse it for follow-ups. Send just the new message in `input` and
+LangGraph restores the conversation state from the thread. See [Threads](./threads.md).
 
 For a UI, the `useStream` React hook talks to the same server with only a URL change — see
 [react-sdk.md](./react-sdk.md). Vue, Svelte and Angular work too; so do
@@ -940,6 +948,10 @@ const reply = await client.runs.wait(thread.thread_id, assistantId, {
 });
 console.log(reply);
 ```
+
+Keep `thread.thread_id` as the conversation ID. For a follow-up, reuse it and send just the new
+message. LangGraph loads the thread's saved state, including any messages your graph keeps. See
+[Threads](./threads.md#start-a-conversation).
 
 Stream tokens as they arrive instead of waiting:
 
@@ -4552,47 +4564,20 @@ custom saver without an inspector. These routes use the common adapter/runtime p
 
 <!-- source: docs/building-blocks.md -->
 
+<script setup>
+import SkeinBuildingBlocks from "./.vitepress/theme/components/SkeinBuildingBlocks.vue";
+</script>
+
 # Building blocks
 
 Use this map to choose the skein-js capabilities your project needs. Start with a working graph,
 then add conversation state, human approval, background work, or durable deployment as required.
 Each section explains the user decision and links to a practical guide.
 
-```mermaid
----
-config:
-  flowchart:
-    nodeSpacing: 16
-    rankSpacing: 8
-    padding: 8
-    subGraphTitleMargin:
-      top: 8
-      bottom: 12
----
-flowchart TB
-  accTitle: Responsibilities in a Skein-hosted agent
-  accDescr {
-    You define the state schema, nodes, and edges and choose the models, prompts, and tools.
-    LangGraph.js executes the graph, handles interrupts, writes checkpoints, and emits stream events.
-    Skein hosts the graph and provides the API, runs, threads, storage, stream delivery, schedules, and callbacks.
-  }
-  subgraph hosting["<b>Skein hosts it</b>"]
-    direction TB
-    hostingServices@{ shape: text, label: "API · runs · threads<br/>Storage · stream delivery<br/>Schedules · callbacks" }
-    subgraph execution["<b>LangGraph.js executes it</b>"]
-      direction TB
-      executionFeatures@{ shape: text, label: "Interrupts · checkpoints<br/>Stream events" }
-      authoredGraph["<b>You define the graph</b><br/>State schema · nodes · edges<br/>Models · prompts · tools"]
-      executionFeatures ~~~ authoredGraph
-    end
-    hostingServices ~~~ execution
-  end
-  classDef details fill:none,stroke:none
-  class hostingServices,executionFeatures details
-  class authoredGraph accent
-```
+You define the graph. LangGraph.js executes it and produces checkpoints and stream events.
+Skein hosts the graph, connects it to storage, and delivers its stream to clients.
 
-Read it through once; after that it is a map — find the pressure you are under and follow the link.
+<SkeinBuildingBlocks />
 
 ## The model and the prompt — yours
 
@@ -4662,8 +4647,9 @@ A related trap arrives with it. A run carries four bags — `input`, `context`, 
 
 ## Threads: one conversation
 
-A thread is the state plus every checkpoint behind it. Address one by a key you already have — a
-ticket number, a phone number — and your system needs no mapping table.
+A **thread** holds the saved graph state for one conversation. Reuse its ID for follow-up messages
+so LangGraph can load the earlier turns your graph has saved. Your graph can pass those messages to
+the model so a follow-up like “How warm is that in Fahrenheit?” makes sense in context.
 
 → [Threads](./threads.md)
 
@@ -5242,9 +5228,10 @@ to see versioning: edit an assistant's config, run it from the playground, then 
 
 # State, context & persistence
 
-What your agent knows, where each piece of it lives, and what survives a restart. This is the
-building block everything else rests on — interrupts, time travel, memory and durability are all
-consequences of it.
+A **thread** holds the saved graph state for one conversation. Reuse the thread ID for a follow-up
+so LangGraph can restore that state. A chat graph can then pass earlier messages and the new message
+to the model together. The `context` option below supplies values for a single run, such as the
+user's locale.
 
 ## The four bags, and which one you want
 
@@ -5425,19 +5412,32 @@ Both are skein going past LangGraph OSS, which drops `ttl` on the floor.
 
 # Threads
 
-A thread is one conversation: its message history, its graph state, and every checkpoint along the
-way. If you're building a chat product, a thread is what a user would call "a chat" — and it's the
-thing you address instead of tracking state yourself.
+A **thread** holds the saved graph state for one conversation. In a chat app, that usually includes
+the earlier messages. The **thread ID** tells LangGraph which conversation to pick up when the user
+sends a follow-up.
+
+Your graph decides what to save and what to pass to the model. A chat agent can give the model
+both the new message and earlier messages from the thread, so a follow-up makes sense in context.
 
 ## Start a conversation
 
+Create a thread for a chat graph registered as `agent`. Send each new message with the same thread ID.
+
 ```ts
 const thread = await client.threads.create();
-await client.runs.wait(thread.thread_id, "agent", { input: { messages: [msg] } });
+
+await client.runs.wait(thread.thread_id, "agent", {
+  input: { messages: [{ role: "user", content: "What's the weather in Nairobi?" }] },
+});
+
+await client.runs.wait(thread.thread_id, "agent", {
+  input: { messages: [{ role: "user", content: "How warm is that in Fahrenheit?" }] },
+});
 ```
 
-You rarely need more than that. Threads persist, so the next run on the same id picks up where the
-last one left off — the graph sees the accumulated state without you passing any of it back.
+The second run loads the saved conversation state before applying the new message. A model that
+receives the earlier turns can tell that “that” refers to the weather in Nairobi. Create a new thread
+when the user starts a separate conversation.
 
 ## Address a conversation by your own key
 
@@ -5465,8 +5465,9 @@ const state = await client.threads.getState(threadId); // current values, next n
 const history = await client.threads.getHistory(threadId, { limit: 10 }); // newest first
 ```
 
-`getState` is what a UI hydrates from on load. `getHistory` walks the checkpoints backwards — page
-with `before`, passing the last checkpoint you received.
+When a user reopens a chat, use `getState` with its thread ID to display the messages saved in the
+graph state. `getHistory` walks back through checkpoints. To get the next page, pass the last
+checkpoint you received as `before`.
 
 **History is capped, and the cap matters.** You get at most 100 checkpoints when `limit` is omitted,
 and a `limit` above 1000 is rejected — each element is a whole graph state, so a long thread's full

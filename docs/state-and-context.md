@@ -1,8 +1,9 @@
 # State, context & persistence
 
-What your agent knows, where each piece of it lives, and what survives a restart. This is the
-building block everything else rests on — interrupts, time travel, memory and durability are all
-consequences of it.
+A **thread** holds the saved graph state for one conversation. Reuse the thread ID for a follow-up
+so LangGraph can restore that state. A chat graph can then pass earlier messages and the new message
+to the model together. The `context` option below supplies values for a single run, such as the
+user's locale.
 
 ## The four bags, and which one you want
 

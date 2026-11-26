@@ -145,6 +145,10 @@ const reply = await client.runs.wait(thread.thread_id, assistantId, {
 console.log(reply);
 ```
 
+Keep `thread.thread_id` as the conversation ID. For a follow-up, reuse it and send just the new
+message. LangGraph loads the thread's saved state, including any messages your graph keeps. See
+[Threads](./threads.md#start-a-conversation).
+
 Stream tokens as they arrive instead of waiting:
 
 ```ts

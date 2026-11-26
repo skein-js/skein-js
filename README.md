@@ -27,8 +27,9 @@ the HTTP and streaming API around your graphs.
 
 ## What you get
 
-- **Conversation state and long-term memory.** Keep conversation history and recall information
-  across threads. Use Postgres for shared servers or SQLite for local persistence.
+- **Conversation state and long-term memory.** Save each conversation's state in a thread so the
+  agent can use earlier turns in follow-up replies. Use long-term memory to recall information across
+  conversations. Use Postgres for shared servers or SQLite for local persistence.
   [State and persistence](./docs/state-and-context.md) · [Memory](./docs/memory.md)
 - **Streaming with standard LangGraph clients.** Deliver tokens, tool activity, and graph updates as
   they happen. Connect with the LangGraph SDK and its frontend bindings, including React's
@@ -62,8 +63,8 @@ npm run dev
 ```
 
 Accept the scaffolder's defaults to install dependencies and start with an echo graph that needs no
-API key, database service, or Docker. Open <http://localhost:2024/console>, create a thread, and send a
-message. The server runs at <http://localhost:2024>.
+API key, database service, or Docker. Open <http://localhost:2024/console>, start a thread (a new
+conversation), and send a message. The server runs at <http://localhost:2024>.
 
 [Your first agent](./docs/your-first-agent.md) walks through adding a model and tools, then deploying.
 For workspace setup and generator options, see [scaffolding](./docs/scaffolding.md).

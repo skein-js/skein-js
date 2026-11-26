@@ -20,7 +20,10 @@ hero:
 features:
   - icon: 🧠
     title: Conversation state & memory
-    details: Keep conversation history and recall information across threads. Choose Postgres for shared servers or SQLite for local persistence.
+    details: >-
+      Keep each conversation in a thread so your agent can use earlier messages in follow-ups.
+      Recall facts across conversations with long-term memory. Use Postgres for shared servers or
+      SQLite for local persistence.
     link: /state-and-context
     linkText: State and persistence
   - icon: ⚡

@@ -1,18 +1,31 @@
 # Threads
 
-A thread is one conversation: its message history, its graph state, and every checkpoint along the
-way. If you're building a chat product, a thread is what a user would call "a chat" — and it's the
-thing you address instead of tracking state yourself.
+A **thread** holds the saved graph state for one conversation. In a chat app, that usually includes
+the earlier messages. The **thread ID** tells LangGraph which conversation to pick up when the user
+sends a follow-up.
+
+Your graph decides what to save and what to pass to the model. A chat agent can give the model
+both the new message and earlier messages from the thread, so a follow-up makes sense in context.
 
 ## Start a conversation
 
+Create a thread for a chat graph registered as `agent`. Send each new message with the same thread ID.
+
 ```ts
 const thread = await client.threads.create();
-await client.runs.wait(thread.thread_id, "agent", { input: { messages: [msg] } });
+
+await client.runs.wait(thread.thread_id, "agent", {
+  input: { messages: [{ role: "user", content: "What's the weather in Nairobi?" }] },
+});
+
+await client.runs.wait(thread.thread_id, "agent", {
+  input: { messages: [{ role: "user", content: "How warm is that in Fahrenheit?" }] },
+});
 ```
 
-You rarely need more than that. Threads persist, so the next run on the same id picks up where the
-last one left off — the graph sees the accumulated state without you passing any of it back.
+The second run loads the saved conversation state before applying the new message. A model that
+receives the earlier turns can tell that “that” refers to the weather in Nairobi. Create a new thread
+when the user starts a separate conversation.
 
 ## Address a conversation by your own key
 
@@ -40,8 +53,9 @@ const state = await client.threads.getState(threadId); // current values, next n
 const history = await client.threads.getHistory(threadId, { limit: 10 }); // newest first
 ```
 
-`getState` is what a UI hydrates from on load. `getHistory` walks the checkpoints backwards — page
-with `before`, passing the last checkpoint you received.
+When a user reopens a chat, use `getState` with its thread ID to display the messages saved in the
+graph state. `getHistory` walks back through checkpoints. To get the next page, pass the last
+checkpoint you received as `before`.
 
 **History is capped, and the cap matters.** You get at most 100 checkpoints when `limit` is omitted,
 and a `limit` above 1000 is rejected — each element is a whole graph state, so a long thread's full

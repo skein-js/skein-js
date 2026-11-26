@@ -1,44 +1,17 @@
+<script setup>
+import SkeinBuildingBlocks from "./.vitepress/theme/components/SkeinBuildingBlocks.vue";
+</script>
+
 # Building blocks
 
 Use this map to choose the skein-js capabilities your project needs. Start with a working graph,
 then add conversation state, human approval, background work, or durable deployment as required.
 Each section explains the user decision and links to a practical guide.
 
-```mermaid
----
-config:
-  flowchart:
-    nodeSpacing: 16
-    rankSpacing: 8
-    padding: 8
-    subGraphTitleMargin:
-      top: 8
-      bottom: 12
----
-flowchart TB
-  accTitle: Responsibilities in a Skein-hosted agent
-  accDescr {
-    You define the state schema, nodes, and edges and choose the models, prompts, and tools.
-    LangGraph.js executes the graph, handles interrupts, writes checkpoints, and emits stream events.
-    Skein hosts the graph and provides the API, runs, threads, storage, stream delivery, schedules, and callbacks.
-  }
-  subgraph hosting["<b>Skein hosts it</b>"]
-    direction TB
-    hostingServices@{ shape: text, label: "API · runs · threads<br/>Storage · stream delivery<br/>Schedules · callbacks" }
-    subgraph execution["<b>LangGraph.js executes it</b>"]
-      direction TB
-      executionFeatures@{ shape: text, label: "Interrupts · checkpoints<br/>Stream events" }
-      authoredGraph["<b>You define the graph</b><br/>State schema · nodes · edges<br/>Models · prompts · tools"]
-      executionFeatures ~~~ authoredGraph
-    end
-    hostingServices ~~~ execution
-  end
-  classDef details fill:none,stroke:none
-  class hostingServices,executionFeatures details
-  class authoredGraph accent
-```
+You define the graph. LangGraph.js executes it and produces checkpoints and stream events.
+Skein hosts the graph, connects it to storage, and delivers its stream to clients.
 
-Read it through once; after that it is a map — find the pressure you are under and follow the link.
+<SkeinBuildingBlocks />
 
 ## The model and the prompt — yours
 
@@ -108,8 +81,9 @@ A related trap arrives with it. A run carries four bags — `input`, `context`, 
 
 ## Threads: one conversation
 
-A thread is the state plus every checkpoint behind it. Address one by a key you already have — a
-ticket number, a phone number — and your system needs no mapping table.
+A **thread** holds the saved graph state for one conversation. Reuse its ID for follow-up messages
+so LangGraph can load the earlier turns your graph has saved. Your graph can pass those messages to
+the model so a follow-up like “How warm is that in Fahrenheit?” makes sense in context.
 
 → [Threads](./threads.md)
 

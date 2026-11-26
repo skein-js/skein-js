@@ -44,8 +44,9 @@ That's the **skein console**, served by your own process — no account, no host
 In Playground, choose the **echo** Assistant, send "hello", and watch the run execute. You will get `echo: hello` back, because
 the graph you just created echoes its input.
 
-This is worth doing before anything else: everything below is about changing what happens between
-your message and that reply, and it helps to have seen the loop close.
+The conversation you just started is a **thread**. Send another message in that thread and LangGraph
+loads the saved state, including the messages the echo graph keeps. Start a new thread for a separate
+conversation.
 
 Run the generated graph tests in a second terminal:
 
@@ -226,6 +227,9 @@ Pass it in — `createAgent({ model, tools: [getWeather] })` — and ask "what's
 Nairobi?". The console shows the model deciding to call the tool, the result coming back, and the
 final answer. (Open-Meteo needs no API key of its own.)
 
+In the same conversation, ask “How warm is that in Fahrenheit?” The agent passes the earlier
+messages to the model, so it can use the Nairobi answer to understand what “that” means.
+
 The `description` and `schema` are how the model knows when to use it. Write them for a reader who
 has no other context, because that is exactly the model's situation.
 
@@ -245,6 +249,9 @@ for await (const event of client.runs.stream(thread.thread_id, "agent", {
   console.log(event.event, event.data);
 }
 ```
+
+Keep `thread.thread_id` and reuse it for follow-ups. Send just the new message in `input` and
+LangGraph restores the conversation state from the thread. See [Threads](./threads.md).
 
 For a UI, the `useStream` React hook talks to the same server with only a URL change — see
 [react-sdk.md](./react-sdk.md). Vue, Svelte and Angular work too; so do
