@@ -29,6 +29,9 @@ jobs:
   deploy:
     name: build · deploy to Pages
     runs-on: ubuntu-latest
+    env:
+      # GitHub retains artifacts from earlier attempts of the same workflow run.
+      PAGES_ARTIFACT_NAME: github-pages-${{ github.run_attempt }}
     environment:
       name: github-pages
       url: ${{ steps.deployment.outputs.page_url }}
@@ -67,7 +70,10 @@ jobs:
 
       - uses: actions/upload-pages-artifact@v3
         with:
+          name: ${{ env.PAGES_ARTIFACT_NAME }}
           path: docs/.vitepress/dist
 
       - id: deployment
         uses: actions/deploy-pages@v4
+        with:
+          artifact_name: ${{ env.PAGES_ARTIFACT_NAME }}
